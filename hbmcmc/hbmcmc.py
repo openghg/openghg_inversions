@@ -52,6 +52,26 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    country_unit_prefix=None, add_offset = False,
                    verbose = False):
 
+
+def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
+                   end_date, outputpath, outputname,
+                   met_model = None,
+                   xprior={"pdf":"lognormal", "mu":1, "sd":1},
+                   bcprior={"pdf":"lognormal", "mu":0.004, "sd":0.02},
+                   sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
+                   offsetprior={"pdf":"normal", "mu":0, "sd":1},
+                   nit=2.5e5, burn=50000, tune=1.25e5, nchain=2,
+                   emissions_name=None, inlet=None, fpheight=None, instrument=None,
+                   fp_basis_case=None, basis_directory = None, bc_basis_case="NESW",
+                   country_file = None,
+                   fp_directory = None, bc_directory = None, flux_directory = None,
+                   max_level=None,
+                   quadtree_basis=True,nbasis=100,
+                   filters = [],
+                   averagingerror=True, bc_freq=None, sigma_freq=None, sigma_per_site=True,
+                   country_unit_prefix=None, add_offset = False,
+                   verbose = False):
+
     """
     Script to run hierarchical Bayesian MCMC for inference of emissions using
     pymc3 to solve the inverse problem.
@@ -172,11 +192,40 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         Saves an output from the inversion code using inferpymc3_postprocessouts.
         
     TO DO:
-        Add a wishlist...
+        - getobs.get_obs -> openghg.standardise_
+        - name.footprints_data_merge -> scenario_openghg.FootprintsDataMerge()
+        - basis_functions -> equivalent in openghg? or copy function over to hbmcmc?
+        - name.fp_sensitivity -> equivalent in openghg?
+        - name.bc_sensitivity -> equivalent in openghg?
+        - name.filtering -> equivalent in openghg? 
     """    
-    data = getobs.get_obs(sites, species, start_date = start_date, end_date = end_date, 
-                         average = meas_period, data_directory=obs_directory,
-                          keep_missing=False,inlet=inlet, instrument=instrument, max_level=max_level)
+
+    from openghg.retrieve import search_surface, get_obs_surface
+    
+
+    # Check site data exists in objecstore
+    search_objectstore=search_surface(site=sites, species=species, inlet=inlet, 
+                                      start_date=start_date, end_date=end_date)
+
+    data={}
+    for i, site in enumerate(sites): 
+        if site in search_objectstore.results.keys():
+            site_data=get_obs_surface(site=site, species=species, inlet=inlet[i],
+                                      start_date=start_date, end_date=end_date,
+                                      average=meas_period[i], instrument=instrument[i])
+
+            data[site]=site_data[site]
+        else:
+            print(species," obs data for ",site, "between ", start_date, end_date, "was not found in objectstore.") 
+
+
+
+
+
+
+
+## here, ES
+
     fp_all = name.footprints_data_merge(data, domain=domain, met_model = met_model, calc_bc=True, 
                                         height=fpheight, 
                                         fp_directory = fp_directory,
