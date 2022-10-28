@@ -33,29 +33,29 @@ from acrg.config.paths import Paths
 acrg_path = Paths.acrg
 data_path = Paths.data
 
-def fixedbasisMCMC(species, sites, domain, meas_period, start_date, 
-                   end_date, outputpath, outputname,
-                   met_model = None,
-                   xprior={"pdf":"lognormal", "mu":1, "sd":1},
-                   bcprior={"pdf":"lognormal", "mu":0.004, "sd":0.02},
-                   sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
-                   offsetprior={"pdf":"normal", "mu":0, "sd":1},
-                   nit=2.5e5, burn=50000, tune=1.25e5, nchain=2,
-                   emissions_name=None, inlet=None, fpheight=None, instrument=None, 
-                   fp_basis_case=None, basis_directory = None, bc_basis_case="NESW", 
-                   obs_directory = None, country_file = None,
-                   fp_directory = None, bc_directory = None, flux_directory = None,
-                   max_level=None,
-                   quadtree_basis=True,nbasis=100,
-                   filters = [],
-                   averagingerror=True, bc_freq=None, sigma_freq=None, sigma_per_site=True,
-                   country_unit_prefix=None, add_offset = False,
-                   verbose = False):
+#def fixedbasisMCMC(species, sites, domain, meas_period, start_date, 
+#                   end_date, outputpath, outputname,
+#                   met_model = None,
+#                   xprior={"pdf":"lognormal", "mu":1, "sd":1},
+#                   bcprior={"pdf":"lognormal", "mu":0.004, "sd":0.02},
+#                   sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
+#                   offsetprior={"pdf":"normal", "mu":0, "sd":1},
+#                   nit=2.5e5, burn=50000, tune=1.25e5, nchain=2,
+#                   emissions_name=None, inlet=None, fpheight=None, instrument=None, 
+#                   fp_basis_case=None, basis_directory = None, bc_basis_case="NESW", 
+#                   obs_directory = None, country_file = None,
+#                   fp_directory = None, bc_directory = None, flux_directory = None,
+#                   max_level=None,
+#                   quadtree_basis=True,nbasis=100,
+#                   filters = [],
+#                   averagingerror=True, bc_freq=None, sigma_freq=None, sigma_per_site=True,
+#                   country_unit_prefix=None, add_offset = False,
+#                   verbose = False):
 
 
 def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    end_date, outputpath, outputname,
-                   met_model = None,
+                   met_model = None, fp_model="NAME", 
                    xprior={"pdf":"lognormal", "mu":1, "sd":1},
                    bcprior={"pdf":"lognormal", "mu":0.004, "sd":0.02},
                    sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
@@ -199,26 +199,92 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         - name.bc_sensitivity -> equivalent in openghg?
         - name.filtering -> equivalent in openghg? 
     """    
+    # IMPORTANT: Added "fp_model" input variable -> default is "NAME" (variable used to chose LPDM)
+    # Notes for RT + GJi
+    # At the moment assume all necessary data is already in the objectstore
+    # - Option to search for emissions file. At the moment have to direct to a specific fname
+    # - A method for adding multiple footprint files within a date range to the objectstore
+    # - Include name.filenames function in openghg somewhere 
 
-    from openghg.retrieve import search_surface, get_obs_surface
+    import os
+    from openghg.retrieve import search_surface, get_obs_surface, get_flux
+    from openghg.standardise import standardise_surface, standardise_flux, standardise_footprint
+    from openghg.analyse import ModelScenario
     
+    fp_all={}
+    fp_all['.species']=species
 
-    # Check site data exists in objecstore
-    search_objectstore=search_surface(site=sites, species=species, inlet=inlet, 
-                                      start_date=start_date, end_date=end_date)
+    # **** Get fluxes ****
+    flux_dict={}
+    basestring = (str, bytes)
+    for source, emiss_source in emissions_name.items():
+        if isinstance(emissions_name[source], basestring):
+            flux_file=os.path.join(flux_directory, domain, emissions_name[source],'.nc') # NB. 'emissions_name' must have the full name of the flux file
 
+            # Add fluxes to objectstore, should skip if flux data previously added. 
+            flux_data = standardise_flux(filepath=flux_file, 
+                                         species=species,
+                                         domain=domain,
+                                         source=flux_key[0],
+                                         date=start_date)
+
+            # Retrieve flux data from objectstore
+            get_flux_data = get_flux(species=species, 
+                                     source=flux_key[0],
+                                     domain=domain,
+                                     start_date=start_date,
+                                     end_date=end_date)
+
+            flux_dict[source]=get_flux_data
+    fp_all['.flux']=get_flux_data
+
+    # **** Get Footprints ****
+    for i, site in enumerate(sites):
+        fp_fnames = name.filenames(site=site,
+                                   domain=domain,
+                                   start=start_date,
+                                   end=end_date, 
+                                   height=inlet[i],
+                                   fp_directory=fp_directory,
+                                   met_model=met_model,
+                                   species=species)
+        for fname in fp_fnames:
+            fp_data=standardise_footprint(filepath=os.path.join(fp_directory, domain)+"/"+str(fname),
+                                          site=site,
+                                          height=inlet[i],
+                                          domain=domain, 
+                                          model=fp_model)
+
+# ES here, need to add function for retrieving FPS from objectstore. Then check 
+# observations added --> ModelScenario
+
+
+    # **** Get observations ****
+    # NB. Obs data must already be added to the objectstore in advance. 
+    # Check site data exists in objectstore
+    search_objectstore=search_surface(site=sites, 
+                                      species=species, 
+                                      inlet=inlet, 
+                                      start_date=start_date, 
+                                      end_date=end_date)
+    # Add obs data to dict 
     data={}
     for i, site in enumerate(sites): 
         if site in search_objectstore.results.keys():
-            site_data=get_obs_surface(site=site, species=species, inlet=inlet[i],
-                                      start_date=start_date, end_date=end_date,
-                                      average=meas_period[i], instrument=instrument[i])
+            site_data=get_obs_surface(site=site, 
+                                      species=species, 
+                                      inlet=inlet[i],
+                                      start_date=start_date, 
+                                      end_date=end_date,
+                                      average=meas_period[i], 
+                                      instrument=instrument[i])
 
             data[site]=site_data[site]
         else:
-            print(species," obs data for ",site, "between ", start_date, end_date, "was not found in objectstore.") 
+            print(species," obs data for ",site, "between ", start_date, end_date, "was not found in objectstore.")
+            return None
 
-
+     
 
 
 
