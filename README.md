@@ -11,9 +11,6 @@ Once setup, ensure that your OpenGHG objectstore is setup and configured as deta
 
 
 ## References
-**HBMCMC**: 
+**HBMCMC**: Ganesan et al. (2014),_ACP_; Western et al. (2021), _Enviro. Sci. Tech Lett._
 
-Ganesan et al. (2014),_ACP_; Western et al. (2021), _Enviro. Sci. Tech Lett._
-**InTEM**:
-
- Manning et al. (2021), _ACP_
+**InTEM**: Manning et al. (2021), _ACP_
