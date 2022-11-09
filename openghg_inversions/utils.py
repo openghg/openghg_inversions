@@ -37,18 +37,11 @@ import dateutil.relativedelta
 from os.path import join
 from collections import OrderedDict
 
-
-
-
-from openghg_inversions import convert_time
-
+from openghg_inversions import convert_time as convert
 from openghg_inversions.config.paths import Paths
 
 acrg_path = Paths.acrg
 data_path = Paths.data
-
-# ---- TO DO ----
-# -> import convert equiavalent (used in filenames)
 
 
 with open(acrg_path / "data/site_info.json") as f:
@@ -513,12 +506,6 @@ def areagrid(lat, lon):
 
   return area
 
-
-
-
-
-
-# Filenams needs sorting still! 
 
 def filenames(site, domain, start, end, height, fp_directory, met_model = None, network=None, species=None):
     """
