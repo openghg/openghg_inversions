@@ -17,6 +17,8 @@ country_emissions - calculate emissions from given list of countries
 
 
 @author: ml12574
+
+Updated by Eric Saboya
 """
 import os
 import glob
@@ -34,9 +36,7 @@ from cartopy.feature import BORDERS
 from collections import OrderedDict
 
 from openghg_inversions import utils
-
-from acrg import convert  # <--- Need to update! 
-
+from openghg_inversions import convert   
 from openghg_inversions.config.paths import Paths
 acrg_path = Paths.acrg
 
