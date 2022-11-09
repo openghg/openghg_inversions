@@ -8,6 +8,8 @@ Uses tdmcmc_post_process
 
 
 @author: ml12574 (updated by rt17603)
+
+Updated by Eric Saboya
 """
 
 ########### INPUTS ####################
