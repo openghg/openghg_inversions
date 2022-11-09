@@ -34,6 +34,7 @@ to use PyMC v4.0. Watch this space!
 
 """
 import os
+import sys
 import shutil
 import numpy as np
 import pandas as pd
@@ -48,8 +49,8 @@ from openghg.analyse import ModelScenario
 
 
 import acrg.name.name as name
-import acrg.name.basis_functions as basis
 
+import openghg_inversions.basis_functions as basis
 from openghg_inversions import utils
 from openghg_inversions.config.paths import Paths
 
@@ -210,51 +211,98 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     # - A method for adding multiple footprint files within a date range to the objectstore
 
 
-    # **** Get fluxes ****
+    # ******** Get fluxes ******** [block done]
     flux_dict={}
     basestring = (str, bytes)
     for source, emiss_source in emissions_name.items():
         if isinstance(emissions_name[source], basestring):
             flux_file=os.path.join(flux_directory, domain, emissions_name[source]) # NB. 'emissions_name' must have the full name of the flux file
-
-            # Add fluxes to objectstore, should skip over if flux data previously added. 
-            flux_data = standardise_flux(filepath=flux_file,
-                                         species=species,
+            try:
+                # Try retrieving fluxes from objectstore
+                get_flux_data = get_flux(species=species,
                                          domain=domain,
                                          source=source,
-                                         date=start_date)
+                                         start_date=start_date,
+                                         end_date=end_date)
 
-            # Retrieve flux data from objectstore
-            get_flux_data = get_flux(species=species,
-                                     domain=domain,
-                                     source=source,
-                                     start_date=start_date,
-                                     end_date=end_date)
+                flux_dict[source]=get_flux_data
+            except:
+                print(f"flux file '{emiss_source}' not found in objectstore.\n"
+                      f" Attempting to add '{emiss_source}' to objectstore...")  
+                try:
+                    # Add flux data to objectstore
+                    flux_data = standardise_flux(filepath=flux_file,
+                                                 species=species,
+                                                 domain=domain,
+                                                 source=source,
+                                                 date=start_date)
+                except:
+                    print(f"{emiss_source} could not be found."
+                          " Check the fluxes filename is provided in"
+                          " 'emissions_name' and exists.")
+                    sys.exit(1)
+ 
+                # Retrieve flux data from objectstore
+                get_flux_data = get_flux(species=species,
+                                         domain=domain,
+                                         source=source,
+                                         start_date=start_date,
+                                         end_date=end_date)
 
-            flux_dict[source]=get_flux_data
+                flux_dict[source]=get_flux_data
+                  
 
-    # **** Get boundary conditions ****  
+    # ******** Get boundary conditions ********  [block done]
     if bc_directory=None:
         bc_directory = os.path.join(data_path, "LPDM", "bc", domain)
     
-    t_datarange = pd.date_range(start=start_date, end=end_date, freq='1M')
-    
-    for t_val in t_datarange:
-        bc_fname = f"{species.lower()}"+"_"+f"{domain}"+"_"+str(t_val.year)+str(t_val.month).zfill(2)+".nc"
-        bc_fname = os.path.join(bc_directory, bc_fname)
-        try: 
-            bc_data = standardise_bc(filepath=bc_fname, 
-                                     species=species, 
-                                     bc_input="CAMS", 
-                                     domain=domain)
-        except FileNotFoundError:
-            print(f"Boundary conditions file: '{bc_fname}' not found. \nPlease check file exists otherwise another BC file will be used.")
-   
+    try:
+        # Try retrieve BC data for date range from objectstore
+        get_bc_data = get_bc(species=species,
+                             domain=domain,
+                             start_date=start_date,
+                             end_date=end_date)  
+    except ValueError:
+        print(f"Boundary condition data between {start_date} and {end_date}" 
+                "not found in objectstore.\nAttempting to add boundary"
+                "condition files in date range to objectstore...")
 
-    get_bc_data = get_bc(species=species,
-                         domain=domain,
-                         start_date=start_date,
-                         end_date=end_date)   
+        t_datarange = pd.date_range(start=start_date, end=end_date, freq='1M')
+
+        for t_val in t_datarange:
+            bc_fname = f"{species.lower()}"+"_"+f"{domain}"+"_"+str(t_val.year)+str(t_val.month).zfill(2)+".nc"
+            bc_fname = os.path.join(bc_directory, bc_fname)
+ 
+            try:
+                print("Attempting to add boundary condition data to objectstore ...")
+                # Check if BC files exist and add to objectstore 
+                bc_data = standardise_bc(filepath=bc_fname, 
+                                         species=species, 
+                                         bc_input="CAMS", 
+                                         domain=domain)
+            except FileNotFoundError:
+                print(f"Warning: Boundary conditions file: '{bc_fname}' not found."
+                       "\nPlease check file exists.")
+                       
+        try:
+            # Try again to retrieve BC data for date range from objectstore
+            get_bc_data = get_bc(species=species,
+                                 domain=domain,
+                                 start_date=start_date,
+                                 end_date=end_date)
+
+        except:
+            print(f"Warning: Boundary conditions file: '{bc_fname}' not found"
+                  "in objectstore.\nA different BC file will be used.")
+            try:
+                # Retrieve all BC data from objectstore. 
+                get_bc_data = get_bc(species=species,
+                                     domain=domain)
+            except:
+                print("YIKES! There are no boundary condition data in the objectstore."
+                      "Please add boundary condition data to objectstore to proceed.") 
+                sys.exit(1)
+
 
     # **** Get observations and footprints ****
     #   NB. Obs data must already be added to the objectstore in advance of running HBMCMC code 
@@ -281,7 +329,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             data[site]=site_data[site]
         else:
             print(species," obs data for ",site, "between ", start_date, end_date, "was not found in objectstore.")
-            return
+            sys.exit(1)
 
     #   Get footprints
     #   Obtain fp-filenames in desired range
