@@ -40,7 +40,7 @@ from collections import OrderedDict
 
 
 
-from acrg.time import convert
+from openghg_inversions import convert_time
 
 from openghg_inversions.config.paths import Paths
 
