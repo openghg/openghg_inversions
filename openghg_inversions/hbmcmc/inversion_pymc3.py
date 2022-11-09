@@ -4,6 +4,8 @@
 Created on Thu Apr  2 12:57:23 2020
 
 @author: lw13938
+
+Updated by Eric Saboya
 """
 import numpy as np
 import pymc3 as pm
@@ -14,8 +16,8 @@ from pathlib import Path
 
 
 import acrg.name.name as name
-import acrg.convert as convert 
 
+from openghg_inversions import convert 
 from openghg_inversions import utils
 from openghg_inversions.hbmcmc.inversionsetup import opends, offset_matrix
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
