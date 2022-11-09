@@ -201,8 +201,6 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         Saves an output from the inversion code using inferpymc3_postprocessouts.
         
     TO DO:
-        - name.footprints_data_merge -> scenario_openghg.FootprintsDataMerge()
-        - basis_functions -> equivalent in openghg? or copy function over to hbmcmc?
         - name.fp_sensitivity -> equivalent in openghg?
         - name.bc_sensitivity -> equivalent in openghg?
     """    
@@ -210,15 +208,17 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     # - Option to search for emissions file. At the moment have to direct to a specific fname
     # - A method for adding multiple footprint files within a date range to the objectstore
 
+    fp_all={}
+    fp_all['.species']=species
 
-    # ******** Get fluxes ******** [block done]
+    # ******** Get fluxes ********
     flux_dict={}
     basestring = (str, bytes)
     for source, emiss_source in emissions_name.items():
         if isinstance(emissions_name[source], basestring):
             flux_file=os.path.join(flux_directory, domain, emissions_name[source]) # NB. 'emissions_name' must have the full name of the flux file
             try:
-                # Try retrieving fluxes from objectstore
+        #   Try retrieving fluxes from objectstore
                 get_flux_data = get_flux(species=species,
                                          domain=domain,
                                          source=source,
@@ -227,10 +227,10 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
 
                 flux_dict[source]=get_flux_data
             except:
-                print(f"flux file '{emiss_source}' not found in objectstore.\n"
-                      f" Attempting to add '{emiss_source}' to objectstore...")  
+                print(f"Flux file '{emiss_source}' not found in objectstore.\n"
+                      f" Attempting to add '{emiss_source}' to objectstore ...")  
                 try:
-                    # Add flux data to objectstore
+        #   Add flux data to objectstore
                     flux_data = standardise_flux(filepath=flux_file,
                                                  species=species,
                                                  domain=domain,
@@ -239,10 +239,10 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                 except:
                     print(f"{emiss_source} could not be found."
                           " Check the fluxes filename is provided in"
-                          " 'emissions_name' and exists.")
+                          " 'emissions_name' dict and exists.")
                     sys.exit(1)
  
-                # Retrieve flux data from objectstore
+        #   Retrieve flux data from objectstore
                 get_flux_data = get_flux(species=species,
                                          domain=domain,
                                          source=source,
@@ -251,13 +251,14 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
 
                 flux_dict[source]=get_flux_data
                   
+    fp_all['.flux']=flux_dict
 
-    # ******** Get boundary conditions ********  [block done]
+    # ******** Get boundary conditions ********
     if bc_directory=None:
         bc_directory = os.path.join(data_path, "LPDM", "bc", domain)
     
     try:
-        # Try retrieve BC data for date range from objectstore
+        #   Try retrieve BC data for date range from objectstore
         get_bc_data = get_bc(species=species,
                              domain=domain,
                              start_date=start_date,
@@ -265,7 +266,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     except ValueError:
         print(f"Boundary condition data between {start_date} and {end_date}" 
                 "not found in objectstore.\nAttempting to add boundary"
-                "condition files in date range to objectstore...")
+                "condition files in date range to objectstore ...")
 
         t_datarange = pd.date_range(start=start_date, end=end_date, freq='1M')
 
@@ -275,17 +276,17 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
  
             try:
                 print("Attempting to add boundary condition data to objectstore ...")
-                # Check if BC files exist and add to objectstore 
+        #   Check if BC files exist and add to objectstore 
                 bc_data = standardise_bc(filepath=bc_fname, 
                                          species=species, 
                                          bc_input="CAMS", 
                                          domain=domain)
             except FileNotFoundError:
                 print(f"Warning: Boundary conditions file: '{bc_fname}' not found."
-                       "\nPlease check file exists.")
+                       " in bc_directory. \nPlease check file exists.")
                        
         try:
-            # Try again to retrieve BC data for date range from objectstore
+        #   Try again to retrieve BC data for date range from objectstore
             get_bc_data = get_bc(species=species,
                                  domain=domain,
                                  start_date=start_date,
@@ -295,7 +296,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             print(f"Warning: Boundary conditions file: '{bc_fname}' not found"
                   "in objectstore.\nA different BC file will be used.")
             try:
-                # Retrieve all BC data from objectstore. 
+        #   Retrieve all BC data from objectstore. 
                 get_bc_data = get_bc(species=species,
                                      domain=domain)
             except:
@@ -303,10 +304,11 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                       "Please add boundary condition data to objectstore to proceed.") 
                 sys.exit(1)
 
+    fp_all['.bc']=get_bc_data
 
-    # **** Get observations and footprints ****
-    #   NB. Obs data must already be added to the objectstore in advance of running HBMCMC code 
-    #   Check site data exists in objectstore
+    # ******** Get observations and footprints ********
+        #   NB. Obs data must already be in the objectstore before running HBMCMC code 
+        #   Check site data exists in objectstore
     search_objectstore=search_surface(site=sites,
                                       species=species,
                                       inlet=inlet,
@@ -315,9 +317,13 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
 
     data={}
     footprint_dict={}
+    scales={}
+
+    check_scales=[]
 
     for i, site in enumerate(sites):
         if site.lower() in search_objectstore.results.keys():
+        #   Get obs from objectstore
             site_data=get_obs_surface(site=site,
                                       species=species,
                                       inlet=inlet[i],
@@ -327,57 +333,103 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                       instrument=instrument[i])
 
             data[site]=site_data[site]
+            
+            try:
+        #   Attempt to retrieve footprints from objectstore     
+                get_fps = get_footprint(site=site,
+                                        height=inlet[i],
+                                        domain=domain,
+                                        model=fp_model,
+                                        start_date=start_date,
+                                        end_date=end_date)
+
+                footprint_dict[site] = get_fps
+
+            except:
+                try:
+        #   Retrieve footprint filenames from fp_directory
+                    fp_fnames = utils.filenames(site=site.upper(),
+                                                domain=domain,
+                                                start=start_date,
+                                                end=end_date,
+                                                height=fpheight[site],
+                                                fp_directory=fp_directory,
+                                                met_model=met_model,
+                                                species=species)
+       
+        #   Add desired footprints to the objectstore 
+                    if len(fp_fnames)>0:        
+                        for fname in fp_fnames:
+                            fp_data = standardise_footprint(filepath=fname,
+                                                            site=site,
+                                                            height=inlet[i],
+                                                            domain=domain,
+                                                            model=fp_model,
+                                                            metmodel=met_model)
+
+        #   Retrieve footprints from objectstore and add to dict.
+                        get_fps = get_footprint(site=site,
+                                                height=inlet[i],
+                                                domain=domain,
+                                                model=fp_model,
+                                                start_date=start_date,
+                                                end_date=end_date)
+
+                        footprint_dict[site] = get_fps
+                    else:
+                        print(f"Footprint data for {start_date} to {end_data}"
+                              "was not found in the fp_directory")
+                        sys.exit(1) 
+
+                except:
+                    print(f"Footprint data for {start_date} to {end_data}"
+                          "was not found in the fp_directory")
+                    sys.exit(1) 
+              
+
+        #   Create ModelScenario object
+            model_scenario=ModelScenario(site=site,
+                                         species=species,
+                                         inlet=inlet[i],
+                                         domain=domain,
+                                         model=fp_model,
+                                         metmodel=met_model,
+                                         start_date=start_date,
+                                         end_date=end_date,
+                                         obs=site_data,
+                                         footprint=footprint_dict[site],
+                                         flux=flux_dict,
+                                         bc=get_bc_data)
+
+            scenario_combined=model_scenario.footprints_data_merge()
+            fp_and_all[site]=scenario_combined
+      
+            check_scales+=[scenario_combined.scale]
+        #   Check consistency of measurement scales
+            if not all (s==check_scales[0] for s in check_scales):
+                rt=[]
+                for i in check_scales:
+                    if isinstance(i, list): rt.extend(flatten(i))
+                else:
+                    rt.append(j)
+                scales[site]=rt
+            else:
+                scales[site]=check_scales[0]
+
+
         else:
-            print(species," obs data for ",site, "between ", start_date, end_date, "was not found in objectstore.")
+            print(f"{species} obs data for {site} between " 
+                  f"{start_date} to {end_date} was not found in the" 
+                  " objectstore.")
             sys.exit(1)
 
-    #   Get footprints
-    #   Obtain fp-filenames in desired range
-        fp_fnames = utils.filenames(site=site.upper(),
-                                   domain=domain,
-                                   start=start_date,
-                                   end=end_date,
-                                   height=fpheight[site],
-                                   fp_directory=fp_directory,
-                                   met_model=met_model,
-                                   species=species)
 
-    #   Add desired footprints to the objectstore 
-        for fname in fp_fnames:
-            fp_data=standardise_footprint(filepath=fname,
-                                          site=site,
-                                          height=inlet[i],
-                                          domain=domain,
-                                          model=fp_model,
-                                          metmodel=met_model)
+    fp_all['.scales']=scales
+    fp_all['.units']=scenario_combined.mf.units
 
-    #   Retrieve footprints from objectstore and add to dict.
-        get_fps = get_footprint(site=site,
-                                height=inlet[i],
-                                domain=domain,
-                                model=fp_model,
-                                start_date=start_date,
-                                end_date=end_date)
+   
 
-        footprint_dict[site]=get_fps
-
-    
-
-
-
-
-    # fp_all keys: sites, '.species'[y], '.flux'[y], '.scales', '.units', '.bc'
-    fp_all={}
-    fp_all['.species']=species
-    fp_all['.flux']=flux_dict
-
-
-# Next step, create ModelScenario objects and populate fp_all -> name.footprints_data_merge edits
-# Make sure output is the same.      
-# Need a "get_bc" block? 
-
-
-## here, ES
+## here, ES (check fp_all using openghg and using name.footprints_data_merge produce identical outputs!)
 
     fp_all = name.footprints_data_merge(data, domain=domain, met_model = met_model, calc_bc=True, 
                                         height=fpheight, 
