@@ -2,8 +2,7 @@ import os
 import json
 
 from acrg.obs.read import synonyms
-from acrg.config.paths import Paths
-
+from openghg_inversions.config.paths import Paths
 
 acrg_path = Paths.acrg
 
