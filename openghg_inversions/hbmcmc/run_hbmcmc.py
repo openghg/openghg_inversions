@@ -21,6 +21,9 @@ To generate a config file from the template run this script as:
 The MCMC run *will not be executed*. This will be named for your -c input or, if not specified, this will 
 create a configuration file called `hbmcmc_input.ini` within your acrg_hbmcmc/ directory and exit. 
 This file will need to be edited to add parameters for your MCMC run.
+
+
+Updated by Eric Saboya
 '''
 
 import os
