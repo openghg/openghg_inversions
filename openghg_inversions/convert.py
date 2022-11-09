@@ -1,7 +1,7 @@
 import os
 import json
 
-from acrg.obs.read import synonyms
+from openghg_inversions.utils import synonyms
 from openghg_inversions.config.paths import Paths
 
 acrg_path = Paths.acrg
@@ -40,7 +40,6 @@ def prefix(units):
             print('Undefined prefix: outputting in g/yr')
             unit_factor=1.
         return unit_factor
-
 
 def concentration(units):
     '''
