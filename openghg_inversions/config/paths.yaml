@@ -1,0 +1,4 @@
+# COPY THIS FILE TO acrg_config/paths.yaml
+obs_folder: /group/chemistry/acrg/obs/
+lpdm_folder: /group/chemistry/acrg/LPDM/
+data_folder: /group/chemistry/acrg/
