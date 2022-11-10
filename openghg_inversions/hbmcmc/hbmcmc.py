@@ -20,17 +20,17 @@ being annoying it will also slow down your run due to unnecessary forking.
 
 *******************************************************************************
 Update: Nov. 2022: Eric Saboya (eric.saboya@bristol.ac.uk)
- 
-HBMCMC updated to use openghg as a dependency replacing (most) of the acrg 
-modules previously used. HBMCMC inputs remain the same except for the 
-inclusion of the "fp_model" kwarg. 
 
-Note. This version expects measurement data to already be included in the 
-objectstore and for the path to the objectstore to already be set. 
+HBMCMC updated to use openghg as a dependency replacing (most) of the acrg
+modules previously used. HBMCMC inputs remain the same except for the
+inclusion of the "fp_model" kwarg.
+
+Note. This version expects measurement data to already be included in the
+objectstore and for the path to the objectstore to already be set.
 
 
 HBMCMC currently still uses PyMC3. The next step will be to update this
-to use PyMC v4.0. Watch this space! 
+to use PyMC v4.0. Watch this space!
 
 """
 import os
@@ -43,7 +43,7 @@ import openghg_inversions.hbmcmc.inversion_pymc3 as mcmc
 
 from openghg.retrieve import search_surface, get_obs_surface, get_flux
 from openghg.retrieve import get_bc, get_footprint
-from openghg.standardise import standardise_surface, standardise_flux 
+from openghg.standardise import standardise_surface, standardise_flux
 from openghg.standardise import standardise_footprint, standardise_bc
 from openghg.analyse import ModelScenario
 
@@ -60,7 +60,7 @@ data_path = Paths.data
 
 def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    end_date, outputpath, outputname,
-                   met_model = None, fp_model="NAME", 
+                   met_model = None, fp_model="NAME",
                    xprior={"pdf":"lognormal", "mu":1, "sd":1},
                    bcprior={"pdf":"lognormal", "mu":0.004, "sd":0.02},
                    sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
@@ -80,7 +80,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     """
     Script to run hierarchical Bayesian MCMC for inference of emissions using
     pymc3 to solve the inverse problem.
-    
+
     Args:
         species (str):
             Species of interest
@@ -110,7 +110,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             The other entries in the dictionary should correspond to the shape
             parameters describing that PDF as the online documentation,
             e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sd":1}.
-            Note that the standard deviation should be used rather than the 
+            Note that the standard deviation should be used rather than the
             precision. Currently all variables are considered iid.
         bcprior (dict):
             Same as above but for boundary conditions.
@@ -125,9 +125,9 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         tune (int):
             Number of iterations to use to tune step size
         nchain (int):
-            Number of independent chains to run (there is no way at all of 
+            Number of independent chains to run (there is no way at all of
             knowing whether your distribution has converged by running only
-            one chain)    
+            one chain)
         emissions_name (dict, optional):
             Allows emissions files with filenames that are longer than just the species name
             to be read in (e.g. co2-ff-mth_EUROPE_2014.nc). This should be a dictionary
@@ -137,15 +137,15 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         inlet (str/list, optional):
             Specific inlet height for the site (must match number of sites)
         fpheight (dict, optional):
-            Specific release height for the sites' footprints. 
+            Specific release height for the sites' footprints.
             E.g. fpheight={"TAC":"185m"}(must match number of sites).
         instrument (str/list, optional):
             Specific instrument for the site (must match number of sites).
         fp_basis_case (str, optional):
             Name of basis function to use for emissions.
         bc_basis_case (str, optional):
-            Name of basis case type for boundary conditions (NOTE, I don't 
-            think that currently you can do anything apart from scaling NSEW 
+            Name of basis case type for boundary conditions (NOTE, I don't
+            think that currently you can do anything apart from scaling NSEW
             boundary conditions if you want to scale these monthly.)
         obs_directory (str, optional):
             Directory containing the obs data (with site codes as subdirectories)
@@ -166,7 +166,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         max_level (int, optional):
             The maximum level for a column measurement to be used for getting obs data
         quadtree_basis (bool, optional):
-            Creates a basis function file for emissions on the fly using a 
+            Creates a basis function file for emissions on the fly using a
             quadtree algorithm based on the a priori contribution to the mole
             fraction if set to True.
         nbasis (int):
@@ -176,7 +176,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         filters (list, optional):
             list of filters to apply from name.filtering. Defaults to empty list
         averagingerror (bool, optional):
-            Adds the variability in the averaging period to the measurement 
+            Adds the variability in the averaging period to the measurement
             error if set to True.
         bc_freq (str, optional):
             The perdiod over which the baseline is estimated. Set to "monthly"
@@ -189,21 +189,21 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             Whether a model sigma value will be calculated for each site independantly (True) or all sites together (False).
             Default: True
         country_unit_prefix ('str', optional)
-            A prefix for scaling the country emissions. Current options are: 
+            A prefix for scaling the country emissions. Current options are:
             'T' will scale to Tg, 'G' to Gg, 'M' to Mg, 'P' to Pg.
             To add additional options add to acrg_convert.prefix
             Default is none and no scaling will be applied (output in g).
         add_offset (bool):
             Add an offset (intercept) to all sites but the first in the site list. Default False.
 
-            
+
     Returns:
         Saves an output from the inversion code using inferpymc3_postprocessouts.
-        
+
     TO DO:
         - name.fp_sensitivity -> equivalent in openghg?
         - name.bc_sensitivity -> equivalent in openghg?
-    """    
+    """
     # Notes for RT + GJ
     # - Option to search for emissions file. At the moment have to direct to a specific fname
     # - A method for adding multiple footprint files within a date range to the objectstore
@@ -227,8 +227,8 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
 
                 flux_dict[source]=get_flux_data
             except:
-                print(f"Flux file '{emiss_source}' not found in objectstore.\n"
-                      f" Attempting to add '{emiss_source}' to objectstore ...")  
+                print(f"Flux file '{emiss_source}' not found in objectstore."
+                      f" Attempting to add '{emiss_source}' to objectstore ...\n")
                 try:
         #   Add flux data to objectstore
                     flux_data = standardise_flux(filepath=flux_file,
@@ -236,78 +236,91 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                                  domain=domain,
                                                  source=source,
                                                  date=start_date)
+                    print(f"Successfully added {emiss_source} to objectstore.\n")
+
                 except:
                     print(f"{emiss_source} could not be found."
                           " Check the fluxes filename is provided in"
                           " 'emissions_name' dict and exists.")
                     sys.exit(1)
- 
+
         #   Retrieve flux data from objectstore
                 get_flux_data = get_flux(species=species,
                                          domain=domain,
                                          source=source,
                                          start_date=start_date,
                                          end_date=end_date)
-
+                print(f"{emiss_source} successfully retrieved from objectstore.\n")
                 flux_dict[source]=get_flux_data
-                  
-    fp_all['.flux']=flux_dict
 
+    fp_all['.flux']=flux_dict
     # ******** Get boundary conditions ********
-    if bc_directory=None:
+    if bc_directory==None:
         bc_directory = os.path.join(data_path, "LPDM", "bc", domain)
-    
+
     try:
         #   Try retrieve BC data for date range from objectstore
         get_bc_data = get_bc(species=species,
                              domain=domain,
                              start_date=start_date,
-                             end_date=end_date)  
+                             end_date=end_date)
+        print("Successfully retrieved boundary condition data between"
+              f" {start_date} and {end_date} from objectstore.\n")
+
     except ValueError:
-        print(f"Boundary condition data between {start_date} and {end_date}" 
-                "not found in objectstore.\nAttempting to add boundary"
-                "condition files in date range to objectstore ...")
+        print(f"Boundary condition data between {start_date} and {end_date}"
+                " not found in objectstore.\n")
 
         t_datarange = pd.date_range(start=start_date, end=end_date, freq='1M')
 
         for t_val in t_datarange:
             bc_fname = f"{species.lower()}"+"_"+f"{domain}"+"_"+str(t_val.year)+str(t_val.month).zfill(2)+".nc"
             bc_fname = os.path.join(bc_directory, bc_fname)
- 
+
             try:
-                print("Attempting to add boundary condition data to objectstore ...")
-        #   Check if BC files exist and add to objectstore 
-                bc_data = standardise_bc(filepath=bc_fname, 
-                                         species=species, 
-                                         bc_input="CAMS", 
+                print("Attempting to add boundary condition data to objectstore ...\n")
+        #   Check if BC files exist and add to objectstore
+                bc_data = standardise_bc(filepath=bc_fname,
+                                         species=species,
+                                         bc_input="CAMS",
                                          domain=domain)
+
+                print("Successfully added boundary condition data to objectstore.\n")
+
             except FileNotFoundError:
-                print(f"Warning: Boundary conditions file: '{bc_fname}' not found."
-                       " in bc_directory. \nPlease check file exists.")
-                       
+                print(f"Warning: Boundary conditions file: '{bc_fname}' not found"
+                       " in bc_directory. Please check file exists.\n")
+
         try:
         #   Try again to retrieve BC data for date range from objectstore
             get_bc_data = get_bc(species=species,
                                  domain=domain,
                                  start_date=start_date,
                                  end_date=end_date)
+            print("Successfully retrieved boundary condition data between"
+                  f" {start_date} and {end_date} from objectstore.\n")
 
         except:
             print(f"Warning: Boundary conditions file: '{bc_fname}' not found"
-                  "in objectstore.\nA different BC file will be used.")
+                  " in objectstore. A different BC file will be used.\n")
             try:
-        #   Retrieve all BC data from objectstore. 
+        #   Retrieve all BC data from objectstore.
+                print("Attempting to retrieve boundary conditions"
+                      " from the objectstore ...\n")
                 get_bc_data = get_bc(species=species,
                                      domain=domain)
+                print("Successfully retrieved boundary conditions data"
+                      " from the objectstore.\n")
             except:
-                print("YIKES! There are no boundary condition data in the objectstore."
-                      "Please add boundary condition data to objectstore to proceed.") 
+                print("--- YIKES! --- There are no boundary condition"
+                      " data in the objectstore. Please add boundary condition"
+                      " data to objectstore to proceed. Exiting process.")
                 sys.exit(1)
 
     fp_all['.bc']=get_bc_data
 
     # ******** Get observations and footprints ********
-        #   NB. Obs data must already be in the objectstore before running HBMCMC code 
+        #   NB. Obs data must already be in the objectstore before running HBMCMC code
         #   Check site data exists in objectstore
     search_objectstore=search_surface(site=sites,
                                       species=species,
@@ -322,6 +335,10 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     check_scales=[]
 
     for i, site in enumerate(sites):
+        print(f"Attempting to retrieve {species.upper()} measurements"
+              f" for {site.upper()} between {start_date} and"
+              f" {end_date} from objectstore ...\n")
+
         if site.lower() in search_objectstore.results.keys():
         #   Get obs from objectstore
             site_data=get_obs_surface(site=site,
@@ -332,10 +349,14 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                       average=meas_period[i],
                                       instrument=instrument[i])
 
+            print(f"Successfully retrieved {species.upper()} measurement"
+                  f" data for {site.upper()} from objectstore.\n")
             data[site]=site_data[site]
-            
+
             try:
-        #   Attempt to retrieve footprints from objectstore     
+        #   Attempt to retrieve footprints from objectstore
+                print(f"Attempting to retrieve {site.upper()} {domain} footprint"
+                       " data from objectstore ...\n")
                 get_fps = get_footprint(site=site,
                                         height=inlet[i],
                                         domain=domain,
@@ -344,6 +365,8 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                         end_date=end_date)
 
                 footprint_dict[site] = get_fps
+                print(f"Successfully retrieved {site.upper()} {domain} footprints"
+                       " from objectstore.\n")
 
             except:
                 try:
@@ -356,9 +379,11 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                                 fp_directory=fp_directory,
                                                 met_model=met_model,
                                                 species=species)
-       
-        #   Add desired footprints to the objectstore 
-                    if len(fp_fnames)>0:        
+
+        #   Add desired footprints to the objectstore
+                    if len(fp_fnames)>0:
+                        print(f"Adding {site.upper()} {domain} footprint data"
+                               " to objectstore ...\n")
                         for fname in fp_fnames:
                             fp_data = standardise_footprint(filepath=fname,
                                                             site=site,
@@ -368,6 +393,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                                             metmodel=met_model)
 
         #   Retrieve footprints from objectstore and add to dict.
+                        print("Retrieving footprint data from objectstore ...\n")
                         get_fps = get_footprint(site=site,
                                                 height=inlet[i],
                                                 domain=domain,
@@ -376,16 +402,19 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                                 end_date=end_date)
 
                         footprint_dict[site] = get_fps
+                        print("Successfully retrieved footprint data from"
+                              " objectstore.\n")
                     else:
-                        print(f"Footprint data for {start_date} to {end_data}"
-                              "was not found in the fp_directory")
-                        sys.exit(1) 
+                        print(f"Warning: Footprint data for {site.upper()}"
+                              f" between {start_date} to {end_data}"
+                              f" was not found in {fp_directory}. Exiting.")
+                        sys.exit(1)
 
                 except:
-                    print(f"Footprint data for {start_date} to {end_data}"
-                          "was not found in the fp_directory")
-                    sys.exit(1) 
-              
+                    print(f"Warning: Footprint data for {site.upper()}"
+                          f" between {start_date} to {end_data}"
+                          f" was not found in {fp_directory}. Exiting.")
+                    sys.exit(1)
 
         #   Create ModelScenario object
             model_scenario=ModelScenario(site=site,
@@ -402,8 +431,8 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                          bc=get_bc_data)
 
             scenario_combined=model_scenario.footprints_data_merge()
-            fp_and_all[site]=scenario_combined
-      
+            fp_all[site]=scenario_combined
+
             check_scales+=[scenario_combined.scale]
         #   Check consistency of measurement scales
             if not all (s==check_scales[0] for s in check_scales):
@@ -418,26 +447,24 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
 
 
         else:
-            print(f"{species} obs data for {site} between " 
-                  f"{start_date} to {end_date} was not found in the" 
-                  " objectstore.")
+            print(f"{species} obs data for {site} between"
+                  f" {start_date} to {end_date} was not found in the"
+                   " objectstore. Exiting.")
             sys.exit(1)
-
 
     fp_all['.scales']=scales
     fp_all['.units']=scenario_combined.mf.units
 
-   
 
 ## here, ES (check fp_all using openghg and using name.footprints_data_merge produce identical outputs!)
 
-    fp_all = name.footprints_data_merge(data, domain=domain, met_model = met_model, calc_bc=True, 
-                                        height=fpheight, 
+    fp_all = name.footprints_data_merge(data, domain=domain, met_model = met_model, calc_bc=True,
+                                        height=fpheight,
                                         fp_directory = fp_directory,
                                         bc_directory = bc_directory,
                                         flux_directory = flux_directory,
                                         emissions_name=emissions_name)
-    
+
     for site in sites:
         for j in range(len(data[site])):
             if len(data[site][j].mf) == 0:
@@ -445,10 +472,10 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     if sites[0] not in fp_all.keys():
         print("No footprints for %s to %s" % (start_date, end_date))
         return
-    
+
     print('Running for %s to %s' % (start_date, end_date))
-    
-    #If site contains measurement errors given as repeatability and variability, 
+
+    #If site contains measurement errors given as repeatability and variability,
     #use variability to replace missing repeatability values, then drop variability
     for site in sites:
         if "mf_variability" in fp_all[site] and "mf_repeatability" in fp_all[site]:
@@ -461,30 +488,30 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         fp_all = setup.addaveragingerror(fp_all, sites, species, start_date, end_date,
                                    meas_period, inlet=inlet, instrument=instrument,
                                    obs_directory=obs_directory)
-    
+
     #Create basis function using quadtree algorithm if needed
     if quadtree_basis:
         if fp_basis_case != None:
             print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
             print("Assuming you want to use %s " % fp_basis_case)
         else:
-            tempdir = basis.quadtreebasisfunction(emissions_name, fp_all, sites, 
+            tempdir = basis.quadtreebasisfunction(emissions_name, fp_all, sites,
                           start_date, domain, species, outputname,
                           nbasis=nbasis)
             fp_basis_case= "quadtree_"+species+"-"+outputname
             basis_directory = tempdir
     else:
         basis_directory = basis_directory
-            
+
     fp_data = name.fp_sensitivity(fp_all, domain=domain, basis_case=fp_basis_case,basis_directory=basis_directory)
     fp_data = name.bc_sensitivity(fp_data, domain=domain,basis_case=bc_basis_case)
-    
+
     #apply named filters to the data
     fp_data = utils.filtering(fp_data, filters)
-    
-    for si, site in enumerate(sites):     
+
+    for si, site in enumerate(sites):
         fp_data[site].attrs['Domain']=domain
-    
+
     #Get inputs ready
     error = np.zeros(0)
     Hbc = np.zeros(0)
@@ -492,54 +519,54 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     Y = np.zeros(0)
     siteindicator = np.zeros(0)
     for si, site in enumerate(sites):
-        if 'mf_repeatability' in fp_data[site]:           
+        if 'mf_repeatability' in fp_data[site]:
             error = np.concatenate((error, fp_data[site].mf_repeatability.values))
         if 'mf_variability' in fp_data[site]:
             error = np.concatenate((error, fp_data[site].mf_variability.values))
-            
-        Y = np.concatenate((Y,fp_data[site].mf.values)) 
+
+        Y = np.concatenate((Y,fp_data[site].mf.values))
         siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values)*si))
         if si == 0:
             Ytime=fp_data[site].time.values
         else:
             Ytime = np.concatenate((Ytime,fp_data[site].time.values ))
-        
+
         if bc_freq == "monthly":
             Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
         elif bc_freq == None:
             Hmbc = fp_data[site].H_bc.values
         else:
             Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
-            
+
         if si == 0:
-            Hbc = np.copy(Hmbc) #fp_data[site].H_bc.values 
+            Hbc = np.copy(Hmbc) #fp_data[site].H_bc.values
             Hx = fp_data[site].H.values
         else:
             Hbc = np.hstack((Hbc, Hmbc))
             Hx = np.hstack((Hx, fp_data[site].H.values))
-    
+
     sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
     #Run Pymc3 inversion
     xouts, bcouts, sigouts, Ytrace, YBCtrace, convergence, step1, step2 = mcmc.inferpymc3(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
            xprior,bcprior, sigprior, nit, burn, tune, nchain, sigma_per_site, offsetprior=offsetprior, add_offset=add_offset, verbose=verbose)
     #Process and save inversion output
-    mcmc.inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence, 
+    mcmc.inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence,
                                Hx, Hbc, Y, error, Ytrace, YBCtrace,
-                               step1, step2, 
+                               step1, step2,
                                xprior, bcprior, sigprior, offsetprior, Ytime, siteindicator, sigma_freq_index,
                                domain, species, sites,
                                start_date, end_date, outputname, outputpath,
                                country_unit_prefix,
                                burn, tune, nchain, sigma_per_site,
-                               fp_data=fp_data, flux_directory=flux_directory, emissions_name=emissions_name, 
+                               fp_data=fp_data, flux_directory=flux_directory, emissions_name=emissions_name,
                                basis_directory=basis_directory, country_file=country_file,
                                add_offset=add_offset)
 
     if quadtree_basis is True:
         # remove the temporary basis function directory
         shutil.rmtree(tempdir)
-    
+
     print("All done")
 
 def rerun_output(input_file, outputname, outputpath, verbose=False):
@@ -547,7 +574,7 @@ def rerun_output(input_file, outputname, outputpath, verbose=False):
     Rerun the MCMC code by taking the inputs from a previous output using this code
     and rewrite a new output. This allows reproducibility of results without the need
     to transfer all raw input files.
-    
+
     Args:
         input_file (str):
             Full path to previously written ncdf file
@@ -555,12 +582,12 @@ def rerun_output(input_file, outputname, outputpath, verbose=False):
             Unique identifier new for output/run name.
         outputpath (str):
             Path to where output should be saved.
-    
+
     Returns:
         Saves an output from the inversion code using inferpymc3_postprocessouts.
-    
-    Note: At the moment fluxapriori in the output is the mean apriori flux over the 
-          inversion period and so will not be identical to the original a priori flux, if 
+
+    Note: At the moment fluxapriori in the output is the mean apriori flux over the
+          inversion period and so will not be identical to the original a priori flux, if
           it varies over the inversion period.
     """
     def isFloat(string):
@@ -569,9 +596,9 @@ def rerun_output(input_file, outputname, outputpath, verbose=False):
             return True
         except ValueError:
             return False
-    
+
     ds_in = setup.opends(input_file)
-    
+
     # Read inputs from ncdf output
     start_date = ds_in.attrs['Start date']
     end_date = ds_in.attrs['End date']
@@ -604,7 +631,7 @@ def rerun_output(input_file, outputname, outputpath, verbose=False):
     else:
         sigma_per_site = False
     sites = ds_in.sitenames.values
-    
+
     file_list = input_file.split("/")[-1].split("_")
     species = file_list[0]
     domain = file_list[1]
@@ -612,16 +639,16 @@ def rerun_output(input_file, outputname, outputpath, verbose=False):
         country_unit_prefix = ds_in.countrymean.attrs["units"][0]
     else:
         country_unit_prefix = None
-    
+
     xouts, bcouts, sigouts, Ytrace, YBCtrace, convergence, step1, step2 = \
             mcmc.inferpymc3(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
-                               xprior,bcprior, sigprior, nit, burn, 
+                               xprior,bcprior, sigprior, nit, burn,
                                tune, nchain, sigma_per_site, offsetprior=offsetprior,
                                add_offset=add_offset, verbose=verbose)
 
-    mcmc.inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence, 
+    mcmc.inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence,
                                    Hx, Hbc, Y, error, Ytrace, YBCtrace,
-                                   step1, step2, 
+                                   step1, step2,
                                    xprior, bcprior, sigprior, offsetprior, Ytime, siteindicator, sigma_freq_index,
                                    domain, species, sites,
                                    start_date, end_date, outputname, outputpath, country_unit_prefix,
