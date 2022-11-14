@@ -4,10 +4,15 @@
 Created on Thu Apr  2 12:54:43 2020
 
 @author: lw13938
+
+Updated by Eric Saboya
 """
 import numpy as np
 import pandas as pd
 import xarray as xr
+
+from openghg.retrieve import get_obs_surface
+
 
 import acrg.obs as getobs
 
@@ -57,15 +62,19 @@ def addaveragingerror(fp_all, sites, species, start_date, end_date, meas_period,
             error
     """
     #Add variability in measurement averaging period to repeatability 
-    dataerr = getobs.get_obs(sites, species, start_date = start_date, end_date = end_date,  
-                          keep_missing=False,inlet=inlet, instrument=instrument,
-                          data_directory=obs_directory)
-    for si, site in enumerate(sites):
-        mergedae = xr.merge(dataerr[site])
-        sitedataerr = pd.DataFrame(mergedae.mf, index=mergedae.time.values) #xr.merge(dataerr[site]).to_array("mf")            
+    for i, site in enumerate(sites):
+        get_obs = get_obs_surface(site=site,
+                                  species=species,
+                                  inlet=inlet[i],
+                                  instrument=instrument[i],
+                                  start_date=start_date,
+                                  end_date=end_date)
+
+        sitedataerr=pd.DataFrame(get_obs.data.mf, index=get_obs.data.time.values)
+
         if min(sitedataerr.index) > pd.to_datetime(start_date):
-            sitedataerr.loc[pd.to_datetime(start_date)] = \
-                [np.nan for col in sitedataerr.columns]           
+            sitedataerr.loc[pd.to_datetime(start_date)]= \
+                [np.nan for col in sitedataerr.columns]
         # Pad with an empty entry at the end date
         if max(sitedataerr.index) < pd.to_datetime(end_date):
             sitedataerr.loc[pd.to_datetime(end_date)] = \
@@ -73,11 +82,34 @@ def addaveragingerror(fp_all, sites, species, start_date, end_date, meas_period,
         # Now sort to get everything in the right order
         sitedataerr = sitedataerr.sort_index()
         if 'mf_variability' in fp_all[site]:
-            fp_all[site].mf_variability.values = np.squeeze(np.sqrt(fp_all[site].mf_variability.values**2 + sitedataerr.resample(meas_period[si]).std(ddof=0).dropna().values.T**2))
+            fp_all[site].data.mf_variability.values = np.squeeze(np.sqrt(fp_all[site].data.mf_variability.values**2 + sitedataerr.resample(meas_period[si]).std(ddof=0).dropna().values.T**2))
         elif 'mf_repeatability' in fp_all[site]:
-            fp_all[site].mf_repeatability.values = np.squeeze(np.sqrt(fp_all[site].mf_repeatability.values**2 + sitedataerr.resample(meas_period[si]).std(ddof=0).dropna().values.T**2))
-        else:
+            fp_all[site].data.mf_repeatability.values = np.squeeze(np.sqrt(fp_all[site].data.mf_repeatability.values**2 + sitedataerr.resample(meas_period[si]).std(ddof=0).dropna().values.T**2))
+       else:
             print('No mole fraction error information available in {}.'.format('fp_all'+str([site])))
+
+#    dataerr = getobs.get_obs(sites, species, start_date = start_date, end_date = end_date,  
+#                          keep_missing=False,inlet=inlet, instrument=instrument,
+#                          data_directory=obs_directory)
+#
+#    for si, site in enumerate(sites):
+#        mergedae = xr.merge(dataerr[site])
+#        sitedataerr = pd.DataFrame(mergedae.mf, index=mergedae.time.values) #xr.merge(dataerr[site]).to_array("mf")            
+#        if min(sitedataerr.index) > pd.to_datetime(start_date):
+#            sitedataerr.loc[pd.to_datetime(start_date)] = \
+#                [np.nan for col in sitedataerr.columns]           
+#        # Pad with an empty entry at the end date
+#        if max(sitedataerr.index) < pd.to_datetime(end_date):
+#            sitedataerr.loc[pd.to_datetime(end_date)] = \
+#                [np.nan for col in sitedataerr.columns]
+#        # Now sort to get everything in the right order
+#        sitedataerr = sitedataerr.sort_index()
+#        if 'mf_variability' in fp_all[site]:
+#            fp_all[site].mf_variability.values = np.squeeze(np.sqrt(fp_all[site].mf_variability.values**2 + sitedataerr.resample(meas_period[si]).std(ddof=0).dropna().values.T**2))
+#        elif 'mf_repeatability' in fp_all[site]:
+#            fp_all[site].mf_repeatability.values = np.squeeze(np.sqrt(fp_all[site].mf_repeatability.values**2 + sitedataerr.resample(meas_period[si]).std(ddof=0).dropna().values.T**2))
+#        else:
+#            print('No mole fraction error information available in {}.'.format('fp_all'+str([site])))
     return fp_all
 
 def monthly_bcs(start_date, end_date, site, fp_data):
