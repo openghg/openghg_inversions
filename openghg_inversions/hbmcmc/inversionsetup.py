@@ -85,7 +85,7 @@ def addaveragingerror(fp_all, sites, species, start_date, end_date, meas_period,
             fp_all[site].data.mf_variability.values = np.squeeze(np.sqrt(fp_all[site].data.mf_variability.values**2 + sitedataerr.resample(meas_period[si]).std(ddof=0).dropna().values.T**2))
         elif 'mf_repeatability' in fp_all[site]:
             fp_all[site].data.mf_repeatability.values = np.squeeze(np.sqrt(fp_all[site].data.mf_repeatability.values**2 + sitedataerr.resample(meas_period[si]).std(ddof=0).dropna().values.T**2))
-       else:
+        else:
             print('No mole fraction error information available in {}.'.format('fp_all'+str([site])))
 
 #    dataerr = getobs.get_obs(sites, species, start_date = start_date, end_date = end_date,  
