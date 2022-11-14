@@ -43,8 +43,8 @@ import openghg_inversions.hbmcmc.inversion_pymc3 as mcmc
 
 from openghg.retrieve import search_surface, get_obs_surface, get_flux
 from openghg.retrieve import get_bc, get_footprint
-from openghg.standardise import standardise_surface, standardise_flux
-from openghg.standardise import standardise_footprint, standardise_bc
+#from openghg.standardise import standardise_surface, standardise_flux
+#from openghg.standardise import standardise_footprint, standardise_bc
 from openghg.analyse import ModelScenario
 
 
@@ -57,6 +57,16 @@ from openghg_inversions.config.paths import Paths
 acrg_path = Paths.acrg
 data_path = Paths.data
 
+"""
+remove following input variables
+- fp_directory
+- flux_directory
+- bc_directory 
+
+Add the following
++ bc_input (input used to create the boundary conditions. e.g. a model name such as "MOZART" or "CAMS"
+
+"""
 
 def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    end_date, outputpath, outputname,
@@ -208,136 +218,73 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     # - Option to search for emissions file. At the moment have to direct to a specific fname
     # - A method for adding multiple footprint files within a date range to the objectstore
 
+    # Change list of sites to upper case equivalent as most acrg functions copied use this format
+    for i, site in enumerate(sites): sites[i]=site.upper()
+
     fp_all={}
-    fp_all['.species']=species
+    fp_all['.species']=species.upper()
 
     # ******** Get fluxes ********
     flux_dict={}
     basestring = (str, bytes)
-    for source, emiss_source in emissions_name.items():
+    for source, emi_source in emissions_name.items():
         if isinstance(emissions_name[source], basestring):
-            flux_file=os.path.join(flux_directory, domain, emissions_name[source]) # NB. 'emissions_name' must have the full name of the flux file
             try:
-        #   Try retrieving fluxes from objectstore
+                print(f"Attempting to retrieve '{emi_source}' fluxes"
+                       " from object store ...\n") 
                 get_flux_data = get_flux(species=species,
                                          domain=domain,
                                          source=source,
                                          start_date=start_date,
                                          end_date=end_date)
+
+                print("Sucessfully retrieved flux file"
+                     f" '{emi_source}' from objectstore.")
 
                 flux_dict[source]=get_flux_data
             except:
-                print(f"Flux file '{emiss_source}' not found in objectstore."
-                      f" Attempting to add '{emiss_source}' to objectstore ...\n")
-                try:
-        #   Add flux data to objectstore
-                    flux_data = standardise_flux(filepath=flux_file,
-                                                 species=species,
-                                                 domain=domain,
-                                                 source=source,
-                                                 date=start_date)
-                    print(f"Successfully added {emiss_source} to objectstore.\n")
-
-                except:
-                    print(f"{emiss_source} could not be found."
-                          " Check the fluxes filename is provided in"
-                          " 'emissions_name' dict and exists.")
-                    sys.exit(1)
-
-        #   Retrieve flux data from objectstore
-                get_flux_data = get_flux(species=species,
-                                         domain=domain,
-                                         source=source,
-                                         start_date=start_date,
-                                         end_date=end_date)
-                print(f"{emiss_source} successfully retrieved from objectstore.\n")
-                flux_dict[source]=get_flux_data
+                 print(f"-*- Warning -*-: Flux file '{emi_source}' not found"
+                        " in object store. Please add file to object store."
+                        " Exiting process.")
+                 sys.exit(1)
 
     fp_all['.flux']=flux_dict
-    # ******** Get boundary conditions ********
-    if bc_directory==None:
-        bc_directory = os.path.join(data_path, "LPDM", "bc", domain)
 
+    # ******** Get boundary conditions ********
     try:
-        #   Try retrieve BC data for date range from objectstore
+        print("Attempting to retrieve boundary condition data"
+              f" between {start_date} to {end_date} from object store ...\n")
         get_bc_data = get_bc(species=species,
                              domain=domain,
                              start_date=start_date,
                              end_date=end_date)
         print("Successfully retrieved boundary condition data between"
-              f" {start_date} and {end_date} from objectstore.\n")
+              f" {start_date} and {end_date} from object store.\n")
 
     except ValueError:
-        print(f"Boundary condition data between {start_date} and {end_date}"
-                " not found in objectstore.\n")
-
-        t_datarange = pd.date_range(start=start_date, end=end_date, freq='1M')
-
-        for t_val in t_datarange:
-            bc_fname = f"{species.lower()}"+"_"+f"{domain}"+"_"+str(t_val.year)+str(t_val.month).zfill(2)+".nc"
-            bc_fname = os.path.join(bc_directory, bc_fname)
-
-            try:
-                print("Attempting to add boundary condition data to objectstore ...\n")
-        #   Check if BC files exist and add to objectstore
-                bc_data = standardise_bc(filepath=bc_fname,
-                                         species=species,
-                                         bc_input="CAMS",
-                                         domain=domain)
-
-                print("Successfully added boundary condition data to objectstore.\n")
-
-            except FileNotFoundError:
-                print(f"Warning: Boundary conditions file: '{bc_fname}' not found"
-                       " in bc_directory. Please check file exists.\n")
-
-        try:
-        #   Try again to retrieve BC data for date range from objectstore
-            get_bc_data = get_bc(species=species,
-                                 domain=domain,
-                                 start_date=start_date,
-                                 end_date=end_date)
-            print("Successfully retrieved boundary condition data between"
-                  f" {start_date} and {end_date} from objectstore.\n")
-
-        except:
-            print(f"Warning: Boundary conditions file: '{bc_fname}' not found"
-                  " in objectstore. A different BC file will be used.\n")
-            try:
-        #   Retrieve all BC data from objectstore.
-                print("Attempting to retrieve boundary conditions"
-                      " from the objectstore ...\n")
-                get_bc_data = get_bc(species=species,
-                                     domain=domain)
-                print("Successfully retrieved boundary conditions data"
-                      " from the objectstore.\n")
-            except:
-                print("--- YIKES! --- There are no boundary condition"
-                      " data in the objectstore. Please add boundary condition"
-                      " data to objectstore to proceed. Exiting process.")
-                sys.exit(1)
+        print(f"-*- Warning -*-: Boundary condition data between {start_date}"
+              f" and {end_date} not found in object store. Please add"
+                " boundary condition data to object store. Exiting process.\n")
+        sys.exit(1)
 
     fp_all['.bc']=get_bc_data
 
     # ******** Get observations and footprints ********
-        #   NB. Obs data must already be in the objectstore before running HBMCMC code
-        #   Check site data exists in objectstore
+    #   Check site data exists in object store
     search_objectstore=search_surface(site=sites,
                                       species=species,
                                       inlet=inlet,
                                       start_date=start_date,
                                       end_date=end_date)
-
     data={}
     footprint_dict={}
     scales={}
-
     check_scales=[]
 
     for i, site in enumerate(sites):
         print(f"Attempting to retrieve {species.upper()} measurements"
               f" for {site.upper()} between {start_date} and"
-              f" {end_date} from objectstore ...\n")
+              f" {end_date} from object store ...\n")
 
         if site.lower() in search_objectstore.results.keys():
         #   Get obs from objectstore
@@ -350,13 +297,13 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                       instrument=instrument[i])
 
             print(f"Successfully retrieved {species.upper()} measurement"
-                  f" data for {site.upper()} from objectstore.\n")
+                  f" data for {site.upper()} from object store.\n")
             data[site]=site_data[site]
 
             try:
         #   Attempt to retrieve footprints from objectstore
                 print(f"Attempting to retrieve {site.upper()} {domain} footprint"
-                       " data from objectstore ...\n")
+                       " data from object store ...\n")
                 get_fps = get_footprint(site=site,
                                         height=inlet[i],
                                         domain=domain,
@@ -366,55 +313,13 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
 
                 footprint_dict[site] = get_fps
                 print(f"Successfully retrieved {site.upper()} {domain} footprints"
-                       " from objectstore.\n")
+                       " from object store.\n")
 
             except:
-                try:
-        #   Retrieve footprint filenames from fp_directory
-                    fp_fnames = utils.filenames(site=site.upper(),
-                                                domain=domain,
-                                                start=start_date,
-                                                end=end_date,
-                                                height=fpheight[site],
-                                                fp_directory=fp_directory,
-                                                met_model=met_model,
-                                                species=species)
-
-        #   Add desired footprints to the objectstore
-                    if len(fp_fnames)>0:
-                        print(f"Adding {site.upper()} {domain} footprint data"
-                               " to objectstore ...\n")
-                        for fname in fp_fnames:
-                            fp_data = standardise_footprint(filepath=fname,
-                                                            site=site,
-                                                            height=inlet[i],
-                                                            domain=domain,
-                                                            model=fp_model,
-                                                            metmodel=met_model)
-
-        #   Retrieve footprints from objectstore and add to dict.
-                        print("Retrieving footprint data from objectstore ...\n")
-                        get_fps = get_footprint(site=site,
-                                                height=inlet[i],
-                                                domain=domain,
-                                                model=fp_model,
-                                                start_date=start_date,
-                                                end_date=end_date)
-
-                        footprint_dict[site] = get_fps
-                        print("Successfully retrieved footprint data from"
-                              " objectstore.\n")
-                    else:
-                        print(f"Warning: Footprint data for {site.upper()}"
-                              f" between {start_date} to {end_data}"
-                              f" was not found in {fp_directory}. Exiting.")
-                        sys.exit(1)
-
-                except:
-                    print(f"Warning: Footprint data for {site.upper()}"
-                          f" between {start_date} to {end_data}"
-                          f" was not found in {fp_directory}. Exiting.")
-                    sys.exit(1)
+                print(f"-* -Warning -*-: Footprint data for {site.upper()}"
+                      f" between {start_date} to {end_date}"
+                      f" was not found in the object store. Exiting process.")
+                sys.exit(1)
 
         #   Create ModelScenario object
             model_scenario=ModelScenario(site=site,
@@ -445,45 +350,27 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             else:
                 scales[site]=check_scales[0]
 
-
         else:
-            print(f"{species} obs data for {site} between"
-                  f" {start_date} to {end_date} was not found in the"
-                   " objectstore. Exiting.")
+            print(f"-*- Warning -*-: {species.upper()} obs data for {site.upper()}"
+                  f" between {start_date} to {end_date} was not found in the"
+                   " object store. Please add measurement data to object store."
+                   " Exiting process.")
             sys.exit(1)
 
     fp_all['.scales']=scales
-    fp_all['.units']=scenario_combined.mf.units
-
-
-## here, ES (check fp_all using openghg and using name.footprints_data_merge produce identical outputs!)
-
-    fp_all = name.footprints_data_merge(data, domain=domain, met_model = met_model, calc_bc=True,
-                                        height=fpheight,
-                                        fp_directory = fp_directory,
-                                        bc_directory = bc_directory,
-                                        flux_directory = flux_directory,
-                                        emissions_name=emissions_name)
-
-    for site in sites:
-        for j in range(len(data[site])):
-            if len(data[site][j].mf) == 0:
-                print("No observations for %s to %s for %s" % (start_date, end_date, site))
-    if sites[0] not in fp_all.keys():
-        print("No footprints for %s to %s" % (start_date, end_date))
-        return
+    fp_all['.units']=float(scenario_combined.mf.units)
 
     print('Running for %s to %s' % (start_date, end_date))
 
-    #If site contains measurement errors given as repeatability and variability,
-    #use variability to replace missing repeatability values, then drop variability
+    # If site contains measurement errors given as repeatability and variability,
+    # use variability to replace missing repeatability values, then drop variability
     for site in sites:
         if "mf_variability" in fp_all[site] and "mf_repeatability" in fp_all[site]:
             fp_all[site]["mf_repeatability"][np.isnan(fp_all[site]["mf_repeatability"])] = \
                 fp_all[site]["mf_variability"][np.logical_and(np.isfinite(fp_all[site]["mf_variability"]),np.isnan(fp_all[site]["mf_repeatability"]) )]
             fp_all[site] = fp_all[site].drop_vars("mf_variability")
 
-    #Add measurement variability in averaging period to measurement error
+    # !Add measurement variability in averaging period to measurement error
     if averagingerror:
         fp_all = setup.addaveragingerror(fp_all, sites, species, start_date, end_date,
                                    meas_period, inlet=inlet, instrument=instrument,
@@ -495,18 +382,26 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
             print("Assuming you want to use %s " % fp_basis_case)
         else:
-            tempdir = basis.quadtreebasisfunction(emissions_name, fp_all, sites,
-                          start_date, domain, species, outputname,
-                          nbasis=nbasis)
+            tempdir = basis.quadtreebasisfunction(emissions_name, 
+                                                  fp_all, 
+                                                  sites,
+                                                  start_date, 
+                                                  domain, 
+                                                  species, 
+                                                  outputname,
+                                                  nbasis=nbasis)
+
             fp_basis_case= "quadtree_"+species+"-"+outputname
             basis_directory = tempdir
     else:
         basis_directory = basis_directory
 
-    fp_data = name.fp_sensitivity(fp_all, domain=domain, basis_case=fp_basis_case,basis_directory=basis_directory)
-    fp_data = name.bc_sensitivity(fp_data, domain=domain,basis_case=bc_basis_case)
+
+    fp_data = utils.fp_sensitivity(fp_all, domain=domain, basis_case=fp_basis_case,basis_directory=basis_directory)
+    fp_data = utils.bc_sensitivity(fp_data, domain=domain,basis_case=bc_basis_case)
 
     #apply named filters to the data
+    #Try retrieve BC data for date range from objectstore
     fp_data = utils.filtering(fp_data, filters)
 
     for si, site in enumerate(sites):
