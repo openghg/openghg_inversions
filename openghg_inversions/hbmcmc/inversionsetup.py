@@ -81,10 +81,10 @@ def addaveragingerror(fp_all, sites, species, start_date, end_date, meas_period,
                 [np.nan for col in sitedataerr.columns]
         # Now sort to get everything in the right order
         sitedataerr = sitedataerr.sort_index()
-        if 'mf_variability' in fp_all[site]:
-            fp_all[site].data.mf_variability.values = np.squeeze(np.sqrt(fp_all[site].data.mf_variability.values**2 + sitedataerr.resample(meas_period[si]).std(ddof=0).dropna().values.T**2))
+        if 'mf_variability' in fp_all[site.upper()]:
+            fp_all[site.upper()].mf_variability.values = np.squeeze(np.sqrt(fp_all[site.upper()].mf_variability.values**2 + sitedataerr.resample(meas_period[i]).std(ddof=0).dropna().values.T**2))
         elif 'mf_repeatability' in fp_all[site]:
-            fp_all[site].data.mf_repeatability.values = np.squeeze(np.sqrt(fp_all[site].data.mf_repeatability.values**2 + sitedataerr.resample(meas_period[si]).std(ddof=0).dropna().values.T**2))
+            fp_all[site.upper()].mf_repeatability.values = np.squeeze(np.sqrt(fp_all[site.upper()].mf_repeatability.values**2 + sitedataerr.resample(meas_period[i]).std(ddof=0).dropna().values.T**2))
         else:
             print('No mole fraction error information available in {}.'.format('fp_all'+str([site])))
 
