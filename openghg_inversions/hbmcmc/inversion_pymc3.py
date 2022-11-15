@@ -14,8 +14,7 @@ import xarray as xr
 import getpass
 from pathlib import Path
 
-
-import acrg.name.name as name
+from openghg.retrieve import get_flux
 
 from openghg_inversions import convert 
 from openghg_inversions import utils
@@ -229,7 +228,7 @@ def inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence,
                                start_date, end_date, outputname, outputpath,
                                country_unit_prefix,
                                burn, tune, nchain, sigma_per_site,
-                               fp_data=None, flux_directory=None, emissions_name=None, 
+                               emissions_name, fp_data=None, 
                                basis_directory=None, country_file=None,
                                add_offset=False, rerun_file=None):
 
@@ -326,8 +325,6 @@ def inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence,
                 or all sites together (False).
             fp_data (dict, optional):
                 Output from footprints_data_merge + sensitivies
-            flux_directory (str, optional):
-                Directory containing the emissions data if not default
             emissions_name (dict, optional): 
                 Allows emissions files with filenames that are longer than just the species name
                 to be read in (e.g. co2-ff-mth_EUROPE_2014.nc). This should be a dictionary
@@ -411,10 +408,17 @@ def inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence,
             emissions_flux = np.expand_dims(rerun_file.fluxapriori.values,2)
         else:
             if emissions_name == None:
-                emds = name.flux(domain, species, start = start_date, end = end_date, flux_directory=flux_directory)
+                print("-*- Warning -*-: Emissions name not provided."
+                      " Exiting process.\n")
+                sys.exit(0)
             else:
-                emds = name.flux(domain, list(emissions_name.values())[0], start = start_date, end = end_date, flux_directory=flux_directory)
-            emissions_flux = emds.flux.values
+                emds=get_flux(species=species,
+                              domain=domain,
+                              source=list(emissions_name.keys())[0],
+                              start_date=start_date,
+                              end_date=end_date)
+
+            emissions_flux = emds.data.flux.values
         flux = scalemap*emissions_flux[:,:,0]
         
         #Basis functions to save
