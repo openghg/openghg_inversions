@@ -79,6 +79,7 @@ def open_ds(path, chunks=None, combine=None):
             ds.load()
     return ds
 
+
 def read_netcdfs(files, dim = "time", chunks=None, verbose=True):
     """
     The read_netcdfs function uses xarray to open sequential netCDF files and 
@@ -660,7 +661,6 @@ def basis(domain, basis_case, basis_directory = None):
     return basis_ds
 
 
-
 def basis_boundary_conditions(domain, basis_case, bc_basis_directory = None):
     """
     The basis_boundary_conditions function reads in all matching files for the boundary conditions 
@@ -704,9 +704,6 @@ def basis_boundary_conditions(domain, basis_case, bc_basis_directory = None):
     basis_ds = read_netcdfs(files)
 
     return basis_ds
-
-
-
 
 
 def indexesMatch(dsa, dsb):
@@ -781,7 +778,6 @@ def combine_datasets(dsa, dsb, method = "ffill", tolerance = None):
         flag = np.where(np.isfinite(ds_temp.fp.mean(dim=["lat","lon"]).values))
         ds_temp = ds_temp[dict(time = flag[0])]
     return ds_temp
-
 
 
 def timeseries_HiTRes(flux_dict, fp_HiTRes_ds=None, fp_file=None, output_TS = True, output_fpXflux = True,
@@ -1319,7 +1315,5 @@ def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory = None):
         fp_and_data[site] = fp_and_data[site].merge(sensitivity)
 
     return fp_and_data
-
-
 
 

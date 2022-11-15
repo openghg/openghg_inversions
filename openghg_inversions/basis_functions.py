@@ -827,17 +827,17 @@ def quadtreebasisfunction(emissions_name, fp_all, sites,
     if abs_flux:
         print('Using absolute values of flux array')
     if emissions_name == None:
-        flux = np.absolute(fp_all['.flux']['all'].flux.values) if abs_flux else fp_all['.flux']['all'].flux.values 
+        flux = np.absolute(fp_all['.flux']['all'].data.flux.values) if abs_flux else fp_all['.flux']['all'].data.flux.values 
         meanflux = np.squeeze(flux)
     else:
         if isinstance(fp_all[".flux"][list(emissions_name.keys())[0]], dict):
             keys = list(fp_all[".flux"][list(emissions_name.keys())[0]].keys())
             arr = fp_all[".flux"][list(emissions_name.keys())[0]][keys[0]]
-            flux = np.absolute(arr.flux.values) if abs_flux else arr.flux.values
+            flux = np.absolute(arr.data.flux.values) if abs_flux else arr.data.flux.values
             meanflux = np.squeeze(flux)
         else:
-            flux = np.absolute(fp_all[".flux"][list(emissions_name.keys())[0]].flux.values) if abs_flux else \
-                   fp_all[".flux"][list(emissions_name.keys())[0]].flux.values 
+            flux = np.absolute(fp_all[".flux"][list(emissions_name.keys())[0]].data.flux.values) if abs_flux else \
+                   fp_all[".flux"][list(emissions_name.keys())[0]].data.flux.values 
             meanflux = np.squeeze(flux)
     meanfp = np.zeros((fp_all[sites[0]].fp.shape[0],fp_all[sites[0]].fp.shape[1]))
     div=0
