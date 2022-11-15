@@ -27,7 +27,7 @@ def opends(fn):
         return ds
 
 def addaveragingerror(fp_all, sites, species, start_date, end_date, meas_period,  
-                      inlet=None, instrument=None, obs_directory=None):
+                      inlet=None, instrument=None):
     """
     Adds the variablility within the averaging period to the mole fraction error.
     
