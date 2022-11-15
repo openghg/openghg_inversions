@@ -213,7 +213,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                        " from object store ...\n") 
                 get_flux_data = get_flux(species=species,
                                          domain=domain,
-                                         source=source,
+                                         source=list(emissions_name.keys())[0],
                                          start_date=start_date,
                                          end_date=end_date)
 
@@ -234,9 +234,9 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         print("Attempting to retrieve boundary condition data"
               f" between {start_date} to {end_date} from object store ...\n")
         get_bc_data = get_bc(species=species,
-                             domain=domain,
-                             start_date=start_date,
-                             end_date=end_date)
+                             domain=domain)#,
+                             #start_date=start_date,
+                             #end_date=end_date)
         print("Successfully retrieved boundary condition data between"
               f" {start_date} and {end_date} from object store.\n")
 
@@ -358,8 +358,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                          end_date, 
                                          meas_period, 
                                          inlet=inlet, 
-                                         instrument=instrument,
-                                         obs_directory=obs_directory)
+                                         instrument=instrument)
 
     # Create basis function using quadtree algorithm if needed
     if quadtree_basis:
