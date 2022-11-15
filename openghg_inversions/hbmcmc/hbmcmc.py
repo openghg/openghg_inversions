@@ -25,14 +25,15 @@ HBMCMC updated to use openghg as a dependency replacing (most) of the acrg
 modules previously used. HBMCMC inputs remain the same except for the
 inclusion of the "fp_model" kwarg.
 
-Note. This version expects measurement data to already be included in the
-objectstore and for the path to the objectstore to already be set.
+Note. This version expects all data to already be included in the
+object store and for the path to the object store to already be set.
 
-
-HBMCMC currently still uses PyMC3. The next step will be to update this
+HBMCMC currently uses PyMC3. The next step will be to update this
 to use PyMC v4.0. Watch this space!
 
+*******************************************************************************
 """
+
 import os
 import sys
 import shutil
@@ -57,20 +58,10 @@ from openghg_inversions.config.paths import Paths
 acrg_path = Paths.acrg
 data_path = Paths.data
 
-"""
-remove following input variables
-- fp_directory
-- flux_directory
-- bc_directory 
-
-Add the following
-+ bc_input (input used to create the boundary conditions. e.g. a model name such as "MOZART" or "CAMS"
-
-"""
 
 def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    end_date, outputpath, outputname,
-                   met_model = None, fp_model="NAME",
+                   met_model = None, fp_model="NAME", bc_input="CAMS"
                    xprior={"pdf":"lognormal", "mu":1, "sd":1},
                    bcprior={"pdf":"lognormal", "mu":0.004, "sd":0.02},
                    sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
@@ -79,7 +70,6 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    emissions_name=None, inlet=None, fpheight=None, instrument=None,
                    fp_basis_case=None, basis_directory = None, bc_basis_case="NESW",
                    country_file = None,
-                   fp_directory = None, bc_directory = None, flux_directory = None,
                    max_level=None,
                    quadtree_basis=True,nbasis=100,
                    filters = [],
@@ -88,9 +78,12 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    verbose = False):
 
     """
+    --------------------------------------------------------------------------
+
     Script to run hierarchical Bayesian MCMC for inference of emissions using
     pymc3 to solve the inverse problem.
 
+    --------------------------------------------------------------------------
     Args:
         species (str):
             Species of interest
@@ -112,6 +105,9 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             Meteorological model used in the LPDM.
         fp_model (str):
             LPDM used for generating footprints.
+        bc_input (str, default=CAMS):
+            Input used to create the boundary conditions. 
+            e.g. a model name such as "MOZART" or "CAMS"
         xprior (dict):
             Dictionary containing information about the prior PDF for emissions.
             The entry "pdf" is the name of the analytical PDF used, see
@@ -157,17 +153,6 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             Name of basis case type for boundary conditions (NOTE, I don't
             think that currently you can do anything apart from scaling NSEW
             boundary conditions if you want to scale these monthly.)
-        obs_directory (str, optional):
-            Directory containing the obs data (with site codes as subdirectories)
-            if not default.
-        fp_directory (str, optional):
-            Directory containing the footprint data
-            if not default.
-        bc_directory (str, optional):
-            Directory containing the boundary condition data
-            if not default.
-        flux_directory (str, optional):
-            Directory containing the emissions data if not default
         basis_directory (str, optional):
             Directory containing the basis function
             if not default.
@@ -205,21 +190,18 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             Default is none and no scaling will be applied (output in g).
         add_offset (bool):
             Add an offset (intercept) to all sites but the first in the site list. Default False.
-
+    
+    --------------------------------------------------------------------------
 
     Returns:
         Saves an output from the inversion code using inferpymc3_postprocessouts.
 
-    TO DO:
-        - name.fp_sensitivity -> equivalent in openghg?
-        - name.bc_sensitivity -> equivalent in openghg?
+    --------------------------------------------------------------------------    
     """
-    # Notes for RT + GJ
-    # - Option to search for emissions file. At the moment have to direct to a specific fname
-    # - A method for adding multiple footprint files within a date range to the objectstore
-
-    # Change list of sites to upper case equivalent as most acrg functions copied use this format
+    # Change list of sites to upper case equivalent as 
+    # most acrg functions copied across use upper case notation
     for i, site in enumerate(sites): sites[i]=site.upper()
+
 
     fp_all={}
     fp_all['.species']=species.upper()
@@ -246,7 +228,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                  print(f"-*- Warning -*-: Flux file '{emi_source}' not found"
                         " in object store. Please add file to object store."
                         " Exiting process.")
-                 sys.exit(1)
+                 sys.exit(0)
 
     fp_all['.flux']=flux_dict
 
@@ -265,7 +247,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         print(f"-*- Warning -*-: Boundary condition data between {start_date}"
               f" and {end_date} not found in object store. Please add"
                 " boundary condition data to object store. Exiting process.\n")
-        sys.exit(1)
+        sys.exit(0)
 
     fp_all['.bc']=get_bc_data
 
@@ -338,8 +320,8 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             scenario_combined=model_scenario.footprints_data_merge()
             fp_all[site]=scenario_combined
 
+        #    Check consistency of measurement scales between sites
             check_scales+=[scenario_combined.scale]
-        #   Check consistency of measurement scales
             if not all (s==check_scales[0] for s in check_scales):
                 rt=[]
                 for i in check_scales:
@@ -370,13 +352,19 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                 fp_all[site]["mf_variability"][np.logical_and(np.isfinite(fp_all[site]["mf_variability"]),np.isnan(fp_all[site]["mf_repeatability"]) )]
             fp_all[site] = fp_all[site].drop_vars("mf_variability")
 
-    # !Add measurement variability in averaging period to measurement error
+    # Add measurement variability in averaging period to measurement error
     if averagingerror:
-        fp_all = setup.addaveragingerror(fp_all, sites, species, start_date, end_date,
-                                   meas_period, inlet=inlet, instrument=instrument,
-                                   obs_directory=obs_directory)
+        fp_all = setup.addaveragingerror(fp_all, 
+                                         sites, 
+                                         species, 
+                                         start_date, 
+                                         end_date, 
+                                         meas_period, 
+                                         inlet=inlet, 
+                                         instrument=instrument,
+                                         obs_directory=obs_directory)
 
-    #Create basis function using quadtree algorithm if needed
+    # Create basis function using quadtree algorithm if needed
     if quadtree_basis:
         if fp_basis_case != None:
             print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
@@ -397,17 +385,22 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         basis_directory = basis_directory
 
 
-    fp_data = utils.fp_sensitivity(fp_all, domain=domain, basis_case=fp_basis_case,basis_directory=basis_directory)
-    fp_data = utils.bc_sensitivity(fp_data, domain=domain,basis_case=bc_basis_case)
+    fp_data = utils.fp_sensitivity(fp_all, 
+                                   domain=domain, 
+                                   basis_case=fp_basis_case,
+                                   basis_directory=basis_directory)
 
-    #apply named filters to the data
-    #Try retrieve BC data for date range from objectstore
+    fp_data = utils.bc_sensitivity(fp_data, 
+                                   domain=domain,
+                                   basis_case=bc_basis_case)
+
+    # Apply named filters to the data
     fp_data = utils.filtering(fp_data, filters)
 
     for si, site in enumerate(sites):
         fp_data[site].attrs['Domain']=domain
 
-    #Get inputs ready
+    # Get inputs ready
     error = np.zeros(0)
     Hbc = np.zeros(0)
     Hx = np.zeros(0)
@@ -442,10 +435,11 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
 
     sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
-    #Run Pymc3 inversion
+    # Run Pymc3 inversion
     xouts, bcouts, sigouts, Ytrace, YBCtrace, convergence, step1, step2 = mcmc.inferpymc3(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
            xprior,bcprior, sigprior, nit, burn, tune, nchain, sigma_per_site, offsetprior=offsetprior, add_offset=add_offset, verbose=verbose)
-    #Process and save inversion output
+
+    # Process and save inversion output
     mcmc.inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence,
                                Hx, Hbc, Y, error, Ytrace, YBCtrace,
                                step1, step2,
@@ -454,7 +448,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                start_date, end_date, outputname, outputpath,
                                country_unit_prefix,
                                burn, tune, nchain, sigma_per_site,
-                               fp_data=fp_data, flux_directory=flux_directory, emissions_name=emissions_name,
+                               fp_data=fp_data, emissions_name=emissions_name,
                                basis_directory=basis_directory, country_file=country_file,
                                add_offset=add_offset)
 
@@ -462,7 +456,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         # remove the temporary basis function directory
         shutil.rmtree(tempdir)
 
-    print("All done")
+    print("---- Inversion completed ----")
 
 def rerun_output(input_file, outputname, outputpath, verbose=False):
     """
