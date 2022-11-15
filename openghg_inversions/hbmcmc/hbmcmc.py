@@ -61,7 +61,7 @@ data_path = Paths.data
 
 def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    end_date, outputpath, outputname,
-                   met_model = None, fp_model="NAME", bc_input="CAMS"
+                   met_model = None, fp_model="NAME",
                    xprior={"pdf":"lognormal", "mu":1, "sd":1},
                    bcprior={"pdf":"lognormal", "mu":0.004, "sd":0.02},
                    sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
@@ -105,9 +105,6 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             Meteorological model used in the LPDM.
         fp_model (str):
             LPDM used for generating footprints.
-        bc_input (str, default=CAMS):
-            Input used to create the boundary conditions. 
-            e.g. a model name such as "MOZART" or "CAMS"
         xprior (dict):
             Dictionary containing information about the prior PDF for emissions.
             The entry "pdf" is the name of the analytical PDF used, see
