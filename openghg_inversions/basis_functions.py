@@ -791,8 +791,11 @@ def quadtreebasisfunction(emissions_name, fp_all, sites,
     require the Jacobian or Hessian for optimisation.
     
     Args:
-        emissions_name (dict): 
-            Allows emissions files with filenames that are longer than just the species name
+        emissions_name (list): 
+            Update: Now a list of "source" argument values as used when adding emissions
+                    to object store. 
+             
+            =/= Allows emissions files with filenames that are longer than just the species name
             to be read in (e.g. co2-ff-mth_EUROPE_2014.nc). This should be a dictionary
             with {source_name: emissions_file_identifier} (e.g. {'anth':'co2-ff-mth'}). This way
             multiple sources can be read in simultaneously if they are added as separate entries to
@@ -830,14 +833,13 @@ def quadtreebasisfunction(emissions_name, fp_all, sites,
         flux = np.absolute(fp_all['.flux']['all'].data.flux.values) if abs_flux else fp_all['.flux']['all'].data.flux.values 
         meanflux = np.squeeze(flux)
     else:
-        if isinstance(fp_all[".flux"][list(emissions_name.keys())[0]], dict):
-            keys = list(fp_all[".flux"][list(emissions_name.keys())[0]].keys())
-            arr = fp_all[".flux"][list(emissions_name.keys())[0]][keys[0]]
+        if isinstance(fp_all[".flux"][emissions_name[0]], dict):
+            arr = fp_all[".flux"][emissions_name[0]]
             flux = np.absolute(arr.data.flux.values) if abs_flux else arr.data.flux.values
             meanflux = np.squeeze(flux)
         else:
-            flux = np.absolute(fp_all[".flux"][list(emissions_name.keys())[0]].data.flux.values) if abs_flux else \
-                   fp_all[".flux"][list(emissions_name.keys())[0]].data.flux.values 
+            flux = np.absolute(fp_all[".flux"][emissions_name[0]].data.flux.values) if abs_flux else \
+                   fp_all[".flux"][emissions_name[0]].data.flux.values 
             meanflux = np.squeeze(flux)
     meanfp = np.zeros((fp_all[sites[0]].fp.shape[0],fp_all[sites[0]].fp.shape[1]))
     div=0
