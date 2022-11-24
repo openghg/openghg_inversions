@@ -325,16 +325,9 @@ def inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence,
                 or all sites together (False).
             fp_data (dict, optional):
                 Output from footprints_data_merge + sensitivies
-            emissions_name (dict, optional): 
-                Allows emissions files with filenames that are longer than just the species name
-                to be read in (e.g. co2-ff-mth_EUROPE_2014.nc). This should be a dictionary
-                with {source_name: emissions_file_identifier} (e.g. {'anth':'co2-ff-mth'}). This way
-                multiple sources can be read in simultaneously if they are added as separate entries to
-                the emissions_name dictionary.
-                If using HiTRes footprints, both the high and low frequency emissions files must be specified
-                in a second dictionary like so: {'anth': {'high_freq':'co2-ff-2hr', 'low_freq':'co2-ff-mth'}}.
-                It is not a problem to have a mixture of sources, with some that use HiTRes footprints and some
-                that don't.
+            emissions_name (list, optional):
+                Update: Now a list with "source" values as used when adding emissions data to 
+                the OpenGHG object store.  
             basis_directory (str, optional):
                 Directory containing basis function file
             country_file (str, optional):
@@ -414,7 +407,7 @@ def inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence,
             else:
                 emds=get_flux(species=species,
                               domain=domain,
-                              source=list(emissions_name.keys())[0],
+                              source=emissions_name[0],
                               start_date=start_date,
                               end_date=end_date)
 
