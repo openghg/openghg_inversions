@@ -67,7 +67,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
                    offsetprior={"pdf":"normal", "mu":0, "sd":1},
                    nit=2.5e5, burn=50000, tune=1.25e5, nchain=2,
-                   emissions_name=None, inlet=None, fpheight=None, instrument=None,
+                   emissions_name=None, inlet=None, instrument=None,
                    fp_basis_case=None, basis_directory = None, bc_basis_case="NESW",
                    country_file = None,
                    max_level=None,
@@ -131,17 +131,12 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             Number of independent chains to run (there is no way at all of
             knowing whether your distribution has converged by running only
             one chain)
-        emissions_name (dict, optional):
-            Allows emissions files with filenames that are longer than just the species name
-            to be read in (e.g. co2-ff-mth_EUROPE_2014.nc). This should be a dictionary
-            with {source_name: emissions_file_identifier} (e.g. {'anth':'co2-ff-mth'}). This way
-            multiple sources can be read in simultaneously if they are added as separate entries to
-            the emissions_name dictionary.
+        emissions_name (list, optional):
+            Update
+                List of "source" args used for emissions files when adding to the OpenGHG
+                Object store. 
         inlet (str/list, optional):
             Specific inlet height for the site (must match number of sites)
-        fpheight (dict, optional):
-            Specific release height for the sites' footprints.
-            E.g. fpheight={"TAC":"185m"}(must match number of sites).
         instrument (str/list, optional):
             Specific instrument for the site (must match number of sites).
         fp_basis_case (str, optional):
@@ -206,26 +201,25 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     # ******** Get fluxes ********
     flux_dict={}
     basestring = (str, bytes)
-    for source, emi_source in emissions_name.items():
-        if isinstance(emissions_name[source], basestring):
-            try:
-                print(f"Attempting to retrieve '{emi_source}' fluxes"
-                       " from object store ...\n") 
-                get_flux_data = get_flux(species=species,
-                                         domain=domain,
-                                         source=list(emissions_name.keys())[0],
-                                         start_date=start_date,
-                                         end_date=end_date)
+    for source in emissions_name:
+        try:
+            print(f"Attempting to retrieve '{source}' fluxes"
+                   " from object store ...\n") 
+            get_flux_data = get_flux(species=species,
+                                     domain=domain,
+                                     source=source,
+                                     start_date=start_date,
+                                     end_date=end_date)
 
-                print("Sucessfully retrieved flux file"
-                     f" '{emi_source}' from objectstore.")
+            print("Sucessfully retrieved flux file"
+                 f" '{source}' from objectstore.")
 
-                flux_dict[source]=get_flux_data
-            except:
-                 print(f"-*- Warning -*-: Flux file '{emi_source}' not found"
-                        " in object store. Please add file to object store."
-                        " Exiting process.")
-                 sys.exit(0)
+            flux_dict[source]=get_flux_data
+        except:
+             print(f"-*- Warning -*-: Flux file '{source}' not found"
+                    " in object store. Please add file to object store."
+                    " Exiting process.")
+             sys.exit(0)
 
     fp_all['.flux']=flux_dict
 
@@ -249,26 +243,19 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     fp_all['.bc']=get_bc_data
 
     # ******** Get observations and footprints ********
-    #   Check site data exists in object store
-    search_objectstore=search_surface(site=sites,
-                                      species=species,
-                                      inlet=inlet,
-                                      start_date=start_date,
-                                      end_date=end_date)
     data={}
     footprint_dict={}
     scales={}
     check_scales=[]
 
     for i, site in enumerate(sites):
-        print(f"Attempting to retrieve {species.upper()} measurements"
-              f" for {site.upper()} between {start_date} and"
-              f" {end_date} from object store ...\n")
+        try:
+            print(f"Attempting to retrieve {species.upper()} measurements"
+                  f" for {site.upper()} between {start_date} and"
+                  f" {end_date} from object store ...\n")
 
-        if site.lower() in search_objectstore.results.keys():
-        #   Get obs from objectstore
             site_data=get_obs_surface(site=site,
-                                      species=species,
+                                      species=species.lower(),
                                       inlet=inlet[i],
                                       start_date=start_date,
                                       end_date=end_date,
@@ -279,62 +266,61 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                   f" data for {site.upper()} from object store.\n")
             data[site]=site_data[site]
 
-            try:
-        #   Attempt to retrieve footprints from objectstore
-                print(f"Attempting to retrieve {site.upper()} {domain} footprint"
-                       " data from object store ...\n")
-                get_fps = get_footprint(site=site,
-                                        height=inlet[i],
-                                        domain=domain,
-                                        model=fp_model,
-                                        start_date=start_date,
-                                        end_date=end_date)
+        except:
+            print(f"-* -Warning -*-: Observation data for {site}"
+                  f" between {start_date} to {end_date} was"
+                  f" not found in the object store. Exiting process."
+            sys.exit(1)
 
-                footprint_dict[site] = get_fps
-                print(f"Successfully retrieved {site.upper()} {domain} footprints"
-                       " from object store.\n")
+        try:
+            print(f"Attempting to retrieve {site.upper()} {domain} footprint"
+                   " data from object store ...\n")
+            get_fps = get_footprint(site=site,
+                                    height=inlet[i],
+                                    domain=domain,
+                                    model=fp_model,
+                                    start_date=start_date,
+                                    end_date=end_date)
 
-            except:
-                print(f"-* -Warning -*-: Footprint data for {site.upper()}"
-                      f" between {start_date} to {end_date}"
-                      f" was not found in the object store. Exiting process.")
-                sys.exit(1)
+            footprint_dict[site] = get_fps
+            print(f"Successfully retrieved {site.upper()} {domain} footprints"
+                   " from object store.\n")
+
+        except:
+            print(f"-* -Warning -*-: Footprint data for {site.upper()}"
+                  f" between {start_date} to {end_date}"
+                  f" was not found in the object store. Exiting process.")
+            sys.exit(1)
 
         #   Create ModelScenario object
-            model_scenario=ModelScenario(site=site,
-                                         species=species,
-                                         inlet=inlet[i],
-                                         domain=domain,
-                                         model=fp_model,
-                                         metmodel=met_model,
-                                         start_date=start_date,
-                                         end_date=end_date,
-                                         obs=site_data,
-                                         footprint=footprint_dict[site],
-                                         flux=flux_dict,
-                                         bc=get_bc_data)
+        model_scenario=ModelScenario(site=site,
+                                     species=species,
+                                     inlet=inlet[i],
+                                     domain=domain,
+                                     model=fp_model,
+                                     metmodel=met_model,
+                                     start_date=start_date,
+                                     end_date=end_date,
+                                     obs=site_data,
+                                     footprint=footprint_dict[site],
+                                     flux=flux_dict,
+                                     bc=get_bc_data)
 
-            scenario_combined=model_scenario.footprints_data_merge()
-            fp_all[site]=scenario_combined
+        scenario_combined=model_scenario.footprints_data_merge()
+        fp_all[site]=scenario_combined
 
         #    Check consistency of measurement scales between sites
-            check_scales+=[scenario_combined.scale]
-            if not all (s==check_scales[0] for s in check_scales):
-                rt=[]
-                for i in check_scales:
-                    if isinstance(i, list): rt.extend(flatten(i))
-                else:
-                    rt.append(j)
-                scales[site]=rt
+        check_scales+=[scenario_combined.scale]
+        if not all (s==check_scales[0] for s in check_scales):
+            rt=[]
+            for i in check_scales:
+                if isinstance(i, list): rt.extend(flatten(i))
             else:
-                scales[site]=check_scales[0]
-
+                rt.append(j)
+            scales[site]=rt
         else:
-            print(f"-*- Warning -*-: {species.upper()} obs data for {site.upper()}"
-                  f" between {start_date} to {end_date} was not found in the"
-                   " object store. Please add measurement data to object store."
-                   " Exiting process.")
-            sys.exit(1)
+            scales[site]=check_scales[0]
+
 
     fp_all['.scales']=scales
     fp_all['.units']=float(scenario_combined.mf.units)
