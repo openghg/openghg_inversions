@@ -269,7 +269,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         except:
             print(f"-* -Warning -*-: Observation data for {site}"
                   f" between {start_date} to {end_date} was"
-                  f" not found in the object store. Exiting process."
+                  f" not found in the object store. Exiting process.")
             sys.exit(1)
 
         try:
