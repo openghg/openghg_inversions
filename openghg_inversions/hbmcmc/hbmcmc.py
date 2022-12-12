@@ -44,12 +44,7 @@ import openghg_inversions.hbmcmc.inversion_pymc3 as mcmc
 
 from openghg.retrieve import search_surface, get_obs_surface, get_flux
 from openghg.retrieve import get_bc, get_footprint
-#from openghg.standardise import standardise_surface, standardise_flux
-#from openghg.standardise import standardise_footprint, standardise_bc
 from openghg.analyse import ModelScenario
-
-
-import acrg.name.name as name
 
 import openghg_inversions.basis_functions as basis
 from openghg_inversions import utils
@@ -194,13 +189,11 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     # most acrg functions copied across use upper case notation
     for i, site in enumerate(sites): sites[i]=site.upper()
 
-
     fp_all={}
     fp_all['.species']=species.upper()
 
     # ******** Get fluxes ********
     flux_dict={}
-    basestring = (str, bytes)
     for source in emissions_name:
         try:
             print(f"Attempting to retrieve '{source}' fluxes"
@@ -419,7 +412,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
 
     # Run Pymc3 inversion
     xouts, bcouts, sigouts, Ytrace, YBCtrace, convergence, step1, step2 = mcmc.inferpymc3(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
-           xprior,bcprior, sigprior, nit, burn, tune, nchain, sigma_per_site, offsetprior=offsetprior, add_offset=add_offset, verbose=verbose)
+           xprior, bcprior, sigprior, nit, burn, tune, nchain, sigma_per_site, offsetprior=offsetprior, add_offset=add_offset, verbose=verbose)
 
     # Process and save inversion output
     mcmc.inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence,
