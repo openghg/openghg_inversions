@@ -1,4 +1,5 @@
 # openghg_inversions
+NB. This repository is still in development
 ## About 
 Python code for performing inversions of atmospheric species with options for using either the University of Bristol Atmospheric Chemistry Research Group (ACRG) Hierarchical Bayesian Markov Chain Monte Carlo (HBMCMC) model or the UK Met. Office Inversion Technique for Emission Modelling (InTEM) model. See below for references to each of these models. 
 
