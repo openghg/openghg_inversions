@@ -1305,7 +1305,8 @@ def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory = None):
         H_bc = np.zeros((len(DS.coords['region']),len(DS["particle_locations_n"]["time"])))
 
         for i in range(len(DS.coords['region'])):
-            reg = bf[:,:,i,:]
+            #reg = bf[:,:,i,:]
+            reg = bf[i,:,:,:]
             H_bc[i,:] = np.sum((part_loc*loss*vmr_ed*reg), axis=(0,1))
 
         sensitivity = xr.Dataset({'H_bc': (['region_bc','time'], H_bc)},
