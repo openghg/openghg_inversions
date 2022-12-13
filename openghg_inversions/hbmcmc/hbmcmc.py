@@ -42,7 +42,7 @@ import pandas as pd
 import openghg_inversions.hbmcmc.inversionsetup as setup
 import openghg_inversions.hbmcmc.inversion_pymc3 as mcmc
 
-from openghg.retrieve import search_surface, get_obs_surface, get_flux
+from openghg.retrieve import get_obs_surface, get_flux
 from openghg.retrieve import get_bc, get_footprint
 from openghg.analyse import ModelScenario
 
@@ -129,7 +129,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         emissions_name (list, optional):
             Update
                 List of "source" args used for emissions files when adding to the OpenGHG
-                Object store. 
+                Object store.
         inlet (str/list, optional):
             Specific inlet height for the site (must match number of sites)
         instrument (str/list, optional):
@@ -177,15 +177,15 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             Default is none and no scaling will be applied (output in g).
         add_offset (bool):
             Add an offset (intercept) to all sites but the first in the site list. Default False.
-    
+
     --------------------------------------------------------------------------
 
     Returns:
         Saves an output from the inversion code using inferpymc3_postprocessouts.
 
-    --------------------------------------------------------------------------    
+    --------------------------------------------------------------------------
     """
-    # Change list of sites to upper case equivalent as 
+    # Change list of sites to upper case equivalent as
     # most acrg functions copied across use upper case notation
     for i, site in enumerate(sites): sites[i]=site.upper()
 
@@ -197,7 +197,8 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     for source in emissions_name:
         try:
             print(f"Attempting to retrieve '{source}' fluxes"
-                   " from object store ...\n") 
+                   " from object store ...\n")
+
             get_flux_data = get_flux(species=species,
                                      domain=domain,
                                      source=source,
@@ -216,26 +217,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
 
     fp_all['.flux']=flux_dict
 
-    # ******** Get boundary conditions ********
-    try:
-        print("Attempting to retrieve boundary condition data"
-              f" between {start_date} to {end_date} from object store ...\n")
-        get_bc_data = get_bc(species=species,
-                             domain=domain,
-                             start_date=start_date,
-                             end_date=end_date)
-        print("Successfully retrieved boundary condition data between"
-              f" {start_date} and {end_date} from object store.\n")
-
-    except ValueError:
-        print(f"-*- Warning -*-: Boundary condition data between {start_date}"
-              f" and {end_date} not found in object store. Please add"
-                " boundary condition data to object store. Exiting process.\n")
-        sys.exit(0)
-
-    fp_all['.bc']=get_bc_data
-
-    # ******** Get observations and footprints ********
+    # ******** Get observations, footprints & BCs ********
     data={}
     footprint_dict={}
     scales={}
@@ -246,7 +228,6 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             print(f"Attempting to retrieve {species.upper()} measurements"
                   f" for {site.upper()} between {start_date} and"
                   f" {end_date} from object store ...\n")
-
             site_data=get_obs_surface(site=site,
                                       species=species.lower(),
                                       inlet=inlet[i],
@@ -254,16 +235,16 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                       end_date=end_date,
                                       average=meas_period[i],
                                       instrument=instrument[i])
-
             print(f"Successfully retrieved {species.upper()} measurement"
                   f" data for {site.upper()} from object store.\n")
             data[site]=site_data[site]
-
+            unit=float(site_data[site].mf.units)
         except:
             print(f"-* -Warning -*-: Observation data for {site}"
                   f" between {start_date} to {end_date} was"
                   f" not found in the object store. Exiting process.")
             sys.exit(1)
+
 
         try:
             print(f"Attempting to retrieve {site.upper()} {domain} footprint"
@@ -274,16 +255,41 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                     model=fp_model,
                                     start_date=start_date,
                                     end_date=end_date)
-
             footprint_dict[site] = get_fps
             print(f"Successfully retrieved {site.upper()} {domain} footprints"
                    " from object store.\n")
-
         except:
             print(f"-* -Warning -*-: Footprint data for {site.upper()}"
                   f" between {start_date} to {end_date}"
                   f" was not found in the object store. Exiting process.")
             sys.exit(1)
+
+
+        try:
+            print("Attempting to retrieve boundary condition data"
+                  f" between {start_date} to {end_date} from object store ...\n")
+
+            get_bc_data = get_bc(species=species,
+                                 domain=domain,
+                                 start_date=start_date,
+                                 end_date=end_date)
+
+            print("Successfully retrieved boundary condition data between"
+                  f" {start_date} and {end_date} from object store.\n")
+
+            # Divide by trace gas species units
+            # See if R+G can include this 'behind the scenes'
+            get_bc_data.data.vmr_n.values = get_bc_data.data.vmr_n.values/unit
+            get_bc_data.data.vmr_e.values = get_bc_data.data.vmr_e.values/unit
+            get_bc_data.data.vmr_s.values = get_bc_data.data.vmr_s.values/unit
+            get_bc_data.data.vmr_w.values = get_bc_data.data.vmr_w.values/unit
+            fp_all['.bc']=get_bc_data
+        except ValueError:
+            print(f"-*- Warning -*-: Boundary condition data between {start_date}"
+                  f" and {end_date} not found in object store. Please add"
+                  " boundary condition data to object store. Exiting process.\n")
+            sys.exit(0)
+
 
         #   Create ModelScenario object
         model_scenario=ModelScenario(site=site,
@@ -314,7 +320,6 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         else:
             scales[site]=check_scales[0]
 
-
     fp_all['.scales']=scales
     fp_all['.units']=float(scenario_combined.mf.units)
 
@@ -330,13 +335,13 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
 
     # Add measurement variability in averaging period to measurement error
     if averagingerror:
-        fp_all = setup.addaveragingerror(fp_all, 
-                                         sites, 
-                                         species, 
-                                         start_date, 
-                                         end_date, 
-                                         meas_period, 
-                                         inlet=inlet, 
+        fp_all = setup.addaveragingerror(fp_all,
+                                         sites,
+                                         species,
+                                         start_date,
+                                         end_date,
+                                         meas_period,
+                                         inlet=inlet,
                                          instrument=instrument)
 
     # Create basis function using quadtree algorithm if needed
@@ -345,12 +350,12 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
             print("Assuming you want to use %s " % fp_basis_case)
         else:
-            tempdir = basis.quadtreebasisfunction(emissions_name, 
-                                                  fp_all, 
+            tempdir = basis.quadtreebasisfunction(emissions_name,
+                                                  fp_all,
                                                   sites,
-                                                  start_date, 
-                                                  domain, 
-                                                  species, 
+                                                  start_date,
+                                                  domain,
+                                                  species,
                                                   outputname,
                                                   nbasis=nbasis)
 
@@ -360,12 +365,12 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         basis_directory = basis_directory
 
 
-    fp_data = utils.fp_sensitivity(fp_all, 
-                                   domain=domain, 
+    fp_data = utils.fp_sensitivity(fp_all,
+                                   domain=domain,
                                    basis_case=fp_basis_case,
                                    basis_directory=basis_directory)
 
-    fp_data = utils.bc_sensitivity(fp_data, 
+    fp_data = utils.bc_sensitivity(fp_data,
                                    domain=domain,
                                    basis_case=bc_basis_case)
 
@@ -408,6 +413,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             Hbc = np.hstack((Hbc, Hmbc))
             Hx = np.hstack((Hx, fp_data[site].H.values))
 
+    print('Hx', Hx.shape, 'Hbc', Hbc.shape)
     sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
     # Run Pymc3 inversion
