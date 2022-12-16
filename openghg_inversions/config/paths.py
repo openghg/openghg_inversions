@@ -9,17 +9,22 @@ To create a user-specific file, copy this to acrg_config/paths.yaml, and edit
 Feel free to add other paths, as required.
 
 @author: chxmr
+---------------------------------------
+Updated for openghg_inversions by
+Eric Saboya (Dec. 2022)
+---------------------------------------
 """
 
 import yaml
 from pathlib import Path
 
-_acrg_path = Path(__file__).parents[2]
-_acrg_config_path = Path(__file__).parents[0]
+_openghginv_path = Path(__file__).parents[2]
+_openghginv_config_path = Path(__file__).parents[0]
 
-_user_defined_data_paths = sorted(_acrg_config_path.glob("paths.y*ml"))
+_user_defined_data_paths = sorted(_openghginv_config_path.glob("paths.y*ml"))
+
 if len(_user_defined_data_paths) == 0:
-    _data_paths_file = _acrg_config_path / "templates/paths_default.yaml"
+    _data_paths_file = _openghginv_config_path / "templates/paths_default.yaml"
 else:
     _data_paths_file = _user_defined_data_paths[0]
 
@@ -40,8 +45,8 @@ class Paths:
     paths.obs: path to obs folder
     path.lpdm: path to LPDM data directory
     '''
-    acrg = _acrg_path
-    obs = Path(_data_paths["obs_folder"])
-    lpdm = Path(_data_paths["lpdm_folder"])
-    if "data_folder" in _data_paths:
-        data = Path(_data_paths["data_folder"])
+    openghginv = _openghginv_path
+#    obs = Path(_data_paths["obs_folder"])
+#    lpdm = Path(_data_paths["lpdm_folder"])
+#    if "data_folder" in _data_paths:
+#        data = Path(_data_paths["data_folder"])
