@@ -224,6 +224,12 @@ def offset_matrix(siteindicator):
     '''
     Set up a matrix that can be used to add an offset to each site.
     This will anchor to the first site (i.e. first site has no offset)
+    -----------------------------------
+    Args:
+      siteindicator (array):
+        Array of values used for indicating the indices associated
+        with each site used in the inversion
+    -----------------------------------   
     '''
     b = np.zeros((int(len(siteindicator)), int(max(siteindicator))+1))
     for i in range(int(max(siteindicator)+1)):
