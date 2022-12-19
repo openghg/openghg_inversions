@@ -1,15 +1,15 @@
-# ****************************************************************************
+# *****************************************************************************
 # Created: 7 Nov. 2022
 # Author: Eric Saboya, School of Geographical Sciences, University of Bristol
 # Contact: eric.saboya@bristol.ac.uk
-# ****************************************************************************
+# *****************************************************************************
 # About
 #   Common Python functions that are called for converting time and gas species
 #   units as part of data processing.  
 #   Most functions have been copied from the University of Bristol
 #   Atmospheric Chemistry Research Group (ACRG) repository and merged, here,
 #   into one file.
-# ****************************************************************************
+# *****************************************************************************
 # List of functions included (as of Dec. 2022):
 #   molar_mass: Extracts the molar mass of a trace gas species
 #   mol2g: Converts a value in moles to grams
@@ -29,8 +29,9 @@
 #   julian2time: Converts Julian dates to datetime
 #   convert_to_hours: Converts an input time unit to its equivalent in hours
 #
-# ****************************************************************************
+# *****************************************************************************
 #  TODO: Add descriptions time-conversion functions
+
 import os
 import json
 import calendar 
@@ -50,6 +51,7 @@ def molar_mass(species):
     Args:
       species (str):
         Atmospheric trace gas species of interest (e.g. 'co2')
+
     Returns:
         Molar mass of species (float)
     -----------------------------------
@@ -70,6 +72,7 @@ def mol2g(value,species):
         Value associated with the number of moles of species
       species (str)
         Atmospheric trace gas species of interest (e.g. 'co2')
+
     Returns:
       Corresponding value of trace gas species in grams (float)
     -----------------------------------
@@ -84,6 +87,7 @@ def prefix(units):
     Args:
       units (str):
         Unit prefix of some quantity (e.g. T (Terra) --> 1e12)
+
     Returns:
       Unit magnitude (float)
     -----------------------------------
@@ -112,6 +116,7 @@ def concentration(units):
       units (str):
         Numerical factor used for describing mole fraction
         e.g. (ppm, ppb, ppt)
+
     Returns:
       unit_factor (float)
         Numerical prefix magnitude
