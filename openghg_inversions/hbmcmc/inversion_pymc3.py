@@ -1,12 +1,13 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Apr  2 12:57:23 2020
+# *****************************************************************************
+# Created: 7 Nov. 2022
+# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
+# Contact: eric.saboya@bristol.ac.uk
+# *****************************************************************************
+# About
+#   Originally created by Luke Western (ACRG) and updated, here, by Eric Saboya
+#   Functions for performing MCMC inversion.
+# *****************************************************************************
 
-@author: lw13938
-
-Updated by Eric Saboya
-"""
 import numpy as np
 import pymc3 as pm
 import pandas as pd
@@ -21,26 +22,29 @@ from openghg_inversions import utils
 from openghg_inversions.hbmcmc.inversionsetup import opends, offset_matrix
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
-from openghg_inversions.config.paths import Paths
 
+#from openghg_inversions.config.paths import Paths
+#data_path = Paths.data
 
-data_path = Paths.data
-
-def parsePrior(name, prior_params, shape = ()):
-    """
-    Parses all continuous distributions for pymc 3.8: https://docs.pymc.io/api/distributions/continuous.html
-    This format requires updating when the pymc distributions update, but is safest for code execution
-    
+def parseprior(name, prior_params, shape = ()):
+    '''
+    Parses all continuous distributions for PyMC 3.8: 
+    https://docs.pymc.io/api/distributions/continuous.html
+    This format requires updating when the PyMC distributions update, 
+    but is safest for code execution
+    -----------------------------------
     Args:
-        name (str):
-            name of variable in the pymc model
-        prior_params (dict):
-            dict of parameters for the distribution, including 'pdf' for the distribution to use
-        shape (array):
-            shape of distribution to be created. Default shape = () is the same as used by pymc3
-        
-    """
-    functionDict = {"uniform":pm.Uniform,
+      name (str):
+        name of variable in the pymc model
+      prior_params (dict):
+        dict of parameters for the distribution, 
+        including 'pdf' for the distribution to use
+      shape (array):
+        shape of distribution to be created. 
+        Default shape = () is the same as used by PyMC3
+    -----------------------------------    
+    '''
+    functiondict = {"uniform":pm.Uniform,
                     "flat":pm.Flat,
                     "halfflat":pm.HalfFlat,
                     "normal":pm.Normal,
@@ -74,7 +78,7 @@ def parsePrior(name, prior_params, shape = ()):
     pdf = prior_params["pdf"]
     #Get a dictionary of the pdf arguments
     params = {x: prior_params[x] for x in prior_params if x != "pdf"}
-    return functionDict[pdf.lower()](name, shape=shape, **params)
+    return functiondict[pdf.lower()](name, shape=shape, **params)
 
 def inferpymc3(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
                xprior={"pdf":"lognormal", "mu":1, "sd":1},
@@ -84,79 +88,79 @@ def inferpymc3(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
                sigma_per_site = True, 
                offsetprior={"pdf":"normal", "mu":0, "sd":1},
                add_offset = False, verbose=False):       
-    """
-    Uses pym3 module for Bayesian inference for emissions field, boundary 
+    '''
+    Uses PyMC3 module for Bayesian inference for emissions field, boundary 
     conditions and (currently) a single model error value.
     This uses a Normal likelihood but the (hyper)prior PDFs can selected by user.
-    
+    -----------------------------------
     Args:
-        Hx (array):
-            Transpose of the sensitivity matrix to map emissions to measurement.
-            This is the same as what is given from fp_data[site].H.values, where
-            fp_data is the output from e.g. footprint_data_merge, but where it
-            has been stacked for all sites.
-        Hbc (array):
-            Same as above but for boundary conditions
-        Y (array):
-            Measurement vector containing all measurements
-        error (arrray):
-            Measurement error vector, containg a value for each element of Y.
-        siteindicator (array):
-            Array of indexing integers that relate each measurement to a site
-        sigma_freq_index (array):
-            Array of integer indexes that converts time into periods
-        xprior (dict):
-            Dictionary containing information about the prior PDF for emissions.
-            The entry "pdf" is the name of the analytical PDF used, see
-            https://docs.pymc.io/api/distributions/continuous.html for PDFs
-            built into pymc3, although they may have to be coded into the script.
-            The other entries in the dictionary should correspond to the shape
-            parameters describing that PDF as the online documentation,
-            e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sd":1}.
-            Note that the standard deviation should be used rather than the 
-            precision. Currently all variables are considered iid.
-        bcprior (dict):
-            Same as above but for boundary conditions.
-        sigprior (dict):
-            Same as above but for model error.
-        offsetprior (dict):
-            Same as above but for bias offset. Only used is addoffset=True.
-        sigma_per_site (bool):
-            Whether a model sigma value will be calculated for each site independantly (True) or all sites together (False).
-            Default: True
-        add_offset (bool):
-            Add an offset (intercept) to all sites but the first in the site list. Default False.
-        verbose:
-            When True, prints progress bar
-
-            
+      Hx (array):
+        Transpose of the sensitivity matrix to map emissions to measurement.
+        This is the same as what is given from fp_data[site].H.values, where
+        fp_data is the output from e.g. footprint_data_merge, but where it
+        has been stacked for all sites.
+      Hbc (array):
+        Same as above but for boundary conditions
+      Y (array):
+        Measurement vector containing all measurements
+      error (arrray):
+        Measurement error vector, containg a value for each element of Y.
+      siteindicator (array):
+        Array of indexing integers that relate each measurement to a site
+      sigma_freq_index (array):
+        Array of integer indexes that converts time into periods
+      xprior (dict):
+        Dictionary containing information about the prior PDF for emissions.
+        The entry "pdf" is the name of the analytical PDF used, see
+        https://docs.pymc.io/api/distributions/continuous.html for PDFs
+        built into pymc3, although they may have to be coded into the script.
+        The other entries in the dictionary should correspond to the shape
+        parameters describing that PDF as the online documentation,
+        e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sd":1}.
+        Note that the standard deviation should be used rather than the 
+        precision. Currently all variables are considered iid.
+      bcprior (dict):
+        Same as above but for boundary conditions.
+      sigprior (dict):
+        Same as above but for model error.
+      offsetprior (dict):
+        Same as above but for bias offset. Only used is addoffset=True.
+      sigma_per_site (bool):
+        Whether a model sigma value will be calculated for each site independantly (True) or all sites together (False).
+        Default: True
+      add_offset (bool):
+        Add an offset (intercept) to all sites but the first in the site list. Default False.
+      verbose:
+        When True, prints progress bar
+      
     Returns:
-        outs (array):
-            MCMC chain for emissions scaling factors for each basis function.
-        bcouts (array):
-            MCMC chain for boundary condition scaling factors.
-        sigouts (array):
-            MCMC chain for model error.
-        Ytrace (array):
-            MCMC chain for modelled obs.
-        YBCtrace (array):
-            MCMC chain for modelled boundary condition.
-        convergence (str):
-            Passed/Failed convergence test as to whether mutliple chains
-            have a Gelman-Rubin diagnostic value <1.05
-        step1 (str):
-            Type of MCMC sampler for emissions and boundary condition updates.
-            Currently it's hardwired to NUTS (probably wouldn't change this
-            unless you're doing something obscure).
-        step2 (str):
-            Type of MCMC sampler for model error updates.
-            Currently it's hardwired to a slice sampler. This parameter is low
-            diensional and quite simple with a slice sampler, although could 
-            easily be changed.
+      outs (array):
+        MCMC chain for emissions scaling factors for each basis function.
+      bcouts (array):
+        MCMC chain for boundary condition scaling factors.
+      sigouts (array):
+        MCMC chain for model error.
+      Ytrace (array):
+        MCMC chain for modelled obs.
+      YBCtrace (array):
+        MCMC chain for modelled boundary condition.
+      convergence (str):
+        Passed/Failed convergence test as to whether mutliple chains
+        have a Gelman-Rubin diagnostic value <1.05
+      step1 (str):
+        Type of MCMC sampler for emissions and boundary condition updates.
+        Currently it's hardwired to NUTS (probably wouldn't change this
+        unless you're doing something obscure).
+      step2 (str):
+        Type of MCMC sampler for model error updates.
+        Currently it's hardwired to a slice sampler. This parameter is low
+        dimensional and quite simple with a slice sampler, although could 
+        easily be changed.
      
     TO DO:
        - Allow non-iid variables
-    """
+    -----------------------------------
+    '''
     burn = int(burn)         
     
     hx = Hx.T 
@@ -180,11 +184,11 @@ def inferpymc3(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
         B = offset_matrix(siteindicator)
 
     with pm.Model() as model:
-        x = parsePrior("x", xprior, shape=nx)
-        xbc = parsePrior("xbc", bcprior, shape=nbc)
-        sig = parsePrior("sig", sigprior, shape=(nsites, nsigmas))
+        x = parseprior("x", xprior, shape=nx)
+        xbc = parseprior("xbc", bcprior, shape=nbc)
+        sig = parseprior("sig", sigprior, shape=(nsites, nsigmas))
         if add_offset:
-            offset = parsePrior("offset", offsetprior, shape=nsites-1) 
+            offset = parseprior("offset", offsetprior, shape=nsites-1) 
             offset_vec = pm.math.concatenate( (np.array([0]), offset), axis=0)
             mu = pm.math.dot(hx,x) + pm.math.dot(hbc,xbc) + pm.math.dot(B, offset_vec)
         else:
@@ -232,124 +236,124 @@ def inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence,
                                basis_directory=None, country_file=None,
                                add_offset=False, rerun_file=None):
 
-        """
+        '''
         Takes the output from inferpymc3 function, along with some other input
         information, and places it all in a netcdf output. This function also 
         calculates the mean posterior emissions for the countries in the 
         inversion domain and saves it to netcdf.
         Note that the uncertainties are defined by the highest posterior 
-        density (HPD) region and not percentiles (as the tdMCMC code). 
+        density (HPD) region and NOT percentiles (as the tdMCMC code). 
         The HPD region is defined, for probability content (1-a), as:
             1) P(x \in R | y) = (1-a)
             2) for x1 \in R and x2 \notin R, P(x1|y)>=P(x2|y)
-        
+        -------------------------------
         Args:
-            xouts (array):
-                MCMC chain for emissions scaling factors for each basis function.
-            bcouts (array):
-                MCMC chain for boundary condition scaling factors.
-            sigouts (array):
-                MCMC chain for model error.
-            convergence (str):
-                Passed/Failed convergence test as to whether mutliple chains
-                have a Gelman-Rubin diagnostic value <1.05
-            Hx (array):
-                Transpose of the sensitivity matrix to map emissions to measurement.
-                This is the same as what is given from fp_data[site].H.values, where
-                fp_data is the output from e.g. footprint_data_merge, but where it
-                has been stacked for all sites.
-            Hbc (array):
-                Same as above but for boundary conditions
-            Y (array):
-                Measurement vector containing all measurements
-            error (arrray):
-                Measurement error vector, containg a value for each element of Y.
-            Ytrace (array):
-                Trace of modelled y values calculated from mcmc outputs and H matrices
-            YBCtrace (array):
-                Trace of modelled boundary condition values calculated from mcmc outputs and Hbc matrices
-            step1 (str):
-                Type of MCMC sampler for emissions and boundary condition updates.
-            step2 (str):
-                Type of MCMC sampler for model error updates.
-            xprior (dict):
-                Dictionary containing information about the prior PDF for emissions.
-                The entry "pdf" is the name of the analytical PDF used, see
-                https://docs.pymc.io/api/distributions/continuous.html for PDFs
-                built into pymc3, although they may have to be coded into the script.
-                The other entries in the dictionary should correspond to the shape
-                parameters describing that PDF as the online documentation,
-                e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sd":1}.
-                Note that the standard deviation should be used rather than the 
-                precision. Currently all variables are considered iid.
-            bcprior (dict):
-                Same as above but for boundary conditions.
-            sigprior (dict):
-                Same as above but for model error.
-            offsetprior (dict):
-                Same as above but for bias offset. Only used is addoffset=True.
-            Ytime (pandas datetime array):
-                Time stamp of measurements as used by the inversion.
-            siteindicator (array):
-                Numerical indicator of which site the measurements belong to,
-                same length at Y.
-            sigma_freq_index (array):
-                Array of integer indexes that converts time into periods
-            domain (str):
-                Inversion spatial domain.
-            species (str):
-                Species of interest
-            sites (list):
-                List of sites in inversion
-            start_date (str):
-                Start time of inversion "YYYY-mm-dd"
-            end_date (str):
-                End time of inversion "YYYY-mm-dd"
-            outputname (str):
-                Unique identifier for output/run name.
-            outputpath (str):
-                Path to where output should be saved.
-            country_unit_prefix ('str', optional)
-                A prefix for scaling the country emissions. Current options are: 
-                'T' will scale to Tg, 'G' to Gg, 'M' to Mg, 'P' to Pg.
-                To add additional options add to acrg_convert.prefix
-                Default is none and no scaling will be applied (output in g).
-            burn (int):
-                Number of iterations burned in MCMC
-            tune (int):
-                Number of iterations used to tune step size
-            nchain (int):
-                Number of independent chains run 
-            sigma_per_site (bool):
-                Whether a model sigma value was be calculated for each site independantly (True) 
-                or all sites together (False).
-            fp_data (dict, optional):
-                Output from footprints_data_merge + sensitivies
-            emissions_name (list, optional):
-                Update: Now a list with "source" values as used when adding emissions data to 
-                the OpenGHG object store.  
-            basis_directory (str, optional):
-                Directory containing basis function file
-            country_file (str, optional):
-                Path of country definition file
-            add_offset (bool):
-                Add an offset (intercept) to all sites but the first in the site list. Default False.
-            rerun_file (xarray dataset, optional):
-                An xarray dataset containing the ncdf output from a previous run of the MCMC code.
+          xouts (array):
+            MCMC chain for emissions scaling factors for each basis function.
+          bcouts (array):
+            MCMC chain for boundary condition scaling factors.
+          sigouts (array):
+            MCMC chain for model error.
+          convergence (str):
+            Passed/Failed convergence test as to whether mutliple chains
+            have a Gelman-Rubin diagnostic value <1.05
+          Hx (array):
+            Transpose of the sensitivity matrix to map emissions to measurement.
+            This is the same as what is given from fp_data[site].H.values, where
+            fp_data is the output from e.g. footprint_data_merge, but where it
+            has been stacked for all sites.
+          Hbc (array):
+            Same as above but for boundary conditions
+          Y (array):
+            Measurement vector containing all measurements
+          error (arrray):
+            Measurement error vector, containg a value for each element of Y.
+          Ytrace (array):
+            Trace of modelled y values calculated from mcmc outputs and H matrices
+          YBCtrace (array):
+            Trace of modelled boundary condition values calculated from mcmc outputs and Hbc matrices
+          step1 (str):
+            Type of MCMC sampler for emissions and boundary condition updates.
+          step2 (str):
+            Type of MCMC sampler for model error updates.
+          xprior (dict):
+            Dictionary containing information about the prior PDF for emissions.
+            The entry "pdf" is the name of the analytical PDF used, see
+            https://docs.pymc.io/api/distributions/continuous.html for PDFs
+            built into pymc3, although they may have to be coded into the script.
+            The other entries in the dictionary should correspond to the shape
+            parameters describing that PDF as the online documentation,
+            e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sd":1}.
+            Note that the standard deviation should be used rather than the 
+            precision. Currently all variables are considered iid.
+          bcprior (dict):
+            Same as above but for boundary conditions.
+          sigprior (dict):
+            Same as above but for model error.
+          offsetprior (dict):
+            Same as above but for bias offset. Only used is addoffset=True.
+          Ytime (pandas datetime array):
+            Time stamp of measurements as used by the inversion.
+          siteindicator (array):
+            Numerical indicator of which site the measurements belong to,
+            same length at Y.
+          sigma_freq_index (array):
+            Array of integer indexes that converts time into periods
+          domain (str):
+            Inversion spatial domain.
+          species (str):
+            Species of interest
+          sites (list):
+            List of sites in inversion
+          start_date (str):
+            Start time of inversion "YYYY-mm-dd"
+          end_date (str):
+            End time of inversion "YYYY-mm-dd"
+          outputname (str):
+            Unique identifier for output/run name.
+          outputpath (str):
+            Path to where output should be saved.
+          country_unit_prefix ('str', optional)
+            A prefix for scaling the country emissions. Current options are: 
+            'T' will scale to Tg, 'G' to Gg, 'M' to Mg, 'P' to Pg.
+            To add additional options add to acrg_convert.prefix
+            Default is none and no scaling will be applied (output in g).
+          burn (int):
+            Number of iterations burned in MCMC
+          tune (int):
+            Number of iterations used to tune step size
+          nchain (int):
+            Number of independent chains run 
+          sigma_per_site (bool):
+            Whether a model sigma value was be calculated for each site independantly (True) 
+            or all sites together (False).
+          fp_data (dict, optional):
+            Output from footprints_data_merge + sensitivies
+          emissions_name (list, optional):
+            Update: Now a list with "source" values as used when adding emissions data to 
+            the OpenGHG object store.  
+          basis_directory (str, optional):
+            Directory containing basis function file
+          country_file (str, optional):
+            Path of country definition file
+          add_offset (bool):
+            Add an offset (intercept) to all sites but the first in the site list. Default False.
+          rerun_file (xarray dataset, optional):
+            An xarray dataset containing the ncdf output from a previous run of the MCMC code.
                 
         Returns:
             netdf file containing results from inversion
-            
+        -------------------------------    
         TO DO:
             - Look at compressability options for netcdf output
             - I'm sure the number of inputs can be cut down or found elsewhere.
             - Currently it can only work out the country total emissions if
               the a priori emissions are constant over the inversion period
               or else monthly (and inversion is for less than one calendar year).
-        """
+        '''
+        
         print("Post-processing output")
-        
-        
+         
         #Get parameters for output file 
         nit = xouts.shape[0]
         nx = Hx.shape[0]

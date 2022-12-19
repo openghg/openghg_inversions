@@ -64,7 +64,6 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    verbose=False):
 
     '''
-    -----------------------------------
     Script to run hierarchical Bayesian 
     MCMC for inference of emissions using
     PyMC3 to solve the inverse problem.
