@@ -1,17 +1,28 @@
-# openghg_inversions
-NB. This repository is still in development
-## About 
-Python code for performing inversions of atmospheric species with options for using either the University of Bristol Atmospheric Chemistry Research Group (ACRG) Hierarchical Bayesian Markov Chain Monte Carlo (HBMCMC) model or the UK Met. Office Inversion Technique for Emission Modelling (InTEM) model. See below for references to each of these models. 
+# OpenGHG Inversions
 
-OpenGHG is used for the underlying data processing of the inversion models. Please ensure you are familiar with OpenGHG (particularly the use of the “objectstore”) before proceeding. 
+Dec. 2022
 
-## Setup
+OpenGHG Inversions is a Python package that is being developed as a direct result of the OpenGHG project (https://openghg.org). Merging the capabilities of atmospheric trace gas processing in OpenGHG with Bayesian inversion models developed by the Atmospheric Chemistry Research Group ACRG) at the University of Bristol, we have developed a self-contained repository for performing regional-scale trace gas inversions. 
+
+At present, OpenGHG Inversions only includes the ACRG Hierarchical Bayesian Markov Chain Monte Carlo (HBMCMC) model using invariant basis functions (e.g. Ganesan et al., 2014; Western et al., 2021). We hope to include additional inversion models in the near future. Watch this space! 
+
+## Installation and Setup
+As OpenGHG Inversions is dependent on OpenGHG, please ensure that when running locally you are using Python 3.8 or later on Linux or MacOS. Please see the OpenGHG project for further installation instructions of OpenGHG and setting up an object store.  
+
+### Installation using `pip`
+You can install OpenGHG Inversions using `pip` 
+```bash
+pip install openghg_inversions
+```
+It is recommended doing this in a new virtual environment.
+
+### Setup
+Once installed, ensure that your OpenGHG object store is configured and that you are comfortable with adding data to your object store. The HBMCMC inversion model assumes all necessary data required for the inversion run has already been added to the object store.  
 
 ## Getting Started
-Once setup, ensure that your OpenGHG objectstore is setup and configured as detailed in the OpenGHG tutorials. Make sure any data (e.g. measurements, footprints, flux files) have been added to the OpenGHG objectstore before proceeding with the inversions. 
-
+_We are currently writing documentation on using the HBMCMC inversion code. We thank you for your patience_
 
 ## References
-**HBMCMC**: Ganesan et al. (2014),_ACP_; Western et al. (2021), _Enviro. Sci. Tech Lett._
+Ganesan et al. (2014),_ACP_; 
 
-**InTEM**: Manning et al. (2021), _ACP_
+Western et al. (2021), _Enviro. Sci. Tech Lett._
