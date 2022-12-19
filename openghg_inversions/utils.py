@@ -10,7 +10,7 @@
 #
 # 
 # List of Functions (updated 9 Nov. 2022)
-# -----------------
+# -------------------------------------
 # - open_ds: function for opening xarray datasets
 # - filenames: function for providing name footprint filenames in specified
 #              period
@@ -40,36 +40,39 @@ import dask.array as da
 from os.path import join
 from collections import OrderedDict
 
-from openghg_inversions import convert_time as convert
+from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
 
-acrg_path = Paths.acrg
-data_path = Paths.data
+openghginv_path = Paths.openghginv
 
 
-with open(acrg_path / "data/site_info.json") as f:
+with open(os.path.join(openghginv_path, 'data/site_info.json')) as f:
     site_info=json.load(f,object_pairs_hook=OrderedDict)
 
-with open(acrg_path / "data/species_info.json") as f:
+with open(os.path.join(openghginv_path, 'data/species_info.json')) as f:
     species_info=json.load(f)
 
 def open_ds(path, chunks=None, combine=None):
-    """
+    '''
     Function efficiently opens xarray datasets.
-
+    -----------------------------------
     Args:
-        path (str)
-        chunks (dict, optional)
-            size of chunks for each dimension
-            e.g. {'lat': 50, 'lon': 50}
-            opens dataset with dask, such that it is opened 'lazily'
-            and all of the data is not loaded into memory
-            defaults to None - dataset is opened with out dask
-        combine (str, optional)
-            Way in which the data should be combined (if using chunks), either:
-            'by_coords': order the datasets before concatenating (default)
-            'nested': concatenate datasets in the order supplied
-    """
+      path (str):
+      chunks (dict, optional):
+        size of chunks for each dimension
+        e.g. {'lat': 50, 'lon': 50}
+        opens dataset with dask, such that it is opened 'lazily'
+        and all of the data is not loaded into memory
+        defaults to None - dataset is opened with out dask
+      combine (str, optional):
+        Way in which the data should be combined (if using chunks), either:
+        'by_coords': order the datasets before concatenating (default)
+        'nested': concatenate datasets in the order supplied
+
+    Returns:
+      ds (xarray)   
+    -----------------------------------
+    '''
     if chunks is not None:
         combine = 'by_coords' if combine is None else combine
         ds = xr.open_mfdataset(path, chunks=chunks, combine=combine)
@@ -77,34 +80,35 @@ def open_ds(path, chunks=None, combine=None):
         # use a context manager, to ensure the file gets closed after use
         with xr.open_dataset(path) as ds:
             ds.load()
+
     return ds
 
-
 def read_netcdfs(files, dim = "time", chunks=None, verbose=True):
-    """
+    '''
     The read_netcdfs function uses xarray to open sequential netCDF files and 
     and concatenates them along the specified dimension.
     Note: this function makes sure that file is closed after open_dataset call.
-    
+    -----------------------------------
     Args:
-        files (list) : 
-            List of netCDF filenames.
-        dim (str, optional) : 
-            Dimension of netCDF to use for concatenating the files.
-            Default = "time".
-        chunks (dict)
-            size of chunks for each dimension
-            e.g. {'lat': 50, 'lon': 50}
-            opens dataset with dask, such that it is opened 'lazily'
-            and all of the data is not loaded into memory
-            defaults to None - dataset is opened with out dask
+      files (list): 
+        List of netCDF filenames.
+      dim (str, optional): 
+        Dimension of netCDF to use for concatenating the files.
+        Default = "time".
+      chunks (dict):
+        size of chunks for each dimension
+        e.g. {'lat': 50, 'lon': 50}
+        opens dataset with dask, such that it is opened 'lazily'
+        and all of the data is not loaded into memory
+        defaults to None - dataset is opened with out dask
     
     Returns:
-        xarray.Dataset : 
-            All files open as one concatenated xarray.Dataset object    
-    """
+      xarray.Dataset: 
+        All files open as one concatenated xarray.Dataset object    
+    -----------------------------------
+    '''
     if verbose:
-        print("Reading and concatenating files: ")
+        print("Reading and concatenating files ...")
         for fname in files:
             print(fname)
 
@@ -119,23 +123,26 @@ def read_netcdfs(files, dim = "time", chunks=None, verbose=True):
     datasets = [ds.reindex(indexers={"lat":fp_lat, "lon":fp_lon}, method="nearest", tolerance=1e-5) for ds in datasets]
 
     combined = xr.concat(datasets, dim)
-    return combined
 
+    return combined
 
 def synonyms(search_string, info, alternative_label = "alt"):
     '''
     Check to see if there are other names that we should be using for
-    a particular input. E.g. If CFC-11 or CFC11 was input, go on to use cfc-11,
-    as this is used in species_info.json
-    
+    a particular input. E.g. If CFC-11 or CFC11 was input, 
+    go on to use cfc-11, as this is used in species_info.json
+    -----------------------------------
     Args:
-        search_string (str): Input string that you're trying to match
-        info (dict): Dictionary whose keys are the "default" values, and an
-             variable that contains other possible names
-    Returns:
+      search_string (str): 
+        Input string that you're trying to match
+      info (dict): 
+        Dictionary whose keys are the "default" values, and an
+        variable that contains other possible names
+ 
+   Returns:
         corrected string
+    -----------------------------------
     '''
-
     keys=list(info.keys())
 
     #First test whether site matches keys (case insensitive)
@@ -1117,7 +1124,7 @@ def fp_sensitivity(fp_and_data, domain, basis_case,
                 base_v = site_bf.basis.values.reshape((len(site_bf.lat)*len(site_bf.lon), len(site_bf.region)))
 
                 for i in range(len(site_bf.region)):
-                    H[i,:] = np.sum(H_all_v*base_v[:,i,np.newaxis], axis = 0)
+                    H[i,:] = np.nansum(H_all_v*base_v[:,i,np.newaxis], axis = 0)
 
                 if source == all:
                     if (sys.version_info < (3,0)):
@@ -1149,7 +1156,7 @@ def fp_sensitivity(fp_and_data, domain, basis_case,
                 base_v = np.ravel(site_bf.basis.values[:,:,0])
                 for i in range(int(np.max(site_bf.basis))):
                     wh_ri = np.where(base_v == i+1)
-                    H[i,:]=np.sum(H_all_v[wh_ri[0],:], axis = 0)
+                    H[i,:]=np.nansum(H_all_v[wh_ri[0],:], axis = 0)
 
                 if source == all:
                     region_name = list(range(1,np.max(site_bf.basis.values)+1))
@@ -1305,9 +1312,8 @@ def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory = None):
         H_bc = np.zeros((len(DS.coords['region']),len(DS["particle_locations_n"]["time"])))
 
         for i in range(len(DS.coords['region'])):
-            #reg = bf[:,:,i,:]
-            reg = bf[i,:,:,:]
-            H_bc[i,:] = np.sum((part_loc*loss*vmr_ed*reg), axis=(0,1))
+            reg = bf[:,:,i,:]
+            H_bc[i,:] = np.nansum((part_loc*loss*vmr_ed*reg), axis=(0,1))
 
         sensitivity = xr.Dataset({'H_bc': (['region_bc','time'], H_bc)},
                                     coords = {'region_bc': (DS.coords['region'].values),
