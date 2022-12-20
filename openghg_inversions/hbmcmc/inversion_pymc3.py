@@ -405,9 +405,7 @@ def inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence,
             emissions_flux = np.expand_dims(rerun_file.fluxapriori.values,2)
         else:
             if emissions_name == None:
-                print("-*- Warning -*-: Emissions name not provided."
-                      " Exiting process.\n")
-                sys.exit(0)
+                raise NameError("Emissions name not provided.")
             else:
                 emds=get_flux(species=species,
                               domain=domain,
