@@ -1,19 +1,17 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Jun 11 17:09:47 2019
-
-Creates a class that stores file paths required for finding data and model output
-Defaults are stored in acrg_config/templates/paths_default.yaml
-To create a user-specific file, copy this to acrg_config/paths.yaml, and edit
-
-Feel free to add other paths, as required.
-
-@author: chxmr
----------------------------------------
-Updated for openghg_inversions by
-Eric Saboya (Dec. 2022)
----------------------------------------
-"""
+# ****************************************************************************
+# Created: 7 Nov. 2022
+# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
+# Contact: ericsaboya@bristol.ac.uk
+# ****************************************************************************
+# About
+# Orginally created by Matt Rigby (ACRG) and updated by Eric Saboya (Nov. 2022)
+#
+# Creates a class that stores file paths required for finding data and model 
+# output. 
+# To create a user-specific file, copy this to config/paths.yaml, and edit
+#
+# Feel free to add other paths, as required.
+# ****************************************************************************
 
 import yaml
 from pathlib import Path
