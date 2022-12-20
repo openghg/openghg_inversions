@@ -7,18 +7,7 @@
 # Script containing common Python functions that can be called for running 
 # HBMCMC and InTEM inversion models. 
 # Most functions have been copied form the acrg repo (e.g. acrg.name)
-#
 # 
-# List of Functions (updated 9 Nov. 2022)
-# -------------------------------------
-# - open_ds: function for opening xarray datasets
-# - filenames: function for providing name footprint filenames in specified
-#              period
-# - get_country (class)
-# - filtering
-# - areagrid
-# - boundary_conditions: reads in data for domain to compute BCs 
-# - read_netcdfs
 # ****************************************************************************
 
 import os 
@@ -37,17 +26,12 @@ import dateutil.relativedelta
 from tqdm import tqdm
 import dask.array as da
 
-from os.path import join
 from collections import OrderedDict
 
 from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
 
 openghginv_path = Paths.openghginv
-
-
-with open(os.path.join(openghginv_path, 'data/site_info.json')) as f:
-    site_info=json.load(f,object_pairs_hook=OrderedDict)
 
 with open(os.path.join(openghginv_path, 'data/species_info.json')) as f:
     species_info=json.load(f)
@@ -166,85 +150,18 @@ def synonyms(search_string, info, alternative_label = "alt"):
 
     return out_string
 
-
-def boundary_conditions(domain, species, start = None, end = None, bc_directory=None):
-    """
-    The boundary_conditions function reads in the files with the global model vmrs at the domain edges 
-    to give the boundary conditions as an xarray Dataset.
-
-    Expect filenames of the form:
-        [bc_directory]/domain/species.lower()_*.nc
-        e.g. [/data/shared/LPDM/bc]/EUROPE/ch4_EUROPE_201301.nc
-
-    Args:
-        domain (str) : 
-            Domain name. The boundary condition files should be sub-categorised by the domain.
-        species (str) : 
-            Species name. All species names are defined data/species_info.json.
-        start (str, optional) : 
-            Start date in format "YYYY-MM-DD" to output only a time slice of all the flux files.
-            The start date used will be the first of the input month. I.e. if "2014-01-06" is input,
-            "2014-01-01" will be used.  This is to mirror the time slice functionality of the filenames 
-            function.
-        end (str, optional): 
-            End date in same format as start to output only a time slice of all the flux files.
-            The end date used will be the first of the input month and the timeslice will go up
-            to, but not include, this time. I.e. if "2014-02-25' is input, "2014-02-01" will be used.
-            This is to mirror the time slice functionality of the filenames function.
-        bc_directory (str, optional) : 
-            bc_directory can be specified if files are not in the default directory. 
-            Must point to a directory which contains subfolders organized by domain.
-
-    Returns:
-        xarray.Dataset : 
-            Combined dataset of matching boundary conditions files
-    """
-
-    if bc_directory is None:
-        bc_directory = join(data_path, 'LPDM/bc/')
-
-    filenames = os.path.join(bc_directory,domain,f"{species.lower()}_*.nc")
-
-    files = sorted(glob.glob(filenames))
-    file_no_acc = [ff for ff in files if not os.access(ff, os.R_OK)]
-    files = [ff for ff in files if os.access(ff, os.R_OK)]
-
-    if len(file_no_acc)>0:
-        print('Warning: unable to read all boundary conditions files which match this criteria:')
-        [print(ff) for ff in file_no_acc]
-
-    if len(files) == 0:
-        print("Cannot find boundary condition files in {}".format(filenames))
-        raise IOError(f"\nError: Cannot find boundary condition files for domain '{domain}' and species '{species}' ")
-
-    bc_ds = read_netcdfs(files)
-
-    if start == None or end == None:
-        print("To get boundary conditions for a certain time period you must specify an end date.")
-        return bc_ds
-    else:
-        #Change timeslice to be the beginning and end of months in the dates specified.
-        start = pd.to_datetime(start)
-        month_start = dt.datetime(start.year, start.month, 1, 0, 0)
-
-        end = pd.to_datetime(end)
-        month_end = dt.datetime(end.year, end.month, 1, 0, 0) - \
-                    dt.timedelta(seconds = 1)
-
-        bc_timeslice = bc_ds.sel(time=slice(month_start, month_end))
-        if len(bc_timeslice.time)==0:
-            bc_timeslice = bc_ds.sel(time=start, method = 'ffill')
-            bc_timeslice = bc_timeslice.expand_dims('time',axis=-1)
-            print(f"No boundary conditions available during the time period specified so outputting\
-                    boundary conditions from {bc_timeslice.time.values[0]}")
-        return bc_timeslice
-
-
 class get_country(object):
   def __init__(self, domain, country_file=None):
 
         if country_file is None:
-            filename=glob.glob(join(data_path,'LPDM/countries/',f"country_{domain}.nc"))
+            if not os.path.exists(os.path.join(openghginv_path, 'countries/')):
+                os.makedirs(os.path.join(openghginv_path, 'countries/'))
+                raise FileNotFoundError ("Country definition file not found."
+                                         f" Please add to {openghginv_path}/countries/")
+            else:
+                country_directory = os.path.join(openghginv_path, 'countries/')
+
+            filename=glob.glob(os.path.join(country_directory, f"country_{domain}.nc"))
             f = xr.open_dataset(filename[0])
         else:
             filename = country_file
@@ -273,9 +190,9 @@ class get_country(object):
         name=[]
         for ii in range(len(name_temp)):
             if type(name_temp[ii]) is not str:
-                name.append(''.join(name_temp[ii].decode("utf-8")))
+                name.append(''.os.path.join(name_temp[ii].decode("utf-8")))
             else:
-                name.append(''.join(name_temp[ii]))
+                name.append(''.os.path.join(name_temp[ii]))
         name=np.asarray(name)
 
 
@@ -288,12 +205,11 @@ class get_country(object):
         self.country = np.asarray(country)
         self.name = name
 
-
 def filtering(datasets_in, filters, keep_missing=False):
-    """
-    Applies filtering (in time dimension) to entire dataset.
-    Filters supplied in a list and then applied in order. For example if you wanted a daily, daytime 
-    average, you could do this:
+    '''
+    Applies time filtering to entire dataset.
+    Filters supplied in a list and then applied in order. 
+    For example if you wanted a daily, daytime average, you could do this:
     
         datasets_dictionary = filtering(datasets_dictionary, 
                                     ["daytime", "daily_median"])
@@ -302,36 +218,38 @@ def filtering(datasets_in, filters, keep_missing=False):
     instance when applying the "daily_median" filter if you only wanted
     to look at daytime values the filters list should be 
     ["daytime","daily_median"]                
-
+    -----------------------------------
     Args:
-        datasets_in         : Output from footprints_data_merge(). Dictionary of datasets.
-        filters (list)      : Which filters to apply to the datasets. 
-                              All options are:
-                                 "daytime"           : selects data between 1100 and 1500 local solar time
-                                 "daytime9to5"       : selects data between 0900 and 1700 local solar time
-                                 "nighttime"         : Only b/w 23:00 - 03:00 inclusive
-                                 "noon"              : Only 12:00 fp and obs used
-                                 "daily_median"      : calculates the daily median
-                                 "pblh_gt_threshold" : 
-                                 "local_influence"   : Only keep times when localness is low
-                                 "six_hr_mean"       :
-                                 "local_lapse"       :
-        keep_missing (bool) : Whether to reindex to retain missing data.
+      datasets_in (dict): 
+        Output from ModelScenario.footprints_merge(). Dictionary of datasets.
+      filters (list): 
+        Filters to apply to the datasets. 
+          All options are:
+            "daytime"           : selects data between 1100 and 1500 local solar time
+            "daytime9to5"       : selects data between 0900 and 1700 local solar time
+            "nighttime"         : Only b/w 23:00 - 03:00 inclusive
+            "noon"              : Only 12:00 fp and obs used
+            "daily_median"      : calculates the daily median
+            "pblh_gt_threshold" : 
+            "local_influence"   : Only keep times when localness is low
+            "six_hr_mean"       :
+            "local_lapse"       :
+      keep_missing (bool) : Whether to reindex to retain missing data.
     
     Returns:
-       Same format as datasets_in : Datasets with filters applied. 
-    """
-
+       Same format as datasets_in : Datasets with filters applied.
+    ----------------------------------- 
+    '''
     if type(filters) is not list:
         filters = [filters]
 
     datasets = datasets_in.copy()
 
     def local_solar_time(dataset):
-        """
+        '''
         Returns hour of day as a function of local solar time
         relative to the Greenwich Meridian. 
-        """
+        '''
         sitelon = dataset.release_lon.values[0]
         # convert lon to [-180,180], so time offset is negative west of 0 degrees
         if sitelon > 180:
@@ -341,9 +259,9 @@ def filtering(datasets_in, filters, keep_missing=False):
         return hours
 
     def local_ratio(dataset):
-        """
+        '''
         Calculates the local ratio in the surrounding grid cells
-        """
+        '''
         release_lons = dataset.release_lon[0].values
         release_lats = dataset.release_lat[0].values
         dlon = dataset.lon[1].values - dataset.lon[0].values
@@ -365,14 +283,14 @@ def filtering(datasets_in, filters, keep_missing=False):
 
     # Filter functions
     def daily_median(dataset, keep_missing=False):
-        """ Calculate daily median """
+        ''' Calculate daily median '''
         if keep_missing:
             return dataset.resample(indexer={'time':"1D"}).median()
         else:
             return dataset.resample(indexer={'time':"1D"}).median().dropna(dim="time")
 
     def six_hr_mean(dataset, keep_missing=False):
-        """ Calculate six-hour median """
+        ''' Calculate six-hour median '''
         if keep_missing:
             return dataset.resample(indexer={'time':"6H"}).mean()
         else:
@@ -380,7 +298,7 @@ def filtering(datasets_in, filters, keep_missing=False):
 
 
     def daytime(dataset, site,keep_missing=False):
-        """ Subset during daytime hours (11:00-15:00) """
+        ''' Subset during daytime hours (11:00-15:00) '''
         hours = local_solar_time(dataset)
         ti = [i for i, h in enumerate(hours) if h >= 11 and h <= 15]
 
@@ -392,7 +310,7 @@ def filtering(datasets_in, filters, keep_missing=False):
             return dataset[dict(time = ti)]
 
     def daytime9to5(dataset, site,keep_missing=False):
-        """ Subset during daytime hours (9:00-17:00) """
+        ''' Subset during daytime hours (9:00-17:00) '''
         hours = local_solar_time(dataset)
         ti = [i for i, h in enumerate(hours) if h >= 9 and h <= 17]
 
@@ -404,7 +322,7 @@ def filtering(datasets_in, filters, keep_missing=False):
             return dataset[dict(time = ti)]
 
     def nighttime(dataset, site,keep_missing=False):
-        """ Subset during nighttime hours (23:00 - 03:00) """
+        ''' Subset during nighttime hours (23:00 - 03:00) '''
         hours = local_solar_time(dataset)
         ti = [i for i, h in enumerate(hours) if h >= 23 or h <= 3]
 
@@ -416,7 +334,7 @@ def filtering(datasets_in, filters, keep_missing=False):
             return dataset[dict(time = ti)]
 
     def noon(dataset, site,keep_missing=False):
-        """ Select only 12pm data """
+        ''' Select only 12pm data '''
         hours = local_solar_time(dataset)
         ti = [i for i, h in enumerate(hours) if h == 12]
 
@@ -428,10 +346,10 @@ def filtering(datasets_in, filters, keep_missing=False):
             return dataset[dict(time = ti)]
 
     def local_influence(dataset,site, keep_missing=False):
-        """
+        '''
         Subset for times when local influence is below threshold.       
         Local influence expressed as a fraction of the sum of entire footprint domain.
-        """
+        '''
         if not dataset.filter_by_attrs(standard_name="local_ratio"):
             lr = local_ratio(dataset)
         else:
@@ -462,13 +380,11 @@ def filtering(datasets_in, filters, keep_missing=False):
                          "local_influence":local_influence,
                          "six_hr_mean":six_hr_mean}
 
-
     # Get list of sites
     sites = [key for key in list(datasets.keys()) if key[0] != '.']
 
-    # Do filtering
+    # Apply filtering
     for site in sites:
-
             for filt in filters:
                 if filt == "daily_median" or filt == "six_hr_mean":
                     datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
@@ -477,27 +393,26 @@ def filtering(datasets_in, filters, keep_missing=False):
 
     return datasets
 
-
 def areagrid(lat, lon):
-  """Calculates grid of areas (m2) given arrays of latitudes and longitudes
-
+  '''
+  Calculates grid of areas (m2) given arrays of latitudes and longitudes
+  -------------------------------------
   Args:
-      lat (array): 
-          1D array of latitudes
-      lon (array): 
-          1D array of longitudes
+    lat (array): 
+      1D array of latitudes
+    lon (array): 
+      1D array of longitudes
         
   Returns:
-      area (array): 
-          2D array of areas of of size lat x lon
-      
+    area (array): 
+      2D array of areas of of size lat x lon
+  -------------------------------------    
   Example:
-    import acrg_grid
+    import utils.areagrid
     lat=np.arange(50., 60., 1.)
     lon=np.arange(0., 10., 1.)
-    area=acrg_grid.areagrid(lat, lon)
-    
-  """
+    area=utils.areagrid(lat, lon)  
+  '''
 
   re=6367500.0  #radius of Earth in m
 
@@ -518,143 +433,38 @@ def areagrid(lat, lon):
   return area
 
 
-def filenames(site, domain, start, end, height, fp_directory, met_model = None, network=None, species=None):
-    """
-    The filenames function outputs a list of available footprint file names,
-    for given site, domain, directory and date range.
-    
-    Expect filenames of the form:
-        [fp_directory]/domain/site*-height-species*domain*ym*.nc or [fp_directory]/domain/site*-height_domain*ym*.nc
-        e.g. /data/shared/LPDM/fp_NAME/EUROPE/HFD-UKV-100magl-rn_EUROPE_202012.nc or /data/shared/LPDM/fp_NAME/EUROPE/MHD-10magl_EUROPE_201401.nc 
-    
-    Args:
-        site (str) : 
-            Site name. Full list of site names should be defined within data/site_info.json
-        domain (str) : 
-            Domain name. The footprint files should be sub-categorised by the NAME domain name.
-        start (str) : 
-            Start date in format "YYYY-MM-DD" for range of files to find.
-        end (str) : 
-            End date in same format as start for range of files to find.
-        height (str) : 
-            Height related to input data. 
-        fp_directory (str) :
-            fp_directory can be specified if files are not in the default directory must point to a directory 
-            which contains subfolders organized by domain.
-        met_model (str):
-            Met model used to run NAME
-            Default is None and implies the standard global met model
-            Alternates include 'UKV' and this met model must be in the outputfolder NAME        
-        network (str, optional) : 
-            Network for site. 
-            If not specified, first entry in data/site_info.json file will be used (if there are multiple).
-        species (str, optional)
-            If specified, will search for species specific footprint files.
-    Returns:
-        list (str): matched filenames
-    """
-
-    # Read site info for heights
-    if height is None:
-        if not site in list(site_info.keys()):
-            print("Site code not found in data/site_info.json to get height information. " + \
-                  "Check that site code is as intended. "+ \
-                  "If so, either add new site to file or input height manually.")
-            return None
-        if network is None:
-            network = list(site_info[site].keys())[0]
-        height = site_info[site][network]["height_name"][0]
-
-    if species:
-        species_obs = synonyms(species, species_info)    
-
-        if 'lifetime' in species_info[species_obs].keys():
-            lifetime = species_info[species_obs]["lifetime"]
-            lifetime_hrs = convert.convert_to_hours(lifetime)
-            # if a monthly lifetime is a list, use the minimum lifetime 
-            # in the list to determine whether a species specific footprint is needed
-            if type(lifetime) == list:
-                lifetime_hrs = min(lifetime_hrs)
-        else:
-            lifetime_hrs = None
-    else:
-        lifetime_hrs = None
-
-    # Convert into time format
-    months = pd.date_range(start = start, end = end, freq = "M").to_pydatetime()
-    yearmonth = [str(d.year) + str(d.month).zfill(2) for d in months]
-
-    # first search for species specific footprint files.
-    # if does not exist, use integrated files if lifetime of species is over 2 months
-    # if lifetime under 2 months and no species specific file exists, fail
-
-    files = []
-    for ym in yearmonth:
-
-        if species:
-
-            if met_model:
-                f=glob.glob(join(fp_directory,domain,f"{site}-{height}_{met_model}_{species}_{domain}_{ym}*.nc"))
-            else:
-                f=glob.glob(join(fp_directory,domain,f"{site}-{height}_{species}_{domain}_{ym}*.nc"))
-
-
-        else:
-            #manually create empty list if no species specified
-            f = []
-
-        if len(f) == 0:
-
-            if met_model:
-                glob_path = join(fp_directory,domain,f"{site}-{height}_{met_model}_{domain}_{ym}*.nc")
-            else:
-                glob_path = join(fp_directory,domain,f"{site}-{height}_{domain}_{ym}*.nc")
-
-            if lifetime_hrs is None:
-                print("No lifetime defined in species_info.json or species not defined. WARNING: 30-day integrated footprint used without chemical loss.")
-                f=glob.glob(glob_path)
-            elif lifetime_hrs <= 1440:
-                print("This is a short-lived species. Footprints must be species specific. Re-process in process.py with lifetime")
-                return []
-            else:
-                print("Treating species as long-lived.")
-                f=glob.glob(glob_path)
-
-        if len(f) > 0:
-            files += f
-
-    files.sort()
-
-    if len(files) == 0:
-        print(f"Can't find footprints file: {glob_path}")
-    return files
-
-
 def basis(domain, basis_case, basis_directory = None):
-    """
-    The basis function reads in the all matching files for the basis case and domain as an xarray Dataset.
+    '''
+    The basis function reads in the all matching files for the 
+    basis case and domain as an xarray Dataset.
     
     Expect filenames of the form:
         [basis_directory]/domain/"basis_case"_"domain"*.nc
         e.g. [/data/shared/LPDM/basis_functions]/EUROPE/sub_transd_EUROPE_2014.nc
 
     TODO: More info on options for basis functions.
-
+    -----------------------------------
     Args:
-        domain (str) : 
-            Domain name. The basis files should be sub-categorised by the domain.
-        basis_case (str) : 
-            Basis case to read in. Examples of basis cases are "voroni","sub-transd",
-            "sub-country_mask","INTEM".
-        basis_directory (str, optional) : 
-            basis_directory can be specified if files are not in the default directory. 
-            Must point to a directory which contains subfolders organized by domain.
+      domain (str): 
+        Domain name. The basis files should be sub-categorised by the domain.
+      basis_case (str): 
+        Basis case to read in. 
+        Examples of basis cases are "voroni","sub-transd","sub-country_mask",
+        "INTEM".
+      basis_directory (str, optional): 
+        basis_directory can be specified if files are not in the default 
+        directory. Must point to a directory which contains subfolders 
+        organized by domain.
     
     Returns:
-        xarray.Dataset : combined dataset of matching basis functions
-    """
+      xarray.Dataset: 
+        combined dataset of matching basis functions
+    -----------------------------------
+    '''
     if basis_directory is None:
-        basis_directory = os.path.join(data_path, 'LPDM/basis_functions/')
+        if not os.path.exists(os.path.join(openghginv_path, 'basis_functions/')):
+            os.makedirs(os.path.join(openghginv_path, 'basis_functions/'))
+        basis_directory = os.path.join(openghginv_path, 'basis_functions/')
 
     file_path = os.path.join(basis_directory,domain,f"{basis_case}_{domain}*.nc")
     files = sorted(glob.glob(file_path))
@@ -667,32 +477,35 @@ def basis(domain, basis_case, basis_directory = None):
 
     return basis_ds
 
-
 def basis_boundary_conditions(domain, basis_case, bc_basis_directory = None):
-    """
-    The basis_boundary_conditions function reads in all matching files for the boundary conditions 
-    basis case and domain as an xarray Dataset.
+    '''
+    The basis_boundary_conditions function reads in all matching files 
+    for the boundary conditions basis case and domain as an xarray Dataset.
     
     Expect filesnames of the form:
         [bc_basis_directory]/domain/"basis_case"_"domain"*.nc
         e.g. [/data/shared/LPDM/bc_basis_directory]/EUROPE/NESW_EUROPE_2013.nc
 
     TODO: More info on options for basis functions.
-    
+    -----------------------------------
     Args:
-        domain (str) : 
-            Domain name. The basis files should be sub-categorised by the domain.
-        basis_case (str) : 
-            Basis case to read in. Examples of basis cases are "NESW","stratgrad".
-        bc_basis_directory (str, optional) : 
-            bc_basis_directory can be specified if files are not in the default directory. 
-            Must point to a directory which contains subfolders organized by domain.
+      domain (str): 
+        Domain name. The basis files should be sub-categorised by the domain.
+      basis_case (str): 
+        Basis case to read in. Examples of basis cases are "NESW","stratgrad".
+      bc_basis_directory (str, optional): 
+        bc_basis_directory can be specified if files are not in the default directory. 
+        Must point to a directory which contains subfolders organized by domain.
     
     Returns:
-        xarray.Datset : combined dataset of matching basis functions
-    """
+      xarray.Datset: 
+        Combined dataset of matching basis functions
+    -----------------------------------
+    '''
     if bc_basis_directory is None:
-        bc_basis_directory = os.path.join(data_path,'LPDM/bc_basis_functions/')
+        if not os.path.exists(os.path.join(openghginv_path, 'bc_basis_functions/')):
+            os.makedirs(os.path.join(openghginv_path, 'bc_basis_functions/'))
+        bc_basis_directory = os.path.join(openghginv_path, 'bc_basis_functions/')
 
     file_path = os.path.join(bc_basis_directory,domain,f"{basis_case}_{domain}*.nc")
 
@@ -712,21 +525,21 @@ def basis_boundary_conditions(domain, basis_case, bc_basis_directory = None):
 
     return basis_ds
 
-
 def indexesMatch(dsa, dsb):
-    """
+    '''
     Check if two datasets need to be reindexed_like for combine_datasets
-    
+    -----------------------------------
     Args:
-        dsa (xarray.Dataset) : 
-            First dataset to check
-        dsb (xarray.Dataset) : 
-            Second dataset to check
+      dsa (xarray.Dataset) : 
+        First dataset to check
+      dsb (xarray.Dataset) : 
+        Second dataset to check
             
     Returns:
-        boolean:
-            True if indexes match, False if datasets must be reindexed
-    """
+      boolean:
+        True if indexes match, False if datasets must be reindexed
+    -----------------------------------
+    '''
 
     commonIndicies  = [key for key in dsa.indexes.keys() if key in dsb.indexes.keys()]
 
@@ -747,32 +560,33 @@ def indexesMatch(dsa, dsb):
 
     return True
 
-
 def combine_datasets(dsa, dsb, method = "ffill", tolerance = None):
-    """
-    The combine_datasets function merges two datasets and re-indexes to the FIRST dataset.
-    If "fp" variable is found within the combined dataset, the "time" values where the "lat","lon"
-    dimensions didn't match are removed.
+    '''
+    The combine_datasets function merges two datasets and re-indexes 
+    to the FIRST dataset. If "fp" variable is found within the combined 
+    dataset, the "time" values where the "lat","lon"dimensions didn't 
+    match are removed.
     
     Example:
         ds = combine_datasets(dsa, dsb)
-
+    -----------------------------------
     Args:
-        dsa (xarray.Dataset) : 
-            First dataset to merge
-        dsb (xarray.Dataset) : 
-            Second dataset to merge
-        method (str, optional) : 
-            One of {None, ‘nearest’, ‘pad’/’ffill’, ‘backfill’/’bfill’}
-            See xarray.DataArray.reindex_like for list of options and meaning.
-            Default = "ffill" (forward fill)
-        tolerance (int/float??) : 
-            Maximum allowed tolerance between matches.
+      dsa (xarray.Dataset): 
+        First dataset to merge
+      dsb (xarray.Dataset): 
+        Second dataset to merge
+      method (str, optional): 
+        One of {None, ‘nearest’, ‘pad’/’ffill’, ‘backfill’/’bfill’}
+        See xarray.DataArray.reindex_like for list of options and meaning.
+        Default = "ffill" (forward fill)
+      tolerance (int/float??): 
+        Maximum allowed tolerance between matches.
 
     Returns:
-        xarray.Dataset: 
-            Combined dataset indexed to dsa
-    """
+      xarray.Dataset: 
+        Combined dataset indexed to dsa
+    -----------------------------------
+    '''
     # merge the two datasets within a tolerance and remove times that are NaN (i.e. when FPs don't exist)
 
     if not indexesMatch(dsa, dsb):
@@ -790,55 +604,58 @@ def combine_datasets(dsa, dsb, method = "ffill", tolerance = None):
 def timeseries_HiTRes(flux_dict, fp_HiTRes_ds=None, fp_file=None, output_TS = True, output_fpXflux = True,
                       output_type='Dataset', output_file=None, verbose=False, chunks=None,
                       time_resolution='1H'):
-    """
+    '''
     The timeseries_HiTRes function computes flux * HiTRes footprints.
     
-    HiTRes footprints record the footprint at each 2 hour period back in time for the first 24 hours.
-    Need a high time resolution flux to multiply the first 24 hours back of footprints.
-    Need a residual flux to multiply the residual integrated footprint for the remainder of the 30 
-    day period.
-    
+    HiTRes footprints record the footprint at each 2 hour period back 
+    in time for the first 24 hours. Need a high time resolution flux 
+    to multiply the first 24 hours back of footprints. Need a residual 
+    flux to multiply the residual integrated footprint for the remainder 
+    of the 30 day period.
+    -----------------------------------
     Args:
-        fp_HiTRes_ds (xarray.Dataset)
-            Dataset of high time resolution footprints. HiTRes footprints record the footprint at 
-            each timestep back in time for a given amount of time
-            (e.g. hourly time steps back in time for the first 24 hours).
-        domain (str)
-            Domain name. The footprint files should be sub-categorised by the domain.
-        flux_dict (dict)
-            This should be a dictionary of the form output in the format
-            flux_dict: {'high_freq': flux_dataset, 'low_freq': flux_dataset}.
-            This is because this function needs two time resolutions of fluxes as
-            explained in the header.
+      fp_HiTRes_ds (xarray.Dataset)
+        Dataset of high time resolution footprints. HiTRes footprints 
+        record the footprint at each timestep back in time for a given 
+        amount of time (e.g. hourly time steps back in time for the first 
+        24 hours).
+      domain (str)
+        Domain name. The footprint files should be sub-categorised by the domain.
+      flux_dict (dict)
+        This should be a dictionary of the form output in the format
+        flux_dict: {'high_freq': flux_dataset, 'low_freq': flux_dataset}.
+        This is because this function needs two time resolutions of fluxes as
+        explained in the header.
             
-            If there are multiple sectors, the format should be:
-            flux_dict: {sector1 : {'high_freq' : flux_dataset, 'low_freq'  : flux_dataset},
-                        sector2 : {'high_freq' : flux_dataset, 'low_freq'  : flux_dataset}}
-        output_TS (bool)
-            Output the timeseries. Default is True.
-        output_fpXflux (bool)
-            Output the sensitivity map. Default is True.
-        verbose (bool)
-            show progress bar throughout loop
-        chunks (dict)
-            size of chunks for each dimension
-            e.g. {'lat': 50, 'lon': 50}
-            opens dataset with dask, such that it is opened 'lazily'
-            and all of the data is not loaded into memory
-            defaults to None - dataset is opened with out dask
+        If there are multiple sectors, the format should be:
+        flux_dict: {sector1 : {'high_freq' : flux_dataset, 'low_freq'  : flux_dataset},
+                    sector2 : {'high_freq' : flux_dataset, 'low_freq'  : flux_dataset}}
+      output_TS (bool)
+        Output the timeseries. Default is True.
+      output_fpXflux (bool)
+        Output the sensitivity map. Default is True.
+      verbose (bool)
+        Show progress bar throughout loop
+      chunks (dict)
+       Size of chunks for each dimension
+       e.g. {'lat': 50, 'lon': 50}
+       opens dataset with dask, such that it is opened 'lazily'
+       and all of the data is not loaded into memory
+       defaults to None - dataset is opened with out dask
     
     Returns:
-        xarray.Dataset or dict
-            Same format as flux_dict['high_freq']:
-                If flux_dict['high_freq'] is an xarray.Dataset then an xarray.Dataset is returned
-                If flux_dict['high_freq'] is a dict of xarray.Datasets then a dict of xarray.Datasets
-                is returned (an xarray.Dataset for each sector)
+      xarray.Dataset or dict
+        Same format as flux_dict['high_freq']:
+        If flux_dict['high_freq'] is an xarray.Dataset then an xarray.Dataset is returned
+        If flux_dict['high_freq'] is a dict of xarray.Datasets then a dict of xarray.Datasets
+        is returned (an xarray.Dataset for each sector)
         
-            If output_TS is True:
-                Outputs the timeseries
-            If output_fpXflux is True:
-                Outputs the sensitivity map   
-    """
+        If output_TS is True:
+          Outputs the timeseries
+        If output_fpXflux is True:
+          Outputs the sensitivity map   
+    -----------------------------------
+    '''
     if verbose:
         print(f'\nCalculating timeseries with {time_resolution} resolution, this might take a few minutes')
     ### get the high time res footprint
@@ -1042,29 +859,35 @@ def timeseries_HiTRes(flux_dict, fp_HiTRes_ds=None, fp_file=None, output_TS = Tr
 
 def fp_sensitivity(fp_and_data, domain, basis_case,
                    basis_directory = None, verbose=True):
-
-    """
-    The fp_sensitivity function adds a sensitivity matrix, H, to each site xarray dataframe in fp_and_data.
-
-    Basis function data in an array: lat, lon, no. regions. In each 'region'
-    element of array there is a lt lon grid with 1 in region and 0 outside region.
+    '''
+    The fp_sensitivity function adds a sensitivity matrix, H, to each 
+    site xarray dataframe in fp_and_data.
+    Basis function data in an array: lat, lon, no. regions. 
+    In each 'region'element of array there is a lat-lon grid with 1 in 
+    region and 0 outside region.
     
     Region numbering must start from 1
-    
+    -----------------------------------
     Args:
-        fp_and_data (dict)    : Output from footprints_data_merge() function. Dictionary of datasets.
-        domain (str)          : Domain name. The footprint files should be sub-categorised by the domain.
-        basis_case            : Basis case to read in. Examples of basis cases are "NESW","stratgrad".
-                                String if only one basis case is required. Dict if there are multiple
-                                sources that require separate basis cases. In which case, keys in dict should
-                                reflect keys in emissions_name dict used in fp_data_merge.
-        basis_directory (str) : basis_directory can be specified if files are not in the default 
-                                directory. Must point to a directory which contains subfolders organized 
-                                by domain. (optional)
+      fp_and_data (dict): 
+        Output from footprints_data_merge() function. Dictionary of datasets.
+      domain (str): 
+        Domain name. The footprint files should be sub-categorised by the domain.
+      basis_case: 
+        Basis case to read in. Examples of basis cases are "NESW","stratgrad".
+        String if only one basis case is required. Dict if there are multiple
+        sources that require separate basis cases. In which case, keys in dict should
+        reflect keys in emissions_name dict used in fp_data_merge.
+      basis_directory (str): 
+        basis_directory can be specified if files are not in the default 
+        directory. Must point to a directory which contains subfolders organized 
+        by domain. (optional)
     
     Returns:
-        dict (xarray.Dataset) : Same format as fp_and_data with sensitivity matrix and basis function grid added.
-    """
+        dict (xarray.Dataset): 
+          Same format as fp_and_data with sensitivity matrix and basis function grid added.
+    -----------------------------------
+    '''
 
     sites = [key for key in list(fp_and_data.keys()) if key[0] != '.']
 
@@ -1210,21 +1033,27 @@ def fp_sensitivity(fp_and_data, domain, basis_case,
 
 
 def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory = None):
-
-    """
-    The bc_sensitivity adds H_bc to the sensitivity matrix, to each site xarray dataframe in fp_and_data.
-    
+    '''
+    The bc_sensitivity adds H_bc to the sensitivity matrix, 
+    to each site xarray dataframe in fp_and_data.
+    -----------------------------------
     Args:
-        fp_and_data (dict)       : Output from footprints_data_merge() function. Dictionary of datasets.
-        domain (str)             : Domain name. The footprint files should be sub-categorised by the domain.
-        basis_case (str)         : Basis case to read in. Examples of basis cases are "NESW","stratgrad".
-        bc_basis_directory (str) : bc_basis_directory can be specified if files are not in the default 
-                                   directory. Must point to a directory which contains subfolders organized 
-                                   by domain. (optional)
+      fp_and_data (dict): 
+        Output from ModelScenario.footprints_data_merge() function. Dictionary of datasets.
+     domain (str): 
+       Domain name. The footprint files should be sub-categorised by the domain.
+     basis_case (str): 
+       Basis case to read in. Examples of basis cases are "NESW","stratgrad".
+     bc_basis_directory (str): 
+       bc_basis_directory can be specified if files are not in the default 
+       directory. Must point to a directory which contains subfolders organized 
+       by domain. (optional)
     
     Returns:
-        dict (xarray.Dataset) : Same format as fp_and_data with sensitivity matrix added.
-    """
+      dict (xarray.Dataset): 
+        Same format as fp_and_data with sensitivity matrix added.
+    -----------------------------------
+    '''
 
     sites = [key for key in list(fp_and_data.keys()) if key[0] != '.']
 
