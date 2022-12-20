@@ -202,7 +202,6 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                     " in object store. Please add file to object store.")
     fp_all['.flux']=flux_dict
 
-#    data={}
     footprint_dict={}
     scales={}
     check_scales=[]
@@ -222,7 +221,6 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                       instrument=instrument[i])
             print(f"Successfully retrieved {species.upper()} measurement"
                   f" data for {site.upper()} from object store.\n")
-#            data[site]=site_data[site]
             unit=float(site_data[site].mf.units)
         except:
             raise FileNotFoundError(f"Observation data for {site}"
