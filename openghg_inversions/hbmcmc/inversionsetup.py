@@ -126,7 +126,7 @@ def monthly_bcs(start_date, end_date, site, fp_data):
             mnth = allmonth[m].month
             yr = allmonth[m].year
             mnthloc = np.where(np.logical_and(curtime.month == mnth,curtime.year == yr))[0]
-            hmbc[cnt,mnthloc] = fp_data[site].H_bc.values[cord,mnthloc] 
+            hmbc[count,mnthloc] = fp_data[site].H_bc.values[cord,mnthloc] 
             count += 1
 
     return hmbc
@@ -170,7 +170,7 @@ def create_bc_sensitivity(start_date, end_date, site, fp_data, freq):
             if len(dateloc) == 0:
                 count += 1
                 continue
-            hmbc[cnt,dateloc] = fp_data[site].H_bc.values[cord,dateloc] 
+            hmbc[count,dateloc] = fp_data[site].H_bc.values[cord,dateloc] 
             count += 1
 
     return hmbc
