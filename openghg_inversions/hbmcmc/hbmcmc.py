@@ -55,7 +55,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    nit=2.5e5, burn=50000, tune=1.25e5, nchain=2,
                    emissions_name=None, inlet=None, instrument=None,
                    fp_basis_case=None, basis_directory=None, bc_basis_case="NESW",
-                   country_file=None,
+                   bc_basis_directory=None,country_file=None,
                    max_level=None,
                    quadtree_basis=True,nbasis=100,
                    filters=[],
@@ -131,6 +131,9 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
       basis_directory (str, optional):
         Directory containing the basis function
         if not default.
+      bc_basis_directory (str, optional):
+        Directory containing the boundary condition basis functions
+        (e.g. files starting with "NESW")
       country_file (str, optional):
         Path to the country definition file
       max_level (int, optional):
@@ -353,7 +356,8 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
 
     fp_data = utils.bc_sensitivity(fp_data,
                                    domain=domain,
-                                   basis_case=bc_basis_case)
+                                   basis_case=bc_basis_case,
+                                   bc_basis_directory=bc_basis_directory)
 
     # Apply named filters to the data
     fp_data = utils.filtering(fp_data, filters)
