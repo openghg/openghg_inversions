@@ -33,16 +33,66 @@
 #  TODO: Add descriptions time-conversion functions
 
 import os
+import glob
 import json
 import calendar 
 import dateutil
 import time as tm
 import datetime as dt
 from matplotlib.dates import (julian2num, num2date)
-from openghg_inversions.utils import synonyms
+#from openghg_inversions.utils import synonyms
+
+from collections import OrderedDict
+
 from openghg_inversions.config.paths import Paths
 
 openghginv_path = Paths.openghginv
+
+with open(os.path.join(openghginv_path, 'data/species_info.json')) as f:
+    species_info=json.load(f)
+
+def synonyms(search_string, info, alternative_label = "alt"):
+    '''
+    Check to see if there are other names that we should be using for
+    a particular input. E.g. If CFC-11 or CFC11 was input, 
+    go on to use cfc-11, as this is used in species_info.json
+    -----------------------------------
+    Args:
+      search_string (str): 
+        Input string that you're trying to match
+      info (dict): 
+        Dictionary whose keys are the "default" values, and an
+        variable that contains other possible names
+ 
+   Returns:
+        corrected string
+    -----------------------------------
+    '''
+    keys=list(info.keys())
+
+    #First test whether site matches keys (case insensitive)
+    out_strings = \
+        [k for k in keys if k.upper() == search_string.upper()]
+
+    #If not found, search synonyms
+    if len(out_strings) == 0:
+        for k in keys:
+            matched_strings = \
+                [s for s in info[k][alternative_label] \
+                    if s.upper() == search_string.upper()]
+            if len(matched_strings) != 0:
+                out_strings = [k]
+                break
+
+    if len(out_strings) == 1:
+        out_string = out_strings[0]
+    else:
+        out_string = None
+
+    return out_string
+
+
+
 
 def molar_mass(species):
     '''
