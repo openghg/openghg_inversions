@@ -5,7 +5,7 @@
 # ****************************************************************************
 # About
 # Script containing common Python functions that can be called for running 
-# HBMCMC and InTEM inversion models. 
+# HBMCMC and other  inversion models. 
 # Most functions have been copied form the acrg repo (e.g. acrg.name)
 # 
 # ****************************************************************************
@@ -22,12 +22,9 @@ import datetime as dt
 import numpy as np 
 import xarray as xr
 import dateutil.relativedelta
-
 from tqdm import tqdm
 import dask.array as da
-
 from collections import OrderedDict
-
 from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
 
@@ -190,9 +187,11 @@ class get_country(object):
         name=[]
         for ii in range(len(name_temp)):
             if type(name_temp[ii]) is not str:
-                name.append(''.os.path.join(name_temp[ii].decode("utf-8")))
+                #name.append(''.os.path.join(name_temp[ii].decode("utf-8")))
+                name.append(os.path.join(name_temp[ii].decode("utf-8")))
             else:
-                name.append(''.os.path.join(name_temp[ii]))
+                #name.append(''.os.path.join(name_temp[ii]))
+                name.append(os.path.join(name_temp[ii]))
         name=np.asarray(name)
 
 
@@ -431,7 +430,6 @@ def areagrid(lat, lon):
       area[latI, :]=((re**2)*(np.cos(lat1)-np.cos(lat2))*dlon)
 
   return area
-
 
 def basis(domain, basis_case, basis_directory = None):
     '''
@@ -855,7 +853,6 @@ def timeseries_HiTRes(flux_dict, fp_HiTRes_ds=None, fp_file=None, output_TS = Tr
             return timeseries, fpXflux
         elif output_TS:
             return timeseries
-
 
 def fp_sensitivity(fp_and_data, domain, basis_case,
                    basis_directory = None, verbose=True):
