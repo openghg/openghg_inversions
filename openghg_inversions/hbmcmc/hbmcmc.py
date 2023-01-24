@@ -37,7 +37,7 @@ import shutil
 import numpy as np
 import pandas as pd
 import openghg_inversions.hbmcmc.inversionsetup as setup
-import openghg_inversions.hbmcmc.inversion_pymc3 as mcmc
+import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 from openghg.retrieve import get_obs_surface, get_flux
 from openghg.retrieve import get_bc, get_footprint
 from openghg.analyse import ModelScenario
@@ -48,8 +48,8 @@ from openghg_inversions import utils
 def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    end_date, outputpath, outputname,
                    met_model = None, fp_model="NAME",
-                   xprior={"pdf":"lognormal", "mu":1, "sd":1},
-                   bcprior={"pdf":"lognormal", "mu":0.004, "sd":0.02},
+                   xprior={"pdf":"lognormal", "mu":1, "sigma":1},
+                   bcprior={"pdf":"lognormal", "mu":0.004, "sigma":0.02},
                    sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
                    offsetprior={"pdf":"normal", "mu":0, "sd":1},
                    nit=2.5e5, burn=50000, tune=1.25e5, nchain=2,
@@ -382,7 +382,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
         if si == 0:
             Ytime=fp_data[site].time.values
         else:
-            Ytime = np.concatenate((Ytime,fp_data[site].time.values ))
+            Ytime = np.concatenate((Ytime,fp_data[site].time.values))
 
         if bc_freq == "monthly":
             Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
@@ -401,7 +401,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
     # Run PyMc3 inversion
-    xouts, bcouts, sigouts, Ytrace, YBCtrace, convergence, step1, step2 = mcmc.inferpymc3(Hx, Hbc, Y, error, 
+    xouts, bcouts, sigouts, Ytrace, YBCtrace, convergence, step1, step2 = mcmc.inferpymc(Hx, Hbc, Y, error, 
                                                                           siteindicator, sigma_freq_index, xprior, 
                                                                           bcprior, sigprior, nit, burn, tune,                 
                                                                           nchain, sigma_per_site, 
@@ -410,7 +410,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                                                           verbose=verbose)
 
     # Process and save inversion output
-    mcmc.inferpymc3_postprocessouts(xouts,bcouts, sigouts, convergence,
+    mcmc.inferpymc_postprocessouts(xouts,bcouts, sigouts, convergence,
                                Hx, Hbc, Y, error, Ytrace, YBCtrace,
                                step1, step2,
                                xprior, bcprior, sigprior, offsetprior, Ytime, siteindicator, sigma_freq_index,
