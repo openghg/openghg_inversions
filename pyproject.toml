@@ -11,7 +11,7 @@ classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["description"]
 version = "0.0.1"
 dependencies = [
-    "pymc3",
+    "pymc",
     "xarray", 
     "pandas",
     "matplotlib",
