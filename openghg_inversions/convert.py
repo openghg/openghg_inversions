@@ -46,10 +46,11 @@ from collections import OrderedDict
 
 from openghg_inversions.config.paths import Paths
 
+
 openghginv_path = Paths.openghginv
 
-with open(os.path.join(openghginv_path, 'data/species_info.json')) as f:
-    species_info=json.load(f)
+# with open(os.path.join(openghginv_path, 'data/species_info.json')) as f:
+#     species_info=json.load(f)
 
 def synonyms(search_string, info, alternative_label = "alt"):
     '''
@@ -106,9 +107,9 @@ def molar_mass(species):
         Molar mass of species (float)
     -----------------------------------
     '''
-    species_info_file = os.path.join(openghginv_path,'data/species_info.json')
-    with open(species_info_file) as f:
-        species_info=json.load(f)
+    from openghg_inversions.utils import load_json
+
+    species_info = load_json(filename="species_info.json")
     species_key = synonyms(species,species_info)
     molmass = float(species_info[species_key]['mol_mass'])
     return molmass
