@@ -1,0 +1,7 @@
+pymc
+xarray
+pandas
+matplotlib
+scipy
+numpy
+openghg
