@@ -28,7 +28,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
       - name: Install package
-        run: pip install -e .
+        run: |
+          pip install --upgrade pip setuptools wheel
+          pip install -e .
       - name: Install pytest
         run: pip install pytest
       - name: Run tests
