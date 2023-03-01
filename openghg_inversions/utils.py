@@ -20,6 +20,7 @@ import subprocess
 import pandas as pd
 import datetime as dt
 import numpy as np 
+from pathlib import Path
 import xarray as xr
 import dateutil.relativedelta
 from tqdm import tqdm
@@ -1150,3 +1151,13 @@ def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory = None):
     return fp_and_data
 
 
+
+def load_json(filename):
+    """Load a JSON file
+
+    Args:
+        filename (str): Filename
+    Returns:
+        dict
+    """
+    data_folder = Path()
