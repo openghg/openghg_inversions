@@ -17,17 +17,19 @@ import yaml
 from pathlib import Path
 
 _openghginv_path = Path(__file__).parents[2]
-_openghginv_config_path = Path(__file__).parents[0]
+# _openghginv_config_path = Path(__file__).parents[0]
 
-_user_defined_data_paths = sorted(_openghginv_config_path.glob("paths.y*ml"))
+# _user_defined_data_paths = sorted(_openghginv_config_path.glob("paths.y*ml"))
 
-if len(_user_defined_data_paths) == 0:
-    _data_paths_file = _openghginv_config_path / "templates/paths_default.yaml"
-else:
-    _data_paths_file = _user_defined_data_paths[0]
+# if len(_user_defined_data_paths) == 0:
+#     _data_paths_file = _openghginv_config_path / "templates/paths_default.yaml"
+# else:
+#     _data_paths_file = _user_defined_data_paths[0]
 
-with open(_data_paths_file, 'r') as f:
-    _data_paths = yaml.load(f, Loader = yaml.SafeLoader)
+# with open(_data_paths_file, 'r') as f:
+#     _data_paths = yaml.load(f, Loader = yaml.SafeLoader)
+
+
 
 class Paths:
     '''
