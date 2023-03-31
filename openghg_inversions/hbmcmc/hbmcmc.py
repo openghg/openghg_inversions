@@ -180,6 +180,15 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     # most acrg functions copied across use upper case notation
     for i, site in enumerate(sites): sites[i]=site.upper()
 
+	### ADD IN NEW/CHANGED VARIABLES FROM THE NEW FUNCTION BELOW
+
+	fp_data = utils.merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_period,emissions_name,
+                                  inlet,network=,instrument,fp_model,met_model,
+                                  fp_basis_case,bc_basis_case,
+                                  basis_directory,bc_basis_directory,
+                                  nbasis,outputname,filters,averagingerror,
+                                  save_directory=None)
+	'''
     fp_all={}
     fp_all['.species']=species.upper()
 
@@ -364,7 +373,8 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
 
     for si, site in enumerate(sites):
         fp_data[site].attrs['Domain']=domain
-
+	'''
+ 
     # Get inputs ready
     error = np.zeros(0)
     Hbc = np.zeros(0)

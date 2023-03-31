@@ -26,8 +26,15 @@ import dateutil.relativedelta
 from tqdm import tqdm
 import dask.array as da
 from collections import OrderedDict
+import pickle
+from openghg.retrieve import get_obs_surface, get_flux
+from openghg.retrieve import get_bc, get_footprint
+from openghg.analyse import ModelScenario
+from openghg.dataobjects import BoundaryConditionsData
 from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
+import openghg_inversions.basis_functions as basis
+import openghg_inversions.hbmcmc.inversionsetup as setup
 
 openghginv_path = Paths.openghginv
 
@@ -206,6 +213,310 @@ class get_country(object):
         self.latmin = np.min(lat)
         self.country = np.asarray(country)
         self.name = name
+
+def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_period,emissions_name,
+                                  inlet=None,network=None,instrument=None,fp_model=None,met_model=None,
+                                  fp_basis_case=None,bc_basis_case=None,
+                                  basis_directory=None,bc_basis_directory=None,
+                                  nbasis=None,outputname=None,filters=None,averagingerror=False,
+                                  save_directory=None):
+    """
+    Extracts observations, fluxes, footprints and boundary conditions
+    for given time period using openghg.retrieve.
+    Uses openghg.analyse.ModelScenario to merge observations, footprints and fluxes 
+    to produce sensitivity matrices H and Hbc.
+    Option to save the merged data as a pickle file.
+    Returns merged data as a dataset.
+    
+    Args:
+        species (str): 
+            Atmospheric gas species.
+        domain (str):
+            Inversion spatial domain.
+        sites (list of str): 
+            List of site names
+        start_date (str):
+            Start date of inversion, 'yyyy-mm-dd'.
+        end_date (str):
+            End date of inversion.
+        meas_period (list of str):
+            Averaging period for obs from each site.
+        emissions_name (list of str):
+            List of keyword "source" args used for retrieving emissions files
+            from the Object store.
+        inlet (list of str) (optional): 
+            List of corresponding inlet heights for each site in sites.
+        network (list of str) (optional):
+            List of corresponding networks for each site.
+        instrument (list of str) (optional):
+            Specific instrument for the site (must match number of sites).
+        fp_model (str) (optional):
+            LPDM used for generating footprints.  
+        met_model (str):
+            Meteorological model used in the LPDM.
+        fp_basis_case (str) (optional):
+            Name of basis function to use for emissions.
+        bc_basis_case (str) (optional):
+            Name of basis case type for boundary conditions (NOTE, I don't
+            think that currently you can do anything apart from scaling NSEW
+            boundary conditions if you want to scale these monthly.)
+        basis_directory (str) (optional):
+            Path to directory with basis function files.
+        bc_basis_directory (str) (optional):
+            Path to directory with boundary condition basis function files.
+        nbasis (int) (optional):
+            Number of basis functions that you want if using quadtree derived
+            basis function. This will optimise to closest value that fits with
+            quadtree splitting algorithm, i.e. nbasis % 4 = 1.
+        outputname (str) (optional):
+            Unique identifier for output/run name. 
+        filters (list, optional):
+            list of filters to apply from name.filtering. Defaults to empty list
+        averagingerror (bool, optional):
+            Adds the variability in the averaging period to the measurement
+            error if set to True.
+        save_dir (str) (optional):
+            Where to save the merged flux, fp, bc etc. object as a .pickle file.
+    Returns:
+        fp_data (dict of datasets):
+            Merged obs, fluxes, footprints, boundary conditions and basis functions
+            with fp and bc sensitivity matrices.
+    """
+    
+    if fp_model == None:
+        print('No fp_model specified, using defaults.')
+    if met_model == None: 
+        print('No met_model specified, using defaults.')
+    
+    # Change list of sites to upper case equivalent as
+    # most acrg functions copied across use upper case notation
+    for i, site in enumerate(sites): sites[i]=site.upper()
+
+    fp_all={}
+    fp_all['.species']=species.upper()
+    
+    footprint_dict={}
+    scales={}
+    check_scales=[]
+
+    # Get fluxes
+    flux_dict={}
+    for source in emissions_name:
+        try:
+            print(f"Attempting to retrieve '{source}' fluxes"
+                   " from object store ...\n")
+
+            get_flux_data = get_flux(species=species,
+                                     domain=domain,
+                                     source=source,
+                                     start_date=start_date,
+                                     end_date=end_date)
+
+            print("Sucessfully retrieved flux file"
+                 f" '{source}' from objectstore.")
+
+            flux_dict[source]=get_flux_data
+        except:
+            raise FileNotFoundError(f"Flux file '{source}' not found"
+                    " in object store. Please add file to object store.")
+            
+    fp_all['.flux']=flux_dict
+
+    for i, site in enumerate(sites):
+        # Get observations
+        try:
+            print(f"Attempting to retrieve {species.upper()} measurements"
+                  f" for {site.upper()} between {start_date} and"
+                  f" {end_date} from object store ...\n")
+            
+            if inlet is not None:
+                inlet_search = inlet[i]
+            else:
+                inlet_search = None
+            if network is not None:
+                network_search = network[i]
+            else:
+                network_search = None
+            if instrument is not None:
+                instrument_search = instrument[i]
+            else:
+                instrument_search = None
+                
+            site_data=get_obs_surface(site=site,
+                                      species=species,
+                                      inlet=inlet_search,
+                                      start_date=start_date,
+                                      end_date=end_date,
+                                      network=network_search,
+                                      average=meas_period[i],
+                                      instrument=instrument_search)
+            
+            print(f"Successfully retrieved {species.upper()} measurement"
+                  f" data for {site.upper()} from object store.\n")
+            unit=float(site_data[site].mf.units)
+        except:
+            raise FileNotFoundError(f"Observation data for {site}"
+                  f" between {start_date} to {end_date} was"
+                  f" not found in the object store.")
+
+        # Get footprints
+        try:
+            print(f"Attempting to retrieve {site.upper()} {domain} footprint"
+                   " data from object store ...\n")
+            get_fps = get_footprint(site=site,
+                                    height=inlet_search,
+                                    domain=domain,
+                                    model=fp_model,
+                                    start_date=start_date,
+                                    end_date=end_date)
+            footprint_dict[site] = get_fps
+            print(f"Successfully retrieved {site.upper()} {domain} footprints"
+                   " from object store.\n")
+        except:
+            raise FileNotFoundError(f"Footprint data for {site.upper()}"
+                  f" between {start_date} to {end_date}"
+                  f" was not found in the object store.")
+
+        # Get boundary conditions
+        try:
+            print("Attempting to retrieve boundary condition data"
+                  f" between {start_date} to {end_date} from object store ...\n")
+            get_bc_data = get_bc(species=species,
+                                 domain=domain,
+                                 start_date=start_date,
+                                 end_date=end_date)
+            print("Successfully retrieved boundary condition data between"
+                  f" {start_date} and {end_date} from object store.\n")
+
+            # Divide by trace gas species units
+            # See if R+G can include this 'behind the scenes'
+            get_bc_data.data.vmr_n.values = get_bc_data.data.vmr_n.values/unit
+            get_bc_data.data.vmr_e.values = get_bc_data.data.vmr_e.values/unit
+            get_bc_data.data.vmr_s.values = get_bc_data.data.vmr_s.values/unit
+            get_bc_data.data.vmr_w.values = get_bc_data.data.vmr_w.values/unit
+            my_bc = BoundaryConditionsData(get_bc_data.data.transpose("height","lat","lon","time"), 
+                                           get_bc_data.metadata)
+            fp_all['.bc']=my_bc
+        except:
+            raise FileNotFoundError(f"Boundary condition data between {start_date}"
+                  f" and {end_date} not found in object store. Please add"
+                  " boundary condition data to object store. Exiting process.\n")
+
+        # Create ModelScenario object
+        model_scenario=ModelScenario(site=site,
+                                     species=species,
+                                     inlet=inlet_search,
+                                     domain=domain,
+                                     model=fp_model,
+                                     metmodel=met_model,
+                                     start_date=start_date,
+                                     end_date=end_date,
+                                     obs=site_data,
+                                     footprint=footprint_dict[site],
+                                     flux=flux_dict,
+                                     bc=my_bc)
+
+        scenario_combined=model_scenario.footprints_data_merge()
+        scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
+
+        fp_all[site]=scenario_combined
+
+        # Check consistency of measurement scales between sites
+        check_scales+=[scenario_combined.scale]
+        if not all (s==check_scales[0] for s in check_scales):
+            rt=[]
+            for j in check_scales:
+                if isinstance(j, list): rt.extend(np.flatten(j))
+            else:
+                rt.append(j)
+            scales[site]=rt
+        else:
+            scales[site]=check_scales[0]
+
+    fp_all['.scales']=scales
+    fp_all['.units']=float(scenario_combined.mf.units)
+    
+    # If site contains measurement errors given as repeatability and variability,
+    # use variability to replace missing repeatability values, then drop variability
+    for site in sites:
+        if "mf_variability" in fp_all[site] and "mf_repeatability" in fp_all[site]:
+            fp_all[site]["mf_repeatability"][np.isnan(fp_all[site]["mf_repeatability"])] = \
+                fp_all[site]["mf_variability"][np.logical_and(np.isfinite(fp_all[site]["mf_variability"]),np.isnan(fp_all[site]["mf_repeatability"]) )]
+            fp_all[site] = fp_all[site].drop_vars("mf_variability")
+
+    # Add measurement variability in averaging period to measurement error
+    if averagingerror:
+        fp_all = setup.addaveragingerror(fp_all,
+                                         sites,
+                                         species,
+                                         start_date,
+                                         end_date,
+                                         meas_period,
+                                         inlet=inlet,
+                                         instrument=instrument)
+
+     # Create quadtree basis func file if it doesn't exist
+    if nbasis is not None:
+        
+        if fp_basis_case != None:
+            print(f"Basis case {fp_basis_case} supplied but quadtree_basis set to True")
+            print(f"Assuming you want to use {fp_basis_case} ")
+            
+        else:
+            print(f'Using a quadtree basis functions with {nbasis} cells.')
+            
+            if len(glob.glob(os.path.join(basis_directory,domain,f'quadtree_{species}-{outputname}*.nc'))) == 0:
+                print(f'No file named quadtree_{species}-{outputname}*.nc in {basis_directory}, so creating basis function file.')
+                
+                tempdir = basis.quadtreebasisfunction(emissions_name,
+                                                  fp_all,
+                                                  sites,
+                                                  start_date,
+                                                  domain,
+                                                  species,
+                                                  outputname,
+                                                  basis_directory,
+                                                  nbasis=nbasis)
+                
+            fp_basis_case = f"quadtree_{species}-{outputname}"
+            
+    if type(emissions_name) == list:
+        fp_basis_case_all = {}
+        for i in emissions_name:
+            fp_basis_case_all[i] = fp_basis_case
+    else:
+        fp_basis_case_all = fp_basis_case
+
+    fp_data = utils.fp_sensitivity(fp_all,
+                                   domain=domain,
+                                   basis_case=fp_basis_case_all,
+                                   basis_directory=basis_directory)
+
+    fp_data = utils.bc_sensitivity(fp_data,
+                                   domain=domain,
+                                   basis_case=bc_basis_case,
+                                   bc_basis_directory=bc_basis_directory)
+
+    # Apply named filters to the data
+    if filters is not None:
+        fp_data = utils.filtering(fp_data, filters)
+
+    for site in sites:
+        fp_data[site].attrs['Domain']=domain
+        
+    for k in fp_data['.flux'].keys():
+        fp_data['.flux'][k] = fp_data['.flux'][k].data
+        
+    fp_data['.bc'] = fp_data['.bc'].data
+        
+    if save_directory is not None:
+        fp_out = open(save_directory+outputname+'_H.pickle','wb')
+        pickle.dump(fp_data,fp_out)
+        fp_out.close()
+
+        print(f'\n fp_data saved in {save_directory}\n')
+    
+    return fp_data
 
 def filtering(datasets_in, filters, keep_missing=False):
     '''
