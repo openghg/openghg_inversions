@@ -1064,7 +1064,7 @@ def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory = None):
     timenew = basis_func.time[ind]
     basis_func = basis_func.reindex({"time":timenew})
 
-    species_info = load_json(filename="species_info")
+    species_info = load_json(filename="species_info.json")
 
     species = fp_and_data[".species"]
     species = synonyms(species, species_info)
