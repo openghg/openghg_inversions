@@ -13,6 +13,8 @@
 import os 
 import sys
 import glob
+import uuid
+import shutil
 import json
 import bisect
 import calendar
@@ -33,7 +35,7 @@ from openghg.analyse import ModelScenario
 from openghg.dataobjects import BoundaryConditionsData
 from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
-import openghg_inversions.basis_functions as basis
+import openghg_inversions.basis_functions as basis_functions
 import openghg_inversions.hbmcmc.inversionsetup as setup
 
 openghginv_path = Paths.openghginv
@@ -218,7 +220,7 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
                                   inlet=None,network=None,instrument=None,fp_model=None,met_model=None,
                                   fp_basis_case=None,bc_basis_case=None,
                                   basis_directory=None,bc_basis_directory=None,
-                                  nbasis=None,outputname=None,filters=None,averagingerror=False,
+                                  nquadtreebasis=None,outputname=None,filters=None,averagingerror=False,
                                   save_directory=None):
     """
     Extracts observations, fluxes, footprints and boundary conditions
@@ -264,10 +266,10 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
             Path to directory with basis function files.
         bc_basis_directory (str) (optional):
             Path to directory with boundary condition basis function files.
-        nbasis (int) (optional):
+        nquadtreebasis (int) (optional):
             Number of basis functions that you want if using quadtree derived
             basis function. This will optimise to closest value that fits with
-            quadtree splitting algorithm, i.e. nbasis % 4 = 1.
+            quadtree splitting algorithm, i.e. nquadtreebasis % 4 = 1.
         outputname (str) (optional):
             Unique identifier for output/run name. 
         filters (list, optional):
@@ -284,14 +286,19 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
     """
     
     if fp_model == None:
-        print('No fp_model specified, using defaults.')
+        print('No fp_model specified, using defaults.\n')
     if met_model == None: 
-        print('No met_model specified, using defaults.')
-    
-    # Change list of sites to upper case equivalent as
-    # most acrg functions copied across use upper case notation
-    for i, site in enumerate(sites): sites[i]=site.upper()
+        print('No met_model specified, using defaults.\n')
+        
+    if basis_directory == None:
+        print('Using temporary basis directory.\n')
+        cwd = os.getcwd()
+        basis_directory = os.path.join(cwd,f"Temp_{str(uuid.uuid4())}")
+        remove_basis_dir = True
+    else:
+        remove_basis_dir = False
 
+    flux_dict={}
     fp_all={}
     fp_all['.species']=species.upper()
     
@@ -300,7 +307,6 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
     check_scales=[]
 
     # Get fluxes
-    flux_dict={}
     for source in emissions_name:
         try:
             print(f"Attempting to retrieve '{source}' fluxes"
@@ -313,7 +319,7 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
                                      end_date=end_date)
 
             print("Sucessfully retrieved flux file"
-                 f" '{source}' from objectstore.")
+                 f" '{source}' from objectstore.\n")
 
             flux_dict[source]=get_flux_data
         except:
@@ -321,7 +327,7 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
                     " in object store. Please add file to object store.")
             
     fp_all['.flux']=flux_dict
-
+    
     for i, site in enumerate(sites):
         # Get observations
         try:
@@ -440,6 +446,7 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
     # use variability to replace missing repeatability values, then drop variability
     for site in sites:
         if "mf_variability" in fp_all[site] and "mf_repeatability" in fp_all[site]:
+            print(f'Using mf_variability to replace missing mf_repeatability values for {site}.')
             fp_all[site]["mf_repeatability"][np.isnan(fp_all[site]["mf_repeatability"])] = \
                 fp_all[site]["mf_variability"][np.logical_and(np.isfinite(fp_all[site]["mf_variability"]),np.isnan(fp_all[site]["mf_repeatability"]) )]
             fp_all[site] = fp_all[site].drop_vars("mf_variability")
@@ -456,29 +463,32 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
                                          instrument=instrument)
 
      # Create quadtree basis func file if it doesn't exist
-    if nbasis is not None:
+    if nquadtreebasis is not None:
         
         if fp_basis_case != None:
-            print(f"Basis case {fp_basis_case} supplied but quadtree_basis set to True")
-            print(f"Assuming you want to use {fp_basis_case} ")
+            print(f"Basis case {fp_basis_case} supplied but nquadtreebasis set to non zero value.")
+            print(f"Assuming you want to use {fp_basis_case}.")
+            if len(glob.glob(os.path.join(basis_directory,domain,f'{fp_basis_case}*_{domain}*.nc'))) == 0:
+                print("Cannot find fp basis file {fp_basis_case} in {basis_directory}.")
+                print("Expecting fp_basis_case filenames of format fp_basis_case*_domain*.nc\n")
             
         else:
-            print(f'Using a quadtree basis functions with {nbasis} cells.')
+            print(f'Using a quadtree basis functions with {nquadtreebasis} cells.')
             
-            if len(glob.glob(os.path.join(basis_directory,domain,f'quadtree_{species}-{outputname}*.nc'))) == 0:
-                print(f'No file named quadtree_{species}-{outputname}*.nc in {basis_directory}, so creating basis function file.')
+            if len(glob.glob(os.path.join(basis_directory,domain,f'quadtree_{species}-{nquadtreebasis}-{outputname}*.nc'))) == 0:
+                print(f'No file named quadtree_{species}-{nquadtreebasis}-{outputname}*.nc in {basis_directory}, so creating basis function file.')
                 
-                tempdir = basis.quadtreebasisfunction(emissions_name,
+                tempdir = basis_functions.quadtreebasisfunction(emissions_name,
                                                   fp_all,
                                                   sites,
                                                   start_date,
                                                   domain,
                                                   species,
-                                                  outputname,
+                                                  f'{nquadtreebasis}-{outputname}',
                                                   basis_directory,
-                                                  nbasis=nbasis)
+                                                  nbasis=nquadtreebasis)
                 
-            fp_basis_case = f"quadtree_{species}-{outputname}"
+            fp_basis_case = f"quadtree_{species}-{nquadtreebasis}-{outputname}"
             
     if type(emissions_name) == list:
         fp_basis_case_all = {}
@@ -487,19 +497,19 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
     else:
         fp_basis_case_all = fp_basis_case
 
-    fp_data = utils.fp_sensitivity(fp_all,
+    fp_data = fp_sensitivity(fp_all,
                                    domain=domain,
                                    basis_case=fp_basis_case_all,
                                    basis_directory=basis_directory)
 
-    fp_data = utils.bc_sensitivity(fp_data,
+    fp_data = bc_sensitivity(fp_data,
                                    domain=domain,
                                    basis_case=bc_basis_case,
                                    bc_basis_directory=bc_basis_directory)
 
     # Apply named filters to the data
     if filters is not None:
-        fp_data = utils.filtering(fp_data, filters)
+        fp_data = filtering(fp_data, filters)
 
     for site in sites:
         fp_data[site].attrs['Domain']=domain
@@ -508,9 +518,12 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
         fp_data['.flux'][k] = fp_data['.flux'][k].data
         
     fp_data['.bc'] = fp_data['.bc'].data
+    
+    if remove_basis_dir == True:
+        shutil.rmtree(tempdir)
         
     if save_directory is not None:
-        fp_out = open(save_directory+outputname+'_H.pickle','wb')
+        fp_out = open(save_directory+outputname+'_merged-data.pickle','wb')
         pickle.dump(fp_data,fp_out)
         fp_out.close()
 
