@@ -711,12 +711,17 @@ def filtering(datasets_in, filters, keep_missing=False):
 
     # Apply filtering
     for site in sites:
-            for filt in filters:
-                if filt == "daily_median" or filt == "six_hr_mean":
-                    datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
-                else:
-                    datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
-
+        n_unfiltered = datasets[site].mf.values.shape[0]
+        for filt in filters:
+            if filt == "daily_median" or filt == "six_hr_mean":
+                datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
+            else:
+                datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
+        n_filtered = datasets[site].mf.values.shape[0]
+        n_removed = n_unfiltered - n_filtered
+        perc_filtered = np.round(n_removed/n_unfiltered*100,2)
+        print(f'Filtering {site} has removed {n_removed} observations ({perc_filtered}%).\n')
+        
     return datasets
 
 def areagrid(lat, lon):

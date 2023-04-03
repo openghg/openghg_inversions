@@ -205,6 +205,9 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             print(f'No merged data available at {merged_data_filename} so rerunning this process.\n')
             rerun_data_merge = True
             
+    else:
+        rerun_data_merge = True
+            
     if rerun_data_merge == True:
         
         fp_data = utils.merge_fp_data_flux_bc_openghg(species=species,domain=domain,sites=sites,
