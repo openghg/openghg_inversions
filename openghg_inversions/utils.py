@@ -469,7 +469,7 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
             print(f"Basis case {fp_basis_case} supplied but nquadtreebasis set to non zero value.")
             print(f"Assuming you want to use {fp_basis_case}.")
             if len(glob.glob(os.path.join(basis_directory,domain,f'{fp_basis_case}*_{domain}*.nc'))) == 0:
-                print("Cannot find fp basis file {fp_basis_case} in {basis_directory}.")
+                print(f"Cannot find fp basis file {fp_basis_case} in {basis_directory}.")
                 print("Expecting fp_basis_case filenames of format fp_basis_case*_domain*.nc\n")
             
         else:
