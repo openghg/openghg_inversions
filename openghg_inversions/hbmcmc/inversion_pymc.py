@@ -198,8 +198,10 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
         step2 = pm.Slice(vars=[sig])
         
         trace = pm.sample(nit, tune=int(tune), chains=nchain,
-                          step=[step1,step2], progressbar=verbose, cores=nchain)#step=pm.Metropolis())#  #target_accept=0.8,
-        
+                          step=[step1,step2], 
+                          progressbar=verbose, cores=nchain)#step=pm.Metropolis())#  #target_accept=0.8,
+       
+        print(trace.posterior.keys()) 
         outs = trace.posterior['x'][0, burn:nit]
         bcouts = trace.posterior['xbc'][0, burn:nit]
         sigouts = trace.posterior['sig'][0, burn:nit]
