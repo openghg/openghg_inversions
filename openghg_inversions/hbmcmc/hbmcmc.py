@@ -47,7 +47,7 @@ from openghg_inversions import utils
 
 def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    end_date, outputpath, outputname,
-                   met_model = None, fp_model="NAME",
+                   met_model=None, fp_model="NAME", fp_height=None,
                    xprior={"pdf":"lognormal", "mu":1, "sigma":1},
                    bcprior={"pdf":"lognormal", "mu":0.004, "sigma":0.02},
                    sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
@@ -216,7 +216,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                   f" for {site.upper()} between {start_date} and"
                   f" {end_date} from object store ...\n")
             site_data=get_obs_surface(site=site,
-                                      species=species,
+                                      species=species.lower(),
                                       inlet=inlet[i],
                                       start_date=start_date,
                                       end_date=end_date,
@@ -235,7 +235,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             print(f"Attempting to retrieve {site.upper()} {domain} footprint"
                    " data from object store ...\n")
             get_fps = get_footprint(site=site,
-                                    height=inlet[i],
+                                    height=fp_height[i],
                                     domain=domain,
                                     model=fp_model,
                                     start_date=start_date,
@@ -299,7 +299,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
             for i in check_scales:
                 if isinstance(i, list): rt.extend(flatten(i))
             else:
-                rt.append(j)
+                rt.append(i)
             scales[site]=rt
         else:
             scales[site]=check_scales[0]
