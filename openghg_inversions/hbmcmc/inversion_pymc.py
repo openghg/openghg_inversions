@@ -235,7 +235,7 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, convergence,
                                start_date, end_date, outputname, outputpath,
                                country_unit_prefix,
                                burn, tune, nchain, sigma_per_site,
-                               emissions_name, fp_data=None, 
+                               emissions_name,emissions_start_date=None,emissions_end_date=None,fp_data=None, 
                                basis_directory=None, country_file=None,
                                add_offset=False, rerun_file=None):
 
@@ -410,11 +410,15 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, convergence,
             if emissions_name == None:
                 raise NameError("Emissions name not provided.")
             else:
+                if emissions_start_date is None:
+                    emissions_start_date = start_date
+                    emissions_end_date = end_date
+
                 emds=get_flux(species=species,
                               domain=domain,
                               source=emissions_name[0],
-                              start_date=start_date,
-                              end_date=end_date)
+                              start_date=emissions_start_date,
+                              end_date=emissions_end_date)
 
             emissions_flux = emds.data.flux.values
         flux = scalemap*emissions_flux[:,:,0]

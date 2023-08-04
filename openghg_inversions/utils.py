@@ -218,8 +218,11 @@ class get_country(object):
 
 def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_period,emissions_name,
                                   inlet=None,network=None,instrument=None,fp_model=None,met_model=None,
+                                  fp_height=None,
                                   fp_basis_case=None,bc_basis_case=None,
                                   basis_directory=None,bc_basis_directory=None,
+                                  emissions_start_date=None,emissions_end_date=None,
+                                  bc_start_date=None,bc_end_date=None,
                                   nquadtreebasis=None,outputname=None,filters=None,averagingerror=False,
                                   save_directory=None):
     """
@@ -256,6 +259,8 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
             LPDM used for generating footprints.  
         met_model (str):
             Meteorological model used in the LPDM.
+        fp_height (dict of str):
+            Footprint heights for each site, if different from inlet heights.
         fp_basis_case (str) (optional):
             Name of basis function to use for emissions.
         bc_basis_case (str) (optional):
@@ -266,6 +271,14 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
             Path to directory with basis function files.
         bc_basis_directory (str) (optional):
             Path to directory with boundary condition basis function files.
+        emissions_start_date (str) (optional):
+            Start date of emissions, to allow for older/newer emissions files to be used.
+        emissions_end_date (str) (optional):
+            End date of emissions.
+        bc_start_date (str) (optional):
+            Start date of bcs, to allow for older/newer bc files to be used.
+        bc_end_date (str) (optional):
+            End date of bcs.
         nquadtreebasis (int) (optional):
             Number of basis functions that you want if using quadtree derived
             basis function. This will optimise to closest value that fits with
@@ -305,6 +318,8 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
     footprint_dict={}
     scales={}
     check_scales=[]
+    
+    print(fp_height)
 
     # Get fluxes
     for source in emissions_name:
@@ -312,17 +327,24 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
             print(f"Attempting to retrieve '{source}' fluxes"
                    " from object store ...\n")
 
+            if emissions_start_date == None:
+                emissions_start_date = start_date
+                emissions_end_date = end_date
+
             get_flux_data = get_flux(species=species,
                                      domain=domain,
                                      source=source,
-                                     start_date=start_date,
-                                     end_date=end_date)
+                                     start_date=emissions_start_date,
+                                     end_date=emissions_end_date)
 
             print("Sucessfully retrieved flux file"
-                 f" '{source}' from objectstore.\n")
+                 f" '{source}' from objectstore"
+                 f" for {emissions_start_date} to {emissions_end_date}.\n")
 
             flux_dict[source]=get_flux_data
+            
         except:
+            
             raise FileNotFoundError(f"Flux file '{source}' not found"
                     " in object store. Please add file to object store.")
             
@@ -369,8 +391,14 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
         try:
             print(f"Attempting to retrieve {site.upper()} {domain} footprint"
                    " data from object store ...\n")
+            
+            if fp_height == None:
+                fp_height_search = inlet_search
+            else:
+                fp_height_search = fp_height[site]
+            
             get_fps = get_footprint(site=site,
-                                    height=inlet_search,
+                                    height=fp_height_search,
                                     domain=domain,
                                     model=fp_model,
                                     start_date=start_date,
@@ -387,12 +415,17 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
         try:
             print("Attempting to retrieve boundary condition data"
                   f" between {start_date} to {end_date} from object store ...\n")
+            
+            if bc_start_date == None:
+                bc_start_date = start_date
+                bc_end_date = end_date
+            
             get_bc_data = get_bc(species=species,
                                  domain=domain,
-                                 start_date=start_date,
-                                 end_date=end_date)
+                                 start_date=bc_start_date,
+                                 end_date=bc_end_date) # ADD BACK BC DATES HERE
             print("Successfully retrieved boundary condition data between"
-                  f" {start_date} and {end_date} from object store.\n")
+                  f" {bc_start_date} and {bc_end_date} from object store.\n")
 
             # Divide by trace gas species units
             # See if R+G can include this 'behind the scenes'
