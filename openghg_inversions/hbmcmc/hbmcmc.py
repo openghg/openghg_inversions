@@ -49,7 +49,7 @@ from openghg_inversions import utils
 
 def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    end_date, outputpath, outputname,
-                   met_model = None, fp_model="NAME",
+                   met_model=None, fp_model="NAME", fp_height=None,
                    xprior={"pdf":"lognormal", "mu":1, "sigma":1},
                    bcprior={"pdf":"lognormal", "mu":0.004, "sigma":0.02},
                    sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
@@ -186,7 +186,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     # Change list of sites to upper case equivalent as
     # most acrg functions copied across use upper case notation
     for i, site in enumerate(sites): sites[i]=site.upper()
-    
+      
     if reload_merged_data == True:
         
         merged_data_filename = os.path.join(merged_data_save_directory,f'{outputname}_merged-data.pickle')
