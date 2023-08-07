@@ -61,9 +61,9 @@ import pickle
 import io
 from acrg.obs import read
 from acrg.name import name
-from acrg.name import basis_functions as basis_func
-import mcmc_functions as mcmc
-import isotopes as isotopes
+from openghg_inversions import basis_functions as basis_func
+from openghg_inversions.multi_gas_model import mcmc_functions as mcmc
+from openghg_inversions.multi_gas_model import isotopes as isotopes
 
 def mcmc_input_errors(species,sectors,domain,countrymask,countries,sites,
                       y_sig_mu,y_cov,y_sig_pdf,y_sig_range,y_sig_freq,post_save_dir):

@@ -54,8 +54,8 @@ from copy import deepcopy
 import numpy as np
 import time
 import numba
-import data_functions as data_func
-import isotopes as isotopes
+from openghg_inversions.multi_gas_model import data_functions as data_func
+from openghg_inversions.multi_gas_model import isotopes as isotopes
 
 def y_sig_all(y_sig_index,y_sig_values,y_shape,pymc_inputs=False):
     """
@@ -538,7 +538,7 @@ def mcmc(mcmc_type,species,species_type,sectors_dict,total_iter,sites,
         
             for s,s_name in enumerate(species[1:]):
                 for sector in sectors_dict[s_name]:
-                    if 'uniform' not in R_pdf[s]:
+                    if 'uniform' not in R_pdf[s] and sector is not None:
                         PR_inv[s_name][sector],PR_logdet[s_name][sector] = create_P_inv_logdet(PR[s_name][sector])
                         
         else:

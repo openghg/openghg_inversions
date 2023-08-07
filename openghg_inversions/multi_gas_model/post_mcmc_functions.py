@@ -20,10 +20,10 @@ produce_model_outputs():
 
 import numpy as np
 import xarray as xr
-from acrg import name
+from acrg.name.name import get_country
 from acrg.grid.areagrid import areagrid
-import acrg.convert as convert
-import isotopes as isotopes
+import openghg_inversions.convert as convert
+from openghg_inversions.multi_gas_model import isotopes as isotopes
 import glob
 
 def post_to_latlon(post,basis):
@@ -406,7 +406,7 @@ def produce_model_outputs(n_trace_samples,domain,species,species_type,sectors_di
         countrymask = '/user/home/cv18710/work_shared/LPDM/countries/country-ukmo_EUROPE.nc'
         print(f'\nUsing countrymask: {countrymask}.')
     
-    c_object = name.name.get_country(domain, country_file=countrymask)
+    c_object = get_country(domain, country_file=countrymask)
     countryds = xr.Dataset({'country': (['lat','lon'], c_object.country), 
                             'name' : (['ncountries'],c_object.name) },
                                             coords = {'lat': (c_object.lat),

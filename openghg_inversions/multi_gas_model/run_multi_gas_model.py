@@ -13,9 +13,9 @@ Run from the command line using: python run_multi_gas_model.py 'start_date' 'end
 import os
 os.environ['OPENBLAS_NUM_THREADS']='2'
 os.environ['OMP_NUM_THREADS']='2'
-import config
+from config import config
 import argparse
-from multiple_gas_inverse_model import multi_gas_model
+from openghg_inversions.multi_gas_model import multi_gas_model
 
 from acrg.config.paths import Paths as paths
 data_path = paths.data

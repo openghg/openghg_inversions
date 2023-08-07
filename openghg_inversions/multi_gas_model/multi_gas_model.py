@@ -54,9 +54,9 @@ import version
 from pandas import Timestamp
 import getpass
 
-import data_functions as data_func
-import mcmc_functions as mcmc_func
-import post_mcmc_functions as post_func
+from openghg_inversions.multi_gas_model import data_functions as data_func
+from openghg_inversions.multi_gas_model import mcmc_functions as mcmc_func
+from openghg_inversions.multi_gas_model import post_mcmc_functions as post_func
 
 from openghg_inversions import utils
 
