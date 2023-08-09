@@ -188,6 +188,9 @@ def multi_gas_model(mcmc_type,input_type,new_setup,full_output,data_path,directo
            
         print(f'Will save output to {output_name}.\n')
     
+    print(os.path.join(fp_basis_dir,f'{domain}/{fp_basis_search_name}_{domain}_*.nc'))
+    
+    
     #---------------------------------------------------------------------------------
     # Produce sensitivity matrices or reload -----------------------------------------
     
@@ -230,7 +233,8 @@ def multi_gas_model(mcmc_type,input_type,new_setup,full_output,data_path,directo
                 fp_data_H_all[s_name] = utils.merge_fp_data_flux_bc_openghg(species=s_name,domain=domain,sites=sites[s],start_date=start_date,
                                                                             end_date=end_date,meas_period=meas_period,emissions_name=flux_name[s],
                                 inlet=heights[s],network=network[s],instrument=None,fp_model=None,met_model=None,
-                                fp_basis_case=fp_basis_name,bc_basis_case=bc_basis_name,
+                                fp_basis_case=fp_basis_name,fp_basis_search_name=fp_basis_search_name,fp_basis_savename=fp_basis_savename,
+                                bc_basis_case=bc_basis_name,
                                 basis_directory=fp_basis_dir,bc_basis_directory=bc_basis_dir,
                                 nquadtreebasis=nquadtreebasis,outputname=output_name,filters=filtering_types[s],averagingerror=False,
                                 save_directory=merged_data_dir)
@@ -381,7 +385,7 @@ def multi_gas_model(mcmc_type,input_type,new_setup,full_output,data_path,directo
                             use_bc,xbc_trace,xbc_post,Hbc,
                             R_trace_allsectors,R_post_allsectors,
                             Rbc_trace,Rbc_post,
-                            fp_data_H_prior_all,countrymask,countries)
+                            fp_data_H_prior_all,countrymask,countries,flux_name)
     
     #---------------------------------------------------------------------------------
     # Save outputs -------------------------------------------------------------------

@@ -108,7 +108,7 @@ def quadTreeGrid(grid, limit):
 
 def quadtreebasisfunction(emissions_name, fp_all, sites, 
                           start_date, domain, species, outputname, outputdir=None,
-                          nbasis=100, abs_flux=False):
+                          nbasis=100, abs_flux=False,input_type='openghg'):
     '''
     Creates a basis function with nbasis grid cells using a quadtree algorithm.
     The domain is split with smaller grid cells for regions which contribute
@@ -155,15 +155,25 @@ def quadtreebasisfunction(emissions_name, fp_all, sites,
     if abs_flux:
         print('Using absolute values of flux array')
     if emissions_name == None:
-        flux = np.absolute(fp_all['.flux']['all'].data.flux.values) if abs_flux else fp_all['.flux']['all'].data.flux.values 
+        if input_type != 'openghg':
+            flux = np.absolute(fp_all['.flux']['all'].flux.values) if abs_flux else fp_all['.flux']['all'].values 
+        else:
+            flux = np.absolute(fp_all['.flux']['all'].data.flux.values) if abs_flux else fp_all['.flux']['all'].data.flux.values 
         meanflux = np.squeeze(flux)
     else:
         if isinstance(fp_all[".flux"][emissions_name[0]], dict):
             arr = fp_all[".flux"][emissions_name[0]]
-            flux = np.absolute(arr.data.flux.values) if abs_flux else arr.data.flux.values
+            if input_type != 'openghg':
+                flux = np.absolute(arr.flux.values) if abs_flux else arr.values
+            else:
+                flux = np.absolute(arr.data.flux.values) if abs_flux else arr.data.flux.values
             meanflux = np.squeeze(flux)
         else:
-            flux = np.absolute(fp_all[".flux"][emissions_name[0]].data.flux.values) if abs_flux else \
+            if input_type != 'openghg':
+                flux = np.absolute(fp_all[".flux"][emissions_name[0]].values) if abs_flux else \
+                   fp_all[".flux"][emissions_name[0]].flux.values 
+            else:
+                flux = np.absolute(fp_all[".flux"][emissions_name[0]].data.flux.values) if abs_flux else \
                    fp_all[".flux"][emissions_name[0]].data.flux.values 
             meanflux = np.squeeze(flux)
     meanfp = np.zeros((fp_all[sites[0]].fp.shape[0],fp_all[sites[0]].fp.shape[1]))
@@ -172,6 +182,9 @@ def quadtreebasisfunction(emissions_name, fp_all, sites,
         meanfp += np.sum(fp_all[site].fp.values,axis=2)
         div += fp_all[site].fp.shape[2]
     meanfp /= div
+    
+    print(meanflux.shape)
+    print(meanfp.shape)
     
     if meanflux.shape != meanfp.shape:
         meanflux = np.mean(meanflux, axis=2)

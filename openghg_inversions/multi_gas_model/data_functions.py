@@ -193,13 +193,17 @@ def merge_fp_data_flux_bc(sites,heights,network,species,domain,start_date,end_da
             elif len(glob.glob(os.path.join(fp_basis_dir,domain,f'{fp_basis_search_name}_EUROPE_{start_date[:4]}.nc'))) == 0:
                 print(f'No file named {fp_basis_search_name}*.nc in {fp_basis_dir}, so creating basis function file.')
 
-                basis = basis_func.quadtreebasisfunction(emissions_name=emissions_name,
+                basis_emissions_name = [f'{species}_{s}' for s in sectors]
+                print(basis_emissions_name)
+
+                basis = basis_func.quadtreebasisfunction(emissions_name=basis_emissions_name,
                                                         fp_all=fp_data,sites=sites,
                                                         start_date=start_date,domain=domain,
                                                         species=species,
                                                         outputname=fp_basis_savename,
                                                         outputdir=fp_basis_dir,
-                                                        nbasis=nquadtreebasis)
+                                                        nbasis=nquadtreebasis,
+                                                        input_type='acrg')
     
         fp_data_H = name.fp_sensitivity(fp_and_data=fp_data,domain=domain,
                                             basis_case=fp_basis_case,
@@ -214,6 +218,8 @@ def merge_fp_data_flux_bc(sites,heights,network,species,domain,start_date,end_da
             fp_out.close()
 
             print(f'\n fp_data_H saved in {save_dir}')
+    
+        fp_data_H['inputs_created_with'] = 'acrg'
     
         return fp_data_H     
 
@@ -252,6 +258,8 @@ def merge_fp_data_flux_bc(sites,heights,network,species,domain,start_date,end_da
             fp_out.close()
 
             print(f'\n fp_data_H saved in {save_dir}\n')
+    
+        fp_data_H['inputs_created_with'] = 'acrg'
     
         return fp_data_H
     

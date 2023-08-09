@@ -279,7 +279,8 @@ def produce_model_outputs(n_trace_samples,domain,species,species_type,sectors_di
                          use_bc=True,xbc_trace=None,xbc_post=None,Hbc=None,
                          R_trace_allsectors=None,R_post_allsectors=None,
                          Rbc_trace=None,Rbc_post=None,
-                         fp_data_H_prior_all=None,countrymask=None,countries=None):
+                         fp_data_H_prior_all=None,countrymask=None,countries=None,
+                         flux_name=None):
     """
     Processes posterior PDFs from a MCMC run into posterior fluxes, countryfluxes and 
     modelled observations.
@@ -387,13 +388,21 @@ def produce_model_outputs(n_trace_samples,domain,species,species_type,sectors_di
     
     flux_apriori,flux_post_mu = {sp:{} for sp in species},{sp:{} for sp in species}
     
-    for s_name in species:
-        for sector_name in sectors_dict[s_name]:
-            
+    for s,s_name in enumerate(species):
+        for sector,sector_name in enumerate(sectors_dict[s_name]):
+
             if fp_data_H_prior_all[s_name] is not None:
-                flux_apriori[s_name][sector_name] = fp_data_H_prior_all[s_name]['.flux'][f'{s_name}_{sector_name}'].flux.values[:,:,0]
+                if fp_data_H_prior_all[s_name]['inputs_created_with'] == 'openghg':
+                    flux_index = f'{flux_name[s][sector]}'
+                elif fp_data_H_prior_all[s_name]['inputs_created_with'] == 'acrg':
+                    flux_index = f'{s_name}_{sector_name}'
+                flux_apriori[s_name][sector_name] = fp_data_H_prior_all[s_name]['.flux'][flux_index].flux.values[:,:,0]
             else:
-                flux_apriori[s_name][sector_name] = fp_data_H_all[s_name]['.flux'][f'{s_name}_{sector_name}'].flux.values[:,:,0]
+                if fp_data_H_all[s_name]['inputs_created_with'] == 'openghg':
+                    flux_index = f'{flux_name[s][sector]}'
+                elif fp_data_H_all[s_name]['inputs_created_with'] == 'acrg':
+                    flux_index = f'{s_name}_{sector_name}'
+                flux_apriori[s_name][sector_name] = fp_data_H_all[s_name]['.flux'][flux_index].flux.values[:,:,0]
             if sector_name is not None:
                 flux_post_mu[s_name][sector_name] = x_post_mu_latlon[sector_name] * flux_apriori[s_name][sector_name]
             

@@ -218,7 +218,8 @@ class get_country(object):
 
 def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_period,emissions_name,
                                   inlet=None,network=None,instrument=None,fp_model=None,met_model=None,
-                                  fp_basis_case=None,bc_basis_case=None,
+                                  fp_basis_case=None,bc_basis_case=None,fp_basis_search_name=None,
+                                  fp_basis_savename=None,
                                   basis_directory=None,bc_basis_directory=None,
                                   nquadtreebasis=None,outputname=None,filters=None,averagingerror=False,
                                   save_directory=None):
@@ -258,6 +259,10 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
             Meteorological model used in the LPDM.
         fp_basis_case (str) (optional):
             Name of basis function to use for emissions.
+        fp_basis_search_name (str) (optional):
+            String used to search for or save quadtree basis files.
+        fp_basis_savename (str) (optional):
+            Save name for newly created quadtree basis function files.
         bc_basis_case (str) (optional):
             Name of basis case type for boundary conditions (NOTE, I don't
             think that currently you can do anything apart from scaling NSEW
@@ -462,6 +467,8 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
                                          inlet=inlet,
                                          instrument=instrument)
 
+    dateout = f'{start_date[:4]}{start_date[5:7]}{start_date[8:10]}'
+
      # Create quadtree basis func file if it doesn't exist
     if nquadtreebasis is not None:
         
@@ -475,8 +482,8 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
         else:
             print(f'Using a quadtree basis functions with {nquadtreebasis} cells.')
             
-            if len(glob.glob(os.path.join(basis_directory,domain,f'quadtree_{species}-{nquadtreebasis}-{outputname}*.nc'))) == 0:
-                print(f'No file named quadtree_{species}-{nquadtreebasis}-{outputname}*.nc in {basis_directory}, so creating basis function file.')
+            if len(glob.glob(os.path.join(basis_directory,domain,f'{fp_basis_search_name}*.nc'))) == 0:
+                print(f'No file named {fp_basis_search_name}*.nc in {basis_directory}, so creating basis function file.')
                 
                 tempdir = basis_functions.quadtreebasisfunction(emissions_name,
                                                   fp_all,
@@ -484,11 +491,12 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
                                                   start_date,
                                                   domain,
                                                   species,
-                                                  f'{nquadtreebasis}-{outputname}',
+                                                  fp_basis_savename,
                                                   basis_directory,
                                                   nbasis=nquadtreebasis)
                 
-            fp_basis_case = f"quadtree_{species}-{nquadtreebasis}-{outputname}"
+            #fp_basis_case = f"quadtree_{species}-{nquadtreebasis}-{dateout}-{outputname}"
+            fp_basis_case = fp_basis_search_name
             
     if type(emissions_name) == list:
         fp_basis_case_all = {}
@@ -508,7 +516,7 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
                                    bc_basis_directory=bc_basis_directory)
 
     # Apply named filters to the data
-    if filters is not None:
+    if filters is not None and all(i is None for i in filters) == False:
         fp_data = filtering(fp_data, filters)
 
     for site in sites:
@@ -518,6 +526,8 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
         fp_data['.flux'][k] = fp_data['.flux'][k].data
         
     fp_data['.bc'] = fp_data['.bc'].data
+    
+    fp_data['inputs_created_with'] = 'openghg'
     
     if remove_basis_dir == True:
         shutil.rmtree(tempdir)
