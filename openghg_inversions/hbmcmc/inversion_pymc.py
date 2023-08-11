@@ -8,7 +8,7 @@
 #   Functions for performing MCMC inversion.
 #   PyMC library used for Bayesian modelling. Updated from PyMc3
 # *****************************************************************************
-
+import re
 import numpy as np
 import pymc as pm
 import pandas as pd
