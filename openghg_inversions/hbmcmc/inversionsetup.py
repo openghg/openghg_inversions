@@ -64,19 +64,31 @@ def addaveragingerror(fp_all, sites, species, start_date, end_date, meas_period,
     '''
     #Add variability in measurement averaging period to repeatability 
     for i, site in enumerate(sites):
+        
+        if inlet is not None:
+            inlet_search = inlet[i]
+        else:
+            inlet_search = None
+            
+        if instrument is not None:
+            instrument_search = instrument[i]
+        else:
+            instrument_search = None
+            
         get_obs = get_obs_surface(site=site,
                                   species=species,
-                                  inlet=inlet[i],
-                                  instrument=instrument[i],
+                                  inlet=inlet_search,
+                                  instrument=instrument_search,
                                   average=meas_period[i],
                                   start_date=start_date,
                                   end_date=end_date)
-
+        
         sitedataerr=pd.DataFrame(get_obs.data.mf, index=get_obs.data.time.values)
-
+        
         if min(sitedataerr.index) > pd.to_datetime(start_date):
             sitedataerr.loc[pd.to_datetime(start_date)]= \
                 [np.nan for col in sitedataerr.columns]
+                
         # Pad with an empty entry at the end date
         if max(sitedataerr.index) < pd.to_datetime(end_date):
             sitedataerr.loc[pd.to_datetime(end_date)] = \
