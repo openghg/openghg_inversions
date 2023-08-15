@@ -318,8 +318,6 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
     footprint_dict={}
     scales={}
     check_scales=[]
-    
-    print(fp_height)
 
     # Get fluxes
     for source in emissions_name:

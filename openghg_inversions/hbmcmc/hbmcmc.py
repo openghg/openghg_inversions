@@ -191,7 +191,8 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     
     if reload_merged_data == True:
         
-        merged_data_filename = os.path.join(merged_data_save_directory,f'{outputname}_merged-data.pickle')
+        merged_data_filename = os.path.join(merged_data_save_directory,
+                                            f'{outputname}_{start_date[:4]}{start_date[5:7]}{start_date[8:10]}_merged-data.pickle')
         print(f'Attempting to read in merged data from: {merged_data_filename}...\n')
         
         if exists(merged_data_filename) == True:
@@ -222,10 +223,10 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
 													basis_directory=basis_directory,bc_basis_directory=bc_basis_directory,
                                                     emissions_start_date=emissions_start_date,emissions_end_date=emissions_end_date,
                                                     bc_start_date=bc_start_date,bc_end_date=bc_end_date,
-													nquadtreebasis=nquadtreebasis,outputname=outputname,
+													nquadtreebasis=nquadtreebasis,
+             outputname=f'{outputname}_{start_date[:4]}{start_date[5:7]}{start_date[8:10]}',
 													filters=filters,averagingerror=averagingerror,
 													save_directory=merged_data_save_directory)
- 
     # Get inputs ready
     error = np.zeros(0)
     Hbc = np.zeros(0)
