@@ -8,7 +8,7 @@
 #   Functions for performing MCMC inversion.
 #   PyMC library used for Bayesian modelling. Updated from PyMc3
 # *****************************************************************************
-
+import re
 import numpy as np
 import pymc as pm
 import pandas as pd
@@ -198,8 +198,10 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
         step2 = pm.Slice(vars=[sig])
         
         trace = pm.sample(nit, tune=int(tune), chains=nchain,
-                          step=[step1,step2], progressbar=verbose, cores=nchain)#step=pm.Metropolis())#  #target_accept=0.8,
-        
+                          step=[step1,step2], 
+                          progressbar=verbose, cores=nchain)#step=pm.Metropolis())#  #target_accept=0.8,
+       
+        print(trace.posterior.keys()) 
         outs = trace.posterior['x'][0, burn:nit]
         bcouts = trace.posterior['xbc'][0, burn:nit]
         sigouts = trace.posterior['sig'][0, burn:nit]
@@ -598,9 +600,19 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, convergence,
         outds.attrs['Date created'] = str(pd.Timestamp('today'))
         outds.attrs['Convergence'] = convergence
         outds.attrs['Repository version'] = code_version()
-        
+
+        # variables with variable length data types shouldn't be compressed
+        # e.g. object ("O") or unicode ("U") type
+        do_not_compress = []
+        dtype_pat = re.compile(r"[<>=]?[UO]")  # regex for Unicode and Object dtypes
+        for dv in outds.data_vars:
+            if dtype_pat.match(outds[dv].data.dtype.str):
+                do_not_compress.append(dv)
+
+        # setting compression levels for data vars in outds
         comp = dict(zlib=True, complevel=5)
-        encoding = {var: comp for var in outds.data_vars}
+        encoding = {var: comp for var in outds.data_vars if var not in do_not_compress}
+
         output_filename = define_output_filename(outputpath,species,domain,outputname,start_date,ext=".nc")
         Path(outputpath).mkdir(parents=True, exist_ok=True)
         outds.to_netcdf(output_filename, encoding=encoding, mode="w")

@@ -79,6 +79,7 @@ def addaveragingerror(fp_all, sites, species, start_date, end_date, meas_period,
                                   species=species,
                                   inlet=inlet_search,
                                   instrument=instrument_search,
+                                  average=meas_period[i],
                                   start_date=start_date,
                                   end_date=end_date)
         
