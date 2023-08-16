@@ -56,9 +56,9 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    offsetprior={"pdf":"normal", "mu":0, "sd":1},
                    nit=2.5e5, burn=50000, tune=1.25e5, nchain=2,
                    emissions_name=None, inlet=None, instrument=None, network=None,
-                   fp_height=None,
                    fp_basis_case=None, basis_directory=None, bc_basis_case="NESW",
                    bc_basis_directory=None,country_file=None,
+                   obs_dir=None,fp_dir=None,flux_dir=None,
                    max_level=None,nquadtreebasis=100,
                    filters=[],
                    averagingerror=True, bc_freq=None, sigma_freq=None, sigma_per_site=True,
@@ -214,19 +214,20 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
     if rerun_data_merge == True:
         
         fp_data = utils.merge_fp_data_flux_bc_openghg(species=species,domain=domain,sites=sites,
-													start_date=start_date,end_date=end_date,
-													meas_period=meas_period,emissions_name=emissions_name,
-													inlet=inlet,network=network,instrument=instrument,
-													fp_model=fp_model,met_model=met_model,
+                                                    start_date=start_date,end_date=end_date,
+                                                    meas_period=meas_period,emissions_name=emissions_name,
+                                                    inlet=inlet,network=network,instrument=instrument,
+                                                    fp_model=fp_model,met_model=met_model,
                                                     fp_height=fp_height,
-													fp_basis_case=fp_basis_case,bc_basis_case=bc_basis_case,
-													basis_directory=basis_directory,bc_basis_directory=bc_basis_directory,
+                                                    fp_basis_case=fp_basis_case,bc_basis_case=bc_basis_case,
+                                                    basis_directory=basis_directory,bc_basis_directory=bc_basis_directory,
                                                     emissions_start_date=emissions_start_date,emissions_end_date=emissions_end_date,
                                                     bc_start_date=bc_start_date,bc_end_date=bc_end_date,
-													nquadtreebasis=nquadtreebasis,
-             outputname=f'{outputname}_{start_date[:4]}{start_date[5:7]}{start_date[8:10]}',
-													filters=filters,averagingerror=averagingerror,
-													save_directory=merged_data_save_directory)
+                                                    nquadtreebasis=nquadtreebasis,
+            outputname=f'{outputname}_{start_date[:4]}{start_date[5:7]}{start_date[8:10]}',
+                                                    filters=filters,averagingerror=averagingerror,
+                                                    save_directory=merged_data_save_directory)
+        
     # Get inputs ready
     error = np.zeros(0)
     Hbc = np.zeros(0)

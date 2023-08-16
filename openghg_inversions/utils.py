@@ -326,8 +326,7 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
                    " from object store ...\n")
 
             if emissions_start_date == None:
-                emissions_start_date = start_date
-                emissions_end_date = end_date
+                emissions_end_date = None
 
             get_flux_data = get_flux(species=species,
                                      domain=domain,
@@ -415,8 +414,7 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
                   f" between {start_date} to {end_date} from object store ...\n")
             
             if bc_start_date == None:
-                bc_start_date = start_date
-                bc_end_date = end_date
+                bc_end_date = None #end_date
             
             get_bc_data = get_bc(species=species,
                                  domain=domain,
