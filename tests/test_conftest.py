@@ -1,4 +1,3 @@
-from openghg.objectstore._local_store import read_local_config
 from openghg.retrieve import search
 
 
@@ -8,6 +7,7 @@ def test_default_session_fixture():
 
     <location of inversions>/openghg_inversions/tests/data/test_store
     """
+    from openghg.objectstore._local_store import read_local_config
     conf = read_local_config()
 
     assert conf
