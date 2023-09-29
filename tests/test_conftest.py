@@ -5,18 +5,18 @@ def test_default_session_fixture():
     """The default session fixture should mock `read_local_config`
     so that the object store path is set to:
 
-    <location of inversions>/openghg_inversions/tests/data/test_store
+    <temp dir>/openghg_inversions_testing_store
     """
     from openghg.objectstore._local_store import read_local_config
     conf = read_local_config()
 
     assert conf
-    assert 'inversions_tests' in conf['object_store'].keys()
-    assert 'openghg_inversions/tests/data/test_store' in conf['object_store']['inversions_tests']['path']
+    assert 'inversions_tests' in conf['object_store']
+    assert 'openghg_inversions_testing_store' in conf['object_store']['inversions_tests']['path']
 
 
 def test_obs_in_test_store():
-    results = search(site='tac', species='ch4', data_type='surface')
+    results = search(site='tac', species='ch4', data_type='surface', store="inversions_tests")
     assert results
 
 
