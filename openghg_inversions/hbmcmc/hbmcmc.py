@@ -368,6 +368,7 @@ def fixedbasisMCMC(
         )
 
     # Create basis function using quadtree algorithm if needed
+    tempdir = None
     if quadtree_basis:
         if fp_basis_case != None:
             print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
@@ -504,7 +505,7 @@ def fixedbasisMCMC(
         add_offset=add_offset,
     )
 
-    if quadtree_basis is True and save_quadtree_to_outputpath is False:
+    if tempdir and quadtree_basis is True and save_quadtree_to_outputpath is False:
         # remove the temporary basis function directory
         delete = True
         if not os.path.dirname(tempdir).startswith("Temp_"):
