@@ -504,9 +504,17 @@ def fixedbasisMCMC(
         add_offset=add_offset,
     )
 
-    if quadtree_basis is True:
+    if quadtree_basis is True and save_quadtree_to_outputpath is False:
         # remove the temporary basis function directory
-        shutil.rmtree(tempdir)
+        delete = True
+        if not os.path.dirname(tempdir).startswith("Temp_"):
+            delete = False
+        for _, _, files in os.walk(tempdir):
+            for file in files:
+                if not file.startswith("quadtree"):
+                    delete = False
+        if delete:
+            shutil.rmtree(tempdir)
 
     print("---- Inversion completed ----")
 
