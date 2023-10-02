@@ -10,7 +10,7 @@ from openghg.standardise import standardise_surface, standardise_bc, standardise
 from openghg.retrieve import search
 
 raw_data_path = Path().resolve() / "tests/data/"
-inversions_test_store_path = Path(tempfile.gettempdir(), "openghg_inversions_testing_store_123456")
+inversions_test_store_path = Path(tempfile.gettempdir(), "openghg_inversions_testing_store")
 
 
 @pytest.fixture(scope="session", autouse=True)
