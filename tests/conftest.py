@@ -60,6 +60,15 @@ data_info = {
 
 @pytest.fixture(scope="session", autouse=True)
 def session_object_store(session_config_mocker) -> None:
+    """Add data to test object.
+
+    Check first if there is enough data. A more specific
+    check for the data necessary for testing is carried out
+    in "test_conftest.py".
+
+    This fixture depends on `sesson_config_mocker` to make sure
+    that `session_config_mocker` runs first.
+    """
     add_data = False  # flag, True if data needs to be added
 
     try:
