@@ -1,3 +1,7 @@
+# OpenGHG inversions specific
+bc_basis_functions/
+countries/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

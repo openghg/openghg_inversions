@@ -1,16 +1,19 @@
 from pathlib import Path
+import shutil
 import tempfile
 from typing import Iterator
 from unittest.mock import patch
-from openghg.types import ObjectStoreError
 
 import pytest
 
-from openghg.standardise import standardise_surface, standardise_bc, standardise_flux, standardise_footprint
 from openghg.retrieve import search
+from openghg.standardise import standardise_surface, standardise_bc, standardise_flux, standardise_footprint
+from openghg.types import ObjectStoreError
 
-raw_data_path = Path().resolve() / "tests/data/"
+raw_data_path = Path(".").resolve() / "tests/data/"
 inversions_test_store_path = Path(tempfile.gettempdir(), "openghg_inversions_testing_store")
+bc_basis_function_path = Path(".").resolve() / "bc_basis_functions"
+countries_path = Path(".").resolve() / "countries"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -94,3 +97,24 @@ def session_object_store(session_config_mocker) -> None:
             metadata = data_info[dtype][1]
             metadata["store"] = "inversions_tests"
             standardise_fn(file_path, **metadata)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def session_ancilliary_files() -> None:
+    # Add bc basis function file
+    if not bc_basis_function_path.exists():
+        bc_basis_function_path.mkdir()
+    if not (bc_basis_function_path / "EUROPE").exists():
+        (bc_basis_function_path / "EUROPE").mkdir()
+
+    # copy basis file into default location if there isn't a file with the same name there
+    if not (bc_basis_function_path / "EUROPE" / "NESW_EUROPE_2019.nc").exists():
+        shutil.copy((raw_data_path / "bc_basis_NESW_EUROPE_2019.nc"), (bc_basis_function_path / "EUROPE" / "NESW_EUROPE_2019.nc"))
+
+    # Add country file
+    if not countries_path.exists():
+        countries_path.mkdir()
+
+    # copy country file into default location if there isn't a file with the same name there
+    if not (countries_path / "country_EUROPE.nc").exists():
+        shutil.copy((raw_data_path / "country_EUROPE.nc"), (countries_path / "country_EUROPE.nc"))
