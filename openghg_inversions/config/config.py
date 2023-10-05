@@ -188,7 +188,7 @@ def str_check(string,error=True):
     '''
     
     # Remove any ' or " symbols surrounding the input string from the config_file
-
+    
     string = string.strip() # Strip any whitespace just in case
     if (string[0] == "'" and string[-1] == "'"):
         string = string[1:-1]

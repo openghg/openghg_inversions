@@ -219,12 +219,12 @@ class get_country(object):
 def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_period,emissions_name,
                                   inlet=None,network=None,instrument=None,fp_model=None,met_model=None,
                                   fp_height=None,
-                                  fp_basis_case=None,bc_basis_case=None,
+                                  fp_basis_case=None,fp_basis_search_name=None,bc_basis_case=None,
                                   basis_directory=None,bc_basis_directory=None,
                                   emissions_start_date=None,emissions_end_date=None,
-                                  bc_start_date=None,bc_end_date=None,
+                                  bc_start_date=None,bc_end_date=None,bc_input=None,
                                   nquadtreebasis=None,outputname=None,filters=None,averagingerror=False,
-                                  save_directory=None):
+                                  save_directory=None,save_name=None):
     """
     Extracts observations, fluxes, footprints and boundary conditions
     for given time period using openghg.retrieve.
@@ -335,8 +335,7 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
                                      end_date=emissions_end_date)
 
             print("Sucessfully retrieved flux file"
-                 f" '{source}' from objectstore"
-                 f" for {emissions_start_date} to {emissions_end_date}.\n")
+                 f" '{source}' from objectstore.\n")
 
             flux_dict[source]=get_flux_data
             
@@ -419,7 +418,8 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
             get_bc_data = get_bc(species=species,
                                  domain=domain,
                                  start_date=bc_start_date,
-                                 end_date=bc_end_date) # ADD BACK BC DATES HERE
+                                 end_date=bc_end_date,
+                                 bc_input=bc_input) # ADD BACK BC DATES HERE
             print("Successfully retrieved boundary condition data between"
                   f" {bc_start_date} and {bc_end_date} from object store.\n")
 
@@ -497,15 +497,18 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
         if fp_basis_case != None:
             print(f"Basis case {fp_basis_case} supplied but nquadtreebasis set to non zero value.")
             print(f"Assuming you want to use {fp_basis_case}.")
-            if len(glob.glob(os.path.join(basis_directory,domain,f'{fp_basis_case}*_{domain}*.nc'))) == 0:
+            fp_basis_search_name = fp_basis_case
+            if len(glob.glob(os.path.join(basis_directory,domain,f'{fp_basis_search_name}*.nc'))) == 0:
                 print(f"Cannot find fp basis file {fp_basis_case} in {basis_directory}.")
-                print("Expecting fp_basis_case filenames of format fp_basis_case*_domain*.nc\n")
+                print("Expecting fp_basis_case filenames of format fp_basis_case*.nc\n")
             
         else:
             print(f'Using a quadtree basis functions with {nquadtreebasis} cells.')
-            
-            if len(glob.glob(os.path.join(basis_directory,domain,f'quadtree_{species}-{nquadtreebasis}-{outputname}*.nc'))) == 0:
-                print(f'No file named quadtree_{species}-{nquadtreebasis}-{outputname}*.nc in {basis_directory}, so creating basis function file.')
+            if fp_basis_search_name is None:
+                fp_basis_search_name = f'{species}_{nquadtreebasis}_{domain}_{outputname}'
+            if len(glob.glob(os.path.join(basis_directory,domain,f'*{fp_basis_search_name}*.nc'))) == 0:
+                
+                print(f'No file named {fp_basis_search_name}*.nc in {basis_directory}, so creating basis function file.')
                 
                 tempdir = basis_functions.quadtreebasisfunction(emissions_name,
                                                   fp_all,
@@ -513,11 +516,11 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
                                                   start_date,
                                                   domain,
                                                   species,
-                                                  f'{nquadtreebasis}-{outputname}',
+                                                  outputname,
                                                   basis_directory,
                                                   nbasis=nquadtreebasis)
                 
-            fp_basis_case = f"quadtree_{species}-{nquadtreebasis}-{outputname}"
+            fp_basis_case = f'*{fp_basis_search_name}*'
             
     if type(emissions_name) == list:
         fp_basis_case_all = {}
@@ -525,6 +528,8 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
             fp_basis_case_all[i] = fp_basis_case
     else:
         fp_basis_case_all = fp_basis_case
+        
+    print(fp_basis_case_all)
 
     fp_data = fp_sensitivity(fp_all,
                                    domain=domain,
@@ -552,7 +557,7 @@ def merge_fp_data_flux_bc_openghg(species,domain,sites,start_date,end_date,meas_
         shutil.rmtree(tempdir)
         
     if save_directory is not None:
-        fp_out = open(save_directory+outputname+'_merged-data.pickle','wb')
+        fp_out = open(save_directory+save_name+'.pickle','wb')
         pickle.dump(fp_data,fp_out)
         fp_out.close()
 
@@ -585,7 +590,8 @@ def filtering(datasets_in, filters, keep_missing=False):
             "nighttime"         : Only b/w 23:00 - 03:00 inclusive
             "noon"              : Only 12:00 fp and obs used
             "daily_median"      : calculates the daily median
-            "pblh_gt_threshold" : 
+            "pblh"              : removes data points when pblh is within 100m of the obs height
+            "intem_selection"   : Uses and InTEM obs selection file to filter the data 
             "local_influence"   : Only keep times when localness is low
             "six_hr_mean"       :
             "local_lapse"       :
@@ -710,7 +716,7 @@ def filtering(datasets_in, filters, keep_missing=False):
         else:
             lr = dataset.local_ratio
 
-        pc = 0.1
+        pc = 0.5
         ti = [i for i, local_ratio in enumerate(lr) if local_ratio <= pc]
         if keep_missing is True:
             mf_data_array = dataset.mf
@@ -726,12 +732,73 @@ def filtering(datasets_in, filters, keep_missing=False):
         else:
             return dataset[dict(time = ti)]
 
+    def pblh(dataset,keep_missing=False):
+        '''
+        Subset for times when observations are taken at a height more than
+        50m away from (above or below) the PBLH.
+        '''
+
+        ti = [i for i,pblh in enumerate(dataset.PBLH) if np.abs(float(dataset.inlet_height_magl) - pblh) > 50.]
+        
+        if len(ti) != 0:
+
+            if keep_missing is True:
+                mf_data_array = dataset.mf
+                dataset_temp = dataset.drop('mf')
+
+                dataarray_temp = mf_data_array[dict(time = ti)]
+
+                mf_ds = xr.Dataset({'mf': (['time'], dataarray_temp)},
+                                    coords = {'time' : (dataarray_temp.coords['time'])})
+
+                dataset_out = combine_datasets(dataset_temp, mf_ds, method=None)
+                return dataset_out
+            else:
+                return dataset[dict(time = ti)]
+            
+        else:
+            print('PBLH filtering removed all datapoints so this filter is not applied to this site.')
+            return dataset
+
+    def intem_selection(dataset,site,keep_missing=False):
+        '''
+        Subset for times selected by InTEM.
+        '''
+        
+        year = str(dataset.time.values[0])[:4]
+        dataset_time = dataset.time.values
+        
+        obs_selection_dir = '/user/home/cv18710/work/LPDM/intem_obs_selection/'
+        obs_selection_file = glob.glob(os.path.join(obs_selection_dir,f'{site}_intem-selection_{year}*.nc'))[0]
+        print(f'Reading obs selection from {obs_selection_file}')
+        
+        with xr.open_dataset(obs_selection_file) as f:
+            selection = f['selection'].values
+            selection_time = f.time.values
+        
+        ti = [i for i,time in enumerate(dataset_time) if selection[np.where(selection_time == time)] == 1]
+        
+        if keep_missing is True:
+            mf_data_array = dataset.mf
+            dataset_temp = dataset.drop('mf')
+
+            dataarray_temp = mf_data_array[dict(time = ti)]
+
+            mf_ds = xr.Dataset({'mf': (['time'], dataarray_temp)},
+                                coords = {'time' : (dataarray_temp.coords['time'])})
+
+            dataset_out = combine_datasets(dataset_temp, mf_ds, method=None)
+            return dataset_out
+        else:
+            return dataset[dict(time = ti)]
 
     filtering_functions={"daily_median":daily_median,
                          "daytime":daytime,
                          "daytime9to5":daytime9to5,
                          "nighttime":nighttime,
                          "noon":noon,
+			            "pblh":pblh,
+                        "intem_selection":intem_selection,
                          "local_influence":local_influence,
                          "six_hr_mean":six_hr_mean}
 
@@ -742,7 +809,7 @@ def filtering(datasets_in, filters, keep_missing=False):
     for site in sites:
         n_unfiltered = datasets[site].mf.values.shape[0]
         for filt in filters:
-            if filt == "daily_median" or filt == "six_hr_mean":
+            if filt == "daily_median" or filt == "six_hr_mean" or filt == 'pblh':
                 datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
             else:
                 datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
@@ -825,7 +892,7 @@ def basis(domain, basis_case, basis_directory = None):
             os.makedirs(os.path.join(openghginv_path, 'basis_functions/'))
         basis_directory = os.path.join(openghginv_path, 'basis_functions/')
 
-    file_path = os.path.join(basis_directory,domain,f"{basis_case}_{domain}*.nc")
+    file_path = os.path.join(basis_directory,domain,f"{basis_case}*.nc")
     files = sorted(glob.glob(file_path))
 
     if len(files) == 0:
@@ -1325,7 +1392,7 @@ def fp_sensitivity(fp_and_data, domain, basis_case,
             else:
                 print("Warning: Using basis functions without a region dimension may be deprecated shortly.")
 
-                site_bf = combine_datasets(site_bf,basis_func, method='ffill')
+                site_bf = combine_datasets(site_bf,basis_func, method='nearest')
 
                 H = np.zeros((int(np.max(site_bf.basis)),len(site_bf.time)))
 

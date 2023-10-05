@@ -56,7 +56,7 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                    offsetprior={"pdf":"normal", "mu":0, "sd":1},
                    nit=2.5e5, burn=50000, tune=1.25e5, nchain=2,
                    emissions_name=None, inlet=None, instrument=None, network=None,
-                   fp_basis_case=None, basis_directory=None, bc_basis_case="NESW",
+                   fp_basis_case=None, basis_directory=None, bc_input=None,bc_basis_case="NESW",
                    bc_basis_directory=None,country_file=None,
                    obs_dir=None,fp_dir=None,flux_dir=None,
                    max_level=None,nquadtreebasis=100,
@@ -191,8 +191,9 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
       
     if reload_merged_data == True:
         
+        merged_data_savename = f'{species}_{start_date[:4]}{start_date[5:7]}{start_date[8:10]}_{outputname}'
         merged_data_filename = os.path.join(merged_data_save_directory,
-                                            f'{outputname}_{start_date[:4]}{start_date[5:7]}{start_date[8:10]}_merged-data.pickle')
+                                            f'{merged_data_savename}.pickle')
         print(f'Attempting to read in merged data from: {merged_data_filename}...\n')
         
         if exists(merged_data_filename) == True:
@@ -219,14 +220,15 @@ def fixedbasisMCMC(species, sites, domain, meas_period, start_date,
                                                     inlet=inlet,network=network,instrument=instrument,
                                                     fp_model=fp_model,met_model=met_model,
                                                     fp_height=fp_height,
-                                                    fp_basis_case=fp_basis_case,bc_basis_case=bc_basis_case,
+                                                    fp_basis_case=fp_basis_case,
+                                                    bc_basis_case=bc_basis_case,
                                                     basis_directory=basis_directory,bc_basis_directory=bc_basis_directory,
                                                     emissions_start_date=emissions_start_date,emissions_end_date=emissions_end_date,
-                                                    bc_start_date=bc_start_date,bc_end_date=bc_end_date,
+                                                    bc_start_date=bc_start_date,bc_end_date=bc_end_date,bc_input=bc_input,
                                                     nquadtreebasis=nquadtreebasis,
-            outputname=f'{outputname}_{start_date[:4]}{start_date[5:7]}{start_date[8:10]}',
+            outputname=f'{start_date[:4]}{start_date[5:7]}{start_date[8:10]}_{outputname}',
                                                     filters=filters,averagingerror=averagingerror,
-                                                    save_directory=merged_data_save_directory)
+                                                    save_directory=merged_data_save_directory,save_name=merged_data_savename)
         
     # Get inputs ready
     error = np.zeros(0)

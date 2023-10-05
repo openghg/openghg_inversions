@@ -413,8 +413,7 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, convergence,
                 raise NameError("Emissions name not provided.")
             else:
                 if emissions_start_date is None:
-                    emissions_start_date = start_date
-                    emissions_end_date = end_date
+                    emissions_end_date = None
 
                 emds=get_flux(species=species,
                               domain=domain,

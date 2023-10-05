@@ -212,10 +212,10 @@ def quadtreebasisfunction(emissions_name, fp_all, sites,
         tempdir = os.path.join(cwd,f"Temp_{str(uuid.uuid4())}")
         os.mkdir(tempdir)    
         os.mkdir(os.path.join(tempdir,f"{domain}/"))
-        newds.to_netcdf(os.path.join(tempdir,domain,f"quadtree_{species}-{outputname}_{domain}_{start_date.split('-')[0]}.nc"), mode='w')
+        newds.to_netcdf(os.path.join(tempdir,domain,f"quadtree_{species}_{nbasis}_{domain}_{outputname}.nc"), mode='w')
         return tempdir
     else:
         basisoutpath = os.path.join(outputdir,domain)
         if not os.path.exists(basisoutpath):
             os.makedirs(basisoutpath)
-        newds.to_netcdf(os.path.join(basisoutpath,f"quadtree_{species}-{outputname}_{domain}_{start_date.split('-')[0]}.nc"), mode='w')
+        newds.to_netcdf(os.path.join(basisoutpath,f"quadtree_{species}_{nbasis}_{domain}_{outputname}.nc"), mode='w')
