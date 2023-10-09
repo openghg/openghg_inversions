@@ -28,10 +28,9 @@ def fixedbasisMCMC(
     basis_directory=None,
     bc_basis_case="NESW",
     bc_basis_directory=None,
-    country_file=None,
-    max_level=None,
     quadtree_basis=True,
     nbasis=100,
+    save_quadtree_to_outputpath=False,
     filters=[],
     averagingerror=True,
     bc_freq=None,
@@ -322,13 +321,26 @@ def fixedbasisMCMC(
         )
 
     # Create basis function using quadtree algorithm if needed
+    tempdir = None
     if quadtree_basis:
         if fp_basis_case != None:
             print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
             print("Assuming you want to use %s " % fp_basis_case)
         else:
+            if save_quadtree_to_outputpath:
+                outputdir = outputpath
+            else:
+                outputdir = None
             tempdir = basis.quadtreebasisfunction(
-                emissions_name, fp_all, sites, start_date, domain, species, outputname, nbasis=nbasis
+                emissions_name,
+                fp_all,
+                sites,
+                start_date,
+                domain,
+                species,
+                outputname,
+                outputdir=outputdir,
+                nbasis=nbasis,
             )
 
             fp_basis_case = "quadtree_" + species + "-" + outputname
