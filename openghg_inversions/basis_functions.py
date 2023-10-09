@@ -219,3 +219,4 @@ def quadtreebasisfunction(emissions_name, fp_all, sites,
         if not os.path.exists(basisoutpath):
             os.makedirs(basisoutpath)
         newds.to_netcdf(os.path.join(basisoutpath,f"quadtree_{species}-{outputname}_{domain}_{start_date.split('-')[0]}.nc"), mode='w')
+        return outputdir
