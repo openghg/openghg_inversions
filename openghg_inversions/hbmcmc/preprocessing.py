@@ -200,7 +200,7 @@ def get_combined_data(
             if max(site_data_series.index) < pd.to_datetime(end_date):
                 site_data_series[pd.to_datetime(end_date)] = np.nan
 
-            averaging_error[site] = xr.DataArray(site_data_series.resample(average).std(ddof=1).dropna().values)
+            averaging_error[site] = xr.DataArray.from_series(site_data_series.resample(average).std(ddof=1).dropna().values)
         else:
             averaging_error[site] = xr.zeros_like(Y_error[site])
 
