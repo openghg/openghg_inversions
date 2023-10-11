@@ -163,7 +163,7 @@ def get_combined_data(
 
         # create Y error vector and store averaging error.
         if "mf_repeatability" in scenario_combined:
-            err_temp = scenario_combined.mf_repeatability.values
+            err_temp = scenario_combined.mf_repeatability
 
             # If site contains measurement errors given as repeatability and variability,
             # use variability to replace missing repeatability values
@@ -173,11 +173,11 @@ def get_combined_data(
                 err_temp[filt1] = scenario_combined["mf_variability"][filt2]
 
         elif "mf_variability" in scenario_combined:
-            err_temp = scenario_combined.mf_variability.values
+            err_temp = scenario_combined.mf_variability
         else:
-            err_temp = np.zeros_like(scenario_combined.mf.values)
+            err_temp = xr.zeros_like(scenario_combined.mf)
 
-        Y_error[site] = xr.DataArray(data=err_temp, coords={"time": scenario_combined.time})
+        Y_error[site] = err_temp
 
         if add_averaging_error:
             # load obs data without average, to avoid mf_variability issue with ICOS data
