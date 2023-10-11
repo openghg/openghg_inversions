@@ -196,11 +196,11 @@ def get_combined_data(
             # Pad start and end of site data if necessary
             if min(site_data_series.index) > pd.to_datetime(start_date):
                 site_data_series[pd.to_datetime(start_date)] = np.nan
-
+                site_data_series.sort_index(inplace=True)  # sort because the np.nan will be added to the end of the series
             if max(site_data_series.index) < pd.to_datetime(end_date):
                 site_data_series[pd.to_datetime(end_date)] = np.nan
 
-            averaging_error[site] = xr.DataArray.from_series(site_data_series.resample(average).std(ddof=1).dropna())
+            averaging_error[site] = xr.DataArray.from_series(site_data_series.resample(average).std(ddof=0).dropna())
         else:
             averaging_error[site] = xr.zeros_like(Y_error[site])
 
