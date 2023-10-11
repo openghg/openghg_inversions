@@ -27,6 +27,7 @@ def get_combined_data(
     met_model: Optional[str] = None,
     inlets: Optional[list[str | None]] = None,
     instruments: Optional[list[str | None]] = None,
+    add_averaging_error: bool = True,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """
     Args:
@@ -178,17 +179,30 @@ def get_combined_data(
 
         Y_error[site] = xr.DataArray(data=err_temp, coords={"time": scenario_combined.time})
 
-        site_data_series = site_data.data.sel(time=slice(start_date, end_date)).mf.to_series()
+        if add_averaging_error:
+            # load obs data without average, to avoid mf_variability issue with ICOS data
+            site_data = get_obs_surface(
+                    site=site,
+                    species=species.lower(),
+                    inlet=inlet,
+                    start_date=start_date,
+                    end_date=end_date,
+                    instrument=instrument,
+                )
+            site_data = cast(ObsData, site_data)
 
-        # Pad start and end of site data if necessary
-        if min(site_data_series.index) > pd.to_datetime(start_date):
-            site_data_series[pd.to_datetime(start_date)] = np.nan
+            site_data_series = site_data.data.sel(time=slice(start_date, end_date)).mf.to_series()
 
-        if max(site_data_series.index) < pd.to_datetime(end_date):
-            site_data_series[pd.to_datetime(end_date)] = np.nan
+            # Pad start and end of site data if necessary
+            if min(site_data_series.index) > pd.to_datetime(start_date):
+                site_data_series[pd.to_datetime(start_date)] = np.nan
 
-        averaging_error[site] = site_data_series.resample(average).std(ddof=1).dropna().values
+            if max(site_data_series.index) < pd.to_datetime(end_date):
+                site_data_series[pd.to_datetime(end_date)] = np.nan
 
+            averaging_error[site] = site_data_series.resample(average).std(ddof=1).dropna().values
+        else:
+            averaging_error[site] = np.zeros_like(err_temp)
 
 
         # Check consistency of measurement scales between sites
@@ -367,6 +381,7 @@ def fixedbasisMCMC_preprocessing(
         instruments=instrument,
         start_date=start_date,
         end_date=end_date,
+        add_averaging_error=averagingerror,
     )
 
     if averagingerror == True:
