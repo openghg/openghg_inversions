@@ -27,7 +27,6 @@ def get_combined_data(
     met_model: Optional[str] = None,
     inlets: Optional[list[str | None]] = None,
     instruments: Optional[list[str | None]] = None,
-    add_averaging_error: bool = True,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """
     Args:
@@ -164,23 +163,9 @@ def get_combined_data(
         # create Y error vector and store averaging error.
         if "mf_repeatability" in scenario_combined:
             err_temp = scenario_combined.mf_repeatability
-
-            # If site contains measurement errors given as repeatability and variability,
-            # use variability to replace missing repeatability values
-            if "mf_variability" in scenario_combined:
-                filt1 = np.isnan(err_temp)
-                filt2 = filt1 & np.isfinite(scenario_combined["mf_variability"])
-                err_temp[filt1] = scenario_combined["mf_variability"][filt2]
-
-        elif "mf_variability" in scenario_combined:
-            err_temp = scenario_combined.mf_variability
         else:
-            err_temp = xr.zeros_like(scenario_combined.mf)
-
-        Y_error[site] = err_temp
-
-        if add_averaging_error:
-            # load obs data without average, to avoid mf_variability issue with ICOS data
+            # get errors from original dataset; need to retrieve without 'average' argument to avoid overwriting
+            # mf_variability, which is used to save the stdev from ICOS picarro data.
             site_data = get_obs_surface(
                     site=site,
                     species=species.lower(),
@@ -191,7 +176,7 @@ def get_combined_data(
                 )
             site_data = cast(ObsData, site_data)
 
-            site_data_series = site_data.data.sel(time=slice(start_date, end_date)).mf.to_series()
+            site_data_series = site_data.data.sel(time=slice(start_date, end_date)).mf_variability.to_series()
 
             # Pad start and end of site data if necessary
             if min(site_data_series.index) > pd.to_datetime(start_date):
@@ -200,9 +185,13 @@ def get_combined_data(
             if max(site_data_series.index) < pd.to_datetime(end_date):
                 site_data_series[pd.to_datetime(end_date)] = np.nan
 
-            averaging_error[site] = xr.DataArray.from_series(site_data_series.resample(average).std(ddof=0).dropna())
-        else:
-            averaging_error[site] = xr.zeros_like(Y_error[site])
+            err_temp = xr.DataArray.from_series(site_data_series.resample(average).agg(lambda x: np.sqrt(np.sum(x**2)) / x.count()))
+            err_temp = err_temp.rename("mf_stdev_resampled")
+
+        # err_temp = err_temp.fillna(np.median(err_temp.values))  # impute missing values with median
+        Y_error[site] = err_temp.dropna(dim="time")
+
+        averaging_error[site] = scenario_combined.mf_variability  # this will be set since 'average' was specified in `get_obs_surface`
 
 
         # Check consistency of measurement scales between sites
@@ -381,12 +370,14 @@ def fixedbasisMCMC_preprocessing(
         instruments=instrument,
         start_date=start_date,
         end_date=end_date,
-        add_averaging_error=averagingerror,
     )
 
     if averagingerror == True:
+        Y_err_final = {}
         for site in sites:
-            Y_error[site] = np.sqrt(Y_error[site]**2 + averaging_error[site]**2)
+            Y_err_final[site] = np.sqrt(Y_error[site]**2 + averaging_error[site]**2)
+    else:
+        Y_err_final = Y_error
 
     if project_to_basis:
         # Create basis function using quadtree algorithm if needed
@@ -449,7 +440,7 @@ def fixedbasisMCMC_preprocessing(
     # Get inputs ready
     Y = np.concatenate([fp_data[site].mf.values for site in sites])
     Ytime = np.concatenate([fp_data[site].time.values for site in sites])
-    error = np.concatenate([Y_error[site] for site in sites])
+    error = np.concatenate([Y_err_final[site] for site in sites])
     siteindicator = np.concatenate([i * np.ones_like(fp_data[site].mf.values) for i, site in enumerate(sites)])
 
     Hx = np.hstack([fp_data[site].H.values for site in sites])
