@@ -162,36 +162,13 @@ def get_combined_data(
 
         # create Y error vector and store averaging error.
         if "mf_repeatability" in scenario_combined:
-            err_temp = scenario_combined.mf_repeatability
+            Y_error[site] = scenario_combined.mf_repeatability.fillna(np.median(scenario_combined.mf_repeatability.values)).rename("error")
+            Y_error[site].attrs["long_name"] = "Y error as mole fraction"
+            averaging_error[site] = scenario_combined.mf_variability
         else:
-            # get errors from original dataset; need to retrieve without 'average' argument to avoid overwriting
-            # mf_variability, which is used to save the stdev from ICOS picarro data.
-            site_data = get_obs_surface(
-                    site=site,
-                    species=species.lower(),
-                    inlet=inlet,
-                    start_date=start_date,
-                    end_date=end_date,
-                    instrument=instrument,
-                )
-            site_data = cast(ObsData, site_data)
-
-            site_data_series = site_data.data.sel(time=slice(start_date, end_date)).mf_variability.to_series()
-
-            # Pad start and end of site data if necessary
-            if min(site_data_series.index) > pd.to_datetime(start_date):
-                site_data_series[pd.to_datetime(start_date)] = np.nan
-                site_data_series.sort_index(inplace=True)  # sort because the np.nan will be added to the end of the series
-            if max(site_data_series.index) < pd.to_datetime(end_date):
-                site_data_series[pd.to_datetime(end_date)] = np.nan
-
-            err_temp = xr.DataArray.from_series(site_data_series.resample(average).agg(lambda x: np.sqrt(np.sum(x**2)) / x.count()))
-            err_temp = err_temp.rename("mf_stdev_resampled")
-
-        # err_temp = err_temp.fillna(np.median(err_temp.values))  # impute missing values with median
-        Y_error[site] = err_temp.dropna(dim="time")
-
-        averaging_error[site] = scenario_combined.mf_variability  # this will be set since 'average' was specified in `get_obs_surface`
+            Y_error[site] = scenario_combined.mf_variability.fillna(np.median(scenario_combined.mf_variability.values)).rename("error")
+            Y_error[site].attrs["long_name"] = "Y error as mole fraction"
+            averaging_error[site] = xr.zeros_like(scenario_combined.mf_variability)
 
 
         # Check consistency of measurement scales between sites
@@ -214,6 +191,47 @@ def get_combined_data(
 
 
     return fp_all, Y_error, averaging_error
+
+
+def make_combined_scenario(fp_all):
+    """Combine scenarios and merge in fluxes and boundary conditions.
+
+    If fluxes and boundary conditions only have one coordinate for their
+    "time" dimension, then "time" will be dropped.
+
+    Otherwise, it is assumed that the time axis for fluxes and boundary conditions
+    have the same length as the time axis for the model scenarios.
+
+    TODO: incorporate errors
+    """
+    scenarios = {k: v for k, v in fp_all.items() if not k.startswith(".")}
+    site_codes = {}
+
+    for i, site in enumerate(scenarios):
+        scenarios[site] = scenarios[site].expand_dims({"site": [i]})
+        site_codes[i] = site
+
+    combined_scenario = xr.concat(scenarios.values(), dim="site")
+
+    # concat fluxes over source before merging into combined scenario
+    fluxes = {k: v.data for k, v in fp_all[".flux"].items()}
+    flux_codes = {}
+
+    for i, source in enumerate(fluxes):
+        fluxes[source] = fluxes[source].expand_dims({"source": [i]})
+        flux_codes[i] = source
+
+    combined_fluxes = xr.concat(fluxes.values(), dim="source")
+
+    # merge with override in case coordinates slightly off
+    # squeeze to remove single time coordinate
+    combined_scenario = combined_scenario.merge(combined_fluxes.squeeze(dim="time"), join="override")
+
+    # merge in boundary conditions
+    bc = fp_all[".bc"].data
+    combined_scenario = combined_scenario.merge(bc.squeeze(dim="time"), join="override")
+
+    return combined_scenario, site_codes, flux_codes
 
 
 def fixedbasisMCMC_preprocessing(
