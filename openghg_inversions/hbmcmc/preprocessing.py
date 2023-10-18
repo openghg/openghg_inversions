@@ -330,14 +330,17 @@ def get_combined_scenario(
 
         scenario = model_scenario.footprints_data_merge()
         scenario.bc_mod.values = scenario.bc_mod.values * units
+        scenario.attrs["scenario"] = True  # flag to help combine attributes in concat step below
 
         scenarios.append(scenario)
 
     # combine scenarios, fluxes, and bc into single xr.Dataset
+
+    # add 'site' dimension to scenarios and concat
     scenarios = [scenario.expand_dims({"site": [i]}) for i, scenario in enumerate(scenarios)]
     combined_scenario = xr.concat(scenarios, dim="site", combine_attrs=combine_scenario_attrs)
 
-    # concat fluxes over source before merging into combined scenario
+    # add 'source' variable to fluxes and concat over 'source' before merging into combined scenario
     fluxes = [v.data.expand_dims({"source": [i]}) for i, v in enumerate(flux_dict.values())]
     combined_fluxes = xr.concat(fluxes, dim="source", combine_attrs=combined_flux_attrs)
 
@@ -354,10 +357,12 @@ def get_combined_scenario(
 def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[str, Any]:
     """Combine attributes when concatenating scenarios from different sites.
 
+    The `ModelScenario.scenario`s in `get_combined_scenario` have the key "scenario" added
+    to their attributes as a flag so this function can process the dataset attributes and
+    the data variable attributes differently.
+
     TODO: add 'time_period', 'high_time/spatial_resolution', 'short_lifetime', 'heights'?
         Is 'time_period' from the footprint? Need to check model scenario...
-
-    TODO: add parsing for each data variable?
 
     Args:
         attrs_list: list of attributes from datasets being concatenated
@@ -381,11 +386,17 @@ def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[st
     ]
     single_keys = ["start_date", "end_date", "model", "metmodel", "domain", "max_longitude", "min_longitude", "max_latitude", "min_latitude"]
 
-    single_attrs = {k: attrs_list[0].get(k, None) for k in single_keys}
+    # take attributes from first element of attrs_list if key "scenario" is not in attributes
+    # this is a flag set in `get_combined_scenarios` to facilitate combining attributes
+    if "scenario" not in attrs_list[0]:
+        return attrs_list[0]
+
+    # processing for scenarios
+    single_attrs = {k: attrs_list[0].get(k, "None") for k in single_keys}  # NoneType can't be saved to netCDF, use string instead
     list_attrs = defaultdict(list)
     for attrs in attrs_list:
         for key in list_keys:
-            list_attrs[key].append(attrs.get(key, None))
+            list_attrs[key].append(attrs.get(key, "None"))
 
     list_attrs = cast(dict, list_attrs)
     list_attrs.update(single_attrs)
