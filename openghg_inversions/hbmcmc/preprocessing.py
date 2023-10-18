@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Any, cast, Optional
 
 import numpy as np
