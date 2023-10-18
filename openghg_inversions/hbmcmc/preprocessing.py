@@ -8,6 +8,7 @@ from openghg.analyse import ModelScenario
 from openghg.dataobjects import BoundaryConditionsData, ObsData
 from openghg.retrieve import get_obs_surface, get_flux, get_bc, get_footprint
 from openghg.types import SearchError
+from openghg.util import timestamp_now
 
 import openghg_inversions.hbmcmc.inversionsetup as setup
 import openghg_inversions.basis_functions as basis
@@ -188,9 +189,225 @@ def get_combined_data(
 
     fp_all[".scales"] = scales
 
-
-
     return fp_all, Y_error, averaging_error
+
+
+def get_combined_scenario(
+    species: str,
+    sites: list[str],
+    domain: str,
+    resampling_periods: list[str],
+    start_date: str,
+    end_date: str,
+    sources: list[str],
+    fp_heights: list[str],
+    fp_model: str = "NAME",
+    met_model: Optional[str] = None,
+    inlets: Optional[list[str | None]] = None,
+    instruments: Optional[list[str | None]] = None,
+    units: float = 1.0
+) -> xr.Dataset:
+    """
+    Args:
+      species: Atmospheric trace gas species of interest (e.g. 'co2')
+      sites: List of site names
+      domain: Inversion spatial domain.
+      resampling_periods: Averaging period of measurements (must match number of sites).
+      start_date: Start time of inversion "YYYY-mm-dd"
+      end_date: End time of inversion "YYYY-mm-dd"
+      met_model: Meteorological model used in the LPDM.
+      fp_model: LPDM used for generating footprints.
+      fp_height: height of footprint (must match number of sites). This allows for
+        a slight mis-match between inlet height and footprint height.
+      sources: List of keyword "source" args used for retrieving emissions files
+        from the Object store.
+      inlet: Specific inlet height for the site (must match number of sites)
+      instrument: Specific instrument for the site (must match number of sites).
+      units: Units for observations.
+
+    Returns:
+        xarray Dataset with model scenarios for the given parameters concatenated along a 'site' dimension, along
+    with boundary conditions and fluxes, which are concatenated along a 'source' dimension.
+
+    The attributes are combined so that the 'site' attribute contains the sites in the order they
+    were concatenated, and the 'source' attribute of the 'flux' data variable contains the sources
+    in the order they were concatenated.
+
+    For instance, if `fp_all = {'TAC': ds1, 'MHD': ds2, ...}` and `result = make_combined_scenario(fp_all)`,
+    then `result.isel(site=0)` will select the scenario for 'TAC', and `result.isel(site=1)` will select the
+    scenario for 'MHD'. Further, `result.attrs['site']` is equal to `['TAC', 'MHD']`.
+
+    Similarly, if `fp_all['.flux'] = {'waste': v1, 'agric': v2}`, then `result.flux.attrs['source']` is equal
+    to `['waste', 'agric']` and `result.flux.isel(source=0)` will select 'waste', and `result.`
+
+    NOTE: it would be nicer to use strings in the 'site' and 'source' coordinates, but this makes it harder to
+    compress the Dataset.
+
+    TODO: what happens if some obs have mf_repeatability and some do not?
+
+    TODO: how should attributes for individual data variables be handled? Currently the same parser for the 'scenario'
+    attrs is also used on each data variable.
+    """
+    units_set = False  # flag, set to True when units found in observation data
+    bc_set = False  # flag, set to True when boundary conditions retrieved
+    bc: Optional[BoundaryConditionsData] = None
+    scenarios: list[xr.Dataset] = []
+
+    flux_dict = {}
+    for source in sources:
+        flux_dict[source] = get_flux(
+                species=species, domain=domain, source=source, start_date=start_date, end_date=end_date
+            )
+
+
+    if inlets is None:
+        inlets = cast(list[str | None], [None] * len(sites))
+    if instruments is None:
+        instruments = cast(list[str | None], [None] * len(sites))
+
+    for site, inlet, instrument, average, fp_height in zip(
+        sites, inlets, instruments, resampling_periods, fp_heights
+    ):
+        # Get observations
+        site_data = get_obs_surface(
+                site=site,
+                species=species.lower(),
+                inlet=inlet,
+                start_date=start_date,
+                end_date=end_date,
+                average=average,
+                instrument=instrument,
+            )
+        site_data = cast(ObsData, site_data)  # get_obs_surface can't return none for local search...
+
+        if not units_set:
+            units = float(site_data[site].mf.units)
+            units_set = True
+
+        # Get footprints
+        footprint_result = get_footprint(
+                site=site,
+                height=fp_height,
+                domain=domain,
+                model=fp_model,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+        # Get boundary conditions
+        if not bc_set:
+            bc_result = get_bc(species=species, domain=domain, start_date=start_date, end_date=end_date)
+
+            # Divide by trace gas species units
+            # TODO See if this can be included 'behind the scenes'
+            bc_result.data.vmr_n.values = bc_result.data.vmr_n.values / units
+            bc_result.data.vmr_e.values = bc_result.data.vmr_e.values / units
+            bc_result.data.vmr_s.values = bc_result.data.vmr_s.values / units
+            bc_result.data.vmr_w.values = bc_result.data.vmr_w.values / units
+
+            bc = BoundaryConditionsData(
+                bc_result.data.transpose("height", "lat", "lon", "time"), bc_result.metadata
+            )
+            bc = cast(BoundaryConditionsData, bc)
+            bc_set = True
+
+        # Create ModelScenario object
+        model_scenario = ModelScenario(
+            site=site,
+            species=species,
+            inlet=inlet,
+            domain=domain,
+            model=fp_model,
+            metmodel=met_model,
+            start_date=start_date,
+            end_date=end_date,
+            obs=site_data,
+            footprint=footprint_result,
+            flux=flux_dict,
+            bc=bc,
+        )
+
+        scenario = model_scenario.footprints_data_merge()
+        scenario.bc_mod.values = scenario.bc_mod.values * units
+
+        scenarios.append(scenario)
+
+    # combine scenarios, fluxes, and bc into single xr.Dataset
+    scenarios = [scenario.expand_dims({"site": [i]}) for i, scenario in enumerate(scenarios)]
+    combined_scenario = xr.concat(scenarios, dim="site", combine_attrs=combine_scenario_attrs)
+
+    # concat fluxes over source before merging into combined scenario
+    fluxes = [v.data.expand_dims({"source": [i]}) for i, v in enumerate(flux_dict.values())]
+    combined_fluxes = xr.concat(fluxes, dim="source", combine_attrs=combined_flux_attrs)
+
+    # merge with override in case coordinates slightly off
+    # squeeze to remove single time coordinate
+    combined_scenario = combined_scenario.merge(combined_fluxes.squeeze(dim="time"), join="override")
+
+    if bc:
+        combined_scenario = combined_scenario.merge(bc.data.squeeze(dim="time"), join="override")
+
+    return combined_scenario
+
+
+def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[str, Any]:
+    """Combine attributes when concatenating scenarios from different sites.
+
+    TODO: add 'time_period', 'high_time/spatial_resolution', 'short_lifetime', 'heights'?
+        Is 'time_period' from the footprint? Need to check model scenario...
+
+    TODO: add parsing for each data variable?
+
+    Args:
+        attrs_list: list of attributes from datasets being concatenated
+        context: additional parameter supplied by concatenate
+
+    Returns:
+        dict that will be used as attributes for concatenated dataset
+    """
+    list_keys = [
+        "species",
+        "site",
+        "inlet",
+        "instrument",
+        "sampling_period",
+        "sampling_period_unit",
+        "averaged_period_str",
+        "scale",
+        "network",
+        "data_owner",
+        "data_owner_email",
+    ]
+    single_keys = ["start_date", "end_date", "model", "metmodel", "domain", "max_longitude", "min_longitude", "max_latitude", "min_latitude"]
+
+    single_attrs = {k: attrs_list[0].get(k, None) for k in single_keys}
+    list_attrs = defaultdict(list)
+    for attrs in attrs_list:
+        for key in list_keys:
+            list_attrs[key].append(attrs.get(key, None))
+
+    list_attrs = cast(dict, list_attrs)
+    list_attrs.update(single_attrs)
+    list_attrs["file_created"] = str(timestamp_now())
+    return list_attrs
+
+
+def combined_flux_attrs(attrs_list: list[dict[str, Any]], context) -> dict[str, Any]:
+    """Combine attributes when concatenating fluxes from different sources.
+
+    Currently just keeps a list of sources.
+
+    NOTE: This assumes that the 'source' in OpenGHG metadata is the same as the 'source'
+    in the attributes of the retrieved flux data.
+
+    Args:
+        attrs_list: list of attributes from datasets being concatenated
+        context: additional parameter supplied by concatenate
+
+    Returns:
+        dict that will be used as attributes for concatenated dataset
+    """
+    return {"source": [attrs.get('source', None) for attrs in attrs_list]}
 
 
 def make_combined_scenario(fp_all):
