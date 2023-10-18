@@ -419,7 +419,10 @@ def combined_flux_attrs(attrs_list: list[dict[str, Any]], context) -> dict[str, 
     Returns:
         dict that will be used as attributes for concatenated dataset
     """
-    return {"source": [attrs.get('source', None) for attrs in attrs_list]}
+    if 'source' in attrs_list[0]:
+        return {"source": [attrs.get('source', "None") for attrs in attrs_list]}
+    else:
+        return attrs_list[0]
 
 
 def make_combined_scenario(fp_all):
