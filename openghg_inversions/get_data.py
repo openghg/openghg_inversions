@@ -27,7 +27,7 @@ from openghg.dataobjects import BoundaryConditionsData
 
 def data_processing_surface_notracer(species, sites, domain, averaging_period, start_date, end_date,
                                      met_model=None, fp_model="NAME", fp_height=None,
-                                     emissions_name=None, inlet=None, instrument=None,
+                                     emissions_name=None, inlet=None, instrument=None, bc_input=None,
                                      bc_store=None, obs_store=None, footprint_store=None, emissions_store=None,
                                      averagingerror=True):
 
@@ -137,6 +137,7 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
         # Get boundary conditions
         get_bc_data = get_bc(species=species,
                              domain=domain,
+                             bc_input=bc_input,
                              start_date=start_date,
                              end_date=end_date,
                              store=bc_store)
@@ -201,7 +202,7 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
                                          species,
                                          start_date,
                                          end_date,
-                                         meas_period,
+                                         averaging_period,
                                          inlet=inlet,
                                          instrument=instrument)
 
