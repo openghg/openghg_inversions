@@ -168,7 +168,7 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
                    met_model=None, fp_model="NAME", fp_height=None,
                    emissions_name=None, inlet=None, instrument=None, use_tracer=False,
                    fp_basis_case=None, basis_directory=None, bc_basis_case="NESW",
-                   bc_basis_directory=None, country_file=None,
+                   bc_basis_directory=None, country_file=None, bc_input=None,
                    max_level=None,
                    basis_algorithm="weighted", nbasis=100,
                    filters=[],
@@ -309,11 +309,12 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
                                                            emissions_name=emissions_name, 
                                                            inlet=inlet, 
                                                            instrument=instrument,
+                                                           bc_input=bc_input,
                                                            bc_store=bc_store, 
                                                            obs_store=obs_store, 
                                                            footprint_store=footprint_store, 
                                                            emissions_store=emissions_store,
-                                                           averagingerror=averagingerror)
+                                                           averagingerror=averaging_error)
 
     elif use_tracer == True:
        raise ValueError("Model does not currently include tracer model. Watch this space") 
@@ -379,7 +380,7 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
         # Run PyMC inversion
-        xouts, bcouts, sigouts, offset_outs, Ytrace, YBCtrace, OFFtrace, convergence, step1, step2 = mcmc.inferpymc(Hx, Hbc, Y, error, 
+        xouts, bcouts, sigouts, offset_outs, Ytrace, YBCtrace, offset_trace, convergence, step1, step2 = mcmc.inferpymc(Hx, Hbc, Y, error, 
                                                                               siteindicator, sigma_freq_index, xprior, 
                                                                               bcprior, sigprior, nit, burn, tune,                 
                                                                               nchain, sigma_per_site, 
