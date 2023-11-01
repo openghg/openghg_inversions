@@ -49,7 +49,7 @@ def fixed_basis_expected_param():
     Returns:
       Required parameter names (list)
     '''
-    expected_param = ["species", "sites", "meas_period", "domain","start_date",
+    expected_param = ["species", "sites", "averaging_period", "domain","start_date",
                       "end_date", "outputpath", "outputname"]
 
     return expected_param
