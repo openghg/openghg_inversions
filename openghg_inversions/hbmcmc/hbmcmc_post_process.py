@@ -38,7 +38,7 @@ from collections import OrderedDict
 from openghg_inversions import utils
 from openghg_inversions import convert   
 from openghg_inversions.config.paths import Paths
-acrg_path = Paths.acrg
+acrg_path = os.path.join("/group/chemistry/acrg") #Paths.acrg
 
 # Get site_info file
 with open(acrg_path / "data/site_info.json") as f:

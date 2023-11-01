@@ -160,6 +160,7 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
        - Allow non-iid variables
     -----------------------------------
     '''
+
     burn = int(burn)         
     
     hx = Hx.T 
@@ -167,8 +168,8 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
     nx = hx.shape[1]
     nbc = hbc.shape[1]
     ny = len(Y)
-    
-    nit = int(nit)  
+
+    nit = int(nit)    
     
     #convert siteindicator into a site indexer
     if sigma_per_site:
@@ -228,9 +229,9 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
             OFFtrace = np.dot(B, offset_trace.T)   
         else:
             YBCtrace = np.dot(Hbc.T,bcouts.T)
-            offset_outs = [0] * len(outs)
-            offset_trace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
-            OFFtrace = np.dot(B, offset_trace.T)
+            offset_outs = outs * 0 
+            #offset_trace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
+            OFFtrace =  YBCtrace * 0
 
         Ytrace = np.dot(Hx.T,outs.T) + YBCtrace
         
@@ -487,7 +488,7 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
                               store=emissions_store)
 
             emissions_flux = emds.data.flux.values
-        flux = scalemap*emissions_flux[:,:,0]
+        flux = scalemap_mode*emissions_flux[:,:,0]
         
         #Basis functions to save
         bfarray = bfds.values-1
@@ -592,7 +593,7 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
                             'sitelons':(['nsite'],site_lon),
                             'sitelats':(['nsite'],site_lat),
                             'fluxapriori':(['lat','lon'], aprioriflux), #NOTE this is the mean a priori flux over the inversion period
-                            'fluxmean':(['lat','lon'], flux),                            
+                            'fluxmode':(['lat','lon'], flux),                            
                             'scalingmean':(['lat','lon'],scalemap_mu),
                             'scalingmode':(['lat','lon'],scalemap_mode),
                             'basisfunctions':(['lat','lon'],bfarray),
@@ -618,7 +619,7 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
                                    'lon':(['lon'],lon),
                                    'countrynames':(['countrynames'],cntrynames)})
         
-        outds.fluxmean.attrs["units"] = "mol/m2/s"
+        outds.fluxmode.attrs["units"] = "mol/m2/s"
         outds.fluxapriori.attrs["units"] = "mol/m2/s"
         outds.Yobs.attrs["units"] = obs_units+" "+"mol/mol"
         outds.Yapriori.attrs["units"] = obs_units+" "+"mol/mol"
@@ -679,7 +680,7 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
         outds.sitelons.attrs["longname"] = "site longitudes corresponding to site names"
         outds.sitelats.attrs["longname"] = "site latitudes corresponding to site names"
         outds.fluxapriori.attrs["longname"] = "mean a priori flux over period"
-        outds.fluxmean.attrs["longname"] = "mean posterior flux over period"
+        outds.fluxmode.attrs["longname"] = "mode posterior flux over period"
         outds.scalingmean.attrs["longname"] = "mean scaling factor field over period"
         outds.scalingmode.attrs["longname"] = "mode scaling factor field over period"
         outds.basisfunctions.attrs["longname"] = "basis function field"
