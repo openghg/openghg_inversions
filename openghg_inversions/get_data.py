@@ -18,6 +18,7 @@ import sys
 import shutil
 import numpy as np
 import pandas as pd
+import pickle
 
 import openghg_inversions.hbmcmc.inversionsetup as setup
 from openghg.retrieve import get_obs_surface, get_flux
@@ -29,7 +30,8 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
                                      met_model=None, fp_model="NAME", fp_height=None,
                                      emissions_name=None, inlet=None, instrument=None, bc_input=None,
                                      bc_store=None, obs_store=None, footprint_store=None, emissions_store=None,
-                                     averagingerror=True):
+                                     averagingerror=True,save_merged_data=False,
+                                     merged_data_name=None,merged_data_dir=None):
 
     """
     Retrieve and prepare fixed-surface datasets from
@@ -205,6 +207,13 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
                                          averaging_period,
                                          inlet=inlet,
                                          instrument=instrument)
+        
+    if save_merged_data == True:
+        fp_out = open(merged_data_dir+merged_data_name, 'wb')
+        pickle.dump(fp_all, fp_out)
+        fp_out.close()
+
+        print(f'\nfp_all saved in {merged_data_dir}\n')
 
     return fp_all
 

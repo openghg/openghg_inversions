@@ -33,6 +33,7 @@
 
 import os
 import sys
+import pickle
 import shutil
 import numpy as np
 import pandas as pd
@@ -179,7 +180,8 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
                    nit=2.5e5, burn=50000, tune=1.25e5, nchain=2,
                    averaging_error=True, bc_freq=None, sigma_freq=None, sigma_per_site=True,
                    country_unit_prefix=None, add_offset=False,
-                   verbose=False):
+                   verbose=False,reload_merged_data=False,save_merged_data=False,
+                   merged_data_dir=None):
 
     '''
     Script to run hierarchical Bayesian 
@@ -288,6 +290,12 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
       add_offset (bool):
         Add an offset (intercept) to all sites but the first in the site list. 
         Default False.
+      reload_merged_data (bool):
+        If True, reads fp_all object from a pickle file, instead of rerunning get_data.
+      save_merged_data (bool):
+        If True, saves the merged data object (fp_all) as a pickle file.
+      merged_data_dir (str):
+        Path to a directory of merged data objects. For saving to or reading from.
 
     Returns:
         Saves an output from the inversion code using inferpymc3_postprocessouts.
@@ -295,29 +303,55 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
     -----------------------------------
     '''
 
-    # Get datasets for forward simulations
-    if use_tracer == False:
-        fp_all = get_data.data_processing_surface_notracer(species, 
-                                                           sites, 
-                                                           domain, 
-                                                           averaging_period, 
-                                                           start_date, 
-                                                           end_date,
-                                                           met_model=met_model, 
-                                                           fp_model=fp_model, 
-                                                           fp_height=fp_height,
-                                                           emissions_name=emissions_name, 
-                                                           inlet=inlet, 
-                                                           instrument=instrument,
-                                                           bc_input=bc_input,
-                                                           bc_store=bc_store, 
-                                                           obs_store=obs_store, 
-                                                           footprint_store=footprint_store, 
-                                                           emissions_store=emissions_store,
-                                                           averagingerror=averaging_error)
+    rerun_merge = True
+    
+    if reload_merged_data == True:
+        merged_data_name = f'{species}_{start_date}_{outputname}_merged-data.pickle'
+        merged_data_filename = os.path.join(merged_data_dir,merged_data_name)
+        print(f'Attempting to read in merged data from: {merged_data_filename}...\n')
+        
+        if os.path.exists(merged_data_filename) == True:
 
-    elif use_tracer == True:
-       raise ValueError("Model does not currently include tracer model. Watch this space") 
+            fp_in = open(merged_data_filename, 'rb')
+            fp_all = pickle.load(fp_in)
+            fp_in.close()
+
+            print(f'Successfully read in merged data.\n')
+            rerun_merge = False
+
+        else:
+            print(f'No merged data available at {merged_data_filename} so rerunning this process.\n')
+
+    # Get datasets for forward simulations
+    if rerun_merge == True:
+
+        merged_data_name = f'{species}_{start_date}_{outputname}_merged-data.pickle'
+
+        if use_tracer == False:
+            fp_all = get_data.data_processing_surface_notracer(species, 
+                                                            sites, 
+                                                            domain, 
+                                                            averaging_period, 
+                                                            start_date, 
+                                                            end_date,
+                                                            met_model=met_model, 
+                                                            fp_model=fp_model, 
+                                                            fp_height=fp_height,
+                                                            emissions_name=emissions_name, 
+                                                            inlet=inlet, 
+                                                            instrument=instrument,
+                                                            bc_input=bc_input,
+                                                            bc_store=bc_store, 
+                                                            obs_store=obs_store, 
+                                                            footprint_store=footprint_store, 
+                                                            emissions_store=emissions_store,
+                                                            averagingerror=averaging_error,
+                                                            save_merged_data=save_merged_data,
+                                                            merged_data_name=merged_data_name,
+                                                            merged_data_dir=merged_data_dir)
+
+        elif use_tracer == True:
+            raise ValueError("Model does not currently include tracer model. Watch this space") 
 
     # Basis function regions and sensitivity matrices
     fp_data, tempdir, basis_dir, bc_basis_dir = basis_functions_wrapper(basis_algorithm, 
