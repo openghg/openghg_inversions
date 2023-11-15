@@ -155,22 +155,55 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
                                            get_bc_data.metadata)
         fp_all['.bc']=my_bc
 
-        # Create ModelScenario object
-        model_scenario=ModelScenario(site=site,
-                                     species=species,
-                                     inlet=inlet[i],
-                                     domain=domain,
-                                     model=fp_model,
-                                     metmodel=met_model,
-                                     start_date=start_date,
-                                     end_date=end_date,
-                                     obs=site_data,
-                                     footprint=footprint_dict[site],
-                                     flux=flux_dict,
-                                     bc=my_bc)
+        # Create ModelScenario object for all emissions_sectors
+        # and combine into one object
+        if len(emissions_name) == 1:
+            model_scenario=ModelScenario(site=site,
+                                         species=species,
+                                         inlet=inlet[i],
+                                         start_date=start_date,
+                                         end_date=end_date,
+                                         obs=site_data,
+                                         footprint=footprint_dict[site],
+                                         flux=flux_dict,
+                                         bc=my_bc)
 
-        scenario_combined=model_scenario.footprints_data_merge()
-        scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
+            scenario_combined=model_scenario.footprints_data_merge()
+            scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
+
+        elif len(emissions_name) >1:
+            model_scenario_dict = {}
+ 
+            for source in emissions_sources:
+                model_scenario=ModelScenario(site=site,
+                                             species=species,
+                                             inlet=inlet[i],
+                                             start_date=start_date,
+                                             end_date=end_date,
+                                             obs=site_data,
+                                             footprint=footprint_dict[site],
+                                             flux=flux_dict,
+                                             bc=my_bc)
+
+                scenario_sector=model_scenario.footprints_data_merge(sources=source)
+                model_scenario_dict["mf_mod_high_res_"+source] = scenario_sector["mf_mod_high_res"]       
+
+            model_scenario=ModelScenario(site=site,
+                                         species=species,
+                                         inlet=inlet[i],
+                                         start_date=start_date,
+                                         end_date=end_date,
+                                         obs=site_data,
+                                         footprint=footprint_dict[site],
+                                         flux=flux_dict,
+                                         bc=my_bc)
+
+            scenario_combined=model_scenario.footprints_data_merge()
+
+            for key in model_scenario_dict.keys():
+                scenario_combined[key] = model_scenario_dict[key]
+            
+            scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
 
         fp_all[site]=scenario_combined
 
