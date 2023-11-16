@@ -140,4 +140,42 @@ def gen_least_sq(
     C = H @ H.T
 
     # temp return for checking
-    return B, R_1, Q_1, Q_2, S, Z, S_2, Z_1, Z_2, G, x_hat, H, C
+    return x_hat, H, C
+
+
+def tikhonov_reg_solver(y: np.array, A: np.array, W: np.array, B: np.array):
+    """
+    Find x minimizing
+
+    J(x) = (y - Ax)^T @ W^-1 @ (y - Ax) + x^T @ B^-1 @ x
+
+    Args:
+        y: observation vector
+        A: model/design matrix
+        W: covariance for y
+        B: inverse of Tikhonov matrix (covariance for regularisation term)
+    """
+    W_stack = sla.block_diag(W, B)
+
+    n = A.shape[1]
+    A_stack = np.vstack([A, np.eye(n)])
+    y_stack = np.concatenate([y, np.zeros(n)])
+
+    return gen_least_sq(y_stack, A_stack, W=W_stack)
+
+
+def bayesian_least_squres(
+    y: np.array, A: np.array, W: np.array, x_prior: np.array, B: np.array
+):
+    """
+    Find maximum a posteriori estimate for x for model with prior N(x_prior, B)
+    and likelihood y ~ N(Ax, W).
+
+    This reduces to the Tikhonov problem by setting z = x - x_prior and
+    w = y - A @ x_prior, and solving for z.
+    """
+    w = y - A @ x_prior
+    x_hat, H, C = tikhonov_reg_solver(w, A, W, B)
+    x_map = x_hat + x_prior
+
+    return x_map, H, C
