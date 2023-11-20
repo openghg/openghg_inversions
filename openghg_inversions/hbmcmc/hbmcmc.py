@@ -111,6 +111,8 @@ def basis_functions_wrapper(basis_algorithm, nbasis, fp_basis_case, bc_basis_cas
         if fp_basis_case != None:
             print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
             print("Assuming you want to use %s " % fp_basis_case)
+            basis_algorithm = None
+            tempdir = None
         else:
             tempdir = basis.quadtreebasisfunction(emissions_name,
                                                   fp_all,
@@ -129,6 +131,8 @@ def basis_functions_wrapper(basis_algorithm, nbasis, fp_basis_case, bc_basis_cas
         if fp_basis_case !=None:
             print("Basis case %s supplied but bucket_basis set to True" % fp_basis_case)
             print("Assuming you want to use %s " % fp_basis_case)
+            basis_algorithm = None
+            tempdir = None
         else:
             tempdir = basis.bucketbasisfunction(emissions_name, 
                                                 fp_all, 
@@ -144,10 +148,10 @@ def basis_functions_wrapper(basis_algorithm, nbasis, fp_basis_case, bc_basis_cas
 
     elif basis_algorithm == None:
         basis_directory = basis_directory
+        tempdir = None
 
     else:
         raise ValueError("Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file")
-
 
     fp_data = utils.fp_sensitivity(fp_all,
                                    domain=domain,
@@ -308,9 +312,11 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
     if reload_merged_data == True:
         merged_data_name = f'{species}_{start_date}_{outputname}_merged-data.pickle'
         merged_data_filename = os.path.join(merged_data_dir,merged_data_name)
+        print(merged_data_filename)
         print(f'Attempting to read in merged data from: {merged_data_filename}...\n')
         
         if os.path.exists(merged_data_filename) == True:
+            
 
             fp_in = open(merged_data_filename, 'rb')
             fp_all = pickle.load(fp_in)
@@ -405,13 +411,16 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
                 Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
 
             if si == 0:
-                Hbc = np.copy(Hmbc) #fp_data[site].H_bc.values
+                Hbc = np.copy(Hmbc) #fp_data[site].H_bc.values 
                 Hx = fp_data[site].H.values
             else:
                 Hbc = np.hstack((Hbc, Hmbc))
                 Hx = np.hstack((Hx, fp_data[site].H.values))
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
+
+        # this will need updating if we move to using different basis functions for each emissions_name.
+        nbasis_actual = int(np.max(fp_data['.basis']))
 
         # Run PyMC inversion
         xouts, bcouts, sigouts, offset_outs, Ytrace, YBCtrace, offset_trace, convergence, step1, step2 = mcmc.inferpymc(Hx, Hbc, Y, error, 
@@ -420,7 +429,7 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
                                                                               nchain, sigma_per_site, 
                                                                               offsetprior=offsetprior, 
                                                                               add_offset=add_offset, 
-                                                                              verbose=verbose)
+                                                                              verbose=verbose,nbasis_actual=nbasis_actual)
 
         # Process and save inversion output
         mcmc.inferpymc_postprocessouts(xouts, bcouts, sigouts, offset_outs, convergence,

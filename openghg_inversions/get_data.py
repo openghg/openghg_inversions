@@ -132,7 +132,8 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
                                 model=fp_model,
                                 start_date=start_date,
                                 end_date=end_date,
-                                store=footprint_store)
+                                store=footprint_store,
+                                species=species)
         footprint_dict[site] = get_fps
 
 
@@ -174,7 +175,7 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
         elif len(emissions_name) >1:
             model_scenario_dict = {}
  
-            for source in emissions_sources:
+            for source in emissions_name:
                 model_scenario=ModelScenario(site=site,
                                              species=species,
                                              inlet=inlet[i],

@@ -80,13 +80,13 @@ def parseprior(name, prior_params, shape = ()):
     return functiondict[pdf.lower()](name, shape=shape, **params)
 
 def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
-              xprior={"pdf":"lognormal", "mu":1, "sigma":1},
+              xprior={'all':{"pdf":"lognormal", "mu":1, "sigma":1}},
               bcprior={"pdf":"lognormal", "mu":0.004, "sigma":0.02},
               sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
               nit=2.5e5, burn=50000, tune=1.25e5, nchain=2, 
               sigma_per_site = True, 
               offsetprior={"pdf":"normal", "mu":0, "sigma":1},
-              add_offset = False, verbose=False):       
+              add_offset = False, verbose=False,nbasis_actual=None):       
     '''
     Uses PyMC module for Bayesian inference for emissions field, boundary 
     conditions and (currently) a single model error value.
@@ -109,7 +109,8 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
       sigma_freq_index (array):
         Array of integer indexes that converts time into periods
       xprior (dict):
-        Dictionary containing information about the prior PDF for emissions.
+        Dictionary of Dictionaries containing information about the prior PDF for emissions for,
+        for each sector. The emissions names in the ModelScenario object are the dictionary keys.
         The entry "pdf" is the name of the analytical PDF used, see
         https://docs.pymc.io/api/distributions/continuous.html for PDFs
         built into pymc3, although they may have to be coded into the script.
@@ -131,6 +132,9 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
         Add an offset (intercept) to all sites but the first in the site list. Default False.
       verbose:
         When True, prints progress bar
+      nbasis_actual (int):
+        Number of basis functions, used to intiate x parameter. This will have to be updated if we
+        switch to using different basis functions for each emissions_name.
       
     Returns:
       outs (array):
@@ -165,7 +169,7 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
     
     hx = Hx.T 
     hbc = Hbc.T
-    nx = hx.shape[1]
+    #nx = hx.shape[1]    
     nbc = hbc.shape[1]
     ny = len(Y)
 
@@ -183,29 +187,60 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
     if add_offset:
         B = offset_matrix(siteindicator)
 
+    emissions_name = xprior.keys()
+
     with pm.Model() as model:
-        x = parseprior("x", xprior, shape=nx)
+        #x = []
+        #for source in emissions_name:
+        #    if xprior[source] is 'fixed':
+        #        x.append(pm.ConstantData(f'x_{source}',np.ones(nbasis_actual)))
+        #        mu_test = pm.mat.dot(hx[:,:nbasis_actual])
+        #    else:
+        #        x.append(parseprior(f"x_{source}", xprior[source], shape=nbasis_actual))#
+#
+#        print(x)
+        
+        for s,source in enumerate(emissions_name):
+            if xprior[source] is 'fixed':
+                x = pm.ConstantData(f'x_{source}',np.ones(nbasis_actual))
+                
+            else:
+                x = parseprior(f"x_{source}", xprior[source], shape=nbasis_actual)
+            if s == 0:
+                mu_test = pm.math.dot(hx[:,:nbasis_actual],x)
+            else:
+                mu_test += pm.math.dot(hx[:,:nbasis_actual],x)
+                
+        print(mu_test)
+                
+        #x_allsources = pm.Deterministic('x_allsources',pm.math.stack(x))
+        
+        # keep editing from here, try out above code that calculates Hx for each 
+        # sector separately 
+        
         xbc = parseprior("xbc", bcprior, shape=nbc)
         sig = parseprior("sig", sigprior, shape=(nsites, nsigmas))
+        
+        
         if add_offset:
             offset = parseprior("offset", offsetprior, shape=nsites-1) 
             offset_vec = pm.math.concatenate( (np.array([0]), offset), axis=0)
-            mu = pm.math.dot(hx,x) + pm.math.dot(hbc,xbc) + pm.math.dot(B, offset_vec)
+            mu = pm.math.dot(hx,x_allsources) + pm.math.dot(hbc,xbc) + pm.math.dot(B, offset_vec)
         else:
-            mu = pm.math.dot(hx,x) + pm.math.dot(hbc,xbc)      
+            mu = pm.math.dot(hx,x_allsources) + pm.math.dot(hbc,xbc)      
 
-        model_error = np.abs(pm.math.dot(hx,x)) * sig[sites, sigma_freq_index] 
+        model_error = np.abs(pm.math.dot(hx,x_allsources)) * sig[sites, sigma_freq_index] 
         epsilon = pm.math.sqrt(error**2 + model_error**2)
         y = pm.Normal('y', mu=mu, sigma=epsilon, observed=Y, shape=ny)
         
-        step1 = pm.NUTS(vars=[x,xbc])
+        step1 = pm.NUTS(vars=[x_allsources,xbc])
         step2 = pm.Slice(vars=[sig])
         
         trace = pm.sample(nit, tune=int(tune), chains=nchain,
                           step=[step1,step2], 
                           progressbar=verbose, cores=nchain)#step=pm.Metropolis())#  #target_accept=0.8,
        
-        outs = trace.posterior['x'][0, burn:nit]
+        outs = trace.posterior['x_allsources'][0, burn:nit]
         bcouts = trace.posterior['xbc'][0, burn:nit]
         sigouts = trace.posterior['sig'][0, burn:nit]
 
@@ -214,7 +249,7 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
         #sigouts = trace.get_values(sig, burn=burn)[0:int((nit)-burn)]
         
         #Check for convergence
-        gelrub = pm.rhat(trace)['x'].max()
+        gelrub = pm.rhat(trace)['x_allsources'].max()
         if gelrub > 1.05:
             print('Failed Gelman-Rubin at 1.05')
             convergence = "Failed"
@@ -458,7 +493,9 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
 
         #Calculate mean  and mode posterior scale map and flux field
         scalemap_mu = np.zeros_like(bfds.values)
-        scalemap_mode = np.zeros_like(bfds.values)        
+        scalemap_mode = np.zeros_like(bfds.values)  
+        
+        #ADD CODE HERE TO ESTIMATE SCALEMAP AND COUNTRY FLUX PER EMISSIONS_NAME      
 
         for npm in nparam:
             scalemap_mu[bfds.values == (npm+1)] = np.mean(xouts[:,npm])
