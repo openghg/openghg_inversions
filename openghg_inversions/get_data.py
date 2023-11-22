@@ -126,6 +126,11 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
         unit=float(site_data[site].mf.units)
 
         # Get footprints
+        if species == 'co2':
+            fp_species = 'co2'
+        else:
+            fp_species = None
+        
         get_fps = get_footprint(site=site,
                                 height=fp_height[i],
                                 domain=domain,
@@ -133,7 +138,7 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
                                 start_date=start_date,
                                 end_date=end_date,
                                 store=footprint_store,
-                                species=species)
+                                species=fp_species)
         footprint_dict[site] = get_fps
 
 
@@ -187,7 +192,11 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
                                              bc=my_bc)
 
                 scenario_sector=model_scenario.footprints_data_merge(sources=source)
-                model_scenario_dict["mf_mod_high_res_"+source] = scenario_sector["mf_mod_high_res"]       
+                if species == 'co2':
+                    model_scenario_dict["mf_mod_high_res_"+source] = scenario_sector["mf_mod_high_res"]       
+                else:
+                    model_scenario_dict["mf_mod_"+source] = scenario_sector["mf_mod"]       
+                    
 
             model_scenario=ModelScenario(site=site,
                                          species=species,

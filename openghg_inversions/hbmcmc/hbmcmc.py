@@ -153,10 +153,14 @@ def basis_functions_wrapper(basis_algorithm, nbasis, fp_basis_case, bc_basis_cas
     else:
         raise ValueError("Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file")
 
+    #print(fp_all['MHD'])
+
     fp_data = utils.fp_sensitivity(fp_all,
                                    domain=domain,
                                    basis_case=fp_basis_case,
                                    basis_directory=basis_directory)
+    
+    #print(fp_data['MHD'])
 
     fp_data = utils.bc_sensitivity(fp_data,
                                    domain=domain,
@@ -385,7 +389,7 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
         # Get inputs ready
         error = np.zeros(0)
         Hbc = np.zeros(0)
-        Hx = np.zeros(0)
+        Hx = {source:np.zeros(0) for source in emissions_name}
         Y = np.zeros(0)
 
         siteindicator = np.zeros(0)
@@ -411,17 +415,16 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
                 Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
 
             if si == 0:
-                Hbc = np.copy(Hmbc) #fp_data[site].H_bc.values 
-                Hx = fp_data[site].H.values
+                Hbc = np.copy(Hmbc) #fp_data[site].H_bc.values
+                for source in emissions_name:
+                    Hx[source] = fp_data[site].H.values #TODO edit this to extract Hx per source
             else:
                 Hbc = np.hstack((Hbc, Hmbc))
-                Hx = np.hstack((Hx, fp_data[site].H.values))
+                for source in emissions_name:
+                    Hx[source] = np.hstack((Hx[source], fp_data[site].H.values)) #TODO edit to extract correct Hx
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
-
-        # this will need updating if we move to using different basis functions for each emissions_name.
-        nbasis_actual = int(np.max(fp_data['.basis']))
-
+        
         # Run PyMC inversion
         xouts, bcouts, sigouts, offset_outs, Ytrace, YBCtrace, offset_trace, convergence, step1, step2 = mcmc.inferpymc(Hx, Hbc, Y, error, 
                                                                               siteindicator, sigma_freq_index, xprior, 
@@ -429,7 +432,7 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
                                                                               nchain, sigma_per_site, 
                                                                               offsetprior=offsetprior, 
                                                                               add_offset=add_offset, 
-                                                                              verbose=verbose,nbasis_actual=nbasis_actual)
+                                                                              verbose=verbose,emissions_name=emissions_name)
 
         # Process and save inversion output
         mcmc.inferpymc_postprocessouts(xouts, bcouts, sigouts, offset_outs, convergence,
@@ -442,9 +445,8 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
                                        burn, tune, nchain, sigma_per_site,
                                        fp_data=fp_data, emissions_name=emissions_name, emissions_store=emissions_store,
                                        basis_directory=basis_dir, country_file=country_file,
-                                       add_offset=add_offset
-
-)
+                                       add_offset=add_offset)
+        
     elif use_tracer == True:
         raise ValueError("Model does not currently include tracer model. Watch this space")
 

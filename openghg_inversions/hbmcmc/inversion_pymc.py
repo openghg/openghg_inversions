@@ -16,6 +16,7 @@ import xarray as xr
 import getpass
 from scipy import stats
 from pathlib import Path
+import pytensor.tensor as pt
 
 from openghg.retrieve import get_flux
 
@@ -86,18 +87,18 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
               nit=2.5e5, burn=50000, tune=1.25e5, nchain=2, 
               sigma_per_site = True, 
               offsetprior={"pdf":"normal", "mu":0, "sigma":1},
-              add_offset = False, verbose=False,nbasis_actual=None):       
+              add_offset = False, verbose=False,emissions_name=['all']):       
     '''
     Uses PyMC module for Bayesian inference for emissions field, boundary 
     conditions and (currently) a single model error value.
     This uses a Normal likelihood but the (hyper)prior PDFs can selected by user.
     -----------------------------------
     Args:
-      Hx (array):
+      Hx (dict of arrays):
         Transpose of the sensitivity matrix to map emissions to measurement.
         This is the same as what is given from fp_data[site].H.values, where
         fp_data is the output from e.g. footprint_data_merge, but where it
-        has been stacked for all sites.
+        has been stacked for all sites. Dictionary of arrays, indexed by source.
       Hbc (array):
         Same as above but for boundary conditions
       Y (array):
@@ -108,9 +109,9 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
         Array of indexing integers that relate each measurement to a site
       sigma_freq_index (array):
         Array of integer indexes that converts time into periods
-      xprior (dict):
-        Dictionary of Dictionaries containing information about the prior PDF for emissions for,
-        for each sector. The emissions names in the ModelScenario object are the dictionary keys.
+      xprior (dict of dict):
+        Dictionary of dictionaries containing information about the prior PDF for emissions for each sector. 
+        The emissions names in the ModelScenario object are the dictionary keys.
         The entry "pdf" is the name of the analytical PDF used, see
         https://docs.pymc.io/api/distributions/continuous.html for PDFs
         built into pymc3, although they may have to be coded into the script.
@@ -132,9 +133,8 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
         Add an offset (intercept) to all sites but the first in the site list. Default False.
       verbose:
         When True, prints progress bar
-      nbasis_actual (int):
-        Number of basis functions, used to intiate x parameter. This will have to be updated if we
-        switch to using different basis functions for each emissions_name.
+      emissions_name (list of str):
+        Name for each emissions source file.
       
     Returns:
       outs (array):
@@ -165,10 +165,12 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
     -----------------------------------
     '''
 
-    burn = int(burn)         
-    
-    hx = Hx.T 
+    burn = int(burn)  
+           
+    #hx = Hx.T 
+    hx = {source:Hx[source].T for source in emissions_name}
     hbc = Hbc.T
+    nx = {source:hx[source].shape[1] for source in emissions_name}
     #nx = hx.shape[1]    
     nbc = hbc.shape[1]
     ny = len(Y)
@@ -187,8 +189,6 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
     if add_offset:
         B = offset_matrix(siteindicator)
 
-    emissions_name = xprior.keys()
-
     with pm.Model() as model:
         #x = []
         #for source in emissions_name:
@@ -200,47 +200,84 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
 #
 #        print(x)
         
+        xall = []
+        
+        
+        sig = parseprior("sig", sigprior, shape=(nsites, nsigmas))
+        
         for s,source in enumerate(emissions_name):
             if xprior[source] is 'fixed':
-                x = pm.ConstantData(f'x_{source}',np.ones(nbasis_actual))
-                
+                #x = pm.ConstantData(f'x_{source}',np.ones(nbasis_actual))
+                x = pm.Deterministic(f'x_{source}',pt.as_tensor_variable(np.ones(nx[source])))
             else:
-                x = parseprior(f"x_{source}", xprior[source], shape=nbasis_actual)
+                x = parseprior(f"x_{source}", xprior[source], shape=nx[source])
+                xall.append(x)
+                
+            mod_source_mf = pm.math.dot(hx[source],x)
+                
             if s == 0:
-                mu_test = pm.math.dot(hx[:,:nbasis_actual],x)
+                mu = mod_source_mf
+                model_error = np.abs(mod_source_mf) * sig[sites, sigma_freq_index] 
             else:
-                mu_test += pm.math.dot(hx[:,:nbasis_actual],x)
-                
-        print(mu_test)
+                mu += mod_source_mf
+                model_error += np.abs(mod_source_mf) * sig[sites, sigma_freq_index] 
+                        
+        xbc = parseprior("xbc", bcprior, shape=nbc)
+        mu += pm.math.dot(hbc,xbc)
+        
+        if add_offset:
+            offset = parseprior("offset", offsetprior, shape=nsites-1) 
+            offset_vec = pm.math.concatenate( (np.array([0]), offset), axis=0)
+            mu += pm.math.dot(B, offset_vec)
+            
+        model_error = np.ones(error.shape[0])
+        epsilon = pm.math.sqrt(error**2 + model_error**2)
+        y = pm.Normal('y', mu=mu, sigma=epsilon, observed=Y, shape=ny)
                 
         #x_allsources = pm.Deterministic('x_allsources',pm.math.stack(x))
         
         # keep editing from here, try out above code that calculates Hx for each 
         # sector separately 
         
-        xbc = parseprior("xbc", bcprior, shape=nbc)
-        sig = parseprior("sig", sigprior, shape=(nsites, nsigmas))
-        
-        
-        if add_offset:
-            offset = parseprior("offset", offsetprior, shape=nsites-1) 
-            offset_vec = pm.math.concatenate( (np.array([0]), offset), axis=0)
-            mu = pm.math.dot(hx,x_allsources) + pm.math.dot(hbc,xbc) + pm.math.dot(B, offset_vec)
-        else:
-            mu = pm.math.dot(hx,x_allsources) + pm.math.dot(hbc,xbc)      
+        #if add_offset:
+        #    offset = parseprior("offset", offsetprior, shape=nsites-1) 
+        #    offset_vec = pm.math.concatenate( (np.array([0]), offset), axis=0)
+        #    mu = pm.math.dot(hx,x_allsources) + pm.math.dot(hbc,xbc) + pm.math.dot(B, offset_vec)
+        #else:
+        #    mu = pm.math.dot(hx,x_allsources) + pm.math.dot(hbc,xbc)      
 
-        model_error = np.abs(pm.math.dot(hx,x_allsources)) * sig[sites, sigma_freq_index] 
-        epsilon = pm.math.sqrt(error**2 + model_error**2)
-        y = pm.Normal('y', mu=mu, sigma=epsilon, observed=Y, shape=ny)
+        #model_error = np.abs(pm.math.dot(hx,x_allsources)) * sig[sites, sigma_freq_index] 
+        #epsilon = pm.math.sqrt(error**2 + model_error**2)
+        #y = pm.Normal('y', mu=mu, sigma=epsilon, observed=Y, shape=ny)
         
-        step1 = pm.NUTS(vars=[x_allsources,xbc])
+        #xall_sampled = pm.Deterministic('xall',pm.math.stack(xall))
+        
+        xall.append(xbc)
+        
+        #print(xall)
+        
+        step1 = pm.NUTS(vars=xall)
+        #step2 = pm.NUTS(vars=[xbc])
         step2 = pm.Slice(vars=[sig])
         
         trace = pm.sample(nit, tune=int(tune), chains=nchain,
                           step=[step1,step2], 
                           progressbar=verbose, cores=nchain)#step=pm.Metropolis())#  #target_accept=0.8,
        
-        outs = trace.posterior['x_allsources'][0, burn:nit]
+        outs = {}
+        convergence = {}
+        
+        for source in emissions_name:
+            outs[source] = trace.posterior[f'x_{source}'][0, burn:nit]
+            #Check for convergence
+            gelrub = pm.rhat(trace)[f'x_{source}'].max()
+            if gelrub > 1.05:
+                print(f'Failed Gelman-Rubin at 1.05 for {source}')
+                convergence[source] = "Failed"
+            else:
+                convergence[source] = "Passed"
+       
+        #outs = trace.posterior['xall'][0, burn:nit]
         bcouts = trace.posterior['xbc'][0, burn:nit]
         sigouts = trace.posterior['sig'][0, burn:nit]
 
@@ -249,12 +286,14 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
         #sigouts = trace.get_values(sig, burn=burn)[0:int((nit)-burn)]
         
         #Check for convergence
-        gelrub = pm.rhat(trace)['x_allsources'].max()
-        if gelrub > 1.05:
-            print('Failed Gelman-Rubin at 1.05')
-            convergence = "Failed"
-        else:
-            convergence = "Passed"
+        #gelrub = pm.rhat(trace)['xall'].max()
+        #if gelrub > 1.05:
+        #    print('Failed Gelman-Rubin at 1.05')
+        #    convergence = "Failed"
+        #else:
+        #    convergence = "Passed"
+        
+        offset_outs = {}
         
         if add_offset:
             offset_outs = trace.posterior['offset'][0, burn:nit]
@@ -264,11 +303,16 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
             OFFtrace = np.dot(B, offset_trace.T)   
         else:
             YBCtrace = np.dot(Hbc.T,bcouts.T)
-            offset_outs = outs * 0 
+            #offset_outs = outs * 0 
+            offset_outs = np.zeros(nx[emissions_name[0]]) #TODO how does this work for multiple sectors?
             #offset_trace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
             OFFtrace =  YBCtrace * 0
 
-        Ytrace = np.dot(Hx.T,outs.T) + YBCtrace
+        Ytrace = YBCtrace.copy()
+
+        for source in emissions_name:
+            
+            Ytrace += np.dot(Hx[source].T,outs[source].T)
         
         return outs, bcouts, sigouts, offset_outs, Ytrace, YBCtrace, OFFtrace, convergence, step1, step2
 
@@ -305,11 +349,11 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
           convergence (str):
             Passed/Failed convergence test as to whether mutliple chains
             have a Gelman-Rubin diagnostic value <1.05
-          Hx (array):
+          Hx (dict array):
             Transpose of the sensitivity matrix to map emissions to measurement.
             This is the same as what is given from fp_data[site].H.values, where
             fp_data is the output from e.g. footprint_data_merge, but where it
-            has been stacked for all sites.
+            has been stacked for all sites. Dictionary of arrays, indexed by source.
           Hbc (array):
             Same as above but for boundary conditions
           Y (array):
@@ -403,8 +447,9 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
         print("Post-processing output")
          
         # Get parameters for output file 
-        nit = xouts.shape[0]
-        nx = Hx.shape[0]
+        nit = xouts[emissions_name[0]].shape[0]
+        #nx = Hx.shape[0]
+        nx = {source:Hx[source].shape[0] for source in emissions_name}
         ny = len(Y)
         nbc = Hbc.shape[0]
         noff = offset_outs.shape[0]
@@ -412,7 +457,8 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
         nui = np.arange(2)
         steps = np.arange(nit)
         nmeasure = np.arange(ny)
-        nparam = np.arange(nx)
+        #nparam = np.arange(nx)
+        nparam = {source:np.arange(nx[source]) for source in emissions_name}
         nBC = np.arange(nbc)
         nOFF = np.arange(noff)
         #YBCtrace = np.dot(Hbc.T,bcouts.T)
@@ -471,7 +517,9 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
  
         Ymod95 = pm.stats.hdi(Ytrace.T, 0.95)
         Ymod68 = pm.stats.hdi(Ytrace.T, 0.68)
-        Yapriori = np.sum(Hx.T, axis=1) + np.sum(Hbc.T, axis=1)
+        Yapriori = np.zeros(Hx[emissions_name[0]].shape[1])
+        for source in emissions_name:
+            Yapriori += np.sum(Hx[source].T, axis=1) + np.sum(Hbc.T, axis=1)
         sitenum = np.arange(len(sites))
         
         if fp_data is None and rerun_file is not None:
@@ -489,25 +537,24 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
                 site_lat[si] = fp_data[site].release_lat.values[0]
                 site_lon[si] = fp_data[site].release_lon.values[0]
             bfds = fp_data[".basis"]
+            #bfds = fp_data[source'][".basis"] #TODO extract basis per sector
 
 
         #Calculate mean  and mode posterior scale map and flux field
-        scalemap_mu = np.zeros_like(bfds.values)
-        scalemap_mode = np.zeros_like(bfds.values)  
+        scalemap_mu = {source:np.zeros_like(bfds.values) for source in emissions_name}
+        scalemap_mode = {source:np.zeros_like(bfds.values) for source in emissions_name}
         
         #ADD CODE HERE TO ESTIMATE SCALEMAP AND COUNTRY FLUX PER EMISSIONS_NAME      
+        for source in emissions_name:
+            for npm in nparam[source]:
+                scalemap_mu[source][bfds.values == (npm+1)] = np.mean(xouts[source][:,npm])
+                if np.nanmax(xouts[source][:,npm]) > np.nanmin(xouts[source][:,npm]):
+                    xes = np.arange(np.nanmin(xouts[source][:,npm]), np.nanmax(xouts[source][:,npm]), 0.01)
+                    kde = stats.gaussian_kde(xouts[source][:,npm]).evaluate(xes)
+                    scalemap_mode[source][bfds.values == (npm+1)] = xes[kde.argmax()]
+                else:
+                    scalemap_mode[source][bfds.values == (npm+1)] = np.mean(xouts[source][:,npm])
 
-        for npm in nparam:
-            scalemap_mu[bfds.values == (npm+1)] = np.mean(xouts[:,npm])
-            if np.nanmax(xouts[:,npm]) > np.nanmin(xouts[:,npm]):
-                xes = np.arange(np.nanmin(xouts[:,npm]), np.nanmax(xouts[:,npm]), 0.01)
-                kde = stats.gaussian_kde(xouts[:,npm]).evaluate(xes)
-                scalemap_mode[bfds.values == (npm+1)] = xes[kde.argmax()]
-            else:
-                scalemap_mode[bfds.values == (npm+1)] = np.mean(xouts[:,npm])
-
-
-        
         if rerun_file is not None:
             # Note, at the moment fluxapriori in the output is the mean apriori flux over the 
             # inversion period and so will not be identical to the original a priori flux, if 
@@ -525,7 +572,12 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
                               store=emissions_store)
 
             emissions_flux = emds.data.flux.values
-        flux = scalemap_mode*emissions_flux[:,:,0]
+            
+        print(f'EMISSIONS: {emissions_flux.shape}')
+        
+        flux = {}
+        for source in emissions_name:
+            flux[source] = scalemap_mode[source]*emissions_flux[:,:,0]
         
         #Basis functions to save
         bfarray = bfds.values-1
