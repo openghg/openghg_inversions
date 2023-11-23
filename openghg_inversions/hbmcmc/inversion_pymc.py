@@ -226,7 +226,7 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
         mu += pm.math.dot(hbc,xbc)
         
         if add_offset:
-            offset = parseprior("offset", offsetprior, shape=nsites-1) 
+            offset = parseprior("offset", offsetprior, shape=np.amax(nsites)) 
             offset_vec = pm.math.concatenate( (np.array([0]), offset), axis=0)
             mu += pm.math.dot(B, offset_vec)
             
@@ -555,29 +555,45 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
                 else:
                     scalemap_mode[source][bfds.values == (npm+1)] = np.mean(xouts[source][:,npm])
 
-        if rerun_file is not None:
-            # Note, at the moment fluxapriori in the output is the mean apriori flux over the 
-            # inversion period and so will not be identical to the original a priori flux, if 
-            # it varies over the inversion period
-            emissions_flux = np.expand_dims(rerun_file.fluxapriori.values,2)
-        else:
-            if emissions_name == None:
-                raise NameError("Emissions name not provided.")
-            else:
-                emds=get_flux(species=species,
-                              domain=domain,
-                              source=emissions_name[0],
-                              start_date=start_date,
-                              end_date=end_date,
-                              store=emissions_store)
-
-            emissions_flux = emds.data.flux.values
-            
-        print(f'EMISSIONS: {emissions_flux.shape}')
-        
+        emissions_flux = {}
         flux = {}
+        
         for source in emissions_name:
-            flux[source] = scalemap_mode[source]*emissions_flux[:,:,0]
+
+            if rerun_file is not None:
+                # Note, at the moment fluxapriori in the output is the mean apriori flux over the 
+                # inversion period and so will not be identical to the original a priori flux, if 
+                # it varies over the inversion period
+                emissions_flux[source] = rerun_file[f'flux_apriori_{source}'].values
+            else:
+                emissions_ds = fp_data['.flux'][source].data
+                emissions_times = emissions_ds.time.values
+                if emissions_times.shape[0] > 1:
+                    flux_array = np.zeros_like(emissions_ds['flux'].values[:,:,0])
+                    print(f'Assuming monthly flux prior for {source}.')
+                    print(f'Extracting month(s) of flux to match {start_date} to {end_date}')
+                    allmonths = pd.date_range(start_date,end_date).month[:-1].values
+                    #to align with zero indexed flux dataset
+                    allmonths -= 1 
+                    #calculates a weighted average flux from all months between start_date and end_date
+                    for m in allmonths:
+                        flux_array += emissions_ds['flux'].values[:,:,m]*np.sum(allmonths == m)/len(allmonths)
+                else:
+                    print(f'Assuming annual flux prior for {source}.')
+                    emissions_flux[source] = emissions_ds[:,:,0]
+            
+                    emds=get_flux(species=species,
+                                domain=domain,
+                                source=emissions_name[0],
+                                start_date=start_date,
+                                end_date=end_date,
+                                store=emissions_store)
+
+            #emissions_flux = emds.data.flux.values
+            
+        #print(f'EMISSIONS: {emissions_flux.shape}')
+        
+            flux[source] = scalemap_mode[source]*emissions_flux[source]
         
         #Basis functions to save
         bfarray = bfds.values-1
@@ -627,6 +643,10 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
                 aprioriflux += emissions_flux[:,:,mi]*np.sum(allmonths == mi)/len(allmonths)
         else:
             aprioriflux = np.squeeze(emissions_flux)
+        
+        print(np.sum(aprioriflux))
+        print(np.sum(emds.data.flux.values[:,:,0]))    
+        
         for ci, cntry in enumerate(cntrynames):
             cntrytottrace = np.zeros(len(steps))
             cntrytotprior = 0
@@ -802,9 +822,9 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
         outds.attrs['Convergence'] = convergence
         outds.attrs['Repository version'] = code_version()
         
-        comp = dict(zlib=True, complevel=5)
-        encoding = {var: comp for var in outds.data_vars}
+        #comp = dict(zlib=True, complevel=5)
+        #encoding = {var: comp for var in outds.data_vars}
         output_filename = define_output_filename(outputpath,species,domain,outputname,start_date,ext=".nc")
         Path(outputpath).mkdir(parents=True, exist_ok=True)
-        outds.to_netcdf(output_filename, encoding=encoding, mode="w")
+        outds.to_netcdf(output_filename,mode="w")
 

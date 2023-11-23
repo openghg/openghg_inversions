@@ -423,6 +423,8 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
                 for source in emissions_name:
                     Hx[source] = np.hstack((Hx[source], fp_data[site].H.values)) #TODO edit to extract correct Hx
 
+        #return fp_data
+
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
         
         # Run PyMC inversion
