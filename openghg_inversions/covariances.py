@@ -65,8 +65,7 @@ def prior_covariance_matrix_2d(
     R1 = ssp.block_diag(tuple([r1] * m))
 
     # incidence matrix for cells distance 1 apart in second
-    # dimension is block diagonal with a n x n block for each row
-    # the block has 1's on the 1st off-diagonal
+    # dimension has 1's on the n-th off-diagonal
     data = [np.ones(size)] * 2
     C1 = ssp.spdiags(data, [-n, n], m=size, n=size)
 
