@@ -57,15 +57,15 @@ def prior_covariance_matrix_2d(
     if max_dist == 0:
         return grid_cell_error**2 * v**2
 
-    # incidence matrix for cells distance 1 apart
-    # is block diagonal with a n x n block for each row
+    # incidence matrix for cells distance 1 apart in first
+    # dimension is block diagonal with a n x n block for each row
     # the block has 1's on the 1st off-diagonal
     data = [np.ones(n)] * 2
     r1 = ssp.spdiags(data, [-1, 1], n, n)
     R1 = ssp.block_diag(tuple([r1] * m))
 
-    # incidence matrix for cells distance 1 apart
-    # is block diagonal with a n x n block for each row
+    # incidence matrix for cells distance 1 apart in second
+    # dimension is block diagonal with a n x n block for each row
     # the block has 1's on the 1st off-diagonal
     data = [np.ones(size)] * 2
     C1 = ssp.spdiags(data, [-n, n], m=size, n=size)
