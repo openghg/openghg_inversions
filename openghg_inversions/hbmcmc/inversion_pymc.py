@@ -557,43 +557,32 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
 
         emissions_flux = {}
         flux = {}
+        apriori_flux = {}
         
         for source in emissions_name:
 
             if rerun_file is not None:
-                # Note, at the moment fluxapriori in the output is the mean apriori flux over the 
-                # inversion period and so will not be identical to the original a priori flux, if 
-                # it varies over the inversion period
                 emissions_flux[source] = rerun_file[f'flux_apriori_{source}'].values
             else:
-                emissions_ds = fp_data['.flux'][source].data
-                emissions_times = emissions_ds.time.values
-                if emissions_times.shape[0] > 1:
-                    flux_array = np.zeros_like(emissions_ds['flux'].values[:,:,0])
-                    print(f'Assuming monthly flux prior for {source}.')
-                    print(f'Extracting month(s) of flux to match {start_date} to {end_date}')
-                    allmonths = pd.date_range(start_date,end_date).month[:-1].values
-                    #to align with zero indexed flux dataset
-                    allmonths -= 1 
-                    #calculates a weighted average flux from all months between start_date and end_date
-                    for m in allmonths:
-                        flux_array += emissions_ds['flux'].values[:,:,m]*np.sum(allmonths == m)/len(allmonths)
-                else:
-                    print(f'Assuming annual flux prior for {source}.')
-                    emissions_flux[source] = emissions_ds[:,:,0]
-            
-                    emds=get_flux(species=species,
-                                domain=domain,
-                                source=emissions_name[0],
-                                start_date=start_date,
-                                end_date=end_date,
-                                store=emissions_store)
+                emds = fp_data['.flux'][source]
+                flux_array_all = emds.data.flux.values
+                
+            if flux_array_all.shape[2] == 1:
+                print('\nAssuming flux prior is annual and extracting first index of flux array.')
+                apriori_flux[source] = flux_array_all[:,:,0]
+            else:
+                print(f'\nAssuming flux prior is monthly.')
+                print(f'Extracting weighted average flux from {start_date} to {end_date}')
+                allmonths = pd.date_range(start_date, end_date).month[:-1].values
+                allmonths -= 1 #to align with zero indexed array
 
-            #emissions_flux = emds.data.flux.values
-            
-        #print(f'EMISSIONS: {emissions_flux.shape}')
-        
-            flux[source] = scalemap_mode[source]*emissions_flux[source]
+                apriori_flux[source] = np.zeros_like(flux_array_all[:,:,0])
+
+                #calculate the weighted average flux across the whole inversion period
+                for m in np.unique(allmonths):
+                    apriori_flux[source] += flux_array_all[:,:,m] * np.sum(allmonths == m)/len(allmonths)
+
+            flux[source] = scalemap_mode[source]*apriori_flux[source]
         
         #Basis functions to save
         bfarray = bfds.values-1
@@ -629,32 +618,15 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
             obs_units = rerun_file.Yobs.attrs["units"].split(" ")[0]
         else:
             obs_units = str(fp_data[".units"])
-
-        # Not sure how it's best to do this if multiple months in emissions 
-        # file. Now it scales a weighted average of a priori emissions
-        # If a priori emissions have frequency of more than monthly then this
-        # needs chaning.
-        aprioriflux = np.zeros_like(area)
-        if emissions_flux.shape[2] > 1:
-            print("Assuming the inversion is over a year or less and emissions file is monthly")
-            allmonths = pd.date_range(start_date, end_date).month[:-1].values
-            allmonths -= np.min(allmonths)
-            for mi in allmonths:
-                aprioriflux += emissions_flux[:,:,mi]*np.sum(allmonths == mi)/len(allmonths)
-        else:
-            aprioriflux = np.squeeze(emissions_flux)
-        
-        print(np.sum(aprioriflux))
-        print(np.sum(emds.data.flux.values[:,:,0]))    
         
         for ci, cntry in enumerate(cntrynames):
             cntrytottrace = np.zeros(len(steps))
             cntrytotprior = 0
             for bf in range(int(np.max(bfarray))+1):
                 bothinds = np.logical_and(cntrygrid == ci, bfarray==bf)
-                cntrytottrace += np.sum(area[bothinds].ravel()*aprioriflux[bothinds].ravel()* \
+                cntrytottrace += np.sum(area[bothinds].ravel()*apriori_flux[bothinds].ravel()* \
                                3600*24*365*molarmass)*xouts[:,bf]/unit_factor
-                cntrytotprior += np.sum(area[bothinds].ravel()*aprioriflux[bothinds].ravel()* \
+                cntrytotprior += np.sum(area[bothinds].ravel()*apriori_flux[bothinds].ravel()* \
                                3600*24*365*molarmass)/unit_factor
             cntrymean[ci] = np.mean(cntrytottrace)
             cntrymedian[ci] = np.median(cntrytottrace)
@@ -701,7 +673,7 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
                             'sitenames':(['nsite'],sites),
                             'sitelons':(['nsite'],site_lon),
                             'sitelats':(['nsite'],site_lat),
-                            'fluxapriori':(['lat','lon'], aprioriflux), #NOTE this is the mean a priori flux over the inversion period
+                            'fluxapriori':(['lat','lon'], apriori_flux), #NOTE this is the mean a priori flux over the inversion period
                             'fluxmode':(['lat','lon'], flux),                            
                             'scalingmean':(['lat','lon'],scalemap_mu),
                             'scalingmode':(['lat','lon'],scalemap_mode),

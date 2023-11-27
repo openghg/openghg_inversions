@@ -372,6 +372,34 @@ def filtering(datasets_in, filters, keep_missing=False):
             return dataset_out
         else:
             return dataset[dict(time = ti)]
+        
+    def pblh(dataset,keep_missing=False):
+        '''
+        Subset for times when observations are taken at a height more than
+        50m away from (above or below) the PBLH.
+        '''
+
+        ti = [i for i,pblh in enumerate(dataset.PBLH) if np.abs(float(dataset.inlet_height_magl) - pblh) > 50.]
+        
+        if len(ti) != 0:
+
+            if keep_missing is True:
+                mf_data_array = dataset.mf
+                dataset_temp = dataset.drop('mf')
+
+                dataarray_temp = mf_data_array[dict(time = ti)]
+
+                mf_ds = xr.Dataset({'mf': (['time'], dataarray_temp)},
+                                    coords = {'time' : (dataarray_temp.coords['time'])})
+
+                dataset_out = combine_datasets(dataset_temp, mf_ds, method=None)
+                return dataset_out
+            else:
+                return dataset[dict(time = ti)]
+            
+        else:
+            print('PBLH filtering removed all datapoints so this filter is not applied to this site.')
+            return dataset
 
 
     filtering_functions={"daily_median":daily_median,
@@ -379,6 +407,7 @@ def filtering(datasets_in, filters, keep_missing=False):
                          "daytime9to5":daytime9to5,
                          "nighttime":nighttime,
                          "noon":noon,
+                         "pblh":pblh,
                          "local_influence":local_influence,
                          "six_hr_mean":six_hr_mean}
 
@@ -388,7 +417,7 @@ def filtering(datasets_in, filters, keep_missing=False):
     # Apply filtering
     for site in sites:
             for filt in filters:
-                if filt == "daily_median" or filt == "six_hr_mean":
+                if filt == "daily_median" or filt == "six_hr_mean" or filt == "pblh":
                     datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
                 else:
                     datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
