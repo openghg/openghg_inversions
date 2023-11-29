@@ -435,7 +435,7 @@ def bucketbasisfunction(emissions_name, fp_all, sites,
     base = np.expand_dims(bucket_basis,axis=2)
 
     time = [pd.to_datetime(start_date)]
-    newds = xray.Dataset({'basis' : ([ 'lat','lon', 'time'], base)},
+    newds = xr.Dataset({'basis' : ([ 'lat','lon', 'time'], base)},
                         coords={'time':(['time'], time),
                     'lat' : (['lat'],  lat), 'lon' : (['lon'],  lon)})
     newds.lat.attrs['long_name'] = 'latitude'
