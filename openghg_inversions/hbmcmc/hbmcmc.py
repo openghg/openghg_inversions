@@ -453,11 +453,14 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
         raise ValueError("Model does not currently include tracer model. Watch this space")
 
 
-    if basis_algorithm != None:
+    if tempdir is not None:
+        if os.path.exists(tempdir):
         # remove the temporary basis function directory
-        shutil.rmtree(tempdir)
+            shutil.rmtree(tempdir)
 
     print("---- Inversion completed ----")
+    
+    #return out
 
 def rerun_output(input_file, outputname, outputpath, verbose=False):
     '''
