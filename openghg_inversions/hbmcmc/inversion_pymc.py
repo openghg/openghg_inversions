@@ -726,7 +726,7 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
             outds[f'countrysd_{source}'].attrs["longname"] = "standard deviation of ocean and country totals" 
             outds[f'countryapriori_{source}'].attrs["longname"] = "prior mean of ocean and country totals"
             outds[f'xsensitivity_{source}'].attrs["longname"] = "emissions sensitivity timeseries"   
-            outds[f'xouts_{source}'].attrs["longname"] = "trace of unitless scaling factors for emissions parameters"
+            outds[f'xtrace_{source}'].attrs["longname"] = "trace of unitless scaling factors for emissions parameters"
             
             outds.attrs[f'Convergence_{source}'] = convergence[source]
             
@@ -805,7 +805,5 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
         output_filename = define_output_filename(outputpath,species,domain,outputname,start_date,ext=".nc")
         Path(outputpath).mkdir(parents=True, exist_ok=True)
         outds.to_netcdf(output_filename,mode="w")
-
-        #print(outds)
 
         return outds
