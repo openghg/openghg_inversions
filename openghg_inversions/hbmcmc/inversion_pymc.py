@@ -540,10 +540,37 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
             #bfds = fp_data[source'][".basis"] #TODO extract basis per sector
 
         #Calculate mean  and mode posterior scale map and flux field
+
+        flux = {}
+        apriori_flux = {}
         scalemap_mu = {source:np.zeros_like(bfds.values) for source in emissions_name}
         scalemap_mode = {source:np.zeros_like(bfds.values) for source in emissions_name}
+        flux_total_trace = np.zeros((lat.shape[0],lon.shape[0],len(steps)))
+        apriori_flux_total = 0
         
         for source in emissions_name:
+            if rerun_file is not None:
+                apriori_flux[source] = rerun_file[f'fluxapriori_{source}'].values
+            else:
+                emds = fp_data['.flux'][source]
+                flux_array_all = emds.data.flux.values
+                
+                if flux_array_all.shape[2] == 1:
+                    print('Assuming flux prior is annual and extracting first index of flux array.')
+                    apriori_flux[source] = flux_array_all[:,:,0]
+                else:
+                    print(f'Assuming flux prior is monthly.')
+                    print(f'Extracting weighted average flux from {start_date} to {end_date}')
+                    allmonths = pd.date_range(start_date, end_date).month[:-1].values
+                    allmonths -= 1 #to align with zero indexed array
+
+                    apriori_flux[source] = np.zeros_like(flux_array_all[:,:,0])
+
+                    #calculate the weighted average flux across the whole inversion period
+                    for m in np.unique(allmonths):
+                        apriori_flux[source] += flux_array_all[:,:,m] * np.sum(allmonths == m)/len(allmonths)
+
+            #TODO: this section will need updating when each emissions source has its own set of basis functions
             for npm in nparam[source]:
                 scalemap_mu[source][bfds.values == (npm+1)] = np.mean(xouts[source][:,npm])
                 if np.nanmax(xouts[source][:,npm]) > np.nanmin(xouts[source][:,npm]):
@@ -552,36 +579,36 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
                     scalemap_mode[source][bfds.values == (npm+1)] = xes[kde.argmax()]
                 else:
                     scalemap_mode[source][bfds.values == (npm+1)] = np.mean(xouts[source][:,npm])
-
-        emissions_flux = {}
-        flux = {}
-        apriori_flux = {}
-        
-        for source in emissions_name:
-            print(f'\n{source}')
-
-            if rerun_file is not None:
-                emissions_flux[source] = rerun_file[f'flux_apriori_{source}'].values
-            else:
-                emds = fp_data['.flux'][source]
-                flux_array_all = emds.data.flux.values
                 
-            if flux_array_all.shape[2] == 1:
-                print('Assuming flux prior is annual and extracting first index of flux array.')
-                apriori_flux[source] = flux_array_all[:,:,0]
-            else:
-                print(f'Assuming flux prior is monthly.')
-                print(f'Extracting weighted average flux from {start_date} to {end_date}')
-                allmonths = pd.date_range(start_date, end_date).month[:-1].values
-                allmonths -= 1 #to align with zero indexed array
-
-                apriori_flux[source] = np.zeros_like(flux_array_all[:,:,0])
-
-                #calculate the weighted average flux across the whole inversion period
-                for m in np.unique(allmonths):
-                    apriori_flux[source] += flux_array_all[:,:,m] * np.sum(allmonths == m)/len(allmonths)
-
+                #calculate the total flux from all sources:
+                #could just sum the mean/mode fluxes at the end, but this way
+                #we get an uncertainty in the total flux as well
+                
+                #create a flux array, empty other than fluxes from the current basis area
+                bf_location = np.where(bfds.values == npm+1)
+                bf_flux = np.zeros(apriori_flux[source].shape)
+                bf_flux[bf_location] = apriori_flux[source][bf_location]
+                
+                #expand xtrace for the current basis value, to be the same shape as the flux array
+                xtrace_wholearray = np.expand_dims(xouts[source][:,npm],axis=(0,1)).repeat(lat.shape[0],0).repeat(lon.shape[0],1)
+                
+                #add the trace of the flux from each basis to a trace of the total flux
+                flux_total_trace += np.expand_dims(bf_flux,axis=2) * xtrace_wholearray
+                apriori_flux_total += bf_flux
+                
             flux[source] = scalemap_mode[source]*apriori_flux[source]
+            
+        #flux_total_mean = np.mean(flux_total_trace,axis=0)
+        flux_total_mode = np.zeros((lat.shape[0],lon.shape[0]))
+        
+        #might be a faster way to do this, rather than looping through each lat,lon
+        for i in range(lat.shape[0]):
+            for j in range(lon.shape[0]):
+                if np.all(flux_total_trace[i,j,:]) != 0:
+                    xes = np.linspace(np.nanmax(flux_total_trace[i,j,:]),
+                                      np.nanmin(flux_total_trace[i,j,:]),200)
+                    kde = stats.gaussian_kde(flux_total_trace[i,j,:]).evaluate(xes)
+                    flux_total_mode[i,j] = xes[kde.argmax()]
         
         #Basis functions to save
         bfarray = bfds.values-1
@@ -608,6 +635,10 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
         cntrysd = {source:np.zeros(len(cntrynames)) for source in emissions_name}
         cntryprior = {source:np.zeros(len(cntrynames)) for source in emissions_name}
         
+        cntryallfluxes_trace = np.zeros((len(cntrynames),len(steps)))
+        cntryallfluxes_prior = np.zeros((len(cntrynames)))
+        cntrytotalmode = np.zeros((len(cntrynames)))
+        
         molarmass = convert.molar_mass(species)
         unit_factor = convert.prefix(country_unit_prefix)
         
@@ -626,10 +657,15 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
                 cntrytotprior = 0
                 for bf in range(int(np.max(bfarray))+1):
                     bothinds = np.logical_and(cntrygrid == ci, bfarray==bf)
-                    cntrytottrace += np.sum(area[bothinds].ravel()*apriori_flux[source][bothinds].ravel()* \
+                    c_add = np.sum(area[bothinds].ravel()*apriori_flux[source][bothinds].ravel()* \
                                 3600*24*365*molarmass)*xouts[source][:,bf]/unit_factor
-                    cntrytotprior += np.sum(area[bothinds].ravel()*apriori_flux[source][bothinds].ravel()* \
+                    c_prior_add = np.sum(area[bothinds].ravel()*apriori_flux[source][bothinds].ravel()* \
                                 3600*24*365*molarmass)/unit_factor
+                    cntrytottrace += c_add
+                    cntrytotprior += c_prior_add
+                    cntryallfluxes_trace[ci,:] += c_add
+                    cntryallfluxes_prior[ci] += cntrytotprior
+                    
                 cntrymean[source][ci] = np.mean(cntrytottrace)
                 cntrymedian[source][ci] = np.median(cntrytottrace)
 
@@ -644,8 +680,22 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
                 cntry68[source][ci, :] = pm.stats.hdi(cntrytottrace, 0.68)
                 cntry95[source][ci, :] = pm.stats.hdi(cntrytottrace, 0.95)
                 cntryprior[source][ci] = cntrytotprior
-
-            
+                
+                if np.nanmax(cntryallfluxes_trace[ci,:]) > np.nanmin(cntryallfluxes_trace[ci,:]):
+                    xes = np.linspace(np.nanmin(cntryallfluxes_trace[ci,:]),
+                                                np.nanmax(cntryallfluxes_trace[ci,:]),200)
+                    kde = stats.gaussian_kde(cntryallfluxes_trace[ci,:]).evaluate(xes)
+                    cntrytotalmode[ci] = xes[kde.argmax()]
+                else:
+                    cntrytotalmode[ci] = np.mean(cntryallfluxes_trace[ci])
+                
+        cntrytotalmean = np.mean(cntryallfluxes_trace,axis=1)
+        cntrytotalmedian = np.median(cntryallfluxes_trace,axis=1)
+        cntrytotal68 = np.vstack((np.percentile(cntryallfluxes_trace,32,axis=1),
+                                  np.percentile(cntryallfluxes_trace,68,axis=1))).T
+        cntrytotal95 = np.vstack((np.percentile(cntryallfluxes_trace,5,axis=1),
+                                  np.percentile(cntryallfluxes_trace,95,axis=1))).T
+        
         #Make output netcdf file
         outds = xr.Dataset({'Yobs':(['nmeasure'], Y),
                             'Yerror' :(['nmeasure'], error),                          
@@ -676,6 +726,13 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
                             'sitelats':(['nsite'],site_lat),
                             'basisfunctions':(['lat','lon'],bfarray),
                             'countrydefinition':(['lat','lon'], cntrygrid),
+                            'fluxtotalmode':(['lat','lon'],flux_total_mode),
+                            'fluxtotalapriori':(['lat','lon'],apriori_flux_total),
+                            'countrytotalmean':(['countrynames'],cntrytotalmean),
+                           'countrytotalmedian':(['countrynames'],cntrytotalmedian),
+                            'countrytotalmode':(['countrynames'],cntrytotalmode),
+                           'countrytotal68':(['countrynames','nUI'],cntrytotal68),
+                           'countrytotal95':(['countrynames','nUI'],cntrytotal95),
                             'bcsensitivity':(['nmeasure', 'nBC'],Hbc.T)},
                         coords={'stepnum' : (['steps'], steps),
                                     f'paranum_'
