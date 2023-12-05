@@ -9,23 +9,18 @@
 # Most functions have been copied form the acrg repo (e.g. acrg.name)
 #
 # ****************************************************************************
-
-import os
-import sys
 import glob
 import json
-import bisect
-import calendar
-import subprocess
-import pandas as pd
-import datetime as dt
-import numpy as np
 from pathlib import Path
+import os
+import sys
+from types import SimpleNamespace
+
+import pandas as pd
+import numpy as np
 import xarray as xr
-import dateutil.relativedelta
 from tqdm import tqdm
 import dask.array as da
-from collections import OrderedDict
 from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
 
@@ -154,50 +149,52 @@ def synonyms(search_string, info, alternative_label="alt"):
     return out_string
 
 
-class get_country(object):
-    def __init__(self, domain, country_file=None):
-        if country_file is None:
-            if not os.path.exists(os.path.join(openghginv_path, "countries/")):
-                os.makedirs(os.path.join(openghginv_path, "countries/"))
-                raise FileNotFoundError(
-                    "Country definition file not found." f" Please add to {openghginv_path}/countries/"
-                )
-            else:
-                country_directory = os.path.join(openghginv_path, "countries/")
-
-            filenames = glob.glob(os.path.join(country_directory, f"country_{domain}.nc"))
-            filename = filenames[0]
+def get_country(domain, country_file=None):
+    if country_file is None:
+        if not os.path.exists(os.path.join(openghginv_path, "countries/")):
+            os.makedirs(os.path.join(openghginv_path, "countries/"))
+            raise FileNotFoundError(
+                "Country definition file not found." f" Please add to {openghginv_path}/countries/"
+            )
         else:
-            filename = country_file
+            country_directory = os.path.join(openghginv_path, "countries/")
 
-        with xr.open_dataset(filename) as f:
-            lon = f.variables["lon"][:].values
-            lat = f.variables["lat"][:].values
+        filenames = glob.glob(os.path.join(country_directory, f"country_{domain}.nc"))
+        filename = filenames[0]
+    else:
+        filename = country_file
 
-            # Get country indices and names
-            if "country" in f.variables:
-                country = f.variables["country"][:, :]
-            elif "region" in f.variables:
-                country = f.variables["region"][:, :]
-            else:
-                raise ValueError(f"Variables 'country' or 'region' not found in country file {filename}.")
+    with xr.open_dataset(filename) as f:
+        lon = f.variables["lon"][:].values
+        lat = f.variables["lat"][:].values
 
-            #         if (ukmo is True) or (uk_split is True):
-            #             name_temp = f.variables['name'][:]
-            #             f.close()
-            #             name=np.asarray(name_temp)
+        # Get country indices and names
+        if "country" in f.variables:
+            country = f.variables["country"][:, :]
+        elif "region" in f.variables:
+            country = f.variables["region"][:, :]
+        else:
+            raise ValueError(f"Variables 'country' or 'region' not found in country file {filename}.")
 
-            #         else:
-            name_temp = f.variables["name"].values
+        #         if (ukmo is True) or (uk_split is True):
+        #             name_temp = f.variables['name'][:]
+        #             f.close()
+        #             name=np.asarray(name_temp)
 
-        self.lon = lon
-        self.lat = lat
-        self.lonmax = np.max(lon)
-        self.lonmin = np.min(lon)
-        self.latmax = np.max(lat)
-        self.latmin = np.min(lat)
-        self.country = np.asarray(country)
-        self.name = name_temp.astype(str)
+        #         else:
+        name_temp = f.variables["name"].values
+
+    result = dict(
+        lon=lon,
+        lat=lat,
+        lonmax=np.max(lon),
+        lonmin=np.min(lon),
+        latmax=np.max(lat),
+        latmin=np.min(lat),
+        country=np.asarray(country),
+        name=name_temp.astype(str),
+    )
+    return SimpleNamespace(**result)
 
 
 def filtering(datasets_in, filters, keep_missing=False):
