@@ -233,6 +233,7 @@ def fixedbasisMCMC(
     save_merged_data=False,
     merged_data_dir=None,
     basis_output_path=None,
+    **kwargs,
 ):
     """
     Script to run hierarchical Bayesian
@@ -498,6 +499,7 @@ def fixedbasisMCMC(
             offsetprior=offsetprior,
             add_offset=add_offset,
             verbose=verbose,
+            **kwargs,
         )
 
         # Process and save inversion output
