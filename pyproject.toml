@@ -34,3 +34,6 @@ where = ["."]
 
 [tool.setuptools.package-data]
 openghg_inversions = ["data/*"]
+
+[tool.black]
+line_length = 110

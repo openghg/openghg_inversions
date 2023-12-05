@@ -62,6 +62,7 @@ def basis_functions_wrapper(
     start_date,
     emissions_name,
     outputname,
+    output_path=None,
 ):
     """
     Wrapper function for selecting basis function
@@ -104,6 +105,8 @@ def basis_functions_wrapper(
       Emissions dataset key words for retrieving from object store
     outputname (str):
       File output name
+    output_path (str):
+      Passed to `outputdir` argument of `quadtreebasisfunction`. Used for testing.
 
 
     Returns:
@@ -121,9 +124,7 @@ def basis_functions_wrapper(
     if basis_algorithm == "quadtree":
         print("Using Quadtree algorithm to derive basis functions")
         if fp_basis_case != None:
-            print(
-                "Basis case %s supplied but quadtree_basis set to True" % fp_basis_case
-            )
+            print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
             print("Assuming you want to use %s " % fp_basis_case)
         else:
             tempdir = basis.quadtreebasisfunction(
@@ -135,6 +136,7 @@ def basis_functions_wrapper(
                 species,
                 outputname,
                 nbasis=nbasis,
+                outputdir=output_path,
             )
 
             fp_basis_case = "quadtree_" + species + "-" + outputname
@@ -191,10 +193,10 @@ def fixedbasisMCMC(
     end_date,
     outputpath,
     outputname,
-    bc_store,
-    obs_store,
-    footprint_store,
-    emissions_store,
+    bc_store="user",
+    obs_store="user",
+    footprint_store="user",
+    emissions_store="user",
     met_model=None,
     fp_model="NAME",
     fp_height=None,
@@ -230,6 +232,7 @@ def fixedbasisMCMC(
     reload_merged_data=False,
     save_merged_data=False,
     merged_data_dir=None,
+    basis_output_path=None,
 ):
     """
     Script to run hierarchical Bayesian
@@ -344,6 +347,8 @@ def fixedbasisMCMC(
         If True, saves the merged data object (fp_all) as a pickle file.
       merged_data_dir (str):
         Path to a directory of merged data objects. For saving to or reading from.
+      basis_output_path (Optional, str):
+        If set, save the basis functions to this path. Used for testing.
 
     Returns:
         Saves an output from the inversion code using inferpymc3_postprocessouts.
@@ -366,9 +371,7 @@ def fixedbasisMCMC(
             rerun_merge = False
 
         else:
-            print(
-                f"No merged data available at {merged_data_filename} so rerunning this process.\n"
-            )
+            print(f"No merged data available at {merged_data_filename} so rerunning this process.\n")
 
     # Get datasets for forward simulations
     if rerun_merge == True:
@@ -400,9 +403,7 @@ def fixedbasisMCMC(
             )
 
         elif use_tracer == True:
-            raise ValueError(
-                "Model does not currently include tracer model. Watch this space"
-            )
+            raise ValueError("Model does not currently include tracer model. Watch this space")
 
     # Basis function regions and sensitivity matrices
     fp_data, tempdir, basis_dir, bc_basis_dir = basis_functions_wrapper(
@@ -419,6 +420,7 @@ def fixedbasisMCMC(
         start_date,
         emissions_name,
         outputname,
+        output_path=basis_output_path,
     )
 
     # Apply named filters to the data
@@ -444,9 +446,7 @@ def fixedbasisMCMC(
                 error = np.concatenate((error, fp_data[site].mf_variability.values))
 
             Y = np.concatenate((Y, fp_data[site].mf.values))
-            siteindicator = np.concatenate(
-                (siteindicator, np.ones_like(fp_data[site].mf.values) * si)
-            )
+            siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
             if si == 0:
                 Ytime = fp_data[site].time.values
             else:
@@ -457,9 +457,7 @@ def fixedbasisMCMC(
             elif bc_freq == None:
                 Hmbc = fp_data[site].H_bc.values
             else:
-                Hmbc = setup.create_bc_sensitivity(
-                    start_date, end_date, site, fp_data, bc_freq
-                )
+                Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
 
             if si == 0:
                 Hbc = np.copy(Hmbc)  # fp_data[site].H_bc.values
@@ -545,9 +543,7 @@ def fixedbasisMCMC(
             add_offset=add_offset,
         )
     elif use_tracer == True:
-        raise ValueError(
-            "Model does not currently include tracer model. Watch this space"
-        )
+        raise ValueError("Model does not currently include tracer model. Watch this space")
 
     if basis_algorithm != None:
         # remove the temporary basis function directory
@@ -556,9 +552,7 @@ def fixedbasisMCMC(
             delete = False
         for _, _, files in os.walk(tempdir):
             for file in files:
-                if not file.startswith(
-                    "quadtree"
-                ):  # TODO: update this to look for other basis types
+                if not file.startswith("quadtree"):  # TODO: update this to look for other basis types
                     delete = False
         if delete:
             shutil.rmtree(tempdir)
@@ -609,20 +603,11 @@ def rerun_output(input_file, outputname, outputpath, verbose=False):
     siteindicator = ds_in.siteindicator.values
     sigma_freq_index = ds_in.sigmafreqindex.values
     xprior_string = ds_in.attrs["Emissions Prior"].split(",")
-    xprior = {
-        k: float(v) if isFloat(v) else v
-        for k, v in zip(xprior_string[::2], xprior_string[1::2])
-    }
+    xprior = {k: float(v) if isFloat(v) else v for k, v in zip(xprior_string[::2], xprior_string[1::2])}
     bcprior_string = ds_in.attrs["BCs Prior"].split(",")
-    bcprior = {
-        k: float(v) if isFloat(v) else v
-        for k, v in zip(bcprior_string[::2], bcprior_string[1::2])
-    }
+    bcprior = {k: float(v) if isFloat(v) else v for k, v in zip(bcprior_string[::2], bcprior_string[1::2])}
     sigprior_string = ds_in.attrs["Model error Prior"].split(",")
-    sigprior = {
-        k: float(v) if isFloat(v) else v
-        for k, v in zip(sigprior_string[::2], sigprior_string[1::2])
-    }
+    sigprior = {k: float(v) if isFloat(v) else v for k, v in zip(sigprior_string[::2], sigprior_string[1::2])}
     if "Offset Prior" in ds_in.attrs.keys():
         offsetprior_string = ds_in.attrs["Offset Prior"].split(",")
         offsetprior = {
