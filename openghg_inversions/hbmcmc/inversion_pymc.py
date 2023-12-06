@@ -16,7 +16,9 @@ import xarray as xr
 import getpass
 from scipy import stats
 from pathlib import Path
+from typing import Optional
 
+from openghg.dataobjects import FluxData
 from openghg.retrieve import get_flux
 
 from openghg_inversions import convert
@@ -295,6 +297,7 @@ def inferpymc_postprocessouts(
     country_file=None,
     add_offset=False,
     rerun_file=None,
+    flux: Optional[FluxData] = None,
 ):
     """
     Takes the output from inferpymc3 function, along with some other input
@@ -520,6 +523,8 @@ def inferpymc_postprocessouts(
         # inversion period and so will not be identical to the original a priori flux, if
         # it varies over the inversion period
         emissions_flux = np.expand_dims(rerun_file.fluxapriori.values, 2)
+    elif flux:
+        emissions_flux = flux.data.flux.values
     else:
         if emissions_name == None:
             raise NameError("Emissions name not provided.")
