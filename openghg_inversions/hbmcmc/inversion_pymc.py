@@ -16,7 +16,7 @@ import xarray as xr
 import getpass
 from scipy import stats
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from openghg.dataobjects import FluxData
 from openghg.retrieve import get_flux
@@ -104,7 +104,7 @@ def inferpymc(
     add_offset=False,
     verbose=False,
     min_error=0.0,
-    save_trace: Optional[str | Path] = None,
+    save_trace: Optional[Union[str, Path]] = None,
 ):
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
