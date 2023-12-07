@@ -104,6 +104,7 @@ def inferpymc(
     add_offset=False,
     verbose=False,
     min_error=0.0,
+    save_trace: Optional[str | Path] = None,
 ):
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
@@ -223,37 +224,40 @@ def inferpymc(
             nit, tune=int(tune), chains=nchain, step=[step1, step2], progressbar=verbose, cores=nchain
         )  # step=pm.Metropolis())#  #target_accept=0.8,
 
-        outs = trace.posterior["x"][0, burn:nit]
-        bcouts = trace.posterior["xbc"][0, burn:nit]
-        sigouts = trace.posterior["sig"][0, burn:nit]
+    if save_trace:
+        trace.to_netcdf(str(save_trace), engine="netcdf4")
 
-        # outs = trace.get_values(x, burn=burn)[0:int((nit)-burn)]
-        # bcouts = trace.get_values(xbc, burn=burn)[0:int((nit)-burn)]
-        # sigouts = trace.get_values(sig, burn=burn)[0:int((nit)-burn)]
+    outs = trace.posterior["x"][0, burn:nit]
+    bcouts = trace.posterior["xbc"][0, burn:nit]
+    sigouts = trace.posterior["sig"][0, burn:nit]
 
-        # Check for convergence
-        gelrub = pm.rhat(trace)["x"].max()
-        if gelrub > 1.05:
-            print("Failed Gelman-Rubin at 1.05")
-            convergence = "Failed"
-        else:
-            convergence = "Passed"
+    # outs = trace.get_values(x, burn=burn)[0:int((nit)-burn)]
+    # bcouts = trace.get_values(xbc, burn=burn)[0:int((nit)-burn)]
+    # sigouts = trace.get_values(sig, burn=burn)[0:int((nit)-burn)]
 
-        if add_offset:
-            offset_outs = trace.posterior["offset"][0, burn:nit]
-            # offset_outs = trace.get_values(offset, burn=burn)[0:int((nit)-burn)]
-            offset_trace = np.hstack([np.zeros((int(nit - burn), 1)), offset_outs])
-            YBCtrace = np.dot(Hbc.T, bcouts.T) + np.dot(B, offset_trace.T)
-            OFFtrace = np.dot(B, offset_trace.T)
-        else:
-            YBCtrace = np.dot(Hbc.T, bcouts.T)
-            offset_outs = outs * 0
-            # offset_trace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
-            OFFtrace = YBCtrace * 0
+    # Check for convergence
+    gelrub = pm.rhat(trace)["x"].max()
+    if gelrub > 1.05:
+        print("Failed Gelman-Rubin at 1.05")
+        convergence = "Failed"
+    else:
+        convergence = "Passed"
 
-        Ytrace = np.dot(Hx.T, outs.T) + YBCtrace
+    if add_offset:
+        offset_outs = trace.posterior["offset"][0, burn:nit]
+        # offset_outs = trace.get_values(offset, burn=burn)[0:int((nit)-burn)]
+        offset_trace = np.hstack([np.zeros((int(nit - burn), 1)), offset_outs])
+        YBCtrace = np.dot(Hbc.T, bcouts.T) + np.dot(B, offset_trace.T)
+        OFFtrace = np.dot(B, offset_trace.T)
+    else:
+        YBCtrace = np.dot(Hbc.T, bcouts.T)
+        offset_outs = outs * 0
+        # offset_trace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
+        OFFtrace = YBCtrace * 0
 
-        return outs, bcouts, sigouts, offset_outs, Ytrace, YBCtrace, OFFtrace, convergence, step1, step2
+    Ytrace = np.dot(Hx.T, outs.T) + YBCtrace
+
+    return outs, bcouts, sigouts, offset_outs, Ytrace, YBCtrace, OFFtrace, convergence, step1, step2
 
 
 def inferpymc_postprocessouts(

@@ -32,6 +32,7 @@
 # ****************************************************************************
 
 import os
+from pathlib import Path
 import sys
 import pickle
 import shutil
@@ -469,6 +470,8 @@ def fixedbasisMCMC(
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
+        # Path to save trace
+        trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
         # Run PyMC inversion
         (
             xouts,
@@ -499,6 +502,7 @@ def fixedbasisMCMC(
             offsetprior=offsetprior,
             add_offset=add_offset,
             verbose=verbose,
+            save_trace=trace_path,
             **kwargs,
         )
 
