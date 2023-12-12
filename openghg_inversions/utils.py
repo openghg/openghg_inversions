@@ -366,6 +366,35 @@ def filtering(datasets_in, filters, keep_missing=False):
         else:
             return dataset[dict(time=ti)]
 
+    def pblh(dataset, keep_missing=False):
+        """
+        Subset for times when observations are taken at a height more than
+        50m away from (above or below) the PBLH.
+        """
+
+        ti = [
+            i for i, pblh in enumerate(dataset.PBLH) if np.abs(float(dataset.inlet_height_magl) - pblh) > 50.0
+        ]
+
+        if len(ti) != 0:
+            if keep_missing is True:
+                mf_data_array = dataset.mf
+                dataset_temp = dataset.drop("mf")
+
+                dataarray_temp = mf_data_array[dict(time=ti)]
+
+                mf_ds = xr.Dataset(
+                    {"mf": (["time"], dataarray_temp)}, coords={"time": (dataarray_temp.coords["time"])}
+                )
+
+                dataset_out = combine_datasets(dataset_temp, mf_ds, method=None)
+                return dataset_out
+            else:
+                return dataset[dict(time=ti)]
+
+        else:
+            print("PBLH filtering removed all datapoints so this filter is not applied to this site.")
+
     filtering_functions = {
         "daily_median": daily_median,
         "daytime": daytime,
@@ -374,6 +403,7 @@ def filtering(datasets_in, filters, keep_missing=False):
         "noon": noon,
         "local_influence": local_influence,
         "six_hr_mean": six_hr_mean,
+        "pblh": pblh,
     }
 
     # Get list of sites
