@@ -412,7 +412,7 @@ def filtering(datasets_in, filters, keep_missing=False):
     # Apply filtering
     for site in sites:
         for filt in filters:
-            if filt == "daily_median" or filt == "six_hr_mean":
+            if filt in ["daily_median", "six_hr_mean", "pblh"]:
                 datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
             else:
                 datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
