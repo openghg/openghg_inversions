@@ -95,7 +95,6 @@ def inferpymc(
     xprior={"pdf": "lognormal", "mu": 1, "sigma": 1},
     bcprior={"pdf": "lognormal", "mu": 0.004, "sigma": 0.02},
     sigprior={"pdf": "uniform", "lower": 0.5, "upper": 3},
-    nuts_sampler: str = "pymc",
     nit=2.5e5,
     burn=50000,
     tune=1.25e5,
@@ -105,6 +104,7 @@ def inferpymc(
     add_offset=False,
     verbose=False,
     min_error=0.0,
+    nuts_sampler: str = "pymc",
     save_trace: Optional[Union[str, Path]] = None,
 ):
     """
