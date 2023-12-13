@@ -471,7 +471,7 @@ def fixedbasisMCMC(
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
         # Path to save trace
-        trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
+        trace_path = Path(outputpath) / ("trace_" + outputname + f"_{start_date}.nc")
         # Run PyMC inversion
         (
             xouts,

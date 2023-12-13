@@ -95,6 +95,7 @@ def inferpymc(
     xprior={"pdf": "lognormal", "mu": 1, "sigma": 1},
     bcprior={"pdf": "lognormal", "mu": 0.004, "sigma": 0.02},
     sigprior={"pdf": "uniform", "lower": 0.5, "upper": 3},
+    nuts_sampler: str = "pymc",
     nit=2.5e5,
     burn=50000,
     tune=1.25e5,
@@ -219,9 +220,15 @@ def inferpymc(
 
         step1 = pm.NUTS(vars=[x, xbc])
         step2 = pm.Slice(vars=[sig])
-
+        step = [step1, step2] if nuts_sampler == "pymc" else None
         trace = pm.sample(
-            nit, tune=int(tune), chains=nchain, step=[step1, step2], progressbar=verbose, cores=nchain
+            nit,
+            tune=int(tune),
+            chains=nchain,
+            step=step,
+            progressbar=verbose,
+            cores=nchain,
+            nuts_sampler=nuts_sampler,
         )  # step=pm.Metropolis())#  #target_accept=0.8,
 
     if save_trace:
