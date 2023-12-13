@@ -108,9 +108,7 @@ def define_mcmc_function(mcmc_type):
     return function_dict[mcmc_type]
 
 
-def hbmcmc_extract_param(
-    config_file, mcmc_type="fixed_basis", print_param=True, **command_line
-):
+def hbmcmc_extract_param(config_file, mcmc_type="fixed_basis", print_param=True, **command_line):
     """
     Extract parameters from input configuration file and associated
     MCMC function. Checks the mcmc_type to extract the required
@@ -173,20 +171,12 @@ def hbmcmc_extract_param(
 
 if __name__ == "__main__":
     openghginv_path = Paths.openghginv
-    default_config_file = os.path.join(
-        openghginv_path, "openghg_inversions/hbmcmc/hbmcmc_input.ini"
-    )
+    default_config_file = os.path.join(openghginv_path, "openghg_inversions/hbmcmc/hbmcmc_input.ini")
     config_file = default_config_file
 
-    parser = argparse.ArgumentParser(
-        description="Running Hierarchical Bayesian MCMC script"
-    )
-    parser.add_argument(
-        "start", help="Start date string of the format YYYY-MM-DD", nargs="?"
-    )
-    parser.add_argument(
-        "end", help="End date sting of the format YYYY-MM-DD", nargs="?"
-    )
+    parser = argparse.ArgumentParser(description="Running Hierarchical Bayesian MCMC script")
+    parser.add_argument("start", help="Start date string of the format YYYY-MM-DD", nargs="?")
+    parser.add_argument("end", help="End date sting of the format YYYY-MM-DD", nargs="?")
     parser.add_argument(
         "-c",
         "--config",
@@ -204,6 +194,10 @@ if __name__ == "__main__":
         type=json.loads,
         help='Pass keyword arguments to mcmc function. Format: \'{"key1": "val1", "key2": "val2"}\'.',
     )
+    parser.add_argument(
+        "--output-path",
+        help="Path to write ini file and results to.",
+    )
 
     args = parser.parse_args()
 
@@ -213,6 +207,8 @@ if __name__ == "__main__":
         command_line_args["start_date"] = args.start
     if args.end:
         command_line_args["end_date"] = args.end
+    if args.output_path:
+        command_line_args["outputpath"] = args.output_path
     if args.kwargs:
         command_line_args.update(args.kwargs)
 
@@ -222,9 +218,7 @@ if __name__ == "__main__":
             "openghg_inversions/hbmcmc/config/openghg_hbmcmc_input_template.ini",
         )
         if os.path.exists(config_file):
-            write = input(
-                f"Config file {config_file} already exists.\nOverwrite? (y/n): "
-            )
+            write = input(f"Config file {config_file} already exists.\nOverwrite? (y/n): ")
             if write.lower() == "y" or write.lower() == "yes":
                 copyfile(template_file, config_file)
             else:
