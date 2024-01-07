@@ -19,6 +19,7 @@ import shutil
 import numpy as np
 import pandas as pd
 import pickle
+import logging
 
 import openghg_inversions.hbmcmc.inversionsetup as setup
 from openghg.retrieve import get_obs_surface, get_flux
@@ -109,6 +110,7 @@ def data_processing_surface_notracer(
     # Change list of sites to upper case equivalent as
     # most functions use upper case notation
     sites = [site.upper() for site in sites]
+    sites_skipped = []
 
     fp_all = {}
     fp_all[".species"] = species.upper()
@@ -162,6 +164,8 @@ def data_processing_surface_notracer(
 
         # if obs not found, skip this site
         if not obs_found:
+            logging.info(f"Skipped site {site} -- no obs data found.")
+            sites_skipped.append(site)
             continue
 
         # Get footprints
@@ -186,6 +190,8 @@ def data_processing_surface_notracer(
 
         # if footprint not found, skip this site
         if not footprint_found:
+            logging.info(f"Skipped site {site} -- no footprint data found.")
+            sites_skipped.append(site)
             continue
 
         # Get boundary conditions
@@ -283,6 +289,10 @@ def data_processing_surface_notracer(
 
     fp_all[".scales"] = scales
     fp_all[".units"] = float(scenario_combined.mf.units)
+
+    # Drop skipped sites
+    zipped = [tup for tup in zip(sites, averaging_period, inlet, instrument) if tup[0] not in sites_skipped]
+    sites, averaging_period, inlet, instrument = zip(*zipped)  # turn list of tuples into tuple of lists
 
     # If site contains measurement errors given as repeatability and variability,
     # use variability to replace missing repeatability values, then drop variability
