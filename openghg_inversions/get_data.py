@@ -111,6 +111,7 @@ def data_processing_surface_notracer(
     # most functions use upper case notation
     sites = [site.upper() for site in sites]
     sites_skipped = []
+    obs_store_used = []
 
     fp_all = {}
     fp_all[".species"] = species.upper()
@@ -160,6 +161,7 @@ def data_processing_surface_notracer(
             else:
                 unit = float(site_data[site].mf.units)
                 obs_found = True
+                obs_store_used.append(store)
                 break  # stop checking stores
 
         # if obs not found, skip this site
