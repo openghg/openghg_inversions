@@ -195,7 +195,7 @@ def inferpymc(
     # convert siteindicator into a site indexer
     if sigma_per_site:
         sites = siteindicator.astype(int)
-        nsites = np.amax(sites) + 1
+        nsites = len(np.unique(sites))
     else:
         sites = np.zeros_like(siteindicator).astype(int)
         nsites = 1
