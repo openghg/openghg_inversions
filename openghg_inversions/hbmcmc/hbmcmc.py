@@ -455,7 +455,7 @@ def fixedbasisMCMC(
 
             Y = np.concatenate((Y, fp_data[site].mf.values))
             siteindicator = np.concatenate(
-                (siteindicator, np.ones_like(fp_data[site].mf.values) * site_nums[si])
+                (siteindicator, np.ones_like(fp_data[site].mf.values) * site_nums[site])
             )
             if si == 0:
                 Ytime = fp_data[site].time.values
