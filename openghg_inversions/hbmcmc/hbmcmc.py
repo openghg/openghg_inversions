@@ -407,6 +407,10 @@ def fixedbasisMCMC(
         elif use_tracer == True:
             raise ValueError("Model does not currently include tracer model. Watch this space")
 
+    # Sites may have been dropped by `get_data`, so we'll update the inputs to reflect that
+    zipped = [tup for tup in zip(sites, averaging_period, inlet, instrument) if tup[0].upper() not in fp_all]
+    sites, averaging_period, inlet, instrument = zip(*zipped)  # turn list of tuples into tuple of lists
+
     # Basis function regions and sensitivity matrices
     fp_data, tempdir, basis_dir, bc_basis_dir = basis_functions_wrapper(
         basis_algorithm,
