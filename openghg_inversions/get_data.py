@@ -161,10 +161,11 @@ def data_processing_surface_notracer(
             except SearchError:
                 continue  # try next store
             else:
-                unit = float(site_data[site].mf.units)
-                obs_found = True
-                obs_store_used.append(store)
-                break  # stop checking stores
+                if site_data is not None:
+                    unit = float(site_data.data.mf.units)
+                    obs_found = True
+                    obs_store_used.append(store)
+                    break  # stop checking stores
 
         # if obs not found, skip this site
         if not obs_found:
@@ -188,9 +189,10 @@ def data_processing_surface_notracer(
             except SearchError:
                 continue  # try next store
             else:
-                footprint_dict[site] = get_fps
-                footprint_found = True
-                break  # stop checking stores
+                if get_fps is not None:
+                    footprint_dict[site] = get_fps
+                    footprint_found = True
+                    break  # stop checking stores
 
         # if footprint not found, skip this site
         if not footprint_found:
