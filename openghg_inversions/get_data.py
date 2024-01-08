@@ -14,6 +14,7 @@
 # *****************************************************************************
 
 import os
+from pathlib import Path
 import sys
 import shutil
 import numpy as np
@@ -315,10 +316,10 @@ def data_processing_surface_notracer(
             fp_all, sites, species, start_date, end_date, averaging_period, inlet=inlet, instrument=instrument
         )
 
-    if save_merged_data == True:
-        fp_out = open(merged_data_dir + merged_data_name, "wb")
-        pickle.dump(fp_all, fp_out)
-        fp_out.close()
+    if save_merged_data:
+        merged_data_path = Path(merged_data_dir) / merged_data_name
+        with open(merged_data_path, "wb") as fp_out:
+            pickle.dump(fp_all, fp_out)
 
         print(f"\nfp_all saved in {merged_data_dir}\n")
 
