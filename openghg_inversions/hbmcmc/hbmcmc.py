@@ -558,7 +558,7 @@ def fixedbasisMCMC(
             country_file=country_file,
             add_offset=add_offset,
             flux=list(fp_all[".flux"].values())[0],
-            site_nums=list(site_nums.values()),
+            site_nums=[site_nums[site] for site in sites],
         )
     elif use_tracer == True:
         raise ValueError("Model does not currently include tracer model. Watch this space")
