@@ -16,7 +16,7 @@ import xarray as xr
 import getpass
 from scipy import stats
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from openghg.dataobjects import FluxData
 from openghg.retrieve import get_flux
@@ -106,6 +106,7 @@ def inferpymc(
     min_error=0.0,
     nuts_sampler: str = "pymc",
     save_trace: Optional[Union[str, Path]] = None,
+    idata_kwargs: Optional[dict[str, Any]] = None,
 ):
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
@@ -229,6 +230,7 @@ def inferpymc(
             progressbar=verbose,
             cores=nchain,
             nuts_sampler=nuts_sampler,
+            idata_kwargs=idata_kwargs,
         )  # step=pm.Metropolis())#  #target_accept=0.8,
 
     if save_trace:
