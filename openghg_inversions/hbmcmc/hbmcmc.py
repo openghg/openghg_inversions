@@ -411,7 +411,7 @@ def fixedbasisMCMC(
     site_nums = {site: i for i, site in enumerate(sites)}
 
     # Sites may have been dropped by `get_data`, so we'll update the inputs to reflect that
-    zipped = [tup for tup in zip(sites, averaging_period, inlet, instrument) if tup[0].upper() not in fp_all]
+    zipped = [tup for tup in zip(sites, averaging_period, inlet, instrument) if tup[0].upper() in fp_all]
     sites, averaging_period, inlet, instrument = zip(*zipped)  # turn list of tuples into tuple of lists
 
     # Basis function regions and sensitivity matrices
