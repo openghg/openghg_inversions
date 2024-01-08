@@ -407,6 +407,9 @@ def fixedbasisMCMC(
         elif use_tracer == True:
             raise ValueError("Model does not currently include tracer model. Watch this space")
 
+    # Save indices of sites for creating site indicators later
+    site_nums = {site: i for i, site in enumerate(sites)}
+
     # Sites may have been dropped by `get_data`, so we'll update the inputs to reflect that
     zipped = [tup for tup in zip(sites, averaging_period, inlet, instrument) if tup[0].upper() not in fp_all]
     sites, averaging_period, inlet, instrument = zip(*zipped)  # turn list of tuples into tuple of lists
@@ -452,7 +455,9 @@ def fixedbasisMCMC(
                 error = np.concatenate((error, fp_data[site].mf_variability.values))
 
             Y = np.concatenate((Y, fp_data[site].mf.values))
-            siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
+            siteindicator = np.concatenate(
+                (siteindicator, np.ones_like(fp_data[site].mf.values) * site_nums[si])
+            )
             if si == 0:
                 Ytime = fp_data[site].time.values
             else:
