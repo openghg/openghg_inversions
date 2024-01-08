@@ -309,6 +309,7 @@ def inferpymc_postprocessouts(
     add_offset=False,
     rerun_file=None,
     flux: Optional[FluxData] = None,
+    site_nums: Optional[list[int]] = None,
 ):
     """
     Takes the output from inferpymc3 function, along with some other input
@@ -414,6 +415,7 @@ def inferpymc_postprocessouts(
         Add an offset (intercept) to all sites but the first in the site list. Default False.
       rerun_file (xarray dataset, optional):
         An xarray dataset containing the ncdf output from a previous run of the MCMC code.
+      site_nums: optional list of labels for sites
 
     Returns:
         netdf file containing results from inversion
@@ -498,7 +500,8 @@ def inferpymc_postprocessouts(
     Ymod95 = pm.stats.hdi(Ytrace.T, 0.95)
     Ymod68 = pm.stats.hdi(Ytrace.T, 0.68)
     Yapriori = np.sum(Hx.T, axis=1) + np.sum(Hbc.T, axis=1)
-    sitenum = np.arange(len(sites))
+
+    sitenum = site_nums if site_nums else np.arange(len(sites))
 
     if fp_data is None and rerun_file is not None:
         lon = rerun_file.lon.values
