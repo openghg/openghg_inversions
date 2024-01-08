@@ -361,13 +361,12 @@ def fixedbasisMCMC(
 
     if reload_merged_data == True:
         merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
-        merged_data_filename = os.path.join(merged_data_dir, merged_data_name)
+        merged_data_filename = Path(merged_data_dir) / merged_data_name
         print(f"Attempting to read in merged data from: {merged_data_filename}...\n")
 
-        if os.path.exists(merged_data_filename) == True:
-            fp_in = open(merged_data_filename, "rb")
-            fp_all = pickle.load(fp_in)
-            fp_in.close()
+        if merged_data_filename.exists():
+            with open(merged_data_filename, "rb") as fp_in:
+                fp_all = pickle.load(fp_in)
 
             print(f"Successfully read in merged data.\n")
             rerun_merge = False
