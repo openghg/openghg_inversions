@@ -409,14 +409,15 @@ def fixedbasisMCMC(
             raise ValueError("Model does not currently include tracer model. Watch this space")
 
     # Save indices of sites for creating site indicators later
-    all_site_nums = {site: i for i, site in enumerate(sites)}
+    site_nums_dict = {site: i for i, site in enumerate(sites)}
 
     # Sites may have been dropped by `get_data`, so we'll update the inputs to reflect that
     zipped = [tup for tup in zip(sites, averaging_period, inlet, instrument) if tup[0].upper() in fp_all]
     sites, averaging_period, inlet, instrument = map(
         list, zip(*zipped)
     )  # turn list of tuples into tuple of lists
-    site_nums = [all_site_nums[site] for site in sites]
+    #
+    site_nums = [site_nums_dict[site] for site in sites]
 
     # Basis function regions and sensitivity matrices
     fp_data, tempdir, basis_dir, bc_basis_dir = basis_functions_wrapper(
@@ -460,7 +461,7 @@ def fixedbasisMCMC(
 
             Y = np.concatenate((Y, fp_data[site].mf.values))
             siteindicator = np.concatenate(
-                (siteindicator, np.ones_like(fp_data[site].mf.values) * site_nums[site])
+                (siteindicator, np.ones_like(fp_data[site].mf.values) * site_nums_dict[site])
             )
             if si == 0:
                 Ytime = fp_data[site].time.values
