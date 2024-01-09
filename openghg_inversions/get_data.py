@@ -169,7 +169,7 @@ def data_processing_surface_notracer(
 
         # if obs not found, skip this site
         if not obs_found:
-            logging.info(f"Skipped site {site} -- no obs data found.")
+            logging.warning(f"Skipped site {site} -- no obs data found.")
             sites_skipped.append(site)
             continue
 
@@ -196,7 +196,7 @@ def data_processing_surface_notracer(
 
         # if footprint not found, skip this site
         if not footprint_found:
-            logging.info(f"Skipped site {site} -- no footprint data found.")
+            logging.warning(f"Skipped site {site} -- no footprint data found.")
             sites_skipped.append(site)
             continue
 
