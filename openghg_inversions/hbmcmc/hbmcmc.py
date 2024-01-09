@@ -234,6 +234,7 @@ def fixedbasisMCMC(
     save_merged_data=False,
     merged_data_dir=None,
     basis_output_path=None,
+    averaging_error_for_rep=False,
     **kwargs,
 ):
     """
@@ -401,19 +402,21 @@ def fixedbasisMCMC(
                 save_merged_data=save_merged_data,
                 merged_data_name=merged_data_name,
                 merged_data_dir=merged_data_dir,
+                averaging_error_for_rep=averaging_error_for_rep,
             )
 
         elif use_tracer == True:
             raise ValueError("Model does not currently include tracer model. Watch this space")
 
     # Save indices of sites for creating site indicators later
-    site_nums = {site: i for i, site in enumerate(sites)}
+    all_site_nums = {site: i for i, site in enumerate(sites)}
 
     # Sites may have been dropped by `get_data`, so we'll update the inputs to reflect that
     zipped = [tup for tup in zip(sites, averaging_period, inlet, instrument) if tup[0].upper() in fp_all]
     sites, averaging_period, inlet, instrument = map(
         list, zip(*zipped)
     )  # turn list of tuples into tuple of lists
+    site_nums = [all_site_nums[site] for site in sites]
 
     # Basis function regions and sensitivity matrices
     fp_data, tempdir, basis_dir, bc_basis_dir = basis_functions_wrapper(
@@ -558,7 +561,7 @@ def fixedbasisMCMC(
             country_file=country_file,
             add_offset=add_offset,
             flux=list(fp_all[".flux"].values())[0],
-            site_nums=[site_nums[site] for site in sites],
+            site_nums=site_nums,
         )
     elif use_tracer == True:
         raise ValueError("Model does not currently include tracer model. Watch this space")
