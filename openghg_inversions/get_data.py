@@ -50,6 +50,7 @@ def data_processing_surface_notracer(
     footprint_store=None,
     emissions_store=None,
     averagingerror=True,
+    averaging_error_for_rep=False,
     save_merged_data=False,
     merged_data_name: Optional[str] = None,
     merged_data_dir: Optional[str] = None,
@@ -106,6 +107,9 @@ def data_processing_surface_notracer(
         averagingerror (bool/opt):
           Adds the variability in the averaging period to the measurement
           error if set to True.
+        averaging_error_for_rep (bool/opt):
+          Adds the variability in the averaging period to mf_repeatability
+          if set to True.
 
     """
 
@@ -165,6 +169,17 @@ def data_processing_surface_notracer(
                     unit = float(site_data.data.mf.units)
                     obs_found = True
                     obs_store_used.append(store)
+
+                    # add averaging error if we have mf_repeatability
+                    if (
+                        averaging_error_for_rep
+                        and "mf_repeatability" in site_data.data
+                        and averaging_period[i] is not None
+                    ):
+                        site_data.data["mf_repeatability"] = (
+                            site_data.data["mf_repeatability"] + site_data.data["mf_variability"]
+                        )
+
                     break  # stop checking stores
 
         # if obs not found, skip this site
