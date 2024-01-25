@@ -174,7 +174,7 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
         elif len(emissions_name) >1:
             model_scenario_dict = {}
  
-            for source in emissions_sources:
+            for source in emissions_name:
                 model_scenario=ModelScenario(site=site,
                                              species=species,
                                              inlet=inlet[i],
@@ -239,7 +239,8 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
                                          end_date,
                                          averaging_period,
                                          inlet=inlet,
-                                         instrument=instrument)
+                                         instrument=instrument,
+                                         store=obs_store)
         
     if save_merged_data == True:
         fp_out = open(merged_data_dir+merged_data_name, 'wb')
