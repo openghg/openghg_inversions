@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Optional, Union
 
 from openghg.dataobjects import FluxData
-from openghg.retrieve import get_flux
 
 from openghg_inversions import convert
 from openghg_inversions import utils
@@ -523,27 +522,30 @@ def inferpymc_postprocessouts(
             scalemap_mode[bfds.values == (npm + 1)] = np.mean(xouts[:, npm])
 
     if rerun_file is not None:
-        # Note, at the moment fluxapriori in the output is the mean apriori flux over the
-        # inversion period and so will not be identical to the original a priori flux, if
-        # it varies over the inversion period
-        emissions_flux = np.expand_dims(rerun_file.fluxapriori.values, 2)
-    elif flux:
-        emissions_flux = flux.data.flux.values
+        flux_array_all = np.expand_dims(rerun_file.fluxapriori.values, 2)
     else:
         if emissions_name == None:
             raise NameError("Emissions name not provided.")
         else:
-            emds = get_flux(
-                species=species,
-                domain=domain,
-                source=emissions_name[0],
-                start_date=start_date,
-                end_date=end_date,
-                store=emissions_store,
-            )
+            emds = fp_data['.flux'][emissions_name[0]]
+            flux_array_all = emds.data.flux.values
+            
+    if flux_array_all.shape[2] == 1:
+        print(f'\nAssuming flux prior is annual and extracting first index of flux array.')
+        apriori_flux = flux_array_all[:,:,0]
+    else:
+        print(f'\nAssuming flux prior is monthly.')
+        print(f'Extracting weighted average flux prior from {start_date} to {end_date}')
+        allmonths = pd.date_range(start_date, end_date).month[:-1].values
+        allmonths -= 1 #to align with zero indexed array
 
-        emissions_flux = emds.data.flux.values
-    flux = scalemap_mode * emissions_flux[:, :, 0]
+        apriori_flux = np.zeros_like(flux_array_all[:,:,0])
+
+        #calculate the weighted average flux across the whole inversion period
+        for m in np.unique(allmonths):
+            apriori_flux += flux_array_all[:,:,m] * np.sum(allmonths == m)/len(allmonths)
+
+    flux = scalemap_mode*apriori_flux
 
     # Basis functions to save
     bfarray = bfds.values - 1
@@ -580,31 +582,18 @@ def inferpymc_postprocessouts(
     else:
         obs_units = str(fp_data[".units"])
 
-    # Not sure how it's best to do this if multiple months in emissions
-    # file. Now it scales a weighted average of a priori emissions
-    # If a priori emissions have frequency of more than monthly then this
-    # needs chaning.
-    aprioriflux = np.zeros_like(area)
-    if emissions_flux.shape[2] > 1:
-        print("Assuming the inversion is over a year or less and emissions file is monthly")
-        allmonths = pd.date_range(start_date, end_date).month[:-1].values
-        allmonths -= np.min(allmonths)
-        for mi in allmonths:
-            aprioriflux += emissions_flux[:, :, mi] * np.sum(allmonths == mi) / len(allmonths)
-    else:
-        aprioriflux = np.squeeze(emissions_flux)
     for ci, cntry in enumerate(cntrynames):
         cntrytottrace = np.zeros(len(steps))
         cntrytotprior = 0
         for bf in range(int(np.max(bfarray)) + 1):
             bothinds = np.logical_and(cntrygrid == ci, bfarray == bf)
             cntrytottrace += (
-                np.sum(area[bothinds].ravel() * aprioriflux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
                 * xouts[:, bf]
                 / unit_factor
             )
             cntrytotprior += (
-                np.sum(area[bothinds].ravel() * aprioriflux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
                 / unit_factor
             )
         cntrymean[ci] = np.mean(cntrytottrace)
@@ -653,10 +642,7 @@ def inferpymc_postprocessouts(
             "sitenames": (["nsite"], sites),
             "sitelons": (["nsite"], site_lon),
             "sitelats": (["nsite"], site_lat),
-            "fluxapriori": (
-                ["lat", "lon"],
-                aprioriflux,
-            ),  # NOTE this is the mean a priori flux over the inversion period
+            "fluxapriori": (["lat", "lon"],apriori_flux),
             "fluxmode": (["lat", "lon"], flux),
             "scalingmean": (["lat", "lon"], scalemap_mu),
             "scalingmode": (["lat", "lon"], scalemap_mode),
@@ -804,3 +790,5 @@ def inferpymc_postprocessouts(
     output_filename = define_output_filename(outputpath, species, domain, outputname, start_date, ext=".nc")
     Path(outputpath).mkdir(parents=True, exist_ok=True)
     outds.to_netcdf(output_filename, encoding=encoding, mode="w")
+
+    return outds
