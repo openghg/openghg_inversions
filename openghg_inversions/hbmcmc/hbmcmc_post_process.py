@@ -24,7 +24,7 @@ import os
 import glob
 import json
 import pandas as pd
-import pymc3 as pm
+import pymc as pm
 import numpy as np
 import xarray as xr
 import matplotlib.dates as mdates
@@ -34,6 +34,7 @@ from matplotlib.colors import BoundaryNorm, Normalize
 from matplotlib import ticker
 from cartopy.feature import BORDERS
 from collections import OrderedDict
+from scipy import stats
 
 from openghg_inversions import utils
 from openghg_inversions import convert   
@@ -41,8 +42,8 @@ from openghg_inversions.config.paths import Paths
 acrg_path = os.path.join("/group/chemistry/acrg") #Paths.acrg
 
 # Get site_info file
-with open(acrg_path / "data/site_info.json") as f:
-    site_info=json.load(f,object_pairs_hook=OrderedDict)
+#with open(acrg_path / "data/site_info.json") as f:
+#    site_info=json.load(f,object_pairs_hook=OrderedDict)
 
 def check_platform(site,network=None):
     '''
@@ -756,6 +757,7 @@ def country_emissions(ds, species, domain, country_file=None, country_unit_prefi
         cntrynames = countries
     cntrygrid = cntryds.country.values
     cntrymean = np.zeros((len(cntrynames)))
+    cntrymode = np.zeros((len(cntrynames)))
     cntry68 = np.zeros((len(cntrynames), len(nui)))
     cntry95 = np.zeros((len(cntrynames), len(nui)))
     cntrysd = np.zeros(len(cntrynames))
@@ -778,11 +780,15 @@ def country_emissions(ds, species, domain, country_file=None, country_unit_prefi
             cntrytotprior += np.sum(area[bothinds].ravel()*aprioriflux.values[bothinds].ravel()* \
                    3600*24*365*molarmass)/unit_factor
         cntrymean[i] = np.mean(cntrytottrace)
-        cntry68[i, :] = pm.stats.hpd(np.expand_dims(cntrytottrace,axis=1), 0.68)
-        cntry95[i, :] = pm.stats.hpd(np.expand_dims(cntrytottrace,axis=1), 0.95)
-        cntryprior[i] = cntrytotprior 
+        cntry68[i, :] = pm.stats.hdi(np.expand_dims(cntrytottrace,axis=1), 0.68)
+        cntry95[i, :] = pm.stats.hdi(np.expand_dims(cntrytottrace,axis=1), 0.95)
+        cntryprior[i] = cntrytotprior
         
-    return cntrymean, cntry68, cntry95, cntryprior
+        xes = np.linspace(np.nanmin(cntrytottrace), np.nanmax(cntrytottrace), 200)
+        kde = stats.gaussian_kde(cntrytottrace).evaluate(xes)
+        cntrymode[i] = xes[kde.argmax()]
+        
+    return cntrymean, cntry68, cntry95, cntryprior, cntrymode
     
 def country_emissions_mult(ds_list, species, domain, country_file=None, country_unit_prefix=None, countries = None):
     '''
