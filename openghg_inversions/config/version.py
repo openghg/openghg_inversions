@@ -17,26 +17,28 @@ from openghg_inversions.config.paths import Paths
 
 openghginv_path = Paths.openghginv
 
+
 def code_version():
-    '''   
-    Use git describe to return the latest tag 
+    """
+    Use git describe to return the latest tag
     (and git hash if applicable).
     -----------------------------------
     Returns
-      version : String defining the version of the code used, 
+      version : String defining the version of the code used,
                 or "Unknown" if git is unavailable
     -----------------------------------
-    '''
+    """
     try:
-        output = subprocess.run(['git', 'describe'], 
-                                capture_output=True,
-                                cwd=openghginv_path,
-                                universal_newlines=True)
-        #remove newlines and cast as string
-        version = str(output.stdout.strip('\n'))
+        output = subprocess.run(
+            ["git", "describe"], capture_output=True, cwd=openghginv_path, universal_newlines=True
+        )
+        # remove newlines and cast as string
+        version = str(output.stdout.strip("\n"))
     except:
-        print("WARNING: Unable to identify version using git."
-              " Check that git is available to the python process.")
+        print(
+            "WARNING: Unable to identify version using git."
+            " Check that git is available to the python process."
+        )
         version = "Unknown"
-        
+
     return version
