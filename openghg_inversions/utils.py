@@ -222,7 +222,7 @@ def filtering(datasets_in, filters, keep_missing=False):
             "nighttime"         : Only b/w 23:00 - 03:00 inclusive
             "noon"              : Only 12:00 fp and obs used
             "daily_median"      : calculates the daily median
-            "pblh_gt_threshold" :
+            "pblh"              : Only keeps times when pblh is > 50m away from the obs height
             "local_influence"   : Only keep times when localness is low
             "six_hr_mean"       :
             "local_lapse"       :
@@ -412,10 +412,15 @@ def filtering(datasets_in, filters, keep_missing=False):
     # Apply filtering
     for site in sites:
         for filt in filters:
+            n_nofilter = datasets[site].time.values.shape[0]
             if filt in ["daily_median", "six_hr_mean", "pblh"]:
                 datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
             else:
                 datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
+            n_filter = datasets[site].time.values.shape[0]
+            n_dropped = n_nofilter - n_filter
+            perc_dropped = np.round(n_dropped/n_nofilter*100,2)
+            print(f'{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}')
 
     return datasets
 
