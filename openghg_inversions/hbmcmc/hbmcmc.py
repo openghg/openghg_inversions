@@ -127,6 +127,7 @@ def basis_functions_wrapper(
         if fp_basis_case != None:
             print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
             print("Assuming you want to use %s " % fp_basis_case)
+            tempdir = None
         else:
             tempdir = basis.quadtreebasisfunction(
                 emissions_name,
@@ -148,6 +149,7 @@ def basis_functions_wrapper(
         if fp_basis_case != None:
             print("Basis case %s supplied but bucket_basis set to True" % fp_basis_case)
             print("Assuming you want to use %s " % fp_basis_case)
+            tempdir = None
         else:
             tempdir = basis.bucketbasisfunction(
                 emissions_name,
