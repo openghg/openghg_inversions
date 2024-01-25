@@ -382,7 +382,7 @@ def fixedbasisMCMC(
         merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
 
         if use_tracer == False:
-            fp_all = get_data.data_processing_surface_notracer(
+            fp_all,sites,inlet,fp_height,instrument,averaging_period = get_data.data_processing_surface_notracer(
                 species,
                 sites,
                 domain,
