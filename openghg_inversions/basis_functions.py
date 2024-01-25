@@ -357,7 +357,7 @@ def optimize_nregions(bucket, grid, nregion, tol):
         bucket = bucket * 0.995
         return optimize_nregions(bucket, grid, nregion, tol)
 
-    elif get_nregions(mybucket, fps) > nregion - tol:
+    elif get_nregions(bucket, grid) > nregion - tol:
         bucket = bucket * 1.005
         return optimize_nregions(bucket, grid, nregion, tol)
 
@@ -523,7 +523,7 @@ def bucketbasisfunction(
     base = np.expand_dims(bucket_basis, axis=2)
 
     time = [pd.to_datetime(start_date)]
-    newds = xray.Dataset(
+    newds = xr.Dataset(
         {"basis": (["lat", "lon", "time"], base)},
         coords={"time": (["time"], time), "lat": (["lat"], lat), "lon": (["lon"], lon)},
     )
