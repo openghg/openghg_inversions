@@ -262,7 +262,7 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
                                          store=obs_store)
         
     if save_merged_data == True:
-        fp_out = open(merged_data_dir+merged_data_name, 'wb')
+        fp_out = open(os.path.join(merged_data_dir,merged_data_name), 'wb')
         pickle.dump(fp_all, fp_out)
         fp_out.close()
 
