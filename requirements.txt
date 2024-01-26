@@ -4,4 +4,4 @@ pandas
 matplotlib
 scipy
 numpy
-openghg
+openghg == 0.6.2
