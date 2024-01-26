@@ -524,8 +524,8 @@ def inferpymc_postprocessouts(
     if rerun_file is not None:
         flux_array_all = np.expand_dims(rerun_file.fluxapriori.values, 2)
     else:
-        if emissions_name == None:
-            raise NameError("Emissions name not provided.")
+        if emissions_name is None:
+            raise ValueError("Emissions name not provided.")
         else:
             emds = fp_data['.flux'][emissions_name[0]]
             flux_array_all = emds.data.flux.values

@@ -25,6 +25,7 @@ from openghg.retrieve import get_obs_surface, get_flux
 from openghg.retrieve import get_bc, get_footprint
 from openghg.analyse import ModelScenario
 from openghg.dataobjects import BoundaryConditionsData
+from openghg.types import SearchError
 
 def data_processing_surface_notracer(species, sites, domain, averaging_period, start_date, end_date,
                                      met_model=None, fp_model="NAME", fp_height=None,
@@ -225,7 +226,7 @@ def data_processing_surface_notracer(species, sites, domain, averaging_period, s
                 
             site_indices_to_keep.append(i)
                 
-        except:
+        except SearchError:
             print(f'\nError in reading in data for {site}, possibly because there is no obs for this time period.'+
                   f'\nContinuing model run without {site}.\n')
             
