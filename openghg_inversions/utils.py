@@ -165,41 +165,30 @@ class get_country(object):
             else:
                 country_directory = os.path.join(openghginv_path, "countries/")
 
-            filename = glob.glob(os.path.join(country_directory, f"country_{domain}.nc"))
-            f = xr.open_dataset(filename[0])
+            filenames = glob.glob(os.path.join(country_directory, f"country_{domain}.nc"))
+            filename = filenames[0]
         else:
             filename = country_file
-            f = xr.open_dataset(filename)
 
-        lon = f.variables["lon"][:].values
-        lat = f.variables["lat"][:].values
+        with xr.open_dataset(filename) as f:
+            lon = f.variables["lon"][:].values
+            lat = f.variables["lat"][:].values
 
-        # Get country indices and names
-        if "country" in f.variables:
-            country = f.variables["country"][:, :]
-        elif "region" in f.variables:
-            country = f.variables["region"][:, :]
-
-        #         if (ukmo is True) or (uk_split is True):
-        #             name_temp = f.variables['name'][:]
-        #             f.close()
-        #             name=np.asarray(name_temp)
-
-        #         else:
-        name_temp = f.variables["name"].values
-        f.close()
-
-        name_temp = np.ma.filled(name_temp, fill_value=None)
-
-        name = []
-        for ii in range(len(name_temp)):
-            if type(name_temp[ii]) is not str:
-                # name.append(''.os.path.join(name_temp[ii].decode("utf-8")))
-                name.append(os.path.join(name_temp[ii].decode("utf-8")))
+            # Get country indices and names
+            if "country" in f.variables:
+                country = f.variables["country"][:, :]
+            elif "region" in f.variables:
+                country = f.variables["region"][:, :]
             else:
-                # name.append(''.os.path.join(name_temp[ii]))
-                name.append(os.path.join(name_temp[ii]))
-        name = np.asarray(name)
+                raise ValueError(f"Variables 'country' or 'region' not found in country file {filename}.")
+
+            #         if (ukmo is True) or (uk_split is True):
+            #             name_temp = f.variables['name'][:]
+            #             f.close()
+            #             name=np.asarray(name_temp)
+
+            #         else:
+            name = f.variables["name"].values.astype(str)
 
         self.lon = lon
         self.lat = lat
