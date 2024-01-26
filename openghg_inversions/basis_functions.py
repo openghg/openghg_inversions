@@ -39,25 +39,17 @@ class quadTreeNode:
             return True
 
     def createChildren(self, grid, limit):
-        value = np.sum(
-            grid[self.xStart : self.xEnd, self.yStart : self.yEnd]
-        )  # .values
+        value = np.sum(grid[self.xStart : self.xEnd, self.yStart : self.yEnd])  # .values
 
         # stop subdividing if finest resolution or bucket level reached
-        if (
-            value < limit
-            or (self.xEnd - self.xStart < 2)
-            or (self.yEnd - self.yStart < 2)
-        ):
+        if value < limit or (self.xEnd - self.xStart < 2) or (self.yEnd - self.yStart < 2):
             return
 
         dx = self.xEnd - self.xStart
         dy = self.yEnd - self.yStart
 
         # create 4 children for subdivison
-        self.child1 = quadTreeNode(
-            self.xStart, self.xStart + dx // 2, self.yStart, self.yStart + dy // 2
-        )
+        self.child1 = quadTreeNode(self.xStart, self.xStart + dx // 2, self.yStart, self.yStart + dy // 2)
         self.child2 = quadTreeNode(
             self.xStart + dx // 2, self.xStart + dx, self.yStart, self.yStart + dy // 2
         )
@@ -65,10 +57,7 @@ class quadTreeNode:
             self.xStart, self.xStart + dx // 2, self.yStart + dy // 2, self.yStart + dy
         )
         self.child4 = quadTreeNode(
-            self.xStart + dx // 2,
-            self.xStart + dx,
-            self.yStart + dy // 2,
-            self.yStart + dy,
+            self.xStart + dx // 2, self.xStart + dx, self.yStart + dy // 2, self.yStart + dy
         )
 
         # apply recursion on all child nodes
@@ -190,9 +179,7 @@ def quadtreebasisfunction(
     else:
         if isinstance(fp_all[".flux"][emissions_name[0]], dict):
             arr = fp_all[".flux"][emissions_name[0]]
-            flux = (
-                np.absolute(arr.data.flux.values) if abs_flux else arr.data.flux.values
-            )
+            flux = np.absolute(arr.data.flux.values) if abs_flux else arr.data.flux.values
             meanflux = np.squeeze(flux)
         else:
             flux = (
@@ -219,9 +206,7 @@ def quadtreebasisfunction(
     cost = 1e6
     pwr = 0
     while cost > 3.0:
-        optim = scipy.optimize.dual_annealing(
-            qtoptim, np.expand_dims([0, 100 / 10**pwr], axis=0)
-        )
+        optim = scipy.optimize.dual_annealing(qtoptim, np.expand_dims([0, 100 / 10**pwr], axis=0))
         cost = np.sqrt(optim.fun)
         pwr += 1
         if pwr > 10:
@@ -252,9 +237,7 @@ def quadtreebasisfunction(
         os.mkdir(os.path.join(tempdir, f"{domain}/"))
         newds.to_netcdf(
             os.path.join(
-                tempdir,
-                domain,
-                f"quadtree_{species}-{outputname}_{domain}_{start_date.split('-')[0]}.nc",
+                tempdir, domain, f"quadtree_{species}-{outputname}_{domain}_{start_date.split('-')[0]}.nc"
             ),
             mode="w",
         )
@@ -265,8 +248,7 @@ def quadtreebasisfunction(
             os.makedirs(basisoutpath)
         newds.to_netcdf(
             os.path.join(
-                basisoutpath,
-                f"quadtree_{species}-{outputname}_{domain}_{start_date.split('-')[0]}.nc",
+                basisoutpath, f"quadtree_{species}-{outputname}_{domain}_{start_date.split('-')[0]}.nc"
             ),
             mode="w",
         )
@@ -282,9 +264,7 @@ def load_landsea_indices():
     land = 1
     sea = 0
     """
-    landsea_indices = xr.open_dataset(
-        "../countries/country-EUROPE-UKMO-landsea-2023.nc"
-    )
+    landsea_indices = xr.open_dataset("../countries/country-EUROPE-UKMO-landsea-2023.nc")
     return landsea_indices["country"].values
 
 
@@ -313,24 +293,18 @@ def bucket_value_split(grid, bucket, offset_x=0, offset_y=0):
     """
 
     if np.sum(grid) <= bucket or grid.shape == (1, 1):
-        return [
-            (offset_y, offset_y + grid.shape[0], offset_x, offset_x + grid.shape[1])
-        ]
+        return [(offset_y, offset_y + grid.shape[0], offset_x, offset_x + grid.shape[1])]
 
     else:
         if grid.shape[0] >= grid.shape[1]:
             half_y = grid.shape[0] // 2
-            return bucket_value_split(
-                grid[0:half_y, :], bucket, offset_x, offset_y
-            ) + bucket_value_split(
+            return bucket_value_split(grid[0:half_y, :], bucket, offset_x, offset_y) + bucket_value_split(
                 grid[half_y:, :], bucket, offset_x, offset_y + half_y
             )
 
         elif grid.shape[0] < grid.shape[1]:
             half_x = grid.shape[1] // 2
-            return bucket_value_split(
-                grid[:, 0:half_x], bucket, offset_x, offset_y
-            ) + bucket_value_split(
+            return bucket_value_split(grid[:, 0:half_x], bucket, offset_x, offset_y) + bucket_value_split(
                 grid[:, half_x:], bucket, offset_x + half_x, offset_y
             )
 
@@ -347,10 +321,7 @@ def optimize_nregions(bucket, grid, nregion, tol):
     within +/- tol.
     """
     # print(bucket, get_nregions(bucket, grid))
-    if (
-        get_nregions(bucket, grid) <= nregion + tol
-        and get_nregions(bucket, grid) >= nregion - tol
-    ):
+    if get_nregions(bucket, grid) <= nregion + tol and get_nregions(bucket, grid) >= nregion - tol:
         return bucket
 
     if get_nregions(bucket, grid) < nregion + tol:
@@ -493,9 +464,7 @@ def bucketbasisfunction(
     else:
         if isinstance(fp_all[".flux"][emissions_name[0]], dict):
             arr = fp_all[".flux"][emissions_name[0]]
-            flux = (
-                np.absolute(arr.data.flux.values) if abs_flux else arr.data.flux.values
-            )
+            flux = np.absolute(arr.data.flux.values) if abs_flux else arr.data.flux.values
             meanflux = np.squeeze(flux)
         else:
             flux = (

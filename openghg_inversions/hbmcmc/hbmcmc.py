@@ -168,7 +168,7 @@ def basis_functions_wrapper(
     elif basis_algorithm == None:
         basis_directory = basis_directory
         tempdir = None
-        
+
     else:
         raise ValueError(
             "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
@@ -377,28 +377,34 @@ def fixedbasisMCMC(
 
         else:
             print(f"No merged data available at {merged_data_filename} so rerunning this process.\n")
-            
-        sites_merged = [s for s in fp_all.keys() if '.' not in s]
+
+        sites_merged = [s for s in fp_all.keys() if "." not in s]
 
         if len(sites) != len(sites_merged):
-            
-            keep_i = [i for i,s in enumerate(sites) if s in sites_merged]
+            keep_i = [i for i, s in enumerate(sites) if s in sites_merged]
             s_dropped = [s for s in sites if s not in sites_merged]
-            
-            sites = [s for i,s in enumerate(sites) if i in keep_i]
-            inlet = [s for i,s in enumerate(inlet) if i in keep_i]
-            fp_height = [s for i,s in enumerate(fp_height) if i in keep_i]
-            instrument = [s for i,s in enumerate(instrument) if i in keep_i]
-            averaging_period = [s for i,s in enumerate(averaging_period) if i in keep_i]
-            
-            print(f'\nDropping {s_dropped} sites as they are not included in the merged data object.\n')
+
+            sites = [s for i, s in enumerate(sites) if i in keep_i]
+            inlet = [s for i, s in enumerate(inlet) if i in keep_i]
+            fp_height = [s for i, s in enumerate(fp_height) if i in keep_i]
+            instrument = [s for i, s in enumerate(instrument) if i in keep_i]
+            averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
+
+            print(f"\nDropping {s_dropped} sites as they are not included in the merged data object.\n")
 
     # Get datasets for forward simulations
     elif rerun_merge == True:
         merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
 
         if use_tracer == False:
-            fp_all,sites,inlet,fp_height,instrument,averaging_period = get_data.data_processing_surface_notracer(
+            (
+                fp_all,
+                sites,
+                inlet,
+                fp_height,
+                instrument,
+                averaging_period,
+            ) = get_data.data_processing_surface_notracer(
                 species,
                 sites,
                 domain,
@@ -583,7 +589,7 @@ def fixedbasisMCMC(
             shutil.rmtree(tempdir)
 
     print("---- Inversion completed ----")
-    
+
     return out
 
 

@@ -419,8 +419,8 @@ def filtering(datasets_in, filters, keep_missing=False):
                 datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
             n_filter = datasets[site].time.values.shape[0]
             n_dropped = n_nofilter - n_filter
-            perc_dropped = np.round(n_dropped/n_nofilter*100,2)
-            print(f'{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}')
+            perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
+            print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
 
     return datasets
 

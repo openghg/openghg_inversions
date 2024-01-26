@@ -178,7 +178,6 @@ def inferpymc(
        - Allow non-iid variables
     -----------------------------------
     """
-
     burn = int(burn)
 
     hx = Hx.T
@@ -527,25 +526,25 @@ def inferpymc_postprocessouts(
         if emissions_name is None:
             raise ValueError("Emissions name not provided.")
         else:
-            emds = fp_data['.flux'][emissions_name[0]]
+            emds = fp_data[".flux"][emissions_name[0]]
             flux_array_all = emds.data.flux.values
-            
+
     if flux_array_all.shape[2] == 1:
-        print(f'\nAssuming flux prior is annual and extracting first index of flux array.')
-        apriori_flux = flux_array_all[:,:,0]
+        print(f"\nAssuming flux prior is annual and extracting first index of flux array.")
+        apriori_flux = flux_array_all[:, :, 0]
     else:
-        print(f'\nAssuming flux prior is monthly.')
-        print(f'Extracting weighted average flux prior from {start_date} to {end_date}')
+        print(f"\nAssuming flux prior is monthly.")
+        print(f"Extracting weighted average flux prior from {start_date} to {end_date}")
         allmonths = pd.date_range(start_date, end_date).month[:-1].values
-        allmonths -= 1 #to align with zero indexed array
+        allmonths -= 1  # to align with zero indexed array
 
-        apriori_flux = np.zeros_like(flux_array_all[:,:,0])
+        apriori_flux = np.zeros_like(flux_array_all[:, :, 0])
 
-        #calculate the weighted average flux across the whole inversion period
+        # calculate the weighted average flux across the whole inversion period
         for m in np.unique(allmonths):
-            apriori_flux += flux_array_all[:,:,m] * np.sum(allmonths == m)/len(allmonths)
+            apriori_flux += flux_array_all[:, :, m] * np.sum(allmonths == m) / len(allmonths)
 
-    flux = scalemap_mode*apriori_flux
+    flux = scalemap_mode * apriori_flux
 
     # Basis functions to save
     bfarray = bfds.values - 1
@@ -642,7 +641,7 @@ def inferpymc_postprocessouts(
             "sitenames": (["nsite"], sites),
             "sitelons": (["nsite"], site_lon),
             "sitelats": (["nsite"], site_lat),
-            "fluxapriori": (["lat", "lon"],apriori_flux),
+            "fluxapriori": (["lat", "lon"], apriori_flux),
             "fluxmode": (["lat", "lon"], flux),
             "scalingmean": (["lat", "lon"], scalemap_mu),
             "scalingmode": (["lat", "lon"], scalemap_mode),

@@ -116,9 +116,7 @@ def generate_param_dict(config_file):
         section_param = list(config[section].keys())
         if section_param:
             types = [type(convert(value)) for value in list(config[section].values())]
-            section_types = OrderedDict(
-                [(key, value) for key, value in zip(section_param, types)]
-            )
+            section_types = OrderedDict([(key, value) for key, value in zip(section_param, types)])
             param_type[section] = section_types
 
     return param_type
@@ -147,9 +145,7 @@ def generate_from_template(template_file, output_file):
     """
     if os.path.exists(output_file):
         answer = input(
-            "This action with overwrite existing {} file. Do you wish to proceed (Y/N): ".format(
-                output_file
-            )
+            "This action with overwrite existing {} file. Do you wish to proceed (Y/N): ".format(output_file)
         )
         if answer.lower() == "y" or answer.lower() == "yes":
             out = open(output_file, "w")
@@ -157,9 +153,7 @@ def generate_from_template(template_file, output_file):
             raise Exception("Configuration file has not been generated.")
         else:
             raise Exception(
-                "Did not understand input: '{}'. Configuration file has not been regenerated.".format(
-                    answer
-                )
+                "Did not understand input: '{}'. Configuration file has not been regenerated.".format(answer)
             )
     else:
         out = open(output_file, "w")
@@ -213,9 +207,7 @@ def str_check(string, error=True):
         out.encode("ascii", "ignore")
     except (TypeError, SyntaxError):
         if error:
-            print(
-                "WARNING: Could not convert input parameter '{0}' to str.".format(out)
-            )
+            print("WARNING: Could not convert input parameter '{0}' to str.".format(out))
         return None
 
     return out
@@ -252,11 +244,7 @@ def eval_check(string, error=True):
             )  # An input string without quotes cannot be evaluated so try adding quotes
         except (NameError, SyntaxError):
             if error:
-                print(
-                    "WARNING: Could not evaluate input '{0}' to any type.".format(
-                        string
-                    )
-                )
+                print("WARNING: Could not evaluate input '{0}' to any type.".format(string))
             return None, False
 
     return out, True
@@ -292,11 +280,7 @@ def list_check(string, force_convert=True, error=True):
                 out = [out]
             else:
                 if error:
-                    print(
-                        "WARNING: Could not convert input parameter '{0}' to list.".format(
-                            out
-                        )
-                    )
+                    print("WARNING: Could not convert input parameter '{0}' to list.".format(out))
                 return None
     elif isinstance(out, str):
         out = [out]
@@ -509,9 +493,7 @@ def get_value(name, config, section, param_type=None):
         key = keys[0]  # Should only ever be one key for a section
         types = param_type
         try:
-            value_type = types[key][
-                name
-            ]  # Find specified type of object for input parameter
+            value_type = types[key][name]  # Find specified type of object for input parameter
         except KeyError:
             # raise Exception('Input parameter {0} in section {1} not expected (not found in param_type dictionary [{2}][{0}])'.format(name,section,key))
             print("Type for input name '{0}' is not specified.".format(name))
@@ -655,9 +637,7 @@ def extract_params(
     elif ignore_section_groups:
         select_sections = all_sections
         for esg in ignore_section_groups:
-            ignore_s = [
-                s for s in all_sections if s.split(".")[0].lower() == esg.lower()
-            ]
+            ignore_s = [s for s in all_sections if s.split(".")[0].lower() == esg.lower()]
             if not ignore_s:
                 # raise KeyError('No sections could be found for specified section_group {0} in configuration file: {1}'.format(esg,config_file))
                 print(
@@ -689,9 +669,7 @@ def extract_params(
             extracted_names.extend(
                 k
             )  # List of the parameter names within the input file, within specified sections
-            match_section.extend(
-                s
-            )  # Associated list with the section heading for each parameter
+            match_section.extend(s)  # Associated list with the section heading for each parameter
 
     # Creating list of names we want to put into the parameter dictionary based on inputs (e.g. section, section_group)
     # pdb.set_trace() # REMOVE
@@ -701,9 +679,7 @@ def extract_params(
                 keys = []
                 for i, sg in enumerate(section_group):
                     if i == 0:
-                        k, key_type = find_param_key(
-                            section_group=sg, param_type=param_type
-                        )
+                        k, key_type = find_param_key(section_group=sg, param_type=param_type)
                     else:
                         k = find_param_key(section_group=sg, param_type=param_type)[0]
                     keys.extend(k)
@@ -728,12 +704,8 @@ def extract_params(
             elif ignore_section_groups:
                 keys = list(param_type.keys())
                 for esg in ignore_section_groups:
-                    ignore_s = [
-                        k for k in keys if k.split(".")[0].lower() != esg.lower()
-                    ]
-                    key_type = find_param_key(section_group=esg, param_type=param_type)[
-                        1
-                    ]
+                    ignore_s = [k for k in keys if k.split(".")[0].lower() != esg.lower()]
+                    key_type = find_param_key(section_group=esg, param_type=param_type)[1]
                     for es in ignore_s:
                         if es in keys:
                             keys.remove(es)
@@ -742,9 +714,7 @@ def extract_params(
 
             # print('Keys to extract input names from param_type: {0}'.format(keys))
             names = []
-            if (section and key_type == "section_group") or (
-                ignore_sections and key_type == "section_group"
-            ):
+            if (section and key_type == "section_group") or (ignore_sections and key_type == "section_group"):
                 print(
                     "WARNING: Cannot create list of necessary input parameters based on param_type input. Please check all inputs are included (or excluded) manually."
                 )
@@ -756,9 +726,7 @@ def extract_params(
         #            else:
         #                names = all_parameters_in_param_type(param_type) # Extract all parameter names from param_type dictionary
         else:
-            names = (
-                extracted_names.copy()
-            )  # Set to just match names extracted from file
+            names = extracted_names.copy()  # Set to just match names extracted from file
 
     for ep in expected_param:
         if ep not in names:
@@ -823,9 +791,7 @@ def extract_params(
                     )
                 else:
                     raise KeyError(
-                        "Expected parameter '{0}' not found in input configuration file.".format(
-                            name
-                        )
+                        "Expected parameter '{0}' not found in input configuration file.".format(name)
                     )
             elif not param_type:
                 print(
@@ -847,9 +813,7 @@ def extract_params(
                         extracted_name
                     )
                 )
-            param[extracted_name] = get_value(
-                extracted_name, config, match_section[index]
-            )
+            param[extracted_name] = get_value(extracted_name, config, match_section[index])
 
     # if exclude_not_found:
     #    param = OrderedDict([(key,value) for key,value in param.iteritems() if value != None])

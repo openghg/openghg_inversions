@@ -36,4 +36,5 @@ where = ["."]
 openghg_inversions = ["data/*"]
 
 [tool.black]
-line_length = 110
+line-length = 110
+target-version = ["py38", "py39"]
