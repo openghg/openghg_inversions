@@ -9,23 +9,18 @@
 # Most functions have been copied form the acrg repo (e.g. acrg.name)
 #
 # ****************************************************************************
-
-import os
-import sys
 import glob
 import json
-import bisect
-import calendar
-import subprocess
-import pandas as pd
-import datetime as dt
-import numpy as np
 from pathlib import Path
+import os
+import sys
+from types import SimpleNamespace
+
+import pandas as pd
+import numpy as np
 import xarray as xr
-import dateutil.relativedelta
 from tqdm import tqdm
 import dask.array as da
-from collections import OrderedDict
 from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
 
@@ -154,50 +149,52 @@ def synonyms(search_string, info, alternative_label="alt"):
     return out_string
 
 
-class get_country(object):
-    def __init__(self, domain, country_file=None):
-        if country_file is None:
-            if not os.path.exists(os.path.join(openghginv_path, "countries/")):
-                os.makedirs(os.path.join(openghginv_path, "countries/"))
-                raise FileNotFoundError(
-                    "Country definition file not found." f" Please add to {openghginv_path}/countries/"
-                )
-            else:
-                country_directory = os.path.join(openghginv_path, "countries/")
-
-            filenames = glob.glob(os.path.join(country_directory, f"country_{domain}.nc"))
-            filename = filenames[0]
+def get_country(domain, country_file=None):
+    if country_file is None:
+        if not os.path.exists(os.path.join(openghginv_path, "countries/")):
+            os.makedirs(os.path.join(openghginv_path, "countries/"))
+            raise FileNotFoundError(
+                "Country definition file not found." f" Please add to {openghginv_path}/countries/"
+            )
         else:
-            filename = country_file
+            country_directory = os.path.join(openghginv_path, "countries/")
 
-        with xr.open_dataset(filename) as f:
-            lon = f.variables["lon"][:].values
-            lat = f.variables["lat"][:].values
+        filenames = glob.glob(os.path.join(country_directory, f"country_{domain}.nc"))
+        filename = filenames[0]
+    else:
+        filename = country_file
 
-            # Get country indices and names
-            if "country" in f.variables:
-                country = f.variables["country"][:, :]
-            elif "region" in f.variables:
-                country = f.variables["region"][:, :]
-            else:
-                raise ValueError(f"Variables 'country' or 'region' not found in country file {filename}.")
+    with xr.open_dataset(filename) as f:
+        lon = f.variables["lon"][:].values
+        lat = f.variables["lat"][:].values
 
-            #         if (ukmo is True) or (uk_split is True):
-            #             name_temp = f.variables['name'][:]
-            #             f.close()
-            #             name=np.asarray(name_temp)
+        # Get country indices and names
+        if "country" in f.variables:
+            country = f.variables["country"][:, :]
+        elif "region" in f.variables:
+            country = f.variables["region"][:, :]
+        else:
+            raise ValueError(f"Variables 'country' or 'region' not found in country file {filename}.")
 
-            #         else:
-            name = f.variables["name"].values.astype(str)
+        #         if (ukmo is True) or (uk_split is True):
+        #             name_temp = f.variables['name'][:]
+        #             f.close()
+        #             name=np.asarray(name_temp)
 
-        self.lon = lon
-        self.lat = lat
-        self.lonmax = np.max(lon)
-        self.lonmin = np.min(lon)
-        self.latmax = np.max(lat)
-        self.latmin = np.min(lat)
-        self.country = np.asarray(country)
-        self.name = name
+        #         else:
+        name = f.variables["name"].values.astype(str)
+
+    result = dict(
+        lon=lon,
+        lat=lat,
+        lonmax=np.max(lon),
+        lonmin=np.min(lon),
+        latmax=np.max(lat),
+        latmin=np.min(lat),
+        country=np.asarray(country),
+        name=name,
+    )
+    return SimpleNamespace(**result)
 
 
 def filtering(datasets_in, filters, keep_missing=False):
@@ -225,7 +222,7 @@ def filtering(datasets_in, filters, keep_missing=False):
             "nighttime"         : Only b/w 23:00 - 03:00 inclusive
             "noon"              : Only 12:00 fp and obs used
             "daily_median"      : calculates the daily median
-            "pblh_gt_threshold" :
+            "pblh"              : Only keeps times when pblh is > 50m away from the obs height
             "local_influence"   : Only keep times when localness is low
             "six_hr_mean"       :
             "local_lapse"       :
@@ -369,6 +366,35 @@ def filtering(datasets_in, filters, keep_missing=False):
         else:
             return dataset[dict(time=ti)]
 
+    def pblh(dataset, keep_missing=False):
+        """
+        Subset for times when observations are taken at a height more than
+        50m away from (above or below) the PBLH.
+        """
+
+        ti = [
+            i for i, pblh in enumerate(dataset.PBLH) if np.abs(float(dataset.inlet_height_magl) - pblh) > 50.0
+        ]
+
+        if len(ti) != 0:
+            if keep_missing is True:
+                mf_data_array = dataset.mf
+                dataset_temp = dataset.drop("mf")
+
+                dataarray_temp = mf_data_array[dict(time=ti)]
+
+                mf_ds = xr.Dataset(
+                    {"mf": (["time"], dataarray_temp)}, coords={"time": (dataarray_temp.coords["time"])}
+                )
+
+                dataset_out = combine_datasets(dataset_temp, mf_ds, method=None)
+                return dataset_out
+            else:
+                return dataset[dict(time=ti)]
+
+        else:
+            print("PBLH filtering removed all datapoints so this filter is not applied to this site.")
+
     filtering_functions = {
         "daily_median": daily_median,
         "daytime": daytime,
@@ -377,6 +403,7 @@ def filtering(datasets_in, filters, keep_missing=False):
         "noon": noon,
         "local_influence": local_influence,
         "six_hr_mean": six_hr_mean,
+        "pblh": pblh,
     }
 
     # Get list of sites
@@ -385,10 +412,15 @@ def filtering(datasets_in, filters, keep_missing=False):
     # Apply filtering
     for site in sites:
         for filt in filters:
-            if filt == "daily_median" or filt == "six_hr_mean":
+            n_nofilter = datasets[site].time.values.shape[0]
+            if filt in ["daily_median", "six_hr_mean", "pblh"]:
                 datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
             else:
                 datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
+            n_filter = datasets[site].time.values.shape[0]
+            n_dropped = n_nofilter - n_filter
+            perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
+            print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
 
     return datasets
 

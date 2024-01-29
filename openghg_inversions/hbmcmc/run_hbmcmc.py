@@ -12,21 +12,21 @@ end - End of date range to use for MCMC inversion (YYYY-MM-DD) (must be after st
 -c / --config - configuration file. See config/ folder for templates and examples of this input file.
 
 If start and end are specified these will superceed the values within the configuration file, if present.
-If -c option is not specified, this script will look for configuration file within the 
-acrg_hbmcmc/ directory called `hbmcmc_input.ini`. 
+If -c option is not specified, this script will look for configuration file within the
+acrg_hbmcmc/ directory called `hbmcmc_input.ini`.
 
 To generate a config file from the template run this script as:
     $ python run_hbmcmc.py -r  [-c config.ini]
 
-The MCMC run *will not be executed*. This will be named for your -c input or, if not specified, this will 
-create a configuration file called `hbmcmc_input.ini` within your acrg_hbmcmc/ directory and exit. 
+The MCMC run *will not be executed*. This will be named for your -c input or, if not specified, this will
+create a configuration file called `hbmcmc_input.ini` within your acrg_hbmcmc/ directory and exit.
 This file will need to be edited to add parameters for your MCMC run.
 
 ------------------------------------------
 Updated by Eric Saboya (Dec. 2022)
 ------------------------------------------
 """
-
+import json
 import os
 import sys
 import argparse
@@ -53,7 +53,7 @@ def fixed_basis_expected_param():
     expected_param = [
         "species",
         "sites",
-        "meas_period",
+        "averaging_period",
         "domain",
         "start_date",
         "end_date",
@@ -135,6 +135,8 @@ def hbmcmc_extract_param(config_file, mcmc_type="fixed_basis", print_param=True,
     """
     if mcmc_type == "fixed_basis":
         expected_param = fixed_basis_expected_param()
+    else:
+        expected_param = []
 
     # If an expected parameter has been passed from the command line,
     # this does not need to be within the config file
@@ -184,6 +186,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Generate template config file and exit (does not run MCMC simulation)",
     )
+    parser.add_argument(
+        "--kwargs",
+        type=json.loads,
+        help='Pass keyword arguments to mcmc function. Format: \'{"key1": "val1", "key2": "val2"}\'.',
+    )
 
     args = parser.parse_args()
 
@@ -193,6 +200,8 @@ if __name__ == "__main__":
         command_line_args["start_date"] = args.start
     if args.end:
         command_line_args["end_date"] = args.end
+    if args.kwargs:
+        command_line_args.update(args.kwargs)
 
     if args.generate == True:
         template_file = os.path.join(openghginv_path, "hbmcmc/config/hbmcmc_input_template.ini")

@@ -32,7 +32,9 @@
 # ****************************************************************************
 
 import os
+from pathlib import Path
 import sys
+import pickle
 import shutil
 import numpy as np
 import pandas as pd
@@ -44,20 +46,178 @@ from openghg.analyse import ModelScenario
 from openghg.dataobjects import BoundaryConditionsData
 import openghg_inversions.basis_functions as basis
 from openghg_inversions import utils
+from openghg_inversions import get_data
+
+
+def basis_functions_wrapper(
+    basis_algorithm,
+    nbasis,
+    fp_basis_case,
+    bc_basis_case,
+    basis_directory,
+    bc_basis_directory,
+    fp_all,
+    species,
+    sites,
+    domain,
+    start_date,
+    emissions_name,
+    outputname,
+    output_path=None,
+):
+    """
+    Wrapper function for selecting basis function
+    algorithm.
+    -----------------------------------
+    Args:
+      basis_algorithm (str):
+        One of "quadtree" (for using Quadtree algorithm) or
+        "weighted" (for using an algorihtm that splits region
+        by input data).
+
+        NB. Land-sea separation is not imposed in the quadtree
+        basis functions, but is imposed by default in "weighted"
+
+    nbasis (int):
+      Number of basis function regions to calculated in domain
+    fp_basis_case (str):
+      Name of basis function to use for emissions.
+    bc_basis_case (str, optional):
+      Name of basis case type for boundary conditions (NOTE, I don't
+      think that currently you can do anything apart from scaling NSEW
+      boundary conditions if you want to scale these monthly.)
+    basis_directory (str, optional):
+      Directory containing the basis function
+      if not default.
+    bc_basis_directory (str, optional):
+      Directory containing the boundary condition basis functions
+      (e.g. files starting with "NESW")
+    fp_all (dict):
+      Dictionary object produced from get_data functions
+    species (str):
+      Atmospheric trace gas species of interest
+    sites (str/list):
+      List of sites of interest
+    domain (str):
+      Model domain
+    start_date (str):
+      Start date of period of inference
+    emissions_name (str/list):
+      Emissions dataset key words for retrieving from object store
+    outputname (str):
+      File output name
+    output_path (str):
+      Passed to `outputdir` argument of `quadtreebasisfunction`. Used for testing.
+
+
+    Returns:
+      fp_data (dict):
+        Dictionary object similar to fp_all but with information
+        on basis functions and sensitivities
+
+      basis_directory (str):
+        Path to emissions basis funciton directory
+
+      bc_basis_directory (str):
+        Path to bc basis functinon directory
+
+    """
+    if basis_algorithm == "quadtree":
+        print("Using Quadtree algorithm to derive basis functions")
+        if fp_basis_case != None:
+            print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
+            print("Assuming you want to use %s " % fp_basis_case)
+            tempdir = None
+        else:
+            tempdir = basis.quadtreebasisfunction(
+                emissions_name,
+                fp_all,
+                sites,
+                start_date,
+                domain,
+                species,
+                outputname,
+                nbasis=nbasis,
+                outputdir=output_path,
+            )
+
+            fp_basis_case = "quadtree_" + species + "-" + outputname
+            basis_directory = tempdir
+
+    elif basis_algorithm == "weighted":
+        print("Using weighted by data algorithm to derive basis functions")
+        if fp_basis_case != None:
+            print("Basis case %s supplied but bucket_basis set to True" % fp_basis_case)
+            print("Assuming you want to use %s " % fp_basis_case)
+            tempdir = None
+        else:
+            tempdir = basis.bucketbasisfunction(
+                emissions_name,
+                fp_all,
+                sites,
+                start_date,
+                domain,
+                species,
+                outputname,
+                nbasis=nbasis,
+            )
+
+            fp_basis_case = "weighted_" + species + "-" + outputname
+            basis_directory = tempdir
+
+    elif basis_algorithm == None:
+        basis_directory = basis_directory
+        tempdir = None
+
+    else:
+        raise ValueError(
+            "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
+        )
+
+    fp_data = utils.fp_sensitivity(
+        fp_all, domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory
+    )
+
+    fp_data = utils.bc_sensitivity(
+        fp_data,
+        domain=domain,
+        basis_case=bc_basis_case,
+        bc_basis_directory=bc_basis_directory,
+    )
+
+    return fp_data, tempdir, basis_directory, bc_basis_directory
 
 
 def fixedbasisMCMC(
     species,
     sites,
     domain,
-    meas_period,
+    averaging_period,
     start_date,
     end_date,
     outputpath,
     outputname,
+    bc_store="user",
+    obs_store="user",
+    footprint_store="user",
+    emissions_store="user",
     met_model=None,
     fp_model="NAME",
     fp_height=None,
+    emissions_name=None,
+    inlet=None,
+    instrument=None,
+    use_tracer=False,
+    fp_basis_case=None,
+    basis_directory=None,
+    bc_basis_case="NESW",
+    bc_basis_directory=None,
+    country_file=None,
+    bc_input=None,
+    max_level=None,
+    basis_algorithm="weighted",
+    nbasis=100,
+    filters=[],
     xprior={"pdf": "lognormal", "mu": 1, "sigma": 1},
     bcprior={"pdf": "lognormal", "mu": 0.004, "sigma": 0.02},
     sigprior={"pdf": "uniform", "lower": 0.5, "upper": 3},
@@ -66,31 +226,23 @@ def fixedbasisMCMC(
     burn=50000,
     tune=1.25e5,
     nchain=2,
-    emissions_name=None,
-    inlet=None,
-    instrument=None,
-    fp_basis_case=None,
-    basis_directory=None,
-    bc_basis_case="NESW",
-    bc_basis_directory=None,
-    country_file=None,
-    max_level=None,
-    quadtree_basis=True,
-    nbasis=100,
-    save_quadtree_to_outputpath=False,
-    filters=[],
-    averagingerror=True,
+    averaging_error=True,
     bc_freq=None,
     sigma_freq=None,
     sigma_per_site=True,
     country_unit_prefix=None,
     add_offset=False,
     verbose=False,
+    reload_merged_data=False,
+    save_merged_data=False,
+    merged_data_dir=None,
+    basis_output_path=None,
+    **kwargs,
 ):
     """
     Script to run hierarchical Bayesian
     MCMC for inference of emissions using
-    PyMC3 to solve the inverse problem.
+    PyMC to solve the inverse problem.
     -----------------------------------
     Args:
       species (str):
@@ -99,7 +251,7 @@ def fixedbasisMCMC(
         List of site names
       domain (str):
         Inversion spatial domain.
-      meas_period (list):
+      averaging_period (list):
         Averaging period of measurements
       start_date (str):
         Start time of inversion "YYYY-mm-dd"
@@ -162,17 +314,17 @@ def fixedbasisMCMC(
         Path to the country definition file
       max_level (int, optional):
         The maximum level for a column measurement to be used for getting obs data
-      quadtree_basis (bool, optional):
-        Creates a basis function file for emissions on the fly using a
-        quadtree algorithm based on the a priori contribution to the mole
-        fraction if set to True.
+      basis_algorithm (str, optional):
+        Select basis function algorithm for creating basis function file
+        for emissions on the fly. Options include "quadtree" or "weighted".
+        Defaults to "weighted" which distinguishes between land-sea regions.
       nbasis (int):
         Number of basis functions that you want if using quadtree derived
         basis function. This will optimise to closest value that fits with
         quadtree splitting algorithm, i.e. nbasis % 4 = 1.
       filters (list, optional):
         list of filters to apply from name.filtering. Defaults to empty list
-      averagingerror (bool, optional):
+      averaging_error (bool, optional):
         Adds the variability in the averaging period to the measurement
         error if set to True.
       bc_freq (str, optional):
@@ -194,213 +346,107 @@ def fixedbasisMCMC(
       add_offset (bool):
         Add an offset (intercept) to all sites but the first in the site list.
         Default False.
+      reload_merged_data (bool):
+        If True, reads fp_all object from a pickle file, instead of rerunning get_data.
+      save_merged_data (bool):
+        If True, saves the merged data object (fp_all) as a pickle file.
+      merged_data_dir (str):
+        Path to a directory of merged data objects. For saving to or reading from.
+      basis_output_path (Optional, str):
+        If set, save the basis functions to this path. Used for testing.
 
     Returns:
         Saves an output from the inversion code using inferpymc3_postprocessouts.
 
     -----------------------------------
     """
-    # Change list of sites to upper case equivalent as
-    # most acrg functions copied across use upper case notation
-    for i, site in enumerate(sites):
-        sites[i] = site.upper()
+    rerun_merge = True
 
-    fp_all = {}
-    fp_all[".species"] = species.upper()
+    if reload_merged_data == True:
+        merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
+        merged_data_filename = os.path.join(merged_data_dir, merged_data_name)
+        print(f"Attempting to read in merged data from: {merged_data_filename}...\n")
 
-    # Get fluxes
-    flux_dict = {}
-    for source in emissions_name:
-        try:
-            print(f"Attempting to retrieve '{source}' fluxes" " from object store ...\n")
+        if os.path.exists(merged_data_filename) == True:
+            fp_in = open(merged_data_filename, "rb")
+            fp_all = pickle.load(fp_in)
+            fp_in.close()
 
-            get_flux_data = get_flux(
-                species=species, domain=domain, source=source, start_date=start_date, end_date=end_date
-            )
+            print(f"Successfully read in merged data.\n")
+            rerun_merge = False
 
-            print("Sucessfully retrieved flux file" f" '{source}' from objectstore.")
-
-            flux_dict[source] = get_flux_data
-        except:
-            raise FileNotFoundError(
-                f"Flux file '{source}' not found" " in object store. Please add file to object store."
-            )
-    fp_all[".flux"] = flux_dict
-
-    footprint_dict = {}
-    scales = {}
-    check_scales = []
-
-    for i, site in enumerate(sites):
-        # Get observations
-        try:
-            print(
-                f"Attempting to retrieve {species.upper()} measurements"
-                f" for {site.upper()} between {start_date} and"
-                f" {end_date} from object store ...\n"
-            )
-            site_data = get_obs_surface(
-                site=site,
-                species=species.lower(),
-                inlet=inlet[i],
-                start_date=start_date,
-                end_date=end_date,
-                average=meas_period[i],
-                instrument=instrument[i],
-            )
-            print(
-                f"Successfully retrieved {species.upper()} measurement"
-                f" data for {site.upper()} from object store.\n"
-            )
-            unit = float(site_data[site].mf.units)
-        except:
-            raise FileNotFoundError(
-                f"Observation data for {site}"  # TODO: this shouldn't be file not found...
-                f" between {start_date} to {end_date} was"
-                f" not found in the object store."
-            )
-
-        # Get footprints
-        try:
-            print(f"Attempting to retrieve {site.upper()} {domain} footprint" " data from object store ...\n")
-            get_fps = get_footprint(
-                site=site,
-                height=fp_height[i],
-                domain=domain,
-                model=fp_model,
-                start_date=start_date,
-                end_date=end_date,
-            )
-            footprint_dict[site] = get_fps
-            print(f"Successfully retrieved {site.upper()} {domain} footprints" " from object store.\n")
-        except:
-            raise FileNotFoundError(
-                f"Footprint data for {site.upper()}"
-                f" between {start_date} to {end_date}"
-                f" was not found in the object store."
-            )
-
-        # Get boundary conditions
-        try:
-            print(
-                "Attempting to retrieve boundary condition data"
-                f" between {start_date} to {end_date} from object store ...\n"
-            )
-            get_bc_data = get_bc(species=species, domain=domain, start_date=start_date, end_date=end_date)
-            print(
-                "Successfully retrieved boundary condition data between"
-                f" {start_date} and {end_date} from object store.\n"
-            )
-
-            # Divide by trace gas species units
-            # See if R+G can include this 'behind the scenes'
-            get_bc_data.data.vmr_n.values = get_bc_data.data.vmr_n.values / unit
-            get_bc_data.data.vmr_e.values = get_bc_data.data.vmr_e.values / unit
-            get_bc_data.data.vmr_s.values = get_bc_data.data.vmr_s.values / unit
-            get_bc_data.data.vmr_w.values = get_bc_data.data.vmr_w.values / unit
-            my_bc = BoundaryConditionsData(
-                get_bc_data.data.transpose("height", "lat", "lon", "time"), get_bc_data.metadata
-            )
-            fp_all[".bc"] = my_bc
-        except:
-            raise FileNotFoundError(
-                f"Boundary condition data between {start_date}"
-                f" and {end_date} not found in object store. Please add"
-                " boundary condition data to object store. Exiting process.\n"
-            )
-
-        # Create ModelScenario object
-        model_scenario = ModelScenario(
-            site=site,
-            species=species,
-            inlet=inlet[i],
-            domain=domain,
-            model=fp_model,
-            metmodel=met_model,
-            start_date=start_date,
-            end_date=end_date,
-            obs=site_data,
-            footprint=footprint_dict[site],
-            flux=flux_dict,
-            bc=my_bc,
-        )
-
-        scenario_combined = model_scenario.footprints_data_merge()
-        scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
-
-        fp_all[site] = scenario_combined
-
-        # Check consistency of measurement scales between sites
-        check_scales += [scenario_combined.scale]
-        if not all(s == check_scales[0] for s in check_scales):
-            rt = []
-            for i in check_scales:
-                if isinstance(i, list):
-                    rt.extend(flatten(i))
-            else:
-                rt.append(i)
-            scales[site] = rt
         else:
-            scales[site] = check_scales[0]
+            print(f"No merged data available at {merged_data_filename} so rerunning this process.\n")
 
-    fp_all[".scales"] = scales
-    fp_all[".units"] = float(scenario_combined.mf.units)
+        sites_merged = [s for s in fp_all.keys() if "." not in s]
 
-    print(f"Running for {start_date} to {end_date}")
+        if len(sites) != len(sites_merged):
+            keep_i = [i for i, s in enumerate(sites) if s in sites_merged]
+            s_dropped = [s for s in sites if s not in sites_merged]
 
-    # If site contains measurement errors given as repeatability and variability,
-    # use variability to replace missing repeatability values, then drop variability
-    for site in sites:
-        if "mf_variability" in fp_all[site] and "mf_repeatability" in fp_all[site]:
-            fp_all[site]["mf_repeatability"][np.isnan(fp_all[site]["mf_repeatability"])] = fp_all[site][
-                "mf_variability"
-            ][
-                np.logical_and(
-                    np.isfinite(fp_all[site]["mf_variability"]), np.isnan(fp_all[site]["mf_repeatability"])
-                )
-            ]
-            fp_all[site] = fp_all[site].drop_vars("mf_variability")
+            sites = [s for i, s in enumerate(sites) if i in keep_i]
+            inlet = [s for i, s in enumerate(inlet) if i in keep_i]
+            fp_height = [s for i, s in enumerate(fp_height) if i in keep_i]
+            instrument = [s for i, s in enumerate(instrument) if i in keep_i]
+            averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
 
-    # Add measurement variability in averaging period to measurement error
-    if averagingerror:
-        fp_all = setup.addaveragingerror(
-            fp_all, sites, species, start_date, end_date, meas_period, inlet=inlet, instrument=instrument
-        )
+            print(f"\nDropping {s_dropped} sites as they are not included in the merged data object.\n")
 
-    # Create basis function using quadtree algorithm if needed
-    tempdir = None
-    if quadtree_basis:
-        if fp_basis_case != None:
-            print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
-            print("Assuming you want to use %s " % fp_basis_case)
-        else:
-            if save_quadtree_to_outputpath:
-                outputdir = outputpath
-            else:
-                outputdir = None
-            tempdir = basis.quadtreebasisfunction(
-                emissions_name,
+    # Get datasets for forward simulations
+    elif rerun_merge == True:
+        merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
+
+        if use_tracer == False:
+            (
                 fp_all,
                 sites,
-                start_date,
-                domain,
+                inlet,
+                fp_height,
+                instrument,
+                averaging_period,
+            ) = get_data.data_processing_surface_notracer(
                 species,
-                outputname,
-                outputdir=outputdir,
-                nbasis=nbasis,
+                sites,
+                domain,
+                averaging_period,
+                start_date,
+                end_date,
+                met_model=met_model,
+                fp_model=fp_model,
+                fp_height=fp_height,
+                emissions_name=emissions_name,
+                inlet=inlet,
+                instrument=instrument,
+                bc_input=bc_input,
+                bc_store=bc_store,
+                obs_store=obs_store,
+                footprint_store=footprint_store,
+                emissions_store=emissions_store,
+                averagingerror=averaging_error,
+                save_merged_data=save_merged_data,
+                merged_data_name=merged_data_name,
+                merged_data_dir=merged_data_dir,
             )
 
-            fp_basis_case = "quadtree_" + species + "-" + outputname
-            basis_directory = tempdir
-    else:
-        basis_directory = basis_directory
+        elif use_tracer == True:
+            raise ValueError("Model does not currently include tracer model. Watch this space")
 
-    fp_data = utils.fp_sensitivity(
-        fp_all, domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory
-    )
-
-    fp_data = utils.bc_sensitivity(
-        fp_data, domain=domain, basis_case=bc_basis_case, bc_basis_directory=bc_basis_directory
+    # Basis function regions and sensitivity matrices
+    fp_data, tempdir, basis_dir, bc_basis_dir = basis_functions_wrapper(
+        basis_algorithm,
+        nbasis,
+        fp_basis_case,
+        bc_basis_case,
+        basis_directory,
+        bc_basis_directory,
+        fp_all,
+        species,
+        sites,
+        domain,
+        start_date,
+        emissions_name,
+        outputname,
+        output_path=basis_output_path,
     )
 
     # Apply named filters to the data
@@ -409,115 +455,141 @@ def fixedbasisMCMC(
     for si, site in enumerate(sites):
         fp_data[site].attrs["Domain"] = domain
 
-    # Get inputs ready
-    error = np.zeros(0)
-    Hbc = np.zeros(0)
-    Hx = np.zeros(0)
-    Y = np.zeros(0)
-    siteindicator = np.zeros(0)
-    for si, site in enumerate(sites):
-        if "mf_repeatability" in fp_data[site]:
-            error = np.concatenate((error, fp_data[site].mf_repeatability.values))
-        if "mf_variability" in fp_data[site]:
-            error = np.concatenate((error, fp_data[site].mf_variability.values))
+    # Inverse models
+    if use_tracer == False:
+        # Get inputs ready
+        error = np.zeros(0)
+        Hbc = np.zeros(0)
+        Hx = np.zeros(0)
+        Y = np.zeros(0)
 
-        Y = np.concatenate((Y, fp_data[site].mf.values))
-        siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
-        if si == 0:
-            Ytime = fp_data[site].time.values
-        else:
-            Ytime = np.concatenate((Ytime, fp_data[site].time.values))
+        siteindicator = np.zeros(0)
 
-        if bc_freq == "monthly":
-            Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
-        elif bc_freq == None:
-            Hmbc = fp_data[site].H_bc.values
-        else:
-            Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
+        for si, site in enumerate(sites):
+            if "mf_repeatability" in fp_data[site]:
+                error = np.concatenate((error, fp_data[site].mf_repeatability.values))
+            if "mf_variability" in fp_data[site]:
+                error = np.concatenate((error, fp_data[site].mf_variability.values))
 
-        if si == 0:
-            Hbc = np.copy(Hmbc)  # fp_data[site].H_bc.values
-            Hx = fp_data[site].H.values
-        else:
-            Hbc = np.hstack((Hbc, Hmbc))
-            Hx = np.hstack((Hx, fp_data[site].H.values))
+            Y = np.concatenate((Y, fp_data[site].mf.values))
+            siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
+            if si == 0:
+                Ytime = fp_data[site].time.values
+            else:
+                Ytime = np.concatenate((Ytime, fp_data[site].time.values))
 
-    sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
+            if bc_freq == "monthly":
+                Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
+            elif bc_freq == None:
+                Hmbc = fp_data[site].H_bc.values
+            else:
+                Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
 
-    # Run PyMc3 inversion
-    xouts, bcouts, sigouts, Ytrace, YBCtrace, convergence, step1, step2 = mcmc.inferpymc(
-        Hx,
-        Hbc,
-        Y,
-        error,
-        siteindicator,
-        sigma_freq_index,
-        xprior,
-        bcprior,
-        sigprior,
-        nit,
-        burn,
-        tune,
-        nchain,
-        sigma_per_site,
-        offsetprior=offsetprior,
-        add_offset=add_offset,
-        verbose=verbose,
-    )
+            if si == 0:
+                Hbc = np.copy(Hmbc)  # fp_data[site].H_bc.values
+                Hx = fp_data[site].H.values
+            else:
+                Hbc = np.hstack((Hbc, Hmbc))
+                Hx = np.hstack((Hx, fp_data[site].H.values))
 
-    # Process and save inversion output
-    mcmc.inferpymc_postprocessouts(
-        xouts,
-        bcouts,
-        sigouts,
-        convergence,
-        Hx,
-        Hbc,
-        Y,
-        error,
-        Ytrace,
-        YBCtrace,
-        step1,
-        step2,
-        xprior,
-        bcprior,
-        sigprior,
-        offsetprior,
-        Ytime,
-        siteindicator,
-        sigma_freq_index,
-        domain,
-        species,
-        sites,
-        start_date,
-        end_date,
-        outputname,
-        outputpath,
-        country_unit_prefix,
-        burn,
-        tune,
-        nchain,
-        sigma_per_site,
-        fp_data=fp_data,
-        emissions_name=emissions_name,
-        basis_directory=basis_directory,
-        country_file=country_file,
-        add_offset=add_offset,
-    )
+        sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
-    if tempdir and quadtree_basis is True and save_quadtree_to_outputpath is False:
+        # Path to save trace
+        trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
+        # Run PyMC inversion
+        (
+            xouts,
+            bcouts,
+            sigouts,
+            offset_outs,
+            Ytrace,
+            YBCtrace,
+            offset_trace,
+            convergence,
+            step1,
+            step2,
+        ) = mcmc.inferpymc(
+            Hx,
+            Hbc,
+            Y,
+            error,
+            siteindicator,
+            sigma_freq_index,
+            xprior,
+            bcprior,
+            sigprior,
+            nit,
+            burn,
+            tune,
+            nchain,
+            sigma_per_site,
+            offsetprior=offsetprior,
+            add_offset=add_offset,
+            verbose=verbose,
+            save_trace=trace_path,
+            **kwargs,
+        )
+
+        # Process and save inversion output
+        out = mcmc.inferpymc_postprocessouts(
+            xouts,
+            bcouts,
+            sigouts,
+            offset_outs,
+            convergence,
+            Hx,
+            Hbc,
+            Y,
+            error,
+            Ytrace,
+            YBCtrace,
+            offset_trace,
+            step1,
+            step2,
+            xprior,
+            bcprior,
+            sigprior,
+            offsetprior,
+            Ytime,
+            siteindicator,
+            sigma_freq_index,
+            domain,
+            species,
+            sites,
+            start_date,
+            end_date,
+            outputname,
+            outputpath,
+            country_unit_prefix,
+            burn,
+            tune,
+            nchain,
+            sigma_per_site,
+            fp_data=fp_data,
+            emissions_name=emissions_name,
+            emissions_store=emissions_store,
+            basis_directory=basis_dir,
+            country_file=country_file,
+            add_offset=add_offset,
+        )
+    elif use_tracer == True:
+        raise ValueError("Model does not currently include tracer model. Watch this space")
+
+    if basis_algorithm != None:
         # remove the temporary basis function directory
         delete = True
         if not os.path.dirname(tempdir).startswith("Temp_"):
             delete = False
         for _, _, files in os.walk(tempdir):
             for file in files:
-                if not file.startswith("quadtree"):
+                if not file.startswith("quadtree"):  # TODO: update this to look for other basis types
                     delete = False
         if delete:
             shutil.rmtree(tempdir)
 
     print("---- Inversion completed ----")
+
+    return out
 
 
 def rerun_output(input_file, outputname, outputpath, verbose=False):
@@ -596,7 +668,16 @@ def rerun_output(input_file, outputname, outputpath, verbose=False):
     else:
         country_unit_prefix = None
 
-    xouts, bcouts, sigouts, Ytrace, YBCtrace, convergence, step1, step2 = mcmc.inferpymc3(
+    (
+        xouts,
+        bcouts,
+        sigouts,
+        Ytrace,
+        YBCtrace,
+        convergence,
+        step1,
+        step2,
+    ) = mcmc.inferpymc3(
         Hx,
         Hbc,
         Y,
