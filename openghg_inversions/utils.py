@@ -182,7 +182,7 @@ def get_country(domain, country_file=None):
         #             name=np.asarray(name_temp)
 
         #         else:
-        name_temp = f.variables["name"].values
+        name = f.variables["name"].values.astype(str)
 
     result = dict(
         lon=lon,
@@ -192,7 +192,7 @@ def get_country(domain, country_file=None):
         latmax=np.max(lat),
         latmin=np.min(lat),
         country=np.asarray(country),
-        name=name_temp.astype(str),
+        name=name,
     )
     return SimpleNamespace(**result)
 

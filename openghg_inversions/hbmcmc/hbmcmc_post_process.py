@@ -1014,78 +1014,74 @@ def country_emissions(ds, species, domain, country_file=None, country_unit_prefi
 def country_emissions_mult(
     ds_list, species, domain, country_file=None, country_unit_prefix=None, countries=None
 ):
-    '''
-        Calculate country emissions across multiple datasets.
-        See process.country_emissions() function for details of inputs
-        Returns:
-            cntry_mean_list: list of mean country totals
-            cntry_68_list: list of 68 CI country totals
-            cntry_95_list: list of 95 CI country totals
-        """
+    """
+    Calculate country emissions across multiple datasets.
+    See process.country_emissions() function for details of inputs
+    Returns:
+        cntry_mean_list: list of mean country totals
+        cntry_68_list: list of 68 CI country totals
+        cntry_95_list: list of 95 CI country totals
+    """
 
-        cntrymean_arr = np.zeros((len(ds_list), len(countries)))
-        cntry68_arr = np.zeros((len(ds_list), len(countries), 2))
-        cntry95_arr = np.zeros((len(ds_list), len(countries), 2))
-        cntryprior_arr = np.zeros((len(ds_list), len(countries)))
+    cntrymean_arr = np.zeros((len(ds_list), len(countries)))
+    cntry68_arr = np.zeros((len(ds_list), len(countries), 2))
+    cntry95_arr = np.zeros((len(ds_list), len(countries), 2))
+    cntryprior_arr = np.zeros((len(ds_list), len(countries)))
 
-        for i, ds in enumerate(ds_list):
-            cntrymean, cntry68, cntry95, cntryprior = country_emissions(
-                ds,
-                species,
-                domain,
-                country_file=country_file,
-                country_unit_prefix=country_unit_prefix,
-                countries=countries,
-            )
-
-            cntrymean_arr[i, :] = cntrymean
-            cntry68_arr[i, :, :] = cntry68
-            cntry95_arr[i, :, :] = cntry95
-            cntryprior_arr[i, :] = cntryprior
-
-        return cntrymean_arr, cntry68_arr, cntry95_arr, cntryprior_arr
-
-
-    def plot_country_timeseries(
-        country_mean,
-        country_CI,
-        country_prior,
-        d0,
-        prior_label="Prior",
-        posterior_label="Posterior",
-        y_label="emissions",
-        country_label=None,
-        units=None,
-        figsize=(7, 3),
-    ):
-        """
-        Plot  timeseries of country emissions
-        """
-        fig, ax = plt.subplots(figsize=figsize)
-
-        d0 = pd.to_datetime(d0)
-
-        ax.plot(d0, country_prior, label=prior_label, color=(0, 0.42, 0.64))
-        ax.plot(d0, country_mean, label=posterior_label, color=(0.78, 0.32, 0))
-
-        ax.fill_between(
-            d0, country_CI[:, 0], country_CI[:, 1], facecolor=(0.78, 0.32, 0), edgecolor=(1, 1, 1), alpha=0.3
+    for i, ds in enumerate(ds_list):
+        cntrymean, cntry68, cntry95, cntryprior, _ = country_emissions(
+            ds,
+            species,
+            domain,
+            country_file=country_file,
+            country_unit_prefix=country_unit_prefix,
+            countries=countries,
         )
 
-        ax.set_ylabel(
-            (country_label + " " + y_label + ", " + units + " yr$^{-1}$"), fontsize=10, fontweight="bold"
-        )
-        ax.set_xlabel("Date", fontsize=10, fontweight="bold")
-        legend = ax.legend(loc="upper left", labelspacing=0.1, fontsize=10)
-        ax.xaxis.set_tick_params(labelsize=10)
-        ax.yaxis.set_tick_params(labelsize=10)
-        ax.xaxis.set_major_locator(mdates.YearLocator())
-        ax.xaxis.set_minor_locator(mdates.MonthLocator(interval=2))
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+        cntrymean_arr[i, :] = cntrymean
+        cntry68_arr[i, :, :] = cntry68
+        cntry95_arr[i, :, :] = cntry95
+        cntryprior_arr[i, :] = cntryprior
+
+    return cntrymean_arr, cntry68_arr, cntry95_arr, cntryprior_arr
 
 
-    # def combine_timeseries(*ds_mult):
-    #'''
+def plot_country_timeseries(
+    country_mean,
+    country_CI,
+    country_prior,
+    d0,
+    prior_label="Prior",
+    posterior_label="Posterior",
+    y_label="emissions",
+    country_label=None,
+    units=None,
+    figsize=(7, 3),
+):
+    """
+    Plot  timeseries of country emissions
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+
+    d0 = pd.to_datetime(d0)
+
+    ax.plot(d0, country_prior, label=prior_label, color=(0, 0.42, 0.64))
+    ax.plot(d0, country_mean, label=posterior_label, color=(0.78, 0.32, 0))
+
+    ax.fill_between(
+        d0, country_CI[:, 0], country_CI[:, 1], facecolor=(0.78, 0.32, 0), edgecolor=(1, 1, 1), alpha=0.3
+    )
+
+    ax.set_ylabel(
+        (country_label + " " + y_label + ", " + units + " yr$^{-1}$"), fontsize=10, fontweight="bold"
+    )
+    ax.set_xlabel("Date", fontsize=10, fontweight="bold")
+    legend = ax.legend(loc="upper left", labelspacing=0.1, fontsize=10)
+    ax.xaxis.set_tick_params(labelsize=10)
+    ax.yaxis.set_tick_params(labelsize=10)
+    ax.xaxis.set_major_locator(mdates.YearLocator())
+    ax.xaxis.set_minor_locator(mdates.MonthLocator(interval=2))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
 
 
 #     The combine_timeseries function takes a list of output datasets from a tdmcmc run and combines

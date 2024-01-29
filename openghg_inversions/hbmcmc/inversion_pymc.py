@@ -299,7 +299,6 @@ def inferpymc_postprocessouts(
     country_file=None,
     add_offset=False,
     rerun_file=None,
-    flux: Optional[FluxData] = None,
 ):
     """
     Takes the output from inferpymc3 function, along with some other input
