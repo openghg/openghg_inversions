@@ -136,8 +136,8 @@ def data_processing_surface_notracer(
     site_indices_to_keep = []
 
     for i, site in enumerate(sites):
+        # Get observations
         try:
-            # Get observations
             site_data = get_obs_surface(
                 site=site,
                 species=species.lower(),
@@ -148,10 +148,26 @@ def data_processing_surface_notracer(
                 instrument=instrument[i],
                 store=obs_store,
             )
-
+        except SearchError:
+            print(
+                f"\nNo obs data found for {site} with inlet {inlet[i]} and instrument {instrument[i]}. Check these values.\nContinuing model run without {site}.\n"
+            )
+            continue  # skip this site
+        except AttributeError:
+            print(
+                f"\nNo data found for {site} between {start_date} and {end_date}.\nContinuing model run without {site}.\n"
+            )
+            continue  # skip this site
+        else:
+            if site_data is None:
+                print(
+                    f"\nNo data found for {site} between {start_date} and {end_date}.\nContinuing model run without {site}.\n"
+                )
+                continue  # skip this site
             unit = float(site_data[site].mf.units)
 
-            # Get footprints
+        # Get footprints
+        try:
             get_fps = get_footprint(
                 site=site,
                 height=fp_height[i],
@@ -161,8 +177,16 @@ def data_processing_surface_notracer(
                 end_date=end_date,
                 store=footprint_store,
             )
+        except SearchError:
+            print(
+                f"\nNo footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}.",
+                f"Check these values.\nContinuing model run without {site}.\n",
+            )
+            continue  # skip this site
+        else:
             footprint_dict[site] = get_fps
 
+        try:
             # Get boundary conditions
             get_bc_data = get_bc(
                 species=species,
@@ -259,8 +283,7 @@ def data_processing_surface_notracer(
 
         except SearchError:
             print(
-                f"\nError in reading in data for {site}, possibly because there is no obs for this time period."
-                + f"\nContinuing model run without {site}.\n"
+                f"\nError in reading in BC or flux data for {site}.\nContinuing model run without {site}.\n"
             )
 
     # if data was not extracted correctly for any sites, drop these from the rest of the inversion
