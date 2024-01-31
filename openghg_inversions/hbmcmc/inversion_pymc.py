@@ -18,11 +18,10 @@ from scipy import stats
 from pathlib import Path
 from typing import Optional, Union
 
-from openghg.dataobjects import FluxData
 
 from openghg_inversions import convert
 from openghg_inversions import utils
-from openghg_inversions.hbmcmc.inversionsetup import opends, offset_matrix
+from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
 
@@ -529,10 +528,10 @@ def inferpymc_postprocessouts(
             flux_array_all = emds.data.flux.values
 
     if flux_array_all.shape[2] == 1:
-        print(f"\nAssuming flux prior is annual and extracting first index of flux array.")
+        print("\nAssuming flux prior is annual and extracting first index of flux array.")
         apriori_flux = flux_array_all[:, :, 0]
     else:
-        print(f"\nAssuming flux prior is monthly.")
+        print("\nAssuming flux prior is monthly.")
         print(f"Extracting weighted average flux prior from {start_date} to {end_date}")
         allmonths = pd.date_range(start_date, end_date).month[:-1].values
         allmonths -= 1  # to align with zero indexed array

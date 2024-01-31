@@ -203,14 +203,14 @@ if __name__ == "__main__":
     if args.kwargs:
         command_line_args.update(args.kwargs)
 
-    if args.generate == True:
+    if args.generate is True:
         template_file = os.path.join(openghginv_path, "hbmcmc/config/hbmcmc_input_template.ini")
         if os.path.exists(config_file):
             write = input(f"Config file {config_file} already exists.\nOverwrite? (y/n): ")
             if write.lower() == "y" or write.lower() == "yes":
                 copyfile(template_file, config_file)
             else:
-                sys.exit(f"Previous configuration file has not been overwritten.")
+                sys.exit("Previous configuration file has not been overwritten.")
         else:
             copyfile(template_file, config_file)
         sys.exit(f"New configuration file has been generated: {config_file}")
