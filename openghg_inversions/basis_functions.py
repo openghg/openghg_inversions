@@ -11,7 +11,6 @@
 # *****************************************************************************
 
 import os
-import glob
 import uuid
 import getpass
 import scipy.optimize
@@ -169,7 +168,7 @@ def quadtreebasisfunction(
     """
     if abs_flux:
         print("Using absolute values of flux array")
-    if emissions_name == None:
+    if emissions_name is None:
         flux = (
             np.absolute(fp_all[".flux"]["all"].data.flux.values)
             if abs_flux
@@ -454,7 +453,7 @@ def bucketbasisfunction(
     """
     if abs_flux:
         print("Using absolute values of flux array")
-    if emissions_name == None:
+    if emissions_name is None:
         flux = (
             np.absolute(fp_all[".flux"]["all"].data.flux.values)
             if abs_flux
