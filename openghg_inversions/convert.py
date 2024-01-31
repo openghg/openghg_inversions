@@ -32,9 +32,6 @@
 # *****************************************************************************
 #  TODO: Add descriptions time-conversion functions
 
-import os
-import glob
-import json
 import calendar
 import dateutil
 import time as tm
@@ -43,7 +40,6 @@ from matplotlib.dates import julian2num, num2date
 
 # from openghg_inversions.utils import synonyms
 
-from collections import OrderedDict
 
 from openghg_inversions.config.paths import Paths
 
