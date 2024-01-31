@@ -368,28 +368,28 @@ def fixedbasisMCMC(
             print("Successfully read in merged data.\n")
             rerun_merge = False
 
+            # check if sites were dropped when merged data was saved
+            sites_merged = [s for s in fp_all.keys() if "." not in s]
+
+            if len(sites) != len(sites_merged):
+                keep_i = [i for i, s in enumerate(sites) if s in sites_merged]
+                s_dropped = [s for s in sites if s not in sites_merged]
+
+                sites = [s for i, s in enumerate(sites) if i in keep_i]
+                inlet = [s for i, s in enumerate(inlet) if i in keep_i]
+                fp_height = [s for i, s in enumerate(fp_height) if i in keep_i]
+                instrument = [s for i, s in enumerate(instrument) if i in keep_i]
+                averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
+
+                print(f"\nDropping {s_dropped} sites as they are not included in the merged data object.\n")
         else:
             print(f"No merged data available at {merged_data_filename} so rerunning this process.\n")
-
-        sites_merged = [s for s in fp_all.keys() if "." not in s]
-
-        if len(sites) != len(sites_merged):
-            keep_i = [i for i, s in enumerate(sites) if s in sites_merged]
-            s_dropped = [s for s in sites if s not in sites_merged]
-
-            sites = [s for i, s in enumerate(sites) if i in keep_i]
-            inlet = [s for i, s in enumerate(inlet) if i in keep_i]
-            fp_height = [s for i, s in enumerate(fp_height) if i in keep_i]
-            instrument = [s for i, s in enumerate(instrument) if i in keep_i]
-            averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
-
-            print(f"\nDropping {s_dropped} sites as they are not included in the merged data object.\n")
 
     # Get datasets for forward simulations
     elif rerun_merge:
         merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
 
-        if use_tracer:
+        if not use_tracer:
             (
                 fp_all,
                 sites,
