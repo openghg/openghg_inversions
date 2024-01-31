@@ -72,7 +72,7 @@ If you replace the flag `--check` with `--diff`, you can see what will be change
 
 To make these changes, run
 ``` bash
-black --check openghg_inversions
+black openghg_inversions
 ```
 
 We also recommend using `flake8` to check for code style issues, which you can run with:
