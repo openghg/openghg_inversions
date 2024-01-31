@@ -179,7 +179,7 @@ def data_processing_surface_notracer(
             )
         except SearchError:
             print(
-                f"\nNo footprint data found for {site} with inlet/height {fp_height[i]} and model {fp_model}.",
+                f"\nNo footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}.",
                 f"Check these values.\nContinuing model run without {site}.\n",
             )
             continue  # skip this site
