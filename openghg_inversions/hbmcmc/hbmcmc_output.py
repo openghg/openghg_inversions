@@ -118,7 +118,7 @@ def copy_config_file(config_file, param=None, **command_line):
 
         keyword_added = False
         for key, value in command_line.items():
-            search_str = re.compile(fr"\s*{key}\s*=\s*\S+")
+            search_str = re.compile(rf"\s*{key}\s*=\s*\S+")
             found = re.search(search_str, config_lines)
 
             if found is None:
