@@ -14,10 +14,7 @@
 # *****************************************************************************
 
 import os
-import sys
-import shutil
 import numpy as np
-import pandas as pd
 import pickle
 
 import openghg_inversions.hbmcmc.inversionsetup as setup
@@ -324,10 +321,9 @@ def data_processing_surface_notracer(
             store=obs_store,
         )
 
-    if save_merged_data == True:
+    if save_merged_data:
         with open(os.path.join(merged_data_dir, merged_data_name), "wb") as fp_out:
             pickle.dump(fp_all, fp_out)
-            fp_out.close()
 
         print(f"\nfp_all saved in {merged_data_dir}\n")
 
