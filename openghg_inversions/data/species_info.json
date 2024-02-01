@@ -68,6 +68,14 @@
         "mol_mass": "153.8236",
         "print_string": "CCl$_4$", 
         "units": "ppt"
+    },
+    "ClCH2CH2Cl": {"alt": ["1,2-DCA", "EDC", "1,2-dichloroethane"],
+        "group": "Chloromethanes", 
+        "name": "1,2-dichloroethane", 
+        "long_name": "1,2-dichloroethane", 
+        "mol_mass": "98.959",
+        "print_string": "ClCH$_2$CH$_2$Cl", 
+        "units": "ppt"
     }, 
     "C2HCl3": {"alt": ["TCE"],
         "group": "Chloromethanes", 
