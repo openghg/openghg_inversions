@@ -5,7 +5,7 @@ Created on Fri Aug 21 11:21:27 2020
 
 @author: al18242
 
-This file contains a method of obtaining the version 
+This file contains a method of obtaining the version
 of the code used to generate output.
 ---------------------------------------
 Updated by Eric Saboya (Dec. 2022)
@@ -30,15 +30,21 @@ def code_version():
     """
     try:
         output = subprocess.run(
-            ["git", "describe"], capture_output=True, cwd=openghginv_path, universal_newlines=True
+            ["git", "describe"],
+            capture_output=True,
+            cwd=openghginv_path,
+            universal_newlines=True,
+            check=True,
+            text=True,
         )
-        # remove newlines and cast as string
-        version = str(output.stdout.strip("\n"))
-    except:
+    except subprocess.CalledProcessError:
         print(
             "WARNING: Unable to identify version using git."
             " Check that git is available to the python process."
         )
         version = "Unknown"
+    else:
+        # remove newlines and cast as string
+        version = output.stdout.strip("\n")
 
     return version

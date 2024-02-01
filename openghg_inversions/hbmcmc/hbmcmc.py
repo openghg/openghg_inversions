@@ -33,17 +33,11 @@
 
 import os
 from pathlib import Path
-import sys
 import pickle
 import shutil
 import numpy as np
-import pandas as pd
 import openghg_inversions.hbmcmc.inversionsetup as setup
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
-from openghg.retrieve import get_obs_surface, get_flux
-from openghg.retrieve import get_bc, get_footprint
-from openghg.analyse import ModelScenario
-from openghg.dataobjects import BoundaryConditionsData
 import openghg_inversions.basis_functions as basis
 from openghg_inversions import utils
 from openghg_inversions import get_data
@@ -124,7 +118,7 @@ def basis_functions_wrapper(
     """
     if basis_algorithm == "quadtree":
         print("Using Quadtree algorithm to derive basis functions")
-        if fp_basis_case != None:
+        if fp_basis_case is not None:
             print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
             print("Assuming you want to use %s " % fp_basis_case)
             tempdir = None
@@ -146,7 +140,7 @@ def basis_functions_wrapper(
 
     elif basis_algorithm == "weighted":
         print("Using weighted by data algorithm to derive basis functions")
-        if fp_basis_case != None:
+        if fp_basis_case is not None:
             print("Basis case %s supplied but bucket_basis set to True" % fp_basis_case)
             print("Assuming you want to use %s " % fp_basis_case)
             tempdir = None
@@ -165,7 +159,7 @@ def basis_functions_wrapper(
             fp_basis_case = "weighted_" + species + "-" + outputname
             basis_directory = tempdir
 
-    elif basis_algorithm == None:
+    elif basis_algorithm is None:
         basis_directory = basis_directory
         tempdir = None
 
@@ -362,41 +356,40 @@ def fixedbasisMCMC(
     """
     rerun_merge = True
 
-    if reload_merged_data == True:
+    if reload_merged_data:
         merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
         merged_data_filename = os.path.join(merged_data_dir, merged_data_name)
         print(f"Attempting to read in merged data from: {merged_data_filename}...\n")
 
-        if os.path.exists(merged_data_filename) == True:
-            fp_in = open(merged_data_filename, "rb")
-            fp_all = pickle.load(fp_in)
-            fp_in.close()
+        if os.path.exists(merged_data_filename):
+            with open(merged_data_filename, "rb") as fp_in:
+                fp_all = pickle.load(fp_in)
 
-            print(f"Successfully read in merged data.\n")
+            print("Successfully read in merged data.\n")
             rerun_merge = False
 
+            # check if sites were dropped when merged data was saved
+            sites_merged = [s for s in fp_all.keys() if "." not in s]
+
+            if len(sites) != len(sites_merged):
+                keep_i = [i for i, s in enumerate(sites) if s in sites_merged]
+                s_dropped = [s for s in sites if s not in sites_merged]
+
+                sites = [s for i, s in enumerate(sites) if i in keep_i]
+                inlet = [s for i, s in enumerate(inlet) if i in keep_i]
+                fp_height = [s for i, s in enumerate(fp_height) if i in keep_i]
+                instrument = [s for i, s in enumerate(instrument) if i in keep_i]
+                averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
+
+                print(f"\nDropping {s_dropped} sites as they are not included in the merged data object.\n")
         else:
             print(f"No merged data available at {merged_data_filename} so rerunning this process.\n")
 
-        sites_merged = [s for s in fp_all.keys() if "." not in s]
-
-        if len(sites) != len(sites_merged):
-            keep_i = [i for i, s in enumerate(sites) if s in sites_merged]
-            s_dropped = [s for s in sites if s not in sites_merged]
-
-            sites = [s for i, s in enumerate(sites) if i in keep_i]
-            inlet = [s for i, s in enumerate(inlet) if i in keep_i]
-            fp_height = [s for i, s in enumerate(fp_height) if i in keep_i]
-            instrument = [s for i, s in enumerate(instrument) if i in keep_i]
-            averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
-
-            print(f"\nDropping {s_dropped} sites as they are not included in the merged data object.\n")
-
     # Get datasets for forward simulations
-    elif rerun_merge == True:
+    elif rerun_merge:
         merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
 
-        if use_tracer == False:
+        if not use_tracer:
             (
                 fp_all,
                 sites,
@@ -428,7 +421,7 @@ def fixedbasisMCMC(
                 merged_data_dir=merged_data_dir,
             )
 
-        elif use_tracer == True:
+        elif use_tracer:
             raise ValueError("Model does not currently include tracer model. Watch this space")
 
     # Basis function regions and sensitivity matrices
@@ -456,7 +449,7 @@ def fixedbasisMCMC(
         fp_data[site].attrs["Domain"] = domain
 
     # Inverse models
-    if use_tracer == False:
+    if use_tracer is False:
         # Get inputs ready
         error = np.zeros(0)
         Hbc = np.zeros(0)
@@ -480,7 +473,7 @@ def fixedbasisMCMC(
 
             if bc_freq == "monthly":
                 Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
-            elif bc_freq == None:
+            elif bc_freq is None:
                 Hmbc = fp_data[site].H_bc.values
             else:
                 Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
@@ -572,10 +565,10 @@ def fixedbasisMCMC(
             country_file=country_file,
             add_offset=add_offset,
         )
-    elif use_tracer == True:
+    elif use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
 
-    if basis_algorithm != None:
+    if basis_algorithm is not None:
         # remove the temporary basis function directory
         delete = True
         if not os.path.dirname(tempdir).startswith("Temp_"):
@@ -677,7 +670,7 @@ def rerun_output(input_file, outputname, outputpath, verbose=False):
         convergence,
         step1,
         step2,
-    ) = mcmc.inferpymc3(
+    ) = mcmc.inferpymc(
         Hx,
         Hbc,
         Y,
@@ -697,7 +690,7 @@ def rerun_output(input_file, outputname, outputpath, verbose=False):
         verbose=verbose,
     )
 
-    mcmc.inferpymc3_postprocessouts(
+    mcmc.inferpymc_postprocessouts(
         xouts,
         bcouts,
         sigouts,

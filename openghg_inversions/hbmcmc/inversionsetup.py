@@ -218,7 +218,7 @@ def sigma_freq_indicies(ytime, sigma_freq):
     """
     ydt = pd.to_datetime(ytime)
     output = np.zeros(shape=len(ytime)).astype(int)
-    if sigma_freq == None:
+    if sigma_freq is None:
         # output already all 0's as expected for this setting
         pass
     elif sigma_freq.lower() == "monthly":

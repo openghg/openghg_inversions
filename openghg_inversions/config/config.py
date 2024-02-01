@@ -9,10 +9,10 @@ This module allows configuration files in the INI format to be read and used.
 
 Example of a section in the configuration file:
 ::
-   
+
     [MEASUREMENTS]
     # Measurement details
-    
+
     sites = ["GSN"]           ; Sites to read the data from as a list
     species = "chcl3"
     start_date = "2015-01-01" ; Default start date used if none specified on the command line
@@ -28,7 +28,7 @@ Example of a section in the configuration file:
  - ; and # symbols can be used to create new line and inline comments
 
 Section headings can be of the form [NAME] or [GROUP.NAME]. This allows paramaters to be separated into several
-section headings in the configuration file for clarity but grouped into one overall classification when inputted based 
+section headings in the configuration file for clarity but grouped into one overall classification when inputted based
 on the GROUP name.
 
 param_type dictionary
@@ -43,7 +43,7 @@ This should be of the form of one of the following:
    - OrderedDict(['SECTION_GROUP1':OrderedDict([('param1':str),('param2':float)]),'SECTION_GROUP2':OrderedDict([('param3':list),('param4':np.array)]))
    - OrderedDict(['SECTION1':{'param1':str},'SECTION2':{'param2':float},'SECTION3':{'param3':list},'SECTION4':{'param4':np.array}])
 
-This can either be created directly or a template configuration file can be created and a param_type dictionary created 
+This can either be created directly or a template configuration file can be created and a param_type dictionary created
 from this using the generate_param_dict() function.
 These template files should be kept within the acrg_config/templates/ directory and, after creation, should not be altered
 unless you wish to change the format for all config files of this type.
@@ -56,7 +56,7 @@ How to run
 ++++++++++
 
 The main functions to use for reading in parameters from a config file are:
-    
+
     * all_param(config_file,...)      ; Extract all parameters from a configuration file.
     * extract_params(config_file,...) ; Extract specific parameters from a file either based on parameter names, sections or groups.
 
@@ -160,7 +160,7 @@ def generate_from_template(template_file, output_file):
 
     copy = False
     with open(template_file) as fname:
-        for i, line in enumerate(fname):
+        for line in fname:
             if copy:
                 out.write(line)
             elif not line.strip():
@@ -207,7 +207,7 @@ def str_check(string, error=True):
         out.encode("ascii", "ignore")
     except (TypeError, SyntaxError):
         if error:
-            print("WARNING: Could not convert input parameter '{0}' to str.".format(out))
+            print(f"WARNING: Could not convert input parameter '{string}' to str.")
         return None
 
     return out
@@ -270,7 +270,7 @@ def list_check(string, force_convert=True, error=True):
             None
     """
 
-    out, check = eval_check(string)  # Try evaluating input
+    out, _ = eval_check(string)  # Try evaluating input
 
     if not isinstance(out, (list, str)):  # If not already a list
         try:
@@ -435,6 +435,8 @@ def find_param_key(param_type, section=None, section_group=None):
 
     # Find parameter class if not specified (should be defined as first part of section split by '.' e.g. MCMC.MEASUREMENTS, section_group='MCMC')
     if not section_group:
+        if not section:
+            raise ValueError("One of `section` or `section_group` must be provided.")
         section_group = section.split(".")[0]
 
     if section in all_keys:

@@ -13,7 +13,6 @@
 # Feel free to add other paths, as required.
 # ****************************************************************************
 
-import yaml
 from pathlib import Path
 
 _openghginv_path = Path(__file__).parents[2]

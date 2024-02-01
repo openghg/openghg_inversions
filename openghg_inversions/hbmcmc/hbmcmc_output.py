@@ -118,12 +118,12 @@ def copy_config_file(config_file, param=None, **command_line):
 
         keyword_added = False
         for key, value in command_line.items():
-            search_str = re.compile("\s*" + key + "\s*=\s*\S+")
+            search_str = re.compile(rf"\s*{key}\s*=\s*\S+")
             found = re.search(search_str, config_lines)
 
             if found is None:
                 if not keyword_added:
-                    config_lines += f"\n\n[ADDED_FROM_COMMAND_LINE]\n"
+                    config_lines += "\n\n[ADDED_FROM_COMMAND_LINE]\n"
                     config_lines += "; This section contains additional commands specified on the command line with no equivalent entry in this file\n"
                 if isinstance(value, str):
                     config_lines += f"\n{key} = '{value}'\n"

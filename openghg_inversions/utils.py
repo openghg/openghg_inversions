@@ -254,8 +254,6 @@ def filtering(datasets_in, filters, keep_missing=False):
         """
         Calculates the local ratio in the surrounding grid cells
         """
-        release_lons = dataset.release_lon[0].values
-        release_lats = dataset.release_lat[0].values
         dlon = dataset.lon[1].values - dataset.lon[0].values
         dlat = dataset.lat[1].values - dataset.lat[0].values
         local_sum = np.zeros((len(dataset.mf)))
@@ -595,16 +593,15 @@ def indexesMatch(dsa, dsb):
             rtol = 1e-10
         else:
             rtol = 1e-5
-        if (
-            not np.sum(
-                ~np.isclose(
-                    dsa.indexes[index].values.astype(float),
-                    dsb.indexes[index].values.astype(float),
-                    rtol=rtol,
-                )
+
+        num_not_close = np.sum(
+            ~np.isclose(
+                dsa.indexes[index].values.astype(float),
+                dsb.indexes[index].values.astype(float),
+                rtol=rtol,
             )
-            == 0
-        ):
+        )
+        if num_not_close > 0:
             return False
 
     return True
@@ -725,13 +722,12 @@ def timeseries_HiTRes(
         fp_HiTRes_ds = read_netcdfs(fp_file, chunks=chunks)
         fp_HiTRes = fp_HiTRes_ds.fp_HiTRes
     else:
-        fp_HiTRes = (
-            fp_HiTRes_ds
-            if type(fp_HiTRes_ds) == xr.core.dataarray.DataArray
-            else fp_HiTRes_ds.fp_HiTRes.chunk(chunks)
-            if fp_HiTRes_ds.chunks is None and chunks is not None
-            else fp_HiTRes_ds.fp_HiTRes
-        )
+        if isinstance(fp_HiTRes_ds, xr.DataArray):
+            fp_HiTRes = fp_HiTRes_ds
+        elif fp_HiTRes_ds.chunks is None and chunks is not None:
+            fp_HiTRes = fp_HiTRes_ds.fp_HiTRes.chunk(chunks)
+        else:
+            fp_HiTRes = fp_HiTRes_ds.fp_HiTRes
 
     # resample fp to match the required time resolution
     fp_HiTRes = fp_HiTRes.resample(time=time_resolution).ffill()
