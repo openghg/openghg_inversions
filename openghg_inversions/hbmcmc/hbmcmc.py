@@ -56,13 +56,13 @@ def basis_functions_wrapper(basis_algorithm, nbasis, fp_basis_case, bc_basis_cas
     algorithm. 
     -----------------------------------
     Args:
-      basis_algorithm (str):
-        One of "quadtree" (for using Quadtree algorithm) or
-        "weighted" (for using an algorihtm that splits region 
-        by input data). 
+    basis_algorithm (str):
+      One of "quadtree" (for using Quadtree algorithm) or
+      "weighted" (for using an algorihtm that splits region 
+      by input data). 
 
-        NB. Land-sea separation is not imposed in the quadtree
-        basis functions, but is imposed by default in "weighted"
+      NB. Land-sea separation is not imposed in the quadtree
+      basis functions, but is imposed by default in "weighted"
 
     nbasis (int):
       Number of basis function regions to calculated in domain
@@ -119,14 +119,14 @@ def basis_functions_wrapper(basis_algorithm, nbasis, fp_basis_case, bc_basis_cas
                                                   domain,
                                                   species,
                                                   outputname,
-                                                  nbasis=nbasis)
+                                                  nbasis = nbasis)
 
-            fp_basis_case= "quadtree_"+species+"-"+outputname
+            fp_basis_case = "quadtree_" + species + "-" + outputname
             basis_directory = tempdir
 
     elif basis_algorithm == "weighted":
-        print("Using weighted by data algorithm to derive basis functions")
-        if fp_basis_case !=None:
+        print("Using weighted-by-data algorithm to derive basis functions")
+        if fp_basis_case != None:
             print("Basis case %s supplied but bucket_basis set to True" % fp_basis_case)
             print("Assuming you want to use %s " % fp_basis_case)
         else:
@@ -137,10 +137,10 @@ def basis_functions_wrapper(basis_algorithm, nbasis, fp_basis_case, bc_basis_cas
                                                 domain, 
                                                 species, 
                                                 outputname, 
-                                                nbasis=nbasis)
+                                                nbasis = nbasis)
 
-            fp_basis_case = "weighted_"+species+"-"+outputname
-            basis_directory=tempdir
+            fp_basis_case = "weighted_" + species + "-" + outputname
+            basis_directory = tempdir
 
     elif basis_algorithm == None:
         basis_directory = basis_directory
@@ -150,14 +150,14 @@ def basis_functions_wrapper(basis_algorithm, nbasis, fp_basis_case, bc_basis_cas
 
 
     fp_data = utils.fp_sensitivity(fp_all,
-                                   domain=domain,
-                                   basis_case=fp_basis_case,
-                                   basis_directory=basis_directory)
+                                   domain = domain,
+                                   basis_case = fp_basis_case,
+                                   basis_directory = basis_directory)
 
     fp_data = utils.bc_sensitivity(fp_data,
-                                   domain=domain,
-                                   basis_case=bc_basis_case,
-                                   bc_basis_directory=bc_basis_directory)
+                                   domain = domain,
+                                   basis_case = bc_basis_case,
+                                   bc_basis_directory = bc_basis_directory)
 
     return fp_data, tempdir, basis_directory, bc_basis_directory
 
@@ -166,26 +166,27 @@ def basis_functions_wrapper(basis_algorithm, nbasis, fp_basis_case, bc_basis_cas
 def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
                    end_date, outputpath, outputname,
                    bc_store, obs_store, footprint_store, emissions_store,
-                   met_model=None, fp_model="NAME", fp_height=None,
-                   emissions_name=None, inlet=None, instrument=None, use_tracer=False,
-                   fp_basis_case=None, basis_directory=None, bc_basis_case="NESW",
-                   bc_basis_directory=None, country_file=None, bc_input=None,
-                   max_level=None,
-                   basis_algorithm="weighted", nbasis=100,
-                   filters=[],
-                   xprior={"pdf":"lognormal", "mu":1, "sigma":1},
-                   bcprior={"pdf":"lognormal", "mu":0.004, "sigma":0.02},
-                   sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
-                   offsetprior={"pdf":"normal", "mu":0, "sd":1},
-                   nit=2.5e5, burn=50000, tune=1.25e5, nchain=2,
-                   averaging_error=True, bc_freq=None, sigma_freq=None, sigma_per_site=True,
-                   country_unit_prefix=None, add_offset=False,
-                   verbose=False,reload_merged_data=False,save_merged_data=False,
-                   merged_data_dir=None):
+                   met_model = None, fp_model = "NAME", fp_height = None,
+                   emissions_name = None, inlet = None, instrument = None, calibration_scale = None, 
+                   obs_data_level = None, use_tracer = False, use_bc = True, 
+                   fp_basis_case = None, basis_directory = None, bc_basis_case = "NESW",
+                   bc_basis_directory = None, country_file = None, bc_input = None,
+                   max_level = None,
+                   basis_algorithm = "weighted", nbasis = 100,
+                   filters = [], model_error_method = "scaled_pollution_event",
+                   xprior = {"total":{"pdf":"lognormal", "mu":1, "sigma":1}},
+                   bcprior = {"pdf":"lognormal", "mu":0.004, "sigma":0.02},
+                   sigprior = {"pdf":"uniform", "lower":0.5, "upper":3},
+                   offsetprior = {"pdf":"normal", "mu":0, "sd":1},
+                   nit = 2.5e5, burn = 50000, tune = 1.25e5, nchain = 2,
+                   averaging_error = True, bc_freq = None, sigma_freq = None, sigma_per_site = True,
+                   country_unit_prefix = None, add_offset = False,
+                   verbose = False, reload_merged_data = False, save_merged_data = False,
+                   merged_data_dir = None):
 
-    '''
-    Script to run hierarchical Bayesian 
-    MCMC for inference of emissions using
+    """
+    Script to run RHIME (hierarchical Bayesian 
+    MCMC) for inference of emissions using
     PyMC to solve the inverse problem.
     -----------------------------------
     Args:
@@ -209,11 +210,13 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
         Meteorological model used in the LPDM.
       fp_model (str):
         LPDM used for generating footprints.
+      fp_height (list):
+        List of heights used in footprints.
       xprior (dict):
         Dictionary containing information about the prior PDF for emissions.
         The entry "pdf" is the name of the analytical PDF used, see
         https://docs.pymc.io/api/distributions/continuous.html for PDFs
-        built into pymc3, although they may have to be coded into the script.
+        built into PyMC, although they may have to be coded into the script.
         The other entries in the dictionary should correspond to the shape
         parameters describing that PDF as the online documentation,
         e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sd":1}.
@@ -238,10 +241,12 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
       emissions_name (list):
         List of keyword "source" args used for retrieving emissions files
         from the Object store.
-      inlet (str/list, optional):
+      inlet (str/list):
         Specific inlet height for the site (must match number of sites)
       instrument (str/list, optional):
         Specific instrument for the site (must match number of sites).
+      calibration_scale (str/optional):
+        Measurement calibration scale to use
       fp_basis_case (str, optional):
         Name of basis function to use for emissions.
       bc_basis_case (str, optional):
@@ -301,54 +306,52 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
         Saves an output from the inversion code using inferpymc3_postprocessouts.
 
     -----------------------------------
-    '''
-
+    """
+    # Get datasets for forward simulations
     rerun_merge = True
     
     if reload_merged_data == True:
-        merged_data_name = f'{species}_{start_date}_{outputname}_merged-data.pickle'
-        merged_data_filename = os.path.join(merged_data_dir,merged_data_name)
-        print(f'Attempting to read in merged data from: {merged_data_filename}...\n')
+        merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
+        merged_data_filename = os.path.join(merged_data_dir, merged_data_name)
+        print(f"Attempting to read in merged data from: {merged_data_filename}...\n")
         
         if os.path.exists(merged_data_filename) == True:
-
-            fp_in = open(merged_data_filename, 'rb')
+            fp_in = open(merged_data_filename, "rb")
             fp_all = pickle.load(fp_in)
             fp_in.close()
-
-            print(f'Successfully read in merged data.\n')
+            print(f"Successfully read in merged data\n")
             rerun_merge = False
-
         else:
-            print(f'No merged data available at {merged_data_filename} so rerunning this process.\n')
+            print(f"No merged data available at {merged_data_filename} so rerunning this process\n")
 
-    # Get datasets for forward simulations
     if rerun_merge == True:
-
-        merged_data_name = f'{species}_{start_date}_{outputname}_merged-data.pickle'
+        merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
 
         if use_tracer == False:
             fp_all = get_data.data_processing_surface_notracer(species, 
-                                                            sites, 
-                                                            domain, 
-                                                            averaging_period, 
-                                                            start_date, 
-                                                            end_date,
-                                                            met_model=met_model, 
-                                                            fp_model=fp_model, 
-                                                            fp_height=fp_height,
-                                                            emissions_name=emissions_name, 
-                                                            inlet=inlet, 
-                                                            instrument=instrument,
-                                                            bc_input=bc_input,
-                                                            bc_store=bc_store, 
-                                                            obs_store=obs_store, 
-                                                            footprint_store=footprint_store, 
-                                                            emissions_store=emissions_store,
-                                                            averagingerror=averaging_error,
-                                                            save_merged_data=save_merged_data,
-                                                            merged_data_name=merged_data_name,
-                                                            merged_data_dir=merged_data_dir)
+                                                               sites, 
+                                                               domain, 
+                                                               averaging_period, 
+                                                               start_date, 
+                                                               end_date,
+                                                               obs_data_level = obs_data_level,
+                                                               met_model = met_model, 
+                                                               fp_model = fp_model, 
+                                                               fp_height = fp_height,
+                                                               emissions_name = emissions_name, 
+                                                               inlet = inlet, 
+                                                               instrument = instrument,
+                                                               calibration_scale = calibration_scale,
+                                                               use_bc = use_bc, 
+                                                               bc_input = bc_input,
+                                                               bc_store = bc_store, 
+                                                               obs_store = obs_store, 
+                                                               footprint_store = footprint_store, 
+                                                               emissions_store = emissions_store,
+                                                               averagingerror = averaging_error,
+                                                               save_merged_data = save_merged_data,
+                                                               merged_data_name = merged_data_name,
+                                                               merged_data_dir = merged_data_dir)
 
         elif use_tracer == True:
             raise ValueError("Model does not currently include tracer model. Watch this space") 
@@ -368,11 +371,13 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
                                                                         emissions_name,  
                                                                         outputname)
 
+
+
     # Apply named filters to the data
     fp_data = utils.filtering(fp_data, filters)
-
+    
     for si, site in enumerate(sites):
-        fp_data[site].attrs['Domain']=domain
+        fp_data[site].attrs["Domain"] = domain
 
     # Inverse models
     if use_tracer == False:
@@ -385,17 +390,17 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
         siteindicator = np.zeros(0)
 
         for si, site in enumerate(sites):
-            if 'mf_repeatability' in fp_data[site]:
+            if "mf_repeatability" in fp_data[site]:
                 error = np.concatenate((error, fp_data[site].mf_repeatability.values))
-            if 'mf_variability' in fp_data[site]:
+            if "mf_variability" in fp_data[site]:
                 error = np.concatenate((error, fp_data[site].mf_variability.values))
 
-            Y = np.concatenate((Y,fp_data[site].mf.values))
+            Y = np.concatenate((Y, fp_data[site].mf.values))
             siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values)*si))
             if si == 0:
-                Ytime=fp_data[site].time.values
+                Ytime = fp_data[site].time.values
             else:
-                Ytime = np.concatenate((Ytime,fp_data[site].time.values))
+                Ytime = np.concatenate((Ytime, fp_data[site].time.values))
 
             if bc_freq == "monthly":
                 Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
@@ -413,29 +418,70 @@ def fixedbasisMCMC(species, sites, domain, averaging_period, start_date,
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
+
         # Run PyMC inversion
-        xouts, bcouts, sigouts, offset_outs, Ytrace, YBCtrace, offset_trace, convergence, step1, step2 = mcmc.inferpymc(Hx, Hbc, Y, error, 
-                                                                              siteindicator, sigma_freq_index, xprior, 
-                                                                              bcprior, sigprior, nit, burn, tune,                 
-                                                                              nchain, sigma_per_site, 
-                                                                              offsetprior=offsetprior, 
-                                                                              add_offset=add_offset, 
-                                                                              verbose=verbose)
+        xouts, bcouts, sigouts, offsetouts, Ytrace, YBCtrace, OFFSETtrace, convergence, step1, step2, model_error = mcmc.inferpymc(species, 
+                                                                                                                                   Hx, 
+                                                                                                                                   Hbc, 
+                                                                                                                                   Y, 
+                                                                                                                                   error, 
+                                                                                                                                   siteindicator, 
+                                                                                                                                   sigma_freq_index,
+                                                                                                                                   model_error_method, 
+                                                                                                                                   xprior, 
+                                                                                                                                   bcprior, 
+                                                                                                                                   sigprior, 
+                                                                                                                                   nit, 
+                                                                                                                                   burn, 
+                                                                                                                                   tune,                 
+                                                                                                                                   nchain, 
+                                                                                                                                   sigma_per_site, 
+                                                                                                                                   offsetprior = offsetprior, 
+                                                                                                                                   add_offset = add_offset, 
+                                                                                                                                   verbose = verbose)
 
         # Process and save inversion output
-        mcmc.inferpymc_postprocessouts(xouts, bcouts, sigouts, offset_outs, convergence,
-                                       Hx, Hbc, Y, error, Ytrace, YBCtrace, offset_trace,
-                                       step1, step2,
-                                       xprior, bcprior, sigprior, offsetprior, Ytime, siteindicator, sigma_freq_index,
-                                       domain, species, sites,
-                                       start_date, end_date, outputname, outputpath,
+        mcmc.inferpymc_postprocessouts(xouts, 
+                                       bcouts, 
+                                       sigouts, 
+                                       offsetouts, 
+                                       convergence,
+                                       Hx, 
+                                       Hbc, 
+                                       Y, 
+                                       error, 
+                                       Ytrace, 
+                                       YBCtrace, 
+                                       OFFSETtrace,
+                                       step1, 
+                                       step2, 
+                                       model_error,
+                                       xprior, 
+                                       bcprior, 
+                                       sigprior, 
+                                       offsetprior, 
+                                       Ytime, 
+                                       siteindicator, 
+                                       sigma_freq_index,
+                                       domain, 
+                                       species, 
+                                       sites,
+                                       start_date, 
+                                       end_date, 
+                                       outputname, 
+                                       outputpath,
                                        country_unit_prefix,
-                                       burn, tune, nchain, sigma_per_site,
-                                       fp_data=fp_data, emissions_name=emissions_name, emissions_store=emissions_store,
-                                       basis_directory=basis_dir, country_file=country_file,
-                                       add_offset=add_offset
+                                       burn, 
+                                       tune, 
+                                       nchain, 
+                                       sigma_per_site,
+                                       fp_data = fp_data, 
+                                       emissions_name = emissions_name, 
+                                       emissions_store = emissions_store,
+                                       basis_directory = basis_dir, 
+                                       country_file = country_file,
+                                       add_offset = add_offset)
 
-)
     elif use_tracer == True:
         raise ValueError("Model does not currently include tracer model. Watch this space")
 

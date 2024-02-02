@@ -5,8 +5,8 @@
 # ****************************************************************************
 # About
 # Script containing common Python functions that can be called for running 
-# HBMCMC and other  inversion models. 
-# Most functions have been copied form the acrg repo (e.g. acrg.name)
+# inverse models. 
+# Most functions have been copied from the acrg repo (e.g. acrg.name)
 # 
 # ****************************************************************************
 
@@ -36,8 +36,8 @@ openghginv_path = Paths.openghginv
 # with open(os.path.join(openghginv_path, 'data/species_info.json')) as f:
 #     species_info=json.load(f)
 
-def open_ds(path, chunks=None, combine=None):
-    '''
+def open_ds(path, chunks = None, combine = None):
+    """
     Function efficiently opens xarray datasets.
     -----------------------------------
     Args:
@@ -56,10 +56,10 @@ def open_ds(path, chunks=None, combine=None):
     Returns:
       ds (xarray)   
     -----------------------------------
-    '''
+    """
     if chunks is not None:
-        combine = 'by_coords' if combine is None else combine
-        ds = xr.open_mfdataset(path, chunks=chunks, combine=combine)
+        combine = "by_coords" if combine is None else combine
+        ds = xr.open_mfdataset(path, chunks = chunks, combine = combine)
     else:
         # use a context manager, to ensure the file gets closed after use
         with xr.open_dataset(path) as ds:
@@ -67,8 +67,8 @@ def open_ds(path, chunks=None, combine=None):
 
     return ds
 
-def read_netcdfs(files, dim = "time", chunks=None, verbose=True):
-    '''
+def read_netcdfs(files, dim = "time", chunks = None, verbose = True):
+    """
     The read_netcdfs function uses xarray to open sequential netCDF files and 
     and concatenates them along the specified dimension.
     Note: this function makes sure that file is closed after open_dataset call.
@@ -90,7 +90,7 @@ def read_netcdfs(files, dim = "time", chunks=None, verbose=True):
       xarray.Dataset: 
         All files open as one concatenated xarray.Dataset object    
     -----------------------------------
-    '''
+    """
     if verbose:
         print("Reading and concatenating files ...")
         for fname in files:
@@ -104,14 +104,16 @@ def read_netcdfs(files, dim = "time", chunks=None, verbose=True):
     fp_lat = fields_ds["lat"].values
     fp_lon = fields_ds["lon"].values
 
-    datasets = [ds.reindex(indexers={"lat":fp_lat, "lon":fp_lon}, method="nearest", tolerance=1e-5) for ds in datasets]
+    datasets = [ds.reindex(indexers = {"lat":fp_lat, "lon":fp_lon}, 
+                           method = "nearest", 
+                           tolerance = 1e-5) for ds in datasets]
 
     combined = xr.concat(datasets, dim)
 
     return combined
 
 def synonyms(search_string, info, alternative_label = "alt"):
-    '''
+    """
     Check to see if there are other names that we should be using for
     a particular input. E.g. If CFC-11 or CFC11 was input, 
     go on to use cfc-11, as this is used in species_info.json
@@ -126,8 +128,8 @@ def synonyms(search_string, info, alternative_label = "alt"):
    Returns:
         corrected string
     -----------------------------------
-    '''
-    keys=list(info.keys())
+    """
+    keys = list(info.keys())
 
     #First test whether site matches keys (case insensitive)
     out_strings = \
@@ -154,27 +156,27 @@ class get_country(object):
   def __init__(self, domain, country_file=None):
 
         if country_file is None:
-            if not os.path.exists(os.path.join(openghginv_path, 'countries/')):
-                os.makedirs(os.path.join(openghginv_path, 'countries/'))
+            if not os.path.exists(os.path.join(openghginv_path, "countries/")):
+                os.makedirs(os.path.join(openghginv_path, "countries/"))
                 raise FileNotFoundError ("Country definition file not found."
                                          f" Please add to {openghginv_path}/countries/")
             else:
-                country_directory = os.path.join(openghginv_path, 'countries/')
+                country_directory = os.path.join(openghginv_path, "countries/")
 
-            filename=glob.glob(os.path.join(country_directory, f"country_{domain}.nc"))
+            filename = glob.glob(os.path.join(country_directory, f"country_{domain}.nc"))
             f = xr.open_dataset(filename[0])
         else:
             filename = country_file
             f = xr.open_dataset(filename)
 
-        lon = f.variables['lon'][:].values
-        lat = f.variables['lat'][:].values
+        lon = f.variables["lon"][:].values
+        lat = f.variables["lat"][:].values
 
         #Get country indices and names
         if "country" in f.variables:
-            country = f.variables['country'][:, :]
+            country = f.variables["country"][:, :]
         elif "region" in f.variables:
-            country = f.variables['region'][:, :]
+            country = f.variables["region"][:, :]
 
 #         if (ukmo is True) or (uk_split is True):
 #             name_temp = f.variables['name'][:]  
@@ -182,7 +184,7 @@ class get_country(object):
 #             name=np.asarray(name_temp)
 
 #         else:
-        name_temp = f.variables['name'].values
+        name_temp = f.variables["name"].values
         f.close()
 
         name_temp = np.ma.filled(name_temp,fill_value=None)
@@ -208,7 +210,7 @@ class get_country(object):
         self.name = name
 
 def filtering(datasets_in, filters, keep_missing=False):
-    '''
+    """
     Applies time filtering to entire dataset.
     Filters supplied in a list and then applied in order. 
     For example if you wanted a daily, daytime average, you could do this:
@@ -241,17 +243,17 @@ def filtering(datasets_in, filters, keep_missing=False):
     Returns:
        Same format as datasets_in : Datasets with filters applied.
     ----------------------------------- 
-    '''
+    """
     if type(filters) is not list:
         filters = [filters]
 
     datasets = datasets_in.copy()
 
     def local_solar_time(dataset):
-        '''
+        """
         Returns hour of day as a function of local solar time
         relative to the Greenwich Meridian. 
-        '''
+        """
         sitelon = dataset.release_lon.values[0]
         # convert lon to [-180,180], so time offset is negative west of 0 degrees
         if sitelon > 180:
@@ -261,18 +263,18 @@ def filtering(datasets_in, filters, keep_missing=False):
         return hours
 
     def local_ratio(dataset):
-        '''
+        """
         Calculates the local ratio in the surrounding grid cells
-        '''
+        """
         release_lons = dataset.release_lon[0].values
         release_lats = dataset.release_lat[0].values
         dlon = dataset.lon[1].values - dataset.lon[0].values
         dlat = dataset.lat[1].values-dataset.lat[0].values
-        local_sum=np.zeros((len(dataset.mf)))
+        local_sum = np.zeros((len(dataset.mf)))
 
         for ti in range(len(dataset.mf)):
-            release_lon=dataset.release_lon[ti].values
-            release_lat=dataset.release_lat[ti].values
+            release_lon = dataset.release_lon[ti].values
+            release_lat = dataset.release_lat[ti].values
             wh_rlon = np.where(abs(dataset.lon.values-release_lon) < dlon/2.)
             wh_rlat = np.where(abs(dataset.lat.values-release_lat) < dlat/2.)
             if np.any(wh_rlon[0]) and np.any(wh_rlat[0]):
@@ -284,23 +286,23 @@ def filtering(datasets_in, filters, keep_missing=False):
         return local_sum
 
     # Filter functions
-    def daily_median(dataset, keep_missing=False):
-        ''' Calculate daily median '''
+    def daily_median(dataset, keep_missing = False):
+        """ Calculate daily median """
         if keep_missing:
-            return dataset.resample(indexer={'time':"1D"}).median()
+            return dataset.resample(indexer = {"time":"1D"}).median()
         else:
-            return dataset.resample(indexer={'time':"1D"}).median().dropna(dim="time")
+            return dataset.resample(indexer = {"time":"1D"}).median().dropna(dim = "time")
 
-    def six_hr_mean(dataset, keep_missing=False):
-        ''' Calculate six-hour median '''
+    def six_hr_mean(dataset, keep_missing = False):
+        """ Calculate six-hour median """
         if keep_missing:
-            return dataset.resample(indexer={'time':"6H"}).mean()
+            return dataset.resample(indexer = {"time":"6H"}).mean()
         else:
-            return dataset.resample(indexer={'time':"6H"}).mean().dropna(dim="time")
+            return dataset.resample(indexer = {"time":"6H"}).mean().dropna(dim = "time")
 
 
-    def daytime(dataset, site,keep_missing=False):
-        ''' Subset during daytime hours (11:00-15:00) '''
+    def daytime(dataset, site, keep_missing = False):
+        """ Subset during daytime hours (11:00-15:00) """
         hours = local_solar_time(dataset)
         ti = [i for i, h in enumerate(hours) if h >= 11 and h <= 15]
 
@@ -311,8 +313,8 @@ def filtering(datasets_in, filters, keep_missing=False):
         else:
             return dataset[dict(time = ti)]
 
-    def daytime9to5(dataset, site,keep_missing=False):
-        ''' Subset during daytime hours (9:00-17:00) '''
+    def daytime9to5(dataset, site, keep_missing = False):
+        """ Subset during daytime hours (9:00-17:00) """
         hours = local_solar_time(dataset)
         ti = [i for i, h in enumerate(hours) if h >= 9 and h <= 17]
 
@@ -323,8 +325,8 @@ def filtering(datasets_in, filters, keep_missing=False):
         else:
             return dataset[dict(time = ti)]
 
-    def nighttime(dataset, site,keep_missing=False):
-        ''' Subset during nighttime hours (23:00 - 03:00) '''
+    def nighttime(dataset, site, keep_missing = False):
+        """ Subset during nighttime hours (23:00-03:00) """
         hours = local_solar_time(dataset)
         ti = [i for i, h in enumerate(hours) if h >= 23 or h <= 3]
 
@@ -335,8 +337,8 @@ def filtering(datasets_in, filters, keep_missing=False):
         else:
             return dataset[dict(time = ti)]
 
-    def noon(dataset, site,keep_missing=False):
-        ''' Select only 12pm data '''
+    def noon(dataset, site, keep_missing = False):
+        """ Select only 12pm data """
         hours = local_solar_time(dataset)
         ti = [i for i, h in enumerate(hours) if h == 12]
 
@@ -347,12 +349,12 @@ def filtering(datasets_in, filters, keep_missing=False):
         else:
             return dataset[dict(time = ti)]
 
-    def local_influence(dataset,site, keep_missing=False):
-        '''
+    def local_influence(dataset, site, keep_missing = False):
+        """
         Subset for times when local influence is below threshold.       
         Local influence expressed as a fraction of the sum of entire footprint domain.
-        '''
-        if not dataset.filter_by_attrs(standard_name="local_ratio"):
+        """
+        if not dataset.filter_by_attrs(standard_name = "local_ratio"):
             lr = local_ratio(dataset)
         else:
             lr = dataset.local_ratio
@@ -361,12 +363,12 @@ def filtering(datasets_in, filters, keep_missing=False):
         ti = [i for i, local_ratio in enumerate(lr) if local_ratio <= pc]
         if keep_missing is True:
             mf_data_array = dataset.mf
-            dataset_temp = dataset.drop('mf')
+            dataset_temp = dataset.drop("mf")
 
             dataarray_temp = mf_data_array[dict(time = ti)]
 
-            mf_ds = xr.Dataset({'mf': (['time'], dataarray_temp)},
-                                  coords = {'time' : (dataarray_temp.coords['time'])})
+            mf_ds = xr.Dataset({"mf": (["time"], dataarray_temp)},
+                                  coords = {"time" : (dataarray_temp.coords["time"])})
 
             dataset_out = combine_datasets(dataset_temp, mf_ds, method=None)
             return dataset_out
@@ -389,14 +391,14 @@ def filtering(datasets_in, filters, keep_missing=False):
     for site in sites:
             for filt in filters:
                 if filt == "daily_median" or filt == "six_hr_mean":
-                    datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
+                    datasets[site] = filtering_functions[filt](datasets[site], keep_missing = keep_missing)
                 else:
-                    datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
+                    datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing = keep_missing)
 
     return datasets
 
 def areagrid(lat, lon):
-  '''
+  """
   Calculates grid of areas (m2) given arrays of latitudes and longitudes
   -------------------------------------
   Args:
@@ -414,28 +416,28 @@ def areagrid(lat, lon):
     lat=np.arange(50., 60., 1.)
     lon=np.arange(0., 10., 1.)
     area=utils.areagrid(lat, lon)  
-  '''
+  """
 
-  re=6367500.0  #radius of Earth in m
+  re = 6367500.0  #radius of Earth in m
 
-  dlon=abs(np.mean(lon[1:] - lon[0:-1]))*np.pi/180.
-  dlat=abs(np.mean(lat[1:] - lat[0:-1]))*np.pi/180.
-  theta=np.pi*(90.-lat)/180.
+  dlon = abs(np.mean(lon[1:] - lon[0:-1]))*np.pi/180.
+  dlat = abs(np.mean(lat[1:] - lat[0:-1]))*np.pi/180.
+  theta = np.pi*(90.-lat)/180.
 
-  area=np.zeros((len(lat), len(lon)))
+  area = np.zeros((len(lat), len(lon)))
 
   for latI in range(len(lat)):
     if theta[latI] == 0. or np.isclose(theta[latI], np.pi):
-      area[latI, :]=(re**2)*abs(np.cos(dlat/2.)-np.cos(0.))*dlon
+      area[latI, :] = (re**2)*abs(np.cos(dlat/2.)-np.cos(0.))*dlon
     else:
-      lat1=theta[latI] - dlat/2.
-      lat2=theta[latI] + dlat/2.
-      area[latI, :]=((re**2)*(np.cos(lat1)-np.cos(lat2))*dlon)
+      lat1 = theta[latI] - dlat/2.
+      lat2 = theta[latI] + dlat/2.
+      area[latI, :] = ((re**2)*(np.cos(lat1)-np.cos(lat2))*dlon)
 
   return area
 
 def basis(domain, basis_case, basis_directory = None):
-    '''
+    """
     The basis function reads in the all matching files for the 
     basis case and domain as an xarray Dataset.
     
@@ -461,13 +463,13 @@ def basis(domain, basis_case, basis_directory = None):
       xarray.Dataset: 
         combined dataset of matching basis functions
     -----------------------------------
-    '''
+    """
     if basis_directory is None:
-        if not os.path.exists(os.path.join(openghginv_path, 'basis_functions/')):
-            os.makedirs(os.path.join(openghginv_path, 'basis_functions/'))
-        basis_directory = os.path.join(openghginv_path, 'basis_functions/')
+        if not os.path.exists(os.path.join(openghginv_path, "basis_functions/")):
+            os.makedirs(os.path.join(openghginv_path, "basis_functions/"))
+        basis_directory = os.path.join(openghginv_path, "basis_functions/")
 
-    file_path = os.path.join(basis_directory,domain,f"{basis_case}_{domain}*.nc")
+    file_path = os.path.join(basis_directory,domain, f"{basis_case}_{domain}*.nc")
     files = sorted(glob.glob(file_path))
 
     if len(files) == 0:
@@ -857,9 +859,198 @@ def timeseries_HiTRes(flux_dict, fp_HiTRes_ds=None, fp_file=None, output_TS = Tr
         elif output_TS:
             return timeseries
 
+
+def fp_sensitivity(fp_and_data, domain, basis_case, basis_directory = None, verbose = True):
+    """
+    The fp_sensitivity function adds a sensitivity matrix, H, to each 
+    site xarray dataframe in fp_and_data.
+    Basis function data in an array: lat, lon, no. regions. 
+    In each 'region' element of array there is a lat-lon grid with 1 in 
+    region and 0 outside region.
+    
+    Region numbering must start from 1
+    -----------------------------------
+    Args:
+      fp_and_data (dict): 
+        Output from footprints_data_merge() function. Dictionary of datasets.
+      domain (str): 
+        Domain name. The footprint files should be sub-categorised by the domain.
+      basis_case: 
+        Basis case to read in. Examples of basis cases are "NESW","stratgrad".
+        String if only one basis case is required. Dict if there are multiple
+        sources that require separate basis cases. In which case, keys in dict should
+        reflect keys in emissions_name dict used in fp_data_merge.
+      basis_directory (str): 
+        basis_directory can be specified if files are not in the default 
+        directory. Must point to a directory which contains subfolders organized 
+        by domain. (optional)
+    
+    Returns:
+        dict (xarray.Dataset): 
+          Same format as fp_and_data with sensitivity matrix and basis function grid added.
+    -----------------------------------
+
+    """
+    # List of sites 
+    sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
+
+    # List of flux sectors
+    flux_sources = list(fp_and_data[".flux"].keys())
+    
+    # Reads in fp basis function: array with dim [sector, lat, lon, time]
+    basis_func = basis(domain = domain,
+                       basis_case = basis_case,
+                       basis_directory = basis_directory,
+                      )
+
+    for site in sites:
+        for si, source in enumerate(flux_sources):
+            if source in basis_func["sector"].values:
+                source_ind = np.where(basis_func["sector"].values == source)[0]
+                basis_func_source = basis_func["basis"][source_ind][0]
+            else:
+                print(f"Using %s as the basis case for {source}" %basis_func["sector"].values[0])
+                basis_func_source = basis_func["basis"][0]
+    
+            # Haven't changed this for CO2 stuff. Not sure how this works with OpenGHG now ... 
+            # someone to please check  
+            if type(fp_and_data[".flux"][source]) == dict:
+                if "fp_HiTRes" in list(fp_and_data[site].keys()):
+                    site_bf = xr.Dataset({"fp_HiTRes":fp_and_data[site]["fp_HiTRes"],
+                                          "fp":fp_and_data[site]["fp"]})
+
+                    fp_time = (fp_and_data[site].time[1] - fp_and_data[site].time[0]).values.astype("timedelta64[h]").astype(int)
+
+                    # calculate the H matrix
+                    H_all = timeseries_HiTRes(fp_HiTRes_ds = site_bf,
+                                              flux_dict = fp_and_data[".flux"][source],
+                                              output_TS = False,
+                                              output_fpXflux = True,
+                                              output_type = "DataArray",
+                                              time_resolution = f"{fp_time}H",
+                                              verbose = verbose)
+                else:
+                    print("fp_and_data needs the variable fp_HiTRes to use the emissions dictionary with high_freq and low_freq emissions.")
+
+            else:
+                site_bf = combine_datasets(fp_and_data[site]["fp"].to_dataset(),
+                                           fp_and_data[".flux"][source].data)
+                
+                H_all = site_bf.fp * site_bf.flux
+
+            H_all_v = H_all.values.reshape((len(site_bf.lat) * len(site_bf.lon), len(site_bf.time)))
+
+            if "region" in list(basis_func.dims.keys()):
+                if "time" in basis_func.basis.dims:
+                    basis_func = basis_func.isel(time = 0)
+
+                site_bf = xr.merge([site_bf, basis_func_source])
+
+                H = np.zeros((len(site_bf.region), len(site_bf.time)))
+
+                base_v = site_bf.basis.values.reshape((len(site_bf.lat) * len(site_bf.lon), len(site_bf.region)))
+
+                for i in range(len(site_bf.region)):
+                    H[i,:] = np.nansum(H_all_v * base_v[:, i, np.newaxis], axis = 0)
+
+                if source == all:
+                    if (sys.version_info < (3,0)):
+                        region_name = site_bf.region
+                    else:
+                        region_name = site_bf.region.decode('ascii')
+                else:
+                    if (sys.version_info < (3,0)):
+                        region_name = [source+'-'+reg for reg in site_bf.region.values]
+                    else:
+                        region_name = [source+'-'+reg.decode('ascii') for reg in site_bf.region.values]
+
+                sensitivity = xr.DataArray(H,
+                                           coords=[('region', region_name),
+                                                   ('time', fp_and_data[site].coords['time'])])
+
+            else:
+                print("Warning: Using basis functions without a region dimension may be deprecated shortly.")
+
+                site_bf = combine_datasets(site_bf, basis_func_source, method = "ffill")
+
+                H = np.zeros((int(np.max(site_bf.basis)), len(site_bf.time)))
+
+                basis_scale = xr.Dataset({"basis_scale": (["lat", "lon", "time"], np.zeros(np.shape(site_bf.basis)))},
+                                         coords = site_bf.coords)
+                site_bf = site_bf.merge(basis_scale)
+
+                base_v = np.ravel(site_bf.basis.values[:,:,0])
+                for i in range(int(np.max(site_bf.basis))):
+                    wh_ri = np.where(base_v == i+1)
+                    H[i,:] = np.nansum(H_all_v[wh_ri[0], :], axis = 0)
+
+                if source == all:
+                    region_name = list(range(1, np.max(site_bf.basis.values)+1))
+                else:
+                    region_name = [source + "-" + str(reg) for reg in range(1, int(np.max(site_bf.basis.values)+1))]
+
+                sensitivity = xr.DataArray(H.data, coords=[("region", region_name), ("time", fp_and_data[site].coords["time"].data)])
+
+            if si == 0:
+                concat_sensitivity = sensitivity
+            else:
+                concat_sensitivity = xr.concat((concat_sensitivity, sensitivity), dim = "region")
+
+            sub_basis_cases = 0
+
+            if source in basis_func["sector"].values:
+                source_ind = np.where(basis_func["sector"].values == source)[0]
+                basis_case_key = basis_func["sector"][source_ind]
+                
+            elif "all" in basis_case.keys():
+                source_ind = 0
+                basis_case_key = "all"
+
+            if "sub" in basis_case_key[0:4]:
+                """
+                To genrate sub_lon and sub_lat grids basis case must start with 'sub'
+                e.g.
+                'sub-transd', 'sub_transd', sub-intem' will work
+                'transd' or 'transd-sub' won't work
+                """
+                sub_basis_cases += 1
+                if sub_basis_cases > 1:
+                    print("Can currently only use a sub basis case for one source. Skipping...")
+                else:
+                    sub_fp_temp = site_bf.fp.sel(lon = site_bf.sub_lon, lat = site_bf.sub_lat,
+                                                 method = "nearest")
+
+                    sub_fp = xr.Dataset({"sub_fp": (["sub_lat", "sub_lon", "time"], sub_fp_temp.data)},
+                                           coords = {"sub_lat" : (site_bf.coords["sub_lat"].data),
+                                                     "sub_lon" : (site_bf.coords["sub_lon"].data),
+                                                     "time" : (fp_and_data[site].coords["time"].data)})
+
+                    sub_H_temp = H_all.sel(lon = site_bf.sub_lon, lat = site_bf.sub_lat,
+                                           method = "nearest")
+
+                    sub_H = xr.Dataset({"sub_H": (["sub_lat", "sub_lon","time"], sub_H_temp.data)},
+                                          coords = {"sub_lat" : (site_bf.coords["sub_lat"].data),
+                                                    "sub_lon" : (site_bf.coords["sub_lon"].data),
+                                                    "time" : (fp_and_data[site].coords["time"].data)},
+                                          attrs = {"flux_source_used_to_create_sub_H" : source})
+
+                    fp_and_data[site] = fp_and_data[site].merge(sub_fp)
+                    fp_and_data[site] = fp_and_data[site].merge(sub_H)
+
+        fp_and_data[site]["H"] = concat_sensitivity
+        fp_and_data[".basis"] = basis_func["basis"]
+        #fp_and_data[".basis"] = site_bf.basis[:,:,0]
+
+    return fp_and_data
+
+
+
+
+'''
+
 def fp_sensitivity(fp_and_data, domain, basis_case,
-                   basis_directory = None, verbose=True):
-    '''
+                   basis_directory = None, verbose = True):
+    """
     The fp_sensitivity function adds a sensitivity matrix, H, to each 
     site xarray dataframe in fp_and_data.
     Basis function data in an array: lat, lon, no. regions. 
@@ -887,17 +1078,18 @@ def fp_sensitivity(fp_and_data, domain, basis_case,
         dict (xarray.Dataset): 
           Same format as fp_and_data with sensitivity matrix and basis function grid added.
     -----------------------------------
-    '''
+    """
+    # List of sites 
+    sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
 
-    sites = [key for key in list(fp_and_data.keys()) if key[0] != '.']
-
-    flux_sources = list(fp_and_data['.flux'].keys())
+    # List of flux sectors
+    flux_sources = list(fp_and_data[".flux"].keys())
 
     if type(basis_case) is not dict:
         if len(flux_sources) == 1:
-            basis_case = {flux_sources[0]:basis_case}
+            basis_case = {flux_sources[0] : basis_case}
         else:
-            basis_case = {'all':basis_case}
+            basis_case = {"all" : basis_case}
 
     if len(list(basis_case.keys())) != len(flux_sources):
         if len(list(basis_case.keys())) == 1:
@@ -910,29 +1102,38 @@ def fp_sensitivity(fp_and_data, domain, basis_case,
     for site in sites:
         for si, source in enumerate(flux_sources):
             if source in list(basis_case.keys()):
-                basis_func = basis(domain=domain, basis_case=basis_case[source], basis_directory=basis_directory)
+                basis_func = basis(domain = domain, 
+                                   basis_case = basis_case[source], 
+                                   basis_directory = basis_directory)
             else:
-                basis_func = basis(domain=domain, basis_case=basis_case['all'], basis_directory=basis_directory)
+                basis_func = basis(domain = domain, 
+                                   basis_case = basis_case["all"], 
+                                   basis_directory = basis_directory)
 
-            if type(fp_and_data['.flux'][source]) == dict:
-                if 'fp_HiTRes' in list(fp_and_data[site].keys()):
+            if type(fp_and_data[".flux"][source]) == dict:
+                if "fp_HiTRes" in list(fp_and_data[site].keys()):
                     site_bf = xr.Dataset({"fp_HiTRes":fp_and_data[site]["fp_HiTRes"],
                                           "fp":fp_and_data[site]["fp"]})
 
-                    fp_time = (fp_and_data[site].time[1] - fp_and_data[site].time[0]).values.astype('timedelta64[h]').astype(int)
+                    fp_time = (fp_and_data[site].time[1] - fp_and_data[site].time[0]).values.astype("timedelta64[h]").astype(int)
 
                     # calculate the H matrix
-                    H_all = timeseries_HiTRes(fp_HiTRes_ds = site_bf, flux_dict = fp_and_data['.flux'][source], output_TS = False,
-                                              output_fpXflux = True, output_type = 'DataArray',
-                                              time_resolution = f'{fp_time}H', verbose = verbose)
+                    H_all = timeseries_HiTRes(fp_HiTRes_ds = site_bf, 
+                                              flux_dict = fp_and_data[".flux"][source], 
+                                              output_TS = False,
+                                              output_fpXflux = True, 
+                                              output_type = "DataArray",
+                                              time_resolution = f"{fp_time}H", 
+                                              verbose = verbose)
                 else:
                     print("fp_and_data needs the variable fp_HiTRes to use the emissions dictionary with high_freq and low_freq emissions.")
 
             else:
-                site_bf = combine_datasets(fp_and_data[site]["fp"].to_dataset(), fp_and_data['.flux'][source].data)
-                H_all=site_bf.fp*site_bf.flux
+                site_bf = combine_datasets(fp_and_data[site]["fp"].to_dataset(), 
+                                           fp_and_data[".flux"][source].data)
+                H_all = site_bf.fp*site_bf.flux
 
-            H_all_v=H_all.values.reshape((len(site_bf.lat)*len(site_bf.lon),len(site_bf.time)))
+            H_all_v = H_all.values.reshape((len(site_bf.lat)*len(site_bf.lon),len(site_bf.time)))
 
 
             if 'region' in list(basis_func.dims.keys()):
@@ -967,13 +1168,12 @@ def fp_sensitivity(fp_and_data, domain, basis_case,
             else:
                 print("Warning: Using basis functions without a region dimension may be deprecated shortly.")
 
-                site_bf = combine_datasets(site_bf,basis_func, method='ffill')
+                site_bf = combine_datasets(site_bf, basis_func, method="ffill")
 
                 H = np.zeros((int(np.max(site_bf.basis)),len(site_bf.time)))
 
-                basis_scale = xr.Dataset({'basis_scale': (['lat','lon','time'],
-                                                    np.zeros(np.shape(site_bf.basis)))},
-                                       coords = site_bf.coords)
+                basis_scale = xr.Dataset({"basis_scale": (["lat","lon","time"], np.zeros(np.shape(site_bf.basis)))},
+                                         coords = site_bf.coords)
                 site_bf = site_bf.merge(basis_scale)
 
                 base_v = np.ravel(site_bf.basis.values[:,:,0])
@@ -984,20 +1184,25 @@ def fp_sensitivity(fp_and_data, domain, basis_case,
                 if source == all:
                     region_name = list(range(1,np.max(site_bf.basis.values)+1))
                 else:
-                    region_name = [source+'-'+str(reg) for reg in range(1,int(np.max(site_bf.basis.values)+1))]
+                    region_name = [source+"-"+str(reg) for reg in range(1,int(np.max(site_bf.basis.values)+1))]
 
                 sensitivity = xr.DataArray(H.data,
-                                    coords=[('region', region_name),
-                                        ('time', fp_and_data[site].coords['time'].data)])
+                                    coords=[("region", region_name),
+                                        ("time", fp_and_data[site].coords["time"].data)])
 
             if si == 0:
                 concat_sensitivity = sensitivity
             else:
-                concat_sensitivity = xr.concat((concat_sensitivity,sensitivity), dim='region')
+                concat_sensitivity = xr.concat((concat_sensitivity, sensitivity), dim = "region")
 
             sub_basis_cases = 0
 
-            if basis_case[source].startswith('sub'):
+            if source in basis_case.keys():
+                basis_case_key = basis_case[source]
+            elif "all" in basis_case.keys():
+                basis_case_key = "all"
+
+            if basis_case_key.startswith("sub"):
                 """
                 To genrate sub_lon and sub_lat grids basis case must start with 'sub'
                 e.g.
@@ -1008,29 +1213,31 @@ def fp_sensitivity(fp_and_data, domain, basis_case,
                 if sub_basis_cases > 1:
                     print("Can currently only use a sub basis case for one source. Skipping...")
                 else:
-                    sub_fp_temp = site_bf.fp.sel(lon=site_bf.sub_lon, lat=site_bf.sub_lat,
-                                                 method="nearest")
-                    sub_fp = xr.Dataset({'sub_fp': (['sub_lat','sub_lon','time'], sub_fp_temp.data)},
-                                           coords = {'sub_lat': (site_bf.coords['sub_lat'].data),
-                                                     'sub_lon': (site_bf.coords['sub_lon'].data),
-                                                     'time' : (fp_and_data[site].coords['time'].data)})
+                    sub_fp_temp = site_bf.fp.sel(lon = site_bf.sub_lon, lat = site_bf.sub_lat,
+                                                 method = "nearest")
 
-                    sub_H_temp = H_all.sel(lon=site_bf.sub_lon, lat=site_bf.sub_lat,
-                                           method="nearest")
-                    sub_H = xr.Dataset({'sub_H': (['sub_lat','sub_lon','time'], sub_H_temp.data)},
-                                          coords = {'sub_lat': (site_bf.coords['sub_lat'].data),
-                                                    'sub_lon': (site_bf.coords['sub_lon'].data),
-                                                    'time' : (fp_and_data[site].coords['time'].data)},
-                                          attrs = {'flux_source_used_to_create_sub_H':source})
+                    sub_fp = xr.Dataset({"sub_fp": (["sub_lat","sub_lon","time"], sub_fp_temp.data)},
+                                           coords = {"sub_lat": (site_bf.coords["sub_lat"].data),
+                                                     "sub_lon": (site_bf.coords["sub_lon"].data),
+                                                     "time" : (fp_and_data[site].coords["time"].data)})
+
+                    sub_H_temp = H_all.sel(lon = site_bf.sub_lon, lat = site_bf.sub_lat,
+                                           method = "nearest")
+
+                    sub_H = xr.Dataset({"sub_H": (["sub_lat", "sub_lon","time"], sub_H_temp.data)},
+                                          coords = {"sub_lat": (site_bf.coords["sub_lat"].data),
+                                                    "sub_lon": (site_bf.coords["sub_lon"].data),
+                                                    "time" : (fp_and_data[site].coords["time"].data)},
+                                          attrs = {"flux_source_used_to_create_sub_H":source})
 
                     fp_and_data[site] = fp_and_data[site].merge(sub_fp)
                     fp_and_data[site] = fp_and_data[site].merge(sub_H)
 
-        fp_and_data[site]['H'] = concat_sensitivity
-        fp_and_data['.basis'] = site_bf.basis[:,:,0]
+        fp_and_data[site]["H"] = concat_sensitivity
+        fp_and_data[".basis"] = site_bf.basis[:,:,0]
 
     return fp_and_data
-
+'''
 
 def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory = None):
     '''

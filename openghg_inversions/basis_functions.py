@@ -109,7 +109,7 @@ def quadTreeGrid(grid, limit):
 def quadtreebasisfunction(emissions_name, fp_all, sites, 
                           start_date, domain, species, outputname, outputdir=None,
                           nbasis=100, abs_flux=False):
-    '''
+    """
     Creates a basis function with nbasis grid cells using a quadtree algorithm.
     The domain is split with smaller grid cells for regions which contribute
     more to the a priori (above basline) mole fraction. This is based on the
@@ -151,61 +151,80 @@ def quadtreebasisfunction(emissions_name, fp_all, sites,
         If outputdir is None, then returns a Temp directory. The new basis function is saved in this Temp directory.
         If outputdir is not None, then does not return anything but saves the basis function in outputdir.
     -----------------------------------
-    '''
-    if abs_flux:
-        print('Using absolute values of flux array')
+    """
     if emissions_name == None:
-        flux = np.absolute(fp_all['.flux']['all'].data.flux.values) if abs_flux else fp_all['.flux']['all'].data.flux.values 
-        meanflux = np.squeeze(flux)
-    else:
-        if isinstance(fp_all[".flux"][emissions_name[0]], dict):
-            arr = fp_all[".flux"][emissions_name[0]]
-            flux = np.absolute(arr.data.flux.values) if abs_flux else arr.data.flux.values
-            meanflux = np.squeeze(flux)
-        else:
-            flux = np.absolute(fp_all[".flux"][emissions_name[0]].data.flux.values) if abs_flux else \
-                   fp_all[".flux"][emissions_name[0]].data.flux.values 
-            meanflux = np.squeeze(flux)
-    meanfp = np.zeros((fp_all[sites[0]].fp.shape[0],fp_all[sites[0]].fp.shape[1]))
-    div=0
+        raise ValueError("emissions_name needs to be specified")
+    
+    # No. of flux sectors
+    nsectors = len(emissions_name)
+    
+    # If one nbasis value provided, we assume that is 
+    # the no. of basis functions for each flux sector 
+    if isinstance(nbasis, int):
+        nbasis = [nbasis] * nsectors
+        
+    basis_per_sector = {}
+    
+    # Calculate mean combined footprint of all sites being used 
+    meanfp = np.zeros((fp_all[sites[0]].fp.shape[0], fp_all[sites[0]].fp.shape[1]))
+    div = 0
     for site in sites:
-        meanfp += np.sum(fp_all[site].fp.values,axis=2)
+        meanfp += np.sum(fp_all[site].fp.values, axis = 2)
         div += fp_all[site].fp.shape[2]
     meanfp /= div
-    
-    if meanflux.shape != meanfp.shape:
-        meanflux = np.mean(meanflux, axis=2)
-    fps = meanfp*meanflux
 
-    def qtoptim(x):
-        basisQuad, boxes = quadTreeGrid(fps, x)
-        return (nbasis - np.max(basisQuad)-1)**2
 
-    cost = 1e6
-    pwr = 0
-    while cost > 3.:
-        optim = scipy.optimize.dual_annealing(qtoptim, np.expand_dims([0,100/10**pwr], axis=0))
-        cost = np.sqrt(optim.fun)
-        pwr += 1
-        if pwr > 10:
-            raise Exception("Quadtree did not converge after max iterations.")
-    basisQuad, boxes = quadTreeGrid(fps, optim.x[0])
-    
+    print("Using absolute values of fluxes to calculate basis functions")
+    for i in range(0, nsectors):
+        flux_i = fp_all[".flux"][emissions_name[i]].data.flux.values
+        absflux = np.absolute(flux_i)
+        meanflux = np.squeeze(absflux)
+        
+        if meanflux.shape != meanfp.shape:
+            meanflux = np.mean(meanflux, axis = 2)
+        
+        fps = meanfp * meanflux
+        print(f"Calculating basis functions for {emissions_name[i]} using {nbasis[i]} basis functions ...")
+
+        def qtoptim(x):
+            basisQuad, boxes = quadTreeGrid(fps, x)
+            return (nbasis[i] - np.max(basisQuad)-1)**2
+
+        cost = 1e6
+        pwr = 0
+        while cost > 3.:
+            optim = scipy.optimize.dual_annealing(qtoptim, np.expand_dims([0,100/10**pwr], axis = 0))
+            cost = np.sqrt(optim.fun)
+            pwr += 1
+            if pwr > 10:
+                raise Exception("Quadtree did not converge after max iterations.")
+        basisQuad, boxes = quadTreeGrid(fps, optim.x[0])
+        
+        basis_per_sector[emissions_name[i]] = np.expand_dims(basisQuad + 1, axis = 2) 
+
+
     lon = fp_all[sites[0]].lon.values
-    lat = fp_all[sites[0]].lat.values    
-    
-    base = np.expand_dims(basisQuad+1,axis=2)
-    
+    lat = fp_all[sites[0]].lat.values     
     time = [pd.to_datetime(start_date)]
-    newds = xr.Dataset({'basis' : ([ 'lat','lon', 'time'], base)}, 
-                        coords={'time':(['time'], time), 
-                    'lat' : (['lat'],  lat), 'lon' : (['lon'],  lon)})    
-    newds.lat.attrs['long_name'] = 'latitude' 
-    newds.lon.attrs['long_name'] = 'longitude' 
-    newds.lat.attrs['units'] = 'degrees_north'
-    newds.lon.attrs['units'] = 'degrees_east'     
-    newds.attrs['creator'] = getpass.getuser()
-    newds.attrs['date created'] = str(pd.Timestamp.today())
+
+    base = []
+    for key in basis_per_sector.keys():
+        base.append(basis_per_sector[key])
+    base = np.array(base)
+
+    newds = xr.Dataset({"basis" : (["sector", "lat", "lon", "time"], base)}, 
+                        coords={"time" : (["time"], time), 
+                                "lat" : (["lat"],  lat), 
+                                "lon" : (["lon"],  lon),
+                                "sector" : (["sector"], emissions_name)
+                       })  
+ 
+    newds.lat.attrs["long_name"] = "latitude" 
+    newds.lon.attrs["long_name"] = "longitude" 
+    newds.lat.attrs["units"] = "degrees_north"
+    newds.lon.attrs["units"] = "degrees_east"    
+    newds.attrs["creator"] = getpass.getuser()
+    newds.attrs["date created"] = str(pd.Timestamp.today())
     
     if outputdir is None:
         cwd = os.getcwd()
@@ -230,7 +249,8 @@ def load_landsea_indices():
     land = 1 
     sea = 0
     """
-    landsea_indices = xr.open_dataset("../countries/country-EUROPE-UKMO-landsea-2023.nc")
+    landsea_indices = xr.open_dataset("/user/home/wz22079/my_openghg/openghg_inversions/countries/country-EUROPE-UKMO-landsea-2023.nc")
+#    landsea_indices = xr.open_dataset("../countries/country-EUROPE-UKMO-landsea-2023.nc")
     return landsea_indices['country'].values
 
 def bucket_value_split(grid, bucket, offset_x=0, offset_y=0):
@@ -288,7 +308,7 @@ def optimize_nregions(bucket, grid, nregion, tol):
         bucket = bucket * 0.995
         return optimize_nregions(bucket, grid, nregion, tol)
 
-    elif get_nregions(mybucket, fps) > nregion-tol:
+    elif get_nregions(bucket, grid) > nregion-tol:
         bucket = bucket * 1.005
         return optimize_nregions(bucket, grid, nregion, tol)
 
@@ -370,8 +390,8 @@ def nregion_landsea_basis(grid, bucket=1, nregion=100, tol=1):
     return basis_function
 
 def bucketbasisfunction(emissions_name, fp_all, sites,
-                          start_date, domain, species, outputname, outputdir=None,
-                          nbasis=100, abs_flux=False):
+                          start_date, domain, species, outputname, outputdir = None,
+                          nbasis = 50):
 
     """
     Basis functions calculated using a weighted region approach
@@ -396,76 +416,89 @@ def bucketbasisfunction(emissions_name, fp_all, sites,
         Name of inversion run
       outputdir (str):
         Directory where inversion run outputs are saved
-      nbasis (int):
-        Desired number of basis function regions 
-      abs_flux (bool):
-        When set to True uses absolute values of a flux array 
+      nbasis (int/list):
+        Desired number of basis function regions.
+        If int: same nbasis value used for all flux sectors 
+        If list: specifiy nbasis value per flux sector 
 
     """
-    if abs_flux:
-        print('Using absolute values of flux array')
+
     if emissions_name == None:
-        flux = np.absolute(fp_all['.flux']['all'].data.flux.values) if abs_flux else fp_all['.flux']['all'].data.flux.values
-        meanflux = np.squeeze(flux)
-    else:
-        if isinstance(fp_all[".flux"][emissions_name[0]], dict):
-            arr = fp_all[".flux"][emissions_name[0]]
-            flux = np.absolute(arr.data.flux.values) if abs_flux else arr.data.flux.values
-            meanflux = np.squeeze(flux)
-        else:
-            flux = np.absolute(fp_all[".flux"][emissions_name[0]].data.flux.values) if abs_flux else \
-                   fp_all[".flux"][emissions_name[0]].data.flux.values
-            meanflux = np.squeeze(flux)
-    meanfp = np.zeros((fp_all[sites[0]].fp.shape[0],fp_all[sites[0]].fp.shape[1]))
-    div=0
+        raise ValueError("emissions_name needs to be specified")
+    
+    # No. of flux sectors
+    nsectors = len(emissions_name)
+    
+    # If one nbasis value provided, we assume that is 
+    # the no. of basis functions for each flux sector 
+    if isinstance(nbasis, int):
+        nbasis = [nbasis] * nsectors
+        
+    basis_per_sector = {}
+    
+    # Calculate mean combined footprint of all sites being used 
+    meanfp = np.zeros((fp_all[sites[0]].fp.shape[0], fp_all[sites[0]].fp.shape[1]))
+    div = 0
     for site in sites:
-        meanfp += np.sum(fp_all[site].fp.values,axis=2)
+        meanfp += np.sum(fp_all[site].fp.values, axis = 2)
         div += fp_all[site].fp.shape[2]
     meanfp /= div
-
-    if meanflux.shape != meanfp.shape:
-        meanflux = np.mean(meanflux, axis=2)
-    fps = meanfp*meanflux
-
-    bucket_basis = nregion_landsea_basis(fps, 1, nbasis)
-
+    
+    # Calculate basis function per flux sector 
+    print("Using absolute values of fluxes to calculate basis functions")
+    for i in range(0, nsectors):
+        flux_i = fp_all[".flux"][emissions_name[i]].data.flux.values
+        absflux = np.absolute(flux_i)
+        meanflux = np.squeeze(absflux)
+        
+        if meanflux.shape != meanfp.shape:
+            meanflux = np.mean(meanflux, axis = 2)
+        
+        fps = meanfp * meanflux
+        
+        print(f"Calculating basis functions for {emissions_name[i]} using {nbasis[i]} basis functions ...")
+        bucket_basis_i = nregion_landsea_basis(fps, 1, nbasis[i])
+        
+        # Add sector basis function to dict 
+        basis_per_sector[emissions_name[i]] = np.expand_dims(bucket_basis_i, axis = 2)
+        
+        
     lon = fp_all[sites[0]].lon.values
     lat = fp_all[sites[0]].lat.values
-
-    base = np.expand_dims(bucket_basis,axis=2)
-
     time = [pd.to_datetime(start_date)]
-    newds = xr.Dataset({'basis' : ([ 'lat','lon', 'time'], base)},
-                        coords={'time':(['time'], time),
-                    'lat' : (['lat'],  lat), 'lon' : (['lon'],  lon)})
-    newds.lat.attrs['long_name'] = 'latitude'
-    newds.lon.attrs['long_name'] = 'longitude'
-    newds.lat.attrs['units'] = 'degrees_north'
-    newds.lon.attrs['units'] = 'degrees_east'
-    newds.attrs['creator'] = getpass.getuser()
-    newds.attrs['date created'] = str(pd.Timestamp.today())
+    
+    base = []
+    for key in basis_per_sector.keys():
+        base.append(basis_per_sector[key])
+    base = np.array(base)
+    
+    newds = xr.Dataset({"basis" : (["sector", "lat", "lon", "time"], base)},
+                        coords = {"time": (["time"], time),
+                                  "lat" : (["lat"],  lat),
+                                  "lon" : (["lon"],  lon),
+                                  "sector" : (["sector"], emissions_name),
+                                 })
+
+    newds.lat.attrs["long_name"] = "latitude"
+    newds.lon.attrs["long_name"] = "longitude"
+    newds.lat.attrs["units"] = "degrees_north"
+    newds.lon.attrs["units"] = "degrees_east"
+    newds.attrs["creator"] = getpass.getuser()
+    newds.attrs["date created"] = str(pd.Timestamp.today())
 
     if outputdir is None:
         cwd = os.getcwd()
-        tempdir = os.path.join(cwd,f"Temp_{str(uuid.uuid4())}")
+        tempdir = os.path.join(cwd, f"Temp_{str(uuid.uuid4())}")
         os.mkdir(tempdir)
-        os.mkdir(os.path.join(tempdir,f"{domain}/"))
-        newds.to_netcdf(os.path.join(tempdir,domain,f"weighted_{species}-{outputname}_{domain}_{start_date.split('-')[0]}{start_date.split('-')[1]}.nc"), mode='w')
+        os.mkdir(os.path.join(tempdir, f"{domain}/"))
+        newds.to_netcdf(os.path.join(tempdir, domain, f"weighted_{species}-{outputname}_{domain}_{start_date.split('-')[0]}{start_date.split('-')[1]}.nc"), mode = "w")
         return tempdir
+
     else:
         basisoutpath = os.path.join(outputdir,domain)
         if not os.path.exists(basisoutpath):
             os.makedirs(basisoutpath)
         newds.to_netcdf(os.path.join(basisoutpath,f"weighted_{species}-{outputname}_{domain}_{start_date.split('-')[0]}{start_date.split('-')[1]}.nc"), mode='w')
-
-
-
-
-
-
-
-
-
 
 
 

@@ -26,8 +26,8 @@ from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
 
 def parseprior(name, prior_params, shape = ()):
-    '''
-    Parses all continuous distributions for PyMC 3.8: 
+    """
+    Parses all continuous distributions for PyMC v4.0: 
     https://docs.pymc.io/api/distributions/continuous.html
     This format requires updating when the PyMC distributions update, 
     but is safest for code execution
@@ -40,46 +40,47 @@ def parseprior(name, prior_params, shape = ()):
         including 'pdf' for the distribution to use
       shape (array):
         shape of distribution to be created. 
-        Default shape = () is the same as used by PyMC3
+        Default shape = () is the same as used by PyMC
     -----------------------------------    
-    '''
-    functiondict = {"uniform":pm.Uniform,
-                    "flat":pm.Flat,
-                    "halfflat":pm.HalfFlat,
-                    "normal":pm.Normal,
-                    "truncatednormal":pm.TruncatedNormal,
-                    "halfnormal":pm.HalfNormal,
-                    "skewnormal":pm.SkewNormal,
-                    "beta":pm.Beta,
-                    "kumaraswamy":pm.Kumaraswamy,
-                    "exponential":pm.Exponential,
-                    "laplace":pm.Laplace,
-                    "studentt":pm.StudentT,
-                    "halfstudentt":pm.HalfStudentT,
-                    "cauchy":pm.Cauchy,
-                    "halfcauchy":pm.HalfCauchy,
-                    "gamma":pm.Gamma,
-                    "inversegamma":pm.InverseGamma,
-                    "weibull":pm.Weibull,
-                    "lognormal":pm.Lognormal,
-                    "chisquared":pm.ChiSquared,
-                    "wald":pm.Wald,
-                    "pareto":pm.Pareto,
-                    "exgaussian":pm.ExGaussian,
-                    "vonmises":pm.VonMises,
-                    "triangular":pm.Triangular,
-                    "gumbel":pm.Gumbel,
-                    "rice":pm.Rice,
-                    "logistic":pm.Logistic,
-                    "logitnormal":pm.LogitNormal,
-                    "interpolated":pm.Interpolated}
+    """
+    functiondict = {"uniform" : pm.Uniform,
+                    "flat" : pm.Flat,
+                    "halfflat" : pm.HalfFlat,
+                    "normal" : pm.Normal,
+                    "truncatednormal" : pm.TruncatedNormal,
+                    "halfnormal" : pm.HalfNormal,
+                    "skewnormal" : pm.SkewNormal,
+                    "beta" : pm.Beta,
+                    "kumaraswamy" : pm.Kumaraswamy,
+                    "exponential" : pm.Exponential,
+                    "laplace" : pm.Laplace,
+                    "studentt" : pm.StudentT,
+                    "halfstudentt" : pm.HalfStudentT,
+                    "cauchy" : pm.Cauchy,
+                    "halfcauchy" : pm.HalfCauchy,
+                    "gamma" : pm.Gamma,
+                    "inversegamma" : pm.InverseGamma,
+                    "weibull" : pm.Weibull,
+                    "lognormal" : pm.Lognormal,
+                    "chisquared" : pm.ChiSquared,
+                    "wald" : pm.Wald,
+                    "pareto" : pm.Pareto,
+                    "exgaussian" : pm.ExGaussian,
+                    "vonmises" : pm.VonMises,
+                    "triangular" : pm.Triangular,
+                    "gumbel" : pm.Gumbel,
+                    "rice" : pm.Rice,
+                    "logistic" : pm.Logistic,
+                    "logitnormal" : pm.LogitNormal,
+                    "interpolated" : pm.Interpolated}
     
     pdf = prior_params["pdf"]
     #Get a dictionary of the pdf arguments
     params = {x: prior_params[x] for x in prior_params if x != "pdf"}
     return functiondict[pdf.lower()](name, shape=shape, **params)
 
-def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
+def inferpymc(species, Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
+              model_error_method,
               xprior={"pdf":"lognormal", "mu":1, "sigma":1},
               bcprior={"pdf":"lognormal", "mu":0.004, "sigma":0.02},
               sigprior={"pdf":"uniform", "lower":0.5, "upper":3},
@@ -87,7 +88,7 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
               sigma_per_site = True, 
               offsetprior={"pdf":"normal", "mu":0, "sigma":1},
               add_offset = False, verbose=False):       
-    '''
+    """
     Uses PyMC module for Bayesian inference for emissions field, boundary 
     conditions and (currently) a single model error value.
     This uses a Normal likelihood but the (hyper)prior PDFs can selected by user.
@@ -107,7 +108,12 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
       siteindicator (array):
         Array of indexing integers that relate each measurement to a site
       sigma_freq_index (array):
-        Array of integer indexes that converts time into periods
+        Array of integer indexes that converts time into periodsi
+      model_error_method (str):
+        Select option for calculting model error. One of:
+          scaled_pollution_event = Proportion of simulated pollution event without a minimum uncertainty
+          scaled_pollution_event_min = Proportion of simulated pollution event with a minimum uncertainty
+          scaled_pollution_event_switch = Takes the larger of the simulated pollution event or the minimum uncertainty
       xprior (dict):
         Dictionary containing information about the prior PDF for emissions.
         The entry "pdf" is the name of the analytical PDF used, see
@@ -155,12 +161,14 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
         Currently it's hardwired to a slice sampler. This parameter is low
         dimensional and quite simple with a slice sampler, although could 
         easily be changed.
-     
+    
+      model_error
+
+ 
     TO DO:
        - Allow non-iid variables
     -----------------------------------
-    '''
-
+    """
     burn = int(burn)         
     
     hx = Hx.T 
@@ -169,88 +177,145 @@ def inferpymc(Hx, Hbc, Y, error, siteindicator, sigma_freq_index,
     nbc = hbc.shape[1]
     ny = len(Y)
 
-    nit = int(nit)    
-    
-    #convert siteindicator into a site indexer
+    nit = int(nit)   
+    nflux = len(list(xprior.keys()))
+ 
+ 
+    # Convert siteindicator into a site indexer
     if sigma_per_site:
         sites = siteindicator.astype(int)
-        nsites = np.amax(sites)+1
+        nsites = np.amax(sites) + 1
     else:
         sites = np.zeros_like(siteindicator).astype(int)
         nsites = 1
-    nsigmas = np.amax(sigma_freq_index)+1
+    nsigmas = np.amax(sigma_freq_index) + 1
     
     if add_offset:
         B = offset_matrix(siteindicator)
 
     with pm.Model() as model:
-        x = parseprior("x", xprior, shape=nx)
-        xbc = parseprior("xbc", bcprior, shape=nbc)
-        sig = parseprior("sig", sigprior, shape=(nsites, nsigmas))
+        xbc = parseprior("xbc", bcprior, shape = nbc)
+        sig = parseprior("sig", sigprior, shape = (nsites, nsigmas))
+
+        x_dict = {}
+        for key in xprior.keys():
+            x_dict[key] = parseprior(key, xprior[key], shape = int(nx//nflux))
+        
+        #x = parseprior("x", xprior, shape = nx)
+
         if add_offset:
-            offset = parseprior("offset", offsetprior, shape=nsites-1) 
-            offset_vec = pm.math.concatenate( (np.array([0]), offset), axis=0)
-            mu = pm.math.dot(hx,x) + pm.math.dot(hbc,xbc) + pm.math.dot(B, offset_vec)
-        else:
-            mu = pm.math.dot(hx,x) + pm.math.dot(hbc,xbc)      
+            offset = parseprior("offset", offsetprior, shape = nsites-1) 
+            offset_vec = pm.math.concatenate((np.array([0]), offset), axis = 0)
+          
+            hx_dot_x = []
+            for i, key in enumerate(x_dict.keys()):
+                hx_dot_x.append([pm.math.dot(hx[:, int(i*(nx//nflux)) : int((i+1)*(nx//nflux))], x_dict[key])])
 
-        model_error = np.abs(pm.math.dot(hx,x)) * sig[sites, sigma_freq_index] 
-        epsilon = pm.math.sqrt(error**2 + model_error**2)
-        y = pm.Normal('y', mu=mu, sigma=epsilon, observed=Y, shape=ny)
-        
-        step1 = pm.NUTS(vars=[x,xbc])
-        step2 = pm.Slice(vars=[sig])
-        
-        trace = pm.sample(nit, tune=int(tune), chains=nchain,
-                          step=[step1,step2], 
-                          progressbar=verbose, cores=nchain)#step=pm.Metropolis())#  #target_accept=0.8,
-       
-        outs = trace.posterior['x'][0, burn:nit]
-        bcouts = trace.posterior['xbc'][0, burn:nit]
-        sigouts = trace.posterior['sig'][0, burn:nit]
-
-        #outs = trace.get_values(x, burn=burn)[0:int((nit)-burn)]
-        #bcouts = trace.get_values(xbc, burn=burn)[0:int((nit)-burn)]
-        #sigouts = trace.get_values(sig, burn=burn)[0:int((nit)-burn)]
-        
-        #Check for convergence
-        gelrub = pm.rhat(trace)['x'].max()
-        if gelrub > 1.05:
-            print('Failed Gelman-Rubin at 1.05')
-            convergence = "Failed"
+            mu = pm.math.concatenate(hx_dot_x) + pm.math.dot(hbc, xbc) + pm.math.dot(B, offset_vec)
+#            mu = pm.math.dot(hx, x) + pm.math.dot(hbc, xbc) + pm.math.dot(B, offset_vec)
         else:
-            convergence = "Passed"
+            hx_dot_x = []
+            for i, key in enumerate(x_dict.keys()):
+                print(key)
+                hx_dot_x.append([pm.math.dot(hx[:,int(i*(nx//nflux)):int((i+1)*(nx//nflux))], x_dict[key])])
+            mu = pm.math.concatenate(hx_dot_x) + pm.math.dot(hbc, xbc) 
+
+        # Calculate model error using specified approach
+        if model_error_method == "scaled_pollution_event":
+            print("Calculating model error using scaled simulated pollution event w/o minimum value")
+            model_error = pm.math.abs(pm.math.concatenate(hx_dot_x)) * sig[sites, sigma_freq_index]
+            epsilon = pm.math.sqrt(error**2 + model_error**2)
+
+        elif model_error_method == "scaled_pollution_event_switch":
+            print("Calculating model error using max(scaled simulate pollution event, minimum value)")
+            model_error_min_values = {"co2":10.0,  # Good to not have these hard-coded in, or use different method for getting values 
+                                      "ch4":20.0, 
+                                      "n2o":0.65}
+            model_error = pm.math.maximum(pm.math.abs(pm.math.concatenate(hx_dot_x)) * sig[sites, sigma_freq_index], 
+                                         (sig[sites, sigma_freq_index]**0) * model_error_min_values[species.lower()]
+                                         )
+            epsilon = pm.math.sqrt(error**2 + model_error**2)
+ 
+        elif model_error_method == "scaled_pollution_event_min":
+            print("Calculating model error using scaled simulation pollution event + minimum value")
+            model_error_min_values = {"co2":10.0,
+                                      "ch4":20.0,
+                                      "n2o":0.65}
+            model_error = pm.math.abs(pm.math.concatenate(hx_dot_x)) * sig[sites, sigma_freq_index]
+            epsilon = pm.math.sqrt(error**2 + model_error**2 + model_error_min_values[species.lower()]**2)
+
+        y = pm.Normal("y", mu = mu, sigma = epsilon, observed = Y, shape = ny)
+
+        # Collate simulated pollution events by sector
+        x_conc = []
+        for key in x_dict.keys():
+            x_conc.append(x_dict[key])
+        x_sample = pm.math.concatenate(x_conc)       # What does this line do? 
+
+        # Append BCs
+        x_conc.append(xbc)
+        
+        step1 = pm.NUTS(vars = x_conc)
+        step2 = pm.Slice(vars = [sig])
+        
+        trace = pm.sample(nit, 
+                          tune = int(tune), 
+                          chains = nchain,
+                          step = [step1, step2], 
+                          progressbar = verbose, 
+                          cores = nchain) #step=pm.Metropolis())#  #target_accept=0.8,
+
+        # Collate trace outputs for each sector. Keep first chain only.
+        outs = {}
+        for key in x_dict.keys():
+            outs[key] = trace.posterior[key][0, burn:nit]       
+
+        bcouts = trace.posterior["xbc"][0, burn:nit]
+        sigouts = trace.posterior["sig"][0, burn:nit] 
+        
+        # Check for convergence
+        convergence = {}
+        for key in x_dict.keys():
+            gelrub = pm.rhat(trace)[key].max()
+            if gelrub > 1.05:
+                print(f"{key} Failed Gelman-Rubin at 1.05")
+                convergence[key] = "Failed"
+            else:
+                convergence[key] = "Passed"
         
         if add_offset:
-            offset_outs = trace.posterior['offset'][0, burn:nit]
-            #offset_outs = trace.get_values(offset, burn=burn)[0:int((nit)-burn)]
-            offset_trace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
-            YBCtrace = np.dot(Hbc.T,bcouts.T) + np.dot(B, offset_trace.T)
-            OFFtrace = np.dot(B, offset_trace.T)   
+            offsetouts = trace.posterior["offset"][0, burn:nit]
+            offset_trace = np.hstack([np.zeros((int(nit-burn), 1)), offsetouts])
+            YBCtrace = np.dot(Hbc.T, bcouts.T) + np.dot(B, offset_trace.T)
+            OFFSETtrace = np.dot(B, offset_trace.T)   
         else:
-            YBCtrace = np.dot(Hbc.T,bcouts.T)
-            offset_outs = outs * 0 
-            #offset_trace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
-            OFFtrace =  YBCtrace * 0
+            YBCtrace = np.dot(Hbc.T, bcouts.T)
+            offsetouts = outs[key] * 0 
+            OFFSETtrace =  YBCtrace * 0
+ 
+        hx_dot_x = []
+        for i, key in enumerate(x_dict.keys()):
+            hx_sector = hx[:,int(i*(nx//nflux)):int((i+1)*(nx//nflux))]
+            hx_dot_x.append([np.dot(hx_sector, outs[key].values.T)])
 
-        Ytrace = np.dot(Hx.T,outs.T) + YBCtrace
-        
-        return outs, bcouts, sigouts, offset_outs, Ytrace, YBCtrace, OFFtrace, convergence, step1, step2
+        Ytrace = np.sum(np.array(hx_dot_x), axis = 0) + YBCtrace 
+ 
+        return outs, bcouts, sigouts, offsetouts, Ytrace, YBCtrace, OFFSETtrace, convergence, step1, step2, model_error
 
-def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence, 
-                               Hx, Hbc, Y, error, Ytrace, YBCtrace, offset_trace, 
-                               step1, step2, 
-                               xprior, bcprior, sigprior, offsetprior, Ytime, siteindicator, sigma_freq_index,
-                               domain, species, sites,
-                               start_date, end_date, outputname, outputpath,
-                               country_unit_prefix,
-                               burn, tune, nchain, sigma_per_site,
-                               emissions_name, emissions_store, fp_data=None, 
-                               basis_directory=None, country_file=None,
-                               add_offset=False, rerun_file=None):
+def inferpymc_postprocessouts(xouts, bcouts, sigouts, offsetouts, convergence, 
+                              Hx, Hbc, Y, error, Ytrace, YBCtrace, OFFSETtrace, 
+                              step1, step2, model_error, 
+                              xprior, bcprior, sigprior, offsetprior, Ytime, siteindicator, sigma_freq_index,
+                              domain, species, sites,
+                              start_date, end_date, outputname, outputpath,
+                              country_unit_prefix,
+                              burn, tune, nchain, sigma_per_site,
+                              emissions_name, emissions_store, fp_data = None, 
+                              basis_directory = None, country_file = None,
+                              add_offset = False, rerun_file = None):
 
-        '''
-        Takes the output from inferpymc3 function, along with some other input
+        """
+        Takes the output from inferpymc function, along with some other input
         information, and places it all in a netcdf output. This function also 
         calculates the mean posterior emissions for the countries in the 
         inversion domain and saves it to netcdf.
@@ -363,72 +428,79 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
             - Currently it can only work out the country total emissions if
               the a priori emissions are constant over the inversion period
               or else monthly (and inversion is for less than one calendar year).
-        '''
-        
+        """
+        use_bc = True # $
+
         print("Post-processing output")
          
-        # Get parameters for output file 
-        nit = xouts.shape[0]
-        nx = Hx.shape[0]
-        ny = len(Y)
-        nbc = Hbc.shape[0]
-        noff = offset_outs.shape[0]
+        # Get parameters for output file
+        sectors = list(xouts.keys())         # Emissions sectors
+        nit = xouts[sectors[0]].shape[0]     # No. of MCMC samples
+        nx = Hx.shape[0]                     # No. of scaling regions / basis functions
+        ny = len(Y)                          # No. of collated atmospheric measurements 
+        nbc = Hbc.shape[0]                   # No. of BCs  $
+        noff = offsetouts.shape[0] 
 
         nui = np.arange(2)
         steps = np.arange(nit)
         nmeasure = np.arange(ny)
         nparam = np.arange(nx)
-        nBC = np.arange(nbc)
+        nBC = np.arange(nbc)  # $
         nOFF = np.arange(noff)
         #YBCtrace = np.dot(Hbc.T,bcouts.T)
 
         # OFFSET HYPERPARAMETER
-        YmodmuOFF = np.mean(offset_trace,axis=1) # mean
-        YmodmedOFF = np.median(offset_trace,axis=1) # median
-        YmodmodeOFF = np.zeros(shape=offset_trace.shape[0]) # mode
+        YmodmuOFF   = np.nanmean(OFFSETtrace, axis = 1)       # Mean scaling
+        YmodmedOFF  = np.nanmedian(OFFSETtrace, axis = 1)     # Median scaling
+        YmodmodeOFF = np.zeros(shape = OFFSETtrace.shape[0])  # Mode scaling
     
-        for i in range(0, offset_trace.shape[0]):
-            # if sufficient no. of iterations use a KDE to calculate mode
-            # else, mean value used in lieu
-            if np.nanmax(offset_trace[i,:]) > np.nanmin(offset_trace[i,:]):
-                xes_off = np.linspace(np.nanmin(offset_trace[i,:]), np.nanmax(offset_trace[i,:]), 200)
-                kde = stats.gaussian_kde(offset_trace[i,:]).evaluate(xes_off)
+        for i in range(0, OFFSETtrace.shape[0]):
+            # If sufficient no. of MCMC iterations, uses a KDE
+            # to calculate mode. Else, mean value used in lieu
+            if np.nanmax(OFFSETtrace[i,:]) > np.nanmin(OFFSETtrace[i,:]):
+                xes_off = np.linspace(np.nanmin(OFFSETtrace[i,:]), np.nanmax(OFFSETtrace[i,:]), 200)
+                kde = stats.gaussian_kde(OFFSETtrace[i,:]).evaluate(xes_off)
                 YmodmodeOFF[i] = xes_off[kde.argmax()]
             else:
-                YmodmodeOFF[i] = np.mean(offset_trace[i,:])
+                YmodmodeOFF[i] = np.nanmean(OFFSETtrace[i,:])
 
-        Ymod95OFF = pm.stats.hdi(offset_trace.T, 0.95)
-        Ymod68OFF = pm.stats.hdi(offset_trace.T, 0.68)
+        Ymod95OFF = pm.stats.hdi(OFFSETtrace.T, 0.95)
+        Ymod68OFF = pm.stats.hdi(OFFSETtrace.T, 0.68)
         
         # Y-BC HYPERPARAMETER
-        YmodmuBC = np.mean(YBCtrace, axis=1)
-        YmodmedBC = np.median(YBCtrace, axis=1)
-        YmodmodeBC = np.zeros(shape=YBCtrace.shape[0])
+        # Calculates the mean/median/mode of the posterior simulated boundary conditions
+        if use_bc == True:  # $
+            YmodmuBC   = np.nanmean(YBCtrace, axis = 1)       # Mean scaling
+            YmodmedBC  = np.nanmedian(YBCtrace, axis = 1)     # Median scaling
+            YmodmodeBC = np.zeros(shape = YBCtrace.shape[0])  # Mode scaling
 
-        for i in range(0, YBCtrace.shape[0]):
-            # if sufficient no. of iterations use a KDE to calculate mode
-            # else, mean value used in lieu
-            if np.nanmax(YBCtrace[i,:]) > np.nanmin(YBCtrace[i,:]):
-                xes_bc = np.linspace(np.nanmin(YBCtrace[i,:]), np.nanmax(YBCtrace[i,:]), 200)
-                kde = stats.gaussian_kde(YBCtrace[i,:]).evaluate(xes_bc)
-                YmodmodeBC[i] = xes_bc[kde.argmax()]
-            else:
-                YmodmodeBC[i] = np.mean(YBCtrace[i,:])
+            for i in range(0, YBCtrace.shape[0]):
+                # If sufficient no. of MCMC iterations, uses a KDE
+                # to calculate mode. Else, mean value used in lieu
+                if np.nanmax(YBCtrace[i,:]) > np.nanmin(YBCtrace[i,:]):
+                    xes_bc = np.linspace(np.nanmin(YBCtrace[i,:]), np.nanmax(YBCtrace[i,:]), 200)
+                    kde = stats.gaussian_kde(YBCtrace[i,:]).evaluate(xes_bc)
+                    YmodmodeBC[i] = xes_bc[kde.argmax()]
+                else:
+                    YmodmodeBC[i] = np.nanmean(YBCtrace[i,:])
 
-        Ymod95BC = pm.stats.hdi(YBCtrace.T, 0.95)
-        Ymod68BC = pm.stats.hdi(YBCtrace.T, 0.68)
-        YaprioriBC = np.sum(Hbc, axis=0)
+            Ymod95BC = pm.stats.hdi(YBCtrace.T, 0.95)
+            Ymod68BC = pm.stats.hdi(YBCtrace.T, 0.68)
+            YaprioriBC = np.sum(Hbc, axis = 0)
 
-        # Y-VALUES HYPERPARAMETER (XOUTS * H)
-        Ymodmu = np.mean(Ytrace, axis=1)
-        Ymodmed = np.median(Ytrace, axis=1)
-        Ymodmode = np.zeros(shape=Ytrace.shape[0])
+
+        # Y-VALUES HYPERPARAMETER (XOUTS * Hx + YBCtrace)
+        # Calculates the mean/median/mode of the posterior simulated mole fractions
+        # NB. All sectors are summed together in Ytrace 
+        Ymodmu = np.nanmean(Ytrace, axis = 1)         # Mean scaling
+        Ymodmed = np.nanmedian(Ytrace, axis = 1)      # Median scaling
+        Ymodmode = np.zeros(shape = Ytrace.shape[0])  # Mode scaling
 
         for i in range(0, Ytrace.shape[0]):
-            # if sufficient no. of iterations use a KDE to calculate mode
-            # else, mean value used in lieu
+            # If sufficient no. of iterations, uses a KDE
+            # to calculate. Else, mean value used in lieu
             if np.nanmax(Ytrace[i,:]) > np.nanmin(Ytrace[i,:]):
-                xes = np.arange(np.nanmin(Ytrace[i,:]), np.nanmax(Ytrace[i,:]), 0.5)
+                xes = np.arange(np.nanmin(Ytrace[i,:]), np.nanmax(Ytrace[i,:]), 0.01)
                 kde = stats.gaussian_kde(Ytrace[i,:]).evaluate(xes)
                 Ymodmode[i] = xes[kde.argmax()]
             else:
@@ -455,7 +527,7 @@ def inferpymc_postprocessouts(xouts,bcouts, sigouts, offset_outs, convergence,
                 site_lon[si] = fp_data[site].release_lon.values[0]
             bfds = fp_data[".basis"]
 
-
+        
         #Calculate mean  and mode posterior scale map and flux field
         scalemap_mu = np.zeros_like(bfds.values)
         scalemap_mode = np.zeros_like(bfds.values)        
