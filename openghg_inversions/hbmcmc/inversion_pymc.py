@@ -450,6 +450,7 @@ def inferpymc_postprocessouts(xouts, bcouts, sigouts, offsetouts, convergence,
         #YBCtrace = np.dot(Hbc.T,bcouts.T)
 
         # OFFSET HYPERPARAMETER
+        # Calculates the mean/median/mode of the posterior simulated bias
         YmodmuOFF   = np.nanmean(OFFSETtrace, axis = 1)       # Mean scaling
         YmodmedOFF  = np.nanmedian(OFFSETtrace, axis = 1)     # Median scaling
         YmodmodeOFF = np.zeros(shape = OFFSETtrace.shape[0])  # Mode scaling
@@ -527,7 +528,8 @@ def inferpymc_postprocessouts(xouts, bcouts, sigouts, offsetouts, convergence,
                 site_lon[si] = fp_data[site].release_lon.values[0]
             bfds = fp_data[".basis"]
 
-        
+        print(bfds.shape)
+        sys.exit() 
         #Calculate mean  and mode posterior scale map and flux field
         scalemap_mu = np.zeros_like(bfds.values)
         scalemap_mode = np.zeros_like(bfds.values)        
