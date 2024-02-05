@@ -36,7 +36,7 @@ def data_processing_surface_notracer(
     instrument=None,
     calibration_scale=None,
     met_model=None,
-    fp_model="NAME",
+    fp_model=None,
     fp_height=None,
     emissions_name=None,
     bc_input=None,
@@ -115,15 +115,25 @@ def data_processing_surface_notracer(
             Directory path for for saved forward simulations data and observations
     """
 
-    # Change list of sites to upper case equivalent as
-    # most functions use upper case notation
     for i, site in enumerate(sites):
         sites[i] = site.upper()
+
+    # Convert 'None' args to list
+    nsites = len(sites)
+    if inlet == None:
+        inlet = [None] * nsites
+    if instrument == None:
+        instrument = [None] * nsites
+    if fp_height == None:
+        fp_height = [None] * nsites
+    if obs_data_level == None:
+        obs_data_level = [None] * nsites
+
 
     fp_all = {}
     fp_all[".species"] = species.upper()
 
-    # Get fluxes
+    # Get flux data and add to dict.
     flux_dict = {}
     for source in emissions_name:
         get_flux_data = get_flux(
@@ -141,11 +151,10 @@ def data_processing_surface_notracer(
     footprint_dict = {}
     scales = {}
     check_scales = []
-
     site_indices_to_keep = []
 
     for i, site in enumerate(sites):
-        # Get observations
+        # Get observations data
         try:
             site_data = get_obs_surface(
                 site=site,
@@ -153,8 +162,10 @@ def data_processing_surface_notracer(
                 inlet=inlet[i],
                 start_date=start_date,
                 end_date=end_date,
+                icos_data_level=obs_data_level[i], # NB. Variable name may be later updated in OpenGHG
                 average=averaging_period[i],
                 instrument=instrument[i],
+                calibration_scale=calibration_scale,
                 store=obs_store,
             )
         except SearchError:
@@ -175,17 +186,32 @@ def data_processing_surface_notracer(
                 continue  # skip this site
             unit = float(site_data[site].mf.units)
 
-        # Get footprints
+        # Get footprints data
         try:
-            get_fps = get_footprint(
-                site=site,
-                height=fp_height[i],
-                domain=domain,
-                model=fp_model,
-                start_date=start_date,
-                end_date=end_date,
-                store=footprint_store,
-            )
+            # Ensure HiTRes CO2 footprints are obtained if
+            # using CO2 
+            if species.lower() == "co2":
+                get_fps = get_footprint(
+                    site=site,
+                    height=fp_height[i],
+                    domain=domain,
+                    model=fp_model,
+                    start_date=start_date,
+                    end_date=end_date,
+                    store=footprint_store,
+                    species=species.lower(),
+                    )            
+
+            else:
+                get_fps = get_footprint(
+                    site=site,
+                    height=fp_height[i],
+                    domain=domain,
+                    model=fp_model,
+                    start_date=start_date,
+                    end_date=end_date,
+                    store=footprint_store,
+                    )
         except SearchError:
             print(
                 f"\nNo footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}.",
@@ -196,7 +222,7 @@ def data_processing_surface_notracer(
             footprint_dict[site] = get_fps
 
         try:
-            # Get boundary conditions
+            # Get boundary conditions data
             get_bc_data = get_bc(
                 species=species,
                 domain=domain,
@@ -219,59 +245,39 @@ def data_processing_surface_notracer(
 
             # Create ModelScenario object for all emissions_sectors
             # and combine into one object
-            if len(emissions_name) == 1:
-                model_scenario = ModelScenario(
-                    site=site,
-                    species=species,
-                    inlet=inlet[i],
-                    start_date=start_date,
-                    end_date=end_date,
-                    obs=site_data,
-                    footprint=footprint_dict[site],
-                    flux=flux_dict,
-                    bc=my_bc,
-                )
+            model_scenario = ModelScenario(
+                                 site=site,
+                                 species=species,
+                                 inlet=inlet[i],
+                                 start_date=start_date,
+                                 end_date=end_date,
+                                 obs=site_data,
+                                 footprint=footprint_dict[site],
+                                 flux=flux_dict,
+                                 bc=my_bc,
+                                 )
 
+            if len(emissions_name) == 1:
                 scenario_combined = model_scenario.footprints_data_merge()
                 scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
 
             elif len(emissions_name) > 1:
+                # Create model scenario object for each flux sector
                 model_scenario_dict = {}
-
+ 
                 for source in emissions_name:
-                    model_scenario = ModelScenario(
-                        site=site,
-                        species=species,
-                        inlet=inlet[i],
-                        start_date=start_date,
-                        end_date=end_date,
-                        obs=site_data,
-                        footprint=footprint_dict[site],
-                        flux=flux_dict,
-                        bc=my_bc,
-                    )
+                    scenario_sector = model_scenario.footprints_data_merge(sources = source, recalculate = True)
 
-                    scenario_sector = model_scenario.footprints_data_merge(sources=source)
-                    model_scenario_dict["mf_mod_high_res_" + source] = scenario_sector["mf_mod_high_res"]
-
-                model_scenario = ModelScenario(
-                    site=site,
-                    species=species,
-                    inlet=inlet[i],
-                    start_date=start_date,
-                    end_date=end_date,
-                    obs=site_data,
-                    footprint=footprint_dict[site],
-                    flux=flux_dict,
-                    bc=my_bc,
-                )
-
-                scenario_combined = model_scenario.footprints_data_merge()
+                    if species.lower() == "co2":
+                        model_scenario_dict["mf_mod_high_res_" + source] = scenario_sector["mf_mod_high_res"]  
+                    elif species.lower() != "co2":
+                        model_scenario_dict["mf_mod_" + source] = scenario_sector["mf_mod"]   
+    
+                scenario_combined = model_scenario.footprints_data_merge(recalculate = True)
 
                 for key in model_scenario_dict.keys():
                     scenario_combined[key] = model_scenario_dict[key]
-
-                scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
+                    scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
 
             fp_all[site] = scenario_combined
 
@@ -295,7 +301,10 @@ def data_processing_surface_notracer(
                 f"\nError in reading in BC or flux data for {site}.\nContinuing model run without {site}.\n"
             )
 
-    # if data was not extracted correctly for any sites, drop these from the rest of the inversion
+    if len(site_indices_to_keep) == 0:
+        raise SearchError("No site data found. Exiting process.")
+
+    # If data was not extracted correctly for any sites, drop these from the rest of the inversion
     if len(site_indices_to_keep) < len(sites):
         sites = [sites[s] for s in site_indices_to_keep]
         inlet = [inlet[s] for s in site_indices_to_keep]
