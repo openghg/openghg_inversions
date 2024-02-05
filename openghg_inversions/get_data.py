@@ -1,11 +1,10 @@
 # *****************************************************************************
-# Created: 30 Nov. 2023
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: eric.saboya@bristol.ac.uk
+# get_data.py
+# Author: Atmospheric Chemistry Research Group, University of Bristol
 # *****************************************************************************
 # About
-# Different functions for retrieving appropriate datasets for forward
-# simulations
+# Functions for retrieving observations and datasets for creating forward
+# simulations and 
 #
 # Current options include:
 # - "data_processing_surface_notracer": Surface based measurements, without tracers
@@ -32,12 +31,14 @@ def data_processing_surface_notracer(
     averaging_period,
     start_date,
     end_date,
+    obs_data_level,
+    inlet=None,
+    instrument=None,
+    calibration_scale=None,
     met_model=None,
     fp_model="NAME",
     fp_height=None,
     emissions_name=None,
-    inlet=None,
-    instrument=None,
     bc_input=None,
     bc_store=None,
     obs_store=None,
@@ -51,7 +52,8 @@ def data_processing_surface_notracer(
     """
     Retrieve and prepare fixed-surface datasets from
     specified OpenGHG object stores for forward
-    simulations that do not use tracers
+    simulations and model-data comparisons that do not 
+    use tracers
     ---------------------------------------------
     Args:
         species (str):
@@ -74,6 +76,17 @@ def data_processing_surface_notracer(
         end_date (str):
             Date until which to gather data
             e.g. "2020-02-01"
+        obs_data_level (list/str):
+            ICOS observations data level. For non-ICOS sites
+            use "None"
+        inlet (list/str/opt):
+            Specific inlet height for the site observations 
+            (length must match number of sites)
+        instrument (list/str/opt):
+            Specific instrument for the site 
+            (length must match number of sites) 
+        calibration_scale (str):
+            Convert measurements to defined calibration scale 
         met_model (str/opt):
             Meteorological model used in the LPDM.
         fp_model (str):
@@ -83,12 +96,6 @@ def data_processing_surface_notracer(
         emissions_name (list):
             List of keywords args associated with emissions files
             in the object store.
-        inlet (str/list, optional):
-            Specific inlet height for the site observations.
-            (length must match number of sites)
-        instrument (str/list, optional):
-            Specific instrument for the site
-            (length must match number of sites).
         bc_store (str):
             Name of object store to retrieve boundary conditions data from
         obs_store (str):
@@ -98,9 +105,14 @@ def data_processing_surface_notracer(
         emissions_store (str):
             Name of object store to retrieve emissions data from
         averagingerror (bool/opt):
-          Adds the variability in the averaging period to the measurement
-          error if set to True.
-
+            Adds the variability in the averaging period to the measurement
+            error if set to True.
+        save_merged_data (bool/opt, default=False):
+            Save forward simulations data and observations 
+        merged_data_name (str/opt):
+            Filename for saved forward simulations data and observations
+        merged_data_dir (str/opt):
+            Directory path for for saved forward simulations data and observations
     """
 
     # Change list of sites to upper case equivalent as
