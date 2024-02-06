@@ -4,16 +4,14 @@
 # Author: Atmospheric Chemistry Research Group, University of Bristol
 # ****************************************************************************
 # About
-# Script containing common Python functions that can be called for running
-# HBMCMC and other  inversion models.
-# Most functions have been copied form the acrg repo (e.g. acrg.name)
-#
+# Python functions that can be called for running RHIME
 # ****************************************************************************
+
+import os
+import sys
 import glob
 import json
 from pathlib import Path
-import os
-import sys
 from types import SimpleNamespace
 
 import pandas as pd
@@ -992,69 +990,51 @@ def fp_sensitivity(fp_and_data, domain, basis_case, basis_directory=None, verbos
           Same format as fp_and_data with sensitivity matrix and basis function grid added.
     -----------------------------------
     """
-
+    # List of sites
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
 
+    # List of flux sectors
     flux_sources = list(fp_and_data[".flux"].keys())
 
-    if type(basis_case) is not dict:
-        if len(flux_sources) == 1:
-            basis_case = {flux_sources[0]: basis_case}
-        else:
-            basis_case = {"all": basis_case}
-
-    if len(list(basis_case.keys())) != len(flux_sources):
-        if len(list(basis_case.keys())) == 1:
-            print("Using %s as the basis case for all sources" % basis_case[list(basis_case.keys())[0]])
-        else:
-            print(
-                "There should either only be one basis_case, or it should be a dictionary the same length\
-                  as the number of sources."
-            )
-            return None
+    # Reads in fp basis function: array w/ dim[sector, lat, lon, time]
+    basis_func = basis(domain=domain,
+                       basis_case=basis_case,
+                       basis_directory=basis_directory
+                      )
 
     for site in sites:
         for si, source in enumerate(flux_sources):
-            if source in list(basis_case.keys()):
-                basis_func = basis(
-                    domain=domain, basis_case=basis_case[source], basis_directory=basis_directory
-                )
+            if source in basis_func["sector"].values:
+                source_ind = np.where(basis_func["sector"].values == source)[0]
+                basis_func_source = basis_func["basis"][source_ind][0]
             else:
-                basis_func = basis(
-                    domain=domain, basis_case=basis_case["all"], basis_directory=basis_directory
-                )
+                print(f"Using %s as the basis case for {source}" %basis_func["sector"].values[0])
+                basis_func_source = basis_func["basis"][0]
 
+            # Haven't changed this section below for CO2. 
+            # Not sure how this works with OpenGHG now. Could someone please check  
             if type(fp_and_data[".flux"][source]) == dict:
                 if "fp_HiTRes" in list(fp_and_data[site].keys()):
-                    site_bf = xr.Dataset(
-                        {"fp_HiTRes": fp_and_data[site]["fp_HiTRes"], "fp": fp_and_data[site]["fp"]}
-                    )
+                    site_bf = xr.Dataset({"fp_HiTRes": fp_and_data[site]["fp_HiTRes"],
+                                          "fp": fp_and_data[site]["fp"]})
 
-                    fp_time = (
-                        (fp_and_data[site].time[1] - fp_and_data[site].time[0])
-                        .values.astype("timedelta64[h]")
-                        .astype(int)
-                    )
+                    fp_time = (fp_and_data[site].time[1] - fp_and_data[site].time[0]).values.astype("timedelta64[h]").astype(int)
 
-                    # calculate the H matrix
-                    H_all = timeseries_HiTRes(
-                        fp_HiTRes_ds=site_bf,
-                        flux_dict=fp_and_data[".flux"][source],
-                        output_TS=False,
-                        output_fpXflux=True,
-                        output_type="DataArray",
-                        time_resolution=f"{fp_time}H",
-                        verbose=verbose,
-                    )
+                    # Calculate the H matrix
+                    H_all = timeseries_HiTRes(fp_HiTRes_ds=site_bf,
+                                              flux_dict=fp_and_data[".flux"][source],
+                                              output_TS=False,
+                                              output_fpXflux=True,
+                                              output_type="DataArray",
+                                              time_resolution=f"{fp_time}H",
+                                              verbose=verbose)
                 else:
-                    print(
-                        "fp_and_data needs the variable fp_HiTRes to use the emissions dictionary with high_freq and low_freq emissions."
-                    )
+                    print("fp_and_data needs the variable fp_HiTRes to use the emissions dictionary with high_freq and low_freq emissions.")
 
             else:
-                site_bf = combine_datasets(
-                    fp_and_data[site]["fp"].to_dataset(), fp_and_data[".flux"][source].data
-                )
+                site_bf = combine_datasets(fp_and_data[site]["fp"].to_dataset(),
+                                           fp_and_data[".flux"][source].data)
+                
                 H_all = site_bf.fp * site_bf.flux
 
             H_all_v = H_all.values.reshape((len(site_bf.lat) * len(site_bf.lon), len(site_bf.time)))
@@ -1063,46 +1043,42 @@ def fp_sensitivity(fp_and_data, domain, basis_case, basis_directory=None, verbos
                 if "time" in basis_func.basis.dims:
                     basis_func = basis_func.isel(time=0)
 
-                site_bf = xr.merge([site_bf, basis_func])
+                site_bf = xr.merge([site_bf, basis_func_source])
 
                 H = np.zeros((len(site_bf.region), len(site_bf.time)))
 
-                base_v = site_bf.basis.values.reshape(
-                    (len(site_bf.lat) * len(site_bf.lon), len(site_bf.region))
-                )
+                base_v = site_bf.basis.values.reshape((len(site_bf.lat) * len(site_bf.lon), len(site_bf.region)))
 
                 for i in range(len(site_bf.region)):
                     H[i, :] = np.nansum(H_all_v * base_v[:, i, np.newaxis], axis=0)
 
                 if source == all:
-                    if sys.version_info < (3, 0):
+                    if (sys.version_info < (3, 0)):
                         region_name = site_bf.region
                     else:
                         region_name = site_bf.region.decode("ascii")
                 else:
-                    if sys.version_info < (3, 0):
+                    if (sys.version_info < (3, 0)):
                         region_name = [source + "-" + reg for reg in site_bf.region.values]
                     else:
                         region_name = [source + "-" + reg.decode("ascii") for reg in site_bf.region.values]
 
-                sensitivity = xr.DataArray(
-                    H, coords=[("region", region_name), ("time", fp_and_data[site].coords["time"])]
-                )
+                sensitivity = xr.DataArray(H,
+                                           coords=[("region", region_name),
+                                                   ("time", fp_and_data[site].coords["time"])])
 
             else:
                 print("Warning: Using basis functions without a region dimension may be deprecated shortly.")
 
-                site_bf = combine_datasets(site_bf, basis_func, method="ffill")
+                site_bf = combine_datasets(site_bf, basis_func_source, method="ffill")
 
                 H = np.zeros((int(np.max(site_bf.basis)), len(site_bf.time)))
 
-                basis_scale = xr.Dataset(
-                    {"basis_scale": (["lat", "lon", "time"], np.zeros(np.shape(site_bf.basis)))},
-                    coords=site_bf.coords,
-                )
+                basis_scale = xr.Dataset({"basis_scale": (["lat", "lon", "time"], np.zeros(np.shape(site_bf.basis)))},
+                                         coords = site_bf.coords)
                 site_bf = site_bf.merge(basis_scale)
 
-                base_v = np.ravel(site_bf.basis.values[:, :, 0])
+                base_v = np.ravel(site_bf.basis.values[:, : ,0])
                 for i in range(int(np.max(site_bf.basis))):
                     wh_ri = np.where(base_v == i + 1)
                     H[i, :] = np.nansum(H_all_v[wh_ri[0], :], axis=0)
@@ -1110,13 +1086,10 @@ def fp_sensitivity(fp_and_data, domain, basis_case, basis_directory=None, verbos
                 if source == all:
                     region_name = list(range(1, np.max(site_bf.basis.values) + 1))
                 else:
-                    region_name = [
-                        source + "-" + str(reg) for reg in range(1, int(np.max(site_bf.basis.values) + 1))
-                    ]
+                    region_name = [source + "-" + str(reg) for reg in range(1, int(np.max(site_bf.basis.values) + 1))]
 
-                sensitivity = xr.DataArray(
-                    H.data, coords=[("region", region_name), ("time", fp_and_data[site].coords["time"].data)]
-                )
+                sensitivity = xr.DataArray(H.data, coords=[("region", region_name), ("time", fp_and_data[site].coords["time"].data)])
+
 
             if si == 0:
                 concat_sensitivity = sensitivity
@@ -1125,7 +1098,15 @@ def fp_sensitivity(fp_and_data, domain, basis_case, basis_directory=None, verbos
 
             sub_basis_cases = 0
 
-            if basis_case[source].startswith("sub"):
+            if source in basis_func["sector"].values:
+                source_ind = np.where(basis_func["sector"].values == source)[0]
+                basis_case_key = basis_func["sector"][source_ind]
+                
+            elif "all" in basis_case.keys():
+                source_ind = 0
+                basis_case_key = "all"
+
+            if "sub" in basis_case_key[0: 4]:
                 """
                 To genrate sub_lon and sub_lat grids basis case must start with 'sub'
                 e.g.
@@ -1137,31 +1118,25 @@ def fp_sensitivity(fp_and_data, domain, basis_case, basis_directory=None, verbos
                     print("Can currently only use a sub basis case for one source. Skipping...")
                 else:
                     sub_fp_temp = site_bf.fp.sel(lon=site_bf.sub_lon, lat=site_bf.sub_lat, method="nearest")
-                    sub_fp = xr.Dataset(
-                        {"sub_fp": (["sub_lat", "sub_lon", "time"], sub_fp_temp.data)},
-                        coords={
-                            "sub_lat": (site_bf.coords["sub_lat"].data),
-                            "sub_lon": (site_bf.coords["sub_lon"].data),
-                            "time": (fp_and_data[site].coords["time"].data),
-                        },
-                    )
+
+                    sub_fp = xr.Dataset({"sub_fp": (["sub_lat", "sub_lon", "time"], sub_fp_temp.data)},
+                                           coords = {"sub_lat": (site_bf.coords["sub_lat"].data),
+                                                     "sub_lon": (site_bf.coords["sub_lon"].data),
+                                                     "time": (fp_and_data[site].coords["time"].data)})
 
                     sub_H_temp = H_all.sel(lon=site_bf.sub_lon, lat=site_bf.sub_lat, method="nearest")
-                    sub_H = xr.Dataset(
-                        {"sub_H": (["sub_lat", "sub_lon", "time"], sub_H_temp.data)},
-                        coords={
-                            "sub_lat": (site_bf.coords["sub_lat"].data),
-                            "sub_lon": (site_bf.coords["sub_lon"].data),
-                            "time": (fp_and_data[site].coords["time"].data),
-                        },
-                        attrs={"flux_source_used_to_create_sub_H": source},
-                    )
+
+                    sub_H = xr.Dataset({"sub_H": (["sub_lat", "sub_lon","time"], sub_H_temp.data)},
+                                          coords = {"sub_lat": (site_bf.coords["sub_lat"].data),
+                                                    "sub_lon": (site_bf.coords["sub_lon"].data),
+                                                    "time": (fp_and_data[site].coords["time"].data)},
+                                          attrs = {"flux_source_used_to_create_sub_H": source})
 
                     fp_and_data[site] = fp_and_data[site].merge(sub_fp)
                     fp_and_data[site] = fp_and_data[site].merge(sub_H)
 
         fp_and_data[site]["H"] = concat_sensitivity
-        fp_and_data[".basis"] = site_bf.basis[:, :, 0]
+        fp_and_data[".basis"] = basis_func["basis"]
 
     return fp_and_data
 
