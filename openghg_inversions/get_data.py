@@ -1,6 +1,7 @@
 # *****************************************************************************
 # get_data.py
 # Author: Atmospheric Chemistry Research Group, University of Bristol
+# Created: Nov. 2023
 # *****************************************************************************
 # About
 # Functions for retrieving observations and datasets for creating forward
@@ -31,7 +32,7 @@ def data_processing_surface_notracer(
     averaging_period,
     start_date,
     end_date,
-    obs_data_level,
+    obs_data_level=None,
     inlet=None,
     instrument=None,
     calibration_scale=None,
