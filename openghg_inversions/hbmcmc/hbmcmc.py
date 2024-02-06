@@ -1,12 +1,12 @@
 # *****************************************************************************
-# Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: eric.saboya@bristol.ac.uk
+# hbmcmc.py
+# Author: Atmospheric Chemistry Research Group, University of Bristol
+# Created: Nov.2022
 # *****************************************************************************
 # About
-#   Originally created by Luke Western (ACRG) and updated, here, by Eric Saboya
+#   Originally created by Luke Western
 #
-#   Modules for running an MCMC inversion using PyMC3. There are also functions
+#   Modules for running an MCMC inversion using PyMC. There are also functions
 #   to dynamically create a basis function grid based on the a priori sensitivity,
 #   and some other functionality for setting up the inputs to this (or any)
 #   inverse method.
@@ -17,22 +17,20 @@
 #    export OMP_NUM_THREADS=XX
 #  where XX is the number of chains you are running.
 #
-#  If running in Spyer do this before launching Spyder, else you will use every
+#  If running in Spyder do this before launching Spyder, else you will use every
 #  available thread. Apart from being annoying it will also slow down your run
 #  due to unnecessary forking.
 #
-#  HBMCMC updated to use openghg as a dependency replacing (most) of the acrg
+#  RHIME updated to use openghg as a dependency replacing (most) of the acrg
 #  modules previously used. See example input file for how input variables
 #  have chanegd.
 #
-#  Note. This version expects all data to already be included in the
-#  object store and for the path to the object store to already be set.
-#
-#
+#  Note. RHIME with OpenGHG expects ALL data to already be included in the
+#  object stores and for the paths to object stores to already be set in 
+#  the users .openghg config file
 # ****************************************************************************
 
 import os
-from pathlib import Path
 import pickle
 import shutil
 import numpy as np
@@ -41,7 +39,7 @@ import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.basis_functions as basis
 from openghg_inversions import utils
 from openghg_inversions import get_data
-
+from pathlib import Path
 
 def basis_functions_wrapper(
     basis_algorithm,
@@ -169,7 +167,10 @@ def basis_functions_wrapper(
         )
 
     fp_data = utils.fp_sensitivity(
-        fp_all, domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory
+        fp_all, 
+        domain=domain, 
+        basis_case=fp_basis_case, 
+        basis_directory=basis_directory
     )
 
     fp_data = utils.bc_sensitivity(
@@ -191,16 +192,18 @@ def fixedbasisMCMC(
     end_date,
     outputpath,
     outputname,
-    bc_store="user",
+    bc_store="user",     # Do we want to set defaults for the object stores?
     obs_store="user",
     footprint_store="user",
     emissions_store="user",
     met_model=None,
-    fp_model="NAME",
+    fp_model=None,       # Changed to none. When "NAME" specified FPs are not found 
     fp_height=None,
     emissions_name=None,
     inlet=None,
     instrument=None,
+    calibration_scale=None,
+    obs_data_level=None,
     use_tracer=False,
     fp_basis_case=None,
     basis_directory=None,
@@ -212,9 +215,9 @@ def fixedbasisMCMC(
     basis_algorithm="weighted",
     nbasis=100,
     filters=[],
-    xprior={"pdf": "lognormal", "mu": 1, "sigma": 1},
-    bcprior={"pdf": "lognormal", "mu": 0.004, "sigma": 0.02},
-    sigprior={"pdf": "uniform", "lower": 0.5, "upper": 3},
+    xprior={"pdf": "truncatednormal", "mu": 1.0, "sigma": 1.0, "lower": 0.0},
+    bcprior={"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0},
+    sigprior={"pdf": "uniform", "lower": 0.1, "upper": 3},
     offsetprior={"pdf": "normal", "mu": 0, "sd": 1},
     nit=2.5e5,
     burn=50000,
@@ -234,31 +237,113 @@ def fixedbasisMCMC(
     **kwargs,
 ):
     """
-    Script to run hierarchical Bayesian
-    MCMC for inference of emissions using
-    PyMC to solve the inverse problem.
-    -----------------------------------
+    Script to run hierarchical Bayesian MCMC (RHIME) for inference 
+    of emissions using PyMC to solve the inverse problem.
+    -----------------------------------------------------------------
     Args:
       species (str):
         Atmospheric trace gas species of interest (e.g. 'co2')
+
       sites (list):
-        List of site names
+        List of measurement site names
+
       domain (str):
-        Inversion spatial domain.
+        Model domain. (NB. Does not necessarily correspond to the inversion domain)
+
       averaging_period (list):
-        Averaging period of measurements
+        Averaging period of observations (must match number of sites)
+
       start_date (str):
-        Start time of inversion "YYYY-mm-dd"
+        Start time of inversion: "YYYY-mm-dd"
+
       end_date (str):
-        End time of inversion "YYYY-mm-dd"
+        End time of inversion: "YYYY-mm-dd"
+
       outputname (str):
-        Unique identifier for output/run name.
+        Unique identifier for output/run name
+
       outputpath (str):
-        Path to where output should be saved.
+        Path to where output should be saved
+
+      bc_store (str):
+        Name of object store containing boundary conditions files
+
+      obs_store (str):
+        Name of object store containing measurements files
+
+      footprint_store (str):
+        Name of object store containing footprints files 
+
+      emissions_store (str):
+        Name of object store containing emissions/flux files
+
       met_model (str):
-        Meteorological model used in the LPDM.
+        Meteorological model used in the LPDM (e.g. 'ukv')
+
       fp_model (str):
-        LPDM used for generating footprints.
+        LPDM used for generating footprints (e.g. 'NAME')
+
+      fp_height (list):
+        Inlet height modelled for sites in LPDM (must match number of sites)
+
+      emissions_name (list):
+        List of keyword "source" args used for retrieving emissions files
+        from 'emissions_store'.
+
+      inlet (list, optional):
+        Specific inlet height for the site (must match number of sites)
+
+      instrument (str/list, optional):
+        Specific instrument for the site (must match number of sites)
+
+      calibration_scale (str):
+        Calibration scale to use for measurements data
+
+      obs_data_level (list):
+        Data quality level for measurements data. (must match number of sites)
+
+      use_tracer (bool):
+        Option to use inverse model that uses tracers of species
+        (e.g. d13C, CO, C2H4)
+
+      fp_basis_case (str, optional):
+        Name of basis function to use for emission
+
+      basis_directory (str, optional):
+        Directory containing the basis function
+
+      bc_basis_case (str, optional):
+        Name of basis case type for boundary conditions (NOTE, I don't
+        think that currently you can do anything apart from scaling NSEW
+        boundary conditions if you want to scale these monthly.)
+
+      bc_basis_directory (str, optional):
+        Directory containing the boundary condition basis functions
+        (e.g. files starting with "NESW")
+
+      bc_input (str):
+        Variable for calling BC data from 'bc_store' - equivalent of
+        'emissions_name' for fluxes
+
+      country_file (str, optional):
+        Path to the country definition file
+
+      max_level (int, optional):
+        The maximum level for a column measurement to be used for getting obs data
+
+      basis_algorithm (str, optional):
+        Select basis function algorithm for creating basis function file
+        for emissions on the fly. Options include "quadtree" or "weighted".
+        Defaults to "weighted" which distinguishes between land-sea regions
+ 
+      nbasis (int):
+        Number of basis functions that you want if using quadtree derived
+        basis function. This will optimise to closest value that fits with
+        quadtree splitting algorithm, i.e. nbasis % 4 = 1
+ 
+      filters (list, optional):
+        list of filters to apply from name.filtering. Defaults to empty list
+ 
       xprior (dict):
         Dictionary containing information about the prior PDF for emissions.
         The entry "pdf" is the name of the analytical PDF used, see
@@ -268,91 +353,77 @@ def fixedbasisMCMC(
         parameters describing that PDF as the online documentation,
         e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sd":1}.
         Note that the standard deviation should be used rather than the
-        precision. Currently all variables are considered iid.
+        precision. Currently all variables are considered iid
+
       bcprior (dict):
         Same as above but for boundary conditions.
+
       sigprior (dict):
         Same as above but for model error.
+
       offsetprior (dict):
         Same as above but for bias offset. Only used is addoffset=True.
+
       nit (int):
         Number of iterations for MCMC
+
       burn (int):
-        Number of iterations to burn in MCMC
+        Number of iterations to burn/discard in MCMC
+
       tune (int):
         Number of iterations to use to tune step size
+ 
       nchain (int):
         Number of independent chains to run (there is no way at all of
         knowing whether your distribution has converged by running only
         one chain)
-      emissions_name (list):
-        List of keyword "source" args used for retrieving emissions files
-        from the Object store.
-      inlet (str/list, optional):
-        Specific inlet height for the site (must match number of sites)
-      instrument (str/list, optional):
-        Specific instrument for the site (must match number of sites).
-      fp_basis_case (str, optional):
-        Name of basis function to use for emissions.
-      bc_basis_case (str, optional):
-        Name of basis case type for boundary conditions (NOTE, I don't
-        think that currently you can do anything apart from scaling NSEW
-        boundary conditions if you want to scale these monthly.)
-      basis_directory (str, optional):
-        Directory containing the basis function
-        if not default.
-      bc_basis_directory (str, optional):
-        Directory containing the boundary condition basis functions
-        (e.g. files starting with "NESW")
-      country_file (str, optional):
-        Path to the country definition file
-      max_level (int, optional):
-        The maximum level for a column measurement to be used for getting obs data
-      basis_algorithm (str, optional):
-        Select basis function algorithm for creating basis function file
-        for emissions on the fly. Options include "quadtree" or "weighted".
-        Defaults to "weighted" which distinguishes between land-sea regions.
-      nbasis (int):
-        Number of basis functions that you want if using quadtree derived
-        basis function. This will optimise to closest value that fits with
-        quadtree splitting algorithm, i.e. nbasis % 4 = 1.
-      filters (list, optional):
-        list of filters to apply from name.filtering. Defaults to empty list
+
       averaging_error (bool, optional):
         Adds the variability in the averaging period to the measurement
-        error if set to True.
+        error if set to True
+
       bc_freq (str, optional):
         The perdiod over which the baseline is estimated. Set to "monthly"
         to estimate per calendar month; set to a number of days,
         as e.g. "30D" for 30 days; or set to None to estimate to have one
-        scaling for the whole inversion period.
+        scaling for the whole inversion period
+
       sigma_freq (str, optional):
         as bc_freq, but for model sigma
+
       sigma_per_site (bool):
         Whether a model sigma value will be calculated for each site
-        independantly (True) or all sites together (False).
+        independantly (True) or all sites together (False)
         Default: True
+
       country_unit_prefix ('str', optional)
         A prefix for scaling the country emissions. Current options are:
        'T' will scale to Tg, 'G' to Gg, 'M' to Mg, 'P' to Pg.
         To add additional options add to convert.prefix
-        Default is none and no scaling will be applied (output in g).
+        Default is none and no scaling will be applied (output in g)
+
       add_offset (bool):
-        Add an offset (intercept) to all sites but the first in the site list.
-        Default False.
+        Add an offset (intercept) to all sites but the first in the site list
+        Default False
+
       reload_merged_data (bool):
-        If True, reads fp_all object from a pickle file, instead of rerunning get_data.
+        If True, reads fp_all object from a pickle file, instead of rerunning get_data
+
       save_merged_data (bool):
-        If True, saves the merged data object (fp_all) as a pickle file.
+        If True, saves the merged data object (fp_all) as a pickle file
+
       merged_data_dir (str):
-        Path to a directory of merged data objects. For saving to or reading from.
+        Path to a directory of merged data objects. For saving to or reading from
+
       basis_output_path (Optional, str):
-        If set, save the basis functions to this path. Used for testing.
+        If set, save the basis functions to this path. Used for testing
+
+
 
     Returns:
-        Saves an output from the inversion code using inferpymc3_postprocessouts.
+        Saves an output from the inversion code using inferpymc_postprocessouts.
 
-    -----------------------------------
+    -----------------------------------------------------------------
     """
     rerun_merge = True
 
@@ -404,12 +475,14 @@ def fixedbasisMCMC(
                 averaging_period,
                 start_date,
                 end_date,
+                obs_data_level=obs_data_level,
                 met_model=met_model,
                 fp_model=fp_model,
                 fp_height=fp_height,
                 emissions_name=emissions_name,
                 inlet=inlet,
                 instrument=instrument,
+                calibration_scale=calibration_scale,
                 bc_input=bc_input,
                 bc_store=bc_store,
                 obs_store=obs_store,
