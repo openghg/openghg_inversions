@@ -1,13 +1,13 @@
 # *****************************************************************************
-# Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: eric.saboya@bristol.ac.uk
+# basis_functions.py
+# Created: Nov. 2022
+# Author: Atmospheric Chemistry Research Group, University of Bristol
 # *****************************************************************************
 # About
-#   Basis functions for used for HBMCMC inversions. Originally created by
-#   Anita Ganesan and updated, here, by Eric Saboya.
-#   HBMCMC uses the QuadTree algorithm for creating basis functions for
-#   the inversion runs.
+#   Basis functions for used for RHIME inversions. Originally created by
+#   Options include:
+#   - QuadTree algorithm
+#   - weighted algorithm (with land-sea discintions)
 # *****************************************************************************
 
 import os

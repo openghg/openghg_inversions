@@ -1,7 +1,7 @@
 # ****************************************************************************
+# utils.py
 # Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: ericsaboya@bristol.ac.uk
+# Author: Atmospheric Chemistry Research Group, University of Bristol
 # ****************************************************************************
 # About
 # Script containing common Python functions that can be called for running

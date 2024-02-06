@@ -22,9 +22,6 @@ The MCMC run *will not be executed*. This will be named for your -c input or, if
 create a configuration file called `hbmcmc_input.ini` within your acrg_hbmcmc/ directory and exit.
 This file will need to be edited to add parameters for your MCMC run.
 
-------------------------------------------
-Updated by Eric Saboya (Dec. 2022)
-------------------------------------------
 """
 import json
 import os

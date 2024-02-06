@@ -1,12 +1,10 @@
 # ****************************************************************************
+# inversionsetup.py
 # Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: eric.saboya@bristol.ac.uk
+# Author: Atmospheric Chemistry Research Group, University of Bristol
 # ****************************************************************************
-# Originally createdby Luke Western (ACRG) and updated by Eric Saboya
-#
 # About
-#   Functions used for setting up HBMCMC inversions
+#   Functions used for setting up RHIME inversions
 #
 # ****************************************************************************
 

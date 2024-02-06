@@ -18,7 +18,6 @@ country_emissions - calculate emissions from given list of countries
 
 @author: ml12574
 
-Updated by Eric Saboya
 """
 import os
 import glob

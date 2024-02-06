@@ -1,14 +1,11 @@
 # *****************************************************************************
+# convert.py
 # Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: eric.saboya@bristol.ac.uk
+# Author: Atmospheric Chemistry Research Group, University of Bristol
 # *****************************************************************************
 # About
 #   Common Python functions that are called for converting time and gas species
 #   units as part of data processing.
-#   Most functions have been copied from the University of Bristol
-#   Atmospheric Chemistry Research Group (ACRG) repository and merged, here,
-#   into one file.
 # *****************************************************************************
 # List of functions included (as of Dec. 2022):
 #   molar_mass: Extracts the molar mass of a trace gas species

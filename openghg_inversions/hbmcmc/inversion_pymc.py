@@ -1,13 +1,12 @@
 # *****************************************************************************
+# inversion_pymc.py
 # Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: eric.saboya@bristol.ac.uk
+# Author: Atmospheric Chemistry Research Group, University of Bristol
 # *****************************************************************************
 # About
-#   Originally created by Luke Western (ACRG) and updated, here, by Eric Saboya
-#   Functions for performing MCMC inversion.
-#   PyMC library used for Bayesian modelling. Updated from PyMc3
+#   Functions for performing RHIME inversion.
 # *****************************************************************************
+
 import re
 import numpy as np
 import pymc as pm

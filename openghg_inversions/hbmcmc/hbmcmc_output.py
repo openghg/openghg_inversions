@@ -1,12 +1,10 @@
 # ****************************************************************************
+# hbmcmc_output.py
 # Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: ericsaboya@bristol.ac.uk
+# Author: Atmospheric Chemistry Research Group, University of Bristol
 # ****************************************************************************
 # About
-#   Originally created by Rachel Tunnicliffe (ACRG) and updated, here,
-#   by Eric Saboya.
-#   Functions for configuring HBMCMC inversion output files
+#   Functions for configuring RHIME inversion output files
 #
 # ****************************************************************************
 

@@ -1,11 +1,8 @@
 # ****************************************************************************
+# post_process_inputs.py
 # Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: eric.saboya@bristol.ac.uk
+# Author: Atmospheric Chemistry Research Group, University of Bristol
 # ****************************************************************************
-# Originally created by Mark Lunt and updated by Rachel Tunnicliffe (ACRG)
-# and updated, here, by Eric Saboya.
-#
 # About:
 #   Template file for creating plots with output of hbmcmc. This file uses
 #   hbmcmc_post_process.py
