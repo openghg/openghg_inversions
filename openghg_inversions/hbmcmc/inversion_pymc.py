@@ -90,9 +90,9 @@ def inferpymc(
     error,
     siteindicator,
     sigma_freq_index,
-    xprior={"pdf": "lognormal", "mu": 1, "sigma": 1},
-    bcprior={"pdf": "lognormal", "mu": 0.004, "sigma": 0.02},
-    sigprior={"pdf": "uniform", "lower": 0.5, "upper": 3},
+    xprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+    bcprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+    sigprior={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
     nit=2.5e5,
     burn=50000,
     tune=1.25e5,
@@ -102,7 +102,7 @@ def inferpymc(
     add_offset=False,
     verbose=False,
     min_error=0.0,
-    save_trace: Optional[Union[str, Path]] = None,
+    save_trace = False,
 ):
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
@@ -221,8 +221,8 @@ def inferpymc(
             nit, tune=int(tune), chains=nchain, step=[step1, step2], progressbar=verbose, cores=nchain
         )  # step=pm.Metropolis())#  #target_accept=0.8,
 
-    if save_trace:
-        trace.to_netcdf(str(save_trace), engine="netcdf4")
+    #if save_trace:
+    #    trace.to_netcdf(str(save_trace), engine="netcdf4")
 
     outs = trace.posterior["x"][0, burn:nit]
     bcouts = trace.posterior["xbc"][0, burn:nit]
