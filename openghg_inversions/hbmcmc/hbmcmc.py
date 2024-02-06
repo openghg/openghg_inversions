@@ -225,6 +225,7 @@ def fixedbasisMCMC(
     tune=1.25e5,
     nchain=2,
     averaging_error=True,
+    min_model_error = 0.0, 
     bc_freq=None,
     sigma_freq=None,
     sigma_per_site=True,
@@ -382,6 +383,10 @@ def fixedbasisMCMC(
       averaging_error (bool, optional):
         Adds the variability in the averaging period to the measurement
         error if set to True
+
+      min_model_error (float):
+        Minimum model error to impose on baseline when calculting
+        model-data error scaling in inversion: (obs^2 + (sigma * H)^2 + (min_model_error)^2)^0.5
 
       bc_freq (str, optional):
         The perdiod over which the baseline is estimated. Set to "monthly"
@@ -564,6 +569,7 @@ def fixedbasisMCMC(
 
         # Path to save trace
         trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
+
         # Run PyMC inversion
         (
             xouts,
@@ -572,10 +578,11 @@ def fixedbasisMCMC(
             offset_outs,
             Ytrace,
             YBCtrace,
-            offset_trace,
+            OFFSETtrace,
             convergence,
             step1,
             step2,
+            model_error,
         ) = mcmc.inferpymc(
             Hx,
             Hbc,
@@ -594,6 +601,7 @@ def fixedbasisMCMC(
             offsetprior=offsetprior,
             add_offset=add_offset,
             verbose=verbose,
+            min_model_error=min_model_error,
             save_trace=trace_path,
             **kwargs,
         )
