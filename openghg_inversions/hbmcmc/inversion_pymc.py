@@ -8,6 +8,7 @@
 # *****************************************************************************
 
 import re
+import sys
 import numpy as np
 import pymc as pm
 import pandas as pd
@@ -85,6 +86,7 @@ def parseprior(name, prior_params, shape=()):
 def inferpymc(
     Hx,
     Hbc,
+    basis_region_mask,
     Y,
     error,
     siteindicator,
@@ -100,8 +102,8 @@ def inferpymc(
     offsetprior={"pdf": "normal", "mu": 0, "sigma": 1},
     add_offset=False,
     verbose=False,
-    min_error=0.0,
-    save_trace = False,
+    min_model_error=0.0,
+    save_trace=False,
 ):
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
@@ -116,6 +118,8 @@ def inferpymc(
         has been stacked for all sites.
       Hbc (array):
         Same as above but for boundary conditions
+      basis_region_mask (array):
+        Mask to indicate which Hx elements are for each flux sector
       Y (array):
         Measurement vector containing all measurements
       error (arrray):
@@ -145,6 +149,8 @@ def inferpymc(
         Default: True
       add_offset (bool):
         Add an offset (intercept) to all sites but the first in the site list. Default False.
+      min_model_error (float):
+        Minimum model error to impose on species baseline 
       verbose:
         When True, prints progress bar
 
@@ -185,6 +191,7 @@ def inferpymc(
     ny = len(Y)
 
     nit = int(nit)
+    nflux = len(list(xprior.keys()))
 
     # convert siteindicator into a site indexer
     if sigma_per_site:
@@ -199,68 +206,92 @@ def inferpymc(
         B = offset_matrix(siteindicator)
 
     with pm.Model() as model:
-        x = parseprior("x", xprior, shape=nx)
         xbc = parseprior("xbc", bcprior, shape=nbc)
         sig = parseprior("sig", sigprior, shape=(nsites, nsigmas))
+
+        x_conc = []
+        hx_dot_x = []
+        for i, key in enumerate(xprior.keys()):
+            sector_len = len(np.squeeze(np.where(basis_region_mask == i + 1)))
+            sector_mask = np.squeeze(np.where(basis_region_mask == i + 1))
+            print(key, "has ", sector_len, " basis functions")
+            x = parseprior(key, xprior[key], shape=sector_len)
+            x_conc.append(x)
+            hx_dot_x.append([pm.math.dot(hx[:, sector_mask], x)])
+
         if add_offset:
             offset = parseprior("offset", offsetprior, shape=nsites - 1)
             offset_vec = pm.math.concatenate((np.array([0]), offset), axis=0)
-            mu = pm.math.dot(hx, x) + pm.math.dot(hbc, xbc) + pm.math.dot(B, offset_vec)
-        else:
-            mu = pm.math.dot(hx, x) + pm.math.dot(hbc, xbc)
+            mu = pm.math.concatenate(hx_dot_x) + pm.math.dot(hbc, xbc) + pm.math.dot(B, offset_vec) 
 
-        model_error = np.abs(pm.math.dot(hx, x)) * sig[sites, sigma_freq_index]
-        epsilon = pm.math.sqrt(error**2 + model_error**2 + min_error**2)
+        else:
+            mu = pm.math.concatenate(hx_dot_x) + pm.math.dot(hbc, xbc)
+
+        # Calculate model error
+        model_error = pm.math.abs(pm.math.concatenate(hx_dot_x)) * sig[sites, sigma_freq_index]
+        epsilon = pm.math.sqrt(error**2 + model_error**2 + min_model_error**2)
         y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
-        step1 = pm.NUTS(vars=[x, xbc])
+        # Append BCs
+        x_conc.append(xbc)
+        
+        step1 = pm.NUTS(vars=x_conc)
         step2 = pm.Slice(vars=[sig])
+        
+        trace = pm.sample(nit, 
+                          tune=int(tune), 
+                          chains=nchain,
+                          step=[step1, step2], 
+                          progressbar=verbose, 
+                          cores=nchain) #step=pm.Metropolis())#  #target_accept=0.8,
 
-        trace = pm.sample(
-            nit, tune=int(tune), chains=nchain, step=[step1, step2], progressbar=verbose, cores=nchain
-        )  # step=pm.Metropolis())#  #target_accept=0.8,
+        # Collate trace outputs for each sector. Keep first chain only.
+        outs = {}
+        for key in xprior.keys():
+            outs[key] = trace.posterior[key][0, burn:nit]       
+ 
+        bcouts = trace.posterior["xbc"][0, burn:nit]
+        sigouts = trace.posterior["sig"][0, burn:nit]
 
-    #if save_trace:
-    #    trace.to_netcdf(str(save_trace), engine="netcdf4")
+        # Check for convergence
+        convergence = {}
+        for key in xprior.keys():
+            gelrub = pm.rhat(trace)[key].max()
+            if gelrub > 1.05:
+                print(f"{key} Failed Gelman-Rubin at 1.05")
+                convergence[key] = "Failed"
+            else:
+                convergence[key] = "Passed"
 
-    outs = trace.posterior["x"][0, burn:nit]
-    bcouts = trace.posterior["xbc"][0, burn:nit]
-    sigouts = trace.posterior["sig"][0, burn:nit]
+        if add_offset:
+            offsetouts = trace.posterior["offset"][0, burn:nit]
+            offset_trace = np.hstack([np.zeros((int(nit - burn), 1)), offsetouts])
+            YBCtrace = np.dot(Hbc.T, bcouts.T) + np.dot(B, offset_trace.T)
+            OFFSETtrace = np.dot(B, offset_trace.T)   
+        else:
+            YBCtrace = np.dot(Hbc.T, bcouts.T)
+            offsetouts = outs[key] * 0 
+            OFFSETtrace =  YBCtrace * 0
+ 
+        hx_dot_x = []
+        for i, key in enumerate(xprior.keys()):
+            sector_mask = np.squeeze(np.where(basis_region_mask == i + 1)) 
+            hx_sector = hx[:, sector_mask]
+            hx_dot_x.append([np.dot(hx_sector, outs[key].values.T)])
 
-    # outs = trace.get_values(x, burn=burn)[0:int((nit)-burn)]
-    # bcouts = trace.get_values(xbc, burn=burn)[0:int((nit)-burn)]
-    # sigouts = trace.get_values(sig, burn=burn)[0:int((nit)-burn)]
+        Ytrace = np.squeeze(np.sum(np.array(hx_dot_x), axis=0) + YBCtrace) 
 
-    # Check for convergence
-    gelrub = pm.rhat(trace)["x"].max()
-    if gelrub > 1.05:
-        print("Failed Gelman-Rubin at 1.05")
-        convergence = "Failed"
-    else:
-        convergence = "Passed"
-
-    if add_offset:
-        offset_outs = trace.posterior["offset"][0, burn:nit]
-        # offset_outs = trace.get_values(offset, burn=burn)[0:int((nit)-burn)]
-        offset_trace = np.hstack([np.zeros((int(nit - burn), 1)), offset_outs])
-        YBCtrace = np.dot(Hbc.T, bcouts.T) + np.dot(B, offset_trace.T)
-        OFFtrace = np.dot(B, offset_trace.T)
-    else:
-        YBCtrace = np.dot(Hbc.T, bcouts.T)
-        offset_outs = outs * 0
-        # offset_trace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
-        OFFtrace = YBCtrace * 0
-
-    Ytrace = np.dot(Hx.T, outs.T) + YBCtrace
-
-    return outs, bcouts, sigouts, offset_outs, Ytrace, YBCtrace, OFFtrace, convergence, step1, step2
+        #if save_trace:
+        #    trace.to_netcdf(str(save_trace), engine="netcdf4")
+ 
+        return outs, bcouts, sigouts, offsetouts, Ytrace, YBCtrace, OFFSETtrace, convergence, step1, step2
 
 
 def inferpymc_postprocessouts(
     xouts,
     bcouts,
     sigouts,
-    offset_outs,
+    offsetouts,
     convergence,
     Hx,
     Hbc,
@@ -268,7 +299,7 @@ def inferpymc_postprocessouts(
     error,
     Ytrace,
     YBCtrace,
-    offset_trace,
+    OFFSETtrace,
     step1,
     step2,
     xprior,
@@ -310,15 +341,16 @@ def inferpymc_postprocessouts(
         2) for x1 \in R and x2 \notin R, P(x1|y)>=P(x2|y)
     -------------------------------
     Args:
-      xouts (array):
+      xouts (dict of array):
+        Dictionary with key = flux source and entry the 
         MCMC chain for emissions scaling factors for each basis function.
       bcouts (array):
         MCMC chain for boundary condition scaling factors.
       sigouts (array):
         MCMC chain for model error.
-      convergence (str):
+      convergence (dict of str):
         Passed/Failed convergence test as to whether mutliple chains
-        have a Gelman-Rubin diagnostic value <1.05
+        have a Gelman-Rubin diagnostic value <1.05 for each flux source
       Hx (array):
         Transpose of the sensitivity matrix to map emissions to measurement.
         This is the same as what is given from fp_data[site].H.values, where
@@ -417,11 +449,12 @@ def inferpymc_postprocessouts(
     print("Post-processing output")
 
     # Get parameters for output file
-    nit = xouts.shape[0]
-    nx = Hx.shape[0]
-    ny = len(Y)
-    nbc = Hbc.shape[0]
-    noff = offset_outs.shape[0]
+    sectors = list(xouts.keys())         # Emissions sectors
+    nit = xouts[sectors[0]].shape[0]     # No. of MCMC samples
+    nx = Hx.shape[0]                     # No. of stacked scaling regions / basis functions
+    ny = len(Y)                          # No. of collated atmospheric measurements 
+    nbc = Hbc.shape[0]                   # No. of BCs
+    noff = offsetouts.shape[0] 
 
     nui = np.arange(2)
     steps = np.arange(nit)
@@ -432,32 +465,36 @@ def inferpymc_postprocessouts(
     # YBCtrace = np.dot(Hbc.T,bcouts.T)
 
     # OFFSET HYPERPARAMETER
-    YmodmuOFF = np.mean(offset_trace, axis=1)  # mean
-    YmodmedOFF = np.median(offset_trace, axis=1)  # median
-    YmodmodeOFF = np.zeros(shape=offset_trace.shape[0])  # mode
+    # Calculates the mean/median/mode of the posterior simulated bias
+    YmodmuOFF = np.mean(OFFSETtrace, axis=1)           # Mean scaling
+    YmodmedOFF = np.median(OFFSETtrace, axis=1)        # Median scaling
+    YmodmodeOFF = np.zeros(shape=OFFSETtrace.shape[0]) # Mode scaling
 
-    for i in range(0, offset_trace.shape[0]):
-        # if sufficient no. of iterations use a KDE to calculate mode
-        # else, mean value used in lieu
-        if np.nanmax(offset_trace[i, :]) > np.nanmin(offset_trace[i, :]):
-            xes_off = np.linspace(np.nanmin(offset_trace[i, :]), np.nanmax(offset_trace[i, :]), 200)
-            kde = stats.gaussian_kde(offset_trace[i, :]).evaluate(xes_off)
+    for i in range(0, OFFSETtrace.shape[0]):
+        # If sufficient no. of MCMC iterations, uses a KDE
+        # to calculate mode. Else, mean value used in lieu
+        if np.nanmax(OFFSETtrace[i, :]) > np.nanmin(OFFSETtrace[i, :]):
+            # NB. len/step-size of xes_off should be reviewed
+            xes_off = np.linspace(np.nanmin(OFFSETtrace[i, :]), np.nanmax(OFFSETtrace[i, :]), 200)
+            kde = stats.gaussian_kde(OFFSETtrace[i, :]).evaluate(xes_off)
             YmodmodeOFF[i] = xes_off[kde.argmax()]
         else:
-            YmodmodeOFF[i] = np.mean(offset_trace[i, :])
+            YmodmodeOFF[i] = np.mean(OFFSETtrace[i, :])
 
-    Ymod95OFF = pm.stats.hdi(offset_trace.T, 0.95)
-    Ymod68OFF = pm.stats.hdi(offset_trace.T, 0.68)
+    Ymod95OFF = pm.stats.hdi(OFFSETtrace.T, 0.95)
+    Ymod68OFF = pm.stats.hdi(OFFSETtrace.T, 0.68)
 
     # Y-BC HYPERPARAMETER
-    YmodmuBC = np.mean(YBCtrace, axis=1)
-    YmodmedBC = np.median(YBCtrace, axis=1)
-    YmodmodeBC = np.zeros(shape=YBCtrace.shape[0])
+    # Calculates the mean/median/mode of the posterior simulated boundary conditions
+    YmodmuBC = np.mean(YBCtrace, axis=1)            # Mean scaling
+    YmodmedBC = np.median(YBCtrace, axis=1)         # Median scaling
+    YmodmodeBC = np.zeros(shape=YBCtrace.shape[0])  # Mode scaling
 
     for i in range(0, YBCtrace.shape[0]):
-        # if sufficient no. of iterations use a KDE to calculate mode
-        # else, mean value used in lieu
+        # If sufficient no. of MCMC iterations, uses a KDE
+        # to calculate mode. Else, mean value used in lieu
         if np.nanmax(YBCtrace[i, :]) > np.nanmin(YBCtrace[i, :]):
+            # NB. len/step-size of xes_bc should be reviewed
             xes_bc = np.linspace(np.nanmin(YBCtrace[i, :]), np.nanmax(YBCtrace[i, :]), 200)
             kde = stats.gaussian_kde(YBCtrace[i, :]).evaluate(xes_bc)
             YmodmodeBC[i] = xes_bc[kde.argmax()]
@@ -468,15 +505,16 @@ def inferpymc_postprocessouts(
     Ymod68BC = pm.stats.hdi(YBCtrace.T, 0.68)
     YaprioriBC = np.sum(Hbc, axis=0)
 
-    # Y-VALUES HYPERPARAMETER (XOUTS * H)
-    Ymodmu = np.mean(Ytrace, axis=1)
-    Ymodmed = np.median(Ytrace, axis=1)
-    Ymodmode = np.zeros(shape=Ytrace.shape[0])
+    # Y-VALUES HYPERPARAMETER (XOUTS * H + YBCtrace)
+    Ymodmu = np.mean(Ytrace, axis=1)            # Mean scaling
+    Ymodmed = np.median(Ytrace, axis=1)         # Median scaling
+    Ymodmode = np.zeros(shape=Ytrace.shape[0])  # Mode scaling
 
     for i in range(0, Ytrace.shape[0]):
-        # if sufficient no. of iterations use a KDE to calculate mode
-        # else, mean value used in lieu
+        # If sufficient no. of MCMC iterations, uses a KDE
+        # to calculate mode. Else, mean value used in lieu
         if np.nanmax(Ytrace[i, :]) > np.nanmin(Ytrace[i, :]):
+            # NB. len/step size of xes should be reviewed
             xes = np.arange(np.nanmin(Ytrace[i, :]), np.nanmax(Ytrace[i, :]), 0.5)
             kde = stats.gaussian_kde(Ytrace[i, :]).evaluate(xes)
             Ymodmode[i] = xes[kde.argmax()]
@@ -504,18 +542,23 @@ def inferpymc_postprocessouts(
             site_lon[si] = fp_data[site].release_lon.values[0]
         bfds = fp_data[".basis"]
 
-    # Calculate mean  and mode posterior scale map and flux field
+    # Calculate mean and mode posterior scale map and flux field
     scalemap_mu = np.zeros_like(bfds.values)
     scalemap_mode = np.zeros_like(bfds.values)
 
-    for npm in nparam:
-        scalemap_mu[bfds.values == (npm + 1)] = np.mean(xouts[:, npm])
-        if np.nanmax(xouts[:, npm]) > np.nanmin(xouts[:, npm]):
-            xes = np.arange(np.nanmin(xouts[:, npm]), np.nanmax(xouts[:, npm]), 0.01)
-            kde = stats.gaussian_kde(xouts[:, npm]).evaluate(xes)
-            scalemap_mode[bfds.values == (npm + 1)] = xes[kde.argmax()]
-        else:
-            scalemap_mode[bfds.values == (npm + 1)] = np.mean(xouts[:, npm])
+    for i in range(len(sectors)):
+        bfds_i = bfds[i, :, : ,:] 
+
+        for npm in range(0, int(np.max(bfds_i))):
+            scalemap_mu[i][bfds_i.values == (npm + 1)] = np.mean(xouts[sectors[i]][:, npm])
+            # If sufficient no. of MCMC iterations, uses a KDE
+            # to calculate mode. Else, mean value used in lieu
+            if np.nanmax(xouts[sectors[i]][:, npm]) > np.nanmin(xouts[sectors[i]][:, npm]):
+                xes = np.arange(np.nanmin(xouts[sectors[i]][:, npm]), np.nanmax(xouts[sectors[i]][:, npm]), 0.01)
+                kde = stats.gaussian_kde(xouts[sectors[i]][:, npm]).evaluate(xes)
+                scalemap_mode[i][bfds_i.values == (npm + 1)] = xes[kde.argmax()]
+            else:
+                scalemap_mode[i][bfds_i.values == (npm + 1)] = np.mean(xouts[sectors[i]][:, npm])
 
     if rerun_file is not None:
         flux_array_all = np.expand_dims(rerun_file.fluxapriori.values, 2)
@@ -523,28 +566,34 @@ def inferpymc_postprocessouts(
         if emissions_name is None:
             raise ValueError("Emissions name not provided.")
         else:
-            emds = fp_data[".flux"][emissions_name[0]]
-            flux_array_all = emds.data.flux.values
+            ax0 = len(list(fp_data[".flux"].keys()))                              # nsector axis
+            ax1 = fp_data[".flux"][emissions_name[0]].data.flux.values.shape[0]   # lat axis
+            ax2 = fp_data[".flux"][emissions_name[0]].data.flux.values.shape[1]   # lon axis
+            ax3 = fp_data[".flux"][emissions_name[0]].data.flux.values.shape[2]   # time axis
 
-    if flux_array_all.shape[2] == 1:
+            flux_array_all = np.zeros(shape=(ax0, ax1, ax2, ax3))
+            for i, key in enumerate(fp_data[".flux"].keys()):
+               flux_array_all[i] = fp_data[".flux"][key].data.flux.values
+
+    if flux_array_all.shape[3] == 1:
         print("\nAssuming flux prior is annual and extracting first index of flux array.")
-        apriori_flux = flux_array_all[:, :, 0]
+        apriori_flux = flux_array_all[:, :, :, 0]
     else:
         print("\nAssuming flux prior is monthly.")
         print(f"Extracting weighted average flux prior from {start_date} to {end_date}")
         allmonths = pd.date_range(start_date, end_date).month[:-1].values
         allmonths -= 1  # to align with zero indexed array
 
-        apriori_flux = np.zeros_like(flux_array_all[:, :, 0])
+        apriori_flux = np.zeros_like(flux_array_all[:, :, :, 0])
 
         # calculate the weighted average flux across the whole inversion period
         for m in np.unique(allmonths):
-            apriori_flux += flux_array_all[:, :, m] * np.sum(allmonths == m) / len(allmonths)
+            apriori_flux += flux_array_all[:, :, :, m] * np.sum(allmonths == m) / len(allmonths)
 
-    flux = scalemap_mode * apriori_flux
+    flux = np.squeeze(scalemap_mode) * np.squeeze(apriori_flux)
 
     # Basis functions to save
-    bfarray = bfds.values - 1
+    bfarray = np.squeeze(bfds.values - 1)
 
     # Calculate country totals
     area = utils.areagrid(lat, lon)
@@ -560,13 +609,14 @@ def inferpymc_postprocessouts(
         cntrynames = rerun_file.countrynames.values
         cntrygrid = rerun_file.countrydefinition.values
 
-    cntrymean = np.zeros((len(cntrynames)))
-    cntrymedian = np.zeros((len(cntrynames)))
-    cntrymode = np.zeros((len(cntrynames)))
-    cntry68 = np.zeros((len(cntrynames), len(nui)))
-    cntry95 = np.zeros((len(cntrynames), len(nui)))
-    cntrysd = np.zeros(len(cntrynames))
-    cntryprior = np.zeros(len(cntrynames))
+    cntrymean = np.zeros((len(sectors), len(cntrynames)))
+    cntrymedian = np.zeros((len(sectors), len(cntrynames)))
+    cntrymode = np.zeros((len(sectors), len(cntrynames)))
+    cntry68 = np.zeros((len(sectors), len(cntrynames), len(nui)))
+    cntry95 = np.zeros((len(sectors), len(cntrynames), len(nui)))
+    cntrysd = np.zeros((len(sectors), len(cntrynames)))
+    cntryprior = np.zeros((len(sectors), len(cntrynames)))
+
     molarmass = convert.molar_mass(species)
 
     unit_factor = convert.prefix(country_unit_prefix)
@@ -578,34 +628,40 @@ def inferpymc_postprocessouts(
     else:
         obs_units = str(fp_data[".units"])
 
-    for ci, cntry in enumerate(cntrynames):
-        cntrytottrace = np.zeros(len(steps))
-        cntrytotprior = 0
-        for bf in range(int(np.max(bfarray)) + 1):
-            bothinds = np.logical_and(cntrygrid == ci, bfarray == bf)
-            cntrytottrace += (
-                np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
-                * xouts[:, bf]
-                / unit_factor
-            )
-            cntrytotprior += (
-                np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
-                / unit_factor
-            )
-        cntrymean[ci] = np.mean(cntrytottrace)
-        cntrymedian[ci] = np.median(cntrytottrace)
+    # WARNING! Triple nested for-loops. Might want to see if there's a better way to code this block
+    for i in range(len(sectors)):
+        for ci, cntry in enumerate(cntrynames):
+            cntrytottrace = np.zeros(len(steps))
+            cntrytotprior = 0
+            for bf in range(int(np.max(bfarray[i])) + 1):
+                bothinds = np.logical_and(cntrygrid == ci, bfarray[i] == bf)
 
-        if np.nanmax(cntrytottrace) > np.nanmin(cntrytottrace):
-            xes = np.linspace(np.nanmin(cntrytottrace), np.nanmax(cntrytottrace), 200)
-            kde = stats.gaussian_kde(cntrytottrace).evaluate(xes)
-            cntrymode[ci] = xes[kde.argmax()]
-        else:
-            cntrymode[ci] = np.mean(cntrytottrace)
+                cntrytottrace += (
+                    np.sum(area[bothinds].ravel() * apriori_flux[i][bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                    * xouts[sectors[i]][:, bf]
+                    / unit_factor
+                )
 
-        cntrysd[ci] = np.std(cntrytottrace)
-        cntry68[ci, :] = pm.stats.hdi(cntrytottrace.values, 0.68)
-        cntry95[ci, :] = pm.stats.hdi(cntrytottrace.values, 0.95)
-        cntryprior[ci] = cntrytotprior
+                cntrytotprior += (
+                    np.sum(area[bothinds].ravel() * apriori_flux[i][bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                    / unit_factor
+                )
+
+            cntrymean[i, ci] = np.mean(cntrytottrace)
+            cntrymedian[i, ci] = np.median(cntrytottrace)
+
+            if np.nanmax(cntrytottrace) > np.nanmin(cntrytottrace):
+                xes = np.linspace(np.nanmin(cntrytottrace), np.nanmax(cntrytottrace), 200)
+                kde = stats.gaussian_kde(cntrytottrace).evaluate(xes)
+                cntrymode[i, ci] = xes[kde.argmax()]
+            else:
+                cntrymode[i, ci] = np.mean(cntrytottrace)
+
+        cntrysd[i, ci] = np.std(cntrytottrace)
+        cntry68[i, ci, :] = pm.stats.hdi(cntrytottrace.values, 0.68)
+        cntry95[i, ci, :] = pm.stats.hdi(cntrytottrace.values, 0.95)
+        cntryprior[i, ci] = cntrytotprior
+
 
     # Make output netcdf file
     outds = xr.Dataset(
@@ -630,7 +686,7 @@ def inferpymc_postprocessouts(
             "YmodmodeBC": (["nmeasure"], YmodmodeBC),
             "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
             "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
-            "xtrace": (["steps", "nparam"], xouts.values),
+            "xtrace": (["fluxsectors", "steps", "nparam"], np.array(list(xouts.values()))),
             "bctrace": (["steps", "nBC"], bcouts.values),
             "sigtrace": (["steps", "nsigma_site", "nsigma_time"], sigouts.values),
             "siteindicator": (["nmeasure"], siteindicator),
@@ -638,18 +694,19 @@ def inferpymc_postprocessouts(
             "sitenames": (["nsite"], sites),
             "sitelons": (["nsite"], site_lon),
             "sitelats": (["nsite"], site_lat),
-            "fluxapriori": (["lat", "lon"], apriori_flux),
-            "fluxmode": (["lat", "lon"], flux),
-            "scalingmean": (["lat", "lon"], scalemap_mu),
-            "scalingmode": (["lat", "lon"], scalemap_mode),
+            "fluxapriori": (["fluxsectors", "lat", "lon"], apriori_flux),
+            "fluxmode": (["fluxsectors", "lat", "lon"], flux),
+            "scalingmean": (["fluxsectors", "lat", "lon"], scalemap_mu),
+            "scalingmode": (["fluxsectors", "lat", "lon"], scalemap_mode),
             "basisfunctions": (["lat", "lon"], bfarray),
-            "countrymean": (["countrynames"], cntrymean),
-            "countrymedian": (["countrynames"], cntrymedian),
-            "countrymode": (["countrynames"], cntrymode),
-            "countrysd": (["countrynames"], cntrysd),
-            "country68": (["countrynames", "nUI"], cntry68),
-            "country95": (["countrynames", "nUI"], cntry95),
-            "countryapriori": (["countrynames"], cntryprior),
+
+            "countrymean": (["fluxsectors", "countrynames"], cntrymean),
+            "countrymedian": (["fluxsectors", "countrynames"], cntrymedian),
+            "countrymode": (["fluxsectors", "countrynames"], cntrymode),
+            "countrysd": (["fluxsectors", "countrynames"], cntrysd),
+            "country68": (["fluxsectors", "countrynames", "nUI"], cntry68),
+            "country95": (["fluxsectors", "countrynames", "nUI"], cntry95),
+            "countryapriori": (["fluxsectors", "countrynames"], cntryprior),
             "countrydefinition": (["lat", "lon"], cntrygrid),
             "xsensitivity": (["nmeasure", "nparam"], Hx.T),
             "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
@@ -666,6 +723,7 @@ def inferpymc_postprocessouts(
             "lat": (["lat"], lat),
             "lon": (["lon"], lon),
             "countrynames": (["countrynames"], cntrynames),
+            "fluxsectors": (["fluxsectors"], sectors),
         },
     )
 
@@ -785,6 +843,6 @@ def inferpymc_postprocessouts(
 
     output_filename = define_output_filename(outputpath, species, domain, outputname, start_date, ext=".nc")
     Path(outputpath).mkdir(parents=True, exist_ok=True)
-    outds.to_netcdf(output_filename, encoding=encoding, mode="w")
+#    outds.to_netcdf(output_filename, encoding=encoding, mode="w")
 
     return outds

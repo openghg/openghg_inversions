@@ -565,6 +565,16 @@ def fixedbasisMCMC(
                 Hbc = np.hstack((Hbc, Hmbc))
                 Hx = np.hstack((Hx, fp_data[site].H.values))
 
+        # Mask of source regions in Hx
+        basis_region_mask = np.zeros_like(fp_all[site]["region"].values)
+        count = 0        
+        for emi in emissions_name:
+            count += 1
+            for i in range(len(fp_all[site]["region"].values)):
+                if emi in fp_all[site]["region"].values[i]:
+                    basis_region_mask[i] = count
+        basis_region_mask = basis_region_mask.astype(int)
+
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
         # Path to save trace
@@ -575,17 +585,17 @@ def fixedbasisMCMC(
             xouts,
             bcouts,
             sigouts,
-            offset_outs,
+            offsetouts,
             Ytrace,
             YBCtrace,
             OFFSETtrace,
             convergence,
             step1,
             step2,
-            model_error,
         ) = mcmc.inferpymc(
             Hx,
             Hbc,
+            basis_region_mask,
             Y,
             error,
             siteindicator,
@@ -611,7 +621,7 @@ def fixedbasisMCMC(
             xouts,
             bcouts,
             sigouts,
-            offset_outs,
+            offsetouts,
             convergence,
             Hx,
             Hbc,
@@ -619,7 +629,7 @@ def fixedbasisMCMC(
             error,
             Ytrace,
             YBCtrace,
-            offset_trace,
+            OFFSETtrace,
             step1,
             step2,
             xprior,
