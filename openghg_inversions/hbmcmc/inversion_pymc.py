@@ -210,25 +210,40 @@ def inferpymc(
         sig = parseprior("sig", sigprior, shape=(nsites, nsigmas))
 
         x_conc = []
-        hx_dot_x = []
+        #hx_dot_x = []
         for i, key in enumerate(xprior.keys()):
             sector_len = len(np.squeeze(np.where(basis_region_mask == i + 1)))
             sector_mask = np.squeeze(np.where(basis_region_mask == i + 1))
             print(key, "has ", sector_len, " basis functions")
             x = parseprior(key, xprior[key], shape=sector_len)
             x_conc.append(x)
-            hx_dot_x.append([pm.math.dot(hx[:, sector_mask], x)])
+            #hx_dot_x.append([pm.math.dot(hx[:, sector_mask], x)])
+            if i == 0:
+                hx_dot_x = pm.math.dot(hx[:, sector_mask], x)
+            else:
+                hx_dot_x += pm.math.dot(hx[:, sector_mask], x)
+          
+        #CHANGES: removed .concatenate lines and replaced with sums, as 
+        # dimensions of modelled mf weren't correct
+        # could add the .concatenate back in and use a .sum too:
+        # mu = pm.math.sum(pm.math.conctenate(hx_dot_x),axis=0)
 
         if add_offset:
             offset = parseprior("offset", offsetprior, shape=nsites - 1)
             offset_vec = pm.math.concatenate((np.array([0]), offset), axis=0)
-            mu = pm.math.concatenate(hx_dot_x) + pm.math.dot(hbc, xbc) + pm.math.dot(B, offset_vec) 
+            #mu = pm.math.concatenate(hx_dot_x) + pm.math.dot(hbc, xbc) + pm.math.dot(B, offset_vec) 
+            mu = hx_dot_x + pm.math.dot(hbc, xbc) + pm.math.dot(B, offset_vec) 
 
         else:
-            mu = pm.math.concatenate(hx_dot_x) + pm.math.dot(hbc, xbc)
+            #mu = pm.math.concatenate(hx_dot_x) + pm.math.dot(hbc, xbc)
+            mu = hx_dot_x + pm.math.dot(hbc, xbc)
+            
+        print(mu.shape.eval())
 
         # Calculate model error
-        model_error = pm.math.abs(pm.math.concatenate(hx_dot_x)) * sig[sites, sigma_freq_index]
+        #model_error = pm.math.abs(pm.math.concatenate(hx_dot_x)) * sig[sites, sigma_freq_index]
+        model_error = pm.math.abs(hx_dot_x) * sig[sites, sigma_freq_index]
+                
         epsilon = pm.math.sqrt(error**2 + model_error**2 + min_model_error**2)
         y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
