@@ -1,4 +1,5 @@
 from pathlib import Path
+import pickle
 import tempfile
 
 import pytest
@@ -18,14 +19,40 @@ def test_data_processing_surface_notracer(data_args, raw_data_path):
     assert len(result) == 6
 
     # check keys of "fp_all"
-    assert list(result[0].keys()) == ['.species', '.flux', '.bc', 'TAC', '.scales', '.units']
-
+    assert list(result[0].keys()) == [".species", ".flux", ".bc", "TAC", ".scales", ".units"]
 
     # get combined scenario for TAC at time 2019-01-01 00:00:00
-    expected_tac_combined_scenario = xr.open_dataset(raw_data_path / "merged_data_test_tac_combined_scenario.nc")
+    expected_tac_combined_scenario = xr.open_dataset(
+        raw_data_path / "merged_data_test_tac_combined_scenario.nc"
+    )
 
-    xr.testing.assert_allclose(result[0]['TAC'].isel(time=0), expected_tac_combined_scenario)
+    xr.testing.assert_allclose(result[0]["TAC"].isel(time=0), expected_tac_combined_scenario)
 
 
-def test_save_load_merged_data(data_args):
-    pass
+def test_save_load_merged_data(data_args, merged_data_dir):
+
+    merged_data_name = "test_save_load_merged_data"
+
+    # make merged data dir
+    merged_data_dir.mkdir(exist_ok=True)
+
+    fp_all, *_ = data_processing_surface_notracer(
+        save_merged_data=True,
+        merged_data_dir=merged_data_dir,
+        merged_data_name=merged_data_name,
+        **data_args,
+    )
+
+    with open(merged_data_dir / merged_data_name, "rb") as f:
+        fp_all_reloaded = pickle.load(f)
+
+    xr.testing.assert_allclose(fp_all['TAC'], fp_all_reloaded['TAC'])
+
+
+def test_merged_data_vs_frozen_pickle_file(data_args, frozen_merged_data_path):
+    fp_all, *_ = data_processing_surface_notracer(**data_args)
+
+    with open(frozen_merged_data_path, "rb") as f:
+        fp_all_reloaded = pickle.load(f)
+
+    xr.testing.assert_allclose(fp_all['TAC'], fp_all_reloaded['TAC'])
