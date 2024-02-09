@@ -34,6 +34,14 @@ def test_full_inversion_min_error(mcmc_args):
     fixedbasisMCMC(**mcmc_args)
 
 
+def test_inversion_if_merged_data_does_not_exist(mcmc_args):
+    """Test that inversion runs if reload_merged_data is True, but
+    no merged data exists under the default merged data name.
+    """
+    mcmc_args["merged_data_name"] = None
+    fixedbasisMCMC(**mcmc_args)
+
+
 @pytest.mark.slow
 def test_full_inversion_long(mcmc_args):
     mcmc_args.update(
