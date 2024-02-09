@@ -41,6 +41,7 @@ from openghg_inversions import utils
 from openghg_inversions import get_data
 from pathlib import Path
 
+
 def basis_functions_wrapper(
     basis_algorithm,
     nbasis,

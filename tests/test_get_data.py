@@ -1,8 +1,5 @@
-from pathlib import Path
 import pickle
-import tempfile
 
-import pytest
 import xarray as xr
 
 from openghg_inversions.get_data import data_processing_surface_notracer
@@ -46,7 +43,7 @@ def test_save_load_merged_data(data_args, merged_data_dir):
     with open(merged_data_dir / merged_data_name, "rb") as f:
         fp_all_reloaded = pickle.load(f)
 
-    xr.testing.assert_allclose(fp_all['TAC'], fp_all_reloaded['TAC'])
+    xr.testing.assert_allclose(fp_all["TAC"], fp_all_reloaded["TAC"])
 
 
 def test_merged_data_vs_frozen_pickle_file(data_args, merged_data_dir, pickled_data_file_name):
@@ -55,4 +52,4 @@ def test_merged_data_vs_frozen_pickle_file(data_args, merged_data_dir, pickled_d
     with open(merged_data_dir / pickled_data_file_name, "rb") as f:
         fp_all_reloaded = pickle.load(f)
 
-    xr.testing.assert_allclose(fp_all['TAC'], fp_all_reloaded['TAC'])
+    xr.testing.assert_allclose(fp_all["TAC"], fp_all_reloaded["TAC"])
