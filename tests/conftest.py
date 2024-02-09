@@ -10,7 +10,14 @@ from openghg.retrieve import search
 from openghg.standardise import standardise_surface, standardise_bc, standardise_flux, standardise_footprint
 from openghg.types import ObjectStoreError
 
-raw_data_path = Path(".").resolve() / "tests/data/"
+_raw_data_path = Path(".").resolve() / "tests/data/"
+
+
+@pytest.fixture(scope="session")
+def raw_data_path():
+    return _raw_data_path
+
+
 bc_basis_function_path = Path(".").resolve() / "bc_basis_functions"
 countries_path = Path(".").resolve() / "countries"
 
@@ -49,10 +56,10 @@ footprints_metadata = {
 }
 flux_metadata = {"species": "ch4", "source": "total-ukghg-edgar7", "domain": "europe"}
 
-obs_data_path = raw_data_path / "obs_tac_ch4_185m_2019-01-01_2019-02-01_data.nc"
-bc_data_path = raw_data_path / "bc_ch4_europe_cams_2019-01-01_2019-12-31_data.nc"
-footprints_data_path = raw_data_path / "footprints_tac_europe_name_185m_2019-01-01_2019-01-07_data.nc"
-flux_data_path = raw_data_path / "flux_total_ch4_europe_edgar7_2019-01-01_2019-12-31_data.nc"
+obs_data_path = _raw_data_path / "obs_tac_ch4_185m_2019-01-01_2019-02-01_data.nc"
+bc_data_path = _raw_data_path / "bc_ch4_europe_cams_2019-01-01_2019-12-31_data.nc"
+footprints_data_path = _raw_data_path / "footprints_tac_europe_name_185m_2019-01-01_2019-01-07_data.nc"
+flux_data_path = _raw_data_path / "flux_total_ch4_europe_edgar7_2019-01-01_2019-12-31_data.nc"
 
 data_info = {
     "surface": [standardise_surface, obs_metadata, obs_data_path],
@@ -110,7 +117,7 @@ def session_ancilliary_files() -> None:
 
     # copy basis file into default location if there isn't a file with the same name there
     if not (bc_basis_function_path / "EUROPE" / "NESW_EUROPE_2019.nc").exists():
-        shutil.copy((raw_data_path / "bc_basis_NESW_EUROPE_2019.nc"), (bc_basis_function_path / "EUROPE" / "NESW_EUROPE_2019.nc"))
+        shutil.copy((_raw_data_path / "bc_basis_NESW_EUROPE_2019.nc"), (bc_basis_function_path / "EUROPE" / "NESW_EUROPE_2019.nc"))
 
     # Add country file
     if not countries_path.exists():
@@ -118,7 +125,7 @@ def session_ancilliary_files() -> None:
 
     # copy country file into default location if there isn't a file with the same name there
     if not (countries_path / "country_EUROPE.nc").exists():
-        shutil.copy((raw_data_path / "country_EUROPE.nc"), (countries_path / "country_EUROPE.nc"))
+        shutil.copy((_raw_data_path / "country_EUROPE.nc"), (countries_path / "country_EUROPE.nc"))
 
 
 @pytest.fixture(scope="session")
