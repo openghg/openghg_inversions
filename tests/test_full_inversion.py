@@ -4,7 +4,7 @@ from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
 
 
 @pytest.fixture
-def mcmc_args(tmp_path, data_args):
+def mcmc_args(tmp_path, data_args, merged_data_dir, pickled_data_file_name):
     mcmc_args = data_args
     mcmc_args.update(
         {
@@ -17,19 +17,15 @@ def mcmc_args(tmp_path, data_args):
             "burn": 0,
             "tune": 0,
             "nchain": 1,
+            "reload_merged_data": True,
+            "merged_data_dir": merged_data_dir,
+            "merged_data_name": pickled_data_file_name,
         }
     )
     return mcmc_args
 
 
 def test_full_inversion(mcmc_args):
-    fixedbasisMCMC(**mcmc_args)
-
-
-def test_full_inversion_from_merged_data(mcmc_args, merged_data_dir, pickled_data_file_name):
-    mcmc_args["reload_merged_data"] = True
-    mcmc_args["merged_data_dir"] = merged_data_dir
-    mcmc_args["merged_data_name"] = pickled_data_file_name
     fixedbasisMCMC(**mcmc_args)
 
 
