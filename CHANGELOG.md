@@ -1,6 +1,10 @@
 # OpenGHG Inversions Change Log
 
-# Version 0.0.3
+# Version 0.2 (currently devel)
+
+- Added tests to test `get_data.py`, including creating, saving, and loading merged data. Refactored inversions tests to reload merged data, instead of creating merged data. 
+
+# Version 0.1
 
 - Formatted code base using `black` with line length 110. Configuration files set up for `black` and `flake8` with line length 110.
 
