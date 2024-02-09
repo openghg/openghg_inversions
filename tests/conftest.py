@@ -19,7 +19,9 @@ def raw_data_path():
 
 
 # set up for pickled data
-pickled_data_file_name = "merged_data_test_tac_combined_scenario.pickle"
+@pytest.fixture(scope="session")
+def pickled_data_file_name():
+    return "merged_data_test_tac_combined_scenario.pickle"
 
 
 @pytest.fixture(scope="session")
@@ -27,13 +29,8 @@ def merged_data_dir():
     return Path(tempfile.gettempdir(), "openghg_inversions_testing_merged_data_dir")
 
 
-@pytest.fixture(scope="session")
-def frozen_merged_data_path(merged_data_dir):
-    return merged_data_dir / pickled_data_file_name
-
-
 @pytest.fixture(scope="session", autouse=True)
-def add_frozen_pickled_merged_data(merged_data_dir):
+def add_frozen_pickled_merged_data(merged_data_dir, pickled_data_file_name):
     """Copy pickled merged data from tests/data to temporary merged_data_dir.
 
     Pickled data created/frozen 9 Feb 2024.

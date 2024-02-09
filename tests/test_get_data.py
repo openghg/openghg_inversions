@@ -49,10 +49,10 @@ def test_save_load_merged_data(data_args, merged_data_dir):
     xr.testing.assert_allclose(fp_all['TAC'], fp_all_reloaded['TAC'])
 
 
-def test_merged_data_vs_frozen_pickle_file(data_args, frozen_merged_data_path):
+def test_merged_data_vs_frozen_pickle_file(data_args, merged_data_dir, pickled_data_file_name):
     fp_all, *_ = data_processing_surface_notracer(**data_args)
 
-    with open(frozen_merged_data_path, "rb") as f:
+    with open(merged_data_dir / pickled_data_file_name, "rb") as f:
         fp_all_reloaded = pickle.load(f)
 
     xr.testing.assert_allclose(fp_all['TAC'], fp_all_reloaded['TAC'])
