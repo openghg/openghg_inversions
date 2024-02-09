@@ -233,6 +233,7 @@ def fixedbasisMCMC(
     reload_merged_data=False,
     save_merged_data=False,
     merged_data_dir=None,
+    merged_data_name=None,
     basis_output_path=None,
     **kwargs,
 ):
@@ -428,7 +429,8 @@ def fixedbasisMCMC(
     rerun_merge = True
 
     if reload_merged_data:
-        merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
+        if merged_data_name is None:
+            merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
         merged_data_filename = os.path.join(merged_data_dir, merged_data_name)
         print(f"Attempting to read in merged data from: {merged_data_filename}...\n")
 
