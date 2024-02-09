@@ -26,6 +26,13 @@ def test_full_inversion(mcmc_args):
     fixedbasisMCMC(**mcmc_args)
 
 
+def test_full_inversion_from_merged_data(mcmc_args, merged_data_dir, pickled_data_file_name):
+    mcmc_args["reload_merged_data"] = True
+    mcmc_args["merged_data_dir"] = merged_data_dir
+    mcmc_args["merged_data_name"] = pickled_data_file_name
+    fixedbasisMCMC(**mcmc_args)
+
+
 def test_full_inversion_min_error(mcmc_args):
     mcmc_args["min_error"] = 20.0
     fixedbasisMCMC(**mcmc_args)
