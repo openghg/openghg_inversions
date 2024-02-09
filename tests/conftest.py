@@ -154,7 +154,7 @@ def session_ancilliary_files() -> None:
         shutil.copy((_raw_data_path / "country_EUROPE.nc"), (countries_path / "country_EUROPE.nc"))
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def data_args():
     data_args = {
         "species": "ch4",

@@ -10,6 +10,8 @@ def test_data_processing_surface_notracer(data_args, raw_data_path):
     Check that `data_processing_surface_notracer` produces the same output
     as v0.1 (test data frozen on 9 Feb 2024)
     """
+    for k, v in data_args.items():
+        print(k, v)
     result = data_processing_surface_notracer(**data_args)
 
     # check number of items returned
