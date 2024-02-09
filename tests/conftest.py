@@ -11,9 +11,10 @@ from openghg.standardise import standardise_surface, standardise_bc, standardise
 from openghg.types import ObjectStoreError
 
 raw_data_path = Path(".").resolve() / "tests/data/"
-inversions_test_store_path = Path(tempfile.gettempdir(), "openghg_inversions_testing_store")
 bc_basis_function_path = Path(".").resolve() / "bc_basis_functions"
 countries_path = Path(".").resolve() / "countries"
+
+inversions_test_store_path = Path(tempfile.gettempdir(), "openghg_inversions_testing_store")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -118,3 +119,26 @@ def session_ancilliary_files() -> None:
     # copy country file into default location if there isn't a file with the same name there
     if not (countries_path / "country_EUROPE.nc").exists():
         shutil.copy((raw_data_path / "country_EUROPE.nc"), (countries_path / "country_EUROPE.nc"))
+
+
+@pytest.fixture(scope="session")
+def data_args():
+    data_args = {
+        "species": "ch4",
+        "sites": ["TAC"],
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-02",
+        "bc_store": "inversions_tests",
+        "obs_store": "inversions_tests",
+        "footprint_store": "inversions_tests",
+        "emissions_store": "inversions_tests",
+        "inlet": ["185m"],
+        "instrument": ["picarro"],
+        "domain": "EUROPE",
+        "fp_height": ["185m"],
+        "fp_model": "NAME",
+        "emissions_name": ["total-ukghg-edgar7"],
+        "met_model": "ukv",
+        "averaging_period": ["1H"],
+    }
+    return data_args
