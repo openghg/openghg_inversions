@@ -457,7 +457,7 @@ def fixedbasisMCMC(
             print(f"No merged data available at {merged_data_filename} so rerunning this process.\n")
 
     # Get datasets for forward simulations
-    elif rerun_merge:
+    if rerun_merge:
         merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
 
         if not use_tracer:
