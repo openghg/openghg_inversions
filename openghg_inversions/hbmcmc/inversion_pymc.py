@@ -14,6 +14,8 @@ import pymc as pm
 import pandas as pd
 import xarray as xr
 import getpass
+import pytensor.tensor as pt
+import arviz as az
 from scipy import stats
 from pathlib import Path
 from typing import Optional, Union
@@ -205,13 +207,13 @@ def inferpymc(
         sig = parseprior("sig", sigprior, shape=(nsites, nsigmas))
         if add_offset:
             offset = parseprior("offset", offsetprior, shape=nsites - 1)
-            offset_vec = pm.math.concatenate((np.array([0]), offset), axis=0)
-            mu = pm.math.dot(hx, x) + pm.math.dot(hbc, xbc) + pm.math.dot(B, offset_vec)
+            offset_vec = pt.concatenate((np.array([0]), offset), axis=0)
+            mu = pt.dot(hx, x) + pt.dot(hbc, xbc) + pt.dot(B, offset_vec)
         else:
-            mu = pm.math.dot(hx, x) + pm.math.dot(hbc, xbc)
+            mu = pt.dot(hx, x) + pt.dot(hbc, xbc)
 
-        model_error = np.abs(pm.math.dot(hx, x)) * sig[sites, sigma_freq_index]
-        epsilon = pm.math.sqrt(error**2 + model_error**2 + min_error**2)
+        model_error = np.abs(pt.dot(hx, x)) * sig[sites, sigma_freq_index]
+        epsilon = pt.sqrt(error**2 + model_error**2 + min_error**2)
         y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
         step1 = pm.NUTS(vars=[x, xbc])
@@ -300,7 +302,7 @@ def inferpymc_postprocessouts(
     rerun_file=None,
 ):
     """
-    Takes the output from inferpymc3 function, along with some other input
+    Takes the output from inferpymc function, along with some other input
     information, and places it all in a netcdf output. This function also
     calculates the mean posterior emissions for the countries in the
     inversion domain and saves it to netcdf.
@@ -447,8 +449,8 @@ def inferpymc_postprocessouts(
         else:
             YmodmodeOFF[i] = np.mean(offset_trace[i, :])
 
-    Ymod95OFF = pm.stats.hdi(offset_trace.T, 0.95)
-    Ymod68OFF = pm.stats.hdi(offset_trace.T, 0.68)
+    Ymod95OFF = az.hdi(offset_trace.T, 0.95)
+    Ymod68OFF = az.hdi(offset_trace.T, 0.68)
 
     # Y-BC HYPERPARAMETER
     YmodmuBC = np.mean(YBCtrace, axis=1)
@@ -465,8 +467,8 @@ def inferpymc_postprocessouts(
         else:
             YmodmodeBC[i] = np.mean(YBCtrace[i, :])
 
-    Ymod95BC = pm.stats.hdi(YBCtrace.T, 0.95)
-    Ymod68BC = pm.stats.hdi(YBCtrace.T, 0.68)
+    Ymod95BC = az.hdi(YBCtrace.T, 0.95)
+    Ymod68BC = az.hdi(YBCtrace.T, 0.68)
     YaprioriBC = np.sum(Hbc, axis=0)
 
     # Y-VALUES HYPERPARAMETER (XOUTS * H)
@@ -484,8 +486,8 @@ def inferpymc_postprocessouts(
         else:
             Ymodmode[i] = np.mean(Ytrace[i, :])
 
-    Ymod95 = pm.stats.hdi(Ytrace.T, 0.95)
-    Ymod68 = pm.stats.hdi(Ytrace.T, 0.68)
+    Ymod95 = az.hdi(Ytrace.T, 0.95)
+    Ymod68 = az.hdi(Ytrace.T, 0.68)
     Yapriori = np.sum(Hx.T, axis=1) + np.sum(Hbc.T, axis=1)
     sitenum = np.arange(len(sites))
 
@@ -604,8 +606,8 @@ def inferpymc_postprocessouts(
             cntrymode[ci] = np.mean(cntrytottrace)
 
         cntrysd[ci] = np.std(cntrytottrace)
-        cntry68[ci, :] = pm.stats.hdi(cntrytottrace.values, 0.68)
-        cntry95[ci, :] = pm.stats.hdi(cntrytottrace.values, 0.95)
+        cntry68[ci, :] = az.hdi(cntrytottrace.values, 0.68)
+        cntry95[ci, :] = az.hdi(cntrytottrace.values, 0.95)
         cntryprior[ci] = cntrytotprior
 
     # Make output netcdf file
