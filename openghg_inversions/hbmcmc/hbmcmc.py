@@ -41,6 +41,8 @@ from openghg_inversions import utils
 from openghg_inversions import get_data
 from pathlib import Path
 
+from openghg_inversions.multisector_model import experimental_inferpymc
+
 def basis_functions_wrapper(
     basis_algorithm,
     nbasis,
@@ -574,7 +576,8 @@ def fixedbasisMCMC(
             convergence,
             step1,
             step2,
-        ) = mcmc.inferpymc(
+        ) = experimental_inferpymc(
+            # mcmc.inferpymc(
             Hx,
             Hbc,
             Y,

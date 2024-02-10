@@ -73,10 +73,23 @@ def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
 # Note: data classes can be used like dictionaries with pre-specified types
 # and default arguments. They're a good replacement for dictionaries that always
 # contain an "expected" set of keys-value pairs.
+#
+# There are several data classes here, with variable grouped (loosely) by the stage that they
+# will be used in building the model. This is to facilitate breaking the model building code
+# into smaller units, if desired in the future.
 @dataclass
 class FluxInputs:
-    label: str
+    """Dataclass to hold info for adding a flux sector to the inversion.
+
+    If multiple sectors are used in an inversion, the `label` variable should be
+    used to distinguish these cases.
+
+    If `xprior` is None, then the the sensitivity from this sector is added as a constant
+    (rather than as a parameter to be inferred).
+    """
+
     Hx: np.ndarray
+    label: Optional[str] = None
     xprior: Optional[PriorArgs] = None
 
 
@@ -87,11 +100,12 @@ class UnobservedInputs:
     NOTE: xprior and Hx should be in here (e.g. as `FluxInputs`), but it is
     simpler to build the model if they are separate.
     """
+
     Hbc: np.ndarray
     sigma_freq_index: np.ndarray
-    bcprior: PriorArgs = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0}
-    sigprior: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
-    offsetprior: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
+    bcprior: PriorArgs #= {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0}
+    sigprior: PriorArgs #= {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
+    offsetprior: PriorArgs #= {"pdf": "normal", "mu": 0, "sigma": 1}
 
 
 @dataclass
@@ -148,12 +162,17 @@ def make_rhime_model(
         for fi in flux_inputs:
             nx = fi.Hx.shape[0]
 
+            if fi.label is None:
+                suffix = "_"
+            else:
+                suffix = "_" + fi.label
+
             if fi.xprior is None:
                 x = pt.ones(nx)
             else:
-                x = parse_prior(f"x_{fi.label}", fi.xprior, shape=nx)
+                x = parse_prior("x" + suffix, fi.xprior, shape=nx)
 
-            pollution_events.append(pm.Deterministic(f"mu_{fi.label}", pt.dot(fi.Hx.T, x)))
+            pollution_events.append(pm.Deterministic("mu" + suffix, pt.dot(fi.Hx.T, x)))
 
     # Step 3: create mu
     with model:
@@ -191,6 +210,7 @@ def sample_model(model: pm.Model, nit: int, tune: int, nchain: int, verbose: boo
 
 
 def convergence_check(trace: az.InferenceData) -> str:
+    """Print convergence message and return "Failed" or "Passed"."""
     x_vars = [dv for dv in trace.posterior.data_vars if str(dv).startswith("x_")]
     gelrubs = [az.rhat(trace.posterior[dv]).max() for dv in x_vars]
     gelrub = max(gelrubs)
@@ -203,28 +223,35 @@ def convergence_check(trace: az.InferenceData) -> str:
 
 
 def prepare_rhime_outs(trace: az.InferenceData, burn: int) -> tuple:
+    """Convert InferenceData to outputs given by inferpymc_postprocess_outs.
+
+    NOTE: I had to transpose some of the outputs to get the dimension to line up.
+    It would be easier to use xarray's named dimensions for this.
+    """
     if "posterior" not in trace.groups():
         raise ValueError("`trace` must have `posterior` group.")
 
-    posterior = cast(trace.posterior, xr.Dataset)  # type: ignore
-    posterior = posterior.isel(chain=0, draw=slice(burn, None))
+    posterior = cast(xr.Dataset, trace.posterior)  # type: ignore
+    posterior = posterior.isel(chain=0, draw=slice(burn, None), drop=False)
+
+
 
     outs = {str(dv): posterior[dv] for dv in posterior.data_vars if str(dv).startswith("x_")}
     bcouts = posterior["xbc"]
     sigouts = posterior["sig"]
 
     if "offset" in posterior.data_vars:
-        offset_outs = posterior["offset"]
-        YBCtrace = posterior["mu_bc"] + posterior["mu_offset"]
-        OFFtrace = posterior["mu_offset"]
+        offset_outs = posterior["offset"].values.T
+        YBCtrace = posterior["mu_bc"].values.T + posterior["mu_offset"].values.T
+        OFFtrace = posterior["mu_offset"].values.T
     else:
-        YBCtrace = posterior["mu_bc"]
-        offset_outs = xr.zeros_like(next(iter(outs.values())))
+        YBCtrace = posterior["mu_bc"].values.T
+        offset_outs = np.zeros_like(next(iter(outs.values())))
         OFFtrace = YBCtrace * 0
 
     # Anita and Will agree that we should actually report `posterior["y"]`, but
     # I'm leaving this the same as the current code -- BM
-    Ytrace = posterior["mu"]
+    Ytrace = posterior["mu"].values.T
 
     return outs, bcouts, sigouts, offset_outs, Ytrace, YBCtrace, OFFtrace
 
@@ -239,14 +266,60 @@ def experimental_inferpymc(
     xprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     bcprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     sigprior={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
-    nit=2.5e5,
-    burn=50000,
-    tune=1.25e5,
+    nit=2e5,
+    burn=1e5,
+    tune=1e5,
     nchain=2,
     sigma_per_site=True,
     offsetprior={"pdf": "normal", "mu": 0, "sigma": 1},
     add_offset=False,
     verbose=False,
     min_error=0.0,
+    **kwargs,
 ):
-    pass
+
+    # check if xprior is a dict of dicts
+    if any(isinstance(vals, dict) for vals in xprior.values()):
+        # raise error if Hx is not a dict with the same keys as xprior
+        if not isinstance(Hx, dict) or (list(xprior.keys()) != list(Hx.keys())):
+            raise ValueError(
+                "If `xprior` is a dictionary of prior parameters, then `Hx` must be a dict with the same keys."
+            )
+
+        flux_inputs = []
+
+        for k in xprior.keys():
+            flux_inputs.append(FluxInputs(label=k, Hx=Hx[k], xprior=xprior[k]))
+    else:
+        flux_inputs = [FluxInputs(label=None, Hx=Hx, xprior=xprior)]
+
+    unobserved_inputs = UnobservedInputs(
+        Hbc=Hbc,
+        sigma_freq_index=sigma_freq_index,
+        bcprior=bcprior,
+        sigprior=sigprior,
+        offsetprior=offsetprior,
+    )
+    observed_inputs = ObservedInputs(Y=Y, error=error)
+
+    model = make_rhime_model(
+        unobserved_inputs=unobserved_inputs,
+        flux_inputs=flux_inputs,
+        observed_inputs=observed_inputs,
+        min_model_error=min_error,
+        siteindicator=siteindicator,
+        add_offset=add_offset,
+        sigma_per_site=sigma_per_site,
+    )
+
+    trace = sample_model(model, nit=int(nit), tune=int(tune), nchain=nchain, verbose=verbose)
+
+    convergence = convergence_check(trace)
+
+    outs, *outputs = prepare_rhime_outs(trace, burn=int(burn))
+
+    # if only one xprior specified, return array instead of dict
+    if len(flux_inputs) == 1:
+        outs = next(iter(outs.values()))
+
+    return outs, *outputs, convergence, "NUTS", "NUTS"
