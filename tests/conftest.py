@@ -155,7 +155,7 @@ def session_ancilliary_files() -> None:
 
 
 @pytest.fixture(scope="module")
-def data_args():
+def tac_ch4_data_args():
     data_args = {
         "species": "ch4",
         "sites": ["TAC"],
