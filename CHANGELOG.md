@@ -1,6 +1,11 @@
 # OpenGHG Inversions Change Log
 
-# Version 0.0.3
+# Version 0.1.1
+
+- Bug fix: typo (?) from previous merge conflicts resulted in data not being gathered if `use_merged_data` was `True`,
+  but no merged data was found.
+
+# Version 0.1
 
 - Formatted code base using `black` with line length 110. Configuration files set up for `black` and `flake8` with line length 110.
 
