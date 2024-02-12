@@ -1,8 +1,14 @@
 # OpenGHG Inversions Change Log
 
-# Version 0.2 (currently devel)
+# Version 0.2 (current devel)
 
 - Added tests to test `get_data.py`, including creating, saving, and loading merged data. Refactored inversions tests to reload merged data, instead of creating merged data. 
+
+
+# Version 0.1.1
+
+- Bug fix: typo (?) from previous merge conflicts resulted in data not being gathered if `use_merged_data` was `True`,
+  but no merged data was found.
 
 # Version 0.1
 
