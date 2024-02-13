@@ -104,7 +104,7 @@ def inferpymc(
     add_offset=False,
     verbose=False,
     min_error=0.0,
-    save_trace = False,
+    save_trace=False,
 ):
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
@@ -223,7 +223,7 @@ def inferpymc(
             nit, tune=int(tune), chains=nchain, step=[step1, step2], progressbar=verbose, cores=nchain
         )  # step=pm.Metropolis())#  #target_accept=0.8,
 
-    #if save_trace:
+    # if save_trace:
     #    trace.to_netcdf(str(save_trace), engine="netcdf4")
 
     outs = trace.posterior["x"][0, burn:nit]
@@ -296,7 +296,6 @@ def inferpymc_postprocessouts(
     emissions_name,
     emissions_store,
     fp_data=None,
-    basis_directory=None,
     country_file=None,
     add_offset=False,
     rerun_file=None,

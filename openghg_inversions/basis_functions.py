@@ -10,13 +10,14 @@
 #   the inversion runs.
 # *****************************************************************************
 
-import os
-import uuid
 import getpass
-import scipy.optimize
+import os
+from typing import Optional
+
 import numpy as np
-import xarray as xr
 import pandas as pd
+import scipy.optimize
+import xarray as xr
 
 
 class quadTreeNode:
@@ -112,17 +113,18 @@ def quadTreeGrid(grid, limit):
 
 
 def quadtreebasisfunction(
-    emissions_name,
-    fp_all,
-    sites,
-    start_date,
-    domain,
-    species,
-    outputname,
-    outputdir=None,
-    nbasis=100,
-    abs_flux=False,
-):
+    emissions_name: list[str],
+    fp_all: dict,
+    sites: list[str],
+    start_date: str,
+    domain: str,
+    species: str,
+    outputname: Optional[str] = None,
+    outputdir: Optional[str] = None,
+    nbasis: int = 100,
+    abs_flux: bool = False,
+    seed: Optional[int] = None,
+) -> xr.Dataset:
     """
     Creates a basis function with nbasis grid cells using a quadtree algorithm.
     The domain is split with smaller grid cells for regions which contribute
@@ -160,10 +162,12 @@ def quadtreebasisfunction(
         i.e. nbasis % 4 = 1.
       abs_flux (bool):
         If True this will take the absolute value of the flux
+      seed:
+        Optional seed to pass to scipy.optimize.dual_annealing. Used for testing.
 
     Returns:
-        If outputdir is None, then returns a Temp directory. The new basis function is saved in this Temp directory.
-        If outputdir is not None, then does not return anything but saves the basis function in outputdir.
+        xr.Dataset with lat/lon dimensions and basis regions encoded by integers.
+        If outputdir is not None, then saves the basis function in outputdir.
     -----------------------------------
     """
     if abs_flux:
@@ -205,7 +209,7 @@ def quadtreebasisfunction(
     cost = 1e6
     pwr = 0
     while cost > 3.0:
-        optim = scipy.optimize.dual_annealing(qtoptim, np.expand_dims([0, 100 / 10**pwr], axis=0))
+        optim = scipy.optimize.dual_annealing(qtoptim, np.expand_dims([0, 100 / 10**pwr], axis=0), seed=seed)
         cost = np.sqrt(optim.fun)
         pwr += 1
         if pwr > 10:
@@ -229,20 +233,10 @@ def quadtreebasisfunction(
     newds.attrs["creator"] = getpass.getuser()
     newds.attrs["date created"] = str(pd.Timestamp.today())
 
-    if outputdir is None:
-        cwd = os.getcwd()
-        tempdir = os.path.join(cwd, f"Temp_{str(uuid.uuid4())}")
-        os.mkdir(tempdir)
-        os.mkdir(os.path.join(tempdir, f"{domain}/"))
-        newds.to_netcdf(
-            os.path.join(
-                tempdir, domain, f"quadtree_{species}-{outputname}_{domain}_{start_date.split('-')[0]}.nc"
-            ),
-            mode="w",
-        )
-        return tempdir
-    else:
+    if outputdir is not None:
         basisoutpath = os.path.join(outputdir, domain)
+        if outputname is None:
+            outputname = "output_name"
         if not os.path.exists(basisoutpath):
             os.makedirs(basisoutpath)
         newds.to_netcdf(
@@ -251,7 +245,8 @@ def quadtreebasisfunction(
             ),
             mode="w",
         )
-        return outputdir
+
+    return newds
 
 
 # BUCKET BASIS FUNCTIONS
@@ -421,7 +416,7 @@ def bucketbasisfunction(
     outputdir=None,
     nbasis=100,
     abs_flux=False,
-):
+) -> xr.Dataset:
     """
     Basis functions calculated using a weighted region approach
     where each basis function / scaling region contains approximately
@@ -450,6 +445,9 @@ def bucketbasisfunction(
       abs_flux (bool):
         When set to True uses absolute values of a flux array
 
+    Returns:
+        xr.Dataset with lat/lon dimensions and basis regions encoded by integers.
+        If outputdir is not None, then saves the basis function in outputdir.
     """
     if abs_flux:
         print("Using absolute values of flux array")
@@ -502,21 +500,7 @@ def bucketbasisfunction(
     newds.attrs["creator"] = getpass.getuser()
     newds.attrs["date created"] = str(pd.Timestamp.today())
 
-    if outputdir is None:
-        cwd = os.getcwd()
-        tempdir = os.path.join(cwd, f"Temp_{str(uuid.uuid4())}")
-        os.mkdir(tempdir)
-        os.mkdir(os.path.join(tempdir, f"{domain}/"))
-        newds.to_netcdf(
-            os.path.join(
-                tempdir,
-                domain,
-                f"weighted_{species}-{outputname}_{domain}_{start_date.split('-')[0]}{start_date.split('-')[1]}.nc",
-            ),
-            mode="w",
-        )
-        return tempdir
-    else:
+    if outputdir is not None:
         basisoutpath = os.path.join(outputdir, domain)
         if not os.path.exists(basisoutpath):
             os.makedirs(basisoutpath)
@@ -527,3 +511,5 @@ def bucketbasisfunction(
             ),
             mode="w",
         )
+
+    return newds

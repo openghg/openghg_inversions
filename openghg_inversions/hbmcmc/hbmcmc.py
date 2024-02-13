@@ -26,37 +26,37 @@
 #  have chanegd.
 #
 #  Note. RHIME with OpenGHG expects ALL data to already be included in the
-#  object stores and for the paths to object stores to already be set in 
+#  object stores and for the paths to object stores to already be set in
 #  the users .openghg config file
 # ****************************************************************************
 
 import os
 import pickle
-import shutil
-import numpy as np
-import openghg_inversions.hbmcmc.inversionsetup as setup
-import openghg_inversions.hbmcmc.inversion_pymc as mcmc
-import openghg_inversions.basis_functions as basis
-from openghg_inversions import utils
-from openghg_inversions import get_data
 from pathlib import Path
+from typing import Optional
+
+import numpy as np
+import openghg_inversions.basis_functions as basis
+import openghg_inversions.hbmcmc.inversion_pymc as mcmc
+import openghg_inversions.hbmcmc.inversionsetup as setup
+from openghg_inversions import get_data, utils
 
 
 def basis_functions_wrapper(
-    basis_algorithm,
-    nbasis,
-    fp_basis_case,
-    bc_basis_case,
-    basis_directory,
-    bc_basis_directory,
-    fp_all,
-    species,
-    sites,
-    domain,
-    start_date,
-    emissions_name,
-    outputname,
-    output_path=None,
+    fp_all: dict,
+    species: str,
+    sites: list[str],
+    domain: str,
+    start_date: str,
+    emissions_name: list[str],
+    nbasis: int,
+    basis_algorithm: Optional[str] = None,
+    fp_basis_case: Optional[str] = None,
+    bc_basis_case: Optional[str] = None,
+    basis_directory: Optional[str] = None,
+    bc_basis_directory: Optional[str] = None,
+    outputname: Optional[str] = None,
+    output_path: Optional[str] = None,
 ):
     """
     Wrapper function for selecting basis function
@@ -107,72 +107,50 @@ def basis_functions_wrapper(
       fp_data (dict):
         Dictionary object similar to fp_all but with information
         on basis functions and sensitivities
-
-      basis_directory (str):
-        Path to emissions basis funciton directory
-
-      bc_basis_directory (str):
-        Path to bc basis functinon directory
-
     """
-    if basis_algorithm == "quadtree":
-        print("Using Quadtree algorithm to derive basis functions")
-        if fp_basis_case is not None:
-            print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
-            print("Assuming you want to use %s " % fp_basis_case)
-            tempdir = None
-        else:
-            tempdir = basis.quadtreebasisfunction(
-                emissions_name,
-                fp_all,
-                sites,
-                start_date,
-                domain,
-                species,
-                outputname,
-                nbasis=nbasis,
-                outputdir=output_path,
+    if fp_basis_case is not None:
+        if basis_algorithm:
+            print(
+                f"Basis algorithm {basis_algorithm} and basis case {fp_basis_case} supplied; using {fp_basis_case}."
             )
+        basis_func = utils.basis(domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory)
 
-            fp_basis_case = "quadtree_" + species + "-" + outputname
-            basis_directory = tempdir
+    elif basis_algorithm is None:
+        raise ValueError("One of `fp_basis_case` or `basis_algorithm` must be specified.")
+
+    elif basis_algorithm == "quadtree":
+        print("Using Quadtree algorithm to derive basis functions")
+        basis_func = basis.quadtreebasisfunction(
+            emissions_name,
+            fp_all,
+            sites,
+            start_date,
+            domain,
+            species,
+            outputname,
+            nbasis=nbasis,
+            outputdir=output_path,
+        )
 
     elif basis_algorithm == "weighted":
         print("Using weighted by data algorithm to derive basis functions")
-        if fp_basis_case is not None:
-            print("Basis case %s supplied but bucket_basis set to True" % fp_basis_case)
-            print("Assuming you want to use %s " % fp_basis_case)
-            tempdir = None
-        else:
-            tempdir = basis.bucketbasisfunction(
-                emissions_name,
-                fp_all,
-                sites,
-                start_date,
-                domain,
-                species,
-                outputname,
-                nbasis=nbasis,
-            )
-
-            fp_basis_case = "weighted_" + species + "-" + outputname
-            basis_directory = tempdir
-
-    elif basis_algorithm is None:
-        basis_directory = basis_directory
-        tempdir = None
+        basis_func = basis.bucketbasisfunction(
+            emissions_name,
+            fp_all,
+            sites,
+            start_date,
+            domain,
+            species,
+            outputname,
+            nbasis=nbasis,
+        )
 
     else:
         raise ValueError(
             "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
         )
 
-    fp_data = utils.fp_sensitivity(
-        fp_all, 
-        domain=domain, 
-        basis_case=fp_basis_case, 
-        basis_directory=basis_directory
-    )
+    fp_data = utils.fp_sensitivity(fp_all, basis_func=basis_func)
 
     fp_data = utils.bc_sensitivity(
         fp_data,
@@ -181,7 +159,7 @@ def basis_functions_wrapper(
         bc_basis_directory=bc_basis_directory,
     )
 
-    return fp_data, tempdir, basis_directory, bc_basis_directory
+    return fp_data
 
 
 def fixedbasisMCMC(
@@ -193,12 +171,12 @@ def fixedbasisMCMC(
     end_date,
     outputpath,
     outputname,
-    bc_store="user",     # Do we want to set defaults for the object stores?
+    bc_store="user",  # Do we want to set defaults for the object stores?
     obs_store="user",
     footprint_store="user",
     emissions_store="user",
     met_model=None,
-    fp_model=None,       # Changed to none. When "NAME" specified FPs are not found 
+    fp_model=None,  # Changed to none. When "NAME" specified FPs are not found
     fp_height=None,
     emissions_name=None,
     inlet=None,
@@ -212,7 +190,6 @@ def fixedbasisMCMC(
     bc_basis_directory=None,
     country_file=None,
     bc_input=None,
-    max_level=None,
     basis_algorithm="weighted",
     nbasis=100,
     filters=[],
@@ -239,7 +216,7 @@ def fixedbasisMCMC(
     **kwargs,
 ):
     """
-    Script to run hierarchical Bayesian MCMC (RHIME) for inference 
+    Script to run hierarchical Bayesian MCMC (RHIME) for inference
     of emissions using PyMC to solve the inverse problem.
     -----------------------------------------------------------------
     Args:
@@ -274,7 +251,7 @@ def fixedbasisMCMC(
         Name of object store containing measurements files
 
       footprint_store (str):
-        Name of object store containing footprints files 
+        Name of object store containing footprints files
 
       emissions_store (str):
         Name of object store containing emissions/flux files
@@ -337,15 +314,15 @@ def fixedbasisMCMC(
         Select basis function algorithm for creating basis function file
         for emissions on the fly. Options include "quadtree" or "weighted".
         Defaults to "weighted" which distinguishes between land-sea regions
- 
+
       nbasis (int):
         Number of basis functions that you want if using quadtree derived
         basis function. This will optimise to closest value that fits with
         quadtree splitting algorithm, i.e. nbasis % 4 = 1
- 
+
       filters (list, optional):
         list of filters to apply from name.filtering. Defaults to empty list
- 
+
       xprior (dict):
         Dictionary containing information about the prior PDF for emissions.
         The entry "pdf" is the name of the analytical PDF used, see
@@ -374,7 +351,7 @@ def fixedbasisMCMC(
 
       tune (int):
         Number of iterations to use to tune step size
- 
+
       nchain (int):
         Number of independent chains to run (there is no way at all of
         knowing whether your distribution has converged by running only
@@ -501,20 +478,20 @@ def fixedbasisMCMC(
             raise ValueError("Model does not currently include tracer model. Watch this space")
 
     # Basis function regions and sensitivity matrices
-    fp_data, tempdir, basis_dir, bc_basis_dir = basis_functions_wrapper(
-        basis_algorithm,
-        nbasis,
-        fp_basis_case,
-        bc_basis_case,
-        basis_directory,
-        bc_basis_directory,
-        fp_all,
-        species,
-        sites,
-        domain,
-        start_date,
-        emissions_name,
-        outputname,
+    fp_data = basis_functions_wrapper(
+        basis_algorithm=basis_algorithm,
+        nbasis=nbasis,
+        fp_basis_case=fp_basis_case,
+        bc_basis_case=bc_basis_case,
+        basis_directory=basis_directory,
+        bc_basis_directory=bc_basis_directory,
+        fp_all=fp_all,
+        species=species,
+        sites=sites,
+        domain=domain,
+        start_date=start_date,
+        emissions_name=emissions_name,
+        outputname=outputname,
         output_path=basis_output_path,
     )
 
@@ -637,24 +614,11 @@ def fixedbasisMCMC(
             fp_data=fp_data,
             emissions_name=emissions_name,
             emissions_store=emissions_store,
-            basis_directory=basis_dir,
             country_file=country_file,
             add_offset=add_offset,
         )
     elif use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
-
-    if basis_algorithm is not None:
-        # remove the temporary basis function directory
-        delete = True
-        if not os.path.dirname(tempdir).startswith("Temp_"):
-            delete = False
-        for _, _, files in os.walk(tempdir):
-            for file in files:
-                if not file.startswith("quadtree"):  # TODO: update this to look for other basis types
-                    delete = False
-        if delete:
-            shutil.rmtree(tempdir)
 
     print("---- Inversion completed ----")
 
