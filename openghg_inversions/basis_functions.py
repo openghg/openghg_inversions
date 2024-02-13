@@ -109,7 +109,7 @@ def quadTreeGrid(grid, limit):
         outputGrid[leaf.xStart : leaf.xEnd, leaf.yStart : leaf.yEnd] = i
         boxList.append([leaf.xStart, leaf.xEnd, leaf.yStart, leaf.yEnd])
 
-    return outputGrid, boxList
+    return outputGrid
 
 
 def quadtreebasisfunction(
@@ -203,18 +203,20 @@ def quadtreebasisfunction(
     fps = meanfp * meanflux
 
     def qtoptim(x):
-        basisQuad, boxes = quadTreeGrid(fps, x)
+        basisQuad = quadTreeGrid(fps, x)
         return (nbasis - np.max(basisQuad) - 1) ** 2
 
     cost = 1e6
     pwr = 0
     while cost > 3.0:
-        optim = scipy.optimize.dual_annealing(qtoptim, np.expand_dims([0, 100 / 10**pwr], axis=0), seed=seed)
+        optim = scipy.optimize.dual_annealing(
+            qtoptim, np.expand_dims([0, 100 / 10**pwr], axis=0), seed=seed
+        )
         cost = np.sqrt(optim.fun)
         pwr += 1
         if pwr > 10:
-            raise Exception("Quadtree did not converge after max iterations.")
-    basisQuad, boxes = quadTreeGrid(fps, optim.x[0])
+            raise RuntimeError("Quadtree did not converge after max iterations.")
+    basisQuad = quadTreeGrid(fps, optim.x[0])
 
     lon = fp_all[sites[0]].lon.values
     lat = fp_all[sites[0]].lat.values
