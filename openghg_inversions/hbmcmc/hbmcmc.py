@@ -41,6 +41,8 @@ from openghg_inversions import utils
 from openghg_inversions import get_data
 from pathlib import Path
 
+from openghg_inversions.multisector_model import experimental_inferpymc
+
 def basis_functions_wrapper(
     basis_algorithm,
     nbasis,
@@ -234,6 +236,7 @@ def fixedbasisMCMC(
     save_merged_data=False,
     merged_data_dir=None,
     basis_output_path=None,
+    mock_multi_sector=False,
     **kwargs,
 ):
     """
@@ -560,6 +563,12 @@ def fixedbasisMCMC(
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
+        # For testing
+        if mock_multi_sector is True:
+            labels = ["a", "b", "c"]
+            Hx = {label: hx for label, hx in zip(labels, [Hx]*3)}
+            xprior = {"a": xprior, "b": None, "c": xprior}
+
         # Path to save trace
         trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
         # Run PyMC inversion
@@ -574,7 +583,8 @@ def fixedbasisMCMC(
             convergence,
             step1,
             step2,
-        ) = mcmc.inferpymc(
+        ) = experimental_inferpymc(
+            # mcmc.inferpymc(
             Hx,
             Hbc,
             Y,
@@ -595,6 +605,10 @@ def fixedbasisMCMC(
             save_trace=trace_path,
             **kwargs,
         )
+
+        if mock_multi_sector is True:
+            print(xouts)
+            return
 
         # Process and save inversion output
         out = mcmc.inferpymc_postprocessouts(
