@@ -1097,11 +1097,11 @@ def fp_sensitivity(fp_and_data, domain, basis_case, basis_directory=None, verbos
                 concat_sensitivity = xr.concat((concat_sensitivity, sensitivity), dim="region")
 
             sub_basis_cases = 0
-
+            
             if source in basis_func["sector"].values:
                 source_ind = np.where(basis_func["sector"].values == source)[0]
                 basis_case_key = basis_func["sector"][source_ind]
-                
+                    
             elif "all" in basis_case.keys():
                 source_ind = 0
                 basis_case_key = "all"

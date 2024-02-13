@@ -225,7 +225,7 @@ def inferpymc(
           
         #CHANGES: removed .concatenate lines and replaced with sums, as 
         # dimensions of modelled mf weren't correct
-        # could add the .concatenate back in and use a .sum too:
+        # or, could add the .concatenate back in and use a .sum too:
         # mu = pm.math.sum(pm.math.concatenate(hx_dot_x),axis=0)
 
         if add_offset:
@@ -237,8 +237,6 @@ def inferpymc(
         else:
             #mu = pm.math.concatenate(hx_dot_x) + pm.math.dot(hbc, xbc)
             mu = hx_dot_x + pm.math.dot(hbc, xbc)
-            
-        print(mu.shape.eval())
 
         # Calculate model error
         #model_error = pm.math.abs(pm.math.concatenate(hx_dot_x)) * sig[sites, sigma_freq_index]
@@ -857,8 +855,11 @@ def inferpymc_postprocessouts(
         outds.attrs["Offset Prior"] = "".join(["{0},{1},".format(k, v) for k, v in offsetprior.items()])[:-1]
     outds.attrs["Creator"] = getpass.getuser()
     outds.attrs["Date created"] = str(pd.Timestamp("today"))
-    outds.attrs["Convergence"] = convergence
-    outds.attrs["Repository version"] = code_version()
+    outds.attrs["Convergence"] = str(convergence)
+    try:
+        outds.attrs["Repository version"] = code_version()
+    except:
+        print('Cannot find code version, check this function.')
 
     # variables with variable length data types shouldn't be compressed
     # e.g. object ("O") or unicode ("U") type
@@ -874,6 +875,6 @@ def inferpymc_postprocessouts(
 
     output_filename = define_output_filename(outputpath, species, domain, outputname, start_date, ext=".nc")
     Path(outputpath).mkdir(parents=True, exist_ok=True)
-#    outds.to_netcdf(output_filename, encoding=encoding, mode="w")
+    outds.to_netcdf(output_filename, encoding=encoding, mode="w")
 
     return outds
