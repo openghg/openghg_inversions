@@ -5,7 +5,7 @@
 # *****************************************************************************
 # About
 # Functions for retrieving observations and datasets for creating forward
-# simulations and 
+# simulations
 #
 # Current options include:
 # - "data_processing_surface_notracer": Surface based measurements, without tracers
