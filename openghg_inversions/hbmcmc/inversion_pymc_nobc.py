@@ -30,7 +30,7 @@ from openghg_inversions.hbmcmc.inversion_pymc import parseprior
 
 def inferpymc_nobc(
     Hx,
-    Y,     # Ensure this is obs - baseline
+    Y,  # Ensure this is obs - baseline
     error,
     siteindicator,
     sigma_freq_index,
@@ -45,7 +45,7 @@ def inferpymc_nobc(
     add_offset=False,
     verbose=False,
     min_error=0.0,
-    save_trace = False,
+    save_trace=False,
 ):
     """
     Uses PyMC module for Bayesian inference for emissions field
@@ -153,7 +153,7 @@ def inferpymc_nobc(
             nit, tune=int(tune), chains=nchain, step=[step1, step2], progressbar=verbose, cores=nchain
         )  # step=pm.Metropolis())#  #target_accept=0.8,
 
-    #if save_trace:
+    # if save_trace:
     #    trace.to_netcdf(str(save_trace), engine="netcdf4")
 
     outs = trace.posterior["x"][0, burn:nit]
@@ -178,7 +178,18 @@ def inferpymc_nobc(
 
     Ytrace = np.dot(Hx.T, outs.T)
 
-    return outs, sigouts, offset_outs, Ytrace, OFFSETtrace, convergence, step1, step2
+    result = {
+        "xouts": outs,
+        "sigouts": sigouts,
+        "offset_outs": offset_outs,
+        "Ytrace": Ytrace,
+        "OFFSETtrace": OFFSETtrace,
+        "convergence": convergence,
+        "step1": step1,
+        "step2": step2,
+    }
+
+    return result
 
 
 def inferpymc_postprocessouts_nobc(
@@ -376,7 +387,7 @@ def inferpymc_postprocessouts_nobc(
 
     Ymod95 = az.hdi(Ytrace.T, 0.95)
     Ymod68 = az.hdi(Ytrace.T, 0.68)
-    Yapriori = np.sum(Hx.T, axis=1) 
+    Yapriori = np.sum(Hx.T, axis=1)
     sitenum = np.arange(len(sites))
 
     if fp_data is None and rerun_file is not None:
