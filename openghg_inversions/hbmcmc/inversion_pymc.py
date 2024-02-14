@@ -807,7 +807,9 @@ def inferpymc_postprocessouts(
         outds.Ymod95BC.attrs[
             "longname"
         ] = " 0.95 Bayesian credible interval of posterior simulated boundary conditions"
-        outds.bctrace.attrs["longname"] = "trace of unitless scaling factors for boundary condition parameters"
+        outds.bctrace.attrs[
+            "longname"
+        ] = "trace of unitless scaling factors for boundary condition parameters"
         outds.bcsensitivity.attrs["longname"] = "boundary conditions sensitivity timeseries"
 
     outds.attrs["Start date"] = start_date
