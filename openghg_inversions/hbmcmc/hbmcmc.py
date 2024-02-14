@@ -48,6 +48,7 @@ def basis_functions_wrapper(
     bc_basis_case,
     basis_directory,
     bc_basis_directory,
+    use_bc,
     fp_all,
     species,
     sites,
@@ -84,6 +85,8 @@ def basis_functions_wrapper(
     bc_basis_directory (str, optional):
       Directory containing the boundary condition basis functions
       (e.g. files starting with "NESW")
+    use_bc (bool):
+      Option to include/exclude boundary conditions in inversion
     fp_all (dict):
       Dictionary object produced from get_data functions
     species (str):
@@ -173,12 +176,13 @@ def basis_functions_wrapper(
         basis_directory=basis_directory
     )
 
-    fp_data = utils.bc_sensitivity(
-        fp_data,
-        domain=domain,
-        basis_case=bc_basis_case,
-        bc_basis_directory=bc_basis_directory,
-    )
+    if use_bc is True:
+        fp_data = utils.bc_sensitivity(
+            fp_data,
+            domain=domain,
+            basis_case=bc_basis_case,
+            bc_basis_directory=bc_basis_directory,
+        )
 
     return fp_data, tempdir, basis_directory, bc_basis_directory
 
@@ -205,6 +209,7 @@ def fixedbasisMCMC(
     calibration_scale=None,
     obs_data_level=None,
     use_tracer=False,
+    use_bc=True,
     fp_basis_case=None,
     basis_directory=None,
     bc_basis_case="NESW",
@@ -483,6 +488,7 @@ def fixedbasisMCMC(
                 inlet=inlet,
                 instrument=instrument,
                 calibration_scale=calibration_scale,
+                use_bc=use_bc,
                 bc_input=bc_input,
                 bc_store=bc_store,
                 obs_store=obs_store,
@@ -505,6 +511,7 @@ def fixedbasisMCMC(
         bc_basis_case,
         basis_directory,
         bc_basis_directory,
+        use_bc,
         fp_all,
         species,
         sites,
@@ -525,119 +532,217 @@ def fixedbasisMCMC(
     if use_tracer is False:
         # Get inputs ready
         error = np.zeros(0)
-        Hbc = np.zeros(0)
         Hx = np.zeros(0)
         Y = np.zeros(0)
-
         siteindicator = np.zeros(0)
-
-        for si, site in enumerate(sites):
-            if "mf_repeatability" in fp_data[site]:
-                error = np.concatenate((error, fp_data[site].mf_repeatability.values))
-            if "mf_variability" in fp_data[site]:
-                error = np.concatenate((error, fp_data[site].mf_variability.values))
-
-            Y = np.concatenate((Y, fp_data[site].mf.values))
-            siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
-            if si == 0:
-                Ytime = fp_data[site].time.values
-            else:
-                Ytime = np.concatenate((Ytime, fp_data[site].time.values))
-
-            if bc_freq == "monthly":
-                Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
-            elif bc_freq is None:
-                Hmbc = fp_data[site].H_bc.values
-            else:
-                Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
-
-            if si == 0:
-                Hbc = np.copy(Hmbc)  # fp_data[site].H_bc.values
-                Hx = fp_data[site].H.values
-            else:
-                Hbc = np.hstack((Hbc, Hmbc))
-                Hx = np.hstack((Hx, fp_data[site].H.values))
-
-        sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
         # Path to save trace
         trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
-        # Run PyMC inversion
-        (
-            xouts,
-            bcouts,
-            sigouts,
-            offset_outs,
-            Ytrace,
-            YBCtrace,
-            offset_trace,
-            convergence,
-            step1,
-            step2,
-        ) = mcmc.inferpymc(
-            Hx,
-            Hbc,
-            Y,
-            error,
-            siteindicator,
-            sigma_freq_index,
-            xprior,
-            bcprior,
-            sigprior,
-            nit,
-            burn,
-            tune,
-            nchain,
-            sigma_per_site,
-            offsetprior=offsetprior,
-            add_offset=add_offset,
-            verbose=verbose,
-            save_trace=trace_path,
-            **kwargs,
-        )
 
-        # Process and save inversion output
-        out = mcmc.inferpymc_postprocessouts(
-            xouts,
-            bcouts,
-            sigouts,
-            offset_outs,
-            convergence,
-            Hx,
-            Hbc,
-            Y,
-            error,
-            Ytrace,
-            YBCtrace,
-            offset_trace,
-            step1,
-            step2,
-            xprior,
-            bcprior,
-            sigprior,
-            offsetprior,
-            Ytime,
-            siteindicator,
-            sigma_freq_index,
-            domain,
-            species,
-            sites,
-            start_date,
-            end_date,
-            outputname,
-            outputpath,
-            country_unit_prefix,
-            burn,
-            tune,
-            nchain,
-            sigma_per_site,
-            fp_data=fp_data,
-            emissions_name=emissions_name,
-            emissions_store=emissions_store,
-            basis_directory=basis_dir,
-            country_file=country_file,
-            add_offset=add_offset,
-        )
+        if use_bc is True:
+            Hbc = np.zeros(0)
+
+            for si, site in enumerate(sites):
+                if "mf_repeatability" in fp_data[site]:
+                    error = np.concatenate((error, fp_data[site].mf_repeatability.values))
+                if "mf_variability" in fp_data[site]:
+                    error = np.concatenate((error, fp_data[site].mf_variability.values))
+
+                Y = np.concatenate((Y, fp_data[site].mf.values))
+                siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
+                if si == 0:
+                    Ytime = fp_data[site].time.values
+                else:
+                    Ytime = np.concatenate((Ytime, fp_data[site].time.values))
+
+                if bc_freq == "monthly":
+                    Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
+                elif bc_freq is None:
+                    Hmbc = fp_data[site].H_bc.values
+                else:
+                    Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
+
+                if si == 0:
+                    Hbc = np.copy(Hmbc)  # fp_data[site].H_bc.values
+                    Hx = fp_data[site].H.values
+                else:
+                    Hbc = np.hstack((Hbc, Hmbc))
+                    Hx = np.hstack((Hx, fp_data[site].H.values))
+
+            sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
+
+            # Run PyMC inversion with boundary conditions
+            (
+                xouts,
+                bcouts,
+                sigouts,
+                offset_outs,
+                Ytrace,
+                YBCtrace,
+                OFFSETtrace,
+                convergence,
+                step1,
+                step2,
+            ) = mcmc.inferpymc(
+                Hx,
+                Hbc,
+                Y,
+                error,
+                siteindicator,
+                sigma_freq_index,
+                xprior,
+                bcprior,
+                sigprior,
+                nit,
+                burn,
+                tune,
+                nchain,
+                sigma_per_site,
+                offsetprior=offsetprior,
+                add_offset=add_offset,
+                verbose=verbose,
+                save_trace=trace_path,
+                **kwargs,
+            )
+
+            # Process and save inversion output
+            out = mcmc.inferpymc_postprocessouts(
+                xouts,
+                bcouts,
+                sigouts,
+                offset_outs,
+                convergence,
+                Hx,
+                Hbc,
+                Y,
+                error,
+                Ytrace,
+                YBCtrace,
+                OFFSETtrace,
+                step1,
+                step2,
+                xprior,
+                bcprior,
+                sigprior,
+                offsetprior,
+                Ytime,
+                siteindicator,
+                sigma_freq_index,
+                domain,
+                species,
+                sites,
+                start_date,
+                end_date,
+                outputname,
+                outputpath,
+                country_unit_prefix,
+                burn,
+                tune,
+                nchain,
+                sigma_per_site,
+                fp_data=fp_data,
+                emissions_name=emissions_name,
+                emissions_store=emissions_store,
+                basis_directory=basis_dir,
+                country_file=country_file,
+                add_offset=add_offset,
+            )
+
+        if use_bc is False:
+            import openghg_inversions.hbmcmc.inversion_pymc_nobc as mcmc
+
+            for si, site in enumerate(sites):
+                if "mf_repeatability" in fp_data[site]:
+                    error = np.concatenate((error, fp_data[site].mf_repeatability.values))
+                if "mf_variability" in fp_data[site]:
+                    error = np.concatenate((error, fp_data[site].mf_variability.values))
+
+                Y = np.concatenate((Y, fp_data[site].mf.values))
+                siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
+                if si == 0:
+                    Ytime = fp_data[site].time.values
+                else:
+                    Ytime = np.concatenate((Ytime, fp_data[site].time.values))
+
+                if si == 0:
+                    Hx = fp_data[site].H.values
+                else:
+                    Hx = np.hstack((Hx, fp_data[site].H.values))
+
+            sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
+
+            # Path to save trace
+            trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
+            # Run PyMC inversion without boundary conditions
+            (
+                xouts,
+                sigouts,
+                offset_outs,
+                Ytrace,
+                OFFSETtrace,
+                convergence,
+                step1,
+                step2,
+            ) = mcmc.inferpymc_nobc(
+                Hx,
+                Y,
+                error,
+                siteindicator,
+                sigma_freq_index,
+                xprior,
+                sigprior,
+                nit,
+                burn,
+                tune,
+                nchain,
+                sigma_per_site,
+                offsetprior=offsetprior,
+                add_offset=add_offset,
+                verbose=verbose,
+                save_trace=trace_path,
+                **kwargs,
+            )
+
+            # Process and save inversion output
+            out = mcmc.inferpymc_postprocessouts_nobc(
+                xouts,
+                sigouts,
+                offset_outs,
+                convergence,
+                Hx,
+                Y,
+                error,
+                Ytrace,
+                OFFSETtrace,
+                step1,
+                step2,
+                xprior,
+                sigprior,
+                offsetprior,
+                Ytime,
+                siteindicator,
+                sigma_freq_index,
+                domain,
+                species,
+                sites,
+                start_date,
+                end_date,
+                outputname,
+                outputpath,
+                country_unit_prefix,
+                burn,
+                tune,
+                nchain,
+                sigma_per_site,
+                fp_data=fp_data,
+                emissions_name=emissions_name,
+                emissions_store=emissions_store,
+                basis_directory=basis_dir,
+                country_file=country_file,
+                add_offset=add_offset,
+            )
+
+
     elif use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
 

@@ -1,13 +1,12 @@
 # *****************************************************************************
-# Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: eric.saboya@bristol.ac.uk
+# inversion_pymc_nobc.py
+# Author: Atmospheric Chemistry Research Group, University of Bristol
+# Created: Nov. 2022
 # *****************************************************************************
 # About
-#   Originally created by Luke Western (ACRG) and updated, here, by Eric Saboya
-#   Functions for performing MCMC inversion.
-#   PyMC library used for Bayesian modelling. Updated from PyMc3
+#   Functions for performing MCMC inversion without boundary conditions data.
 # *****************************************************************************
+
 import re
 import numpy as np
 import pymc as pm
@@ -26,74 +25,16 @@ from openghg_inversions import utils
 from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
+from openghg_inversions.hbmcmc.inversion_pymc import parseprior
 
 
-def parseprior(name, prior_params, shape=()):
-    """
-    Parses all continuous distributions for PyMC 3.8:
-    https://docs.pymc.io/api/distributions/continuous.html
-    This format requires updating when the PyMC distributions update,
-    but is safest for code execution
-    -----------------------------------
-    Args:
-      name (str):
-        name of variable in the pymc model
-      prior_params (dict):
-        dict of parameters for the distribution,
-        including 'pdf' for the distribution to use
-      shape (array):
-        shape of distribution to be created.
-        Default shape = () is the same as used by PyMC3
-    -----------------------------------
-    """
-    functiondict = {
-        "uniform": pm.Uniform,
-        "flat": pm.Flat,
-        "halfflat": pm.HalfFlat,
-        "normal": pm.Normal,
-        "truncatednormal": pm.TruncatedNormal,
-        "halfnormal": pm.HalfNormal,
-        "skewnormal": pm.SkewNormal,
-        "beta": pm.Beta,
-        "kumaraswamy": pm.Kumaraswamy,
-        "exponential": pm.Exponential,
-        "laplace": pm.Laplace,
-        "studentt": pm.StudentT,
-        "halfstudentt": pm.HalfStudentT,
-        "cauchy": pm.Cauchy,
-        "halfcauchy": pm.HalfCauchy,
-        "gamma": pm.Gamma,
-        "inversegamma": pm.InverseGamma,
-        "weibull": pm.Weibull,
-        "lognormal": pm.Lognormal,
-        "chisquared": pm.ChiSquared,
-        "wald": pm.Wald,
-        "pareto": pm.Pareto,
-        "exgaussian": pm.ExGaussian,
-        "vonmises": pm.VonMises,
-        "triangular": pm.Triangular,
-        "gumbel": pm.Gumbel,
-        "rice": pm.Rice,
-        "logistic": pm.Logistic,
-        "logitnormal": pm.LogitNormal,
-        "interpolated": pm.Interpolated,
-    }
-
-    pdf = prior_params["pdf"]
-    # Get a dictionary of the pdf arguments
-    params = {x: prior_params[x] for x in prior_params if x != "pdf"}
-    return functiondict[pdf.lower()](name, shape=shape, **params)
-
-
-def inferpymc(
+def inferpymc_nobc(
     Hx,
-    Hbc,
-    Y,
+    Y,     # Ensure this is obs - baseline
     error,
     siteindicator,
     sigma_freq_index,
     xprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-    bcprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     sigprior={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
     nit=2.5e5,
     burn=50000,
@@ -107,8 +48,8 @@ def inferpymc(
     save_trace = False,
 ):
     """
-    Uses PyMC module for Bayesian inference for emissions field, boundary
-    conditions and (currently) a single model error value.
+    Uses PyMC module for Bayesian inference for emissions field
+    and a single model error value.
     This uses a Normal likelihood but the (hyper)prior PDFs can selected by user.
     -----------------------------------
     Args:
@@ -117,8 +58,6 @@ def inferpymc(
         This is the same as what is given from fp_data[site].H.values, where
         fp_data is the output from e.g. footprint_data_merge, but where it
         has been stacked for all sites.
-      Hbc (array):
-        Same as above but for boundary conditions
       Y (array):
         Measurement vector containing all measurements
       error (arrray):
@@ -137,8 +76,6 @@ def inferpymc(
         e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sd":1}.
         Note that the standard deviation should be used rather than the
         precision. Currently all variables are considered iid.
-      bcprior (dict):
-        Same as above but for boundary conditions.
       sigprior (dict):
         Same as above but for model error.
       offsetprior (dict):
@@ -154,14 +91,10 @@ def inferpymc(
     Returns:
       outs (array):
         MCMC chain for emissions scaling factors for each basis function.
-      bcouts (array):
-        MCMC chain for boundary condition scaling factors.
       sigouts (array):
         MCMC chain for model error.
       Ytrace (array):
         MCMC chain for modelled obs.
-      YBCtrace (array):
-        MCMC chain for modelled boundary condition.
       convergence (str):
         Passed/Failed convergence test as to whether mutliple chains
         have a Gelman-Rubin diagnostic value <1.05
@@ -182,9 +115,7 @@ def inferpymc(
     burn = int(burn)
 
     hx = Hx.T
-    hbc = Hbc.T
     nx = hx.shape[1]
-    nbc = hbc.shape[1]
     ny = len(Y)
 
     nit = int(nit)
@@ -203,20 +134,19 @@ def inferpymc(
 
     with pm.Model() as model:
         x = parseprior("x", xprior, shape=nx)
-        xbc = parseprior("xbc", bcprior, shape=nbc)
         sig = parseprior("sig", sigprior, shape=(nsites, nsigmas))
         if add_offset:
             offset = parseprior("offset", offsetprior, shape=nsites - 1)
             offset_vec = pt.concatenate((np.array([0]), offset), axis=0)
-            mu = pt.dot(hx, x) + pt.dot(hbc, xbc) + pt.dot(B, offset_vec)
+            mu = pt.dot(hx, x) + pt.dot(B, offset_vec)
         else:
-            mu = pt.dot(hx, x) + pt.dot(hbc, xbc)
+            mu = pt.dot(hx, x)
 
         model_error = np.abs(pt.dot(hx, x)) * sig[sites, sigma_freq_index]
         epsilon = pt.sqrt(error**2 + model_error**2 + min_error**2)
         y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
-        step1 = pm.NUTS(vars=[x, xbc])
+        step1 = pm.NUTS(vars=[x])
         step2 = pm.Slice(vars=[sig])
 
         trace = pm.sample(
@@ -227,12 +157,7 @@ def inferpymc(
     #    trace.to_netcdf(str(save_trace), engine="netcdf4")
 
     outs = trace.posterior["x"][0, burn:nit]
-    bcouts = trace.posterior["xbc"][0, burn:nit]
     sigouts = trace.posterior["sig"][0, burn:nit]
-
-    # outs = trace.get_values(x, burn=burn)[0:int((nit)-burn)]
-    # bcouts = trace.get_values(xbc, burn=burn)[0:int((nit)-burn)]
-    # sigouts = trace.get_values(sig, burn=burn)[0:int((nit)-burn)]
 
     # Check for convergence
     gelrub = pm.rhat(trace)["x"].max()
@@ -244,38 +169,31 @@ def inferpymc(
 
     if add_offset:
         offset_outs = trace.posterior["offset"][0, burn:nit]
-        # offset_outs = trace.get_values(offset, burn=burn)[0:int((nit)-burn)]
-        OFFSETtrace = np.hstack([np.zeros((int(nit - burn), 1)), offset_outs])
-        YBCtrace = np.dot(Hbc.T, bcouts.T) + np.dot(B, OFFSETtrace.T)
-        OFFtrace = np.dot(B, OFFSETtrace.T)
+        offset_trace = np.hstack([np.zeros((int(nit - burn), 1)), offset_outs])
+        OFFSETtrace = np.dot(B, offset_trace.T)
     else:
-        YBCtrace = np.dot(Hbc.T, bcouts.T)
         offset_outs = outs * 0
-        # OFFSETtrace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
-        OFFtrace = YBCtrace * 0
+        # offset_trace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
+        OFFSETtrace = np.dot(hx, outs.T) * 0
 
-    Ytrace = np.dot(Hx.T, outs.T) + YBCtrace
+    Ytrace = np.dot(Hx.T, outs.T)
 
-    return outs, bcouts, sigouts, offset_outs, Ytrace, YBCtrace, OFFtrace, convergence, step1, step2
+    return outs, sigouts, offset_outs, Ytrace, OFFSETtrace, convergence, step1, step2
 
 
-def inferpymc_postprocessouts(
+def inferpymc_postprocessouts_nobc(
     xouts,
-    bcouts,
     sigouts,
     offset_outs,
     convergence,
     Hx,
-    Hbc,
     Y,
     error,
     Ytrace,
-    YBCtrace,
     OFFSETtrace,
     step1,
     step2,
     xprior,
-    bcprior,
     sigprior,
     offsetprior,
     Ytime,
@@ -315,8 +233,6 @@ def inferpymc_postprocessouts(
     Args:
       xouts (array):
         MCMC chain for emissions scaling factors for each basis function.
-      bcouts (array):
-        MCMC chain for boundary condition scaling factors.
       sigouts (array):
         MCMC chain for model error.
       convergence (str):
@@ -327,16 +243,12 @@ def inferpymc_postprocessouts(
         This is the same as what is given from fp_data[site].H.values, where
         fp_data is the output from e.g. footprint_data_merge, but where it
         has been stacked for all sites.
-      Hbc (array):
-        Same as above but for boundary conditions
       Y (array):
         Measurement vector containing all measurements
       error (arrray):
         Measurement error vector, containg a value for each element of Y.
       Ytrace (array):
         Trace of modelled y values calculated from mcmc outputs and H matrices
-      YBCtrace (array):
-        Trace of modelled boundary condition values calculated from mcmc outputs and Hbc matrices
       step1 (str):
         Type of MCMC sampler for emissions and boundary condition updates.
       step2 (str):
@@ -351,8 +263,6 @@ def inferpymc_postprocessouts(
         e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sd":1}.
         Note that the standard deviation should be used rather than the
         precision. Currently all variables are considered iid.
-      bcprior (dict):
-        Same as above but for boundary conditions.
       sigprior (dict):
         Same as above but for model error.
       offsetprior (dict):
@@ -423,16 +333,13 @@ def inferpymc_postprocessouts(
     nit = xouts.shape[0]
     nx = Hx.shape[0]
     ny = len(Y)
-    nbc = Hbc.shape[0]
     noff = offset_outs.shape[0]
 
     nui = np.arange(2)
     steps = np.arange(nit)
     nmeasure = np.arange(ny)
     nparam = np.arange(nx)
-    nBC = np.arange(nbc)
     nOFF = np.arange(noff)
-    # YBCtrace = np.dot(Hbc.T,bcouts.T)
 
     # OFFSET HYPERPARAMETER
     YmodmuOFF = np.mean(OFFSETtrace, axis=1)  # mean
@@ -452,25 +359,6 @@ def inferpymc_postprocessouts(
     Ymod95OFF = az.hdi(OFFSETtrace.T, 0.95)
     Ymod68OFF = az.hdi(OFFSETtrace.T, 0.68)
 
-    # Y-BC HYPERPARAMETER
-    YmodmuBC = np.mean(YBCtrace, axis=1)
-    YmodmedBC = np.median(YBCtrace, axis=1)
-    YmodmodeBC = np.zeros(shape=YBCtrace.shape[0])
-
-    for i in range(0, YBCtrace.shape[0]):
-        # if sufficient no. of iterations use a KDE to calculate mode
-        # else, mean value used in lieu
-        if np.nanmax(YBCtrace[i, :]) > np.nanmin(YBCtrace[i, :]):
-            xes_bc = np.linspace(np.nanmin(YBCtrace[i, :]), np.nanmax(YBCtrace[i, :]), 200)
-            kde = stats.gaussian_kde(YBCtrace[i, :]).evaluate(xes_bc)
-            YmodmodeBC[i] = xes_bc[kde.argmax()]
-        else:
-            YmodmodeBC[i] = np.mean(YBCtrace[i, :])
-
-    Ymod95BC = az.hdi(YBCtrace.T, 0.95)
-    Ymod68BC = az.hdi(YBCtrace.T, 0.68)
-    YaprioriBC = np.sum(Hbc, axis=0)
-
     # Y-VALUES HYPERPARAMETER (XOUTS * H)
     Ymodmu = np.mean(Ytrace, axis=1)
     Ymodmed = np.median(Ytrace, axis=1)
@@ -488,7 +376,7 @@ def inferpymc_postprocessouts(
 
     Ymod95 = az.hdi(Ytrace.T, 0.95)
     Ymod68 = az.hdi(Ytrace.T, 0.68)
-    Yapriori = np.sum(Hx.T, axis=1) + np.sum(Hbc.T, axis=1)
+    Yapriori = np.sum(Hx.T, axis=1) 
     sitenum = np.arange(len(sites))
 
     if fp_data is None and rerun_file is not None:
@@ -627,14 +515,7 @@ def inferpymc_postprocessouts(
             "Yoffmode": (["nmeasure"], YmodmodeOFF),
             "Yoff68": (["nmeasure", "nUI"], Ymod68OFF),
             "Yoff95": (["nmeasure", "nUI"], Ymod95OFF),
-            "YaprioriBC": (["nmeasure"], YaprioriBC),
-            "YmodmeanBC": (["nmeasure"], YmodmuBC),
-            "YmodmedianBC": (["nmeasure"], YmodmedBC),
-            "YmodmodeBC": (["nmeasure"], YmodmodeBC),
-            "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
-            "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
             "xtrace": (["steps", "nparam"], xouts.values),
-            "bctrace": (["steps", "nBC"], bcouts.values),
             "sigtrace": (["steps", "nsigma_site", "nsigma_time"], sigouts.values),
             "siteindicator": (["nmeasure"], siteindicator),
             "sigmafreqindex": (["nmeasure"], sigma_freq_index),
@@ -655,12 +536,10 @@ def inferpymc_postprocessouts(
             "countryapriori": (["countrynames"], cntryprior),
             "countrydefinition": (["lat", "lon"], cntrygrid),
             "xsensitivity": (["nmeasure", "nparam"], Hx.T),
-            "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
         },
         coords={
             "stepnum": (["steps"], steps),
             "paramnum": (["nlatent"], nparam),
-            "numBC": (["nBC"], nBC),
             "measurenum": (["nmeasure"], nmeasure),
             "UInum": (["nUI"], nui),
             "nsites": (["nsite"], sitenum),
@@ -686,12 +565,6 @@ def inferpymc_postprocessouts(
     outds.Yoffmode.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yoff95.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yoff68.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.YmodmeanBC.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.YmodmedianBC.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.YmodmodeBC.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Ymod95BC.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Ymod68BC.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.YaprioriBC.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yerror.attrs["units"] = obs_units + " " + "mol/mol"
     outds.countrymean.attrs["units"] = country_units
     outds.countrymedian.attrs["units"] = country_units
@@ -701,7 +574,6 @@ def inferpymc_postprocessouts(
     outds.countrysd.attrs["units"] = country_units
     outds.countryapriori.attrs["units"] = country_units
     outds.xsensitivity.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.bcsensitivity.attrs["units"] = obs_units + " " + "mol/mol"
     outds.sigtrace.attrs["units"] = obs_units + " " + "mol/mol"
 
     outds.Yobs.attrs["longname"] = "observations"
@@ -722,18 +594,7 @@ def inferpymc_postprocessouts(
     outds.Yoff95.attrs[
         "longname"
     ] = " 0.95 Bayesian credible interval of posterior simulated offset between measurements"
-    outds.YaprioriBC.attrs["longname"] = "a priori simulated boundary conditions"
-    outds.YmodmeanBC.attrs["longname"] = "mean of posterior simulated boundary conditions"
-    outds.YmodmedianBC.attrs["longname"] = "median of posterior simulated boundary conditions"
-    outds.YmodmodeBC.attrs["longname"] = "mode of posterior simulated boundary conditions"
-    outds.Ymod68BC.attrs[
-        "longname"
-    ] = " 0.68 Bayesian credible interval of posterior simulated boundary conditions"
-    outds.Ymod95BC.attrs[
-        "longname"
-    ] = " 0.95 Bayesian credible interval of posterior simulated boundary conditions"
     outds.xtrace.attrs["longname"] = "trace of unitless scaling factors for emissions parameters"
-    outds.bctrace.attrs["longname"] = "trace of unitless scaling factors for boundary condition parameters"
     outds.sigtrace.attrs["longname"] = "trace of model error parameters"
     outds.siteindicator.attrs["longname"] = "index of site of measurement corresponding to sitenames"
     outds.sigmafreqindex.attrs["longname"] = "perdiod over which the model error is estimated"
@@ -754,7 +615,6 @@ def inferpymc_postprocessouts(
     outds.countryapriori.attrs["longname"] = "prior mean of ocean and country totals"
     outds.countrydefinition.attrs["longname"] = "grid definition of countries"
     outds.xsensitivity.attrs["longname"] = "emissions sensitivity timeseries"
-    outds.bcsensitivity.attrs["longname"] = "boundary conditions sensitivity timeseries"
 
     outds.attrs["Start date"] = start_date
     outds.attrs["End date"] = end_date
@@ -766,7 +626,6 @@ def inferpymc_postprocessouts(
     outds.attrs["Error for each site"] = str(sigma_per_site)
     outds.attrs["Emissions Prior"] = "".join(["{0},{1},".format(k, v) for k, v in xprior.items()])[:-1]
     outds.attrs["Model error Prior"] = "".join(["{0},{1},".format(k, v) for k, v in sigprior.items()])[:-1]
-    outds.attrs["BCs Prior"] = "".join(["{0},{1},".format(k, v) for k, v in bcprior.items()])[:-1]
     if add_offset:
         outds.attrs["Offset Prior"] = "".join(["{0},{1},".format(k, v) for k, v in offsetprior.items()])[:-1]
     outds.attrs["Creator"] = getpass.getuser()
