@@ -595,6 +595,9 @@ def fixedbasisMCMC(
 
             mcmc_args["Hbc"] = Hbc
             mcmc_args["bcprior"] = bcprior
+            mcmc_args["use_bc"] = True
+        else:
+            mcmc_args["use_bc"] = False
 
         post_process_args = {
             "Ytime": Ytime,
@@ -623,21 +626,12 @@ def fixedbasisMCMC(
         # add any additional kwargs to mcmc_args (these aren't needed for post processing)
         mcmc_args.update(kwargs)
 
-        if use_bc is True:
-            # Run PyMC inversion with boundary conditions
-            mcmc_results = mcmc.inferpymc(**mcmc_args)
+        # Run PyMC inversion
+        mcmc_results = mcmc.inferpymc(**mcmc_args)
 
-            # Process and save inversion output
-            post_process_args.update(mcmc_results)
-            out = mcmc.inferpymc_postprocessouts(**post_process_args)
-
-        else:
-            # Run PyMC inversion without boundary conditions
-            mcmc_results = mcmc_nobc.inferpymc_nobc(**mcmc_args)
-
-            # Process and save inversion output
-            post_process_args.update(mcmc_results)
-            out = mcmc_nobc.inferpymc_postprocessouts_nobc(**post_process_args)
+        # Process and save inversion output
+        post_process_args.update(mcmc_results)
+        out = mcmc.inferpymc_postprocessouts(**post_process_args)
 
     elif use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")

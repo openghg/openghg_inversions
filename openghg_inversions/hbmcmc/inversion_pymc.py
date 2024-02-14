@@ -18,7 +18,7 @@ import pytensor.tensor as pt
 import arviz as az
 from scipy import stats
 from pathlib import Path
-from typing import Optional, Union
+from typing import cast, Optional, Union
 
 
 from openghg_inversions import convert
@@ -87,11 +87,11 @@ def parseprior(name, prior_params, shape=()):
 
 def inferpymc(
     Hx,
-    Hbc,
     Y,
     error,
     siteindicator,
     sigma_freq_index,
+    Hbc: Optional[np.ndarray] = None,
     xprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     bcprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     sigprior={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
@@ -105,6 +105,7 @@ def inferpymc(
     verbose=False,
     min_error=0.0,
     save_trace=False,
+    use_bc: bool = True,
 ):
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
@@ -179,12 +180,18 @@ def inferpymc(
        - Allow non-iid variables
     -----------------------------------
     """
+    if use_bc and Hbc is None:
+        raise ValueError("If `use_bc` is True, then `Hbc` must be provided.")
+
     burn = int(burn)
 
     hx = Hx.T
-    hbc = Hbc.T
     nx = hx.shape[1]
-    nbc = hbc.shape[1]
+
+    if use_bc:
+        hbc = Hbc.T
+        nbc = hbc.shape[1]
+
     ny = len(Y)
 
     nit = int(nit)
@@ -203,20 +210,27 @@ def inferpymc(
 
     with pm.Model() as model:
         x = parseprior("x", xprior, shape=nx)
-        xbc = parseprior("xbc", bcprior, shape=nbc)
+
+        if use_bc:
+            xbc = parseprior("xbc", bcprior, shape=nbc)
+
         sig = parseprior("sig", sigprior, shape=(nsites, nsigmas))
+
+        mu = pt.dot(hx, x)
+
+        if use_bc:
+            mu += pt.dot(hbc, xbc)
+
         if add_offset:
             offset = parseprior("offset", offsetprior, shape=nsites - 1)
             offset_vec = pt.concatenate((np.array([0]), offset), axis=0)
-            mu = pt.dot(hx, x) + pt.dot(hbc, xbc) + pt.dot(B, offset_vec)
-        else:
-            mu = pt.dot(hx, x) + pt.dot(hbc, xbc)
+            mu += pt.dot(B, offset_vec)
 
         model_error = np.abs(pt.dot(hx, x)) * sig[sites, sigma_freq_index]
         epsilon = pt.sqrt(error**2 + model_error**2 + min_error**2)
         y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
-        step1 = pm.NUTS(vars=[x, xbc])
+        step1 = pm.NUTS(vars=[x, xbc]) if use_bc else pm.NUTS(vars=[x])
         step2 = pm.Slice(vars=[sig])
 
         trace = pm.sample(
@@ -227,7 +241,10 @@ def inferpymc(
     #    trace.to_netcdf(str(save_trace), engine="netcdf4")
 
     outs = trace.posterior["x"][0, burn:nit]
-    bcouts = trace.posterior["xbc"][0, burn:nit]
+
+    if use_bc:
+        bcouts = trace.posterior["xbc"][0, burn:nit]
+
     sigouts = trace.posterior["sig"][0, burn:nit]
 
     # outs = trace.get_values(x, burn=burn)[0:int((nit)-burn)]
@@ -246,49 +263,49 @@ def inferpymc(
         offset_outs = trace.posterior["offset"][0, burn:nit]
         # offset_outs = trace.get_values(offset, burn=burn)[0:int((nit)-burn)]
         OFFSETtrace = np.hstack([np.zeros((int(nit - burn), 1)), offset_outs])
-        YBCtrace = np.dot(Hbc.T, bcouts.T) + np.dot(B, OFFSETtrace.T)
         OFFtrace = np.dot(B, OFFSETtrace.T)
     else:
-        YBCtrace = np.dot(Hbc.T, bcouts.T)
         offset_outs = outs * 0
         # OFFSETtrace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
-        OFFtrace = YBCtrace * 0
+        OFFtrace = np.zeros((ny, nit - burn))
 
-    Ytrace = np.dot(Hx.T, outs.T) + YBCtrace
+    if use_bc:
+        YBCtrace = np.dot(Hbc.T, bcouts.T) + OFFtrace
+        Ytrace = np.dot(Hx.T, outs.T) + YBCtrace
+    else:
+        Ytrace = np.dot(Hx.T, outs.T) + OFFtrace
 
     result = {
         "xouts": outs,
-        "bcouts": bcouts,
         "sigouts": sigouts,
         "offset_outs": offset_outs,
         "Ytrace": Ytrace,
-        "YBCtrace": YBCtrace,
         "OFFSETtrace": OFFtrace,
         "convergence": convergence,
         "step1": step1,
         "step2": step2,
     }
 
+    if use_bc:
+        result["bcouts"] = bcouts
+        result["YBCtrace"] = YBCtrace
+
     return result
 
 
 def inferpymc_postprocessouts(
     xouts,
-    bcouts,
     sigouts,
     offset_outs,
     convergence,
     Hx,
-    Hbc,
     Y,
     error,
     Ytrace,
-    YBCtrace,
     OFFSETtrace,
     step1,
     step2,
     xprior,
-    bcprior,
     sigprior,
     offsetprior,
     Ytime,
@@ -308,11 +325,16 @@ def inferpymc_postprocessouts(
     sigma_per_site,
     emissions_name,
     emissions_store,
+    bcprior: Optional[dict] = None,
+    YBCtrace: Optional[np.ndarray] = None,
+    bcouts: Optional[np.ndarray] = None,
+    Hbc: Optional[np.ndarray] = None,
     fp_data=None,
     basis_directory=None,
     country_file=None,
     add_offset=False,
     rerun_file=None,
+    use_bc: bool = False,
 ):
     """
     Takes the output from inferpymc function, along with some other input
@@ -436,14 +458,17 @@ def inferpymc_postprocessouts(
     nit = xouts.shape[0]
     nx = Hx.shape[0]
     ny = len(Y)
-    nbc = Hbc.shape[0]
+
+    if use_bc:
+        nbc = Hbc.shape[0]
+        nBC = np.arange(nbc)
+
     noff = offset_outs.shape[0]
 
     nui = np.arange(2)
     steps = np.arange(nit)
     nmeasure = np.arange(ny)
     nparam = np.arange(nx)
-    nBC = np.arange(nbc)
     nOFF = np.arange(noff)
     # YBCtrace = np.dot(Hbc.T,bcouts.T)
 
@@ -466,23 +491,24 @@ def inferpymc_postprocessouts(
     Ymod68OFF = az.hdi(OFFSETtrace.T, 0.68)
 
     # Y-BC HYPERPARAMETER
-    YmodmuBC = np.mean(YBCtrace, axis=1)
-    YmodmedBC = np.median(YBCtrace, axis=1)
-    YmodmodeBC = np.zeros(shape=YBCtrace.shape[0])
+    if use_bc:
+        YmodmuBC = np.mean(YBCtrace, axis=1)
+        YmodmedBC = np.median(YBCtrace, axis=1)
+        YmodmodeBC = np.zeros(shape=YBCtrace.shape[0])
 
-    for i in range(0, YBCtrace.shape[0]):
-        # if sufficient no. of iterations use a KDE to calculate mode
-        # else, mean value used in lieu
-        if np.nanmax(YBCtrace[i, :]) > np.nanmin(YBCtrace[i, :]):
-            xes_bc = np.linspace(np.nanmin(YBCtrace[i, :]), np.nanmax(YBCtrace[i, :]), 200)
-            kde = stats.gaussian_kde(YBCtrace[i, :]).evaluate(xes_bc)
-            YmodmodeBC[i] = xes_bc[kde.argmax()]
-        else:
-            YmodmodeBC[i] = np.mean(YBCtrace[i, :])
+        for i in range(0, YBCtrace.shape[0]):
+            # if sufficient no. of iterations use a KDE to calculate mode
+            # else, mean value used in lieu
+            if np.nanmax(YBCtrace[i, :]) > np.nanmin(YBCtrace[i, :]):
+                xes_bc = np.linspace(np.nanmin(YBCtrace[i, :]), np.nanmax(YBCtrace[i, :]), 200)
+                kde = stats.gaussian_kde(YBCtrace[i, :]).evaluate(xes_bc)
+                YmodmodeBC[i] = xes_bc[kde.argmax()]
+            else:
+                YmodmodeBC[i] = np.mean(YBCtrace[i, :])
 
-    Ymod95BC = az.hdi(YBCtrace.T, 0.95)
-    Ymod68BC = az.hdi(YBCtrace.T, 0.68)
-    YaprioriBC = np.sum(Hbc, axis=0)
+        Ymod95BC = az.hdi(YBCtrace.T, 0.95)
+        Ymod68BC = az.hdi(YBCtrace.T, 0.68)
+        YaprioriBC = np.sum(Hbc, axis=0)
 
     # Y-VALUES HYPERPARAMETER (XOUTS * H)
     Ymodmu = np.mean(Ytrace, axis=1)
@@ -501,7 +527,12 @@ def inferpymc_postprocessouts(
 
     Ymod95 = az.hdi(Ytrace.T, 0.95)
     Ymod68 = az.hdi(Ytrace.T, 0.68)
-    Yapriori = np.sum(Hx.T, axis=1) + np.sum(Hbc.T, axis=1)
+
+    if use_bc:
+        Yapriori = np.sum(Hx.T, axis=1) + np.sum(Hbc.T, axis=1)
+    else:
+        Yapriori = np.sum(Hx.T, axis=1)
+
     sitenum = np.arange(len(sites))
 
     if fp_data is None and rerun_file is not None:
@@ -624,66 +655,73 @@ def inferpymc_postprocessouts(
         cntryprior[ci] = cntrytotprior
 
     # Make output netcdf file
-    outds = xr.Dataset(
-        {
-            "Yobs": (["nmeasure"], Y),
-            "Yerror": (["nmeasure"], error),
-            "Ytime": (["nmeasure"], Ytime),
-            "Yapriori": (["nmeasure"], Yapriori),
-            "Ymodmean": (["nmeasure"], Ymodmu),
-            "Ymodmedian": (["nmeasure"], Ymodmed),
-            "Ymodmode": (["nmeasure"], Ymodmode),
-            "Ymod95": (["nmeasure", "nUI"], Ymod95),
-            "Ymod68": (["nmeasure", "nUI"], Ymod68),
-            "Yoffmean": (["nmeasure"], YmodmuOFF),
-            "Yoffmedian": (["nmeasure"], YmodmedOFF),
-            "Yoffmode": (["nmeasure"], YmodmodeOFF),
-            "Yoff68": (["nmeasure", "nUI"], Ymod68OFF),
-            "Yoff95": (["nmeasure", "nUI"], Ymod95OFF),
-            "YaprioriBC": (["nmeasure"], YaprioriBC),
-            "YmodmeanBC": (["nmeasure"], YmodmuBC),
-            "YmodmedianBC": (["nmeasure"], YmodmedBC),
-            "YmodmodeBC": (["nmeasure"], YmodmodeBC),
-            "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
-            "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
-            "xtrace": (["steps", "nparam"], xouts.values),
-            "bctrace": (["steps", "nBC"], bcouts.values),
-            "sigtrace": (["steps", "nsigma_site", "nsigma_time"], sigouts.values),
-            "siteindicator": (["nmeasure"], siteindicator),
-            "sigmafreqindex": (["nmeasure"], sigma_freq_index),
-            "sitenames": (["nsite"], sites),
-            "sitelons": (["nsite"], site_lon),
-            "sitelats": (["nsite"], site_lat),
-            "fluxapriori": (["lat", "lon"], apriori_flux),
-            "fluxmode": (["lat", "lon"], flux),
-            "scalingmean": (["lat", "lon"], scalemap_mu),
-            "scalingmode": (["lat", "lon"], scalemap_mode),
-            "basisfunctions": (["lat", "lon"], bfarray),
-            "countrymean": (["countrynames"], cntrymean),
-            "countrymedian": (["countrynames"], cntrymedian),
-            "countrymode": (["countrynames"], cntrymode),
-            "countrysd": (["countrynames"], cntrysd),
-            "country68": (["countrynames", "nUI"], cntry68),
-            "country95": (["countrynames", "nUI"], cntry95),
-            "countryapriori": (["countrynames"], cntryprior),
-            "countrydefinition": (["lat", "lon"], cntrygrid),
-            "xsensitivity": (["nmeasure", "nparam"], Hx.T),
-            "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
-        },
-        coords={
-            "stepnum": (["steps"], steps),
-            "paramnum": (["nlatent"], nparam),
-            "numBC": (["nBC"], nBC),
-            "measurenum": (["nmeasure"], nmeasure),
-            "UInum": (["nUI"], nui),
-            "nsites": (["nsite"], sitenum),
-            "nsigma_time": (["nsigma_time"], np.unique(sigma_freq_index)),
-            "nsigma_site": (["nsigma_site"], np.arange(sigouts.shape[1]).astype(int)),
-            "lat": (["lat"], lat),
-            "lon": (["lon"], lon),
-            "countrynames": (["countrynames"], cntrynames),
-        },
-    )
+    data_vars = {
+        "Yobs": (["nmeasure"], Y),
+        "Yerror": (["nmeasure"], error),
+        "Ytime": (["nmeasure"], Ytime),
+        "Yapriori": (["nmeasure"], Yapriori),
+        "Ymodmean": (["nmeasure"], Ymodmu),
+        "Ymodmedian": (["nmeasure"], Ymodmed),
+        "Ymodmode": (["nmeasure"], Ymodmode),
+        "Ymod95": (["nmeasure", "nUI"], Ymod95),
+        "Ymod68": (["nmeasure", "nUI"], Ymod68),
+        "Yoffmean": (["nmeasure"], YmodmuOFF),
+        "Yoffmedian": (["nmeasure"], YmodmedOFF),
+        "Yoffmode": (["nmeasure"], YmodmodeOFF),
+        "Yoff68": (["nmeasure", "nUI"], Ymod68OFF),
+        "Yoff95": (["nmeasure", "nUI"], Ymod95OFF),
+        "xtrace": (["steps", "nparam"], xouts.values),
+        "sigtrace": (["steps", "nsigma_site", "nsigma_time"], sigouts.values),
+        "siteindicator": (["nmeasure"], siteindicator),
+        "sigmafreqindex": (["nmeasure"], sigma_freq_index),
+        "sitenames": (["nsite"], sites),
+        "sitelons": (["nsite"], site_lon),
+        "sitelats": (["nsite"], site_lat),
+        "fluxapriori": (["lat", "lon"], apriori_flux),
+        "fluxmode": (["lat", "lon"], flux),
+        "scalingmean": (["lat", "lon"], scalemap_mu),
+        "scalingmode": (["lat", "lon"], scalemap_mode),
+        "basisfunctions": (["lat", "lon"], bfarray),
+        "countrymean": (["countrynames"], cntrymean),
+        "countrymedian": (["countrynames"], cntrymedian),
+        "countrymode": (["countrynames"], cntrymode),
+        "countrysd": (["countrynames"], cntrysd),
+        "country68": (["countrynames", "nUI"], cntry68),
+        "country95": (["countrynames", "nUI"], cntry95),
+        "countryapriori": (["countrynames"], cntryprior),
+        "countrydefinition": (["lat", "lon"], cntrygrid),
+        "xsensitivity": (["nmeasure", "nparam"], Hx.T),
+    }
+
+    coords = {
+        "stepnum": (["steps"], steps),
+        "paramnum": (["nlatent"], nparam),
+        "measurenum": (["nmeasure"], nmeasure),
+        "UInum": (["nUI"], nui),
+        "nsites": (["nsite"], sitenum),
+        "nsigma_time": (["nsigma_time"], np.unique(sigma_freq_index)),
+        "nsigma_site": (["nsigma_site"], np.arange(sigouts.shape[1]).astype(int)),
+        "lat": (["lat"], lat),
+        "lon": (["lon"], lon),
+        "countrynames": (["countrynames"], cntrynames),
+    }
+
+    if use_bc:
+        data_vars.update(
+            {
+                "YaprioriBC": (["nmeasure"], YaprioriBC),
+                "YmodmeanBC": (["nmeasure"], YmodmuBC),
+                "YmodmedianBC": (["nmeasure"], YmodmedBC),
+                "YmodmodeBC": (["nmeasure"], YmodmodeBC),
+                "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
+                "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
+                "bctrace": (["steps", "nBC"], bcouts.values),
+                "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
+            }
+        )
+        coords["numBC"] = (["nBC"], nBC)
+
+    outds = xr.Dataset(data_vars, coords=coords)
 
     outds.fluxmode.attrs["units"] = "mol/m2/s"
     outds.fluxapriori.attrs["units"] = "mol/m2/s"
@@ -699,12 +737,6 @@ def inferpymc_postprocessouts(
     outds.Yoffmode.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yoff95.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yoff68.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.YmodmeanBC.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.YmodmedianBC.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.YmodmodeBC.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Ymod95BC.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Ymod68BC.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.YaprioriBC.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yerror.attrs["units"] = obs_units + " " + "mol/mol"
     outds.countrymean.attrs["units"] = country_units
     outds.countrymedian.attrs["units"] = country_units
@@ -714,7 +746,6 @@ def inferpymc_postprocessouts(
     outds.countrysd.attrs["units"] = country_units
     outds.countryapriori.attrs["units"] = country_units
     outds.xsensitivity.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.bcsensitivity.attrs["units"] = obs_units + " " + "mol/mol"
     outds.sigtrace.attrs["units"] = obs_units + " " + "mol/mol"
 
     outds.Yobs.attrs["longname"] = "observations"
@@ -735,18 +766,7 @@ def inferpymc_postprocessouts(
     outds.Yoff95.attrs[
         "longname"
     ] = " 0.95 Bayesian credible interval of posterior simulated offset between measurements"
-    outds.YaprioriBC.attrs["longname"] = "a priori simulated boundary conditions"
-    outds.YmodmeanBC.attrs["longname"] = "mean of posterior simulated boundary conditions"
-    outds.YmodmedianBC.attrs["longname"] = "median of posterior simulated boundary conditions"
-    outds.YmodmodeBC.attrs["longname"] = "mode of posterior simulated boundary conditions"
-    outds.Ymod68BC.attrs[
-        "longname"
-    ] = " 0.68 Bayesian credible interval of posterior simulated boundary conditions"
-    outds.Ymod95BC.attrs[
-        "longname"
-    ] = " 0.95 Bayesian credible interval of posterior simulated boundary conditions"
     outds.xtrace.attrs["longname"] = "trace of unitless scaling factors for emissions parameters"
-    outds.bctrace.attrs["longname"] = "trace of unitless scaling factors for boundary condition parameters"
     outds.sigtrace.attrs["longname"] = "trace of model error parameters"
     outds.siteindicator.attrs["longname"] = "index of site of measurement corresponding to sitenames"
     outds.sigmafreqindex.attrs["longname"] = "perdiod over which the model error is estimated"
@@ -767,7 +787,28 @@ def inferpymc_postprocessouts(
     outds.countryapriori.attrs["longname"] = "prior mean of ocean and country totals"
     outds.countrydefinition.attrs["longname"] = "grid definition of countries"
     outds.xsensitivity.attrs["longname"] = "emissions sensitivity timeseries"
-    outds.bcsensitivity.attrs["longname"] = "boundary conditions sensitivity timeseries"
+
+    if use_bc:
+        outds.YmodmeanBC.attrs["units"] = obs_units + " " + "mol/mol"
+        outds.YmodmedianBC.attrs["units"] = obs_units + " " + "mol/mol"
+        outds.YmodmodeBC.attrs["units"] = obs_units + " " + "mol/mol"
+        outds.Ymod95BC.attrs["units"] = obs_units + " " + "mol/mol"
+        outds.Ymod68BC.attrs["units"] = obs_units + " " + "mol/mol"
+        outds.YaprioriBC.attrs["units"] = obs_units + " " + "mol/mol"
+        outds.bcsensitivity.attrs["units"] = obs_units + " " + "mol/mol"
+
+        outds.YaprioriBC.attrs["longname"] = "a priori simulated boundary conditions"
+        outds.YmodmeanBC.attrs["longname"] = "mean of posterior simulated boundary conditions"
+        outds.YmodmedianBC.attrs["longname"] = "median of posterior simulated boundary conditions"
+        outds.YmodmodeBC.attrs["longname"] = "mode of posterior simulated boundary conditions"
+        outds.Ymod68BC.attrs[
+            "longname"
+        ] = " 0.68 Bayesian credible interval of posterior simulated boundary conditions"
+        outds.Ymod95BC.attrs[
+            "longname"
+        ] = " 0.95 Bayesian credible interval of posterior simulated boundary conditions"
+        outds.bctrace.attrs["longname"] = "trace of unitless scaling factors for boundary condition parameters"
+        outds.bcsensitivity.attrs["longname"] = "boundary conditions sensitivity timeseries"
 
     outds.attrs["Start date"] = start_date
     outds.attrs["End date"] = end_date
@@ -779,7 +820,8 @@ def inferpymc_postprocessouts(
     outds.attrs["Error for each site"] = str(sigma_per_site)
     outds.attrs["Emissions Prior"] = "".join(["{0},{1},".format(k, v) for k, v in xprior.items()])[:-1]
     outds.attrs["Model error Prior"] = "".join(["{0},{1},".format(k, v) for k, v in sigprior.items()])[:-1]
-    outds.attrs["BCs Prior"] = "".join(["{0},{1},".format(k, v) for k, v in bcprior.items()])[:-1]
+    if use_bc:
+        outds.attrs["BCs Prior"] = "".join(["{0},{1},".format(k, v) for k, v in bcprior.items()])[:-1]
     if add_offset:
         outds.attrs["Offset Prior"] = "".join(["{0},{1},".format(k, v) for k, v in offsetprior.items()])[:-1]
     outds.attrs["Creator"] = getpass.getuser()
