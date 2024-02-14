@@ -36,7 +36,6 @@ import shutil
 import numpy as np
 import openghg_inversions.hbmcmc.inversionsetup as setup
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
-import openghg_inversions.hbmcmc.inversion_pymc_nobc as mcmc_nobc
 import openghg_inversions.basis_functions as basis
 from openghg_inversions import utils
 from openghg_inversions import get_data
