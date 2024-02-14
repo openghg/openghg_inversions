@@ -36,6 +36,7 @@ import shutil
 import numpy as np
 import openghg_inversions.hbmcmc.inversionsetup as setup
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
+import openghg_inversions.hbmcmc.inversion_pymc_nobc as mcmc_nobc
 import openghg_inversions.basis_functions as basis
 from openghg_inversions import utils
 from openghg_inversions import get_data
@@ -649,7 +650,7 @@ def fixedbasisMCMC(
             )
 
         if use_bc is False:
-            import openghg_inversions.hbmcmc.inversion_pymc_nobc as mcmc
+            # import openghg_inversions.hbmcmc.inversion_pymc_nobc as mcmc
 
             for si, site in enumerate(sites):
                 if "mf_repeatability" in fp_data[site]:
@@ -683,7 +684,7 @@ def fixedbasisMCMC(
                 convergence,
                 step1,
                 step2,
-            ) = mcmc.inferpymc_nobc(
+            ) = mcmc_nobc.inferpymc_nobc(
                 Hx,
                 Y,
                 error,
@@ -704,7 +705,7 @@ def fixedbasisMCMC(
             )
 
             # Process and save inversion output
-            out = mcmc.inferpymc_postprocessouts_nobc(
+            out = mcmc_nobc.inferpymc_postprocessouts_nobc(
                 xouts,
                 sigouts,
                 offset_outs,
