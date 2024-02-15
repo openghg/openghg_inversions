@@ -5,7 +5,7 @@
 # *****************************************************************************
 # About
 # Functions for retrieving observations and datasets for creating forward
-# simulations and
+# simulations
 #
 # Current options include:
 # - "data_processing_surface_notracer": Surface based measurements, without tracers
@@ -40,6 +40,7 @@ def data_processing_surface_notracer(
     fp_model=None,
     fp_height=None,
     emissions_name=None,
+    use_bc=True,
     bc_input=None,
     bc_store=None,
     obs_store=None,
@@ -97,6 +98,8 @@ def data_processing_surface_notracer(
         emissions_name (list):
             List of keywords args associated with emissions files
             in the object store.
+        use_bc (bool):
+            Option to include boundary conditions in model
         bc_store (str):
             Name of object store to retrieve boundary conditions data from
         obs_store (str):
@@ -222,26 +225,30 @@ def data_processing_surface_notracer(
             footprint_dict[site] = get_fps
 
         try:
-            # Get boundary conditions data
-            get_bc_data = get_bc(
-                species=species,
-                domain=domain,
-                bc_input=bc_input,
-                start_date=start_date,
-                end_date=end_date,
-                store=bc_store,
-            )
+            if use_bc is True:
+                # Get boundary conditions data
+                get_bc_data = get_bc(
+                    species=species,
+                    domain=domain,
+                    bc_input=bc_input,
+                    start_date=start_date,
+                    end_date=end_date,
+                    store=bc_store,
+                )
 
-            # Divide by trace gas species units
-            # See if R+G can include this 'behind the scenes'
-            get_bc_data.data.vmr_n.values = get_bc_data.data.vmr_n.values / unit
-            get_bc_data.data.vmr_e.values = get_bc_data.data.vmr_e.values / unit
-            get_bc_data.data.vmr_s.values = get_bc_data.data.vmr_s.values / unit
-            get_bc_data.data.vmr_w.values = get_bc_data.data.vmr_w.values / unit
-            my_bc = BoundaryConditionsData(
-                get_bc_data.data.transpose("height", "lat", "lon", "time"), get_bc_data.metadata
-            )
-            fp_all[".bc"] = my_bc
+                # Divide by trace gas species units
+                # See if R+G can include this 'behind the scenes'
+                get_bc_data.data.vmr_n.values = get_bc_data.data.vmr_n.values / unit
+                get_bc_data.data.vmr_e.values = get_bc_data.data.vmr_e.values / unit
+                get_bc_data.data.vmr_s.values = get_bc_data.data.vmr_s.values / unit
+                get_bc_data.data.vmr_w.values = get_bc_data.data.vmr_w.values / unit
+                my_bc = BoundaryConditionsData(
+                    get_bc_data.data.transpose("height", "lat", "lon", "time"), get_bc_data.metadata
+                )
+                fp_all[".bc"] = my_bc
+
+            else:
+                my_bc = None
 
             # Create ModelScenario object for all emissions_sectors
             # and combine into one object
@@ -259,7 +266,8 @@ def data_processing_surface_notracer(
 
             if len(emissions_name) == 1:
                 scenario_combined = model_scenario.footprints_data_merge()
-                scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
+                if use_bc is True:
+                    scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
 
             elif len(emissions_name) > 1:
                 # Create model scenario object for each flux sector
@@ -277,7 +285,8 @@ def data_processing_surface_notracer(
 
                 for key in model_scenario_dict.keys():
                     scenario_combined[key] = model_scenario_dict[key]
-                    scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
+                    if use_bc is True:
+                        scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
 
             fp_all[site] = scenario_combined
 

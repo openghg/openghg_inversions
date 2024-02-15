@@ -42,6 +42,12 @@ def test_inversion_if_merged_data_does_not_exist(mcmc_args):
     fixedbasisMCMC(**mcmc_args)
 
 
+def test_full_inversion_min_error_no_bc(mcmc_args):
+    """Test inversion without boundary conditions."""
+    mcmc_args["use_bc"] = False
+    fixedbasisMCMC(**mcmc_args)
+
+
 @pytest.mark.slow
 def test_full_inversion_long(mcmc_args):
     mcmc_args.update(
