@@ -14,7 +14,13 @@ def test_quadtree_basis_function(tac_ch4_data_args, raw_data_path):
     fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
     emissions_name = next(iter(fp_all[".flux"].keys()))
     basis_func = quadtreebasisfunction(
-        emissions_name=[emissions_name], fp_all=fp_all, sites=["TAC"], start_date="2019-01-01", domain="EUROPE", species="ch4", seed=42
+        emissions_name=[emissions_name],
+        fp_all=fp_all,
+        sites=["TAC"],
+        start_date="2019-01-01",
+        domain="EUROPE",
+        species="ch4",
+        seed=42,
     )
 
     basis_func_reloaded = utils.basis(
