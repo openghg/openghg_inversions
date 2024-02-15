@@ -18,7 +18,7 @@ import pytensor.tensor as pt
 import arviz as az
 from scipy import stats
 from pathlib import Path
-from typing import cast, Optional, Union
+from typing import Optional
 
 
 from openghg_inversions import convert

@@ -54,7 +54,7 @@ def data_processing_surface_notracer(
     """
     Retrieve and prepare fixed-surface datasets from
     specified OpenGHG object stores for forward
-    simulations and model-data comparisons that do not 
+    simulations and model-data comparisons that do not
     use tracers
     ---------------------------------------------
     Args:
@@ -82,13 +82,13 @@ def data_processing_surface_notracer(
             ICOS observations data level. For non-ICOS sites
             use "None"
         inlet (list/str/opt):
-            Specific inlet height for the site observations 
+            Specific inlet height for the site observations
             (length must match number of sites)
         instrument (list/str/opt):
-            Specific instrument for the site 
-            (length must match number of sites) 
+            Specific instrument for the site
+            (length must match number of sites)
         calibration_scale (str):
-            Convert measurements to defined calibration scale 
+            Convert measurements to defined calibration scale
         met_model (str/opt):
             Meteorological model used in the LPDM.
         fp_model (str):
@@ -112,7 +112,7 @@ def data_processing_surface_notracer(
             Adds the variability in the averaging period to the measurement
             error if set to True.
         save_merged_data (bool/opt, default=False):
-            Save forward simulations data and observations 
+            Save forward simulations data and observations
         merged_data_name (str/opt):
             Filename for saved forward simulations data and observations
         merged_data_dir (str/opt):
@@ -124,15 +124,14 @@ def data_processing_surface_notracer(
 
     # Convert 'None' args to list
     nsites = len(sites)
-    if inlet == None:
+    if inlet is None:
         inlet = [None] * nsites
-    if instrument == None:
+    if instrument is None:
         instrument = [None] * nsites
-    if fp_height == None:
+    if fp_height is None:
         fp_height = [None] * nsites
-    if obs_data_level == None:
+    if obs_data_level is None:
         obs_data_level = [None] * nsites
-
 
     fp_all = {}
     fp_all[".species"] = species.upper()
@@ -166,7 +165,7 @@ def data_processing_surface_notracer(
                 inlet=inlet[i],
                 start_date=start_date,
                 end_date=end_date,
-                icos_data_level=obs_data_level[i], # NB. Variable name may be later updated in OpenGHG
+                icos_data_level=obs_data_level[i],  # NB. Variable name may be later updated in OpenGHG
                 average=averaging_period[i],
                 instrument=instrument[i],
                 calibration_scale=calibration_scale,
@@ -193,7 +192,7 @@ def data_processing_surface_notracer(
         # Get footprints data
         try:
             # Ensure HiTRes CO2 footprints are obtained if
-            # using CO2 
+            # using CO2
             if species.lower() == "co2":
                 get_fps = get_footprint(
                     site=site,
@@ -204,7 +203,7 @@ def data_processing_surface_notracer(
                     end_date=end_date,
                     store=footprint_store,
                     species=species.lower(),
-                    )            
+                )
 
             else:
                 get_fps = get_footprint(
@@ -215,7 +214,7 @@ def data_processing_surface_notracer(
                     start_date=start_date,
                     end_date=end_date,
                     store=footprint_store,
-                    )
+                )
         except SearchError:
             print(
                 f"\nNo footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}.",
@@ -254,16 +253,16 @@ def data_processing_surface_notracer(
             # Create ModelScenario object for all emissions_sectors
             # and combine into one object
             model_scenario = ModelScenario(
-                                 site=site,
-                                 species=species,
-                                 inlet=inlet[i],
-                                 start_date=start_date,
-                                 end_date=end_date,
-                                 obs=site_data,
-                                 footprint=footprint_dict[site],
-                                 flux=flux_dict,
-                                 bc=my_bc,
-                                 )
+                site=site,
+                species=species,
+                inlet=inlet[i],
+                start_date=start_date,
+                end_date=end_date,
+                obs=site_data,
+                footprint=footprint_dict[site],
+                flux=flux_dict,
+                bc=my_bc,
+            )
 
             if len(emissions_name) == 1:
                 scenario_combined = model_scenario.footprints_data_merge()
@@ -273,16 +272,16 @@ def data_processing_surface_notracer(
             elif len(emissions_name) > 1:
                 # Create model scenario object for each flux sector
                 model_scenario_dict = {}
- 
+
                 for source in emissions_name:
-                    scenario_sector = model_scenario.footprints_data_merge(sources = source, recalculate = True)
+                    scenario_sector = model_scenario.footprints_data_merge(sources=source, recalculate=True)
 
                     if species.lower() == "co2":
-                        model_scenario_dict["mf_mod_high_res_" + source] = scenario_sector["mf_mod_high_res"]  
+                        model_scenario_dict["mf_mod_high_res_" + source] = scenario_sector["mf_mod_high_res"]
                     elif species.lower() != "co2":
-                        model_scenario_dict["mf_mod_" + source] = scenario_sector["mf_mod"]   
-    
-                scenario_combined = model_scenario.footprints_data_merge(recalculate = True)
+                        model_scenario_dict["mf_mod_" + source] = scenario_sector["mf_mod"]
+
+                scenario_combined = model_scenario.footprints_data_merge(recalculate=True)
 
                 for key in model_scenario_dict.keys():
                     scenario_combined[key] = model_scenario_dict[key]
