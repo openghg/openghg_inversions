@@ -210,25 +210,38 @@ def inferpymc(
         sig = parseprior("sig", sigprior, shape=(nsites, nsigmas))
 
         x_conc = []
-        hx_dot_x = []
+        #hx_dot_x = []
         for i, key in enumerate(xprior.keys()):
             sector_len = len(np.squeeze(np.where(basis_region_mask == i + 1)))
             sector_mask = np.squeeze(np.where(basis_region_mask == i + 1))
             print(key, "has ", sector_len, " basis functions")
             x = parseprior(key, xprior[key], shape=sector_len)
             x_conc.append(x)
-            hx_dot_x.append([pm.math.dot(hx[:, sector_mask], x)])
+            #hx_dot_x.append([pm.math.dot(hx[:, sector_mask], x)])
+            if i == 0:
+                hx_dot_x = pm.math.dot(hx[:, sector_mask], x)
+            else:
+                hx_dot_x += pm.math.dot(hx[:, sector_mask], x)
+          
+        #CHANGES: removed .concatenate lines and replaced with sums, as 
+        # dimensions of modelled mf weren't correct
+        # or, could add the .concatenate back in and use a .sum too:
+        # mu = pm.math.sum(pm.math.concatenate(hx_dot_x),axis=0)
 
         if add_offset:
             offset = parseprior("offset", offsetprior, shape=nsites - 1)
             offset_vec = pm.math.concatenate((np.array([0]), offset), axis=0)
-            mu = pm.math.concatenate(hx_dot_x) + pm.math.dot(hbc, xbc) + pm.math.dot(B, offset_vec) 
+            #mu = pm.math.concatenate(hx_dot_x) + pm.math.dot(hbc, xbc) + pm.math.dot(B, offset_vec) 
+            mu = hx_dot_x + pm.math.dot(hbc, xbc) + pm.math.dot(B, offset_vec) 
 
         else:
-            mu = pm.math.concatenate(hx_dot_x) + pm.math.dot(hbc, xbc)
+            #mu = pm.math.concatenate(hx_dot_x) + pm.math.dot(hbc, xbc)
+            mu = hx_dot_x + pm.math.dot(hbc, xbc)
 
         # Calculate model error
-        model_error = pm.math.abs(pm.math.concatenate(hx_dot_x)) * sig[sites, sigma_freq_index]
+        #model_error = pm.math.abs(pm.math.concatenate(hx_dot_x)) * sig[sites, sigma_freq_index]
+        model_error = pm.math.abs(hx_dot_x) * sig[sites, sigma_freq_index]
+                
         epsilon = pm.math.sqrt(error**2 + model_error**2 + min_model_error**2)
         y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
@@ -451,15 +464,16 @@ def inferpymc_postprocessouts(
     # Get parameters for output file
     sectors = list(xouts.keys())         # Emissions sectors
     nit = xouts[sectors[0]].shape[0]     # No. of MCMC samples
-    nx = Hx.shape[0]                     # No. of stacked scaling regions / basis functions
+    #nx = Hx.shape[0]                     # No. of stacked scaling regions / basis functions
     ny = len(Y)                          # No. of collated atmospheric measurements 
     nbc = Hbc.shape[0]                   # No. of BCs
-    noff = offsetouts.shape[0] 
+    noff = offsetouts.shape[0]
+    nbasis = [xouts[s].shape[1] for s in sectors]
 
     nui = np.arange(2)
     steps = np.arange(nit)
     nmeasure = np.arange(ny)
-    nparam = np.arange(nx)
+    #nparam = np.arange(nx)
     nBC = np.arange(nbc)
     nOFF = np.arange(noff)
     # YBCtrace = np.dot(Hbc.T,bcouts.T)
@@ -540,14 +554,15 @@ def inferpymc_postprocessouts(
         for si, site in enumerate(sites):
             site_lat[si] = fp_data[site].release_lat.values[0]
             site_lon[si] = fp_data[site].release_lon.values[0]
-        bfds = fp_data[".basis"]
+        basis_time_index = np.where(fp_data['.basis'].time.values == np.datetime64(start_date))[0][0]
+        bfds = fp_data[".basis"][:,:,:,basis_time_index]
 
     # Calculate mean and mode posterior scale map and flux field
     scalemap_mu = np.zeros_like(bfds.values)
     scalemap_mode = np.zeros_like(bfds.values)
 
     for i in range(len(sectors)):
-        bfds_i = bfds[i, :, : ,:] 
+        bfds_i = bfds[i, :, :] 
 
         for npm in range(0, int(np.max(bfds_i))):
             scalemap_mu[i][bfds_i.values == (npm + 1)] = np.mean(xouts[sectors[i]][:, npm])
@@ -590,10 +605,12 @@ def inferpymc_postprocessouts(
         for m in np.unique(allmonths):
             apriori_flux += flux_array_all[:, :, :, m] * np.sum(allmonths == m) / len(allmonths)
 
-    flux = np.squeeze(scalemap_mode) * np.squeeze(apriori_flux)
+    #flux = np.squeeze(scalemap_mode,axis=-1) * np.squeeze(apriori_flux,axis=-1)
+    flux = scalemap_mode * apriori_flux
 
     # Basis functions to save
-    bfarray = np.squeeze(bfds.values - 1)
+    #bfarray = np.squeeze(bfds.values - 1)
+    bfarray = bfds.values - 1
 
     # Calculate country totals
     area = utils.areagrid(lat, lon)
@@ -662,7 +679,6 @@ def inferpymc_postprocessouts(
         cntry95[i, ci, :] = pm.stats.hdi(cntrytottrace.values, 0.95)
         cntryprior[i, ci] = cntrytotprior
 
-
     # Make output netcdf file
     outds = xr.Dataset(
         {
@@ -686,7 +702,7 @@ def inferpymc_postprocessouts(
             "YmodmodeBC": (["nmeasure"], YmodmodeBC),
             "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
             "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
-            "xtrace": (["fluxsectors", "steps", "nparam"], np.array(list(xouts.values()))),
+            #"xtrace": (["fluxsectors", "steps", "nparam"], np.array(list(xouts.values()))),
             "bctrace": (["steps", "nBC"], bcouts.values),
             "sigtrace": (["steps", "nsigma_site", "nsigma_time"], sigouts.values),
             "siteindicator": (["nmeasure"], siteindicator),
@@ -698,7 +714,7 @@ def inferpymc_postprocessouts(
             "fluxmode": (["fluxsectors", "lat", "lon"], flux),
             "scalingmean": (["fluxsectors", "lat", "lon"], scalemap_mu),
             "scalingmode": (["fluxsectors", "lat", "lon"], scalemap_mode),
-            "basisfunctions": (["lat", "lon"], bfarray),
+            "basisfunctions": (["fluxsectors","lat", "lon"], bfarray),
 
             "countrymean": (["fluxsectors", "countrynames"], cntrymean),
             "countrymedian": (["fluxsectors", "countrynames"], cntrymedian),
@@ -708,12 +724,12 @@ def inferpymc_postprocessouts(
             "country95": (["fluxsectors", "countrynames", "nUI"], cntry95),
             "countryapriori": (["fluxsectors", "countrynames"], cntryprior),
             "countrydefinition": (["lat", "lon"], cntrygrid),
-            "xsensitivity": (["nmeasure", "nparam"], Hx.T),
+            #"xsensitivity": (["nmeasure", "nparam"], Hx.T),
             "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
         },
         coords={
             "stepnum": (["steps"], steps),
-            "paramnum": (["nlatent"], nparam),
+            #"paramnum": (["nlatent"], nparam),
             "numBC": (["nBC"], nBC),
             "measurenum": (["nmeasure"], nmeasure),
             "UInum": (["nUI"], nui),
@@ -723,9 +739,22 @@ def inferpymc_postprocessouts(
             "lat": (["lat"], lat),
             "lon": (["lon"], lon),
             "countrynames": (["countrynames"], cntrynames),
-            "fluxsectors": (["fluxsectors"], sectors),
+            "fluxsectors": (["fluxsectors"], np.array(sectors)),
         },
     )
+
+    Hx_split_array = np.split(Hx,np.cumsum(nbasis)[:-1],axis=0) #split full stacked H matrix into sectors
+    Hx_split = dict(zip(sectors,Hx_split_array)) #turn into dictionary
+    
+    for i,s in enumerate(sectors):
+        
+        outds.coords[f'nbasis_{s}'] = ([f'nbasis_{s}'],np.arange(nbasis[i]))
+        outds[f'xtrace_{s}'] = (['steps',f'nbasis_{s}'],xouts[s].values)
+        outds[f'xtrace_{s}'].attrs["longname"] = f"trace of unitless scaling factors for {s} emissions parameters"
+        
+        outds[f'xsensitivity_{s}'] = (['nmeasure',f'nbasis_{s}'],Hx_split[s].T)
+        outds[f'xsensitivity_{s}'].attrs["units"] = obs_units + " " + "mol/mol"
+        outds[f'xsensitivity_{s}'].attrs["longname"] = f"{s} emissions sensitivity timeseries"
 
     outds.fluxmode.attrs["units"] = "mol/m2/s"
     outds.fluxapriori.attrs["units"] = "mol/m2/s"
@@ -755,7 +784,7 @@ def inferpymc_postprocessouts(
     outds.country95.attrs["units"] = country_units
     outds.countrysd.attrs["units"] = country_units
     outds.countryapriori.attrs["units"] = country_units
-    outds.xsensitivity.attrs["units"] = obs_units + " " + "mol/mol"
+    #outds.xsensitivity.attrs["units"] = obs_units + " " + "mol/mol"
     outds.bcsensitivity.attrs["units"] = obs_units + " " + "mol/mol"
     outds.sigtrace.attrs["units"] = obs_units + " " + "mol/mol"
 
@@ -787,7 +816,7 @@ def inferpymc_postprocessouts(
     outds.Ymod95BC.attrs[
         "longname"
     ] = " 0.95 Bayesian credible interval of posterior simulated boundary conditions"
-    outds.xtrace.attrs["longname"] = "trace of unitless scaling factors for emissions parameters"
+    #outds.xtrace.attrs["longname"] = "trace of unitless scaling factors for emissions parameters"
     outds.bctrace.attrs["longname"] = "trace of unitless scaling factors for boundary condition parameters"
     outds.sigtrace.attrs["longname"] = "trace of model error parameters"
     outds.siteindicator.attrs["longname"] = "index of site of measurement corresponding to sitenames"
@@ -808,7 +837,7 @@ def inferpymc_postprocessouts(
     outds.countrysd.attrs["longname"] = "standard deviation of ocean and country totals"
     outds.countryapriori.attrs["longname"] = "prior mean of ocean and country totals"
     outds.countrydefinition.attrs["longname"] = "grid definition of countries"
-    outds.xsensitivity.attrs["longname"] = "emissions sensitivity timeseries"
+    #outds.xsensitivity.attrs["longname"] = "emissions sensitivity timeseries"
     outds.bcsensitivity.attrs["longname"] = "boundary conditions sensitivity timeseries"
 
     outds.attrs["Start date"] = start_date
@@ -826,8 +855,11 @@ def inferpymc_postprocessouts(
         outds.attrs["Offset Prior"] = "".join(["{0},{1},".format(k, v) for k, v in offsetprior.items()])[:-1]
     outds.attrs["Creator"] = getpass.getuser()
     outds.attrs["Date created"] = str(pd.Timestamp("today"))
-    outds.attrs["Convergence"] = convergence
-    outds.attrs["Repository version"] = code_version()
+    outds.attrs["Convergence"] = str(convergence)
+    try:
+        outds.attrs["Repository version"] = code_version()
+    except:
+        print('Cannot find code version, check this function.')
 
     # variables with variable length data types shouldn't be compressed
     # e.g. object ("O") or unicode ("U") type
@@ -843,6 +875,6 @@ def inferpymc_postprocessouts(
 
     output_filename = define_output_filename(outputpath, species, domain, outputname, start_date, ext=".nc")
     Path(outputpath).mkdir(parents=True, exist_ok=True)
-#    outds.to_netcdf(output_filename, encoding=encoding, mode="w")
+    outds.to_netcdf(output_filename, encoding=encoding, mode="w")
 
     return outds

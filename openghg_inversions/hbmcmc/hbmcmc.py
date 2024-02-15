@@ -526,7 +526,8 @@ def fixedbasisMCMC(
 
     for si, site in enumerate(sites):
         fp_data[site].attrs["Domain"] = domain
-
+        
+    #return fp_data
 
     # Inverse models
     if use_tracer is False:

@@ -261,7 +261,7 @@ def load_landsea_indices():
     land = 1
     sea = 0
     """
-    landsea_indices = xr.open_dataset("/user/home/wz22079/my_openghg/openghg_inversions/countries/country-EUROPE-UKMO-landsea-2023.nc")
+    landsea_indices = xr.open_dataset("/group/chemistry/acrg/LPDM/countries/country-EUROPE-UKMO-landsea-2023.nc")
     return landsea_indices["country"].values
 
 
