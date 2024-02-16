@@ -113,12 +113,12 @@ def quadTreeGrid(grid, limit):
 
 
 def quadtreebasisfunction(
-    emissions_name: list[str],
     fp_all: dict,
     sites: list[str],
     start_date: str,
     domain: str,
     species: str,
+    emissions_name: Optional[list[str]] = None,
     outputname: Optional[str] = None,
     outputdir: Optional[str] = None,
     nbasis: int = 100,
