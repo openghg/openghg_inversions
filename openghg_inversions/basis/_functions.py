@@ -3,7 +3,6 @@ Functions to create basis datasets from fluxes and footprints.
 """
 import getpass
 from functools import partial
-from pathlib import Path
 from typing import cast, Optional
 
 import pandas as pd
