@@ -57,50 +57,10 @@ def _mean_fp_times_mean_flux(
     return mean_fp * mean_flux
 
 
-def _save_basis(
-    basis: xr.Dataset,
-    basis_algorithm: str,
-    output_dir: str,
-    domain: str,
-    species: str,
-    output_name: Optional[str] = None,
-) -> None:
-    """Save basis functions to netCDF.
-
-    Args:
-        basis: basis dataset to save
-        basis_algorithm: name of basis algorithm (e.g. "quadtree" or "weighted")
-        output_dir: root directory to save basis functions
-        domain: domain of inversion; basis is saved in a "domain" directory inside `output_dir`
-        species: species of inversion
-        output_name
-
-    Returns:
-        None. Saves basis dataset to netCDF.
-    """
-    basis_out_path = Path(output_dir, domain.upper())
-
-    if not basis_out_path.exists():
-        basis_out_path.mkdir(parents=True)
-
-    start_date = str(basis.time.min().values)[:7]  # year and month
-
-    if output_name is None:
-        output_name = f"{basis_algorithm}_{species}_{domain}_{start_date}.nc"
-    else:
-        output_name = f"{basis_algorithm}_{species}-{output_name}_{domain}_{start_date}.nc"
-
-    basis.to_netcdf(basis_out_path / output_name, mode="w")
-
-
 def quadtreebasisfunction(
     fp_all: dict,
     start_date: str,
-    domain: str,
-    species: str,
     emissions_name: Optional[list[str]] = None,
-    outputname: Optional[str] = None,
-    outputdir: Optional[str] = None,
     nbasis: int = 100,
     abs_flux: bool = False,
     seed: Optional[int] = None,
@@ -164,27 +124,13 @@ def quadtreebasisfunction(
     new_ds.attrs["creator"] = getpass.getuser()
     new_ds.attrs["date created"] = str(pd.Timestamp.today())
 
-    if outputdir is not None:
-        _save_basis(
-            basis=new_ds,
-            basis_algorithm="quadtree",
-            output_dir=outputdir,
-            domain=domain,
-            species=species,
-            output_name=outputname,
-        )
-
     return new_ds
 
 
 def bucketbasisfunction(
     fp_all: dict,
     start_date: str,
-    domain: str,
-    species: str,
     emissions_name: Optional[list[str]] = None,
-    outputname: Optional[str] = None,
-    outputdir: Optional[str] = None,
     nbasis: int = 100,
     abs_flux: bool = False,
     mask: Optional[xr.DataArray] = None,
@@ -235,15 +181,5 @@ def bucketbasisfunction(
     new_ds = xr.Dataset({"basis": bucket_basis})
     new_ds.attrs["creator"] = getpass.getuser()
     new_ds.attrs["date created"] = str(pd.Timestamp.today())
-
-    if outputdir is not None:
-        _save_basis(
-            basis=new_ds,
-            basis_algorithm="weighted",
-            output_dir=outputdir,
-            domain=domain,
-            species=species,
-            output_name=outputname,
-        )
 
     return new_ds

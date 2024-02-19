@@ -1,10 +1,49 @@
 """
 Functions to calling basis function algorithms and applying basis functions to data.
 """
+from pathlib import Path
 from typing import Optional
+
+import xarray as xr
 
 from ._functions import bucketbasisfunction, quadtreebasisfunction
 from .. import utils
+
+
+def _save_basis(
+    basis: xr.Dataset,
+    basis_algorithm: str,
+    output_dir: str,
+    domain: str,
+    species: str,
+    output_name: Optional[str] = None,
+) -> None:
+    """Save basis functions to netCDF.
+
+    Args:
+        basis: basis dataset to save
+        basis_algorithm: name of basis algorithm (e.g. "quadtree" or "weighted")
+        output_dir: root directory to save basis functions
+        domain: domain of inversion; basis is saved in a "domain" directory inside `output_dir`
+        species: species of inversion
+        output_name
+
+    Returns:
+        None. Saves basis dataset to netCDF.
+    """
+    basis_out_path = Path(output_dir, domain.upper())
+
+    if not basis_out_path.exists():
+        basis_out_path.mkdir(parents=True)
+
+    start_date = str(basis.time.min().values)[:7]  # year and month
+
+    if output_name is None:
+        output_name = f"{basis_algorithm}_{species}_{domain}_{start_date}.nc"
+    else:
+        output_name = f"{basis_algorithm}_{species}-{output_name}_{domain}_{start_date}.nc"
+
+    basis.to_netcdf(basis_out_path / output_name, mode="w")
 
 
 def basis_functions_wrapper(
@@ -89,24 +128,16 @@ def basis_functions_wrapper(
         basis_func = quadtreebasisfunction(
             fp_all,
             start_date,
-            domain,
-            species,
             emissions_name,
-            outputname,
             nbasis=nbasis,
-            outputdir=output_path,
         )
 
     elif basis_algorithm == "weighted":
         print("Using weighted by data algorithm to derive basis functions")
         basis_func = bucketbasisfunction(
-            emissions_name,
             fp_all,
             start_date,
-            domain,
-            species,
-            outputname,
-            outputdir=output_path,
+            emissions_name,
             nbasis=nbasis,
         )
 
@@ -123,6 +154,17 @@ def basis_functions_wrapper(
             domain=domain,
             basis_case=bc_basis_case,
             bc_basis_directory=bc_basis_directory,
+        )
+
+
+    if output_path is not None and basis_algorithm is not None and fp_basis_case is None:
+        _save_basis(
+            basis=basis_func,
+            basis_algorithm=basis_algorithm,
+            output_dir=output_path,
+            domain=domain,
+            species=species,
+            output_name=outputname,
         )
 
     return fp_data
