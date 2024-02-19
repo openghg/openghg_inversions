@@ -4,8 +4,9 @@ Functions to calling basis function algorithms and applying basis functions to d
 from typing import cast, Optional
 
 import numpy as np
-import openghg_inversions.basis_functions as basis
 import xarray as xr
+
+from ._functions import bucketbasisfunction, quadtreebasisfunction
 from openghg_inversions import utils
 
 
@@ -90,9 +91,8 @@ def basis_functions_wrapper(
 
     elif basis_algorithm == "quadtree":
         print("Using Quadtree algorithm to derive basis functions")
-        basis_func = basis.quadtreebasisfunction(
+        basis_func = quadtreebasisfunction(
             fp_all,
-            sites,
             start_date,
             domain,
             species,
@@ -104,10 +104,9 @@ def basis_functions_wrapper(
 
     elif basis_algorithm == "weighted":
         print("Using weighted by data algorithm to derive basis functions")
-        basis_func = basis.bucketbasisfunction(
+        basis_func = bucketbasisfunction(
             emissions_name,
             fp_all,
-            sites,
             start_date,
             domain,
             species,

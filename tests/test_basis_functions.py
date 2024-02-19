@@ -1,6 +1,6 @@
 import xarray as xr
 from openghg_inversions import utils
-from openghg_inversions.basis_functions import quadtreebasisfunction
+from openghg_inversions.basis import quadtreebasisfunction
 from openghg_inversions.get_data import data_processing_surface_notracer
 
 
@@ -16,7 +16,6 @@ def test_quadtree_basis_function(tac_ch4_data_args, raw_data_path):
     basis_func = quadtreebasisfunction(
         emissions_name=[emissions_name],
         fp_all=fp_all,
-        sites=["TAC"],
         start_date="2019-01-01",
         domain="EUROPE",
         species="ch4",
