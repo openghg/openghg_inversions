@@ -2,7 +2,9 @@
 Functions to create basis datasets from fluxes and footprints.
 """
 import getpass
+from collections import namedtuple
 from functools import partial
+from pathlib import Path
 from typing import cast, Optional
 
 import pandas as pd
@@ -159,3 +161,46 @@ def bucketbasisfunction(
     bucket_basis.attrs["date created"] = str(pd.Timestamp.today())
 
     return bucket_basis
+
+
+# dict to retrieve basis function and description by algorithm name
+BasisFunction = namedtuple("BasisFunction", ["description", "algorithm"])
+basis_functions = {
+    "quadtree": BasisFunction("quadtree algorithm", quadtreebasisfunction),
+    "weighted": BasisFunction("weighted by data algorithm", bucketbasisfunction),
+}
+
+
+def fix_basis_outer_regions(
+    fp_all: dict,
+    start_date: str,
+    basis_algorithm: str,
+    emissions_name: Optional[list[str]] = None,
+    nbasis: int = 100,
+    abs_flux: bool = False,
+    mask: Optional[xr.DataArray] = None,
+) -> xr.DataArray:
+    """Fix outer region of basis functions to InTEM regions, and fit the inner regions using `basis_algorithm`."""
+    intem_regions_path = Path(__file__).parent / "intem_region_definition.nc"
+    intem_regions = xr.open_dataset(intem_regions_path).region
+
+    # force intem_regions to use flux coordinates
+    flux, _ = _flux_fp_from_fp_all(fp_all, emissions_name)
+    _, intem_regions = xr.align(flux, intem_regions, join="override")
+
+    mask = intem_regions == 6
+
+    basis_function = basis_functions[basis_algorithm].algorithm
+    inner_region = basis_function(fp_all, start_date, emissions_name, nbasis, abs_flux, mask=mask)
+
+    basis = intem_regions.rename("basis")
+
+    loc_dict = {"lat": slice(inner_region.lat.min(), inner_region.lat.max() + 0.1),
+                "lon": slice(inner_region.lon.min(), inner_region.lon.max() + 0.1)}
+    basis.loc[loc_dict] = (inner_region + 5).squeeze().values
+
+    basis += 1  # intem_region_definitions.nc regions start at 0, not 1
+
+    basis = basis.expand_dims({"time": [pd.to_datetime(start_date)]})
+
+    return basis

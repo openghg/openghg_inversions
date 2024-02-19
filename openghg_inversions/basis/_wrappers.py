@@ -1,22 +1,13 @@
 """
 Functions to calling basis function algorithms and applying basis functions to data.
 """
-from collections import namedtuple
 from pathlib import Path
 from typing import Optional
 
 import xarray as xr
 
-from ._functions import bucketbasisfunction, quadtreebasisfunction
+from ._functions import basis_functions
 from .. import utils
-
-
-# dict to retrieve basis function and description by algorithm name
-BasisFunction = namedtuple("BasisFunction", ["description", "algorithm"])
-basis_functions = {
-    "quadtree": BasisFunction("quadtree algorithm", quadtreebasisfunction),
-    "weighted": BasisFunction("weighted by data algorithm", bucketbasisfunction),
-}
 
 
 def basis_functions_wrapper(
@@ -91,7 +82,7 @@ def basis_functions_wrapper(
             print(
                 f"Basis algorithm {basis_algorithm} and basis case {fp_basis_case} supplied; using {fp_basis_case}."
             )
-        basis_func = utils.basis(
+        basis_data_array = utils.basis(
             domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory
         ).basis
 
@@ -107,9 +98,9 @@ def basis_functions_wrapper(
             ) from e
         else:
             print(f"Using {basis_function.description} to derive basis functions.")
-            basis_func = basis_function.algorithm(fp_all, start_date, emissions_name, nbasis)
+            basis_data_array = basis_function.algorithm(fp_all, start_date, emissions_name, nbasis)
 
-    fp_data = utils.fp_sensitivity(fp_all, basis_func=basis_func)
+    fp_data = utils.fp_sensitivity(fp_all, basis_func=basis_data_array)
 
     if use_bc is True:
         fp_data = utils.bc_sensitivity(
@@ -121,7 +112,7 @@ def basis_functions_wrapper(
 
     if output_path is not None and basis_algorithm is not None and fp_basis_case is None:
         _save_basis(
-            basis=basis_func,
+            basis=basis_data_array,
             basis_algorithm=basis_algorithm,
             output_dir=output_path,
             domain=domain,
@@ -167,3 +158,17 @@ def _save_basis(
 
     basis.to_netcdf(basis_out_path / output_name, mode="w")
 
+
+def fix_basis_outer_regions(
+    fp_all: dict,
+    start_date: str,
+    basis_function: BasisFunction,
+    emissions_name: Optional[list[str]] = None,
+    nbasis: int = 100,
+    abs_flux: bool = False,
+    mask: Optional[xr.DataArray] = None,
+) -> xr.DataArray:
+    """Fix outer region of basis functions to InTEM regions, and fit the inner regions using `basis_algorithm`."""
+    intem_regions = xr.open_dataset("intem_region_definitions.nc").region
+
+    mask = intem_regions == 6
