@@ -122,7 +122,7 @@ def bucketbasisfunction(
     nbasis: int = 100,
     abs_flux: bool = False,
     mask: Optional[xr.DataArray] = None,
-) -> xr.Dataset:
+) -> xr.DataArray:
     """
     Basis functions calculated using a weighted region approach
     where each basis function / scaling region contains approximately

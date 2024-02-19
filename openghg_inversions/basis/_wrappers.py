@@ -118,7 +118,7 @@ def basis_functions_wrapper(
             print(
                 f"Basis algorithm {basis_algorithm} and basis case {fp_basis_case} supplied; using {fp_basis_case}."
             )
-        basis_func = utils.basis(domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory)
+        basis_func = utils.basis(domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory).basis
 
     elif basis_algorithm is None:
         raise ValueError("One of `fp_basis_case` or `basis_algorithm` must be specified.")
