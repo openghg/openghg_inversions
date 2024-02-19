@@ -99,8 +99,8 @@ def basis_functions_wrapper(
             raise ValueError(
                 "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
             ) from e
-        else:
-            print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
+        print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
+
     else:
         try:
             basis_function = basis_functions[basis_algorithm]
@@ -108,9 +108,8 @@ def basis_functions_wrapper(
             raise ValueError(
                 "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
             ) from e
-        else:
-            print(f"Using {basis_function.description} to derive basis functions.")
-            basis_data_array = basis_function.algorithm(fp_all, start_date, emissions_name, nbasis)
+        print(f"Using {basis_function.description} to derive basis functions.")
+        basis_data_array = basis_function.algorithm(fp_all, start_date, emissions_name, nbasis)
 
     fp_data = utils.fp_sensitivity(fp_all, basis_func=basis_data_array)
 
