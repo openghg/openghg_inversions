@@ -65,37 +65,26 @@ def quadtreebasisfunction(
     abs_flux: bool = False,
     seed: Optional[int] = None,
     mask: Optional[xr.DataArray] = None,
-) -> xr.Dataset:
+) -> xr.DataArray:
     """
     Creates a basis function with nbasis grid cells using a quadtree algorithm.
+
     The domain is split with smaller grid cells for regions which contribute
     more to the a priori (above basline) mole fraction. This is based on the
     average footprint over the inversion period and the a priori emissions field.
-    Output is a netcdf file saved to /Temp/<domain> in the current directory
-    if no outputdir is specified or to outputdir if specified.
+
     The number of basis functions is optimised using dual annealing. Probably
     not the best or fastest method as there should only be one minima, but doesn't
     require the Jacobian or Hessian for optimisation.
 
     Args:
+      fp_all:
+        Output from footprints_data_merge() function. Dictionary of datasets.
+      start_date:
+        String of start date of inversion
       emissions_name:
         List of "source" key words as used for retrieving specific emissions
         from the object store.
-      fp_all:
-        Output from footprints_data_merge() function. Dictionary of datasets.
-      sites:
-        List of site names (This could probably be found elsewhere)
-      start_date:
-        String of start date of inversion
-      domain:
-        The inversion domain
-      species:
-        Atmospheric trace gas species of interest (e.g. 'co2')
-      outputname:
-        Identifier or run name
-      outputdir:
-        Path to output directory where the basis function file will be saved;
-        basis function will be saved in outputdir/DOMAIN.
       nbasis:
         Number of basis functions that you want. This will optimise to
         closest value that fits with quadtree splitting algorithm,
@@ -108,8 +97,7 @@ def quadtreebasisfunction(
         Boolean mask on lat/lon coordinates. Used to find basis on sub-region.
 
     Returns:
-        xr.Dataset with lat/lon dimensions and basis regions encoded by integers.
-        If outputdir is not None, then saves the basis function in outputdir.
+        xr.DataArray with lat/lon dimensions and basis regions encoded by integers.
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask)
@@ -119,12 +107,12 @@ def quadtreebasisfunction(
     quad_basis = xr.apply_ufunc(func, fps)
 
     quad_basis = quad_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
+    quad_basis = quad_basis.rename("basis")  # this will be used in merges
 
-    new_ds = xr.Dataset({"basis": quad_basis})
-    new_ds.attrs["creator"] = getpass.getuser()
-    new_ds.attrs["date created"] = str(pd.Timestamp.today())
+    quad_basis.attrs["creator"] = getpass.getuser()
+    quad_basis.attrs["date created"] = str(pd.Timestamp.today())
 
-    return new_ds
+    return quad_basis
 
 
 def bucketbasisfunction(
@@ -141,23 +129,13 @@ def bucketbasisfunction(
     the same value
 
     Args:
+      fp_all:
+        fp_all dictionary object as produced from get_data functions
+      start_date:
+        Start date of period of inference
       emissions_name:
         List of keyword "source" args used for retrieving emissions files
         from the Object store.
-      fp_all:
-        fp_all dictionary object as produced from get_data functions
-      sites:
-        List of measurements sites being used.
-      start_date:
-        Start date of period of inference
-      domain:
-        Name of model domain
-      species:
-        Name of atmospheric species of interest
-      outputname:
-        Name of inversion run
-      outputdir:
-        Directory where inversion run outputs are saved
       nbasis:
         Desired number of basis function regions
       abs_flux:
@@ -166,8 +144,7 @@ def bucketbasisfunction(
         Boolean mask on lat/lon coordinates. Used to find basis on sub-region.
 
     Returns:
-        xr.Dataset with lat/lon dimensions and basis regions encoded by integers.
-        If outputdir is not None, then saves the basis function in outputdir.
+        xr.DataArray with lat/lon dimensions and basis regions encoded by integers.
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask)
@@ -177,9 +154,9 @@ def bucketbasisfunction(
     bucket_basis = xr.apply_ufunc(func, fps)
 
     bucket_basis = bucket_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
+    bucket_basis = bucket_basis.rename("basis")  # this will be used in merges
 
-    new_ds = xr.Dataset({"basis": bucket_basis})
-    new_ds.attrs["creator"] = getpass.getuser()
-    new_ds.attrs["date created"] = str(pd.Timestamp.today())
+    bucket_basis.attrs["creator"] = getpass.getuser()
+    bucket_basis.attrs["date created"] = str(pd.Timestamp.today())
 
-    return new_ds
+    return bucket_basis

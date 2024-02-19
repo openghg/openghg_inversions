@@ -11,15 +11,18 @@
 # ****************************************************************************
 import glob
 import json
-from pathlib import Path
 import os
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Union
 
-import pandas as pd
-import numpy as np
-import xarray as xr
-from tqdm import tqdm
 import dask.array as da
+import numpy as np
+import pandas as pd
+import xarray as xr
+from openghg.analyse import ModelScenario
+from tqdm import tqdm
+
 from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
 
@@ -961,7 +964,9 @@ def timeseries_HiTRes(
             return timeseries
 
 
-def fp_sensitivity(fp_and_data, basis_func, verbose=True):
+def fp_sensitivity(
+    fp_and_data: dict, basis_func: Union[xr.DataArray, dict[str, xr.DataArray]], verbose: bool = True
+):
     """
     The fp_sensitivity function adds a sensitivity matrix, H, to each
     site xarray dataframe in fp_and_data.
@@ -970,7 +975,7 @@ def fp_sensitivity(fp_and_data, basis_func, verbose=True):
     region and 0 outside region.
 
     Region numbering must start from 1
-    -----------------------------------
+
     Args:
       fp_and_data (dict):
         Output from footprints_data_merge() function. Dictionary of datasets.
@@ -983,9 +988,8 @@ def fp_sensitivity(fp_and_data, basis_func, verbose=True):
         reflect keys in emissions_name dict used in fp_data_merge.
 
     Returns:
-        dict (xarray.Dataset):
+        dict:
           Same format as fp_and_data with sensitivity matrix and basis function grid added.
-    -----------------------------------
     """
 
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
@@ -1033,7 +1037,9 @@ def fp_sensitivity(fp_and_data, basis_func, verbose=True):
     return fp_and_data
 
 
-def fp_sensitivity_single_site_basis_func(scenario, flux, source, basis_func, verbose=True):
+def fp_sensitivity_single_site_basis_func(
+    scenario: ModelScenario, flux, source: str, basis_func: xr.DataArray, verbose: bool = True
+):
     """
     The fp_sensitivity function adds a sensitivity matrix, H, to each
     site xarray dataframe in fp_and_data.
@@ -1042,7 +1048,7 @@ def fp_sensitivity_single_site_basis_func(scenario, flux, source, basis_func, ve
     region and 0 outside region.
 
     Region numbering must start from 1
-    -----------------------------------
+
     Args:
       scenario:
         Output from footprints_data_merge() function; e.g. `fp_all["TAC"]`
@@ -1057,7 +1063,6 @@ def fp_sensitivity_single_site_basis_func(scenario, flux, source, basis_func, ve
 
     Returns:
         sensitivity ("H") xr.DataArray and site_bf xr.Dataset
-    -----------------------------------
     """
     if isinstance(flux, dict):
         if "fp_HiTRes" in list(scenario.keys()):
@@ -1086,8 +1091,8 @@ def fp_sensitivity_single_site_basis_func(scenario, flux, source, basis_func, ve
 
     H_all_v = H_all.values.reshape((len(site_bf.lat) * len(site_bf.lon), len(site_bf.time)))
 
-    if "region" in list(basis_func.dims.keys()):
-        if "time" in basis_func.basis.dims:
+    if "region" in basis_func.dims:
+        if "time" in basis_func.dims:
             basis_func = basis_func.isel(time=0)
 
         site_bf = xr.merge([site_bf, basis_func])

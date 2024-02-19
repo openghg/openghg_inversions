@@ -17,8 +17,6 @@ def test_quadtree_basis_function(tac_ch4_data_args, raw_data_path):
         emissions_name=[emissions_name],
         fp_all=fp_all,
         start_date="2019-01-01",
-        domain="EUROPE",
-        species="ch4",
         seed=42,
     )
 
@@ -26,4 +24,6 @@ def test_quadtree_basis_function(tac_ch4_data_args, raw_data_path):
         domain="EUROPE", basis_case="quadtree_ch4-test_basis", basis_directory=raw_data_path / "basis"
     )
 
-    xr.testing.assert_allclose(basis_func, basis_func_reloaded)
+    # TODO: create new "fixed" basis function file, since we've switched basis functions from
+    # dataset to data array
+    xr.testing.assert_allclose(basis_func, basis_func_reloaded.basis)
