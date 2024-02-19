@@ -170,37 +170,9 @@ def quadtreebasisfunction(
         If outputdir is not None, then saves the basis function in outputdir.
     -----------------------------------
     """
-    if abs_flux:
-        print("Using absolute values of flux array")
-    if emissions_name is None:
-        flux = (
-            np.absolute(fp_all[".flux"]["all"].data.flux.values)
-            if abs_flux
-            else fp_all[".flux"]["all"].data.flux.values
-        )
-        meanflux = np.squeeze(flux)
-    else:
-        if isinstance(fp_all[".flux"][emissions_name[0]], dict):
-            arr = fp_all[".flux"][emissions_name[0]]
-            flux = np.absolute(arr.data.flux.values) if abs_flux else arr.data.flux.values
-            meanflux = np.squeeze(flux)
-        else:
-            flux = (
-                np.absolute(fp_all[".flux"][emissions_name[0]].data.flux.values)
-                if abs_flux
-                else fp_all[".flux"][emissions_name[0]].data.flux.values
-            )
-            meanflux = np.squeeze(flux)
-    meanfp = np.zeros((fp_all[sites[0]].fp.shape[0], fp_all[sites[0]].fp.shape[1]))
-    div = 0
-    for site in sites:
-        meanfp += np.sum(fp_all[site].fp.values, axis=2)
-        div += fp_all[site].fp.shape[2]
-    meanfp /= div
-
-    if meanflux.shape != meanfp.shape:
-        meanflux = np.mean(meanflux, axis=2)
-    fps = meanfp * meanflux
+    from .basis._functions import _flux_fp_from_fp_all, _mean_fp_times_mean_flux
+    flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
+    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux).values
 
     def qtoptim(x):
         basisQuad = quadTreeGrid(fps, x)
@@ -451,37 +423,9 @@ def bucketbasisfunction(
         xr.Dataset with lat/lon dimensions and basis regions encoded by integers.
         If outputdir is not None, then saves the basis function in outputdir.
     """
-    if abs_flux:
-        print("Using absolute values of flux array")
-    if emissions_name is None:
-        flux = (
-            np.absolute(fp_all[".flux"]["all"].data.flux.values)
-            if abs_flux
-            else fp_all[".flux"]["all"].data.flux.values
-        )
-        meanflux = np.squeeze(flux)
-    else:
-        if isinstance(fp_all[".flux"][emissions_name[0]], dict):
-            arr = fp_all[".flux"][emissions_name[0]]
-            flux = np.absolute(arr.data.flux.values) if abs_flux else arr.data.flux.values
-            meanflux = np.squeeze(flux)
-        else:
-            flux = (
-                np.absolute(fp_all[".flux"][emissions_name[0]].data.flux.values)
-                if abs_flux
-                else fp_all[".flux"][emissions_name[0]].data.flux.values
-            )
-            meanflux = np.squeeze(flux)
-    meanfp = np.zeros((fp_all[sites[0]].fp.shape[0], fp_all[sites[0]].fp.shape[1]))
-    div = 0
-    for site in sites:
-        meanfp += np.sum(fp_all[site].fp.values, axis=2)
-        div += fp_all[site].fp.shape[2]
-    meanfp /= div
-
-    if meanflux.shape != meanfp.shape:
-        meanflux = np.mean(meanflux, axis=2)
-    fps = meanfp * meanflux
+    from .basis._functions import _flux_fp_from_fp_all, _mean_fp_times_mean_flux
+    flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
+    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux).values
 
     bucket_basis = nregion_landsea_basis(fps, 1, nbasis)
 

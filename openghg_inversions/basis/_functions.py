@@ -27,6 +27,7 @@ def _mean_fp_times_mean_flux(
     abs_flux: bool = False,
     mask: Optional[xr.DataArray] = None,
 ) -> xr.DataArray:
+    """Multiply mean flux by mean of footprints, optionally restricted to a Boolean mask."""
     if abs_flux is True:
         print("Using absolute value of flux array.")
         flux = abs(flux)
