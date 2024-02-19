@@ -3,11 +3,10 @@ from functools import partial
 from pathlib import Path
 from typing import cast, Optional
 
-import numpy as np
 import pandas as pd
 import xarray as xr
 
-from ..basis_functions import get_quadtree_basis, nregion_landsea_basis
+from .algorithms import quadtree_algorithm, weighted_algorithm
 
 
 def _flux_fp_from_fp_all(
@@ -149,7 +148,7 @@ def quadtreebasisfunction(
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux)
 
     # use xr.apply_ufunc to keep xarray coords
-    func = partial(get_quadtree_basis, nbasis=nbasis, seed=seed)
+    func = partial(quadtree_algorithm, nbasis=nbasis, seed=seed)
     quad_basis = xr.apply_ufunc(func, fps)
 
     quad_basis = quad_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
@@ -218,7 +217,7 @@ def bucketbasisfunction(
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux)
 
     # use xr.apply_ufunc to keep xarray coords
-    func = partial(nregion_landsea_basis, nregion=nbasis, bucket=1)
+    func = partial(weighted_algorithm, nregion=nbasis, bucket=1)
     bucket_basis = xr.apply_ufunc(func, fps)
 
     bucket_basis = bucket_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
