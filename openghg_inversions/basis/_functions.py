@@ -74,6 +74,9 @@ def _save_basis(
         domain: domain of inversion; basis is saved in a "domain" directory inside `output_dir`
         species: species of inversion
         output_name
+
+    Returns:
+        None. Saves basis dataset to netCDF.
     """
     basis_out_path = Path(output_dir, domain.upper())
 
@@ -101,6 +104,7 @@ def quadtreebasisfunction(
     nbasis: int = 100,
     abs_flux: bool = False,
     seed: Optional[int] = None,
+    mask: Optional[xr.DataArray] = None,
 ) -> xr.Dataset:
     """
     Creates a basis function with nbasis grid cells using a quadtree algorithm.
@@ -114,40 +118,41 @@ def quadtreebasisfunction(
     require the Jacobian or Hessian for optimisation.
 
     Args:
-      emissions_name (list):
+      emissions_name:
         List of "source" key words as used for retrieving specific emissions
         from the object store.
-      fp_all (dict):
+      fp_all:
         Output from footprints_data_merge() function. Dictionary of datasets.
-      sites (list):
+      sites:
         List of site names (This could probably be found elsewhere)
-      start_date (str):
+      start_date:
         String of start date of inversion
-      domain (str):
+      domain:
         The inversion domain
-      species (str):
+      species:
         Atmospheric trace gas species of interest (e.g. 'co2')
-      outputname (str):
+      outputname:
         Identifier or run name
-      outputdir (str, optional):
-        Path to output directory where the basis function file will be saved.
-        Basis function will automatically be saved in outputdir/DOMAIN
-        Default of None makes a temp directory.
-      nbasis (int):
+      outputdir:
+        Path to output directory where the basis function file will be saved;
+        basis function will be saved in outputdir/DOMAIN.
+      nbasis:
         Number of basis functions that you want. This will optimise to
         closest value that fits with quadtree splitting algorithm,
         i.e. nbasis % 4 = 1.
-      abs_flux (bool):
+      abs_flux:
         If True this will take the absolute value of the flux
       seed:
         Optional seed to pass to scipy.optimize.dual_annealing. Used for testing.
+      mask:
+        Boolean mask on lat/lon coordinates. Used to find basis on sub-region.
 
     Returns:
         xr.Dataset with lat/lon dimensions and basis regions encoded by integers.
         If outputdir is not None, then saves the basis function in outputdir.
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
-    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux)
+    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask)
 
     # use xr.apply_ufunc to keep xarray coords
     func = partial(quadtree_algorithm, nbasis=nbasis, seed=seed)
@@ -182,6 +187,7 @@ def bucketbasisfunction(
     outputdir: Optional[str] = None,
     nbasis: int = 100,
     abs_flux: bool = False,
+    mask: Optional[xr.DataArray] = None,
 ) -> xr.Dataset:
     """
     Basis functions calculated using a weighted region approach
@@ -189,34 +195,36 @@ def bucketbasisfunction(
     the same value
 
     Args:
-      emissions_name (str/list):
+      emissions_name:
         List of keyword "source" args used for retrieving emissions files
         from the Object store.
-      fp_all (dict):
+      fp_all:
         fp_all dictionary object as produced from get_data functions
-      sites (str/list):
+      sites:
         List of measurements sites being used.
-      start_date (str):
+      start_date:
         Start date of period of inference
-      domain (str):
+      domain:
         Name of model domain
-      species (str):
+      species:
         Name of atmospheric species of interest
-      outputname (str):
+      outputname:
         Name of inversion run
-      outputdir (str):
+      outputdir:
         Directory where inversion run outputs are saved
-      nbasis (int):
+      nbasis:
         Desired number of basis function regions
-      abs_flux (bool):
+      abs_flux:
         When set to True uses absolute values of a flux array
+      mask:
+        Boolean mask on lat/lon coordinates. Used to find basis on sub-region.
 
     Returns:
         xr.Dataset with lat/lon dimensions and basis regions encoded by integers.
         If outputdir is not None, then saves the basis function in outputdir.
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
-    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux)
+    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask)
 
     # use xr.apply_ufunc to keep xarray coords
     func = partial(weighted_algorithm, nregion=nbasis, bucket=1)
