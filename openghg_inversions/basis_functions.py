@@ -423,34 +423,26 @@ def bucketbasisfunction(
         xr.Dataset with lat/lon dimensions and basis regions encoded by integers.
         If outputdir is not None, then saves the basis function in outputdir.
     """
+    from functools import partial
     from .basis._functions import _flux_fp_from_fp_all, _mean_fp_times_mean_flux
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
-    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux).values
+    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux)
 
-    bucket_basis = nregion_landsea_basis(fps, 1, nbasis)
+    # use xr.apply_ufunc to keep xarray coords
+    func = partial(nregion_landsea_basis, nregion=nbasis, bucket=1)
+    bucket_basis = xr.apply_ufunc(func, fps)
 
-    lon = fp_all[sites[0]].lon.values
-    lat = fp_all[sites[0]].lat.values
+    bucket_basis = bucket_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
 
-    base = np.expand_dims(bucket_basis, axis=2)
-
-    time = [pd.to_datetime(start_date)]
-    newds = xr.Dataset(
-        {"basis": (["lat", "lon", "time"], base)},
-        coords={"time": (["time"], time), "lat": (["lat"], lat), "lon": (["lon"], lon)},
-    )
-    newds.lat.attrs["long_name"] = "latitude"
-    newds.lon.attrs["long_name"] = "longitude"
-    newds.lat.attrs["units"] = "degrees_north"
-    newds.lon.attrs["units"] = "degrees_east"
-    newds.attrs["creator"] = getpass.getuser()
-    newds.attrs["date created"] = str(pd.Timestamp.today())
+    new_ds = xr.Dataset({"basis": bucket_basis})
+    new_ds.attrs["creator"] = getpass.getuser()
+    new_ds.attrs["date created"] = str(pd.Timestamp.today())
 
     if outputdir is not None:
         basisoutpath = os.path.join(outputdir, domain)
         if not os.path.exists(basisoutpath):
             os.makedirs(basisoutpath)
-        newds.to_netcdf(
+        new_ds.to_netcdf(
             os.path.join(
                 basisoutpath,
                 f"weighted_{species}-{outputname}_{domain}_{start_date.split('-')[0]}{start_date.split('-')[1]}.nc",
@@ -458,4 +450,4 @@ def bucketbasisfunction(
             mode="w",
         )
 
-    return newds
+    return new_ds
