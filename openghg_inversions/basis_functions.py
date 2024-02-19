@@ -112,6 +112,28 @@ def quadTreeGrid(grid, limit):
     return outputGrid
 
 
+def get_quadtree_basis(fps, nbasis, seed: Optional[int] = None):
+    """Given an array and a specified number of basis functions, return basis regions specified by
+    the quadtree algorithm.
+    """
+    def qtoptim(x):
+        basisQuad = quadTreeGrid(fps, x)
+        return (nbasis - np.max(basisQuad) - 1) ** 2
+
+    cost = 1e6
+    pwr = 0
+    while cost > 3.0:
+        optim = scipy.optimize.dual_annealing(
+            qtoptim, np.expand_dims([0, 100 / 10**pwr], axis=0), seed=seed
+        )
+        cost = np.sqrt(optim.fun)
+        pwr += 1
+        if pwr > 10:
+            raise RuntimeError("Quadtree did not converge after max iterations.")
+
+    return quadTreeGrid(fps, optim.x[0]) + 1
+
+
 def quadtreebasisfunction(
     fp_all: dict,
     sites: list[str],
@@ -170,42 +192,20 @@ def quadtreebasisfunction(
         If outputdir is not None, then saves the basis function in outputdir.
     -----------------------------------
     """
+    from functools import partial
     from .basis._functions import _flux_fp_from_fp_all, _mean_fp_times_mean_flux
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
-    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux).values
+    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux)
 
-    def qtoptim(x):
-        basisQuad = quadTreeGrid(fps, x)
-        return (nbasis - np.max(basisQuad) - 1) ** 2
+    # use xr.apply_ufunc to keep xarray coords
+    func = partial(get_quadtree_basis, nbasis=nbasis, seed=seed)
+    quad_basis = xr.apply_ufunc(func, fps)
 
-    cost = 1e6
-    pwr = 0
-    while cost > 3.0:
-        optim = scipy.optimize.dual_annealing(
-            qtoptim, np.expand_dims([0, 100 / 10**pwr], axis=0), seed=seed
-        )
-        cost = np.sqrt(optim.fun)
-        pwr += 1
-        if pwr > 10:
-            raise RuntimeError("Quadtree did not converge after max iterations.")
-    basisQuad = quadTreeGrid(fps, optim.x[0])
+    quad_basis = quad_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
 
-    lon = fp_all[sites[0]].lon.values
-    lat = fp_all[sites[0]].lat.values
-
-    base = np.expand_dims(basisQuad + 1, axis=2)
-
-    time = [pd.to_datetime(start_date)]
-    newds = xr.Dataset(
-        {"basis": (["lat", "lon", "time"], base)},
-        coords={"time": (["time"], time), "lat": (["lat"], lat), "lon": (["lon"], lon)},
-    )
-    newds.lat.attrs["long_name"] = "latitude"
-    newds.lon.attrs["long_name"] = "longitude"
-    newds.lat.attrs["units"] = "degrees_north"
-    newds.lon.attrs["units"] = "degrees_east"
-    newds.attrs["creator"] = getpass.getuser()
-    newds.attrs["date created"] = str(pd.Timestamp.today())
+    new_ds = xr.Dataset({"basis": quad_basis})
+    new_ds.attrs["creator"] = getpass.getuser()
+    new_ds.attrs["date created"] = str(pd.Timestamp.today())
 
     if outputdir is not None:
         basisoutpath = os.path.join(outputdir, domain)
@@ -213,14 +213,14 @@ def quadtreebasisfunction(
             outputname = "output_name"
         if not os.path.exists(basisoutpath):
             os.makedirs(basisoutpath)
-        newds.to_netcdf(
+        new_ds.to_netcdf(
             os.path.join(
                 basisoutpath, f"quadtree_{species}-{outputname}_{domain}_{start_date.split('-')[0]}.nc"
             ),
             mode="w",
         )
 
-    return newds
+    return new_ds
 
 
 # BUCKET BASIS FUNCTIONS

@@ -1,4 +1,4 @@
-from typing import cast, Optional, Union
+from typing import cast, Optional
 
 import numpy as np
 import xarray as xr
@@ -34,7 +34,7 @@ def _mean_fp_times_mean_flux(
 
     mean_flux = flux.mean("time")
 
-    fp_total = sum(footprints)
+    fp_total = sum(footprints)  # this seems to be faster than concatentating and summing over new axis
     n_measure = sum(len(fp.time) for fp in footprints)
 
     fp_total = cast(xr.DataArray, fp_total)  # otherwise mypy complains about the next line
