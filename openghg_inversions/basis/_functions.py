@@ -195,8 +195,10 @@ def fix_basis_outer_regions(
 
     basis = intem_regions.rename("basis")
 
-    loc_dict = {"lat": slice(inner_region.lat.min(), inner_region.lat.max() + 0.1),
-                "lon": slice(inner_region.lon.min(), inner_region.lon.max() + 0.1)}
+    loc_dict = {
+        "lat": slice(inner_region.lat.min(), inner_region.lat.max() + 0.1),
+        "lon": slice(inner_region.lon.min(), inner_region.lon.max() + 0.1),
+    }
     basis.loc[loc_dict] = (inner_region + 5).squeeze().values
 
     basis += 1  # intem_region_definitions.nc regions start at 0, not 1

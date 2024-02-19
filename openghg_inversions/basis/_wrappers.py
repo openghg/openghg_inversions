@@ -157,18 +157,3 @@ def _save_basis(
         output_name = f"{basis_algorithm}_{species}-{output_name}_{domain}_{start_date}.nc"
 
     basis.to_netcdf(basis_out_path / output_name, mode="w")
-
-
-def fix_basis_outer_regions(
-    fp_all: dict,
-    start_date: str,
-    basis_function: BasisFunction,
-    emissions_name: Optional[list[str]] = None,
-    nbasis: int = 100,
-    abs_flux: bool = False,
-    mask: Optional[xr.DataArray] = None,
-) -> xr.DataArray:
-    """Fix outer region of basis functions to InTEM regions, and fit the inner regions using `basis_algorithm`."""
-    intem_regions = xr.open_dataset("intem_region_definitions.nc").region
-
-    mask = intem_regions == 6
