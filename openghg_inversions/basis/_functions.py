@@ -171,14 +171,13 @@ basis_functions = {
 }
 
 
-def fix_basis_outer_regions(
+def fixed_outer_regions_basis(
     fp_all: dict,
     start_date: str,
     basis_algorithm: str,
     emissions_name: Optional[list[str]] = None,
     nbasis: int = 100,
     abs_flux: bool = False,
-    mask: Optional[xr.DataArray] = None,
 ) -> xr.DataArray:
     """Fix outer region of basis functions to InTEM regions, and fit the inner regions using `basis_algorithm`."""
     intem_regions_path = Path(__file__).parent / "intem_region_definition.nc"

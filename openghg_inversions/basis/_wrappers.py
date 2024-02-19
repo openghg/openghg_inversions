@@ -6,7 +6,7 @@ from typing import Optional
 
 import xarray as xr
 
-from ._functions import basis_functions
+from ._functions import basis_functions, fixed_outer_regions_basis
 from .. import utils
 
 
@@ -19,6 +19,7 @@ def basis_functions_wrapper(
     nbasis: int,
     use_bc: bool,
     basis_algorithm: Optional[str] = None,
+    fix_outer_regions: bool = False,
     fp_basis_case: Optional[str] = None,
     bc_basis_case: Optional[str] = None,
     basis_directory: Optional[str] = None,
@@ -89,6 +90,17 @@ def basis_functions_wrapper(
     elif basis_algorithm is None:
         raise ValueError("One of `fp_basis_case` or `basis_algorithm` must be specified.")
 
+    elif fix_outer_regions is True:
+        try:
+            basis_data_array = fixed_outer_regions_basis(
+                fp_all, start_date, basis_algorithm, emissions_name, nbasis
+            )
+        except KeyError as e:
+            raise ValueError(
+                "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
+            ) from e
+        else:
+            print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
     else:
         try:
             basis_function = basis_functions[basis_algorithm]
