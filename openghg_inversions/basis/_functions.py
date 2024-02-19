@@ -1,3 +1,6 @@
+"""
+Functions to create basis datasets from fluxes and footprints.
+"""
 import getpass
 from functools import partial
 from pathlib import Path
@@ -109,7 +112,7 @@ def quadtreebasisfunction(
     The number of basis functions is optimised using dual annealing. Probably
     not the best or fastest method as there should only be one minima, but doesn't
     require the Jacobian or Hessian for optimisation.
-    -----------------------------------
+
     Args:
       emissions_name (list):
         List of "source" key words as used for retrieving specific emissions
@@ -142,7 +145,6 @@ def quadtreebasisfunction(
     Returns:
         xr.Dataset with lat/lon dimensions and basis regions encoded by integers.
         If outputdir is not None, then saves the basis function in outputdir.
-    -----------------------------------
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux)
@@ -171,21 +173,21 @@ def quadtreebasisfunction(
 
 
 def bucketbasisfunction(
-    emissions_name,
-    fp_all,
-    start_date,
-    domain,
-    species,
-    outputname,
-    outputdir=None,
-    nbasis=100,
-    abs_flux=False,
+    fp_all: dict,
+    start_date: str,
+    domain: str,
+    species: str,
+    emissions_name: Optional[list[str]] = None,
+    outputname: Optional[str] = None,
+    outputdir: Optional[str] = None,
+    nbasis: int = 100,
+    abs_flux: bool = False,
 ) -> xr.Dataset:
     """
     Basis functions calculated using a weighted region approach
     where each basis function / scaling region contains approximately
     the same value
-    -----------------------------------
+
     Args:
       emissions_name (str/list):
         List of keyword "source" args used for retrieving emissions files

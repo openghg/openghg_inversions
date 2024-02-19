@@ -41,8 +41,6 @@ from openghg_inversions import get_data, utils
 from openghg_inversions.basis import basis_functions_wrapper
 
 
-
-
 def fixedbasisMCMC(
     species,
     sites,
@@ -371,7 +369,6 @@ def fixedbasisMCMC(
         fp_all=fp_all,
         use_bc=use_bc,
         species=species,
-        sites=sites,
         domain=domain,
         start_date=start_date,
         emissions_name=emissions_name,

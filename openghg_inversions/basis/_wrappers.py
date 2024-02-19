@@ -1,19 +1,15 @@
 """
 Functions to calling basis function algorithms and applying basis functions to data.
 """
-from typing import cast, Optional
-
-import numpy as np
-import xarray as xr
+from typing import Optional
 
 from ._functions import bucketbasisfunction, quadtreebasisfunction
-from openghg_inversions import utils
+from .. import utils
 
 
 def basis_functions_wrapper(
     fp_all: dict,
     species: str,
-    sites: list[str],
     domain: str,
     start_date: str,
     emissions_name: list[str],
@@ -30,7 +26,7 @@ def basis_functions_wrapper(
     """
     Wrapper function for selecting basis function
     algorithm.
-    -----------------------------------
+
     Args:
       basis_algorithm (str):
         One of "quadtree" (for using Quadtree algorithm) or
@@ -72,7 +68,6 @@ def basis_functions_wrapper(
       File output name
     output_path (str):
       Passed to `outputdir` argument of `quadtreebasisfunction`. Used for testing.
-
 
     Returns:
       fp_data (dict):
