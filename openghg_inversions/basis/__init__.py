@@ -1,2 +1,2 @@
 from ._functions import bucketbasisfunction, quadtreebasisfunction
-from ._wrappers import basis_functions_wrapper
+from ._wrapper import basis_functions_wrapper
