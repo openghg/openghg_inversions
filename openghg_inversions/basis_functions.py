@@ -79,8 +79,8 @@ class quadTreeNode:
 
 def quadTreeGrid(grid, limit):
     """
-    Apply quadtree division algorithm
-    -----------------------------------
+    Apply quadtree division algorithm.
+
     Args:
       grid (array):
         2d numpy array to apply quadtree division to
@@ -91,31 +91,35 @@ def quadTreeGrid(grid, limit):
       outputGrid (array):
         2d numpy grid, same shape as grid, with values correpsonding to
         each  box from boxList
-      boxList: (list of lists)
-        Each sublist describes the corners of a quadtree leaf
-    -----------------------------------
     """
     # start with a single node the size of the entire input grid:
     parentNode = quadTreeNode(0, grid.shape[0], 0, grid.shape[1])
     parentNode.createChildren(grid, limit)
 
     leafList = []
-    boxList = []
     parentNode.appendLeaves(leafList)
 
     outputGrid = np.zeros_like(grid)
 
     for i, leaf in enumerate(leafList):
         outputGrid[leaf.xStart : leaf.xEnd, leaf.yStart : leaf.yEnd] = i
-        boxList.append([leaf.xStart, leaf.xEnd, leaf.yStart, leaf.yEnd])
 
     return outputGrid
 
 
-def get_quadtree_basis(fps, nbasis, seed: Optional[int] = None):
+def get_quadtree_basis(fps: np.ndarray, nbasis: int, seed: Optional[int] = None) -> np.ndarray:
     """Given an array and a specified number of basis functions, return basis regions specified by
     the quadtree algorithm.
+
+    Args:
+        fps: array (mean flux times mean footprints) to use to calculate basis regions
+        nbasis: target number of basis regions
+        seed: optional random seed to use (for testing or reproducing results)
+
+    Returns:
+        2D numpy array with positive integer values representing basis regions.
     """
+
     def qtoptim(x):
         basisQuad = quadTreeGrid(fps, x)
         return (nbasis - np.max(basisQuad) - 1) ** 2
@@ -136,7 +140,6 @@ def get_quadtree_basis(fps, nbasis, seed: Optional[int] = None):
 
 def quadtreebasisfunction(
     fp_all: dict,
-    sites: list[str],
     start_date: str,
     domain: str,
     species: str,
@@ -193,7 +196,8 @@ def quadtreebasisfunction(
     -----------------------------------
     """
     from functools import partial
-    from .basis._functions import _flux_fp_from_fp_all, _mean_fp_times_mean_flux
+    from .basis._functions import _flux_fp_from_fp_all, _mean_fp_times_mean_flux, _save_basis
+
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux)
 
@@ -208,16 +212,13 @@ def quadtreebasisfunction(
     new_ds.attrs["date created"] = str(pd.Timestamp.today())
 
     if outputdir is not None:
-        basisoutpath = os.path.join(outputdir, domain)
-        if outputname is None:
-            outputname = "output_name"
-        if not os.path.exists(basisoutpath):
-            os.makedirs(basisoutpath)
-        new_ds.to_netcdf(
-            os.path.join(
-                basisoutpath, f"quadtree_{species}-{outputname}_{domain}_{start_date.split('-')[0]}.nc"
-            ),
-            mode="w",
+        _save_basis(
+            basis=new_ds,
+            basis_algorithm="quadtree",
+            output_dir=outputdir,
+            domain=domain,
+            species=species,
+            output_name=outputname,
         )
 
     return new_ds
@@ -382,7 +383,6 @@ def nregion_landsea_basis(grid, bucket=1, nregion=100, tol=1):
 def bucketbasisfunction(
     emissions_name,
     fp_all,
-    sites,
     start_date,
     domain,
     species,
@@ -424,7 +424,8 @@ def bucketbasisfunction(
         If outputdir is not None, then saves the basis function in outputdir.
     """
     from functools import partial
-    from .basis._functions import _flux_fp_from_fp_all, _mean_fp_times_mean_flux
+    from .basis._functions import _flux_fp_from_fp_all, _mean_fp_times_mean_flux, _save_basis
+
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux)
 
@@ -439,15 +440,13 @@ def bucketbasisfunction(
     new_ds.attrs["date created"] = str(pd.Timestamp.today())
 
     if outputdir is not None:
-        basisoutpath = os.path.join(outputdir, domain)
-        if not os.path.exists(basisoutpath):
-            os.makedirs(basisoutpath)
-        new_ds.to_netcdf(
-            os.path.join(
-                basisoutpath,
-                f"weighted_{species}-{outputname}_{domain}_{start_date.split('-')[0]}{start_date.split('-')[1]}.nc",
-            ),
-            mode="w",
+        _save_basis(
+            basis=new_ds,
+            basis_algorithm="weighted",
+            output_dir=outputdir,
+            domain=domain,
+            species=species,
+            output_name=outputname,
         )
 
     return new_ds
