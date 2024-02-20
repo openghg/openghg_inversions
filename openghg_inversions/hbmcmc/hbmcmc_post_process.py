@@ -3,7 +3,7 @@
 Created on Tue Aug  4 08:57:53 2015
 
 
-Script to process Transdimensional MCMC output 
+Script to process HBMCMC (RHIME) output 
 
 Includes:
 Write netcdf and append netcdf to write output to nc file
@@ -19,6 +19,7 @@ country_emissions - calculate emissions from given list of countries
 @author: ml12574
 
 Updated by Eric Saboya
+Updated by Ben Adam February 2024
 """
 import os
 import glob
@@ -40,7 +41,7 @@ from openghg_inversions import utils
 from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
 
-acrg_path = Paths.acrg
+openghg_inv_path = Paths.openghginv
 
 # Get site_info file
 # with open(acrg_path / "data/site_info.json") as f:
@@ -55,7 +56,7 @@ def check_platform(site, network=None):
     Returns:
         str : Platform type (e.g. "site", "satellite", "aircraft")
     """
-    site_info_file = os.path.join(acrg_path, "data/site_info.json")
+    site_info_file = os.path.join(openghg_inv_path, "data/site_info.json")
     with open(site_info_file) as f:
         site_info = json.load(f, object_pairs_hook=OrderedDict)
     if network is None:
