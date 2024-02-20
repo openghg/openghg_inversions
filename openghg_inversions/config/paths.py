@@ -21,7 +21,9 @@
 
 from pathlib import Path
 
-_openghginv_path = Path(__file__).parents[2]
+# I think this points to the right parent file, but tbc
+
+_openghginv_path = Path(__file__).parents[1]
 # _openghginv_config_path = Path(__file__).parents[0]
 
 # _user_defined_data_paths = sorted(_openghginv_config_path.glob("paths.y*ml"))
