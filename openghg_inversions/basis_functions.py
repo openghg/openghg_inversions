@@ -197,6 +197,7 @@ def quadtreebasisfunction(
     if meanflux.shape != meanfp.shape:
         meanflux = np.mean(meanflux, axis=2)
     fps = meanfp * meanflux
+    fps[np.isnan(fps)] = 0 # remove the weird nan values on the 180 longitudes
 
     def qtoptim(x):
         basisQuad, boxes = quadTreeGrid(fps, x)
