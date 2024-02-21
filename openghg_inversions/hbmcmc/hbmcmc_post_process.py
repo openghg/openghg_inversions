@@ -1067,6 +1067,8 @@ def country_emissions_mult(
         cntry_68_list: list of 68 CI country totals
         cntry_95_list: list of 95 CI country totals
     """
+    if countries is None:
+        countries = ds_list[0].countrynames.values
 
     cntrymean_arr = np.zeros((len(ds_list), len(countries)))
     cntry68_arr = np.zeros((len(ds_list), len(countries), 2))
@@ -1096,15 +1098,37 @@ def plot_country_timeseries(
     country_CI,
     country_prior,
     d0,
+    country_label = "",
     prior_label="Prior",
     posterior_label="Posterior",
     y_label="emissions",
-    country_label=None,
-    units=None,
+    units='g',
     figsize=(7, 3),
 ):
     """
-    Plot  timeseries of country emissions
+    Plot  timeseries of country emissions. Requires more than one time stamp.
+
+    Args:
+        country_mean (data array) : 
+            A 1D array of emissions over time
+        country_CI (data array) : 
+            A 2D array of upper and lower bounds of emissions over time
+        country_prior (data array) : 
+            A 1D array of prior emissions over time
+        d0 (data array) : 
+            1D array of time stamps. Must match the length of country_mean, country_CI and country_prior
+        country_label (str) : 
+            Label for the country being plotted. Defaults to empty string
+        prior_label (str) : 
+            Label for the prior emissions. Defaults to "Prior"
+        posterior_label (str) :
+            Label for the posterior emissions. Defaults to "Posterior"
+        y_label (str) :
+            Label for the y-axis (which is labelled [country_label] [y_label]). Defaults to "emissions"
+        units (str) :
+            Units for labelling of y-axis. Defaults to "g"
+        figsize (tuple) :
+            Size of figure. Defaults to (7,3).
     """
     fig, ax = plt.subplots(figsize=figsize)
 
