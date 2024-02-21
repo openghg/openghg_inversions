@@ -918,6 +918,40 @@ def plot_diff_map(
 
 
 def country_emissions(ds, species, domain, country_file=None, country_unit_prefix=None, countries=None):
+    """
+    Extract indiviudal country emissions from a dataset
+
+    Args:
+        ds (xarray.Dataset) : 
+            Output dataset from HBMCMC inversion
+        species (str) :
+            species run in the inversion (e.g. 'hfc23')
+        domain (str) : 
+            domain over which the inversion was run (e.g. 'EASTASIA')
+        country_file (filepath) :
+            country file from which to extract country definitions. Defaults to None, in which case
+            the function looks for it in 'data/countries/[domain]' using the utils.get_country function
+        country_unit_prefix (str) : 
+            prefix for which to report emissions in (e.g. 'G' for Gg). Conversion done by convert.prefix. 
+            Defaults to None, in which case emissions are reported in g
+        countries (data array) :
+            array of country names for which to calculate emissions for. Defaults to None, in which case these
+            are extracted from the country file
+    
+    Returns:
+        cntrymean (data array):
+            1D array of mean emissions from each country
+        cntry68 (data array):
+            2D array of 68% CI emissions from each country
+        cntry95 (data array):
+            2D array of 95% CI emissions from each country
+        cntryprior (data array) :
+            1D array of prior emissions from each country
+        cntrymode (data array) :
+            1D array of mode emissions from each country
+        
+
+    """
     c_object = utils.get_country(domain, country_file=country_file)
     cntryds = xr.Dataset(
         {"country": (["lat", "lon"], c_object.country), "name": (["ncountries"], c_object.name)},
