@@ -1006,9 +1006,18 @@ def country_emissions(ds, species, domain, country_file=None, country_unit_prefi
         cntry95[i, :] = pm.stats.hdi(np.expand_dims(cntrytottrace, axis=1), 0.95)
         cntryprior[i] = cntrytotprior
 
+        # replace any NaNs with 0 (shouldn't be needed once the edgar parser branch of openghg is fixed
+        # but still worth checking)
+
+        cntrytottrace[np.isnan(cntrytottrace)] = 0
         xes = np.linspace(np.nanmin(cntrytottrace), np.nanmax(cntrytottrace), 200)
-        kde = stats.gaussian_kde(cntrytottrace).evaluate(xes)
-        cntrymode[i] = xes[kde.argmax()]
+
+        # the gaussian_kde doesn't like arrays of zeroes, so just set the mode to zero if this happens
+        try:
+            kde = stats.gaussian_kde(cntrytottrace).evaluate(xes)
+            cntrymode[i] = xes[kde.argmax()]
+        except np.linalg.LinAlgError:
+            cntrymode[i]=0
 
     return cntrymean, cntry68, cntry95, cntryprior, cntrymode
 
