@@ -43,22 +43,26 @@ from openghg_inversions.config.paths import Paths
 
 openghg_inv_path = Paths.openghginv
 
-# Get site_info file
-# with open(acrg_path / "data/site_info.json") as f:
-#    site_info=json.load(f,object_pairs_hook=OrderedDict)
-
+site_info_file = os.path.join(openghg_inv_path, "data/site_info.json")
+with open(site_info_file) as f:
+    site_info = json.load(f, object_pairs_hook=OrderedDict)
 
 def check_platform(site, network=None):
     """
     This function extracts platform (if specified) for the site from site_info.json file.
     network can be specified if site is associated with more than one. If not specified, the first
     network will be used by default.
+    Args:
+        site (str) : 
+            Site code (if applicable) or name
+        Network (str) : 
+            If a site is part of multiple networks, will select a given one and check 
+            the platform
     Returns:
-        str : Platform type (e.g. "site", "satellite", "aircraft")
+        str : Platform type (e.g. "site", "satellite", "aircraft") if specified by site_info.json,
+              otherwise None
     """
-    site_info_file = os.path.join(openghg_inv_path, "data/site_info.json")
-    with open(site_info_file) as f:
-        site_info = json.load(f, object_pairs_hook=OrderedDict)
+
     if network is None:
         network = list(site_info[site].keys())[0]
     if "platform" in site_info[site][network].keys():
@@ -70,7 +74,7 @@ def check_platform(site, network=None):
 def define_stations(ds, sites=None, use_site_info=False):
     """
     The define_stations function defines the latitude and longitude values for each site within
-    a dataset.
+    a dataset. The output can be passed directly as the 'stations' argument in plot_map
 
     If sites is not specified, if the platform for the site is listed as "aircraft" or
     "satellite" in the site_info.json file then no values are included in the stations
@@ -190,6 +194,9 @@ def set_clevels(
         centre_zero (bool, optional) :
             Explictly centre levels around zero.
             Default = False.
+        above_zero (bool, optional) :
+            Explicitly set clevels based on percentiles of positive data only.
+            Default = False
         rescale (bool, optional) :
             Rescale according to the most appropriate unit.
             This will rescale based on 10^3 and return the scaling factor used.
@@ -206,12 +213,14 @@ def set_clevels(
             Also returns scaling factor if rescale=True.
     """
     if robust:
+        # need to use nanpercentile, since >98% of data is nan for a lot of the 
+        # quantities that are plotted
         if above_zero:
-            q_min = np.percentile(data[data > 0], 2)
-            q_max = np.percentile(data, 98)
+            q_min = np.nanpercentile(data[data > 0], 2)
+            q_max = np.nanpercentile(data, 98)
         else:
-            q_min = np.percentile(data, 2)
-            q_max = np.percentile(data, 98)
+            q_min = np.nanpercentile(data, 2)
+            q_max = np.nanpercentile(data, 98)
     else:
         if above_zero:
             q_min = np.min(data[data > 0])
@@ -250,7 +259,6 @@ def set_clevels(
         return levels, scale
     else:
         return levels
-
 
 def unbiasedDivergingCmap(data, zero=0, minValue=None, maxValue=None):
     """
@@ -298,7 +306,8 @@ def plot_map(
 ):
     """
     Plot 2d map of data
-    e.g. scaling map of posterior x i.e. degree of scaling applied to prior emissions
+    e.g. scaling map of posterior x i.e. degree of scaling applied to prior emissions. Mainly used within the 
+    wrappers of plot_abs_map, plot_diff_map etc.
 
     Args:
         data (numpy.array) :
@@ -308,13 +317,13 @@ def plot_map(
         lat (numpy.array) :
             Latitude array  matching to data grid
         clevels (numpy.array, optional) :
-            Array of contour levels; defaults to np.arange(-2., 2.1, 0.1)
+            Array of contour levels; if None, uses the set_clevels function
         divergeCentre (float/None, optional):
             Default is None, to replicate original clevels behaviour.
                 If given a float, this value is used to manually set the centre value of a diverging cmap,
                 while using the min and max values of clevels as the min and max values of the cmap.
         cmap (matplotlib.cm, optional) :
-            Colormap object; defaults to Red Blue reverse
+            Colormap object; defaults to Red Blue reverse (plt.cm.RdBu_r)
         borders (bool, optional) :
             Add country borders as well as coastlines. Default = True.
         label (str, optional) :
@@ -328,9 +337,11 @@ def plot_map(
             Default is None. If specified needs to be a dictionary containing the list of sites
             and site locations for each site. For example:
                 {"sites": ['MHD', 'TAC'],
-                 MHD_lon: -9.02,
-                 MHD_lat: 55.2,
-                 TAC_lon: etc...
+                 "MHDlons": -9.02,
+                 "MHDlats": 55.2,
+                 "TAClons": etc...
+            This is the default output from the define_stations function, but can't default to this
+            as the data argument doesn't have a sitenames attribute
         fignum (int, optional) :
             Figure number for created plot. Default = None
         title (str, optional) :
@@ -370,14 +381,10 @@ def plot_map(
         ax.add_feature(BORDERS, linewidth=0.5)
 
     gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=0, color="gray", linestyle="-")
-    gl.xlabels_top = False
-    gl.ylabels_right = False
-    #     gl.xlocator = mticker.FixedLocator([-66, -65, -64, -63])
-    #     gl.ylocator = mticker.FixedLocator([-15, -14, -13, -12])
+    gl.top_labels = False
+    gl.right_labels = False
 
     if clevels is None:
-        # print "Warning: using default contour levels. Include clevels keyword to change"
-        # clevels = np.arange(-2., 2.1, 0.1)
         print(
             "Warning: using default contour levels which uses 2nd-98th percentile. Include clevels keyword to change."
         )
@@ -411,16 +418,15 @@ def plot_map(
         cb = plt.colorbar(cs, ax=ax, orientation="horizontal", pad=0.1, extend=extend)
 
     if label is not None:
-        cb.set_label(label)  # ,fontsize=14)
+        cb.set_label(label) 
     if title is not None:
-        # ax.set_title(title, fontsize=16)
-        fig.suptitle(title)  # , fontsize=16)
+        fig.suptitle(title) 
 
     if stations is not None:
         for si, site in enumerate(stations["sites"]):
             ilon = stations[site + "lons"]
             ilat = stations[site + "lats"]
-            ax.plot(ilon, ilat, color="black", marker="o", markersize=8, transform=ccrs.PlateCarree())
+            ax.plot(ilon, ilat, color="red", marker="x", markersize=8, transform=ccrs.PlateCarree())
 
     tick_locator = ticker.MaxNLocator(nbins=5)
     cb.locator = tick_locator
@@ -473,9 +479,9 @@ def plot_map_mult(
             multiple figures.
             Can either be a list of grids or an array of dimension nlat x nlon (x ngrid).
         lon (numpy.array) :
-            Longitude array matching to longitude points is each grid in grid_data.
+            Longitude array matching to longitude points in each grid in grid_data.
         lat (numpy.array) :
-            Latitude array matching to longitude points is each grid in grid_data.
+            Latitude array matching to longitude points in each grid in grid_data.
         grid (bool, optional) :
             Whether to plot on a grid.
             Default = True.
@@ -570,7 +576,7 @@ def plot_map_mult(
         else:
             position = i + 1
 
-        ax = fig.add_subplot(subplot[0], subplot[1], position, projection=ccrs.PlateCarree())
+        ax = fig.add_subplot(subplot[0], subplot[1], position, projection=ccrs.PlateCarree(central_longitude=np.median(lon.values).round()))
 
         if i < nrun - 1 and grid:
             plot_map(
@@ -699,6 +705,7 @@ def plot_scale_map(
         divergeCentre=divergeCentre,
         centre_zero=centre_zero,
         cmap=cmap,
+        borders=borders,
         labels=labels,
         smooth=smooth,
         out_filename=out_filename,
@@ -708,7 +715,6 @@ def plot_scale_map(
         extend=extend,
         figsize=figsize,
     )
-    return x_post_mean_list
 
 
 def plot_abs_map(
@@ -790,7 +796,7 @@ def plot_abs_map(
         )
         for ds in ds_list
     ]
-    q_abs_list = [convert.mol2g(ds.fluxmean, species) for ds in ds_list]
+    q_abs_list = [convert.mol2g(ds.fluxmode, species) for ds in ds_list]
 
     plot_map_mult(
         q_abs_list,
@@ -800,6 +806,7 @@ def plot_abs_map(
         clevels=clevels,
         divergeCentre=divergeCentre,
         cmap=cmap,
+        borders=borders,
         labels=labels,
         smooth=smooth,
         out_filename=out_filename,
@@ -809,7 +816,6 @@ def plot_abs_map(
         extend=extend,
         figsize=figsize,
     )
-    return q_abs_list
 
 
 def plot_diff_map(
@@ -893,7 +899,7 @@ def plot_diff_map(
         )
         for ds in ds_list
     ]
-    q_diff_list = [convert.mol2g((ds.fluxmean - ds.fluxapriori), species) for ds in ds_list]
+    q_diff_list = [convert.mol2g((ds.fluxmode - ds.fluxapriori), species) for ds in ds_list]
 
     plot_map_mult(
         q_diff_list,
@@ -904,6 +910,7 @@ def plot_diff_map(
         divergeCentre=divergeCentre,
         centre_zero=centre_zero,
         cmap=cmap,
+        borders=borders,
         labels=labels,
         smooth=smooth,
         out_filename=out_filename,
@@ -913,7 +920,6 @@ def plot_diff_map(
         extend=extend,
         figsize=figsize,
     )
-    return q_diff_list
 
 
 def country_emissions(ds, species, domain, country_file=None, country_unit_prefix=None, countries=None):
