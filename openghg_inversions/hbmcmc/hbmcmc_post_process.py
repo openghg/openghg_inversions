@@ -39,13 +39,8 @@ from scipy import stats
 
 from openghg_inversions import utils
 from openghg_inversions import convert
-from openghg_inversions.config.paths import Paths
 
-openghg_inv_path = Paths.openghginv
-
-site_info_file = os.path.join(openghg_inv_path, "data/site_info.json")
-with open(site_info_file) as f:
-    site_info = json.load(f, object_pairs_hook=OrderedDict)
+site_info = utils.load_json(filename="site_info.json")
 
 def check_platform(site, network=None):
     """
