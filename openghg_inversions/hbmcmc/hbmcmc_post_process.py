@@ -1398,6 +1398,14 @@ def plot_timeseries(
 def open_ds(path):
     """
     Function efficiently opens xr datasets.
+
+    Args:
+        path (str) :
+            path to xarray dataset
+    
+    Returns:
+        ds (xarray dataset) :
+            dataset 
     """
     # use a context manager, to ensure the file gets closed after use
     with xr.open_dataset(path) as ds:
@@ -1410,6 +1418,27 @@ def extract_hbmcmc_files(directory, species, domain, runname, dates, return_file
     Find hbmcmc output filenames based on naming convention:
         "directory"/"species"+"domain"+"runname"_"date".nc"
     Open as xarray.Dataset objects and return as a list.
+
+    Args: 
+        directory (str) :
+            path to output directory to where hbmcmc files are written
+        species (str) :
+            species of inversion (e.g. "hfc23")
+        domain (str) :
+            domain of inversion (e.g. "EASTASIA")
+        runname (str) :
+            name of run (as specified in .ini file)
+        dates (list) :
+            list of dates of the inversion, as specified at the top of the .ini file and
+            in the output file name
+        return_filenames (bool) :
+            whether to return the filenames. Defaults to False
+    
+    Returns:
+        ds_list (list) :
+            list of xarray datasets matching the input parameters
+        filenames (list) :
+            list of filenames. Only returned if return_filenames is True
     """
     species = species.upper()
     domain = domain.upper()
@@ -1440,6 +1469,23 @@ def extract_hbmcmc_files(directory, species, domain, runname, dates, return_file
 
 
 def check_missing_dates(filenames, dates, labels=[]):
+    """
+    Checks for missing dates from a list of filenames
+
+    Args:
+        filenames (list) :
+            list of filenames to check
+        dates (list) :
+            list of expected dates to check in filenames
+        labels (list) :
+            list of labels for the dates that do match
+    
+    Returns:
+        dates (list) :
+            list of dates with matching filenames
+        labels (list) :
+            labels associated with dates, as specified in input
+    """
     if len(filenames) != len(dates):
         no_data = []
         for date in dates:
