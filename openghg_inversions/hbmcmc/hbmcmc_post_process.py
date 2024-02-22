@@ -1269,26 +1269,29 @@ def plot_timeseries(
 ):
     """
     Plot measurement timeseries of posterior and observed measurements
-    Requires post_mcmc xr dataset
+    Requires post_mcmc xr dataset. Can plot to console or save to file. 
+    Plots 95% CI by default. 
     For future: incorporate model & measurement uncertainty
     Plots separate subplots for each of the measurement sites - hopefully!
 
     Args:
-        ds (xarray dataset) : dataset output from run_tdmcmc script
-        fig_text (String) : e.g. "CH$_{4}$ mole fraction (ppb)"
-        ylim (array) : y-axis limits [ymin,ymax]
-        out_filename (string) : Filename to save file
-        doplot (bool) : Plot to console? (optional)
-        figsize (tuple) : Specify size of figure as a two-item tuple.
-        plot_prior (bool) : Plot mole fraction prior.
-        plot_bc_prior (bool) : Plot inner boundary conditions prior.
-        lower_percentile (float) : Lower percentile of predicted time series
-                                   uncertainty (default = 16)
-        upper_percentile (float) : Upper percentile of predicted time series
-                                   uncertainty (default = 84)
+        ds (xarray dataset) : 
+            dataset output from run_tdmcmc script
+        fig_text (String) :    
+            e.g. "CH$_{4}$ mole fraction (ppb)". Defaults to None
+        ylim (array) : 
+            y-axis limits [ymin,ymax]. If not specified, set automatically
+        out_filename (string) : 
+            Filename to save file, if specified. Defaults to None (figure isn't saved)
+        doplot (bool) : 
+            Plot to console? (optional, defaults to True)
+        figsize (tuple) : 
+            Specify size of figure as a two-item tuple.
+        plot_prior (bool) : 
+            Plot mole fraction prior.
+        plot_bc_prior (bool) : 
+            Plot inner boundary conditions prior.
 
-
-    Specify an out_filename to write to disk
     """
 
     y_bg_mean = ds["YmodmeanBC"].values
