@@ -42,6 +42,7 @@ from openghg_inversions import convert
 
 site_info = utils.load_json(filename="site_info.json")
 
+
 def check_platform(site, network=None):
     """
     This function extracts platform (if specified) for the site from site_info.json file.
@@ -208,7 +209,7 @@ def set_clevels(
             Also returns scaling factor if rescale=True.
     """
     if robust:
-        # need to use nanpercentile, since >98% of data is nan for a lot of the 
+        # need to use nanpercentile, since >98% of data is nan for a lot of the
         # quantities that are plotted
         if above_zero:
             q_min = np.nanpercentile(data[data > 0], 2)
@@ -254,6 +255,7 @@ def set_clevels(
         return levels, scale
     else:
         return levels
+
 
 def unbiasedDivergingCmap(data, zero=0, minValue=None, maxValue=None):
     """
@@ -413,9 +415,9 @@ def plot_map(
         cb = plt.colorbar(cs, ax=ax, orientation="horizontal", pad=0.1, extend=extend)
 
     if label is not None:
-        cb.set_label(label) 
+        cb.set_label(label)
     if title is not None:
-        fig.suptitle(title) 
+        fig.suptitle(title)
 
     if stations is not None:
         for si, site in enumerate(stations["sites"]):
@@ -571,7 +573,12 @@ def plot_map_mult(
         else:
             position = i + 1
 
-        ax = fig.add_subplot(subplot[0], subplot[1], position, projection=ccrs.PlateCarree(central_longitude=np.median(lon.values).round()))
+        ax = fig.add_subplot(
+            subplot[0],
+            subplot[1],
+            position,
+            projection=ccrs.PlateCarree(central_longitude=np.median(lon.values).round()),
+        )
 
         if i < nrun - 1 and grid:
             plot_map(
@@ -1051,7 +1058,7 @@ def country_emissions(ds, species, domain, country_file=None, country_unit_prefi
             kde = stats.gaussian_kde(cntrytottrace).evaluate(xes)
             cntrymode[i] = xes[kde.argmax()]
         except np.linalg.LinAlgError:
-            cntrymode[i]=0
+            cntrymode[i] = 0
 
     return cntrymean, cntry68, cntry95, cntryprior, cntrymode
 
@@ -1098,11 +1105,11 @@ def plot_country_timeseries(
     country_CI,
     country_prior,
     d0,
-    country_label = "",
+    country_label="",
     prior_label="Prior",
     posterior_label="Posterior",
     y_label="emissions",
-    units='g',
+    units="g",
     figsize=(7, 3),
 ):
     """
@@ -1545,7 +1552,7 @@ def calculate_DIC(ds, silence=False):
     hbc_all_post = np.dot(ds.bcsensitivity.values, np.mean(ds.bctrace.values, axis=0))
     mubar = hx_all_post + hbc_all_post
     D_thetabar = -0.5 * (
-        np.sum(2 * np.log(sig_arr)) + np.sum((y - mubar) ** 2 / sig_arr**2) + np.log(2 * np.pi) * len(y)
+        np.sum(2 * np.log(sig_arr)) + np.sum((y - mubar) ** 2 / sig_arr ** 2) + np.log(2 * np.pi) * len(y)
     )
 
     # Calculate the mean log-likelihood
@@ -1554,7 +1561,7 @@ def calculate_DIC(ds, silence=False):
     )
     D_theta_trace = -0.5 * (
         np.sum(2 * np.log(sig_trace_arr), axis=0)
-        + np.sum((np.expand_dims(y, axis=1) - mu_trace) ** 2 / sig_trace_arr**2, axis=0)
+        + np.sum((np.expand_dims(y, axis=1) - mu_trace) ** 2 / sig_trace_arr ** 2, axis=0)
         + np.log(2 * np.pi) * len(y)
     )
     Dbar_theta = np.mean(D_theta_trace, axis=0)
