@@ -568,6 +568,7 @@ def fixedbasisMCMC(
 
         # Mask of source regions in Hx
         basis_region_mask = np.zeros_like(fp_all[site]["region"].values)
+        
         count = 0        
         for emi in emissions_name:
             count += 1
