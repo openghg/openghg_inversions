@@ -1166,6 +1166,63 @@ def plot_country_timeseries(
     ax.xaxis.set_minor_locator(mdates.MonthLocator(interval=2))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
 
+def plot_multi_country_timeseries(
+        ds_list,
+        species,
+        domain,
+        countries,
+        country_file,
+        d0,
+        plot_prior = True,
+        figsize = (7,3)
+):
+    """
+    Generates a plot of country emissions timeseries from a list of yearly inversion datasets
+    and a list of countries contained in a specified country file
+    
+    Args:
+        ds_list (list):
+            list of RHIME hbmcmc output datasets
+        species (str):
+            species for which the inversion was run
+        domain (str):
+            domain over which the inversion was run
+        countries (list):
+            list of countries to plot (must be in countryfile)
+        country_file (filepath):
+            country file
+        d0 (array):
+            1D array of dates corresponding to the ds_list
+        plot_prior (bool):
+            whether to plot the prior emissions. defaults to True
+        figsize (tuple):
+            figure size (defaults to (7,3))
+    """
+
+    fig, ax = plt.subplots(figsize=figsize)
+    d0 = pd.to_datetime(d0)
+    cntrymean_arr, cntry68_arr, cntry95_arr, cntryprior_arr = country_emissions_mult(ds_list=ds_list,
+                                                                                     species=species,
+                                                                                     domain=domain,
+                                                                                     country_file=country_file,
+                                                                                     countries = countries)
+    print(type(cntry68_arr))
+    print(cntry68_arr.shape)
+    for i, country in enumerate(countries):
+        if plot_prior:
+            ax.plot(d0, cntryprior_arr[:,i], label=country + ' prior emissions')
+        ax.plot(d0, cntrymean_arr[:,i], label=country + ' posterior emissions')
+
+        ax.fill_between(
+            d0, cntry68_arr[:,i,0], cntry68_arr[:,i,1], alpha=0.3)
+        
+    ax.set_xlabel("Date", fontsize=10, fontweight="bold")
+    legend = ax.legend(loc="upper left", labelspacing=0.1, fontsize=10)
+    ax.xaxis.set_tick_params(labelsize=10)
+    ax.yaxis.set_tick_params(labelsize=10)
+    ax.xaxis.set_major_locator(mdates.YearLocator())
+    ax.xaxis.set_minor_locator(mdates.MonthLocator(interval=2))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
 
 #     The combine_timeseries function takes a list of output datasets from a tdmcmc run and combines
 #     the parameters relevant to plotting a mole fraction timeseries.
