@@ -1206,8 +1206,7 @@ def plot_multi_country_timeseries(
                                                                                      domain=domain,
                                                                                      country_file=country_file,
                                                                                      countries = countries)
-    print(type(cntry68_arr))
-    print(cntry68_arr.shape)
+
     for i, country in enumerate(countries):
         if plot_prior:
             ax.plot(d0, cntryprior_arr[:,i], label=country + ' prior emissions')
