@@ -1070,9 +1070,16 @@ def country_emissions_mult(
     Calculate country emissions across multiple datasets.
     See process.country_emissions() function for details of inputs
     Returns:
-        cntry_mean_list: list of mean country totals
-        cntry_68_list: list of 68 CI country totals
-        cntry_95_list: list of 95 CI country totals
+        cntrymean_arr (np.ndarray):
+            array of country means for each ds, with size [number of ds x number of countries]
+        cntry68_arr (np.ndarray):
+            array of 68th percentile upper and lower bounds of country emissions for each ds,
+            with size [number of ds x number of countries x 2]
+        cntry95_arr (np.ndarray):
+            array of 95th percentile upper and lower bounds of country emissions for each ds,
+            with size [number of ds x number of countries x 2]
+        cntryprior_arr (np.ndarray):
+            array of country priors for each ds, with size [number of ds x number of countries]
     """
     if countries is None:
         countries = ds_list[0].countrynames.values
