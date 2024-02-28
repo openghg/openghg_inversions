@@ -1173,6 +1173,7 @@ def plot_multi_country_timeseries(
         countries,
         country_file,
         d0,
+        country_unit_prefix=None,
         plot_prior = True,
         figsize = (7,3)
 ):
@@ -1193,6 +1194,9 @@ def plot_multi_country_timeseries(
             country file
         d0 (array):
             1D array of dates corresponding to the ds_list
+        country_unit_prefix (str) :
+            prefix for which to report emissions in (e.g. 'G' for Gg). Conversion done by convert.prefix. 
+            Defaults to None, in which case emissions are reported in g
         plot_prior (bool):
             whether to plot the prior emissions. defaults to True
         figsize (tuple):
@@ -1205,7 +1209,8 @@ def plot_multi_country_timeseries(
                                                                                      species=species,
                                                                                      domain=domain,
                                                                                      country_file=country_file,
-                                                                                     countries = countries)
+                                                                                     countries = countries,
+                                                                                     country_unit_prefix=country_unit_prefix)
 
     for i, country in enumerate(countries):
         if plot_prior:
