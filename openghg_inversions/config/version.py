@@ -37,7 +37,7 @@ def code_version():
             check=True,
             text=True,
         )
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         print(
             "WARNING: Unable to identify version using git."
             " Check that git is available to the python process."
