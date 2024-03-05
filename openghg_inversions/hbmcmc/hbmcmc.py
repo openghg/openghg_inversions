@@ -94,6 +94,7 @@ def fixedbasisMCMC(
     merged_data_dir=None,
     merged_data_name=None,
     basis_output_path=None,
+    save_trace: bool = False,
     **kwargs,
 ):
     """
@@ -278,6 +279,7 @@ def fixedbasisMCMC(
       basis_output_path (Optional, str):
         If set, save the basis functions to this path. Used for testing
 
+      save_trace: if True, save arviz InferenceData trace to outputpath
 
 
     Returns:
@@ -413,7 +415,7 @@ def fixedbasisMCMC(
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
         # Path to save trace
-        trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
+        trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc") if save_trace else None
 
         mcmc_args = {
             "Hx": Hx,
