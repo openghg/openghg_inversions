@@ -8,24 +8,22 @@
 #   Functions for performing MCMC inversion.
 #   PyMC library used for Bayesian modelling. Updated from PyMc3
 # *****************************************************************************
-import re
-import numpy as np
-import pymc as pm
-import pandas as pd
-import xarray as xr
 import getpass
-import pytensor.tensor as pt
-import arviz as az
-from scipy import stats
+import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
-
-from openghg_inversions import convert
-from openghg_inversions import utils
-from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
-from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
+import arviz as az
+import numpy as np
+import pandas as pd
+import pymc as pm
+import pytensor.tensor as pt
+import xarray as xr
+from openghg_inversions import convert, utils
 from openghg_inversions.config.version import code_version
+from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
+from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
+from scipy import stats
 
 
 def parseprior(name, prior_params, shape=()):
@@ -95,6 +93,7 @@ def inferpymc(
     xprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     bcprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     sigprior={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
+    nuts_sampler: str = "pymc",
     nit=2.5e5,
     burn=50000,
     tune=1.25e5,
@@ -104,7 +103,7 @@ def inferpymc(
     add_offset=False,
     verbose=False,
     min_error=0.0,
-    save_trace=False,
+    save_trace: Optional[Union[str, Path]] = None,
     use_bc: bool = True,
 ):
     """
@@ -232,13 +231,19 @@ def inferpymc(
 
         step1 = pm.NUTS(vars=[x, xbc]) if use_bc else pm.NUTS(vars=[x])
         step2 = pm.Slice(vars=[sig])
-
+        step = [step1, step2] if nuts_sampler == "pymc" else None
         trace = pm.sample(
-            nit, tune=int(tune), chains=nchain, step=[step1, step2], progressbar=verbose, cores=nchain
+            nit,
+            tune=int(tune),
+            chains=nchain,
+            step=step,
+            progressbar=verbose,
+            cores=nchain,
+            nuts_sampler=nuts_sampler,
         )  # step=pm.Metropolis())#  #target_accept=0.8,
 
-    # if save_trace:
-    #    trace.to_netcdf(str(save_trace), engine="netcdf4")
+    if save_trace:
+        trace.to_netcdf(str(save_trace), engine="netcdf4")
 
     outs = trace.posterior["x"][0, burn:nit]
 

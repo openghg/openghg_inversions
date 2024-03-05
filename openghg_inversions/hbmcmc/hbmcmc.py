@@ -392,9 +392,6 @@ def fixedbasisMCMC(
         Y = np.zeros(0)
         siteindicator = np.zeros(0)
 
-        # Path to save trace
-        trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
-
         for si, site in enumerate(sites):
             if "mf_repeatability" in fp_data[site]:
                 error = np.concatenate((error, fp_data[site].mf_repeatability.values))
@@ -414,6 +411,9 @@ def fixedbasisMCMC(
                 Hx = np.hstack((Hx, fp_data[site].H.values))
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
+
+        # Path to save trace
+        trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
 
         mcmc_args = {
             "Hx": Hx,
