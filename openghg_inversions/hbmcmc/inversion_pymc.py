@@ -674,10 +674,10 @@ def inferpymc_postprocessouts(
             else:
                 cntrymode[i, ci] = np.mean(cntrytottrace)
 
-        cntrysd[i, ci] = np.std(cntrytottrace)
-        cntry68[i, ci, :] = pm.stats.hdi(cntrytottrace.values, 0.68)
-        cntry95[i, ci, :] = pm.stats.hdi(cntrytottrace.values, 0.95)
-        cntryprior[i, ci] = cntrytotprior
+            cntrysd[i, ci] = np.std(cntrytottrace)
+            cntry68[i, ci, :] = pm.stats.hdi(cntrytottrace.values, 0.68)
+            cntry95[i, ci, :] = pm.stats.hdi(cntrytottrace.values, 0.95)
+            cntryprior[i, ci] = cntrytotprior
 
     # Make output netcdf file
     outds = xr.Dataset(
