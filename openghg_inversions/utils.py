@@ -1001,6 +1001,24 @@ def fp_sensitivity(fp_and_data, domain, basis_case, basis_directory=None, verbos
                        basis_case=basis_case,
                        basis_directory=basis_directory
                       )
+        
+    if 'sector' not in basis_func.coords:
+        print(('No sector info in basis function file, so assuming single basis grid '+
+               'applies to all sectors'))
+        for i,source in enumerate(flux_sources):
+            if i == 0:
+                basis_func_new = np.expand_dims(basis_func['basis'].astype(float),axis=0)
+            else:
+                basis_func_new = np.concatenate((basis_func_new,
+                                                np.expand_dims(basis_func['basis'].astype(float),axis=0)),
+                                                axis=0)
+
+        basis_func['basis'] = xr.DataArray(data=basis_func_new,
+                                           dims=['sector','lat','lon','time'],
+                                           coords={'sector':flux_sources,
+                                                   'lat':basis_func.lat.values,
+                                                   'lon':basis_func.lon.values,
+                                                   'time':basis_func.time.values})
 
     for site in sites:
         for si, source in enumerate(flux_sources):
@@ -1070,7 +1088,7 @@ def fp_sensitivity(fp_and_data, domain, basis_case, basis_directory=None, verbos
             else:
                 print("Warning: Using basis functions without a region dimension may be deprecated shortly.")
 
-                site_bf = combine_datasets(site_bf, basis_func_source, method="ffill")
+                site_bf = combine_datasets(site_bf, basis_func_source, method="nearest")
 
                 H = np.zeros((int(np.max(site_bf.basis)), len(site_bf.time)))
 
