@@ -25,6 +25,7 @@ from tqdm import tqdm
 
 from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
+from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 
 openghginv_path = Paths.openghginv
 
@@ -1037,44 +1038,44 @@ def fp_sensitivity(
     return fp_and_data
 
 
-def get_xr_dummies(
-    da: xr.DataArray,
-    categories: Optional[Union[Sequence[Any], pd.Index, xr.DataArray, np.ndarray]] = None,
-    cat_dim: str = "region",
-) -> xr.DataArray:
-    """Create 0-1 dummy matrix from DataArray with values that correspond to categories.
+# def get_xr_dummies(
+#     da: xr.DataArray,
+#     categories: Optional[Union[Sequence[Any], pd.Index, xr.DataArray, np.ndarray]] = None,
+#     cat_dim: str = "region",
+# ) -> xr.DataArray:
+#     """Create 0-1 dummy matrix from DataArray with values that correspond to categories.
 
-    If the values of `da` are integers 0-N, then the result has N + 1 columns, and the (i, j) coordiante
-    of the result is 1 if `da[i] == j`, and is 0 otherwise.
+#     If the values of `da` are integers 0-N, then the result has N + 1 columns, and the (i, j) coordiante
+#     of the result is 1 if `da[i] == j`, and is 0 otherwise.
 
-    Args:
-        da: DataArray encoding categories.
-        categories: optional coordinates for categories.
-        cat_dim: dimension for categories coordinate
-        sparse: if True, store values in sparse.COO matrix
+#     Args:
+#         da: DataArray encoding categories.
+#         categories: optional coordinates for categories.
+#         cat_dim: dimension for categories coordinate
+#         sparse: if True, store values in sparse.COO matrix
 
-    Returns:
-        Dummy matrix corresponding to the input vector. Its dimensions are the same as the
-    input DataArray, plus an additional "categories" dimension, which  has one value for each
-    distinct value in the input DataArray.
-    """
-    # stack if `da` is not one dimensional
-    stack_dim = ""
-    if len(da.dims) > 1:
-        stack_dim = "".join([str(dim) for dim in da.dims])
-        da = da.stack({stack_dim: da.dims})
+#     Returns:
+#         Dummy matrix corresponding to the input vector. Its dimensions are the same as the
+#     input DataArray, plus an additional "categories" dimension, which  has one value for each
+#     distinct value in the input DataArray.
+#     """
+#     # stack if `da` is not one dimensional
+#     stack_dim = ""
+#     if len(da.dims) > 1:
+#         stack_dim = "".join([str(dim) for dim in da.dims])
+#         da = da.stack({stack_dim: da.dims})
 
-    dummies = pd.get_dummies(da.values, dtype=int)
+#     dummies = pd.get_dummies(da.values, dtype=int)
 
-    # put dummies into DataArray with the right coords and dims
-    values = dummies.values
-    if categories is None:
-        categories = np.arange(values.shape[1])
-    coords = da.coords.merge({cat_dim: categories}).coords  # coords.merge returns Dataset, we want the coords
-    result = xr.DataArray(values, coords=coords)
+#     # put dummies into DataArray with the right coords and dims
+#     values = dummies.values
+#     if categories is None:
+#         categories = np.arange(values.shape[1])
+#     coords = da.coords.merge({cat_dim: categories}).coords  # coords.merge returns Dataset, we want the coords
+#     result = xr.DataArray(values, coords=coords)
 
-    # if we stacked `da`, unstack result before returning
-    return result.unstack(stack_dim) if stack_dim else result
+#     # if we stacked `da`, unstack result before returning
+#     return result.unstack(stack_dim) if stack_dim else result
 
 
 def fp_sensitivity_single_site_basis_func(
@@ -1155,7 +1156,7 @@ def fp_sensitivity_single_site_basis_func(
         # print("Warning: Using basis functions without a region dimension may be deprecated shortly.")
         _, basis_aligned = xr.align(H_all.isel(time=0), basis_func, join="override")
         basis_mat = get_xr_dummies(basis_aligned.squeeze("time"))
-        sensitivity = (basis_mat @ H_all.fillna(0.0)).transpose("region", "time")
+        sensitivity = sparse_xr_dot(basis_mat, H_all.fillna(0.0)).transpose("region", "time")
         site_bf = None
 
         # site_bf = combine_datasets(site_bf, basis_func, method="ffill")
