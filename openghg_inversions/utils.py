@@ -1155,7 +1155,7 @@ def fp_sensitivity_single_site_basis_func(
     else:
         # print("Warning: Using basis functions without a region dimension may be deprecated shortly.")
         _, basis_aligned = xr.align(H_all.isel(time=0), basis_func, join="override")
-        basis_mat = get_xr_dummies(basis_aligned.squeeze("time"))
+        basis_mat = get_xr_dummies(basis_aligned.squeeze("time"), cat_dim="region")
         sensitivity = sparse_xr_dot(basis_mat, H_all.fillna(0.0)).transpose("region", "time")
         site_bf = None
 
