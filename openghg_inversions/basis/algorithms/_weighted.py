@@ -11,7 +11,7 @@ def load_landsea_indices():
     land = 1
     sea = 0
     """
-    landsea_indices = xr.open_dataset("../countries/country-EUROPE-UKMO-landsea-2023.nc")
+    landsea_indices = xr.open_dataset("country-EUROPE-UKMO-landsea-2023.nc")
     return landsea_indices["country"].values
 
 
