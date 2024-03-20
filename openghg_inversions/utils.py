@@ -637,7 +637,14 @@ def combine_datasets(dsa, dsb, method="ffill", tolerance=None):
     # merge the two datasets within a tolerance and remove times that are NaN (i.e. when FPs don't exist)
 
     if not indexesMatch(dsa, dsb):
-        dsb_temp = dsb.reindex_like(dsa, method, tolerance=tolerance)
+        if ('time' in dsb.dims.keys()) and dsb.time.data.size==1:
+            tmp = dsb.copy()
+            del tmp['time']
+            tmp = tmp.isel(time=0).expand_dims(dim={"time": dsa.time.size},axis=2).assign_coords({"time": ("time", dsa.time.data)})
+            dsb_temp = tmp.reindex_like(dsa, method, tolerance=tolerance)
+            del tmp
+        else :
+            dsb_temp = dsb.reindex_like(dsa, method, tolerance=tolerance)
     else:
         dsb_temp = dsb
 

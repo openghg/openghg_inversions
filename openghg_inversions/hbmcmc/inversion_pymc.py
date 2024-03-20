@@ -110,7 +110,7 @@ def inferpymc(
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
     conditions and (currently) a single model error value.
-    This uses a Normal likelihood but the (hyper)prior PDFs can selected by user.
+    This uses a Normal likelihood but the (hyper)prior PDFs can be selected by user.
     -----------------------------------
     Args:
       Hx (array):
@@ -122,7 +122,7 @@ def inferpymc(
         Same as above but for boundary conditions
       Y (array):
         Measurement vector containing all measurements
-      error (arrray):
+      error (array):
         Measurement error vector, containg a value for each element of Y.
       siteindicator (array):
         Array of indexing integers that relate each measurement to a site
