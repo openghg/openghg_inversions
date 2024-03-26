@@ -30,8 +30,6 @@
 #  the users .openghg config file
 # ****************************************************************************
 
-import os
-import pickle
 from pathlib import Path
 from typing import Optional
 
