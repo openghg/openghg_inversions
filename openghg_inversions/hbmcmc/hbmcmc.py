@@ -416,8 +416,10 @@ def fixedbasisMCMC(
             merged_data_dir = Path(merged_data_dir)
             fp_all = get_data.load_merged_data(merged_data_dir, species, start_date, outputname, merged_data_name)
         except ValueError as e:
+            # couldn't find merged data
             print(f"{e}, re-running data merge.")
         except TypeError:
+            # merged_data_dir is None
             print("`merged_data_dir` not specified, re-running data merge.")
         else:
             print("Successfully read in merged data.\n")
