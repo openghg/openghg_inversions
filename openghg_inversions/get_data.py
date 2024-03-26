@@ -14,15 +14,18 @@
 # *****************************************************************************
 
 import os
-import numpy as np
 import pickle
+from pathlib import Path
+from typing import Optional, Union
 
-import openghg_inversions.hbmcmc.inversionsetup as setup
+import numpy as np
 from openghg.retrieve import get_obs_surface, get_flux
 from openghg.retrieve import get_bc, get_footprint
 from openghg.analyse import ModelScenario
 from openghg.dataobjects import BoundaryConditionsData
 from openghg.types import SearchError
+
+import openghg_inversions.hbmcmc.inversionsetup as setup
 
 
 def data_processing_surface_notracer(
@@ -358,3 +361,99 @@ def data_processing_surface_notracer(
         print(f"\nfp_all saved in {merged_data_dir}\n")
 
     return fp_all, sites, inlet, fp_height, instrument, averaging_period
+
+
+def _make_merged_data_name(species: str, start_date: str, output_name: str) -> str:
+    return f"{species}_{start_date}_{output_name}_merged-data.pickle"
+
+
+# NOTE: the _func at the end of the name is to distinguish from the local variable in the previous function
+def save_merged_data_func(
+    fp_all: dict,
+    merged_data_dir: Union[str, Path],
+    species: Optional[str] = None,
+    start_date: Optional[str] = None,
+    output_name: Optional[str] = None,
+    merged_data_name: Optional[str] = None,
+) -> None:
+    """Save `fp_all` dictionary as a pickle file in `merged_data_dir`.
+
+    The name of the pickle file can be specified using `merged_data_name`, or
+    a standard name will be created given `species`, `start_date`, and `output_name`.
+
+    If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
+
+    Args:
+        fp_all: dictionary of merged data to save
+        merged_data_dir: path to directory where merged data will be saved
+        species: species of inversion
+        start_date: start date of inversion period
+        output_name: output name parameter used for inversion run
+        merged_data_name: name to use for saved data.
+
+    Returns:
+        None
+    """
+    if merged_data_name is None:
+        if any(arg is None for arg in [species, start_date, output_name]):
+            raise ValueError("If `merged_date_name` isn't given, then "
+                             "`species`, `start_date`, and `output_name` must be provided.")
+        else:
+            merged_data_name = _make_merged_data_name(species, start_date,_output_name)  # type: ignore
+
+    if isinstance(merged_data_dir, str):
+        merged_data_dir = Path(merged_data_dir)
+
+    with open(merged_data_dir / merged_data_name, "wb") as f:
+        pickle.dump(fp_all, f)
+
+
+def load_merged_data(
+        merged_data_dir: Union[str, Path],
+        species: Optional[str] = None,
+        start_date: Optional[str] = None,
+        output_name: Optional[str] = None,
+        merged_data_name: Optional[str] = None,
+    ) -> dict:
+    """Load `fp_all` dictionary from a pickle file in `merged_data_dir`.
+
+    The name of the pickle file can be specified using `merged_data_name`, or
+    a standard name will be created given `species`, `start_date`, and `output_name`.
+
+    If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
+
+    Args:
+        merged_data_dir: path to directory where merged data will be saved
+        species: species of inversion
+        start_date: start date of inversion period
+        output_name: output name parameter used for inversion run
+        merged_data_name: name to use for saved data.
+
+    Returns:
+        `fp_all` dictionary
+    """
+    any_args_none = any(arg is None for arg in [species, start_date, output_name])
+    if merged_data_name is None:
+        if any_args_none:
+            raise ValueError("If `merged_date_name` isn't given, then "
+                             "`species`, `start_date`, and `output_name` must be provided.")
+        else:
+            merged_data_name = _make_merged_data_name(species, start_date,_output_name)  # type: ignore
+
+    if isinstance(merged_data_dir, str):
+        merged_data_dir = Path(merged_data_dir)
+
+    merged_data_file = merged_data_dir / merged_data_name
+
+    if not merged_data_file.exists():
+        if any_args_none:
+            raise ValueError(f"No merged data with file name {merged_data_name} "
+                             f"found in merged data directory {merged_data_dir}")
+        else:
+            raise ValueError(f"No merged data for species {species}, start date {start_date}, and "
+                             f"output name {output_name} found in merged data directory {merged_data_dir}")
+
+    with open(merged_data_file, "rb") as f:
+        fp_all = pickle.load(f)
+
+    return fp_all
