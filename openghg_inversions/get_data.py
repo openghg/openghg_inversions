@@ -355,8 +355,9 @@ def data_processing_surface_notracer(
         )
 
     if save_merged_data:
-        with open(os.path.join(merged_data_dir, merged_data_name), "wb") as fp_out:
-            pickle.dump(fp_all, fp_out)
+        # with open(os.path.join(merged_data_dir, merged_data_name), "wb") as fp_out:
+        #     pickle.dump(fp_all, fp_out)
+        save_merged_data_func(fp_all, merged_data_dir, merged_data_name=merged_data_name)  # type: ignore
 
         print(f"\nfp_all saved in {merged_data_dir}\n")
 
