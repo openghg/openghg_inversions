@@ -15,8 +15,9 @@
 
 import os
 import pickle
+from collections import defaultdict
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, cast, Optional, Union
 
 import numpy as np
 from openghg.retrieve import get_obs_surface, get_flux
@@ -24,6 +25,8 @@ from openghg.retrieve import get_bc, get_footprint
 from openghg.analyse import ModelScenario
 from openghg.dataobjects import BoundaryConditionsData
 from openghg.types import SearchError
+from openghg.util import timestamp_now
+import xarray as xr
 
 import openghg_inversions.hbmcmc.inversionsetup as setup
 
@@ -397,10 +400,12 @@ def save_merged_data_func(
     """
     if merged_data_name is None:
         if any(arg is None for arg in [species, start_date, output_name]):
-            raise ValueError("If `merged_date_name` isn't given, then "
-                             "`species`, `start_date`, and `output_name` must be provided.")
+            raise ValueError(
+                "If `merged_date_name` isn't given, then "
+                "`species`, `start_date`, and `output_name` must be provided."
+            )
         else:
-            merged_data_name = _make_merged_data_name(species, start_date,_output_name)  # type: ignore
+            merged_data_name = _make_merged_data_name(species, start_date, output_name)  # type: ignore
 
     if isinstance(merged_data_dir, str):
         merged_data_dir = Path(merged_data_dir)
@@ -410,12 +415,12 @@ def save_merged_data_func(
 
 
 def load_merged_data(
-        merged_data_dir: Union[str, Path],
-        species: Optional[str] = None,
-        start_date: Optional[str] = None,
-        output_name: Optional[str] = None,
-        merged_data_name: Optional[str] = None,
-    ) -> dict:
+    merged_data_dir: Union[str, Path],
+    species: Optional[str] = None,
+    start_date: Optional[str] = None,
+    output_name: Optional[str] = None,
+    merged_data_name: Optional[str] = None,
+) -> dict:
     """Load `fp_all` dictionary from a pickle file in `merged_data_dir`.
 
     The name of the pickle file can be specified using `merged_data_name`, or
@@ -436,10 +441,12 @@ def load_merged_data(
     any_args_none = any(arg is None for arg in [species, start_date, output_name])
     if merged_data_name is None:
         if any_args_none:
-            raise ValueError("If `merged_date_name` isn't given, then "
-                             "`species`, `start_date`, and `output_name` must be provided.")
+            raise ValueError(
+                "If `merged_date_name` isn't given, then "
+                "`species`, `start_date`, and `output_name` must be provided."
+            )
         else:
-            merged_data_name = _make_merged_data_name(species, start_date,_output_name)  # type: ignore
+            merged_data_name = _make_merged_data_name(species, start_date, output_name)  # type: ignore
 
     if isinstance(merged_data_dir, str):
         merged_data_dir = Path(merged_data_dir)
@@ -448,13 +455,139 @@ def load_merged_data(
 
     if not merged_data_file.exists():
         if any_args_none:
-            raise ValueError(f"No merged data with file name {merged_data_name} "
-                             f"found in merged data directory {merged_data_dir}")
+            raise ValueError(
+                f"No merged data with file name {merged_data_name} "
+                f"found in merged data directory {merged_data_dir}"
+            )
         else:
-            raise ValueError(f"No merged data for species {species}, start date {start_date}, and "
-                             f"output name {output_name} found in merged data directory {merged_data_dir}")
+            raise ValueError(
+                f"No merged data for species {species}, start date {start_date}, and "
+                f"output name {output_name} found in merged data directory {merged_data_dir}"
+            )
 
     with open(merged_data_file, "rb") as f:
         fp_all = pickle.load(f)
 
     return fp_all
+
+
+def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[str, Any]:
+    """Combine attributes when concatenating scenarios from different sites.
+
+    The `ModelScenario.scenario`s in `get_combined_scenario` have the key "scenario" added
+    to their attributes as a flag so this function can process the dataset attributes and
+    the data variable attributes differently.
+
+    TODO: add 'time_period', 'high_time/spatial_resolution', 'short_lifetime', 'heights'?
+        Is 'time_period' from the footprint? Need to check model scenario...
+
+    Args:
+        attrs_list: list of attributes from datasets being concatenated
+        context: additional parameter supplied by concatenate
+
+    Returns:
+        dict that will be used as attributes for concatenated dataset
+    """
+    list_keys = [
+        "species",
+        "site",
+        "inlet",
+        "instrument",
+        "sampling_period",
+        "sampling_period_unit",
+        "averaged_period_str",
+        "scale",
+        "network",
+        "data_owner",
+        "data_owner_email",
+    ]
+    single_keys = [
+        "start_date",
+        "end_date",
+        "model",
+        "metmodel",
+        "domain",
+        "max_longitude",
+        "min_longitude",
+        "max_latitude",
+        "min_latitude",
+    ]
+
+    # take attributes from first element of attrs_list if key "scenario" is not in attributes
+    # this is a flag set in `get_combined_scenarios` to facilitate combining attributes
+    if "scenario" not in attrs_list[0]:
+        return attrs_list[0]
+
+    # processing for scenarios
+    single_attrs = {
+        k: attrs_list[0].get(k, "None") for k in single_keys
+    }  # NoneType can't be saved to netCDF, use string instead
+    list_attrs = defaultdict(list)
+    for attrs in attrs_list:
+        for key in list_keys:
+            list_attrs[key].append(attrs.get(key, "None"))
+
+    list_attrs = cast(dict, list_attrs)
+    list_attrs.update(single_attrs)
+    list_attrs["file_created"] = str(timestamp_now())
+    return list_attrs
+
+
+def combined_flux_attrs(attrs_list: list[dict[str, Any]], context) -> dict[str, Any]:
+    """Combine attributes when concatenating fluxes from different sources.
+
+    Currently just keeps a list of sources.
+
+    NOTE: This assumes that the 'source' in OpenGHG metadata is the same as the 'source'
+    in the attributes of the retrieved flux data.
+
+    Args:
+        attrs_list: list of attributes from datasets being concatenated
+        context: additional parameter supplied by concatenate
+
+    Returns:
+        dict that will be used as attributes for concatenated dataset
+    """
+    if "source" in attrs_list[0]:
+        return {"source": [attrs.get("source", "None") for attrs in attrs_list]}
+    else:
+        return attrs_list[0]
+
+
+def make_combined_scenario(fp_all):
+    """Combine scenarios and merge in fluxes and boundary conditions.
+
+    If fluxes and boundary conditions only have one coordinate for their
+    "time" dimension, then "time" will be dropped.
+
+    Otherwise, it is assumed that the time axis for fluxes and boundary conditions
+    have the same length as the time axis for the model scenarios.
+
+    TODO: incorporate errors
+    """
+    # combine scenarios by site
+    scenarios = [v.expand_dims({"site": [k]}) for k, v in fp_all.items() if not k.startswith(".")]
+    combined_scenario = xr.concat(scenarios, dim="site")
+
+    # make dtype of 'site' coordinate "<U3" (little-endian Unicode string of length 3)
+    combined_scenario = combined_scenario.assign_coords(site=combined_scenario.site.astype(np.dtype("<U3")))
+
+    # concat fluxes over source before merging into combined scenario
+    fluxes = [v.data.expand_dims({"source": [k]}) for k, v in fp_all[".flux"].items()]
+    combined_fluxes = xr.concat(fluxes, dim="source")
+
+    if "time" in combined_fluxes.dims and combined_fluxes.sizes["time"] == 1:
+        combined_fluxes = combined_fluxes.squeeze("time")
+
+    # merge with override in case coordinates slightly off
+    # (data should already be aligned by `ModelScenario`)
+    combined_scenario = combined_scenario.merge(combined_fluxes, join="override")
+
+    # merge in boundary conditions
+    if ".bc" in fp_all:
+        bc = fp_all[".bc"].data
+        if "time" in bc.dims and bc.sizes["time"] == 1:
+            bc = bc.squeeze("time")
+        combined_scenario = combined_scenario.merge(bc, join="override")
+
+    return combined_scenario
