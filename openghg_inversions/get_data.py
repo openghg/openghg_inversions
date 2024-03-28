@@ -23,7 +23,7 @@ import numpy as np
 from openghg.retrieve import get_obs_surface, get_flux
 from openghg.retrieve import get_bc, get_footprint
 from openghg.analyse import ModelScenario
-from openghg.dataobjects import BoundaryConditionsData
+from openghg.dataobjects import BoundaryConditionsData, FluxData
 from openghg.types import SearchError
 from openghg.util import timestamp_now
 import xarray as xr
@@ -471,6 +471,20 @@ def load_merged_data(
     return fp_all
 
 
+list_keys = [
+    "species",
+    "site",
+    "inlet",
+    "instrument",
+    "sampling_period",
+    "sampling_period_unit",
+    "averaged_period_str",
+    "scale",
+    "network",
+    "data_owner",
+    "data_owner_email",
+]
+
 def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[str, Any]:
     """Combine attributes when concatenating scenarios from different sites.
 
@@ -488,19 +502,6 @@ def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[st
     Returns:
         dict that will be used as attributes for concatenated dataset
     """
-    list_keys = [
-        "species",
-        "site",
-        "inlet",
-        "instrument",
-        "sampling_period",
-        "sampling_period_unit",
-        "averaged_period_str",
-        "scale",
-        "network",
-        "data_owner",
-        "data_owner_email",
-    ]
     single_keys = [
         "start_date",
         "end_date",
@@ -609,3 +610,38 @@ def recover_fp_all(ds: xr.Dataset) -> dict:
     Returns:
         dictionary containing model scenarios keyed by site, as well as flux and boundary conditions.
     """
+    sites = list(ds.sites.values)
+    bc_vars = ["vmr_n", "vmr_e", "vmr_s", "vmr_w"]
+    fp_all = {}
+
+    for i, site in enumerate(sites):
+        scenario = ds.sel(site=site).drop_vars(["flux"] + bc_vars, errors="ignore")
+
+        # extract attributes that were gathered into a list
+        for k in list_keys:
+            try:
+                val = scenario.attrs[k][i]
+            except (ValueError, IndexError):
+                val = "None"
+            scenario.attrs[k] = val
+
+        fp_all[site] = scenario
+
+    fp_all[".flux"] = FluxData(ds[["flux"]], {})  # double brackets to get dataset
+
+    try:
+        bc_ds = ds[bc_vars]
+    except KeyError:
+        pass
+    else:
+        fp_all[".bc"] = BoundaryConditionsData(bc_ds, {})
+
+    fp_all[".scales"] = ds.attrs.get("scale", None)
+
+    try:
+        fp_all[".units"] = float(ds.mf.attrs.get("units", 1.0))
+    except ValueError:
+        # conversion to float failed
+        fp_all[".units"] = 1.0
+
+    return fp_all
