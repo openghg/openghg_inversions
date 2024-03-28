@@ -593,6 +593,19 @@ def make_combined_scenario(fp_all):
         bc = fp_all[".bc"].data
         if "time" in bc.dims and bc.sizes["time"] == 1:
             bc = bc.squeeze("time")
-        combined_scenario = combined_scenario.merge(bc, join="override")
+        bc = bc.reindex_like(combined_scenario, method="nearest")
+        combined_scenario = combined_scenario.merge(bc)
+
 
     return combined_scenario
+
+
+def recover_fp_all(ds: xr.Dataset) -> dict:
+    """Recover "fp_all" dictionary from "combined scenario" dataset.
+
+    Args:
+        ds: dataset created by `make_combined_scenario`
+
+    Returns:
+        dictionary containing model scenarios keyed by site, as well as flux and boundary conditions.
+    """
