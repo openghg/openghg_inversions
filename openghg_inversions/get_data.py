@@ -563,11 +563,16 @@ def make_combined_scenario(fp_all):
     Otherwise, it is assumed that the time axis for fluxes and boundary conditions
     have the same length as the time axis for the model scenarios.
 
-    TODO: incorporate errors
     """
     # combine scenarios by site
     scenarios = [v.expand_dims({"site": [k]}) for k, v in fp_all.items() if not k.startswith(".")]
-    combined_scenario = xr.concat(scenarios, dim="site")
+
+    # add flag to top level attributes to help combine scenario attributes, without combining the
+    # attributes of every data variable
+    for scenario in scenarios:
+        scenario.attrs["scenario"] = True
+
+    combined_scenario = xr.concat(scenarios, dim="site", combine_attrs=combine_scenario_attrs)
 
     # make dtype of 'site' coordinate "<U3" (little-endian Unicode string of length 3)
     combined_scenario = combined_scenario.assign_coords(site=combined_scenario.site.astype(np.dtype("<U3")))
