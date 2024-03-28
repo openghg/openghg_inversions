@@ -127,7 +127,7 @@ def session_object_store(session_config_mocker) -> None:
             file_path = data_info[dtype][2]
             metadata = data_info[dtype][1]
             metadata["store"] = "inversions_tests"
-            standardise_fn(file_path, **metadata)
+            standardise_fn(filepath=file_path, **metadata)
 
 
 @pytest.fixture(scope="session", autouse=True)
