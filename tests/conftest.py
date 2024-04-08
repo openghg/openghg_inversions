@@ -1,11 +1,12 @@
 from pathlib import Path
 import shutil
 import tempfile
+from importlib.metadata import version
 from typing import Iterator
 from unittest.mock import patch
 
+import openghg
 import pytest
-
 from openghg.retrieve import search
 from openghg.standardise import standardise_surface, standardise_bc, standardise_flux, standardise_footprint
 from openghg.types import ObjectStoreError
@@ -30,6 +31,11 @@ def merged_data_dir():
 
 
 @pytest.fixture(scope="session", autouse=True)
+def using_zarr_store():
+    return version("openghg") >= "0.8"
+
+
+@pytest.fixture(scope="session", autouse=True)
 def add_frozen_pickled_merged_data(merged_data_dir, pickled_data_file_name):
     """Copy pickled merged data from tests/data to temporary merged_data_dir.
 
@@ -44,11 +50,14 @@ def add_frozen_pickled_merged_data(merged_data_dir, pickled_data_file_name):
 bc_basis_function_path = Path(".").resolve() / "bc_basis_functions"
 countries_path = Path(".").resolve() / "countries"
 
-inversions_test_store_path = Path(tempfile.gettempdir(), "openghg_inversions_testing_store")
-
 
 @pytest.fixture(scope="session", autouse=True)
-def session_config_mocker() -> Iterator[None]:
+def session_config_mocker(using_zarr_store) -> Iterator[None]:
+    if using_zarr_store:
+        inversions_test_store_path = Path(tempfile.gettempdir(), "openghg_inversions_zarr_testing_store")
+    else:
+        inversions_test_store_path = Path(tempfile.gettempdir(), "openghg_inversions_testing_store")
+
     mock_config = {
         "object_store": {
             "inversions_tests": {"path": str(inversions_test_store_path), "permissions": "rw"},
@@ -75,12 +84,13 @@ footprints_metadata = {
     "domain": "europe",
     "model": "name",
     "inlet": "185m",
-    "metmodel": "ukv",
+    #"metmodel": "ukv",
 }
 flux_metadata = {"species": "ch4", "source": "total-ukghg-edgar7", "domain": "europe"}
 
 obs_data_path = _raw_data_path / "obs_tac_ch4_185m_2019-01-01_2019-02-01_data.nc"
-bc_data_path = _raw_data_path / "bc_ch4_europe_cams_2019-01-01_2019-12-31_data.nc"
+# bc_data_path = _raw_data_path / "bc_ch4_europe_cams_2019-01-01_2019-12-31_data.nc"
+bc_data_path = _raw_data_path / "bc_basis_NESW_EUROPE_2019.nc"
 footprints_data_path = _raw_data_path / "footprints_tac_europe_name_185m_2019-01-01_2019-01-07_data.nc"
 flux_data_path = _raw_data_path / "flux_total_ch4_europe_edgar7_2019-01-01_2019-12-31_data.nc"
 
@@ -171,7 +181,7 @@ def tac_ch4_data_args():
         "fp_height": ["185m"],
         "fp_model": "NAME",
         "emissions_name": ["total-ukghg-edgar7"],
-        "met_model": "ukv",
+        # "met_model": "ukv",
         "averaging_period": ["1H"],
     }
     return data_args

@@ -249,7 +249,8 @@ def data_processing_surface_notracer(
                 get_bc_data.data.vmr_s.values = get_bc_data.data.vmr_s.values / unit
                 get_bc_data.data.vmr_w.values = get_bc_data.data.vmr_w.values / unit
                 my_bc = BoundaryConditionsData(
-                    get_bc_data.data.transpose("height", "lat", "lon", "time"), get_bc_data.metadata
+                    data=get_bc_data.data.transpose("height", "lat", "lon", "time"),
+                    metadata=get_bc_data.metadata,
                 )
                 fp_all[".bc"] = my_bc
 
@@ -601,7 +602,7 @@ def make_combined_scenario(fp_all):
     return combined_scenario
 
 
-def recover_fp_all(ds: xr.Dataset) -> dict:
+def fp_all_from_dataset(ds: xr.Dataset) -> dict:
     """Recover "fp_all" dictionary from "combined scenario" dataset.
 
     Args:
