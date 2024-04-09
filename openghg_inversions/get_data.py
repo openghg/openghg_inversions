@@ -535,27 +535,6 @@ def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[st
     return list_attrs
 
 
-def combined_flux_attrs(attrs_list: list[dict[str, Any]], context) -> dict[str, Any]:
-    """Combine attributes when concatenating fluxes from different sources.
-
-    Currently just keeps a list of sources.
-
-    NOTE: This assumes that the 'source' in OpenGHG metadata is the same as the 'source'
-    in the attributes of the retrieved flux data.
-
-    Args:
-        attrs_list: list of attributes from datasets being concatenated
-        context: additional parameter supplied by concatenate
-
-    Returns:
-        dict that will be used as attributes for concatenated dataset
-    """
-    if "source" in attrs_list[0]:
-        return {"source": [attrs.get("source", "None") for attrs in attrs_list]}
-    else:
-        return attrs_list[0]
-
-
 def make_combined_scenario(fp_all):
     """Combine scenarios and merge in fluxes and boundary conditions.
 
