@@ -104,8 +104,9 @@ def inferpymc(
     add_offset=False,
     verbose=False,
     min_error=0.0,
-    save_trace = Optional[Path] = None,
+    save_trace: Optional[Path] = None,
     use_bc: bool = True,
+    debug: bool = False,
 ):
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
@@ -216,29 +217,38 @@ def inferpymc(
 
         sig = parseprior("sig", sigprior, shape=(nsites, nsigmas))
 
-        mu = pt.dot(hx, x)
+        mu_x = pm.Deterministic("mu_x", pt.dot(hx, x))
 
         if use_bc:
-            mu += pt.dot(hbc, xbc)
+            mu = mu_x + pt.dot(hbc, xbc)
+        else:
+            mu = mu_x
 
         if add_offset:
             offset = parseprior("offset", offsetprior, shape=nsites - 1)
             offset_vec = pt.concatenate((np.array([0]), offset), axis=0)
             mu += pt.dot(B, offset_vec)
 
-        model_error = np.abs(pt.dot(hx, x)) * sig[sites, sigma_freq_index]
-        epsilon = pt.sqrt(error**2 + model_error**2 + min_error**2)
-        y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
+        model_error = pm.Deterministic("model_error", np.abs(pt.dot(hx, x)) * sig[sites, sigma_freq_index])
+        epsilon = pm.Deterministic("epsilon", pt.sqrt(error**2 + model_error**2 + min_error**2))
 
-        step1 = pm.NUTS(vars=[x, xbc]) if use_bc else pm.NUTS(vars=[x])
-        step2 = pm.Slice(vars=[sig])
+        if debug:
+            trace = pm.sample_prior_predictive(1000)
+        else:
+            y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
-        trace = pm.sample(
-            nit, tune=int(tune), chains=nchain, step=[step1, step2], progressbar=verbose, cores=nchain
-        )  # step=pm.Metropolis())#  #target_accept=0.8,
+            step1 = pm.NUTS(vars=[x, xbc]) if use_bc else pm.NUTS(vars=[x])
+            step2 = pm.Slice(vars=[sig])
+
+            trace = pm.sample(
+                nit, tune=int(tune), chains=nchain, step=[step1, step2], progressbar=verbose, cores=nchain
+            )  # step=pm.Metropolis())#  #target_accept=0.8,
 
     if save_trace:
        trace.to_netcdf(str(save_trace), engine="netcdf4")
+
+    if debug:
+        raise RuntimeError(f"Stopping after sampling since debugging is on. Trace saved to {str(save_trace)}")
 
     outs = trace.posterior["x"][0, burn:nit]
 
