@@ -104,7 +104,7 @@ def inferpymc(
     add_offset=False,
     verbose=False,
     min_error=0.0,
-    save_trace=False,
+    save_trace = Optional[Path] = None,
     use_bc: bool = True,
 ):
     """
@@ -237,8 +237,8 @@ def inferpymc(
             nit, tune=int(tune), chains=nchain, step=[step1, step2], progressbar=verbose, cores=nchain
         )  # step=pm.Metropolis())#  #target_accept=0.8,
 
-    # if save_trace:
-    #    trace.to_netcdf(str(save_trace), engine="netcdf4")
+    if save_trace:
+       trace.to_netcdf(str(save_trace), engine="netcdf4")
 
     outs = trace.posterior["x"][0, burn:nit]
 
