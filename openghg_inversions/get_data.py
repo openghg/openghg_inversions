@@ -17,7 +17,7 @@ import os
 import pickle
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, cast, Optional, Union
+from typing import Any, cast, Literal, Optional, Union
 
 import numpy as np
 from openghg.retrieve import get_obs_surface, get_flux
@@ -369,7 +369,7 @@ def data_processing_surface_notracer(
 
 
 def _make_merged_data_name(species: str, start_date: str, output_name: str) -> str:
-    return f"{species}_{start_date}_{output_name}_merged-data.pickle"
+    return f"{species}_{start_date}_{output_name}_merged-data"
 
 
 # NOTE: the _func at the end of the name is to distinguish from the local variable in the previous function
@@ -380,6 +380,7 @@ def save_merged_data_func(
     start_date: Optional[str] = None,
     output_name: Optional[str] = None,
     merged_data_name: Optional[str] = None,
+    output_format: Literal["pickle", "netcdf", "zarr"] = "zarr",
 ) -> None:
     """Save `fp_all` dictionary as a pickle file in `merged_data_dir`.
 
@@ -411,8 +412,23 @@ def save_merged_data_func(
     if isinstance(merged_data_dir, str):
         merged_data_dir = Path(merged_data_dir)
 
-    with open(merged_data_dir / merged_data_name, "wb") as f:
-        pickle.dump(fp_all, f)
+    # write to specified output
+    if output_format == "pickle":
+        with open(merged_data_dir / (merged_data_name + ".pickle"), "wb") as f:
+            pickle.dump(fp_all, f)
+    elif output_format in ["netcdf", "zarr"]:
+        ds = make_combined_scenario(fp_all)
+
+        if output_format == "zarr":
+            try:
+                ds.to_zarr(merged_data_dir / (merged_data_name + ".zarr"))
+            except ModuleNotFoundError:
+                # zarr not found
+                ds.to_netcdf(merged_data_dir / (merged_data_name + ".nc"))
+        else:
+            ds.to_netcdf(merged_data_dir / (merged_data_name + ".nc"))
+    else:
+        raise ValueError(f"Output format should be 'pickle', 'netcdf', or 'zarr'. Given '{output_format}'.")
 
 
 def load_merged_data(
@@ -439,35 +455,49 @@ def load_merged_data(
     Returns:
         `fp_all` dictionary
     """
-    any_args_none = any(arg is None for arg in [species, start_date, output_name])
-    if merged_data_name is None:
-        if any_args_none:
-            raise ValueError(
-                "If `merged_date_name` isn't given, then "
-                "`species`, `start_date`, and `output_name` must be provided."
-            )
-        else:
-            merged_data_name = _make_merged_data_name(species, start_date, output_name)  # type: ignore
-
     if isinstance(merged_data_dir, str):
         merged_data_dir = Path(merged_data_dir)
 
-    merged_data_file = merged_data_dir / merged_data_name
+    if merged_data_name is not None:
+        merged_data_file = merged_data_dir / merged_data_name
 
-    if not merged_data_file.exists():
-        if any_args_none:
+        if not merged_data_file.exists():
             raise ValueError(
-                f"No merged data with file name {merged_data_name} "
-                f"found in merged data directory {merged_data_dir}"
+                f"No merged data for species {species}, start date {start_date}, and "
+                f"output name {output_name} found in merged data directory {merged_data_dir}"
             )
+    elif any(arg is None for arg in [species, start_date, output_name]):
+        raise ValueError(
+            "If `merged_date_name` isn't given, then "
+            "`species`, `start_date`, and `output_name` must be provided."
+        )
+    else:
+        merged_data_name = _make_merged_data_name(species, start_date, output_name)  # type: ignore
+
+        for ext in ["pickle", "nc", "zarr"]:
+            merged_data_file = merged_data_dir / (merged_data_name + "." + ext)
+            if merged_data_file.exists():
+                break
         else:
+            # no `break` occurred, so no file found
             raise ValueError(
                 f"No merged data for species {species}, start date {start_date}, and "
                 f"output name {output_name} found in merged data directory {merged_data_dir}"
             )
 
-    with open(merged_data_file, "rb") as f:
-        fp_all = pickle.load(f)
+    # load merged data
+    if merged_data_file.suffix == "pickle":
+        with open(merged_data_file, "rb") as f:
+            fp_all = pickle.load(f)
+    else:
+        if merged_data_file.suffix == "zarr":
+            ds = xr.open_zarr(merged_data_file)
+        else:
+            # suffix is probably ".nc", but could be something else if name passed directly
+            # try `open_dataset`
+            ds = xr.open_dataset(merged_data_file)
+
+        fp_all = fp_all_from_dataset(ds)
 
     return fp_all
 
