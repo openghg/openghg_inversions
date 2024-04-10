@@ -1,10 +1,11 @@
 import pickle
 
+import numpy as np
 import pytest
 import xarray as xr
 from openghg.types import SearchError
 
-from openghg_inversions.get_data import data_processing_surface_notracer
+from openghg_inversions.get_data import data_processing_surface_notracer, fp_all_from_dataset, make_combined_scenario
 
 
 def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, using_zarr_store):
@@ -12,8 +13,6 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, usin
     Check that `data_processing_surface_notracer` produces the same output
     as v0.1 (test data frozen on 9 Feb 2024)
     """
-    for k, v in tac_ch4_data_args.items():
-        print(k, v)
     result = data_processing_surface_notracer(**tac_ch4_data_args)
 
     # check number of items returned
@@ -104,3 +103,34 @@ def test_missing_data_at_all_sites():
 
     with pytest.raises(SearchError):
         data_processing_surface_notracer(**data_args)
+
+
+def test_fp_all_to_dataset_and_back(tac_ch4_data_args):
+    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+    ds = make_combined_scenario(fp_all)
+    fp_all_recovered = fp_all_from_dataset(ds)
+
+    # check scenarios are the same
+    xr.testing.assert_equal(fp_all["TAC"], fp_all_recovered["TAC"])
+
+    print(fp_all[".bc"])
+    print(fp_all_recovered[".bc"])
+
+    for k, v in fp_all.items():
+        if not k.startswith("."):
+            continue
+
+        assert k in fp_all_recovered
+
+        v_recovered = fp_all_recovered[k]
+
+        if k == ".flux":
+            assert list(v.keys()) == list(v_recovered.keys())
+
+            for flux_data1, flux_data2 in zip(v.values(), v_recovered.values()):
+                xr.testing.assert_allclose(flux_data1.data, flux_data2.data, rtol=1e-3)
+
+        elif k == ".bc":
+            xr.testing.assert_allclose(v.data, v_recovered.data, rtol=1e-3)
+        else:
+            assert v == v_recovered

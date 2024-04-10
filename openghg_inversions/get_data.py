@@ -473,7 +473,6 @@ def load_merged_data(
 
 
 list_keys = [
-    "species",
     "site",
     "inlet",
     "instrument",
@@ -504,6 +503,7 @@ def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[st
         dict that will be used as attributes for concatenated dataset
     """
     single_keys = [
+        "species",
         "start_date",
         "end_date",
         "model",
@@ -584,18 +584,25 @@ def make_combined_scenario(fp_all):
 def fp_all_from_dataset(ds: xr.Dataset) -> dict:
     """Recover "fp_all" dictionary from "combined scenario" dataset.
 
+    This is the inverse of `make_combined_scenario`, except that the attributes of the
+    scenarios, fluxes, and boundary conditions may be different.
+
     Args:
         ds: dataset created by `make_combined_scenario`
 
     Returns:
         dictionary containing model scenarios keyed by site, as well as flux and boundary conditions.
     """
-    sites = list(ds.sites.values)
-    bc_vars = ["vmr_n", "vmr_e", "vmr_s", "vmr_w"]
     fp_all = {}
 
-    for i, site in enumerate(sites):
-        scenario = ds.sel(site=site).drop_vars(["flux"] + bc_vars, errors="ignore")
+    # we'll get scales as we get scenarios
+    fp_all[".scales"] = {}
+
+    # get scenarios
+    bc_vars = ["vmr_n", "vmr_e", "vmr_s", "vmr_w"]
+
+    for i, site in enumerate(ds.site.values):
+        scenario = ds.sel(site=site, drop=True).drop_vars(["flux"] + bc_vars, errors="ignore").drop_dims("source")
 
         # extract attributes that were gathered into a list
         for k in list_keys:
@@ -603,20 +610,48 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
                 val = scenario.attrs[k][i]
             except (ValueError, IndexError):
                 val = "None"
-            scenario.attrs[k] = val
+
+            if k == "scale":
+                fp_all[".scales"][site] = val
+            else:
+                scenario.attrs[k] = val
 
         fp_all[site] = scenario
 
-    fp_all[".flux"] = FluxData(ds[["flux"]], {})  # double brackets to get dataset
+
+    # get fluxes
+    fp_all[".flux"] = {}
+
+    for i, source in enumerate(ds.source.values):
+        flux_ds = (ds[["flux"]]  # double brackets to get dataset
+                     .sel(source=source, drop=True)
+                     .expand_dims({"time": [ds.time.min().values]})
+                     .transpose(..., "time")
+                     )
+
+        # extract attributes that were gathered into a list
+        for k in list_keys:
+            try:
+                val = flux_ds.attrs[k][i]
+            except (ValueError, IndexError):
+                val = "None"
+            flux_ds.attrs[k] = val
+
+        fp_all[".flux"][source] = FluxData(data=flux_ds, metadata={})
 
     try:
         bc_ds = ds[bc_vars]
     except KeyError:
         pass
     else:
-        fp_all[".bc"] = BoundaryConditionsData(bc_ds, {})
+        bc_ds = bc_ds.expand_dims({"time": [ds.time.min().values]}).transpose(..., "time")
+        fp_all[".bc"] = BoundaryConditionsData(data=bc_ds, metadata={})
 
-    fp_all[".scales"] = ds.attrs.get("scale", None)
+
+    species = ds.attrs.get("species", None)
+    if species is not None:
+        species = species.upper()
+    fp_all[".species"]  = species
 
     try:
         fp_all[".units"] = float(ds.mf.attrs.get("units", 1.0))

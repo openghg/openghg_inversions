@@ -90,7 +90,7 @@ flux_metadata = {"species": "ch4", "source": "total-ukghg-edgar7", "domain": "eu
 
 obs_data_path = _raw_data_path / "obs_tac_ch4_185m_2019-01-01_2019-02-01_data.nc"
 # bc_data_path = _raw_data_path / "bc_ch4_europe_cams_2019-01-01_2019-12-31_data.nc"
-bc_data_path = _raw_data_path / "bc_basis_NESW_EUROPE_2019.nc"
+bc_data_path = _raw_data_path / "bc_ch4_europe_cams_2019-01-01_2019-12-31_data_corrected.nc"
 footprints_data_path = _raw_data_path / "footprints_tac_europe_name_185m_2019-01-01_2019-01-07_data.nc"
 flux_data_path = _raw_data_path / "flux_total_ch4_europe_edgar7_2019-01-01_2019-12-31_data.nc"
 
