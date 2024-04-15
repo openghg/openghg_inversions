@@ -738,6 +738,7 @@ def plot_abs_map(
     title=None,
     extend="both",
     figsize=None,
+    flux_data_var = 'fluxmode'
 ):
     """
     The plot_abs_map function plots 2D map(s) of posterior x in g/m2/s.
@@ -769,6 +770,9 @@ def plot_abs_map(
             If plotting site positions, use positions from site_info.json file rather
             than extract them from the tdmcmc dataset.
             Default = False.
+        flux_data_var (str) :
+            Which measure of flux distribution (i.e. mode) to plot. Defaults to 'fluxmode', which is the only one 
+            in the output files currently
 
         See plot_map() function for definition of remaining inputs.
 
@@ -798,7 +802,7 @@ def plot_abs_map(
         )
         for ds in ds_list
     ]
-    q_abs_list = [convert.mol2g(ds.fluxmode, species) for ds in ds_list]
+    q_abs_list = [convert.mol2g(ds[flux_data_var], species) for ds in ds_list]
 
     plot_map_mult(
         q_abs_list,
@@ -840,6 +844,7 @@ def plot_diff_map(
     title=None,
     extend="both",
     figsize=None,
+    flux_data_var='fluxmode'
 ):
     """
     The plot_diff_map function plots 2D map(s) of the difference between the prior and
@@ -872,6 +877,9 @@ def plot_diff_map(
             If plotting site positions, use positions from site_info.json file rather
             than extract them from the tdmcmc dataset.
             Default = False.
+        flux_data_var (str) :
+            Which measure of flux distribution (i.e. mode) to plot. Defaults to 'fluxmode', which is the only one 
+            in the output files currently
 
         See plot_map() function for definition of remaining inputs.
 
@@ -901,7 +909,7 @@ def plot_diff_map(
         )
         for ds in ds_list
     ]
-    q_diff_list = [convert.mol2g((ds.fluxmode - ds.fluxapriori), species) for ds in ds_list]
+    q_diff_list = [convert.mol2g((ds[flux_data_var] - ds.fluxapriori), species) for ds in ds_list]
 
     plot_map_mult(
         q_diff_list,
