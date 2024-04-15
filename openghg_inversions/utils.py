@@ -11,18 +11,21 @@
 # ****************************************************************************
 import glob
 import json
-from pathlib import Path
 import os
-import sys
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Optional, Union
 
-import pandas as pd
-import numpy as np
-import xarray as xr
-from tqdm import tqdm
 import dask.array as da
+import numpy as np
+import pandas as pd
+import xarray as xr
+from openghg.analyse import ModelScenario
+from tqdm import tqdm
+
 from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
+from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 
 openghginv_path = Paths.openghginv
 
@@ -607,44 +610,42 @@ def indexesMatch(dsa, dsb):
     return True
 
 
-def combine_datasets(dsa, dsb, method="ffill", tolerance=None):
+def combine_datasets(dsa, dsb, method="nearest", tolerance: Optional[float] = None) -> xr.Dataset:
     """
-    The combine_datasets function merges two datasets and re-indexes
-    to the FIRST dataset. If "fp" variable is found within the combined
-    dataset, the "time" values where the "lat","lon"dimensions didn't
-    match are removed.
+    Merge two datasets, re-indexing to the first dataset (within an optional tolerance).
+
+    If "fp" variable is found within the combined dataset, the "time" values where the "lat", "lon"
+    dimensions didn't match are removed.
 
     Example:
         ds = combine_datasets(dsa, dsb)
-    -----------------------------------
+
     Args:
       dsa (xarray.Dataset):
         First dataset to merge
       dsb (xarray.Dataset):
         Second dataset to merge
-      method (str, optional):
-        One of {None, ‘nearest’, ‘pad’/’ffill’, ‘backfill’/’bfill’}
+      method: One of {None, ‘nearest’, ‘pad’/’ffill’, ‘backfill’/’bfill’}
         See xarray.DataArray.reindex_like for list of options and meaning.
         Default = "ffill" (forward fill)
-      tolerance (int/float??):
-        Maximum allowed tolerance between matches.
+      tolerance: Maximum allowed (absolute) tolerance between matches.
 
     Returns:
-      xarray.Dataset:
-        Combined dataset indexed to dsa
-    -----------------------------------
+      xarray.Dataset: combined dataset indexed to dsa
     """
     # merge the two datasets within a tolerance and remove times that are NaN (i.e. when FPs don't exist)
 
     if not indexesMatch(dsa, dsb):
-        dsb_temp = dsb.reindex_like(dsa, method, tolerance=tolerance)
+        dsb_temp = dsb.load().reindex_like(dsa, method, tolerance=tolerance)
     else:
         dsb_temp = dsb
 
     ds_temp = dsa.merge(dsb_temp)
-    if "fp" in list(ds_temp.keys()):
-        flag = np.where(np.isfinite(ds_temp.fp.mean(dim=["lat", "lon"]).values))
-        ds_temp = ds_temp[dict(time=flag[0])]
+
+    if "fp" in ds_temp:
+        flag = np.isfinite(ds_temp.fp.sum(dim=["lat", "lon"], skipna=False))
+        ds_temp = ds_temp.where(flag, drop=True)
+
     return ds_temp
 
 
@@ -714,7 +715,7 @@ def timeseries_HiTRes(
     """
     if verbose:
         print(f"\nCalculating timeseries with {time_resolution} resolution, this might take a few minutes")
-    ### get the high time res footprint
+    # get the high time res footprint
     if fp_HiTRes_ds is None and fp_file is None:
         print("Must provide either a footprint Dataset or footprint filename")
         return None
@@ -827,7 +828,7 @@ def timeseries_HiTRes(
 
     # put the time array into tqdm if we want a progress bar to show throughout the loop
     iters = tqdm(time_array) if verbose else time_array
-    ### iterate through the time coord to get the total mf at each time step using the H back coord
+    # iterate through the time coord to get the total mf at each time step using the H back coord
     # at each release time we disaggregate the particles backwards over the previous 24hrs
     for tt, time in enumerate(iters):
         # get 4 dimensional chunk of high time res footprint for this timestep
@@ -954,7 +955,7 @@ def timeseries_HiTRes(
             print(f"Saving to {output_file}")
             timeseries.to_netcdf(output_file)
         elif output_file is not None:
-            print(f"output type must be dataset to save to file")
+            print("output type must be dataset to save to file")
 
         if output_fpXflux:
             return timeseries, fpXflux
@@ -962,7 +963,9 @@ def timeseries_HiTRes(
             return timeseries
 
 
-def fp_sensitivity(fp_and_data, domain, basis_case, basis_directory=None, verbose=True):
+def fp_sensitivity(
+    fp_and_data: dict, basis_func: Union[xr.DataArray, dict[str, xr.DataArray]], verbose: bool = True
+):
     """
     The fp_sensitivity function adds a sensitivity matrix, H, to each
     site xarray dataframe in fp_and_data.
@@ -971,7 +974,7 @@ def fp_sensitivity(fp_and_data, domain, basis_case, basis_directory=None, verbos
     region and 0 outside region.
 
     Region numbering must start from 1
-    -----------------------------------
+
     Args:
       fp_and_data (dict):
         Output from footprints_data_merge() function. Dictionary of datasets.
@@ -982,188 +985,140 @@ def fp_sensitivity(fp_and_data, domain, basis_case, basis_directory=None, verbos
         String if only one basis case is required. Dict if there are multiple
         sources that require separate basis cases. In which case, keys in dict should
         reflect keys in emissions_name dict used in fp_data_merge.
-      basis_directory (str):
-        basis_directory can be specified if files are not in the default
-        directory. Must point to a directory which contains subfolders organized
-        by domain. (optional)
 
     Returns:
-        dict (xarray.Dataset):
+        dict:
           Same format as fp_and_data with sensitivity matrix and basis function grid added.
-    -----------------------------------
     """
 
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
 
     flux_sources = list(fp_and_data[".flux"].keys())
 
-    if type(basis_case) is not dict:
+    if not isinstance(basis_func, dict):
         if len(flux_sources) == 1:
-            basis_case = {flux_sources[0]: basis_case}
+            basis_func = {flux_sources[0]: basis_func}
         else:
-            basis_case = {"all": basis_case}
+            basis_func = {"all": basis_func}
 
-    if len(list(basis_case.keys())) != len(flux_sources):
-        if len(list(basis_case.keys())) == 1:
-            print("Using %s as the basis case for all sources" % basis_case[list(basis_case.keys())[0]])
+    if len(list(basis_func.keys())) != len(flux_sources):
+        if len(list(basis_func.keys())) == 1:
+            print(f"Using {basis_func[list(basis_func.keys())[0]]} as the basis case for all sources")
         else:
             print(
-                "There should either only be one basis_case, or it should be a dictionary the same length\
+                "There should either only be one basis_func, or it should be a dictionary the same length\
                   as the number of sources."
             )
             return None
 
     for site in sites:
-        for si, source in enumerate(flux_sources):
-            if source in list(basis_case.keys()):
-                basis_func = basis(
-                    domain=domain, basis_case=basis_case[source], basis_directory=basis_directory
-                )
+        site_sensitivities = []
+        for source in flux_sources:
+            if source in list(basis_func.keys()):
+                current_basis_func = basis_func[source]
             else:
-                basis_func = basis(
-                    domain=domain, basis_case=basis_case["all"], basis_directory=basis_directory
-                )
+                current_basis_func = basis_func["all"]
 
-            if type(fp_and_data[".flux"][source]) == dict:
-                if "fp_HiTRes" in list(fp_and_data[site].keys()):
-                    site_bf = xr.Dataset(
-                        {"fp_HiTRes": fp_and_data[site]["fp_HiTRes"], "fp": fp_and_data[site]["fp"]}
-                    )
+            sensitivity, site_bf = fp_sensitivity_single_site_basis_func(
+                scenario=fp_and_data[site],
+                flux=fp_and_data[".flux"][source],
+                source=source,
+                basis_func=current_basis_func,
+                verbose=verbose,
+            )
 
-                    fp_time = (
-                        (fp_and_data[site].time[1] - fp_and_data[site].time[0])
-                        .values.astype("timedelta64[h]")
-                        .astype(int)
-                    )
+            site_sensitivities.append(sensitivity)
 
-                    # calculate the H matrix
-                    H_all = timeseries_HiTRes(
-                        fp_HiTRes_ds=site_bf,
-                        flux_dict=fp_and_data[".flux"][source],
-                        output_TS=False,
-                        output_fpXflux=True,
-                        output_type="DataArray",
-                        time_resolution=f"{fp_time}H",
-                        verbose=verbose,
-                    )
-                else:
-                    print(
-                        "fp_and_data needs the variable fp_HiTRes to use the emissions dictionary with high_freq and low_freq emissions."
-                    )
-
-            else:
-                site_bf = combine_datasets(
-                    fp_and_data[site]["fp"].to_dataset(), fp_and_data[".flux"][source].data
-                )
-                H_all = site_bf.fp * site_bf.flux
-
-            H_all_v = H_all.values.reshape((len(site_bf.lat) * len(site_bf.lon), len(site_bf.time)))
-
-            if "region" in list(basis_func.dims.keys()):
-                if "time" in basis_func.basis.dims:
-                    basis_func = basis_func.isel(time=0)
-
-                site_bf = xr.merge([site_bf, basis_func])
-
-                H = np.zeros((len(site_bf.region), len(site_bf.time)))
-
-                base_v = site_bf.basis.values.reshape(
-                    (len(site_bf.lat) * len(site_bf.lon), len(site_bf.region))
-                )
-
-                for i in range(len(site_bf.region)):
-                    H[i, :] = np.nansum(H_all_v * base_v[:, i, np.newaxis], axis=0)
-
-                if source == all:
-                    if sys.version_info < (3, 0):
-                        region_name = site_bf.region
-                    else:
-                        region_name = site_bf.region.decode("ascii")
-                else:
-                    if sys.version_info < (3, 0):
-                        region_name = [source + "-" + reg for reg in site_bf.region.values]
-                    else:
-                        region_name = [source + "-" + reg.decode("ascii") for reg in site_bf.region.values]
-
-                sensitivity = xr.DataArray(
-                    H, coords=[("region", region_name), ("time", fp_and_data[site].coords["time"])]
-                )
-
-            else:
-                print("Warning: Using basis functions without a region dimension may be deprecated shortly.")
-
-                site_bf = combine_datasets(site_bf, basis_func, method="ffill")
-
-                H = np.zeros((int(np.max(site_bf.basis)), len(site_bf.time)))
-
-                basis_scale = xr.Dataset(
-                    {"basis_scale": (["lat", "lon", "time"], np.zeros(np.shape(site_bf.basis)))},
-                    coords=site_bf.coords,
-                )
-                site_bf = site_bf.merge(basis_scale)
-
-                base_v = np.ravel(site_bf.basis.values[:, :, 0])
-                for i in range(int(np.max(site_bf.basis))):
-                    wh_ri = np.where(base_v == i + 1)
-                    H[i, :] = np.nansum(H_all_v[wh_ri[0], :], axis=0)
-
-                if source == all:
-                    region_name = list(range(1, np.max(site_bf.basis.values) + 1))
-                else:
-                    region_name = [
-                        source + "-" + str(reg) for reg in range(1, int(np.max(site_bf.basis.values) + 1))
-                    ]
-
-                sensitivity = xr.DataArray(
-                    H.data, coords=[("region", region_name), ("time", fp_and_data[site].coords["time"].data)]
-                )
-
-            if si == 0:
-                concat_sensitivity = sensitivity
-            else:
-                concat_sensitivity = xr.concat((concat_sensitivity, sensitivity), dim="region")
-
-            sub_basis_cases = 0
-
-            if basis_case[source].startswith("sub"):
-                """
-                To genrate sub_lon and sub_lat grids basis case must start with 'sub'
-                e.g.
-                'sub-transd', 'sub_transd', sub-intem' will work
-                'transd' or 'transd-sub' won't work
-                """
-                sub_basis_cases += 1
-                if sub_basis_cases > 1:
-                    print("Can currently only use a sub basis case for one source. Skipping...")
-                else:
-                    sub_fp_temp = site_bf.fp.sel(lon=site_bf.sub_lon, lat=site_bf.sub_lat, method="nearest")
-                    sub_fp = xr.Dataset(
-                        {"sub_fp": (["sub_lat", "sub_lon", "time"], sub_fp_temp.data)},
-                        coords={
-                            "sub_lat": (site_bf.coords["sub_lat"].data),
-                            "sub_lon": (site_bf.coords["sub_lon"].data),
-                            "time": (fp_and_data[site].coords["time"].data),
-                        },
-                    )
-
-                    sub_H_temp = H_all.sel(lon=site_bf.sub_lon, lat=site_bf.sub_lat, method="nearest")
-                    sub_H = xr.Dataset(
-                        {"sub_H": (["sub_lat", "sub_lon", "time"], sub_H_temp.data)},
-                        coords={
-                            "sub_lat": (site_bf.coords["sub_lat"].data),
-                            "sub_lon": (site_bf.coords["sub_lon"].data),
-                            "time": (fp_and_data[site].coords["time"].data),
-                        },
-                        attrs={"flux_source_used_to_create_sub_H": source},
-                    )
-
-                    fp_and_data[site] = fp_and_data[site].merge(sub_fp)
-                    fp_and_data[site] = fp_and_data[site].merge(sub_H)
-
-        fp_and_data[site]["H"] = concat_sensitivity
-        fp_and_data[".basis"] = site_bf.basis[:, :, 0]
+        fp_and_data[site]["H"] = xr.concat(site_sensitivities, dim="region")
+        fp_and_data[".basis"] = (
+            current_basis_func.squeeze("time") if site_bf is None else site_bf.basis[:, :, 0]
+        )
+        # TODO: this will only contain the last value in the loop...
 
     return fp_and_data
+
+
+def fp_sensitivity_single_site_basis_func(
+    scenario: ModelScenario, flux, source: str, basis_func: xr.DataArray, verbose: bool = True
+):
+    """
+    The fp_sensitivity function adds a sensitivity matrix, H, to each
+    site xarray dataframe in fp_and_data.
+    Basis function data in an array: lat, lon, no. regions.
+    In each 'region'element of array there is a lat-lon grid with 1 in
+    region and 0 outside region.
+
+    Region numbering must start from 1
+
+    Args:
+      scenario:
+        Output from footprints_data_merge() function; e.g. `fp_all["TAC"]`
+      flux:
+        array with flux values
+      source:
+        name of flux source
+      domain (str):
+        Domain name. The footprint files should be sub-categorised by the domain.
+      basis_func:
+        basis functions
+
+    Returns:
+        sensitivity ("H") xr.DataArray and site_bf xr.Dataset
+    """
+    if isinstance(flux, dict):
+        if "fp_HiTRes" in list(scenario.keys()):
+            site_bf = xr.Dataset({"fp_HiTRes": scenario["fp_HiTRes"], "fp": scenario["fp"]})
+
+            fp_time = (scenario.time[1] - scenario.time[0]).values.astype("timedelta64[h]").astype(int)
+
+            # calculate the H matrix
+            H_all = timeseries_HiTRes(
+                fp_HiTRes_ds=site_bf,
+                flux_dict=flux,
+                output_TS=False,
+                output_fpXflux=True,
+                output_type="DataArray",
+                time_resolution=f"{fp_time}H",
+                verbose=verbose,
+            )
+        else:
+            raise ValueError(
+                "fp_and_data needs the variable fp_HiTRes to use the emissions dictionary with high_freq and low_freq emissions."
+            )
+
+    else:
+        site_bf = combine_datasets(scenario["fp"].to_dataset(), flux.data)
+        H_all = site_bf.fp * site_bf.flux
+
+    H_all_v = H_all.values.reshape((len(site_bf.lat) * len(site_bf.lon), len(site_bf.time)))
+
+    if "region" in basis_func.dims:
+        if "time" in basis_func.dims:
+            basis_func = basis_func.isel(time=0)
+
+        site_bf = xr.merge([site_bf, basis_func])
+
+        H = np.zeros((len(site_bf.region), len(site_bf.time)))
+
+        base_v = site_bf.basis.values.reshape((len(site_bf.lat) * len(site_bf.lon), len(site_bf.region)))
+
+        for i in range(len(site_bf.region)):
+            H[i, :] = np.nansum(H_all_v * base_v[:, i, np.newaxis], axis=0)
+
+        if source == "all":
+            region_name = site_bf.region.decode("ascii")
+        else:
+            region_name = [source + "-" + reg.decode("ascii") for reg in site_bf.region.values]
+
+        sensitivity = xr.DataArray(H, coords=[("region", region_name), ("time", scenario.coords["time"])])
+
+    else:
+        _, basis_aligned = xr.align(H_all.isel(time=0), basis_func, join="override")
+        basis_mat = get_xr_dummies(basis_aligned.squeeze("time"), cat_dim="region")
+        sensitivity = sparse_xr_dot(basis_mat, H_all.fillna(0.0)).transpose("region", "time")
+        site_bf = None
+
+    return sensitivity, site_bf
 
 
 def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory=None):

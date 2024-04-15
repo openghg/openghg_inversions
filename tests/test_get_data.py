@@ -31,7 +31,6 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path):
 
 
 def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir):
-
     merged_data_name = "test_save_load_merged_data"
 
     # make merged data dir

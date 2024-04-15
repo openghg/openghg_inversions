@@ -330,7 +330,6 @@ def inferpymc_postprocessouts(
     bcouts: Optional[np.ndarray] = None,
     Hbc: Optional[np.ndarray] = None,
     fp_data=None,
-    basis_directory=None,
     country_file=None,
     add_offset=False,
     rerun_file=None,

@@ -32,157 +32,13 @@
 
 import os
 import pickle
-import shutil
-import numpy as np
-import openghg_inversions.hbmcmc.inversionsetup as setup
-import openghg_inversions.hbmcmc.inversion_pymc as mcmc
-import openghg_inversions.basis_functions as basis
-from openghg_inversions import utils
-from openghg_inversions import get_data
 from pathlib import Path
 
-
-def basis_functions_wrapper(
-    basis_algorithm,
-    nbasis,
-    fp_basis_case,
-    bc_basis_case,
-    basis_directory,
-    bc_basis_directory,
-    use_bc,
-    fp_all,
-    species,
-    sites,
-    domain,
-    start_date,
-    emissions_name,
-    outputname,
-    output_path=None,
-):
-    """
-    Wrapper function for selecting basis function
-    algorithm.
-    -----------------------------------
-    Args:
-      basis_algorithm (str):
-        One of "quadtree" (for using Quadtree algorithm) or
-        "weighted" (for using an algorihtm that splits region
-        by input data).
-
-        NB. Land-sea separation is not imposed in the quadtree
-        basis functions, but is imposed by default in "weighted"
-
-    nbasis (int):
-      Number of basis function regions to calculated in domain
-    fp_basis_case (str):
-      Name of basis function to use for emissions.
-    bc_basis_case (str, optional):
-      Name of basis case type for boundary conditions (NOTE, I don't
-      think that currently you can do anything apart from scaling NSEW
-      boundary conditions if you want to scale these monthly.)
-    basis_directory (str, optional):
-      Directory containing the basis function
-      if not default.
-    bc_basis_directory (str, optional):
-      Directory containing the boundary condition basis functions
-      (e.g. files starting with "NESW")
-    use_bc (bool):
-      Option to include/exclude boundary conditions in inversion
-    fp_all (dict):
-      Dictionary object produced from get_data functions
-    species (str):
-      Atmospheric trace gas species of interest
-    sites (str/list):
-      List of sites of interest
-    domain (str):
-      Model domain
-    start_date (str):
-      Start date of period of inference
-    emissions_name (str/list):
-      Emissions dataset key words for retrieving from object store
-    outputname (str):
-      File output name
-    output_path (str):
-      Passed to `outputdir` argument of `quadtreebasisfunction`. Used for testing.
-
-
-    Returns:
-      fp_data (dict):
-        Dictionary object similar to fp_all but with information
-        on basis functions and sensitivities
-
-      basis_directory (str):
-        Path to emissions basis funciton directory
-
-      bc_basis_directory (str):
-        Path to bc basis functinon directory
-
-    """
-    if basis_algorithm == "quadtree":
-        print("Using Quadtree algorithm to derive basis functions")
-        if fp_basis_case is not None:
-            print("Basis case %s supplied but quadtree_basis set to True" % fp_basis_case)
-            print("Assuming you want to use %s " % fp_basis_case)
-            tempdir = None
-        else:
-            tempdir = basis.quadtreebasisfunction(
-                emissions_name,
-                fp_all,
-                sites,
-                start_date,
-                domain,
-                species,
-                outputname,
-                nbasis=nbasis,
-                outputdir=output_path,
-            )
-
-            fp_basis_case = "quadtree_" + species + "-" + outputname
-            basis_directory = tempdir
-
-    elif basis_algorithm == "weighted":
-        print("Using weighted by data algorithm to derive basis functions")
-        if fp_basis_case is not None:
-            print("Basis case %s supplied but bucket_basis set to True" % fp_basis_case)
-            print("Assuming you want to use %s " % fp_basis_case)
-            tempdir = None
-        else:
-            tempdir = basis.bucketbasisfunction(
-                emissions_name,
-                fp_all,
-                sites,
-                start_date,
-                domain,
-                species,
-                outputname,
-                nbasis=nbasis,
-            )
-
-            fp_basis_case = "weighted_" + species + "-" + outputname
-            basis_directory = tempdir
-
-    elif basis_algorithm is None:
-        basis_directory = basis_directory
-        tempdir = None
-
-    else:
-        raise ValueError(
-            "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
-        )
-
-    fp_data = utils.fp_sensitivity(
-        fp_all, domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory
-    )
-
-    if use_bc is True:
-        fp_data = utils.bc_sensitivity(
-            fp_data,
-            domain=domain,
-            basis_case=bc_basis_case,
-            bc_basis_directory=bc_basis_directory,
-        )
-
-    return fp_data, tempdir, basis_directory, bc_basis_directory
+import numpy as np
+import openghg_inversions.hbmcmc.inversion_pymc as mcmc
+import openghg_inversions.hbmcmc.inversionsetup as setup
+from openghg_inversions import get_data, utils
+from openghg_inversions.basis import basis_functions_wrapper
 
 
 def fixedbasisMCMC(
@@ -214,7 +70,6 @@ def fixedbasisMCMC(
     bc_basis_directory=None,
     country_file=None,
     bc_input=None,
-    max_level=None,
     basis_algorithm="weighted",
     nbasis=100,
     filters=[],
@@ -226,6 +81,7 @@ def fixedbasisMCMC(
     burn=50000,
     tune=1.25e5,
     nchain=2,
+    fix_basis_outer_regions: bool = False,
     averaging_error=True,
     bc_freq=None,
     sigma_freq=None,
@@ -504,21 +360,21 @@ def fixedbasisMCMC(
             raise ValueError("Model does not currently include tracer model. Watch this space")
 
     # Basis function regions and sensitivity matrices
-    fp_data, tempdir, basis_dir, bc_basis_dir = basis_functions_wrapper(
-        basis_algorithm,
-        nbasis,
-        fp_basis_case,
-        bc_basis_case,
-        basis_directory,
-        bc_basis_directory,
-        use_bc,
-        fp_all,
-        species,
-        sites,
-        domain,
-        start_date,
-        emissions_name,
-        outputname,
+    fp_data = basis_functions_wrapper(
+        basis_algorithm=basis_algorithm,
+        nbasis=nbasis,
+        fp_basis_case=fp_basis_case,
+        bc_basis_case=bc_basis_case,
+        basis_directory=basis_directory,
+        bc_basis_directory=bc_basis_directory,
+        fp_all=fp_all,
+        use_bc=use_bc,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        fix_outer_regions=fix_basis_outer_regions,
+        emissions_name=emissions_name,
+        outputname=outputname,
         output_path=basis_output_path,
     )
 
@@ -613,7 +469,6 @@ def fixedbasisMCMC(
             "fp_data": fp_data,
             "emissions_name": emissions_name,
             "emissions_store": emissions_store,
-            "basis_directory": basis_dir,
             "country_file": country_file,
         }
 
@@ -636,18 +491,6 @@ def fixedbasisMCMC(
 
     elif use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
-
-    if basis_algorithm is not None:
-        # remove the temporary basis function directory
-        delete = True
-        if not os.path.dirname(tempdir).startswith("Temp_"):
-            delete = False
-        for _, _, files in os.walk(tempdir):
-            for file in files:
-                if not file.startswith("quadtree"):  # TODO: update this to look for other basis types
-                    delete = False
-        if delete:
-            shutil.rmtree(tempdir)
 
     print("---- Inversion completed ----")
 
