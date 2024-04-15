@@ -11,17 +11,21 @@
 # ****************************************************************************
 import glob
 import json
-from pathlib import Path
 import os
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Optional, Union
 
-import pandas as pd
-import numpy as np
-import xarray as xr
-from tqdm import tqdm
 import dask.array as da
+import numpy as np
+import pandas as pd
+import xarray as xr
+from openghg.analyse import ModelScenario
+from tqdm import tqdm
+
 from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
+from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 
 openghginv_path = Paths.openghginv
 
@@ -606,44 +610,42 @@ def indexesMatch(dsa, dsb):
     return True
 
 
-def combine_datasets(dsa, dsb, method="ffill", tolerance=None):
+def combine_datasets(dsa, dsb, method="nearest", tolerance: Optional[float] = None) -> xr.Dataset:
     """
-    The combine_datasets function merges two datasets and re-indexes
-    to the FIRST dataset. If "fp" variable is found within the combined
-    dataset, the "time" values where the "lat","lon"dimensions didn't
-    match are removed.
+    Merge two datasets, re-indexing to the first dataset (within an optional tolerance).
+
+    If "fp" variable is found within the combined dataset, the "time" values where the "lat", "lon"
+    dimensions didn't match are removed.
 
     Example:
         ds = combine_datasets(dsa, dsb)
-    -----------------------------------
+
     Args:
       dsa (xarray.Dataset):
         First dataset to merge
       dsb (xarray.Dataset):
         Second dataset to merge
-      method (str, optional):
-        One of {None, ‘nearest’, ‘pad’/’ffill’, ‘backfill’/’bfill’}
+      method: One of {None, ‘nearest’, ‘pad’/’ffill’, ‘backfill’/’bfill’}
         See xarray.DataArray.reindex_like for list of options and meaning.
         Default = "ffill" (forward fill)
-      tolerance (int/float??):
-        Maximum allowed tolerance between matches.
+      tolerance: Maximum allowed (absolute) tolerance between matches.
 
     Returns:
-      xarray.Dataset:
-        Combined dataset indexed to dsa
-    -----------------------------------
+      xarray.Dataset: combined dataset indexed to dsa
     """
     # merge the two datasets within a tolerance and remove times that are NaN (i.e. when FPs don't exist)
 
     if not indexesMatch(dsa, dsb):
-        dsb_temp = dsb.reindex_like(dsa, method, tolerance=tolerance)
+        dsb_temp = dsb.load().reindex_like(dsa, method, tolerance=tolerance)
     else:
         dsb_temp = dsb
 
     ds_temp = dsa.merge(dsb_temp)
-    if "fp" in list(ds_temp.keys()):
-        flag = np.where(np.isfinite(ds_temp.fp.mean(dim=["lat", "lon"]).values))
-        ds_temp = ds_temp[dict(time=flag[0])]
+
+    if "fp" in ds_temp:
+        flag = np.isfinite(ds_temp.fp.sum(dim=["lat", "lon"], skipna=False))
+        ds_temp = ds_temp.where(flag, drop=True)
+
     return ds_temp
 
 
@@ -961,7 +963,9 @@ def timeseries_HiTRes(
             return timeseries
 
 
-def fp_sensitivity(fp_and_data, basis_func, verbose=True):
+def fp_sensitivity(
+    fp_and_data: dict, basis_func: Union[xr.DataArray, dict[str, xr.DataArray]], verbose: bool = True
+):
     """
     The fp_sensitivity function adds a sensitivity matrix, H, to each
     site xarray dataframe in fp_and_data.
@@ -970,7 +974,7 @@ def fp_sensitivity(fp_and_data, basis_func, verbose=True):
     region and 0 outside region.
 
     Region numbering must start from 1
-    -----------------------------------
+
     Args:
       fp_and_data (dict):
         Output from footprints_data_merge() function. Dictionary of datasets.
@@ -983,9 +987,8 @@ def fp_sensitivity(fp_and_data, basis_func, verbose=True):
         reflect keys in emissions_name dict used in fp_data_merge.
 
     Returns:
-        dict (xarray.Dataset):
+        dict:
           Same format as fp_and_data with sensitivity matrix and basis function grid added.
-    -----------------------------------
     """
 
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
@@ -1027,13 +1030,17 @@ def fp_sensitivity(fp_and_data, basis_func, verbose=True):
             site_sensitivities.append(sensitivity)
 
         fp_and_data[site]["H"] = xr.concat(site_sensitivities, dim="region")
-        fp_and_data[".basis"] = site_bf.basis[:, :, 0]
+        fp_and_data[".basis"] = (
+            current_basis_func.squeeze("time") if site_bf is None else site_bf.basis[:, :, 0]
+        )
         # TODO: this will only contain the last value in the loop...
 
     return fp_and_data
 
 
-def fp_sensitivity_single_site_basis_func(scenario, flux, source, basis_func, verbose=True):
+def fp_sensitivity_single_site_basis_func(
+    scenario: ModelScenario, flux, source: str, basis_func: xr.DataArray, verbose: bool = True
+):
     """
     The fp_sensitivity function adds a sensitivity matrix, H, to each
     site xarray dataframe in fp_and_data.
@@ -1042,7 +1049,7 @@ def fp_sensitivity_single_site_basis_func(scenario, flux, source, basis_func, ve
     region and 0 outside region.
 
     Region numbering must start from 1
-    -----------------------------------
+
     Args:
       scenario:
         Output from footprints_data_merge() function; e.g. `fp_all["TAC"]`
@@ -1057,7 +1064,6 @@ def fp_sensitivity_single_site_basis_func(scenario, flux, source, basis_func, ve
 
     Returns:
         sensitivity ("H") xr.DataArray and site_bf xr.Dataset
-    -----------------------------------
     """
     if isinstance(flux, dict):
         if "fp_HiTRes" in list(scenario.keys()):
@@ -1086,8 +1092,8 @@ def fp_sensitivity_single_site_basis_func(scenario, flux, source, basis_func, ve
 
     H_all_v = H_all.values.reshape((len(site_bf.lat) * len(site_bf.lon), len(site_bf.time)))
 
-    if "region" in list(basis_func.dims.keys()):
-        if "time" in basis_func.basis.dims:
+    if "region" in basis_func.dims:
+        if "time" in basis_func.dims:
             basis_func = basis_func.isel(time=0)
 
         site_bf = xr.merge([site_bf, basis_func])
@@ -1107,31 +1113,10 @@ def fp_sensitivity_single_site_basis_func(scenario, flux, source, basis_func, ve
         sensitivity = xr.DataArray(H, coords=[("region", region_name), ("time", scenario.coords["time"])])
 
     else:
-        print("Warning: Using basis functions without a region dimension may be deprecated shortly.")
-
-        site_bf = combine_datasets(site_bf, basis_func, method="ffill")
-
-        H = np.zeros((int(np.max(site_bf.basis)), len(site_bf.time)))
-
-        basis_scale = xr.Dataset(
-            {"basis_scale": (["lat", "lon", "time"], np.zeros(np.shape(site_bf.basis)))},
-            coords=site_bf.coords,
-        )
-        site_bf = site_bf.merge(basis_scale)
-
-        base_v = np.ravel(site_bf.basis.values[:, :, 0])
-        for i in range(int(np.max(site_bf.basis))):
-            wh_ri = np.where(base_v == i + 1)
-            H[i, :] = np.nansum(H_all_v[wh_ri[0], :], axis=0)
-
-        if source == "all":
-            region_name = list(range(1, np.max(site_bf.basis.values) + 1))
-        else:
-            region_name = [source + "-" + str(reg) for reg in range(1, int(np.max(site_bf.basis.values) + 1))]
-
-        sensitivity = xr.DataArray(
-            H.data, coords=[("region", region_name), ("time", scenario.coords["time"].data)]
-        )
+        _, basis_aligned = xr.align(H_all.isel(time=0), basis_func, join="override")
+        basis_mat = get_xr_dummies(basis_aligned.squeeze("time"), cat_dim="region")
+        sensitivity = sparse_xr_dot(basis_mat, H_all.fillna(0.0)).transpose("region", "time")
+        site_bf = None
 
     return sensitivity, site_bf
 
