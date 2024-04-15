@@ -1,4 +1,3 @@
-numpyro[cpu]
 pymc
 xarray
 pandas
