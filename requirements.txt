@@ -1,3 +1,4 @@
+numpyro[cpu]
 pymc
 xarray
 pandas
@@ -5,3 +6,4 @@ matplotlib
 scipy
 numpy
 openghg == 0.6.2
+sparse
