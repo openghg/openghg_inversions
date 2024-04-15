@@ -14,7 +14,11 @@ import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
+<<<<<<< Updated upstream
 from typing import Any, Optional, Sequence, Union
+=======
+from typing import Optional
+>>>>>>> Stashed changes
 
 import dask.array as da
 import numpy as np
@@ -609,44 +613,42 @@ def indexesMatch(dsa, dsb):
     return True
 
 
-def combine_datasets(dsa, dsb, method="ffill", tolerance=None):
+def combine_datasets(dsa, dsb, method="ffill", tolerance: Optional[float] = None) -> xr.Dataset:
     """
-    The combine_datasets function merges two datasets and re-indexes
-    to the FIRST dataset. If "fp" variable is found within the combined
-    dataset, the "time" values where the "lat","lon"dimensions didn't
-    match are removed.
+    Merge two datasets, re-indexing to the first dataset (within an optional tolerance).
+
+    If "fp" variable is found within the combined dataset, the "time" values where the "lat", "lon"
+    dimensions didn't match are removed.
 
     Example:
         ds = combine_datasets(dsa, dsb)
-    -----------------------------------
+
     Args:
       dsa (xarray.Dataset):
         First dataset to merge
       dsb (xarray.Dataset):
         Second dataset to merge
-      method (str, optional):
-        One of {None, ‘nearest’, ‘pad’/’ffill’, ‘backfill’/’bfill’}
+      method: One of {None, ‘nearest’, ‘pad’/’ffill’, ‘backfill’/’bfill’}
         See xarray.DataArray.reindex_like for list of options and meaning.
         Default = "ffill" (forward fill)
-      tolerance (int/float??):
-        Maximum allowed tolerance between matches.
+      tolerance: Maximum allowed (absolute) tolerance between matches.
 
     Returns:
-      xarray.Dataset:
-        Combined dataset indexed to dsa
-    -----------------------------------
+      xarray.Dataset: combined dataset indexed to dsa
     """
     # merge the two datasets within a tolerance and remove times that are NaN (i.e. when FPs don't exist)
 
     if not indexesMatch(dsa, dsb):
-        dsb_temp = dsb.reindex_like(dsa, method, tolerance=tolerance)
+        dsb_temp = dsb.load().reindex_like(dsa, method, tolerance=tolerance)
     else:
         dsb_temp = dsb
 
     ds_temp = dsa.merge(dsb_temp)
-    if "fp" in list(ds_temp.keys()):
-        flag = np.where(np.isfinite(ds_temp.fp.mean(dim=["lat", "lon"]).values))
-        ds_temp = ds_temp[dict(time=flag[0])]
+
+    if "fp" in ds_temp:
+        flag = np.isfinite(ds_temp.fp.sum(dim=["lat", "lon"], skipna=False))
+        ds_temp = ds_temp.where(flag, drop=True)
+
     return ds_temp
 
 
