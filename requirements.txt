@@ -7,3 +7,4 @@ scipy
 numpy
 openghg == 0.6.2
 sparse
+tfp-nightly
