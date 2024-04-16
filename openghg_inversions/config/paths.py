@@ -11,6 +11,12 @@
 # To create a user-specific file, copy this to config/paths.yaml, and edit
 #
 # Feel free to add other paths, as required.
+#
+# Update by Ben Adam (ACRG), 20th February 2024:
+#
+# The move away from the ACRG repository means the only relevant path here is 
+# the one pointing to the current directory, Paths.openghginv. I have kept 
+# everything else commented out, for reference
 # ****************************************************************************
 
 from pathlib import Path
@@ -31,14 +37,15 @@ _openghginv_path = Path(__file__).parents[2]
 
 class Paths:
     """
-    Object that contains the acrg, observation and data drive paths
-    ACRG path is determined from the repo directory
-    Data path is populated by acrg_config/templates/paths_default.yaml
-    unless, a user-defined file is present: acrg_config/paths.yaml
-    To start with, copy the paths_default.yaml to acrg_config/paths.yaml
+   Object that used to be used to store paths to obs, ACRG and LPDM directories.
+   However, with the move over to OpenGHG this is generally all deprecated
+   Currently, the only path is to the current openghg_inversions directory
 
     All paths are pathlib.Path objects (Python >3.4)
 
+    Paths.openghginv: path to openghg_inversions repo
+
+    [Formerly]
     paths.acrg: path to ACRG repo
     paths.obs: path to obs folder
     path.lpdm: path to LPDM data directory
