@@ -14,7 +14,7 @@ import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Optional, Sequence, Union
+from typing import Optional, Union
 
 import dask.array as da
 import numpy as np
@@ -610,44 +610,42 @@ def indexesMatch(dsa, dsb):
     return True
 
 
-def combine_datasets(dsa, dsb, method="ffill", tolerance=None):
+def combine_datasets(dsa, dsb, method="nearest", tolerance: Optional[float] = None) -> xr.Dataset:
     """
-    The combine_datasets function merges two datasets and re-indexes
-    to the FIRST dataset. If "fp" variable is found within the combined
-    dataset, the "time" values where the "lat","lon"dimensions didn't
-    match are removed.
+    Merge two datasets, re-indexing to the first dataset (within an optional tolerance).
+
+    If "fp" variable is found within the combined dataset, the "time" values where the "lat", "lon"
+    dimensions didn't match are removed.
 
     Example:
         ds = combine_datasets(dsa, dsb)
-    -----------------------------------
+
     Args:
       dsa (xarray.Dataset):
         First dataset to merge
       dsb (xarray.Dataset):
         Second dataset to merge
-      method (str, optional):
-        One of {None, ‘nearest’, ‘pad’/’ffill’, ‘backfill’/’bfill’}
+      method: One of {None, ‘nearest’, ‘pad’/’ffill’, ‘backfill’/’bfill’}
         See xarray.DataArray.reindex_like for list of options and meaning.
         Default = "ffill" (forward fill)
-      tolerance (int/float??):
-        Maximum allowed tolerance between matches.
+      tolerance: Maximum allowed (absolute) tolerance between matches.
 
     Returns:
-      xarray.Dataset:
-        Combined dataset indexed to dsa
-    -----------------------------------
+      xarray.Dataset: combined dataset indexed to dsa
     """
     # merge the two datasets within a tolerance and remove times that are NaN (i.e. when FPs don't exist)
 
     if not indexesMatch(dsa, dsb):
-        dsb_temp = dsb.reindex_like(dsa, method, tolerance=tolerance)
+        dsb_temp = dsb.load().reindex_like(dsa, method, tolerance=tolerance)
     else:
         dsb_temp = dsb
 
     ds_temp = dsa.merge(dsb_temp)
-    if "fp" in list(ds_temp.keys()):
-        flag = np.where(np.isfinite(ds_temp.fp.mean(dim=["lat", "lon"]).values))
-        ds_temp = ds_temp[dict(time=flag[0])]
+
+    if "fp" in ds_temp:
+        flag = np.isfinite(ds_temp.fp.sum(dim=["lat", "lon"], skipna=False))
+        ds_temp = ds_temp.where(flag, drop=True)
+
     return ds_temp
 
 
@@ -1032,50 +1030,12 @@ def fp_sensitivity(
             site_sensitivities.append(sensitivity)
 
         fp_and_data[site]["H"] = xr.concat(site_sensitivities, dim="region")
-        fp_and_data[".basis"] = current_basis_func.squeeze("time") if site_bf is None else site_bf.basis[:, :, 0]
+        fp_and_data[".basis"] = (
+            current_basis_func.squeeze("time") if site_bf is None else site_bf.basis[:, :, 0]
+        )
         # TODO: this will only contain the last value in the loop...
 
     return fp_and_data
-
-
-# def get_xr_dummies(
-#     da: xr.DataArray,
-#     categories: Optional[Union[Sequence[Any], pd.Index, xr.DataArray, np.ndarray]] = None,
-#     cat_dim: str = "region",
-# ) -> xr.DataArray:
-#     """Create 0-1 dummy matrix from DataArray with values that correspond to categories.
-
-#     If the values of `da` are integers 0-N, then the result has N + 1 columns, and the (i, j) coordiante
-#     of the result is 1 if `da[i] == j`, and is 0 otherwise.
-
-#     Args:
-#         da: DataArray encoding categories.
-#         categories: optional coordinates for categories.
-#         cat_dim: dimension for categories coordinate
-#         sparse: if True, store values in sparse.COO matrix
-
-#     Returns:
-#         Dummy matrix corresponding to the input vector. Its dimensions are the same as the
-#     input DataArray, plus an additional "categories" dimension, which  has one value for each
-#     distinct value in the input DataArray.
-#     """
-#     # stack if `da` is not one dimensional
-#     stack_dim = ""
-#     if len(da.dims) > 1:
-#         stack_dim = "".join([str(dim) for dim in da.dims])
-#         da = da.stack({stack_dim: da.dims})
-
-#     dummies = pd.get_dummies(da.values, dtype=int)
-
-#     # put dummies into DataArray with the right coords and dims
-#     values = dummies.values
-#     if categories is None:
-#         categories = np.arange(values.shape[1])
-#     coords = da.coords.merge({cat_dim: categories}).coords  # coords.merge returns Dataset, we want the coords
-#     result = xr.DataArray(values, coords=coords)
-
-#     # if we stacked `da`, unstack result before returning
-#     return result.unstack(stack_dim) if stack_dim else result
 
 
 def fp_sensitivity_single_site_basis_func(
@@ -1153,35 +1113,10 @@ def fp_sensitivity_single_site_basis_func(
         sensitivity = xr.DataArray(H, coords=[("region", region_name), ("time", scenario.coords["time"])])
 
     else:
-        # print("Warning: Using basis functions without a region dimension may be deprecated shortly.")
         _, basis_aligned = xr.align(H_all.isel(time=0), basis_func, join="override")
         basis_mat = get_xr_dummies(basis_aligned.squeeze("time"), cat_dim="region")
         sensitivity = sparse_xr_dot(basis_mat, H_all.fillna(0.0)).transpose("region", "time")
         site_bf = None
-
-        # site_bf = combine_datasets(site_bf, basis_func, method="ffill")
-
-        # H = np.zeros((int(np.max(site_bf.basis)), len(site_bf.time)))
-
-        # basis_scale = xr.Dataset(
-        #     {"basis_scale": (["lat", "lon", "time"], np.zeros(np.shape(site_bf.basis)))},
-        #     coords=site_bf.coords,
-        # )
-        # site_bf = site_bf.merge(basis_scale)
-
-        # base_v = np.ravel(site_bf.basis.values[:, :, 0])
-        # for i in range(int(np.max(site_bf.basis))):
-        #     wh_ri = np.where(base_v == i + 1)
-        #     H[i, :] = np.nansum(H_all_v[wh_ri[0], :], axis=0)
-
-        # if source == "all":
-        #     region_name = list(range(1, np.max(site_bf.basis.values) + 1))
-        # else:
-        #     region_name = [source + "-" + str(reg) for reg in range(1, int(np.max(site_bf.basis.values) + 1))]
-
-        # sensitivity = xr.DataArray(
-        #     H.data, coords=[("region", region_name), ("time", scenario.coords["time"].data)]
-        # )
 
     return sensitivity, site_bf
 
