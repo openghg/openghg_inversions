@@ -1,5 +1,6 @@
 # OpenGHG Inversions Change Log
 
+
 # Version 1.1.3
 
 - reorganised basis functions code into its own submodule `openghg_inversions.basis`. This submodule contains the basis function algorithms, functions to call those algorithms, and the basis function wrapper that was previously in `get_data.py`. [#PR 87](https://github.com/openghg/openghg_inversions/pull/87)
@@ -22,6 +23,7 @@
 # Version 0.1.2
 
 - Bugfix: fixed problem with error handling in `config.version` caused inversions to fail if git wasn't loaded on Blue Pebble. [#PR 91](https://github.com/openghg/openghg_inversions/pull/91)
+
 
 # Version 0.1.1
 
