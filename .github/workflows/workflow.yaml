@@ -20,6 +20,7 @@ jobs:
       matrix:
         os: ["ubuntu-latest"]
         python-version: ["3.10"]
+        openghg-version: ["openghg==0.7.1", "openghg==0.8", "git+https://github.com/openghg/openghg.git@devel"]
         # python-version: ["3.8", "3.9", "3.10"]
     steps:
       - name: Checkout
@@ -32,6 +33,7 @@ jobs:
       - name: Install package
         run: |
           pip install --upgrade pip setuptools wheel
+          pip install ${{ matrix.openghg-version }}
           pip install -r requirements.txt
           pip install -e .
       - name: Install pytest
