@@ -34,6 +34,12 @@ def test_full_inversion_min_error(mcmc_args):
     fixedbasisMCMC(**mcmc_args)
 
 
+def test_full_inversion_min_error_numpyro(mcmc_args):
+    mcmc_args["min_error"] = 20.0
+    mcmc_args["nuts_sampler"] = "numpyro"
+    fixedbasisMCMC(**mcmc_args)
+
+
 def test_inversion_if_merged_data_does_not_exist(mcmc_args):
     """Test that inversion runs if reload_merged_data is True, but
     no merged data exists under the default merged data name.
