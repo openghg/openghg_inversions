@@ -1,36 +1,36 @@
-# *****************************************************************************
-# hbmcmc.py
-# Author: Atmospheric Chemistry Research Group, University of Bristol
-# Created: Nov.2022
-# *****************************************************************************
-# About
-#   Originally created by Luke Western
-#
-#   Modules for running an MCMC inversion using PyMC. There are also functions
-#   to dynamically create a basis function grid based on the a priori sensitivity,
-#   and some other functionality for setting up the inputs to this (or any)
-#   inverse method.
-#
-#   If not using on an HPC in the terminal you should do:
-#     export OPENBLAS_NUM_THREADS=XX
-#  and/or
-#    export OMP_NUM_THREADS=XX
-#  where XX is the number of chains you are running.
-#
-#  If running in Spyder do this before launching Spyder, else you will use every
-#  available thread. Apart from being annoying it will also slow down your run
-#  due to unnecessary forking.
-#
-#  RHIME updated to use openghg as a dependency replacing (most) of the acrg
-#  modules previously used. See example input file for how input variables
-#  have chanegd.
-#
-#  Note. RHIME with OpenGHG expects ALL data to already be included in the
-#  object stores and for the paths to object stores to already be set in
-#  the users .openghg config file
-# ****************************************************************************
+"""
+Author: Atmospheric Chemistry Research Group, University of Bristol
+Created: Nov.2022
 
+About
+  Originally created by Luke Western
+
+  Modules for running an MCMC inversion using PyMC. There are also functions
+  to dynamically create a basis function grid based on the a priori sensitivity,
+  and some other functionality for setting up the inputs to this (or any)
+  inverse method.
+
+  If not using on an HPC in the terminal you should do:
+    export OPENBLAS_NUM_THREADS=XX
+ and/or
+   export OMP_NUM_THREADS=XX
+ where XX is the number of chains you are running.
+
+ If running in Spyder do this before launching Spyder, else you will use every
+ available thread. Apart from being annoying it will also slow down your run
+ due to unnecessary forking.
+
+ RHIME updated to use openghg as a dependency replacing (most) of the acrg
+ modules previously used. See example input file for how input variables
+ have chanegd.
+
+ Note. RHIME with OpenGHG expects ALL data to already be included in the
+ object stores and for the paths to object stores to already be set in
+ the users .openghg config file
+
+"""
 from pathlib import Path
+from typing import Union
 
 import numpy as np
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
@@ -92,7 +92,7 @@ def fixedbasisMCMC(
     merged_data_dir=None,
     merged_data_name=None,
     basis_output_path=None,
-    save_trace: bool = False,
+    save_trace: Union[str, Path, bool] = False,
     **kwargs,
 ):
     """
@@ -413,7 +413,12 @@ def fixedbasisMCMC(
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
         # Path to save trace
-        trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc") if save_trace else None
+        if isinstance(save_trace, (str, Path)):
+            trace_path = save_trace
+        elif save_trace is True:
+            trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
+        else:
+            trace_path = None
 
         mcmc_args = {
             "Hx": Hx,

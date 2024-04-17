@@ -7,16 +7,25 @@ OpenGHG Inversions is a Python package that is being develoepd as part of the [O
 Currently, OpenGHG Inversions includes the following regional inversion models:
 - Hierarchical Bayesian Markov Chain Monte Carlo (HBMCMC) model (as described in Ganesan et al., 2014, _ACP_)
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10650596.svg)](https://doi.org/10.5281/zenodo.10650596)
+
 ## Installation and Setup
-As OpenGHG Inversions is dependent on OpenGHG, please ensure that when running locally you are using Python 3.8 or later on Linux or MacOS. Please see the [OpenGHG project](https://github.com/openghg/openghg/) for further installation instructions of OpenGHG and setting up an object store.
+As OpenGHG Inversions is dependent on OpenGHG, please ensure that when running locally you are using Python 3.10 or later on Linux or MacOS. Please see the [OpenGHG project](https://github.com/openghg/openghg/) for further installation instructions of OpenGHG and setting up an object store.
 
 ### Setup a virtual environment
 
+Check that you have Python 3.10 or greater:
+```bash
+python --version
+```
+(Note for Bristol ACRG group: If you are on Blue Pebble, the default anaconda module `lang/python/anaconda` is Python 3.9. Use `module avail` to list other options; `lang/python/miniconda/3.10.10.cuda-12` or `lang/python/miniconda/3.12.2.inc-perl-5.30.0` will work.)
+
+Make a virtual environment 
 ```bash
 python -m venv openghg_inv
 ```
-Next activate the environment
 
+Next activate the environment
 ```bash
 source openghg_inv/bin/activate
 ```
@@ -36,6 +45,12 @@ pip install --upgrade pip setuptools wheel
 pip install -e openghg_inversions
 ```
 
+Optionally, install the developer requirements (there is more information about this in the "Contributing" section below):
+``` bash
+pip install -r requirements-dev.txt
+```
+
+### Verify that PyMC is using fast linear algebra libraries
 At this point, run
 
 ``` bash
@@ -50,10 +65,67 @@ Solutions to this are:
 
 ### Setup
 
-Once installed, ensure that your OpenGHG object store is configured and that you are comfortable with adding data to your object store. The HBMCMC inversion model assumes all necessary data required for the inversion run has already been added to the object store.  
+Once installed, ensure that your OpenGHG object store is configured and that you are comfortable with adding data to your object store. The HBMCMC inversion model assumes all necessary data required for the inversion run has already been added to the object store.
 
 ## Getting Started
-_We are currently writing documentation on using the HBMCMC inversion code. We thank you for your patience_
+
+For an overview of OpenGHG inversions, see this [primer](getting_started.html).
+
+### Passing options in an `ini` file
+
+Extra options can be added to an `ini` file in almost any location. 
+The [template ini file](openghg_inversions/hbmcmc/config/openghg_hbmcmc_input_template_example.ini) puts
+these option under the heading "MCMC.OPTIONS":
+
+``` ini
+[MCMC.OPTIONS]
+averaging_error = True
+min_error = 20.0
+fixed_basis_outer_regions = False
+```
+
+These will be passed to the MCMC function (e.g. `fixedbasisMCMC`) as keyword arguments.
+Any argument in `fixedbasisMCMC` can be specified in an `ini` file this way.
+
+### Passing options at the command line
+
+When running inversions using the script `run_hbmcmc.py`, you must specify the start and end date of
+the inversion period, and you pass an `ini` file using the flag `-c`.
+
+In addition, you can pass the output path using the flag `--output-path`; this is useful if your SLURM script
+uses different output locations for different array jobs.
+
+You can also pass arbitrary keyword arguments to `run_hbmcmc.py` using the `--kwargs` flag.
+For instance:
+
+``` bash
+python run_hbmcmc.py "2019-01-01" "2019-02-01" -c "example.ini" --kwargs '{"averaging_error": true, "min_error": 20.0, "nuts_sampler": "numpyro"}'
+```
+It is crucial that you enclose the dictionary in single quotes, otherwise the command line will split the dictionary on white space.
+
+Again, this can be used to change the arguments passed to an inversion on the fly (say, in a SLURM script).
+
+The format of the dictionary inside single quotes must be JSON, because the value of `kwargs` is parsed using `json.loads`.
+Python translates JSON according to [this table](https://docs.python.org/3/library/json.html#encoders-and-decoders).
+In particular, `"true"` in JSON translate to `True` in Python (but `"True"` will be translated as a string).
+
+The parsing in our `ini` files is more flexible; in particular, values that are Python statements will be translated to Python, so you don't need to worry about translation.
+
+### Guide to optional parameters 
+
+Keyword arguments are propagated as follows:
+1. any key-value pair in an `ini` file or passed via the `--kwargs` flag is passed to the MCMC function as a keyword argument. (Currently, `fixedbasisMCMC` is the only available MCMC function)
+2. any keyword argument not recognised by the MCMC function (i.e. `fixedbasisMCMC`) is passed to the function `inferpymc` in `hbmcmc.inversion_pymc`, which is the function that creates and samples from the RHIME model. 
+
+Thus you can pass arguments to either `fixedbasisMCMC` or `inferpymc`, but all of these arguments will be specified in the `ini` file.
+
+#### Parameters for `fixedbasisMCMC`
+
+- `save_trace`: 
+  - The default value is `False`. 
+  - If `True`, the arviz `InferenceData` output from sampling will be saved to the output path of the inversion, with a file name of the form `f"{outputname}{start_data}_trace.nc_`. To load this trace into arviz, you need to use `InferenceData.from_netcdf`.
+  - Alternatively, you can pass a path (including filename), and that path will be used.
+- 
 
 ## Contributing
 
