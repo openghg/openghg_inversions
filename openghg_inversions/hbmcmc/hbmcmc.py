@@ -287,7 +287,9 @@ def fixedbasisMCMC(
 
     if reload_merged_data is True and merged_data_dir is not None:
         try:
-            fp_all = get_data.load_merged_data(merged_data_dir, species, start_date, outputname, merged_data_name)
+            fp_all = get_data.load_merged_data(
+                merged_data_dir, species, start_date, outputname, merged_data_name
+            )
         except ValueError as e:
             # couldn't find merged data
             print(f"{e}, re-running data merge.")
@@ -312,7 +314,6 @@ def fixedbasisMCMC(
                 averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
 
                 print(f"\nDropping {s_dropped} sites as they are not included in the merged data object.\n")
-
 
     # Get datasets for forward simulations
     if rerun_merge:
