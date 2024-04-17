@@ -156,4 +156,4 @@ def sparse_xr_dot(
 
     func = wrapper if debug else _func
 
-    return xr.apply_ufunc(func, da1, da2, input_core_dims=input_core_dims, join="outer")
+    return xr.apply_ufunc(func, da1, da2.as_numpy(), input_core_dims=input_core_dims, join="outer")

@@ -101,7 +101,7 @@ def quadtreebasisfunction(
         xr.DataArray with lat/lon dimensions and basis regions encoded by integers.
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
-    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask)
+    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
 
     # use xr.apply_ufunc to keep xarray coords
     func = partial(quadtree_algorithm, nbasis=nbasis, seed=seed)
