@@ -26,7 +26,7 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, usin
         expected_tac_combined_scenario = xr.open_dataset(
             raw_data_path / "merged_data_test_tac_combined_scenario_v8.nc"
         )
-        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario, rtol=1e-2)
+        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario)
     else:
         # get combined scenario for TAC at time 2019-01-01 00:00:00
         expected_tac_combined_scenario = xr.open_dataset(
