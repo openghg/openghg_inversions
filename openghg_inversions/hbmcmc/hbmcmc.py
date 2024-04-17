@@ -30,8 +30,6 @@
 #  the users .openghg config file
 # ****************************************************************************
 
-import os
-import pickle
 from pathlib import Path
 
 import numpy as np
@@ -287,16 +285,15 @@ def fixedbasisMCMC(
     """
     rerun_merge = True
 
-    if reload_merged_data:
-        if merged_data_name is None:
-            merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
-        merged_data_filename = os.path.join(merged_data_dir, merged_data_name)
-        print(f"Attempting to read in merged data from: {merged_data_filename}...\n")
-
-        if os.path.exists(merged_data_filename):
-            with open(merged_data_filename, "rb") as fp_in:
-                fp_all = pickle.load(fp_in)
-
+    if reload_merged_data is True and merged_data_dir is not None:
+        try:
+            fp_all = get_data.load_merged_data(
+                merged_data_dir, species, start_date, outputname, merged_data_name
+            )
+        except ValueError as e:
+            # couldn't find merged data
+            print(f"{e}, re-running data merge.")
+        else:
             print("Successfully read in merged data.\n")
             rerun_merge = False
 
@@ -314,8 +311,9 @@ def fixedbasisMCMC(
                 averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
 
                 print(f"\nDropping {s_dropped} sites as they are not included in the merged data object.\n")
-        else:
-            print(f"No merged data available at {merged_data_filename} so rerunning this process.\n")
+
+    if reload_merged_data is True and merged_data_dir is None:
+        print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
 
     # Get datasets for forward simulations
     if rerun_merge:

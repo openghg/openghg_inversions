@@ -1,19 +1,18 @@
-import pickle
+import copy
 
 import pytest
 import xarray as xr
 from openghg.types import SearchError
 
-from openghg_inversions.get_data import data_processing_surface_notracer
+from openghg_inversions.get_data import data_processing_surface_notracer, fp_all_from_dataset, make_combined_scenario, load_merged_data
 
 
-def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path):
+def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, using_zarr_store):
     """
     Check that `data_processing_surface_notracer` produces the same output
-    as v0.1 (test data frozen on 9 Feb 2024)
+    as v0.1, with test data frozen on 9 Feb 2024, or the same as v0.2, with test data frozen on
+    15 Apr 2024 (using the zarr backend).
     """
-    for k, v in tac_ch4_data_args.items():
-        print(k, v)
     result = data_processing_surface_notracer(**tac_ch4_data_args)
 
     # check number of items returned
@@ -22,15 +21,21 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path):
     # check keys of "fp_all"
     assert list(result[0].keys()) == [".species", ".flux", ".bc", "TAC", ".scales", ".units"]
 
-    # get combined scenario for TAC at time 2019-01-01 00:00:00
-    expected_tac_combined_scenario = xr.open_dataset(
-        raw_data_path / "merged_data_test_tac_combined_scenario.nc"
-    )
+    if using_zarr_store:
+        # get combined scenario for TAC at time 2019-01-01 00:00:00
+        expected_tac_combined_scenario = xr.open_dataset(
+            raw_data_path / "merged_data_test_tac_combined_scenario_v8.nc"
+        )
+        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario.isel(time=0).isel(site=0, drop=True))
+    else:
+        # get combined scenario for TAC at time 2019-01-01 00:00:00
+        expected_tac_combined_scenario = xr.open_dataset(
+            raw_data_path / "merged_data_test_tac_combined_scenario.nc"
+        )
+        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0), expected_tac_combined_scenario.isel(time=0).isel(site=0, drop=True), rtol=1e-2)
 
-    xr.testing.assert_allclose(result[0]["TAC"].isel(time=0), expected_tac_combined_scenario)
 
-
-def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir):
+def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir, using_zarr_store):
     merged_data_name = "test_save_load_merged_data"
 
     # make merged data dir
@@ -43,24 +48,17 @@ def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir):
         **tac_ch4_data_args,
     )
 
-    with open(merged_data_dir / merged_data_name, "rb") as f:
-        fp_all_reloaded = pickle.load(f)
+    fp_all_reloaded = load_merged_data(merged_data_dir=merged_data_dir, merged_data_name=merged_data_name)
 
-    xr.testing.assert_allclose(fp_all["TAC"], fp_all_reloaded["TAC"])
-
-
-def test_merged_data_vs_frozen_pickle_file(tac_ch4_data_args, merged_data_dir, pickled_data_file_name):
-    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
-
-    with open(merged_data_dir / pickled_data_file_name, "rb") as f:
-        fp_all_reloaded = pickle.load(f)
-
-    xr.testing.assert_allclose(fp_all["TAC"], fp_all_reloaded["TAC"])
+    if using_zarr_store:
+        xr.testing.assert_allclose(fp_all["TAC"].load(), fp_all_reloaded["TAC"])
+    else:
+        xr.testing.assert_allclose(fp_all["TAC"], fp_all_reloaded["TAC"])
 
 
 def test_missing_data_at_one_site(tac_ch4_data_args):
     """Test that `fp_all` is created if one of two sites has missing data."""
-    data_args = tac_ch4_data_args
+    data_args = copy.deepcopy(tac_ch4_data_args)
 
     # add MHD as site... this won't be found
     data_args["sites"].append("MHD")
@@ -98,3 +96,34 @@ def test_missing_data_at_all_sites():
 
     with pytest.raises(SearchError):
         data_processing_surface_notracer(**data_args)
+
+
+def test_fp_all_to_dataset_and_back(tac_ch4_data_args):
+    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+    ds = make_combined_scenario(fp_all)
+    fp_all_recovered = fp_all_from_dataset(ds)
+
+    # check scenarios are the same
+    xr.testing.assert_equal(fp_all["TAC"], fp_all_recovered["TAC"])
+
+    print(fp_all[".bc"])
+    print(fp_all_recovered[".bc"])
+
+    for k, v in fp_all.items():
+        if not k.startswith("."):
+            continue
+
+        assert k in fp_all_recovered
+
+        v_recovered = fp_all_recovered[k]
+
+        if k == ".flux":
+            assert list(v.keys()) == list(v_recovered.keys())
+
+            for flux_data1, flux_data2 in zip(v.values(), v_recovered.values()):
+                xr.testing.assert_allclose(flux_data1.data, flux_data2.data, rtol=1e-3)
+
+        elif k == ".bc":
+            xr.testing.assert_allclose(v.data, v_recovered.data, rtol=1e-3)
+        else:
+            assert v == v_recovered

@@ -1,14 +1,15 @@
 from pathlib import Path
 import shutil
 import tempfile
+from importlib.metadata import version
 from typing import Iterator
 from unittest.mock import patch
 
 import pytest
-
 from openghg.retrieve import search
 from openghg.standardise import standardise_surface, standardise_bc, standardise_flux, standardise_footprint
 from openghg.types import ObjectStoreError
+import xarray as xr
 
 _raw_data_path = Path(".").resolve() / "tests/data/"
 
@@ -18,37 +19,53 @@ def raw_data_path():
     return _raw_data_path
 
 
-# set up for pickled data
-@pytest.fixture(scope="session")
-def pickled_data_file_name():
-    return "merged_data_test_tac_combined_scenario.pickle"
-
-
 @pytest.fixture(scope="session")
 def merged_data_dir():
     return Path(tempfile.gettempdir(), "openghg_inversions_testing_merged_data_dir")
 
 
 @pytest.fixture(scope="session", autouse=True)
-def add_frozen_pickled_merged_data(merged_data_dir, pickled_data_file_name):
-    """Copy pickled merged data from tests/data to temporary merged_data_dir.
+def using_zarr_store():
+    return version("openghg") >= "0.8"
 
-    Pickled data created/frozen 9 Feb 2024.
+
+@pytest.fixture(scope="session")
+def merged_data_file_name(using_zarr_store):
+    if using_zarr_store:
+        return "merged_data_test_tac_combined_scenario_v8"
+    else:
+        return "merged_data_test_tac_combined_scenario"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def add_frozen_merged_data(merged_data_dir, merged_data_file_name, using_zarr_store):
+    """Copy merged data from tests/data to temporary merged_data_dir.
+
+    Data created/frozen around 15 Apr, 2024.
+
+    If the zarr backend is being used, we load the merged data with xarray then write to zarr.
+    Otherwise, if netCDF is being used, we copy the merged data directly.
     """
     merged_data_dir.mkdir(exist_ok=True)
 
-    if not (merged_data_dir / pickled_data_file_name).exists():
-        shutil.copy(_raw_data_path / pickled_data_file_name, merged_data_dir)
+    if using_zarr_store and not (merged_data_dir / (merged_data_file_name + ".zarr")).exists():
+        ds = xr.open_dataset(_raw_data_path / (merged_data_file_name + ".nc"))
+        ds.to_zarr(merged_data_dir / (merged_data_file_name + ".zarr"))
+    elif not (merged_data_dir / (merged_data_file_name + ".nc")).exists():
+        shutil.copy(_raw_data_path / (merged_data_file_name + ".nc"), merged_data_dir)
 
 
 bc_basis_function_path = Path(".").resolve() / "bc_basis_functions"
 countries_path = Path(".").resolve() / "countries"
 
-inversions_test_store_path = Path(tempfile.gettempdir(), "openghg_inversions_testing_store")
-
 
 @pytest.fixture(scope="session", autouse=True)
-def session_config_mocker() -> Iterator[None]:
+def session_config_mocker(using_zarr_store) -> Iterator[None]:
+    if using_zarr_store:
+        inversions_test_store_path = Path(tempfile.gettempdir(), "openghg_inversions_zarr_testing_store")
+    else:
+        inversions_test_store_path = Path(tempfile.gettempdir(), "openghg_inversions_testing_store")
+
     mock_config = {
         "object_store": {
             "inversions_tests": {"path": str(inversions_test_store_path), "permissions": "rw"},
@@ -75,7 +92,7 @@ footprints_metadata = {
     "domain": "europe",
     "model": "name",
     "inlet": "185m",
-    "metmodel": "ukv",
+    # "metmodel": "ukv",
 }
 flux_metadata = {"species": "ch4", "source": "total-ukghg-edgar7", "domain": "europe"}
 
@@ -127,7 +144,7 @@ def session_object_store(session_config_mocker) -> None:
             file_path = data_info[dtype][2]
             metadata = data_info[dtype][1]
             metadata["store"] = "inversions_tests"
-            standardise_fn(file_path, **metadata)
+            standardise_fn(filepath=file_path, **metadata)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -171,7 +188,7 @@ def tac_ch4_data_args():
         "fp_height": ["185m"],
         "fp_model": "NAME",
         "emissions_name": ["total-ukghg-edgar7"],
-        "met_model": "ukv",
+        # "met_model": "ukv",
         "averaging_period": ["1H"],
     }
     return data_args

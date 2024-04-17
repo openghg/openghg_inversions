@@ -4,7 +4,7 @@ from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
 
 
 @pytest.fixture
-def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, pickled_data_file_name):
+def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_name):
     mcmc_args = tac_ch4_data_args.copy()
     mcmc_args.update(
         {
@@ -19,7 +19,7 @@ def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, pickled_data_file_na
             "nchain": 1,
             "reload_merged_data": True,
             "merged_data_dir": merged_data_dir,
-            "merged_data_name": pickled_data_file_name,
+            "merged_data_name": merged_data_file_name,
         }
     )
     return mcmc_args
