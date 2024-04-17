@@ -362,7 +362,7 @@ def data_processing_surface_notracer(
         if merged_data_dir is None:
             print("`merged_data_dir` not specified; could not save merged data")
         else:
-            save_merged_data_func(fp_all, merged_data_dir, merged_data_name=merged_data_name)
+            _save_merged_data(fp_all, merged_data_dir, merged_data_name=merged_data_name)
             print(f"\nfp_all saved in {merged_data_dir}\n")
 
     return fp_all, sites, inlet, fp_height, instrument, averaging_period
@@ -373,7 +373,7 @@ def _make_merged_data_name(species: str, start_date: str, output_name: str) -> s
 
 
 # NOTE: the _func at the end of the name is to distinguish from the local variable in the previous function
-def save_merged_data_func(
+def _save_merged_data(
     fp_all: dict,
     merged_data_dir: Union[str, Path],
     species: Optional[str] = None,
@@ -388,6 +388,9 @@ def save_merged_data_func(
     a standard name will be created given `species`, `start_date`, and `output_name`.
 
     If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
+
+    The default output format is a zarr store. If zarr is not installed, then netCDF is used.
+    Alternatively, "pickle" can be specified.
 
     Args:
         fp_all: dictionary of merged data to save
@@ -421,7 +424,7 @@ def save_merged_data_func(
 
         if output_format == "zarr":
             try:
-                ds.to_zarr(merged_data_dir / (merged_data_name + ".zarr"))
+                ds.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w")
             except ModuleNotFoundError:
                 # zarr not found
                 ds.to_netcdf(merged_data_dir / (merged_data_name + ".nc"))
@@ -437,6 +440,7 @@ def load_merged_data(
     start_date: Optional[str] = None,
     output_name: Optional[str] = None,
     merged_data_name: Optional[str] = None,
+    output_format: Optional[Literal["pickle", "netcdf", "zarr"]] = None,
 ) -> dict:
     """Load `fp_all` dictionary from a pickle file in `merged_data_dir`.
 
@@ -444,6 +448,9 @@ def load_merged_data(
     a standard name will be created given `species`, `start_date`, and `output_name`.
 
     If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
+
+    This function tries to automatically find a compatible format of merged data, if several are present.
+    First, it checks for data in "zarr" format, then in netCDF, and finally in pickle.
 
     Args:
         merged_data_dir: path to directory where merged data will be saved
@@ -459,13 +466,7 @@ def load_merged_data(
         merged_data_dir = Path(merged_data_dir)
 
     if merged_data_name is not None:
-        merged_data_file = merged_data_dir / merged_data_name
-
-        if not merged_data_file.exists():
-            raise ValueError(
-                f"No merged data for species {species}, start date {start_date}, and "
-                f"output name {output_name} found in merged data directory {merged_data_dir}"
-            )
+        err_msg = f"No merged data with file name {merged_data_name} in merged data directory {merged_data_dir}"
     elif any(arg is None for arg in [species, start_date, output_name]):
         raise ValueError(
             "If `merged_date_name` isn't given, then "
@@ -473,17 +474,29 @@ def load_merged_data(
         )
     else:
         merged_data_name = _make_merged_data_name(species, start_date, output_name)  # type: ignore
+        err_msg = (f"No merged data for species {species}, start date {start_date}, and "
+                   f"output name {output_name} found in merged data directory {merged_data_dir}")
 
-        for ext in ["pickle", "nc", "zarr"]:
+    if output_format is not None:
+        ext = output_format
+        merged_data_file = merged_data_dir / (merged_data_name + "." + ext)
+        if not merged_data_file.exists():
+            raise ValueError(f"No merged data found at {merged_data_file}.")
+    else:
+        for ext in ["zarr", "nc", "pickle"]:
+            # skip "zarr" if zarr not installed...
+            if ext == "zarr":
+                try:
+                    import zarr
+                except ModuleNotFoundError:
+                    continue
+
             merged_data_file = merged_data_dir / (merged_data_name + "." + ext)
             if merged_data_file.exists():
                 break
         else:
             # no `break` occurred, so no file found
-            raise ValueError(
-                f"No merged data for species {species}, start date {start_date}, and "
-                f"output name {output_name} found in merged data directory {merged_data_dir}"
-            )
+            raise ValueError(err_msg)
 
     # load merged data
     if merged_data_file.suffix == "pickle":

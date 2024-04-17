@@ -5,7 +5,7 @@ import pytest
 import xarray as xr
 from openghg.types import SearchError
 
-from openghg_inversions.get_data import data_processing_surface_notracer, fp_all_from_dataset, make_combined_scenario
+from openghg_inversions.get_data import data_processing_surface_notracer, fp_all_from_dataset, make_combined_scenario, load_merged_data
 
 
 def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, using_zarr_store):
@@ -35,7 +35,7 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, usin
         xr.testing.assert_allclose(result[0]["TAC"].isel(time=0), expected_tac_combined_scenario, rtol=1e-2)
 
 
-def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir):
+def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir, using_zarr_store):
     merged_data_name = "test_save_load_merged_data"
 
     # make merged data dir
@@ -48,10 +48,12 @@ def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir):
         **tac_ch4_data_args,
     )
 
-    with open(merged_data_dir / merged_data_name, "rb") as f:
-        fp_all_reloaded = pickle.load(f)
+    fp_all_reloaded = load_merged_data(merged_data_dir=merged_data_dir, merged_data_name=merged_data_name)
 
-    xr.testing.assert_allclose(fp_all["TAC"], fp_all_reloaded["TAC"])
+    if using_zarr_store:
+        xr.testing.assert_allclose(fp_all["TAC"].load(), fp_all_reloaded["TAC"])
+    else:
+        xr.testing.assert_allclose(fp_all["TAC"], fp_all_reloaded["TAC"])
 
 
 def test_merged_data_vs_frozen_pickle_file(tac_ch4_data_args, merged_data_dir, pickled_data_file_name):
