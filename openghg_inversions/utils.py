@@ -643,8 +643,8 @@ def combine_datasets(dsa, dsb, method="nearest", tolerance: Optional[float] = No
     ds_temp = dsa.merge(dsb_temp)
 
     if "fp" in ds_temp:
-        flag = np.isfinite(ds_temp.fp.sum(dim=["lat", "lon"], skipna=False))
-        ds_temp = ds_temp.where(flag, drop=True)
+        mask = np.isfinite(ds_temp.fp.sum(dim=["lat", "lon"], skipna=False))
+        ds_temp = ds_temp.where(mask.as_numpy(), drop=True)  # .as_numpy() in case mask is chunked
 
     return ds_temp
 

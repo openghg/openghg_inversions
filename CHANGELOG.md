@@ -1,6 +1,12 @@
 # OpenGHG Inversions Change Log
 
-# Version 1.1.3
+# Version 0.2.0
+
+- unpinned OpenGHG (from v0.6.2) and made changes for compatibility with OpenGHG v0.8, which uses zarr as a backend. CI was updated to test against OpenGHG versions 0.7.1, 0.8, and the devel branch. Merged data has been changed from pickle files to either zarr or netCDF (if zarr is not available). [#PR 92](https://github.com/openghg/openghg_inversions/pull/92)
+
+- updates to `hbmcmc_post_process.py`, including changes to `site_info.json` and `species_info.json` to remove dependencies on ACRG paths; updates to documentation; changed `fluxmean` to variable with default `fluxmode`; fixed bug in `set_cmap`, which would fail for datasets with many NaNs; no updates to DIC. [#PR 88](https://github.com/openghg/openghg_inversions/pull/88)
+
+# Version 0.1.3
 
 - reorganised basis functions code into its own submodule `openghg_inversions.basis`. This submodule contains the basis function algorithms, functions to call those algorithms, and the basis function wrapper that was previously in `get_data.py`. [#PR 87](https://github.com/openghg/openghg_inversions/pull/87)
 
