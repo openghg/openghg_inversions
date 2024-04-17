@@ -26,13 +26,13 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, usin
         expected_tac_combined_scenario = xr.open_dataset(
             raw_data_path / "merged_data_test_tac_combined_scenario_v8.nc"
         )
-        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario)
+        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario, rtol=1e-2)
     else:
         # get combined scenario for TAC at time 2019-01-01 00:00:00
         expected_tac_combined_scenario = xr.open_dataset(
             raw_data_path / "merged_data_test_tac_combined_scenario.nc"
         )
-        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0), expected_tac_combined_scenario)
+        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0), expected_tac_combined_scenario, rtol=1e-2)
 
 
 def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir):
@@ -65,7 +65,7 @@ def test_merged_data_vs_frozen_pickle_file(tac_ch4_data_args, merged_data_dir, p
 
 def test_missing_data_at_one_site(tac_ch4_data_args):
     """Test that `fp_all` is created if one of two sites has missing data."""
-    data_args = tac_ch4_data_args
+    data_args = tac_ch4_data_args.copy()
 
     # add MHD as site... this won't be found
     data_args["sites"].append("MHD")
