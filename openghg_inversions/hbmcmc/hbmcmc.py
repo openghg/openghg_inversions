@@ -285,9 +285,8 @@ def fixedbasisMCMC(
     """
     rerun_merge = True
 
-    if reload_merged_data is True:
+    if reload_merged_data is True and merged_data_dir is not None:
         try:
-            merged_data_dir = Path(merged_data_dir)
             fp_all = get_data.load_merged_data(merged_data_dir, species, start_date, outputname, merged_data_name)
         except ValueError as e:
             # couldn't find merged data

@@ -1,5 +1,3 @@
-from importlib.metadata import version
-
 from openghg.retrieve import search
 
 

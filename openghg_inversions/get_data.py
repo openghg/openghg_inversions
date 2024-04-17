@@ -1,32 +1,31 @@
 # *****************************************************************************
 # get_data.py
 # Author: Atmospheric Chemistry Research Group, University of Bristol
-# Created: Nov. 2023
-# *****************************************************************************
-# About
-# Functions for retrieving observations and datasets for creating forward
-# simulations
-#
-# Current options include:
-# - "data_processing_surface_notracer": Surface based measurements, without tracers
-# - "data_processing_surface_tracer"  : Surface based measurements, with tracers
-#
-# *****************************************************************************
+"""
+Functions for retrieving observations and datasets for creating forward
+simulations
 
-import os
+Current data processing options include:
+- "data_processing_surface_notracer": Surface based measurements, without tracers
+
+Future data processing options will include:
+- "data_processing_surface_tracer": Surface based measurements, with tracers
+
+This module also includes functions for saving and loading "merged data" created
+by the data processing functions.
+"""
 import pickle
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, cast, Literal, Optional, Union
+from typing import Any, Literal, Optional, Union, cast
 
 import numpy as np
-from openghg.retrieve import get_obs_surface, get_flux
-from openghg.retrieve import get_bc, get_footprint
+import xarray as xr
 from openghg.analyse import ModelScenario
 from openghg.dataobjects import BoundaryConditionsData, FluxData
+from openghg.retrieve import get_bc, get_flux, get_footprint, get_obs_surface
 from openghg.types import SearchError
 from openghg.util import timestamp_now
-import xarray as xr
 
 import openghg_inversions.hbmcmc.inversionsetup as setup
 
@@ -290,8 +289,8 @@ def data_processing_surface_notracer(
 
                 scenario_combined = model_scenario.footprints_data_merge(recalculate=True)
 
-                for key in model_scenario_dict.keys():
-                    scenario_combined[key] = model_scenario_dict[key]
+                for k, v in model_scenario_dict.itmes():
+                    scenario_combined[k] = v
                     if use_bc is True:
                         scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
 
@@ -372,7 +371,6 @@ def _make_merged_data_name(species: str, start_date: str, output_name: str) -> s
     return f"{species}_{start_date}_{output_name}_merged-data"
 
 
-# NOTE: the _func at the end of the name is to distinguish from the local variable in the previous function
 def _save_merged_data(
     fp_all: dict,
     merged_data_dir: Union[str, Path],
@@ -382,7 +380,7 @@ def _save_merged_data(
     merged_data_name: Optional[str] = None,
     output_format: Literal["pickle", "netcdf", "zarr"] = "zarr",
 ) -> None:
-    """Save `fp_all` dictionary as a pickle file in `merged_data_dir`.
+    """Save `fp_all` dictionary to `merged_data_dir`.
 
     The name of the pickle file can be specified using `merged_data_name`, or
     a standard name will be created given `species`, `start_date`, and `output_name`.
@@ -409,8 +407,7 @@ def _save_merged_data(
                 "If `merged_date_name` isn't given, then "
                 "`species`, `start_date`, and `output_name` must be provided."
             )
-        else:
-            merged_data_name = _make_merged_data_name(species, start_date, output_name)  # type: ignore
+        merged_data_name = _make_merged_data_name(species, start_date, output_name)  # type: ignore
 
     if isinstance(merged_data_dir, str):
         merged_data_dir = Path(merged_data_dir)
@@ -442,14 +439,14 @@ def load_merged_data(
     merged_data_name: Optional[str] = None,
     output_format: Optional[Literal["pickle", "netcdf", "zarr"]] = None,
 ) -> dict:
-    """Load `fp_all` dictionary from a pickle file in `merged_data_dir`.
+    """Load `fp_all` dictionary from a file in `merged_data_dir`.
 
     The name of the pickle file can be specified using `merged_data_name`, or
     a standard name will be created given `species`, `start_date`, and `output_name`.
 
     If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
 
-    This function tries to automatically find a compatible format of merged data, if several are present.
+    This function tries to automatically find a compatible format of merged data.
     First, it checks for data in "zarr" format, then in netCDF, and finally in pickle.
 
     Args:
@@ -466,7 +463,9 @@ def load_merged_data(
         merged_data_dir = Path(merged_data_dir)
 
     if merged_data_name is not None:
-        err_msg = f"No merged data with file name {merged_data_name} in merged data directory {merged_data_dir}"
+        err_msg = (
+            f"No merged data with file name {merged_data_name} in merged data directory {merged_data_dir}"
+        )
     elif any(arg is None for arg in [species, start_date, output_name]):
         raise ValueError(
             "If `merged_date_name` isn't given, then "
@@ -474,8 +473,10 @@ def load_merged_data(
         )
     else:
         merged_data_name = _make_merged_data_name(species, start_date, output_name)  # type: ignore
-        err_msg = (f"No merged data for species {species}, start date {start_date}, and "
-                   f"output name {output_name} found in merged data directory {merged_data_dir}")
+        err_msg = (
+            f"No merged data for species {species}, start date {start_date}, and "
+            f"output name {output_name} found in merged data directory {merged_data_dir}"
+        )
 
     if output_format is not None:
         ext = output_format
@@ -528,6 +529,7 @@ list_keys = [
     "data_owner_email",
 ]
 
+
 def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[str, Any]:
     """Combine attributes when concatenating scenarios from different sites.
 
@@ -540,7 +542,7 @@ def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[st
 
     Args:
         attrs_list: list of attributes from datasets being concatenated
-        context: additional parameter supplied by concatenate
+        context: additional parameter supplied by concatenate (this is required/supplied by xarray)
 
     Returns:
         dict that will be used as attributes for concatenated dataset
@@ -620,7 +622,6 @@ def make_combined_scenario(fp_all):
         bc = bc.reindex_like(combined_scenario, method="nearest")
         combined_scenario = combined_scenario.merge(bc)
 
-
     return combined_scenario
 
 
@@ -645,7 +646,9 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
     bc_vars = ["vmr_n", "vmr_e", "vmr_s", "vmr_w"]
 
     for i, site in enumerate(ds.site.values):
-        scenario = ds.sel(site=site, drop=True).drop_vars(["flux"] + bc_vars, errors="ignore").drop_dims("source")
+        scenario = (
+            ds.sel(site=site, drop=True).drop_vars(["flux"] + bc_vars, errors="ignore").drop_dims("source")
+        )
 
         # extract attributes that were gathered into a list
         for k in list_keys:
@@ -661,16 +664,16 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
 
         fp_all[site] = scenario
 
-
     # get fluxes
     fp_all[".flux"] = {}
 
     for i, source in enumerate(ds.source.values):
-        flux_ds = (ds[["flux"]]  # double brackets to get dataset
-                     .sel(source=source, drop=True)
-                     .expand_dims({"time": [ds.time.min().values]})
-                     .transpose(..., "time")
-                     )
+        flux_ds = (
+            ds[["flux"]]  # double brackets to get dataset
+            .sel(source=source, drop=True)
+            .expand_dims({"time": [ds.time.min().values]})
+            .transpose(..., "time")
+        )
 
         # extract attributes that were gathered into a list
         for k in list_keys:
@@ -690,11 +693,10 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
         bc_ds = bc_ds.expand_dims({"time": [ds.time.min().values]}).transpose(..., "time")
         fp_all[".bc"] = BoundaryConditionsData(data=bc_ds, metadata={})
 
-
     species = ds.attrs.get("species", None)
     if species is not None:
         species = species.upper()
-    fp_all[".species"]  = species
+    fp_all[".species"] = species
 
     try:
         fp_all[".units"] = float(ds.mf.attrs.get("units", 1.0))

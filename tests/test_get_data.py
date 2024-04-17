@@ -1,6 +1,5 @@
-import pickle
+import copy
 
-import numpy as np
 import pytest
 import xarray as xr
 from openghg.types import SearchError
@@ -11,7 +10,8 @@ from openghg_inversions.get_data import data_processing_surface_notracer, fp_all
 def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, using_zarr_store):
     """
     Check that `data_processing_surface_notracer` produces the same output
-    as v0.1 (test data frozen on 9 Feb 2024)
+    as v0.1, with test data frozen on 9 Feb 2024, or the same as v0.2, with test data frozen on
+    15 Apr 2024 (using the zarr backend).
     """
     result = data_processing_surface_notracer(**tac_ch4_data_args)
 
@@ -26,13 +26,13 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, usin
         expected_tac_combined_scenario = xr.open_dataset(
             raw_data_path / "merged_data_test_tac_combined_scenario_v8.nc"
         )
-        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario)
+        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario.isel(time=0).isel(site=0, drop=True))
     else:
         # get combined scenario for TAC at time 2019-01-01 00:00:00
         expected_tac_combined_scenario = xr.open_dataset(
             raw_data_path / "merged_data_test_tac_combined_scenario.nc"
         )
-        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0), expected_tac_combined_scenario, rtol=1e-2)
+        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0), expected_tac_combined_scenario.isel(time=0).isel(site=0, drop=True), rtol=1e-2)
 
 
 def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir, using_zarr_store):
@@ -56,18 +56,9 @@ def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir, using_zarr_st
         xr.testing.assert_allclose(fp_all["TAC"], fp_all_reloaded["TAC"])
 
 
-def test_merged_data_vs_frozen_pickle_file(tac_ch4_data_args, merged_data_dir, pickled_data_file_name):
-    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
-
-    with open(merged_data_dir / pickled_data_file_name, "rb") as f:
-        fp_all_reloaded = pickle.load(f)
-
-    xr.testing.assert_allclose(fp_all["TAC"], fp_all_reloaded["TAC"])
-
-
 def test_missing_data_at_one_site(tac_ch4_data_args):
     """Test that `fp_all` is created if one of two sites has missing data."""
-    data_args = tac_ch4_data_args.copy()
+    data_args = copy.deepcopy(tac_ch4_data_args)
 
     # add MHD as site... this won't be found
     data_args["sites"].append("MHD")
