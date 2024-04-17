@@ -289,7 +289,7 @@ def data_processing_surface_notracer(
 
                 scenario_combined = model_scenario.footprints_data_merge(recalculate=True)
 
-                for k, v in model_scenario_dict.itmes():
+                for k, v in model_scenario_dict.items():
                     scenario_combined[k] = v
                     if use_bc is True:
                         scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
@@ -397,6 +397,7 @@ def _save_merged_data(
         start_date: start date of inversion period
         output_name: output name parameter used for inversion run
         merged_data_name: name to use for saved data.
+        output_format: format to save merged data to (default: "zarr").
 
     Returns:
         None
@@ -446,7 +447,7 @@ def load_merged_data(
 
     If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
 
-    This function tries to automatically find a compatible format of merged data.
+    This function tries to automatically find a compatible format of merged data, if a format is not specified.
     First, it checks for data in "zarr" format, then in netCDF, and finally in pickle.
 
     Args:
@@ -455,6 +456,7 @@ def load_merged_data(
         start_date: start date of inversion period
         output_name: output name parameter used for inversion run
         merged_data_name: name to use for saved data.
+        output_format: format of data to load (if not specified, this will be inferred).
 
     Returns:
         `fp_all` dictionary
