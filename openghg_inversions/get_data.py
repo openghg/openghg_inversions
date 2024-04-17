@@ -294,11 +294,11 @@ def data_processing_surface_notracer(
             check_scales += [scenario_combined.scale]
             if not all(s == check_scales[0] for s in check_scales):
                 rt = []
-                for i in check_scales:
-                    if isinstance(i, list):
-                        rt.extend(flatten(i))
-                else:
-                    rt.append(i)
+                for j in check_scales:
+                    if isinstance(j, list):
+                        rt.extend(flatten(j))
+                    else:
+                        rt.append(j)
                 scales[site] = rt
             else:
                 scales[site] = check_scales[0]

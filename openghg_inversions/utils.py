@@ -374,25 +374,49 @@ def filtering(datasets_in, filters, keep_missing=False):
             i for i, pblh in enumerate(dataset.PBLH) if np.abs(float(dataset.inlet_height_magl) - pblh) > 50.0
         ]
 
-        if len(ti) != 0:
-            if keep_missing is True:
-                mf_data_array = dataset.mf
-                dataset_temp = dataset.drop("mf")
+        if keep_missing is True:
+            mf_data_array = dataset.mf
+            dataset_temp = dataset.drop("mf")
 
-                dataarray_temp = mf_data_array[dict(time=ti)]
+            dataarray_temp = mf_data_array[dict(time=ti)]
 
-                mf_ds = xr.Dataset(
-                    {"mf": (["time"], dataarray_temp)}, coords={"time": (dataarray_temp.coords["time"])}
-                )
+            mf_ds = xr.Dataset(
+                {"mf": (["time"], dataarray_temp)}, coords={"time": (dataarray_temp.coords["time"])}
+            )
 
-                dataset_out = combine_datasets(dataset_temp, mf_ds, method=None)
-                return dataset_out
-            else:
-                return dataset[dict(time=ti)]
-
+            dataset_out = combine_datasets(dataset_temp, mf_ds, method=None)
+            return dataset_out
         else:
-            print("PBLH filtering removed all datapoints so this filter is not applied to this site.")
+            return dataset[dict(time=ti)]
 
+    def extFile(dataset, site, keep_missing=False):
+        """
+        Experimental using outside file.
+        """
+        filterDir = '/user/home/bq24992/workingDir/forNPL/monthly_filters_radon/Rn_3cl_selection_1yr'
+        tmp = pd.read_csv(f'{filterDir}/{site}_Rn_3cl_selection_1yr.txt',sep='\s+')[['Yr','M','D','Hr','S']]
+        tmp['time'] =  tmp.apply(lambda row : np.datetime64(f'{row.Yr}-{row.M:02n}-{row.D:02n}T{row.Hr-2:02n}'),axis=1)
+        ti_tmp = tmp['time'][tmp.S.astype(bool)].values
+        ti = [
+            i for i, time in enumerate(dataset.mf.time.data) if time in ti_tmp
+        ]
+        del tmp, ti_tmp
+
+        if keep_missing is True:
+            mf_data_array = dataset.mf
+            dataset_temp = dataset.drop("mf")
+
+            dataarray_temp = mf_data_array[dict(time=ti)]
+
+            mf_ds = xr.Dataset(
+                {"mf": (["time"], dataarray_temp.data)}, coords={"time": (dataarray_temp.coords["time"])}
+            )
+
+            dataset_out = combine_datasets(dataset_temp, mf_ds, method=None)
+            return dataset_out
+        else:
+            return dataset[dict(time=ti)]
+        
     filtering_functions = {
         "daily_median": daily_median,
         "daytime": daytime,
@@ -402,6 +426,7 @@ def filtering(datasets_in, filters, keep_missing=False):
         "local_influence": local_influence,
         "six_hr_mean": six_hr_mean,
         "pblh": pblh,
+        "extFile": extFile,
     }
 
     # Get list of sites
