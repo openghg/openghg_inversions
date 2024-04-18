@@ -1,5 +1,8 @@
+# Getting started with OpenGHG Inversions
 
-# Table of Contents
+This is an overview of what OpenGHG Inversions does, and how to use it.
+
+## Table of Contents
 
 1.  [Overview](#orgf3238fd)
 2.  [What do you need to run an inversion?](#org4510696)

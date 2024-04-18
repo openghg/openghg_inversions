@@ -63,15 +63,26 @@ Solutions to this are:
 1. try `python -m pip install numpy` after upgrading `pip, setuptools, wheel`
 2. create a `conda` env, install `numpy` using `conda`, then use `pip` to upgrade  `pip, setuptools, wheel` and install `openghg_inversions` 
 
-### Setup
 
-Once installed, ensure that your OpenGHG object store is configured and that you are comfortable with adding data to your object store. The HBMCMC inversion model assumes all necessary data required for the inversion run has already been added to the object store.
+## Using OpenGHG Inversions
 
-## Getting Started
+### Getting Started
 
 For an overview of OpenGHG inversions, see this [primer](getting_started.md).
 
-### Passing options in an `ini` file
+### Passing parameters to the inversion 
+
+Keyword arguments are propagated as follows:
+1. any key-value pair in an `ini` file or passed via the `--kwargs` flag is passed to the MCMC function as a keyword argument. (Currently, `fixedbasisMCMC` is the only available MCMC function)
+2. any keyword argument not recognised by the MCMC function (i.e. `fixedbasisMCMC`) is passed to the function `inferpymc` in `hbmcmc.inversion_pymc`, which is the function that creates and samples from the RHIME model. 
+
+Thus you can pass arguments to either `fixedbasisMCMC` or `inferpymc`, but all of these arguments will be specified in the `ini` file (or command line).
+
+Let's look at these two steps in detail.
+
+#### Ways of passing arguments to the inversion
+
+##### Passing options in an `ini` file
 
 Extra options can be added to an `ini` file in almost any location. 
 The [template ini file](openghg_inversions/hbmcmc/config/openghg_hbmcmc_input_template_example.ini) puts
@@ -87,7 +98,7 @@ fixed_basis_outer_regions = False
 These will be passed to the MCMC function (e.g. `fixedbasisMCMC`) as keyword arguments.
 Any argument in `fixedbasisMCMC` can be specified in an `ini` file this way.
 
-### Passing options at the command line
+##### Passing options at the command line
 
 When running inversions using the script `run_hbmcmc.py`, you must specify the start and end date of
 the inversion period, and you pass an `ini` file using the flag `-c`.
@@ -111,21 +122,32 @@ In particular, `"true"` in JSON translate to `True` in Python (but `"True"` will
 
 The parsing in our `ini` files is more flexible; in particular, values that are Python statements will be translated to Python, so you don't need to worry about translation.
 
-### Guide to optional parameters 
+#### What parameters can you set?
 
-Keyword arguments are propagated as follows:
-1. any key-value pair in an `ini` file or passed via the `--kwargs` flag is passed to the MCMC function as a keyword argument. (Currently, `fixedbasisMCMC` is the only available MCMC function)
-2. any keyword argument not recognised by the MCMC function (i.e. `fixedbasisMCMC`) is passed to the function `inferpymc` in `hbmcmc.inversion_pymc`, which is the function that creates and samples from the RHIME model. 
+The following sections detail some parameters that enable/specify optional behaviour in the inversion.
 
-Thus you can pass arguments to either `fixedbasisMCMC` or `inferpymc`, but all of these arguments will be specified in the `ini` file.
+##### Parameters for `fixedbasisMCMC`
 
-#### Parameters for `fixedbasisMCMC`
+This is not a comprehensive list (see the docstring for `fixedbasisMCMC` in the [hbmcmc module](openghg_inversions/hbmcmc/hbmcmc.py) for more arguments).
 
 - `save_trace`: 
   - The default value is `False`. 
   - If `True`, the arviz `InferenceData` output from sampling will be saved to the output path of the inversion, with a file name of the form `f"{outputname}{start_data}_trace.nc`. To load this trace into arviz, you need to use `InferenceData.from_netcdf`.
   - Alternatively, you can pass a path (including filename), and that path will be used.
-- 
+- `averaging_error`: if `True`, the error from resampling to the given `averaging_period` will be added to the observation's error. (Note: currently this doesn't work correctly, see [GH issue #42](https://github.com/openghg/openghg_inversions/issues/42).)
+- `use_bc`: defaults to `True`. If `False`, no boundary conditions will be used in the inversion. This implicitly assumes that contributions from the boundary have been subtracted from the observations.
+- `fix_basis_outer_regions`:
+  - default value is `False`
+  - if `True`, the "outer regions" of the (`EUROPE`) domain use basis regions specified by a file provided by the Met Office (from their "InTem" model), and the "inner region", which includes the UK, is fit using our basis algorithms.
+
+
+##### Parameters for `inferpymc`
+
+As mentioned above, any keyword argument passed to `fixedbasisMCMC` (either by an `ini` file or from `--kwargs` on the command line) that is not recognised by `fixedbasisMCMC` is passed on to `inferpymc`.
+
+These parameters include:
+- `min_error`: a non-negative float value that is added to the model and observation error in the likelihood of the Bayesian model.
+- `nuts_sampler`: a string, which defaults to `pymc`. The other option is `numpyro`, which will the [JAX](https://jax.readthedocs.io/en/latest/index.html) accelerated sampler from [Numpyro](https://num.pyro.ai/en/stable/index.html); this tends to be significantly faster than the NUTS sampler built into PyMC.
 
 ## Contributing
 
