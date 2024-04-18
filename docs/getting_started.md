@@ -123,6 +123,8 @@ Assuming you have the necessary data, you just need to run the `fixedbasisMCMC` 
 
 This is assuming you can ssh into blue pebble, and are able to modify files and run commands there (either on the terminal or through VS code or similar).
 
+(This section is specific to the ACRG group at Bristol, but the parts about running jobs on SLURM could apply elsewhere.)
+
 
 <a id="orgc7be83e"></a>
 
