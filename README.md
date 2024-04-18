@@ -68,7 +68,7 @@ Solutions to this are:
 
 ### Getting Started
 
-For an overview of OpenGHG inversions, see this [primer](getting_started.md).
+For an overview of OpenGHG inversions, see this [primer](docs/getting_started.md).
 
 ### Passing parameters to the inversion 
 
@@ -137,8 +137,9 @@ This is not a comprehensive list (see the docstring for `fixedbasisMCMC` in the 
 - `averaging_error`: if `True`, the error from resampling to the given `averaging_period` will be added to the observation's error. (Note: currently this doesn't work correctly, see [GH issue #42](https://github.com/openghg/openghg_inversions/issues/42).)
 - `use_bc`: defaults to `True`. If `False`, no boundary conditions will be used in the inversion. This implicitly assumes that contributions from the boundary have been subtracted from the observations.
 - `fix_basis_outer_regions`:
-  - default value is `False`
-  - if `True`, the "outer regions" of the (`EUROPE`) domain use basis regions specified by a file provided by the Met Office (from their "InTem" model), and the "inner region", which includes the UK, is fit using our basis algorithms.
+  - Default value is `False`
+  - If `True`, the "outer regions" of the (`EUROPE`) domain use basis regions specified by a file provided by the Met Office (from their "InTem" model), and the "inner region", which includes the UK, is fit using our basis algorithms.
+  - This option is only available for the `EUROPE` domain currently.
 
 
 ##### Parameters for `inferpymc`
@@ -147,7 +148,7 @@ As mentioned above, any keyword argument passed to `fixedbasisMCMC` (either by a
 
 These parameters include:
 - `min_error`: a non-negative float value that is added to the model and observation error in the likelihood of the Bayesian model.
-- `nuts_sampler`: a string, which defaults to `pymc`. The other option is `numpyro`, which will the [JAX](https://jax.readthedocs.io/en/latest/index.html) accelerated sampler from [Numpyro](https://num.pyro.ai/en/stable/index.html); this tends to be significantly faster than the NUTS sampler built into PyMC.
+- `nuts_sampler`: a string, which defaults to `"pymc"`. The other option is `"numpyro"`, which will the [JAX](https://jax.readthedocs.io/en/latest/index.html) accelerated sampler from [Numpyro](https://num.pyro.ai/en/stable/index.html); this tends to be significantly faster than the NUTS sampler built into PyMC.
 
 ## Contributing
 
