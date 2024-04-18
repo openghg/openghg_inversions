@@ -141,6 +141,7 @@ This is assuming you can ssh into blue pebble, and are able to modify files and 
 
 This script assumes that you have already created a conda env called `pymc_env` and you have an `.ini` file in a folder called `my_inversions`.
 
+```bash
     #!/bin/sh
     # ****************************************************************************
     # Wrapper script for submitting jobs on ACRC HPC
@@ -171,6 +172,7 @@ This script assumes that you have already created a conda env called `pymc_env` 
     # check numpy config
     # python -c "import numpy as np; np.show_config()"
     # python -c "import pymc"
+```
 
 If this script is saved as `my_inversions_script.sh`, you would run it with `sbatch my_inversion_script.sh`.
 
@@ -197,6 +199,7 @@ Your inversion will run much slower if this is the case; try using conda to inst
 
 The following file, `my_hbmcmc_inputs.ini` can be used to run an
 
+```ini
     ; Configuration file for HBMCMC code
     ; Required inputs are marked as such.
     ; All other inputs are optional (defaults will be used)
@@ -309,7 +312,7 @@ The following file, `my_hbmcmc_inputs.ini` can be used to run an
     
     outputpath = '/user/work/ab12345/my_inversions'  ; (required)
     outputname = 'ch4_TAC_test'  ; (required)
-
+```
 
 <a id="org3f637ce"></a>
 
