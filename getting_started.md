@@ -142,36 +142,36 @@ This is assuming you can ssh into blue pebble, and are able to modify files and 
 This script assumes that you have already created a conda env called `pymc_env` and you have an `.ini` file in a folder called `my_inversions`.
 
 ```bash
-    #!/bin/sh
-    # ****************************************************************************
-    # Wrapper script for submitting jobs on ACRC HPC
-    # docs: https://www.acrc.bris.ac.uk/protected/hpc-docs/index.html
-    # ****************************************************************************
-    #SBATCH --job-name=my_inv
-    #SBATCH --output=openghg_inversions.out
-    #SBATCH --error=openghg_inversions.err
-    #SBATCH --nodes=1
-    #SBATCH --ntasks-per-node=1
-    #SBATCH --cpus-per-task=4
-    #SBATCH --time=04:00:00
-    #SBATCH --mem=30gb
-    #SBATCH --account=chem007981
-    
-    
-    # Set up Python environment
-    module load lang/python/anaconda
-    eval "$(conda shell.bash hook)"
-    conda activate pymc_env
-    
-    #conda info
-    
-    # run inversion script
-    INI_FILE=/user/home/bm13805/my_inversions/my_hbmcmc_inputs.ini
-    python /user/home/bm13805/openghg_inversions/openghg_inversions/hbmcmc/run_hbmcmc.py -c $INI_FILE
-    
-    # check numpy config
-    # python -c "import numpy as np; np.show_config()"
-    # python -c "import pymc"
+#!/bin/sh
+# ****************************************************************************
+# Wrapper script for submitting jobs on ACRC HPC
+# docs: https://www.acrc.bris.ac.uk/protected/hpc-docs/index.html
+# ****************************************************************************
+#SBATCH --job-name=my_inv
+#SBATCH --output=openghg_inversions.out
+#SBATCH --error=openghg_inversions.err
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=04:00:00
+#SBATCH --mem=30gb
+#SBATCH --account=dept123456
+
+
+# Set up Python environment
+module load lang/python/anaconda
+eval "$(conda shell.bash hook)"
+conda activate pymc_env
+
+#conda info
+
+# run inversion script
+INI_FILE=/user/home/bm13805/my_inversions/my_hbmcmc_inputs.ini
+python /user/home/bm13805/openghg_inversions/openghg_inversions/hbmcmc/run_hbmcmc.py -c $INI_FILE
+
+# check numpy config
+# python -c "import numpy as np; np.show_config()"
+# python -c "import pymc"
 ```
 
 If this script is saved as `my_inversions_script.sh`, you would run it with `sbatch my_inversion_script.sh`.
@@ -200,118 +200,118 @@ Your inversion will run much slower if this is the case; try using conda to inst
 The following file, `my_hbmcmc_inputs.ini` can be used to run an
 
 ```ini
-    ; Configuration file for HBMCMC code
-    ; Required inputs are marked as such.
-    ; All other inputs are optional (defaults will be used)
-    
-    [INPUT.MEASUREMENTS]
-    ; Input values for extracting observations
-    ; species (str) - species name,  e.g. "ch4", "co2", "n2o", etc.
-    ; sites (list) - site codes as a list, e.g. ["TAC", "MHD"]
-    ; meas_period (list) - Time periods for measurements as a list (must match length of sites)
-    ; start_date (str) - Start of observations to extract (format YYYY-MM-DD)
-    ; end_date (str) - End of observations to extract (format YYYY-MM-DD) (non-inclusive)
-    ; inlet (list/None) - Specific inlet height for the site (list - must match number of sites)
-    ; instrument (list/None) - Specific instrument for the site (list - must match number of sites)
-    
-    species     = 'ch4'   ; (required)
-    sites       = ['TAC'] ; (required)
-    meas_period = ['1H']  ; (required)
-    start_date  = '2019-01-01'      ; (required)
-    end_date    = '2019-02-01'      ; (required)
-    inlet         = ["185m"]
-    instrument    = ["picarro"]
-    
-    
-    [INPUT.PRIORS]
-    ; Input values for extracting footprints, emissions and boundary conditions files (also uses values from INPUT.MEASUREMENTS)
-    ; domain (str) - Name of inversion spatial domain
-    ; fp_height (list) - Release height for footprints (must match number of sites).
-    ; emissions_name (list/None) - Name for specific emissions source.
-    
-    domain = 'EUROPE'  ; (required)
-    fp_height = ["185m"]  ; typically the same as inlet, but may differ slightly (e.g. if instrument moved to 180m, for instance)
-    fp_model = "NAME"  ; LPDM model, usually NAME
-    emissions_name = ["total-ukghg-edgar7"]  ; total = all emissions sources; agric-ukghg-edgar7 would be agricultural sources only
-    met_model = 'UKV'  ; or None if not specified, check the metadata for your footprint
-    
-    [INPUT.BASIS_CASE]
-    ; Input values to extract the basis cases to use within the inversion for boundary conditions and emissions/fluxes
-    ; bc_basis_case (str) - boundary conditions basis, defaults to "NESW" (looks for file format {bc_basis_case}_{domain}_*.nc)
-    ; fp_basis_case (str/None) - emissions bases:
-    ; - if specified, looks for file format {fp_basis_case}_{domain}_*.nc
-    ; - if None, creates basis function using quadtree algorithm and associated parameters
-    ;   - nbasis - Number of basis functions to use for quadtree derived basis function (rounded to %4)
-    
-    bc_basis_case  = "NESW"
-    bc_basis_directory = "/group/chemistry/acrg/LPDM/bc_basis_functions/"  ; LPDM/bc_basis_functions is default
-    fp_basis_case  = None ;  do not read in a basis for footprint/flux
-    quadtree_basis = True ; create quadtree basis on the fly
-    nbasis         = 100 ; number of basis functions to use
-    basis_directory = "/group/chemistry/acrg/LPDM/basis_functions/"
-    country_file = None
-    
-    [MCMC.TYPE]
-    ; Which MCMC setup to use. This defines the function which will be called and the expected inputs.
-    ; Options include: "fixed_basis"
-    
-    mcmc_type = "fixed_basis"
-    
-    
-    [MCMC.PDF]
-    ; Definitions of PDF shape and parameters for inputs
-    ; - xprior (dict) - emissions
-    ; - bcprior (dict) - boundary conditions
-    ; - sigprior (dict) - model error
-    
-    ; Each of these inputs should be dictionary with the name of probability distribution and shape parameters.
-    ; See https://docs.pymc.io/api/distributions/continuous.html
-    ; Check openghg_inversions.hbmcmc.inversion_pymc for options.
-    
-    xprior   = {"pdf":"lognormal", "mu":1, "sigma":1}  ; lognormal with mode = 1, mean = exp(1.5)
-    bcprior  = {"pdf":"lognormal", "mu":0.004, "sigma":0.02}  ; lognormal with mode = 1, mean = exp(0.006)
-    sigprior = {"pdf":"uniform", "lower":0.5, "upper":10}
-    
-    
-    [MCMC.BC_SPLIT]
-    ; Boundary conditions setup
-    ; - bc_freq - The period over which the baseline is estimated. e.g.
-    ;  - None - one scaling for the whole inversion
-    ;  - "monthly" - per calendar monthly
-    ;  - "*D" (e.g. "30D") - per number of days (e.g. 30 days)
-    
-    bc_freq    = "monthly"
-    sigma_freq = None
-    
-    
-    [MCMC.ITERATIONS]
-    ; Iteration parameters
-    ; nit (int) - Number of iterations for MCMC
-    ; burn (int) - Number of iterations to burn in MCMC
-    ; tune (int) - Number of iterations to use to tune step size
-    
-    nit  = 5000
-    burn = 1000
-    tune = 2000
-    
-    
-    [MCMC.NCHAIN]
-    ; Number of chains to run simultaneously. Must be at least 2 to allow convergence to be checked.
-    
-    nchain = 4
-    
-    [MCMC.ADD_ERROR]
-    ; Add variability in averaging period to the measurement error
-    
-    averagingerror = False
-    
-    [MCMC.OUTPUT]
-    ; Details of where to write the output
-    ; outputpath (str) - directory to write output
-    ; outputname (str) - unique identifier for output/run name.
-    
-    outputpath = '/user/work/ab12345/my_inversions'  ; (required)
-    outputname = 'ch4_TAC_test'  ; (required)
+; Configuration file for HBMCMC code
+; Required inputs are marked as such.
+; All other inputs are optional (defaults will be used)
+
+[INPUT.MEASUREMENTS]
+; Input values for extracting observations
+; species (str) - species name,  e.g. "ch4", "co2", "n2o", etc.
+; sites (list) - site codes as a list, e.g. ["TAC", "MHD"]
+; meas_period (list) - Time periods for measurements as a list (must match length of sites)
+; start_date (str) - Start of observations to extract (format YYYY-MM-DD)
+; end_date (str) - End of observations to extract (format YYYY-MM-DD) (non-inclusive)
+; inlet (list/None) - Specific inlet height for the site (list - must match number of sites)
+; instrument (list/None) - Specific instrument for the site (list - must match number of sites)
+
+species     = 'ch4'   ; (required)
+sites       = ['TAC'] ; (required)
+meas_period = ['1H']  ; (required)
+start_date  = '2019-01-01'      ; (required)
+end_date    = '2019-02-01'      ; (required)
+inlet         = ["185m"]
+instrument    = ["picarro"]
+
+
+[INPUT.PRIORS]
+; Input values for extracting footprints, emissions and boundary conditions files (also uses values from INPUT.MEASUREMENTS)
+; domain (str) - Name of inversion spatial domain
+; fp_height (list) - Release height for footprints (must match number of sites).
+; emissions_name (list/None) - Name for specific emissions source.
+
+domain = 'EUROPE'  ; (required)
+fp_height = ["185m"]  ; typically the same as inlet, but may differ slightly (e.g. if instrument moved to 180m, for instance)
+fp_model = "NAME"  ; LPDM model, usually NAME
+emissions_name = ["total-ukghg-edgar7"]  ; total = all emissions sources; agric-ukghg-edgar7 would be agricultural sources only
+met_model = 'UKV'  ; or None if not specified, check the metadata for your footprint
+
+[INPUT.BASIS_CASE]
+; Input values to extract the basis cases to use within the inversion for boundary conditions and emissions/fluxes
+; bc_basis_case (str) - boundary conditions basis, defaults to "NESW" (looks for file format {bc_basis_case}_{domain}_*.nc)
+; fp_basis_case (str/None) - emissions bases:
+; - if specified, looks for file format {fp_basis_case}_{domain}_*.nc
+; - if None, creates basis function using quadtree algorithm and associated parameters
+;   - nbasis - Number of basis functions to use for quadtree derived basis function (rounded to %4)
+
+bc_basis_case  = "NESW"
+bc_basis_directory = "/group/chemistry/acrg/LPDM/bc_basis_functions/"  ; LPDM/bc_basis_functions is default
+fp_basis_case  = None ;  do not read in a basis for footprint/flux
+quadtree_basis = True ; create quadtree basis on the fly
+nbasis         = 100 ; number of basis functions to use
+basis_directory = "/group/chemistry/acrg/LPDM/basis_functions/"
+country_file = None
+
+[MCMC.TYPE]
+; Which MCMC setup to use. This defines the function which will be called and the expected inputs.
+; Options include: "fixed_basis"
+
+mcmc_type = "fixed_basis"
+
+
+[MCMC.PDF]
+; Definitions of PDF shape and parameters for inputs
+; - xprior (dict) - emissions
+; - bcprior (dict) - boundary conditions
+; - sigprior (dict) - model error
+
+; Each of these inputs should be dictionary with the name of probability distribution and shape parameters.
+; See https://docs.pymc.io/api/distributions/continuous.html
+; Check openghg_inversions.hbmcmc.inversion_pymc for options.
+
+xprior   = {"pdf":"lognormal", "mu":1, "sigma":1}  ; lognormal with mode = 1, mean = exp(1.5)
+bcprior  = {"pdf":"lognormal", "mu":0.004, "sigma":0.02}  ; lognormal with mode = 1, mean = exp(0.006)
+sigprior = {"pdf":"uniform", "lower":0.5, "upper":10}
+
+
+[MCMC.BC_SPLIT]
+; Boundary conditions setup
+; - bc_freq - The period over which the baseline is estimated. e.g.
+;  - None - one scaling for the whole inversion
+;  - "monthly" - per calendar monthly
+;  - "*D" (e.g. "30D") - per number of days (e.g. 30 days)
+
+bc_freq    = "monthly"
+sigma_freq = None
+
+
+[MCMC.ITERATIONS]
+; Iteration parameters
+; nit (int) - Number of iterations for MCMC
+; burn (int) - Number of iterations to burn in MCMC
+; tune (int) - Number of iterations to use to tune step size
+
+nit  = 5000
+burn = 1000
+tune = 2000
+
+
+[MCMC.NCHAIN]
+; Number of chains to run simultaneously. Must be at least 2 to allow convergence to be checked.
+
+nchain = 4
+
+[MCMC.ADD_ERROR]
+; Add variability in averaging period to the measurement error
+
+averagingerror = False
+
+[MCMC.OUTPUT]
+; Details of where to write the output
+; outputpath (str) - directory to write output
+; outputname (str) - unique identifier for output/run name.
+
+outputpath = '/user/work/ab12345/my_inversions'  ; (required)
+outputname = 'ch4_TAC_test'  ; (required)
 ```
 
 <a id="org3f637ce"></a>
