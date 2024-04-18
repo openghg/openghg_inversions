@@ -277,7 +277,9 @@ def fixedbasisMCMC(
       basis_output_path (Optional, str):
         If set, save the basis functions to this path. Used for testing
 
-      save_trace: if True, save arviz InferenceData trace to outputpath
+      save_trace: if True, save arviz `InferenceData` trace to `outputpath`. Alternatively,
+        A file path (including file name and extension) can be passed, and the trace will be
+        saved there.
 
 
     Returns:
