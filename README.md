@@ -69,13 +69,13 @@ Once installed, ensure that your OpenGHG object store is configured and that you
 
 ## Getting Started
 
-For an overview of OpenGHG inversions, see this [primer](getting_started.html).
+For an overview of OpenGHG inversions, see this [primer](getting_started.md).
 
 ### Passing options in an `ini` file
 
 Extra options can be added to an `ini` file in almost any location. 
 The [template ini file](openghg_inversions/hbmcmc/config/openghg_hbmcmc_input_template_example.ini) puts
-these option under the heading "MCMC.OPTIONS":
+these option under the heading `MCMC.OPTIONS`:
 
 ``` ini
 [MCMC.OPTIONS]
@@ -123,7 +123,7 @@ Thus you can pass arguments to either `fixedbasisMCMC` or `inferpymc`, but all o
 
 - `save_trace`: 
   - The default value is `False`. 
-  - If `True`, the arviz `InferenceData` output from sampling will be saved to the output path of the inversion, with a file name of the form `f"{outputname}{start_data}_trace.nc_`. To load this trace into arviz, you need to use `InferenceData.from_netcdf`.
+  - If `True`, the arviz `InferenceData` output from sampling will be saved to the output path of the inversion, with a file name of the form `f"{outputname}{start_data}_trace.nc`. To load this trace into arviz, you need to use `InferenceData.from_netcdf`.
   - Alternatively, you can pass a path (including filename), and that path will be used.
 - 
 
