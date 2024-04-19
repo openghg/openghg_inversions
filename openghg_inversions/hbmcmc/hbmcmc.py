@@ -93,6 +93,8 @@ def fixedbasisMCMC(
     merged_data_name=None,
     basis_output_path=None,
     save_trace: Union[str, Path, bool] = False,
+    skip_postprocessing: bool = False,
+    merged_data_only: bool = False,
     **kwargs,
 ):
     """
@@ -281,6 +283,9 @@ def fixedbasisMCMC(
         A file path (including file name and extension) can be passed, and the trace will be
         saved there.
 
+      skip_post_processing: if True, return raw trace from sampling.
+
+      merged_data_only: if True, save merged data, and do nothing else.
 
     Returns:
         Saves an output from the inversion code using inferpymc_postprocessouts.
@@ -288,6 +293,10 @@ def fixedbasisMCMC(
     -----------------------------------------------------------------
     """
     rerun_merge = True
+
+    if merged_data_only:
+        reload_merged_data = False
+        save_merged_data = True
 
     if reload_merged_data is True and merged_data_dir is not None:
         try:
@@ -358,6 +367,9 @@ def fixedbasisMCMC(
 
         elif use_tracer:
             raise ValueError("Model does not currently include tracer model. Watch this space")
+
+        if merged_data_only:
+            return None
 
     # Basis function regions and sensitivity matrices
     fp_data = basis_functions_wrapper(
@@ -489,6 +501,9 @@ def fixedbasisMCMC(
 
         # Run PyMC inversion
         mcmc_results = mcmc.inferpymc(**mcmc_args)
+
+        if skip_postprocessing:
+            return mcmc_results
 
         # Process and save inversion output
         post_process_args.update(mcmc_results)
