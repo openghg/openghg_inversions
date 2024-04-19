@@ -674,7 +674,7 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
             else:
                 scenario.attrs[k] = val
 
-        fp_all[site] = scenario
+        fp_all[site] = scenario.dropna("time")
 
     # get fluxes
     fp_all[".flux"] = {}
