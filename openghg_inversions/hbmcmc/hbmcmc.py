@@ -321,8 +321,6 @@ def fixedbasisMCMC(
 
     # Get datasets for forward simulations
     if rerun_merge:
-        merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
-
         if not use_tracer:
             (
                 fp_all,
