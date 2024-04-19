@@ -55,6 +55,7 @@ def data_processing_surface_notracer(
     save_merged_data=False,
     merged_data_name=None,
     merged_data_dir=None,
+    output_name: Optional[str] = None,
 ):
     """
     Retrieve and prepare fixed-surface datasets from
@@ -122,6 +123,8 @@ def data_processing_surface_notracer(
             Filename for saved forward simulations data and observations
         merged_data_dir (str/opt):
             Directory path for for saved forward simulations data and observations
+        output_name:
+            Optional name used to create merged data name.
     """
 
     for i, site in enumerate(sites):
@@ -361,7 +364,14 @@ def data_processing_surface_notracer(
         if merged_data_dir is None:
             print("`merged_data_dir` not specified; could not save merged data")
         else:
-            _save_merged_data(fp_all, merged_data_dir, merged_data_name=merged_data_name)
+            _save_merged_data(
+                fp_all,
+                merged_data_dir,
+                merged_data_name=merged_data_name,
+                species=species,
+                start_date=start_date,
+                output_name=output_name,
+            )
             print(f"\nfp_all saved in {merged_data_dir}\n")
 
     return fp_all, sites, inlet, fp_height, instrument, averaging_period

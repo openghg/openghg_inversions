@@ -363,6 +363,7 @@ def fixedbasisMCMC(
                 save_merged_data=save_merged_data,
                 merged_data_name=merged_data_name,
                 merged_data_dir=merged_data_dir,
+                output_name = outputname,
             )
 
         elif use_tracer:
