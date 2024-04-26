@@ -10,6 +10,8 @@
 
 - added option to use Numpyro nuts sampler. [#PR 101](https://github.com/openghg/openghg_inversions/pull/101)
 
+- fix for uncaught error when a filter removes all data from a site. The PBLH filter was also modified to return a value in all cases. [#PR 105](https://github.com/openghg/openghg_inversions/pull/105)
+
 - unpinned OpenGHG (from v0.6.2) and made changes for compatibility with OpenGHG v0.8, which uses zarr as a backend. CI was updated to test against OpenGHG versions 0.7.1, 0.8, and the devel branch. Merged data has been changed from pickle files to either zarr or netCDF (if zarr is not available). [#PR 92](https://github.com/openghg/openghg_inversions/pull/92)
 
 - updates to `hbmcmc_post_process.py`, including changes to `site_info.json` and `species_info.json` to remove dependencies on ACRG paths; updates to documentation; changed `fluxmean` to variable with default `fluxmode`; fixed bug in `set_cmap`, which would fail for datasets with many NaNs; no updates to DIC. [#PR 88](https://github.com/openghg/openghg_inversions/pull/88)
