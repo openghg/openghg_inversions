@@ -378,15 +378,15 @@ def fixedbasisMCMC(
 
     # Apply named filters to the data
     fp_data = utils.filtering(fp_data, filters)
-    
+
     s_dropped = []
     for site in sites:
         # check if some datasets are empty due to filtering
-        if fp_data[site].time.values.shape[0]==0:
-          s_dropped.append(site)
-          del fp_data[site]          
+        if fp_data[site].time.values.shape[0] == 0:
+            s_dropped.append(site)
+            del fp_data[site]
     if len(s_dropped) != 0:
-        sites = [s for i, s in enumerate(sites) if s not in s_dropped]        
+        sites = [s for i, s in enumerate(sites) if s not in s_dropped]
         print(f"\nDropping {s_dropped} sites as no data passed the filtering.\n")
 
     for si, site in enumerate(sites):
