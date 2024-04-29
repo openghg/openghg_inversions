@@ -339,7 +339,8 @@ def inferpymc_postprocessouts(
     add_offset=False,
     rerun_file=None,
     use_bc: bool = False,
-):
+    min_error: float = 0.0,
+) -> xr.Dataset:
     """
     Takes the output from inferpymc function, along with some other input
     information, and places it all in a netcdf output. This function also
@@ -834,6 +835,7 @@ def inferpymc_postprocessouts(
     outds.attrs["Date created"] = str(pd.Timestamp("today"))
     outds.attrs["Convergence"] = convergence
     outds.attrs["Repository version"] = code_version()
+    outds.attrs["min_model_error"] = min_error
 
     # variables with variable length data types shouldn't be compressed
     # e.g. object ("O") or unicode ("U") type

@@ -29,14 +29,68 @@ About
  the users .openghg config file
 
 """
+
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
+import xarray as xr
+
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
 from openghg_inversions import get_data, utils
 from openghg_inversions.basis import basis_functions_wrapper
+
+
+def residual_error_method(
+    ds_dict: dict[str, xr.Dataset], average_over: Optional[str] = None
+) -> float:
+    """Compute estimate of model error using residual error method.
+
+    This method is explained in "Modeling of Atmospheric Chemistry" by Brasseur
+    and Jacobs in Box 11.2 on p.499-500, following "Comparative inverse analysis of satellitle (MOPITT)
+    and aircraft (TRACE-P) observations to estimate Asian sources of carbon monoxide", by Heald, Jacob,
+    Jones, et.al. (Journal of Geophysical Research, vol. 109, 2004).
+
+    Roughly, we assume that the observations y are equal to the modelled observations y_mod, plus a
+    bias term b, and instrument, representation, observation, and model error:
+
+    y = y_mod + b + err_I + err_R + err_O + err_M
+
+    Assuming the errors are mean zero, we have
+
+    (y - y_mod) - mean(y - y_mod) = err_I + err_R + err_O + err_M  (*)
+
+    where the mean is taken over all observations, or a subset.
+
+    Calculating the RMS of the LHS of (*) gives us an estimate for
+
+    sqrt(sigma_I^2 + sigma_R^2 + sigma_O^2 + sigma_M^2),
+
+    where sigma_I is the standard deviation of err_I, and so on.
+
+    Thus a rough estimate for sigma_M is the RMS of the LHS of (*), possibly with the RMS of
+    the observation error removed (this isn't implemented here).
+
+    Args:
+        ds_dict: dictionary of combined scenario datasets, keyed by site codes.
+        average_over: site code of site over which to compute mean(y - y_mod). If `None`, then
+            the average is taken over all observations.
+
+    Returns:
+        float: estimated value for model error.
+    """
+    ds = xr.concat([v[["mf", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")], dim="site")
+
+    if average_over is not None:
+        avg = (ds.mf - ds.mf_mod).sel(site=average_over).mean()
+    else:
+        avg = (ds.mf - ds.mf_mod).mean()
+
+    res_err = np.sqrt(np.mean((ds.mf - ds.mf_mod - avg) **2))
+
+    return res_err.values
+
 
 
 def fixedbasisMCMC(
@@ -95,8 +149,9 @@ def fixedbasisMCMC(
     save_trace: Union[str, Path, bool] = False,
     skip_postprocessing: bool = False,
     merged_data_only: bool = False,
+    calculate_min_error: bool = False,
     **kwargs,
-):
+) -> xr.Dataset:
     """
     Script to run hierarchical Bayesian MCMC (RHIME) for inference
     of emissions using PyMC to solve the inverse problem.
@@ -363,14 +418,14 @@ def fixedbasisMCMC(
                 save_merged_data=save_merged_data,
                 merged_data_name=merged_data_name,
                 merged_data_dir=merged_data_dir,
-                output_name = outputname,
+                output_name=outputname,
             )
 
         elif use_tracer:
             raise ValueError("Model does not currently include tracer model. Watch this space")
 
         if merged_data_only:
-            return None
+            return xr.Dataset()  # return empty dataset
 
     # Basis function regions and sensitivity matrices
     fp_data = basis_functions_wrapper(
@@ -393,6 +448,11 @@ def fixedbasisMCMC(
 
     # Apply named filters to the data
     fp_data = utils.filtering(fp_data, filters)
+
+    # Calculate min error
+    if calculate_min_error:
+        min_error = residual_error_method(fp_data)
+        kwargs["min_error"] = min_error  # currently `min_error` is passed via kwargs to `infer_pymc`
 
     s_dropped = []
     for site in sites:
@@ -506,6 +566,9 @@ def fixedbasisMCMC(
         del post_process_args["nit"]
         del post_process_args["verbose"]
         del post_process_args["save_trace"]
+
+        # pass min model error to post-processing
+        post_process_args["min_error"] = kwargs.get("min_error", 0.0)
 
         # add any additional kwargs to mcmc_args (these aren't needed for post processing)
         mcmc_args.update(kwargs)
