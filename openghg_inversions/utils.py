@@ -12,6 +12,7 @@
 import glob
 import json
 import os
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional, Union
@@ -372,9 +373,19 @@ def filtering(datasets_in, filters, keep_missing=False):
         Subset for times when observations are taken at a height more than
         50m away from (above or below) the PBLH.
         """
+        if "inlet_height_magl" in dataset.attrs:
+            inlet_height = float(dataset.inlet_height_magl)
+        elif "inlet" in dataset.attrs:
+            m = re.search(r"\d+", dataset.attrs["inlet"])
+            if m is not None:
+                inlet_height = float(m.group(0))
+        else:
+            raise ValueError("Could not find inlet height from `inlet_height_magl` or `inlet` dataset attributes.")
+
+        pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
 
         ti = [
-            i for i, pblh in enumerate(dataset.PBLH) if np.abs(float(dataset.inlet_height_magl) - pblh) > 50.0
+            i for i, pblh in enumerate(pblh_da) if np.abs(inlet_height - pblh) > 50.0
         ]
 
         if keep_missing is True:

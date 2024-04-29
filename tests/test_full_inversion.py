@@ -29,6 +29,11 @@ def test_full_inversion(mcmc_args):
     fixedbasisMCMC(**mcmc_args)
 
 
+def test_full_inversion_pblh_filter(mcmc_args):
+    mcmc_args["filters"] = ["pblh"]
+    fixedbasisMCMC(**mcmc_args)
+
+
 def test_full_inversion_min_error(mcmc_args):
     mcmc_args["min_error"] = 20.0
     fixedbasisMCMC(**mcmc_args)
