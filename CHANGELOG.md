@@ -2,7 +2,13 @@
 
 # Version 0.2.0
 
-- added documentation, including a "getting started" tutorial, as well as expanding the README file [#PR 101](https://github.com/openghg/openghg_inversions/pull/101)
+- Updated `pblh` filter to work with new variable names in footprints. [#PR 101](https://github.com/openghg/openghg_inversions/pull/101)
+
+- NaNs are filled before converting to numpy and passing data to the inversion. This partly addresses [Issue#97](https://github.com/openghg/openghg_inversions/issues/97).  [#PR 101](https://github.com/openghg/openghg_inversions/pull/101)
+
+- add option to calculate an estimate of the minimum model error on the fly [#PR 101](https://github.com/openghg/openghg_inversions/pull/101)
+
+- added documentation, including a "getting started" tutorial, as well as expanding the README file, and updating the example ini files. [#PR 101](https://github.com/openghg/openghg_inversions/pull/101)
 
 - added land/sea mask file needed for `weighted` basis functions, and updated code to retrieve it [#PR 101](https://github.com/openghg/openghg_inversions/pull/101)
 

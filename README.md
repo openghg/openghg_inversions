@@ -93,6 +93,10 @@ these option under the heading `MCMC.OPTIONS`:
 averaging_error = True
 min_error = 20.0
 fixed_basis_outer_regions = False
+use_bc = True
+nuts_sampler = "numpyro"
+save_trace = True
+compute_min_error = True
 ```
 
 These will be passed to the MCMC function (e.g. `fixedbasisMCMC`) as keyword arguments.
@@ -140,6 +144,7 @@ This is not a comprehensive list (see the docstring for `fixedbasisMCMC` in the 
   - Default value is `False`
   - If `True`, the "outer regions" of the (`EUROPE`) domain use basis regions specified by a file provided by the Met Office (from their "InTem" model), and the "inner region", which includes the UK, is fit using our basis algorithms.
   - This option is only available for the `EUROPE` domain currently.
+- `compute_min_error`: compute the minimum model error on the fly using the "residual error method"
 
 
 ##### Parameters for `inferpymc`
