@@ -9,17 +9,19 @@
 #   PyMC library used for Bayesian modelling. Updated from PyMc3
 # *****************************************************************************
 import re
+import getpass
+from pathlib import Path
+from typing import Optional, Union
+
 import numpy as np
 import pymc as pm
 import pandas as pd
 import xarray as xr
-import getpass
 import pytensor.tensor as pt
 import arviz as az
 from scipy import stats
-from pathlib import Path
-from typing import Optional
-
+from pymc.distributions import continuous
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions import convert
 from openghg_inversions import utils
@@ -28,61 +30,56 @@ from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
 
 
-def parseprior(name, prior_params, shape=()):
-    """
-    Parses all continuous distributions for PyMC 3.8:
-    https://docs.pymc.io/api/distributions/continuous.html
-    This format requires updating when the PyMC distributions update,
-    but is safest for code execution
-    -----------------------------------
-    Args:
-      name (str):
-        name of variable in the pymc model
-      prior_params (dict):
-        dict of parameters for the distribution,
-        including 'pdf' for the distribution to use
-      shape (array):
-        shape of distribution to be created.
-        Default shape = () is the same as used by PyMC3
-    -----------------------------------
-    """
-    functiondict = {
-        "uniform": pm.Uniform,
-        "flat": pm.Flat,
-        "halfflat": pm.HalfFlat,
-        "normal": pm.Normal,
-        "truncatednormal": pm.TruncatedNormal,
-        "halfnormal": pm.HalfNormal,
-        "skewnormal": pm.SkewNormal,
-        "beta": pm.Beta,
-        "kumaraswamy": pm.Kumaraswamy,
-        "exponential": pm.Exponential,
-        "laplace": pm.Laplace,
-        "studentt": pm.StudentT,
-        "halfstudentt": pm.HalfStudentT,
-        "cauchy": pm.Cauchy,
-        "halfcauchy": pm.HalfCauchy,
-        "gamma": pm.Gamma,
-        "inversegamma": pm.InverseGamma,
-        "weibull": pm.Weibull,
-        "lognormal": pm.Lognormal,
-        "chisquared": pm.ChiSquared,
-        "wald": pm.Wald,
-        "pareto": pm.Pareto,
-        "exgaussian": pm.ExGaussian,
-        "vonmises": pm.VonMises,
-        "triangular": pm.Triangular,
-        "gumbel": pm.Gumbel,
-        "rice": pm.Rice,
-        "logistic": pm.Logistic,
-        "logitnormal": pm.LogitNormal,
-        "interpolated": pm.Interpolated,
-    }
+# type alias for prior args
+PriorArgs = dict[str, Union[str, float]]
 
-    pdf = prior_params["pdf"]
-    # Get a dictionary of the pdf arguments
-    params = {x: prior_params[x] for x in prior_params if x != "pdf"}
-    return functiondict[pdf.lower()](name, shape=shape, **params)
+
+def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
+    """
+    Parses all PyMC continuous distributions:
+    https://docs.pymc.io/api/distributions/continuous.html
+
+    Args:
+        name:
+          name of variable in the pymc model
+        prior_params:
+          dict of parameters for the distribution, including 'pdf' for the distribution to use.
+          The value of `prior_params["pdf"]` must match the name of a PyMC continuous
+          distribution: https://docs.pymc.io/api/distributions/continuous.html
+        **kwargs: for instance, `shape` or `dims`
+    Returns:
+        continuous PyMC distribution
+
+    For example:
+    ```
+    params = {"pdf": "uniform", "lower": 0.0, "upper": 1.0}
+    parse_prior("x", params, shape=(20, 20))
+    ```
+    will create a 20 x 20 array of uniform random variables.
+    Alternatively,
+    ```
+    params = {"pdf": "uniform", "lower": 0.0, "upper": 1.0}
+    parse_prior("x", params, dims="nmeasure"))
+    ```
+    will create an array of uniform random variables with the same shape
+    as the dimension coordinate `nmeasure`. This can be used if `pm.Model`
+    is provided with coordinates.
+
+    Note: `parse_prior` must be called inside a `pm.Model` context (i.e. after `with pm.Model()`)
+    has an important side-effect of registering the random variable with the model.
+    """
+    # create dict to lookup continuous PyMC distributions by name, ignoring case
+    pdf_dict = {cd.lower(): cd for cd in continuous.__all__}
+
+    params = prior_params.copy()
+    pdf = str(params.pop("pdf")).lower()  # str is just for typing...
+    try:
+        dist = getattr(continuous, pdf_dict[pdf])
+    except AttributeError:
+        raise ValueError(
+            f"The distribution '{pdf}' doesn't appear to be a continuous distribution defined by PyMC."
+        )
+    return dist(name, **params, **kwargs)
 
 
 def inferpymc(
