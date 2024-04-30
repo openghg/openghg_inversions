@@ -51,24 +51,24 @@ def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional
     Jones, et.al. (Journal of Geophysical Research, vol. 109, 2004).
 
     Roughly, we assume that the observations y are equal to the modelled observations y_mod, plus a
-    bias term b, and instrument, representation, observation, and model error:
+    bias term b, and instrument, representation, and model error:
 
-    y = y_mod + b + err_I + err_R + err_O + err_M
+    y = y_mod + b + err_I + err_R + err_M
 
     Assuming the errors are mean zero, we have
 
-    (y - y_mod) - mean(y - y_mod) = err_I + err_R + err_O + err_M  (*)
+    (y - y_mod) - mean(y - y_mod) = err_I + err_R + err_M  (*)
 
     where the mean is taken over all observations, or a subset.
 
     Calculating the RMS of the LHS of (*) gives us an estimate for
 
-    sqrt(sigma_I^2 + sigma_R^2 + sigma_O^2 + sigma_M^2),
+    sqrt(sigma_I^2 + sigma_R^2 +  sigma_M^2),
 
     where sigma_I is the standard deviation of err_I, and so on.
 
     Thus a rough estimate for sigma_M is the RMS of the LHS of (*), possibly with the RMS of
-    the observation error removed (this isn't implemented here).
+    the instrument/observation and averaging errors removed (this isn't implemented here).
 
     Args:
         ds_dict: dictionary of combined scenario datasets, keyed by site codes.

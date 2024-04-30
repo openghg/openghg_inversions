@@ -264,6 +264,11 @@ def inferpymc(
     else:
         convergence = "Passed"
 
+    if nuts_sampler != "pymc":
+        divergences = np.sum(trace.sample_stats.diverging).values
+        if divergences > 0:
+            print(f"There were {divergences} divergences. Try increasing target accept or reparameterise.")
+
     if add_offset:
         offset_outs = trace.posterior["offset"][0, burn:nit]
         # offset_outs = trace.get_values(offset, burn=burn)[0:int((nit)-burn)]
