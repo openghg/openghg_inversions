@@ -34,6 +34,38 @@ from openghg_inversions.config.version import code_version
 PriorArgs = dict[str, Union[str, float]]
 
 
+def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
+    """Return the pymc `mu` and `sigma` parameters that give a log normal distribution
+    with the given mean and stdev.
+
+    Args:
+        mean: desired mean of log normal
+        stdev: desired standard deviation of log normal
+
+    Returns:
+        tuple (mu, sigma), where `pymc.LogNormal(mu, sigma)` has the given mean and stdev.
+
+    Formulas for log normal mean and variance:
+
+    mean = exp(mu + 0.5 * sigma ** 2)
+    stdev ** 2 = var = exp(2*mu + sigma ** 2) * (exp(sigma ** 2) - 1)
+
+    This gives linear equations for `mu` and `sigma ** 2`:
+
+    mu + 0.5 * sigma ** 2 = log(mean)
+    sigma ** 2 = log(1 + (stdev / mean)**2)
+
+    So
+
+    mu = log(mean) - 0.5 * log(1 + (stdev/mean)**2)
+    sigma = sqrt(log(1 + (stdev / mean)**2))
+    """
+    var = np.log(1 + (stdev / mean) ** 2)
+    mu = np.log(mean) - 0.5 * var
+    sigma = np.sqrt(var)
+    return mu, sigma
+
+
 def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
     """
     Parses all PyMC continuous distributions:
@@ -79,6 +111,7 @@ def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
         raise ValueError(
             f"The distribution '{pdf}' doesn't appear to be a continuous distribution defined by PyMC."
         )
+
     return dist(name, **params, **kwargs)
 
 
@@ -103,6 +136,7 @@ def inferpymc(
     min_error=0.0,
     save_trace=False,
     use_bc: bool = True,
+    reparameterise_log_normal: bool = False,
 ):
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
@@ -206,12 +240,26 @@ def inferpymc(
         B = offset_matrix(siteindicator)
 
     with pm.Model() as model:
-        x = parseprior("x", xprior, shape=nx)
+        step1_vars = []
+
+        if reparameterise_log_normal and xprior["pdf"] == "lognormal":
+            x0 = pm.Normal("x0", 0, 1, shape=nx)
+            x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0))
+            step1_vars.append(x0)
+        else:
+            x = parse_prior("x", xprior, shape=nx)
+            step1_vars.append(x)
 
         if use_bc:
-            xbc = parseprior("xbc", bcprior, shape=nbc)
+            if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
+                xbc0 = pm.Normal("xbc0", 0, 1, shape=nbc)
+                xbc = pm.Deterministic("xbc", pt.exp(bcprior["mu"] + bcprior["sigma"] * xbc0))
+                step1_vars.append(xbc0)
+            else:
+                xbc = parse_prior("xbc", bcprior, shape=nbc)
+                step1_vars.append(xbc)
 
-        sig = parseprior("sig", sigprior, shape=(nsites, nsigmas))
+        sig = parse_prior("sig", sigprior, shape=(nsites, nsigmas))
 
         mu = pt.dot(hx, x)
 
@@ -219,7 +267,7 @@ def inferpymc(
             mu += pt.dot(hbc, xbc)
 
         if add_offset:
-            offset = parseprior("offset", offsetprior, shape=nsites - 1)
+            offset = parse_prior("offset", offsetprior, shape=nsites - 1)
             offset_vec = pt.concatenate((np.array([0]), offset), axis=0)
             mu += pt.dot(B, offset_vec)
 
@@ -227,7 +275,7 @@ def inferpymc(
         epsilon = pt.sqrt(error**2 + model_error**2 + min_error**2)
         y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
-        step1 = pm.NUTS(vars=[x, xbc]) if use_bc else pm.NUTS(vars=[x])
+        step1 = pm.NUTS(vars=step1_vars)
         step2 = pm.Slice(vars=[sig])
 
         trace = pm.sample(
@@ -756,12 +804,12 @@ def inferpymc_postprocessouts(
     outds.Yoffmean.attrs["longname"] = "mean of posterior simulated offset between measurements"
     outds.Yoffmedian.attrs["longname"] = "median of posterior simulated offset between measurements"
     outds.Yoffmode.attrs["longname"] = "mode of posterior simulated offset between measurements"
-    outds.Yoff68.attrs[
-        "longname"
-    ] = " 0.68 Bayesian credible interval of posterior simulated offset between measurements"
-    outds.Yoff95.attrs[
-        "longname"
-    ] = " 0.95 Bayesian credible interval of posterior simulated offset between measurements"
+    outds.Yoff68.attrs["longname"] = (
+        " 0.68 Bayesian credible interval of posterior simulated offset between measurements"
+    )
+    outds.Yoff95.attrs["longname"] = (
+        " 0.95 Bayesian credible interval of posterior simulated offset between measurements"
+    )
     outds.xtrace.attrs["longname"] = "trace of unitless scaling factors for emissions parameters"
     outds.sigtrace.attrs["longname"] = "trace of model error parameters"
     outds.siteindicator.attrs["longname"] = "index of site of measurement corresponding to sitenames"
@@ -797,15 +845,15 @@ def inferpymc_postprocessouts(
         outds.YmodmeanBC.attrs["longname"] = "mean of posterior simulated boundary conditions"
         outds.YmodmedianBC.attrs["longname"] = "median of posterior simulated boundary conditions"
         outds.YmodmodeBC.attrs["longname"] = "mode of posterior simulated boundary conditions"
-        outds.Ymod68BC.attrs[
-            "longname"
-        ] = " 0.68 Bayesian credible interval of posterior simulated boundary conditions"
-        outds.Ymod95BC.attrs[
-            "longname"
-        ] = " 0.95 Bayesian credible interval of posterior simulated boundary conditions"
-        outds.bctrace.attrs[
-            "longname"
-        ] = "trace of unitless scaling factors for boundary condition parameters"
+        outds.Ymod68BC.attrs["longname"] = (
+            " 0.68 Bayesian credible interval of posterior simulated boundary conditions"
+        )
+        outds.Ymod95BC.attrs["longname"] = (
+            " 0.95 Bayesian credible interval of posterior simulated boundary conditions"
+        )
+        outds.bctrace.attrs["longname"] = (
+            "trace of unitless scaling factors for boundary condition parameters"
+        )
         outds.bcsensitivity.attrs["longname"] = "boundary conditions sensitivity timeseries"
 
     outds.attrs["Start date"] = start_date
