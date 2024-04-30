@@ -94,11 +94,7 @@ def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional
         avg = (ds.mf - ds.mf_mod).mean()
 
     res_err_arr = np.sqrt(np.mean((ds.mf - ds.mf_mod - avg) ** 2))
-
-    try:
-        res_err = res_err_arr.values[0]
-    except IndexError as e:
-        raise ValueError("Error calculating model error, possibly due to empty Datasets in `ds_dict`.") from e
+    res_err = res_err_arr.values
 
     return res_err
 
