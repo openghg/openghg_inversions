@@ -42,9 +42,7 @@ from openghg_inversions import get_data, utils
 from openghg_inversions.basis import basis_functions_wrapper
 
 
-def residual_error_method(
-    ds_dict: dict[str, xr.Dataset], average_over: Optional[str] = None
-) -> float:
+def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional[str] = None) -> float:
     """Compute estimate of model error using residual error method.
 
     This method is explained in "Modeling of Atmospheric Chemistry" by Brasseur
@@ -80,17 +78,29 @@ def residual_error_method(
     Returns:
         float: estimated value for model error.
     """
-    ds = xr.concat([v[["mf", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")], dim="site")
+    ds = xr.concat(
+        [v[["mf", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
+        dim="site",
+    )
 
     if average_over is not None:
-        avg = (ds.mf - ds.mf_mod).sel(site=average_over).mean()
+        try:
+            avg = (ds.mf - ds.mf_mod).sel(site=average_over).mean()
+        except KeyError as e:
+            raise ValueError(
+                f"Can't take average over site {average_over}, it is not in the inversion data."
+            ) from e
     else:
         avg = (ds.mf - ds.mf_mod).mean()
 
-    res_err = np.sqrt(np.mean((ds.mf - ds.mf_mod - avg) **2))
+    res_err_arr = np.sqrt(np.mean((ds.mf - ds.mf_mod - avg) ** 2))
 
-    return res_err.values
+    try:
+        res_err = res_err_arr.values[0]
+    except IndexError as e:
+        raise ValueError("Error calculating model error, possibly due to empty Datasets in `ds_dict`.") from e
 
+    return res_err
 
 
 def fixedbasisMCMC(
