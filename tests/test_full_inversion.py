@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
@@ -26,6 +27,22 @@ def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_nam
 
 
 def test_full_inversion(mcmc_args):
+    fixedbasisMCMC(**mcmc_args)
+
+
+def test_full_inversion_lognormal_infer(mcmc_args):
+    mcmc_args["xprior"] = {"pdf": "lognormal", "stdev": 2.0}
+    out = fixedbasisMCMC(**mcmc_args)
+
+    expected_sigma = str(np.sqrt(np.log(5)))
+
+    # look for a few decimal places of expected sigma in output attributes
+    assert expected_sigma[:4] in out.attrs["Emissions Prior"]
+
+
+def test_full_inversion_lognormal_reparam(mcmc_args):
+    mcmc_args["reparameterise_log_normal"] = True
+    mcmc_args["xprior"] = {"pdf": "lognormal", "mu": 1.0, "sigma": 1.0}
     fixedbasisMCMC(**mcmc_args)
 
 
