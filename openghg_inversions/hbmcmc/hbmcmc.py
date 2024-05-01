@@ -510,6 +510,18 @@ def fixedbasisMCMC(
             trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
         else:
             trace_path = None
+        # check if lognormal mu and sigma need to be calculated
+        if xprior["pdf"].lower() == "lognormal" and "stdev" in xprior:
+            stdev = float(xprior["stdev"])
+            mean = float(xprior.get("mean", 1.0))
+
+            mu, sigma = mcmc.lognormal_mu_sigma(mean, stdev)
+            xprior["mu"] = mu
+            xprior["sigma"] = sigma
+
+            del xprior["stdev"]
+            if "mean" in xprior:
+                del xprior["mean"]
 
         mcmc_args = {
             "Hx": Hx,
