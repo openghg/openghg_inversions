@@ -137,6 +137,7 @@ def inferpymc(
     save_trace=False,
     use_bc: bool = True,
     reparameterise_log_normal: bool = False,
+    pollution_events_from_obs: bool = False,
 ):
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
@@ -271,8 +272,16 @@ def inferpymc(
             offset_vec = pt.concatenate((np.array([0]), offset), axis=0)
             mu += pt.dot(B, offset_vec)
 
-        model_error = np.abs(pt.dot(hx, x)) * sig[sites, sigma_freq_index]
-        epsilon = pt.sqrt(error**2 + model_error**2 + min_error**2)
+        if pollution_events_from_obs is True:
+            if use_bc is True:
+                pollution_event = np.abs(Y - pt.dot(hbc, xbc))
+            else:
+                pollution_event = Y
+        else:
+            pollution_event = np.abs(pt.dot(hx, x))
+
+        pollution_event_scaled_error = pollution_event * sig[sites, sigma_freq_index]
+        epsilon = pt.sqrt(error**2 + pollution_event_scaled_error**2 + min_error**2)
         y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
         step1 = pm.NUTS(vars=step1_vars)

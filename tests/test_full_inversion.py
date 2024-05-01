@@ -59,8 +59,19 @@ def test_inversion_if_merged_data_does_not_exist(mcmc_args):
     fixedbasisMCMC(**mcmc_args)
 
 
+def test_full_inversion_pollution_events_from_obs(mcmc_args):
+    mcmc_args["pollution_events_from_obs"] = True
+    fixedbasisMCMC(**mcmc_args)
+
+
 def test_full_inversion_min_error_no_bc(mcmc_args):
     """Test inversion without boundary conditions."""
+    mcmc_args["use_bc"] = False
+    fixedbasisMCMC(**mcmc_args)
+
+
+def test_full_inversion_pollution_events_from_obs_no_bc(mcmc_args):
+    mcmc_args["pollution_events_from_obs"] = True
     mcmc_args["use_bc"] = False
     fixedbasisMCMC(**mcmc_args)
 
