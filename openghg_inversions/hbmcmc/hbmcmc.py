@@ -394,6 +394,7 @@ def fixedbasisMCMC(
         trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
 
         for si, site in enumerate(sites):
+            fp_data[site] = fp_data[site].dropna('time')
             if "mf_repeatability" in fp_data[site]:
                 error = np.concatenate((error, fp_data[site].mf_repeatability.values))
             if "mf_variability" in fp_data[site]:
