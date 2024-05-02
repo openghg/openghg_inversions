@@ -40,7 +40,7 @@ from openghg_inversions import utils
 from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
 
-acrg_path = Paths.acrg
+#acrg_path = Paths.acrg
 
 # Get site_info file
 # with open(acrg_path / "data/site_info.json") as f:
@@ -55,9 +55,11 @@ def check_platform(site, network=None):
     Returns:
         str : Platform type (e.g. "site", "satellite", "aircraft")
     """
-    site_info_file = os.path.join(acrg_path, "data/site_info.json")
-    with open(site_info_file) as f:
-        site_info = json.load(f, object_pairs_hook=OrderedDict)
+    #site_info_file = os.path.join(acrg_path, "data/site_info.json")
+    #with open(site_info_file) as f:
+        #site_info = json.load(f, object_pairs_hook=OrderedDict)
+    
+    site_info = utils.load_json(filename="site_info.json")
     if network is None:
         network = list(site_info[site].keys())[0]
     if "platform" in site_info[site][network].keys():
