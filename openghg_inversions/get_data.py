@@ -27,6 +27,7 @@ from openghg.dataobjects import BoundaryConditionsData, FluxData
 from openghg.types import SearchError
 from openghg.util import timestamp_now
 import xarray as xr
+import pandas as pd
 
 import openghg_inversions.hbmcmc.inversionsetup as setup
 
@@ -153,6 +154,9 @@ def data_processing_surface_notracer(
             end_date=end_date,
             store=emissions_store,
         )
+        # ensure that we're only getting the current set of time data
+        get_flux_data.data = get_flux_data.data.sel(time=start_date)
+        get_flux_data.data = get_flux_data.data.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
 
         flux_dict[source] = get_flux_data
     fp_all[".flux"] = flux_dict
@@ -241,6 +245,10 @@ def data_processing_surface_notracer(
                     end_date=end_date,
                     store=bc_store,
                 )
+
+                # again slice to ensure we're getting the correct time slices
+
+                get_bc_data.data = get_bc_data.data.sel(time=slice(start_date, end_date))
 
                 # Divide by trace gas species units
                 # See if R+G can include this 'behind the scenes'
