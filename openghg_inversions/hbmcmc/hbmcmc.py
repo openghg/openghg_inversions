@@ -1,42 +1,102 @@
-# *****************************************************************************
-# hbmcmc.py
-# Author: Atmospheric Chemistry Research Group, University of Bristol
-# Created: Nov.2022
-# *****************************************************************************
-# About
-#   Originally created by Luke Western
-#
-#   Modules for running an MCMC inversion using PyMC. There are also functions
-#   to dynamically create a basis function grid based on the a priori sensitivity,
-#   and some other functionality for setting up the inputs to this (or any)
-#   inverse method.
-#
-#   If not using on an HPC in the terminal you should do:
-#     export OPENBLAS_NUM_THREADS=XX
-#  and/or
-#    export OMP_NUM_THREADS=XX
-#  where XX is the number of chains you are running.
-#
-#  If running in Spyder do this before launching Spyder, else you will use every
-#  available thread. Apart from being annoying it will also slow down your run
-#  due to unnecessary forking.
-#
-#  RHIME updated to use openghg as a dependency replacing (most) of the acrg
-#  modules previously used. See example input file for how input variables
-#  have chanegd.
-#
-#  Note. RHIME with OpenGHG expects ALL data to already be included in the
-#  object stores and for the paths to object stores to already be set in
-#  the users .openghg config file
-# ****************************************************************************
+"""
+Author: Atmospheric Chemistry Research Group, University of Bristol
+Created: Nov.2022
+
+About
+  Originally created by Luke Western
+
+  Modules for running an MCMC inversion using PyMC. There are also functions
+  to dynamically create a basis function grid based on the a priori sensitivity,
+  and some other functionality for setting up the inputs to this (or any)
+  inverse method.
+
+  If not using on an HPC in the terminal you should do:
+    export OPENBLAS_NUM_THREADS=XX
+ and/or
+   export OMP_NUM_THREADS=XX
+ where XX is the number of chains you are running.
+
+ If running in Spyder do this before launching Spyder, else you will use every
+ available thread. Apart from being annoying it will also slow down your run
+ due to unnecessary forking.
+
+ RHIME updated to use openghg as a dependency replacing (most) of the acrg
+ modules previously used. See example input file for how input variables
+ have chanegd.
+
+ Note. RHIME with OpenGHG expects ALL data to already be included in the
+ object stores and for the paths to object stores to already be set in
+ the users .openghg config file
+
+"""
 
 from pathlib import Path
+from typing import Optional, Union
 
 import numpy as np
+import xarray as xr
+
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
 from openghg_inversions import get_data, utils
 from openghg_inversions.basis import basis_functions_wrapper
+
+
+def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional[str] = None) -> float:
+    """Compute estimate of model error using residual error method.
+
+    This method is explained in "Modeling of Atmospheric Chemistry" by Brasseur
+    and Jacobs in Box 11.2 on p.499-500, following "Comparative inverse analysis of satellitle (MOPITT)
+    and aircraft (TRACE-P) observations to estimate Asian sources of carbon monoxide", by Heald, Jacob,
+    Jones, et.al. (Journal of Geophysical Research, vol. 109, 2004).
+
+    Roughly, we assume that the observations y are equal to the modelled observations y_mod, plus a
+    bias term b, and instrument, representation, and model error:
+
+    y = y_mod + b + err_I + err_R + err_M
+
+    Assuming the errors are mean zero, we have
+
+    (y - y_mod) - mean(y - y_mod) = err_I + err_R + err_M  (*)
+
+    where the mean is taken over all observations, or a subset.
+
+    Calculating the RMS of the LHS of (*) gives us an estimate for
+
+    sqrt(sigma_I^2 + sigma_R^2 +  sigma_M^2),
+
+    where sigma_I is the standard deviation of err_I, and so on.
+
+    Thus a rough estimate for sigma_M is the RMS of the LHS of (*), possibly with the RMS of
+    the instrument/observation and averaging errors removed (this isn't implemented here).
+
+    Args:
+        ds_dict: dictionary of combined scenario datasets, keyed by site codes.
+        average_over: site code of site over which to compute mean(y - y_mod). If `None`, then
+            the average is taken over all observations.
+
+    Returns:
+        float: estimated value for model error.
+    """
+    ds = xr.concat(
+        [v[["mf", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
+        dim="site",
+    )
+
+    if average_over is not None:
+        try:
+            avg = (ds.mf - ds.mf_mod).sel(site=average_over).mean()
+        except KeyError as e:
+            raise ValueError(
+                f"Can't take average over site {average_over}, it is not in the inversion data."
+            ) from e
+    else:
+        avg = (ds.mf - ds.mf_mod).mean()
+
+    res_err_arr = np.sqrt(np.mean((ds.mf - ds.mf_mod - avg) ** 2))
+    res_err = res_err_arr.values
+
+    return res_err
 
 
 def fixedbasisMCMC(
@@ -92,8 +152,12 @@ def fixedbasisMCMC(
     merged_data_dir=None,
     merged_data_name=None,
     basis_output_path=None,
+    save_trace: Union[str, Path, bool] = False,
+    skip_postprocessing: bool = False,
+    merged_data_only: bool = False,
+    calculate_min_error: bool = False,
     **kwargs,
-):
+) -> xr.Dataset:
     """
     Script to run hierarchical Bayesian MCMC (RHIME) for inference
     of emissions using PyMC to solve the inverse problem.
@@ -276,7 +340,13 @@ def fixedbasisMCMC(
       basis_output_path (Optional, str):
         If set, save the basis functions to this path. Used for testing
 
+      save_trace: if True, save arviz `InferenceData` trace to `outputpath`. Alternatively,
+        A file path (including file name and extension) can be passed, and the trace will be
+        saved there.
 
+      skip_post_processing: if True, return raw trace from sampling.
+
+      merged_data_only: if True, save merged data, and do nothing else.
 
     Returns:
         Saves an output from the inversion code using inferpymc_postprocessouts.
@@ -284,6 +354,10 @@ def fixedbasisMCMC(
     -----------------------------------------------------------------
     """
     rerun_merge = True
+
+    if merged_data_only:
+        reload_merged_data = False
+        save_merged_data = True
 
     if reload_merged_data is True and merged_data_dir is not None:
         try:
@@ -317,8 +391,6 @@ def fixedbasisMCMC(
 
     # Get datasets for forward simulations
     if rerun_merge:
-        merged_data_name = f"{species}_{start_date}_{outputname}_merged-data.pickle"
-
         if not use_tracer:
             (
                 fp_all,
@@ -352,10 +424,14 @@ def fixedbasisMCMC(
                 save_merged_data=save_merged_data,
                 merged_data_name=merged_data_name,
                 merged_data_dir=merged_data_dir,
+                output_name=outputname,
             )
 
         elif use_tracer:
             raise ValueError("Model does not currently include tracer model. Watch this space")
+
+        if merged_data_only:
+            return xr.Dataset()  # return empty dataset
 
     # Basis function regions and sensitivity matrices
     fp_data = basis_functions_wrapper(
@@ -379,6 +455,11 @@ def fixedbasisMCMC(
     # Apply named filters to the data
     fp_data = utils.filtering(fp_data, filters)
 
+    # Calculate min error
+    if calculate_min_error:
+        min_error = residual_error_method(fp_data)
+        kwargs["min_error"] = min_error  # currently `min_error` is passed via kwargs to `infer_pymc`
+
     s_dropped = []
     for site in sites:
         # check if some datasets are empty due to filtering
@@ -400,10 +481,9 @@ def fixedbasisMCMC(
         Y = np.zeros(0)
         siteindicator = np.zeros(0)
 
-        # Path to save trace
-        trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
-
         for si, site in enumerate(sites):
+            fp_data[site] = fp_data[site].dropna("time")  # pymc doesn't like NaNs
+
             if "mf_repeatability" in fp_data[site]:
                 error = np.concatenate((error, fp_data[site].mf_repeatability.values))
             if "mf_variability" in fp_data[site]:
@@ -423,6 +503,13 @@ def fixedbasisMCMC(
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
+        # Path to save trace
+        if isinstance(save_trace, (str, Path)):
+            trace_path = save_trace
+        elif save_trace is True:
+            trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
+        else:
+            trace_path = None
         # check if lognormal mu and sigma need to be calculated
         if xprior["pdf"].lower() == "lognormal" and "stdev" in xprior:
             stdev = float(xprior["stdev"])
@@ -500,11 +587,17 @@ def fixedbasisMCMC(
         del post_process_args["verbose"]
         del post_process_args["save_trace"]
 
+        # pass min model error to post-processing
+        post_process_args["min_error"] = kwargs.get("min_error", 0.0)
+
         # add any additional kwargs to mcmc_args (these aren't needed for post processing)
         mcmc_args.update(kwargs)
 
         # Run PyMC inversion
         mcmc_results = mcmc.inferpymc(**mcmc_args)
+
+        if skip_postprocessing:
+            return mcmc_results
 
         # Process and save inversion output
         post_process_args.update(mcmc_results)

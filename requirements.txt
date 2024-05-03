@@ -1,3 +1,4 @@
+numpyro[cpu]
 pymc
 xarray
 pandas
@@ -6,3 +7,4 @@ scipy
 numpy
 openghg
 sparse
+tfp-nightly

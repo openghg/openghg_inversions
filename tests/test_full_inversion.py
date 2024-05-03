@@ -30,6 +30,17 @@ def test_full_inversion(mcmc_args):
     fixedbasisMCMC(**mcmc_args)
 
 
+def test_full_inversion_with_min_error_calc(mcmc_args):
+    mcmc_args["calculate_min_error"] = True
+    out = fixedbasisMCMC(**mcmc_args)
+
+    assert "min_model_error" in out.attrs
+
+
+def test_full_inversion_pblh_filter(mcmc_args):
+    mcmc_args["filters"] = ["pblh"]
+
+
 def test_full_inversion_lognormal_infer(mcmc_args):
     mcmc_args["xprior"] = {"pdf": "lognormal", "stdev": 2.0}
     out = fixedbasisMCMC(**mcmc_args)
@@ -48,6 +59,12 @@ def test_full_inversion_lognormal_reparam(mcmc_args):
 
 def test_full_inversion_min_error(mcmc_args):
     mcmc_args["min_error"] = 20.0
+    fixedbasisMCMC(**mcmc_args)
+
+
+def test_full_inversion_min_error_numpyro(mcmc_args):
+    mcmc_args["min_error"] = 20.0
+    mcmc_args["nuts_sampler"] = "numpyro"
     fixedbasisMCMC(**mcmc_args)
 
 

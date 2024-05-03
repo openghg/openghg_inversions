@@ -191,6 +191,11 @@ if __name__ == "__main__":
         type=json.loads,
         help='Pass keyword arguments to mcmc function. Format: \'{"key1": "val1", "key2": "val2"}\'.',
     )
+    parser.add_argument(
+            "--output-path",
+            help="Path to write ini file and results to.",
+        )
+
 
     args = parser.parse_args()
 
@@ -200,6 +205,9 @@ if __name__ == "__main__":
         command_line_args["start_date"] = args.start
     if args.end:
         command_line_args["end_date"] = args.end
+    if args.output_path:
+        command_line_args["outputpath"] = args.output_path
+
     if args.kwargs:
         command_line_args.update(args.kwargs)
 

@@ -28,6 +28,9 @@ from openghg_inversions import utils
 from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
+from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
+from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
+from scipy import stats
 
 
 # type alias for prior args
@@ -125,6 +128,7 @@ def inferpymc(
     xprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     bcprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     sigprior={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
+    nuts_sampler: str = "pymc",
     nit=2.5e5,
     burn=50000,
     tune=1.25e5,
@@ -134,7 +138,7 @@ def inferpymc(
     add_offset=False,
     verbose=False,
     min_error=0.0,
-    save_trace=False,
+    save_trace: Optional[Union[str, Path]] = None,
     use_bc: bool = True,
     reparameterise_log_normal: bool = False,
 ):
@@ -277,13 +281,19 @@ def inferpymc(
 
         step1 = pm.NUTS(vars=step1_vars)
         step2 = pm.Slice(vars=[sig])
-
+        step = [step1, step2] if nuts_sampler == "pymc" else None
         trace = pm.sample(
-            nit, tune=int(tune), chains=nchain, step=[step1, step2], progressbar=verbose, cores=nchain
+            nit,
+            tune=int(tune),
+            chains=nchain,
+            step=step,
+            progressbar=verbose,
+            cores=nchain,
+            nuts_sampler=nuts_sampler,
         )  # step=pm.Metropolis())#  #target_accept=0.8,
 
-    # if save_trace:
-    #    trace.to_netcdf(str(save_trace), engine="netcdf4")
+    if save_trace:
+        trace.to_netcdf(str(save_trace), engine="netcdf4")
 
     outs = trace.posterior["x"][0, burn:nit]
 
@@ -303,6 +313,11 @@ def inferpymc(
         convergence = "Failed"
     else:
         convergence = "Passed"
+
+    if nuts_sampler != "pymc":
+        divergences = np.sum(trace.sample_stats.diverging).values
+        if divergences > 0:
+            print(f"There were {divergences} divergences. Try increasing target accept or reparameterise.")
 
     if add_offset:
         offset_outs = trace.posterior["offset"][0, burn:nit]
@@ -379,7 +394,8 @@ def inferpymc_postprocessouts(
     add_offset=False,
     rerun_file=None,
     use_bc: bool = False,
-):
+    min_error: float = 0.0,
+) -> xr.Dataset:
     """
     Takes the output from inferpymc function, along with some other input
     information, and places it all in a netcdf output. This function also
@@ -874,6 +890,7 @@ def inferpymc_postprocessouts(
     outds.attrs["Date created"] = str(pd.Timestamp("today"))
     outds.attrs["Convergence"] = convergence
     outds.attrs["Repository version"] = code_version()
+    outds.attrs["min_model_error"] = min_error
 
     # variables with variable length data types shouldn't be compressed
     # e.g. object ("O") or unicode ("U") type

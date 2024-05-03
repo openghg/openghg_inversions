@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 import xarray as xr
 
@@ -11,7 +12,7 @@ def load_landsea_indices():
     land = 1
     sea = 0
     """
-    landsea_indices = xr.open_dataset("../countries/country-EUROPE-UKMO-landsea-2023.nc")
+    landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
     return landsea_indices["country"].values
 
 
