@@ -115,6 +115,7 @@ def fixedbasisMCMC(
     met_model=None,
     fp_model=None,  # Changed to none. When "NAME" specified FPs are not found
     fp_height=None,
+    fp_species=None,
     emissions_name=None,
     inlet=None,
     instrument=None,
@@ -207,6 +208,9 @@ def fixedbasisMCMC(
 
       fp_height (list):
         Inlet height modelled for sites in LPDM (must match number of sites)
+
+      fp_species (str):
+        Species name associated with footprints in the object store
 
       emissions_name (list):
         List of keyword "source" args used for retrieving emissions files
@@ -410,6 +414,7 @@ def fixedbasisMCMC(
                 met_model=met_model,
                 fp_model=fp_model,
                 fp_height=fp_height,
+                fp_species=fp_species,
                 emissions_name=emissions_name,
                 inlet=inlet,
                 instrument=instrument,
