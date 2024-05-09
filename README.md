@@ -144,7 +144,7 @@ This is not a comprehensive list (see the docstring for `fixedbasisMCMC` in the 
   - Default value is `False`
   - If `True`, the "outer regions" of the (`EUROPE`) domain use basis regions specified by a file provided by the Met Office (from their "InTem" model), and the "inner region", which includes the UK, is fit using our basis algorithms.
   - This option is only available for the `EUROPE` domain currently.
-- `compute_min_error`: compute the minimum model error on the fly using the "residual error method"
+- `compute_min_error`: compute min_error (see below) on the fly using the "residual error method"
 
 
 ##### Parameters for `inferpymc`
@@ -152,7 +152,7 @@ This is not a comprehensive list (see the docstring for `fixedbasisMCMC` in the 
 As mentioned above, any keyword argument passed to `fixedbasisMCMC` (either by an `ini` file or from `--kwargs` on the command line) that is not recognised by `fixedbasisMCMC` is passed on to `inferpymc`.
 
 These parameters include:
-- `min_error`: a non-negative float value that is added to the model and observation error in the likelihood of the Bayesian model.
+- `min_error`: a non-negative float value specifying a lower bound for the model-measurement mismatch error (i.e. the error on (y - y_mod)).
 - `nuts_sampler`: a string, which defaults to `"pymc"`. The other option is `"numpyro"`, which will the [JAX](https://jax.readthedocs.io/en/latest/index.html) accelerated sampler from [Numpyro](https://num.pyro.ai/en/stable/index.html); this tends to be significantly faster than the NUTS sampler built into PyMC.
 
 ## Contributing
