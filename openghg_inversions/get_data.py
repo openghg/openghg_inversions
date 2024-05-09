@@ -44,6 +44,7 @@ def data_processing_surface_notracer(
     met_model=None,
     fp_model=None,
     fp_height=None,
+    fp_species=None,
     emissions_name=None,
     use_bc=True,
     bc_input=None,
@@ -101,6 +102,8 @@ def data_processing_surface_notracer(
             LPDM used for generating footprints.
         fp_height (list/str):
             Inlet height used in footprints for corresponding sites.
+        fp_species (str):
+            Species name associated with footprints in the object store
         emissions_name (list):
             List of keywords args associated with emissions files
             in the object store.
@@ -199,30 +202,16 @@ def data_processing_surface_notracer(
 
         # Get footprints data
         try:
-            # Ensure HiTRes CO2 footprints are obtained if
-            # using CO2
-            if species.lower() == "co2":
-                get_fps = get_footprint(
-                    site=site,
-                    height=fp_height[i],
-                    domain=domain,
-                    model=fp_model,
-                    start_date=start_date,
-                    end_date=end_date,
-                    store=footprint_store,
-                    species=species.lower(),
-                )
-
-            else:
-                get_fps = get_footprint(
-                    site=site,
-                    height=fp_height[i],
-                    domain=domain,
-                    model=fp_model,
-                    start_date=start_date,
-                    end_date=end_date,
-                    store=footprint_store,
-                )
+            get_fps = get_footprint(
+                site=site,
+                height=fp_height[i],
+                domain=domain,
+                model=fp_model,
+                start_date=start_date,
+                end_date=end_date,
+                store=footprint_store,
+                species=fp_species,
+            )
         except SearchError:
             print(
                 f"\nNo footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}.",
