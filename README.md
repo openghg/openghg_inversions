@@ -154,6 +154,9 @@ As mentioned above, any keyword argument passed to `fixedbasisMCMC` (either by a
 These parameters include:
 - `min_error`: a non-negative float value specifying a lower bound for the model-measurement mismatch error (i.e. the error on (y - y_mod)).
 - `nuts_sampler`: a string, which defaults to `"pymc"`. The other option is `"numpyro"`, which will the [JAX](https://jax.readthedocs.io/en/latest/index.html) accelerated sampler from [Numpyro](https://num.pyro.ai/en/stable/index.html); this tends to be significantly faster than the NUTS sampler built into PyMC.
+- `pollution_events_from_obs`: Determines whether the model error is calculated as a fraction of:
+  - the measured enhancement above the modelled baseline (if `True`)
+  - the prior modelled enhancement (if `False`)
 
 ## Contributing
 
