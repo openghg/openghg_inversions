@@ -285,7 +285,7 @@ def inferpymc(
             pollution_event = np.abs(pt.dot(hx, x))
 
         pollution_event_scaled_error = pollution_event * sig[sites, sigma_freq_index]
-        epsilon = pt.sqrt(error**2 + pollution_event_scaled_error**2 + min_error**2)
+        epsilon = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)
         y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
         step1 = pm.NUTS(vars=step1_vars)
