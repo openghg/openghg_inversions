@@ -226,7 +226,8 @@ def filtering(datasets_in, filters, keep_missing=False):
             "nighttime"         : Only b/w 23:00 - 03:00 inclusive
             "noon"              : Only 12:00 fp and obs used
             "daily_median"      : calculates the daily median
-            "pblh"              : Only keeps times when pblh is > 50m away from the obs height
+            "pblh_min"          : Only keeps times when pblh is > threshold (default 200m)
+            "pblh_inlet_diff"   : Only keeps times when inlet is at least a threshold (default 50m) below the pblh
             "local_influence"   : Only keep times when localness is low
             "six_hr_mean"       :
             "local_lapse"       :
@@ -409,7 +410,7 @@ def filtering(datasets_in, filters, keep_missing=False):
         pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
 
         ti = [
-            i for i, pblh in enumerate(pblh_da) if inlet_height > pblh - diff_threshold
+            i for i, pblh in enumerate(pblh_da) if inlet_height < pblh - diff_threshold
         ]
 
         if keep_missing is True:
