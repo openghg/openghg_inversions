@@ -226,7 +226,8 @@ def filtering(datasets_in, filters, keep_missing=False):
             "nighttime"         : Only b/w 23:00 - 03:00 inclusive
             "noon"              : Only 12:00 fp and obs used
             "daily_median"      : calculates the daily median
-            "pblh"              : Only keeps times when pblh is > 50m away from the obs height
+            "pblh_min"          : Only keeps times when pblh is > threshold (default 200m)
+            "pblh_inlet_diff"   : Only keeps times when inlet is at least a threshold (default 50m) below the pblh
             "local_influence"   : Only keep times when localness is low
             "six_hr_mean"       :
             "local_lapse"       :
@@ -368,24 +369,14 @@ def filtering(datasets_in, filters, keep_missing=False):
         else:
             return dataset[dict(time=ti)]
 
-    def pblh(dataset, keep_missing=False):
+    def pblh_min(dataset, pblh_threshold=200.0, keep_missing=False):
         """
-        Subset for times when observations are taken at a height more than
-        50m away from (above or below) the PBLH.
+        Subset for times when the PBLH is greater than 200m.
         """
-        if "inlet_height_magl" in dataset.attrs:
-            inlet_height = float(dataset.inlet_height_magl)
-        elif "inlet" in dataset.attrs:
-            m = re.search(r"\d+", dataset.attrs["inlet"])
-            if m is not None:
-                inlet_height = float(m.group(0))
-        else:
-            raise ValueError("Could not find inlet height from `inlet_height_magl` or `inlet` dataset attributes.")
-
         pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
 
         ti = [
-            i for i, pblh in enumerate(pblh_da) if np.abs(inlet_height - pblh) > 50.0
+            i for i, pblh in enumerate(pblh_da) if pblh > pblh_threshold
         ]
 
         if keep_missing is True:
@@ -402,7 +393,44 @@ def filtering(datasets_in, filters, keep_missing=False):
             return dataset_out
         else:
             return dataset[dict(time=ti)]
+        
+    def pblh_inlet_diff(dataset, diff_threshold=50.0, keep_missing=False):
+        """
+        Subset for times when observations are taken at a height of less than 50 m below the PBLH. 
+        """
+        if "inlet_height_magl" in dataset.attrs:
+            inlet_height = float(dataset.inlet_height_magl)
+        elif "inlet" in dataset.attrs:
+            m = re.search(r"\d+", dataset.attrs["inlet"])
+            if m is not None:
+                inlet_height = float(m.group(0))
+        else:
+            raise ValueError("Could not find inlet height from `inlet_height_magl` or `inlet` dataset attributes.")
 
+        pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
+
+        ti = [
+            i for i, pblh in enumerate(pblh_da) if inlet_height < pblh - diff_threshold
+        ]
+
+        if keep_missing is True:
+            mf_data_array = dataset.mf
+            dataset_temp = dataset.drop("mf")
+
+            dataarray_temp = mf_data_array[dict(time=ti)]
+
+            mf_ds = xr.Dataset(
+                {"mf": (["time"], dataarray_temp)}, coords={"time": (dataarray_temp.coords["time"])}
+            )
+
+            dataset_out = combine_datasets(dataset_temp, mf_ds, method=None)
+            return dataset_out
+        else:
+            return dataset[dict(time=ti)]
+        
+    def pblh(dataset, keep_missing=False):
+        raise NotImplementedError("pblh is now called pblh_inlet_diff")
+                                  
     filtering_functions = {
         "daily_median": daily_median,
         "daytime": daytime,
@@ -411,6 +439,8 @@ def filtering(datasets_in, filters, keep_missing=False):
         "noon": noon,
         "local_influence": local_influence,
         "six_hr_mean": six_hr_mean,
+        "pblh_inlet_diff": pblh_inlet_diff,
+        "pblh_min": pblh_min,
         "pblh": pblh,
     }
 
@@ -421,7 +451,7 @@ def filtering(datasets_in, filters, keep_missing=False):
     for site in sites:
         for filt in filters:
             n_nofilter = datasets[site].time.values.shape[0]
-            if filt in ["daily_median", "six_hr_mean", "pblh"]:
+            if filt in ["daily_median", "six_hr_mean", "pblh_inlet_diff", "pblh_min", "pblh"]:
                 datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
             else:
                 datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
