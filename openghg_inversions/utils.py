@@ -450,7 +450,7 @@ def filtering(datasets_in, filters, keep_missing=False):
     # Apply filtering
     for site in sites:
         if site.lower() in ['cmn','jfj']:
-            print(f"{filt} filter not applied to {site} (mountain site)")
+            print(f"filters not applied to {site} (mountain site)")
         else:
             for filt in filters:
                 n_nofilter = datasets[site].time.values.shape[0]
