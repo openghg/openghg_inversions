@@ -449,16 +449,19 @@ def filtering(datasets_in, filters, keep_missing=False):
 
     # Apply filtering
     for site in sites:
-        for filt in filters:
-            n_nofilter = datasets[site].time.values.shape[0]
-            if filt in ["daily_median", "six_hr_mean", "pblh_inlet_diff", "pblh_min", "pblh"]:
-                datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
-            else:
-                datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
-            n_filter = datasets[site].time.values.shape[0]
-            n_dropped = n_nofilter - n_filter
-            perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
-            print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
+        if site.lower() in ['cmn','jfj']:
+            print(f"{filt} filter not applied to {site} (mountain site)")
+        else:
+            for filt in filters:
+                n_nofilter = datasets[site].time.values.shape[0]
+                if filt in ["daily_median", "six_hr_mean", "pblh_inlet_diff", "pblh_min", "pblh"]:
+                    datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
+                else:
+                    datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
+                n_filter = datasets[site].time.values.shape[0]
+                n_dropped = n_nofilter - n_filter
+                perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
+                print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
 
     return datasets
 
