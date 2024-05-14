@@ -200,7 +200,7 @@ def fixedbasisMCMC(
       emissions_store (str):
         Name of object store containing emissions/flux files
 
-      met_model (str):
+      met_model (list):
         Meteorological model used in the LPDM (e.g. 'ukv')
 
       fp_model (str):

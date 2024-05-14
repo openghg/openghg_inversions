@@ -96,7 +96,7 @@ def data_processing_surface_notracer(
             (length must match number of sites)
         calibration_scale (str):
             Convert measurements to defined calibration scale
-        met_model (str/opt):
+        met_model (list/opt):
             Meteorological model used in the LPDM.
         fp_model (str):
             LPDM used for generating footprints.
@@ -207,6 +207,7 @@ def data_processing_surface_notracer(
                 height=fp_height[i],
                 domain=domain,
                 model=fp_model,
+                met_model=met_model[i],
                 start_date=start_date,
                 end_date=end_date,
                 store=footprint_store,
