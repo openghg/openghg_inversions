@@ -97,6 +97,7 @@ use_bc = True
 nuts_sampler = "numpyro"
 save_trace = True
 compute_min_error = True
+no_model_error = False
 ```
 
 These will be passed to the MCMC function (e.g. `fixedbasisMCMC`) as keyword arguments.
@@ -144,7 +145,7 @@ This is not a comprehensive list (see the docstring for `fixedbasisMCMC` in the 
   - Default value is `False`
   - If `True`, the "outer regions" of the (`EUROPE`) domain use basis regions specified by a file provided by the Met Office (from their "InTem" model), and the "inner region", which includes the UK, is fit using our basis algorithms.
   - This option is only available for the `EUROPE` domain currently.
-- `compute_min_error`: compute min_error (see below) on the fly using the "residual error method"
+- `calculate_min_error`: calculate min_error (see below) on the fly using the "residual error method"
 
 
 ##### Parameters for `inferpymc`
@@ -157,6 +158,7 @@ These parameters include:
 - `pollution_events_from_obs`: Determines whether the model error is calculated as a fraction of:
   - the measured enhancement above the modelled baseline (if `True`)
   - the prior modelled enhancement (if `False`)
+- `no_model_error`: if `True`, only use obs error in likelihood (omitting min. model error and model error from scaling pollution events).
 
 ## Contributing
 

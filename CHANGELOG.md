@@ -2,6 +2,7 @@
 
 # Version 0.2.0
 
+- added option `no_model_error` to run inversions without model error (i.e. no min. model error and no pollution event scaling). [#PR 131](https://github.com/openghg/openghg_inversions/pull/131)
 
 - added work-around for error in post-processing caused by the order of the flux dimensions deviating from 'lat', 'lon', 'time'. [#PR 128](https://github.com/openghg/openghg_inversions/pull/128)
 
