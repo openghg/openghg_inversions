@@ -142,6 +142,7 @@ def inferpymc(
     use_bc: bool = True,
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
+    no_model_error: bool = False,
 ):
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
@@ -187,6 +188,9 @@ def inferpymc(
         Add an offset (intercept) to all sites but the first in the site list. Default False.
       verbose:
         When True, prints progress bar
+      no_model_error:
+        When True, only use observation error in likelihood function (omitting min. model error and model error
+        from scaling pollution events.)
 
     Returns:
       outs (array):
@@ -285,7 +289,12 @@ def inferpymc(
             pollution_event = np.abs(pt.dot(hx, x))
 
         pollution_event_scaled_error = pollution_event * sig[sites, sigma_freq_index]
-        epsilon = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)
+
+        if no_model_error is True:
+            epsilon = np.abs(error)
+        else:
+            epsilon = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)
+
         y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
         step1 = pm.NUTS(vars=step1_vars)
