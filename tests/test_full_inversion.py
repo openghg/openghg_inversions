@@ -45,8 +45,10 @@ def test_full_inversion_with_min_error_calc(mcmc_args):
 def test_full_inversion_pblh_filter(mcmc_args):
     mcmc_args["filters"] = ["pblh"]
 
+
 def test_full_inversion_pblh_min_filter(mcmc_args):
     mcmc_args["filters"] = ["pblh_min"]
+
 
 def test_full_inversion_pblh_inlet_diff_filter(mcmc_args):
     mcmc_args["filters"] = ["pblh_inlet_diff"]
