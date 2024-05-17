@@ -112,7 +112,7 @@ def fixedbasisMCMC(
     obs_store="user",
     footprint_store="user",
     emissions_store="user",
-    met_model=None,
+    met_model: Optional[list] = None,
     fp_model=None,  # Changed to none. When "NAME" specified FPs are not found
     fp_height=None,
     fp_species=None,
@@ -200,7 +200,7 @@ def fixedbasisMCMC(
       emissions_store (str):
         Name of object store containing emissions/flux files
 
-      met_model (str):
+      met_model (list):
         Meteorological model used in the LPDM (e.g. 'ukv')
 
       fp_model (str):
