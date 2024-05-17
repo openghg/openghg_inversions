@@ -4,6 +4,8 @@
 
 - added option `no_model_error` to run inversions without model error (i.e. no min. model error and no pollution event scaling). [#PR 131](https://github.com/openghg/openghg_inversions/pull/131)
 
+- added work-around for error in post-processing caused by the order of the flux dimensions deviating from 'lat', 'lon', 'time'. [#PR 128](https://github.com/openghg/openghg_inversions/pull/128)
+
 - removed `julian2time` function from `convert.py` because it used code that was deprecated by `matplotlib`. This function is still available at `github.com/ACRG-Bristol/acrg/acrg/time/convert.py`. [#PR 129](https://github.com/openghg/openghg_inversions/pull/129)
 
 - `met_model` is now used by `data_processing_surface_notracer`; it is an optional argument, passed as a list with the same length as the number of sites. [#PR 125](https://github.com/openghg/openghg_inversions/pull/125)

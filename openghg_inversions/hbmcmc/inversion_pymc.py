@@ -651,6 +651,15 @@ def inferpymc_postprocessouts(
             emds = fp_data[".flux"][emissions_name[0]]
             flux_array_all = emds.data.flux.values
 
+    # HACK: assume that smallest flux dim is time, then re-order flux so that
+    # time is the last coordinate
+    flux_dim_shape = flux_array_all.shape
+    flux_dim_positions = range(len(flux_dim_shape))
+    smallest_dim_position = min(list(zip(flux_dim_positions, flux_dim_shape)), key=(lambda x: x[1]))[0]
+
+    flux_array_all = np.moveaxis(flux_array_all, smallest_dim_position, -1)
+    # end HACK
+
     if flux_array_all.shape[2] == 1:
         print("\nAssuming flux prior is annual and extracting first index of flux array.")
         apriori_flux = flux_array_all[:, :, 0]
