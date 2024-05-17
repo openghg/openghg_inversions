@@ -95,16 +95,19 @@ footprints_metadata = {
     # "metmodel": "ukv",
 }
 flux_metadata = {"species": "ch4", "source": "total-ukghg-edgar7", "domain": "europe"}
+flux_dim_shuffle_metadata = {"species": "ch4", "source": "total-ukghg-edgar7-shuffled", "domain": "europe"}
 
 obs_data_path = _raw_data_path / "obs_tac_ch4_185m_2019-01-01_2019-02-01_data.nc"
 bc_data_path = _raw_data_path / "bc_ch4_europe_cams_2019-01-01_2019-12-31_data.nc"
 footprints_data_path = _raw_data_path / "footprints_tac_europe_name_185m_2019-01-01_2019-01-07_data.nc"
 flux_data_path = _raw_data_path / "flux_total_ch4_europe_edgar7_2019-01-01_2019-12-31_data.nc"
+flux_dim_shuffled_data_path = _raw_data_path / "flux_total_ch4_europe_edgar7_2019-01-01_2019-12-31_data_dim_shuffled.nc"
 
 data_info = {
     "surface": [standardise_surface, obs_metadata, obs_data_path],
     "boundary_conditions": [standardise_bc, bc_metadata, bc_data_path],
-    "emissions": [standardise_flux, flux_metadata, flux_data_path],
+    "flux": [standardise_flux, flux_metadata, flux_data_path],
+    "flux_dim_shuffle": [standardise_flux, flux_dim_shuffle_metadata, flux_dim_shuffled_data_path],
     "footprints": [standardise_footprint, footprints_metadata, footprints_data_path],
 }
 
@@ -128,7 +131,7 @@ def session_object_store(session_config_mocker) -> None:
         add_data = True
         found_dtypes = []
     else:
-        add_data = results.results.shape[0] != 4
+        add_data = results.results.shape[0] != 5
         try:
             found_dtypes = results.results["data_type"].to_list()
         except KeyError:
@@ -137,7 +140,7 @@ def session_object_store(session_config_mocker) -> None:
     # check if there are four pieces of data in the object store
     # if not, add the missing data
     if add_data:
-        to_add = set(["surface", "boundary_conditions", "emissions", "footprints"]) - set(found_dtypes)
+        to_add = set(["surface", "boundary_conditions", "flux", "flux_dim_shuffle", "footprints"]) - set(found_dtypes)
 
         for dtype in to_add:
             standardise_fn = data_info[dtype][0]
