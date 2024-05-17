@@ -2,6 +2,8 @@
 
 # Version 0.2.0
 
+- removed `julian2time` function from `convert.py` because it used code that was deprecated by `matplotlib`. This function is still available at `github.com/ACRG-Bristol/acrg/acrg/time/convert.py`. [#PR 129](https://github.com/openghg/openghg_inversions/pull/129)
+
 - `met_model` is now used by `data_processing_surface_notracer`; it is an optional argument, passed as a list with the same length as the number of sites. [#PR 125](https://github.com/openghg/openghg_inversions/pull/125)
 
 - Updated `pblh` filter to work with new variable names in footprints. [#PR 101](https://github.com/openghg/openghg_inversions/pull/101)
