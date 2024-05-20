@@ -237,8 +237,27 @@ def filtering(datasets_in, filters, keep_missing=False):
        Same format as datasets_in : Datasets with filters applied.
     -----------------------------------
     """
-    if type(filters) is not list:
-        filters = [filters]
+    # Get list of sites
+    sites = [key for key in list(datasets_in.keys()) if key[0] != "."]
+
+    # Put the filters in a dict of list
+    if type(filters) is not dict :
+        if type(filters) is not list:
+            filters=[filters]
+        tmp = {site:filters for site in sites}
+        filters = tmp
+        del tmp
+    else :
+        tmp = {site:[filter] if type(filter) is not list else filter 
+               for site,filter in filters.items()}
+        filters = tmp
+        del tmp
+    
+    # Check that filters are defined for all sites
+    tmp = [(site in filters) for site in sites]
+    if not all(tmp):
+        raise ValueError(f"Missing entry for sites {np.array(sites)[~np.array(tmp)]} in filters.")
+
 
     datasets = datasets_in.copy()
 
@@ -444,15 +463,10 @@ def filtering(datasets_in, filters, keep_missing=False):
         "pblh": pblh,
     }
 
-    # Get list of sites
-    sites = [key for key in list(datasets.keys()) if key[0] != "."]
-
     # Apply filtering
     for site in sites:
-        if site.lower() in ['cmn','jfj']:
-            print(f"filters not applied to {site} (mountain site)")
-        else:
-            for filt in filters:
+        if filters[site] is not None:
+            for filt in filters[site]:
                 n_nofilter = datasets[site].time.values.shape[0]
                 if filt in ["daily_median", "six_hr_mean", "pblh_inlet_diff", "pblh_min", "pblh"]:
                     datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
