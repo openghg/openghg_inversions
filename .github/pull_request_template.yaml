@@ -1,0 +1,10 @@
+* **Summary of changes**
+
+
+* **Please check if the PR fulfills these requirements**
+
+- [ ] Closes #xxxx (Replace xxxx with the Github issue number)
+- [ ] Tests added and passing
+- [ ] Documentation and tutorials updated/added
+- [ ] Added an entry to the `CHANGELOG.md` file
+- [ ] Added any new requirements to `requirements.txt`

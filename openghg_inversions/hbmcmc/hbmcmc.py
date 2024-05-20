@@ -112,7 +112,7 @@ def fixedbasisMCMC(
     obs_store="user",
     footprint_store="user",
     emissions_store="user",
-    met_model=None,
+    met_model: Optional[list] = None,
     fp_model=None,  # Changed to none. When "NAME" specified FPs are not found
     fp_height=None,
     fp_species=None,
@@ -487,7 +487,14 @@ def fixedbasisMCMC(
         siteindicator = np.zeros(0)
 
         for si, site in enumerate(sites):
-            fp_data[site] = fp_data[site].dropna("time")  # pymc doesn't like NaNs
+            # select variables to drop NaNs from
+            drop_vars = []
+            for var in ["H", "H_bc", "mf", "mf_variability", "mf_repeatability"]:
+                if var in fp_data[site].data_vars:
+                    drop_vars.append(var)
+
+            # pymc doesn't like NaNs, so drop them for the variables used below
+            fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
 
             if "mf_repeatability" in fp_data[site]:
                 error = np.concatenate((error, fp_data[site].mf_repeatability.values))

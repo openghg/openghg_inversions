@@ -30,11 +30,29 @@ def test_full_inversion(mcmc_args):
     fixedbasisMCMC(**mcmc_args)
 
 
+def test_full_inversion_no_model_error(mcmc_args):
+    mcmc_args["no_model_error"] = True
+
+
+def test_full_inversion_flux_dim_shuffled(mcmc_args):
+    mcmc_args["emissions_name"] = ["total-ukghg-edgar7-shuffled"]
+    fixedbasisMCMC(**mcmc_args)
+
+
 def test_full_inversion_with_min_error_calc(mcmc_args):
     mcmc_args["calculate_min_error"] = True
     out = fixedbasisMCMC(**mcmc_args)
 
     assert "min_model_error" in out.attrs
+
+
+def test_full_inversion_pblh_filter(mcmc_args):
+    mcmc_args["filters"] = ["pblh"]
+
+
+def test_full_inversion_pblh_min_filter(mcmc_args):
+    mcmc_args["filters"] = ["pblh_min"]
+
 
 def test_full_inversion_pblh_inlet_diff_filter(mcmc_args):
     mcmc_args["filters"] = ["pblh_inlet_diff"]
