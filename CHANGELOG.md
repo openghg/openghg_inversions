@@ -1,6 +1,7 @@
 # OpenGHG Inversions Change Log
 
 # Version 0.2.0
+- Add option to pass the filters as dictionnary (with the sites as keys). Issue 118
 
 - Updated `pblh` filter to work with new variable names in footprints. [#PR 101](https://github.com/openghg/openghg_inversions/pull/101)
 
