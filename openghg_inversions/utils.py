@@ -241,17 +241,14 @@ def filtering(datasets_in, filters, keep_missing=False):
     sites = [key for key in list(datasets_in.keys()) if key[0] != "."]
 
     # Put the filters in a dict of list
-    if type(filters) is not dict :
-        if type(filters) is not list:
-            filters=[filters]
-        tmp = {site:filters for site in sites}
-        filters = tmp
-        del tmp
-    else :
-        tmp = {site:[filter] if type(filter) is not list else filter 
-               for site,filter in filters.items()}
-        filters = tmp
-        del tmp
+    if not isinstance(filters, dict):
+        if not isinstance(filters, list):
+            filters = [filters]
+        filters = {site: filters for site in sites}
+    else:
+        for site, filt in filters.items():
+            if not isinstance(filt, list):
+                filters[site] = [filt]
     
     # Check that filters are defined for all sites
     tmp = [(site in filters) for site in sites]
