@@ -1,7 +1,7 @@
 # OpenGHG Inversions Change Log
 
 # Version 0.2.0
-- Add option to pass the filters as dictionnary (with the sites as keys). [#PR 135](https://github.com/openghg/openghg_inversions/pull/135)
+- Add option to pass the filters as dictionary (with the sites as keys). [#PR 135](https://github.com/openghg/openghg_inversions/pull/135)
 
 - fixed issue with missing obs due to dropping NaNs from other variables in `fp_data` (e.g. `wind_speed`, etc). [#PR 132](https://github.com/openghg/openghg_inversions/pull/132)
 

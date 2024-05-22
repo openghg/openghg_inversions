@@ -131,7 +131,6 @@ def fixedbasisMCMC(
     bc_input=None,
     basis_algorithm="weighted",
     nbasis=100,
-    filters=[],
     xprior={"pdf": "truncatednormal", "mu": 1.0, "sigma": 1.0, "lower": 0.0},
     bcprior={"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0},
     sigprior={"pdf": "uniform", "lower": 0.1, "upper": 3},
@@ -140,6 +139,7 @@ def fixedbasisMCMC(
     burn=50000,
     tune=1.25e5,
     nchain=2,
+    filters: Union[None, list, dict[str, list]] = None,
     fix_basis_outer_regions: bool = False,
     averaging_error=True,
     bc_freq=None,
@@ -267,8 +267,9 @@ def fixedbasisMCMC(
         basis function. This will optimise to closest value that fits with
         quadtree splitting algorithm, i.e. nbasis % 4 = 1
 
-      filters (list, optional):
-        list of filters to apply from name.filtering. Defaults to empty list
+      filters (list, or dictionary of lists, optional):
+        list of filters to apply to all sites, or dictionary with sites as keys
+        and a list of filters for each site, e.g. filters = {"MHD": ["pblh_diff", "pblh_min"], "JFJ": [None]}
 
       xprior (dict):
         Dictionary containing information about the prior PDF for emissions.
@@ -458,7 +459,8 @@ def fixedbasisMCMC(
     )
 
     # Apply named filters to the data
-    fp_data = utils.filtering(fp_data, filters)
+    if filters is not None:
+        fp_data = utils.filtering(fp_data, filters)
 
     # Calculate min error
     if calculate_min_error:
