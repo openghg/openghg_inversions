@@ -149,7 +149,7 @@ This is not a comprehensive list (see the docstring for `fixedbasisMCMC` in the 
 - `filters`: filters to apply to data (after it is resampled and aligned)
   - `filters = None` will skip filtering
   - if `filters` is a list of filters (or a string containing a single filter name), those filters will be applied to all sites.
-  - if `filters` is a dictionary with site codes as keys and lists of filters as values, then each site will have filters applied individually according to this dictionary. All sites must supplied; to skip a site, pass `None`. For instance: `filters = {"MHD": ["pblh_inlet_diff", "pblh_min"], "JFJ": [None]}` (single values do not need to be lists, so  `filters = {"MHD": ["pblh_inlet_diff", "pblh_min"], "JFJ": None}` would also work).
+  - if `filters` is a dictionary with site codes as keys and lists of filters as values, then each site will have filters applied individually according to this dictionary. All sites must supplied; to skip a site, pass `None` instead of a list. For instance: `filters = {"MHD": ["pblh_inlet_diff", "pblh_min"], "JFJ": None}`.
   - the list of available filters can be found in the `filtering` function in the [utils module](openghg_inversions/utils.py).
 
 

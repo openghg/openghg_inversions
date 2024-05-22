@@ -139,7 +139,7 @@ def fixedbasisMCMC(
     burn=50000,
     tune=1.25e5,
     nchain=2,
-    filters: Union[None, list, dict[str, list]] = None,
+    filters: Union[None, list, dict[str, Optional[list[str]]]] = None,
     fix_basis_outer_regions: bool = False,
     averaging_error=True,
     bc_freq=None,
@@ -269,7 +269,7 @@ def fixedbasisMCMC(
 
       filters (list, or dictionary of lists, optional):
         list of filters to apply to all sites, or dictionary with sites as keys
-        and a list of filters for each site, e.g. filters = {"MHD": ["pblh_inlet_diff", "pblh_min"], "JFJ": [None]}
+        and a list of filters for each site, e.g. filters = {"MHD": ["pblh_inlet_diff", "pblh_min"], "JFJ": None}
 
       xprior (dict):
         Dictionary containing information about the prior PDF for emissions.
