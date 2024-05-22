@@ -247,7 +247,7 @@ def filtering(datasets_in, filters, keep_missing=False):
         filters = {site: filters for site in sites}
     else:
         for site, filt in filters.items():
-            if not isinstance(filt, list):
+            if filt is not None and not isinstance(filt, list):
                 filters[site] = [filt]
     
     # Check that filters are defined for all sites
