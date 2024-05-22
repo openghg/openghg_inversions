@@ -269,7 +269,7 @@ def fixedbasisMCMC(
 
       filters (list, or dictionary of lists, optional):
         list of filters to apply to all sites, or dictionary with sites as keys
-        and a list of filters for each site, e.g. filters = {"MHD": ["pblh_diff", "pblh_min"], "JFJ": [None]}
+        and a list of filters for each site, e.g. filters = {"MHD": ["pblh_inlet_diff", "pblh_min"], "JFJ": [None]}
 
       xprior (dict):
         Dictionary containing information about the prior PDF for emissions.
