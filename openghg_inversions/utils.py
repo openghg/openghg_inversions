@@ -237,8 +237,24 @@ def filtering(datasets_in, filters, keep_missing=False):
        Same format as datasets_in : Datasets with filters applied.
     -----------------------------------
     """
-    if type(filters) is not list:
-        filters = [filters]
+    # Get list of sites
+    sites = [key for key in list(datasets_in.keys()) if key[0] != "."]
+
+    # Put the filters in a dict of list
+    if not isinstance(filters, dict):
+        if not isinstance(filters, list):
+            filters = [filters]
+        filters = {site: filters for site in sites}
+    else:
+        for site, filt in filters.items():
+            if filt is not None and not isinstance(filt, list):
+                filters[site] = [filt]
+    
+    # Check that filters are defined for all sites
+    tmp = [(site in filters) for site in sites]
+    if not all(tmp):
+        raise ValueError(f"Missing entry for sites {np.array(sites)[~np.array(tmp)]} in filters.")
+
 
     datasets = datasets_in.copy()
 
@@ -444,21 +460,19 @@ def filtering(datasets_in, filters, keep_missing=False):
         "pblh": pblh,
     }
 
-    # Get list of sites
-    sites = [key for key in list(datasets.keys()) if key[0] != "."]
-
     # Apply filtering
     for site in sites:
-        for filt in filters:
-            n_nofilter = datasets[site].time.values.shape[0]
-            if filt in ["daily_median", "six_hr_mean", "pblh_inlet_diff", "pblh_min", "pblh"]:
-                datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
-            else:
-                datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
-            n_filter = datasets[site].time.values.shape[0]
-            n_dropped = n_nofilter - n_filter
-            perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
-            print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
+        if filters[site] is not None:
+            for filt in filters[site]:
+                n_nofilter = datasets[site].time.values.shape[0]
+                if filt in ["daily_median", "six_hr_mean", "pblh_inlet_diff", "pblh_min", "pblh"]:
+                    datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
+                else:
+                    datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
+                n_filter = datasets[site].time.values.shape[0]
+                n_dropped = n_nofilter - n_filter
+                perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
+                print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
 
     return datasets
 

@@ -57,6 +57,11 @@ def test_full_inversion_pblh_min_filter(mcmc_args):
 def test_full_inversion_pblh_inlet_diff_filter(mcmc_args):
     mcmc_args["filters"] = ["pblh_inlet_diff"]
 
+def test_full_inversion_filters_as_list(mcmc_args):
+    mcmc_args["filters"] = ["pblh_inlet_diff","pblh_min"]
+
+def test_full_inversion_filters_as_dict(mcmc_args):
+    mcmc_args["filters"] = {site:["pblh_inlet_diff","pblh_min"] for site in mcmc_args['sites']}
 
 def test_full_inversion_lognormal_infer(mcmc_args):
     mcmc_args["xprior"] = {"pdf": "lognormal", "stdev": 2.0}
