@@ -284,7 +284,7 @@ def inferpymc(
             if use_bc is True:
                 pollution_event = np.abs(Y - pt.dot(hbc, xbc))
             else:
-                pollution_event = Y
+                pollution_event = np.abs(Y) + 1e-5 * min_error  # small non-zero term to prevent NaNs
         else:
             pollution_event = np.abs(pt.dot(hx, x))
 
