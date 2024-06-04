@@ -554,7 +554,15 @@ def inferpymc_postprocessouts(
         for si, site in enumerate(sites):
             site_lat[si] = fp_data[site].release_lat.values[0]
             site_lon[si] = fp_data[site].release_lon.values[0]
-        basis_time_index = np.where(fp_data['.basis'].time.values == np.datetime64(start_date))[0][0]
+            
+        if np.datetime64(start_date) in fp_data['.basis'].time.values:
+            basis_time_index = np.where(fp_data['.basis'].time.values == np.datetime64(start_date))[0][0]
+        elif fp_data['.basis'].time.values.shape[0] == 1:
+            basis_time_index = 0
+        else:
+            time_diff = fp_data['.basis'].time.value - np.datetime64(start_date)
+            basis_time_index = np.where(time_diff == np.min(time_diff))[0][0]
+                    
         bfds = fp_data[".basis"][:,:,:,basis_time_index]
 
     # Calculate mean and mode posterior scale map and flux field
