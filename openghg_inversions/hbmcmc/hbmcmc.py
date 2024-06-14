@@ -84,19 +84,19 @@ def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional
     )
 
     scaling_factor = float(ds.mf.units)/float(ds.bc_mod.units)
-    ds.update({"mf_mod_rescaled": ("time", ds.mf_mod.values + ds.bc_mod.values / scaling_factor)})
+    ds["modelled_obs"] = ds.mf_mod + ds.bc_mod / scaling_factor
 
     if average_over is not None:
         try:
-            avg = (ds.mf - mf_mod_rescaled_rescaled).sel(site=average_over).mean()
+            avg = (ds.mf - ds.modelled_obs).sel(site=average_over).mean()
         except KeyError as e:
             raise ValueError(
                 f"Can't take average over site {average_over}, it is not in the inversion data."
             ) from e
     else:
-        avg = (ds.mf - ds.mf_mod_rescaled).mean()
+        avg = (ds.mf - ds.modelled_obs).mean()
 
-    res_err_arr = np.sqrt(np.mean((ds.mf - ds.mf_mod_rescaled - avg) ** 2))
+    res_err_arr = np.sqrt(np.mean((ds.mf - ds.modelled_obs - avg) ** 2))
     res_err = res_err_arr.values
 
     return res_err
