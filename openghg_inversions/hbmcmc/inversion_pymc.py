@@ -554,7 +554,15 @@ def inferpymc_postprocessouts(
         for si, site in enumerate(sites):
             site_lat[si] = fp_data[site].release_lat.values[0]
             site_lon[si] = fp_data[site].release_lon.values[0]
-        basis_time_index = np.where(fp_data['.basis'].time.values == np.datetime64(start_date))[0][0]
+            
+        if np.datetime64(start_date) in fp_data['.basis'].time.values:
+            basis_time_index = np.where(fp_data['.basis'].time.values == np.datetime64(start_date))[0][0]
+        elif fp_data['.basis'].time.values.shape[0] == 1:
+            basis_time_index = 0
+        else:
+            time_diff = fp_data['.basis'].time.value - np.datetime64(start_date)
+            basis_time_index = np.where(time_diff == np.min(time_diff))[0][0]
+                    
         bfds = fp_data[".basis"][:,:,:,basis_time_index]
 
     # Calculate mean and mode posterior scale map and flux field
@@ -576,41 +584,62 @@ def inferpymc_postprocessouts(
                 scalemap_mode[i][bfds_i.values == (npm + 1)] = np.mean(xouts[sectors[i]][:, npm])
 
     if rerun_file is not None:
-        flux_array_all = np.expand_dims(rerun_file.fluxapriori.values, 2)
+        flux_array_all = {'total':np.expand_dims(rerun_file.fluxapriori.values, 2)}
     else:
         if emissions_name is None:
             raise ValueError("Emissions name not provided.")
         else:
-            ax0 = len(list(fp_data[".flux"].keys()))                              # nsector axis
-            ax1 = fp_data[".flux"][emissions_name[0]].data.flux.values.shape[0]   # lat axis
-            ax2 = fp_data[".flux"][emissions_name[0]].data.flux.values.shape[1]   # lon axis
-            ax3 = fp_data[".flux"][emissions_name[0]].data.flux.values.shape[2]   # time axis
+            #ax0 = len(list(fp_data[".flux"].keys()))                              # nsector axis
+            #ax1 = fp_data[".flux"][emissions_name[0]].data.flux.values.shape[0]   # lat axis
+            #ax2 = fp_data[".flux"][emissions_name[0]].data.flux.values.shape[1]   # lon axis
+            #ax3 = fp_data[".flux"][emissions_name[0]].data.flux.values.shape[2]   # time axis
 
-            flux_array_all = np.zeros(shape=(ax0, ax1, ax2, ax3))
+            flux_array_all = {} #np.zeros(shape=(ax0, ax1, ax2, ax3))
             for i, key in enumerate(fp_data[".flux"].keys()):
-               flux_array_all[i] = fp_data[".flux"][key].data.flux.values
+               #flux_array_all[i] = fp_data[".flux"][key].data.flux.values
+               flux_array_all[key] = fp_data[".flux"][key].data.flux.values
 
-    if flux_array_all.shape[3] == 1:
-        print("\nAssuming flux prior is annual and extracting first index of flux array.")
-        apriori_flux = flux_array_all[:, :, :, 0]
-    else:
-        print("\nAssuming flux prior is monthly.")
-        print(f"Extracting weighted average flux prior from {start_date} to {end_date}")
-        allmonths = pd.date_range(start_date, end_date).month[:-1].values
-        allmonths -= 1  # to align with zero indexed array
+    #print(flux_array_all)
+    #return(flux_array_all,fp_data['.flux'])
 
-        apriori_flux = np.zeros_like(flux_array_all[:, :, :, 0])
+    apriori_flux = {}
+    flux = {}
+    bfarray = np.zeros(bfds.shape)
+    
+    for i, key in enumerate(fp_data[".flux"].keys()):
 
-        # calculate the weighted average flux across the whole inversion period
-        for m in np.unique(allmonths):
-            apriori_flux += flux_array_all[:, :, :, m] * np.sum(allmonths == m) / len(allmonths)
+        if flux_array_all[key].shape[2] == 1:
+            print("\nFlux prior is annual so extracting first index of flux array.")
+            apriori_flux[key] = flux_array_all[key][:, :, 0]
+        elif flux_array_all[key].shape[2] == 12:
+            print(f"\nFlux prior is monthly so extracting weighted average from {start_date} to {end_date}")
+            allmonths = pd.date_range(start_date, end_date).month[:-1].values
+            allmonths -= 1  # to align with zero indexed array
 
-    #flux = np.squeeze(scalemap_mode,axis=-1) * np.squeeze(apriori_flux,axis=-1)
-    flux = scalemap_mode * apriori_flux
+            apriori_flux[key] = np.zeros_like(flux_array_all[key][:, :,0])
 
-    # Basis functions to save
-    #bfarray = np.squeeze(bfds.values - 1)
-    bfarray = bfds.values - 1
+            # calculate the weighted average flux across the whole inversion period
+            for m in np.unique(allmonths):
+                apriori_flux[key] += flux_array_all[key][:, :, m] * np.sum(allmonths == m) / len(allmonths)
+        else:
+            print(f"\nFlux prior is high frequency so extracting average from {start_date} to {end_date}")
+            #apriori_flux[key] = np.zeros_like(flux_array_all[key][:, :,0])
+            alltimes = np.logical_and(fp_data['.flux'][key].data.time.values >= np.datetime64(start_date),
+                                      fp_data['.flux'][key].data.time.values < np.datetime64(end_date))
+            print(flux_array_all[key][:,:,alltimes].shape)
+            apriori_flux[key] = np.expand_dims(np.mean(flux_array_all[key][:,:,alltimes],axis=2),axis=2)
+            
+        if i == 0:
+            apriori_flux_total = np.sum(apriori_flux[key],axis=2)
+        else:
+            apriori_flux_total += np.sum(apriori_flux[key],axis=2)
+
+        #flux = np.squeeze(scalemap_mode,axis=-1) * np.squeeze(apriori_flux,axis=-1)
+        flux[key] = scalemap_mode[i] * np.sum(apriori_flux[key],axis=2)
+
+        # Basis functions to save
+        #bfarray = np.squeeze(bfds.values - 1)
+        bfarray[i] = bfds[i].values - 1
 
     # Calculate country totals
     area = utils.areagrid(lat, lon)
@@ -646,7 +675,7 @@ def inferpymc_postprocessouts(
         obs_units = str(fp_data[".units"])
 
     # WARNING! Triple nested for-loops. Might want to see if there's a better way to code this block
-    for i in range(len(sectors)):
+    for i,key in enumerate(sectors):
         for ci, cntry in enumerate(cntrynames):
             cntrytottrace = np.zeros(len(steps))
             cntrytotprior = 0
@@ -654,13 +683,13 @@ def inferpymc_postprocessouts(
                 bothinds = np.logical_and(cntrygrid == ci, bfarray[i] == bf)
 
                 cntrytottrace += (
-                    np.sum(area[bothinds].ravel() * apriori_flux[i][bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                    np.sum(area[bothinds].ravel() * apriori_flux[key][bothinds].ravel() * 3600 * 24 * 365 * molarmass)
                     * xouts[sectors[i]][:, bf]
                     / unit_factor
                 )
 
                 cntrytotprior += (
-                    np.sum(area[bothinds].ravel() * apriori_flux[i][bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                    np.sum(area[bothinds].ravel() * apriori_flux[key][bothinds].ravel() * 3600 * 24 * 365 * molarmass)
                     / unit_factor
                 )
 
@@ -674,10 +703,21 @@ def inferpymc_postprocessouts(
             else:
                 cntrymode[i, ci] = np.mean(cntrytottrace)
 
-        cntrysd[i, ci] = np.std(cntrytottrace)
-        cntry68[i, ci, :] = pm.stats.hdi(cntrytottrace.values, 0.68)
-        cntry95[i, ci, :] = pm.stats.hdi(cntrytottrace.values, 0.95)
-        cntryprior[i, ci] = cntrytotprior
+            cntrysd[i, ci] = np.std(cntrytottrace)
+            cntry68[i, ci, :] = pm.stats.hdi(cntrytottrace.values, 0.68)
+            cntry95[i, ci, :] = pm.stats.hdi(cntrytottrace.values, 0.95)
+            cntryprior[i, ci] = cntrytotprior
+            
+            
+    for i, key in enumerate(fp_data[".flux"].keys()):
+        if i == 0:
+            apriori_flux_out = np.expand_dims(np.sum(apriori_flux[key],axis=2),axis=0)
+            flux_out = np.expand_dims(flux[key],axis=0)
+            xouts_out = np.expand_dims(xouts[key],axis=0)
+        else:
+            apriori_flux_out = np.concatenate((apriori_flux_out,np.expand_dims(np.sum(apriori_flux[key],axis=2),axis=0)),axis=0)
+            flux_out = np.concatenate((flux_out,np.expand_dims(flux[key],axis=0)),axis=0)
+            xouts_out = np.concatenate((xouts_out,np.expand_dims(xouts[key],axis=0)),axis=0)
 
     # Make output netcdf file
     outds = xr.Dataset(
@@ -702,7 +742,7 @@ def inferpymc_postprocessouts(
             "YmodmodeBC": (["nmeasure"], YmodmodeBC),
             "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
             "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
-            #"xtrace": (["fluxsectors", "steps", "nparam"], np.array(list(xouts.values()))),
+            "xtrace": (["fluxsectors", "steps", "nparam"], xouts_out),
             "bctrace": (["steps", "nBC"], bcouts.values),
             "sigtrace": (["steps", "nsigma_site", "nsigma_time"], sigouts.values),
             "siteindicator": (["nmeasure"], siteindicator),
@@ -710,8 +750,8 @@ def inferpymc_postprocessouts(
             "sitenames": (["nsite"], sites),
             "sitelons": (["nsite"], site_lon),
             "sitelats": (["nsite"], site_lat),
-            "fluxapriori": (["fluxsectors", "lat", "lon"], apriori_flux),
-            "fluxmode": (["fluxsectors", "lat", "lon"], flux),
+            "fluxapriori": (["fluxsectors", "lat", "lon"], apriori_flux_out),
+            "fluxmode": (["fluxsectors", "lat", "lon"], flux_out),
             "scalingmean": (["fluxsectors", "lat", "lon"], scalemap_mu),
             "scalingmode": (["fluxsectors", "lat", "lon"], scalemap_mode),
             "basisfunctions": (["fluxsectors","lat", "lon"], bfarray),
