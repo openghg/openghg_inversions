@@ -54,6 +54,14 @@ def test_full_inversion_with_min_error_calc_no_bc(mcmc_args):
     assert "min_model_error" in out.attrs
 
 
+def test_full_inversion_with_min_error_by_site(mcmc_args):
+    mcmc_args["calculate_min_error"] = True
+    mcmc_args["min_error_options"] = {"by_site": True}
+    out = fixedbasisMCMC(**mcmc_args)
+
+    assert "min_model_error" in out.attrs
+
+
 def test_full_inversion_pblh_filter(mcmc_args):
     mcmc_args["filters"] = ["pblh"]
 
