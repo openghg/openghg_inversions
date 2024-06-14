@@ -42,7 +42,7 @@ from openghg_inversions import get_data, utils
 from openghg_inversions.basis import basis_functions_wrapper
 
 
-def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional[str] = None) -> float:
+def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional[str] = None) -> np.ndarray:
     """Compute estimate of model error using residual error method.
 
     This method is explained in "Modeling of Atmospheric Chemistry" by Brasseur
@@ -78,13 +78,21 @@ def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional
     Returns:
         float: estimated value for model error.
     """
-    ds = xr.concat(
-        [v[["mf", "bc_mod", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
-        dim="site",
-    )
+    # if "bc_mod" is present, we need to add it to "mf_mod"
+    if all("bc_mod" in v for k, v in ds_dict.items() if not k.startswith(".")):
+        ds = xr.concat(
+            [v[["mf", "bc_mod", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
+            dim="site",
+        )
 
-    scaling_factor = float(ds.mf.units)/float(ds.bc_mod.units)
-    ds["modelled_obs"] = ds.mf_mod + ds.bc_mod / scaling_factor
+        scaling_factor = float(ds.mf.units)/float(ds.bc_mod.units)
+        ds["modelled_obs"] = ds.mf_mod + ds.bc_mod / scaling_factor
+    else:
+        ds = xr.concat(
+            [v[["mf", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
+            dim="site",
+        )
+        ds["modelled_obs"] = ds.mf_mod
 
     if average_over is not None:
         try:
