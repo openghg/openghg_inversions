@@ -42,7 +42,7 @@ from openghg_inversions import get_data, utils
 from openghg_inversions.basis import basis_functions_wrapper
 
 
-def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional[str] = None) -> float:
+def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional[str] = None) -> np.ndarray:
     """Compute estimate of model error using residual error method.
 
     This method is explained in "Modeling of Atmospheric Chemistry" by Brasseur
@@ -78,22 +78,33 @@ def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional
     Returns:
         float: estimated value for model error.
     """
-    ds = xr.concat(
-        [v[["mf", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
-        dim="site",
-    )
+    # if "bc_mod" is present, we need to add it to "mf_mod"
+    if all("bc_mod" in v for k, v in ds_dict.items() if not k.startswith(".")):
+        ds = xr.concat(
+            [v[["mf", "bc_mod", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
+            dim="site",
+        )
+
+        scaling_factor = float(ds.mf.units)/float(ds.bc_mod.units)
+        ds["modelled_obs"] = ds.mf_mod + ds.bc_mod / scaling_factor
+    else:
+        ds = xr.concat(
+            [v[["mf", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
+            dim="site",
+        )
+        ds["modelled_obs"] = ds.mf_mod
 
     if average_over is not None:
         try:
-            avg = (ds.mf - ds.mf_mod).sel(site=average_over).mean()
+            avg = (ds.mf - ds.modelled_obs).sel(site=average_over).mean()
         except KeyError as e:
             raise ValueError(
                 f"Can't take average over site {average_over}, it is not in the inversion data."
             ) from e
     else:
-        avg = (ds.mf - ds.mf_mod).mean()
+        avg = (ds.mf - ds.modelled_obs).mean()
 
-    res_err_arr = np.sqrt(np.mean((ds.mf - ds.mf_mod - avg) ** 2))
+    res_err_arr = np.sqrt(np.mean((ds.mf - ds.modelled_obs - avg) ** 2))
     res_err = res_err_arr.values
 
     return res_err
