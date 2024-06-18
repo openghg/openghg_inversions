@@ -44,7 +44,8 @@ def residual_error_method(
     Args:
         ds_dict: dictionary of combined scenario datasets, keyed by site codes.
         average_over: site code of site over which to compute mean(y - y_mod). If `None`, then
-            the average is taken over all observations.
+            the average is taken over all observations. If "by_site", then a separate central value
+            is calculated for each site.
         robust: if True, use the "median absolute deviation" (https://en.wikipedia.org/wiki/Median_absolute_deviation)
             instead of the standard deviation. MAD is a measure of spread, similar to standard deviation, but
             is more robust to outliers.
@@ -80,12 +81,15 @@ def residual_error_method(
     if robust is True:
         # call `.as_numpy` because dask arrays throw an error when we try to compute a median
         if average_over is not None:
-            try:
-                avg = (ds.mf - ds.modelled_obs).sel(site=median_over).as_numpy().median(dim="time")
-            except KeyError as e:
-                raise ValueError(
-                    f"Can't take median over site {median_over}, it is not in the inversion data."
-                ) from e
+            if average_over == "by_site":
+                avg = (ds.mf - ds.modelled_obs).as_numpy().groupby("site").median(dim="time")
+            else:
+                try:
+                    avg = (ds.mf - ds.modelled_obs).sel(site=median_over).as_numpy().median(dim="time")
+                except KeyError as e:
+                    raise ValueError(
+                        f"Can't take median over site {median_over}, it is not in the inversion data."
+                    ) from e
         else:
             avg = (ds.mf - ds.modelled_obs).as_numpy().median(dim=["time", "site"])
 
@@ -96,12 +100,15 @@ def residual_error_method(
 
     else:
         if average_over is not None:
-            try:
-                avg = (ds.mf - ds.modelled_obs).sel(site=average_over).mean()
-            except KeyError as e:
-                raise ValueError(
-                    f"Can't take average over site {average_over}, it is not in the inversion data."
-                ) from e
+            if average_over == "by_site":
+                avg = (ds.mf - ds.modelled_obs).groupby("site").mean(dim="time")
+            else:
+                try:
+                    avg = (ds.mf - ds.modelled_obs).sel(site=average_over).mean()
+                except KeyError as e:
+                    raise ValueError(
+                        f"Can't take average over site {average_over}, it is not in the inversion data."
+                    ) from e
         else:
             avg = (ds.mf - ds.modelled_obs).mean()
 
