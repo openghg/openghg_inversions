@@ -27,8 +27,6 @@ from openghg.retrieve import get_bc, get_flux, get_footprint, get_obs_surface
 from openghg.types import SearchError
 from openghg.util import timestamp_now
 
-import openghg_inversions.hbmcmc.inversionsetup as setup
-
 
 def data_processing_surface_notracer(
     species,
@@ -325,32 +323,29 @@ def data_processing_surface_notracer(
     fp_all[".scales"] = scales
     fp_all[".units"] = float(scenario_combined.mf.units)
 
-    # If site contains measurement errors given as repeatability and variability,
-    # use variability to replace missing repeatability values, then drop variability
+    # TODO: do we want to fill missing values in repeatability or variability?
+
+    # make sure we have repeatability and variability, for outputs
+    # we will always have variability because `averaging_period` is a required
+    # parameter
+    #
+    # we also create the "mf_error" variable, which combines repeatability and variability
+    # if "averagingerror" is True, otherwise:  "mf_repeatability" is used for "mf_error",
+    # if repeatability is present, and "mf_variability" is used for "mf_error"
     for site in sites:
-        if "mf_variability" in fp_all[site] and "mf_repeatability" in fp_all[site]:
-            fp_all[site]["mf_repeatability"][np.isnan(fp_all[site]["mf_repeatability"])] = fp_all[site][
-                "mf_variability"
-            ][
-                np.logical_and(
-                    np.isfinite(fp_all[site]["mf_variability"]), np.isnan(fp_all[site]["mf_repeatability"])
-                )
-            ]
-            fp_all[site] = fp_all[site].drop_vars("mf_variability")
+        ds = fp_all[site]
+        if "mf_repeatability" not in ds:
+#            ds["mf_repeatability"] = xr.zeros_like(ds["mf_variability"])
+            ds["mf_error"] = ds["mf_variability"]
+            # TODO: if "averagingerror" is True, add logging message to say that variability was used
+        else:
+            if averagingerror:
+                ds["mf_error"] = np.sqrt(ds["mf_repeatability"]**2 + ds["mf_variability"]**2)
+            else:
+                ds["mf_error"] = ds["mf_repeatability"]
+
 
     # Add measurement variability in averaging period to measurement error
-    if averagingerror:
-        fp_all = setup.addaveragingerror(
-            fp_all,
-            sites,
-            species,
-            start_date,
-            end_date,
-            averaging_period,
-            inlet=inlet,
-            instrument=instrument,
-            store=obs_store,
-        )
 
     if save_merged_data:
         if merged_data_dir is None:

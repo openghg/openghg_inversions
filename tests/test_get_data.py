@@ -1,9 +1,15 @@
 import copy
+from unittest import mock
 
+import numpy as np
 import pytest
 import xarray as xr
+import openghg.retrieve
+from openghg.dataobjects import ObsData
+from openghg.retrieve import get_obs_surface
 from openghg.types import SearchError
 
+import openghg_inversions.get_data
 from openghg_inversions.get_data import data_processing_surface_notracer, fp_all_from_dataset, make_combined_scenario, load_merged_data
 
 
@@ -127,3 +133,37 @@ def test_fp_all_to_dataset_and_back(tac_ch4_data_args):
             xr.testing.assert_allclose(v.data, v_recovered.data, rtol=1e-3)
         else:
             assert v == v_recovered
+
+
+def test_add_averaging_error(tac_ch4_data_args):
+    """Check that "add averaging error" adds variability to repeatability."""
+    # we need to use "mock" to add mf_repeatability to our data
+    # since our test data is from picarro and only has variability
+    real_obs = get_obs_surface(site="tac", species="ch4", inlet="185m")
+    real_obs_data = real_obs.data
+    real_obs_metadata = real_obs.metadata
+    real_obs_data["mf_repeatability"] = xr.ones_like(real_obs_data["mf_variability"])
+    patched_obs = ObsData(data=real_obs_data, metadata=real_obs_metadata)
+
+    with mock.patch.object(openghg_inversions.get_data, "get_obs_surface") as mock_obs:
+        mock_obs.return_value = patched_obs
+
+        # set up two scenarios, one with averaging, one without
+        fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+        ds1 = fp_all["TAC"]
+
+        tac_ch4_data_args["averagingerror"] = False
+        fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+        ds2 = fp_all["TAC"]
+
+        # check that "mf_error", "mf_repeatability", and "mf_variability" are present
+        for var in ["mf_error", "mf_repeatability", "mf_variability"]:
+            for ds in [ds1, ds2]:
+                assert var in ds
+
+        # averagingerror=True is default, so for ds1, "mf_error" should have repeatability
+        # and variability added
+        xr.testing.assert_allclose(ds1.mf_error, np.sqrt(ds1.mf_repeatability**2 + ds1.mf_variability**2))
+
+        # ds2 should use repeatability for "mf_error", since we have set averagingerror=False
+        xr.testing.assert_allclose(ds2.mf_error, ds2.mf_repeatability)
