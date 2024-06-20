@@ -36,6 +36,7 @@ def test_full_inversion_no_model_error(mcmc_args):
 
 def test_full_inversion_flux_dim_shuffled(mcmc_args):
     mcmc_args["emissions_name"] = ["total-ukghg-edgar7-shuffled"]
+    mcmc_args["reload_merged_data"] = False
     fixedbasisMCMC(**mcmc_args)
 
 

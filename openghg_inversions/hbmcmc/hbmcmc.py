@@ -509,10 +509,8 @@ def fixedbasisMCMC(
             # pymc doesn't like NaNs, so drop them for the variables used below
             fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
 
-            if "mf_repeatability" in fp_data[site]:
-                error = np.concatenate((error, fp_data[site].mf_repeatability.values))
-            if "mf_variability" in fp_data[site]:
-                error = np.concatenate((error, fp_data[site].mf_variability.values))
+            # repeatability/variability chosen/combined into mf_error in `get_data.py`
+            error = np.concatenate((error, fp_data[site].mf_error.values))
 
             Y = np.concatenate((Y, fp_data[site].mf.values))
             siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
