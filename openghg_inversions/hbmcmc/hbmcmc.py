@@ -433,17 +433,15 @@ def fixedbasisMCMC(
         for si, site in enumerate(sites):
             # select variables to drop NaNs from
             drop_vars = []
-            for var in ["H", "H_bc", "mf", "mf_variability", "mf_repeatability"]:
+            for var in ["H", "H_bc", "mf", "mf_error", "mf_variability", "mf_repeatability"]:
                 if var in fp_data[site].data_vars:
                     drop_vars.append(var)
 
             # pymc doesn't like NaNs, so drop them for the variables used below
             fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
 
-            if "mf_repeatability" in fp_data[site]:
-                error = np.concatenate((error, fp_data[site].mf_repeatability.values))
-            if "mf_variability" in fp_data[site]:
-                error = np.concatenate((error, fp_data[site].mf_variability.values))
+            # repeatability/variability chosen/combined into mf_error in `get_data.py`
+            error = np.concatenate((error, fp_data[site].mf_error.values))
 
             Y = np.concatenate((Y, fp_data[site].mf.values))
             siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
@@ -573,6 +571,18 @@ def fixedbasisMCMC(
         post_process_args.update(mcmc_results)
         out = mcmc.inferpymc_postprocessouts(**post_process_args)
 
+        # add repeatability and variability
+        # TODO: do this in a more holistic way... e.g. add to "post processing" code?
+        # ...or add info from fp_all to RHIME outputs at a later point?
+        print(fp_all["TAC"])
+        repeatability = np.concatenate([ds.mf_repeatability.values for k, ds in fp_all.items() if not k.startswith(".")])
+        variability = np.concatenate([ds.mf_variability.values for k, ds in fp_all.items() if not k.startswith(".")])
+
+        out["uYobs_repeatability"] = (("nmeasure",), repeatability)
+        out["uYobs_variability"] = (("nmeasure",), variability)
+
+        # TODO: add attributes for these variables ...do this using cdl template system from PARIS formatting?
+
     elif use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
 
@@ -611,7 +621,7 @@ def rerun_output(input_file, outputname, outputpath, verbose=False):
         except ValueError:
             return False
 
-    ds_in = setup.opends(input_file)
+    ds_in = xr.load_dataset(input_file)
 
     # Read inputs from ncdf output
     start_date = ds_in.attrs["Start date"]

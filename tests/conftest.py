@@ -11,6 +11,8 @@ from openghg.standardise import standardise_surface, standardise_bc, standardise
 from openghg.types import ObjectStoreError
 import xarray as xr
 
+from openghg_inversions.get_data import data_processing_surface_notracer, _save_merged_data
+
 _raw_data_path = Path(".").resolve() / "tests/data/"
 
 
@@ -35,6 +37,30 @@ def merged_data_file_name(using_zarr_store):
         return "merged_data_test_tac_combined_scenario_v8"
     else:
         return "merged_data_test_tac_combined_scenario"
+
+
+# NOTE: this test should be turned off unless the format of the merged data has changed,
+# in which case it needs to be run one
+# @pytest.fixture(scope="session", autouse=True)
+# def refresh_merged_data(tac_ch4_data_args, raw_data_path, merged_data_dir, merged_data_file_name, using_zarr_store):
+#     if using_zarr_store:
+#         try:
+#             shutil.rmtree(merged_data_dir / (merged_data_file_name + ".zarr"))
+#         except FileNotFoundError:
+#             pass
+#     else:
+#         try:
+#             shutil.rmtree(merged_data_dir / (merged_data_file_name + ".nc"))
+#         except FileNotFoundError:
+#             pass
+
+#     fp_all, *_ = data_processing_surface_notracer(save_merged_data=False, **tac_ch4_data_args)
+#     _save_merged_data(
+#         fp_all=fp_all,
+#         merged_data_dir=raw_data_path,
+#         merged_data_name=merged_data_file_name,
+#         output_format="netcdf",
+# )
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -101,7 +127,9 @@ obs_data_path = _raw_data_path / "obs_tac_ch4_185m_2019-01-01_2019-02-01_data.nc
 bc_data_path = _raw_data_path / "bc_ch4_europe_cams_2019-01-01_2019-12-31_data.nc"
 footprints_data_path = _raw_data_path / "footprints_tac_europe_name_185m_2019-01-01_2019-01-07_data.nc"
 flux_data_path = _raw_data_path / "flux_total_ch4_europe_edgar7_2019-01-01_2019-12-31_data.nc"
-flux_dim_shuffled_data_path = _raw_data_path / "flux_total_ch4_europe_edgar7_2019-01-01_2019-12-31_data_dim_shuffled.nc"
+flux_dim_shuffled_data_path = (
+    _raw_data_path / "flux_total_ch4_europe_edgar7_2019-01-01_2019-12-31_data_dim_shuffled.nc"
+)
 
 data_info = {
     "surface": [standardise_surface, obs_metadata, obs_data_path],
@@ -140,9 +168,14 @@ def session_object_store(session_config_mocker) -> None:
     # check if there are four pieces of data in the object store
     # if not, add the missing data
     if add_data:
-        to_add = set(["surface", "boundary_conditions", "flux", "flux_dim_shuffle", "footprints"]) - set(found_dtypes)
+        all_data_types = ["surface", "boundary_conditions", "flux", "flux", "footprints"]
+        for dtype in found_dtypes:
+            all_data_types.remove(dtype)
 
-        for dtype in to_add:
+        if "flux" in all_data_types:
+            all_data_types.append("flux_dim_shuffle")
+
+        for dtype in all_data_types:
             standardise_fn = data_info[dtype][0]
             file_path = data_info[dtype][2]
             metadata = data_info[dtype][1]
