@@ -1,4 +1,5 @@
 import copy
+import logging
 from unittest import mock
 
 import numpy as np
@@ -9,7 +10,13 @@ from openghg.retrieve import get_obs_surface
 from openghg.types import SearchError
 
 import openghg_inversions.get_data
-from openghg_inversions.get_data import data_processing_surface_notracer, fp_all_from_dataset, make_combined_scenario, load_merged_data
+from openghg_inversions.get_data import (
+    data_processing_surface_notracer,
+    fp_all_from_dataset,
+    make_combined_scenario,
+    load_merged_data,
+    add_obs_error,
+)
 
 
 def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, using_zarr_store):
@@ -28,21 +35,27 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, usin
 
     if using_zarr_store:
         # get combined scenario for TAC at time 2019-01-01 00:00:00
-        ds = xr.open_dataset(
-            raw_data_path / "merged_data_test_tac_combined_scenario_v8.nc"
-        )
+        ds = xr.open_dataset(raw_data_path / "merged_data_test_tac_combined_scenario_v8.nc")
         expected_tac_combined_scenario = fp_all_from_dataset(ds)
 
         # update to match obs error handling:
-        expected_tac_combined_scenario["TAC"]["mf_repeatability"] = xr.zeros_like(expected_tac_combined_scenario["TAC"].mf_variability)
+        expected_tac_combined_scenario["TAC"]["mf_repeatability"] = xr.zeros_like(
+            expected_tac_combined_scenario["TAC"].mf_variability
+        )
 
-        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario["TAC"].isel(time=0))
+        xr.testing.assert_allclose(
+            result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario["TAC"].isel(time=0)
+        )
     else:
         # get combined scenario for TAC at time 2019-01-01 00:00:00
         expected_tac_combined_scenario = xr.open_dataset(
             raw_data_path / "merged_data_test_tac_combined_scenario.nc"
         )
-        xr.testing.assert_allclose(result[0]["TAC"].isel(time=0), expected_tac_combined_scenario.isel(time=0).isel(site=0, drop=True), rtol=1e-2)
+        xr.testing.assert_allclose(
+            result[0]["TAC"].isel(time=0),
+            expected_tac_combined_scenario.isel(time=0).isel(site=0, drop=True),
+            rtol=1e-2,
+        )
 
 
 def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir, using_zarr_store):
@@ -171,3 +184,34 @@ def test_add_averaging_error(tac_ch4_data_args):
 
         # ds2 should use repeatability for "mf_error", since we have set averagingerror=False
         xr.testing.assert_allclose(ds2.mf_error, ds2.mf_repeatability)
+
+
+def test_add_obs_error_exceptions_warnings(caplog):
+    ds = xr.Dataset()
+    ds["mf"] = xr.DataArray([1] * 10)
+    fp_all = {"TAC": ds}
+
+    with pytest.raises(ValueError):
+        add_obs_error(sites=["TAC"], fp_all=fp_all, add_averaging_error=True)
+
+    # check for WARNING when `mf_error` contains zeros
+    # plus INFO suggesting fix
+    caplog.set_level(logging.INFO)
+
+    ds["mf_repeatability"] = xr.DataArray([0] * 5 + [1] * 5)
+    ds["mf_variability"] = xr.DataArray([0] * 10)
+
+    add_obs_error(sites=["TAC"], fp_all=fp_all, add_averaging_error=False)
+
+    output = caplog.text
+    assert "50 percent" in output
+    assert "Try setting `averaging_period = None`" in output
+
+    # check for logger info if repeatability isn't present and add_averaging_error is True
+    del ds["mf_repeatability"]
+    del ds["mf_error"]
+
+    add_obs_error(sites=["TAC"], fp_all=fp_all, add_averaging_error=True)
+
+    output = caplog.text
+    assert "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site TAC" in output

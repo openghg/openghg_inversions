@@ -39,6 +39,8 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
     This function modifies `fp_all` in place, adding `mf_error` and making sure that both
     `mf_repeatability` and `mf_variability` are present.
 
+    Note: if the `averaging`
+
     Args:
         sites: list of site names to process
         fp_all: dictionary of `ModelScenario` objects, keyed by site names
@@ -66,13 +68,23 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
             ds["mf_error"] = ds["mf_variability"]
 
             if add_averaging_error:
-                logger.info("Using variability for `mf_error` at site %s", site)
+                logger.info("`mf_repeatability` not present; using `mf_variability` for `mf_error` at site %s", site)
 
         else:
             if add_averaging_error:
                 ds["mf_error"] = np.sqrt(ds["mf_repeatability"]**2 + ds["mf_variability"]**2)
             else:
                 ds["mf_error"] = ds["mf_repeatability"]
+
+        # warnings/info for debugging
+        err0 = ds["mf_error"] == 0
+
+        if err0.any():
+            percent0 = 100 * err0.mean()
+            logger.warning("`mf_error` is zero for %.0f percent of times at site %s.", percent0, site)
+            info_msg = ("If `averaging_period` matches the frequency of the obs data, then `mf_variability` "
+                        "will be zero. Try setting `averaging_period = None`.")
+            logger.info(info_msg)
 
 
 
