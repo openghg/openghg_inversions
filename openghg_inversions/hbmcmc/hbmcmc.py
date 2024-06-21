@@ -510,7 +510,7 @@ def fixedbasisMCMC(
         for si, site in enumerate(sites):
             # select variables to drop NaNs from
             drop_vars = []
-            for var in ["H", "H_bc", "mf", "mf_variability", "mf_repeatability"]:
+            for var in ["H", "H_bc", "mf", "mf_error", "mf_variability", "mf_repeatability"]:
                 if var in fp_data[site].data_vars:
                     drop_vars.append(var)
 
@@ -633,6 +633,18 @@ def fixedbasisMCMC(
         # Process and save inversion output
         post_process_args.update(mcmc_results)
         out = mcmc.inferpymc_postprocessouts(**post_process_args)
+
+        # add repeatability and variability
+        # TODO: do this in a more holistic way... e.g. add to "post processing" code?
+        # ...or add info from fp_all to RHIME outputs at a later point?
+        print(fp_all["TAC"])
+        repeatability = np.concatenate([ds.mf_repeatability.values for k, ds in fp_all.items() if not k.startswith(".")])
+        variability = np.concatenate([ds.mf_variability.values for k, ds in fp_all.items() if not k.startswith(".")])
+
+        out["uYobs_repeatability"] = (("nmeasure",), repeatability)
+        out["uYobs_variability"] = (("nmeasure",), variability)
+
+        # TODO: add attributes for these variables ...do this using cdl template system from PARIS formatting?
 
     elif use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
