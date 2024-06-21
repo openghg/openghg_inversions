@@ -13,7 +13,6 @@
 import numpy as np
 import pandas as pd
 import xarray as xr
-from openghg.retrieve import get_obs_surface
 
 
 def opends(fn):
