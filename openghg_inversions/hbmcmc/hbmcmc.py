@@ -81,15 +81,23 @@ def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional
     # if "bc_mod" is present, we need to add it to "mf_mod"
     if all("bc_mod" in v for k, v in ds_dict.items() if not k.startswith(".")):
         ds = xr.concat(
-            [v[["mf", "bc_mod", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
+            [
+                v[["mf", "bc_mod", "mf_mod"]].expand_dims({"site": [k]})
+                for k, v in ds_dict.items()
+                if not k.startswith(".")
+            ],
             dim="site",
         )
 
-        scaling_factor = float(ds.mf.units)/float(ds.bc_mod.units)
+        scaling_factor = float(ds.mf.units) / float(ds.bc_mod.units)
         ds["modelled_obs"] = ds.mf_mod + ds.bc_mod / scaling_factor
     else:
         ds = xr.concat(
-            [v[["mf", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
+            [
+                v[["mf", "mf_mod"]].expand_dims({"site": [k]})
+                for k, v in ds_dict.items()
+                if not k.startswith(".")
+            ],
             dim="site",
         )
         ds["modelled_obs"] = ds.mf_mod
