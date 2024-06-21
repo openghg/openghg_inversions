@@ -672,7 +672,7 @@ def rerun_output(input_file, outputname, outputpath, verbose=False):
         except ValueError:
             return False
 
-    ds_in = setup.opends(input_file)
+    ds_in = xr.load_dataset(input_file)
 
     # Read inputs from ncdf output
     start_date = ds_in.attrs["Start date"]

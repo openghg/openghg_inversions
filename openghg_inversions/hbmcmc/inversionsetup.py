@@ -12,26 +12,6 @@
 
 import numpy as np
 import pandas as pd
-import xarray as xr
-
-
-def opends(fn):
-    """
-    Open a netcdf dataset with xarray
-    -----------------------------------
-    Args:
-      fn (str):
-        Netcdf file to be opened
-
-    Returns:
-        xarray.Dataset:
-            netcdf file as  dataset
-    -----------------------------------
-    """
-    with xr.open_dataset(fn) as load:
-        ds = load.load()
-
-        return ds
 
 
 def monthly_bcs(start_date, end_date, site, fp_data):
