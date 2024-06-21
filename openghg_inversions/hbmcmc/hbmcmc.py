@@ -638,8 +638,8 @@ def fixedbasisMCMC(
         # TODO: do this in a more holistic way... e.g. add to "post processing" code?
         # ...or add info from fp_all to RHIME outputs at a later point?
         print(fp_all["TAC"])
-        repeatability = np.concatenate([ds.mf_repeatability.values for k, ds in fp_all.items() if not k.startswith(".")])
-        variability = np.concatenate([ds.mf_variability.values for k, ds in fp_all.items() if not k.startswith(".")])
+        repeatability = np.concatenate([ds.mf_repeatability.values for k, ds in fp_data.items() if not k.startswith(".")])
+        variability = np.concatenate([ds.mf_variability.values for k, ds in fp_data.items() if not k.startswith(".")])
 
         out["uYobs_repeatability"] = (("nmeasure",), repeatability)
         out["uYobs_variability"] = (("nmeasure",), variability)
