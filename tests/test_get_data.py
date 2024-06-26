@@ -38,11 +38,6 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, usin
         ds = xr.open_dataset(raw_data_path / "merged_data_test_tac_combined_scenario_v8.nc")
         expected_tac_combined_scenario = fp_all_from_dataset(ds)
 
-        # update to match obs error handling:
-        expected_tac_combined_scenario["TAC"]["mf_repeatability"] = xr.zeros_like(
-            expected_tac_combined_scenario["TAC"].mf_variability
-        )
-
         xr.testing.assert_allclose(
             result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario["TAC"].isel(time=0)
         )
@@ -53,7 +48,7 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, usin
         )
         expected_tac_combined_scenario = fp_all_from_dataset(ds)
         xr.testing.assert_allclose(
-            result[0]["TAC"].isel(time=0),
+            result[0]["TAC"].isel(time=0).drop_dims("lev"),
             expected_tac_combined_scenario["TAC"].isel(time=0),
             rtol=1e-2,
         )

@@ -30,8 +30,8 @@ def test_full_inversion(mcmc_args):
     #mcmc_args["reload_merged_data"] = False
     out = fixedbasisMCMC(**mcmc_args)
 
-    assert "uYobs_repeatability" in out
-    assert "uYobs_variability" in out
+    assert "Yerror_repeatability" in out
+    assert "Yerror_variability" in out
 
 
 def test_full_inversion_no_model_error(mcmc_args):
