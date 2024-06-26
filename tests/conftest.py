@@ -39,30 +39,6 @@ def merged_data_file_name(using_zarr_store):
         return "merged_data_test_tac_combined_scenario"
 
 
-# NOTE: this test should be turned off unless the format of the merged data has changed,
-# in which case it needs to be run one
-# @pytest.fixture(scope="session", autouse=True)
-# def refresh_merged_data(tac_ch4_data_args, raw_data_path, merged_data_dir, merged_data_file_name, using_zarr_store):
-#     if using_zarr_store:
-#         try:
-#             shutil.rmtree(merged_data_dir / (merged_data_file_name + ".zarr"))
-#         except FileNotFoundError:
-#             pass
-#     else:
-#         try:
-#             shutil.rmtree(merged_data_dir / (merged_data_file_name + ".nc"))
-#         except FileNotFoundError:
-#             pass
-
-#     fp_all, *_ = data_processing_surface_notracer(save_merged_data=False, **tac_ch4_data_args)
-#     _save_merged_data(
-#         fp_all=fp_all,
-#         merged_data_dir=raw_data_path,
-#         merged_data_name=merged_data_file_name,
-#         output_format="netcdf",
-# )
-
-
 @pytest.fixture(scope="session", autouse=True)
 def add_frozen_merged_data(merged_data_dir, merged_data_file_name, using_zarr_store):
     """Copy merged data from tests/data to temporary merged_data_dir.
