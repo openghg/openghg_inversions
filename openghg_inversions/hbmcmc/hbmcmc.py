@@ -503,6 +503,8 @@ def fixedbasisMCMC(
     if use_tracer is False:
         # Get inputs ready
         error = np.zeros(0)
+        obs_repeatability = np.zeros(0)
+        obs_variability = np.zeros(0)
         Hx = np.zeros(0)
         Y = np.zeros(0)
         siteindicator = np.zeros(0)
@@ -519,6 +521,11 @@ def fixedbasisMCMC(
 
             # repeatability/variability chosen/combined into mf_error in `get_data.py`
             error = np.concatenate((error, fp_data[site].mf_error.values))
+
+            # make repeatability and variability for outputs (not used directly in inversions)
+            obs_repeatability = np.concatenate((obs_repeatability, fp_data.mf_repeatability.values))
+            obs_variability = np.concatenate((obs_variability, fp_data.mf_variability.values))
+
 
             Y = np.concatenate((Y, fp_data[site].mf.values))
             siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
@@ -609,6 +616,8 @@ def fixedbasisMCMC(
             "emissions_name": emissions_name,
             "emissions_store": emissions_store,
             "country_file": country_file,
+            "obs_repeatability": obs_repeatability,
+            "obs_variability": obs_variability,
         }
 
         # add mcmc_args to post_process_args
@@ -633,18 +642,6 @@ def fixedbasisMCMC(
         # Process and save inversion output
         post_process_args.update(mcmc_results)
         out = mcmc.inferpymc_postprocessouts(**post_process_args)
-
-        # add repeatability and variability
-        # TODO: do this in a more holistic way... e.g. add to "post processing" code?
-        # ...or add info from fp_all to RHIME outputs at a later point?
-        print(fp_all["TAC"])
-        repeatability = np.concatenate([ds.mf_repeatability.values for k, ds in fp_data.items() if not k.startswith(".")])
-        variability = np.concatenate([ds.mf_variability.values for k, ds in fp_data.items() if not k.startswith(".")])
-
-        out["uYobs_repeatability"] = (("nmeasure",), repeatability)
-        out["uYobs_variability"] = (("nmeasure",), variability)
-
-        # TODO: add attributes for these variables ...do this using cdl template system from PARIS formatting?
 
     elif use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")

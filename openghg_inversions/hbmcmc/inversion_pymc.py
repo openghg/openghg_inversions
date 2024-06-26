@@ -407,6 +407,8 @@ def inferpymc_postprocessouts(
     YBCtrace: Optional[np.ndarray] = None,
     bcouts: Optional[np.ndarray] = None,
     Hbc: Optional[np.ndarray] = None,
+    obs_repeatability: Optional[np.ndarray] = None,
+    obs_variability: Optional[np.ndarray] = None,
     fp_data=None,
     country_file=None,
     add_offset=False,
@@ -745,6 +747,8 @@ def inferpymc_postprocessouts(
     data_vars = {
         "Yobs": (["nmeasure"], Y),
         "Yerror": (["nmeasure"], error),
+        "Yerror_repeatability": (["nmeasure"], obs_repeatability),
+        "Yerror_variability": (["nmeasure"], obs_variability),
         "Ytime": (["nmeasure"], Ytime),
         "Yapriori": (["nmeasure"], Yapriori),
         "Ymodmean": (["nmeasure"], Ymodmu),
@@ -813,6 +817,9 @@ def inferpymc_postprocessouts(
     outds.fluxmode.attrs["units"] = "mol/m2/s"
     outds.fluxapriori.attrs["units"] = "mol/m2/s"
     outds.Yobs.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Yerror.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Yerror_repeatability.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Yerror_variability.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yapriori.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Ymodmean.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Ymodmedian.attrs["units"] = obs_units + " " + "mol/mol"
@@ -824,7 +831,6 @@ def inferpymc_postprocessouts(
     outds.Yoffmode.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yoff95.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yoff68.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Yerror.attrs["units"] = obs_units + " " + "mol/mol"
     outds.countrymean.attrs["units"] = country_units
     outds.countrymedian.attrs["units"] = country_units
     outds.countrymode.attrs["units"] = country_units
