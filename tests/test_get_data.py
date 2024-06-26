@@ -48,7 +48,7 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, usin
         )
         expected_tac_combined_scenario = fp_all_from_dataset(ds)
         xr.testing.assert_allclose(
-            result[0]["TAC"].isel(time=0),
+            result[0]["TAC"].isel(time=0).drop_dims("lev"),
             expected_tac_combined_scenario["TAC"].isel(time=0),
             rtol=1e-2,
         )
