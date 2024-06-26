@@ -40,7 +40,7 @@ import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
 from openghg_inversions import get_data, utils
 from openghg_inversions.basis import basis_functions_wrapper
-from openghg_inversions.model_error import residual_error_method, setup_min_error
+from openghg_inversions.model_error import residual_error_method, percentile_error_method, setup_min_error
 
 
 def fixedbasisMCMC(
@@ -100,7 +100,7 @@ def fixedbasisMCMC(
     save_trace: Union[str, Path, bool] = False,
     skip_postprocessing: bool = False,
     merged_data_only: bool = False,
-    calculate_min_error: bool = False,
+    calculate_min_error=None,
     min_error_options: Optional[dict] = None,
     **kwargs,
 ) -> xr.Dataset:
@@ -456,7 +456,7 @@ def fixedbasisMCMC(
                 Hx = np.hstack((Hx, fp_data[site].H.values))
 
         # Calculate min error
-        if calculate_min_error:
+        if calculate_min_error == "residual":
             if min_error_options is not None:
                 min_error = residual_error_method(fp_data, **min_error_options)
             else:
@@ -466,6 +466,10 @@ def fixedbasisMCMC(
             if min_error_options and min_error_options.get("by_site", False):
                 min_error = setup_min_error(min_error, siteindicator)
 
+            kwargs["min_error"] = min_error  # currently `min_error` is passed via kwargs to `infer_pymc`
+        elif calculate_min_error == "percentile":
+            min_error = percentile_error_method(fp_data)
+            min_error = setup_min_error(min_error, siteindicator)
             kwargs["min_error"] = min_error  # currently `min_error` is passed via kwargs to `infer_pymc`
 
 
@@ -574,7 +578,6 @@ def fixedbasisMCMC(
         # add repeatability and variability
         # TODO: do this in a more holistic way... e.g. add to "post processing" code?
         # ...or add info from fp_all to RHIME outputs at a later point?
-        print(fp_all["TAC"])
         repeatability = np.concatenate([ds.mf_repeatability.values for k, ds in fp_data.items() if not k.startswith(".")])
         variability = np.concatenate([ds.mf_variability.values for k, ds in fp_data.items() if not k.startswith(".")])
 

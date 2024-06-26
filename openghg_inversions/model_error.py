@@ -119,6 +119,39 @@ def residual_error_method(
 
     return res_err.values
 
+def percentile_error_method(
+    ds_dict: dict[str, xr.Dataset]
+) -> np.ndarray:
+    """Compute estimate of minimum model error using percentile error method
+
+    This is a simple method to estimate the minimum model error (i.e. the model error used at baseline
+    points). For each site. it takes the monthly median measured mf and subtracts the monthly 5th
+    percentile measured mf, then calculates the annual mean of these monthly values. The thinking behind
+    this is that transport error might result in modelled enhancements at the baseline points, even with
+    an accurate flux map. So this provides a rough calculation for the likely impact of such an event.
+
+    Args:
+        ds_dict: dictionary of combined scenario datasets, keyed by site codes.
+
+    Returns:
+        np.ndarray: estimated value(s) for model error.
+    """
+    # Combine mf data from each site into a single dataset with a site dimension
+    ds = xr.concat(
+        [
+            v[["mf"]].expand_dims({"site": [k]})
+            for k, v in ds_dict.items()
+            if not k.startswith(".")
+        ],
+        dim="site",
+    )
+
+    # Calculate monthly percentiles, then take the annual mean difference for each site
+    monthly_50pc = ds.mf.as_numpy().resample(time="MS").quantile(0.5)
+    monthly_5pc = ds.mf.as_numpy().resample(time="MS").quantile(0.05)
+    res_err = (monthly_50pc - monthly_5pc).groupby("site").mean(dim="time")
+
+    return res_err.values
 
 def setup_min_error(min_error: np.ndarray, siteindicator: np.ndarray) -> np.ndarray:
     """Given min_error vector with same length as number of sites, create a vector
