@@ -523,8 +523,8 @@ def fixedbasisMCMC(
             error = np.concatenate((error, fp_data[site].mf_error.values))
 
             # make repeatability and variability for outputs (not used directly in inversions)
-            obs_repeatability = np.concatenate((obs_repeatability, fp_data.mf_repeatability.values))
-            obs_variability = np.concatenate((obs_variability, fp_data.mf_variability.values))
+            obs_repeatability = np.concatenate((obs_repeatability, fp_data[site].mf_repeatability.values))
+            obs_variability = np.concatenate((obs_variability, fp_data[site].mf_variability.values))
 
 
             Y = np.concatenate((Y, fp_data[site].mf.values))
