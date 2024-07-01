@@ -27,7 +27,11 @@ def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_nam
 
 
 def test_full_inversion(mcmc_args):
-    fixedbasisMCMC(**mcmc_args)
+    #mcmc_args["reload_merged_data"] = False
+    out = fixedbasisMCMC(**mcmc_args)
+
+    assert "uYobs_repeatability" in out
+    assert "uYobs_variability" in out
 
 
 def test_full_inversion_no_model_error(mcmc_args):
@@ -36,6 +40,7 @@ def test_full_inversion_no_model_error(mcmc_args):
 
 def test_full_inversion_flux_dim_shuffled(mcmc_args):
     mcmc_args["emissions_name"] = ["total-ukghg-edgar7-shuffled"]
+    mcmc_args["reload_merged_data"] = False
     fixedbasisMCMC(**mcmc_args)
 
 
@@ -49,6 +54,14 @@ def test_full_inversion_with_min_error_calc(mcmc_args):
 def test_full_inversion_with_min_error_calc_no_bc(mcmc_args):
     mcmc_args["calculate_min_error"] = True
     mcmc_args["use_bc"] = False
+    out = fixedbasisMCMC(**mcmc_args)
+
+    assert "min_model_error" in out.attrs
+
+
+def test_full_inversion_with_min_error_by_site(mcmc_args):
+    mcmc_args["calculate_min_error"] = True
+    mcmc_args["min_error_options"] = {"by_site": True}
     out = fixedbasisMCMC(**mcmc_args)
 
     assert "min_model_error" in out.attrs
