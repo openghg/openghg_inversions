@@ -139,7 +139,7 @@ This is not a comprehensive list (see the docstring for `fixedbasisMCMC` in the 
   - The default value is `False`. 
   - If `True`, the arviz `InferenceData` output from sampling will be saved to the output path of the inversion, with a file name of the form `f"{outputname}{start_data}_trace.nc`. To load this trace into arviz, you need to use `InferenceData.from_netcdf`.
   - Alternatively, you can pass a path (including filename), and that path will be used.
-- `averaging_error`: if `True`, the error from resampling to the given `averaging_period` will be added to the observation's error. (Note: currently this doesn't work correctly, see [GH issue #42](https://github.com/openghg/openghg_inversions/issues/42).)
+- `averaging_error`: if `True`, the error from resampling to the given `averaging_period` will be added to the observation's error.
 - `use_bc`: defaults to `True`. If `False`, no boundary conditions will be used in the inversion. This implicitly assumes that contributions from the boundary have been subtracted from the observations.
 - `fix_basis_outer_regions`:
   - Default value is `False`
@@ -164,6 +164,21 @@ These parameters include:
   - the measured enhancement above the modelled baseline (if `True`)
   - the prior modelled enhancement (if `False`)
 - `no_model_error`: if `True`, only use obs error in likelihood (omitting min. model error and model error from scaling pollution events).
+
+
+### The output from inversions
+
+The results of an inversions are returned as an xarray `Dataset`.
+
+The dimension `nmeasure` consists of the time for each observation stacked into a single 1D array.
+
+TODO: complete this part
+
+- `Yerror`: obs. error used in the inversion; if `add_averaging` is True, this will contain the combined "repeatability" and "variability"; otherwise, it will just contain "repeatability", if it is available, or "variability"
+- `Yerror_repeatablity`: obs. repeatability. If repeatability isn't available for some sites, then this is filled with zeros.
+- `Yerror_variability`: obs. variability.
+
+
 
 ## Contributing
 

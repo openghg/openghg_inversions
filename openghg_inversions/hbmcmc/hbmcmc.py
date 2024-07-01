@@ -81,15 +81,23 @@ def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional
     # if "bc_mod" is present, we need to add it to "mf_mod"
     if all("bc_mod" in v for k, v in ds_dict.items() if not k.startswith(".")):
         ds = xr.concat(
-            [v[["mf", "bc_mod", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
+            [
+                v[["mf", "bc_mod", "mf_mod"]].expand_dims({"site": [k]})
+                for k, v in ds_dict.items()
+                if not k.startswith(".")
+            ],
             dim="site",
         )
 
-        scaling_factor = float(ds.mf.units)/float(ds.bc_mod.units)
+        scaling_factor = float(ds.mf.units) / float(ds.bc_mod.units)
         ds["modelled_obs"] = ds.mf_mod + ds.bc_mod / scaling_factor
     else:
         ds = xr.concat(
-            [v[["mf", "mf_mod"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
+            [
+                v[["mf", "mf_mod"]].expand_dims({"site": [k]})
+                for k, v in ds_dict.items()
+                if not k.startswith(".")
+            ],
             dim="site",
         )
         ds["modelled_obs"] = ds.mf_mod
@@ -495,6 +503,8 @@ def fixedbasisMCMC(
     if use_tracer is False:
         # Get inputs ready
         error = np.zeros(0)
+        obs_repeatability = np.zeros(0)
+        obs_variability = np.zeros(0)
         Hx = np.zeros(0)
         Y = np.zeros(0)
         siteindicator = np.zeros(0)
@@ -502,17 +512,20 @@ def fixedbasisMCMC(
         for si, site in enumerate(sites):
             # select variables to drop NaNs from
             drop_vars = []
-            for var in ["H", "H_bc", "mf", "mf_variability", "mf_repeatability"]:
+            for var in ["H", "H_bc", "mf", "mf_error", "mf_variability", "mf_repeatability"]:
                 if var in fp_data[site].data_vars:
                     drop_vars.append(var)
 
             # pymc doesn't like NaNs, so drop them for the variables used below
             fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
 
-            if "mf_repeatability" in fp_data[site]:
-                error = np.concatenate((error, fp_data[site].mf_repeatability.values))
-            if "mf_variability" in fp_data[site]:
-                error = np.concatenate((error, fp_data[site].mf_variability.values))
+            # repeatability/variability chosen/combined into mf_error in `get_data.py`
+            error = np.concatenate((error, fp_data[site].mf_error.values))
+
+            # make repeatability and variability for outputs (not used directly in inversions)
+            obs_repeatability = np.concatenate((obs_repeatability, fp_data[site].mf_repeatability.values))
+            obs_variability = np.concatenate((obs_variability, fp_data[site].mf_variability.values))
+
 
             Y = np.concatenate((Y, fp_data[site].mf.values))
             siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
@@ -603,6 +616,8 @@ def fixedbasisMCMC(
             "emissions_name": emissions_name,
             "emissions_store": emissions_store,
             "country_file": country_file,
+            "obs_repeatability": obs_repeatability,
+            "obs_variability": obs_variability,
         }
 
         # add mcmc_args to post_process_args
@@ -666,7 +681,7 @@ def rerun_output(input_file, outputname, outputpath, verbose=False):
         except ValueError:
             return False
 
-    ds_in = setup.opends(input_file)
+    ds_in = xr.load_dataset(input_file)
 
     # Read inputs from ncdf output
     start_date = ds_in.attrs["Start date"]
