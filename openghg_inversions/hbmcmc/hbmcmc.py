@@ -31,7 +31,7 @@ About
 """
 
 from pathlib import Path
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 
 import numpy as np
 import xarray as xr
@@ -100,7 +100,7 @@ def fixedbasisMCMC(
     save_trace: Union[str, Path, bool] = False,
     skip_postprocessing: bool = False,
     merged_data_only: bool = False,
-    calculate_min_error=None,
+    calculate_min_error: Optional[Literal["percentile", "residual"]] = None,
     min_error_options: Optional[dict] = None,
     **kwargs,
 ) -> xr.Dataset:
@@ -479,6 +479,11 @@ def fixedbasisMCMC(
             min_error = setup_min_error(min_error, siteindicator)
             kwargs["min_error"] = min_error  # currently `min_error` is passed via kwargs to `infer_pymc`
 
+        elif calculate_min_error is None:
+            pass
+        else:
+            raise ValueError("`calculate_min_error` must have values: 'residual', 'percentile', or `None`;"
+                             f" {calculate_min_error} not recognised.")
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
