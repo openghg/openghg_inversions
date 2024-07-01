@@ -298,6 +298,13 @@ def fixedbasisMCMC(
 
       merged_data_only: if True, save merged data, and do nothing else.
 
+      calculate_min_error: if None, use value in `kwargs[min_error]`. Otherwise, compute min model error
+        using the "residual" method or the "percentile" method. (See `openghg_inversions.model_error.py` for
+        details.)
+
+      min_error_options: dictionary of additional arguments to pass the the function used to calculate min. model
+        error (as specified by `calculate_min_error`).
+
     Returns:
         Saves an output from the inversion code using inferpymc_postprocessouts.
 
