@@ -2,7 +2,7 @@
 
 # Version 0.2.0
 
-- Fixed "add averaging" functional, which adds the variability of obs over a resampling period to the measurement error (repeatability). Previously, this function was not working because. [#PR 144](https://github.com/openghg/openghg_inversions/pull/144)
+- Fixed "add averaging" functional, which adds the variability of obs over a resampling period to the measurement error (repeatability). This closes [Issue #42](https://github.com/openghg/openghg_inversions/issues/42) . [#PR 144](https://github.com/openghg/openghg_inversions/pull/144)
 
 - Add option to pass the filters as dictionary (with the sites as keys). [#PR 135](https://github.com/openghg/openghg_inversions/pull/135)
 
