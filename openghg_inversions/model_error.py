@@ -10,7 +10,6 @@ import xarray as xr
 
 def residual_error_method(
     ds_dict: dict[str, xr.Dataset],
-    average_over: Optional[str] = None,
     robust: bool = False,
     by_site: bool = False,
 ) -> np.ndarray:
@@ -21,8 +20,8 @@ def residual_error_method(
     and aircraft (TRACE-P) observations to estimate Asian sources of carbon monoxide", by Heald, Jacob,
     Jones, et.al. (Journal of Geophysical Research, vol. 109, 2004).
 
-    Roughly, we assume that the observations y are equal to the modelled observations y_mod, plus a
-    bias term b, and instrument, representation, and model error:
+    Roughly, we assume that the observations y are equal to the modelled observations y_mod (mf_mod + bc_mod),
+    plus a bias term b, and instrument, representation, and model error:
 
     y = y_mod + b + err_I + err_R + err_M
 
@@ -30,7 +29,7 @@ def residual_error_method(
 
     (y - y_mod) - mean(y - y_mod) = err_I + err_R + err_M  (*)
 
-    where the mean is taken over all observations, or a subset.
+    where the mean is taken over all observations.
 
     Calculating the RMS of the LHS of (*) gives us an estimate for
 
@@ -41,11 +40,12 @@ def residual_error_method(
     Thus a rough estimate for sigma_M is the RMS of the LHS of (*), possibly with the RMS of
     the instrument/observation and averaging errors removed (this isn't implemented here).
 
+    Note: in the "non-robust" case, we are computing the standard deviation of y - y_mod. The mean on the LHS
+    of equation (*) could be taken over a subset of the observation, in which case the value calculated is not
+    a standard deviation. We wrote the derivation this way to match Brasseur and Jacobs.
+
     Args:
         ds_dict: dictionary of combined scenario datasets, keyed by site codes.
-        average_over: site code of site over which to compute mean(y - y_mod). If `None`, then
-            the average is taken over all observations. If "by_site", then a separate central value
-            is calculated for each site.
         robust: if True, use the "median absolute deviation" (https://en.wikipedia.org/wiki/Median_absolute_deviation)
             instead of the standard deviation. MAD is a measure of spread, similar to standard deviation, but
             is more robust to outliers.
@@ -80,48 +80,24 @@ def residual_error_method(
 
     if robust is True:
         # call `.as_numpy` because dask arrays throw an error when we try to compute a median
-        if average_over is not None:
-            if average_over == "by_site":
-                avg = (ds.mf - ds.modelled_obs).as_numpy().groupby("site").median(dim="time")
-            else:
-                try:
-                    avg = (ds.mf - ds.modelled_obs).sel(site=median_over).as_numpy().median(dim="time")
-                except KeyError as e:
-                    raise ValueError(
-                        f"Can't take median over site {median_over}, it is not in the inversion data."
-                    ) from e
-        else:
-            avg = (ds.mf - ds.modelled_obs).as_numpy().median(dim=["time", "site"])
-
         if by_site is True:
+            avg = (ds.mf - ds.modelled_obs).as_numpy().groupby("site").median(dim="time")
             res_err = np.abs(ds.mf - ds.modelled_obs - avg).as_numpy().groupby("site").median(dim="time")
         else:
+            avg = (ds.mf - ds.modelled_obs).as_numpy().median(dim=["time", "site"])
             res_err = np.abs(ds.mf - ds.modelled_obs - avg).as_numpy().median(dim=["site", "time"])
-
     else:
-        if average_over is not None:
-            if average_over == "by_site":
-                avg = (ds.mf - ds.modelled_obs).groupby("site").mean(dim="time")
-            else:
-                try:
-                    avg = (ds.mf - ds.modelled_obs).sel(site=average_over).mean()
-                except KeyError as e:
-                    raise ValueError(
-                        f"Can't take average over site {average_over}, it is not in the inversion data."
-                    ) from e
-        else:
-            avg = (ds.mf - ds.modelled_obs).mean()
-
         if by_site is True:
+            avg = (ds.mf - ds.modelled_obs).groupby("site").mean(dim="time")
             res_err = np.sqrt(((ds.mf - ds.modelled_obs - avg) ** 2).groupby("site").mean("time"))
         else:
+            avg = (ds.mf - ds.modelled_obs).mean()
             res_err = np.sqrt(((ds.mf - ds.modelled_obs - avg) ** 2).mean())
 
     return res_err.values
 
-def percentile_error_method(
-    ds_dict: dict[str, xr.Dataset]
-) -> np.ndarray:
+
+def percentile_error_method(ds_dict: dict[str, xr.Dataset]) -> np.ndarray:
     """Compute estimate of minimum model error using percentile error method
 
     This is a simple method to estimate the minimum model error (i.e. the model error used at baseline
@@ -138,11 +114,7 @@ def percentile_error_method(
     """
     # Combine mf data from each site into a single dataset with a site dimension
     ds = xr.concat(
-        [
-            v[["mf"]].expand_dims({"site": [k]})
-            for k, v in ds_dict.items()
-            if not k.startswith(".")
-        ],
+        [v[["mf"]].expand_dims({"site": [k]}) for k, v in ds_dict.items() if not k.startswith(".")],
         dim="site",
     )
 
@@ -152,6 +124,7 @@ def percentile_error_method(
     res_err = (monthly_50pc - monthly_5pc).groupby("site").mean(dim="time")
 
     return res_err.values
+
 
 def setup_min_error(min_error: np.ndarray, siteindicator: np.ndarray) -> np.ndarray:
     """Given min_error vector with same length as number of sites, create a vector
