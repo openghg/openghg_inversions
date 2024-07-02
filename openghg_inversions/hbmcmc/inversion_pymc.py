@@ -414,7 +414,7 @@ def inferpymc_postprocessouts(
     add_offset=False,
     rerun_file=None,
     use_bc: bool = False,
-    min_error: float = 0.0,
+    min_error: Union[float, np.ndarray] = 0.0,
 ) -> xr.Dataset:
     """
     Takes the output from inferpymc function, along with some other input
@@ -743,12 +743,18 @@ def inferpymc_postprocessouts(
         cntry95[ci, :] = az.hdi(cntrytottrace.values, 0.95)
         cntryprior[ci] = cntrytotprior
 
+
+    # make min. model error variable
+    if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and len(min_error) == 1):
+        min_error = min_error * np.ones_like(Y)
+
     # Make output netcdf file
     data_vars = {
         "Yobs": (["nmeasure"], Y),
         "Yerror": (["nmeasure"], error),
         "Yerror_repeatability": (["nmeasure"], obs_repeatability),
         "Yerror_variability": (["nmeasure"], obs_variability),
+        "min_model_error": (["nmeasure"], min_error),
         "Ytime": (["nmeasure"], Ytime),
         "Yapriori": (["nmeasure"], Yapriori),
         "Ymodmean": (["nmeasure"], Ymodmu),
@@ -820,6 +826,7 @@ def inferpymc_postprocessouts(
     outds.Yerror.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yerror_repeatability.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yerror_variability.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.min_model_error.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yapriori.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Ymodmean.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Ymodmedian.attrs["units"] = obs_units + " " + "mol/mol"
@@ -843,6 +850,7 @@ def inferpymc_postprocessouts(
 
     outds.Yobs.attrs["longname"] = "observations"
     outds.Yerror.attrs["longname"] = "measurement error"
+    outds.min_model_error.attrs["longname"] = "minimum model error"
     outds.Ytime.attrs["longname"] = "time of measurements"
     outds.Yapriori.attrs["longname"] = "a priori simulated measurements"
     outds.Ymodmean.attrs["longname"] = "mean of posterior simulated measurements"
@@ -923,7 +931,7 @@ def inferpymc_postprocessouts(
     outds.attrs["Date created"] = str(pd.Timestamp("today"))
     outds.attrs["Convergence"] = convergence
     outds.attrs["Repository version"] = code_version()
-    outds.attrs["min_model_error"] = min_error
+    outds.attrs["min_model_error"] = min_error  # TODO: remove this once PARIS formatting switches over to using min error data var
 
     # variables with variable length data types shouldn't be compressed
     # e.g. object ("O") or unicode ("U") type
