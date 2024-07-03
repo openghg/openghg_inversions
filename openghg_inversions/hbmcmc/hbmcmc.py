@@ -38,8 +38,9 @@ import xarray as xr
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
-from openghg_inversions import get_data, utils
+from openghg_inversions import get_data
 from openghg_inversions.basis import basis_functions_wrapper
+from openghg_inversions.filters import filtering
 from openghg_inversions.model_error import residual_error_method, percentile_error_method, setup_min_error
 
 
@@ -412,7 +413,7 @@ def fixedbasisMCMC(
 
     # Apply named filters to the data
     if filters is not None:
-        fp_data = utils.filtering(fp_data, filters)
+        fp_data = filtering(fp_data, filters)
 
     # check for sites dropped by filtering
     s_dropped = []
