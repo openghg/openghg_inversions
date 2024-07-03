@@ -10,10 +10,8 @@
 #
 # ****************************************************************************
 import glob
-import json
 import os
 import re
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional, Union
 
@@ -22,6 +20,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from openghg.analyse import ModelScenario
+from openghg.util import get_species_info, synonyms
 from tqdm import tqdm
 
 from openghg_inversions import convert
@@ -29,11 +28,6 @@ from openghg_inversions.config.paths import Paths
 from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 
 openghginv_path = Paths.openghginv
-
-# GJ NOTE - I moved this to be read in closer to where it was used
-# and to use the load_json function
-# with open(os.path.join(openghginv_path, 'data/species_info.json')) as f:
-#     species_info=json.load(f)
 
 
 def open_ds(path, chunks=None, combine=None):
@@ -113,44 +107,6 @@ def read_netcdfs(files, dim="time", chunks=None, verbose=True):
     combined = xr.concat(datasets, dim)
 
     return combined
-
-
-def synonyms(search_string, info, alternative_label="alt"):
-    """
-     Check to see if there are other names that we should be using for
-     a particular input. E.g. If CFC-11 or CFC11 was input,
-     go on to use cfc-11, as this is used in species_info.json
-     -----------------------------------
-     Args:
-       search_string (str):
-         Input string that you're trying to match
-       info (dict):
-         Dictionary whose keys are the "default" values, and an
-         variable that contains other possible names
-
-    Returns:
-         corrected string
-     -----------------------------------
-    """
-    keys = list(info.keys())
-
-    # First test whether site matches keys (case insensitive)
-    out_strings = [k for k in keys if k.upper() == search_string.upper()]
-
-    # If not found, search synonyms
-    if len(out_strings) == 0:
-        for k in keys:
-            matched_strings = [s for s in info[k][alternative_label] if s.upper() == search_string.upper()]
-            if len(matched_strings) != 0:
-                out_strings = [k]
-                break
-
-    if len(out_strings) == 1:
-        out_string = out_strings[0]
-    else:
-        out_string = None
-
-    return out_string
 
 
 def get_country(domain, country_file=None):
@@ -1205,10 +1161,10 @@ def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory=None):
     timenew = basis_func.time[ind]
     basis_func = basis_func.reindex({"time": timenew})
 
-    species_info = load_json(filename="species_info.json")
+    species_info = get_species_info()
 
     species = fp_and_data[".species"]
-    species = synonyms(species, species_info)
+    species = synonyms(species, lower=False)
 
     for site in sites:
         # ES commented out line below as .bc not attribute. Also assume openghg adds all relevant particle data to file.
@@ -1298,16 +1254,3 @@ def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory=None):
         fp_and_data[site] = fp_and_data[site].merge(sensitivity)
 
     return fp_and_data
-
-
-def load_json(filename):
-    """Load a JSON file from the internal data directory.
-
-    Args:
-        filename (str): Filename
-    Returns:
-        dict
-    """
-    data_folder = Path(__file__).parent.joinpath("data")
-    filepath = data_folder.joinpath(filename)
-    return json.loads(filepath.read_text())
