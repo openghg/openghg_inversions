@@ -116,8 +116,7 @@ def quadTreeGrid(grid, limit):
         2d numpy array to apply quadtree division to
       limit (float):
         Use value as bucket level for defining maximum subdivision
-        # WARNING : Not sure of the meaning of this
-
+        
     Returns:
       outputGrid (array):
         2d numpy grid, same shape as grid, with values correpsonding to
