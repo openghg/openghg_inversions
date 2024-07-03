@@ -1,6 +1,11 @@
 """
 General methods for xarray Datasets and DataArrays.
 
+The functions here are not specific to OpenGHG inversions: they
+add functionality missing from xarray. These functions should accept
+xarray Datasets and DataArrays, and return either a Dataset or a DataArray.
+
+
 `get_xr_dummies` applies pandas `get_dummies` to xarray DataArrays.
 
 `sparse_xr_dot` multiplies a Dataset or DataArray by a DataArray
@@ -26,11 +31,15 @@ def get_xr_dummies(
     categories: Optional[Union[Sequence[Any], pd.Index, xr.DataArray, np.ndarray]] = None,
     cat_dim: str = "categories",
     return_sparse: bool = True,
-):
+) -> xr.DataArray:
     """Create 0-1 dummy matrix from DataArray with values that correspond to categories.
 
     If the values of `da` are integers 0-N, then the result has N + 1 columns, and the (i, j) coordiante
     of the result is 1 if `da[i] == j`, and is 0 otherwise.
+
+    This function works like the pandas function `get_dummies`, but preserves the coordinates of
+    the input data, and allowing the user to specify coordinates for the categories used to make the
+    "dummies" (or "one-hot encoding").
 
     Args:
         da: DataArray encoding categories.
@@ -86,7 +95,8 @@ def sparse_xr_dot(
         along_dim: name
 
     Returns:
-        xr.DataArray containing the result of matrix/tensor multiplication
+        xr.Dataset or xr.DataArray containing the result of matrix/tensor multiplication.
+        The type that is returned will be the same as the type of `da2`.
 
     Raises:
         ValueError if the input DataArrays have no common dimensions to multiply.

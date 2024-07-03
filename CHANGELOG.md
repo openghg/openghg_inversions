@@ -8,6 +8,9 @@
 
 - Added new option for computing min. model error based on percentiles. [#PR 142](https://github.com/openghg/openghg_inversions/pull/142) 
 
+- Update the docstrings of openghg_inversions.basis and openghg_inversions.array_ops [#PR 150](https://github.com/openghg/openghg_inversions/pull/150)
+
+
 - Fixed "add averaging" functional, which adds the variability of obs over a resampling period to the measurement error (repeatability). This closes [Issue #42](https://github.com/openghg/openghg_inversions/issues/42) . [#PR 144](https://github.com/openghg/openghg_inversions/pull/144)
 
 - Add option to pass the filters as dictionary (with the sites as keys). [#PR 135](https://github.com/openghg/openghg_inversions/pull/135)
