@@ -2,6 +2,7 @@
 Common Python functions that are called for converting time and gas species
 units as part of data processing.
 """
+
 from typing import Union
 
 from openghg.util import molar_mass
