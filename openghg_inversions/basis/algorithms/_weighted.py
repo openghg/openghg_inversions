@@ -1,5 +1,6 @@
 """
-Module to create basis regions used in the inversion using a weighted algorithm.
+Module to create basis regions used in the inversion using an algorihtm that splits region
+by input data.
 """
 from pathlib import Path
 import numpy as np
