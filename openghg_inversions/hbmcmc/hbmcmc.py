@@ -31,7 +31,7 @@ About
 """
 
 from pathlib import Path
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 
 import numpy as np
 import xarray as xr
@@ -40,82 +40,7 @@ import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
 from openghg_inversions import get_data, utils
 from openghg_inversions.basis import basis_functions_wrapper
-
-
-def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional[str] = None) -> np.ndarray:
-    """Compute estimate of model error using residual error method.
-
-    This method is explained in "Modeling of Atmospheric Chemistry" by Brasseur
-    and Jacobs in Box 11.2 on p.499-500, following "Comparative inverse analysis of satellitle (MOPITT)
-    and aircraft (TRACE-P) observations to estimate Asian sources of carbon monoxide", by Heald, Jacob,
-    Jones, et.al. (Journal of Geophysical Research, vol. 109, 2004).
-
-    Roughly, we assume that the observations y are equal to the modelled observations y_mod, plus a
-    bias term b, and instrument, representation, and model error:
-
-    y = y_mod + b + err_I + err_R + err_M
-
-    Assuming the errors are mean zero, we have
-
-    (y - y_mod) - mean(y - y_mod) = err_I + err_R + err_M  (*)
-
-    where the mean is taken over all observations, or a subset.
-
-    Calculating the RMS of the LHS of (*) gives us an estimate for
-
-    sqrt(sigma_I^2 + sigma_R^2 +  sigma_M^2),
-
-    where sigma_I is the standard deviation of err_I, and so on.
-
-    Thus a rough estimate for sigma_M is the RMS of the LHS of (*), possibly with the RMS of
-    the instrument/observation and averaging errors removed (this isn't implemented here).
-
-    Args:
-        ds_dict: dictionary of combined scenario datasets, keyed by site codes.
-        average_over: site code of site over which to compute mean(y - y_mod). If `None`, then
-            the average is taken over all observations.
-
-    Returns:
-        float: estimated value for model error.
-    """
-    # if "bc_mod" is present, we need to add it to "mf_mod"
-    if all("bc_mod" in v for k, v in ds_dict.items() if not k.startswith(".")):
-        ds = xr.concat(
-            [
-                v[["mf", "bc_mod", "mf_mod"]].expand_dims({"site": [k]})
-                for k, v in ds_dict.items()
-                if not k.startswith(".")
-            ],
-            dim="site",
-        )
-
-        scaling_factor = float(ds.mf.units) / float(ds.bc_mod.units)
-        ds["modelled_obs"] = ds.mf_mod + ds.bc_mod / scaling_factor
-    else:
-        ds = xr.concat(
-            [
-                v[["mf", "mf_mod"]].expand_dims({"site": [k]})
-                for k, v in ds_dict.items()
-                if not k.startswith(".")
-            ],
-            dim="site",
-        )
-        ds["modelled_obs"] = ds.mf_mod
-
-    if average_over is not None:
-        try:
-            avg = (ds.mf - ds.modelled_obs).sel(site=average_over).mean()
-        except KeyError as e:
-            raise ValueError(
-                f"Can't take average over site {average_over}, it is not in the inversion data."
-            ) from e
-    else:
-        avg = (ds.mf - ds.modelled_obs).mean()
-
-    res_err_arr = np.sqrt(np.mean((ds.mf - ds.modelled_obs - avg) ** 2))
-    res_err = res_err_arr.values
-
-    return res_err
+from openghg_inversions.model_error import residual_error_method, percentile_error_method, setup_min_error
 
 
 def fixedbasisMCMC(
@@ -175,7 +100,8 @@ def fixedbasisMCMC(
     save_trace: Union[str, Path, bool] = False,
     skip_postprocessing: bool = False,
     merged_data_only: bool = False,
-    calculate_min_error: bool = False,
+    calculate_min_error: Optional[Literal["percentile", "residual"]] = None,
+    min_error_options: Optional[dict] = None,
     **kwargs,
 ) -> xr.Dataset:
     """
@@ -372,6 +298,13 @@ def fixedbasisMCMC(
 
       merged_data_only: if True, save merged data, and do nothing else.
 
+      calculate_min_error: if None, use value in `kwargs[min_error]`. Otherwise, compute min model error
+        using the "residual" method or the "percentile" method. (See `openghg_inversions.model_error.py` for
+        details.)
+
+      min_error_options: dictionary of additional arguments to pass the the function used to calculate min. model
+        error (as specified by `calculate_min_error`).
+
     Returns:
         Saves an output from the inversion code using inferpymc_postprocessouts.
 
@@ -481,17 +414,14 @@ def fixedbasisMCMC(
     if filters is not None:
         fp_data = utils.filtering(fp_data, filters)
 
-    # Calculate min error
-    if calculate_min_error:
-        min_error = residual_error_method(fp_data)
-        kwargs["min_error"] = min_error  # currently `min_error` is passed via kwargs to `infer_pymc`
-
+    # check for sites dropped by filtering
     s_dropped = []
     for site in sites:
         # check if some datasets are empty due to filtering
         if fp_data[site].time.values.shape[0] == 0:
             s_dropped.append(site)
             del fp_data[site]
+
     if len(s_dropped) != 0:
         sites = [s for i, s in enumerate(sites) if s not in s_dropped]
         print(f"\nDropping {s_dropped} sites as no data passed the filtering.\n")
@@ -538,6 +468,29 @@ def fixedbasisMCMC(
                 Hx = fp_data[site].H.values
             else:
                 Hx = np.hstack((Hx, fp_data[site].H.values))
+
+        # Calculate min error
+        if calculate_min_error == "residual":
+            if min_error_options is not None:
+                min_error = residual_error_method(fp_data, **min_error_options)
+            else:
+                min_error = residual_error_method(fp_data)
+
+            # if "by_site" is True, align min_error via siteindicator
+            if min_error_options and min_error_options.get("by_site", False):
+                min_error = setup_min_error(min_error, siteindicator)
+
+            kwargs["min_error"] = min_error  # currently `min_error` is passed via kwargs to `infer_pymc`
+        elif calculate_min_error == "percentile":
+            min_error = percentile_error_method(fp_data)
+            min_error = setup_min_error(min_error, siteindicator)
+            kwargs["min_error"] = min_error  # currently `min_error` is passed via kwargs to `infer_pymc`
+
+        elif calculate_min_error is None:
+            pass
+        else:
+            raise ValueError("`calculate_min_error` must have values: 'residual', 'percentile', or `None`;"
+                             f" {calculate_min_error} not recognised.")
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
