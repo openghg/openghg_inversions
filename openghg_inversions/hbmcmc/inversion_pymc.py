@@ -745,7 +745,7 @@ def inferpymc_postprocessouts(
 
 
     # make min. model error variable
-    if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and len(min_error) == 1):
+    if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
         min_error = min_error * np.ones_like(Y)
 
     # Make output netcdf file
