@@ -16,7 +16,21 @@ from .algorithms import quadtree_algorithm, weighted_algorithm
 def _flux_fp_from_fp_all(
     fp_all: dict, emissions_name: Optional[list[str]] = None
 ) -> tuple[xr.DataArray, list[xr.DataArray]]:
-    """Get flux and list of footprints from `fp_all` dictionary and optional list of emissions names."""
+    """Get flux and list of footprints from `fp_all` dictionary and optional list of emissions names.
+    
+    Args:
+      fp_all (dict):
+        Output from footprints_data_merge() function. Dictionary of datasets.
+      emissions_name (list):
+        List of "source" key words as used for retrieving specific emissions
+        from the object store.
+    
+    Returns:
+      flux (xarray.DataArray):
+        Array containing the flux data.
+      footprints (list):
+        List of xarray DataArray containing the footprints of each sites.
+    """
     if emissions_name is not None:
         flux = fp_all[".flux"][emissions_name[0]].data.flux
     else:
@@ -36,7 +50,22 @@ def _mean_fp_times_mean_flux(
     abs_flux: bool = False,
     mask: Optional[xr.DataArray] = None,
 ) -> xr.DataArray:
-    """Multiply mean flux by mean of footprints, optionally restricted to a Boolean mask."""
+    """Multiply mean flux by mean of footprints, optionally restricted to a Boolean mask.
+    
+    Args :
+      flux (xarray.DataArray):
+        Array containing the flux data.
+      footprints (list):
+        List of xarray DataArray containing the footprints of each sites.
+      abs_flux (bool):
+        If True this will take the absolute value of the flux in the multiplication.
+      mask (xarray.DataArray):
+        Boolean mask on lat/lon coordinates, indicates the spatial area kept during
+        the multiplication.
+
+    Return:
+      xarray DataArray containing temporal mean flux multiplied by temporal mean of footprints
+    """
     if abs_flux is True:
         print("Using absolute value of flux array.")
         flux = abs(flux)
@@ -79,26 +108,30 @@ def quadtreebasisfunction(
     require the Jacobian or Hessian for optimisation.
 
     Args:
-      fp_all:
-        Output from footprints_data_merge() function. Dictionary of datasets.
-      start_date:
-        String of start date of inversion
-      emissions_name:
-        List of "source" key words as used for retrieving specific emissions
-        from the object store.
-      nbasis:
-        Number of basis functions that you want. This will optimise to
-        closest value that fits with quadtree splitting algorithm,
-        i.e. nbasis % 4 = 1.
-      abs_flux:
-        If True this will take the absolute value of the flux
-      seed:
+      fp_all (dict):
+        fp_all dictionary of datasets as produced from get_data functions
+      start_date (str):
+        Start date of period of inversion
+      emissions_name (list):
+        List of keyword "source" args used for retrieving emissions files
+        from the Object store
+        Default None
+      nbasis (int):
+        Desired number of basis function regions
+        Default 100
+      abs_flux (bool):
+        When set to True uses absolute values of a flux array
+        Default False
+      seed (int):
         Optional seed to pass to scipy.optimize.dual_annealing. Used for testing.
-      mask:
-        Boolean mask on lat/lon coordinates. Used to find basis on sub-region.
+        Default None
+      mask (xarray.DataArray):
+        Boolean mask on lat/lon coordinates. Used to find basis on sub-region
+        Default None
 
     Returns:
-        xr.DataArray with lat/lon dimensions and basis regions encoded by integers.
+      quad_basis (xarray.DataArray):
+        Array with lat/lon dimensions and basis regions encoded by integers.
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
@@ -130,22 +163,27 @@ def bucketbasisfunction(
     the same value
 
     Args:
-      fp_all:
-        fp_all dictionary object as produced from get_data functions
-      start_date:
-        Start date of period of inference
-      emissions_name:
+      fp_all (dict):
+        fp_all dictionary of datasets as produced from get_data functions
+      start_date (str):
+        Start date of period of inversion
+      emissions_name (list):
         List of keyword "source" args used for retrieving emissions files
-        from the Object store.
-      nbasis:
+        from the Object store
+        Default None
+      nbasis (int):
         Desired number of basis function regions
-      abs_flux:
+        Default 100
+      abs_flux (bool):
         When set to True uses absolute values of a flux array
-      mask:
-        Boolean mask on lat/lon coordinates. Used to find basis on sub-region.
+        Default False
+      mask (xarray.DataArray):
+        Boolean mask on lat/lon coordinates. Used to find basis on sub-region
+        Default None
 
     Returns:
-        xr.DataArray with lat/lon dimensions and basis regions encoded by integers.
+      bucket_basis (xarray.DataArray):
+        Array with lat/lon dimensions and basis regions encoded by integers.
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
@@ -179,7 +217,30 @@ def fixed_outer_regions_basis(
     nbasis: int = 100,
     abs_flux: bool = False,
 ) -> xr.DataArray:
-    """Fix outer region of basis functions to InTEM regions, and fit the inner regions using `basis_algorithm`."""
+   
+    """Fix outer region of basis functions to InTEM regions, and fit the inner regions using `basis_algorithm`.
+
+    Args:
+      fp_all (dict):
+        fp_all dictionary object as produced from get_data functions
+      start_date (str):
+        Start date of period of inference
+      basis_algorithm (str):
+        Name of the basis algorithm used. Options are "quadtree", "weighted"
+      emissions_name (list):
+        List of keyword "source" args used for retrieving emissions files
+        from the Object store.
+      nbasis (int):
+        Desired number of basis function regions
+        Default 100
+      abs_flux:
+        When set to True uses absolute values of a flux array
+        Default False
+
+      Returns:
+        basis (xarray.DataArray) :
+          Array with lat/lon dimensions and basis regions encoded by integers.
+    """
     intem_regions_path = Path(__file__).parent / "intem_region_definition.nc"
     intem_regions = xr.open_dataset(intem_regions_path).region
 

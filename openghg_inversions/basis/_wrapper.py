@@ -32,46 +32,50 @@ def basis_functions_wrapper(
     algorithm.
 
     Args:
-      basis_algorithm (str):
+      fp_all (dict):
+        Dictionary object produced from get_data functions
+      species (str):
+        Atmospheric trace gas species of interest
+      domain (str):
+        Model domain
+      start_date (str):
+        Start date of period of inference
+      emissions_name (str/list):
+        Emissions dataset key words for retrieving from object store
+      nbasis (int):
+        Number of basis function regions to calculated in domain
+      use_bc (bool):
+        Option to include/exclude boundary conditions in inversion
+      basis_algorithm (str, optional):
         One of "quadtree" (for using Quadtree algorithm) or
         "weighted" (for using an algorihtm that splits region
-        by input data).
-
-        NB. Land-sea separation is not imposed in the quadtree
-        basis functions, but is imposed by default in "weighted"
-
-    nbasis (int):
-      Number of basis function regions to calculated in domain
-    fp_basis_case (str):
-      Name of basis function to use for emissions.
-    bc_basis_case (str, optional):
-      Name of basis case type for boundary conditions (NOTE, I don't
-      think that currently you can do anything apart from scaling NSEW
-      boundary conditions if you want to scale these monthly.)
-    basis_directory (str, optional):
-      Directory containing the basis function
-      if not default.
-    bc_basis_directory (str, optional):
-      Directory containing the boundary condition basis functions
-      (e.g. files starting with "NESW")
-    use_bc (bool):
-      Option to include/exclude boundary conditions in inversion
-    fp_all (dict):
-      Dictionary object produced from get_data functions
-    species (str):
-      Atmospheric trace gas species of interest
-    sites (str/list):
-      List of sites of interest
-    domain (str):
-      Model domain
-    start_date (str):
-      Start date of period of inference
-    emissions_name (str/list):
-      Emissions dataset key words for retrieving from object store
-    outputname (str):
-      File output name
-    output_path (str):
-      Passed to `outputdir` argument of `quadtreebasisfunction`. Used for testing.
+        by input data). Land-sea separation is not imposed in the 
+        quadtree basis functions, but is imposed by default in "weighted"
+        Default None
+      fixed_outer_region (bool):
+        When set to True uses InTEM regions to derive basis functions for inner region
+        Default False
+      fp_basis_case (str):
+        Name of basis function to use for emissions.
+        Default None
+      bc_basis_case (str, optional):
+        Name of basis case type for boundary conditions (NOTE, I don't
+        think that currently you can do anything apart from scaling NSEW
+        boundary conditions if you want to scale these monthly.)
+        Default None
+      basis_directory (str, optional):
+        Directory containing the basis function if not default.
+        Default None
+      bc_basis_directory (str, optional):
+        Directory containing the boundary condition basis functions
+        (e.g. files starting with "NESW")
+        Default None
+      outputname (str, optional):
+        File output name
+        Default None
+      output_path (str, optional):
+        Passed to `outputdir` argument of `quadtreebasisfunction`. Used for testing.
+        Default None
 
     Returns:
       fp_data (dict):
@@ -145,12 +149,19 @@ def _save_basis(
     """Save basis functions to netCDF.
 
     Args:
-        basis: basis dataset to save
-        basis_algorithm: name of basis algorithm (e.g. "quadtree" or "weighted")
-        output_dir: root directory to save basis functions
-        domain: domain of inversion; basis is saved in a "domain" directory inside `output_dir`
-        species: species of inversion
-        output_name
+      basis (xarray.DataArray): 
+        basis dataset to save
+      basis_algorithm (str): 
+        name of basis algorithm (e.g. "quadtree" or "weighted")
+      output_dir (str): 
+        root directory to save basis functions
+      domain (str): 
+        domain of inversion; basis is saved in a "domain" directory inside `output_dir`
+      species (str): 
+        species of inversion
+      output_name (str,optional):
+        File output name
+        Default None
 
     Returns:
         None. Saves basis dataset to netCDF.
