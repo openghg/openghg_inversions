@@ -23,7 +23,6 @@ Updated by Ben Adam February 2024
 """
 import os
 import glob
-import json
 import pandas as pd
 import pymc as pm
 import numpy as np
@@ -34,13 +33,12 @@ import cartopy.crs as ccrs
 from matplotlib.colors import BoundaryNorm, Normalize
 from matplotlib import ticker
 from cartopy.feature import BORDERS
-from collections import OrderedDict
 from scipy import stats
-
+from openghg.util import get_site_info
 from openghg_inversions import utils
 from openghg_inversions import convert
 
-site_info = utils.load_json(filename="site_info.json")
+site_info = get_site_info()
 
 
 def check_platform(site, network=None):
