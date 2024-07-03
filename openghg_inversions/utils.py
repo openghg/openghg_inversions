@@ -1256,16 +1256,3 @@ def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory=None):
         fp_and_data[site] = fp_and_data[site].merge(sensitivity)
 
     return fp_and_data
-
-
-def load_json(filename):
-    """Load a JSON file from the internal data directory.
-
-    Args:
-        filename (str): Filename
-    Returns:
-        dict
-    """
-    data_folder = Path(__file__).parent.joinpath("data")
-    filepath = data_folder.joinpath(filename)
-    return json.loads(filepath.read_text())
