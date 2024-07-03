@@ -58,7 +58,7 @@ class quadTreeNode:
             grid (array):
                 2d numpy array to wich the quadtree division is applied.
             limit (float):
-                Bucket value (i.e. targeted resolution which is compared to the 
+                Bucket level (i.e. targeted resolution which is compared to the 
                 sum of the grid points in the node).
         """
         value = np.sum(grid[self.xStart : self.xEnd, self.yStart : self.yEnd])  # .values
