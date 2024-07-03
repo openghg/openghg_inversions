@@ -1,5 +1,5 @@
 """
-Module to create basis functions used in the inversion using a quadtree algorithm.
+Module to create basis regions used in the inversion using a quadtree algorithm.
 """
 from typing import Optional
 
