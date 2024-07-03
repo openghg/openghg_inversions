@@ -1,3 +1,6 @@
+"""
+Module to create basis regions for the inversion using a quadtree algorithm.
+"""
 from typing import Optional
 
 import numpy as np
@@ -5,7 +8,30 @@ import scipy.optimize
 
 
 class quadTreeNode:
+    """Node of the quadtree algorithm.
+
+    Class attributes 'xStart', 'xEnd', 'yStart', 'yEnd' store the
+    coordinates (in terms of indexes of the grid) of the node; 
+    'child1', 'child2', 'child3', 'child4' store its children 
+    nodes (e.g. its subdivisions). 
+    """
     def __init__(self, xStart, xEnd, yStart, yEnd):
+        """Init quadTreeNode.
+
+        Args :
+            xStart (int): 
+                index of the grid on the first axis
+                on which the node starts.
+            xEnd (int): 
+                index of the grid on the first axis
+                on which the node ends.
+            yStart (int): 
+                index of the grid on the second axis
+                on which the node starts.
+            yEnd (int): 
+                index of the grid on the second axis
+                on which the node ends.
+        """
         self.xStart = xStart
         self.xEnd = xEnd
         self.yStart = yStart
@@ -17,12 +43,24 @@ class quadTreeNode:
         self.child4 = None  # bottom right
 
     def isLeaf(self):
+        """Return True if node is a leaf (i.e. don't have children), False if not."""
         if self.child1 or self.child2 or self.child3 or self.child4:
             return False
         else:
             return True
 
     def createChildren(self, grid, limit):
+        """
+        Create children nodes. If finest resolution or bucket level reached,
+        no children nodes are created and the node is thus a leaf.
+
+        Args :
+            grid (array):
+                2d numpy array to wich the quadtree division is applied.
+            limit (float):
+                Bucket level (i.e. targeted resolution which is compared to the 
+                sum of the grid points in the node).
+        """
         value = np.sum(grid[self.xStart : self.xEnd, self.yStart : self.yEnd])  # .values
 
         # stop subdividing if finest resolution or bucket level reached
@@ -51,6 +89,14 @@ class quadTreeNode:
         self.child4.createChildren(grid, limit)
 
     def appendLeaves(self, leafList):
+        """
+        Recursively look for leaves in the node offsprings and append them to the leafList.
+
+        Args :
+          leafList (list): 
+            list containing all the leaves, i.e. basis regions that will be used
+            in the hbmcmc inversion.
+        """
         # recursively append all leaves/end nodes to leafList
         if self.isLeaf():
             leafList.append(self)
@@ -70,11 +116,11 @@ def quadTreeGrid(grid, limit):
         2d numpy array to apply quadtree division to
       limit (float):
         Use value as bucket level for defining maximum subdivision
-
+        
     Returns:
       outputGrid (array):
         2d numpy grid, same shape as grid, with values correpsonding to
-        each  box from boxList
+        each box from boxList
     """
     # start with a single node the size of the entire input grid:
     parentNode = quadTreeNode(0, grid.shape[0], 0, grid.shape[1])
