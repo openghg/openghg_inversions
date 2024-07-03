@@ -10,10 +10,8 @@
 #
 # ****************************************************************************
 import glob
-import json
 import os
 import re
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional, Union
 
