@@ -96,7 +96,12 @@ def open_ds(
     return ds
 
 
-def read_netcdfs(files: Union[list[str], list[Path]], dim: str = "time", chunks: Optional[dict] = None, verbose: bool = True) -> xr.Dataset:
+def read_netcdfs(
+    files: Union[list[str], list[Path]],
+    dim: str = "time",
+    chunks: Optional[dict] = None,
+    verbose: bool = True,
+) -> xr.Dataset:
     """
     The read_netcdfs function uses xarray to open sequential netCDF files and
     and concatenates them along the specified dimension.
@@ -260,17 +265,17 @@ def basis(domain: str, basis_case: str, basis_directory: Optional[str] = None) -
         basis_directory = openghginv_path / "basis_functions"
         if not basis_directory.exists():
             basis_directory.mkdir()
-            raise ValueError(f"Default basis directory {basis_directory} was empty. "
-                             "Add basis files or specify `basis_directory`.")
-
+            raise ValueError(
+                f"Default basis directory {basis_directory} was empty. "
+                "Add basis files or specify `basis_directory`."
+            )
 
     file_path = (basis_directory / domain).glob(f"{basis_case}_{domain}*.nc")
     files = sorted(list(file_path))
 
     if len(files) == 0:
         raise FileNotFoundError(
-            f"Can't find basis function files for domain '{domain}'"
-            f"and basis_case '{basis_case}' "
+            f"Can't find basis function files for domain '{domain}'" f"and basis_case '{basis_case}' "
         )
 
     basis_ds = read_netcdfs(files)
@@ -305,9 +310,10 @@ def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: 
         bc_basis_directory = openghginv_path / "bc_basis_functions"
         if not bc_basis_directory.exists():
             bc_basis_directory.mkdir()
-            raise ValueError(f"Default BC basis directory {bc_basis_directory} was empty. "
-                             "Add basis files or specify `bc_basis_directory`.")
-
+            raise ValueError(
+                f"Default BC basis directory {bc_basis_directory} was empty. "
+                "Add basis files or specify `bc_basis_directory`."
+            )
 
     file_path = (bc_basis_directory / domain).glob(f"{basis_case}_{domain}*.nc")
     files = sorted(list(file_path))
@@ -327,8 +333,7 @@ def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: 
 
     if len(files) == 0:
         raise FileNotFoundError(
-            f"Can't find BC basis function files for domain '{domain}'"
-            f"and bc_basis_case '{basis_case}' "
+            f"Can't find BC basis function files for domain '{domain}'" f"and bc_basis_case '{basis_case}' "
         )
 
     basis_ds = read_netcdfs(files)
@@ -737,7 +742,7 @@ def fp_sensitivity_single_site_basis_func(
     flux: Union[FluxData, dict[str, FluxData]],
     basis_func: xr.DataArray,
     source: str = "all",
-    verbose: bool = True
+    verbose: bool = True,
 ) -> tuple[xr.DataArray, Optional[xr.Dataset]]:
     """
     Computes sensitivity matrix `H` for one site. See `fp_sensitivity` for
@@ -812,7 +817,9 @@ def fp_sensitivity_single_site_basis_func(
     return sensitivity, site_bf
 
 
-def bc_sensitivity(fp_and_data: dict, domain: str, basis_case: str, bc_basis_directory: Optional[str] = None) -> dict:
+def bc_sensitivity(
+    fp_and_data: dict, domain: str, basis_case: str, bc_basis_directory: Optional[str] = None
+) -> dict:
     """
     Add boundary conditions sensitivity matrix `H_bc` to each site xr.Dataframe in fp_and_data.
 
