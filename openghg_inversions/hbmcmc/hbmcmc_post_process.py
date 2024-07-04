@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Aug  4 08:57:53 2015
-
-
 Script to process HBMCMC (RHIME) output 
 
 Includes:
@@ -14,12 +11,6 @@ regions_histogram - plot histogram of number of regions
 
 country_emissions - calculate emissions from given list of countries
                     Currently hard-wired for methane
-
-
-@author: ml12574
-
-Updated by Eric Saboya
-Updated by Ben Adam February 2024
 """
 import os
 import glob
@@ -41,22 +32,23 @@ from openghg_inversions import convert
 site_info = get_site_info()
 
 
-def check_platform(site, network=None):
+def check_platform(site: str, network: str=None)->str:
     """
     This function extracts platform (if specified) for the site from site_info.json file.
-    network can be specified if site is associated with more than one. If not specified, the first
-    network will be used by default.
+    network can be specified if site is associated with more than one network. If not 
+    specified, the first network will be used by default.
+
     Args:
-        site (str) : 
+        site: 
             Site code (if applicable) or name
-        Network (str) : 
+        network: 
             If a site is part of multiple networks, will select a given one and check 
             the platform
-    Returns:
-        str : Platform type (e.g. "site", "satellite", "aircraft") if specified by site_info.json,
-              otherwise None
-    """
 
+    Returns:
+        platform type (e.g. "site", "satellite", "aircraft") if specified by site_info.json,
+        otherwise None
+    """
     if network is None:
         network = list(site_info[site].keys())[0]
     if "platform" in site_info[site][network].keys():
@@ -65,7 +57,9 @@ def check_platform(site, network=None):
         return None
 
 
-def define_stations(ds, sites=None, use_site_info=False):
+def define_stations(ds: xr.Dataset, 
+                    sites: list[str]=None, 
+                    use_site_info: Optional[bool]=False):
     """
     The define_stations function defines the latitude and longitude values for each site within
     a dataset. The output can be passed directly as the 'stations' argument in plot_map
@@ -75,17 +69,17 @@ def define_stations(ds, sites=None, use_site_info=False):
     dictionary for this site.
 
     Args:
-        ds (xarray.Dataset) :
+        ds:
             Output from run_tdmcmc() function (tdmcmc_inputs.py script).
             Expects dataset to contain:
                 sitelons - Longitude values for each site. Dimension = len(sites)
                 sitelats - Latitude values for each site. Dimension = len(sites)
                 y_site       - Site identifier for each measurement. Dimension = nmeasure
-        sites (list/None, optional) :
+        sites:
             List of sites to look for within dataset.
             If not specified, the sites will be extracted from the input dataset assuming a
             data variable "sites" is included within the dataset.
-        use_site_info (bool, optional) :
+        use_site_info:
             Use positions from site_info.json file rather than extract them from the tdmcmc dataset.
             Default = False.
 
