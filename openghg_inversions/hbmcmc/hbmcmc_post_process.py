@@ -25,6 +25,8 @@ from matplotlib.colors import BoundaryNorm, Normalize
 from matplotlib import ticker
 from cartopy.feature import BORDERS
 from scipy import stats
+from typing import Optional
+
 from openghg.util import get_site_info
 from openghg_inversions import utils
 from openghg_inversions import convert
@@ -59,7 +61,8 @@ def check_platform(site: str, network: str=None)->str:
 
 def define_stations(ds: xr.Dataset, 
                     sites: list[str]=None, 
-                    use_site_info: Optional[bool]=False):
+                    use_site_info: Optional[bool]=False
+                   )->dict:
     """
     The define_stations function defines the latitude and longitude values for each site within
     a dataset. The output can be passed directly as the 'stations' argument in plot_map
@@ -84,8 +87,7 @@ def define_stations(ds: xr.Dataset,
             Default = False.
 
     Returns:
-        dict :
-            Dictionary containing sitelats, sitelons for each site.
+        Dictionary containing sitelats, sitelons for each site.
     """
 
     if sites is None:
@@ -120,15 +122,18 @@ def define_stations(ds: xr.Dataset,
     return stations
 
 
-def subplot_fmt(num, row_dims=[3, 2, 4], fill=False):
+def subplot_fmt(num: int,
+                row_dims: Optional[list[int]]=[3, 2, 4], 
+                fill: Optional[bool]=False
+               )->list[int,int]:
     """
     The subplot_fmt function decides the placement of a grid of figures dependent on the number.
     The row_dims input determines which placement is preferable for the user.
 
     Args:
-        num (int) :
+        num:
             Number of figures to be placed
-        row_dims (list, optional) :
+        row_dims:
             Row dimensions in order of preference.
             For the default row_dims=[3,2,4] the preferences of placement is as follows:
                 - equal rows of 3
@@ -136,14 +141,13 @@ def subplot_fmt(num, row_dims=[3, 2, 4], fill=False):
                 - equal rows of 4
             If none of the above are possible the format will be num x number of columns if fill
             is True or the configuration suitable for num+1 if fill is False.
-        fill (bool, optional) :
+        fill:
             All panels in subplot must be filled. If not, for uneven numbers an extra panel will
             be added which will be left blank when plotting.
             Default = False (i.e. allow an empty panel to be included within subplot)
 
     Returns:
-        List (int): [row_num,col_num]
-                    2 item list containing the row number and column number for the subplots.
+        2 item list containing the row number and column number for the subplots.
     """
     for r in row_dims:
         if not num % r:
