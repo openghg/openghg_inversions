@@ -137,17 +137,28 @@ def read_netcdfs(files: Union[list[str], list[Path]], dim: str = "time", chunks:
     return combined
 
 
-def get_country(domain, country_file=None):
+def get_country(domain: str, country_file: Union[str, Path, None] = None):
+    """Open country file for given domain and return as a SimpleNamespace (dict with class like attribute acces)
+
+    Args:
+        domain: domain of inversion
+        country_file: optional string or Path to country file. If `None`, then the first file found in
+            `openghg_inversions/countries/` is used.
+
+    Returns:
+        SimpleNamespace with attributes: lon, lat, lonmax, lonmin, latmax, latmin, country, and name
+    """
     if country_file is None:
-        if not os.path.exists(os.path.join(openghginv_path, "countries/")):
-            os.makedirs(os.path.join(openghginv_path, "countries/"))
+        country_directory = openghginv_path / "countries"
+
+        if not country_directory.exists():
+            country_directory.mkdir()
+
             raise FileNotFoundError(
                 "Country definition file not found." f" Please add to {openghginv_path}/countries/"
             )
-        else:
-            country_directory = os.path.join(openghginv_path, "countries/")
 
-        filenames = glob.glob(os.path.join(country_directory, f"country_{domain}.nc"))
+        filenames = list(country_directory.glob(f"country_{domain}.nc"))
         filename = filenames[0]
     else:
         filename = country_file
@@ -164,12 +175,6 @@ def get_country(domain, country_file=None):
         else:
             raise ValueError(f"Variables 'country' or 'region' not found in country file {filename}.")
 
-        #         if (ukmo is True) or (uk_split is True):
-        #             name_temp = f.variables['name'][:]
-        #             f.close()
-        #             name=np.asarray(name_temp)
-
-        #         else:
         name = f.variables["name"].values.astype(str)
 
     result = dict(
@@ -185,28 +190,25 @@ def get_country(domain, country_file=None):
     return SimpleNamespace(**result)
 
 
-def areagrid(lat, lon):
+def areagrid(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
     """
-    Calculates grid of areas (m2) given arrays of latitudes and longitudes
-    -------------------------------------
+    Calculates grid of areas (m^2), given arrays of latitudes and longitudes
+
     Args:
-      lat (array):
-        1D array of latitudes
-      lon (array):
-        1D array of longitudes
+        lat: 1D array of latitudes
+        lon: 1D array of longitudes
 
     Returns:
-      area (array):
-        2D array of areas of of size lat x lon
-    -------------------------------------
-    Example:
-      import utils.areagrid
-      lat=np.arange(50., 60., 1.)
-      lon=np.arange(0., 10., 1.)
-      area=utils.areagrid(lat, lon)
+        area: 2D array of areas of of size lat x lon
+
+    Examples:
+        >>> import utils.areagrid
+        >>> lat = np.arange(50., 60., 1.)
+        >>> lon = np.arange(0., 10., 1.)
+        >>> area = utils.areagrid(lat, lon)
     """
 
-    re = 6367500.0  # radius of Earth in m
+    rad_earth = 6367500.0  # radius of Earth in m
 
     dlon = abs(np.mean(lon[1:] - lon[0:-1])) * np.pi / 180.0
     dlat = abs(np.mean(lat[1:] - lat[0:-1])) * np.pi / 180.0
@@ -216,42 +218,41 @@ def areagrid(lat, lon):
 
     for latI in range(len(lat)):
         if theta[latI] == 0.0 or np.isclose(theta[latI], np.pi):
-            area[latI, :] = (re**2) * abs(np.cos(dlat / 2.0) - np.cos(0.0)) * dlon
+            area[latI, :] = (rad_earth**2) * abs(np.cos(dlat / 2.0) - np.cos(0.0)) * dlon
         else:
             lat1 = theta[latI] - dlat / 2.0
             lat2 = theta[latI] + dlat / 2.0
-            area[latI, :] = (re**2) * (np.cos(lat1) - np.cos(lat2)) * dlon
+            area[latI, :] = (rad_earth**2) * (np.cos(lat1) - np.cos(lat2)) * dlon
 
     return area
 
 
-def basis(domain: str, basis_case: str, basis_directory: Optional[str] = None):
+def basis(domain: str, basis_case: str, basis_directory: Optional[str] = None) -> xr.Dataset:
     """
-    The basis function reads in the all matching files for the
-    basis case and domain as an xarray Dataset.
+    Read in basis function(s) from file given basis case and domain, and return as an
+    xarray Dataset.
 
-    Expect filenames of the form:
-        [basis_directory]/domain/"basis_case"_"domain"*.nc
-        e.g. [/data/shared/LPDM/basis_functions]/EUROPE/sub_transd_EUROPE_2014.nc
+    The basis function files should be stored as on paths of the form:
+        <basis_directory>/<domain>/<basis_case>_<domain>*.nc
 
-    TODO: More info on options for basis functions.
-    -----------------------------------
+    For instance: domain = EUROPE, basis_directory = /group/chem/acrg/LPDM/basis_functions,
+    and basis_case = sub_transd would find files such as:
+
+        /group/chem/acrg/LPDM/basis_functions/EUROPE/sub_transd_EUROPE_2014.nc
+
+    Basis functions created by algorithms in OpenGHG inversions will be stored using
+    this path format.
+
     Args:
-      domain (str):
-        Domain name. The basis files should be sub-categorised by the domain.
-      basis_case (str):
-        Basis case to read in.
-        Examples of basis cases are "voronoi","sub-transd","sub-country_mask",
-        "INTEM".
-      basis_directory (str, optional):
-        basis_directory can be specified if files are not in the default
-        directory. Must point to a directory which contains subfolders
-        organized by domain.
+        domain: domain name. The basis files should be sub-categorised by the domain.
+        basis_case: basis case to read in. Examples of basis cases are "voronoi", "sub-transd",
+            "sub-country_mask", "INTEM".
+        basis_directory: basis_directory can be specified if files are not in the default
+            directory (i.e. `openghg_inversions/basis_functions`). Must point to a directory that
+            contains subfolders organized by domain.
 
     Returns:
-      xarray.Dataset:
-        combined dataset of matching basis functions
-    -----------------------------------
+        xarray.Dataset: combined dataset of matching basis functions
     """
     if basis_directory is None:
         if not os.path.exists(os.path.join(openghginv_path, "basis_functions/")):
