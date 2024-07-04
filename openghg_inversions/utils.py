@@ -277,52 +277,57 @@ def basis(domain: str, basis_case: str, basis_directory: Optional[str] = None) -
     return basis_ds
 
 
-def basis_boundary_conditions(domain, basis_case, bc_basis_directory=None):
+def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: Optional[str] = None):
     """
-    The basis_boundary_conditions function reads in all matching files
-    for the boundary conditions basis case and domain as an xarray Dataset.
+    Read in basis function(s) from file given basis case and domain, and return as an
+    xarray Dataset.
 
-    Expect filesnames of the form:
-        [bc_basis_directory]/domain/"basis_case"_"domain"*.nc
-        e.g. [/data/shared/LPDM/bc_basis_directory]/EUROPE/NESW_EUROPE_2013.nc
+    The basis function files should be stored as on paths of the form:
+        <bc_basis_directory>/<domain>/<basis_case>_<domain>*.nc
 
-    TODO: More info on options for basis functions.
-    -----------------------------------
+    For instance: domain = "EUROPE", bc_basis_directory = /group/chem/acrg/LPDM/bc_basis_functions,
+    and basis_case = "NESW" would find files such as:
+
+        /group/chem/acrg/LPDM/bc_basis_functions/EUROPE/NESW_EUROPE_2014.nc
+
     Args:
-      domain (str):
-        Domain name. The basis files should be sub-categorised by the domain.
-      basis_case (str):
-        Basis case to read in. Examples of basis cases are "NESW","stratgrad".
-      bc_basis_directory (str, optional):
-        bc_basis_directory can be specified if files are not in the default directory.
-        Must point to a directory which contains subfolders organized by domain.
+        domain: domain name. The basis files should be sub-categorised by the domain.
+        basis_case: basis case to read in. Examples of BC basis cases are "NESW", "stratgrad".
+        bc_basis_directory: bc_basis_directory can be specified if files are not in the default
+            directory (i.e. `openghg_inversions/bc_basis_functions`). Must point to a directory that
+            contains subfolders organized by domain.
 
     Returns:
-      xarray.Datset:
-        Combined dataset of matching basis functions
-    -----------------------------------
+        xarray.Dataset: combined dataset of matching basis functions
     """
     if bc_basis_directory is None:
-        if not os.path.exists(os.path.join(openghginv_path, "bc_basis_functions/")):
-            os.makedirs(os.path.join(openghginv_path, "bc_basis_functions/"))
-        bc_basis_directory = os.path.join(openghginv_path, "bc_basis_functions/")
+        bc_basis_directory = openghginv_path / "bc_basis_functions"
+        if not bc_basis_directory.exists():
+            bc_basis_directory.mkdir()
+            raise ValueError(f"Default BC basis directory {bc_basis_directory} was empty. "
+                             "Add basis files or specify `bc_basis_directory`.")
 
-    file_path = os.path.join(bc_basis_directory, domain, f"{basis_case}_{domain}*.nc")
 
-    files = sorted(glob.glob(file_path))
+    file_path = (bc_basis_directory / domain).glob(f"{basis_case}_{domain}*.nc")
+    files = sorted(list(file_path))
+
+    # check for files that we can't access
+    # NOTE: Hannah added this in 2021 to the ACRG code.
+    # I don't know why it is only for BC boundary conditions -- BM, 2024
     file_no_acc = [ff for ff in files if not os.access(ff, os.R_OK)]
-    files = [ff for ff in files if os.access(ff, os.R_OK)]
-
     if len(file_no_acc) > 0:
         print(
             "Warning: unable to read all boundary conditions basis function files which match this criteria:"
         )
         [print(ff) for ff in file_no_acc]
 
+    # only use files we can access
+    files = [ff for ff in files if ff not in file_no_acc]
+
     if len(files) == 0:
-        raise IOError(
-            "\nError: Can't find boundary condition basis function files for domain '{0}' "
-            "and basis_case '{1}' ".format(domain, basis_case)
+        raise FileNotFoundError(
+            f"Can't find BC basis function files for domain '{domain}'"
+            f"and bc_basis_case '{basis_case}' "
         )
 
     basis_ds = read_netcdfs(files)
