@@ -420,7 +420,6 @@ def inferpymc_postprocessouts(
     nchain,
     sigma_per_site,
     emissions_name,
-    emissions_store,
     bcprior: Optional[dict] = None,
     YBCtrace: Optional[np.ndarray] = None,
     bcouts: Optional[np.ndarray] = None,
