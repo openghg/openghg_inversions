@@ -15,7 +15,7 @@ class quadTreeNode:
     'child1', 'child2', 'child3', 'child4' store its children 
     nodes (e.g. its subdivisions). 
     """
-    def __init__(self, xStart, xEnd, yStart, yEnd):
+    def __init__(self, xStart : int, xEnd : int, yStart : int, yEnd : int):
         """Init quadTreeNode.
 
         Args :
@@ -49,7 +49,7 @@ class quadTreeNode:
         else:
             return True
 
-    def createChildren(self, grid, limit):
+    def createChildren(self, grid : np.array, limit : float):
         """
         Create children nodes. If finest resolution or bucket level reached,
         no children nodes are created and the node is thus a leaf.
@@ -88,7 +88,7 @@ class quadTreeNode:
         self.child3.createChildren(grid, limit)
         self.child4.createChildren(grid, limit)
 
-    def appendLeaves(self, leafList):
+    def appendLeaves(self, leafList : list):
         """
         Recursively look for leaves in the node offsprings and append them to the leafList.
 
@@ -107,7 +107,8 @@ class quadTreeNode:
             self.child4.appendLeaves(leafList)
 
 
-def quadTreeGrid(grid, limit):
+def quadTreeGrid(grid : np.array, 
+                 limit : float) -> np.array:
     """
     Apply quadtree division algorithm.
 
@@ -137,7 +138,9 @@ def quadTreeGrid(grid, limit):
     return outputGrid
 
 
-def get_quadtree_basis(fps: np.ndarray, nbasis: int, seed: Optional[int] = None) -> np.ndarray:
+def get_quadtree_basis(fps: np.ndarray, 
+                       nbasis: int, 
+                       seed: Optional[int] = None) -> np.ndarray:
     """Given an array and a specified number of basis functions, return basis regions specified by
     the quadtree algorithm.
 
