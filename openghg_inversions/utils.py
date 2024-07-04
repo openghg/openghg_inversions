@@ -22,6 +22,7 @@ import pandas as pd
 import xarray as xr
 from openghg.analyse import ModelScenario
 from openghg.analyse import combine_datasets as openghg_combine_datasets
+from openghg.dataobjects import FluxData
 from openghg.util import get_species_info, synonyms
 from tqdm import tqdm
 
@@ -672,6 +673,8 @@ def fp_sensitivity(
 
     Region numbering must start from 1
 
+    TODO: describe output coordinates?
+
     Args:
         fp_and_data: output from `data_processing_surface_notracer`; contains "combined scenarios" keyed by
             site code, as well as fluxes.
@@ -730,31 +733,26 @@ def fp_sensitivity(
 
 
 def fp_sensitivity_single_site_basis_func(
-    scenario: ModelScenario, flux, source: str, basis_func: xr.DataArray, verbose: bool = True
-):
+    scenario: xr.Dataset,
+    flux: Union[FluxData, dict[str, FluxData]],
+    basis_func: xr.DataArray,
+    source: str = "all",
+    verbose: bool = True
+) -> tuple[xr.DataArray, Optional[xr.Dataset]]:
     """
-    The fp_sensitivity function adds a sensitivity matrix, H, to each
-    site xarray dataframe in fp_and_data.
-    Basis function data in an array: lat, lon, no. regions.
-    In each 'region'element of array there is a lat-lon grid with 1 in
-    region and 0 outside region.
-
-    Region numbering must start from 1
+    Computes sensitivity matrix `H` for one site. See `fp_sensitivity` for
+    more info about the sensitivity matrix.
 
     Args:
-      scenario:
-        Output from footprints_data_merge() function; e.g. `fp_all["TAC"]`
-      flux:
-        array with flux values
-      source:
-        name of flux source
-      domain (str):
-        Domain name. The footprint files should be sub-categorised by the domain.
-      basis_func:
-        basis functions
+        scenario: xr.Dataset from `ModelScenario.footprints_data_merge`, e.g. `fp_all["TAC"]`
+        flux: FluxData object or dictionary of FluxData objects with flux values; a dictionary
+            should only be passed for "high time resolution" or "time resolved" footprints.
+        source: name of flux source; used for naming the region labels in the output coordinates.
+        basis_func:
 
     Returns:
-        sensitivity ("H") xr.DataArray and site_bf xr.Dataset
+        sensitivity ("H") xr.DataArray and site_bf xr.Dataset containing basis functions and
+        flux * footprint if "region" present in basis_func, otherwise, None
     """
     if isinstance(flux, dict):
         if "fp_HiTRes" in list(scenario.keys()):
@@ -774,7 +772,8 @@ def fp_sensitivity_single_site_basis_func(
             )
         else:
             raise ValueError(
-                "fp_and_data needs the variable fp_HiTRes to use the emissions dictionary with high_freq and low_freq emissions."
+                "fp_and_data needs the variable fp_HiTRes to use the "
+                "emissions dictionary with high_freq and low_freq emissions."
             )
 
     else:
@@ -807,6 +806,7 @@ def fp_sensitivity_single_site_basis_func(
         _, basis_aligned = xr.align(H_all.isel(time=0), basis_func, join="override")
         basis_mat = get_xr_dummies(basis_aligned.squeeze("time"), cat_dim="region")
         sensitivity = sparse_xr_dot(basis_mat, H_all.fillna(0.0)).transpose("region", "time")
+        # TODO: use same region names as alternate method above
         site_bf = None
 
     return sensitivity, site_bf
