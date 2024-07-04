@@ -31,9 +31,31 @@ from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 openghginv_path = Paths.openghginv
 
 
-def combine_datasets(dataset_A: xr.Dataset, dataset_B: xr.Dataset, method: Optional[str] = "nearest", tolerance: Optional[float] = None
+def combine_datasets(
+    dataset_A: xr.Dataset,
+    dataset_B: xr.Dataset,
+    method: Optional[str] = "nearest",
+    tolerance: Optional[float] = None,
 ) -> xr.Dataset:
-    """Temporary function while waiting for `.load()` to be added to openghg version of combine_datasets"""
+    """
+    Merges two datasets and re-indexes to the first dataset.
+
+    If "fp" variable is found within the combined dataset,
+    the "time" values where the "lat", "lon" dimensions didn't match are removed.
+
+    NOTE: this is temporary solution while waiting for `.load()` to be added to openghg version of combine_datasets
+
+    Args:
+        dataset_A: First dataset to merge
+        dataset_B: Second dataset to merge
+        method: One of None, nearest, ffill, bfill.
+                See xarray.DataArray.reindex_like for list of options and meaning.
+                Defaults to ffill (forward fill)
+        tolerance: Maximum allowed tolerance between matches.
+
+    Returns:
+        xarray.Dataset: Combined dataset indexed to dataset_A
+    """
     return openghg_combine_datasets(dataset_A, dataset_B.load(), method=method, tolerance=tolerance)
 
 
