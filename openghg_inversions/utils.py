@@ -422,9 +422,7 @@ def timeseries_HiTRes(
     H_resample = (
         int(time_resolution[0])
         if H_back_hour_diff == 1
-        else 1
-        if H_back_hour_diff == int(time_resolution[0])
-        else None
+        else 1 if H_back_hour_diff == int(time_resolution[0]) else None
     )
     if H_resample is None:
         print("Cannot resample H_back")
@@ -446,11 +444,13 @@ def timeseries_HiTRes(
     # extract the required time data
     flux = {
         sector: {
-            freq: flux_freq.sel(
-                time=slice(fp_HiTRes_ds.time[0] - np.timedelta64(max_H_back, "h"), fp_HiTRes_ds.time[-1])
-            ).flux
-            if flux_freq is not None
-            else None
+            freq: (
+                flux_freq.sel(
+                    time=slice(fp_HiTRes_ds.time[0] - np.timedelta64(max_H_back, "h"), fp_HiTRes_ds.time[-1])
+                ).flux
+                if flux_freq is not None
+                else None
+            )
             for freq, flux_freq in flux_sector.items()
         }
         for sector, flux_sector in flux.items()
@@ -479,11 +479,11 @@ def timeseries_HiTRes(
     # convert to array to use in numba loop
     flux = {
         sector: {
-            freq: None
-            if flux_freq is None
-            else flux_freq.values
-            if flux_freq.chunks is None
-            else da.array(flux_freq)
+            freq: (
+                None
+                if flux_freq is None
+                else flux_freq.values if flux_freq.chunks is None else da.array(flux_freq)
+            )
             for freq, flux_freq in flux_sector.items()
         }
         for sector, flux_sector in flux.items()
@@ -520,9 +520,11 @@ def timeseries_HiTRes(
         # if there aren't any high frequency data it will select from the low frequency data
         # this is so that we can compare emissions data with different resolutions e.g. ocean species
         emissions = {
-            sector: flux_sector["high_freq"][:, :, tt : tt + fp_time.shape[2] - 1]
-            if flux_sector["high_freq"] is not None
-            else flux_sector["low_freq"][:, :, tt_low]
+            sector: (
+                flux_sector["high_freq"][:, :, tt : tt + fp_time.shape[2] - 1]
+                if flux_sector["high_freq"] is not None
+                else flux_sector["low_freq"][:, :, tt_low]
+            )
             for sector, flux_sector in flux.items()
         }
         # add an axis if the emissions is array is 2D so that it can be multiplied by the fp
@@ -573,20 +575,22 @@ def timeseries_HiTRes(
                 coords={"lat": fp_HiTRes_ds.lat.values, "lon": fp_HiTRes_ds.lon.values, "time": time_array},
             )
             if output_type.lower() == "dataset"
-            else {
-                sector: xr.DataArray(
-                    data=fpXflux_sector,
-                    dims=["lat", "lon", "time"],
-                    coords={
-                        "lat": fp_HiTRes_ds.lat.values,
-                        "lon": fp_HiTRes_ds.lon.values,
-                        "time": time_array,
-                    },
-                )
-                for sector, fpXflux_sector in fpXflux.items()
-            }
-            if output_type.lower() == "dataarray"
-            else fpXflux
+            else (
+                {
+                    sector: xr.DataArray(
+                        data=fpXflux_sector,
+                        dims=["lat", "lon", "time"],
+                        coords={
+                            "lat": fp_HiTRes_ds.lat.values,
+                            "lon": fp_HiTRes_ds.lon.values,
+                            "time": time_array,
+                        },
+                    )
+                    for sector, fpXflux_sector in fpXflux.items()
+                }
+                if output_type.lower() == "dataarray"
+                else fpXflux
+            )
         )
 
         if output_type.lower() == "dataset":
@@ -611,12 +615,14 @@ def timeseries_HiTRes(
         timeseries = (
             xr.Dataset(timeseries, coords={"time": time_array})
             if output_type.lower() == "dataset"
-            else {
-                sector: xr.DataArray(data=ts_sector, dims=["time"], coords={"time": time_array})
-                for sector, ts_sector in timeseries.items()
-            }
-            if output_type.lower() == "dataarray"
-            else timeseries
+            else (
+                {
+                    sector: xr.DataArray(data=ts_sector, dims=["time"], coords={"time": time_array})
+                    for sector, ts_sector in timeseries.items()
+                }
+                if output_type.lower() == "dataarray"
+                else timeseries
+            )
         )
 
         if output_type.lower() == "dataset":
