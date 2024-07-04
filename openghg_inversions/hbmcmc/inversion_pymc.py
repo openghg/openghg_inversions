@@ -390,90 +390,87 @@ def inferpymc(Hx: np.ndarray,
 
 
 def inferpymc_postprocessouts(
-    xouts,
-    sigouts,
-    offset_outs,
-    convergence,
-    Hx,
-    Y,
-    error,
-    Ytrace,
-    OFFSETtrace,
-    step1,
-    step2,
-    xprior,
-    sigprior,
-    offsetprior,
-    Ytime,
-    siteindicator,
-    sigma_freq_index,
-    domain,
-    species,
-    sites,
-    start_date,
-    end_date,
-    outputname,
-    outputpath,
-    country_unit_prefix,
-    burn,
-    tune,
-    nchain,
-    sigma_per_site,
-    emissions_name,
+    xouts: np.ndarray,
+    sigouts: np.ndarray,
+    offset_outs: np.ndarray,
+    convergence: str,
+    Hx: np.ndarray,
+    Y: np.ndarray,
+    error: np.ndarray,
+    Ytrace: np.ndarray,
+    OFFSETtrace: np.ndarray,
+    step1: str,
+    step2: str,
+    xprior: dict,
+    sigprior: dict,
+    offsetprior: dict,
+    Ytime: np.ndarray,
+    siteindicator: np.ndarray[int],
+    sigma_freq_index: np.ndarray[int],
+    domain: str,
+    species: str,
+    sites: list,
+    start_date: str,
+    end_date: str,
+    outputname: str,
+    outputpath: str,
+    country_unit_prefix: Optional[str],
+    burn: int,
+    tune: int,
+    nchain: int,
+    sigma_per_site: bool,
+    emissions_name: str,
     bcprior: Optional[dict] = None,
     YBCtrace: Optional[np.ndarray] = None,
     bcouts: Optional[np.ndarray] = None,
     Hbc: Optional[np.ndarray] = None,
     obs_repeatability: Optional[np.ndarray] = None,
     obs_variability: Optional[np.ndarray] = None,
-    fp_data=None,
-    country_file=None,
-    add_offset=False,
-    rerun_file=None,
+    fp_data: Optional[dict]=None,
+    country_file: str=None,
+    add_offset: bool =False,
+    rerun_file: Optional[xr.Dataset]=None,
     use_bc: bool = False,
     min_error: Union[float, np.ndarray] = 0.0,
 ) -> xr.Dataset:
     """
     Takes the output from inferpymc function, along with some other input
-    information, and places it all in a netcdf output. This function also
-    calculates the mean posterior emissions for the countries in the
-    inversion domain and saves it to netcdf.
+    information, calculates staitics on them and places it all in a dataset. 
+    Also calculates statistics on posterior emissions for the countries in 
+    the inversion domain and saves all in netcdf.
+    
     Note that the uncertainties are defined by the highest posterior
     density (HPD) region and NOT percentiles (as the tdMCMC code).
     The HPD region is defined, for probability content (1-a), as:
         1) P(x \in R | y) = (1-a)
         2) for x1 \in R and x2 \notin R, P(x1|y)>=P(x2|y)
-    -------------------------------
+    
     Args:
-      xouts (array):
+      xouts:
         MCMC chain for emissions scaling factors for each basis function.
-      bcouts (array):
-        MCMC chain for boundary condition scaling factors.
-      sigouts (array):
+      sigouts:
         MCMC chain for model error.
-      convergence (str):
+      convergence:
         Passed/Failed convergence test as to whether mutliple chains
         have a Gelman-Rubin diagnostic value <1.05
-      Hx (array):
+      Hx:
         Transpose of the sensitivity matrix to map emissions to measurement.
         This is the same as what is given from fp_data[site].H.values, where
         fp_data is the output from e.g. footprint_data_merge, but where it
         has been stacked for all sites.
-      Hbc (array):
-        Same as above but for boundary conditions
-      Y (array):
+      Y:
         Measurement vector containing all measurements
-      error (arrray):
+      error:
         Measurement error vector, containg a value for each element of Y.
-      Ytrace (array):
+      Ytrace:
         Trace of modelled y values calculated from mcmc outputs and H matrices
-      YBCtrace (array):
-        Trace of modelled boundary condition values calculated from mcmc outputs and Hbc matrices
-      step1 (str):
+      OFFSETtrace:
+        XXXX.
+      step1:
         Type of MCMC sampler for emissions and boundary condition updates.
-      step2 (str):
+      step2:
         Type of MCMC sampler for model error updates.
-      xprior (dict):
+      xprior:
         Dictionary containing information about the prior PDF for emissions.
         The entry "pdf" is the name of the analytical PDF used, see
         https://docs.pymc.io/api/distributions/continuous.html for PDFs
@@ -483,64 +480,75 @@ def inferpymc_postprocessouts(
         e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sd":1}.
         Note that the standard deviation should be used rather than the
         precision. Currently all variables are considered iid.
-      bcprior (dict):
-        Same as above but for boundary conditions.
-      sigprior (dict):
-        Same as above but for model error.
-      offsetprior (dict):
-        Same as above but for bias offset. Only used is addoffset=True.
-      Ytime (pandas datetime array):
+      sigprior:
+        Same as xprior but for model error.
+      offsetprior:
+        Same as xprior but for bias offset. Only used is add_offset=True.
+      Ytime:
         Time stamp of measurements as used by the inversion.
-      siteindicator (array):
+      siteindicator:
         Numerical indicator of which site the measurements belong to,
         same length at Y.
-      sigma_freq_index (array):
+      sigma_freq_index:
         Array of integer indexes that converts time into periods
-      domain (str):
+      domain:
         Inversion spatial domain.
-      species (str):
+      species:
         Species of interest
-      sites (list):
+      sites:
         List of sites in inversion
-      start_date (str):
+      start_date:
         Start time of inversion "YYYY-mm-dd"
-      end_date (str):
+      end_date:
         End time of inversion "YYYY-mm-dd"
-      outputname (str):
+      outputname:
         Unique identifier for output/run name.
-      outputpath (str):
+      outputpath:
         Path to where output should be saved.
-      country_unit_prefix ('str', optional)
+      country_unit_prefix:
         A prefix for scaling the country emissions. Current options are:
         'T' will scale to Tg, 'G' to Gg, 'M' to Mg, 'P' to Pg.
         To add additional options add to acrg_convert.prefix
         Default is none and no scaling will be applied (output in g).
-      burn (int):
+      burn:
         Number of iterations burned in MCMC
-      tune (int):
+      tune:
         Number of iterations used to tune step size
-      nchain (int):
+      nchain:
         Number of independent chains run
-      sigma_per_site (bool):
+      sigma_per_site:
         Whether a model sigma value was be calculated for each site independantly (True)
         or all sites together (False).
-      fp_data (dict, optional):
+      emissions_name:
+        List with "source" values as used when adding emissions data to the OpenGHG object store.
+      bcprior:
+        Same as xrpior but for boundary conditions.
+      YBCtrace:
+        Trace of modelled boundary condition values calculated from mcmc outputs and Hbc matrices
+      bcouts:
+        MCMC chain for boundary condition scaling factors.
+      Hbc:
+        Same as Hx but for boundary conditions
+      obs_repeatability: 
+        XXXX
+      obs_variability: 
+        XXXX
+      fp_data:
         Output from footprints_data_merge + sensitivies
-      emissions_name (list, optional):
-        Update: Now a list with "source" values as used when adding emissions data to
-        the OpenGHG object store.
-      basis_directory (str, optional):
-        Directory containing basis function file
-      country_file (str, optional):
+      country_file:
         Path of country definition file
-      add_offset (bool):
+      add_offset:
         Add an offset (intercept) to all sites but the first in the site list. Default False.
       rerun_file (xarray dataset, optional):
         An xarray dataset containing the ncdf output from a previous run of the MCMC code.
-
+      use_bc: 
+        When True, use and infer boundary conditions.
+      min_error: 
+        Minimum error to use during inversion. Only used if no_model_error is False.
+        
     Returns:
-        netdf file containing results from inversion
-    -------------------------------
+        xarray dataset containing results from inversion
+
     TO DO:
         - Look at compressability options for netcdf output
         - I'm sure the number of inputs can be cut down or found elsewhere.
