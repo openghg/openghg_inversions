@@ -143,6 +143,8 @@ def inferpymc(
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
+    temp_correlation = False,
+    x_precision = None,
 ):
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
@@ -191,6 +193,10 @@ def inferpymc(
       no_model_error:
         When True, only use observation error in likelihood function (omitting min. model error and model error
         from scaling pollution events.)
+      temp_correlation (bool):
+        Add temporal correlation to the state vector
+      x_precision (array, optional):
+        Precision matrix for state vector if temp_correlation is True
 
     Returns:
       outs (array):
@@ -251,13 +257,19 @@ def inferpymc(
     with pm.Model() as model:
         step1_vars = []
 
-        if reparameterise_log_normal and xprior["pdf"] == "lognormal":
-            x0 = pm.Normal("x0", 0, 1, shape=nx)
-            x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0))
-            step1_vars.append(x0)
-        else:
-            x = parse_prior("x", xprior, shape=nx)
+        if temp_correlation:
+            x = pm.MvNormal("x", mu=np.ones(nx), tau=x_precision)
             step1_vars.append(x)
+        
+        else:
+
+          if reparameterise_log_normal and xprior["pdf"] == "lognormal":
+              x0 = pm.Normal("x0", 0, 1, shape=nx)
+              x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0))
+              step1_vars.append(x0)
+          else:
+              x = parse_prior("x", xprior, shape=nx)
+              step1_vars.append(x)
 
         if use_bc:
             if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
@@ -403,6 +415,9 @@ def inferpymc_postprocessouts(
     sigma_per_site,
     emissions_name,
     emissions_store,
+    nbasis = None,
+    nperiod = 1,
+    period_dates = None,
     bcprior: Optional[dict] = None,
     YBCtrace: Optional[np.ndarray] = None,
     bcouts: Optional[np.ndarray] = None,
@@ -510,6 +525,12 @@ def inferpymc_postprocessouts(
       emissions_name (list, optional):
         Update: Now a list with "source" values as used when adding emissions data to
         the OpenGHG object store.
+      nbasis (int, optional):
+        Number of basis functions used in the inversion. Only necessary when temporal
+        correlation is being considered.
+      nperiod (int, optional):
+        Number of periods in the inversion. Unless temnporal correlation is included, this
+        will always be 1.
       basis_directory (str, optional):
         Directory containing basis function file
       country_file (str, optional):
@@ -630,17 +651,44 @@ def inferpymc_postprocessouts(
         bfds = fp_data[".basis"]
 
     # Calculate mean  and mode posterior scale map and flux field
-    scalemap_mu = np.zeros_like(bfds.values)
-    scalemap_mode = np.zeros_like(bfds.values)
+        
+    if nperiod == 1:
+        scalemap_mu = np.zeros_like(bfds.values)
+        scalemap_mode = np.zeros_like(bfds.values)
 
-    for npm in nparam:
-        scalemap_mu[bfds.values == (npm + 1)] = np.mean(xouts[:, npm])
-        if np.nanmax(xouts[:, npm]) > np.nanmin(xouts[:, npm]):
-            xes = np.arange(np.nanmin(xouts[:, npm]), np.nanmax(xouts[:, npm]), 0.01)
-            kde = stats.gaussian_kde(xouts[:, npm]).evaluate(xes)
-            scalemap_mode[bfds.values == (npm + 1)] = xes[kde.argmax()]
-        else:
-            scalemap_mode[bfds.values == (npm + 1)] = np.mean(xouts[:, npm])
+        for npm in nparam:
+            scalemap_mu[bfds.values == (npm + 1)] = np.mean(xouts[:, npm])
+            if np.nanmax(xouts[:, npm]) > np.nanmin(xouts[:, npm]):
+                xes = np.arange(np.nanmin(xouts[:, npm]), np.nanmax(xouts[:, npm]), 0.01)
+                kde = stats.gaussian_kde(xouts[:, npm]).evaluate(xes)
+                scalemap_mode[bfds.values == (npm + 1)] = xes[kde.argmax()]
+            else:
+                scalemap_mode[bfds.values == (npm + 1)] = np.mean(xouts[:, npm])
+
+    else:
+        scalemap_mu = []
+        scalemap_mode = []
+
+        for period in np.arange(nperiod):
+        
+            scalemap_mu_single = np.zeros_like(bfds.values)
+            scalemap_mode_single = np.zeros_like(bfds.values)
+
+            for basis in np.arange(nbasis):
+                scalemap_mu_single[bfds.values == (basis + 1)] = np.mean(xouts[:, period+basis])
+                if np.nanmax(xouts[:, period+basis]) > np.nanmin(xouts[:, period+basis]):
+                    xes = np.arange(np.nanmin(xouts[:, period+basis]), np.nanmax(xouts[:, period+basis]), 0.01)
+                    kde = stats.gaussian_kde(xouts[:, period+basis]).evaluate(xes)
+                    scalemap_mode_single[bfds.values == (basis + 1)] = xes[kde.argmax()]
+                else:
+                    scalemap_mode_single[bfds.values == (basis + 1)] = np.mean(xouts[:, period+basis])
+
+            scalemap_mu.append(scalemap_mu_single)
+            scalemap_mode.append(scalemap_mode_single)
+        
+        scalemap_mu = np.stack(scalemap_mu, axis=-1)
+        scalemap_mode = np.stack(scalemap_mode, axis=-1)
+        
 
     if rerun_file is not None:
         flux_array_all = np.expand_dims(rerun_file.fluxapriori.values, 2)
@@ -675,7 +723,14 @@ def inferpymc_postprocessouts(
         for m in np.unique(allmonths):
             apriori_flux += flux_array_all[:, :, m] * np.sum(allmonths == m) / len(allmonths)
 
-    flux = scalemap_mode * apriori_flux
+    if nperiod == 1:
+        flux = scalemap_mode * apriori_flux
+
+    else:
+        flux = np.zeros_like(scalemap_mode)
+
+        for period in np.arange(nperiod):
+            flux[:, :, period] = scalemap_mode[:, :, period] * apriori_flux
 
     # Basis functions to save
     bfarray = bfds.values - 1
@@ -694,53 +749,106 @@ def inferpymc_postprocessouts(
         cntrynames = rerun_file.countrynames.values
         cntrygrid = rerun_file.countrydefinition.values
 
-    cntrymean = np.zeros((len(cntrynames)))
-    cntrymedian = np.zeros((len(cntrynames)))
-    cntrymode = np.zeros((len(cntrynames)))
-    cntry68 = np.zeros((len(cntrynames), len(nui)))
-    cntry95 = np.zeros((len(cntrynames), len(nui)))
-    cntrysd = np.zeros(len(cntrynames))
-    cntryprior = np.zeros(len(cntrynames))
     molarmass = convert.molar_mass(species)
-
     unit_factor = convert.prefix(country_unit_prefix)
-    if country_unit_prefix is None:
-        country_unit_prefix = ""
-    country_units = country_unit_prefix + "g"
-    if rerun_file is not None:
-        obs_units = rerun_file.Yobs.attrs["units"].split(" ")[0]
-    else:
-        obs_units = str(fp_data[".units"])
 
-    for ci, cntry in enumerate(cntrynames):
-        cntrytottrace = np.zeros(len(steps))
-        cntrytotprior = 0
-        for bf in range(int(np.max(bfarray)) + 1):
-            bothinds = np.logical_and(cntrygrid == ci, bfarray == bf)
-            cntrytottrace += (
-                np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
-                * xouts[:, bf]
-                / unit_factor
-            )
-            cntrytotprior += (
-                np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
-                / unit_factor
-            )
-        cntrymean[ci] = np.mean(cntrytottrace)
-        cntrymedian[ci] = np.median(cntrytottrace)
+    if nperiod == 1:
+        
+        cntrymean = np.zeros((len(cntrynames)))
+        cntrymedian = np.zeros((len(cntrynames)))
+        cntrymode = np.zeros((len(cntrynames)))
+        cntry68 = np.zeros((len(cntrynames), len(nui)))
+        cntry95 = np.zeros((len(cntrynames), len(nui)))
+        cntrysd = np.zeros(len(cntrynames))
+        cntryprior = np.zeros(len(cntrynames))
 
-        if np.nanmax(cntrytottrace) > np.nanmin(cntrytottrace):
-            xes = np.linspace(np.nanmin(cntrytottrace), np.nanmax(cntrytottrace), 200)
-            kde = stats.gaussian_kde(cntrytottrace).evaluate(xes)
-            cntrymode[ci] = xes[kde.argmax()]
+        if country_unit_prefix is None:
+            country_unit_prefix = ""
+        country_units = country_unit_prefix + "g"
+        if rerun_file is not None:
+            obs_units = rerun_file.Yobs.attrs["units"].split(" ")[0]
         else:
-            cntrymode[ci] = np.mean(cntrytottrace)
+            obs_units = str(fp_data[".units"])
 
-        cntrysd[ci] = np.std(cntrytottrace)
-        cntry68[ci, :] = az.hdi(cntrytottrace.values, 0.68)
-        cntry95[ci, :] = az.hdi(cntrytottrace.values, 0.95)
-        cntryprior[ci] = cntrytotprior
+        for ci, cntry in enumerate(cntrynames):
+            cntrytottrace = np.zeros(len(steps))
+            cntrytotprior = 0
+            for bf in range(int(np.max(bfarray)) + 1):
+                bothinds = np.logical_and(cntrygrid == ci, bfarray == bf)
+                cntrytottrace += (
+                    np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                    * xouts[:, bf]
+                    / unit_factor
+                )
+                cntrytotprior += (
+                    np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                    / unit_factor
+                )
+            cntrymean[ci] = np.mean(cntrytottrace)
+            cntrymedian[ci] = np.median(cntrytottrace)
 
+            if np.nanmax(cntrytottrace) > np.nanmin(cntrytottrace):
+                xes = np.linspace(np.nanmin(cntrytottrace), np.nanmax(cntrytottrace), 200)
+                kde = stats.gaussian_kde(cntrytottrace).evaluate(xes)
+                cntrymode[ci] = xes[kde.argmax()]
+            else:
+                cntrymode[ci] = np.mean(cntrytottrace)
+
+            cntrysd[ci] = np.std(cntrytottrace)
+            cntry68[ci, :] = az.hdi(cntrytottrace.values, 0.68)
+            cntry95[ci, :] = az.hdi(cntrytottrace.values, 0.95)
+            cntryprior[ci] = cntrytotprior
+
+    else:
+        
+        cntrymean = np.zeros((len(cntrynames), nperiod))
+        cntrymedian = np.zeros((len(cntrynames), nperiod))
+        cntrymode = np.zeros((len(cntrynames), nperiod))
+        cntry68 = np.zeros((len(cntrynames), len(nui), nperiod))
+        cntry95 = np.zeros((len(cntrynames), len(nui), nperiod))
+        cntrysd = np.zeros((len(cntrynames), nperiod))
+        cntryprior = np.zeros((len(cntrynames), nperiod))
+
+        if country_unit_prefix is None:
+            country_unit_prefix = ""
+        country_units = country_unit_prefix + "g"
+        if rerun_file is not None:
+            obs_units = rerun_file.Yobs.attrs["units"].split(" ")[0]
+        else:
+            obs_units = str(fp_data[".units"])
+
+        for period in np.arange(nperiod):
+
+            for ci, cntry in enumerate(cntrynames):
+                cntrytottrace = np.zeros(len(steps))
+                cntrytotprior = 0
+                for bf in range(int(np.max(bfarray)) + 1):
+                    bothinds = np.logical_and(cntrygrid == ci, bfarray == bf)
+                    cntrytottrace += (
+                        np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                        * xouts[:, bf+period]
+                        / unit_factor
+                    )
+                    cntrytotprior += (
+                        np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                        / unit_factor
+                    )
+                cntrymean[ci, period] = np.mean(cntrytottrace)
+                cntrymedian[ci, period] = np.median(cntrytottrace)
+
+                if np.nanmax(cntrytottrace) > np.nanmin(cntrytottrace):
+                    xes = np.linspace(np.nanmin(cntrytottrace), np.nanmax(cntrytottrace), 200)
+                    kde = stats.gaussian_kde(cntrytottrace).evaluate(xes)
+                    cntrymode[ci, period] = xes[kde.argmax()]
+                else:
+                    cntrymode[ci, period] = np.mean(cntrytottrace)
+
+                cntrysd[ci, period] = np.std(cntrytottrace)
+                cntry68[ci, :, period] = pm.stats.hdi(cntrytottrace.values, 0.68)
+                cntry95[ci, :, period] = pm.stats.hdi(cntrytottrace.values, 0.95)
+                cntryprior[ci, period] = cntrytotprior
+    
+    
     # Make output netcdf file
     data_vars = {
         "Yobs": (["nmeasure"], Y),
@@ -765,17 +873,7 @@ def inferpymc_postprocessouts(
         "sitelons": (["nsite"], site_lon),
         "sitelats": (["nsite"], site_lat),
         "fluxapriori": (["lat", "lon"], apriori_flux),
-        "fluxmode": (["lat", "lon"], flux),
-        "scalingmean": (["lat", "lon"], scalemap_mu),
-        "scalingmode": (["lat", "lon"], scalemap_mode),
         "basisfunctions": (["lat", "lon"], bfarray),
-        "countrymean": (["countrynames"], cntrymean),
-        "countrymedian": (["countrynames"], cntrymedian),
-        "countrymode": (["countrynames"], cntrymode),
-        "countrysd": (["countrynames"], cntrysd),
-        "country68": (["countrynames", "nUI"], cntry68),
-        "country95": (["countrynames", "nUI"], cntry95),
-        "countryapriori": (["countrynames"], cntryprior),
         "countrydefinition": (["lat", "lon"], cntrygrid),
         "xsensitivity": (["nmeasure", "nparam"], Hx.T),
     }
@@ -807,6 +905,41 @@ def inferpymc_postprocessouts(
             }
         )
         coords["numBC"] = (["nBC"], nBC)
+
+    if nperiod != 1:
+        coords["numPeriod"] = (["nPeriod"], np.arange(nperiod).astype(int))
+
+        data_vars.update(
+          {
+              "fluxmode": (["lat", "lon", "nPeriod"], flux),
+              "scalingmean": (["lat", "lon", "nPeriod"], scalemap_mu),
+              "scalingmode": (["lat", "lon", "nPeriod"], scalemap_mode),
+              "countrymean": (["countrynames", "nPeriod"], cntrymean),
+              "countrymedian": (["countrynames", "nPeriod"], cntrymedian),
+              "countrymode": (["countrynames", "nPeriod"], cntrymode),
+              "countrysd": (["countrynames", "nPeriod"], cntrysd),
+              "country68": (["countrynames", "nUI", "nPeriod"], cntry68),
+              "country95": (["countrynames", "nUI", "nPeriod"], cntry95),
+              "countryapriori": (["countrynames", "nPeriod"], cntryprior),
+              "period_dates": (["nPeriod"], period_dates)
+          }
+      )
+    
+    else:
+        data_vars.update(
+            {
+                "fluxmode": (["lat", "lon"], flux),
+                "scalingmean": (["lat", "lon"], scalemap_mu),
+                "scalingmode": (["lat", "lon"], scalemap_mode),
+                "countrymean": (["countrynames"], cntrymean),
+                "countrymedian": (["countrynames"], cntrymedian),
+                "countrymode": (["countrynames"], cntrymode),
+                "countrysd": (["countrynames"], cntrysd),
+                "country68": (["countrynames", "nUI"], cntry68),
+                "country95": (["countrynames", "nUI"], cntry95),
+                "countryapriori": (["countrynames"], cntryprior),
+            }
+        )
 
     outds = xr.Dataset(data_vars, coords=coords)
 

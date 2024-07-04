@@ -40,6 +40,7 @@ import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
 from openghg_inversions import get_data, utils
 from openghg_inversions.basis import basis_functions_wrapper
+from openghg_inversions import correlated_params
 
 
 def residual_error_method(ds_dict: dict[str, xr.Dataset], average_over: Optional[str] = None) -> np.ndarray:
@@ -155,6 +156,8 @@ def fixedbasisMCMC(
     averaging_error=True,
     bc_freq=None,
     sigma_freq=None,
+    x_freq=None,
+    time_decay = None,
     sigma_per_site=True,
     country_unit_prefix=None,
     add_offset=False,
@@ -329,6 +332,18 @@ def fixedbasisMCMC(
       sigma_freq (str, optional):
         as bc_freq, but for model sigma
 
+      x_freq (str, optional):
+        The maximum period over which the inversion is divided into. E.g. set
+        to "monthly", the inversion will be subdivided into calendar months,
+        "weekly" into the weeks from the start date. Only "monthly" and "weekly"
+        considered. If None, the inversion will be run for one single period from
+        start_date to end_date. This is to allow temporal correlation between 
+        subperiods of the inversion.
+
+      time_decay (float, optional):
+        The exponential time constant representing the time at which the covariance 
+        between period paramters is equal to 1/e. Units reflect the period chosen in x_freq.
+      
       sigma_per_site (bool):
         Whether a model sigma value will be calculated for each site
         independantly (True) or all sites together (False)
@@ -499,6 +514,21 @@ def fixedbasisMCMC(
         Y = np.zeros(0)
         siteindicator = np.zeros(0)
 
+        nbasis = fp_data[site].coords["region"].shape[0]
+        
+        if x_freq is not None:
+            
+            H_blocks = {}
+            print("Running inversion with {} temporal correlation ...".format(x_freq))
+
+            period_dates, days_in_period, nperiod = correlated_params.period_dates(x_freq, start_date, end_date)
+            print("Days in each period ({} periods): {}".format(nperiod, days_in_period))
+
+            x_covariance, x_precision = correlated_params.xprior_covariance(nperiod=nperiod, nbasis=nbasis, decay_time=time_decay, 
+                                                                            sigma_time=1, sigma_space=1)
+            print("x_covariance shape: {} \nx_precision shape: {}".format(x_covariance.shape, x_precision.shape))
+
+
         for si, site in enumerate(sites):
             # select variables to drop NaNs from
             drop_vars = []
@@ -525,6 +555,11 @@ def fixedbasisMCMC(
                 Hx = fp_data[site].H.values
             else:
                 Hx = np.hstack((Hx, fp_data[site].H.values))
+            if x_freq is not None:
+                H_blocks = correlated_params.H_block_formation(H_blocks, Hx, nperiod, fp_data[site].time.values, period_dates, si)
+        
+        if x_freq is not None:
+          Hx = correlated_params.block_diag_h(H_blocks)
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
@@ -605,12 +640,24 @@ def fixedbasisMCMC(
             "country_file": country_file,
         }
 
+        if x_freq is not None:
+            mcmc_args["temp_correlation"] = True
+            mcmc_args["x_precision"] = x_precision
+            
+            post_process_args["nbasis"] = nbasis
+            post_process_args["nperiod"] = nperiod
+            post_process_args["period_dates"] = period_dates
+
         # add mcmc_args to post_process_args
         # and delete a few we don't need
         post_process_args.update(mcmc_args)
         del post_process_args["nit"]
         del post_process_args["verbose"]
         del post_process_args["save_trace"]
+
+        if x_freq is not None:
+          del post_process_args["temp_correlation"]
+          del post_process_args["x_precision"]
 
         # pass min model error to post-processing
         post_process_args["min_error"] = kwargs.get("min_error", 0.0)
