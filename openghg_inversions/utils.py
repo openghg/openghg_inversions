@@ -44,7 +44,8 @@ def combine_datasets(
     If "fp" variable is found within the combined dataset,
     the "time" values where the "lat", "lon" dimensions didn't match are removed.
 
-    NOTE: this is temporary solution while waiting for `.load()` to be added to openghg version of combine_datasets
+    NOTE: this is temporary solution while waiting for `.load()` to be added to openghg version
+    of combine_datasets.
 
     Args:
         dataset_A: First dataset to merge
@@ -266,7 +267,7 @@ def basis(domain: str, basis_case: str, basis_directory: Optional[str] = None) -
     files = sorted(list(file_path))
 
     if len(files) == 0:
-        raise IOError(
+        raise FileNotFoundError(
             f"Can't find basis function files for domain '{domain}'"
             f"and basis_case '{basis_case}' "
         )
