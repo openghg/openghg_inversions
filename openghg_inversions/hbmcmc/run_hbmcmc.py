@@ -45,7 +45,7 @@ def fixed_basis_expected_param() -> list[str]:
       outputpath, outputname
 
     Returns:
-      expected_param (list): required parameter names 
+      expected_param: required parameter names 
     """
     expected_param = [
         "species",
@@ -61,7 +61,7 @@ def fixed_basis_expected_param() -> list[str]:
     return expected_param
 
 
-def extract_mcmc_type(config_file : str,
+def extract_mcmc_type(config_file: str,
                       default: str ="fixed_basis"
                       ) -> str:
     """
@@ -70,13 +70,13 @@ def extract_mcmc_type(config_file : str,
     the "MCMC.TYPE" section. If not present, the default is used.
     
     Args:
-      config_file (str):
+      config_file:
         Configuration file name. Should be an .ini file.
-      default (str):
+      default:
         Default keyword for MCMC function to use.
 
     Returns:
-      Keyword for MCMC function to use (str)
+      Keyword for MCMC function to use
     """
     mcmc_type_section = "MCMC.TYPE"
     mcmc_type_keyword = "mcmc_type"
@@ -90,7 +90,7 @@ def extract_mcmc_type(config_file : str,
     return mcmc_type
 
 
-def define_mcmc_function(mcmc_type : str) -> Callable:
+def define_mcmc_function(mcmc_type: str) -> Callable:
     """
     Links mcmc_type name to function.
     
@@ -101,16 +101,15 @@ def define_mcmc_function(mcmc_type : str) -> Callable:
 
     Returns:
       Function
-    
     """
     function_dict = {"fixed_basis": mcmc.fixedbasisMCMC}
 
     return function_dict[mcmc_type]
 
 
-def hbmcmc_extract_param(config_file : str, 
-                         mcmc_type : Optional[str] ="fixed_basis", 
-                         print_param : Optional[str] =True, 
+def hbmcmc_extract_param(config_file: str, 
+                         mcmc_type: Optional[str] ="fixed_basis", 
+                         print_param: Optional[str] =True, 
                          **command_line):
     """
     Extract parameters from input configuration file and associated
@@ -124,7 +123,7 @@ def hbmcmc_extract_param(config_file : str,
         Keyword for MCMC function to use.
         Default = "fixed_basis" (only option at present)
       print_param (bool, optional):
-        Went set to True print out extracted parameter names.
+        Went set to True, print out extracted parameter names.
         Default = True
       command_line:
         Any additional command line arguments to be added to the param
