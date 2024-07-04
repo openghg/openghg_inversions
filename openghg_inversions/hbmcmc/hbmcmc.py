@@ -567,7 +567,6 @@ def fixedbasisMCMC(
             "country_unit_prefix": country_unit_prefix,
             "fp_data": fp_data,
             "emissions_name": emissions_name,
-            "emissions_store": emissions_store,
             "country_file": country_file,
             "obs_repeatability": obs_repeatability,
             "obs_variability": obs_variability,
