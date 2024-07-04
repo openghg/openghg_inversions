@@ -1,13 +1,7 @@
-# *****************************************************************************
-# Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: eric.saboya@bristol.ac.uk
-# *****************************************************************************
-# About
-#   Originally created by Luke Western (ACRG) and updated, here, by Eric Saboya
-#   Functions for performing MCMC inversion.
-#   PyMC library used for Bayesian modelling. Updated from PyMc3
-# *****************************************************************************
+"""
+Functions for performing MCMC inversion. 
+PyMC library used for Bayesian modelling.
+"""
 import re
 import getpass
 from pathlib import Path
@@ -118,54 +112,54 @@ def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
     return dist(name, **params, **kwargs)
 
 
-def inferpymc(
-    Hx,
-    Y,
-    error,
-    siteindicator,
-    sigma_freq_index,
-    Hbc: Optional[np.ndarray] = None,
-    xprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-    bcprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-    sigprior={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
-    nuts_sampler: str = "pymc",
-    nit=2.5e5,
-    burn=50000,
-    tune=1.25e5,
-    nchain=2,
-    sigma_per_site=True,
-    offsetprior={"pdf": "normal", "mu": 0, "sigma": 1},
-    add_offset=False,
-    verbose=False,
-    min_error=0.0,
-    save_trace: Optional[Union[str, Path]] = None,
-    use_bc: bool = True,
-    reparameterise_log_normal: bool = False,
-    pollution_events_from_obs: bool = False,
-    no_model_error: bool = False,
-):
+
+def inferpymc(Hx: np.ndarray,
+              Y: np.ndarray,
+              error: np.ndarray,
+              siteindicator: np.ndarray[int],
+              sigma_freq_index: np.ndarray[int],
+              Hbc: Optional[np.ndarray] = None,
+              xprior: dict ={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+              bcprior: dict ={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+              sigprior: dict ={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
+              nuts_sampler: str = "pymc",
+              nit: int = 2.5e5,
+              burn: int = 50000,
+              tune: int = 1.25e5,
+              nchain: int = 2,
+              sigma_per_site: bool = True,
+              offsetprior: dict ={"pdf": "normal", "mu": 0, "sigma": 1},
+              add_offset: bool =False,
+              verbose: bool=False,
+              min_error: Optional[float] =0.0,
+              save_trace: Optional[Union[str, Path]] = None,
+              use_bc: bool = True,
+              reparameterise_log_normal: bool = False,
+              pollution_events_from_obs: bool = False,
+              no_model_error: bool = False,
+              ) -> dict:
     """
     Uses PyMC module for Bayesian inference for emissions field, boundary
     conditions and (currently) a single model error value.
-    This uses a Normal likelihood but the (hyper)prior PDFs can selected by user.
-    -----------------------------------
+    This uses a Normal likelihood but the (hyper)prior PDFs can be selected by user.
+
     Args:
-      Hx (array):
+      Hx:
         Transpose of the sensitivity matrix to map emissions to measurement.
         This is the same as what is given from fp_data[site].H.values, where
         fp_data is the output from e.g. footprint_data_merge, but where it
         has been stacked for all sites.
-      Hbc (array):
-        Same as above but for boundary conditions
-      Y (array):
+      Y:
         Measurement vector containing all measurements
-      error (arrray):
+      error:
         Measurement error vector, containg a value for each element of Y.
-      siteindicator (array):
+      siteindicator:
         Array of indexing integers that relate each measurement to a site
-      sigma_freq_index (array):
+      sigma_freq_index:
         Array of integer indexes that converts time into periods
-      xprior (dict):
+      Hbc:
+        Same as Hx but for boundary conditions. Only used if use_bc=True.
+      xprior:
         Dictionary containing information about the prior PDF for emissions.
         The entry "pdf" is the name of the analytical PDF used, see
         https://docs.pymc.io/api/distributions/continuous.html for PDFs
@@ -175,50 +169,74 @@ def inferpymc(
         e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sd":1}.
         Note that the standard deviation should be used rather than the
         precision. Currently all variables are considered iid.
-      bcprior (dict):
-        Same as above but for boundary conditions.
-      sigprior (dict):
-        Same as above but for model error.
-      offsetprior (dict):
-        Same as above but for bias offset. Only used is addoffset=True.
+      bcprior:
+        Same as xprior but for boundary conditions. Only used if use_bc=True.
+      sigprior:
+        Same as xprior but for model error.
+      nuts_sampler: 
+        nuts_sampler use by pymc.sample. Options are "pymc" and "numpyro"?
+      nit: 
+        XXXX
+      burn: 
+        XXXX
+      tune: 
+        Tune use by pymc.sample
+      nchain: 
+        Number of chains use by pymc.sample
       sigma_per_site (bool):
         Whether a model sigma value will be calculated for each site independantly (True) or all sites together (False).
         Default: True
+      offsetprior (dict):
+        Same as above but for bias offset. Only used is addoffset=True.
       add_offset (bool):
         Add an offset (intercept) to all sites but the first in the site list. Default False.
       verbose:
         When True, prints progress bar
+      min_error: 
+        Minimum error to use during inversion. Only used if no_model_error is False.
+      save_trace: 
+        Path where to save the trace. If None, the trace is not saved.
+        Default None.
+      use_bc: 
+        When True, use and infer boundary conditions.
+      reparameterise_log_normal: 
+        XXXX
+      pollution_events_from_obs: 
+        When True, calculate the pollution events from obs; when false pollution events are set 
+        to the modeled concentration.
       no_model_error:
-        When True, only use observation error in likelihood function (omitting min. model error and model error
-        from scaling pollution events.)
+        When True, only use observation error in likelihood function (omitting min. model error 
+        and model error from scaling pollution events.)
 
     Returns:
-      outs (array):
-        MCMC chain for emissions scaling factors for each basis function.
-      bcouts (array):
-        MCMC chain for boundary condition scaling factors.
-      sigouts (array):
-        MCMC chain for model error.
-      Ytrace (array):
-        MCMC chain for modelled obs.
-      YBCtrace (array):
-        MCMC chain for modelled boundary condition.
-      convergence (str):
-        Passed/Failed convergence test as to whether mutliple chains
-        have a Gelman-Rubin diagnostic value <1.05
-      step1 (str):
-        Type of MCMC sampler for emissions and boundary condition updates.
-        Currently it's hardwired to NUTS (probably wouldn't change this
-        unless you're doing something obscure).
-      step2 (str):
-        Type of MCMC sampler for model error updates.
-        Currently it's hardwired to a slice sampler. This parameter is low
-        dimensional and quite simple with a slice sampler, although could
-        easily be changed.
+      Dictionnary containing:
+        xouts (array):
+          MCMC chain for emissions scaling factors for each basis function.
+        sigouts (array):
+          MCMC chain for model error.
+        Ytrace (array):
+          MCMC chain for modelled obs..
+        OFFSETtrace (array):
+          XXXX.
+        convergence (str):
+          Passed/Failed convergence test as to whether mutliple chains
+          have a Gelman-Rubin diagnostic value <1.05
+        step1 (str):
+          Type of MCMC sampler for emissions and boundary condition updates.
+          Currently it's hardwired to NUTS (probably wouldn't change this
+          unless you're doing something obscure).
+        step2 (str):
+          Type of MCMC sampler for model error updates.
+          Currently it's hardwired to a slice sampler. This parameter is low
+          dimensional and quite simple with a slice sampler, although could
+          easily be changed.
+        bcouts (array):
+          MCMC chain for boundary condition scaling factors. Only if use_bc is True.
+        YBCtrace (array):
+          MCMC chain for modelled boundary condition Only if use_bc is True.
 
     TO DO:
        - Allow non-iid variables
-    -----------------------------------
     """
     if use_bc and Hbc is None:
         raise ValueError("If `use_bc` is True, then `Hbc` must be provided.")
@@ -313,7 +331,7 @@ def inferpymc(
     if save_trace:
         trace.to_netcdf(str(save_trace), engine="netcdf4")
 
-    outs = trace.posterior["x"][0, burn:nit]
+    xouts = trace.posterior["x"][0, burn:nit]
 
     if use_bc:
         bcouts = trace.posterior["xbc"][0, burn:nit]
@@ -343,18 +361,18 @@ def inferpymc(
         OFFSETtrace = np.hstack([np.zeros((int(nit - burn), 1)), offset_outs])
         OFFtrace = np.dot(B, OFFSETtrace.T)
     else:
-        offset_outs = outs * 0
+        offset_outs = xouts * 0
         # OFFSETtrace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
         OFFtrace = np.zeros((ny, nit - burn))
 
     if use_bc:
         YBCtrace = np.dot(Hbc.T, bcouts.T) + OFFtrace
-        Ytrace = np.dot(Hx.T, outs.T) + YBCtrace
+        Ytrace = np.dot(Hx.T, xouts.T) + YBCtrace
     else:
-        Ytrace = np.dot(Hx.T, outs.T) + OFFtrace
+        Ytrace = np.dot(Hx.T, xouts.T) + OFFtrace
 
     result = {
-        "xouts": outs,
+        "xouts": xouts,
         "sigouts": sigouts,
         "offset_outs": offset_outs,
         "Ytrace": Ytrace,
