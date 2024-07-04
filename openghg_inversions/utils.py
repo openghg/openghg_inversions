@@ -1,14 +1,14 @@
-# ****************************************************************************
-# Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: ericsaboya@bristol.ac.uk
-# ****************************************************************************
-# About
-# Script containing common Python functions that can be called for running
-# HBMCMC and other  inversion models.
-# Most functions have been copied form the acrg repo (e.g. acrg.name)
-#
-# ****************************************************************************
+"""
+Script containing common Python functions that can be called for running
+HBMCMC and other inversion models.
+
+The main functions are related to applying basis functions to the flux and boundary
+conditions, and their sensitivities.
+
+Many functions in this submodule originated in the ACRG code base (in `acrg.name`).
+
+"""
+
 import glob
 import os
 from pathlib import Path
