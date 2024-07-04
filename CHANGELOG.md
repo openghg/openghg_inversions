@@ -2,6 +2,10 @@
 
 # Version 0.2.0
 
+- Cleaned up `utils.py`: moved filters to their own submodule, replaced some functions with
+  equivalents from OpenGHG, adding typing, and updated docstrings [#PR 158](https://github.com/openghg/openghg_inversions/pull/158) 
+
+
 - Removed `site_info.json` and `species_info.json` and replaced with calls to functions in `openghg.util`, which pull the same info from `openghg_defs`. [#PR 152](https://github.com/openghg/openghg_inversions/pull/152) 
 
 - Removed unused functions from `convert.py` and updated docstrings. [#PR 151](https://github.com/openghg/openghg_inversions/pull/151) 
