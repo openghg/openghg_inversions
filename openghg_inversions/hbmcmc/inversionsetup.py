@@ -4,12 +4,11 @@ Functions used for setting up HBMCMC inversions
 
 import numpy as np
 import pandas as pd
-from typing import Any
 
 def monthly_bcs(start_date :str, 
                 end_date : str,
                 site : str, 
-                fp_data : dict) -> np.ndarray[Any,float]:
+                fp_data : dict) -> np.ndarray:
     """
     Creates a sensitivity matrix (H-matrix) for the boundary
     conditions, which will map monthly boundary condition
@@ -53,7 +52,7 @@ def create_bc_sensitivity(start_date : str,
                           end_date : str, 
                           site : str, 
                           fp_data : dict, 
-                          freq : str) -> np.ndarray[Any,float]:
+                          freq : str) -> np.ndarray:
     """
     Creates a sensitivity matrix (H-matrix) for the boundary
     conditions, which will map boundary condition scalings to
@@ -104,8 +103,8 @@ def create_bc_sensitivity(start_date : str,
     return hmbc
 
 
-def sigma_freq_indicies(ytime : np.ndarray[np.datetime64], 
-                        sigma_freq : str) -> np.ndarray[Any,int]:
+def sigma_freq_indicies(ytime : np.ndarray, 
+                        sigma_freq : str) -> np.ndarray:
     """
     Create an index that splits times
     into given periods
@@ -150,8 +149,8 @@ def sigma_freq_indicies(ytime : np.ndarray[np.datetime64],
     return output
 
 
-def offset_matrix(siteindicator : np.ndarray[Any,int]
-                  ) -> np.ndarray[tuple[int,int],float]:
+def offset_matrix(siteindicator : np.ndarray
+                  ) -> np.ndarray:
     """
     Set up a matrix that can be used to add an offset to each site.
     This will anchor to the first site (i.e. first site has no offset)
