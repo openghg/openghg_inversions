@@ -11,9 +11,10 @@
 # ****************************************************************************
 import glob
 import os
+from pathlib import Path
 import re
 from types import SimpleNamespace
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 
 import dask.array as da
 import numpy as np
@@ -31,18 +32,44 @@ from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 openghginv_path = Paths.openghginv
 
 
-def combine_datasets(dataset_A: xr.Dataset, dataset_B: xr.Dataset, method: Optional[str] = "nearest", tolerance: Optional[float] = None
+def combine_datasets(
+    dataset_A: xr.Dataset,
+    dataset_B: xr.Dataset,
+    method: Optional[str] = "nearest",
+    tolerance: Optional[float] = None,
 ) -> xr.Dataset:
-    """Temporary function while waiting for `.load()` to be added to openghg version of combine_datasets"""
+    """
+    Merges two datasets and re-indexes to the first dataset.
+
+    If "fp" variable is found within the combined dataset,
+    the "time" values where the "lat", "lon" dimensions didn't match are removed.
+
+    NOTE: this is temporary solution while waiting for `.load()` to be added to openghg version of combine_datasets
+
+    Args:
+        dataset_A: First dataset to merge
+        dataset_B: Second dataset to merge
+        method: One of None, nearest, ffill, bfill.
+                See xarray.DataArray.reindex_like for list of options and meaning.
+                Defaults to ffill (forward fill)
+        tolerance: Maximum allowed tolerance between matches.
+
+    Returns:
+        xarray.Dataset: Combined dataset indexed to dataset_A
+    """
     return openghg_combine_datasets(dataset_A, dataset_B.load(), method=method, tolerance=tolerance)
 
 
-def open_ds(path, chunks=None, combine=None):
+def open_ds(
+    path: Union[str, Path],
+    chunks: Optional[dict] = None,
+    combine: Literal["by_coords", "nested"] = "by_coords",
+) -> xr.Dataset:
     """
-    Function efficiently opens xarray datasets.
-    -----------------------------------
+    Function efficiently opens xarray Datasets.
+
     Args:
-      path (str):
+      path: path to file to open
       chunks (dict, optional):
         size of chunks for each dimension
         e.g. {'lat': 50, 'lon': 50}
@@ -55,11 +82,9 @@ def open_ds(path, chunks=None, combine=None):
         'nested': concatenate datasets in the order supplied
 
     Returns:
-      ds (xarray)
-    -----------------------------------
+        xarray Dataset
     """
     if chunks is not None:
-        combine = "by_coords" if combine is None else combine
         ds = xr.open_mfdataset(path, chunks=chunks, combine=combine)
     else:
         # use a context manager, to ensure the file gets closed after use
@@ -69,29 +94,25 @@ def open_ds(path, chunks=None, combine=None):
     return ds
 
 
-def read_netcdfs(files, dim="time", chunks=None, verbose=True):
+def read_netcdfs(files: Union[list[str], list[Path]], dim: str = "time", chunks: Optional[dict] = None, verbose: bool = True) -> xr.Dataset:
     """
     The read_netcdfs function uses xarray to open sequential netCDF files and
     and concatenates them along the specified dimension.
     Note: this function makes sure that file is closed after open_dataset call.
-    -----------------------------------
+
     Args:
-      files (list):
-        List of netCDF filenames.
-      dim (str, optional):
-        Dimension of netCDF to use for concatenating the files.
-        Default = "time".
-      chunks (dict):
-        size of chunks for each dimension
-        e.g. {'lat': 50, 'lon': 50}
-        opens dataset with dask, such that it is opened 'lazily'
-        and all of the data is not loaded into memory
-        defaults to None - dataset is opened with out dask
+        files: List of netCDF filenames.
+        dim: Dimension of netCDF to use for concatenating the files. Default = "time".
+        chunks: size of chunks for each dimension
+            e.g. {'lat': 50, 'lon': 50}
+            opens dataset with dask, such that it is opened 'lazily'
+            and all of the data is not loaded into memory
+            defaults to None - dataset is opened with out dask
 
     Returns:
-      xarray.Dataset:
-        All files open as one concatenated xarray.Dataset object
-    -----------------------------------
+        xarray.Dataset: All files open as one concatenated xarray.Dataset object
+
+    # TODO: this could be done more efficiently with xr.open_mfdataset (most likely)
     """
     if verbose:
         print("Reading and concatenating files ...")
@@ -204,7 +225,7 @@ def areagrid(lat, lon):
     return area
 
 
-def basis(domain, basis_case, basis_directory=None):
+def basis(domain: str, basis_case: str, basis_directory: Optional[str] = None):
     """
     The basis function reads in the all matching files for the
     basis case and domain as an xarray Dataset.
@@ -220,7 +241,7 @@ def basis(domain, basis_case, basis_directory=None):
         Domain name. The basis files should be sub-categorised by the domain.
       basis_case (str):
         Basis case to read in.
-        Examples of basis cases are "voroni","sub-transd","sub-country_mask",
+        Examples of basis cases are "voronoi","sub-transd","sub-country_mask",
         "INTEM".
       basis_directory (str, optional):
         basis_directory can be specified if files are not in the default
