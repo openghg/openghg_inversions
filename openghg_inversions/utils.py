@@ -812,27 +812,22 @@ def fp_sensitivity_single_site_basis_func(
     return sensitivity, site_bf
 
 
-def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory=None):
+def bc_sensitivity(fp_and_data: dict, domain: str, basis_case: str, bc_basis_directory: Optional[str] = None) -> dict:
     """
-    The bc_sensitivity adds H_bc to the sensitivity matrix,
-    to each site xarray dataframe in fp_and_data.
-    -----------------------------------
+    Add boundary conditions sensitivity matrix `H_bc` to each site xr.Dataframe in fp_and_data.
+
     Args:
-      fp_and_data (dict):
-        Output from ModelScenario.footprints_data_merge() function. Dictionary of datasets.
-     domain (str):
-       Domain name. The footprint files should be sub-categorised by the domain.
-     basis_case (str):
-       Basis case to read in. Examples of basis cases are "NESW","stratgrad".
-     bc_basis_directory (str):
-       bc_basis_directory can be specified if files are not in the default
-       directory. Must point to a directory which contains subfolders organized
-       by domain. (optional)
+        fp_and_data: dict containing xr.Datasets output by `ModelScenario.footprints_data_merge`
+            keyed by site code.
+        domain: inversion domain. For instance "EUROPE"
+        basis_case: BC basis case to read in. Examples of basis cases are "NESW","stratgrad".
+        bc_basis_directory: bc_basis_directory can be specified if files are not in the default
+            directory. Must point to a directory which contains subfolders organized
+            by domain. (optional)
 
     Returns:
-      dict (xarray.Dataset):
-        Same format as fp_and_data with sensitivity matrix added.
-    -----------------------------------
+        dict of xr.Datasets in same format as fp_and_data with `H_bc` sensitivity matrix added.
+
     """
 
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
