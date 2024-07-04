@@ -657,30 +657,29 @@ def timeseries_HiTRes(
 
 def fp_sensitivity(
     fp_and_data: dict, basis_func: Union[xr.DataArray, dict[str, xr.DataArray]], verbose: bool = True
-):
+) -> dict:
     """
-    The fp_sensitivity function adds a sensitivity matrix, H, to each
-    site xarray dataframe in fp_and_data.
-    Basis function data in an array: lat, lon, no. regions.
-    In each 'region'element of array there is a lat-lon grid with 1 in
-    region and 0 outside region.
+    Add a sensitivity matrix, H, to each site xr.Dataset in fp_and_data.
+
+    The sensitivity matrix H takes the footprint sensitivities (the `fp` variable),
+    multiplies it by the flux files, then aggregates over the basis regions.
+
+    The basis functions can have one of two forms:
+    - a xr.DataArray with lat/lon coordinates, and positive integer values, where all
+      lat/lon pairs with value == i form the i-th basis region
+    - a xr.DataArray with coordinates: lat, lon, region. For each fixed region value, there is
+      a lat-lon grid with 1 in region and 0 outside region.
 
     Region numbering must start from 1
 
     Args:
-      fp_and_data (dict):
-        Output from footprints_data_merge() function. Dictionary of datasets.
-      domain (str):
-        Domain name. The footprint files should be sub-categorised by the domain.
-      basis_case:
-        Basis case to read in. Examples of basis cases are "NESW","stratgrad".
-        String if only one basis case is required. Dict if there are multiple
-        sources that require separate basis cases. In which case, keys in dict should
-        reflect keys in emissions_name dict used in fp_data_merge.
+        fp_and_data: output from `data_processing_surface_notracer`; contains "combined scenarios" keyed by
+            site code, as well as fluxes.
+        basis_func: basis functions to use; output from `utils.basis` or basis functions in `basis` submodule.
+        verbose: if True, print info messages.
 
     Returns:
-        dict:
-          Same format as fp_and_data with sensitivity matrix and basis function grid added.
+        dict in same format as fp_and_data with sensitivity matrix and basis functions added.
     """
 
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
