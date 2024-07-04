@@ -8,19 +8,14 @@ conditions, and their sensitivities.
 Many functions in this submodule originated in the ACRG code base (in `acrg.name`).
 
 """
-
-import glob
 import os
 from pathlib import Path
-import re
 from types import SimpleNamespace
 from typing import Literal, Optional, Union
 
 import dask.array as da
 import numpy as np
-import pandas as pd
 import xarray as xr
-from openghg.analyse import ModelScenario
 from openghg.analyse import combine_datasets as openghg_combine_datasets
 from openghg.dataobjects import FluxData
 from openghg.util import get_species_info, synonyms
@@ -34,8 +29,8 @@ openghginv_path = Paths.openghginv
 
 
 def combine_datasets(
-    dataset_A: xr.Dataset,
-    dataset_B: xr.Dataset,
+    dataset_a: xr.Dataset,
+    dataset_b: xr.Dataset,
     method: Optional[str] = "nearest",
     tolerance: Optional[float] = None,
 ) -> xr.Dataset:
@@ -59,7 +54,7 @@ def combine_datasets(
     Returns:
         xarray.Dataset: Combined dataset indexed to dataset_A
     """
-    return openghg_combine_datasets(dataset_A, dataset_B.load(), method=method, tolerance=tolerance)
+    return openghg_combine_datasets(dataset_a, dataset_b.load(), method=method, tolerance=tolerance)
 
 
 def open_ds(
@@ -145,7 +140,9 @@ def read_netcdfs(
 
 
 def get_country(domain: str, country_file: Union[str, Path, None] = None):
-    """Open country file for given domain and return as a SimpleNamespace (dict with class like attribute acces)
+    """Open country file for given domain and return as a SimpleNamespace
+
+    NOTE: a SimpleNamespace is a like dict with class like attribute access
 
     Args:
         domain: domain of inversion
@@ -326,7 +323,7 @@ def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: 
         print(
             "Warning: unable to read all boundary conditions basis function files which match this criteria:"
         )
-        [print(ff) for ff in file_no_acc]
+        print("\n".join(file_no_acc))
 
     # only use files we can access
     files = [ff for ff in files if ff not in file_no_acc]
@@ -484,7 +481,8 @@ def timeseries_HiTRes(
             flux_sector["high_freq"] = flux_sector["high_freq"].reindex(time=time_flux, method="ffill")
         else:
             print(
-                f"\nWarning: no high frequency flux data for {sector}, estimating a timeseries using the low frequency data"
+                f"\nWarning: no high frequency flux data for {sector}, "
+                "estimating a timeseries using the low frequency data"
             )
             flux_sector["high_freq"] = None
 
@@ -853,7 +851,8 @@ def bc_sensitivity(
     species = synonyms(species, lower=False)
 
     for site in sites:
-        # ES commented out line below as .bc not attribute. Also assume openghg adds all relevant particle data to file.
+        # ES commented out line below as .bc not attribute.
+        # Also assume openghg adds all relevant particle data to file.  TODO: what does this mean? BM, 2024
         #        if fp_and_data[site].bc.chunks is not None:
         for particles in [
             "particle_locations_n",
@@ -872,7 +871,7 @@ def bc_sensitivity(
             # this is because lifetime can be a list of monthly values
 
             time_month = fp_and_data[site].time.dt.month
-            if type(lifetime_hrs_list_or_float) is list:
+            if isinstance(lifetime_hrs_list_or_float, list):
                 lifetime_hrs = [lifetime_hrs_list_or_float[item - 1] for item in time_month.values]
             else:
                 lifetime_hrs = lifetime_hrs_list_or_float
