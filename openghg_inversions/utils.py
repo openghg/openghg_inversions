@@ -255,17 +255,20 @@ def basis(domain: str, basis_case: str, basis_directory: Optional[str] = None) -
         xarray.Dataset: combined dataset of matching basis functions
     """
     if basis_directory is None:
-        if not os.path.exists(os.path.join(openghginv_path, "basis_functions/")):
-            os.makedirs(os.path.join(openghginv_path, "basis_functions/"))
-        basis_directory = os.path.join(openghginv_path, "basis_functions/")
+        basis_directory = openghginv_path / "basis_functions"
+        if not basis_directory.exists():
+            basis_directory.mkdir()
+            raise ValueError(f"Default basis directory {basis_directory} was empty. "
+                             "Add basis files or specify `basis_directory`.")
 
-    file_path = os.path.join(basis_directory, domain, f"{basis_case}_{domain}*.nc")
-    files = sorted(glob.glob(file_path))
+
+    file_path = (basis_directory / domain).glob(f"{basis_case}_{domain}*.nc")
+    files = sorted(list(file_path))
 
     if len(files) == 0:
         raise IOError(
-            f"\nError: Can't find basis function files for domain '{domain}' \
-                          and basis_case '{basis_case}' "
+            f"Can't find basis function files for domain '{domain}'"
+            f"and basis_case '{basis_case}' "
         )
 
     basis_ds = read_netcdfs(files)
