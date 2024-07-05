@@ -180,7 +180,7 @@ def inferpymc(Hx: np.ndarray,
       burn: 
         number of samples to discard (or "burn") from the beginning of each chain
       tune: 
-        Tune use by pymc.sample
+        number of tuning steps used by sampler
       nchain: 
         Number of chains use by pymc.sample
       sigma_per_site (bool):
