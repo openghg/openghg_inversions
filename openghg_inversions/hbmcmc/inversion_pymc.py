@@ -392,7 +392,6 @@ def inferpymc(Hx: np.ndarray,
 def inferpymc_postprocessouts(
     xouts: np.ndarray,
     sigouts: np.ndarray,
-    offset_outs: np.ndarray,
     convergence: str,
     Hx: np.ndarray,
     Y: np.ndarray,
@@ -450,8 +449,6 @@ def inferpymc_postprocessouts(
         MCMC chain for emissions scaling factors for each basis function.
       sigouts:
         MCMC chain for model error.
-      offset_outs:
-        XXXX
       convergence:
         Passed/Failed convergence test as to whether mutliple chains
         have a Gelman-Rubin diagnostic value <1.05
@@ -570,13 +567,10 @@ def inferpymc_postprocessouts(
         nbc = Hbc.shape[0]
         nBC = np.arange(nbc)
 
-    noff = offset_outs.shape[0]
-
     nui = np.arange(2)
     steps = np.arange(nit)
     nmeasure = np.arange(ny)
     nparam = np.arange(nx)
-    nOFF = np.arange(noff)
     # YBCtrace = np.dot(Hbc.T,bcouts.T)
 
     # OFFSET HYPERPARAMETER
