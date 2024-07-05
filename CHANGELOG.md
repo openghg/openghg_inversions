@@ -2,6 +2,8 @@
 
 # Version 0.2.0
 
+- Moved `basis` and related functions from `utils.py` to `basis._functions.py` to make more consistent [#PR 162](https://github.com/openghg/openghg_inversions/pull/162)
+
 - Moved filters from `utils.py` to new submodule `filters.py` [#PR 159](https://github.com/openghg/openghg_inversions/pull/159) 
 
 - Removed `site_info.json` and `species_info.json` and replaced with calls to functions in `openghg.util`, which pull the same info from `openghg_defs`. [#PR 152](https://github.com/openghg/openghg_inversions/pull/152) 
