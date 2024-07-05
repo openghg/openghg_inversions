@@ -40,6 +40,29 @@ def combine_datasets(
     If "fp" variable is found within the combined dataset,
     the "time" values where the "lat", "lon" dimensions didn't match are removed.
 
+    NOTE: this is temporary solution while waiting for `.load()` to be added to openghg version of combine_datasets
+
+    Args:
+        dataset_A: First dataset to merge
+        dataset_B: Second dataset to merge
+        method: One of None, nearest, ffill, bfill.
+                See xarray.DataArray.reindex_like for list of options and meaning.
+                Defaults to ffill (forward fill)
+        tolerance: Maximum allowed tolerance between matches.
+
+    Returns:
+        xarray.Dataset: Combined dataset indexed to dataset_A
+    """
+    return openghg_combine_datasets(dataset_a, dataset_b.load(), method=method, tolerance=tolerance)
+
+
+def open_ds(path, chunks=None, combine=None):
+    """
+    Merges two datasets and re-indexes to the first dataset.
+
+    If "fp" variable is found within the combined dataset,
+    the "time" values where the "lat", "lon" dimensions didn't match are removed.
+
     NOTE: this is temporary solution while waiting for `.load()` to be added to openghg version
     of combine_datasets.
 

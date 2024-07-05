@@ -2,8 +2,10 @@
 
 # Version 0.2.0
 
-- Cleaned up `utils.py`: replaced some functions with
-  equivalents from OpenGHG, adding typing, and updated docstrings [#PR 158](https://github.com/openghg/openghg_inversions/pull/158) 
+- Cleaned up `utils.py`: adding typing, and updated docstrings [#PR 158](https://github.com/openghg/openghg_inversions/pull/158) 
+
+- Replaced `utils.combine_datasets` with (nearly) equivalent function from `openghg.analyse._scenario`. There is currently a thin wrapper to make sure that the second
+  dataset is loaded into memory, since this change is only on the devel branch of OpenGHG [#PR 160](https://github.com/openghg/openghg_inversions/pull/160) 
 
 - Moved filters from `utils.py` to new submodule `filters.py` [#PR 159](https://github.com/openghg/openghg_inversions/pull/159) 
 
