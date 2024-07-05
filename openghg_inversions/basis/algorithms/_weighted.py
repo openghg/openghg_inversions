@@ -81,7 +81,7 @@ def get_nregions(bucket : float,
         grid:
             2D grid of footprints * flux, or whatever
             grid you want to split. Could be: population
-            data, spatial distribution of bakeries, you chose!
+            data, spatial distribution of bakeries, you choose!
 
     Return :
         number of basis functions for bucket value
