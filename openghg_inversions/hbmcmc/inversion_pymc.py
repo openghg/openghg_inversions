@@ -434,7 +434,7 @@ def inferpymc_postprocessouts(
 ) -> xr.Dataset:
     """
     Takes the output from inferpymc function, along with some other input
-    information, calculates staitics on them and places it all in a dataset. 
+    information, calculates statistics on them and places it all in a dataset. 
     Also calculates statistics on posterior emissions for the countries in 
     the inversion domain and saves all in netcdf.
     
