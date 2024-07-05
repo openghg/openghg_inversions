@@ -103,7 +103,7 @@ def optimize_nregions(bucket : float,
         grid:
             2D grid of footprints * flux, or whatever
             grid you want to split. Could be: population
-            data, spatial distribution of bakeries, you chose!
+            data, spatial distribution of bakeries, you choose!
         nregion:
             Number of desired basis function regions
         tol:
