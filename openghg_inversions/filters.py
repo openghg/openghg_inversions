@@ -72,25 +72,13 @@ def filtering(datasets_in: dict, filters: Union[dict[str, list[str]], list[str]]
     instance when applying the "daily_median" filter if you only wanted
     to look at daytime values the filters list should be
     ["daytime","daily_median"]
-    -----------------------------------
+
     Args:
         datasets_in: dictionary of datasets containing output from ModelScenario.footprints_merge().
         filters: filters to apply to the datasets. Either a list of filters, which will be applied to every site,
             or a dictionary of lists of the form  {<site code>: [filter1, filter2, ...]}, with specific filters to
-            be applied at each site.
-
-            All options for filters are:
-              "daytime"           : selects data between 1100 and 1500 local solar time
-              "daytime9to5"       : selects data between 0900 and 1700 local solar time
-              "nighttime"         : Only b/w 23:00 - 03:00 inclusive
-              "noon"              : Only 12:00 fp and obs used
-              "daily_median"      : calculates the daily median
-              "pblh_min"          : Only keeps times when pblh is > threshold (default 200m)
-              "pblh_inlet_diff"   : Only keeps times when inlet is at least a threshold (default 50m) below the pblh
-              "local_influence"   : Only keep times when localness is low
-              "six_hr_mean"       :
-              "local_lapse"       :
-        keep_missing: if True, drop missing data )
+            be applied at each site. Use the `list_filters` function to list available filters.
+        keep_missing: if True, drop missing data
 
     Returns:
         dict in same format as datasets_in, with filters applied
@@ -110,26 +98,12 @@ def filtering(datasets_in: dict, filters: Union[dict[str, list[str]], list[str]]
                 filters[site] = [filt]
 
     # Check that filters are defined for all sites
+    # TODO: just set filters for missing sites to None?
     tmp = [(site in filters) for site in sites]
     if not all(tmp):
         raise ValueError(f"Missing entry for sites {np.array(sites)[~np.array(tmp)]} in filters.")
 
-
     datasets = datasets_in.copy()
-
-
-    # filtering_functions = {
-    #     "daily_median": daily_median,
-    #     "daytime": daytime,
-    #     "daytime9to5": daytime9to5,
-    #     "nighttime": nighttime,
-    #     "noon": noon,
-    #     "local_influence": local_influence,
-    #     "six_hr_mean": six_hr_mean,
-    #     "pblh_inlet_diff": pblh_inlet_diff,
-    #     "pblh_min": pblh_min,
-    #     "pblh": pblh,
-    # }
 
     # Apply filtering
     for site in sites:
