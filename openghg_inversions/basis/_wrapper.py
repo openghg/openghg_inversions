@@ -6,8 +6,7 @@ from typing import Optional
 
 import xarray as xr
 
-from ._functions import basis_functions, fixed_outer_regions_basis
-from .. import utils
+from ._functions import basis_functions, fixed_outer_regions_basis, basis, fp_sensitivity, bc_sensitivity
 
 
 def basis_functions_wrapper(
@@ -87,7 +86,7 @@ def basis_functions_wrapper(
             print(
                 f"Basis algorithm {basis_algorithm} and basis case {fp_basis_case} supplied; using {fp_basis_case}."
             )
-        basis_data_array = utils.basis(
+        basis_data_array = basis(
             domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory
         ).basis
 
@@ -115,10 +114,10 @@ def basis_functions_wrapper(
         print(f"Using {basis_function.description} to derive basis functions.")
         basis_data_array = basis_function.algorithm(fp_all, start_date, emissions_name, nbasis)
 
-    fp_data = utils.fp_sensitivity(fp_all, basis_func=basis_data_array)
+    fp_data = fp_sensitivity(fp_all, basis_func=basis_data_array)
 
     if use_bc is True:
-        fp_data = utils.bc_sensitivity(
+        fp_data = bc_sensitivity(
             fp_data,
             domain=domain,
             basis_case=bc_basis_case,

@@ -21,7 +21,7 @@ import pytensor.tensor as pt
 import arviz as az
 from scipy import stats
 from pymc.distributions import continuous
-from pytensor.tensor.variable import TensorVariable
+from pytensor.tensor import TensorVariable
 
 from openghg_inversions import convert
 from openghg_inversions import utils
