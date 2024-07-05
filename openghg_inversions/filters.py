@@ -8,6 +8,7 @@ A filter function should accept as arguments: an xr.Dataset, a bool called "keep
 
 To see the available filters call `list_filters`.
 """
+
 import re
 from typing import Callable, Union
 
@@ -54,14 +55,16 @@ def list_filters() -> None:
     for k, v in filtering_functions.items():
         # print function name and first line of docstring
         try:
-            first_line_of_docstring = v.__doc__.strip().split('\n')[0]
+            first_line_of_docstring = v.__doc__.strip().split("\n")[0]
         except AttributeError:
             first_line_of_docstring = "No docstring"
 
         print(f"\t{k:{spacing}}{first_line_of_docstring}")
 
 
-def filtering(datasets_in: dict, filters: Union[dict[str, list[str]], list[str]], keep_missing: bool = False) -> dict:
+def filtering(
+    datasets_in: dict, filters: Union[dict[str, list[str]], list[str]], keep_missing: bool = False
+) -> dict:
     """
     Applies time filtering to entire dataset.
     Filters supplied in a list and then applied in order.
@@ -115,7 +118,9 @@ def filtering(datasets_in: dict, filters: Union[dict[str, list[str]], list[str]]
                 if filt in ["daily_median", "six_hr_mean", "pblh_inlet_diff", "pblh_min", "pblh"]:
                     datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
                 else:
-                    datasets[site] = filtering_functions[filt](datasets[site], site, keep_missing=keep_missing)
+                    datasets[site] = filtering_functions[filt](
+                        datasets[site], site, keep_missing=keep_missing
+                    )
                 n_filter = datasets[site].time.values.shape[0]
                 n_dropped = n_nofilter - n_filter
                 perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
@@ -278,9 +283,7 @@ def pblh_min(dataset: xr.Dataset, pblh_threshold=200.0, keep_missing: bool = Fal
     """
     pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
 
-    ti = [
-        i for i, pblh in enumerate(pblh_da) if pblh > pblh_threshold
-    ]
+    ti = [i for i, pblh in enumerate(pblh_da) if pblh > pblh_threshold]
 
     if keep_missing is True:
         mf_data_array = dataset.mf
@@ -310,13 +313,13 @@ def pblh_inlet_diff(dataset: xr.Dataset, diff_threshold=50.0, keep_missing: bool
         if m is not None:
             inlet_height = float(m.group(0))
     else:
-        raise ValueError("Could not find inlet height from `inlet_height_magl` or `inlet` dataset attributes.")
+        raise ValueError(
+            "Could not find inlet height from `inlet_height_magl` or `inlet` dataset attributes."
+        )
 
     pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
 
-    ti = [
-        i for i, pblh in enumerate(pblh_da) if inlet_height < pblh - diff_threshold
-    ]
+    ti = [i for i, pblh in enumerate(pblh_da) if inlet_height < pblh - diff_threshold]
 
     if keep_missing is True:
         mf_data_array = dataset.mf
