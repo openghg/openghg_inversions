@@ -84,7 +84,7 @@ def get_nregions(bucket : float,
             data, spatial distribution of bakeries, you chose!
 
     Return :
-        no. of basis functions for bucket value
+        number of basis functions for bucket value
     """
     return np.max(bucket_split_landsea_basis(grid, bucket))
 
