@@ -9,7 +9,7 @@ def test_combine_datasets():
     fp = get_footprint(site="tac", domain="europe").data
     flux = get_flux(species="ch4", source="total-ukghg-edgar7", domain="europe").data
 
-    comb = combine_datasets(fp, flux)
+    comb = combine_datasets(fp, flux, method="nearest")
 
     with pytest.raises(AssertionError) as exc_info:
         xr.testing.assert_allclose(flux.flux.squeeze("time").drop_vars("time"), comb.flux.isel(time=0))
