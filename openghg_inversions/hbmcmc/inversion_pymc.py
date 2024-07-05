@@ -182,7 +182,9 @@ def inferpymc(Hx: np.ndarray,
       tune: 
         number of tuning steps used by sampler
       nchain: 
-        Number of chains use by pymc.sample
+        number of chains use by sampler. You should use at least 2 chains for the convergence checks
+        to work; four chains is better. Chains run in parallel, so the number of chains doesn't affect
+        running time, provided the number of threads available is at least the number of chains.
       sigma_per_site (bool):
         Whether a model sigma value will be calculated for each site independantly (True) or all sites together (False).
         Default: True
