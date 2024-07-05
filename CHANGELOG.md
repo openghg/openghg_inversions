@@ -1,6 +1,7 @@
 # OpenGHG Inversions Change Log
 
 # Version 0.2.0
+- Update docstrings
 
 - Moved filters from `utils.py` to new submodule `filters.py` [#PR 159](https://github.com/openghg/openghg_inversions/pull/159) 
 
