@@ -4,6 +4,7 @@ Functions used for setting up HBMCMC inversions
 
 import numpy as np
 import pandas as pd
+from typing import Union
 
 def monthly_bcs(start_date :str, 
                 end_date : str,
@@ -104,7 +105,7 @@ def create_bc_sensitivity(start_date : str,
 
 
 def sigma_freq_indicies(ytime : np.ndarray, 
-                        sigma_freq : str) -> np.ndarray:
+                        sigma_freq : Union[str,None]) -> np.ndarray:
     """
     Create an index that splits times
     into given periods

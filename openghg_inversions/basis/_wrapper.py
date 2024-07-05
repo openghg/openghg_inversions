@@ -15,7 +15,7 @@ def basis_functions_wrapper(
     species: str,
     domain: str,
     start_date: str,
-    emissions_name: list[str],
+    emissions_name: list[str] | None,
     nbasis: int,
     use_bc: bool,
     basis_algorithm: Optional[str] = None,

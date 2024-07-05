@@ -40,38 +40,38 @@ def fixedbasisMCMC(
     averaging_period: list[str],
     start_date: str,
     end_date: str,
-    outputpath: Union[str, Path],
-    outputname: Union[str, Path],
+    outputpath: str,
+    outputname: str,
     bc_store: str ="user",  # Do we want to set defaults for the object stores?
     obs_store: str ="user",
     footprint_store: str ="user",
     emissions_store: str ="user",
     met_model: Optional[list] =None,
-    fp_model: str =None,  # Changed to none. When "NAME" specified FPs are not found
-    fp_height: list[str] =None,
-    fp_species: str =None,
-    emissions_name: list[str] =None,
-    inlet: list[str] =None,
-    instrument: list[str] =None,
-    calibration_scale: str =None,
-    obs_data_level: list =None,
+    fp_model: Optional[str] =None,  # Changed to none. When "NAME" specified FPs are not found
+    fp_height: Optional[list[str]] =None,
+    fp_species: Optional[str] =None,
+    emissions_name: Optional[list[str]] =None,
+    inlet: Optional[list[str]] =None,
+    instrument: Optional[list[str]] =None,
+    calibration_scale: Optional[str] =None,
+    obs_data_level: Optional[list] =None,
     use_tracer: bool =False,
     use_bc: bool =True,
     fp_basis_case: Optional[str] =None,
-    basis_directory: Union[str, Path] =None,
-    bc_basis_case: Union[str, Path] ="NESW",
-    bc_basis_directory: Union[str, Path] =None,
-    country_file: Union[str, Path] =None,
-    bc_input: str =None,
-    basis_algorithm: str ="weighted",
+    basis_directory: Optional[str] =None,
+    bc_basis_case: str ="NESW",
+    bc_basis_directory: Optional[str] =None,
+    country_file: Optional[str] =None,
+    bc_input: Optional[str] =None,
+    basis_algorithm: str  ="weighted",
     nbasis: int =100,
     xprior: dict ={"pdf": "truncatednormal", "mu": 1.0, "sigma": 1.0, "lower": 0.0},
     bcprior: dict ={"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0},
     sigprior: dict ={"pdf": "uniform", "lower": 0.1, "upper": 3},
     offsetprior: dict ={"pdf": "normal", "mu": 0, "sd": 1},
-    nit: int =2.5e5,
+    nit: int =int(2.5e5),
     burn: int =50000,
-    tune: int =1.25e5,
+    tune: int =int(1.25e5),
     nchain: int =2,
     filters: Union[None, list, dict[str, Optional[list[str]]]] = None,
     fix_basis_outer_regions: bool = False,
@@ -84,16 +84,16 @@ def fixedbasisMCMC(
     verbose: bool=False,
     reload_merged_data: bool=False,
     save_merged_data: bool=False,
-    merged_data_dir: Union[str, Path]=None,
-    merged_data_name: Union[str, Path] =None,
-    basis_output_path: Union[str, Path] =None,
+    merged_data_dir: Optional[str]=None,
+    merged_data_name: Optional[str]=None,
+    basis_output_path: Optional[str]=None,
     save_trace: Union[str, Path, bool] = False,
     skip_postprocessing: bool = False,
     merged_data_only: bool = False,
     calculate_min_error: Optional[Literal["percentile", "residual"]] = None,
     min_error_options: Optional[dict] = None,
     **kwargs,
-) -> xr.Dataset:
+) -> Union[xr.Dataset,dict]:
     """
     Script to run hierarchical Bayesian MCMC (RHIME) for inference
     of emissions using PyMC to solve the inverse problem.
@@ -253,6 +253,9 @@ def fixedbasisMCMC(
       min_error_options: 
         Dictionary of additional arguments to pass the the function used to calculate min. model
         error (as specified by `calculate_min_error`).
+      
+    Return:
+      Results from the inversion in a Dataset if skip_post_processing==False, in a dictionnary if True
     """
     rerun_merge = True
 
@@ -547,7 +550,7 @@ def fixedbasisMCMC(
     return out
 
 
-def rerun_output(input_file: Union[str,Path], 
+def rerun_output(input_file: str, 
                  outputname: str, 
                  outputpath: str, 
                  verbose: bool=False) -> None:
