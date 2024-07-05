@@ -2,6 +2,8 @@
 
 # Version 0.2.0
 
+- Cleaned up `utils.py`: adding typing, and updated docstrings [#PR 158](https://github.com/openghg/openghg_inversions/pull/158) 
+
 - Refactored `filters.py` so filter functions aren't nested inside `filtering`. Added code to keep track of filter functions. Updated docstrings. [#PR 163](https://github.com/openghg/openghg_inversions/pull/163)
 
 - Replaced `utils.combine_datasets` with (nearly) equivalent function from `openghg.analyse._scenario`. There is currently a thin wrapper to make sure that the second
