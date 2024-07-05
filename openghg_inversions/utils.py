@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from openghg.analyse import ModelScenario
+from openghg.analyse import combine_datasets as openghg_combine_datasets
 from openghg.util import get_species_info, synonyms
 from tqdm import tqdm
 
@@ -28,6 +29,34 @@ from openghg_inversions.config.paths import Paths
 from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 
 openghginv_path = Paths.openghginv
+
+
+def combine_datasets(
+    dataset_A: xr.Dataset,
+    dataset_B: xr.Dataset,
+    method: Optional[str] = "nearest",
+    tolerance: Optional[float] = None,
+) -> xr.Dataset:
+    """
+    Merges two datasets and re-indexes to the first dataset.
+
+    If "fp" variable is found within the combined dataset,
+    the "time" values where the "lat", "lon" dimensions didn't match are removed.
+
+    NOTE: this is temporary solution while waiting for `.load()` to be added to openghg version of combine_datasets
+
+    Args:
+        dataset_A: First dataset to merge
+        dataset_B: Second dataset to merge
+        method: One of None, nearest, ffill, bfill.
+                See xarray.DataArray.reindex_like for list of options and meaning.
+                Defaults to ffill (forward fill)
+        tolerance: Maximum allowed tolerance between matches.
+
+    Returns:
+        xarray.Dataset: Combined dataset indexed to dataset_A
+    """
+    return openghg_combine_datasets(dataset_A, dataset_B.load(), method=method, tolerance=tolerance)
 
 
 def open_ds(path, chunks=None, combine=None):
@@ -295,89 +324,6 @@ def basis_boundary_conditions(domain, basis_case, bc_basis_directory=None):
     basis_ds = read_netcdfs(files)
 
     return basis_ds
-
-
-def indexesMatch(dsa, dsb):
-    """
-    Check if two datasets need to be reindexed_like for combine_datasets
-    -----------------------------------
-    Args:
-      dsa (xarray.Dataset) :
-        First dataset to check
-      dsb (xarray.Dataset) :
-        Second dataset to check
-
-    Returns:
-      boolean:
-        True if indexes match, False if datasets must be reindexed
-    -----------------------------------
-    """
-
-    commonIndicies = [key for key in dsa.indexes.keys() if key in dsb.indexes.keys()]
-
-    # test if each comon index is the same
-    for index in commonIndicies:
-        # first check lengths are the same to avoid error in second check
-        if not len(dsa.indexes[index]) == len(dsb.indexes[index]):
-            return False
-
-        # check number of values that are not close (testing for equality with floating point)
-        if index == "time":
-            # for time iverride the default to have ~ second precision
-            rtol = 1e-10
-        else:
-            rtol = 1e-5
-
-        num_not_close = np.sum(
-            ~np.isclose(
-                dsa.indexes[index].values.astype(float),
-                dsb.indexes[index].values.astype(float),
-                rtol=rtol,
-            )
-        )
-        if num_not_close > 0:
-            return False
-
-    return True
-
-
-def combine_datasets(dsa, dsb, method="nearest", tolerance: Optional[float] = None) -> xr.Dataset:
-    """
-    Merge two datasets, re-indexing to the first dataset (within an optional tolerance).
-
-    If "fp" variable is found within the combined dataset, the "time" values where the "lat", "lon"
-    dimensions didn't match are removed.
-
-    Example:
-        ds = combine_datasets(dsa, dsb)
-
-    Args:
-      dsa (xarray.Dataset):
-        First dataset to merge
-      dsb (xarray.Dataset):
-        Second dataset to merge
-      method: One of {None, ‘nearest’, ‘pad’/’ffill’, ‘backfill’/’bfill’}
-        See xarray.DataArray.reindex_like for list of options and meaning.
-        Default = "ffill" (forward fill)
-      tolerance: Maximum allowed (absolute) tolerance between matches.
-
-    Returns:
-      xarray.Dataset: combined dataset indexed to dsa
-    """
-    # merge the two datasets within a tolerance and remove times that are NaN (i.e. when FPs don't exist)
-
-    if not indexesMatch(dsa, dsb):
-        dsb_temp = dsb.load().reindex_like(dsa, method, tolerance=tolerance)
-    else:
-        dsb_temp = dsb
-
-    ds_temp = dsa.merge(dsb_temp)
-
-    if "fp" in ds_temp:
-        mask = np.isfinite(ds_temp.fp.sum(dim=["lat", "lon"], skipna=False))
-        ds_temp = ds_temp.where(mask.as_numpy(), drop=True)  # .as_numpy() in case mask is chunked
-
-    return ds_temp
 
 
 def timeseries_HiTRes(
@@ -818,7 +764,7 @@ def fp_sensitivity_single_site_basis_func(
             )
 
     else:
-        site_bf = combine_datasets(scenario["fp"].to_dataset(), flux.data)
+        site_bf = combine_datasets(scenario["fp"].to_dataset(), flux.data, method="nearest")
         H_all = site_bf.fp * site_bf.flux
 
     H_all_v = H_all.values.reshape((len(site_bf.lat) * len(site_bf.lon), len(site_bf.time)))
