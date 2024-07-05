@@ -83,7 +83,7 @@ def define_stations(ds: xr.Dataset,
             If not specified, the sites will be extracted from the input dataset assuming a
             data variable "sites" is included within the dataset.
         use_site_info:
-            Use positions from site_info.json file rather than extract them from the tdmcmc dataset.
+            Use positions from openghg_defs rather than extract them from the tdmcmc dataset.
             Default = False.
 
     Returns:
