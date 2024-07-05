@@ -140,30 +140,6 @@ def _local_solar_time(dataset):
 
 
 @register_filter
-def local_ratio(dataset):
-    """
-    Calculates the local ratio in the surrounding grid cells
-    """
-    dlon = dataset.lon[1].values - dataset.lon[0].values
-    dlat = dataset.lat[1].values - dataset.lat[0].values
-    local_sum = np.zeros((len(dataset.mf)))
-
-    for ti in range(len(dataset.mf)):
-        release_lon = dataset.release_lon[ti].values
-        release_lat = dataset.release_lat[ti].values
-        wh_rlon = np.where(abs(dataset.lon.values - release_lon) < dlon / 2.0)
-        wh_rlat = np.where(abs(dataset.lat.values - release_lat) < dlat / 2.0)
-        if np.any(wh_rlon[0]) and np.any(wh_rlat[0]):
-            local_sum[ti] = np.sum(
-                dataset.fp[
-                    wh_rlat[0][0] - 2 : wh_rlat[0][0] + 3, wh_rlon[0][0] - 2 : wh_rlon[0][0] + 3, ti
-                ].values
-            ) / np.sum(dataset.fp[:, :, ti].values)
-        else:
-            local_sum[ti] = 0.0
-
-    return local_sum
-
 
 @register_filter
 def daily_median(dataset, keep_missing=False):
@@ -237,6 +213,33 @@ def noon(dataset, site, keep_missing=False):
         return dataset_out
     else:
         return dataset[dict(time=ti)]
+
+
+def _local_ratio(dataset):
+    """
+    Calculates the local ratio in the surrounding grid cells.
+
+    NOTE: This is not a filter; it is used by the `local_influence` filter.
+    """
+    dlon = dataset.lon[1].values - dataset.lon[0].values
+    dlat = dataset.lat[1].values - dataset.lat[0].values
+    local_sum = np.zeros((len(dataset.mf)))
+
+    for ti in range(len(dataset.mf)):
+        release_lon = dataset.release_lon[ti].values
+        release_lat = dataset.release_lat[ti].values
+        wh_rlon = np.where(abs(dataset.lon.values - release_lon) < dlon / 2.0)
+        wh_rlat = np.where(abs(dataset.lat.values - release_lat) < dlat / 2.0)
+        if np.any(wh_rlon[0]) and np.any(wh_rlat[0]):
+            local_sum[ti] = np.sum(
+                dataset.fp[
+                    wh_rlat[0][0] - 2 : wh_rlat[0][0] + 3, wh_rlon[0][0] - 2 : wh_rlon[0][0] + 3, ti
+                ].values
+            ) / np.sum(dataset.fp[:, :, ti].values)
+        else:
+            local_sum[ti] = 0.0
+
+    return local_sum
 
 
 @register_filter
