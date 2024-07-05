@@ -124,9 +124,11 @@ def filtering(datasets_in: dict, filters: Union[dict[str, list[str]], list[str]]
     return datasets
 
 
-def _local_solar_time(dataset):
+def _local_solar_time(dataset: xr.Dataset) -> list[int]:
     """
     Returns hour of day as a function of local solar time relative to the Greenwich Meridian.
+
+    This function also modifies `dataset` by changing the time coordinates.
 
     NOTE: This is not a filter; it is used by other filters.
     """
@@ -136,11 +138,11 @@ def _local_solar_time(dataset):
         sitelon = sitelon - 360.0
     dataset["time"] = dataset.time + pd.Timedelta(minutes=float(24 * 60 * sitelon / 360.0))
     hours = dataset.time.to_pandas().index.hour
-    return hours
+    return list(hours)
 
 
 @register_filter
-def daily_median(dataset, keep_missing: bool = False):
+def daily_median(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
     """Calculate daily median"""
     if keep_missing:
         return dataset.resample(indexer={"time": "1D"}).median()
