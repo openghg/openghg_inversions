@@ -219,7 +219,7 @@ def inferpymc(Hx: np.ndarray,
         Ytrace (array):
           MCMC chain for modelled obs..
         OFFSETtrace (array):
-          XXXX.
+          MCMC chain for the offset.
         convergence (str):
           Passed/Failed convergence test as to whether mutliple chains
           have a Gelman-Rubin diagnostic value <1.05
