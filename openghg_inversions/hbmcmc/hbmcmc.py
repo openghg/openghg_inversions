@@ -16,7 +16,7 @@
 
  Note. RHIME with OpenGHG expects ALL data to already be included in the
  object stores and for the paths to object stores to already be set in
- the users .openghg config file
+ the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 """
 
 from pathlib import Path
