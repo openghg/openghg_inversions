@@ -1,16 +1,7 @@
-# ****************************************************************************
-# Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: eric.saboya@bristol.ac.uk
-# ****************************************************************************
-# Originally created by Mark Lunt and updated by Rachel Tunnicliffe (ACRG)
-# and updated, here, by Eric Saboya.
-#
-# About:
-#   Template file for creating plots with output of hbmcmc. This file uses
-#   hbmcmc_post_process.py
-#
-# ****************************************************************************
+"""
+Template file for creating plots with output of hbmcmc. This file uses
+hbmcmc_post_process.py
+"""
 
 import os
 import numpy as np
@@ -178,7 +169,7 @@ if __name__ == "__main__":
             countries=countries,
         )
 
-        units = country_unit_prefix + "g"
+        units = str(country_unit_prefix) + "g"
     else:
         countries = list(ds["countrynames"].values)
         cntrymean_arr = np.zeros((len(ds_list), len(countries)))

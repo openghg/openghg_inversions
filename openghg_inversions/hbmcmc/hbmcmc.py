@@ -533,13 +533,14 @@ def fixedbasisMCMC(
         mcmc_args.update(kwargs)
 
         # Run PyMC inversion
-        mcmc_results = mcmc.inferpymc(**mcmc_args)
+        mcmc_results = mcmc.inferpymc(**mcmc_args) # type: ignore
 
         if skip_postprocessing:
             return mcmc_results
 
         # Process and save inversion output
         post_process_args.update(mcmc_results)
+        del post_process_args["offset_outs"]
         out = mcmc.inferpymc_postprocessouts(**post_process_args)
 
     elif use_tracer:

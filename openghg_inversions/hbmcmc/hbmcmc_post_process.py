@@ -34,7 +34,7 @@ from openghg_inversions import convert
 site_info = get_site_info()
 
 
-def check_platform(site: str, network: str=None)->str:
+def check_platform(site: str, network: Optional[str]=None)->str | None:
     """
     This function extracts platform (if specified) for the site from site_info.json file.
     network can be specified if site is associated with more than one network. If not 
@@ -60,9 +60,9 @@ def check_platform(site: str, network: str=None)->str:
 
 
 def define_stations(ds: xr.Dataset, 
-                    sites: list[str]=None, 
+                    sites: Optional[list[str]]=None, 
                     use_site_info: Optional[bool]=False
-                   )->dict:
+                   )->dict | None:
     """
     The define_stations function defines the latitude and longitude values for each site within
     a dataset. The output can be passed directly as the 'stations' argument in plot_map
@@ -123,9 +123,9 @@ def define_stations(ds: xr.Dataset,
 
 
 def subplot_fmt(num: int,
-                row_dims: Optional[list[int]]=[3, 2, 4], 
+                row_dims: list[int]=[3, 2, 4], 
                 fill: Optional[bool]=False
-               )->list[int,int]:
+               )->tuple[int,int]:
     """
     The subplot_fmt function decides the placement of a grid of figures dependent on the number.
     The row_dims input determines which placement is preferable for the user.
@@ -147,19 +147,19 @@ def subplot_fmt(num: int,
             Default = False (i.e. allow an empty panel to be included within subplot)
 
     Returns:
-        2 item list containing the row number and column number for the subplots.
+        2 item tuple containing the row number and column number for the subplots.
     """
     for r in row_dims:
         if not num % r:
-            subplot = [r, num // r]
+            subplot = (r, num // r)
             break
     else:
         if fill or num == 1:
-            subplot = [1, num]
+            subplot = (1, num)
         else:
             for r in row_dims:
                 if not (num + 1) % r:
-                    subplot = [r, (num + 1) // r]
+                    subplot = (r, (num + 1) // r)
                     break
 
     return subplot
@@ -541,9 +541,7 @@ def plot_map_mult(
             stations = [stations] * nrun
         elif len(stations) != nrun:
             print(
-                "Unable to apply station positions to sub-plots. Number of station dictionaries ({}}) does not match the number of plots ({}).".format(
-                    len(stations), nrun
-                )
+                f"Unable to apply station positions to sub-plots. Number of station dictionaries ({len(stations)}) does not match the number of plots ({nrun})."
             )
             labels = [None] * nrun
     if not grid and nrun > 1:
@@ -1536,9 +1534,7 @@ def extract_hbmcmc_files(directory, species, domain, runname, dates, return_file
 
     if not ds_list:
         raise Exception(
-            "No data found for dates {}, species, {}, runname {}, domain".format(
-                dates, species, runname, domain
-            )
+            f"No data found for dates {dates}, species, {species}, runname {runname}, domain {domain}"
         )
 
     if return_filenames:

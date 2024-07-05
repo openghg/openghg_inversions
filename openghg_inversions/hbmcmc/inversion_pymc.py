@@ -5,7 +5,7 @@ PyMC library used for Bayesian modelling.
 import re
 import getpass
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, Any, Type
 
 import numpy as np
 import pymc as pm
@@ -116,16 +116,16 @@ def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
 def inferpymc(Hx: np.ndarray,
               Y: np.ndarray,
               error: np.ndarray,
-              siteindicator: np.ndarray[int],
-              sigma_freq_index: np.ndarray[int],
+              siteindicator: np.ndarray,
+              sigma_freq_index: np.ndarray,
               Hbc: Optional[np.ndarray] = None,
               xprior: dict ={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
               bcprior: dict ={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
               sigprior: dict ={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
               nuts_sampler: str = "pymc",
-              nit: int = 2.5e5,
+              nit: int = int(2.5e5),
               burn: int = 50000,
-              tune: int = 1.25e5,
+              tune: int = int(1.25e5),
               nchain: int = 2,
               sigma_per_site: bool = True,
               offsetprior: Optional[dict]={"pdf": "normal", "mu": 0, "sigma": 1},
@@ -302,7 +302,7 @@ def inferpymc(Hx: np.ndarray,
             if use_bc is True:
                 pollution_event = np.abs(Y - pt.dot(hbc, xbc))
             else:
-                pollution_event = np.abs(Y) + 1e-5 * min_error  # small non-zero term to prevent NaNs
+                pollution_event = np.abs(Y) + 1e-6 * np.mean(Y)  # small non-zero term to prevent NaNs
         else:
             pollution_event = np.abs(pt.dot(hx, x))
 
@@ -404,8 +404,8 @@ def inferpymc_postprocessouts(
     sigprior: dict,
     offsetprior: Optional[dict],
     Ytime: np.ndarray,
-    siteindicator: np.ndarray[int],
-    sigma_freq_index: np.ndarray[int],
+    siteindicator: np.ndarray,
+    sigma_freq_index: np.ndarray,
     domain: str,
     species: str,
     sites: list,
