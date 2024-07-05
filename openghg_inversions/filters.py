@@ -66,9 +66,14 @@ def filtering(
     datasets_in: dict, filters: Union[dict[str, list[str]], list[str]], keep_missing: bool = False
 ) -> dict:
     """
-    Applies time filtering to entire dataset.
-    Filters supplied in a list and then applied in order.
-    For example if you wanted a daily, daytime average, you could do this:
+    Applies time filtering to all datasets in `datasets_in`.
+
+    If `filters` is a list, the same filters are applied to all sites. If `filters` is a dict
+    with site codes as keys, then the filters applied to each site depend on the list supplied
+    for that site.
+
+    In any case, filters supplied in a list are applied in order.
+    For example, if you wanted a daily, daytime average, you could do this:
 
         datasets_dictionary = filtering(datasets_dictionary,
                                     ["daytime", "daily_median"])
@@ -136,6 +141,14 @@ def _local_solar_time(dataset: xr.Dataset) -> list[int]:
     This function also modifies `dataset` by changing the time coordinates.
 
     NOTE: This is not a filter; it is used by other filters.
+    TODO: do we want this to modify `dataset`? currently it changes the time coordinate
+    TODO: return np.ndarray and use vectorised filtering?
+
+    Args:
+        dataset: dataset to extract hours of the day from; this dataset is modified in place
+
+    Returns:
+        list of hours of the day for each time value in dataset.time
     """
     sitelon = dataset.release_lon.values[0]
     # convert lon to [-180,180], so time offset is negative west of 0 degrees
@@ -148,7 +161,15 @@ def _local_solar_time(dataset: xr.Dataset) -> list[int]:
 
 @register_filter
 def daily_median(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Calculate daily median"""
+    """Resample data to daily frequency and use daily median values.
+
+    Args:
+        dataset: dataset to filter
+        keep_missing: if True, drop time points removed by filter
+
+    Returns:
+        filtered dataset
+    """
     if keep_missing:
         return dataset.resample(indexer={"time": "1D"}).median()
     else:
@@ -157,7 +178,16 @@ def daily_median(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def six_hr_mean(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Calculate six-hour median"""
+    """Resample data to 6h frequency and use 6h mean values.
+
+    Args:
+        dataset: dataset to filter
+        keep_missing: if True, drop time points removed by filter
+
+    Returns:
+        filtered dataset
+
+    """
     if keep_missing:
         return dataset.resample(indexer={"time": "6H"}).mean()
     else:
@@ -166,7 +196,15 @@ def six_hr_mean(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def daytime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during daytime hours (11:00-15:00)"""
+    """Subset during daytime hours (11:00-15:00)
+
+    Args:
+        dataset: dataset to filter
+        keep_missing: if True, drop time points removed by filter
+
+    Returns:
+        filtered dataset
+    """
     hours = _local_solar_time(dataset)
     ti = [i for i, h in enumerate(hours) if h >= 11 and h <= 15]
 
@@ -180,7 +218,15 @@ def daytime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def daytime9to5(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during daytime hours (9:00-17:00)"""
+    """Subset during daytime hours (9:00-17:00)
+
+    Args:
+        dataset: dataset to filter
+        keep_missing: if True, drop time points removed by filter
+
+    Returns:
+        filtered dataset
+    """
     hours = _local_solar_time(dataset)
     ti = [i for i, h in enumerate(hours) if h >= 9 and h <= 17]
 
@@ -194,7 +240,15 @@ def daytime9to5(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def nighttime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during nighttime hours (23:00 - 03:00)"""
+    """Subset during nighttime hours (23:00 - 03:00)
+
+    Args:
+        dataset: dataset to filter
+        keep_missing: if True, drop time points removed by filter
+
+    Returns:
+        filtered dataset
+    """
     hours = _local_solar_time(dataset)
     ti = [i for i, h in enumerate(hours) if h >= 23 or h <= 3]
 
@@ -208,7 +262,15 @@ def nighttime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def noon(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Select only 12pm data"""
+    """Select only 12pm data
+
+    Args:
+        dataset: dataset to filter
+        keep_missing: if True, drop time points removed by filter
+
+    Returns:
+        filtered dataset
+    """
     hours = _local_solar_time(dataset)
     ti = [i for i, h in enumerate(hours) if h == 12]
 
@@ -250,8 +312,16 @@ def _local_ratio(dataset: xr.Dataset) -> np.ndarray:
 @register_filter
 def local_influence(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
     """
-    Subset for times when local influence is below threshold.
+    Subset for times when "local influence" is below threshold.
+
     Local influence expressed as a fraction of the sum of entire footprint domain.
+
+    Args:
+        dataset: dataset to filter
+        keep_missing: if True, drop time points removed by filter
+
+    Returns:
+        filtered dataset
     """
     if not dataset.filter_by_attrs(standard_name="local_ratio"):
         lr = _local_ratio(dataset)
@@ -277,9 +347,19 @@ def local_influence(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Datas
 
 
 @register_filter
-def pblh_min(dataset: xr.Dataset, pblh_threshold=200.0, keep_missing: bool = False) -> xr.Dataset:
+def pblh_min(dataset: xr.Dataset, pblh_threshold: float = 200.0, keep_missing: bool = False) -> xr.Dataset:
     """
     Subset for times when the PBLH is greater than 200m.
+
+    Args:
+        dataset: dataset to filter
+        pblh_threshold: filter will discard times where PBLH/atmosphere boundary layer thickness is below pblh_threshold
+        keep_missing: if True, drop time points removed by filter
+
+    Returns:
+        filtered dataset
+
+    TODO: need way to pass pblh_threshold to filter
     """
     pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
 
@@ -305,6 +385,16 @@ def pblh_min(dataset: xr.Dataset, pblh_threshold=200.0, keep_missing: bool = Fal
 def pblh_inlet_diff(dataset: xr.Dataset, diff_threshold=50.0, keep_missing: bool = False) -> xr.Dataset:
     """
     Subset for times when observations are taken at a height of less than 50 m below the PBLH.
+
+    Args:
+        dataset: dataset to filter
+        diff_threshold: filter will discard times where obs. are taken at a height of less than diff_threshold below PBLH
+        keep_missing: if True, drop time points removed by filter
+
+    Returns:
+        filtered dataset
+
+    TODO: need way to pass diff_threshold to filter
     """
     if "inlet_height_magl" in dataset.attrs:
         inlet_height = float(dataset.inlet_height_magl)
