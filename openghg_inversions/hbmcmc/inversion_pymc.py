@@ -176,7 +176,7 @@ def inferpymc(Hx: np.ndarray,
       nuts_sampler: 
         nuts_sampler use by pymc.sample. Options are "pymc" and "numpyro"?
       nit: 
-        XXXX
+        number of samples to generate (per chain)
       burn: 
         number of samples to discard (or "burn") from the beginning of each chain
       tune: 
