@@ -211,7 +211,7 @@ def inferpymc(Hx: np.ndarray,
         and model error from scaling pollution events.)
 
     Returns:
-      Dictionnary containing:
+      Dictionary containing:
         xouts (array):
           MCMC chain for emissions scaling factors for each basis function.
         sigouts (array):
