@@ -215,7 +215,7 @@ def noon(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
         return dataset[dict(time=ti)]
 
 
-def _local_ratio(dataset: xr.Dataset) -> xr.Dataset:
+def _local_ratio(dataset: xr.Dataset) -> np.ndarray:
     """
     Calculates the local ratio in the surrounding grid cells.
 
