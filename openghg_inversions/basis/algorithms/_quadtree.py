@@ -108,7 +108,7 @@ class quadTreeNode:
 
 
 def quadTreeGrid(grid : np.ndarray, 
-                 limit : float) -> np.ndarray[int]:
+                 limit : float) -> np.ndarray:
     """
     Apply quadtree division algorithm.
 

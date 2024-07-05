@@ -128,7 +128,7 @@ def inferpymc(Hx: np.ndarray,
               tune: int = 1.25e5,
               nchain: int = 2,
               sigma_per_site: bool = True,
-              offsetprior: dict ={"pdf": "normal", "mu": 0, "sigma": 1},
+              offsetprior: Optional[dict]={"pdf": "normal", "mu": 0, "sigma": 1},
               add_offset: bool =False,
               verbose: bool=False,
               min_error: Optional[float] =0.0,
@@ -403,7 +403,7 @@ def inferpymc_postprocessouts(
     step2: str,
     xprior: dict,
     sigprior: dict,
-    offsetprior: dict,
+    offsetprior: Optional[dict],
     Ytime: np.ndarray,
     siteindicator: np.ndarray[int],
     sigma_freq_index: np.ndarray[int],
@@ -428,7 +428,7 @@ def inferpymc_postprocessouts(
     obs_variability: Optional[np.ndarray] = None,
     fp_data: Optional[dict]=None,
     country_file: str=None,
-    add_offset: bool =False,
+    add_offset: bool=False,
     rerun_file: Optional[xr.Dataset]=None,
     use_bc: bool = False,
     min_error: Union[float, np.ndarray] = 0.0,
@@ -450,6 +450,8 @@ def inferpymc_postprocessouts(
         MCMC chain for emissions scaling factors for each basis function.
       sigouts:
         MCMC chain for model error.
+      offset_outs:
+        XXXX
       convergence:
         Passed/Failed convergence test as to whether mutliple chains
         have a Gelman-Rubin diagnostic value <1.05
@@ -517,7 +519,7 @@ def inferpymc_postprocessouts(
       nchain:
         Number of independent chains run
       sigma_per_site:
-        Whether a model sigma value was be calculated for each site independantly (True)
+        Whether a model sigma value will be calculated for each site independantly (True)
         or all sites together (False).
       emissions_name:
         List with "source" values as used when adding emissions data to the OpenGHG object store.

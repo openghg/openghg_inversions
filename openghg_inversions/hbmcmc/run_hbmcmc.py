@@ -109,7 +109,7 @@ def define_mcmc_function(mcmc_type: str) -> Callable:
 
 def hbmcmc_extract_param(config_file: str, 
                          mcmc_type: Optional[str] ="fixed_basis", 
-                         print_param: Optional[str] =True, 
+                         print_param: Optional[bool] =True, 
                          **command_line):
     """
     Extract parameters from input configuration file and associated
@@ -117,12 +117,12 @@ def hbmcmc_extract_param(config_file: str,
     parameters.
     
     Args:
-      config_file (str):
+      config_file:
         Configuration file name. Should be an .ini file.
-      mcmc_type (str, optional):
+      mcmc_type:
         Keyword for MCMC function to use.
         Default = "fixed_basis" (only option at present)
-      print_param (bool, optional):
+      print_param:
         Went set to True, print out extracted parameter names.
         Default = True
       command_line:
