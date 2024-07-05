@@ -464,7 +464,7 @@ def inferpymc_postprocessouts(
       Ytrace:
         Trace of modelled y values calculated from mcmc outputs and H matrices
       OFFSETtrace:
-        XXXX.
+        Trace from offsets (if used).
       step1:
         Type of MCMC sampler for emissions and boundary condition updates.
       step2:
