@@ -531,7 +531,7 @@ def inferpymc_postprocessouts(
       obs_repeatability: 
         Instrument error
       obs_variability: 
-        XXXX
+        Error from resampling observations
       fp_data:
         Output from footprints_data_merge + sensitivies
       country_file:
