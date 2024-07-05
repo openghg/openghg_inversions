@@ -178,7 +178,7 @@ def inferpymc(Hx: np.ndarray,
       nit: 
         XXXX
       burn: 
-        XXXX
+        number of samples to discard (or "burn") from the beginning of each chain
       tune: 
         Tune use by pymc.sample
       nchain: 
