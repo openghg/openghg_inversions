@@ -151,7 +151,7 @@ def daily_median(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 
 @register_filter
-def six_hr_mean(dataset, keep_missing: bool = False):
+def six_hr_mean(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
     """Calculate six-hour median"""
     if keep_missing:
         return dataset.resample(indexer={"time": "6H"}).mean()
@@ -160,7 +160,7 @@ def six_hr_mean(dataset, keep_missing: bool = False):
 
 
 @register_filter
-def daytime(dataset, keep_missing: bool = False):
+def daytime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
     """Subset during daytime hours (11:00-15:00)"""
     hours = _local_solar_time(dataset)
     ti = [i for i, h in enumerate(hours) if h >= 11 and h <= 15]
@@ -174,7 +174,7 @@ def daytime(dataset, keep_missing: bool = False):
 
 
 @register_filter
-def daytime9to5(dataset, keep_missing: bool = False):
+def daytime9to5(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
     """Subset during daytime hours (9:00-17:00)"""
     hours = _local_solar_time(dataset)
     ti = [i for i, h in enumerate(hours) if h >= 9 and h <= 17]
@@ -188,7 +188,7 @@ def daytime9to5(dataset, keep_missing: bool = False):
 
 
 @register_filter
-def nighttime(dataset, keep_missing: bool = False):
+def nighttime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
     """Subset during nighttime hours (23:00 - 03:00)"""
     hours = _local_solar_time(dataset)
     ti = [i for i, h in enumerate(hours) if h >= 23 or h <= 3]
@@ -202,7 +202,7 @@ def nighttime(dataset, keep_missing: bool = False):
 
 
 @register_filter
-def noon(dataset, keep_missing: bool = False):
+def noon(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
     """Select only 12pm data"""
     hours = _local_solar_time(dataset)
     ti = [i for i, h in enumerate(hours) if h == 12]
@@ -215,7 +215,7 @@ def noon(dataset, keep_missing: bool = False):
         return dataset[dict(time=ti)]
 
 
-def _local_ratio(dataset):
+def _local_ratio(dataset: xr.Dataset) -> xr.Dataset:
     """
     Calculates the local ratio in the surrounding grid cells.
 
@@ -243,7 +243,7 @@ def _local_ratio(dataset):
 
 
 @register_filter
-def local_influence(dataset, keep_missing: bool = False):
+def local_influence(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
     """
     Subset for times when local influence is below threshold.
     Local influence expressed as a fraction of the sum of entire footprint domain.
@@ -272,7 +272,7 @@ def local_influence(dataset, keep_missing: bool = False):
 
 
 @register_filter
-def pblh_min(dataset, pblh_threshold=200.0, keep_missing: bool = False):
+def pblh_min(dataset: xr.Dataset, pblh_threshold=200.0, keep_missing: bool = False) -> xr.Dataset:
     """
     Subset for times when the PBLH is greater than 200m.
     """
@@ -299,7 +299,7 @@ def pblh_min(dataset, pblh_threshold=200.0, keep_missing: bool = False):
 
 
 @register_filter
-def pblh_inlet_diff(dataset, diff_threshold=50.0, keep_missing: bool = False):
+def pblh_inlet_diff(dataset: xr.Dataset, diff_threshold=50.0, keep_missing: bool = False) -> xr.Dataset:
     """
     Subset for times when observations are taken at a height of less than 50 m below the PBLH.
     """
@@ -335,6 +335,6 @@ def pblh_inlet_diff(dataset, diff_threshold=50.0, keep_missing: bool = False):
 
 
 @register_filter
-def pblh(dataset, keep_missing: bool = False):
+def pblh(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
     """Deprecated: pblh is now called pblh_inlet_diff"""
     raise NotImplementedError("pblh is now called pblh_inlet_diff")
