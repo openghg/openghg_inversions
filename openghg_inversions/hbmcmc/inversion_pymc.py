@@ -529,7 +529,7 @@ def inferpymc_postprocessouts(
       Hbc:
         Same as Hx but for boundary conditions
       obs_repeatability: 
-        XXXX
+        Instrument error
       obs_variability: 
         XXXX
       fp_data:
