@@ -7,6 +7,7 @@ New filters are registered using `@register_filter`.
 
 To see the available filters call `list_filters`.
 """
+import re
 from typing import Callable, Union
 
 import numpy as np
