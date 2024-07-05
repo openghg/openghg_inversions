@@ -136,7 +136,7 @@ def bucket_split_landsea_basis(grid : np.ndarray,
         grid:
             2D grid of footprints * flux, or whatever
             grid you want to split. Could be: population
-            data, spatial distribution of bakeries, you chose!
+            data, spatial distribution of bakeries, you choose!
         bucket:
             Maximum value for each basis function region
 
