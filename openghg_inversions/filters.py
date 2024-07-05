@@ -1,9 +1,10 @@
 """
 Functions for filtering data.
 
-All filters are accessed via the `filtering` function.
+All filters are accessed and applied to data via the `filtering` function.
 
 New filters are registered using `@register_filter`.
+A filter function should accept as arguments: an xr.Dataset, a bool called "keep_missing"
 
 To see the available filters call `list_filters`.
 """
@@ -39,6 +40,7 @@ def register_filter(filt: Callable) -> Callable:
             return data
     >>> "my_new_filter" in filtering_functions
     True
+
     """
     filtering_functions[filt.__name__] = filt
     return filt
@@ -122,10 +124,11 @@ def filtering(datasets_in: dict, filters: Union[dict[str, list[str]], list[str]]
     return datasets
 
 
-@register_filter
-def local_solar_time(dataset):
+def _local_solar_time(dataset):
     """
     Returns hour of day as a function of local solar time relative to the Greenwich Meridian.
+
+    NOTE: This is not a filter; it is used by other filters.
     """
     sitelon = dataset.release_lon.values[0]
     # convert lon to [-180,180], so time offset is negative west of 0 degrees
