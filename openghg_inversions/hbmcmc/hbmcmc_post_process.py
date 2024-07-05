@@ -73,7 +73,7 @@ def define_stations(ds: xr.Dataset,
 
     Args:
         ds:
-            Output from run_tdmcmc() function (tdmcmc_inputs.py script).
+            Output from run_hbmcmc() function.
             Expects dataset to contain:
                 sitelons - Longitude values for each site. Dimension = len(sites)
                 sitelats - Latitude values for each site. Dimension = len(sites)
