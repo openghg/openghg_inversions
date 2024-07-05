@@ -166,7 +166,7 @@ def inferpymc(Hx: np.ndarray,
         built into pymc3, although they may have to be coded into the script.
         The other entries in the dictionary should correspond to the shape
         parameters describing that PDF as the online documentation,
-        e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sd":1}.
+        e.g. N(1,1**2) would be: `xprior={pdf: "normal", "mu": 1.0, "sigma": 1.0}`.
         Note that the standard deviation should be used rather than the
         precision. Currently all variables are considered iid.
       bcprior:
