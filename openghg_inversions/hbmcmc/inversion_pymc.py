@@ -202,7 +202,7 @@ def inferpymc(Hx: np.ndarray,
       use_bc: 
         When True, use and infer boundary conditions.
       reparameterise_log_normal: 
-        XXXX
+        If there are many divergences when using a log normal prior, setting this to True might help. It samples from a normal prior, then puts the normal samples through a function that converts them to log normal samples; this changes the space the sampler needs to explore.
       pollution_events_from_obs: 
         When True, calculate the pollution events from obs; when false pollution events are set 
         to the modeled concentration.
