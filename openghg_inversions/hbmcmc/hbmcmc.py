@@ -1,8 +1,7 @@
 """
-  Modules for running an MCMC inversion using PyMC. There are also functions
-  to dynamically create a basis function grid based on the a priori sensitivity,
-  and some other functionality for setting up the inputs to this (or any)
-  inverse method.
+  Contains functions for running all steps of the MCMC inversion using PyMC: 
+  getting data, filtering, applying basis functions, sampling, and processing 
+  the outputs.
 
   If not using on an HPC in the terminal you should do:
     export OPENBLAS_NUM_THREADS=XX
