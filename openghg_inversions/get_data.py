@@ -96,33 +96,33 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
 
 
 def data_processing_surface_notracer(
-    species,
-    sites,
-    domain,
-    averaging_period,
-    start_date,
-    end_date,
-    obs_data_level=None,
-    inlet=None,
-    instrument=None,
-    calibration_scale=None,
-    met_model: Optional[list] = None,
-    fp_model=None,
-    fp_height=None,
-    fp_species=None,
-    emissions_name=None,
-    use_bc=True,
-    bc_input=None,
-    bc_store=None,
-    obs_store=None,
-    footprint_store=None,
-    emissions_store=None,
-    averagingerror=True,
-    save_merged_data=False,
-    merged_data_name=None,
-    merged_data_dir=None,
+    species : str,
+    sites : list | str,
+    domain : str,
+    averaging_period : list | str,
+    start_date : str,
+    end_date : str,
+    obs_data_level : Optional[list|str] =None,
+    inlet : Optional[list|str] =None,
+    instrument : Optional[list|str] =None,
+    calibration_scale : str =None,
+    met_model : Optional[list] = None,
+    fp_model : Optional[str] =None,
+    fp_height : Optional[list|str] =None,
+    fp_species : Optional[str] =None,
+    emissions_name : Optional[list] =None,
+    use_bc : Optional[bool]=True,
+    bc_input : Optional[str]=None,
+    bc_store : Optional[str] =None,
+    obs_store : Optional[str] =None,
+    footprint_store : Optional[str] =None,
+    emissions_store : Optional[str] =None,
+    averagingerror : Optional[bool] =True,
+    save_merged_data : Optional[bool] =False,
+    merged_data_name : Optional[str] =None,
+    merged_data_dir : Optional[str] =None,
     output_name: Optional[str] = None,
-):
+) -> tuple[dict, list, list, list, list, list]:
     """
     Retrieve and prepare fixed-surface datasets from
     specified OpenGHG object stores for forward
@@ -130,69 +130,89 @@ def data_processing_surface_notracer(
     use tracers
     ---------------------------------------------
     Args:
-        species (str):
+        species:
             Atmospheric trace gas species of interest
             e.g. "co2"
-        sites (list/str):
+        sites:
             List of strings containing measurement
             station/site abbreviations
             e.g. ["MHD", "TAC"]
-        domain (str):
+        domain:
             Model domain region of interest
             e.g. "EUROPE"
-        averaging_period (list/str):
+        averaging_period:
             List of averaging periods to apply to
             mole fraction data. NB. len(averaging_period)==len(sites)
             e.g. ["1H", "1H"]
-        start_date (str):
+        start_date:
             Date from which to gather data
             e.g. "2020-01-01"
-        end_date (str):
+        end_date:
             Date until which to gather data
             e.g. "2020-02-01"
-        obs_data_level (list/str):
+        obs_data_level:
             ICOS observations data level. For non-ICOS sites
             use "None"
-        inlet (list/str/opt):
+        inlet:
             Specific inlet height for the site observations
             (length must match number of sites)
-        instrument (list/str/opt):
+        instrument:
             Specific instrument for the site
             (length must match number of sites)
-        calibration_scale (str):
+        calibration_scale:
             Convert measurements to defined calibration scale
-        met_model (list/opt):
+        met_model:
             Meteorological model used in the LPDM. List must be same length as number of sites.
-        fp_model (str):
+        fp_model:
             LPDM used for generating footprints.
-        fp_height (list/str):
+        fp_height:
             Inlet height used in footprints for corresponding sites.
-        fp_species (str):
+        fp_species:
             Species name associated with footprints in the object store
-        emissions_name (list):
+        emissions_name:
             List of keywords args associated with emissions files
             in the object store.
-        use_bc (bool):
+        use_bc:
             Option to include boundary conditions in model
-        bc_store (str):
+        bc_input:
+            Variable for calling BC data from 'bc_store' - equivalent of
+            'emissions_name' for fluxes
+        bc_store:
             Name of object store to retrieve boundary conditions data from
-        obs_store (str):
+        obs_store:
             Name of object store to retrieve observations data from
-        footprint_store (str):
+        footprint_store:
             Name of object store to retrieve footprints data from
-        emissions_store (str):
+        emissions_store:
             Name of object store to retrieve emissions data from
-        averagingerror (bool/opt):
+        averagingerror:
             Adds the variability in the averaging period to the measurement
             error if set to True.
-        save_merged_data (bool/opt, default=False):
+        save_merged_data:
             Save forward simulations data and observations
-        merged_data_name (str/opt):
+        merged_data_name:
             Filename for saved forward simulations data and observations
-        merged_data_dir (str/opt):
+        merged_data_dir:
             Directory path for for saved forward simulations data and observations
         output_name:
             Optional name used to create merged data name.
+    
+    Returns:
+        fp_all:
+            dictionnary containing flux data (key ".flux"), bc data (key ".bc"),
+            and observations data (site short name as key)
+        sites:
+            Updated list of sites. All put in upper case and if data was not extracted 
+            correctly for any sites, drop these from the rest of the inversion.
+        inlet:
+            List of inlet height for the updated list of sites
+        fp_height:
+            List of footprint height for the updated list of sites
+        instrument:
+            List of instrument for the updated list of sites
+        averaging_period:
+            List of averaging_period for the updated list of sites
+
     """
 
     sites = [site.upper() for site in sites]
@@ -624,7 +644,7 @@ def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[st
     return list_attrs
 
 
-def make_combined_scenario(fp_all):
+def make_combined_scenario(fp_all : dict) -> xr.Dataset:
     """Combine scenarios and merge in fluxes and boundary conditions.
 
     If fluxes and boundary conditions only have one coordinate for their
