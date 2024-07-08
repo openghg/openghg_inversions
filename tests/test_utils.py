@@ -13,9 +13,7 @@ def test_combine_datasets():
 
     with pytest.raises(AssertionError) as exc_info:
         xr.testing.assert_allclose(flux.flux.squeeze("time").drop_vars("time"), comb.flux.isel(time=0))
-    print(exc_info)
-    print(flux.flux.squeeze("time").drop_vars("time"))
-    print(comb.flux.isel(time=0))
+        
     # coordinates should be different because we aligned the flux to the footprint
     assert exc_info.match("Differing coordinates")
 
