@@ -21,16 +21,13 @@ To generate a config file from the template run this script as:
 The MCMC run *will not be executed*. This will be named for your -c input or, if not specified, this will
 create a configuration file called `hbmcmc_input.ini` within your acrg_hbmcmc/ directory and exit.
 This file will need to be edited to add parameters for your MCMC run.
-
-------------------------------------------
-Updated by Eric Saboya (Dec. 2022)
-------------------------------------------
 """
 import json
 import os
 import sys
 import argparse
 from shutil import copyfile
+from typing import Optional, Callable
 
 import openghg_inversions.hbmcmc.hbmcmc as mcmc
 import openghg_inversions.hbmcmc.hbmcmc_output as output
@@ -39,16 +36,16 @@ import openghg_inversions.config.config as config
 from openghg_inversions.config.paths import Paths
 
 
-def fixed_basis_expected_param():
+def fixed_basis_expected_param() -> list[str]:
     """
     Define required parameters for openghg_inversions.hcmcmc.fixedbasisMCMC()
 
     Expected parameters currently include:
-      species, sites, meas_period, start_date, end_date, domain,
+      species, sites, averaging_period, domain, start_date, end_date,
       outputpath, outputname
 
     Returns:
-      Required parameter names (list)
+      expected_param: required parameter names 
     """
     expected_param = [
         "species",
@@ -64,20 +61,22 @@ def fixed_basis_expected_param():
     return expected_param
 
 
-def extract_mcmc_type(config_file, default="fixed_basis"):
+def extract_mcmc_type(config_file: str,
+                      default: str ="fixed_basis"
+                      ) -> str:
     """
     Find value which describes the MCMC function to use.
     Checks the input configuation file the "mcmc_type" keyword within
     the "MCMC.TYPE" section. If not present, the default is used.
-    -----------------------------------
+    
     Args:
-      config_file (str):
+      config_file:
         Configuration file name. Should be an .ini file.
-      default (str):
-        ***
+      default:
+        Default keyword for MCMC function to use.
+
     Returns:
-      Keyword for MCMC function to use (str)
-    -----------------------------------
+      Keyword for MCMC function to use
     """
     mcmc_type_section = "MCMC.TYPE"
     mcmc_type_keyword = "mcmc_type"
@@ -91,37 +90,40 @@ def extract_mcmc_type(config_file, default="fixed_basis"):
     return mcmc_type
 
 
-def define_mcmc_function(mcmc_type):
+def define_mcmc_function(mcmc_type: str) -> Callable:
     """
     Links mcmc_type name to function.
-    -----------------------------------
-    Current options:
+    
+    Args:
       mcmc_type (str):
-        "fixed_basis" : openghg_inversions.hbmcmc.fixedbasisMCMC()
+        Keyword for MCMC function to use.
+        Current option "fixed_basis" (openghg_inversions.hbmcmc.fixedbasisMCMC())
 
     Returns:
       Function
-    -----------------------------------
     """
     function_dict = {"fixed_basis": mcmc.fixedbasisMCMC}
 
     return function_dict[mcmc_type]
 
 
-def hbmcmc_extract_param(config_file, mcmc_type="fixed_basis", print_param=True, **command_line):
+def hbmcmc_extract_param(config_file: str, 
+                         mcmc_type: Optional[str] ="fixed_basis", 
+                         print_param: Optional[bool] =True, 
+                         **command_line):
     """
     Extract parameters from input configuration file and associated
     MCMC function. Checks the mcmc_type to extract the required
     parameters.
-    -----------------------------------
+    
     Args:
-      config_file (str):
+      config_file:
         Configuration file name. Should be an .ini file.
-      mcmc_type (str, optional):
+      mcmc_type:
         Keyword for MCMC function to use.
         Default = "fixed_basis" (only option at present)
-      print_param (bool, optional):
-        Print out extracted parameter names.
+      print_param:
+        Went set to True, print out extracted parameter names.
         Default = True
       command_line:
         Any additional command line arguments to be added to the param
@@ -131,7 +133,6 @@ def hbmcmc_extract_param(config_file, mcmc_type="fixed_basis", print_param=True,
       function,collections.OrderedDict:
         MCMC function to use, dictionary of parameter names and values passed
         to MCMC function
-    -----------------------------------
     """
     if mcmc_type == "fixed_basis":
         expected_param = fixed_basis_expected_param()

@@ -1,57 +1,54 @@
-# ****************************************************************************
-# Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: ericsaboya@bristol.ac.uk
-# ****************************************************************************
-# About
-#   Originally created by Rachel Tunnicliffe (ACRG) and updated, here,
-#   by Eric Saboya.
-#   Functions for configuring HBMCMC inversion output files
-#
-# ****************************************************************************
+"""
+Functions for configuring HBMCMC inversion output files
+"""
 
 import os
 import re
+from typing import Union, Optional
+from pathlib import Path
 from openghg_inversions.config import config
 
 
-def check_and_create_folder(outputpath):
+def check_and_create_folder(outputpath:Union[str,Path])->None:
     """
     Check folder exists and create if not.
-    -----------------------------------
+
     Args:
-      outputpath (str):
-        path of folder to check exists
-    -----------------------------------
+      outputpath: path of folder to check exists
     """
 
     if not os.path.exists(outputpath):
         os.makedirs(outputpath)
 
 
-def define_output_filename(outputpath, species, domain, outputname, start_date, ext=".nc"):
+def define_output_filename(outputpath:Union[str,Path], 
+                           species: str, 
+                           domain: str, 
+                           outputname: str, 
+                           start_date: str, 
+                           ext: str=".nc"
+                           )->str:
     """
     Defining output filename to write to based on the format:
-        'outputpath'/'species'_'domain'_'outputname'_'start_date''ext'
-        e.g. /home/user/output/CH4_EUROPE_test_2014-01-01.nci
-    -----------------------------------
+    'outputpath'/'species'_'domain'_'outputname'_'start_date''ext'
+    e.g. /home/user/output/CH4_EUROPE_test_2014-01-01.nc
+    
     Args:
-      outputpath (str):
+      outputpath:
         Directory where to save outputfile
-      species (str):
+      species:
         Atmospheric trace gas species of interest (e.g. 'co2')
-      domain (str):
+      domain:
         Name of modelling domain used (e.g. 'EUROPE')
-      outputname (str):
+      outputname:
         Additional str to include in filename (e.g. 'Test')
-      start_date (str)"
+      start_date:
         Start date of inversion in format YYYY-MM-DD
-      ext (str)
+      ext:
         file extension. Defaults to .nc
 
      Returns:
-       outputname (str):
-         fullpath with filename of output file.
+       outputname: fullpath with filename of output file.
      ----------------------------------
     """
 
@@ -60,11 +57,17 @@ def define_output_filename(outputpath, species, domain, outputname, start_date, 
     return outputname
 
 
-def copy_config_file(config_file, param=None, **command_line):
+def copy_config_file(config_file: str,
+                     param: Optional[dict]=None, 
+                     **command_line)->None:
     """
     Creating a copy of the inputs used to run MCMC code based
     on the input config file and any additional parameters
     specified on the command line.
+    
+    Writes output file to same location as MCMC output
+    (output filename based on define_output_filename()
+    function with '.ini' extension)
 
     Values to create the output filename and location are either
     extracted from the config_file directly or from the input
@@ -72,11 +75,11 @@ def copy_config_file(config_file, param=None, **command_line):
 
     Any additional command line arguments can be specified as keyword arguments.
     e.g. start_date="2018-01-01", end_date="2019-01-01"
-    -----------------------------------
+    
     Args:
-      config_file (str):
+      config_file:
         Input configuration file name. Should be an .ini file.
-      param (dict/None, optional) :
+      param:
         Optional param dictionary used directly in input to MCMC code.
         Just included as a convenience so config_file doesn't have to be
         read twice but should be the same inputs contained within
@@ -84,13 +87,6 @@ def copy_config_file(config_file, param=None, **command_line):
         line arguments.
       **command_line :
         Any additional keyword arguments from the command line input.
-
-    Returns:
-      None
-        Writes output file to same location as MCMC output
-        (output filename based on define_output_filename()
-         function with '.ini' extension)
-    -----------------------------------
     """
 
     param_for_output_name = ["outputpath", "species", "domain", "outputname", "start_date"]
