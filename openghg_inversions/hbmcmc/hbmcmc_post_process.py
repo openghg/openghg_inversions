@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Aug  4 08:57:53 2015
-
-
 Script to process HBMCMC (RHIME) output 
 
 Includes:
@@ -14,12 +11,6 @@ regions_histogram - plot histogram of number of regions
 
 country_emissions - calculate emissions from given list of countries
                     Currently hard-wired for methane
-
-
-@author: ml12574
-
-Updated by Eric Saboya
-Updated by Ben Adam February 2024
 """
 import os
 import glob
@@ -34,6 +25,8 @@ from matplotlib.colors import BoundaryNorm, Normalize
 from matplotlib import ticker
 from cartopy.feature import BORDERS
 from scipy import stats
+from typing import Optional
+
 from openghg.util import get_site_info
 from openghg_inversions import utils
 from openghg_inversions import convert
@@ -41,22 +34,23 @@ from openghg_inversions import convert
 site_info = get_site_info()
 
 
-def check_platform(site, network=None):
+def check_platform(site: str, network: Optional[str]=None)->str | None:
     """
     This function extracts platform (if specified) for the site from site_info.json file.
-    network can be specified if site is associated with more than one. If not specified, the first
-    network will be used by default.
+    network can be specified if site is associated with more than one network. If not 
+    specified, the first network will be used by default.
+
     Args:
-        site (str) : 
+        site: 
             Site code (if applicable) or name
-        Network (str) : 
+        network: 
             If a site is part of multiple networks, will select a given one and check 
             the platform
-    Returns:
-        str : Platform type (e.g. "site", "satellite", "aircraft") if specified by site_info.json,
-              otherwise None
-    """
 
+    Returns:
+        platform type (e.g. "site", "satellite", "aircraft") if specified by site_info.json,
+        otherwise None
+    """
     if network is None:
         network = list(site_info[site].keys())[0]
     if "platform" in site_info[site][network].keys():
@@ -65,7 +59,10 @@ def check_platform(site, network=None):
         return None
 
 
-def define_stations(ds, sites=None, use_site_info=False):
+def define_stations(ds: xr.Dataset, 
+                    sites: Optional[list[str]]=None, 
+                    use_site_info: Optional[bool]=False
+                   )->dict | None:
     """
     The define_stations function defines the latitude and longitude values for each site within
     a dataset. The output can be passed directly as the 'stations' argument in plot_map
@@ -75,23 +72,22 @@ def define_stations(ds, sites=None, use_site_info=False):
     dictionary for this site.
 
     Args:
-        ds (xarray.Dataset) :
-            Output from run_tdmcmc() function (tdmcmc_inputs.py script).
+        ds:
+            Output from run_hbmcmc() function.
             Expects dataset to contain:
                 sitelons - Longitude values for each site. Dimension = len(sites)
                 sitelats - Latitude values for each site. Dimension = len(sites)
                 y_site       - Site identifier for each measurement. Dimension = nmeasure
-        sites (list/None, optional) :
+        sites:
             List of sites to look for within dataset.
             If not specified, the sites will be extracted from the input dataset assuming a
             data variable "sites" is included within the dataset.
-        use_site_info (bool, optional) :
-            Use positions from site_info.json file rather than extract them from the tdmcmc dataset.
+        use_site_info:
+            Use positions from openghg_defs rather than extract them from the tdmcmc dataset.
             Default = False.
 
     Returns:
-        dict :
-            Dictionary containing sitelats, sitelons for each site.
+        Dictionary containing sitelats, sitelons for each site.
     """
 
     if sites is None:
@@ -126,15 +122,18 @@ def define_stations(ds, sites=None, use_site_info=False):
     return stations
 
 
-def subplot_fmt(num, row_dims=[3, 2, 4], fill=False):
+def subplot_fmt(num: int,
+                row_dims: list[int]=[3, 2, 4], 
+                fill: Optional[bool]=False
+               )->tuple[int,int]:
     """
     The subplot_fmt function decides the placement of a grid of figures dependent on the number.
     The row_dims input determines which placement is preferable for the user.
 
     Args:
-        num (int) :
+        num:
             Number of figures to be placed
-        row_dims (list, optional) :
+        row_dims:
             Row dimensions in order of preference.
             For the default row_dims=[3,2,4] the preferences of placement is as follows:
                 - equal rows of 3
@@ -142,26 +141,25 @@ def subplot_fmt(num, row_dims=[3, 2, 4], fill=False):
                 - equal rows of 4
             If none of the above are possible the format will be num x number of columns if fill
             is True or the configuration suitable for num+1 if fill is False.
-        fill (bool, optional) :
+        fill:
             All panels in subplot must be filled. If not, for uneven numbers an extra panel will
             be added which will be left blank when plotting.
             Default = False (i.e. allow an empty panel to be included within subplot)
 
     Returns:
-        List (int): [row_num,col_num]
-                    2 item list containing the row number and column number for the subplots.
+        2 item tuple containing the row number and column number for the subplots.
     """
     for r in row_dims:
         if not num % r:
-            subplot = [r, num // r]
+            subplot = (r, num // r)
             break
     else:
         if fill or num == 1:
-            subplot = [1, num]
+            subplot = (1, num)
         else:
             for r in row_dims:
                 if not (num + 1) % r:
-                    subplot = [r, (num + 1) // r]
+                    subplot = (r, (num + 1) // r)
                     break
 
     return subplot
@@ -543,9 +541,7 @@ def plot_map_mult(
             stations = [stations] * nrun
         elif len(stations) != nrun:
             print(
-                "Unable to apply station positions to sub-plots. Number of station dictionaries ({}}) does not match the number of plots ({}).".format(
-                    len(stations), nrun
-                )
+                f"Unable to apply station positions to sub-plots. Number of station dictionaries ({len(stations)}) does not match the number of plots ({nrun})."
             )
             labels = [None] * nrun
     if not grid and nrun > 1:
@@ -1538,9 +1534,7 @@ def extract_hbmcmc_files(directory, species, domain, runname, dates, return_file
 
     if not ds_list:
         raise Exception(
-            "No data found for dates {}, species, {}, runname {}, domain".format(
-                dates, species, runname, domain
-            )
+            f"No data found for dates {dates}, species, {species}, runname {runname}, domain {domain}"
         )
 
     if return_filenames:

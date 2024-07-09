@@ -1,6 +1,7 @@
 # OpenGHG Inversions Change Log
 
 # Version 0.2.0
+- Update docstrings
 
 - Cleaned up `utils.py`: adding typing, and updated docstrings [#PR 158](https://github.com/openghg/openghg_inversions/pull/158) 
 
