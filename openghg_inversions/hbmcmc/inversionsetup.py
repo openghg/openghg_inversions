@@ -1,39 +1,33 @@
-# ****************************************************************************
-# Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: eric.saboya@bristol.ac.uk
-# ****************************************************************************
-# Originally createdby Luke Western (ACRG) and updated by Eric Saboya
-#
-# About
-#   Functions used for setting up HBMCMC inversions
-#
-# ****************************************************************************
+"""
+Functions used for setting up HBMCMC inversions
+"""
 
 import numpy as np
 import pandas as pd
+from typing import Union
 
-
-def monthly_bcs(start_date, end_date, site, fp_data):
+def monthly_bcs(start_date :str, 
+                end_date : str,
+                site : str, 
+                fp_data : dict) -> np.ndarray:
     """
     Creates a sensitivity matrix (H-matrix) for the boundary
     conditions, which will map monthly boundary condition
     scalings to the observations. This is for a single site.
-    -----------------------------------
+
     Args:
-      start_date (str):
+      start_date:
         Start time of inversion "YYYY-mm-dd"
-      end_date (str):
+      end_date:
         End time of inversion "YYYY-mm-dd"
-      site (str):
+      site:
         Site that you're creating it for
-      fp_data (dict):
+      fp_data:
         Output from utils..bc_sensitivity
 
     Returns:
-      hmbc (array):
+      hmbc:
         Sensitivity matrix by month for observations
-    -----------------------------------
     """
     allmonth = pd.date_range(start_date, end_date, freq="MS")[:-1]
     nmonth = len(allmonth)
@@ -55,7 +49,11 @@ def monthly_bcs(start_date, end_date, site, fp_data):
     return hmbc
 
 
-def create_bc_sensitivity(start_date, end_date, site, fp_data, freq):
+def create_bc_sensitivity(start_date : str, 
+                          end_date : str, 
+                          site : str, 
+                          fp_data : dict, 
+                          freq : str) -> np.ndarray:
     """
     Creates a sensitivity matrix (H-matrix) for the boundary
     conditions, which will map boundary condition scalings to
@@ -63,24 +61,24 @@ def create_bc_sensitivity(start_date, end_date, site, fp_data, freq):
     that the boundary condition sensitivity is specified over
     must be given in days. Currently only works for a
     boundary condition from each cardinal direction.
-    -----------------------------------
+
     Args:
-      start_date (str):
+      start_date:
         Start time of inversion "YYYY-mm-dd"
-      end_date (str):
+      end_date:
         End time of inversion "YYYY-mm-dd"
-      site (str):
+      site:
         Site that you're creating it for
-      fp_data (dict):
+      fp_data:
         Output from ModelScenario()
-      freq (str):
+        Should be a dictionary of xr.Dataset/DataArray
+      freq:
         Length-scale over which boundary condition sensitivities are
         specified over. Specified as in pandas, e.g. "30D".
 
     Returns:
-      hmbc (array):
+      hmbc:
         Sensitivity matrix by for observations to boundary conditions
-    -----------------------------------
     """
     dys = int("".join([s for s in freq if s.isdigit()]))
     alldates = pd.date_range(
@@ -106,22 +104,22 @@ def create_bc_sensitivity(start_date, end_date, site, fp_data, freq):
     return hmbc
 
 
-def sigma_freq_indicies(ytime, sigma_freq):
+def sigma_freq_indicies(ytime : np.ndarray, 
+                        sigma_freq : Union[str,None]) -> np.ndarray:
     """
     Create an index that splits times
     into given periods
-    -----------------------------------
+    
     Args:
-      ytime (array of datetime64):
-        concatanted array of time values for observations
-      sigma_freq (str):
+      ytime:
+        concatenated array of time values for observations
+      sigma_freq:
         either "monthly", a pandas format string ("30D"), or None
         this is the period of time to divide the time array into
 
     Returns:
-      output (array):
+      output:
         index array that defines periods against time
-    -----------------------------------
     """
     ydt = pd.to_datetime(ytime)
     output = np.zeros(shape=len(ytime)).astype(int)
@@ -152,16 +150,19 @@ def sigma_freq_indicies(ytime, sigma_freq):
     return output
 
 
-def offset_matrix(siteindicator):
+def offset_matrix(siteindicator : np.ndarray
+                  ) -> np.ndarray:
     """
     Set up a matrix that can be used to add an offset to each site.
     This will anchor to the first site (i.e. first site has no offset)
-    -----------------------------------
+
     Args:
-      siteindicator (array):
+      siteindicator:
         Array of values used for indicating the indices associated
         with each site used in the inversion
-    -----------------------------------
+    
+    Returns:
+      2D array
     """
     b = np.zeros((int(len(siteindicator)), int(max(siteindicator)) + 1))
     for i in range(int(max(siteindicator) + 1)):
