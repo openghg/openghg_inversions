@@ -312,7 +312,7 @@ def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: 
                 "Add basis files or specify `bc_basis_directory`."
             )
 
-    file_path = (bc_basis_directory / domain).glob(f"{basis_case}_{domain}*.nc")
+    file_path = Path(f'{bc_basis_directory}/{domain}').glob(f"{basis_case}_{domain}*.nc")
     files = sorted(list(file_path))
 
     # check for files that we can't access
