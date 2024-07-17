@@ -236,7 +236,6 @@ def data_processing_surface_notracer(
     # Get flux data and add to dict.
     flux_dict = {}
     for source in emissions_name:
-        print(f'###### Begin get_flux for {source} ###### ')
         get_flux_data = get_flux(
             species=species,
             domain=domain,
@@ -245,7 +244,6 @@ def data_processing_surface_notracer(
             end_date=end_date,
             store=emissions_store,
         )
-        print(f'###### End get_flux for {source} ###### ')
 
         flux_dict[source] = get_flux_data
     fp_all[".flux"] = flux_dict
@@ -256,7 +254,7 @@ def data_processing_surface_notracer(
     site_indices_to_keep = []
 
     for i, site in enumerate(sites):
-        print(f'###### Begin get_obs_surface for {site} ###### ')
+        print(f'!!!!!!!! {site} !!!!!!!!')
         # Get observations data
         try:
             site_data = get_obs_surface(
@@ -288,10 +286,8 @@ def data_processing_surface_notracer(
                 )
                 continue  # skip this site
             unit = float(site_data[site].mf.units)
-        print(f'###### End get_obs_surface for {site} ###### ')
 
         # Get footprints data
-        print(f'###### Begin get_footprint for {site} ###### ')
         try:
             get_fps = get_footprint(
                 site=site,
@@ -304,6 +300,9 @@ def data_processing_surface_notracer(
                 store=footprint_store,
                 species=fp_species,
             )
+            if get_fps.data.lat.size != 293 or get_fps.data.sel(time=slice(start_date,str(np.datetime64(end_date)-np.timedelta64(1,'h')))).time.size==0:
+                print(f'Problem with {site} footprint for {start_date} - {end_date}.')
+                raise SearchError
         except SearchError:
             print(
                 f"\nNo footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}.",
@@ -312,11 +311,9 @@ def data_processing_surface_notracer(
             continue  # skip this site
         else:
             footprint_dict[site] = get_fps
-        print(f'###### End get_footprint for {site} ###### ')
 
         try:
             if use_bc is True:
-                print(f'###### Begin get_bc_data for {site} ###### ')
                 # Get boundary conditions data
                 get_bc_data = get_bc(
                     species=species,
@@ -326,7 +323,6 @@ def data_processing_surface_notracer(
                     end_date=end_date,
                     store=bc_store,
                 )
-                print(f'###### End get_bc_data for {site} ###### ')
 
                 # Divide by trace gas species units
                 # See if R+G can include this 'behind the scenes'
