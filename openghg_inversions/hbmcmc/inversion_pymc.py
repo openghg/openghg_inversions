@@ -674,7 +674,11 @@ def inferpymc_postprocessouts(
             raise ValueError("Emissions name not provided.")
         else:
             emds = fp_data[".flux"][emissions_name[0]]
-            flux_array_all = emds.data.flux.values
+            if (np.datetime64(end_date)-np.datetime64(start_date)).astype(int) in range(28,32) and \
+              np.timedelta64(np.datetime64(emds.data.time.values[1])-np.datetime64(emds.data.time.values[0]),'D') in range(364,367):
+                flux_array_all = emds.data.flux.sel(time=start_date,method='ffill').values[np.newaxis,:,:]*np.ones(12)[:,np.newaxis,np.newaxis]
+            else:
+                flux_array_all = emds.data.flux.values
 
     # HACK: assume that smallest flux dim is time, then re-order flux so that
     # time is the last coordinate
