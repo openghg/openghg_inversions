@@ -1,7 +1,6 @@
 """
 Functions to create basis datasets from fluxes and footprints.
 """
-import glob
 import os
 
 import getpass
@@ -105,17 +104,17 @@ def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: 
         xarray.Dataset: combined dataset of matching basis functions
     """
     if bc_basis_directory is None:
-        bc_basis_directory = openghginv_path / "bc_basis_functions"
-        if not bc_basis_directory.exists():
-            bc_basis_directory.mkdir()
+        bc_basis_path = openghginv_path / "bc_basis_functions"
+        if not bc_basis_path.exists():
+            bc_basis_path.mkdir()
             raise ValueError(
-                f"Default BC basis directory {bc_basis_directory} was empty. "
-                "Add basis files or specify `bc_basis_directory`."
+                f"Default BC basis directory {bc_basis_path} was empty. "
+                "Add basis files or specify `bc_basis_path`."
             )
     else:
-        bc_basis_directory = Path(bc_basis_directory)
+        bc_basis_path = Path(bc_basis_directory)
 
-    file_path = (bc_basis_directory / domain).glob(f"{basis_case}_{domain}*.nc")
+    file_path = (bc_basis_path / domain).glob(f"{basis_case}_{domain}*.nc")
     files = sorted(list(file_path))
 
     # check for files that we can't access
@@ -126,7 +125,7 @@ def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: 
         print(
             "Warning: unable to read all boundary conditions basis function files which match this criteria:"
         )
-        print("\n".join(file_no_acc))
+        print("\n".join(map(str, file_no_acc)))
 
     # only use files we can access
     files = [ff for ff in files if ff not in file_no_acc]
