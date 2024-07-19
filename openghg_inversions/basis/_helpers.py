@@ -1,5 +1,5 @@
 """
-Functions to create basis datasets from fluxes and footprints.
+Functions to create fit basis functiosn and apply to data
 """
 
 from typing import Optional, Union
