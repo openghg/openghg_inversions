@@ -123,7 +123,7 @@ def basis_functions_wrapper(
         fp_data = bc_sensitivity(
             fp_data,
             domain=domain,
-            basis_case=bc_basis_case,
+            basis_case=bc_basis_case,  # type: ignore ...check ensures bc_basis_case not None if use_bc True
             bc_basis_directory=bc_basis_directory,
         )
 
