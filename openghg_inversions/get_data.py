@@ -236,14 +236,34 @@ def data_processing_surface_notracer(
     # Get flux data and add to dict.
     flux_dict = {}
     for source in emissions_name:
-        get_flux_data = get_flux(
-            species=species,
-            domain=domain,
-            source=source,
-            start_date=start_date,
-            end_date=end_date,
-            store=emissions_store,
-        )
+        try:
+            get_flux_data = get_flux(
+                species=species,
+                domain=domain,
+                source=source,
+                start_date=start_date,
+                end_date=end_date,
+                store=emissions_store,
+            )
+        except SearchError:
+            logger.info(f"No flux data found between {start_date} and {end_date}.")
+            logger.info(f"Searching for flux data from before {end_date}.")
+
+            # re-try without start date
+            try:
+                get_flux_data = get_flux(
+                    species=species,
+                    domain=domain,
+                    source=source,
+                    start_date=None,
+                    end_date=end_date,
+                    store=emissions_store,
+                )
+            except SearchError as e:
+                raise SearchError(f"No flux data found before {end_date}") from e
+            else:
+                get_flux_data.data = get_flux_data.data.isel(time=-1)
+                logger.info(f"Using flux data from {get_flux_data.data.time.values}.")
 
         flux_dict[source] = get_flux_data
     fp_all[".flux"] = flux_dict
