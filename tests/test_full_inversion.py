@@ -72,23 +72,6 @@ def test_full_inversion_with_min_error_by_site(mcmc_args):
     assert "min_model_error" in out.attrs
 
 
-def test_full_inversion_pblh_filter(mcmc_args):
-    mcmc_args["filters"] = ["pblh"]
-
-
-def test_full_inversion_pblh_min_filter(mcmc_args):
-    mcmc_args["filters"] = ["pblh_min"]
-
-
-def test_full_inversion_pblh_inlet_diff_filter(mcmc_args):
-    mcmc_args["filters"] = ["pblh_inlet_diff"]
-
-def test_full_inversion_filters_as_list(mcmc_args):
-    mcmc_args["filters"] = ["pblh_inlet_diff","pblh_min"]
-
-def test_full_inversion_filters_as_dict(mcmc_args):
-    mcmc_args["filters"] = {site:["pblh_inlet_diff","pblh_min"] for site in mcmc_args['sites']}
-
 def test_full_inversion_lognormal_infer(mcmc_args):
     mcmc_args["xprior"] = {"pdf": "lognormal", "stdev": 2.0}
     out = fixedbasisMCMC(**mcmc_args)
