@@ -6,7 +6,8 @@ from typing import Optional
 
 import xarray as xr
 
-from ._functions import basis_functions, fixed_outer_regions_basis, basis, fp_sensitivity, bc_sensitivity
+from ._functions import basis_functions, fixed_outer_regions_basis, basis
+from ._helpers import fp_sensitivity, bc_sensitivity
 
 
 def basis_functions_wrapper(
