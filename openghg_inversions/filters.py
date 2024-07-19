@@ -120,12 +120,9 @@ def filtering(
         if filters[site] is not None:
             for filt in filters[site]:
                 n_nofilter = datasets[site].time.values.shape[0]
-                if filt in ["daily_median", "six_hr_mean", "pblh_inlet_diff", "pblh_min", "pblh"]:
-                    datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
-                else:
-                    datasets[site] = filtering_functions[filt](
-                        datasets[site], site, keep_missing=keep_missing
-                    )
+
+                datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
+
                 n_filter = datasets[site].time.values.shape[0]
                 n_dropped = n_nofilter - n_filter
                 perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
@@ -382,7 +379,9 @@ def pblh_min(dataset: xr.Dataset, pblh_threshold: float = 200.0, keep_missing: b
 
 
 @register_filter
-def pblh_inlet_diff(dataset: xr.Dataset, diff_threshold: float = 50.0, keep_missing: bool = False) -> xr.Dataset:
+def pblh_inlet_diff(
+    dataset: xr.Dataset, diff_threshold: float = 50.0, keep_missing: bool = False
+) -> xr.Dataset:
     """
     Subset for times when observations are taken at a height of less than 50 m below the PBLH.
 

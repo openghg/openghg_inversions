@@ -1,6 +1,11 @@
 # OpenGHG Inversions Change Log
 
 # Version 0.2.0
+
+- Moved code related to basis functions from `utils.py` to `basis` submodule [#PR 162](https://github.com/openghg/openghg_inversions/pull/162) 
+
+- Fixed bug in `filtering` function and updated tests to cover all filters [#PR 179](https://github.com/openghg/openghg_inversions/pull/179) 
+
 - Update docstrings
 
 - Cleaned up `utils.py`: adding typing, and updated docstrings [#PR 158](https://github.com/openghg/openghg_inversions/pull/158) 
@@ -21,7 +26,6 @@
 - Added new option for computing min. model error based on percentiles. [#PR 142](https://github.com/openghg/openghg_inversions/pull/142) 
 
 - Update the docstrings of openghg_inversions.basis and openghg_inversions.array_ops [#PR 150](https://github.com/openghg/openghg_inversions/pull/150)
-
 
 - Fixed "add averaging" functional, which adds the variability of obs over a resampling period to the measurement error (repeatability). This closes [Issue #42](https://github.com/openghg/openghg_inversions/issues/42) . [#PR 144](https://github.com/openghg/openghg_inversions/pull/144)
 
