@@ -8,23 +8,15 @@ import getpass
 from collections import namedtuple
 from functools import partial
 from pathlib import Path
-from typing import cast, Optional, Union
-
-from openghg.dataobjects import FluxData
-from openghg.util import get_species_info, synonyms
+from typing import cast, Optional
 
 import pandas as pd
 import xarray as xr
-import dask.array as da
-import numpy as np
-from tqdm import tqdm
 
 from .algorithms import quadtree_algorithm, weighted_algorithm
 
-from openghg_inversions import convert
 from openghg_inversions.config.paths import Paths
-from openghg_inversions.utils import read_netcdfs, combine_datasets
-from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
+from openghg_inversions.utils import read_netcdfs
 
 
 openghginv_path = Paths.openghginv
