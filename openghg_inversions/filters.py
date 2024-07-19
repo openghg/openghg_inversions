@@ -120,12 +120,9 @@ def filtering(
         if filters[site] is not None:
             for filt in filters[site]:
                 n_nofilter = datasets[site].time.values.shape[0]
-                if filt in ["daily_median", "six_hr_mean", "pblh_inlet_diff", "pblh_min", "pblh"]:
-                    datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
-                else:
-                    datasets[site] = filtering_functions[filt](
-                        datasets[site], site, keep_missing=keep_missing
-                    )
+
+                datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
+
                 n_filter = datasets[site].time.values.shape[0]
                 n_dropped = n_nofilter - n_filter
                 perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
