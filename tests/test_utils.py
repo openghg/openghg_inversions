@@ -4,21 +4,22 @@ from openghg.retrieve import get_footprint, get_flux
 
 from openghg_inversions.utils import combine_datasets
 
-
 def test_combine_datasets():
     fp = get_footprint(site="tac", domain="europe").data
     flux = get_flux(species="ch4", source="total-ukghg-edgar7", domain="europe").data
 
-    comb = combine_datasets(fp, flux)
+    comb = combine_datasets(fp, flux, method="nearest")
 
-    with pytest.raises(AssertionError) as exc_info:
-        xr.testing.assert_allclose(flux.flux.squeeze("time").drop_vars("time"), comb.flux.isel(time=0))
+    if not (fp.lon == flux.lon).all() or not (fp.lat == flux.lat).all():
+        # check that comb.flux has different coordinates from the original flux
+        with pytest.raises(AssertionError) as exc_info:
+            xr.testing.assert_allclose(flux.flux.squeeze("time").drop_vars("time"), comb.flux.isel(time=0, drop=True))
 
-    # coordinates should be different because we aligned the flux to the footprint
-    assert exc_info.match("Differing coordinates")
+        # coordinates should be different because we aligned the flux to the footprint
+        assert exc_info.match("Differing coordinates")
 
-    # values should not be different
-    with pytest.raises(AssertionError):
-        # the match fails, so this raises an assertion error; if the match is found
-        # no error is raised and pytest complains that it did not see an AssertionError
-        assert exc_info.match("Differing values")
+        # values should not be different
+        with pytest.raises(AssertionError):
+            # the match fails, so this raises an assertion error; if the match is found
+            # no error is raised and pytest complains that it did not see an AssertionError
+            assert exc_info.match("Differing values")

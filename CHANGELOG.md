@@ -1,6 +1,14 @@
 # OpenGHG Inversions Change Log
 
 # Version 0.2.0
+- Update docstrings
+
+- Cleaned up `utils.py`: adding typing, and updated docstrings [#PR 158](https://github.com/openghg/openghg_inversions/pull/158) 
+
+- Refactored `filters.py` so filter functions aren't nested inside `filtering`. Added code to keep track of filter functions. Updated docstrings. [#PR 163](https://github.com/openghg/openghg_inversions/pull/163)
+
+- Replaced `utils.combine_datasets` with (nearly) equivalent function from `openghg.analyse._scenario`. There is currently a thin wrapper to make sure that the second
+  dataset is loaded into memory, since this change is only on the devel branch of OpenGHG [#PR 160](https://github.com/openghg/openghg_inversions/pull/160) 
 
 - Moved `basis` and related functions from `utils.py` to `basis._functions.py` to make more consistent [#PR 162](https://github.com/openghg/openghg_inversions/pull/162)
 

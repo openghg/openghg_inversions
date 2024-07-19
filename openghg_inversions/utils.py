@@ -1,34 +1,68 @@
-# ****************************************************************************
-# Created: 7 Nov. 2022
-# Author: Eric Saboya, School of Geographical Sciences, University of Bristol
-# Contact: ericsaboya@bristol.ac.uk
-# ****************************************************************************
-# About
-# Script containing common Python functions that can be called for running
-# HBMCMC and other  inversion models.
-# Most functions have been copied form the acrg repo (e.g. acrg.name)
-#
-# ****************************************************************************
-import glob
+"""
+Script containing common Python functions that can be called for running
+HBMCMC and other inversion models.
+
+The main functions are related to applying basis functions to the flux and boundary
+conditions, and their sensitivities.
+
+Many functions in this submodule originated in the ACRG code base (in `acrg.name`).
+
+"""
+
 import os
-import re
+from pathlib import Path
 from types import SimpleNamespace
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 
 import numpy as np
 import xarray as xr
 
+from openghg.analyse import combine_datasets as openghg_combine_datasets
+
 from openghg_inversions.config.paths import Paths
+
 
 openghginv_path = Paths.openghginv
 
 
-def open_ds(path, chunks=None, combine=None):
+def combine_datasets(
+    dataset_a: xr.Dataset,
+    dataset_b: xr.Dataset,
+    method: Optional[str] = "nearest",
+    tolerance: Optional[float] = None,
+) -> xr.Dataset:
     """
-    Function efficiently opens xarray datasets.
-    -----------------------------------
+    Merges two datasets and re-indexes to the first dataset.
+
+    If "fp" variable is found within the combined dataset,
+    the "time" values where the "lat", "lon" dimensions didn't match are removed.
+
+    NOTE: this is temporary solution while waiting for `.load()` to be added to openghg version of combine_datasets
+
     Args:
-      path (str):
+        dataset_a: First dataset to merge
+        dataset_b: Second dataset to merge
+        method: One of None, nearest, ffill, bfill.
+                See xarray.DataArray.reindex_like for list of options and meaning.
+                Defaults to ffill (forward fill)
+        tolerance: Maximum allowed tolerance between matches.
+
+    Returns:
+        xarray.Dataset: Combined dataset indexed to dataset_a
+    """
+    return openghg_combine_datasets(dataset_a, dataset_b.load(), method=method, tolerance=tolerance)
+
+
+def open_ds(
+    path: Union[str, Path],
+    chunks: Optional[dict] = None,
+    combine: Literal["by_coords", "nested"] = "by_coords",
+) -> xr.Dataset:
+    """
+    Function efficiently opens xarray Datasets.
+
+    Args:
+      path: path to file to open
       chunks (dict, optional):
         size of chunks for each dimension
         e.g. {'lat': 50, 'lon': 50}
@@ -41,11 +75,9 @@ def open_ds(path, chunks=None, combine=None):
         'nested': concatenate datasets in the order supplied
 
     Returns:
-      ds (xarray)
-    -----------------------------------
+        xarray Dataset
     """
     if chunks is not None:
-        combine = "by_coords" if combine is None else combine
         ds = xr.open_mfdataset(path, chunks=chunks, combine=combine)
     else:
         # use a context manager, to ensure the file gets closed after use
@@ -55,29 +87,30 @@ def open_ds(path, chunks=None, combine=None):
     return ds
 
 
-def read_netcdfs(files, dim="time", chunks=None, verbose=True):
+def read_netcdfs(
+    files: Union[list[str], list[Path]],
+    dim: str = "time",
+    chunks: Optional[dict] = None,
+    verbose: bool = True,
+) -> xr.Dataset:
     """
     The read_netcdfs function uses xarray to open sequential netCDF files and
     and concatenates them along the specified dimension.
     Note: this function makes sure that file is closed after open_dataset call.
-    -----------------------------------
+
     Args:
-      files (list):
-        List of netCDF filenames.
-      dim (str, optional):
-        Dimension of netCDF to use for concatenating the files.
-        Default = "time".
-      chunks (dict):
-        size of chunks for each dimension
-        e.g. {'lat': 50, 'lon': 50}
-        opens dataset with dask, such that it is opened 'lazily'
-        and all of the data is not loaded into memory
-        defaults to None - dataset is opened with out dask
+        files: List of netCDF filenames.
+        dim: Dimension of netCDF to use for concatenating the files. Default = "time".
+        chunks: size of chunks for each dimension
+            e.g. {'lat': 50, 'lon': 50}
+            opens dataset with dask, such that it is opened 'lazily'
+            and all of the data is not loaded into memory
+            defaults to None - dataset is opened with out dask
 
     Returns:
-      xarray.Dataset:
-        All files open as one concatenated xarray.Dataset object
-    -----------------------------------
+        xarray.Dataset: All files open as one concatenated xarray.Dataset object
+
+    # TODO: this could be done more efficiently with xr.open_mfdataset (most likely)
     """
     if verbose:
         print("Reading and concatenating files ...")
@@ -102,17 +135,30 @@ def read_netcdfs(files, dim="time", chunks=None, verbose=True):
     return combined
 
 
-def get_country(domain, country_file=None):
+def get_country(domain: str, country_file: Union[str, Path, None] = None):
+    """Open country file for given domain and return as a SimpleNamespace
+
+    NOTE: a SimpleNamespace is a like dict with class like attribute access
+
+    Args:
+        domain: domain of inversion
+        country_file: optional string or Path to country file. If `None`, then the first file found in
+            `openghg_inversions/countries/` is used.
+
+    Returns:
+        SimpleNamespace with attributes: lon, lat, lonmax, lonmin, latmax, latmin, country, and name
+    """
     if country_file is None:
-        if not os.path.exists(os.path.join(openghginv_path, "countries/")):
-            os.makedirs(os.path.join(openghginv_path, "countries/"))
+        country_directory = openghginv_path / "countries"
+
+        if not country_directory.exists():
+            country_directory.mkdir()
+
             raise FileNotFoundError(
                 "Country definition file not found." f" Please add to {openghginv_path}/countries/"
             )
-        else:
-            country_directory = os.path.join(openghginv_path, "countries/")
 
-        filenames = glob.glob(os.path.join(country_directory, f"country_{domain}.nc"))
+        filenames = list(country_directory.glob(f"country_{domain}.nc"))
         filename = filenames[0]
     else:
         filename = country_file
@@ -129,12 +175,6 @@ def get_country(domain, country_file=None):
         else:
             raise ValueError(f"Variables 'country' or 'region' not found in country file {filename}.")
 
-        #         if (ukmo is True) or (uk_split is True):
-        #             name_temp = f.variables['name'][:]
-        #             f.close()
-        #             name=np.asarray(name_temp)
-
-        #         else:
         name = f.variables["name"].values.astype(str)
 
     result = dict(
@@ -150,28 +190,25 @@ def get_country(domain, country_file=None):
     return SimpleNamespace(**result)
 
 
-def areagrid(lat, lon):
+def areagrid(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
     """
-    Calculates grid of areas (m2) given arrays of latitudes and longitudes
-    -------------------------------------
+    Calculates grid of areas (m^2), given arrays of latitudes and longitudes
+
     Args:
-      lat (array):
-        1D array of latitudes
-      lon (array):
-        1D array of longitudes
+        lat: 1D array of latitudes
+        lon: 1D array of longitudes
 
     Returns:
-      area (array):
-        2D array of areas of of size lat x lon
-    -------------------------------------
-    Example:
-      import utils.areagrid
-      lat=np.arange(50., 60., 1.)
-      lon=np.arange(0., 10., 1.)
-      area=utils.areagrid(lat, lon)
+        area: 2D array of areas of of size lat x lon
+
+    Examples:
+        >>> import utils.areagrid
+        >>> lat = np.arange(50., 60., 1.)
+        >>> lon = np.arange(0., 10., 1.)
+        >>> area = utils.areagrid(lat, lon)
     """
 
-    re = 6367500.0  # radius of Earth in m
+    rad_earth = 6367500.0  # radius of Earth in m
 
     dlon = abs(np.mean(lon[1:] - lon[0:-1])) * np.pi / 180.0
     dlat = abs(np.mean(lat[1:] - lat[0:-1])) * np.pi / 180.0
@@ -181,93 +218,12 @@ def areagrid(lat, lon):
 
     for latI in range(len(lat)):
         if theta[latI] == 0.0 or np.isclose(theta[latI], np.pi):
-            area[latI, :] = (re**2) * abs(np.cos(dlat / 2.0) - np.cos(0.0)) * dlon
+            area[latI, :] = (rad_earth**2) * abs(np.cos(dlat / 2.0) - np.cos(0.0)) * dlon
         else:
             lat1 = theta[latI] - dlat / 2.0
             lat2 = theta[latI] + dlat / 2.0
-            area[latI, :] = (re**2) * (np.cos(lat1) - np.cos(lat2)) * dlon
+            area[latI, :] = (rad_earth**2) * (np.cos(lat1) - np.cos(lat2)) * dlon
 
     return area
 
 
-def indexesMatch(dsa, dsb):
-    """
-    Check if two datasets need to be reindexed_like for combine_datasets
-    -----------------------------------
-    Args:
-      dsa (xarray.Dataset) :
-        First dataset to check
-      dsb (xarray.Dataset) :
-        Second dataset to check
-
-    Returns:
-      boolean:
-        True if indexes match, False if datasets must be reindexed
-    -----------------------------------
-    """
-
-    commonIndicies = [key for key in dsa.indexes.keys() if key in dsb.indexes.keys()]
-
-    # test if each comon index is the same
-    for index in commonIndicies:
-        # first check lengths are the same to avoid error in second check
-        if not len(dsa.indexes[index]) == len(dsb.indexes[index]):
-            return False
-
-        # check number of values that are not close (testing for equality with floating point)
-        if index == "time":
-            # for time iverride the default to have ~ second precision
-            rtol = 1e-10
-        else:
-            rtol = 1e-5
-
-        num_not_close = np.sum(
-            ~np.isclose(
-                dsa.indexes[index].values.astype(float),
-                dsb.indexes[index].values.astype(float),
-                rtol=rtol,
-            )
-        )
-        if num_not_close > 0:
-            return False
-
-    return True
-
-
-def combine_datasets(dsa, dsb, method="nearest", tolerance: Optional[float] = None) -> xr.Dataset:
-    """
-    Merge two datasets, re-indexing to the first dataset (within an optional tolerance).
-
-    If "fp" variable is found within the combined dataset, the "time" values where the "lat", "lon"
-    dimensions didn't match are removed.
-
-    Example:
-        ds = combine_datasets(dsa, dsb)
-
-    Args:
-      dsa (xarray.Dataset):
-        First dataset to merge
-      dsb (xarray.Dataset):
-        Second dataset to merge
-      method: One of {None, ‘nearest’, ‘pad’/’ffill’, ‘backfill’/’bfill’}
-        See xarray.DataArray.reindex_like for list of options and meaning.
-        Default = "ffill" (forward fill)
-      tolerance: Maximum allowed (absolute) tolerance between matches.
-
-    Returns:
-      xarray.Dataset: combined dataset indexed to dsa
-    """
-    # merge the two datasets within a tolerance and remove times that are NaN (i.e. when FPs don't exist)
-
-    if not indexesMatch(dsa, dsb):
-        dsb_temp = dsb.load().reindex_like(dsa, method, tolerance=tolerance)
-    else:
-        dsb_temp = dsb
-
-    ds_temp = dsa.merge(dsb_temp)
-
-    if "fp" in ds_temp:
-        mask = np.isfinite(ds_temp.fp.sum(dim=["lat", "lon"], skipna=False))
-        ds_temp = ds_temp.where(mask.as_numpy(), drop=True)  # .as_numpy() in case mask is chunked
-
-    return ds_temp

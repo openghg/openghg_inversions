@@ -10,7 +10,7 @@ from functools import partial
 from pathlib import Path
 from typing import cast, Optional, Union
 
-from openghg.analyse import ModelScenario
+from openghg.dataobjects import FluxData
 from openghg.util import get_species_info, synonyms
 
 import pandas as pd
@@ -26,101 +26,114 @@ from openghg_inversions.config.paths import Paths
 from openghg_inversions.utils import read_netcdfs, combine_datasets
 from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 
+
 openghginv_path = Paths.openghginv
 
 
-def basis(domain, basis_case, basis_directory=None):
+def basis(domain: str, basis_case: str, basis_directory: Optional[str] = None) -> xr.Dataset:
     """
-    The basis function reads in the all matching files for the
-    basis case and domain as an xarray Dataset.
+    Read in basis function(s) from file given basis case and domain, and return as an
+    xarray Dataset.
 
-    Expect filenames of the form:
-        [basis_directory]/domain/"basis_case"_"domain"*.nc
-        e.g. [/data/shared/LPDM/basis_functions]/EUROPE/sub_transd_EUROPE_2014.nc
+    The basis function files should be stored as on paths of the form:
+        <basis_directory>/<domain>/<basis_case>_<domain>*.nc
 
-    TODO: More info on options for basis functions.
-    -----------------------------------
+    For instance: domain = EUROPE, basis_directory = /group/chem/acrg/LPDM/basis_functions,
+    and basis_case = sub_transd would find files such as:
+
+        /group/chem/acrg/LPDM/basis_functions/EUROPE/sub_transd_EUROPE_2014.nc
+
+    Basis functions created by algorithms in OpenGHG inversions will be stored using
+    this path format.
+
     Args:
-      domain (str):
-        Domain name. The basis files should be sub-categorised by the domain.
-      basis_case (str):
-        Basis case to read in.
-        Examples of basis cases are "voroni","sub-transd","sub-country_mask",
-        "INTEM".
-      basis_directory (str, optional):
-        basis_directory can be specified if files are not in the default
-        directory. Must point to a directory which contains subfolders
-        organized by domain.
+        domain: domain name. The basis files should be sub-categorised by the domain.
+        basis_case: basis case to read in. Examples of basis cases are "voronoi", "sub-transd",
+            "sub-country_mask", "INTEM".
+        basis_directory: basis_directory can be specified if files are not in the default
+            directory (i.e. `openghg_inversions/basis_functions`). Must point to a directory that
+            contains subfolders organized by domain.
 
     Returns:
-      xarray.Dataset:
-        combined dataset of matching basis functions
-    -----------------------------------
+        xarray.Dataset: combined dataset of matching basis functions
     """
     if basis_directory is None:
-        if not os.path.exists(os.path.join(openghginv_path, "basis_functions/")):
-            os.makedirs(os.path.join(openghginv_path, "basis_functions/"))
-        basis_directory = os.path.join(openghginv_path, "basis_functions/")
+        basis_path = openghginv_path / "basis_functions"
+        if not basis_path.exists():
+            basis_path.mkdir()
+            raise ValueError(
+                f"Default basis directory {basis_path} was empty. "
+                "Add basis files or specify `basis_path`."
+            )
+    else:
+        basis_path = Path(basis_directory)
 
-    file_path = os.path.join(basis_directory, domain, f"{basis_case}_{domain}*.nc")
-    files = sorted(glob.glob(file_path))
+    file_path = (basis_path / domain).glob(f"{basis_case}_{domain}*.nc")
+    files = sorted(list(file_path))
 
     if len(files) == 0:
-        raise IOError(
-            f"\nError: Can't find basis function files for domain '{domain}' \
-                          and basis_case '{basis_case}' "
+        raise FileNotFoundError(
+            f"Can't find basis function files for domain '{domain}'" f"and basis_case '{basis_case}' "
         )
 
     basis_ds = read_netcdfs(files)
 
     return basis_ds
 
-def basis_boundary_conditions(domain, basis_case, bc_basis_directory=None):
+
+def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: Optional[str] = None):
     """
-    The basis_boundary_conditions function reads in all matching files
-    for the boundary conditions basis case and domain as an xarray Dataset.
+    Read in basis function(s) from file given basis case and domain, and return as an
+    xarray Dataset.
 
-    Expect filesnames of the form:
-        [bc_basis_directory]/domain/"basis_case"_"domain"*.nc
-        e.g. [/data/shared/LPDM/bc_basis_directory]/EUROPE/NESW_EUROPE_2013.nc
+    The basis function files should be stored as on paths of the form:
+        <bc_basis_directory>/<domain>/<basis_case>_<domain>*.nc
 
-    TODO: More info on options for basis functions.
-    -----------------------------------
+    For instance: domain = "EUROPE", bc_basis_directory = /group/chem/acrg/LPDM/bc_basis_functions,
+    and basis_case = "NESW" would find files such as:
+
+        /group/chem/acrg/LPDM/bc_basis_functions/EUROPE/NESW_EUROPE_2014.nc
+
     Args:
-      domain (str):
-        Domain name. The basis files should be sub-categorised by the domain.
-      basis_case (str):
-        Basis case to read in. Examples of basis cases are "NESW","stratgrad".
-      bc_basis_directory (str, optional):
-        bc_basis_directory can be specified if files are not in the default directory.
-        Must point to a directory which contains subfolders organized by domain.
+        domain: domain name. The basis files should be sub-categorised by the domain.
+        basis_case: basis case to read in. Examples of BC basis cases are "NESW", "stratgrad".
+        bc_basis_directory: bc_basis_directory can be specified if files are not in the default
+            directory (i.e. `openghg_inversions/bc_basis_functions`). Must point to a directory that
+            contains subfolders organized by domain.
 
     Returns:
-      xarray.Datset:
-        Combined dataset of matching basis functions
-    -----------------------------------
+        xarray.Dataset: combined dataset of matching basis functions
     """
     if bc_basis_directory is None:
-        if not os.path.exists(os.path.join(openghginv_path, "bc_basis_functions/")):
-            os.makedirs(os.path.join(openghginv_path, "bc_basis_functions/"))
-        bc_basis_directory = os.path.join(openghginv_path, "bc_basis_functions/")
+        bc_basis_directory = openghginv_path / "bc_basis_functions"
+        if not bc_basis_directory.exists():
+            bc_basis_directory.mkdir()
+            raise ValueError(
+                f"Default BC basis directory {bc_basis_directory} was empty. "
+                "Add basis files or specify `bc_basis_directory`."
+            )
+    else:
+        bc_basis_directory = Path(bc_basis_directory)
 
-    file_path = os.path.join(bc_basis_directory, domain, f"{basis_case}_{domain}*.nc")
+    file_path = (bc_basis_directory / domain).glob(f"{basis_case}_{domain}*.nc")
+    files = sorted(list(file_path))
 
-    files = sorted(glob.glob(file_path))
+    # check for files that we can't access
+    # NOTE: Hannah added this in 2021 to the ACRG code.
+    # I don't know why it is only for BC boundary conditions -- BM, 2024
     file_no_acc = [ff for ff in files if not os.access(ff, os.R_OK)]
-    files = [ff for ff in files if os.access(ff, os.R_OK)]
-
     if len(file_no_acc) > 0:
         print(
             "Warning: unable to read all boundary conditions basis function files which match this criteria:"
         )
-        [print(ff) for ff in file_no_acc]
+        print("\n".join(file_no_acc))
+
+    # only use files we can access
+    files = [ff for ff in files if ff not in file_no_acc]
 
     if len(files) == 0:
-        raise IOError(
-            "\nError: Can't find boundary condition basis function files for domain '{0}' "
-            "and basis_case '{1}' ".format(domain, basis_case)
+        raise FileNotFoundError(
+            f"Can't find BC basis function files for domain '{domain}'" f"and bc_basis_case '{basis_case}' "
         )
 
     basis_ds = read_netcdfs(files)
@@ -697,32 +710,34 @@ def fixed_outer_regions_basis(
     return basis
 
 
+
 def fp_sensitivity(
     fp_and_data: dict, basis_func: Union[xr.DataArray, dict[str, xr.DataArray]], verbose: bool = True
-):
+) -> dict:
     """
-    The fp_sensitivity function adds a sensitivity matrix, H, to each
-    site xarray dataframe in fp_and_data.
-    Basis function data in an array: lat, lon, no. regions.
-    In each 'region'element of array there is a lat-lon grid with 1 in
-    region and 0 outside region.
+    Add a sensitivity matrix, H, to each site xr.Dataset in fp_and_data.
+
+    The sensitivity matrix H takes the footprint sensitivities (the `fp` variable),
+    multiplies it by the flux files, then aggregates over the basis regions.
+
+    The basis functions can have one of two forms:
+    - a xr.DataArray with lat/lon coordinates, and positive integer values, where all
+      lat/lon pairs with value == i form the i-th basis region
+    - a xr.DataArray with coordinates: lat, lon, region. For each fixed region value, there is
+      a lat-lon grid with 1 in region and 0 outside region.
 
     Region numbering must start from 1
 
+    TODO: describe output coordinates?
+
     Args:
-      fp_and_data (dict):
-        Output from footprints_data_merge() function. Dictionary of datasets.
-      domain (str):
-        Domain name. The footprint files should be sub-categorised by the domain.
-      basis_case:
-        Basis case to read in. Examples of basis cases are "NESW","stratgrad".
-        String if only one basis case is required. Dict if there are multiple
-        sources that require separate basis cases. In which case, keys in dict should
-        reflect keys in emissions_name dict used in fp_data_merge.
+        fp_and_data: output from `data_processing_surface_notracer`; contains "combined scenarios" keyed by
+            site code, as well as fluxes.
+        basis_func: basis functions to use; output from `utils.basis` or basis functions in `basis` submodule.
+        verbose: if True, print info messages.
 
     Returns:
-        dict:
-          Same format as fp_and_data with sensitivity matrix and basis function grid added.
+        dict in same format as fp_and_data with sensitivity matrix and basis functions added.
     """
 
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
@@ -773,31 +788,26 @@ def fp_sensitivity(
 
 
 def fp_sensitivity_single_site_basis_func(
-    scenario: ModelScenario, flux, source: str, basis_func: xr.DataArray, verbose: bool = True
-):
+    scenario: xr.Dataset,
+    flux: Union[FluxData, dict[str, FluxData]],
+    basis_func: xr.DataArray,
+    source: str = "all",
+    verbose: bool = True,
+) -> tuple[xr.DataArray, Optional[xr.Dataset]]:
     """
-    The fp_sensitivity function adds a sensitivity matrix, H, to each
-    site xarray dataframe in fp_and_data.
-    Basis function data in an array: lat, lon, no. regions.
-    In each 'region'element of array there is a lat-lon grid with 1 in
-    region and 0 outside region.
-
-    Region numbering must start from 1
+    Computes sensitivity matrix `H` for one site. See `fp_sensitivity` for
+    more info about the sensitivity matrix.
 
     Args:
-      scenario:
-        Output from footprints_data_merge() function; e.g. `fp_all["TAC"]`
-      flux:
-        array with flux values
-      source:
-        name of flux source
-      domain (str):
-        Domain name. The footprint files should be sub-categorised by the domain.
-      basis_func:
-        basis functions
+        scenario: xr.Dataset from `ModelScenario.footprints_data_merge`, e.g. `fp_all["TAC"]`
+        flux: FluxData object or dictionary of FluxData objects with flux values; a dictionary
+            should only be passed for "high time resolution" or "time resolved" footprints.
+        source: name of flux source; used for naming the region labels in the output coordinates.
+        basis_func:
 
     Returns:
-        sensitivity ("H") xr.DataArray and site_bf xr.Dataset
+        sensitivity ("H") xr.DataArray and site_bf xr.Dataset containing basis functions and
+        flux * footprint if "region" present in basis_func, otherwise, None
     """
     if isinstance(flux, dict):
         if "fp_HiTRes" in list(scenario.keys()):
@@ -817,11 +827,12 @@ def fp_sensitivity_single_site_basis_func(
             )
         else:
             raise ValueError(
-                "fp_and_data needs the variable fp_HiTRes to use the emissions dictionary with high_freq and low_freq emissions."
+                "fp_and_data needs the variable fp_HiTRes to use the "
+                "emissions dictionary with high_freq and low_freq emissions."
             )
 
     else:
-        site_bf = combine_datasets(scenario["fp"].to_dataset(), flux.data)
+        site_bf = combine_datasets(scenario["fp"].to_dataset(), flux.data, method="nearest")
         H_all = site_bf.fp * site_bf.flux
 
     H_all_v = H_all.values.reshape((len(site_bf.lat) * len(site_bf.lon), len(site_bf.time)))
@@ -850,32 +861,30 @@ def fp_sensitivity_single_site_basis_func(
         _, basis_aligned = xr.align(H_all.isel(time=0), basis_func, join="override")
         basis_mat = get_xr_dummies(basis_aligned.squeeze("time"), cat_dim="region")
         sensitivity = sparse_xr_dot(basis_mat, H_all.fillna(0.0)).transpose("region", "time")
+        # TODO: use same region names as alternate method above
         site_bf = None
 
     return sensitivity, site_bf
 
 
-def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory=None):
+def bc_sensitivity(
+    fp_and_data: dict, domain: str, basis_case: str, bc_basis_directory: Optional[str] = None
+) -> dict:
     """
-    The bc_sensitivity adds H_bc to the sensitivity matrix,
-    to each site xarray dataframe in fp_and_data.
-    -----------------------------------
+    Add boundary conditions sensitivity matrix `H_bc` to each site xr.Dataframe in fp_and_data.
+
     Args:
-      fp_and_data (dict):
-        Output from ModelScenario.footprints_data_merge() function. Dictionary of datasets.
-     domain (str):
-       Domain name. The footprint files should be sub-categorised by the domain.
-     basis_case (str):
-       Basis case to read in. Examples of basis cases are "NESW","stratgrad".
-     bc_basis_directory (str):
-       bc_basis_directory can be specified if files are not in the default
-       directory. Must point to a directory which contains subfolders organized
-       by domain. (optional)
+        fp_and_data: dict containing xr.Datasets output by `ModelScenario.footprints_data_merge`
+            keyed by site code.
+        domain: inversion domain. For instance "EUROPE"
+        basis_case: BC basis case to read in. Examples of basis cases are "NESW","stratgrad".
+        bc_basis_directory: bc_basis_directory can be specified if files are not in the default
+            directory. Must point to a directory which contains subfolders organized
+            by domain. (optional)
 
     Returns:
-      dict (xarray.Dataset):
-        Same format as fp_and_data with sensitivity matrix added.
-    -----------------------------------
+        dict of xr.Datasets in same format as fp_and_data with `H_bc` sensitivity matrix added.
+
     """
 
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
@@ -894,7 +903,8 @@ def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory=None):
     species = synonyms(species, lower=False)
 
     for site in sites:
-        # ES commented out line below as .bc not attribute. Also assume openghg adds all relevant particle data to file.
+        # ES commented out line below as .bc not attribute.
+        # Also assume openghg adds all relevant particle data to file.  TODO: what does this mean? BM, 2024
         #        if fp_and_data[site].bc.chunks is not None:
         for particles in [
             "particle_locations_n",
@@ -913,7 +923,7 @@ def bc_sensitivity(fp_and_data, domain, basis_case, bc_basis_directory=None):
             # this is because lifetime can be a list of monthly values
 
             time_month = fp_and_data[site].time.dt.month
-            if type(lifetime_hrs_list_or_float) is list:
+            if isinstance(lifetime_hrs_list_or_float, list):
                 lifetime_hrs = [lifetime_hrs_list_or_float[item - 1] for item in time_month.values]
             else:
                 lifetime_hrs = lifetime_hrs_list_or_float
