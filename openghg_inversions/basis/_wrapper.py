@@ -1,6 +1,7 @@
 """
 Functions to calling basis function algorithms and applying basis functions to data.
 """
+
 from pathlib import Path
 from typing import Optional
 
@@ -49,7 +50,7 @@ def basis_functions_wrapper(
       basis_algorithm (str, optional):
         One of "quadtree" (for using Quadtree algorithm) or
         "weighted" (for using an algorihtm that splits region
-        by input data). Land-sea separation is not imposed in the 
+        by input data). Land-sea separation is not imposed in the
         quadtree basis functions, but is imposed by default in "weighted"
         Default None
       fixed_outer_region (bool):
@@ -152,15 +153,15 @@ def _save_basis(
     """Save basis functions to netCDF.
 
     Args:
-      basis (xarray.DataArray): 
+      basis (xarray.DataArray):
         basis dataset to save
-      basis_algorithm (str): 
+      basis_algorithm (str):
         name of basis algorithm (e.g. "quadtree" or "weighted")
-      output_dir (str): 
+      output_dir (str):
         root directory to save basis functions
-      domain (str): 
+      domain (str):
         domain of inversion; basis is saved in a "domain" directory inside `output_dir`
-      species (str): 
+      species (str):
         species of inversion
       output_name (str,optional):
         File output name

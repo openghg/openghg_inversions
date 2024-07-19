@@ -1,6 +1,7 @@
 """
 Functions to create basis datasets from fluxes and footprints.
 """
+
 import os
 
 import getpass
@@ -61,8 +62,7 @@ def basis(domain: str, basis_case: str, basis_directory: Optional[str] = None) -
         if not basis_path.exists():
             basis_path.mkdir()
             raise ValueError(
-                f"Default basis directory {basis_path} was empty. "
-                "Add basis files or specify `basis_path`."
+                f"Default basis directory {basis_path} was empty. " "Add basis files or specify `basis_path`."
             )
     else:
         basis_path = Path(basis_directory)
@@ -144,14 +144,14 @@ def _flux_fp_from_fp_all(
     fp_all: dict, emissions_name: Optional[list[str]] = None
 ) -> tuple[xr.DataArray, list[xr.DataArray]]:
     """Get flux and list of footprints from `fp_all` dictionary and optional list of emissions names.
-    
+
     Args:
       fp_all (dict):
         Output from footprints_data_merge() function. Dictionary of datasets.
       emissions_name (list):
         List of "source" key words as used for retrieving specific emissions
         from the object store.
-    
+
     Returns:
       flux (xarray.DataArray):
         Array containing the flux data.
@@ -178,7 +178,7 @@ def _mean_fp_times_mean_flux(
     mask: Optional[xr.DataArray] = None,
 ) -> xr.DataArray:
     """Multiply mean flux by mean of footprints, optionally restricted to a Boolean mask.
-    
+
     Args :
       flux (xarray.DataArray):
         Array containing the flux data.
@@ -344,7 +344,6 @@ def fixed_outer_regions_basis(
     nbasis: int = 100,
     abs_flux: bool = False,
 ) -> xr.DataArray:
-   
     """Fix outer region of basis functions to InTEM regions, and fit the inner regions using `basis_algorithm`.
 
     Args:
@@ -393,5 +392,3 @@ def fixed_outer_regions_basis(
     basis = basis.expand_dims({"time": [pd.to_datetime(start_date)]})
 
     return basis
-
-

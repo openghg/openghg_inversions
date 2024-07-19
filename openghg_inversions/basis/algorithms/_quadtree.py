@@ -1,6 +1,7 @@
 """
 Module to create basis regions for the inversion using a quadtree algorithm.
 """
+
 from typing import Optional
 
 import numpy as np
@@ -11,24 +12,25 @@ class quadTreeNode:
     """Node of the quadtree algorithm.
 
     Class attributes 'xStart', 'xEnd', 'yStart', 'yEnd' store the
-    coordinates (in terms of indexes of the grid) of the node; 
-    'child1', 'child2', 'child3', 'child4' store its children 
-    nodes (e.g. its subdivisions). 
+    coordinates (in terms of indexes of the grid) of the node;
+    'child1', 'child2', 'child3', 'child4' store its children
+    nodes (e.g. its subdivisions).
     """
-    def __init__(self, xStart : int, xEnd : int, yStart : int, yEnd : int):
+
+    def __init__(self, xStart: int, xEnd: int, yStart: int, yEnd: int):
         """Init quadTreeNode.
 
         Args :
-            xStart: 
+            xStart:
                 index of the grid on the first axis
                 on which the node starts.
-            xEnd: 
+            xEnd:
                 index of the grid on the first axis
                 on which the node ends.
-            yStart: 
+            yStart:
                 index of the grid on the second axis
                 on which the node starts.
-            yEnd: 
+            yEnd:
                 index of the grid on the second axis
                 on which the node ends.
         """
@@ -49,7 +51,7 @@ class quadTreeNode:
         else:
             return True
 
-    def createChildren(self, grid : np.ndarray, limit : float):
+    def createChildren(self, grid: np.ndarray, limit: float):
         """
         Create children nodes. If finest resolution or bucket level reached,
         no children nodes are created and the node is thus a leaf.
@@ -58,7 +60,7 @@ class quadTreeNode:
             grid:
                 2d numpy array to wich the quadtree division is applied.
             limit:
-                Bucket level (i.e. targeted resolution which is compared to the 
+                Bucket level (i.e. targeted resolution which is compared to the
                 sum of the grid points in the node).
         """
         value = np.sum(grid[self.xStart : self.xEnd, self.yStart : self.yEnd])  # .values
@@ -88,12 +90,12 @@ class quadTreeNode:
         self.child3.createChildren(grid, limit)
         self.child4.createChildren(grid, limit)
 
-    def appendLeaves(self, leafList : list):
+    def appendLeaves(self, leafList: list):
         """
         Recursively look for leaves in the node offsprings and append them to the leafList.
 
         Args :
-          leafList: 
+          leafList:
             list containing all the leaves, i.e. basis regions that will be used
             in the hbmcmc inversion.
         """
@@ -107,8 +109,7 @@ class quadTreeNode:
             self.child4.appendLeaves(leafList)
 
 
-def quadTreeGrid(grid : np.ndarray, 
-                 limit : float) -> np.ndarray:
+def quadTreeGrid(grid: np.ndarray, limit: float) -> np.ndarray:
     """
     Apply quadtree division algorithm.
 
@@ -117,7 +118,7 @@ def quadTreeGrid(grid : np.ndarray,
         2d numpy array to apply quadtree division to
       limit (float):
         Use value as bucket level for defining maximum subdivision
-        
+
     Returns:
       outputGrid (array):
         2d numpy grid, same shape as grid, with values correpsonding to
@@ -138,9 +139,7 @@ def quadTreeGrid(grid : np.ndarray,
     return outputGrid
 
 
-def get_quadtree_basis(fps: np.ndarray, 
-                       nbasis: int, 
-                       seed: Optional[int] = None) -> np.ndarray:
+def get_quadtree_basis(fps: np.ndarray, nbasis: int, seed: Optional[int] = None) -> np.ndarray:
     """Given an array and a specified number of basis functions, return basis regions specified by
     the quadtree algorithm.
 
