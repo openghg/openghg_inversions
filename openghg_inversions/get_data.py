@@ -96,31 +96,31 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
 
 
 def data_processing_surface_notracer(
-    species : str,
-    sites : list | str,
-    domain : str,
-    averaging_period : list | str,
-    start_date : str,
-    end_date : str,
-    obs_data_level : Optional[list|str] =None,
-    inlet : Optional[list|str] =None,
-    instrument : Optional[list|str] =None,
-    calibration_scale : Optional[str] = None,
-    met_model : Optional[list] = None,
-    fp_model : Optional[str] =None,
-    fp_height : Optional[list|str] =None,
-    fp_species : Optional[str] =None,
-    emissions_name : Optional[list] =None,
-    use_bc : Optional[bool]=True,
-    bc_input : Optional[str]=None,
-    bc_store : Optional[str] =None,
-    obs_store : Optional[str] =None,
-    footprint_store : Optional[str] =None,
-    emissions_store : Optional[str] =None,
-    averagingerror : Optional[bool] =True,
-    save_merged_data : Optional[bool] =False,
-    merged_data_name : Optional[str] =None,
-    merged_data_dir : Optional[str] =None,
+    species: str,
+    sites: list | str,
+    domain: str,
+    averaging_period: list | str,
+    start_date: str,
+    end_date: str,
+    obs_data_level: Optional[list | str] = None,
+    inlet: Optional[list | str] = None,
+    instrument: Optional[list | str] = None,
+    calibration_scale: Optional[str] = None,
+    met_model: Optional[list] = None,
+    fp_model: Optional[str] = None,
+    fp_height: Optional[list | str] = None,
+    fp_species: Optional[str] = None,
+    emissions_name: Optional[list] = None,
+    use_bc: Optional[bool] = True,
+    bc_input: Optional[str] = None,
+    bc_store: Optional[str] = None,
+    obs_store: Optional[str] = None,
+    footprint_store: Optional[str] = None,
+    emissions_store: Optional[str] = None,
+    averagingerror: Optional[bool] = True,
+    save_merged_data: Optional[bool] = False,
+    merged_data_name: Optional[str] = None,
+    merged_data_dir: Optional[str] = None,
     output_name: Optional[str] = None,
 ) -> tuple[dict, list, list, list, list, list]:
     """
@@ -196,13 +196,13 @@ def data_processing_surface_notracer(
             Directory path for for saved forward simulations data and observations
         output_name:
             Optional name used to create merged data name.
-    
+
     Returns:
         fp_all:
             dictionnary containing flux data (key ".flux"), bc data (key ".bc"),
             and observations data (site short name as key)
         sites:
-            Updated list of sites. All put in upper case and if data was not extracted 
+            Updated list of sites. All put in upper case and if data was not extracted
             correctly for any sites, drop these from the rest of the inversion.
         inlet:
             List of inlet height for the updated list of sites
@@ -664,7 +664,7 @@ def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[st
     return list_attrs
 
 
-def make_combined_scenario(fp_all : dict) -> xr.Dataset:
+def make_combined_scenario(fp_all: dict) -> xr.Dataset:
     """Combine scenarios and merge in fluxes and boundary conditions.
 
     If fluxes and boundary conditions only have one coordinate for their
