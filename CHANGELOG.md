@@ -1,6 +1,9 @@
 # OpenGHG Inversions Change Log
 
 # Version 0.2.0
+
+- Added code to look for older flux data if none is found between start and end dates [#PR 177](https://github.com/openghg/openghg_inversions/pull/177)
+
 - Update docstrings
 
 - Cleaned up `utils.py`: adding typing, and updated docstrings [#PR 158](https://github.com/openghg/openghg_inversions/pull/158) 
