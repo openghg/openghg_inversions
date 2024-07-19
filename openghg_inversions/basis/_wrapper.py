@@ -81,6 +81,9 @@ def basis_functions_wrapper(
         Dictionary object similar to fp_all but with information
         on basis functions and sensitivities
     """
+    if use_bc is True and bc_basis_case is None:
+        raise ValueError("If `use_bc` is True, you must specify `bc_basis_case`.")
+
     if fp_basis_case is not None:
         if basis_algorithm:
             print(
