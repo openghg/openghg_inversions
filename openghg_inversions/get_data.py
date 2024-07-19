@@ -246,8 +246,10 @@ def data_processing_surface_notracer(
                 store=emissions_store,
             )
         except SearchError:
-            logger.info(f"No flux data found between {start_date} and {end_date}.")
-            logger.info(f"Searching for flux data from before {end_date}.")
+            # logger.info(f"No flux data found between {start_date} and {end_date}.")
+            # logger.info(f"Searching for flux data from before {end_date}.")
+            print(f"No flux data found between {start_date} and {end_date}.")
+            print(f"Searching for flux data from before {end_date}.")
 
             # re-try without start date
             try:
@@ -263,7 +265,8 @@ def data_processing_surface_notracer(
                 raise SearchError(f"No flux data found before {end_date}") from e
             else:
                 get_flux_data.data = get_flux_data.data.isel(time=-1)
-                logger.info(f"Using flux data from {get_flux_data.data.time.values}.")
+                # logger.info(f"Using flux data from {get_flux_data.data.time.values}.")
+                print(f"Using flux data from {get_flux_data.data.time.values}.")
 
         flux_dict[source] = get_flux_data
     fp_all[".flux"] = flux_dict
