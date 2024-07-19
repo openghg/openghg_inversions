@@ -236,6 +236,7 @@ def data_processing_surface_notracer(
     # Get flux data and add to dict.
     flux_dict = {}
     for source in emissions_name:
+        logging.Logger.disabled = True  # suppress confusing OpenGHG warnings
         try:
             get_flux_data = get_flux(
                 species=species,
@@ -249,7 +250,7 @@ def data_processing_surface_notracer(
             # logger.info(f"No flux data found between {start_date} and {end_date}.")
             # logger.info(f"Searching for flux data from before {end_date}.")
             print(f"No flux data found between {start_date} and {end_date}.")
-            print(f"Searching for flux data from before {end_date}.")
+            print(f"Searching for flux data from before {start_date}.")
 
             # re-try without start date
             try:
@@ -262,11 +263,13 @@ def data_processing_surface_notracer(
                     store=emissions_store,
                 )
             except SearchError as e:
-                raise SearchError(f"No flux data found before {end_date}") from e
+                raise SearchError(f"No flux data found before {start_date}") from e
             else:
                 get_flux_data.data = get_flux_data.data.isel(time=[-1])
                 # logger.info(f"Using flux data from {get_flux_data.data.time.values}.")
-                print(f"Using flux data from {get_flux_data.data.time.values}.")
+                print(f"Using flux data from {str(get_flux_data.data.time.values[0]).split(':')[0]}.")
+
+        logging.Logger.disabled = False  # resume confusing OpenGHG warnings
 
         flux_dict[source] = get_flux_data
     fp_all[".flux"] = flux_dict

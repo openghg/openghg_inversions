@@ -213,7 +213,7 @@ def test_add_obs_error_exceptions_warnings(caplog):
     assert "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site TAC" in output
 
 
-def test_looking_older_flux_files(tac_ch4_data_args, caplog):
+def test_looking_older_flux_files(tac_ch4_data_args, caplog, capsys):
     """Check if an older flux file is found if no data is found for the specified start and end dates."""
     data_args = tac_ch4_data_args.copy()
     data_args["start_date"] = "2100-01-01"
@@ -227,9 +227,10 @@ def test_looking_older_flux_files(tac_ch4_data_args, caplog):
         data_processing_surface_notracer(**data_args)
 
     logs = caplog.text
+    stdout = capsys.readouterr().out
 
     # we find older flux data
-    assert "Using flux data from 2019-01-01" in logs
+    assert "Using flux data from 2019-01-01" in stdout
 
     # we get an error due to missing obs from 2100-01-01
     assert "Unable to find results for site='TAC'" in logs
