@@ -264,7 +264,7 @@ def data_processing_surface_notracer(
             except SearchError as e:
                 raise SearchError(f"No flux data found before {end_date}") from e
             else:
-                get_flux_data.data = get_flux_data.data.isel(time=-1)
+                get_flux_data.data = get_flux_data.data.isel(time=[-1])
                 # logger.info(f"Using flux data from {get_flux_data.data.time.values}.")
                 print(f"Using flux data from {get_flux_data.data.time.values}.")
 
