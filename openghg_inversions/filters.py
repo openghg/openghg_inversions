@@ -379,7 +379,9 @@ def pblh_min(dataset: xr.Dataset, pblh_threshold: float = 200.0, keep_missing: b
 
 
 @register_filter
-def pblh_inlet_diff(dataset: xr.Dataset, diff_threshold: float = 50.0, keep_missing: bool = False) -> xr.Dataset:
+def pblh_inlet_diff(
+    dataset: xr.Dataset, diff_threshold: float = 50.0, keep_missing: bool = False
+) -> xr.Dataset:
     """
     Subset for times when observations are taken at a height of less than 50 m below the PBLH.
 
