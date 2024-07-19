@@ -105,7 +105,7 @@ def data_processing_surface_notracer(
     obs_data_level : Optional[list|str] =None,
     inlet : Optional[list|str] =None,
     instrument : Optional[list|str] =None,
-    calibration_scale : str =None,
+    calibration_scale : Optional[str] = None,
     met_model : Optional[list] = None,
     fp_model : Optional[str] =None,
     fp_height : Optional[list|str] =None,
