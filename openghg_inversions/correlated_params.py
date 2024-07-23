@@ -198,25 +198,35 @@ def period_indices(data_time, period_dates, period, nperiod):
     return period_ind
 
 
-def H_block_formation(H_blocks, Hx, nperiod, time_values, period_dates, si):
+def block_formation(H_blocks, Y_blocks, Ytime_blocks, error_blocks, siteindicator_blocks, Hx, Y, Ytime, error, nperiod, period_dates, si):
+    
+    siteindicator = np.ones_like(Y) * si
 
     if si == 0:
 
         for period in np.arange(nperiod):
         
-            period_ind = period_indices(time_values, period_dates, period, nperiod)
+            period_ind = period_indices(Ytime, period_dates, period, nperiod)
 
             H_blocks[period] = Hx[:, period_ind]
+            Y_blocks[period] = Y[period_ind]
+            Ytime_blocks[period] = Ytime[period_ind]
+            error_blocks[period] = error[period_ind]
+            siteindicator_blocks[period] = siteindicator[period_ind]
         
     else:
 
         for period in np.arange(nperiod):
         
-            period_ind = period_indices(time_values, period_dates, period, nperiod)
+            period_ind = period_indices(Ytime, period_dates, period, nperiod)
 
             H_blocks[period] = np.hstack((H_blocks[period], Hx[:, period_ind]))
+            Y_blocks[period] = np.hstack((Y_blocks[period], Y[period_ind]))
+            Ytime_blocks[period] = np.hstack((Ytime_blocks[period], Ytime[period_ind]))
+            error_blocks[period] = np.hstack((error_blocks[period], error[period_ind]))
+            siteindicator_blocks[period] = np.hstack((siteindicator_blocks[period], siteindicator[period_ind]))
 
-    return H_blocks
+    return H_blocks, Y_blocks, Ytime_blocks, error_blocks, siteindicator_blocks
 
 
 def block_diag_h(H_blocks):
@@ -226,3 +236,12 @@ def block_diag_h(H_blocks):
     Hx = scipy.linalg.block_diag(*H_blocks)
 
     return Hx
+
+
+def single_vector(vector_dict):
+
+    vectors = list(vector_dict.values())
+
+    single_vector = np.concatenate(vectors)
+
+    return single_vector

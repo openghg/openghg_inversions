@@ -510,7 +510,6 @@ def fixedbasisMCMC(
     if use_tracer is False:
         # Get inputs ready
         error = np.zeros(0)
-        Hx = np.zeros(0)
         Y = np.zeros(0)
         siteindicator = np.zeros(0)
 
@@ -518,15 +517,28 @@ def fixedbasisMCMC(
         
         if x_freq is not None:
             
+            Y_blocks = {}
+            error_blocks = {}
+            siteindicator_blocks = {}
+            Ytime_blocks = {}
             H_blocks = {}
+
             print("Running inversion with {} temporal correlation ...".format(x_freq))
 
             period_dates, days_in_period, nperiod = correlated_params.period_dates(x_freq, start_date, end_date)
             print("Days in each period ({} periods): {}".format(nperiod, days_in_period))
 
-            x_covariance, x_precision = correlated_params.xprior_covariance(nperiod=nperiod, nbasis=nbasis, decay_time=time_decay, 
-                                                                            sigma_time=1, sigma_space=1)
-            print("x_covariance shape: {} \nx_precision shape: {}".format(x_covariance.shape, x_precision.shape))
+            if time_decay == 0:
+                
+                x_precision = np.eye(int(nbasis*nperiod))
+
+                print(f"x_precision shape: {x_precision.shape} \nnparams = {nbasis*nperiod}")
+
+            else:
+
+                x_covariance, x_precision = correlated_params.xprior_covariance(nperiod=nperiod, nbasis=nbasis, decay_time=time_decay, 
+                                                                                sigma_time=1, sigma_space=1)
+                print("x_covariance shape: {} \nx_precision shape: {}".format(x_covariance.shape, x_precision.shape))
 
 
         for si, site in enumerate(sites):
@@ -539,27 +551,51 @@ def fixedbasisMCMC(
             # pymc doesn't like NaNs, so drop them for the variables used below
             fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
 
-            if "mf_repeatability" in fp_data[site]:
-                error = np.concatenate((error, fp_data[site].mf_repeatability.values))
-            if "mf_variability" in fp_data[site]:
-                error = np.concatenate((error, fp_data[site].mf_variability.values))
+            if x_freq is None:
+                if "mf_repeatability" in fp_data[site]:
+                    error = np.concatenate((error, fp_data[site].mf_repeatability.values))
+                elif "mf_variability" in fp_data[site]:
+                    error = np.concatenate((error, fp_data[site].mf_variability.values))
 
-            Y = np.concatenate((Y, fp_data[site].mf.values))
-            siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
-            if si == 0:
+                Y = np.concatenate((Y, fp_data[site].mf.values))
+                siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
+                
+                if si == 0:
+                    Hx = fp_data[site].H.values
+                    Ytime = fp_data[site].time.values
+                else:
+                    Hx = np.hstack((Hx, fp_data[site].H.values))
+                    Ytime = np.concatenate((Ytime, fp_data[site].time.values))
+
+
+            else:
+                if "mf_repeatability" in fp_data[site]:
+                    error = fp_data[site].mf_repeatability.values
+                elif "mf_variability" in fp_data[site]:
+                    error = fp_data[site].mf_variability.values
+
+                Y = fp_data[site].mf.values
                 Ytime = fp_data[site].time.values
-            else:
-                Ytime = np.concatenate((Ytime, fp_data[site].time.values))
-
-            if si == 0:
                 Hx = fp_data[site].H.values
-            else:
-                Hx = np.hstack((Hx, fp_data[site].H.values))
-            if x_freq is not None:
-                H_blocks = correlated_params.H_block_formation(H_blocks, Hx, nperiod, fp_data[site].time.values, period_dates, si)
+                H_blocks, Y_blocks, Ytime_blocks, error_blocks, siteindicator_blocks = correlated_params.block_formation(H_blocks, 
+                                                             Y_blocks, 
+                                                             Ytime_blocks, 
+                                                             error_blocks, 
+                                                             siteindicator_blocks, 
+                                                             Hx,
+                                                             Y,
+                                                             Ytime,
+                                                             error,
+                                                             nperiod, 
+                                                             period_dates, 
+                                                             si)
         
         if x_freq is not None:
-          Hx = correlated_params.block_diag_h(H_blocks)
+            Hx = correlated_params.block_diag_h(H_blocks)
+            Y = correlated_params.single_vector(Y_blocks)
+            Ytime = correlated_params.single_vector(Ytime_blocks)
+            error = correlated_params.single_vector(error_blocks)
+            siteindicator = correlated_params.single_vector(siteindicator_blocks)
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
@@ -656,8 +692,8 @@ def fixedbasisMCMC(
         del post_process_args["save_trace"]
 
         if x_freq is not None:
-          del post_process_args["temp_correlation"]
-          del post_process_args["x_precision"]
+            del post_process_args["temp_correlation"]
+            del post_process_args["x_precision"]
 
         # pass min model error to post-processing
         post_process_args["min_error"] = kwargs.get("min_error", 0.0)

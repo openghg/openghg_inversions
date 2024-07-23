@@ -269,6 +269,8 @@ def inferpymc(
               step1_vars.append(x0)
           else:
               x = parse_prior("x", xprior, shape=nx)
+              # x_precision = np.eye(nx)
+              # x = pm.MvNormal("x", mu=np.ones(nx), tau=x_precision)
               step1_vars.append(x)
 
         if use_bc:
@@ -708,9 +710,13 @@ def inferpymc_postprocessouts(
     flux_array_all = np.moveaxis(flux_array_all, smallest_dim_position, -1)
     # end HACK
 
+    print(f"flux_array_all initial shape: {flux_dim_shape}")
+    print(f"flux_array_all shape after transform hack: {flux_array_all.shape}")
     if flux_array_all.shape[2] == 1:
         print("\nAssuming flux prior is annual and extracting first index of flux array.")
         apriori_flux = flux_array_all[:, :, 0]
+    elif flux_array_all.shape[2] == 0:
+        raise ValueError("Missing flux values for this time. Consider creating a new flux file.")
     else:
         print("\nAssuming flux prior is monthly.")
         print(f"Extracting weighted average flux prior from {start_date} to {end_date}")
