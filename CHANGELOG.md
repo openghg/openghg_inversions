@@ -4,6 +4,8 @@
 
 - Added code to look for older flux data if none is found between start and end dates [#PR 177](https://github.com/openghg/openghg_inversions/pull/177)
 
+- Moved code related to basis functions from `utils.py` to `basis` submodule [#PR 162](https://github.com/openghg/openghg_inversions/pull/162) 
+
 - Fixed bug in `filtering` function and updated tests to cover all filters [#PR 179](https://github.com/openghg/openghg_inversions/pull/179) 
 
 - Update docstrings
@@ -15,6 +17,8 @@
 - Replaced `utils.combine_datasets` with (nearly) equivalent function from `openghg.analyse._scenario`. There is currently a thin wrapper to make sure that the second
   dataset is loaded into memory, since this change is only on the devel branch of OpenGHG [#PR 160](https://github.com/openghg/openghg_inversions/pull/160) 
 
+- Moved `basis` and related functions from `utils.py` to `basis._functions.py` to make more consistent [#PR 162](https://github.com/openghg/openghg_inversions/pull/162)
+
 - Moved filters from `utils.py` to new submodule `filters.py` [#PR 159](https://github.com/openghg/openghg_inversions/pull/159) 
 
 - Removed `site_info.json` and `species_info.json` and replaced with calls to functions in `openghg.util`, which pull the same info from `openghg_defs`. [#PR 152](https://github.com/openghg/openghg_inversions/pull/152) 
@@ -24,7 +28,6 @@
 - Added new option for computing min. model error based on percentiles. [#PR 142](https://github.com/openghg/openghg_inversions/pull/142) 
 
 - Update the docstrings of openghg_inversions.basis and openghg_inversions.array_ops [#PR 150](https://github.com/openghg/openghg_inversions/pull/150)
-
 
 - Fixed "add averaging" functional, which adds the variability of obs over a resampling period to the measurement error (repeatability). This closes [Issue #42](https://github.com/openghg/openghg_inversions/issues/42) . [#PR 144](https://github.com/openghg/openghg_inversions/pull/144)
 

@@ -1,5 +1,5 @@
 import xarray as xr
-from openghg_inversions import utils
+from openghg_inversions.basis._functions import basis
 from openghg_inversions.basis import bucketbasisfunction, quadtreebasisfunction
 from openghg_inversions.get_data import data_processing_surface_notracer
 
@@ -20,7 +20,7 @@ def test_quadtree_basis_function(tac_ch4_data_args, raw_data_path):
         seed=42,
     )
 
-    basis_func_reloaded = utils.basis(
+    basis_func_reloaded = basis(
         domain="EUROPE", basis_case="quadtree_ch4-test_basis", basis_directory=raw_data_path / "basis"
     )
 
@@ -45,7 +45,7 @@ def test_bucket_basis_function(tac_ch4_data_args, raw_data_path):
     )
 
 
-    basis_func_reloaded = utils.basis(
+    basis_func_reloaded = basis(
         domain="EUROPE", basis_case="bucket_ch4-test_basis", basis_directory=raw_data_path / "basis"
     )
 

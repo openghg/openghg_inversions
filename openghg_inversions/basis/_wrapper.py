@@ -1,13 +1,14 @@
 """
 Functions to calling basis function algorithms and applying basis functions to data.
 """
+
 from pathlib import Path
 from typing import Optional
 
 import xarray as xr
 
-from ._functions import basis_functions, fixed_outer_regions_basis
-from .. import utils
+from ._functions import basis_functions, fixed_outer_regions_basis, basis
+from ._helpers import fp_sensitivity, bc_sensitivity
 
 
 def basis_functions_wrapper(
@@ -49,7 +50,7 @@ def basis_functions_wrapper(
       basis_algorithm (str, optional):
         One of "quadtree" (for using Quadtree algorithm) or
         "weighted" (for using an algorihtm that splits region
-        by input data). Land-sea separation is not imposed in the 
+        by input data). Land-sea separation is not imposed in the
         quadtree basis functions, but is imposed by default in "weighted"
         Default None
       fixed_outer_region (bool):
@@ -82,12 +83,15 @@ def basis_functions_wrapper(
         Dictionary object similar to fp_all but with information
         on basis functions and sensitivities
     """
+    if use_bc is True and bc_basis_case is None:
+        raise ValueError("If `use_bc` is True, you must specify `bc_basis_case`.")
+
     if fp_basis_case is not None:
         if basis_algorithm:
             print(
                 f"Basis algorithm {basis_algorithm} and basis case {fp_basis_case} supplied; using {fp_basis_case}."
             )
-        basis_data_array = utils.basis(
+        basis_data_array = basis(
             domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory
         ).basis
 
@@ -115,13 +119,13 @@ def basis_functions_wrapper(
         print(f"Using {basis_function.description} to derive basis functions.")
         basis_data_array = basis_function.algorithm(fp_all, start_date, emissions_name, nbasis)
 
-    fp_data = utils.fp_sensitivity(fp_all, basis_func=basis_data_array)
+    fp_data = fp_sensitivity(fp_all, basis_func=basis_data_array)
 
     if use_bc is True:
-        fp_data = utils.bc_sensitivity(
+        fp_data = bc_sensitivity(
             fp_data,
             domain=domain,
-            basis_case=bc_basis_case,
+            basis_case=bc_basis_case,  # type: ignore ...check ensures bc_basis_case not None if use_bc True
             bc_basis_directory=bc_basis_directory,
         )
 
@@ -149,15 +153,15 @@ def _save_basis(
     """Save basis functions to netCDF.
 
     Args:
-      basis (xarray.DataArray): 
+      basis (xarray.DataArray):
         basis dataset to save
-      basis_algorithm (str): 
+      basis_algorithm (str):
         name of basis algorithm (e.g. "quadtree" or "weighted")
-      output_dir (str): 
+      output_dir (str):
         root directory to save basis functions
-      domain (str): 
+      domain (str):
         domain of inversion; basis is saved in a "domain" directory inside `output_dir`
-      species (str): 
+      species (str):
         species of inversion
       output_name (str,optional):
         File output name
