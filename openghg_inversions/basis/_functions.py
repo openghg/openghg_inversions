@@ -1,6 +1,9 @@
 """
 Functions to create basis datasets from fluxes and footprints.
 """
+
+import os
+
 import getpass
 from collections import namedtuple
 from functools import partial
@@ -12,19 +15,135 @@ import xarray as xr
 
 from .algorithms import quadtree_algorithm, weighted_algorithm
 
+from openghg_inversions.config.paths import Paths
+from openghg_inversions.utils import read_netcdfs
+
+
+openghginv_path = Paths.openghginv
+
+
+def basis(domain: str, basis_case: str, basis_directory: Optional[str] = None) -> xr.Dataset:
+    """
+    Read in basis function(s) from file given basis case and domain, and return as an
+    xarray Dataset.
+
+    The basis function files should be stored as on paths of the form:
+        <basis_directory>/<domain>/<basis_case>_<domain>*.nc
+
+    For instance: domain = EUROPE, basis_directory = /group/chem/acrg/LPDM/basis_functions,
+    and basis_case = sub_transd would find files such as:
+
+        /group/chem/acrg/LPDM/basis_functions/EUROPE/sub_transd_EUROPE_2014.nc
+
+    Basis functions created by algorithms in OpenGHG inversions will be stored using
+    this path format.
+
+    Args:
+        domain: domain name. The basis files should be sub-categorised by the domain.
+        basis_case: basis case to read in. Examples of basis cases are "voronoi", "sub-transd",
+            "sub-country_mask", "INTEM".
+        basis_directory: basis_directory can be specified if files are not in the default
+            directory (i.e. `openghg_inversions/basis_functions`). Must point to a directory that
+            contains subfolders organized by domain.
+
+    Returns:
+        xarray.Dataset: combined dataset of matching basis functions
+    """
+    if basis_directory is None:
+        basis_path = openghginv_path / "basis_functions"
+        if not basis_path.exists():
+            basis_path.mkdir()
+            raise ValueError(
+                f"Default basis directory {basis_path} was empty. " "Add basis files or specify `basis_path`."
+            )
+    else:
+        basis_path = Path(basis_directory)
+
+    file_path = (basis_path / domain).glob(f"{basis_case}_{domain}*.nc")
+    files = sorted(list(file_path))
+
+    if len(files) == 0:
+        raise FileNotFoundError(
+            f"Can't find basis function files for domain '{domain}'" f"and basis_case '{basis_case}' "
+        )
+
+    basis_ds = read_netcdfs(files)
+
+    return basis_ds
+
+
+def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: Optional[str] = None):
+    """
+    Read in basis function(s) from file given basis case and domain, and return as an
+    xarray Dataset.
+
+    The basis function files should be stored as on paths of the form:
+        <bc_basis_directory>/<domain>/<basis_case>_<domain>*.nc
+
+    For instance: domain = "EUROPE", bc_basis_directory = /group/chem/acrg/LPDM/bc_basis_functions,
+    and basis_case = "NESW" would find files such as:
+
+        /group/chem/acrg/LPDM/bc_basis_functions/EUROPE/NESW_EUROPE_2014.nc
+
+    Args:
+        domain: domain name. The basis files should be sub-categorised by the domain.
+        basis_case: basis case to read in. Examples of BC basis cases are "NESW", "stratgrad".
+        bc_basis_directory: bc_basis_directory can be specified if files are not in the default
+            directory (i.e. `openghg_inversions/bc_basis_functions`). Must point to a directory that
+            contains subfolders organized by domain.
+
+    Returns:
+        xarray.Dataset: combined dataset of matching basis functions
+    """
+    if bc_basis_directory is None:
+        bc_basis_path = openghginv_path / "bc_basis_functions"
+        if not bc_basis_path.exists():
+            bc_basis_path.mkdir()
+            raise ValueError(
+                f"Default BC basis directory {bc_basis_path} was empty. "
+                "Add basis files or specify `bc_basis_path`."
+            )
+    else:
+        bc_basis_path = Path(bc_basis_directory)
+
+    file_path = (bc_basis_path / domain).glob(f"{basis_case}_{domain}*.nc")
+    files = sorted(list(file_path))
+
+    # check for files that we can't access
+    # NOTE: Hannah added this in 2021 to the ACRG code.
+    # I don't know why it is only for BC boundary conditions -- BM, 2024
+    file_no_acc = [ff for ff in files if not os.access(ff, os.R_OK)]
+    if len(file_no_acc) > 0:
+        print(
+            "Warning: unable to read all boundary conditions basis function files which match this criteria:"
+        )
+        print("\n".join(map(str, file_no_acc)))
+
+    # only use files we can access
+    files = [ff for ff in files if ff not in file_no_acc]
+
+    if len(files) == 0:
+        raise FileNotFoundError(
+            f"Can't find BC basis function files for domain '{domain}'" f"and bc_basis_case '{basis_case}' "
+        )
+
+    basis_ds = read_netcdfs(files)
+
+    return basis_ds
+
 
 def _flux_fp_from_fp_all(
     fp_all: dict, emissions_name: Optional[list[str]] = None
 ) -> tuple[xr.DataArray, list[xr.DataArray]]:
     """Get flux and list of footprints from `fp_all` dictionary and optional list of emissions names.
-    
+
     Args:
       fp_all (dict):
         Output from footprints_data_merge() function. Dictionary of datasets.
       emissions_name (list):
         List of "source" key words as used for retrieving specific emissions
         from the object store.
-    
+
     Returns:
       flux (xarray.DataArray):
         Array containing the flux data.
@@ -51,7 +170,7 @@ def _mean_fp_times_mean_flux(
     mask: Optional[xr.DataArray] = None,
 ) -> xr.DataArray:
     """Multiply mean flux by mean of footprints, optionally restricted to a Boolean mask.
-    
+
     Args :
       flux (xarray.DataArray):
         Array containing the flux data.
@@ -217,7 +336,6 @@ def fixed_outer_regions_basis(
     nbasis: int = 100,
     abs_flux: bool = False,
 ) -> xr.DataArray:
-   
     """Fix outer region of basis functions to InTEM regions, and fit the inner regions using `basis_algorithm`.
 
     Args:

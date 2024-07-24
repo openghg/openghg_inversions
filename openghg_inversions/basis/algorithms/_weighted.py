@@ -2,6 +2,7 @@
 Module to create basis regions used in the inversion using an algorihtm that splits region
 by input data.
 """
+
 from pathlib import Path
 from typing import Optional
 import numpy as np
@@ -13,19 +14,18 @@ def load_landsea_indices() -> np.ndarray:
     """
     Load UKMO array with indices that separate
     land and sea regions in EUROPE domain
-    
+
     Returns :
-        Array containing 0 (where there is sea) 
+        Array containing 0 (where there is sea)
         and 1 (where there is land).
     """
     landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
     return landsea_indices["country"].values
 
 
-def bucket_value_split(grid : np.ndarray, 
-                       bucket : float, 
-                       offset_x : Optional[int]=0, 
-                       offset_y : Optional[int]=0) -> list[tuple]:
+def bucket_value_split(
+    grid: np.ndarray, bucket: float, offset_x: Optional[int] = 0, offset_y: Optional[int] = 0
+) -> list[tuple]:
     """
     Algorithm that will split the input grid (e.g. fp * flux)
     such that the sum of each basis function region will
@@ -34,7 +34,7 @@ def bucket_value_split(grid : np.ndarray,
     The number of regions will be determined by the bucket value
     i.e. smaller bucket value ==> more regions
          larger bucket value ==> fewer regions
-         
+
     Args:
         grid:
             2D grid of footprints * flux, or whatever
@@ -71,10 +71,9 @@ def bucket_value_split(grid : np.ndarray,
             )
 
 
-def get_nregions(bucket : float, 
-                 grid : np.ndarray) -> int:
+def get_nregions(bucket: float, grid: np.ndarray) -> int:
     """Optimize bucket value to number of desired regions.
-      
+
     Args:
         bucket:
             Maximum value for each basis function region
@@ -89,14 +88,11 @@ def get_nregions(bucket : float,
     return np.max(bucket_split_landsea_basis(grid, bucket))
 
 
-def optimize_nregions(bucket : float, 
-                      grid : np.ndarray, 
-                      nregion : int, 
-                      tol : int) -> float:
+def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int) -> float:
     """
     Optimize bucket value to obtain nregion basis functions
     within +/- tol.
-    
+
     Args:
         bucket:
             Maximum value for each basis function region
@@ -126,12 +122,11 @@ def optimize_nregions(bucket : float,
         return optimize_nregions(bucket, grid, nregion, tol)
 
 
-def bucket_split_landsea_basis(grid : np.ndarray, 
-                               bucket : float) -> np.ndarray:
+def bucket_split_landsea_basis(grid: np.ndarray, bucket: float) -> np.ndarray:
     """
     Same as bucket_split_basis but includes
     land-sea split. i.e. basis functions cannot overlap sea and land
-    
+
     Args:
         grid:
             2D grid of footprints * flux, or whatever
@@ -171,13 +166,12 @@ def bucket_split_landsea_basis(grid : np.ndarray,
     return mybasis_function
 
 
-def nregion_landsea_basis(grid : np.ndarray,
-                          bucket : float = 1,
-                          nregion : int = 100, 
-                          tol : int = 1) -> np.ndarray:
+def nregion_landsea_basis(
+    grid: np.ndarray, bucket: float = 1, nregion: int = 100, tol: int = 1
+) -> np.ndarray:
     """
     Obtain basis function with nregions (for land-sea split)
-    
+
     Args:
         grid:
             2D grid of footprints * flux, or whatever
