@@ -96,31 +96,31 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
 
 
 def data_processing_surface_notracer(
-    species : str,
-    sites : list | str,
-    domain : str,
-    averaging_period : list | str,
-    start_date : str,
-    end_date : str,
-    obs_data_level : Optional[list|str] =None,
-    inlet : Optional[list|str] =None,
-    instrument : Optional[list|str] =None,
-    calibration_scale : str =None,
-    met_model : Optional[list] = None,
-    fp_model : Optional[str] =None,
-    fp_height : Optional[list|str] =None,
-    fp_species : Optional[str] =None,
-    emissions_name : Optional[list] =None,
-    use_bc : Optional[bool]=True,
-    bc_input : Optional[str]=None,
-    bc_store : Optional[str] =None,
-    obs_store : Optional[str] =None,
-    footprint_store : Optional[str] =None,
-    emissions_store : Optional[str] =None,
-    averagingerror : Optional[bool] =True,
-    save_merged_data : Optional[bool] =False,
-    merged_data_name : Optional[str] =None,
-    merged_data_dir : Optional[str] =None,
+    species: str,
+    sites: list | str,
+    domain: str,
+    averaging_period: list | str,
+    start_date: str,
+    end_date: str,
+    obs_data_level: Optional[list | str] = None,
+    inlet: Optional[list | str] = None,
+    instrument: Optional[list | str] = None,
+    calibration_scale: Optional[str] = None,
+    met_model: Optional[list] = None,
+    fp_model: Optional[str] = None,
+    fp_height: Optional[list | str] = None,
+    fp_species: Optional[str] = None,
+    emissions_name: Optional[list] = None,
+    use_bc: Optional[bool] = True,
+    bc_input: Optional[str] = None,
+    bc_store: Optional[str] = None,
+    obs_store: Optional[str] = None,
+    footprint_store: Optional[str] = None,
+    emissions_store: Optional[str] = None,
+    averagingerror: Optional[bool] = True,
+    save_merged_data: Optional[bool] = False,
+    merged_data_name: Optional[str] = None,
+    merged_data_dir: Optional[str] = None,
     output_name: Optional[str] = None,
 ) -> tuple[dict, list, list, list, list, list]:
     """
@@ -196,13 +196,13 @@ def data_processing_surface_notracer(
             Directory path for for saved forward simulations data and observations
         output_name:
             Optional name used to create merged data name.
-    
+
     Returns:
         fp_all:
             dictionnary containing flux data (key ".flux"), bc data (key ".bc"),
             and observations data (site short name as key)
         sites:
-            Updated list of sites. All put in upper case and if data was not extracted 
+            Updated list of sites. All put in upper case and if data was not extracted
             correctly for any sites, drop these from the rest of the inversion.
         inlet:
             List of inlet height for the updated list of sites
@@ -236,14 +236,40 @@ def data_processing_surface_notracer(
     # Get flux data and add to dict.
     flux_dict = {}
     for source in emissions_name:
-        get_flux_data = get_flux(
-            species=species,
-            domain=domain,
-            source=source,
-            start_date=start_date,
-            end_date=end_date,
-            store=emissions_store,
-        )
+        logging.Logger.disabled = True  # suppress confusing OpenGHG warnings
+        try:
+            get_flux_data = get_flux(
+                species=species,
+                domain=domain,
+                source=source,
+                start_date=start_date,
+                end_date=end_date,
+                store=emissions_store,
+            )
+        except SearchError:
+            # logger.info(f"No flux data found between {start_date} and {end_date}.")
+            # logger.info(f"Searching for flux data from before {end_date}.")
+            print(f"No flux data found between {start_date} and {end_date}.")
+            print(f"Searching for flux data from before {start_date}.")
+
+            # re-try without start date
+            try:
+                get_flux_data = get_flux(
+                    species=species,
+                    domain=domain,
+                    source=source,
+                    start_date=None,
+                    end_date=end_date,
+                    store=emissions_store,
+                )
+            except SearchError as e:
+                raise SearchError(f"No flux data found before {start_date}") from e
+            else:
+                get_flux_data.data = get_flux_data.data.isel(time=[-1])
+                # logger.info(f"Using flux data from {get_flux_data.data.time.values}.")
+                print(f"Using flux data from {str(get_flux_data.data.time.values[0]).split(':')[0]}.")
+
+        logging.Logger.disabled = False  # resume confusing OpenGHG warnings
 
         flux_dict[source] = get_flux_data
     fp_all[".flux"] = flux_dict
@@ -644,7 +670,7 @@ def combine_scenario_attrs(attrs_list: list[dict[str, Any]], context) -> dict[st
     return list_attrs
 
 
-def make_combined_scenario(fp_all : dict) -> xr.Dataset:
+def make_combined_scenario(fp_all: dict) -> xr.Dataset:
     """Combine scenarios and merge in fluxes and boundary conditions.
 
     If fluxes and boundary conditions only have one coordinate for their

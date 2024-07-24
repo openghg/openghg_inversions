@@ -2,6 +2,8 @@
 
 # Version 0.2.0
 
+- Added code to look for older flux data if none is found between start and end dates [#PR 177](https://github.com/openghg/openghg_inversions/pull/177)
+
 - Moved code related to basis functions from `utils.py` to `basis` submodule [#PR 162](https://github.com/openghg/openghg_inversions/pull/162) 
 
 - Fixed bug in `filtering` function and updated tests to cover all filters [#PR 179](https://github.com/openghg/openghg_inversions/pull/179) 

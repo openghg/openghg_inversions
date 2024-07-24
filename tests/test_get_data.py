@@ -1,10 +1,12 @@
 import copy
+from importlib.metadata import version
 import logging
 from unittest import mock
 
 import numpy as np
 import pytest
 import xarray as xr
+import openghg
 from openghg.dataobjects import ObsData
 from openghg.retrieve import get_obs_surface
 from openghg.types import SearchError
@@ -211,3 +213,27 @@ def test_add_obs_error_exceptions_warnings(caplog):
 
     output = caplog.text
     assert "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site TAC" in output
+
+
+@pytest.mark.skipif(version("openghg") < "0.8.0", reason="fix to work for 0.7 too much work, we will stop supporting it soon")
+def test_looking_older_flux_files(tac_ch4_data_args, caplog, capsys):
+    """Check if an older flux file is found if no data is found for the specified start and end dates."""
+    data_args = tac_ch4_data_args.copy()
+    data_args["start_date"] = "2100-01-01"
+    data_args["end_date"] = "2101-01-01"
+
+    # capture info messages, which should say what flux we've retrieved
+    caplog.set_level(logging.INFO)
+
+    # we should get an error when trying to get obs data, but not when trying to get flux data
+    with pytest.raises(SearchError):
+        data_processing_surface_notracer(**data_args)
+
+    logs = caplog.text
+    stdout = capsys.readouterr().out
+
+    # we find older flux data
+    assert "Using flux data from 2019-01-01" in stdout
+
+    # we get an error due to missing obs from 2100-01-01
+    assert "Unable to find results for site='TAC'" in logs
