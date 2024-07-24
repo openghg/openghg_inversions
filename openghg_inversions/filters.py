@@ -9,6 +9,7 @@ A filter function should accept as arguments: an xr.Dataset, a bool called "keep
 To see the available filters call `list_filters`.
 """
 
+import logging
 import re
 from typing import Callable, Union
 
@@ -17,6 +18,9 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.utils import combine_datasets
+
+
+logger = logging.Logger(__name__)
 
 
 # this dictionary will be populated by using the decorator `register_filter`
@@ -83,6 +87,8 @@ def filtering(
     to look at daytime values the filters list should be
     ["daytime","daily_median"]
 
+    If a site is `datasets_in` is not in `filters`, then no filters are applied to that site.
+
     Args:
         datasets_in: dictionary of datasets containing output from ModelScenario.footprints_merge().
         filters: filters to apply to the datasets. Either a list of filters, which will be applied to every site,
@@ -107,16 +113,19 @@ def filtering(
             if filt is not None and not isinstance(filt, list):
                 filters[site] = [filt]
 
+
     # Check that filters are defined for all sites
     # TODO: just set filters for missing sites to None?
     tmp = [(site in filters) for site in sites]
     if not all(tmp):
-        raise ValueError(f"Missing entry for sites {np.array(sites)[~np.array(tmp)]} in filters.")
+        logger.warning(f"Missing entry for sites {np.array(sites)[~np.array(tmp)]} in filters.")
 
     datasets = datasets_in.copy()
 
     # Apply filtering
-    for site in sites:
+    # NOTE: we only loop over sites that are in the filters dict
+    # so not all sites must be specified
+    for site in filters:
         if filters[site] is not None:
             for filt in filters[site]:
                 n_nofilter = datasets[site].time.values.shape[0]
