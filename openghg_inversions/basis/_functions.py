@@ -73,11 +73,17 @@ def _mean_fp_times_mean_flux(
     mean_flux = flux.mean("time")
 
     fp_total = sum(footprints)  # this seems to be faster than concatentating and summing over new axis
+    print(f'Shape fp_total : {fp_total.shape}')
+    print(f'Shapes footprints : {[foo.shape for foo in footprints]}')
     n_measure = sum(len(fp.time) for fp in footprints)
 
     fp_total = cast(xr.DataArray, fp_total)  # otherwise mypy complains about the next line
     mean_fp = fp_total.sum("time") / n_measure
 
+    import numpy as np
+    print(f'Sum fp_total : {fp_total.sum("time")}')
+    print(f'n_measure : {n_measure}')
+    print(f'Sum mean_fp : {np.sum(mean_fp.values)}')
     if mask is not None:
         # align to footprint lat/lon
         mean_fp, mean_flux, mask = xr.align(mean_fp, mean_flux, mask, join="override")
@@ -139,6 +145,7 @@ def quadtreebasisfunction(
     # use xr.apply_ufunc to keep xarray coords
     func = partial(quadtree_algorithm, nbasis=nbasis, seed=seed)
     quad_basis = xr.apply_ufunc(func, fps)
+    print('PASSED')
 
     quad_basis = quad_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
     quad_basis = quad_basis.rename("basis")  # this will be used in merges
