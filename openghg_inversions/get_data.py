@@ -102,13 +102,13 @@ def data_processing_surface_notracer(
     averaging_period: list | str,
     start_date: str,
     end_date: str,
-    obs_data_level: Optional[list | str] = None,
-    inlet: Optional[list | str] = None,
-    instrument: Optional[list | str] = None,
+    obs_data_level: list[str | None] | str | None = None,
+    inlet: list[str | None] | str | None = None,
+    instrument: list[str | None] | str | None = None,
     calibration_scale: Optional[str] = None,
-    met_model: Optional[list] = None,
+    met_model: list[str | None] | str | None = None,
     fp_model: Optional[str] = None,
-    fp_height: Optional[list | str] = None,
+    fp_height: list[str | None] | str | None = None,
     fp_species: Optional[str] = None,
     emissions_name: Optional[list] = None,
     use_bc: Optional[bool] = True,
@@ -219,16 +219,16 @@ def data_processing_surface_notracer(
 
     # Convert 'None' args to list
     nsites = len(sites)
-    if inlet is None:
-        inlet = [None] * nsites
-    if instrument is None:
-        instrument = [None] * nsites
-    if fp_height is None:
-        fp_height = [None] * nsites
-    if obs_data_level is None:
-        obs_data_level = [None] * nsites
-    if met_model is None:
-        met_model = [None] * nsites
+    if inlet is None or isinstance(inlet, str):
+        inlet = [inlet] * nsites
+    if instrument is None or isinstance(instrument, str):
+        instrument = [instrument] * nsites
+    if fp_height is None or isinstance(fp_height, str):
+        fp_height = [fp_height] * nsites
+    if obs_data_level is None or isinstance(obs_data_level, str):
+        obs_data_level = [obs_data_level] * nsites
+    if met_model is None or isinstance(met_model, str):
+        met_model = [met_model] * nsites
 
     fp_all = {}
     fp_all[".species"] = species.upper()
