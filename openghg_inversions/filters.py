@@ -11,7 +11,7 @@ To see the available filters call `list_filters`.
 
 import logging
 import re
-from typing import Callable, Union
+from typing import Callable, cast, Union
 
 import numpy as np
 import pandas as pd
@@ -67,7 +67,7 @@ def list_filters() -> None:
 
 
 def filtering(
-    datasets_in: dict, filters: Union[dict[str, list[str]], list[str]], keep_missing: bool = False
+    datasets_in: dict, filters: Union[str, None, dict[str, list[str | None]], list[str | None]], keep_missing: bool = False
 ) -> dict:
     """
     Applies time filtering to all datasets in `datasets_in`.
@@ -100,25 +100,30 @@ def filtering(
         dict in same format as datasets_in, with filters applied
 
     """
+    if filters is None:
+        return datasets_in
+
     # Get list of sites
     sites = [key for key in list(datasets_in.keys()) if key[0] != "."]
 
     # Put the filters in a dict of list
     if not isinstance(filters, dict):
         if not isinstance(filters, list):
-            filters = [filters]
-        filters = {site: filters for site in sites}
+            filters = [filters]  # type: ignore
+        filters = {site: filters for site in sites}  # type: ignore
     else:
         for site, filt in filters.items():
             if filt is not None and not isinstance(filt, list):
                 filters[site] = [filt]
 
+    filters = cast(dict[str, list[str | None]], filters)
 
     # Check that filters are defined for all sites
     # TODO: just set filters for missing sites to None?
     tmp = [(site in filters) for site in sites]
     if not all(tmp):
-        logger.warning(f"Missing entry for sites {np.array(sites)[~np.array(tmp)]} in filters.")
+        msg = f"Missing entry for sites {np.array(sites)[~np.array(tmp)]} in filters."
+        logger.warning(msg)
 
     datasets = datasets_in.copy()
 
