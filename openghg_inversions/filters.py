@@ -100,7 +100,7 @@ def filtering(
         dict in same format as datasets_in, with filters applied
 
     """
-    if filters is None:
+    if not filters:
         return datasets_in
 
     # Get list of sites
