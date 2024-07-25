@@ -9,14 +9,18 @@ A filter function should accept as arguments: an xr.Dataset, a bool called "keep
 To see the available filters call `list_filters`.
 """
 
+import logging
 import re
-from typing import Callable, Union
+from typing import Callable, cast, Union
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
 from openghg_inversions.utils import combine_datasets
+
+
+logger = logging.Logger(__name__)
 
 
 # this dictionary will be populated by using the decorator `register_filter`
@@ -63,7 +67,7 @@ def list_filters() -> None:
 
 
 def filtering(
-    datasets_in: dict, filters: Union[dict[str, list[str]], list[str]], keep_missing: bool = False
+    datasets_in: dict, filters: Union[str, None, dict[str, list[str | None]], list[str | None]], keep_missing: bool = False
 ) -> dict:
     """
     Applies time filtering to all datasets in `datasets_in`.
@@ -83,6 +87,8 @@ def filtering(
     to look at daytime values the filters list should be
     ["daytime","daily_median"]
 
+    If a site is `datasets_in` is not in `filters`, then no filters are applied to that site.
+
     Args:
         datasets_in: dictionary of datasets containing output from ModelScenario.footprints_merge().
         filters: filters to apply to the datasets. Either a list of filters, which will be applied to every site,
@@ -94,29 +100,37 @@ def filtering(
         dict in same format as datasets_in, with filters applied
 
     """
+    if not filters:
+        return datasets_in
+
     # Get list of sites
     sites = [key for key in list(datasets_in.keys()) if key[0] != "."]
 
     # Put the filters in a dict of list
     if not isinstance(filters, dict):
         if not isinstance(filters, list):
-            filters = [filters]
-        filters = {site: filters for site in sites}
+            filters = [filters]  # type: ignore
+        filters = {site: filters for site in sites}  # type: ignore
     else:
         for site, filt in filters.items():
             if filt is not None and not isinstance(filt, list):
                 filters[site] = [filt]
 
+    filters = cast(dict[str, list[str | None]], filters)
+
     # Check that filters are defined for all sites
     # TODO: just set filters for missing sites to None?
     tmp = [(site in filters) for site in sites]
     if not all(tmp):
-        raise ValueError(f"Missing entry for sites {np.array(sites)[~np.array(tmp)]} in filters.")
+        msg = f"Missing entry for sites {np.array(sites)[~np.array(tmp)]} in filters."
+        logger.warning(msg)
 
     datasets = datasets_in.copy()
 
     # Apply filtering
-    for site in sites:
+    # NOTE: we only loop over sites that are in the filters dict
+    # so not all sites must be specified
+    for site in filters:
         if filters[site] is not None:
             for filt in filters[site]:
                 n_nofilter = datasets[site].time.values.shape[0]

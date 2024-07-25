@@ -2,6 +2,9 @@
 
 # Version 0.2.0
 
+- Made format for `filtering` in ini file allow for missing sites. Made `inlet`, `instrument`, `fp_height`, `obs_data_level`, and `met_model`
+  accept a single string in the ini file, which will be converted to a list of the correct length.  [#PR 182](https://github.com/openghg/openghg_inversions/pull/182)
+
 - Added code to look for older flux data if none is found between start and end dates [#PR 177](https://github.com/openghg/openghg_inversions/pull/177)
 
 - Moved code related to basis functions from `utils.py` to `basis` submodule [#PR 162](https://github.com/openghg/openghg_inversions/pull/162) 

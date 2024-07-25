@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 import pytest
 
@@ -51,6 +52,16 @@ def test_all_filters(merged_data):
             filtering(merged_data, [name])
 
 
+def test_filters_as_none(merged_data):
+    filters = None
+    filtering(merged_data, filters)
+
+
+def test_filters_as_str(merged_data):
+    filters = "pblh_inlet_diff"
+    filtering(merged_data, filters)
+
+
 def test_filters_as_list(merged_data):
     filters = ["pblh_inlet_diff", "pblh_min"]
     filtering(merged_data, filters)
@@ -59,3 +70,12 @@ def test_filters_as_list(merged_data):
 def test_filters_as_dict(merged_data):
     filters = {"TAC": ["pblh_inlet_diff", "pblh_min"]}
     filtering(merged_data, filters)
+
+
+def test_filters_as_dict_with_missing_site(merged_data, capsys):
+    filters = {"TAC": ["pblh_inlet_diff", "pblh_min"]}
+    merged_data["MHD"] = "this will be skipped!"
+    filtering(merged_data, filters)
+
+    logs = capsys.readouterr().err
+    assert "Missing entry for sites ['MHD'] in filters." in logs
