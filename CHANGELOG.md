@@ -2,6 +2,8 @@
 
 # Version 0.2.0
 
+- Added option to store merged data in a zarr ZipStore, which is essentially just a zipped zarr store. This should reduce the number of files created when saving merged data. [#PR 185](https://github.com/openghg/openghg_inversions/pull/185)
+
 - Made format for `filtering` in ini file allow for missing sites. Made `inlet`, `instrument`, `fp_height`, `obs_data_level`, and `met_model`
   accept a single string in the ini file, which will be converted to a list of the correct length.  [#PR 182](https://github.com/openghg/openghg_inversions/pull/182)
 
