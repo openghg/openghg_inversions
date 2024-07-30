@@ -21,12 +21,12 @@ from pathlib import Path
 from typing import Any, Literal, Optional, Union, cast
 
 import numpy as np
-import xarray as xr
 from openghg.analyse import ModelScenario
 from openghg.dataobjects import BoundaryConditionsData, FluxData
 from openghg.retrieve import get_bc, get_flux, get_footprint, get_obs_surface
 from openghg.types import SearchError
 from openghg.util import timestamp_now
+import xarray as xr
 
 
 logger = logging.getLogger(__name__)
@@ -466,7 +466,7 @@ def _save_merged_data(
     start_date: Optional[str] = None,
     output_name: Optional[str] = None,
     merged_data_name: Optional[str] = None,
-    output_format: Literal["pickle", "netcdf", "zarr"] = "zarr",
+    output_format: Literal["pickle", "netcdf", "zarr", "zarr.zip"] = "zarr.zip",
 ) -> None:
     """Save `fp_all` dictionary to `merged_data_dir`.
 
@@ -505,19 +505,27 @@ def _save_merged_data(
     if output_format == "pickle":
         with open(merged_data_dir / (merged_data_name + ".pickle"), "wb") as f:
             pickle.dump(fp_all, f)
-    elif output_format in ["netcdf", "zarr"]:
+    elif output_format in ["netcdf", "zarr", "zarr.zip"]:
         ds = make_combined_scenario(fp_all)
 
-        if output_format == "zarr":
+        if "zarr" in output_format:
             try:
-                ds.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w")
+                import zarr
             except ModuleNotFoundError:
                 # zarr not found
                 ds.to_netcdf(merged_data_dir / (merged_data_name + ".nc"))
+            else:
+                if output_format == "zarr":
+                    ds.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w")
+                else:
+                    with zarr.ZipStore(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as store:
+                        ds.to_zarr(store, mode="w")
         else:
             ds.to_netcdf(merged_data_dir / (merged_data_name + ".nc"))
     else:
-        raise ValueError(f"Output format should be 'pickle', 'netcdf', or 'zarr'. Given '{output_format}'.")
+        raise ValueError(
+            f"Output format should be 'pickle', 'netcdf', 'zarr', or 'zarr.zip'. Given '{output_format}'."
+        )
 
 
 def load_merged_data(
@@ -526,7 +534,7 @@ def load_merged_data(
     start_date: Optional[str] = None,
     output_name: Optional[str] = None,
     merged_data_name: Optional[str] = None,
-    output_format: Optional[Literal["pickle", "netcdf", "zarr"]] = None,
+    output_format: Optional[Literal["pickle", "netcdf", "zarr", "zarr.zip"]] = None,
 ) -> dict:
     """Load `fp_all` dictionary from a file in `merged_data_dir`.
 
@@ -574,9 +582,9 @@ def load_merged_data(
         if not merged_data_file.exists():
             raise ValueError(f"No merged data found at {merged_data_file}.")
     else:
-        for ext in ["zarr", "nc", "pickle"]:
+        for ext in ["zarr.zip", "zarr", "nc", "pickle"]:
             # skip "zarr" if zarr not installed...
-            if ext == "zarr":
+            if "zarr" in ext:
                 try:
                     import zarr
                 except ModuleNotFoundError:
@@ -594,7 +602,12 @@ def load_merged_data(
         with open(merged_data_file, "rb") as f:
             fp_all = pickle.load(f)
     else:
-        if merged_data_file.suffix == "zarr":
+        if merged_data_file.suffixes == [".zarr", ".zip"]:
+            import zarr
+
+            with zarr.ZipStore(merged_data_file, mode="r") as store:
+                ds = xr.open_zarr(store).load()
+        elif merged_data_file.suffix == ".zarr":
             ds = xr.open_zarr(merged_data_file)
         else:
             # suffix is probably ".nc", but could be something else if name passed directly

@@ -182,9 +182,9 @@ def daily_median(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
         filtered dataset
     """
     if keep_missing:
-        return dataset.resample(indexer={"time": "1D"}).median()
+        return dataset.load().resample(indexer={"time": "1D"}).median()
     else:
-        return dataset.resample(indexer={"time": "1D"}).median().dropna(dim="time")
+        return dataset.load().resample(indexer={"time": "1D"}).median().dropna(dim="time")
 
 
 @register_filter
