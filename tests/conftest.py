@@ -50,9 +50,14 @@ def add_frozen_merged_data(merged_data_dir, merged_data_file_name, using_zarr_st
     """
     merged_data_dir.mkdir(exist_ok=True)
 
-    if using_zarr_store and not (merged_data_dir / (merged_data_file_name + ".zarr")).exists():
+    if using_zarr_store and not (merged_data_dir / (merged_data_file_name + ".zarr.zip")).exists():
+        import zarr
+
         ds = xr.open_dataset(_raw_data_path / (merged_data_file_name + ".nc"))
-        ds.to_zarr(merged_data_dir / (merged_data_file_name + ".zarr"))
+
+        with zarr.ZipStore(merged_data_dir / (merged_data_file_name + ".zarr.zip"), mode="w") as store:
+            ds.to_zarr(store)
+
     elif not (merged_data_dir / (merged_data_file_name + ".nc")).exists():
         shutil.copy(_raw_data_path / (merged_data_file_name + ".nc"), merged_data_dir)
 
