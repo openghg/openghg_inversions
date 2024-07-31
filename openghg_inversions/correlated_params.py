@@ -229,6 +229,27 @@ def block_formation(H_blocks, Y_blocks, Ytime_blocks, error_blocks, siteindicato
     return H_blocks, Y_blocks, Ytime_blocks, error_blocks, siteindicator_blocks
 
 
+def monthly_bcs_blocks(bcs_blocks, Hmbc, Ytime, period_dates, nperiod, si):
+
+    if si ==0:
+
+        for period in np.arange(nperiod):
+
+            period_ind = period_indices(Ytime, period_dates, period, nperiod)
+
+            bcs_blocks[period] = Hmbc[:, period_ind]
+
+    else:
+        
+        for period in np.arange(nperiod):
+
+            period_ind = period_indices(Ytime, period_dates, period, nperiod)
+
+            bcs_blocks[period] = np.hstack(bcs_blocks[period], Hmbc[:, period_ind])
+
+    return bcs_blocks
+
+
 def block_diag_h(H_blocks):
 
     H_blocks = list(H_blocks.values())

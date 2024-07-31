@@ -523,6 +523,10 @@ def fixedbasisMCMC(
             Ytime_blocks = {}
             H_blocks = {}
 
+            if use_bc is True:
+                
+                bcs_blocks = {}
+
             print("Running inversion with {} temporal correlation ...".format(x_freq))
 
             period_dates, days_in_period, nperiod = correlated_params.period_dates(x_freq, start_date, end_date)
@@ -577,6 +581,19 @@ def fixedbasisMCMC(
                 Y = fp_data[site].mf.values
                 Ytime = fp_data[site].time.values
                 Hx = fp_data[site].H.values
+
+                if use_bc is True:
+                    
+                    Hmbc = fp_data[site].H_bc.values
+
+                    if bc_freq == "monthly":
+                        bcs_blocks = correlated_params.monthly_bcs_blocks(bcs_blocks, Hmbc, Ytime, period_dates, nperiod, si)
+                    else:
+                        raise ValueError("Monthly correlated inversion must have monthly bc_freq. Inversion not currently setup for weekly bc_freq.")
+
+                    Hbc = correlated_params.block_diag_h(bcs_blocks)
+
+
                 H_blocks, Y_blocks, Ytime_blocks, error_blocks, siteindicator_blocks = correlated_params.block_formation(H_blocks, 
                                                              Y_blocks, 
                                                              Ytime_blocks, 
@@ -638,7 +655,7 @@ def fixedbasisMCMC(
             "save_trace": trace_path,
         }
 
-        if use_bc is True:
+        if use_bc is True and x_freq is None:
             Hbc = np.zeros(0)
 
             for si, site in enumerate(sites):
@@ -657,6 +674,13 @@ def fixedbasisMCMC(
             mcmc_args["Hbc"] = Hbc
             mcmc_args["bcprior"] = bcprior
             mcmc_args["use_bc"] = True
+        
+        elif use_bc is True and x_freq is not None:
+            
+            mcmc_args["Hbc"] = Hbc
+            mcmc_args["bcprior"] = bcprior
+            mcmc_args["use_bc"] = True
+        
         else:
             mcmc_args["use_bc"] = False
 
