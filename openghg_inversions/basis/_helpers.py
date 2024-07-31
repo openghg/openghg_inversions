@@ -1,8 +1,6 @@
-"""
-Functions to create fit basis functiosn and apply to data
+"""Functions to create fit basis functiosn and apply to data
 """
 
-from typing import Optional, Union
 
 from openghg.dataobjects import FluxData
 from openghg.util import get_species_info, synonyms
@@ -18,10 +16,9 @@ from ._functions import basis_boundary_conditions
 
 
 def fp_sensitivity(
-    fp_and_data: dict, basis_func: Union[xr.DataArray, dict[str, xr.DataArray]], verbose: bool = True
+    fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.DataArray], verbose: bool = True
 ) -> dict:
-    """
-    Add a sensitivity matrix, H, to each site xr.Dataset in fp_and_data.
+    """Add a sensitivity matrix, H, to each site xr.Dataset in fp_and_data.
 
     The sensitivity matrix H takes the footprint sensitivities (the `fp` variable),
     multiplies it by the flux files, then aggregates over the basis regions.
@@ -45,7 +42,6 @@ def fp_sensitivity(
     Returns:
         dict in same format as fp_and_data with sensitivity matrix and basis functions added.
     """
-
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
 
     flux_sources = list(fp_and_data[".flux"].keys())
@@ -95,13 +91,12 @@ def fp_sensitivity(
 
 def fp_sensitivity_single_site_basis_func(
     scenario: xr.Dataset,
-    flux: Union[FluxData, dict[str, FluxData]],
+    flux: FluxData | dict[str, FluxData],
     basis_func: xr.DataArray,
     source: str = "all",
     verbose: bool = True,
-) -> tuple[xr.DataArray, Optional[xr.Dataset]]:
-    """
-    Computes sensitivity matrix `H` for one site. See `fp_sensitivity` for
+) -> tuple[xr.DataArray, xr.Dataset | None]:
+    """Computes sensitivity matrix `H` for one site. See `fp_sensitivity` for
     more info about the sensitivity matrix.
 
     Args:
@@ -174,10 +169,9 @@ def fp_sensitivity_single_site_basis_func(
 
 
 def bc_sensitivity(
-    fp_and_data: dict, domain: str, basis_case: str, bc_basis_directory: Optional[str] = None
+    fp_and_data: dict, domain: str, basis_case: str, bc_basis_directory: str | None = None
 ) -> dict:
-    """
-    Add boundary conditions sensitivity matrix `H_bc` to each site xr.Dataframe in fp_and_data.
+    """Add boundary conditions sensitivity matrix `H_bc` to each site xr.Dataframe in fp_and_data.
 
     Args:
         fp_and_data: dict containing xr.Datasets output by `ModelScenario.footprints_data_merge`
@@ -192,7 +186,6 @@ def bc_sensitivity(
         dict of xr.Datasets in same format as fp_and_data with `H_bc` sensitivity matrix added.
 
     """
-
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
 
     basis_func = basis_boundary_conditions(
@@ -311,8 +304,7 @@ def timeseries_HiTRes(
     chunks=None,
     time_resolution="1H",
 ):
-    """
-    The timeseries_HiTRes function computes flux * HiTRes footprints.
+    """The timeseries_HiTRes function computes flux * HiTRes footprints.
 
     HiTRes footprints record the footprint at each 2 hour period back
     in time for the first 24 hours. Need a high time resolution flux
@@ -320,6 +312,7 @@ def timeseries_HiTRes(
     flux to multiply the residual integrated footprint for the remainder
     of the 30 day period.
     -----------------------------------
+
     Args:
       fp_HiTRes_ds (xarray.Dataset)
         Dataset of high time resolution footprints. HiTRes footprints
@@ -372,13 +365,12 @@ def timeseries_HiTRes(
     elif fp_HiTRes_ds is None:
         fp_HiTRes_ds = read_netcdfs(fp_file, chunks=chunks)
         fp_HiTRes = fp_HiTRes_ds.fp_HiTRes
+    elif isinstance(fp_HiTRes_ds, xr.DataArray):
+        fp_HiTRes = fp_HiTRes_ds
+    elif fp_HiTRes_ds.chunks is None and chunks is not None:
+        fp_HiTRes = fp_HiTRes_ds.fp_HiTRes.chunk(chunks)
     else:
-        if isinstance(fp_HiTRes_ds, xr.DataArray):
-            fp_HiTRes = fp_HiTRes_ds
-        elif fp_HiTRes_ds.chunks is None and chunks is not None:
-            fp_HiTRes = fp_HiTRes_ds.fp_HiTRes.chunk(chunks)
-        else:
-            fp_HiTRes = fp_HiTRes_ds.fp_HiTRes
+        fp_HiTRes = fp_HiTRes_ds.fp_HiTRes
 
     # resample fp to match the required time resolution
     fp_HiTRes = fp_HiTRes.resample(time=time_resolution).ffill()

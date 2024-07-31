@@ -1,5 +1,4 @@
-"""
-Functions for filtering data.
+"""Functions for filtering data.
 
 All filters are accessed and applied to data via the `filtering` function.
 
@@ -11,7 +10,8 @@ To see the available filters call `list_filters`.
 
 import logging
 import re
-from typing import Callable, cast, Union
+from typing import cast
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -67,10 +67,9 @@ def list_filters() -> None:
 
 
 def filtering(
-    datasets_in: dict, filters: Union[str, None, dict[str, list[str | None]], list[str | None]], keep_missing: bool = False
+    datasets_in: dict, filters: str | None | dict[str, list[str | None]] | list[str | None], keep_missing: bool = False
 ) -> dict:
-    """
-    Applies time filtering to all datasets in `datasets_in`.
+    """Applies time filtering to all datasets in `datasets_in`.
 
     If `filters` is a list, the same filters are applied to all sites. If `filters` is a dict
     with site codes as keys, then the filters applied to each site depend on the list supplied
@@ -146,8 +145,7 @@ def filtering(
 
 
 def _local_solar_time(dataset: xr.Dataset) -> list[int]:
-    """
-    Returns hour of day as a function of local solar time relative to the Greenwich Meridian.
+    """Returns hour of day as a function of local solar time relative to the Greenwich Meridian.
 
     This function also modifies `dataset` by changing the time coordinates.
 
@@ -294,14 +292,13 @@ def noon(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 
 def _local_ratio(dataset: xr.Dataset) -> np.ndarray:
-    """
-    Calculates the local ratio in the surrounding grid cells.
+    """Calculates the local ratio in the surrounding grid cells.
 
     NOTE: This is not a filter; it is used by the `local_influence` filter.
     """
     dlon = dataset.lon[1].values - dataset.lon[0].values
     dlat = dataset.lat[1].values - dataset.lat[0].values
-    local_sum = np.zeros((len(dataset.mf)))
+    local_sum = np.zeros(len(dataset.mf))
 
     for ti in range(len(dataset.mf)):
         release_lon = dataset.release_lon[ti].values
@@ -322,8 +319,7 @@ def _local_ratio(dataset: xr.Dataset) -> np.ndarray:
 
 @register_filter
 def local_influence(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """
-    Subset for times when "local influence" is below threshold.
+    """Subset for times when "local influence" is below threshold.
 
     Local influence expressed as a fraction of the sum of entire footprint domain.
 
@@ -359,8 +355,7 @@ def local_influence(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Datas
 
 @register_filter
 def pblh_min(dataset: xr.Dataset, pblh_threshold: float = 200.0, keep_missing: bool = False) -> xr.Dataset:
-    """
-    Subset for times when the PBLH is greater than 200m.
+    """Subset for times when the PBLH is greater than 200m.
 
     Args:
         dataset: dataset to filter
@@ -396,8 +391,7 @@ def pblh_min(dataset: xr.Dataset, pblh_threshold: float = 200.0, keep_missing: b
 def pblh_inlet_diff(
     dataset: xr.Dataset, diff_threshold: float = 50.0, keep_missing: bool = False
 ) -> xr.Dataset:
-    """
-    Subset for times when observations are taken at a height of less than 50 m below the PBLH.
+    """Subset for times when observations are taken at a height of less than 50 m below the PBLH.
 
     Args:
         dataset: dataset to filter

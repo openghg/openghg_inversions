@@ -1,11 +1,9 @@
-"""
-Functions for performing MCMC inversion. 
+"""Functions for performing MCMC inversion.
 PyMC library used for Bayesian modelling.
 """
 import re
 import getpass
 from pathlib import Path
-from typing import Optional, Union, Any, Type
 
 import numpy as np
 import pymc as pm
@@ -22,13 +20,10 @@ from openghg_inversions import utils
 from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
-from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
-from scipy import stats
 
 
 # type alias for prior args
-PriorArgs = dict[str, Union[str, float]]
+PriorArgs = dict[str, str | float]
 
 
 def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
@@ -64,8 +59,7 @@ def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
 
 
 def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
-    """
-    Parses all PyMC continuous distributions:
+    """Parses all PyMC continuous distributions:
     https://docs.pymc.io/api/distributions/continuous.html
 
     Args:
@@ -118,7 +112,7 @@ def inferpymc(Hx: np.ndarray,
               error: np.ndarray,
               siteindicator: np.ndarray,
               sigma_freq_index: np.ndarray,
-              Hbc: Optional[np.ndarray] = None,
+              Hbc: np.ndarray | None = None,
               xprior: dict ={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
               bcprior: dict ={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
               sigprior: dict ={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
@@ -128,18 +122,17 @@ def inferpymc(Hx: np.ndarray,
               tune: int = int(1.25e5),
               nchain: int = 2,
               sigma_per_site: bool = True,
-              offsetprior: Optional[dict]={"pdf": "normal", "mu": 0, "sigma": 1},
+              offsetprior: dict | None={"pdf": "normal", "mu": 0, "sigma": 1},
               add_offset: bool =False,
               verbose: bool=False,
-              min_error: Optional[float] =0.0,
-              save_trace: Optional[Union[str, Path]] = None,
+              min_error: float | None =0.0,
+              save_trace: str | Path | None = None,
               use_bc: bool = True,
               reparameterise_log_normal: bool = False,
               pollution_events_from_obs: bool = False,
               no_model_error: bool = False,
               ) -> dict:
-    """
-    Uses PyMC module for Bayesian inference for emissions field, boundary
+    """Uses PyMC module for Bayesian inference for emissions field, boundary
     conditions and (currently) a single model error value.
     This uses a Normal likelihood but the (hyper)prior PDFs can be selected by user.
 
@@ -404,7 +397,7 @@ def inferpymc_postprocessouts(
     step2: str,
     xprior: dict,
     sigprior: dict,
-    offsetprior: Optional[dict],
+    offsetprior: dict | None,
     Ytime: np.ndarray,
     siteindicator: np.ndarray,
     sigma_freq_index: np.ndarray,
@@ -415,27 +408,26 @@ def inferpymc_postprocessouts(
     end_date: str,
     outputname: str,
     outputpath: str,
-    country_unit_prefix: Optional[str],
+    country_unit_prefix: str | None,
     burn: int,
     tune: int,
     nchain: int,
     sigma_per_site: bool,
     emissions_name: str,
-    bcprior: Optional[dict] = None,
-    YBCtrace: Optional[np.ndarray] = None,
-    bcouts: Optional[np.ndarray] = None,
-    Hbc: Optional[np.ndarray] = None,
-    obs_repeatability: Optional[np.ndarray] = None,
-    obs_variability: Optional[np.ndarray] = None,
-    fp_data: Optional[dict]=None,
+    bcprior: dict | None = None,
+    YBCtrace: np.ndarray | None = None,
+    bcouts: np.ndarray | None = None,
+    Hbc: np.ndarray | None = None,
+    obs_repeatability: np.ndarray | None = None,
+    obs_variability: np.ndarray | None = None,
+    fp_data: dict | None=None,
     country_file: str=None,
     add_offset: bool=False,
-    rerun_file: Optional[xr.Dataset]=None,
+    rerun_file: xr.Dataset | None=None,
     use_bc: bool = False,
-    min_error: Union[float, np.ndarray] = 0.0,
+    min_error: float | np.ndarray = 0.0,
 ) -> xr.Dataset:
-    """
-    Takes the output from inferpymc function, along with some other input
+    """Takes the output from inferpymc function, along with some other input
     information, calculates statistics on them and places it all in a dataset. 
     Also calculates statistics on posterior emissions for the countries in 
     the inversion domain and saves all in netcdf.
@@ -443,8 +435,8 @@ def inferpymc_postprocessouts(
     Note that the uncertainties are defined by the highest posterior
     density (HPD) region and NOT percentiles (as the tdMCMC code).
     The HPD region is defined, for probability content (1-a), as:
-        1) P(x \in R | y) = (1-a)
-        2) for x1 \in R and x2 \notin R, P(x1|y)>=P(x2|y)
+        1) P(x \\in R | y) = (1-a)
+        2) for x1 \\in R and x2 \notin R, P(x1|y)>=P(x2|y)
     
     Args:
       xouts:
@@ -557,7 +549,6 @@ def inferpymc_postprocessouts(
           the a priori emissions are constant over the inversion period
           or else monthly (and inversion is for less than one calendar year).
     """
-
     print("Post-processing output")
 
     # Get parameters for output file
@@ -669,12 +660,11 @@ def inferpymc_postprocessouts(
 
     if rerun_file is not None:
         flux_array_all = np.expand_dims(rerun_file.fluxapriori.values, 2)
+    elif emissions_name is None:
+        raise ValueError("Emissions name not provided.")
     else:
-        if emissions_name is None:
-            raise ValueError("Emissions name not provided.")
-        else:
-            emds = fp_data[".flux"][emissions_name[0]]
-            flux_array_all = emds.data.flux.values
+        emds = fp_data[".flux"][emissions_name[0]]
+        flux_array_all = emds.data.flux.values
 
     # HACK: assume that smallest flux dim is time, then re-order flux so that
     # time is the last coordinate
@@ -719,9 +709,9 @@ def inferpymc_postprocessouts(
         cntrynames = rerun_file.countrynames.values
         cntrygrid = rerun_file.countrydefinition.values
 
-    cntrymean = np.zeros((len(cntrynames)))
-    cntrymedian = np.zeros((len(cntrynames)))
-    cntrymode = np.zeros((len(cntrynames)))
+    cntrymean = np.zeros(len(cntrynames))
+    cntrymedian = np.zeros(len(cntrynames))
+    cntrymode = np.zeros(len(cntrynames))
     cntry68 = np.zeros((len(cntrynames), len(nui)))
     cntry95 = np.zeros((len(cntrynames), len(nui)))
     cntrysd = np.zeros(len(cntrynames))
@@ -944,12 +934,12 @@ def inferpymc_postprocessouts(
     outds.attrs["Tuning steps"] = str(int(tune))
     outds.attrs["Number of chains"] = str(int(nchain))
     outds.attrs["Error for each site"] = str(sigma_per_site)
-    outds.attrs["Emissions Prior"] = "".join(["{0},{1},".format(k, v) for k, v in xprior.items()])[:-1]
-    outds.attrs["Model error Prior"] = "".join(["{0},{1},".format(k, v) for k, v in sigprior.items()])[:-1]
+    outds.attrs["Emissions Prior"] = "".join([f"{k},{v}," for k, v in xprior.items()])[:-1]
+    outds.attrs["Model error Prior"] = "".join([f"{k},{v}," for k, v in sigprior.items()])[:-1]
     if use_bc:
-        outds.attrs["BCs Prior"] = "".join(["{0},{1},".format(k, v) for k, v in bcprior.items()])[:-1]
+        outds.attrs["BCs Prior"] = "".join([f"{k},{v}," for k, v in bcprior.items()])[:-1]
     if add_offset:
-        outds.attrs["Offset Prior"] = "".join(["{0},{1},".format(k, v) for k, v in offsetprior.items()])[:-1]
+        outds.attrs["Offset Prior"] = "".join([f"{k},{v}," for k, v in offsetprior.items()])[:-1]
     outds.attrs["Creator"] = getpass.getuser()
     outds.attrs["Date created"] = str(pd.Timestamp("today"))
     outds.attrs["Convergence"] = convergence

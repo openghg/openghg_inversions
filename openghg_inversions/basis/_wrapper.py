@@ -1,9 +1,7 @@
-"""
-Functions to calling basis function algorithms and applying basis functions to data.
+"""Functions to calling basis function algorithms and applying basis functions to data.
 """
 
 from pathlib import Path
-from typing import Optional
 
 import xarray as xr
 
@@ -19,17 +17,16 @@ def basis_functions_wrapper(
     emissions_name: list[str] | None,
     nbasis: int,
     use_bc: bool,
-    basis_algorithm: Optional[str] = None,
+    basis_algorithm: str | None = None,
     fix_outer_regions: bool = False,
-    fp_basis_case: Optional[str] = None,
-    bc_basis_case: Optional[str] = None,
-    basis_directory: Optional[str] = None,
-    bc_basis_directory: Optional[str] = None,
-    outputname: Optional[str] = None,
-    output_path: Optional[str] = None,
+    fp_basis_case: str | None = None,
+    bc_basis_case: str | None = None,
+    basis_directory: str | None = None,
+    bc_basis_directory: str | None = None,
+    outputname: str | None = None,
+    output_path: str | None = None,
 ):
-    """
-    Wrapper function for selecting basis function
+    """Wrapper function for selecting basis function
     algorithm.
 
     Args:
@@ -148,7 +145,7 @@ def _save_basis(
     output_dir: str,
     domain: str,
     species: str,
-    output_name: Optional[str] = None,
+    output_name: str | None = None,
 ) -> None:
     """Save basis functions to netCDF.
 

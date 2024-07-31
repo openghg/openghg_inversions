@@ -1,35 +1,30 @@
-"""
-Functions for configuring HBMCMC inversion output files
+"""Functions for configuring HBMCMC inversion output files
 """
 
 import os
 import re
-from typing import Union, Optional
 from pathlib import Path
 from openghg_inversions.config import config
 
 
-def check_and_create_folder(outputpath:Union[str,Path])->None:
-    """
-    Check folder exists and create if not.
+def check_and_create_folder(outputpath:str | Path)->None:
+    """Check folder exists and create if not.
 
     Args:
       outputpath: path of folder to check exists
     """
-
     if not os.path.exists(outputpath):
         os.makedirs(outputpath)
 
 
-def define_output_filename(outputpath:Union[str,Path], 
+def define_output_filename(outputpath:str | Path, 
                            species: str, 
                            domain: str, 
                            outputname: str, 
                            start_date: str, 
                            ext: str=".nc"
                            )->str:
-    """
-    Defining output filename to write to based on the format:
+    """Defining output filename to write to based on the format:
     'outputpath'/'species'_'domain'_'outputname'_'start_date''ext'
     e.g. /home/user/output/CH4_EUROPE_test_2014-01-01.nc
     
@@ -47,21 +42,19 @@ def define_output_filename(outputpath:Union[str,Path],
       ext:
         file extension. Defaults to .nc
 
-     Returns:
+    Returns:
        outputname: fullpath with filename of output file.
      ----------------------------------
     """
-
     outputname = os.path.join(outputpath, f"{species.upper()}_{domain}_{outputname}_{start_date}{ext}")
 
     return outputname
 
 
 def copy_config_file(config_file: str,
-                     param: Optional[dict]=None, 
+                     param: dict | None=None, 
                      **command_line)->None:
-    """
-    Creating a copy of the inputs used to run MCMC code based
+    """Creating a copy of the inputs used to run MCMC code based
     on the input config file and any additional parameters
     specified on the command line.
     
@@ -88,7 +81,6 @@ def copy_config_file(config_file: str,
       **command_line :
         Any additional keyword arguments from the command line input.
     """
-
     param_for_output_name = ["outputpath", "species", "domain", "outputname", "start_date"]
 
     if param is not None:
@@ -106,7 +98,7 @@ def copy_config_file(config_file: str,
 
     check_and_create_folder(parameters["outputpath"])
 
-    raw_config_file = open(config_file, "r")
+    raw_config_file = open(config_file)
     config_lines = raw_config_file.read()
 
     if len(command_line) > 0:

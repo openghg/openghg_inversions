@@ -1,5 +1,4 @@
-"""
-Template file for creating plots with output of hbmcmc. This file uses
+"""Template file for creating plots with output of hbmcmc. This file uses
 hbmcmc_post_process.py
 """
 
@@ -7,7 +6,6 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from openghg_inversions.hbmcmc import hbmcmc_post_process as process
-from openghg_inversions.config.paths import Paths
 
 # openghginv_path = Paths.openghginv
 
@@ -72,7 +70,7 @@ if __name__ == "__main__":
     if output_directory == "/path/to/output/directory/":
         raise Exception("Please set output directory.")
     if not os.path.isdir(output_directory):
-        raise Exception("Output directory: {} does not exist.".format(output_directory))
+        raise Exception(f"Output directory: {output_directory} does not exist.")
 
     # Extract datasets from file
     ds_list, filenames = process.extract_hbmcmc_files(
@@ -153,7 +151,7 @@ if __name__ == "__main__":
             for i, ds in enumerate(ds_list):
                 if y_out_filename:
                     stub, ext = os.path.splitext(y_out_filename)
-                    y_out_filename_n = "{}_{}{}".format(stub, i + 1, ext)
+                    y_out_filename_n = f"{stub}_{i + 1}{ext}"
                 else:
                     y_out_filename_n = None
                 process.plot_timeseries(ds, fig_text=None, ylim=None, out_filename=y_out_filename_n)

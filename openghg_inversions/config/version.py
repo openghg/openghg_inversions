@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Aug 21 11:21:27 2020
+"""Created on Fri Aug 21 11:21:27 2020
 
 @author: al18242
 
@@ -19,11 +17,11 @@ openghginv_path = Paths.openghginv
 
 
 def code_version():
-    """
-    Use git describe to return the latest tag
+    """Use git describe to return the latest tag
     (and git hash if applicable).
     -----------------------------------
-    Returns
+
+    Returns:
       version : String defining the version of the code used,
                 or "Unknown" if git is unavailable
     -----------------------------------
@@ -33,7 +31,6 @@ def code_version():
             ["git", "describe"],
             capture_output=True,
             cwd=openghginv_path,
-            universal_newlines=True,
             check=True,
             text=True,
         )

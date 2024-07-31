@@ -1,25 +1,24 @@
-"""
-  Contains functions for running all steps of the MCMC inversion using PyMC: 
-  getting data, filtering, applying basis functions, sampling, and processing 
-  the outputs.
+"""Contains functions for running all steps of the MCMC inversion using PyMC:
+getting data, filtering, applying basis functions, sampling, and processing 
+the outputs.
 
-  If not using on an HPC in the terminal you should do:
-    export OPENBLAS_NUM_THREADS=XX
- and/or
-   export OMP_NUM_THREADS=XX
- where XX is the number of chains you are running.
+If not using on an HPC in the terminal you should do:
+export OPENBLAS_NUM_THREADS=XX
+and/or
+export OMP_NUM_THREADS=XX
+where XX is the number of chains you are running.
 
- If running in Spyder do this before launching Spyder, else you will use every
- available thread. Apart from being annoying it will also slow down your run
- due to unnecessary forking.
+If running in Spyder do this before launching Spyder, else you will use every
+available thread. Apart from being annoying it will also slow down your run
+due to unnecessary forking.
 
- Note. RHIME with OpenGHG expects ALL data to already be included in the
- object stores and for the paths to object stores to already be set in
- the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
+Note. RHIME with OpenGHG expects ALL data to already be included in the
+object stores and for the paths to object stores to already be set in
+the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 """
 
 from pathlib import Path
-from typing import Literal, Optional, Union
+from typing import Literal
 
 import numpy as np
 import xarray as xr
@@ -45,23 +44,23 @@ def fixedbasisMCMC(
     obs_store: str ="user",
     footprint_store: str ="user",
     emissions_store: str ="user",
-    met_model: Optional[list] =None,
-    fp_model: Optional[str] =None,  # Changed to none. When "NAME" specified FPs are not found
-    fp_height: Optional[list[str]] =None,
-    fp_species: Optional[str] =None,
-    emissions_name: Optional[list[str]] =None,
-    inlet: Optional[list[str]] =None,
-    instrument: Optional[list[str]] =None,
-    calibration_scale: Optional[str] =None,
-    obs_data_level: Optional[list] =None,
+    met_model: list | None =None,
+    fp_model: str | None =None,  # Changed to none. When "NAME" specified FPs are not found
+    fp_height: list[str] | None =None,
+    fp_species: str | None =None,
+    emissions_name: list[str] | None =None,
+    inlet: list[str] | None =None,
+    instrument: list[str] | None =None,
+    calibration_scale: str | None =None,
+    obs_data_level: list | None =None,
     use_tracer: bool =False,
     use_bc: bool =True,
-    fp_basis_case: Optional[str] =None,
-    basis_directory: Optional[str] =None,
+    fp_basis_case: str | None =None,
+    basis_directory: str | None =None,
     bc_basis_case: str ="NESW",
-    bc_basis_directory: Optional[str] =None,
-    country_file: Optional[str] =None,
-    bc_input: Optional[str] =None,
+    bc_basis_directory: str | None =None,
+    country_file: str | None =None,
+    bc_input: str | None =None,
     basis_algorithm: str  ="weighted",
     nbasis: int =100,
     xprior: dict ={"pdf": "truncatednormal", "mu": 1.0, "sigma": 1.0, "lower": 0.0},
@@ -72,29 +71,28 @@ def fixedbasisMCMC(
     burn: int =50000,
     tune: int =int(1.25e5),
     nchain: int =2,
-    filters: Union[None, list, dict[str, Optional[list[str]]]] = None,
+    filters: None | list | dict[str, list[str] | None] = None,
     fix_basis_outer_regions: bool = False,
     averaging_error: bool=True,
-    bc_freq: Optional[str] =None,
-    sigma_freq: Optional[str] =None,
+    bc_freq: str | None =None,
+    sigma_freq: str | None =None,
     sigma_per_site: bool =True,
-    country_unit_prefix: Optional[str] =None,
+    country_unit_prefix: str | None =None,
     add_offset: bool=False,
     verbose: bool=False,
     reload_merged_data: bool=False,
     save_merged_data: bool=False,
-    merged_data_dir: Optional[str]=None,
-    merged_data_name: Optional[str]=None,
-    basis_output_path: Optional[str]=None,
-    save_trace: Union[str, Path, bool] = False,
+    merged_data_dir: str | None=None,
+    merged_data_name: str | None=None,
+    basis_output_path: str | None=None,
+    save_trace: str | Path | bool = False,
     skip_postprocessing: bool = False,
     merged_data_only: bool = False,
-    calculate_min_error: Optional[Literal["percentile", "residual"]] = None,
-    min_error_options: Optional[dict] = None,
+    calculate_min_error: Literal["percentile", "residual"] | None = None,
+    min_error_options: dict | None = None,
     **kwargs,
-) -> Union[xr.Dataset,dict]:
-    """
-    Script to run hierarchical Bayesian MCMC (RHIME) for inference
+) -> xr.Dataset | dict:
+    """Script to run hierarchical Bayesian MCMC (RHIME) for inference
     of emissions using PyMC to solve the inverse problem.
     Saves an output from the inversion code using inferpymc_postprocessouts.
 
@@ -554,8 +552,7 @@ def rerun_output(input_file: str,
                  outputname: str, 
                  outputpath: str, 
                  verbose: bool=False) -> None:
-    """
-    Rerun the MCMC code by taking the inputs from a previous output
+    """Rerun the MCMC code by taking the inputs from a previous output
     using this code and rewrite a new output. This allows reproducibility
     of results without the need to transfer all raw input files.
 

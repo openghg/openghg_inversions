@@ -1,5 +1,4 @@
-"""
-Functions to create basis datasets from fluxes and footprints.
+"""Functions to create basis datasets from fluxes and footprints.
 """
 
 import os
@@ -8,7 +7,7 @@ import getpass
 from collections import namedtuple
 from functools import partial
 from pathlib import Path
-from typing import cast, Optional
+from typing import cast
 
 import pandas as pd
 import xarray as xr
@@ -22,9 +21,8 @@ from openghg_inversions.utils import read_netcdfs
 openghginv_path = Paths.openghginv
 
 
-def basis(domain: str, basis_case: str, basis_directory: Optional[str] = None) -> xr.Dataset:
-    """
-    Read in basis function(s) from file given basis case and domain, and return as an
+def basis(domain: str, basis_case: str, basis_directory: str | None = None) -> xr.Dataset:
+    """Read in basis function(s) from file given basis case and domain, and return as an
     xarray Dataset.
 
     The basis function files should be stored as on paths of the form:
@@ -72,9 +70,8 @@ def basis(domain: str, basis_case: str, basis_directory: Optional[str] = None) -
     return basis_ds
 
 
-def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: Optional[str] = None):
-    """
-    Read in basis function(s) from file given basis case and domain, and return as an
+def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: str | None = None):
+    """Read in basis function(s) from file given basis case and domain, and return as an
     xarray Dataset.
 
     The basis function files should be stored as on paths of the form:
@@ -133,7 +130,7 @@ def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: 
 
 
 def _flux_fp_from_fp_all(
-    fp_all: dict, emissions_name: Optional[list[str]] = None
+    fp_all: dict, emissions_name: list[str] | None = None
 ) -> tuple[xr.DataArray, list[xr.DataArray]]:
     """Get flux and list of footprints from `fp_all` dictionary and optional list of emissions names.
 
@@ -167,7 +164,7 @@ def _mean_fp_times_mean_flux(
     flux: xr.DataArray,
     footprints: list[xr.DataArray],
     abs_flux: bool = False,
-    mask: Optional[xr.DataArray] = None,
+    mask: xr.DataArray | None = None,
 ) -> xr.DataArray:
     """Multiply mean flux by mean of footprints, optionally restricted to a Boolean mask.
 
@@ -209,14 +206,13 @@ def _mean_fp_times_mean_flux(
 def quadtreebasisfunction(
     fp_all: dict,
     start_date: str,
-    emissions_name: Optional[list[str]] = None,
+    emissions_name: list[str] | None = None,
     nbasis: int = 100,
     abs_flux: bool = False,
-    seed: Optional[int] = None,
-    mask: Optional[xr.DataArray] = None,
+    seed: int | None = None,
+    mask: xr.DataArray | None = None,
 ) -> xr.DataArray:
-    """
-    Creates a basis function with nbasis grid cells using a quadtree algorithm.
+    """Creates a basis function with nbasis grid cells using a quadtree algorithm.
 
     The domain is split with smaller grid cells for regions which contribute
     more to the a priori (above basline) mole fraction. This is based on the
@@ -271,13 +267,12 @@ def quadtreebasisfunction(
 def bucketbasisfunction(
     fp_all: dict,
     start_date: str,
-    emissions_name: Optional[list[str]] = None,
+    emissions_name: list[str] | None = None,
     nbasis: int = 100,
     abs_flux: bool = False,
-    mask: Optional[xr.DataArray] = None,
+    mask: xr.DataArray | None = None,
 ) -> xr.DataArray:
-    """
-    Basis functions calculated using a weighted region approach
+    """Basis functions calculated using a weighted region approach
     where each basis function / scaling region contains approximately
     the same value
 
@@ -332,7 +327,7 @@ def fixed_outer_regions_basis(
     fp_all: dict,
     start_date: str,
     basis_algorithm: str,
-    emissions_name: Optional[list[str]] = None,
+    emissions_name: list[str] | None = None,
     nbasis: int = 100,
     abs_flux: bool = False,
 ) -> xr.DataArray:
@@ -355,7 +350,7 @@ def fixed_outer_regions_basis(
         When set to True uses absolute values of a flux array
         Default False
 
-      Returns:
+    Returns:
         basis (xarray.DataArray) :
           Array with lat/lon dimensions and basis regions encoded by integers.
     """

@@ -1,5 +1,4 @@
-"""
-Wrapper script to read in parameters from a configuration file and run underlying MCMC script.
+"""Wrapper script to read in parameters from a configuration file and run underlying MCMC script.
 
 Run as:
     $ python run_hbmcmc.py [start end -c config.ini]
@@ -27,18 +26,17 @@ import os
 import sys
 import argparse
 from shutil import copyfile
-from typing import Optional, Callable
+from collections.abc import Callable
 
 import openghg_inversions.hbmcmc.hbmcmc as mcmc
 import openghg_inversions.hbmcmc.hbmcmc_output as output
 
-import openghg_inversions.config.config as config
+from openghg_inversions.config import config
 from openghg_inversions.config.paths import Paths
 
 
 def fixed_basis_expected_param() -> list[str]:
-    """
-    Define required parameters for openghg_inversions.hcmcmc.fixedbasisMCMC()
+    """Define required parameters for openghg_inversions.hcmcmc.fixedbasisMCMC()
 
     Expected parameters currently include:
       species, sites, averaging_period, domain, start_date, end_date,
@@ -64,8 +62,7 @@ def fixed_basis_expected_param() -> list[str]:
 def extract_mcmc_type(config_file: str,
                       default: str ="fixed_basis"
                       ) -> str:
-    """
-    Find value which describes the MCMC function to use.
+    """Find value which describes the MCMC function to use.
     Checks the input configuation file the "mcmc_type" keyword within
     the "MCMC.TYPE" section. If not present, the default is used.
     
@@ -91,8 +88,7 @@ def extract_mcmc_type(config_file: str,
 
 
 def define_mcmc_function(mcmc_type: str) -> Callable:
-    """
-    Links mcmc_type name to function.
+    """Links mcmc_type name to function.
     
     Args:
       mcmc_type (str):
@@ -108,11 +104,10 @@ def define_mcmc_function(mcmc_type: str) -> Callable:
 
 
 def hbmcmc_extract_param(config_file: str, 
-                         mcmc_type: Optional[str] ="fixed_basis", 
-                         print_param: Optional[bool] =True, 
+                         mcmc_type: str | None ="fixed_basis", 
+                         print_param: bool | None =True, 
                          **command_line):
-    """
-    Extract parameters from input configuration file and associated
+    """Extract parameters from input configuration file and associated
     MCMC function. Checks the mcmc_type to extract the required
     parameters.
     

@@ -1,17 +1,14 @@
-"""
-Functions used for setting up HBMCMC inversions
+"""Functions used for setting up HBMCMC inversions
 """
 
 import numpy as np
 import pandas as pd
-from typing import Union
 
 def monthly_bcs(start_date :str, 
                 end_date : str,
                 site : str, 
                 fp_data : dict) -> np.ndarray:
-    """
-    Creates a sensitivity matrix (H-matrix) for the boundary
+    """Creates a sensitivity matrix (H-matrix) for the boundary
     conditions, which will map monthly boundary condition
     scalings to the observations. This is for a single site.
 
@@ -54,8 +51,7 @@ def create_bc_sensitivity(start_date : str,
                           site : str, 
                           fp_data : dict, 
                           freq : str) -> np.ndarray:
-    """
-    Creates a sensitivity matrix (H-matrix) for the boundary
+    """Creates a sensitivity matrix (H-matrix) for the boundary
     conditions, which will map boundary condition scalings to
     the observations. This is for a single site. The frequency
     that the boundary condition sensitivity is specified over
@@ -105,9 +101,8 @@ def create_bc_sensitivity(start_date : str,
 
 
 def sigma_freq_indicies(ytime : np.ndarray, 
-                        sigma_freq : Union[str,None]) -> np.ndarray:
-    """
-    Create an index that splits times
+                        sigma_freq : str | None) -> np.ndarray:
+    """Create an index that splits times
     into given periods
     
     Args:
@@ -152,8 +147,7 @@ def sigma_freq_indicies(ytime : np.ndarray,
 
 def offset_matrix(siteindicator : np.ndarray
                   ) -> np.ndarray:
-    """
-    Set up a matrix that can be used to add an offset to each site.
+    """Set up a matrix that can be used to add an offset to each site.
     This will anchor to the first site (i.e. first site has no offset)
 
     Args:

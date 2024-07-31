@@ -1,8 +1,7 @@
 # *****************************************************************************
 # get_data.py
 # Author: Atmospheric Chemistry Research Group, University of Bristol
-"""
-Functions for retrieving observations and datasets for creating forward
+"""Functions for retrieving observations and datasets for creating forward
 simulations
 
 Current data processing options include:
@@ -18,7 +17,7 @@ import logging
 import pickle
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Literal, Optional, Union, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import xarray as xr
@@ -76,11 +75,10 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
                     "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site %s", site
                 )
 
+        elif add_averaging_error:
+            ds["mf_error"] = np.sqrt(ds["mf_repeatability"] ** 2 + ds["mf_variability"] ** 2)
         else:
-            if add_averaging_error:
-                ds["mf_error"] = np.sqrt(ds["mf_repeatability"] ** 2 + ds["mf_variability"] ** 2)
-            else:
-                ds["mf_error"] = ds["mf_repeatability"]
+            ds["mf_error"] = ds["mf_repeatability"]
 
         # warnings/info for debugging
         err0 = ds["mf_error"] == 0
@@ -105,30 +103,30 @@ def data_processing_surface_notracer(
     obs_data_level: list[str | None] | str | None = None,
     inlet: list[str | None] | str | None = None,
     instrument: list[str | None] | str | None = None,
-    calibration_scale: Optional[str] = None,
+    calibration_scale: str | None = None,
     met_model: list[str | None] | str | None = None,
-    fp_model: Optional[str] = None,
+    fp_model: str | None = None,
     fp_height: list[str | None] | str | None = None,
-    fp_species: Optional[str] = None,
-    emissions_name: Optional[list] = None,
-    use_bc: Optional[bool] = True,
-    bc_input: Optional[str] = None,
-    bc_store: Optional[str] = None,
-    obs_store: Optional[str] = None,
-    footprint_store: Optional[str] = None,
-    emissions_store: Optional[str] = None,
-    averagingerror: Optional[bool] = True,
-    save_merged_data: Optional[bool] = False,
-    merged_data_name: Optional[str] = None,
-    merged_data_dir: Optional[str] = None,
-    output_name: Optional[str] = None,
+    fp_species: str | None = None,
+    emissions_name: list | None = None,
+    use_bc: bool | None = True,
+    bc_input: str | None = None,
+    bc_store: str | None = None,
+    obs_store: str | None = None,
+    footprint_store: str | None = None,
+    emissions_store: str | None = None,
+    averagingerror: bool | None = True,
+    save_merged_data: bool | None = False,
+    merged_data_name: str | None = None,
+    merged_data_dir: str | None = None,
+    output_name: str | None = None,
 ) -> tuple[dict, list, list, list, list, list]:
-    """
-    Retrieve and prepare fixed-surface datasets from
+    """Retrieve and prepare fixed-surface datasets from
     specified OpenGHG object stores for forward
     simulations and model-data comparisons that do not
     use tracers
     ---------------------------------------------
+
     Args:
         species:
             Atmospheric trace gas species of interest
@@ -214,7 +212,6 @@ def data_processing_surface_notracer(
             List of averaging_period for the updated list of sites
 
     """
-
     sites = [site.upper() for site in sites]
 
     # Convert 'None' args to list
@@ -461,11 +458,11 @@ def _make_merged_data_name(species: str, start_date: str, output_name: str) -> s
 
 def _save_merged_data(
     fp_all: dict,
-    merged_data_dir: Union[str, Path],
-    species: Optional[str] = None,
-    start_date: Optional[str] = None,
-    output_name: Optional[str] = None,
-    merged_data_name: Optional[str] = None,
+    merged_data_dir: str | Path,
+    species: str | None = None,
+    start_date: str | None = None,
+    output_name: str | None = None,
+    merged_data_name: str | None = None,
     output_format: Literal["pickle", "netcdf", "zarr"] = "zarr",
 ) -> None:
     """Save `fp_all` dictionary to `merged_data_dir`.
@@ -521,12 +518,12 @@ def _save_merged_data(
 
 
 def load_merged_data(
-    merged_data_dir: Union[str, Path],
-    species: Optional[str] = None,
-    start_date: Optional[str] = None,
-    output_name: Optional[str] = None,
-    merged_data_name: Optional[str] = None,
-    output_format: Optional[Literal["pickle", "netcdf", "zarr"]] = None,
+    merged_data_dir: str | Path,
+    species: str | None = None,
+    start_date: str | None = None,
+    output_name: str | None = None,
+    merged_data_name: str | None = None,
+    output_format: Literal["pickle", "netcdf", "zarr"] | None = None,
 ) -> dict:
     """Load `fp_all` dictionary from a file in `merged_data_dir`.
 

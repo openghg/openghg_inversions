@@ -1,7 +1,5 @@
 #!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Sep 25 16:39:01 2017
+"""Created on Mon Sep 25 16:39:01 2017
 
 This module allows configuration files in the INI format to be read and used.
 
@@ -71,8 +69,7 @@ import os
 
 
 def open_config(config_file):
-    """
-    The open_config function is used to open configuration files in the ini format.
+    """The open_config function is used to open configuration files in the ini format.
 
     Args:
         config_file (str):
@@ -91,8 +88,7 @@ def open_config(config_file):
 
 
 def generate_param_dict(config_file):
-    """
-    The generate_param_dict function creates a param_type nested dictionary from an input configuration
+    """The generate_param_dict function creates a param_type nested dictionary from an input configuration
     file.
     This could be used on some fixed template config file to generate the parameter type dictionary which
     can then be applied to other configuration files of the same type.
@@ -123,8 +119,7 @@ def generate_param_dict(config_file):
 
 
 def generate_from_template(template_file, output_file):
-    """
-    The generate_from_template function generates an example configuration file based on
+    """The generate_from_template function generates an example configuration file based on
     a template file. Template files are normally used to inform the expected format of any
     input configuration file.
 
@@ -134,7 +129,7 @@ def generate_from_template(template_file, output_file):
         output_file (str) :
             Name of output file including path information.
 
-    Returns
+    Returns:
         None
 
     Writes output file.
@@ -145,7 +140,7 @@ def generate_from_template(template_file, output_file):
     """
     if os.path.exists(output_file):
         answer = input(
-            "This action with overwrite existing {} file. Do you wish to proceed (Y/N): ".format(output_file)
+            f"This action with overwrite existing {output_file} file. Do you wish to proceed (Y/N): "
         )
         if answer.lower() == "y" or answer.lower() == "yes":
             out = open(output_file, "w")
@@ -153,7 +148,7 @@ def generate_from_template(template_file, output_file):
             raise Exception("Configuration file has not been generated.")
         else:
             raise Exception(
-                "Did not understand input: '{}'. Configuration file has not been regenerated.".format(answer)
+                f"Did not understand input: '{answer}'. Configuration file has not been regenerated."
             )
     else:
         out = open(output_file, "w")
@@ -174,14 +169,13 @@ def generate_from_template(template_file, output_file):
                 # print("Writing out from line: {}".format(i))
                 out.write(line)
 
-    print("Configuration file: {} has been generated.".format(output_file))
+    print(f"Configuration file: {output_file} has been generated.")
 
     out.close()
 
 
 def str_check(string, error=True):
-    """
-    The str_check function is used as part of checking the input from a configuration file.
+    """The str_check function is used as part of checking the input from a configuration file.
     This function ensures the input remains as a string and removes any " or ' characters
 
     Args:
@@ -197,9 +191,7 @@ def str_check(string, error=True):
         return None
     # Remove any ' or " symbols surrounding the input string from the config_file
     string = string.strip()  # Strip any whitespace just in case
-    if string[0] == "'" and string[-1] == "'":
-        string = string[1:-1]
-    elif string[0] == '"' and string[-1] == '"':
+    if string[0] == "'" and string[-1] == "'" or string[0] == '"' and string[-1] == '"':
         string = string[1:-1]
 
     try:
@@ -214,8 +206,7 @@ def str_check(string, error=True):
 
 
 def eval_check(string, error=True):
-    """
-    The eval_check function evaluates the input string from a configuration file to a python object.
+    """The eval_check function evaluates the input string from a configuration file to a python object.
     For example:
         - '1' would evalute to an int object 1
         - '1.' or '1.0' would evaluate to float object 1.0
@@ -244,15 +235,14 @@ def eval_check(string, error=True):
             )  # An input string without quotes cannot be evaluated so try adding quotes
         except (NameError, SyntaxError):
             if error:
-                print("WARNING: Could not evaluate input '{0}' to any type.".format(string))
+                print(f"WARNING: Could not evaluate input '{string}' to any type.")
             return None, False
 
     return out, True
 
 
 def list_check(string, force_convert=True, error=True):
-    """
-    The list_check function converts input string to a list.
+    """The list_check function converts input string to a list.
 
     Args:
         string (str) :
@@ -269,7 +259,6 @@ def list_check(string, force_convert=True, error=True):
         If unable to convert to list:
             None
     """
-
     out, _ = eval_check(string)  # Try evaluating input
 
     if not isinstance(out, (list, str)):  # If not already a list
@@ -280,7 +269,7 @@ def list_check(string, force_convert=True, error=True):
                 out = [out]
             else:
                 if error:
-                    print("WARNING: Could not convert input parameter '{0}' to list.".format(out))
+                    print(f"WARNING: Could not convert input parameter '{out}' to list.")
                 return None
     elif isinstance(out, str):
         out = [out]
@@ -316,8 +305,7 @@ def list_check(string, force_convert=True, error=True):
 
 
 def convert(string, value_type=None):
-    """
-    The convert function converts the input string to the specified value_type.
+    """The convert function converts the input string to the specified value_type.
     If no value_type is stated, the function attempts to discern the appropriate type.
 
     Args:
@@ -384,8 +372,7 @@ def convert(string, value_type=None):
 
 
 def all_parameters_in_param_type(param_type):
-    """
-    The all_parameters_in_param_type function extracts all parameters (regardless of section/section_group) for a given
+    """The all_parameters_in_param_type function extracts all parameters (regardless of section/section_group) for a given
     param_type nested dictionary.
 
     Args:
@@ -410,8 +397,7 @@ def all_parameters_in_param_type(param_type):
 
 
 def find_param_key(param_type, section=None, section_group=None):
-    """
-    The find_param_key function checks whether the keys within the param_type dictionary are for sections
+    """The find_param_key function checks whether the keys within the param_type dictionary are for sections
     (e.g. 'MCMC.MEASUREMENTS') or groups (e.g. 'MCMC') and returns the relevant key(s).
     One of section or section_group should be specified.
     Returned key_type is one of 'section' or 'section_group'.
@@ -461,8 +447,7 @@ def find_param_key(param_type, section=None, section_group=None):
 
 
 def get_value(name, config, section, param_type=None):
-    """
-    The get_value function extracts the value of a parameter from the configuration file.
+    """The get_value function extracts the value of a parameter from the configuration file.
     This value is then converted to the type specified within param_type (default from mcmc_param_type()
     function).
 
@@ -489,7 +474,6 @@ def get_value(name, config, section, param_type=None):
             If parameter name cannot be identified within param_type dictionary:
                 Exception raised and program exited
     """
-
     if param_type:
         keys, key_type = find_param_key(param_type, section)
         key = keys[0]  # Should only ever be one key for a section
@@ -498,7 +482,7 @@ def get_value(name, config, section, param_type=None):
             value_type = types[key][name]  # Find specified type of object for input parameter
         except KeyError:
             # raise Exception('Input parameter {0} in section {1} not expected (not found in param_type dictionary [{2}][{0}])'.format(name,section,key))
-            print("Type for input name '{0}' is not specified.".format(name))
+            print(f"Type for input name '{name}' is not specified.")
             value_type = None
     else:
         # print "Type for input name '{0}' is not specified.".format(name)
@@ -532,8 +516,7 @@ def extract_params(
     allow_new=False,
     param_type=None,
 ):
-    """
-    The extract_params function extracts parameter names and values from a configuration file.
+    """The extract_params function extracts parameter names and values from a configuration file.
     The parameters which are extracted is dependent on whether the section, section_group and/or names
     variables are specified.
     A param_type dictionary can be defined to ensure variables are cast to the correct types.
@@ -586,7 +569,6 @@ def extract_params(
         If parameter cannot be found (not specified as an optional param)
             Exception raised and program exited
     """
-
     # Open config file with configparser
     config = open_config(config_file)
 
@@ -602,9 +584,7 @@ def extract_params(
             else:
                 # raise KeyError('Specified section {0} could not be found in configuration file: {1}'.format(s,config_file))
                 print(
-                    "Specified section {0} could not be found in configuration file: {1}".format(
-                        s, config_file
-                    )
+                    f"Specified section {s} could not be found in configuration file: {config_file}"
                 )
                 return None
     elif section_group:
@@ -619,9 +599,7 @@ def extract_params(
         if not select_sections:
             # raise KeyError('No sections could be found for specified section_group {0} in configuration file: {1}'.format(section_group,config_file))
             print(
-                "No sections could be found for specified section_group {0} in configuration file: {1}".format(
-                    section_group, config_file
-                )
+                f"No sections could be found for specified section_group {section_group} in configuration file: {config_file}"
             )
             return None
     elif ignore_sections:
@@ -632,9 +610,7 @@ def extract_params(
             else:
                 # raise KeyError('Specified section {0} could not be found in configuration file: {1}'.format(es,config_file))
                 print(
-                    "Specified section {0} could not be found in configuration file: {1}".format(
-                        es, config_file
-                    )
+                    f"Specified section {es} could not be found in configuration file: {config_file}"
                 )
     elif ignore_section_groups:
         select_sections = all_sections
@@ -643,9 +619,7 @@ def extract_params(
             if not ignore_s:
                 # raise KeyError('No sections could be found for specified section_group {0} in configuration file: {1}'.format(esg,config_file))
                 print(
-                    "No sections could be found for specified section_group {0} in configuration file: {1}".format(
-                        esg, config_file
-                    )
+                    f"No sections could be found for specified section_group {esg} in configuration file: {config_file}"
                 )
             for es in ignore_s:
                 if es in select_sections:
@@ -757,63 +731,37 @@ def extract_params(
                 index = extracted_names.index(name)
             except ValueError:
                 print(
-                    "WARNING: Parameter '{0}' not found in configuration file (check specified section {1} or section_group {2} is correct).".format(
-                        name, section, section_group
-                    )
+                    f"WARNING: Parameter '{name}' not found in configuration file (check specified section {section} or section_group {section_group} is correct)."
                 )
             else:
                 param[name] = get_value(name, config, match_section[index], param_type)
-        else:
-            # if name in optional_param:
-            #    if exclude_not_found:
-            #        pass
-            #    else:
-            #        param[name] = None
-            #            elif not param_type:
-            #                print("WARNING: Parameter '{0}' not found in configuration file (check specified section {1} or section_group {2} is correct).".format(name,section,section_group))
-            #            else:
-            #                if section:
-            #                    raise KeyError("Parameter '{0}' not found in input configuration file in section '{1}'".format(name,section))
-            #                elif section_group:
-            #                    raise KeyError("Parameter '{0}' not found in input configuration file within section_group '{1}'".format(name,section_group))
-            #                else:
-            #                    raise KeyError("Parameter '{0}' not found in input configuration file.".format(name))
-            if name in expected_param:
-                if section:
-                    raise KeyError(
-                        "Expected parameter '{0}' not found in input configuration file in section '{1}'".format(
-                            name, section
-                        )
-                    )
-                elif section_group:
-                    raise KeyError(
-                        "Expected parameter '{0}' not found in input configuration file within section_group '{1}'".format(
-                            name, section_group
-                        )
-                    )
-                else:
-                    raise KeyError(
-                        "Expected parameter '{0}' not found in input configuration file.".format(name)
-                    )
-            elif not param_type:
-                print(
-                    "WARNING: Parameter '{0}' not found in configuration file (check specified section {1} or section_group {2} is correct).".format(
-                        name, section, section_group
-                    )
+        elif name in expected_param:
+            if section:
+                raise KeyError(
+                    f"Expected parameter '{name}' not found in input configuration file in section '{section}'"
+                )
+            elif section_group:
+                raise KeyError(
+                    f"Expected parameter '{name}' not found in input configuration file within section_group '{section_group}'"
                 )
             else:
-                if exclude_not_found:
-                    pass
-                else:
-                    param[name] = None
+                raise KeyError(
+                    f"Expected parameter '{name}' not found in input configuration file."
+                )
+        elif not param_type:
+            print(
+                f"WARNING: Parameter '{name}' not found in configuration file (check specified section {section} or section_group {section_group} is correct)."
+            )
+        elif exclude_not_found:
+            pass
+        else:
+            param[name] = None
 
     for index, extracted_name in enumerate(extracted_names):
         if extracted_name not in param:
             if not allow_new:
                 print(
-                    "WARNING: Unknown parameter '{0}' found in configuration file. Please add to template file and define input type.".format(
-                        extracted_name
-                    )
+                    f"WARNING: Unknown parameter '{extracted_name}' found in configuration file. Please add to template file and define input type."
                 )
             param[extracted_name] = get_value(extracted_name, config, match_section[index])
 
@@ -833,8 +781,7 @@ def all_param(
     allow_new=False,
     # optional_param=[]
 ):
-    """
-    The all_param function extracts all parameters from a config file.
+    """The all_param function extracts all parameters from a config file.
     If param_type specified will cast to the specified types, otherwise will attempt to discern the parameter types from the form of the values.
 
     Args:
@@ -861,7 +808,6 @@ def all_param(
         OrderedDict:
             Parameter names and values
     """
-
     param = OrderedDict({})
     param = extract_params(
         config_file,

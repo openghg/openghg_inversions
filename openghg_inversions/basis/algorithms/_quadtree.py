@@ -1,8 +1,6 @@
-"""
-Module to create basis regions for the inversion using a quadtree algorithm.
+"""Module to create basis regions for the inversion using a quadtree algorithm.
 """
 
-from typing import Optional
 
 import numpy as np
 import scipy.optimize
@@ -52,8 +50,7 @@ class quadTreeNode:
             return True
 
     def createChildren(self, grid: np.ndarray, limit: float):
-        """
-        Create children nodes. If finest resolution or bucket level reached,
+        """Create children nodes. If finest resolution or bucket level reached,
         no children nodes are created and the node is thus a leaf.
 
         Args :
@@ -91,8 +88,7 @@ class quadTreeNode:
         self.child4.createChildren(grid, limit)
 
     def appendLeaves(self, leafList: list):
-        """
-        Recursively look for leaves in the node offsprings and append them to the leafList.
+        """Recursively look for leaves in the node offsprings and append them to the leafList.
 
         Args :
           leafList:
@@ -110,8 +106,7 @@ class quadTreeNode:
 
 
 def quadTreeGrid(grid: np.ndarray, limit: float) -> np.ndarray:
-    """
-    Apply quadtree division algorithm.
+    """Apply quadtree division algorithm.
 
     Args:
       grid (array):
@@ -139,7 +134,7 @@ def quadTreeGrid(grid: np.ndarray, limit: float) -> np.ndarray:
     return outputGrid
 
 
-def get_quadtree_basis(fps: np.ndarray, nbasis: int, seed: Optional[int] = None) -> np.ndarray:
+def get_quadtree_basis(fps: np.ndarray, nbasis: int, seed: int | None = None) -> np.ndarray:
     """Given an array and a specified number of basis functions, return basis regions specified by
     the quadtree algorithm.
 

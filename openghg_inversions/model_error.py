@@ -1,8 +1,6 @@
-"""
-Functions for computing estimates of model error.
+"""Functions for computing estimates of model error.
 """
 
-from typing import Optional
 
 import numpy as np
 import xarray as xr
@@ -86,13 +84,12 @@ def residual_error_method(
         else:
             avg = (ds.mf - ds.modelled_obs).as_numpy().median(dim=["time", "site"])
             res_err = np.abs(ds.mf - ds.modelled_obs - avg).as_numpy().median(dim=["site", "time"])
+    elif by_site is True:
+        avg = (ds.mf - ds.modelled_obs).groupby("site").mean(dim="time")
+        res_err = np.sqrt(((ds.mf - ds.modelled_obs - avg) ** 2).groupby("site").mean("time"))
     else:
-        if by_site is True:
-            avg = (ds.mf - ds.modelled_obs).groupby("site").mean(dim="time")
-            res_err = np.sqrt(((ds.mf - ds.modelled_obs - avg) ** 2).groupby("site").mean("time"))
-        else:
-            avg = (ds.mf - ds.modelled_obs).mean()
-            res_err = np.sqrt(((ds.mf - ds.modelled_obs - avg) ** 2).mean())
+        avg = (ds.mf - ds.modelled_obs).mean()
+        res_err = np.sqrt(((ds.mf - ds.modelled_obs - avg) ** 2).mean())
 
     return res_err.values
 
@@ -128,7 +125,8 @@ def percentile_error_method(ds_dict: dict[str, xr.Dataset]) -> np.ndarray:
 
 def setup_min_error(min_error: np.ndarray, siteindicator: np.ndarray) -> np.ndarray:
     """Given min_error vector with same length as number of sites, create a vector
-    aligned with obs stacked by site."""
+    aligned with obs stacked by site.
+    """
     # need the same number of min_error values as distinct values in siteindicator
     assert np.max(siteindicator) == len(min_error) - 1
 
