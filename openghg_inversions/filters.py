@@ -131,7 +131,7 @@ def filtering(
     # NOTE: we only loop over sites that are in the filters dict
     # so not all sites must be specified
     for site in filters:
-        if filters[site] is not None:
+        if filters[site] is not None and site in sites:
             for filt in filters[site]:
                 n_nofilter = datasets[site].time.values.shape[0]
 
