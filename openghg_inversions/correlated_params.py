@@ -245,7 +245,7 @@ def monthly_bcs_blocks(bcs_blocks, Hmbc, Ytime, period_dates, nperiod, si):
 
             period_ind = period_indices(Ytime, period_dates, period, nperiod)
 
-            bcs_blocks[period] = np.hstack(bcs_blocks[period], Hmbc[:, period_ind])
+            bcs_blocks[period] = np.hstack((bcs_blocks[period], Hmbc[:, period_ind]))
 
     return bcs_blocks
 
