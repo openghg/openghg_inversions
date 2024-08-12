@@ -75,6 +75,8 @@ def fixedbasisMCMC(
     filters: Union[None, list, dict[str, Optional[list[str]]]] = None,
     fix_basis_outer_regions: bool = False,
     averaging_error: bool=True,
+    x_freq: Optional[str] = None,
+    decay_tau: Optional[float] = None,
     bc_freq: Optional[str] =None,
     sigma_freq: Optional[str] =None,
     sigma_per_site: bool =True,
@@ -206,6 +208,14 @@ def fixedbasisMCMC(
       averaging_error:
         Adds the variability in the averaging period to the measurement
         error if set to True
+      x_freq:
+        The maximum period over which the inversion is divided into. E.g. set
+        to "monthly", the inversion will be subdivided into calendar months. 
+        Currently only setup to read "monthly" or None. If None, the inversion 
+        will be run for one single period from start_date to end_date.
+      decay_tau:
+        The exponential time constant representing the time at which the covariance 
+        between period paramters is equal to 1/e. Units reflect the period chosen in x_freq.
       bc_freq:
         The perdiod over which the baseline is estimated. Set to "monthly"
         to estimate per calendar month; set to a number of days,
@@ -411,9 +421,21 @@ def fixedbasisMCMC(
                 Ytime = np.concatenate((Ytime, fp_data[site].time.values))
 
             if si == 0:
-                Hx = fp_data[site].H.values
+                if x_freq == "monthly":
+                    Hx, nbasis, nperiod = setup.monthly_h(start_date, end_date, site, fp_data)
+                    x_precision = setup.xprior_covariance(nperiod, nbasis, decay_tau)
+                    print(f"Site {si} H shape: {Hx.shape}")
+                elif x_freq is None:
+                    Hx = fp_data[site].H.values
+                else:
+                    raise ValueError("Inversion currently only setup for monthly x_freq")
             else:
-                Hx = np.hstack((Hx, fp_data[site].H.values))
+                if x_freq == "monthly":
+                    Hmx = setup.monthly_h(start_date, end_date, site, fp_data)[0]
+                    print(f"Site {si} H shape: {Hmx.shape}")
+                    Hx = np.hstack((Hx, Hmx))
+                else:
+                    Hx = np.hstack((Hx, fp_data[site].H.values))
 
         # Calculate min error
         if calculate_min_error == "residual":
@@ -524,6 +546,14 @@ def fixedbasisMCMC(
         del post_process_args["nit"]
         del post_process_args["verbose"]
         del post_process_args["save_trace"]
+
+        if x_freq is not None:
+            temporal_correlation = True
+            mcmc_args["temporal_correlation"] = temporal_correlation
+            mcmc_args["x_precision"] = x_precision
+            post_process_args["temporal_correlation"] = temporal_correlation
+            post_process_args["nbasis"] = nbasis
+            post_process_args["nperiod"] = nperiod
 
         # pass min model error to post-processing
         post_process_args["min_error"] = kwargs.get("min_error", 0.0)
