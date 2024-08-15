@@ -677,13 +677,13 @@ def inferpymc_postprocessouts(
             scalemap_mode_single = np.zeros_like(bfds.values)
 
             for basis in np.arange(nbasis):
-                scalemap_mu_single[bfds.values == (basis + 1)] = np.mean(xouts[:, period+basis])
-                if np.nanmax(xouts[:, period+basis]) > np.nanmin(xouts[:, period+basis]):
-                    xes = np.arange(np.nanmin(xouts[:, period+basis]), np.nanmax(xouts[:, period+basis]), 0.01)
-                    kde = stats.gaussian_kde(xouts[:, period+basis]).evaluate(xes)
+                scalemap_mu_single[bfds.values == (basis + 1)] = np.mean(xouts[:, int(basis + period*nbasis)])
+                if np.nanmax(xouts[:, int(basis + period*nbasis)]) > np.nanmin(xouts[:, int(basis + period*nbasis)]):
+                    xes = np.arange(np.nanmin(xouts[:, int(basis + period*nbasis)]), np.nanmax(xouts[:, int(basis + period*nbasis)]), 0.01)
+                    kde = stats.gaussian_kde(xouts[:, int(basis + period*nbasis)]).evaluate(xes)
                     scalemap_mode_single[bfds.values == (basis + 1)] = xes[kde.argmax()]
                 else:
-                    scalemap_mode_single[bfds.values == (basis + 1)] = np.mean(xouts[:, period+basis])
+                    scalemap_mode_single[bfds.values == (basis + 1)] = np.mean(xouts[:, int(basis + period*nbasis)])
 
             scalemap_mu.append(scalemap_mu_single)
             scalemap_mode.append(scalemap_mode_single)
@@ -832,7 +832,7 @@ def inferpymc_postprocessouts(
                     bothinds = np.logical_and(cntrygrid == ci, bfarray == bf)
                     cntrytottrace += (
                         np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
-                        * xouts[:, bf+period]
+                        * xouts[:, int(bf + nperiod*period)]
                         / unit_factor
                     )
                     cntrytotprior += (
