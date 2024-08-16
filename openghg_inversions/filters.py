@@ -130,7 +130,7 @@ def filtering(
     # NOTE: we only loop over sites that are in the filters dict
     # so not all sites must be specified
     for site in filters:
-        if filters[site] is not None:
+        if filters[site] is not None and site in sites:
             for filt in filters[site]:
                 n_nofilter = datasets[site].time.values.shape[0]
 
@@ -180,9 +180,9 @@ def daily_median(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
         filtered dataset
     """
     if keep_missing:
-        return dataset.resample(indexer={"time": "1D"}).median()
+        return dataset.load().resample(indexer={"time": "1D"}).median()
     else:
-        return dataset.resample(indexer={"time": "1D"}).median().dropna(dim="time")
+        return dataset.load().resample(indexer={"time": "1D"}).median().dropna(dim="time")
 
 
 @register_filter
@@ -404,35 +404,27 @@ def pblh_inlet_diff(
     TODO: need way to pass diff_threshold to filter
     """
     if "inlet_height_magl" in dataset.attrs:
-        inlet_height = float(dataset.inlet_height_magl)
+        inlet_height = dataset.inlet_height_magl
     elif "inlet" in dataset.attrs:
         m = re.search(r"\d+", dataset.attrs["inlet"])
         if m is not None:
-            inlet_height = float(m.group(0))
+            inlet_height = m.group(0)
     else:
         raise ValueError(
             "Could not find inlet height from `inlet_height_magl` or `inlet` dataset attributes."
         )
 
+    if inlet_height != "multiple":
+        inlet_height = float(inlet_height)
+    else:
+        inlet_height = dataset.inlet
+
     pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
 
-    ti = [i for i, pblh in enumerate(pblh_da) if inlet_height < pblh - diff_threshold]
+    filt = pblh_da > inlet_height + diff_threshold
+    drop = not keep_missing
 
-    if keep_missing is True:
-        mf_data_array = dataset.mf
-        dataset_temp = dataset.drop("mf")
-
-        dataarray_temp = mf_data_array[dict(time=ti)]
-
-        mf_ds = xr.Dataset(
-            {"mf": (["time"], dataarray_temp)}, coords={"time": (dataarray_temp.coords["time"])}
-        )
-
-        dataset_out = combine_datasets(dataset_temp, mf_ds, method=None)
-        return dataset_out
-    else:
-        return dataset[dict(time=ti)]
-
+    return dataset.where(filt, drop=drop)
 
 @register_filter
 def pblh(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:

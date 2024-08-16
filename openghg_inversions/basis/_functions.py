@@ -188,8 +188,13 @@ def _mean_fp_times_mean_flux(
 
     mean_flux = flux.mean("time")
 
-    fp_total = sum(footprints)  # this seems to be faster than concatentating and summing over new axis
+    # get total times before aligning
     n_measure = sum(len(fp.time) for fp in footprints)
+
+    # align so that all times are used
+    footprints = xr.align(*footprints, join="outer", fill_value=0.0)  # type: ignore  the docs say scalars are accepted as fill values, but type hints don't
+    fp_total = sum(footprints)  # this seems to be faster than concatentating and summing over new axis
+
 
     fp_total = cast(xr.DataArray, fp_total)  # otherwise mypy complains about the next line
     mean_fp = fp_total.sum("time") / n_measure
