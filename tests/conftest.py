@@ -45,7 +45,7 @@ def add_frozen_merged_data(merged_data_dir, merged_data_file_name, using_zarr_st
 
     Data created/frozen around 15 Apr, 2024.
 
-    If the zarr backend is being used, we load the merged data with xarray then write to zarr.
+    If the zarr backend is being used, we load the merged data with xarray then write to (zipped) zarr.
     Otherwise, if netCDF is being used, we copy the merged data directly.
     """
     merged_data_dir.mkdir(exist_ok=True)
@@ -57,6 +57,8 @@ def add_frozen_merged_data(merged_data_dir, merged_data_file_name, using_zarr_st
 
         with zarr.ZipStore(merged_data_dir / (merged_data_file_name + ".zarr.zip"), mode="w") as store:
             ds.to_zarr(store)
+
+        ds.to_zarr(merged_data_dir / (merged_data_file_name + "no_zip" + ".zarr"))
 
     elif not (merged_data_dir / (merged_data_file_name + ".nc")).exists():
         shutil.copy(_raw_data_path / (merged_data_file_name + ".nc"), merged_data_dir)
