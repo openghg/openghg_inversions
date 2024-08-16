@@ -448,17 +448,21 @@ def fixedbasisMCMC(
         else:
             trace_path = None
         # check if lognormal mu and sigma need to be calculated
-        if xprior["pdf"].lower() == "lognormal" and "stdev" in xprior:
-            stdev = float(xprior["stdev"])
-            mean = float(xprior.get("mean", 1.0))
+        def update_log_normal_prior(prior):
+            if prior["pdf"].lower() == "lognormal" and "stdev" in prior:
+                stdev = float(prior["stdev"])
+                mean = float(prior.get("mean", 1.0))
 
-            mu, sigma = mcmc.lognormal_mu_sigma(mean, stdev)
-            xprior["mu"] = mu
-            xprior["sigma"] = sigma
+                mu, sigma = mcmc.lognormal_mu_sigma(mean, stdev)
+                prior["mu"] = mu
+                prior["sigma"] = sigma
 
-            del xprior["stdev"]
-            if "mean" in xprior:
-                del xprior["mean"]
+                del prior["stdev"]
+                if "mean" in prior:
+                    del prior["mean"]
+
+        update_log_normal_prior(xprior)
+        update_log_normal_prior(bcprior)
 
         mcmc_args = {
             "Hx": Hx,
