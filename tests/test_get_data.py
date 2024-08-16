@@ -56,6 +56,18 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, usin
         )
 
 
+def test_load_merged_data(merged_data_dir, merged_data_file_name, using_zarr_store):
+    """This should pass by finding the merged data with .zarr suffix."""
+    if using_zarr_store:
+        result = load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "no_zip")
+
+
+def test_load_merged_data_missing_data_error(merged_data_dir, merged_data_file_name, using_zarr_store):
+    """This should pass by finding the merged data with .zarr suffix."""
+    with pytest.raises(ValueError):
+        result = load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "abc123", output_format="netcdf")
+
+
 def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir, using_zarr_store):
     merged_data_name = "test_save_load_merged_data"
 

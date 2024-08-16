@@ -1,8 +1,5 @@
-import logging
-import numpy as np
 import pytest
 
-from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
 from openghg_inversions.filters import filtering, filtering_functions
 from openghg_inversions.get_data import load_merged_data
 
