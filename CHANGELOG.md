@@ -56,6 +56,9 @@
 
 - `met_model` is now used by `data_processing_surface_notracer`; it is an optional argument, passed as a list with the same length as the number of sites. [#PR 125](https://github.com/openghg/openghg_inversions/pull/125)
 
+- Added option to pass "mean" and "stdev" to lognormal xpriors. Additionally, if `reparameterise_log_normal = True` is added to an ini file, then the 
+  log normal prior will be sampled by transforming samples from standard normal random variable to samples from the appropriate log normal distribution. [#PR 107](https://github.com/openghg/openghg_inversions/pull/107)
+
 - Updated `pblh` filter to work with new variable names in footprints. [#PR 101](https://github.com/openghg/openghg_inversions/pull/101)
 
 - NaNs are filled before converting to numpy and passing data to the inversion. This partly addresses [Issue#97](https://github.com/openghg/openghg_inversions/issues/97).  [#PR 101](https://github.com/openghg/openghg_inversions/pull/101)
