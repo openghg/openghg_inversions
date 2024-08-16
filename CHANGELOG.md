@@ -2,6 +2,8 @@
 
 # Version 0.2.0
 
+- Added option to pass "mean" and "stdev" as parameters for lognormal BC prior [#PR 190](https://github.com/openghg/openghg_inversions/pull/190)
+
 - Pinned numpy to version < 2.0 since PyTensor hasn't updated to numpy >= 2.0 [#PR 148](https://github.com/openghg/openghg_inversions/pull/148)
 
 - Updated filtering to handle case `inlet == "multiple"`. [#PR 189](https://github.com/openghg/openghg_inversions/pull/189) 
