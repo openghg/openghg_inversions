@@ -109,14 +109,14 @@ def data_processing_surface_notracer(
     fp_height: list[str | None] | str | None = None,
     fp_species: str | None = None,
     emissions_name: list | None = None,
-    use_bc: bool | None = True,
+    use_bc: bool = True,
     bc_input: str | None = None,
     bc_store: str | None = None,
     obs_store: str | None = None,
     footprint_store: str | None = None,
     emissions_store: str | None = None,
-    averagingerror: bool | None = True,
-    save_merged_data: bool | None = False,
+    averagingerror: bool = True,
+    save_merged_data: bool = False,
     merged_data_name: str | None = None,
     merged_data_dir: str | None = None,
     output_name: str | None = None,
@@ -245,8 +245,6 @@ def data_processing_surface_notracer(
                 store=emissions_store,
             )
         except SearchError:
-            # logger.info(f"No flux data found between {start_date} and {end_date}.")
-            # logger.info(f"Searching for flux data from before {end_date}.")
             print(f"No flux data found between {start_date} and {end_date}.")
             print(f"Searching for flux data from before {start_date}.")
 
@@ -264,7 +262,6 @@ def data_processing_surface_notracer(
                 raise SearchError(f"No flux data found before {start_date}") from e
             else:
                 get_flux_data.data = get_flux_data.data.isel(time=[-1])
-                # logger.info(f"Using flux data from {get_flux_data.data.time.values}.")
                 print(f"Using flux data from {str(get_flux_data.data.time.values[0]).split(':')[0]}.")
 
         logging.Logger.disabled = False  # resume confusing OpenGHG warnings
