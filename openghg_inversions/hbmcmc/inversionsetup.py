@@ -1,5 +1,4 @@
-"""Functions used for setting up HBMCMC inversions
-"""
+"""Functions used for setting up HBMCMC inversions."""
 
 import numpy as np
 import pandas as pd
@@ -147,7 +146,7 @@ def sigma_freq_indicies(ytime : np.ndarray,
 def offset_matrix(siteindicator : np.ndarray
                   ) -> np.ndarray:
     """Set up a matrix that can be used to add an offset to each site.
-    This will anchor to the first site (i.e. first site has no offset)
+    This will anchor to the first site (i.e. first site has no offset).
 
     Args:
       siteindicator:

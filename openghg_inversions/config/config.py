@@ -81,7 +81,7 @@ def open_config(config_file):
     config = configparser.ConfigParser(inline_comment_prefixes=(";", "#"))
     config.optionxform = str  # Keeps case when inputting option names
 
-    with open(config_file) as fp:
+    with open(config_file, encoding="utf-8") as fp:
         config.read_file(fp)
 
     return config
@@ -143,7 +143,7 @@ def generate_from_template(template_file, output_file):
             f"This action with overwrite existing {output_file} file. Do you wish to proceed (Y/N): "
         )
         if answer.lower() == "y" or answer.lower() == "yes":
-            out = open(output_file, "w")
+            out = open(output_file, "w", encoding="utf-8")
         elif answer.lower() == "n" or answer.lower() == "no":
             raise Exception("Configuration file has not been generated.")
         else:
@@ -151,10 +151,10 @@ def generate_from_template(template_file, output_file):
                 f"Did not understand input: '{answer}'. Configuration file has not been regenerated."
             )
     else:
-        out = open(output_file, "w")
+        out = open(output_file, "w", encoding="utf-8")
 
     copy = False
-    with open(template_file) as fname:
+    with open(template_file, encoding="utf-8") as fname:
         for line in fname:
             if copy:
                 out.write(line)
@@ -191,7 +191,7 @@ def str_check(string, error=True):
         return None
     # Remove any ' or " symbols surrounding the input string from the config_file
     string = string.strip()  # Strip any whitespace just in case
-    if string[0] == "'" and string[-1] == "'" or string[0] == '"' and string[-1] == '"':
+    if (string[0] == "'" and string[-1] == "'") or (string[0] == '"' and string[-1] == '"'):
         string = string[1:-1]
 
     try:

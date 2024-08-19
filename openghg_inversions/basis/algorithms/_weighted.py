@@ -107,11 +107,11 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int) -
         return bucket
 
     if get_nregions(bucket, grid) < nregion + tol:
-        bucket = bucket * 0.995
+        bucket *= 0.995
         return optimize_nregions(bucket, grid, nregion, tol)
 
     elif get_nregions(bucket, grid) > nregion - tol:
-        bucket = bucket * 1.005
+        bucket *= 1.005
         return optimize_nregions(bucket, grid, nregion, tol)
 
 

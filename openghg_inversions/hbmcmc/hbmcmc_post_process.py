@@ -510,7 +510,7 @@ def plot_map_mult(
 
     if isinstance(labels, list):
         if len(labels) == 1:
-            labels = labels * nrun
+            labels *= nrun
         elif len(labels) != nrun:
             print(
                 f"Unable to apply labels to sub-plots. Length of the list ({len(labels)}) does not match the number of plots ({nrun})."

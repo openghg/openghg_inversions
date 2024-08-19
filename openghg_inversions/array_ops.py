@@ -133,7 +133,7 @@ def sparse_xr_dot(
 
         idx1, idx2 = [], []
         for i, j in zip(xs, ys):
-            if j in (i, 1):
+            if j in {i, 1}:
                 idx1.append(slice(None))
                 idx2.append(0)
             elif i == 1:

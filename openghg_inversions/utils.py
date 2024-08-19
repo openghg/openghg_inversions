@@ -218,5 +218,3 @@ def areagrid(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
             area[latI, :] = (rad_earth**2) * (np.cos(lat1) - np.cos(lat2)) * dlon
 
     return area
-
-

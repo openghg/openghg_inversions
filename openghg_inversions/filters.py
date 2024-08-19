@@ -109,7 +109,7 @@ def filtering(
     if not isinstance(filters, dict):
         if not isinstance(filters, list):
             filters = [filters]  # type: ignore
-        filters = {site: filters for site in sites}  # type: ignore
+        filters = dict.fromkeys(sites, filters)  # type: ignore
     else:
         for site, filt in filters.items():
             if filt is not None and not isinstance(filt, list):
@@ -162,7 +162,7 @@ def _local_solar_time(dataset: xr.Dataset) -> list[int]:
     sitelon = dataset.release_lon.values[0]
     # convert lon to [-180,180], so time offset is negative west of 0 degrees
     if sitelon > 180:
-        sitelon = sitelon - 360.0
+        sitelon -= 360.0
     dataset["time"] = dataset.time + pd.Timedelta(minutes=float(24 * 60 * sitelon / 360.0))
     hours = dataset.time.to_pandas().index.hour
     return list(hours)

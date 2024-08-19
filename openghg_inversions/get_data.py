@@ -343,10 +343,10 @@ def data_processing_surface_notracer(
 
                 # Divide by trace gas species units
                 # See if R+G can include this 'behind the scenes'
-                get_bc_data.data.vmr_n.values = get_bc_data.data.vmr_n.values / unit
-                get_bc_data.data.vmr_e.values = get_bc_data.data.vmr_e.values / unit
-                get_bc_data.data.vmr_s.values = get_bc_data.data.vmr_s.values / unit
-                get_bc_data.data.vmr_w.values = get_bc_data.data.vmr_w.values / unit
+                get_bc_data.data.vmr_n.values /= unit
+                get_bc_data.data.vmr_e.values /= unit
+                get_bc_data.data.vmr_s.values /= unit
+                get_bc_data.data.vmr_w.values /= unit
                 my_bc = BoundaryConditionsData(
                     data=get_bc_data.data.transpose("height", "lat", "lon", "time"),
                     metadata=get_bc_data.metadata,
@@ -373,7 +373,7 @@ def data_processing_surface_notracer(
             if len(emissions_name) == 1:
                 scenario_combined = model_scenario.footprints_data_merge()
                 if use_bc is True:
-                    scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
+                    scenario_combined.bc_mod.values *= unit
 
             elif len(emissions_name) > 1:
                 # Create model scenario object for each flux sector
@@ -392,7 +392,7 @@ def data_processing_surface_notracer(
                 for k, v in model_scenario_dict.items():
                     scenario_combined[k] = v
                     if use_bc is True:
-                        scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
+                        scenario_combined.bc_mod.values *= unit
 
             fp_all[site] = scenario_combined
 
@@ -497,7 +497,7 @@ def _save_merged_data(
     if output_format == "pickle":
         with open(merged_data_dir / (merged_data_name + ".pickle"), "wb") as f:
             pickle.dump(fp_all, f)
-    elif output_format in ["netcdf", "zarr", "zarr.zip"]:
+    elif output_format in {"netcdf", "zarr", "zarr.zip"}:
         ds = make_combined_scenario(fp_all)
 
         if "zarr" in output_format:

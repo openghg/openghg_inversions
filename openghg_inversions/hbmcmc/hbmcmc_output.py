@@ -98,7 +98,7 @@ def copy_config_file(config_file: str,
 
     check_and_create_folder(parameters["outputpath"])
 
-    raw_config_file = open(config_file)
+    raw_config_file = open(config_file, encoding="utf-8")
     config_lines = raw_config_file.read()
 
     if len(command_line) > 0:
@@ -134,5 +134,5 @@ def copy_config_file(config_file: str,
                 config_lines = config_lines.replace(org_line, new_line)
 
     print(f"Copying input configuration file to: {output_filename}")
-    output_file = open(output_filename, "w")
+    output_file = open(output_filename, "w", encoding="utf-8")
     output_file.write(config_lines)
