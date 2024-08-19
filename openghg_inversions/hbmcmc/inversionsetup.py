@@ -153,7 +153,7 @@ def offset_matrix(siteindicator : np.ndarray
       siteindicator:
         Array of values used for indicating the indices associated
         with each site used in the inversion
-    
+
     Returns:
       2D array
     """

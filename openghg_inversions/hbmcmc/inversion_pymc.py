@@ -321,7 +321,7 @@ def inferpymc(Hx: np.ndarray,
             progressbar=verbose,
             cores=nchain,
             nuts_sampler=nuts_sampler,
-        )  # step=pm.Metropolis())#  #target_accept=0.8,
+        )
 
     if save_trace:
         trace.to_netcdf(str(save_trace), engine="netcdf4")
@@ -332,10 +332,6 @@ def inferpymc(Hx: np.ndarray,
         bcouts = trace.posterior["xbc"][0, burn:nit]
 
     sigouts = trace.posterior["sig"][0, burn:nit]
-
-    # outs = trace.get_values(x, burn=burn)[0:int((nit)-burn)]
-    # bcouts = trace.get_values(xbc, burn=burn)[0:int((nit)-burn)]
-    # sigouts = trace.get_values(sig, burn=burn)[0:int((nit)-burn)]
 
     # Check for convergence
     gelrub = pm.rhat(trace)["x"].max()
@@ -352,12 +348,10 @@ def inferpymc(Hx: np.ndarray,
 
     if add_offset:
         offset_outs = trace.posterior["offset"][0, burn:nit]
-        # offset_outs = trace.get_values(offset, burn=burn)[0:int((nit)-burn)]
         OFFSETtrace = np.hstack([np.zeros((int(nit - burn), 1)), offset_outs])
         OFFtrace = np.dot(B, OFFSETtrace.T)
     else:
         offset_outs = xouts * 0
-        # OFFSETtrace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
         OFFtrace = np.zeros((ny, nit - burn))
 
     if use_bc:
@@ -564,7 +558,6 @@ def inferpymc_postprocessouts(
     steps = np.arange(nit)
     nmeasure = np.arange(ny)
     nparam = np.arange(nx)
-    # YBCtrace = np.dot(Hbc.T,bcouts.T)
 
     # OFFSET HYPERPARAMETER
     YmodmuOFF = np.mean(OFFSETtrace, axis=1)  # mean
