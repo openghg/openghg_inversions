@@ -6,7 +6,7 @@ from pathlib import Path
 from openghg_inversions.config import config
 
 
-def check_and_create_folder(outputpath:str | Path)->None:
+def check_and_create_folder(outputpath: str | Path) -> None:
     """Check folder exists and create if not.
 
     Args:
@@ -16,13 +16,9 @@ def check_and_create_folder(outputpath:str | Path)->None:
         os.makedirs(outputpath)
 
 
-def define_output_filename(outputpath:str | Path, 
-                           species: str, 
-                           domain: str, 
-                           outputname: str, 
-                           start_date: str, 
-                           ext: str=".nc"
-                           )->str:
+def define_output_filename(
+    outputpath: str | Path, species: str, domain: str, outputname: str, start_date: str, ext: str = ".nc"
+) -> str:
     """Create output file name to write results to.
 
     Output filename based on the format:
@@ -52,9 +48,7 @@ def define_output_filename(outputpath:str | Path,
     return outputname
 
 
-def copy_config_file(config_file: str,
-                     param: dict | None=None, 
-                     **command_line)->None:
+def copy_config_file(config_file: str, param: dict | None = None, **command_line) -> None:
     """Creating a copy of the inputs used to run MCMC code based
     on the input config file and any additional parameters
     specified on the command line.

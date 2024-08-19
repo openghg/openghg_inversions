@@ -11,6 +11,7 @@ xarray Datasets and DataArrays, and return either a Dataset or a DataArray.
  with sparse underlying array. The built-in xarray functionality doesn't
 work correctly.
 """
+
 from typing import Any, TypeVar
 from collections.abc import Sequence
 

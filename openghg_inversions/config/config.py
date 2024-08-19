@@ -62,6 +62,7 @@ A param_type dictionary can be defined both to fix expected inputs and to explic
 
 @author: rt17603
 """
+
 import configparser
 from collections import OrderedDict
 import numpy as np
@@ -583,9 +584,7 @@ def extract_params(
                 select_sections.append(s)
             else:
                 # raise KeyError('Specified section {0} could not be found in configuration file: {1}'.format(s,config_file))
-                print(
-                    f"Specified section {s} could not be found in configuration file: {config_file}"
-                )
+                print(f"Specified section {s} could not be found in configuration file: {config_file}")
                 return None
     elif section_group:
         if isinstance(section_group, str):
@@ -609,9 +608,7 @@ def extract_params(
                 select_sections.remove(es)
             else:
                 # raise KeyError('Specified section {0} could not be found in configuration file: {1}'.format(es,config_file))
-                print(
-                    f"Specified section {es} could not be found in configuration file: {config_file}"
-                )
+                print(f"Specified section {es} could not be found in configuration file: {config_file}")
     elif ignore_section_groups:
         select_sections = all_sections
         for esg in ignore_section_groups:
@@ -745,9 +742,7 @@ def extract_params(
                     f"Expected parameter '{name}' not found in input configuration file within section_group '{section_group}'"
                 )
             else:
-                raise KeyError(
-                    f"Expected parameter '{name}' not found in input configuration file."
-                )
+                raise KeyError(f"Expected parameter '{name}' not found in input configuration file.")
         elif not param_type:
             print(
                 f"WARNING: Parameter '{name}' not found in configuration file (check specified section {section} or section_group {section_group} is correct)."

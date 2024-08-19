@@ -1,6 +1,5 @@
 """Functions to create fit basis functiosn and apply to data."""
 
-
 from openghg.dataobjects import FluxData
 from openghg.util import get_species_info, synonyms
 import xarray as xr
@@ -237,18 +236,16 @@ def bc_sensitivity(
             loss_s[:] = 1
             loss_w[:] = 1
 
-        DS_particle_loc = xr.Dataset(
-            {
-                "particle_locations_n": fp_and_data[site]["particle_locations_n"],
-                "particle_locations_e": fp_and_data[site]["particle_locations_e"],
-                "particle_locations_s": fp_and_data[site]["particle_locations_s"],
-                "particle_locations_w": fp_and_data[site]["particle_locations_w"],
-                "loss_n": loss_n,
-                "loss_e": loss_e,
-                "loss_s": loss_s,
-                "loss_w": loss_w,
-            }
-        )
+        DS_particle_loc = xr.Dataset({
+            "particle_locations_n": fp_and_data[site]["particle_locations_n"],
+            "particle_locations_e": fp_and_data[site]["particle_locations_e"],
+            "particle_locations_s": fp_and_data[site]["particle_locations_s"],
+            "particle_locations_w": fp_and_data[site]["particle_locations_w"],
+            "loss_n": loss_n,
+            "loss_e": loss_e,
+            "loss_s": loss_s,
+            "loss_w": loss_w,
+        })
         #                                 "bc":fp_and_data[site]["bc"]})
 
         DS_temp = combine_datasets(DS_particle_loc, fp_and_data[".bc"].data, method="ffill")
@@ -257,14 +254,12 @@ def bc_sensitivity(
 
         DS = DS.transpose("height", "lat", "lon", "region", "time")
 
-        part_loc = np.hstack(
-            [
-                DS.particle_locations_n,
-                DS.particle_locations_e,
-                DS.particle_locations_s,
-                DS.particle_locations_w,
-            ]
-        )
+        part_loc = np.hstack([
+            DS.particle_locations_n,
+            DS.particle_locations_e,
+            DS.particle_locations_s,
+            DS.particle_locations_w,
+        ])
 
         loss = np.hstack([DS.loss_n, DS.loss_e, DS.loss_s, DS.loss_w])
 
@@ -384,7 +379,9 @@ def timeseries_HiTRes(
     H_resample = (
         int(time_resolution[0])
         if H_back_hour_diff == 1
-        else 1 if H_back_hour_diff == int(time_resolution[0]) else None
+        else 1
+        if H_back_hour_diff == int(time_resolution[0])
+        else None
     )
     if H_resample is None:
         print("Cannot resample H_back")
@@ -444,7 +441,9 @@ def timeseries_HiTRes(
             freq: (
                 None
                 if flux_freq is None
-                else flux_freq.values if flux_freq.chunks is None else da.array(flux_freq)
+                else flux_freq.values
+                if flux_freq.chunks is None
+                else da.array(flux_freq)
             )
             for freq, flux_freq in flux_sector.items()
         }

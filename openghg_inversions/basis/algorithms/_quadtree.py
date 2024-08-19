@@ -1,6 +1,5 @@
 """Module to create basis regions for the inversion using a quadtree algorithm."""
 
-
 import numpy as np
 import scipy.optimize
 

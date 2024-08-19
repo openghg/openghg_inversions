@@ -67,7 +67,9 @@ def list_filters() -> None:
 
 
 def filtering(
-    datasets_in: dict, filters: str | None | dict[str, list[str | None]] | list[str | None], keep_missing: bool = False
+    datasets_in: dict,
+    filters: str | None | dict[str, list[str | None]] | list[str | None],
+    keep_missing: bool = False,
 ) -> dict:
     """Applies time filtering to all datasets in `datasets_in`.
 
@@ -422,6 +424,7 @@ def pblh_inlet_diff(
     drop = not keep_missing
 
     return dataset.where(filt, drop=drop)
+
 
 @register_filter
 def pblh(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:

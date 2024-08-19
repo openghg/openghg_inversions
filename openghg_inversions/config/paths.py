@@ -14,8 +14,8 @@
 #
 # Update by Ben Adam (ACRG), 20th February 2024:
 #
-# The move away from the ACRG repository means the only relevant path here is 
-# the one pointing to the current directory, Paths.openghginv. I have kept 
+# The move away from the ACRG repository means the only relevant path here is
+# the one pointing to the current directory, Paths.openghginv. I have kept
 # everything else commented out, for reference
 # ****************************************************************************
 

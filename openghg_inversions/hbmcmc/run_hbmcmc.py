@@ -21,6 +21,7 @@ The MCMC run *will not be executed*. This will be named for your -c input or, if
 create a configuration file called `hbmcmc_input.ini` within your acrg_hbmcmc/ directory and exit.
 This file will need to be edited to add parameters for your MCMC run.
 """
+
 import json
 import sys
 import argparse
@@ -42,7 +43,7 @@ def fixed_basis_expected_param() -> list[str]:
       outputpath, outputname
 
     Returns:
-      expected_param: required parameter names 
+      expected_param: required parameter names
     """
     expected_param = [
         "species",
@@ -58,9 +59,7 @@ def fixed_basis_expected_param() -> list[str]:
     return expected_param
 
 
-def extract_mcmc_type(config_file: str,
-                      default: str ="fixed_basis"
-                      ) -> str:
+def extract_mcmc_type(config_file: str, default: str = "fixed_basis") -> str:
     """Find value which describes the MCMC function to use.
 
     Checks the input configuation file the "mcmc_type" keyword within
@@ -103,10 +102,9 @@ def define_mcmc_function(mcmc_type: str) -> Callable:
     return function_dict[mcmc_type]
 
 
-def hbmcmc_extract_param(config_file: str, 
-                         mcmc_type: str | None ="fixed_basis", 
-                         print_param: bool | None =True, 
-                         **command_line):
+def hbmcmc_extract_param(
+    config_file: str, mcmc_type: str | None = "fixed_basis", print_param: bool | None = True, **command_line
+):
     """Extract parameters from input configuration file and associated MCMC function.
 
     Checks the mcmc_type to extract the required parameters.
@@ -187,10 +185,9 @@ if __name__ == "__main__":
         help='Pass keyword arguments to mcmc function. Format: \'{"key1": "val1", "key2": "val2"}\'.',
     )
     parser.add_argument(
-            "--output-path",
-            help="Path to write ini file and results to.",
-        )
-
+        "--output-path",
+        help="Path to write ini file and results to.",
+    )
 
     args = parser.parse_args()
 
@@ -220,9 +217,9 @@ if __name__ == "__main__":
 
     if not config_file.exists():
         raise ValueError(
-                "Configuration file cannot be found.\n"
-                f"Please check path and filename are correct: {config_file}"
-            )
+            "Configuration file cannot be found.\n"
+            f"Please check path and filename are correct: {config_file}"
+        )
 
     mcmc_type = extract_mcmc_type(config_file)
     mcmc_function = define_mcmc_function(mcmc_type)

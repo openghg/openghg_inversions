@@ -13,6 +13,7 @@ Future data processing options will include:
 This module also includes functions for saving and loading "merged data" created
 by the data processing functions.
 """
+
 import logging
 import pickle
 from collections import defaultdict
@@ -395,7 +396,6 @@ def data_processing_surface_notracer(
                         scenario_combined.bc_mod.values *= unit
 
             fp_all[site] = scenario_combined
-
 
             scales[site] = scenario_combined.scale
             check_scales.add(scenario_combined.scale)

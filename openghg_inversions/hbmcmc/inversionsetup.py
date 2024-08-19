@@ -3,10 +3,8 @@
 import numpy as np
 import pandas as pd
 
-def monthly_bcs(start_date :str, 
-                end_date : str,
-                site : str, 
-                fp_data : dict) -> np.ndarray:
+
+def monthly_bcs(start_date: str, end_date: str, site: str, fp_data: dict) -> np.ndarray:
     """Creates a sensitivity matrix (H-matrix) for the boundary
     conditions, which will map monthly boundary condition
     scalings to the observations. This is for a single site.
@@ -45,11 +43,7 @@ def monthly_bcs(start_date :str,
     return hmbc
 
 
-def create_bc_sensitivity(start_date : str, 
-                          end_date : str, 
-                          site : str, 
-                          fp_data : dict, 
-                          freq : str) -> np.ndarray:
+def create_bc_sensitivity(start_date: str, end_date: str, site: str, fp_data: dict, freq: str) -> np.ndarray:
     """Creates a sensitivity matrix (H-matrix) for the boundary
     conditions, which will map boundary condition scalings to
     the observations. This is for a single site. The frequency
@@ -99,8 +93,7 @@ def create_bc_sensitivity(start_date : str,
     return hmbc
 
 
-def sigma_freq_indicies(ytime : np.ndarray, 
-                        sigma_freq : str | None) -> np.ndarray:
+def sigma_freq_indicies(ytime: np.ndarray, sigma_freq: str | None) -> np.ndarray:
     """Create an index that splits times into given periods.
 
     Args:
@@ -143,8 +136,7 @@ def sigma_freq_indicies(ytime : np.ndarray,
     return output
 
 
-def offset_matrix(siteindicator : np.ndarray
-                  ) -> np.ndarray:
+def offset_matrix(siteindicator: np.ndarray) -> np.ndarray:
     """Set up a matrix that can be used to add an offset to each site.
     This will anchor to the first site (i.e. first site has no offset).
 

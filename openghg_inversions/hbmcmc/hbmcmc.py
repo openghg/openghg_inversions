@@ -1,5 +1,5 @@
 """Contains functions for running all steps of the MCMC inversion using PyMC:
-getting data, filtering, applying basis functions, sampling, and processing 
+getting data, filtering, applying basis functions, sampling, and processing
 the outputs.
 
 If not using on an HPC in the terminal you should do:
@@ -40,51 +40,51 @@ def fixedbasisMCMC(
     end_date: str,
     outputpath: str,
     outputname: str,
-    bc_store: str ="user",  # Do we want to set defaults for the object stores?
-    obs_store: str ="user",
-    footprint_store: str ="user",
-    emissions_store: str ="user",
-    met_model: list | None =None,
-    fp_model: str | None =None,  # Changed to none. When "NAME" specified FPs are not found
-    fp_height: list[str] | None =None,
-    fp_species: str | None =None,
-    emissions_name: list[str] | None =None,
-    inlet: list[str] | None =None,
-    instrument: list[str] | None =None,
-    calibration_scale: str | None =None,
-    obs_data_level: list | None =None,
-    use_tracer: bool =False,
-    use_bc: bool =True,
-    fp_basis_case: str | None =None,
-    basis_directory: str | None =None,
-    bc_basis_case: str ="NESW",
-    bc_basis_directory: str | None =None,
-    country_file: str | None =None,
-    bc_input: str | None =None,
-    basis_algorithm: str  ="weighted",
-    nbasis: int =100,
-    xprior: dict ={"pdf": "truncatednormal", "mu": 1.0, "sigma": 1.0, "lower": 0.0},
-    bcprior: dict ={"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0},
-    sigprior: dict ={"pdf": "uniform", "lower": 0.1, "upper": 3},
-    offsetprior: dict ={"pdf": "normal", "mu": 0, "sd": 1},
-    nit: int =int(2.5e5),
-    burn: int =50000,
-    tune: int =int(1.25e5),
-    nchain: int =2,
+    bc_store: str = "user",  # Do we want to set defaults for the object stores?
+    obs_store: str = "user",
+    footprint_store: str = "user",
+    emissions_store: str = "user",
+    met_model: list | None = None,
+    fp_model: str | None = None,  # Changed to none. When "NAME" specified FPs are not found
+    fp_height: list[str] | None = None,
+    fp_species: str | None = None,
+    emissions_name: list[str] | None = None,
+    inlet: list[str] | None = None,
+    instrument: list[str] | None = None,
+    calibration_scale: str | None = None,
+    obs_data_level: list | None = None,
+    use_tracer: bool = False,
+    use_bc: bool = True,
+    fp_basis_case: str | None = None,
+    basis_directory: str | None = None,
+    bc_basis_case: str = "NESW",
+    bc_basis_directory: str | None = None,
+    country_file: str | None = None,
+    bc_input: str | None = None,
+    basis_algorithm: str = "weighted",
+    nbasis: int = 100,
+    xprior: dict = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 1.0, "lower": 0.0},
+    bcprior: dict = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0},
+    sigprior: dict = {"pdf": "uniform", "lower": 0.1, "upper": 3},
+    offsetprior: dict = {"pdf": "normal", "mu": 0, "sd": 1},
+    nit: int = int(2.5e5),
+    burn: int = 50000,
+    tune: int = int(1.25e5),
+    nchain: int = 2,
     filters: None | list | dict[str, list[str] | None] = None,
     fix_basis_outer_regions: bool = False,
-    averaging_error: bool=True,
-    bc_freq: str | None =None,
-    sigma_freq: str | None =None,
-    sigma_per_site: bool =True,
-    country_unit_prefix: str | None =None,
-    add_offset: bool=False,
-    verbose: bool=False,
-    reload_merged_data: bool=False,
-    save_merged_data: bool=False,
-    merged_data_dir: str | None=None,
-    merged_data_name: str | None=None,
-    basis_output_path: str | None=None,
+    averaging_error: bool = True,
+    bc_freq: str | None = None,
+    sigma_freq: str | None = None,
+    sigma_per_site: bool = True,
+    country_unit_prefix: str | None = None,
+    add_offset: bool = False,
+    verbose: bool = False,
+    reload_merged_data: bool = False,
+    save_merged_data: bool = False,
+    merged_data_dir: str | None = None,
+    merged_data_name: str | None = None,
+    basis_output_path: str | None = None,
     save_trace: str | Path | bool = False,
     skip_postprocessing: bool = False,
     merged_data_only: bool = False,
@@ -143,7 +143,7 @@ def fixedbasisMCMC(
       use_tracer:
         Option to use inverse model that uses tracers of species
         (e.g. d13C, CO, C2H4)
-      use_bc: 
+      use_bc:
         When True, use and infer boundary conditions.
       fp_basis_case:
         Name of basis function to use for emission
@@ -231,23 +231,23 @@ def fixedbasisMCMC(
         If True, saves the merged data object (fp_all) as a pickle file
       merged_data_dir:
         Path to a directory of merged data objects. For saving to or reading from
-      merged_data_name: 
+      merged_data_name:
         Name of files in which are the merged data objects. For saving to or reading from
       basis_output_path:
         If set, save the basis functions to this path. Used for testing
-      save_trace: 
+      save_trace:
         If True, save arviz `InferenceData` trace to `outputpath`. Alternatively,
         A file path (including file name and extension) can be passed, and the trace will be
         saved there.
-      skip_post_processing: 
+      skip_post_processing:
         If True, return raw trace from sampling.
-      merged_data_only: 
+      merged_data_only:
         If True, save merged data, and do nothing else.
-      calculate_min_error: 
+      calculate_min_error:
         If None, use value in `kwargs[min_error]`. Otherwise, compute min model error
         using the "residual" method or the "percentile" method. (See `openghg_inversions.model_error.py` for
         details.)
-      min_error_options: 
+      min_error_options:
         Dictionary of additional arguments to pass the the function used to calculate min. model
         error (as specified by `calculate_min_error`).
 
@@ -400,7 +400,6 @@ def fixedbasisMCMC(
             obs_repeatability = np.concatenate((obs_repeatability, fp_data[site].mf_repeatability.values))
             obs_variability = np.concatenate((obs_variability, fp_data[site].mf_variability.values))
 
-
             Y = np.concatenate((Y, fp_data[site].mf.values))
             siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
             if si == 0:
@@ -430,8 +429,10 @@ def fixedbasisMCMC(
         elif calculate_min_error is None:
             pass
         else:
-            raise ValueError("`calculate_min_error` must have values: 'residual', 'percentile', or `None`;"
-                             f" {calculate_min_error} not recognised.")
+            raise ValueError(
+                "`calculate_min_error` must have values: 'residual', 'percentile', or `None`;"
+                f" {calculate_min_error} not recognised."
+            )
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
@@ -442,6 +443,7 @@ def fixedbasisMCMC(
             trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
         else:
             trace_path = None
+
         # check if lognormal mu and sigma need to be calculated
         def update_log_normal_prior(prior):
             if prior["pdf"].lower() == "lognormal" and "stdev" in prior:
@@ -531,7 +533,7 @@ def fixedbasisMCMC(
         mcmc_args.update(kwargs)
 
         # Run PyMC inversion
-        mcmc_results = mcmc.inferpymc(**mcmc_args) # type: ignore
+        mcmc_results = mcmc.inferpymc(**mcmc_args)  # type: ignore
 
         if skip_postprocessing:
             return mcmc_results
@@ -549,10 +551,7 @@ def fixedbasisMCMC(
     return out
 
 
-def rerun_output(input_file: str, 
-                 outputname: str, 
-                 outputpath: str, 
-                 verbose: bool=False) -> None:
+def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: bool = False) -> None:
     """Rerun the MCMC code by taking the inputs from a previous output
     using this code and rewrite a new output. This allows reproducibility
     of results without the need to transfer all raw input files.
