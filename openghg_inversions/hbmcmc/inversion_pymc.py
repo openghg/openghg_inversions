@@ -60,7 +60,7 @@ def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
 
 def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
     """Parses all PyMC continuous distributions:
-    https://docs.pymc.io/api/distributions/continuous.html
+    https://docs.pymc.io/api/distributions/continuous.html.
 
     Args:
         name:
@@ -261,7 +261,7 @@ def inferpymc(Hx: np.ndarray,
     if add_offset:
         B = offset_matrix(siteindicator)
 
-    with pm.Model() as model:
+    with pm.Model():
         step1_vars = []
 
         if reparameterise_log_normal and xprior["pdf"] == "lognormal":
@@ -308,7 +308,7 @@ def inferpymc(Hx: np.ndarray,
         else:
             epsilon = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)
 
-        y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
+        pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
         step1 = pm.NUTS(vars=step1_vars)
         step2 = pm.Slice(vars=[sig])
@@ -421,23 +421,23 @@ def inferpymc_postprocessouts(
     obs_repeatability: np.ndarray | None = None,
     obs_variability: np.ndarray | None = None,
     fp_data: dict | None=None,
-    country_file: str=None,
+    country_file: str | None=None,
     add_offset: bool=False,
     rerun_file: xr.Dataset | None=None,
     use_bc: bool = False,
     min_error: float | np.ndarray = 0.0,
 ) -> xr.Dataset:
-    """Takes the output from inferpymc function, along with some other input
+    r"""Takes the output from inferpymc function, along with some other input
     information, calculates statistics on them and places it all in a dataset. 
     Also calculates statistics on posterior emissions for the countries in 
     the inversion domain and saves all in netcdf.
-    
+
     Note that the uncertainties are defined by the highest posterior
     density (HPD) region and NOT percentiles (as the tdMCMC code).
     The HPD region is defined, for probability content (1-a), as:
-        1) P(x \\in R | y) = (1-a)
-        2) for x1 \\in R and x2 \notin R, P(x1|y)>=P(x2|y)
-    
+        1) P(x \in R | y) = (1-a)
+        2) for x1 \in R and x2 \notin R, P(x1|y)>=P(x2|y)
+
     Args:
       xouts:
         MCMC chain for emissions scaling factors for each basis function.
@@ -538,7 +538,7 @@ def inferpymc_postprocessouts(
         When True, use and infer boundary conditions.
       min_error: 
         Minimum error to use during inversion. Only used if no_model_error is False.
-        
+
     Returns:
         xarray dataset containing results from inversion
 

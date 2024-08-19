@@ -1,5 +1,4 @@
-"""Functions for configuring HBMCMC inversion output files
-"""
+"""Functions for configuring HBMCMC inversion output files."""
 
 import os
 import re
@@ -24,10 +23,12 @@ def define_output_filename(outputpath:str | Path,
                            start_date: str, 
                            ext: str=".nc"
                            )->str:
-    """Defining output filename to write to based on the format:
+    """Create output file name to write results to.
+
+    Output filename based on the format:
     'outputpath'/'species'_'domain'_'outputname'_'start_date''ext'
     e.g. /home/user/output/CH4_EUROPE_test_2014-01-01.nc
-    
+
     Args:
       outputpath:
         Directory where to save outputfile
@@ -57,7 +58,7 @@ def copy_config_file(config_file: str,
     """Creating a copy of the inputs used to run MCMC code based
     on the input config file and any additional parameters
     specified on the command line.
-    
+
     Writes output file to same location as MCMC output
     (output filename based on define_output_filename()
     function with '.ini' extension)
@@ -68,7 +69,7 @@ def copy_config_file(config_file: str,
 
     Any additional command line arguments can be specified as keyword arguments.
     e.g. start_date="2018-01-01", end_date="2019-01-01"
-    
+
     Args:
       config_file:
         Input configuration file name. Should be an .ini file.
@@ -89,9 +90,8 @@ def copy_config_file(config_file: str,
         parameters = config.extract_params(config_file, names=param_for_output_name)
 
         for key, value in command_line.items():
-            if key in param_for_output_name:
-                if value is not None:
-                    parameters[key] = value
+            if key in param_for_output_name and value is not None:
+                parameters[key] = value
 
     output_filename = define_output_filename(ext=".ini", **parameters)
     # copyfile(config_file,output_filename)

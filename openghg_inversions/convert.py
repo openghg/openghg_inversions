@@ -7,7 +7,7 @@ from openghg.util import molar_mass
 
 
 def mol2g(value: float, species: str) -> float:
-    """Convert a value in moles to grams
+    """Convert a value in moles to grams.
 
     Args:
       value: Value associated with the number of moles of species

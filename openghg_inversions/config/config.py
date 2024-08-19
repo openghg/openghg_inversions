@@ -1,5 +1,5 @@
 #!/usr/bin/env python2
-"""Created on Mon Sep 25 16:39:01 2017
+"""Created on Mon Sep 25 16:39:01 2017.
 
 This module allows configuration files in the INI format to be read and used.
 
@@ -176,7 +176,7 @@ def generate_from_template(template_file, output_file):
 
 def str_check(string, error=True):
     """The str_check function is used as part of checking the input from a configuration file.
-    This function ensures the input remains as a string and removes any " or ' characters
+    This function ensures the input remains as a string and removes any " or ' characters.
 
     Args:
         string (str) :
@@ -212,7 +212,7 @@ def eval_check(string, error=True):
         - '1.' or '1.0' would evaluate to float object 1.0
         - "[1,2,3]" would evalute to a list object [1,2,3]
         - "1,2,3" would evaluate to a tuple object (1,2,3)
-    See eval() documentation for full list
+    See eval() documentation for full list.
 
     Args:
         string (str) :
@@ -261,7 +261,7 @@ def list_check(string, force_convert=True, error=True):
     """
     out, _ = eval_check(string)  # Try evaluating input
 
-    if not isinstance(out, (list, str)):  # If not already a list
+    if not isinstance(out, list | str):  # If not already a list
         try:
             out = list(out)
         except TypeError:

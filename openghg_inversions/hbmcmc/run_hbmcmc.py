@@ -36,7 +36,7 @@ from openghg_inversions.config.paths import Paths
 
 
 def fixed_basis_expected_param() -> list[str]:
-    """Define required parameters for openghg_inversions.hcmcmc.fixedbasisMCMC()
+    """Define required parameters for openghg_inversions.hcmcmc.fixedbasisMCMC().
 
     Expected parameters currently include:
       species, sites, averaging_period, domain, start_date, end_date,
@@ -65,7 +65,7 @@ def extract_mcmc_type(config_file: str,
     """Find value which describes the MCMC function to use.
     Checks the input configuation file the "mcmc_type" keyword within
     the "MCMC.TYPE" section. If not present, the default is used.
-    
+
     Args:
       config_file:
         Configuration file name. Should be an .ini file.
@@ -89,7 +89,7 @@ def extract_mcmc_type(config_file: str,
 
 def define_mcmc_function(mcmc_type: str) -> Callable:
     """Links mcmc_type name to function.
-    
+
     Args:
       mcmc_type (str):
         Keyword for MCMC function to use.
@@ -110,7 +110,7 @@ def hbmcmc_extract_param(config_file: str,
     """Extract parameters from input configuration file and associated
     MCMC function. Checks the mcmc_type to extract the required
     parameters.
-    
+
     Args:
       config_file:
         Configuration file name. Should be an .ini file.
@@ -129,10 +129,7 @@ def hbmcmc_extract_param(config_file: str,
         MCMC function to use, dictionary of parameter names and values passed
         to MCMC function
     """
-    if mcmc_type == "fixed_basis":
-        expected_param = fixed_basis_expected_param()
-    else:
-        expected_param = []
+    expected_param = fixed_basis_expected_param() if mcmc_type == "fixed_basis" else []
 
     # If an expected parameter has been passed from the command line,
     # this does not need to be within the config file

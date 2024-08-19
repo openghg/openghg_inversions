@@ -102,9 +102,8 @@ def create_bc_sensitivity(start_date : str,
 
 def sigma_freq_indicies(ytime : np.ndarray, 
                         sigma_freq : str | None) -> np.ndarray:
-    """Create an index that splits times
-    into given periods
-    
+    """Create an index that splits times into given periods.
+
     Args:
       ytime:
         concatenated array of time values for observations

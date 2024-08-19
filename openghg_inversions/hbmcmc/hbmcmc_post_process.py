@@ -1,4 +1,4 @@
-"""Script to process HBMCMC (RHIME) output
+"""Script to process HBMCMC (RHIME) output.
 
 Includes:
 Write netcdf and append netcdf to write output to nc file
@@ -48,8 +48,8 @@ def check_platform(site: str, network: str | None=None)->str | None:
         otherwise None
     """
     if network is None:
-        network = list(site_info[site].keys())[0]
-    if "platform" in site_info[site][network].keys():
+        network = next(iter(site_info[site].keys()))
+    if "platform" in site_info[site][network]:
         return site_info[site][network]["platform"]
     else:
         return None
@@ -59,8 +59,9 @@ def define_stations(ds: xr.Dataset,
                     sites: list[str] | None=None, 
                     use_site_info: bool | None=False
                    )->dict | None:
-    """The define_stations function defines the latitude and longitude values for each site within
-    a dataset. The output can be passed directly as the 'stations' argument in plot_map
+    """Define latitude and longitude values for each site in a dataset.
+
+    The output can be passed directly as the 'stations' argument in plot_map.
 
     If sites is not specified, if the platform for the site is listed as "aircraft" or
     "satellite" in the site_info.json file then no values are included in the stations
@@ -94,7 +95,7 @@ def define_stations(ds: xr.Dataset,
 
     if use_site_info:
         for site in sites:
-            network = list(site_info[site].keys())[0]
+            network = next(iter(site_info[site].keys()))
             stations[site + "lons"] = [site_info[site][network]["latitude"]]
             stations[site + "lats"] = [site_info[site][network]["longitude"]]
     else:
@@ -245,8 +246,9 @@ def set_clevels(
 
 
 def unbiasedDivergingCmap(data, zero=0, minValue=None, maxValue=None):
-    """Calculate the normalisation of a diverging cbar around a given value
-    Prevents bias due to asymetry in data affecting scale
+    """Calculate the normalisation of a diverging cbar around a given value.
+
+    Prevents bias due to asymmetry in data affecting scale.
 
     Args:
         data : numpy array of data to plot
@@ -371,7 +373,7 @@ def plot_map(
         )
         clevels = set_clevels(data, robust=True)
 
-    if smooth == True:
+    if smooth is True:
         if divergeCentre is None:
             cp = ax.contourf(
                 lon, lat, data, transform=ccrs.PlateCarree(), cmap=cmap, levels=clevels, extend=extend
@@ -653,10 +655,7 @@ def plot_scale_map(
         Otherwise:
             Plot is displayed interactively
     """
-    if plot_stations:
-        stations = [define_stations(ds, use_site_info=use_site_info) for ds in ds_list]
-    else:
-        stations = None
+    stations = [define_stations(ds, use_site_info=use_site_info) for ds in ds_list] if plot_stations else None
 
     if lat is None:
         lat = ds_list[0]["lat"]
@@ -757,10 +756,7 @@ def plot_abs_map(
         Otherwise:
             Plot is displayed interactively
     """
-    if plot_stations:
-        stations = [define_stations(ds, use_site_info=use_site_info) for ds in ds_list]
-    else:
-        stations = None
+    stations = [define_stations(ds, use_site_info=use_site_info) for ds in ds_list] if plot_stations else None
 
     if lat is None:
         lat = ds_list[0]["lat"]
@@ -862,10 +858,7 @@ def plot_diff_map(
         Otherwise:
             Plot is displayed interactively
     """
-    if plot_stations:
-        stations = [define_stations(ds, use_site_info=use_site_info) for ds in ds_list]
-    else:
-        stations = None
+    stations = [define_stations(ds, use_site_info=use_site_info) for ds in ds_list] if plot_stations else None
 
     if lat is None:
         lat = ds_list[0]["lat"]
@@ -903,7 +896,7 @@ def plot_diff_map(
 
 
 def country_emissions(ds, species, domain, country_file=None, country_unit_prefix=None, countries=None):
-    """Extract indiviudal country emissions from a dataset
+    """Extract indiviudal country emissions from a dataset.
 
     Args:
         ds (xarray.Dataset) : 
@@ -921,7 +914,7 @@ def country_emissions(ds, species, domain, country_file=None, country_unit_prefi
         countries (data array) :
             array of country names for which to calculate emissions for. Defaults to None, in which case these
             are extracted from the country file
-    
+
     Returns:
         cntrymean (data array):
             1D array of mean emissions from each country
@@ -933,7 +926,7 @@ def country_emissions(ds, species, domain, country_file=None, country_unit_prefi
             1D array of prior emissions from each country
         cntrymode (data array) :
             1D array of mode emissions from each country
-        
+
 
     """
     c_object = utils.get_country(domain, country_file=country_file)
@@ -972,23 +965,20 @@ def country_emissions(ds, species, domain, country_file=None, country_unit_prefi
 
     area = utils.areagrid(lat, lon)
 
-    if countries is None:
-        cntrynames = cntryds.name.values
-    else:
-        cntrynames = countries
+    cntrynames = cntryds.name.values if countries is None else countries
     cntrygrid = cntryds.country.values
     cntrymean = np.zeros(len(cntrynames))
     cntrymode = np.zeros(len(cntrynames))
     cntry68 = np.zeros((len(cntrynames), len(nui)))
     cntry95 = np.zeros((len(cntrynames), len(nui)))
-    cntrysd = np.zeros(len(cntrynames))
+    np.zeros(len(cntrynames))
     cntryprior = np.zeros(len(cntrynames))
     molarmass = convert.molar_mass(species)
 
     unit_factor = convert.prefix(country_unit_prefix)
     if country_unit_prefix is None:
         country_unit_prefix = ""
-    country_units = country_unit_prefix + "g"
+    country_unit_prefix + "g"
 
     for i, cntry in enumerate(cntrynames):
         ci = np.where(cntryds.name.values == cntry)[0][0]
@@ -1055,7 +1045,7 @@ def country_emissions_mult(
             array of 95th percentile upper and lower bounds of country emissions for each ds,
             with size [number of ds x number of countries x 2]
         cntryprior_arr (np.ndarray):
-            array of country priors for each ds, with size [number of ds x number of countries]
+            array of country priors for each ds, with size [number of ds x number of countries].
     """
     if countries is None:
         countries = ds_list[0].countrynames.values
@@ -1134,7 +1124,7 @@ def plot_country_timeseries(
         (country_label + " " + y_label + ", " + units + " yr$^{-1}$"), fontsize=10, fontweight="bold"
     )
     ax.set_xlabel("Date", fontsize=10, fontweight="bold")
-    legend = ax.legend(loc="upper left", labelspacing=0.1, fontsize=10)
+    ax.legend(loc="upper left", labelspacing=0.1, fontsize=10)
     ax.xaxis.set_tick_params(labelsize=10)
     ax.yaxis.set_tick_params(labelsize=10)
     ax.xaxis.set_major_locator(mdates.YearLocator())
@@ -1152,9 +1142,8 @@ def plot_multi_country_timeseries(
         plot_prior = True,
         figsize = (7,3)
 ):
-    """Generates a plot of country emissions timeseries from a list of yearly inversion datasets
-    and a list of countries contained in a specified country file
-    
+    """Plot country emissions timeseries for given inversions and specified countries.
+
     Args:
         ds_list (list):
             list of RHIME hbmcmc output datasets
@@ -1194,7 +1183,7 @@ def plot_multi_country_timeseries(
             d0, cntry68_arr[:,i,0], cntry68_arr[:,i,1], alpha=0.3)
 
     ax.set_xlabel("Date", fontsize=10, fontweight="bold")
-    legend = ax.legend(loc="upper left", labelspacing=0.1, fontsize=10)
+    ax.legend(loc="upper left", labelspacing=0.1, fontsize=10)
     ax.xaxis.set_tick_params(labelsize=10)
     ax.yaxis.set_tick_params(labelsize=10)
     ax.xaxis.set_major_locator(mdates.YearLocator())
@@ -1446,7 +1435,7 @@ def open_ds(path):
     Args:
         path (str) :
             path to xarray dataset
-    
+
     Returns:
         ds (xarray dataset) :
             dataset 
@@ -1476,7 +1465,7 @@ def extract_hbmcmc_files(directory, species, domain, runname, dates, return_file
             in the output file name
         return_filenames (bool) :
             whether to return the filenames. Defaults to False
-    
+
     Returns:
         ds_list (list) :
             list of xarray datasets matching the input parameters
@@ -1508,7 +1497,7 @@ def extract_hbmcmc_files(directory, species, domain, runname, dates, return_file
 
 
 def check_missing_dates(filenames, dates, labels=[]):
-    """Checks for missing dates from a list of filenames
+    """Checks for missing dates from a list of filenames.
 
     Args:
         filenames (list) :
@@ -1517,7 +1506,7 @@ def check_missing_dates(filenames, dates, labels=[]):
             list of expected dates to check in filenames
         labels (list) :
             list of labels for the dates that do match
-    
+
     Returns:
         dates (list) :
             list of dates with matching filenames
@@ -1550,7 +1539,7 @@ def calculate_DIC(ds, silence=False):
     """Calculates the Deviance information criterion (DIC) for an inversion.
     It does this using two different definitions:
     1) Spiegelhalter et al. (2002) https://doi.org/10.1111/1467-9868.00353
-    2) Gelman et al. (2004) http://www.stat.columbia.edu/~gelman/research/published/waic_understand3.pdf
+    2) Gelman et al. (2004) http://www.stat.columbia.edu/~gelman/research/published/waic_understand3.pdf.
 
     The DIC is similar to metrics like AIC (Akaike Information Criterion) but
     better suited to hierarchical models and MCMC.

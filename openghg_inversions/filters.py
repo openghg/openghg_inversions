@@ -28,7 +28,7 @@ filtering_functions = {}
 
 
 def register_filter(filt: Callable) -> Callable:
-    """Decorator function to register filters
+    """Decorator function to register filters.
 
     Args:
         filt: filter function to register
@@ -205,7 +205,7 @@ def six_hr_mean(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def daytime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during daytime hours (11:00-15:00)
+    """Subset during daytime hours (11:00-15:00).
 
     Args:
         dataset: dataset to filter
@@ -227,7 +227,7 @@ def daytime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def daytime9to5(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during daytime hours (9:00-17:00)
+    """Subset during daytime hours (9:00-17:00).
 
     Args:
         dataset: dataset to filter
@@ -249,7 +249,7 @@ def daytime9to5(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def nighttime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during nighttime hours (23:00 - 03:00)
+    """Subset during nighttime hours (23:00 - 03:00).
 
     Args:
         dataset: dataset to filter
@@ -271,7 +271,7 @@ def nighttime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def noon(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Select only 12pm data
+    """Select only 12pm data.
 
     Args:
         dataset: dataset to filter
@@ -414,10 +414,7 @@ def pblh_inlet_diff(
             "Could not find inlet height from `inlet_height_magl` or `inlet` dataset attributes."
         )
 
-    if inlet_height != "multiple":
-        inlet_height = float(inlet_height)
-    else:
-        inlet_height = dataset.inlet
+    inlet_height = float(inlet_height) if inlet_height != "multiple" else dataset.inlet
 
     pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
 
@@ -428,5 +425,5 @@ def pblh_inlet_diff(
 
 @register_filter
 def pblh(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Deprecated: pblh is now called pblh_inlet_diff"""
+    """Deprecated: pblh is now called pblh_inlet_diff."""
     raise NotImplementedError("pblh is now called pblh_inlet_diff")

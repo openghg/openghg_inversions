@@ -1,5 +1,4 @@
-"""Functions to calling basis function algorithms and applying basis functions to data.
-"""
+"""Functions to calling basis function algorithms and applying basis functions to data."""
 
 from pathlib import Path
 

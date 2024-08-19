@@ -38,7 +38,7 @@ _openghginv_path = Path(__file__).parents[2]
 class Paths:
     """Object that used to be used to store paths to obs, ACRG and LPDM directories.
     However, with the move over to OpenGHG this is generally all deprecated
-    Currently, the only path is to the current openghg_inversions directory
+    Currently, the only path is to the current openghg_inversions directory.
 
     All paths are pathlib.Path objects (Python >3.4)
 

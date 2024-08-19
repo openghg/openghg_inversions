@@ -250,7 +250,7 @@ def fixedbasisMCMC(
       min_error_options: 
         Dictionary of additional arguments to pass the the function used to calculate min. model
         error (as specified by `calculate_min_error`).
-      
+
     Return:
       Results from the inversion in a Dataset if skip_post_processing==False, in a dictionnary if True
     """
@@ -273,7 +273,7 @@ def fixedbasisMCMC(
             rerun_merge = False
 
             # check if sites were dropped when merged data was saved
-            sites_merged = [s for s in fp_all.keys() if "." not in s]
+            sites_merged = [s for s in fp_all if "." not in s]
 
             if len(sites) != len(sites_merged):
                 keep_i = [i for i, s in enumerate(sites) if s in sites_merged]
@@ -408,10 +408,7 @@ def fixedbasisMCMC(
             else:
                 Ytime = np.concatenate((Ytime, fp_data[site].time.values))
 
-            if si == 0:
-                Hx = fp_data[site].H.values
-            else:
-                Hx = np.hstack((Hx, fp_data[site].H.values))
+            Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
 
         # Calculate min error
         if calculate_min_error == "residual":
@@ -439,7 +436,7 @@ def fixedbasisMCMC(
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
         # Path to save trace
-        if isinstance(save_trace, (str, Path)):
+        if isinstance(save_trace, str | Path):
             trace_path = save_trace
         elif save_trace is True:
             trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
@@ -601,7 +598,7 @@ def rerun_output(input_file: str,
     bcprior = {k: float(v) if isFloat(v) else v for k, v in zip(bcprior_string[::2], bcprior_string[1::2])}
     sigprior_string = ds_in.attrs["Model error Prior"].split(",")
     sigprior = {k: float(v) if isFloat(v) else v for k, v in zip(sigprior_string[::2], sigprior_string[1::2])}
-    if "Offset Prior" in ds_in.attrs.keys():
+    if "Offset Prior" in ds_in.attrs:
         offsetprior_string = ds_in.attrs["Offset Prior"].split(",")
         offsetprior = {
             k: float(v) if isFloat(v) else v
@@ -615,10 +612,7 @@ def rerun_output(input_file: str,
     burn = int(ds_in.attrs["Burn in"])
     tune = int(ds_in.attrs["Tuning steps"])
     nchain = int(ds_in.attrs["Number of chains"])
-    if ds_in.attrs["Error for each site"] == "True":
-        sigma_per_site = True
-    else:
-        sigma_per_site = False
+    sigma_per_site = ds_in.attrs["Error for each site"] == "True"
     sites = ds_in.sitenames.values
 
     file_list = input_file.split("/")[-1].split("_")

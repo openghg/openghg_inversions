@@ -131,7 +131,7 @@ def read_netcdfs(
 
 
 def get_country(domain: str, country_file: str | Path | None = None):
-    """Open country file for given domain and return as a SimpleNamespace
+    """Open country file for given domain and return as a SimpleNamespace.
 
     NOTE: a SimpleNamespace is a like dict with class like attribute access
 
@@ -186,7 +186,7 @@ def get_country(domain: str, country_file: str | Path | None = None):
 
 
 def areagrid(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
-    """Calculates grid of areas (m^2), given arrays of latitudes and longitudes
+    """Calculates grid of areas (m^2), given arrays of latitudes and longitudes.
 
     Args:
         lat: 1D array of latitudes

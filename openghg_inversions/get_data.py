@@ -2,7 +2,7 @@
 # get_data.py
 # Author: Atmospheric Chemistry Research Group, University of Bristol
 """Functions for retrieving observations and datasets for creating forward
-simulations
+simulations.
 
 Current data processing options include:
 - "data_processing_surface_notracer": Surface based measurements, without tracers
@@ -17,7 +17,7 @@ import logging
 import pickle
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, cast, Literal, Optional
+from typing import Any, cast, Literal
 
 import numpy as np
 from openghg.analyse import ModelScenario
@@ -121,11 +121,10 @@ def data_processing_surface_notracer(
     merged_data_dir: str | None = None,
     output_name: str | None = None,
 ) -> tuple[dict, list, list, list, list, list]:
-    """Retrieve and prepare fixed-surface datasets from
-    specified OpenGHG object stores for forward
-    simulations and model-data comparisons that do not
-    use tracers
-    ---------------------------------------------
+    """Retrieve and prepare fixed-surface datasets from specified OpenGHG object stores.
+
+    Use for forward simulations and model-data comparisons that do not
+    use tracers.
 
     Args:
         species:
@@ -533,7 +532,7 @@ def load_merged_data(
     start_date: str | None = None,
     output_name: str | None = None,
     merged_data_name: str | None = None,
-    output_format: Optional[Literal["pickle", "netcdf", "zarr", "zarr.zip"]] = None,
+    output_format: Literal["pickle", "netcdf", "zarr", "zarr.zip"] | None = None,
 ) -> dict:
     """Load `fp_all` dictionary from a file in `merged_data_dir`.
 
@@ -749,7 +748,7 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
 
     for i, site in enumerate(ds.site.values):
         scenario = (
-            ds.sel(site=site, drop=True).drop_vars(["flux"] + bc_vars, errors="ignore").drop_dims("source")
+            ds.sel(site=site, drop=True).drop_vars(["flux", *bc_vars], errors="ignore").drop_dims("source")
         )
 
         # extract attributes that were gathered into a list

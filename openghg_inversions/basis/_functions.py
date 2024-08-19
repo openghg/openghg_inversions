@@ -1,5 +1,4 @@
-"""Functions to create basis datasets from fluxes and footprints.
-"""
+"""Functions to create basis datasets from fluxes and footprints."""
 
 import os
 
@@ -279,7 +278,7 @@ def bucketbasisfunction(
 ) -> xr.DataArray:
     """Basis functions calculated using a weighted region approach
     where each basis function / scaling region contains approximately
-    the same value
+    the same value.
 
     Args:
       fp_all (dict):

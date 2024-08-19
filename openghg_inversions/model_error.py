@@ -1,5 +1,4 @@
-"""Functions for computing estimates of model error.
-"""
+"""Functions for computing estimates of model error."""
 
 
 import numpy as np
@@ -95,7 +94,7 @@ def residual_error_method(
 
 
 def percentile_error_method(ds_dict: dict[str, xr.Dataset]) -> np.ndarray:
-    """Compute estimate of minimum model error using percentile error method
+    """Compute estimate of minimum model error using percentile error method.
 
     This is a simple method to estimate the minimum model error (i.e. the model error used at baseline
     points). For each site. it takes the monthly median measured mf and subtracts the monthly 5th

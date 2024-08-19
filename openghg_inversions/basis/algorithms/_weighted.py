@@ -10,7 +10,7 @@ import xarray as xr
 # BUCKET BASIS FUNCTIONS
 def load_landsea_indices() -> np.ndarray:
     """Load UKMO array with indices that separate
-    land and sea regions in EUROPE domain
+    land and sea regions in EUROPE domain.
 
     Returns :
         Array containing 0 (where there is sea)
@@ -117,7 +117,7 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int) -
 
 def bucket_split_landsea_basis(grid: np.ndarray, bucket: float) -> np.ndarray:
     """Same as bucket_split_basis but includes
-    land-sea split. i.e. basis functions cannot overlap sea and land
+    land-sea split. i.e. basis functions cannot overlap sea and land.
 
     Args:
         grid:
@@ -161,7 +161,7 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float) -> np.ndarray:
 def nregion_landsea_basis(
     grid: np.ndarray, bucket: float = 1, nregion: int = 100, tol: int = 1
 ) -> np.ndarray:
-    """Obtain basis function with nregions (for land-sea split)
+    """Obtain basis function with nregions (for land-sea split).
 
     Args:
         grid:

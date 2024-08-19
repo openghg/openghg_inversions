@@ -1,5 +1,4 @@
-"""Functions to create fit basis functiosn and apply to data
-"""
+"""Functions to create fit basis functiosn and apply to data."""
 
 
 from openghg.dataobjects import FluxData
@@ -47,14 +46,11 @@ def fp_sensitivity(
     flux_sources = list(fp_and_data[".flux"].keys())
 
     if not isinstance(basis_func, dict):
-        if len(flux_sources) == 1:
-            basis_func = {flux_sources[0]: basis_func}
-        else:
-            basis_func = {"all": basis_func}
+        basis_func = {flux_sources[0]: basis_func} if len(flux_sources) == 1 else {"all": basis_func}
 
     if len(list(basis_func.keys())) != len(flux_sources):
         if len(list(basis_func.keys())) == 1:
-            print(f"Using {basis_func[list(basis_func.keys())[0]]} as the basis case for all sources")
+            print(f"Using {basis_func[next(iter(basis_func.keys()))]} as the basis case for all sources")
         else:
             print(
                 "There should either only be one basis_func, or it should be a dictionary the same length\
@@ -214,7 +210,7 @@ def bc_sensitivity(
             fp_and_data[site][particles] = fp_and_data[site][particles].compute()
 
         # compute any chemical loss to the BCs, use lifetime or else set loss to 1 (no loss)
-        if "lifetime" in species_info[species].keys():
+        if "lifetime" in species_info[species]:
             lifetime = species_info[species]["lifetime"]
             lifetime_hrs_list_or_float = convert.convert_to_hours(lifetime)
 
@@ -423,7 +419,7 @@ def timeseries_HiTRes(
     }
 
     for sector, flux_sector in flux.items():
-        if "high_freq" in flux_sector.keys() and flux_sector["high_freq"] is not None:
+        if "high_freq" in flux_sector and flux_sector["high_freq"] is not None:
             # reindex the high frequency data to match the fp
             time_flux = np.arange(
                 fp_HiTRes_ds.time[0].values - np.timedelta64(max_H_back, "h"),
@@ -438,7 +434,7 @@ def timeseries_HiTRes(
             )
             flux_sector["high_freq"] = None
 
-        if "low_freq" not in flux_sector.keys() or flux_sector["low_freq"] is None:
+        if "low_freq" not in flux_sector or flux_sector["low_freq"] is None:
             print(f"\nWarning: no low frequency flux data for {sector}, resampling from high frequency data")
             flux_sector["low_freq"] = flux_sector["high_freq"].resample(time="MS").mean()
 
@@ -459,11 +455,11 @@ def timeseries_HiTRes(
     if output_fpXflux:
         fpXflux = {
             sector: da.zeros((len(fp_HiTRes_ds.lat), len(fp_HiTRes_ds.lon), len(time_array)))
-            for sector in flux.keys()
+            for sector in flux
         }
 
     elif output_TS:
-        timeseries = {sector: da.zeros(len(time_array)) for sector in flux.keys()}
+        timeseries = {sector: da.zeros(len(time_array)) for sector in flux}
 
     # month and year of the start of the data - used to index the low res data
     start = {dd: getattr(np.datetime64(time_array[0], "h").astype(object), dd) for dd in ["month", "year"]}

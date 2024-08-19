@@ -1,5 +1,4 @@
-"""Module to create basis regions for the inversion using a quadtree algorithm.
-"""
+"""Module to create basis regions for the inversion using a quadtree algorithm."""
 
 
 import numpy as np
@@ -44,10 +43,7 @@ class quadTreeNode:
 
     def isLeaf(self):
         """Return True if node is a leaf (i.e. don't have children), False if not."""
-        if self.child1 or self.child2 or self.child3 or self.child4:
-            return False
-        else:
-            return True
+        return not (self.child1 or self.child2 or self.child3 or self.child4)
 
     def createChildren(self, grid: np.ndarray, limit: float):
         """Create children nodes. If finest resolution or bucket level reached,
