@@ -1,5 +1,4 @@
-"""
-Wrapper script to read in parameters from a configuration file and run underlying MCMC script.
+"""Wrapper script to read in parameters from a configuration file and run underlying MCMC script.
 
 Run as:
     $ python run_hbmcmc.py [start end -c config.ini]
@@ -22,30 +21,29 @@ The MCMC run *will not be executed*. This will be named for your -c input or, if
 create a configuration file called `hbmcmc_input.ini` within your acrg_hbmcmc/ directory and exit.
 This file will need to be edited to add parameters for your MCMC run.
 """
+
 import json
-import os
 import sys
 import argparse
 from shutil import copyfile
-from typing import Optional, Callable
+from collections.abc import Callable
 
 import openghg_inversions.hbmcmc.hbmcmc as mcmc
 import openghg_inversions.hbmcmc.hbmcmc_output as output
 
-import openghg_inversions.config.config as config
+from openghg_inversions.config import config
 from openghg_inversions.config.paths import Paths
 
 
 def fixed_basis_expected_param() -> list[str]:
-    """
-    Define required parameters for openghg_inversions.hcmcmc.fixedbasisMCMC()
+    """Define required parameters for openghg_inversions.hcmcmc.fixedbasisMCMC().
 
     Expected parameters currently include:
       species, sites, averaging_period, domain, start_date, end_date,
       outputpath, outputname
 
     Returns:
-      expected_param: required parameter names 
+      expected_param: required parameter names
     """
     expected_param = [
         "species",
@@ -61,14 +59,12 @@ def fixed_basis_expected_param() -> list[str]:
     return expected_param
 
 
-def extract_mcmc_type(config_file: str,
-                      default: str ="fixed_basis"
-                      ) -> str:
-    """
-    Find value which describes the MCMC function to use.
+def extract_mcmc_type(config_file: str, default: str = "fixed_basis") -> str:
+    """Find value which describes the MCMC function to use.
+
     Checks the input configuation file the "mcmc_type" keyword within
     the "MCMC.TYPE" section. If not present, the default is used.
-    
+
     Args:
       config_file:
         Configuration file name. Should be an .ini file.
@@ -91,9 +87,8 @@ def extract_mcmc_type(config_file: str,
 
 
 def define_mcmc_function(mcmc_type: str) -> Callable:
-    """
-    Links mcmc_type name to function.
-    
+    """Links mcmc_type name to function.
+
     Args:
       mcmc_type (str):
         Keyword for MCMC function to use.
@@ -107,15 +102,13 @@ def define_mcmc_function(mcmc_type: str) -> Callable:
     return function_dict[mcmc_type]
 
 
-def hbmcmc_extract_param(config_file: str, 
-                         mcmc_type: Optional[str] ="fixed_basis", 
-                         print_param: Optional[bool] =True, 
-                         **command_line):
-    """
-    Extract parameters from input configuration file and associated
-    MCMC function. Checks the mcmc_type to extract the required
-    parameters.
-    
+def hbmcmc_extract_param(
+    config_file: str, mcmc_type: str | None = "fixed_basis", print_param: bool | None = True, **command_line
+):
+    """Extract parameters from input configuration file and associated MCMC function.
+
+    Checks the mcmc_type to extract the required parameters.
+
     Args:
       config_file:
         Configuration file name. Should be an .ini file.
@@ -133,11 +126,11 @@ def hbmcmc_extract_param(config_file: str,
       function,collections.OrderedDict:
         MCMC function to use, dictionary of parameter names and values passed
         to MCMC function
+
+    Raises:
+        ValueError if expected parameter is missing or has `None` value.
     """
-    if mcmc_type == "fixed_basis":
-        expected_param = fixed_basis_expected_param()
-    else:
-        expected_param = []
+    expected_param = fixed_basis_expected_param() if mcmc_type == "fixed_basis" else []
 
     # If an expected parameter has been passed from the command line,
     # this does not need to be within the config file
@@ -159,8 +152,8 @@ def hbmcmc_extract_param(config_file: str,
     # If configuration file does not include values for the
     # required parameters - produce an error
     for ep in expected_param:
-        if not param[ep]:
-            raise Exception(f"Required parameter '{ep}' has not been defined")
+        if ep not in param or not param[ep]:
+            raise ValueError(f"Required parameter '{ep}' has not been defined")
 
     if print_param:
         print("\nInput parameters: ")
@@ -172,8 +165,7 @@ def hbmcmc_extract_param(config_file: str,
 
 if __name__ == "__main__":
     openghginv_path = Paths.openghginv
-    default_config_file = os.path.join(openghginv_path, "hbmcmc/hbmcmc_input.ini")
-    config_file = default_config_file
+    config_file = openghginv_path / "hbmcmc" / "hbmcmc_input.ini"
 
     parser = argparse.ArgumentParser(description="Running Hierarchical Bayesian MCMC script")
     parser.add_argument("start", help="Start date string of the format YYYY-MM-DD", nargs="?")
@@ -193,14 +185,13 @@ if __name__ == "__main__":
         help='Pass keyword arguments to mcmc function. Format: \'{"key1": "val1", "key2": "val2"}\'.',
     )
     parser.add_argument(
-            "--output-path",
-            help="Path to write ini file and results to.",
-        )
-
+        "--output-path",
+        help="Path to write ini file and results to.",
+    )
 
     args = parser.parse_args()
 
-    config_file = args.config or args.config_file
+    config_file = args.config
     command_line_args = {}
     if args.start:
         command_line_args["start_date"] = args.start
@@ -213,8 +204,8 @@ if __name__ == "__main__":
         command_line_args.update(args.kwargs)
 
     if args.generate is True:
-        template_file = os.path.join(openghginv_path, "hbmcmc/config/hbmcmc_input_template.ini")
-        if os.path.exists(config_file):
+        template_file = openghginv_path / "hbmcmc" / "config" / "hbmcmc_input_template.ini"
+        if config_file.exists():
             write = input(f"Config file {config_file} already exists.\nOverwrite? (y/n): ")
             if write.lower() == "y" or write.lower() == "yes":
                 copyfile(template_file, config_file)
@@ -224,18 +215,11 @@ if __name__ == "__main__":
             copyfile(template_file, config_file)
         sys.exit(f"New configuration file has been generated: {config_file}")
 
-    if not os.path.exists(config_file):
-        if config_file == default_config_file:
-            sys.exit(
-                "No configuration file detected.\n"
-                "To generate a template configuration file run again"
-                " with -r flag:\n  $ python run_tdmcmc.py -r"
-            )
-        else:
-            sys.exit(
-                "Configuration file cannot be found.\n"
-                f"Please check path and filename are correct: {config_file}"
-            )
+    if not config_file.exists():
+        raise ValueError(
+            "Configuration file cannot be found.\n"
+            f"Please check path and filename are correct: {config_file}"
+        )
 
     mcmc_type = extract_mcmc_type(config_file)
     mcmc_function = define_mcmc_function(mcmc_type)

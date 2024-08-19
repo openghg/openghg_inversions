@@ -1,17 +1,11 @@
-"""
-Functions used for setting up HBMCMC inversions
-"""
+"""Functions used for setting up HBMCMC inversions."""
 
 import numpy as np
 import pandas as pd
-from typing import Union
 
-def monthly_bcs(start_date :str, 
-                end_date : str,
-                site : str, 
-                fp_data : dict) -> np.ndarray:
-    """
-    Creates a sensitivity matrix (H-matrix) for the boundary
+
+def monthly_bcs(start_date: str, end_date: str, site: str, fp_data: dict) -> np.ndarray:
+    """Creates a sensitivity matrix (H-matrix) for the boundary
     conditions, which will map monthly boundary condition
     scalings to the observations. This is for a single site.
 
@@ -49,13 +43,8 @@ def monthly_bcs(start_date :str,
     return hmbc
 
 
-def create_bc_sensitivity(start_date : str, 
-                          end_date : str, 
-                          site : str, 
-                          fp_data : dict, 
-                          freq : str) -> np.ndarray:
-    """
-    Creates a sensitivity matrix (H-matrix) for the boundary
+def create_bc_sensitivity(start_date: str, end_date: str, site: str, fp_data: dict, freq: str) -> np.ndarray:
+    """Creates a sensitivity matrix (H-matrix) for the boundary
     conditions, which will map boundary condition scalings to
     the observations. This is for a single site. The frequency
     that the boundary condition sensitivity is specified over
@@ -104,12 +93,9 @@ def create_bc_sensitivity(start_date : str,
     return hmbc
 
 
-def sigma_freq_indicies(ytime : np.ndarray, 
-                        sigma_freq : Union[str,None]) -> np.ndarray:
-    """
-    Create an index that splits times
-    into given periods
-    
+def sigma_freq_indicies(ytime: np.ndarray, sigma_freq: str | None) -> np.ndarray:
+    """Create an index that splits times into given periods.
+
     Args:
       ytime:
         concatenated array of time values for observations
@@ -150,17 +136,15 @@ def sigma_freq_indicies(ytime : np.ndarray,
     return output
 
 
-def offset_matrix(siteindicator : np.ndarray
-                  ) -> np.ndarray:
-    """
-    Set up a matrix that can be used to add an offset to each site.
-    This will anchor to the first site (i.e. first site has no offset)
+def offset_matrix(siteindicator: np.ndarray) -> np.ndarray:
+    """Set up a matrix that can be used to add an offset to each site.
+    This will anchor to the first site (i.e. first site has no offset).
 
     Args:
       siteindicator:
         Array of values used for indicating the indices associated
         with each site used in the inversion
-    
+
     Returns:
       2D array
     """

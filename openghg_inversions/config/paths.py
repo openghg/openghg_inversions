@@ -14,8 +14,8 @@
 #
 # Update by Ben Adam (ACRG), 20th February 2024:
 #
-# The move away from the ACRG repository means the only relevant path here is 
-# the one pointing to the current directory, Paths.openghginv. I have kept 
+# The move away from the ACRG repository means the only relevant path here is
+# the one pointing to the current directory, Paths.openghginv. I have kept
 # everything else commented out, for reference
 # ****************************************************************************
 
@@ -36,10 +36,9 @@ _openghginv_path = Path(__file__).parents[2]
 
 
 class Paths:
-    """
-   Object that used to be used to store paths to obs, ACRG and LPDM directories.
-   However, with the move over to OpenGHG this is generally all deprecated
-   Currently, the only path is to the current openghg_inversions directory
+    """Object that used to be used to store paths to obs, ACRG and LPDM directories.
+    However, with the move over to OpenGHG this is generally all deprecated
+    Currently, the only path is to the current openghg_inversions directory.
 
     All paths are pathlib.Path objects (Python >3.4)
 

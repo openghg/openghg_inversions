@@ -1,11 +1,10 @@
-"""
-Functions for performing MCMC inversion. 
+"""Functions for performing MCMC inversion.
 PyMC library used for Bayesian modelling.
 """
+
 import re
 import getpass
 from pathlib import Path
-from typing import Optional, Union, Any, Type
 
 import numpy as np
 import pymc as pm
@@ -22,13 +21,10 @@ from openghg_inversions import utils
 from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
-from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
-from scipy import stats
 
 
 # type alias for prior args
-PriorArgs = dict[str, Union[str, float]]
+PriorArgs = dict[str, str | float]
 
 
 def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
@@ -64,9 +60,8 @@ def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
 
 
 def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
-    """
-    Parses all PyMC continuous distributions:
-    https://docs.pymc.io/api/distributions/continuous.html
+    """Parses all PyMC continuous distributions:
+    https://docs.pymc.io/api/distributions/continuous.html.
 
     Args:
         name:
@@ -112,34 +107,33 @@ def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
     return dist(name, **params, **kwargs)
 
 
-
-def inferpymc(Hx: np.ndarray,
-              Y: np.ndarray,
-              error: np.ndarray,
-              siteindicator: np.ndarray,
-              sigma_freq_index: np.ndarray,
-              Hbc: Optional[np.ndarray] = None,
-              xprior: dict ={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-              bcprior: dict ={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-              sigprior: dict ={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
-              nuts_sampler: str = "pymc",
-              nit: int = int(2.5e5),
-              burn: int = 50000,
-              tune: int = int(1.25e5),
-              nchain: int = 2,
-              sigma_per_site: bool = True,
-              offsetprior: Optional[dict]={"pdf": "normal", "mu": 0, "sigma": 1},
-              add_offset: bool =False,
-              verbose: bool=False,
-              min_error: Optional[float] =0.0,
-              save_trace: Optional[Union[str, Path]] = None,
-              use_bc: bool = True,
-              reparameterise_log_normal: bool = False,
-              pollution_events_from_obs: bool = False,
-              no_model_error: bool = False,
-              ) -> dict:
-    """
-    Uses PyMC module for Bayesian inference for emissions field, boundary
+def inferpymc(
+    Hx: np.ndarray,
+    Y: np.ndarray,
+    error: np.ndarray,
+    siteindicator: np.ndarray,
+    sigma_freq_index: np.ndarray,
+    Hbc: np.ndarray | None = None,
+    xprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+    bcprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+    sigprior: dict = {"pdf": "uniform", "lower": 0.1, "upper": 3.0},
+    nuts_sampler: str = "pymc",
+    nit: int = int(2.5e5),
+    burn: int = 50000,
+    tune: int = int(1.25e5),
+    nchain: int = 2,
+    sigma_per_site: bool = True,
+    offsetprior: dict | None = {"pdf": "normal", "mu": 0, "sigma": 1},
+    add_offset: bool = False,
+    verbose: bool = False,
+    min_error: float | None = 0.0,
+    save_trace: str | Path | None = None,
+    use_bc: bool = True,
+    reparameterise_log_normal: bool = False,
+    pollution_events_from_obs: bool = False,
+    no_model_error: bool = False,
+) -> dict:
+    """Uses PyMC module for Bayesian inference for emissions field, boundary
     conditions and (currently) a single model error value.
     This uses a Normal likelihood but the (hyper)prior PDFs can be selected by user.
 
@@ -173,15 +167,15 @@ def inferpymc(Hx: np.ndarray,
         Same as xprior but for boundary conditions. Only used if use_bc=True.
       sigprior:
         Same as xprior but for model error.
-      nuts_sampler: 
+      nuts_sampler:
         nuts_sampler use by pymc.sample. Options are "pymc" and "numpyro"?
-      nit: 
+      nit:
         number of samples to generate (per chain)
-      burn: 
+      burn:
         number of samples to discard (or "burn") from the beginning of each chain
-      tune: 
+      tune:
         number of tuning steps used by sampler
-      nchain: 
+      nchain:
         number of chains use by sampler. You should use at least 2 chains for the convergence checks
         to work; four chains is better. Chains run in parallel, so the number of chains doesn't affect
         running time, provided the number of threads available is at least the number of chains.
@@ -194,20 +188,20 @@ def inferpymc(Hx: np.ndarray,
         Add an offset (intercept) to all sites but the first in the site list. Default False.
       verbose:
         When True, prints progress bar
-      min_error: 
+      min_error:
         Minimum error to use during inversion. Only used if no_model_error is False.
-      save_trace: 
+      save_trace:
         Path where to save the trace. If None, the trace is not saved.
         Default None.
-      use_bc: 
+      use_bc:
         When True, use and infer boundary conditions.
-      reparameterise_log_normal: 
+      reparameterise_log_normal:
         If there are many divergences when using a log normal prior, setting this to True might help. It samples from a normal prior, then puts the normal samples through a function that converts them to log normal samples; this changes the space the sampler needs to explore.
-      pollution_events_from_obs: 
-        When True, calculate the pollution events from obs; when false pollution events are set 
+      pollution_events_from_obs:
+        When True, calculate the pollution events from obs; when false pollution events are set
         to the modeled concentration.
       no_model_error:
-        When True, only use observation error in likelihood function (omitting min. model error 
+        When True, only use observation error in likelihood function (omitting min. model error
         and model error from scaling pollution events.)
 
     Returns:
@@ -268,7 +262,7 @@ def inferpymc(Hx: np.ndarray,
     if add_offset:
         B = offset_matrix(siteindicator)
 
-    with pm.Model() as model:
+    with pm.Model():
         step1_vars = []
 
         if reparameterise_log_normal and xprior["pdf"] == "lognormal":
@@ -315,7 +309,7 @@ def inferpymc(Hx: np.ndarray,
         else:
             epsilon = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)
 
-        y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
+        pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
         step1 = pm.NUTS(vars=step1_vars)
         step2 = pm.Slice(vars=[sig])
@@ -328,7 +322,7 @@ def inferpymc(Hx: np.ndarray,
             progressbar=verbose,
             cores=nchain,
             nuts_sampler=nuts_sampler,
-        )  # step=pm.Metropolis())#  #target_accept=0.8,
+        )
 
     if save_trace:
         trace.to_netcdf(str(save_trace), engine="netcdf4")
@@ -339,10 +333,6 @@ def inferpymc(Hx: np.ndarray,
         bcouts = trace.posterior["xbc"][0, burn:nit]
 
     sigouts = trace.posterior["sig"][0, burn:nit]
-
-    # outs = trace.get_values(x, burn=burn)[0:int((nit)-burn)]
-    # bcouts = trace.get_values(xbc, burn=burn)[0:int((nit)-burn)]
-    # sigouts = trace.get_values(sig, burn=burn)[0:int((nit)-burn)]
 
     # Check for convergence
     gelrub = pm.rhat(trace)["x"].max()
@@ -359,12 +349,10 @@ def inferpymc(Hx: np.ndarray,
 
     if add_offset:
         offset_outs = trace.posterior["offset"][0, burn:nit]
-        # offset_outs = trace.get_values(offset, burn=burn)[0:int((nit)-burn)]
         OFFSETtrace = np.hstack([np.zeros((int(nit - burn), 1)), offset_outs])
         OFFtrace = np.dot(B, OFFSETtrace.T)
     else:
         offset_outs = xouts * 0
-        # OFFSETtrace = np.hstack([np.zeros((int(nit-burn),1)), offset_outs])
         OFFtrace = np.zeros((ny, nit - burn))
 
     if use_bc:
@@ -404,7 +392,7 @@ def inferpymc_postprocessouts(
     step2: str,
     xprior: dict,
     sigprior: dict,
-    offsetprior: Optional[dict],
+    offsetprior: dict | None,
     Ytime: np.ndarray,
     siteindicator: np.ndarray,
     sigma_freq_index: np.ndarray,
@@ -415,37 +403,36 @@ def inferpymc_postprocessouts(
     end_date: str,
     outputname: str,
     outputpath: str,
-    country_unit_prefix: Optional[str],
+    country_unit_prefix: str | None,
     burn: int,
     tune: int,
     nchain: int,
     sigma_per_site: bool,
     emissions_name: str,
-    bcprior: Optional[dict] = None,
-    YBCtrace: Optional[np.ndarray] = None,
-    bcouts: Optional[np.ndarray] = None,
-    Hbc: Optional[np.ndarray] = None,
-    obs_repeatability: Optional[np.ndarray] = None,
-    obs_variability: Optional[np.ndarray] = None,
-    fp_data: Optional[dict]=None,
-    country_file: str=None,
-    add_offset: bool=False,
-    rerun_file: Optional[xr.Dataset]=None,
+    bcprior: dict | None = None,
+    YBCtrace: np.ndarray | None = None,
+    bcouts: np.ndarray | None = None,
+    Hbc: np.ndarray | None = None,
+    obs_repeatability: np.ndarray | None = None,
+    obs_variability: np.ndarray | None = None,
+    fp_data: dict | None = None,
+    country_file: str | None = None,
+    add_offset: bool = False,
+    rerun_file: xr.Dataset | None = None,
     use_bc: bool = False,
-    min_error: Union[float, np.ndarray] = 0.0,
+    min_error: float | np.ndarray = 0.0,
 ) -> xr.Dataset:
-    """
-    Takes the output from inferpymc function, along with some other input
-    information, calculates statistics on them and places it all in a dataset. 
-    Also calculates statistics on posterior emissions for the countries in 
+    r"""Takes the output from inferpymc function, along with some other input
+    information, calculates statistics on them and places it all in a dataset.
+    Also calculates statistics on posterior emissions for the countries in
     the inversion domain and saves all in netcdf.
-    
+
     Note that the uncertainties are defined by the highest posterior
     density (HPD) region and NOT percentiles (as the tdMCMC code).
     The HPD region is defined, for probability content (1-a), as:
         1) P(x \in R | y) = (1-a)
         2) for x1 \in R and x2 \notin R, P(x1|y)>=P(x2|y)
-    
+
     Args:
       xouts:
         MCMC chain for emissions scaling factors for each basis function.
@@ -530,9 +517,9 @@ def inferpymc_postprocessouts(
         MCMC chain for boundary condition scaling factors.
       Hbc:
         Same as Hx but for boundary conditions
-      obs_repeatability: 
+      obs_repeatability:
         Instrument error
-      obs_variability: 
+      obs_variability:
         Error from resampling observations
       fp_data:
         Output from footprints_data_merge + sensitivies
@@ -542,11 +529,11 @@ def inferpymc_postprocessouts(
         Add an offset (intercept) to all sites but the first in the site list. Default False.
       rerun_file (xarray dataset, optional):
         An xarray dataset containing the ncdf output from a previous run of the MCMC code.
-      use_bc: 
+      use_bc:
         When True, use and infer boundary conditions.
-      min_error: 
+      min_error:
         Minimum error to use during inversion. Only used if no_model_error is False.
-        
+
     Returns:
         xarray dataset containing results from inversion
 
@@ -557,7 +544,6 @@ def inferpymc_postprocessouts(
           the a priori emissions are constant over the inversion period
           or else monthly (and inversion is for less than one calendar year).
     """
-
     print("Post-processing output")
 
     # Get parameters for output file
@@ -573,7 +559,6 @@ def inferpymc_postprocessouts(
     steps = np.arange(nit)
     nmeasure = np.arange(ny)
     nparam = np.arange(nx)
-    # YBCtrace = np.dot(Hbc.T,bcouts.T)
 
     # OFFSET HYPERPARAMETER
     YmodmuOFF = np.mean(OFFSETtrace, axis=1)  # mean
@@ -669,12 +654,11 @@ def inferpymc_postprocessouts(
 
     if rerun_file is not None:
         flux_array_all = np.expand_dims(rerun_file.fluxapriori.values, 2)
+    elif emissions_name is None:
+        raise ValueError("Emissions name not provided.")
     else:
-        if emissions_name is None:
-            raise ValueError("Emissions name not provided.")
-        else:
-            emds = fp_data[".flux"][emissions_name[0]]
-            flux_array_all = emds.data.flux.values
+        emds = fp_data[".flux"][emissions_name[0]]
+        flux_array_all = emds.data.flux.values
 
     # HACK: assume that smallest flux dim is time, then re-order flux so that
     # time is the last coordinate
@@ -719,9 +703,9 @@ def inferpymc_postprocessouts(
         cntrynames = rerun_file.countrynames.values
         cntrygrid = rerun_file.countrydefinition.values
 
-    cntrymean = np.zeros((len(cntrynames)))
-    cntrymedian = np.zeros((len(cntrynames)))
-    cntrymode = np.zeros((len(cntrynames)))
+    cntrymean = np.zeros(len(cntrynames))
+    cntrymedian = np.zeros(len(cntrynames))
+    cntrymode = np.zeros(len(cntrynames))
     cntry68 = np.zeros((len(cntrynames), len(nui)))
     cntry95 = np.zeros((len(cntrynames), len(nui)))
     cntrysd = np.zeros(len(cntrynames))
@@ -765,7 +749,6 @@ def inferpymc_postprocessouts(
         cntry68[ci, :] = az.hdi(cntrytottrace.values, 0.68)
         cntry95[ci, :] = az.hdi(cntrytottrace.values, 0.95)
         cntryprior[ci] = cntrytotprior
-
 
     # make min. model error variable
     if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
@@ -827,18 +810,16 @@ def inferpymc_postprocessouts(
     }
 
     if use_bc:
-        data_vars.update(
-            {
-                "YaprioriBC": (["nmeasure"], YaprioriBC),
-                "YmodmeanBC": (["nmeasure"], YmodmuBC),
-                "YmodmedianBC": (["nmeasure"], YmodmedBC),
-                "YmodmodeBC": (["nmeasure"], YmodmodeBC),
-                "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
-                "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
-                "bctrace": (["steps", "nBC"], bcouts.values),
-                "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
-            }
-        )
+        data_vars.update({
+            "YaprioriBC": (["nmeasure"], YaprioriBC),
+            "YmodmeanBC": (["nmeasure"], YmodmuBC),
+            "YmodmedianBC": (["nmeasure"], YmodmedBC),
+            "YmodmodeBC": (["nmeasure"], YmodmodeBC),
+            "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
+            "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
+            "bctrace": (["steps", "nBC"], bcouts.values),
+            "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
+        })
         coords["numBC"] = (["nBC"], nBC)
 
     outds = xr.Dataset(data_vars, coords=coords)
@@ -944,17 +925,19 @@ def inferpymc_postprocessouts(
     outds.attrs["Tuning steps"] = str(int(tune))
     outds.attrs["Number of chains"] = str(int(nchain))
     outds.attrs["Error for each site"] = str(sigma_per_site)
-    outds.attrs["Emissions Prior"] = "".join(["{0},{1},".format(k, v) for k, v in xprior.items()])[:-1]
-    outds.attrs["Model error Prior"] = "".join(["{0},{1},".format(k, v) for k, v in sigprior.items()])[:-1]
+    outds.attrs["Emissions Prior"] = "".join([f"{k},{v}," for k, v in xprior.items()])[:-1]
+    outds.attrs["Model error Prior"] = "".join([f"{k},{v}," for k, v in sigprior.items()])[:-1]
     if use_bc:
-        outds.attrs["BCs Prior"] = "".join(["{0},{1},".format(k, v) for k, v in bcprior.items()])[:-1]
+        outds.attrs["BCs Prior"] = "".join([f"{k},{v}," for k, v in bcprior.items()])[:-1]
     if add_offset:
-        outds.attrs["Offset Prior"] = "".join(["{0},{1},".format(k, v) for k, v in offsetprior.items()])[:-1]
+        outds.attrs["Offset Prior"] = "".join([f"{k},{v}," for k, v in offsetprior.items()])[:-1]
     outds.attrs["Creator"] = getpass.getuser()
     outds.attrs["Date created"] = str(pd.Timestamp("today"))
     outds.attrs["Convergence"] = convergence
     outds.attrs["Repository version"] = code_version()
-    outds.attrs["min_model_error"] = min_error  # TODO: remove this once PARIS formatting switches over to using min error data var
+    outds.attrs["min_model_error"] = (
+        min_error  # TODO: remove this once PARIS formatting switches over to using min error data var
+    )
 
     # variables with variable length data types shouldn't be compressed
     # e.g. object ("O") or unicode ("U") type

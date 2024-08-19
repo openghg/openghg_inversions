@@ -1,5 +1,4 @@
-"""
-Script containing common Python functions that can be called for running
+"""Script containing common Python functions that can be called for running
 HBMCMC and other inversion models.
 
 The main functions are related to applying basis functions to the flux and boundary
@@ -9,10 +8,9 @@ Many functions in this submodule originated in the ACRG code base (in `acrg.name
 
 """
 
-import os
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Literal, Optional, Union
+from typing import Literal
 
 import numpy as np
 import xarray as xr
@@ -28,11 +26,10 @@ openghginv_path = Paths.openghginv
 def combine_datasets(
     dataset_a: xr.Dataset,
     dataset_b: xr.Dataset,
-    method: Optional[str] = "nearest",
-    tolerance: Optional[float] = None,
+    method: str | None = "nearest",
+    tolerance: float | None = None,
 ) -> xr.Dataset:
-    """
-    Merges two datasets and re-indexes to the first dataset.
+    """Merges two datasets and re-indexes to the first dataset.
 
     If "fp" variable is found within the combined dataset,
     the "time" values where the "lat", "lon" dimensions didn't match are removed.
@@ -54,12 +51,11 @@ def combine_datasets(
 
 
 def open_ds(
-    path: Union[str, Path],
-    chunks: Optional[dict] = None,
+    path: str | Path,
+    chunks: dict | None = None,
     combine: Literal["by_coords", "nested"] = "by_coords",
 ) -> xr.Dataset:
-    """
-    Function efficiently opens xarray Datasets.
+    """Function efficiently opens xarray Datasets.
 
     Args:
       path: path to file to open
@@ -88,13 +84,12 @@ def open_ds(
 
 
 def read_netcdfs(
-    files: Union[list[str], list[Path]],
+    files: list[str] | list[Path],
     dim: str = "time",
-    chunks: Optional[dict] = None,
+    chunks: dict | None = None,
     verbose: bool = True,
 ) -> xr.Dataset:
-    """
-    The read_netcdfs function uses xarray to open sequential netCDF files and
+    """The read_netcdfs function uses xarray to open sequential netCDF files and
     and concatenates them along the specified dimension.
     Note: this function makes sure that file is closed after open_dataset call.
 
@@ -135,8 +130,8 @@ def read_netcdfs(
     return combined
 
 
-def get_country(domain: str, country_file: Union[str, Path, None] = None):
-    """Open country file for given domain and return as a SimpleNamespace
+def get_country(domain: str, country_file: str | Path | None = None):
+    """Open country file for given domain and return as a SimpleNamespace.
 
     NOTE: a SimpleNamespace is a like dict with class like attribute access
 
@@ -191,8 +186,7 @@ def get_country(domain: str, country_file: Union[str, Path, None] = None):
 
 
 def areagrid(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
-    """
-    Calculates grid of areas (m^2), given arrays of latitudes and longitudes
+    """Calculates grid of areas (m^2), given arrays of latitudes and longitudes.
 
     Args:
         lat: 1D array of latitudes
@@ -207,7 +201,6 @@ def areagrid(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
         >>> lon = np.arange(0., 10., 1.)
         >>> area = utils.areagrid(lat, lon)
     """
-
     rad_earth = 6367500.0  # radius of Earth in m
 
     dlon = abs(np.mean(lon[1:] - lon[0:-1])) * np.pi / 180.0
@@ -225,5 +218,3 @@ def areagrid(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
             area[latI, :] = (rad_earth**2) * (np.cos(lat1) - np.cos(lat2)) * dlon
 
     return area
-
-

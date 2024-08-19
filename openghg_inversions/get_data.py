@@ -1,9 +1,8 @@
 # *****************************************************************************
 # get_data.py
 # Author: Atmospheric Chemistry Research Group, University of Bristol
-"""
-Functions for retrieving observations and datasets for creating forward
-simulations
+"""Functions for retrieving observations and datasets for creating forward
+simulations.
 
 Current data processing options include:
 - "data_processing_surface_notracer": Surface based measurements, without tracers
@@ -14,11 +13,12 @@ Future data processing options will include:
 This module also includes functions for saving and loading "merged data" created
 by the data processing functions.
 """
+
 import logging
 import pickle
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Literal, Optional, Union, cast
+from typing import Any, cast, Literal
 
 import numpy as np
 from openghg.analyse import ModelScenario
@@ -76,11 +76,10 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
                     "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site %s", site
                 )
 
+        elif add_averaging_error:
+            ds["mf_error"] = np.sqrt(ds["mf_repeatability"] ** 2 + ds["mf_variability"] ** 2)
         else:
-            if add_averaging_error:
-                ds["mf_error"] = np.sqrt(ds["mf_repeatability"] ** 2 + ds["mf_variability"] ** 2)
-            else:
-                ds["mf_error"] = ds["mf_repeatability"]
+            ds["mf_error"] = ds["mf_repeatability"]
 
         # warnings/info for debugging
         err0 = ds["mf_error"] == 0
@@ -99,36 +98,35 @@ def data_processing_surface_notracer(
     species: str,
     sites: list | str,
     domain: str,
-    averaging_period: list | str,
+    averaging_period: list[str | None] | str | None,
     start_date: str,
     end_date: str,
     obs_data_level: list[str | None] | str | None = None,
     inlet: list[str | None] | str | None = None,
     instrument: list[str | None] | str | None = None,
-    calibration_scale: Optional[str] = None,
+    calibration_scale: str | None = None,
     met_model: list[str | None] | str | None = None,
-    fp_model: Optional[str] = None,
+    fp_model: str | None = None,
     fp_height: list[str | None] | str | None = None,
-    fp_species: Optional[str] = None,
-    emissions_name: Optional[list] = None,
-    use_bc: Optional[bool] = True,
-    bc_input: Optional[str] = None,
-    bc_store: Optional[str] = None,
-    obs_store: Optional[str] = None,
-    footprint_store: Optional[str] = None,
-    emissions_store: Optional[str] = None,
-    averagingerror: Optional[bool] = True,
-    save_merged_data: Optional[bool] = False,
-    merged_data_name: Optional[str] = None,
-    merged_data_dir: Optional[str] = None,
-    output_name: Optional[str] = None,
+    fp_species: str | None = None,
+    emissions_name: list | None = None,
+    use_bc: bool = True,
+    bc_input: str | None = None,
+    bc_store: str | None = None,
+    obs_store: str | None = None,
+    footprint_store: str | None = None,
+    emissions_store: str | None = None,
+    averagingerror: bool = True,
+    save_merged_data: bool = False,
+    merged_data_name: str | None = None,
+    merged_data_dir: str | None = None,
+    output_name: str | None = None,
 ) -> tuple[dict, list, list, list, list, list]:
-    """
-    Retrieve and prepare fixed-surface datasets from
-    specified OpenGHG object stores for forward
-    simulations and model-data comparisons that do not
-    use tracers
-    ---------------------------------------------
+    """Retrieve and prepare fixed-surface datasets from specified OpenGHG object stores.
+
+    Use for forward simulations and model-data comparisons that do not
+    use tracers.
+
     Args:
         species:
             Atmospheric trace gas species of interest
@@ -214,7 +212,6 @@ def data_processing_surface_notracer(
             List of averaging_period for the updated list of sites
 
     """
-
     sites = [site.upper() for site in sites]
 
     # Convert 'None' args to list
@@ -229,6 +226,8 @@ def data_processing_surface_notracer(
         obs_data_level = [obs_data_level] * nsites
     if met_model is None or isinstance(met_model, str):
         met_model = [met_model] * nsites
+    if averaging_period is None or isinstance(averaging_period, str):
+        averaging_period = [averaging_period] * nsites
 
     fp_all = {}
     fp_all[".species"] = species.upper()
@@ -247,8 +246,6 @@ def data_processing_surface_notracer(
                 store=emissions_store,
             )
         except SearchError:
-            # logger.info(f"No flux data found between {start_date} and {end_date}.")
-            # logger.info(f"Searching for flux data from before {end_date}.")
             print(f"No flux data found between {start_date} and {end_date}.")
             print(f"Searching for flux data from before {start_date}.")
 
@@ -266,7 +263,6 @@ def data_processing_surface_notracer(
                 raise SearchError(f"No flux data found before {start_date}") from e
             else:
                 get_flux_data.data = get_flux_data.data.isel(time=[-1])
-                # logger.info(f"Using flux data from {get_flux_data.data.time.values}.")
                 print(f"Using flux data from {str(get_flux_data.data.time.values[0]).split(':')[0]}.")
 
         logging.Logger.disabled = False  # resume confusing OpenGHG warnings
@@ -276,7 +272,7 @@ def data_processing_surface_notracer(
 
     footprint_dict = {}
     scales = {}
-    check_scales = []
+    check_scales = set()
     site_indices_to_keep = []
 
     for i, site in enumerate(sites):
@@ -348,10 +344,10 @@ def data_processing_surface_notracer(
 
                 # Divide by trace gas species units
                 # See if R+G can include this 'behind the scenes'
-                get_bc_data.data.vmr_n.values = get_bc_data.data.vmr_n.values / unit
-                get_bc_data.data.vmr_e.values = get_bc_data.data.vmr_e.values / unit
-                get_bc_data.data.vmr_s.values = get_bc_data.data.vmr_s.values / unit
-                get_bc_data.data.vmr_w.values = get_bc_data.data.vmr_w.values / unit
+                get_bc_data.data.vmr_n.values /= unit
+                get_bc_data.data.vmr_e.values /= unit
+                get_bc_data.data.vmr_s.values /= unit
+                get_bc_data.data.vmr_w.values /= unit
                 my_bc = BoundaryConditionsData(
                     data=get_bc_data.data.transpose("height", "lat", "lon", "time"),
                     metadata=get_bc_data.metadata,
@@ -378,7 +374,7 @@ def data_processing_surface_notracer(
             if len(emissions_name) == 1:
                 scenario_combined = model_scenario.footprints_data_merge()
                 if use_bc is True:
-                    scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
+                    scenario_combined.bc_mod.values *= unit
 
             elif len(emissions_name) > 1:
                 # Create model scenario object for each flux sector
@@ -397,22 +393,12 @@ def data_processing_surface_notracer(
                 for k, v in model_scenario_dict.items():
                     scenario_combined[k] = v
                     if use_bc is True:
-                        scenario_combined.bc_mod.values = scenario_combined.bc_mod.values * unit
+                        scenario_combined.bc_mod.values *= unit
 
             fp_all[site] = scenario_combined
 
-            # Check consistency of measurement scales between sites
-            check_scales += [scenario_combined.scale]
-            if not all(s == check_scales[0] for s in check_scales):
-                rt = []
-                for j in check_scales:
-                    if isinstance(j, list):
-                        rt.extend(flatten(j))
-                    else:
-                        rt.append(j)
-                scales[site] = rt
-            else:
-                scales[site] = check_scales[0]
+            scales[site] = scenario_combined.scale
+            check_scales.add(scenario_combined.scale)
 
             site_indices_to_keep.append(i)
 
@@ -432,7 +418,13 @@ def data_processing_surface_notracer(
         instrument = [instrument[s] for s in site_indices_to_keep]
         averaging_period = [averaging_period[s] for s in site_indices_to_keep]
 
+    # check for consistency of calibration scales
+    if len(check_scales) > 1:
+        msg = f"Not all sites using the same calibration scale: {len(check_scales)} scales found."
+        logger.warning(msg)
+
     fp_all[".scales"] = scales
+
     fp_all[".units"] = float(scenario_combined.mf.units)
 
     # create `mf_error`
@@ -461,11 +453,11 @@ def _make_merged_data_name(species: str, start_date: str, output_name: str) -> s
 
 def _save_merged_data(
     fp_all: dict,
-    merged_data_dir: Union[str, Path],
-    species: Optional[str] = None,
-    start_date: Optional[str] = None,
-    output_name: Optional[str] = None,
-    merged_data_name: Optional[str] = None,
+    merged_data_dir: str | Path,
+    species: str | None = None,
+    start_date: str | None = None,
+    output_name: str | None = None,
+    merged_data_name: str | None = None,
     output_format: Literal["pickle", "netcdf", "zarr", "zarr.zip"] = "zarr.zip",
 ) -> None:
     """Save `fp_all` dictionary to `merged_data_dir`.
@@ -505,7 +497,7 @@ def _save_merged_data(
     if output_format == "pickle":
         with open(merged_data_dir / (merged_data_name + ".pickle"), "wb") as f:
             pickle.dump(fp_all, f)
-    elif output_format in ["netcdf", "zarr", "zarr.zip"]:
+    elif output_format in {"netcdf", "zarr", "zarr.zip"}:
         ds = make_combined_scenario(fp_all)
 
         if "zarr" in output_format:
@@ -529,12 +521,12 @@ def _save_merged_data(
 
 
 def load_merged_data(
-    merged_data_dir: Union[str, Path],
-    species: Optional[str] = None,
-    start_date: Optional[str] = None,
-    output_name: Optional[str] = None,
-    merged_data_name: Optional[str] = None,
-    output_format: Optional[Literal["pickle", "netcdf", "zarr", "zarr.zip"]] = None,
+    merged_data_dir: str | Path,
+    species: str | None = None,
+    start_date: str | None = None,
+    output_name: str | None = None,
+    merged_data_name: str | None = None,
+    output_format: Literal["pickle", "netcdf", "zarr", "zarr.zip"] | None = None,
 ) -> dict:
     """Load `fp_all` dictionary from a file in `merged_data_dir`.
 
@@ -750,7 +742,7 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
 
     for i, site in enumerate(ds.site.values):
         scenario = (
-            ds.sel(site=site, drop=True).drop_vars(["flux"] + bc_vars, errors="ignore").drop_dims("source")
+            ds.sel(site=site, drop=True).drop_vars(["flux", *bc_vars], errors="ignore").drop_dims("source")
         )
 
         # extract attributes that were gathered into a list

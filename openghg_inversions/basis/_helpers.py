@@ -1,8 +1,4 @@
-"""
-Functions to create fit basis functiosn and apply to data
-"""
-
-from typing import Optional, Union
+"""Functions to create fit basis functiosn and apply to data."""
 
 from openghg.dataobjects import FluxData
 from openghg.util import get_species_info, synonyms
@@ -18,10 +14,9 @@ from ._functions import basis_boundary_conditions
 
 
 def fp_sensitivity(
-    fp_and_data: dict, basis_func: Union[xr.DataArray, dict[str, xr.DataArray]], verbose: bool = True
+    fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.DataArray], verbose: bool = True
 ) -> dict:
-    """
-    Add a sensitivity matrix, H, to each site xr.Dataset in fp_and_data.
+    """Add a sensitivity matrix, H, to each site xr.Dataset in fp_and_data.
 
     The sensitivity matrix H takes the footprint sensitivities (the `fp` variable),
     multiplies it by the flux files, then aggregates over the basis regions.
@@ -45,20 +40,16 @@ def fp_sensitivity(
     Returns:
         dict in same format as fp_and_data with sensitivity matrix and basis functions added.
     """
-
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
 
     flux_sources = list(fp_and_data[".flux"].keys())
 
     if not isinstance(basis_func, dict):
-        if len(flux_sources) == 1:
-            basis_func = {flux_sources[0]: basis_func}
-        else:
-            basis_func = {"all": basis_func}
+        basis_func = {flux_sources[0]: basis_func} if len(flux_sources) == 1 else {"all": basis_func}
 
     if len(list(basis_func.keys())) != len(flux_sources):
         if len(list(basis_func.keys())) == 1:
-            print(f"Using {basis_func[list(basis_func.keys())[0]]} as the basis case for all sources")
+            print(f"Using {basis_func[next(iter(basis_func.keys()))]} as the basis case for all sources")
         else:
             print(
                 "There should either only be one basis_func, or it should be a dictionary the same length\
@@ -95,13 +86,12 @@ def fp_sensitivity(
 
 def fp_sensitivity_single_site_basis_func(
     scenario: xr.Dataset,
-    flux: Union[FluxData, dict[str, FluxData]],
+    flux: FluxData | dict[str, FluxData],
     basis_func: xr.DataArray,
     source: str = "all",
     verbose: bool = True,
-) -> tuple[xr.DataArray, Optional[xr.Dataset]]:
-    """
-    Computes sensitivity matrix `H` for one site. See `fp_sensitivity` for
+) -> tuple[xr.DataArray, xr.Dataset | None]:
+    """Computes sensitivity matrix `H` for one site. See `fp_sensitivity` for
     more info about the sensitivity matrix.
 
     Args:
@@ -174,10 +164,9 @@ def fp_sensitivity_single_site_basis_func(
 
 
 def bc_sensitivity(
-    fp_and_data: dict, domain: str, basis_case: str, bc_basis_directory: Optional[str] = None
+    fp_and_data: dict, domain: str, basis_case: str, bc_basis_directory: str | None = None
 ) -> dict:
-    """
-    Add boundary conditions sensitivity matrix `H_bc` to each site xr.Dataframe in fp_and_data.
+    """Add boundary conditions sensitivity matrix `H_bc` to each site xr.Dataframe in fp_and_data.
 
     Args:
         fp_and_data: dict containing xr.Datasets output by `ModelScenario.footprints_data_merge`
@@ -192,7 +181,6 @@ def bc_sensitivity(
         dict of xr.Datasets in same format as fp_and_data with `H_bc` sensitivity matrix added.
 
     """
-
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
 
     basis_func = basis_boundary_conditions(
@@ -221,7 +209,7 @@ def bc_sensitivity(
             fp_and_data[site][particles] = fp_and_data[site][particles].compute()
 
         # compute any chemical loss to the BCs, use lifetime or else set loss to 1 (no loss)
-        if "lifetime" in species_info[species].keys():
+        if "lifetime" in species_info[species]:
             lifetime = species_info[species]["lifetime"]
             lifetime_hrs_list_or_float = convert.convert_to_hours(lifetime)
 
@@ -248,18 +236,16 @@ def bc_sensitivity(
             loss_s[:] = 1
             loss_w[:] = 1
 
-        DS_particle_loc = xr.Dataset(
-            {
-                "particle_locations_n": fp_and_data[site]["particle_locations_n"],
-                "particle_locations_e": fp_and_data[site]["particle_locations_e"],
-                "particle_locations_s": fp_and_data[site]["particle_locations_s"],
-                "particle_locations_w": fp_and_data[site]["particle_locations_w"],
-                "loss_n": loss_n,
-                "loss_e": loss_e,
-                "loss_s": loss_s,
-                "loss_w": loss_w,
-            }
-        )
+        DS_particle_loc = xr.Dataset({
+            "particle_locations_n": fp_and_data[site]["particle_locations_n"],
+            "particle_locations_e": fp_and_data[site]["particle_locations_e"],
+            "particle_locations_s": fp_and_data[site]["particle_locations_s"],
+            "particle_locations_w": fp_and_data[site]["particle_locations_w"],
+            "loss_n": loss_n,
+            "loss_e": loss_e,
+            "loss_s": loss_s,
+            "loss_w": loss_w,
+        })
         #                                 "bc":fp_and_data[site]["bc"]})
 
         DS_temp = combine_datasets(DS_particle_loc, fp_and_data[".bc"].data, method="ffill")
@@ -268,14 +254,12 @@ def bc_sensitivity(
 
         DS = DS.transpose("height", "lat", "lon", "region", "time")
 
-        part_loc = np.hstack(
-            [
-                DS.particle_locations_n,
-                DS.particle_locations_e,
-                DS.particle_locations_s,
-                DS.particle_locations_w,
-            ]
-        )
+        part_loc = np.hstack([
+            DS.particle_locations_n,
+            DS.particle_locations_e,
+            DS.particle_locations_s,
+            DS.particle_locations_w,
+        ])
 
         loss = np.hstack([DS.loss_n, DS.loss_e, DS.loss_s, DS.loss_w])
 
@@ -311,8 +295,7 @@ def timeseries_HiTRes(
     chunks=None,
     time_resolution="1H",
 ):
-    """
-    The timeseries_HiTRes function computes flux * HiTRes footprints.
+    """The timeseries_HiTRes function computes flux * HiTRes footprints.
 
     HiTRes footprints record the footprint at each 2 hour period back
     in time for the first 24 hours. Need a high time resolution flux
@@ -320,6 +303,7 @@ def timeseries_HiTRes(
     flux to multiply the residual integrated footprint for the remainder
     of the 30 day period.
     -----------------------------------
+
     Args:
       fp_HiTRes_ds (xarray.Dataset)
         Dataset of high time resolution footprints. HiTRes footprints
@@ -372,13 +356,12 @@ def timeseries_HiTRes(
     elif fp_HiTRes_ds is None:
         fp_HiTRes_ds = read_netcdfs(fp_file, chunks=chunks)
         fp_HiTRes = fp_HiTRes_ds.fp_HiTRes
+    elif isinstance(fp_HiTRes_ds, xr.DataArray):
+        fp_HiTRes = fp_HiTRes_ds
+    elif fp_HiTRes_ds.chunks is None and chunks is not None:
+        fp_HiTRes = fp_HiTRes_ds.fp_HiTRes.chunk(chunks)
     else:
-        if isinstance(fp_HiTRes_ds, xr.DataArray):
-            fp_HiTRes = fp_HiTRes_ds
-        elif fp_HiTRes_ds.chunks is None and chunks is not None:
-            fp_HiTRes = fp_HiTRes_ds.fp_HiTRes.chunk(chunks)
-        else:
-            fp_HiTRes = fp_HiTRes_ds.fp_HiTRes
+        fp_HiTRes = fp_HiTRes_ds.fp_HiTRes
 
     # resample fp to match the required time resolution
     fp_HiTRes = fp_HiTRes.resample(time=time_resolution).ffill()
@@ -396,7 +379,9 @@ def timeseries_HiTRes(
     H_resample = (
         int(time_resolution[0])
         if H_back_hour_diff == 1
-        else 1 if H_back_hour_diff == int(time_resolution[0]) else None
+        else 1
+        if H_back_hour_diff == int(time_resolution[0])
+        else None
     )
     if H_resample is None:
         print("Cannot resample H_back")
@@ -431,7 +416,7 @@ def timeseries_HiTRes(
     }
 
     for sector, flux_sector in flux.items():
-        if "high_freq" in flux_sector.keys() and flux_sector["high_freq"] is not None:
+        if "high_freq" in flux_sector and flux_sector["high_freq"] is not None:
             # reindex the high frequency data to match the fp
             time_flux = np.arange(
                 fp_HiTRes_ds.time[0].values - np.timedelta64(max_H_back, "h"),
@@ -446,7 +431,7 @@ def timeseries_HiTRes(
             )
             flux_sector["high_freq"] = None
 
-        if "low_freq" not in flux_sector.keys() or flux_sector["low_freq"] is None:
+        if "low_freq" not in flux_sector or flux_sector["low_freq"] is None:
             print(f"\nWarning: no low frequency flux data for {sector}, resampling from high frequency data")
             flux_sector["low_freq"] = flux_sector["high_freq"].resample(time="MS").mean()
 
@@ -456,7 +441,9 @@ def timeseries_HiTRes(
             freq: (
                 None
                 if flux_freq is None
-                else flux_freq.values if flux_freq.chunks is None else da.array(flux_freq)
+                else flux_freq.values
+                if flux_freq.chunks is None
+                else da.array(flux_freq)
             )
             for freq, flux_freq in flux_sector.items()
         }
@@ -467,11 +454,11 @@ def timeseries_HiTRes(
     if output_fpXflux:
         fpXflux = {
             sector: da.zeros((len(fp_HiTRes_ds.lat), len(fp_HiTRes_ds.lon), len(time_array)))
-            for sector in flux.keys()
+            for sector in flux
         }
 
     elif output_TS:
-        timeseries = {sector: da.zeros(len(time_array)) for sector in flux.keys()}
+        timeseries = {sector: da.zeros(len(time_array)) for sector in flux}
 
     # month and year of the start of the data - used to index the low res data
     start = {dd: getattr(np.datetime64(time_array[0], "h").astype(object), dd) for dd in ["month", "year"]}

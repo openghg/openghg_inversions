@@ -1,6 +1,4 @@
-# -*- coding: utf-8 -*-
-"""
-Script to process HBMCMC (RHIME) output 
+"""Script to process HBMCMC (RHIME) output.
 
 Includes:
 Write netcdf and append netcdf to write output to nc file
@@ -12,6 +10,7 @@ regions_histogram - plot histogram of number of regions
 country_emissions - calculate emissions from given list of countries
                     Currently hard-wired for methane
 """
+
 import os
 import glob
 import pandas as pd
@@ -25,7 +24,6 @@ from matplotlib.colors import BoundaryNorm, Normalize
 from matplotlib import ticker
 from cartopy.feature import BORDERS
 from scipy import stats
-from typing import Optional
 
 from openghg.util import get_site_info
 from openghg_inversions import utils
@@ -34,17 +32,16 @@ from openghg_inversions import convert
 site_info = get_site_info()
 
 
-def check_platform(site: str, network: Optional[str]=None)->str | None:
-    """
-    This function extracts platform (if specified) for the site from site_info.json file.
-    network can be specified if site is associated with more than one network. If not 
+def check_platform(site: str, network: str | None = None) -> str | None:
+    """This function extracts platform (if specified) for the site from site_info.json file.
+    network can be specified if site is associated with more than one network. If not
     specified, the first network will be used by default.
 
     Args:
-        site: 
+        site:
             Site code (if applicable) or name
-        network: 
-            If a site is part of multiple networks, will select a given one and check 
+        network:
+            If a site is part of multiple networks, will select a given one and check
             the platform
 
     Returns:
@@ -52,20 +49,19 @@ def check_platform(site: str, network: Optional[str]=None)->str | None:
         otherwise None
     """
     if network is None:
-        network = list(site_info[site].keys())[0]
-    if "platform" in site_info[site][network].keys():
+        network = next(iter(site_info[site].keys()))
+    if "platform" in site_info[site][network]:
         return site_info[site][network]["platform"]
     else:
         return None
 
 
-def define_stations(ds: xr.Dataset, 
-                    sites: Optional[list[str]]=None, 
-                    use_site_info: Optional[bool]=False
-                   )->dict | None:
-    """
-    The define_stations function defines the latitude and longitude values for each site within
-    a dataset. The output can be passed directly as the 'stations' argument in plot_map
+def define_stations(
+    ds: xr.Dataset, sites: list[str] | None = None, use_site_info: bool | None = False
+) -> dict | None:
+    """Define latitude and longitude values for each site in a dataset.
+
+    The output can be passed directly as the 'stations' argument in plot_map.
 
     If sites is not specified, if the platform for the site is listed as "aircraft" or
     "satellite" in the site_info.json file then no values are included in the stations
@@ -89,7 +85,6 @@ def define_stations(ds: xr.Dataset,
     Returns:
         Dictionary containing sitelats, sitelons for each site.
     """
-
     if sites is None:
         sites = list(ds.sitenames.values.astype(str))
         for site in sites:
@@ -100,7 +95,7 @@ def define_stations(ds: xr.Dataset,
 
     if use_site_info:
         for site in sites:
-            network = list(site_info[site].keys())[0]
+            network = next(iter(site_info[site].keys()))
             stations[site + "lons"] = [site_info[site][network]["latitude"]]
             stations[site + "lats"] = [site_info[site][network]["longitude"]]
     else:
@@ -122,12 +117,8 @@ def define_stations(ds: xr.Dataset,
     return stations
 
 
-def subplot_fmt(num: int,
-                row_dims: list[int]=[3, 2, 4], 
-                fill: Optional[bool]=False
-               )->tuple[int,int]:
-    """
-    The subplot_fmt function decides the placement of a grid of figures dependent on the number.
+def subplot_fmt(num: int, row_dims: list[int] = [3, 2, 4], fill: bool | None = False) -> tuple[int, int]:
+    """The subplot_fmt function decides the placement of a grid of figures dependent on the number.
     The row_dims input determines which placement is preferable for the user.
 
     Args:
@@ -168,8 +159,7 @@ def subplot_fmt(num: int,
 def set_clevels(
     data, num_tick=20.0, tick=None, centre_zero=False, above_zero=False, rescale=False, robust=False
 ):
-    """
-    The set_clevels function defines a set of contour levels for plotting based on the inputs
+    """The set_clevels function defines a set of contour levels for plotting based on the inputs
     values.
 
     Args:
@@ -213,13 +203,12 @@ def set_clevels(
         else:
             q_min = np.nanpercentile(data, 2)
             q_max = np.nanpercentile(data, 98)
+    elif above_zero:
+        q_min = np.min(data[data > 0])
+        q_max = np.max(data)
     else:
-        if above_zero:
-            q_min = np.min(data[data > 0])
-            q_max = np.max(data)
-        else:
-            q_min = np.min(data)
-            q_max = np.max(data)
+        q_min = np.min(data)
+        q_max = np.max(data)
 
     scale = 1
 
@@ -254,9 +243,9 @@ def set_clevels(
 
 
 def unbiasedDivergingCmap(data, zero=0, minValue=None, maxValue=None):
-    """
-    Calculate the normalisation of a diverging cbar around a given value
-    Prevents bias due to asymetry in data affecting scale
+    """Calculate the normalisation of a diverging cbar around a given value.
+
+    Prevents bias due to asymmetry in data affecting scale.
 
     Args:
         data : numpy array of data to plot
@@ -267,7 +256,6 @@ def unbiasedDivergingCmap(data, zero=0, minValue=None, maxValue=None):
     Returns:
         a normalization function to be fed into plot
     """
-
     if maxValue is None:
         maxValue = np.amax(data)
     if minValue is None:
@@ -297,9 +285,8 @@ def plot_map(
     ax=None,
     show=True,
 ):
-    """
-    Plot 2d map of data
-    e.g. scaling map of posterior x i.e. degree of scaling applied to prior emissions. Mainly used within the 
+    """Plot 2d map of data
+    e.g. scaling map of posterior x i.e. degree of scaling applied to prior emissions. Mainly used within the
     wrappers of plot_abs_map, plot_diff_map etc.
 
     Args:
@@ -383,7 +370,7 @@ def plot_map(
         )
         clevels = set_clevels(data, robust=True)
 
-    if smooth == True:
+    if smooth is True:
         if divergeCentre is None:
             cp = ax.contourf(
                 lon, lat, data, transform=ccrs.PlateCarree(), cmap=cmap, levels=clevels, extend=extend
@@ -455,8 +442,7 @@ def plot_map_mult(
     extend="both",
     figsize=None,
 ):
-    """
-    Uses plot_map function to plot a set of maps either on a grid or as separate figures.
+    """Uses plot_map function to plot a set of maps either on a grid or as separate figures.
     If plotting on a grid the subplots are either determined automatically based on shape of
     input or using subplot input.
 
@@ -504,16 +490,12 @@ def plot_map_mult(
         if len(data_all.shape) == 2:
             data_all = np.expand_dims(data_all, 2)
         elif len(data_all.shape) != 3:
-            raise Exception(
-                "Did not understand input for data array to plot. Shape: {}".format(data_all.shape)
-            )
+            raise Exception(f"Did not understand input for data array to plot. Shape: {data_all.shape}")
 
     nlat, nlon, nrun = data_all.shape
     if nlat != len(lat) or nlon != len(lon):
         raise Exception(
-            "First two dimensions of data_all ({},{}) must match length of lat ({}) and lon ({}) co-ordinates.".format(
-                nlat, nlon, len(lat), len(lon)
-            )
+            f"First two dimensions of data_all ({nlat},{nlon}) must match length of lat ({len(lat)}) and lon ({len(lon)}) co-ordinates."
         )
 
     if subplot == "auto" and grid:
@@ -523,12 +505,10 @@ def plot_map_mult(
 
     if isinstance(labels, list):
         if len(labels) == 1:
-            labels = labels * nrun
+            labels *= nrun
         elif len(labels) != nrun:
             print(
-                "Unable to apply labels to sub-plots. Length of the list ({}) does not match the number of plots ({}).".format(
-                    len(labels), nrun
-                )
+                f"Unable to apply labels to sub-plots. Length of the list ({len(labels)}) does not match the number of plots ({nrun})."
             )
             labels = [None] * nrun
     else:
@@ -536,14 +516,13 @@ def plot_map_mult(
 
     if stations is None:
         stations = [None] * nrun
-    else:
-        if isinstance(stations, dict):
-            stations = [stations] * nrun
-        elif len(stations) != nrun:
-            print(
-                f"Unable to apply station positions to sub-plots. Number of station dictionaries ({len(stations)}) does not match the number of plots ({nrun})."
-            )
-            labels = [None] * nrun
+    elif isinstance(stations, dict):
+        stations = [stations] * nrun
+    elif len(stations) != nrun:
+        print(
+            f"Unable to apply station positions to sub-plots. Number of station dictionaries ({len(stations)}) does not match the number of plots ({nrun})."
+        )
+        labels = [None] * nrun
     if not grid and nrun > 1:
         if out_filename:
             base, ext = os.path.splitext(out_filename)
@@ -634,8 +613,7 @@ def plot_scale_map(
     extend="both",
     figsize=None,
 ):
-    """
-    The plot_scale_map function plots 2D scaling map(s) of posterior x. This is the degree of
+    """The plot_scale_map function plots 2D scaling map(s) of posterior x. This is the degree of
     scaling which has been applied to prior emissions.
 
     Args:
@@ -672,11 +650,7 @@ def plot_scale_map(
         Otherwise:
             Plot is displayed interactively
     """
-
-    if plot_stations:
-        stations = [define_stations(ds, use_site_info=use_site_info) for ds in ds_list]
-    else:
-        stations = None
+    stations = [define_stations(ds, use_site_info=use_site_info) for ds in ds_list] if plot_stations else None
 
     if lat is None:
         lat = ds_list[0]["lat"]
@@ -732,10 +706,9 @@ def plot_abs_map(
     title=None,
     extend="both",
     figsize=None,
-    flux_data_var = 'fluxmode'
+    flux_data_var="fluxmode",
 ):
-    """
-    The plot_abs_map function plots 2D map(s) of posterior x in g/m2/s.
+    """The plot_abs_map function plots 2D map(s) of posterior x in g/m2/s.
 
     Args:
         ds_list (list) :
@@ -765,7 +738,7 @@ def plot_abs_map(
             than extract them from the tdmcmc dataset.
             Default = False.
         flux_data_var (str) :
-            Which measure of flux distribution (i.e. mode) to plot. Defaults to 'fluxmode', which is the only one 
+            Which measure of flux distribution (i.e. mode) to plot. Defaults to 'fluxmode', which is the only one
             in the output files currently
 
         See plot_map() function for definition of remaining inputs.
@@ -778,11 +751,7 @@ def plot_abs_map(
         Otherwise:
             Plot is displayed interactively
     """
-
-    if plot_stations:
-        stations = [define_stations(ds, use_site_info=use_site_info) for ds in ds_list]
-    else:
-        stations = None
+    stations = [define_stations(ds, use_site_info=use_site_info) for ds in ds_list] if plot_stations else None
 
     if lat is None:
         lat = ds_list[0]["lat"]
@@ -838,10 +807,9 @@ def plot_diff_map(
     title=None,
     extend="both",
     figsize=None,
-    flux_data_var='fluxmode'
+    flux_data_var="fluxmode",
 ):
-    """
-    The plot_diff_map function plots 2D map(s) of the difference between the prior and
+    """The plot_diff_map function plots 2D map(s) of the difference between the prior and
     posterior x in g/m2/s.
 
     Args:
@@ -872,7 +840,7 @@ def plot_diff_map(
             than extract them from the tdmcmc dataset.
             Default = False.
         flux_data_var (str) :
-            Which measure of flux distribution (i.e. mode) to plot. Defaults to 'fluxmode', which is the only one 
+            Which measure of flux distribution (i.e. mode) to plot. Defaults to 'fluxmode', which is the only one
             in the output files currently
 
         See plot_map() function for definition of remaining inputs.
@@ -885,11 +853,7 @@ def plot_diff_map(
         Otherwise:
             Plot is displayed interactively
     """
-
-    if plot_stations:
-        stations = [define_stations(ds, use_site_info=use_site_info) for ds in ds_list]
-    else:
-        stations = None
+    stations = [define_stations(ds, use_site_info=use_site_info) for ds in ds_list] if plot_stations else None
 
     if lat is None:
         lat = ds_list[0]["lat"]
@@ -927,26 +891,25 @@ def plot_diff_map(
 
 
 def country_emissions(ds, species, domain, country_file=None, country_unit_prefix=None, countries=None):
-    """
-    Extract indiviudal country emissions from a dataset
+    """Extract indiviudal country emissions from a dataset.
 
     Args:
-        ds (xarray.Dataset) : 
+        ds (xarray.Dataset) :
             Output dataset from HBMCMC inversion
         species (str) :
             species run in the inversion (e.g. 'hfc23')
-        domain (str) : 
+        domain (str) :
             domain over which the inversion was run (e.g. 'EASTASIA')
         country_file (filepath) :
             country file from which to extract country definitions. Defaults to None, in which case
             the function looks for it in 'data/countries/[domain]' using the utils.get_country function
-        country_unit_prefix (str) : 
-            prefix for which to report emissions in (e.g. 'G' for Gg). Conversion done by convert.prefix. 
+        country_unit_prefix (str) :
+            prefix for which to report emissions in (e.g. 'G' for Gg). Conversion done by convert.prefix.
             Defaults to None, in which case emissions are reported in g
         countries (data array) :
             array of country names for which to calculate emissions for. Defaults to None, in which case these
             are extracted from the country file
-    
+
     Returns:
         cntrymean (data array):
             1D array of mean emissions from each country
@@ -958,7 +921,7 @@ def country_emissions(ds, species, domain, country_file=None, country_unit_prefi
             1D array of prior emissions from each country
         cntrymode (data array) :
             1D array of mode emissions from each country
-        
+
 
     """
     c_object = utils.get_country(domain, country_file=country_file)
@@ -997,23 +960,20 @@ def country_emissions(ds, species, domain, country_file=None, country_unit_prefi
 
     area = utils.areagrid(lat, lon)
 
-    if countries is None:
-        cntrynames = cntryds.name.values
-    else:
-        cntrynames = countries
+    cntrynames = cntryds.name.values if countries is None else countries
     cntrygrid = cntryds.country.values
-    cntrymean = np.zeros((len(cntrynames)))
-    cntrymode = np.zeros((len(cntrynames)))
+    cntrymean = np.zeros(len(cntrynames))
+    cntrymode = np.zeros(len(cntrynames))
     cntry68 = np.zeros((len(cntrynames), len(nui)))
     cntry95 = np.zeros((len(cntrynames), len(nui)))
-    cntrysd = np.zeros(len(cntrynames))
+    np.zeros(len(cntrynames))
     cntryprior = np.zeros(len(cntrynames))
     molarmass = convert.molar_mass(species)
 
     unit_factor = convert.prefix(country_unit_prefix)
     if country_unit_prefix is None:
         country_unit_prefix = ""
-    country_units = country_unit_prefix + "g"
+    country_unit_prefix + "g"
 
     for i, cntry in enumerate(cntrynames):
         ci = np.where(cntryds.name.values == cntry)[0][0]
@@ -1068,8 +1028,7 @@ def country_emissions(ds, species, domain, country_file=None, country_unit_prefi
 def country_emissions_mult(
     ds_list, species, domain, country_file=None, country_unit_prefix=None, countries=None
 ):
-    """
-    Calculate country emissions across multiple datasets.
+    """Calculate country emissions across multiple datasets.
     See process.country_emissions() function for details of inputs
     Returns:
         cntrymean_arr (np.ndarray):
@@ -1081,7 +1040,7 @@ def country_emissions_mult(
             array of 95th percentile upper and lower bounds of country emissions for each ds,
             with size [number of ds x number of countries x 2]
         cntryprior_arr (np.ndarray):
-            array of country priors for each ds, with size [number of ds x number of countries]
+            array of country priors for each ds, with size [number of ds x number of countries].
     """
     if countries is None:
         countries = ds_list[0].countrynames.values
@@ -1121,21 +1080,20 @@ def plot_country_timeseries(
     units="g",
     figsize=(7, 3),
 ):
-    """
-    Plot  timeseries of country emissions. Requires more than one time stamp.
+    """Plot  timeseries of country emissions. Requires more than one time stamp.
 
     Args:
-        country_mean (data array) : 
+        country_mean (data array) :
             A 1D array of emissions over time
-        country_CI (data array) : 
+        country_CI (data array) :
             A 2D array of upper and lower bounds of emissions over time
-        country_prior (data array) : 
+        country_prior (data array) :
             A 1D array of prior emissions over time
-        d0 (data array) : 
+        d0 (data array) :
             1D array of time stamps. Must match the length of country_mean, country_CI and country_prior
-        country_label (str) : 
+        country_label (str) :
             Label for the country being plotted. Defaults to empty string
-        prior_label (str) : 
+        prior_label (str) :
             Label for the prior emissions. Defaults to "Prior"
         posterior_label (str) :
             Label for the posterior emissions. Defaults to "Posterior"
@@ -1161,28 +1119,27 @@ def plot_country_timeseries(
         (country_label + " " + y_label + ", " + units + " yr$^{-1}$"), fontsize=10, fontweight="bold"
     )
     ax.set_xlabel("Date", fontsize=10, fontweight="bold")
-    legend = ax.legend(loc="upper left", labelspacing=0.1, fontsize=10)
+    ax.legend(loc="upper left", labelspacing=0.1, fontsize=10)
     ax.xaxis.set_tick_params(labelsize=10)
     ax.yaxis.set_tick_params(labelsize=10)
     ax.xaxis.set_major_locator(mdates.YearLocator())
     ax.xaxis.set_minor_locator(mdates.MonthLocator(interval=2))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
 
+
 def plot_multi_country_timeseries(
-        ds_list,
-        species,
-        domain,
-        countries,
-        country_file,
-        d0,
-        country_unit_prefix=None,
-        plot_prior = True,
-        figsize = (7,3)
+    ds_list,
+    species,
+    domain,
+    countries,
+    country_file,
+    d0,
+    country_unit_prefix=None,
+    plot_prior=True,
+    figsize=(7, 3),
 ):
-    """
-    Generates a plot of country emissions timeseries from a list of yearly inversion datasets
-    and a list of countries contained in a specified country file
-    
+    """Plot country emissions timeseries for given inversions and specified countries.
+
     Args:
         ds_list (list):
             list of RHIME hbmcmc output datasets
@@ -1197,38 +1154,39 @@ def plot_multi_country_timeseries(
         d0 (array):
             1D array of dates corresponding to the ds_list
         country_unit_prefix (str) :
-            prefix for which to report emissions in (e.g. 'G' for Gg). Conversion done by convert.prefix. 
+            prefix for which to report emissions in (e.g. 'G' for Gg). Conversion done by convert.prefix.
             Defaults to None, in which case emissions are reported in g
         plot_prior (bool):
             whether to plot the prior emissions. defaults to True
         figsize (tuple):
             figure size (defaults to (7,3))
     """
-
     fig, ax = plt.subplots(figsize=figsize)
     d0 = pd.to_datetime(d0)
-    cntrymean_arr, cntry68_arr, cntry95_arr, cntryprior_arr = country_emissions_mult(ds_list=ds_list,
-                                                                                     species=species,
-                                                                                     domain=domain,
-                                                                                     country_file=country_file,
-                                                                                     countries = countries,
-                                                                                     country_unit_prefix=country_unit_prefix)
+    cntrymean_arr, cntry68_arr, cntry95_arr, cntryprior_arr = country_emissions_mult(
+        ds_list=ds_list,
+        species=species,
+        domain=domain,
+        country_file=country_file,
+        countries=countries,
+        country_unit_prefix=country_unit_prefix,
+    )
 
     for i, country in enumerate(countries):
         if plot_prior:
-            ax.plot(d0, cntryprior_arr[:,i], label=country + ' prior emissions')
-        ax.plot(d0, cntrymean_arr[:,i], label=country + ' posterior emissions')
+            ax.plot(d0, cntryprior_arr[:, i], label=country + " prior emissions")
+        ax.plot(d0, cntrymean_arr[:, i], label=country + " posterior emissions")
 
-        ax.fill_between(
-            d0, cntry68_arr[:,i,0], cntry68_arr[:,i,1], alpha=0.3)
-        
+        ax.fill_between(d0, cntry68_arr[:, i, 0], cntry68_arr[:, i, 1], alpha=0.3)
+
     ax.set_xlabel("Date", fontsize=10, fontweight="bold")
-    legend = ax.legend(loc="upper left", labelspacing=0.1, fontsize=10)
+    ax.legend(loc="upper left", labelspacing=0.1, fontsize=10)
     ax.xaxis.set_tick_params(labelsize=10)
     ax.yaxis.set_tick_params(labelsize=10)
     ax.xaxis.set_major_locator(mdates.YearLocator())
     ax.xaxis.set_minor_locator(mdates.MonthLocator(interval=2))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+
 
 #     The combine_timeseries function takes a list of output datasets from a tdmcmc run and combines
 #     the parameters relevant to plotting a mole fraction timeseries.
@@ -1344,33 +1302,31 @@ def plot_timeseries(
     plot_prior=False,
     plot_bc_prior=False,
 ):
-    """
-    Plot measurement timeseries of posterior and observed measurements
-    Requires post_mcmc xr dataset. Can plot to console or save to file. 
-    Plots 95% CI by default. 
+    """Plot measurement timeseries of posterior and observed measurements
+    Requires post_mcmc xr dataset. Can plot to console or save to file.
+    Plots 95% CI by default.
     For future: incorporate model & measurement uncertainty
     Plots separate subplots for each of the measurement sites - hopefully!
 
     Args:
-        ds (xarray dataset) : 
+        ds (xarray dataset) :
             dataset output from run_tdmcmc script
-        fig_text (String) :    
+        fig_text (String) :
             e.g. "CH$_{4}$ mole fraction (ppb)". Defaults to None
-        ylim (array) : 
+        ylim (array) :
             y-axis limits [ymin,ymax]. If not specified, set automatically
-        out_filename (string) : 
+        out_filename (string) :
             Filename to save file, if specified. Defaults to None (figure isn't saved)
-        doplot (bool) : 
+        doplot (bool) :
             Plot to console? (optional, defaults to True)
-        figsize (tuple) : 
+        figsize (tuple) :
             Specify size of figure as a two-item tuple.
-        plot_prior (bool) : 
+        plot_prior (bool) :
             Plot mole fraction prior.
-        plot_bc_prior (bool) : 
+        plot_bc_prior (bool) :
             Plot inner boundary conditions prior.
 
     """
-
     y_bg_mean = ds["YmodmeanBC"].values
 
     y_post_mean = ds["Ymodmean"].values
@@ -1469,20 +1425,17 @@ def plot_timeseries(
         else:
             plt.show()
 
-    return
-
 
 def open_ds(path):
-    """
-    Function efficiently opens xr datasets.
+    """Function efficiently opens xr datasets.
 
     Args:
         path (str) :
             path to xarray dataset
-    
+
     Returns:
         ds (xarray dataset) :
-            dataset 
+            dataset
     """
     # use a context manager, to ensure the file gets closed after use
     with xr.open_dataset(path) as ds:
@@ -1491,12 +1444,11 @@ def open_ds(path):
 
 
 def extract_hbmcmc_files(directory, species, domain, runname, dates, return_filenames=False):
-    """
-    Find hbmcmc output filenames based on naming convention:
+    """Find hbmcmc output filenames based on naming convention:
         "directory"/"species"+"domain"+"runname"_"date".nc"
     Open as xarray.Dataset objects and return as a list.
 
-    Args: 
+    Args:
         directory (str) :
             path to output directory to where hbmcmc files are written
         species (str) :
@@ -1510,7 +1462,7 @@ def extract_hbmcmc_files(directory, species, domain, runname, dates, return_file
             in the output file name
         return_filenames (bool) :
             whether to return the filenames. Defaults to False
-    
+
     Returns:
         ds_list (list) :
             list of xarray datasets matching the input parameters
@@ -1522,9 +1474,7 @@ def extract_hbmcmc_files(directory, species, domain, runname, dates, return_file
     ds_list = []
     filenames = []
     for tt, date in enumerate(dates):
-        fname_search = "{species}_{domain}_{runname}_{date}.nc".format(
-            domain=domain, species=species, date=date, runname=runname
-        )
+        fname_search = f"{species}_{domain}_{runname}_{date}.nc"
         fname_search = os.path.join(directory, fname_search)
         filename = glob.glob(fname_search)
         if len(filename) > 0:
@@ -1544,8 +1494,7 @@ def extract_hbmcmc_files(directory, species, domain, runname, dates, return_file
 
 
 def check_missing_dates(filenames, dates, labels=[]):
-    """
-    Checks for missing dates from a list of filenames
+    """Checks for missing dates from a list of filenames.
 
     Args:
         filenames (list) :
@@ -1554,7 +1503,7 @@ def check_missing_dates(filenames, dates, labels=[]):
             list of expected dates to check in filenames
         labels (list) :
             list of labels for the dates that do match
-    
+
     Returns:
         dates (list) :
             list of dates with matching filenames
@@ -1584,11 +1533,10 @@ def check_missing_dates(filenames, dates, labels=[]):
 
 
 def calculate_DIC(ds, silence=False):
-    """
-    Calculates the Deviance information criterion (DIC) for an inversion.
+    """Calculates the Deviance information criterion (DIC) for an inversion.
     It does this using two different definitions:
     1) Spiegelhalter et al. (2002) https://doi.org/10.1111/1467-9868.00353
-    2) Gelman et al. (2004) http://www.stat.columbia.edu/~gelman/research/published/waic_understand3.pdf
+    2) Gelman et al. (2004) http://www.stat.columbia.edu/~gelman/research/published/waic_understand3.pdf.
 
     The DIC is similar to metrics like AIC (Akaike Information Criterion) but
     better suited to hierarchical models and MCMC.
@@ -1620,7 +1568,7 @@ def calculate_DIC(ds, silence=False):
     hbc_all_post = np.dot(ds.bcsensitivity.values, np.mean(ds.bctrace.values, axis=0))
     mubar = hx_all_post + hbc_all_post
     D_thetabar = -0.5 * (
-        np.sum(2 * np.log(sig_arr)) + np.sum((y - mubar) ** 2 / sig_arr ** 2) + np.log(2 * np.pi) * len(y)
+        np.sum(2 * np.log(sig_arr)) + np.sum((y - mubar) ** 2 / sig_arr**2) + np.log(2 * np.pi) * len(y)
     )
 
     # Calculate the mean log-likelihood
@@ -1629,7 +1577,7 @@ def calculate_DIC(ds, silence=False):
     )
     D_theta_trace = -0.5 * (
         np.sum(2 * np.log(sig_trace_arr), axis=0)
-        + np.sum((np.expand_dims(y, axis=1) - mu_trace) ** 2 / sig_trace_arr ** 2, axis=0)
+        + np.sum((np.expand_dims(y, axis=1) - mu_trace) ** 2 / sig_trace_arr**2, axis=0)
         + np.log(2 * np.pi) * len(y)
     )
     Dbar_theta = np.mean(D_theta_trace, axis=0)

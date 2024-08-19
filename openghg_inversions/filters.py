@@ -1,5 +1,4 @@
-"""
-Functions for filtering data.
+"""Functions for filtering data.
 
 All filters are accessed and applied to data via the `filtering` function.
 
@@ -11,7 +10,8 @@ To see the available filters call `list_filters`.
 
 import logging
 import re
-from typing import Callable, cast, Union
+from typing import cast
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -28,7 +28,7 @@ filtering_functions = {}
 
 
 def register_filter(filt: Callable) -> Callable:
-    """Decorator function to register filters
+    """Decorator function to register filters.
 
     Args:
         filt: filter function to register
@@ -67,10 +67,11 @@ def list_filters() -> None:
 
 
 def filtering(
-    datasets_in: dict, filters: Union[str, None, dict[str, list[str | None]], list[str | None]], keep_missing: bool = False
+    datasets_in: dict,
+    filters: str | None | dict[str, list[str | None]] | list[str | None],
+    keep_missing: bool = False,
 ) -> dict:
-    """
-    Applies time filtering to all datasets in `datasets_in`.
+    """Applies time filtering to all datasets in `datasets_in`.
 
     If `filters` is a list, the same filters are applied to all sites. If `filters` is a dict
     with site codes as keys, then the filters applied to each site depend on the list supplied
@@ -110,7 +111,7 @@ def filtering(
     if not isinstance(filters, dict):
         if not isinstance(filters, list):
             filters = [filters]  # type: ignore
-        filters = {site: filters for site in sites}  # type: ignore
+        filters = dict.fromkeys(sites, filters)  # type: ignore
     else:
         for site, filt in filters.items():
             if filt is not None and not isinstance(filt, list):
@@ -146,8 +147,7 @@ def filtering(
 
 
 def _local_solar_time(dataset: xr.Dataset) -> list[int]:
-    """
-    Returns hour of day as a function of local solar time relative to the Greenwich Meridian.
+    """Returns hour of day as a function of local solar time relative to the Greenwich Meridian.
 
     This function also modifies `dataset` by changing the time coordinates.
 
@@ -164,7 +164,7 @@ def _local_solar_time(dataset: xr.Dataset) -> list[int]:
     sitelon = dataset.release_lon.values[0]
     # convert lon to [-180,180], so time offset is negative west of 0 degrees
     if sitelon > 180:
-        sitelon = sitelon - 360.0
+        sitelon -= 360.0
     dataset["time"] = dataset.time + pd.Timedelta(minutes=float(24 * 60 * sitelon / 360.0))
     hours = dataset.time.to_pandas().index.hour
     return list(hours)
@@ -207,7 +207,7 @@ def six_hr_mean(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def daytime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during daytime hours (11:00-15:00)
+    """Subset during daytime hours (11:00-15:00).
 
     Args:
         dataset: dataset to filter
@@ -229,7 +229,7 @@ def daytime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def daytime9to5(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during daytime hours (9:00-17:00)
+    """Subset during daytime hours (9:00-17:00).
 
     Args:
         dataset: dataset to filter
@@ -251,7 +251,7 @@ def daytime9to5(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def nighttime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Subset during nighttime hours (23:00 - 03:00)
+    """Subset during nighttime hours (23:00 - 03:00).
 
     Args:
         dataset: dataset to filter
@@ -273,7 +273,7 @@ def nighttime(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 @register_filter
 def noon(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Select only 12pm data
+    """Select only 12pm data.
 
     Args:
         dataset: dataset to filter
@@ -294,14 +294,13 @@ def noon(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
 
 def _local_ratio(dataset: xr.Dataset) -> np.ndarray:
-    """
-    Calculates the local ratio in the surrounding grid cells.
+    """Calculates the local ratio in the surrounding grid cells.
 
     NOTE: This is not a filter; it is used by the `local_influence` filter.
     """
     dlon = dataset.lon[1].values - dataset.lon[0].values
     dlat = dataset.lat[1].values - dataset.lat[0].values
-    local_sum = np.zeros((len(dataset.mf)))
+    local_sum = np.zeros(len(dataset.mf))
 
     for ti in range(len(dataset.mf)):
         release_lon = dataset.release_lon[ti].values
@@ -322,8 +321,7 @@ def _local_ratio(dataset: xr.Dataset) -> np.ndarray:
 
 @register_filter
 def local_influence(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """
-    Subset for times when "local influence" is below threshold.
+    """Subset for times when "local influence" is below threshold.
 
     Local influence expressed as a fraction of the sum of entire footprint domain.
 
@@ -359,8 +357,7 @@ def local_influence(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Datas
 
 @register_filter
 def pblh_min(dataset: xr.Dataset, pblh_threshold: float = 200.0, keep_missing: bool = False) -> xr.Dataset:
-    """
-    Subset for times when the PBLH is greater than 200m.
+    """Subset for times when the PBLH is greater than 200m.
 
     Args:
         dataset: dataset to filter
@@ -396,8 +393,7 @@ def pblh_min(dataset: xr.Dataset, pblh_threshold: float = 200.0, keep_missing: b
 def pblh_inlet_diff(
     dataset: xr.Dataset, diff_threshold: float = 50.0, keep_missing: bool = False
 ) -> xr.Dataset:
-    """
-    Subset for times when observations are taken at a height of less than 50 m below the PBLH.
+    """Subset for times when observations are taken at a height of less than 50 m below the PBLH.
 
     Args:
         dataset: dataset to filter
@@ -420,10 +416,7 @@ def pblh_inlet_diff(
             "Could not find inlet height from `inlet_height_magl` or `inlet` dataset attributes."
         )
 
-    if inlet_height != "multiple":
-        inlet_height = float(inlet_height)
-    else:
-        inlet_height = dataset.inlet
+    inlet_height = float(inlet_height) if inlet_height != "multiple" else dataset.inlet
 
     pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
 
@@ -432,7 +425,8 @@ def pblh_inlet_diff(
 
     return dataset.where(filt, drop=drop)
 
+
 @register_filter
 def pblh(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
-    """Deprecated: pblh is now called pblh_inlet_diff"""
+    """Deprecated: pblh is now called pblh_inlet_diff."""
     raise NotImplementedError("pblh is now called pblh_inlet_diff")

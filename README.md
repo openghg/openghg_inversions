@@ -135,10 +135,14 @@ The following sections detail some parameters that enable/specify optional behav
 
 This is not a comprehensive list (see the docstring for `fixedbasisMCMC` in the [hbmcmc module](openghg_inversions/hbmcmc/hbmcmc.py) for more arguments).
 
-- `save_trace`: 
-  - The default value is `False`. 
-  - If `True`, the arviz `InferenceData` output from sampling will be saved to the output path of the inversion, with a file name of the form `f"{outputname}{start_data}_trace.nc`. To load this trace into arviz, you need to use `InferenceData.from_netcdf`.
-  - Alternatively, you can pass a path (including filename), and that path will be used.
+
+Arguments affecting the data using in the inversion:
+- `sites`: a list of the sites to use in the inversion. Other information applied on a site-to-site basis that is presented in lists must be in the same order as used in the `sites` list.
+- `inlet`: a list of inlets for each site. If only one inlet is available for a given site and species, then `None` may be used as the value for that site. If there are a range of inlet heights at a single site, and these should correspond to a single footprint release height, then you may use, for instance, `slice(140, 160)` to combine inlet heights between 140 and 160 meters into a single timeseries of observations.
+-`instrument`, `fp_height`, `obs_data_level`, and `met_model` must either be lists of the same length as `sites`, or a single value may be supplied and will be converted to a list of the correct length. 
+
+
+Arguments affecting the inverse model:
 - `averaging_error`: if `True`, the error from resampling to the given `averaging_period` will be added to the observation's error.
 - `use_bc`: defaults to `True`. If `False`, no boundary conditions will be used in the inversion. This implicitly assumes that contributions from the boundary have been subtracted from the observations.
 - `fix_basis_outer_regions`:
@@ -154,8 +158,16 @@ This is not a comprehensive list (see the docstring for `fixedbasisMCMC` in the 
 - `filters`: filters to apply to data (after it is resampled and aligned)
   - `filters = None` will skip filtering
   - if `filters` is a list of filters (or a string containing a single filter name), those filters will be applied to all sites.
-  - if `filters` is a dictionary with site codes as keys and lists of filters as values, then each site will have filters applied individually according to this dictionary. All sites must supplied; to skip a site, pass `None` instead of a list. For instance: `filters = {"MHD": ["pblh_inlet_diff", "pblh_min"], "JFJ": None}`.
+  - if `filters` is a dictionary with site codes as keys and lists of filters as values, then each site will have filters applied individually according to this dictionary. All sites must supplied; to skip a site, pass `None` instead of a list (or omit that site from the dictionary). For instance: `filters = {"MHD": ["pblh_inlet_diff", "pblh_min"], "JFJ": None}`.
   - the list of available filters can be found in the `filtering` function in the [utils module](openghg_inversions/utils.py).
+  - Further parameters affecting the model are in the next subsection: they are passed to `inferpymc`.
+  - `xprior` and `bcprior`: these should be a dictionary containing `"pdf": <distribution>` and the arguments that should be passed to the PyMC distribution with that name. `<distribution>`
+
+Arguments affecting the output of the inversion:
+- `save_trace`: 
+  - The default value is `False`. 
+  - If `True`, the arviz `InferenceData` output from sampling will be saved to the output path of the inversion, with a file name of the form `f"{outputname}{start_data}_trace.nc`. To load this trace into arviz, you need to use `InferenceData.from_netcdf`.
+  - Alternatively, you can pass a path (including filename), and that path will be used.
 
 
 ##### Parameters for `inferpymc`
@@ -169,6 +181,7 @@ These parameters include:
   - the measured enhancement above the modelled baseline (if `True`)
   - the prior modelled enhancement (if `False`)
 - `no_model_error`: if `True`, only use obs error in likelihood (omitting min. model error and model error from scaling pollution events).
+- `reparameterise_log_normal`: if `True`, then log normal priors will be sampled by transforming samples from standard normal random variable to samples from the appropriate log normal distribution.
 
 
 ### The output from inversions

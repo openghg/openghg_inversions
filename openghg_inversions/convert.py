@@ -1,16 +1,12 @@
-"""
-Common Python functions that are called for converting time and gas species
+"""Common Python functions that are called for converting time and gas species
 units as part of data processing.
 """
-
-from typing import Union
 
 from openghg.util import molar_mass
 
 
 def mol2g(value: float, species: str) -> float:
-    """
-    Convert a value in moles to grams
+    """Convert a value in moles to grams.
 
     Args:
       value: Value associated with the number of moles of species
@@ -24,8 +20,7 @@ def mol2g(value: float, species: str) -> float:
 
 
 def prefix(units: str) -> float:
-    """
-    Convert unit prefix to magnitude.
+    """Convert unit prefix to magnitude.
 
     Args:
         units: Unit prefix of some quantity (e.g. T (Terra) --> 1e12)
@@ -50,9 +45,8 @@ def prefix(units: str) -> float:
     return unit_factor
 
 
-def convert_to_hours(time: Union[str, list[str]]) -> Union[float, list[float]]:
-    """
-    Convert (list of) times to hours.
+def convert_to_hours(time: str | list[str]) -> float | list[float]:
+    """Convert (list of) times to hours.
 
     Args:
         time: time or list of times as a string (e.g. "4D" or ["2D", "1W"])

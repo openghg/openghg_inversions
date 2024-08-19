@@ -1,13 +1,11 @@
-"""
-Template file for creating plots with output of hbmcmc. This file uses
-hbmcmc_post_process.py
+"""Template file for creating plots with output of hbmcmc. This file uses
+hbmcmc_post_process.py.
 """
 
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 from openghg_inversions.hbmcmc import hbmcmc_post_process as process
-from openghg_inversions.config.paths import Paths
 
 # openghginv_path = Paths.openghginv
 
@@ -72,7 +70,7 @@ if __name__ == "__main__":
     if output_directory == "/path/to/output/directory/":
         raise Exception("Please set output directory.")
     if not os.path.isdir(output_directory):
-        raise Exception("Output directory: {} does not exist.".format(output_directory))
+        raise Exception(f"Output directory: {output_directory} does not exist.")
 
     # Extract datasets from file
     ds_list, filenames = process.extract_hbmcmc_files(
@@ -94,7 +92,7 @@ if __name__ == "__main__":
     #     lat = lat.sel(lat=slice(latmin_ds,latmax_ds))
 
     # Plot scaling map
-    if plot_scale_map == True:
+    if plot_scale_map is True:
         process.plot_scale_map(
             ds_list,
             lat=lat,
@@ -110,7 +108,7 @@ if __name__ == "__main__":
         )
 
     # Plot absolute difference map
-    if plot_diff_map == True:
+    if plot_diff_map is True:
         process.plot_diff_map(
             ds_list,
             species,
@@ -127,7 +125,7 @@ if __name__ == "__main__":
         )
 
     # Plot absolute map
-    if plot_abs_map == True:
+    if plot_abs_map is True:
         process.plot_abs_map(
             ds_list,
             species,
@@ -144,7 +142,7 @@ if __name__ == "__main__":
         )
 
     # Plot y timeseries
-    if plot_y_timeseries == True:
+    if plot_y_timeseries is True:
         # combine_timeseries will currently fail as needs to be re-written for new outputs (ag12733 1/5/20)
         if combine_timeseries and len(ds_list) > 1:
             ds_combined = process.combine_timeseries(*ds_list)
@@ -153,13 +151,13 @@ if __name__ == "__main__":
             for i, ds in enumerate(ds_list):
                 if y_out_filename:
                     stub, ext = os.path.splitext(y_out_filename)
-                    y_out_filename_n = "{}_{}{}".format(stub, i + 1, ext)
+                    y_out_filename_n = f"{stub}_{i + 1}{ext}"
                 else:
                     y_out_filename_n = None
                 process.plot_timeseries(ds, fig_text=None, ylim=None, out_filename=y_out_filename_n)
 
     # Calculate country or area totals defined in country_file or the standard country defintion
-    if calc_country == True:
+    if calc_country is True:
         cntrymean_arr, cntry68_arr, cntry95_arr, cntryprior_arr = process.country_emissions_mult(
             ds_list,
             species,
@@ -189,13 +187,10 @@ if __name__ == "__main__":
             cntry95_arr[i, :, :] = cntry95
             cntryprior_arr[i, :] = cntryprior
 
-    if plot_countryemissions == True and len(dates) > 1:
+    if plot_countryemissions is True and len(dates) > 1:
         for ii, cntry in enumerate(countries_to_plot):
             cntry_ind = countries.index(cntry)
-            if CI_to_plot == 95:
-                cntryCI_arr = cntry95_arr
-            else:
-                cntryCI_arr = cntry68_arr
+            cntryCI_arr = cntry95_arr if CI_to_plot == 95 else cntry68_arr
             process.plot_country_timeseries(
                 cntrymean_arr[:, cntry_ind],
                 cntryCI_arr[:, cntry_ind, :],

@@ -1,5 +1,4 @@
-"""
-General methods for xarray Datasets and DataArrays.
+"""General methods for xarray Datasets and DataArrays.
 
 The functions here are not specific to OpenGHG inversions: they
 add functionality missing from xarray. These functions should accept
@@ -12,7 +11,9 @@ xarray Datasets and DataArrays, and return either a Dataset or a DataArray.
  with sparse underlying array. The built-in xarray functionality doesn't
 work correctly.
 """
-from typing import Any, Optional, Sequence, Union, TypeVar
+
+from typing import Any, TypeVar
+from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
@@ -28,7 +29,7 @@ DataSetOrArray = TypeVar("DataSetOrArray", bound=DataWithCoords)
 
 def get_xr_dummies(
     da: xr.DataArray,
-    categories: Optional[Union[Sequence[Any], pd.Index, xr.DataArray, np.ndarray]] = None,
+    categories: Sequence[Any] | pd.Index | xr.DataArray | np.ndarray | None = None,
     cat_dim: str = "categories",
     return_sparse: bool = True,
 ) -> xr.DataArray:
@@ -75,7 +76,7 @@ def sparse_xr_dot(
     da1: xr.DataArray,
     da2: DataSetOrArray,
     debug: bool = False,
-    broadcast_dims: Optional[Sequence[str]] = None,
+    broadcast_dims: Sequence[str] | None = None,
 ) -> DataSetOrArray:
     """Compute the matrix "dot" of a tuple of DataArrays with sparse.COO values.
 
@@ -133,7 +134,7 @@ def sparse_xr_dot(
 
         idx1, idx2 = [], []
         for i, j in zip(xs, ys):
-            if j in (i, 1):
+            if j in {i, 1}:
                 idx1.append(slice(None))
                 idx2.append(0)
             elif i == 1:

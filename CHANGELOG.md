@@ -2,12 +2,18 @@
 
 # Version 0.2.0
 
+- Added option to pass "mean" and "stdev" as parameters for lognormal BC prior [#PR 190](https://github.com/openghg/openghg_inversions/pull/190)
+
+- Pinned numpy to version < 2.0 since PyTensor hasn't updated to numpy >= 2.0 [#PR 148](https://github.com/openghg/openghg_inversions/pull/148)
+
+- Updated filtering to handle case `inlet == "multiple"`. [#PR 189](https://github.com/openghg/openghg_inversions/pull/189) 
+
 - Added option to store merged data in a zarr ZipStore, which is essentially just a zipped zarr store. This should reduce the number of files created when saving merged data. [#PR 185](https://github.com/openghg/openghg_inversions/pull/185)
 
 - Fixed issue where missing footprints times were dropped from basis function calculations. [#PR 186](https://github.com/openghg/openghg_inversions/pull/186) 
 
 - Made format for `filtering` in ini file allow for missing sites. Made `inlet`, `instrument`, `fp_height`, `obs_data_level`, and `met_model`
-  accept a single string in the ini file, which will be converted to a list of the correct length.  [#PR 182](https://github.com/openghg/openghg_inversions/pull/182)
+  accept a single string in the ini file, which will be converted to a list of the correct length.  [#PR 182](https://github.com/openghg/openghg_inversions/pull/182). Bug fix: [#PR 188](https://github.com/openghg/openghg_inversions/pull/188)
 
 - Added code to look for older flux data if none is found between start and end dates [#PR 177](https://github.com/openghg/openghg_inversions/pull/177)
 
@@ -15,7 +21,7 @@
 
 - Fixed bug in `filtering` function and updated tests to cover all filters [#PR 179](https://github.com/openghg/openghg_inversions/pull/179) 
 
-- Update docstrings
+- Updated all docstrings (various PRs)
 
 - Cleaned up `utils.py`: adding typing, and updated docstrings [#PR 158](https://github.com/openghg/openghg_inversions/pull/158) 
 
@@ -34,7 +40,7 @@
 
 - Added new option for computing min. model error based on percentiles. [#PR 142](https://github.com/openghg/openghg_inversions/pull/142) 
 
-- Update the docstrings of openghg_inversions.basis and openghg_inversions.array_ops [#PR 150](https://github.com/openghg/openghg_inversions/pull/150)
+- Update the docstrings of `openghg_inversions.basis` and `openghg_inversions.array_ops` [#PR 150](https://github.com/openghg/openghg_inversions/pull/150)
 
 - Fixed "add averaging" functional, which adds the variability of obs over a resampling period to the measurement error (repeatability). This closes [Issue #42](https://github.com/openghg/openghg_inversions/issues/42) . [#PR 144](https://github.com/openghg/openghg_inversions/pull/144)
 
@@ -49,6 +55,9 @@
 - removed `julian2time` function from `convert.py` because it used code that was deprecated by `matplotlib`. This function is still available at `github.com/ACRG-Bristol/acrg/acrg/time/convert.py`. [#PR 129](https://github.com/openghg/openghg_inversions/pull/129)
 
 - `met_model` is now used by `data_processing_surface_notracer`; it is an optional argument, passed as a list with the same length as the number of sites. [#PR 125](https://github.com/openghg/openghg_inversions/pull/125)
+
+- Added option to pass "mean" and "stdev" to lognormal xpriors. Additionally, if `reparameterise_log_normal = True` is added to an ini file, then the 
+  log normal prior will be sampled by transforming samples from standard normal random variable to samples from the appropriate log normal distribution. [#PR 107](https://github.com/openghg/openghg_inversions/pull/107)
 
 - Updated `pblh` filter to work with new variable names in footprints. [#PR 101](https://github.com/openghg/openghg_inversions/pull/101)
 

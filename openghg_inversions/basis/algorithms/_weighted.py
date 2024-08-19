@@ -1,19 +1,16 @@
-"""
-Module to create basis regions used in the inversion using an algorihtm that splits region
+"""Module to create basis regions used in the inversion using an algorihtm that splits region
 by input data.
 """
 
 from pathlib import Path
-from typing import Optional
 import numpy as np
 import xarray as xr
 
 
 # BUCKET BASIS FUNCTIONS
 def load_landsea_indices() -> np.ndarray:
-    """
-    Load UKMO array with indices that separate
-    land and sea regions in EUROPE domain
+    """Load UKMO array with indices that separate
+    land and sea regions in EUROPE domain.
 
     Returns :
         Array containing 0 (where there is sea)
@@ -24,10 +21,9 @@ def load_landsea_indices() -> np.ndarray:
 
 
 def bucket_value_split(
-    grid: np.ndarray, bucket: float, offset_x: Optional[int] = 0, offset_y: Optional[int] = 0
+    grid: np.ndarray, bucket: float, offset_x: int | None = 0, offset_y: int | None = 0
 ) -> list[tuple]:
-    """
-    Algorithm that will split the input grid (e.g. fp * flux)
+    """Algorithm that will split the input grid (e.g. fp * flux)
     such that the sum of each basis function region will
     equal the bucket value or by a single array element.
 
@@ -53,22 +49,20 @@ def bucket_value_split(
         list of tuples that define the indices for each basis function region
         [(ymin0, ymax0, xmin0, xmax0), ..., (yminN, ymaxN, xminN, xmaxN)]
     """
-
     if np.sum(grid) <= bucket or grid.shape == (1, 1):
         return [(offset_y, offset_y + grid.shape[0], offset_x, offset_x + grid.shape[1])]
 
-    else:
-        if grid.shape[0] >= grid.shape[1]:
-            half_y = grid.shape[0] // 2
-            return bucket_value_split(grid[0:half_y, :], bucket, offset_x, offset_y) + bucket_value_split(
-                grid[half_y:, :], bucket, offset_x, offset_y + half_y
-            )
+    elif grid.shape[0] >= grid.shape[1]:
+        half_y = grid.shape[0] // 2
+        return bucket_value_split(grid[0:half_y, :], bucket, offset_x, offset_y) + bucket_value_split(
+            grid[half_y:, :], bucket, offset_x, offset_y + half_y
+        )
 
-        elif grid.shape[0] < grid.shape[1]:
-            half_x = grid.shape[1] // 2
-            return bucket_value_split(grid[:, 0:half_x], bucket, offset_x, offset_y) + bucket_value_split(
-                grid[:, half_x:], bucket, offset_x + half_x, offset_y
-            )
+    elif grid.shape[0] < grid.shape[1]:
+        half_x = grid.shape[1] // 2
+        return bucket_value_split(grid[:, 0:half_x], bucket, offset_x, offset_y) + bucket_value_split(
+            grid[:, half_x:], bucket, offset_x + half_x, offset_y
+        )
 
 
 def get_nregions(bucket: float, grid: np.ndarray) -> int:
@@ -89,8 +83,7 @@ def get_nregions(bucket: float, grid: np.ndarray) -> int:
 
 
 def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int) -> float:
-    """
-    Optimize bucket value to obtain nregion basis functions
+    """Optimize bucket value to obtain nregion basis functions
     within +/- tol.
 
     Args:
@@ -114,18 +107,17 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int) -
         return bucket
 
     if get_nregions(bucket, grid) < nregion + tol:
-        bucket = bucket * 0.995
+        bucket *= 0.995
         return optimize_nregions(bucket, grid, nregion, tol)
 
     elif get_nregions(bucket, grid) > nregion - tol:
-        bucket = bucket * 1.005
+        bucket *= 1.005
         return optimize_nregions(bucket, grid, nregion, tol)
 
 
 def bucket_split_landsea_basis(grid: np.ndarray, bucket: float) -> np.ndarray:
-    """
-    Same as bucket_split_basis but includes
-    land-sea split. i.e. basis functions cannot overlap sea and land
+    """Same as bucket_split_basis but includes
+    land-sea split. i.e. basis functions cannot overlap sea and land.
 
     Args:
         grid:
@@ -169,8 +161,7 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float) -> np.ndarray:
 def nregion_landsea_basis(
     grid: np.ndarray, bucket: float = 1, nregion: int = 100, tol: int = 1
 ) -> np.ndarray:
-    """
-    Obtain basis function with nregions (for land-sea split)
+    """Obtain basis function with nregions (for land-sea split).
 
     Args:
         grid:
