@@ -227,7 +227,7 @@ def data_processing_surface_notracer(
     if met_model is None or isinstance(met_model, str):
         met_model = [met_model] * nsites
     if averaging_period is None or isinstance(averaging_period, str):
-        met_model = [averaging_period] * nsites
+        averaging_period = [averaging_period] * nsites
 
     fp_all = {}
     fp_all[".species"] = species.upper()
