@@ -1,6 +1,5 @@
 # OpenGHG Inversions Change Log
 
-
 # Version 0.2.0
 
 - Added option to pass "mean" and "stdev" as parameters for lognormal BC prior [#PR 190](https://github.com/openghg/openghg_inversions/pull/190)
@@ -102,7 +101,6 @@
 # Version 0.1.2
 
 - Bugfix: fixed problem with error handling in `config.version` caused inversions to fail if git wasn't loaded on Blue Pebble. [#PR 91](https://github.com/openghg/openghg_inversions/pull/91)
-
 
 # Version 0.1.1
 
