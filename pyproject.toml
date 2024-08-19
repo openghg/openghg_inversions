@@ -5,6 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "openghg_inversions"
 version = "0.2.0"
+
 authors = [{name = "Eric Saboya", email = "eric.saboya@bristol.ac.uk"}]
 maintainers = [{name = "Brendan Murphy", email = "brendan.murphy@bristol.ac.uk"}]
 license = {file = "LICENSE"}
