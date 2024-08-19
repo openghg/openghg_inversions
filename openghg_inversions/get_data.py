@@ -274,7 +274,7 @@ def data_processing_surface_notracer(
 
     footprint_dict = {}
     scales = {}
-    check_scales = []
+    check_scales = set()
     site_indices_to_keep = []
 
     for i, site in enumerate(sites):
@@ -399,18 +399,9 @@ def data_processing_surface_notracer(
 
             fp_all[site] = scenario_combined
 
-            # Check consistency of measurement scales between sites
-            check_scales += [scenario_combined.scale]
-            if not all(s == check_scales[0] for s in check_scales):
-                rt = []
-                for j in check_scales:
-                    if isinstance(j, list):
-                        rt.extend(flatten(j))
-                    else:
-                        rt.append(j)
-                scales[site] = rt
-            else:
-                scales[site] = check_scales[0]
+
+            scales[site] = scenario_combined.scale
+            check_scales.add(scenario_combined.scale)
 
             site_indices_to_keep.append(i)
 
@@ -430,7 +421,13 @@ def data_processing_surface_notracer(
         instrument = [instrument[s] for s in site_indices_to_keep]
         averaging_period = [averaging_period[s] for s in site_indices_to_keep]
 
+    # check for consistency of calibration scales
+    if len(check_scales) > 1:
+        msg = f"Not all sites using the same calibration scale: {len(check_scales)} scales found."
+        logger.warning(msg)
+
     fp_all[".scales"] = scales
+
     fp_all[".units"] = float(scenario_combined.mf.units)
 
     # create `mf_error`
