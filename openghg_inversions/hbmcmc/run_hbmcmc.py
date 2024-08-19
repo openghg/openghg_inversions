@@ -22,7 +22,6 @@ create a configuration file called `hbmcmc_input.ini` within your acrg_hbmcmc/ d
 This file will need to be edited to add parameters for your MCMC run.
 """
 import json
-import os
 import sys
 import argparse
 from shutil import copyfile
@@ -63,6 +62,7 @@ def extract_mcmc_type(config_file: str,
                       default: str ="fixed_basis"
                       ) -> str:
     """Find value which describes the MCMC function to use.
+
     Checks the input configuation file the "mcmc_type" keyword within
     the "MCMC.TYPE" section. If not present, the default is used.
 
@@ -107,9 +107,9 @@ def hbmcmc_extract_param(config_file: str,
                          mcmc_type: str | None ="fixed_basis", 
                          print_param: bool | None =True, 
                          **command_line):
-    """Extract parameters from input configuration file and associated
-    MCMC function. Checks the mcmc_type to extract the required
-    parameters.
+    """Extract parameters from input configuration file and associated MCMC function.
+
+    Checks the mcmc_type to extract the required parameters.
 
     Args:
       config_file:
@@ -128,6 +128,9 @@ def hbmcmc_extract_param(config_file: str,
       function,collections.OrderedDict:
         MCMC function to use, dictionary of parameter names and values passed
         to MCMC function
+
+    Raises:
+        ValueError if expected parameter is missing or has `None` value.
     """
     expected_param = fixed_basis_expected_param() if mcmc_type == "fixed_basis" else []
 
@@ -151,8 +154,8 @@ def hbmcmc_extract_param(config_file: str,
     # If configuration file does not include values for the
     # required parameters - produce an error
     for ep in expected_param:
-        if not param[ep]:
-            raise Exception(f"Required parameter '{ep}' has not been defined")
+        if ep not in param or not param[ep]:
+            raise ValueError(f"Required parameter '{ep}' has not been defined")
 
     if print_param:
         print("\nInput parameters: ")
@@ -164,8 +167,7 @@ def hbmcmc_extract_param(config_file: str,
 
 if __name__ == "__main__":
     openghginv_path = Paths.openghginv
-    default_config_file = os.path.join(openghginv_path, "hbmcmc/hbmcmc_input.ini")
-    config_file = default_config_file
+    config_file = openghginv_path / "hbmcmc" / "hbmcmc_input.ini"
 
     parser = argparse.ArgumentParser(description="Running Hierarchical Bayesian MCMC script")
     parser.add_argument("start", help="Start date string of the format YYYY-MM-DD", nargs="?")
@@ -192,7 +194,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    config_file = args.config or args.config_file
+    config_file = args.config
     command_line_args = {}
     if args.start:
         command_line_args["start_date"] = args.start
@@ -205,8 +207,8 @@ if __name__ == "__main__":
         command_line_args.update(args.kwargs)
 
     if args.generate is True:
-        template_file = os.path.join(openghginv_path, "hbmcmc/config/hbmcmc_input_template.ini")
-        if os.path.exists(config_file):
+        template_file = openghginv_path / "hbmcmc" / "config" / "hbmcmc_input_template.ini"
+        if config_file.exists():
             write = input(f"Config file {config_file} already exists.\nOverwrite? (y/n): ")
             if write.lower() == "y" or write.lower() == "yes":
                 copyfile(template_file, config_file)
@@ -216,15 +218,8 @@ if __name__ == "__main__":
             copyfile(template_file, config_file)
         sys.exit(f"New configuration file has been generated: {config_file}")
 
-    if not os.path.exists(config_file):
-        if config_file == default_config_file:
-            sys.exit(
-                "No configuration file detected.\n"
-                "To generate a template configuration file run again"
-                " with -r flag:\n  $ python run_tdmcmc.py -r"
-            )
-        else:
-            sys.exit(
+    if not config_file.exists():
+        raise ValueError(
                 "Configuration file cannot be found.\n"
                 f"Please check path and filename are correct: {config_file}"
             )
