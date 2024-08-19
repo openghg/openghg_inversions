@@ -17,7 +17,7 @@ import logging
 import pickle
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast, Literal, Optional
 
 import numpy as np
 from openghg.analyse import ModelScenario
@@ -97,7 +97,7 @@ def data_processing_surface_notracer(
     species: str,
     sites: list | str,
     domain: str,
-    averaging_period: list | str,
+    averaging_period: list[str | None] | str | None,
     start_date: str,
     end_date: str,
     obs_data_level: list[str | None] | str | None = None,
@@ -226,6 +226,8 @@ def data_processing_surface_notracer(
         obs_data_level = [obs_data_level] * nsites
     if met_model is None or isinstance(met_model, str):
         met_model = [met_model] * nsites
+    if averaging_period is None or isinstance(averaging_period, str):
+        met_model = [averaging_period] * nsites
 
     fp_all = {}
     fp_all[".species"] = species.upper()
@@ -526,21 +528,12 @@ def _save_merged_data(
 
 
 def load_merged_data(
-<<<<<<< HEAD
     merged_data_dir: str | Path,
     species: str | None = None,
     start_date: str | None = None,
     output_name: str | None = None,
     merged_data_name: str | None = None,
-    output_format: Literal["pickle", "netcdf", "zarr"] | None = None,
-=======
-    merged_data_dir: Union[str, Path],
-    species: Optional[str] = None,
-    start_date: Optional[str] = None,
-    output_name: Optional[str] = None,
-    merged_data_name: Optional[str] = None,
     output_format: Optional[Literal["pickle", "netcdf", "zarr", "zarr.zip"]] = None,
->>>>>>> devel
 ) -> dict:
     """Load `fp_all` dictionary from a file in `merged_data_dir`.
 
