@@ -356,6 +356,7 @@ def inferpymc(Hx: np.ndarray,
 
     # Check for convergence
     gelrub = pm.rhat(trace)["x"].max()
+    print(f" Gelman-Rubin = {gelrub}")
     if gelrub > 1.05:
         print("Failed Gelman-Rubin at 1.05")
         convergence = "Failed"
@@ -684,13 +685,14 @@ def inferpymc_postprocessouts(
             scalemap_mode_single = np.zeros_like(bfds.values)
 
             for basis in np.arange(nbasis):
-                scalemap_mu_single[bfds.values == (basis + 1)] = np.mean(xouts[:, period+basis])
-                if np.nanmax(xouts[:, period+basis]) > np.nanmin(xouts[:, period+basis]):
-                    xes = np.arange(np.nanmin(xouts[:, period+basis]), np.nanmax(xouts[:, period+basis]), 0.01)
-                    kde = stats.gaussian_kde(xouts[:, period+basis]).evaluate(xes)
+                indx = int(basis + period*nbasis)
+                scalemap_mu_single[bfds.values == (basis + 1)] = np.mean(xouts[:, indx])
+                if np.nanmax(xouts[:, indx]) > np.nanmin(xouts[:, indx]):
+                    xes = np.arange(np.nanmin(xouts[:, indx]), np.nanmax(xouts[:, indx]), 0.01)
+                    kde = stats.gaussian_kde(xouts[:, indx]).evaluate(xes)
                     scalemap_mode_single[bfds.values == (basis + 1)] = xes[kde.argmax()]
                 else:
-                    scalemap_mode_single[bfds.values == (basis + 1)] = np.mean(xouts[:, period+basis])
+                    scalemap_mode_single[bfds.values == (basis + 1)] = np.mean(xouts[:, indx])
 
             scalemap_mu.append(scalemap_mu_single)
             scalemap_mode.append(scalemap_mode_single)
@@ -797,10 +799,11 @@ def inferpymc_postprocessouts(
                 cntrytottrace = np.zeros(len(steps))
                 cntrytotprior = 0
                 for bf in range(int(np.max(bfarray)) + 1):
+                    indx = int(basis + period*nbasis)
                     bothinds = np.logical_and(cntrygrid == ci, bfarray == bf)
                     cntrytottrace += (
                         np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
-                        * xouts[:, bf+period]
+                        * xouts[:, indx]
                         / unit_factor
                     )
                     cntrytotprior += (
