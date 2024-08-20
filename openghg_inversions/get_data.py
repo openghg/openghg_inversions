@@ -321,6 +321,8 @@ def data_processing_surface_notracer(
                 store=footprint_store,
                 species=fp_species,
             )
+            if get_fps.data.time.size==0:
+                raise SearchError
         except SearchError:
             print(
                 f"\nNo footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}.",
