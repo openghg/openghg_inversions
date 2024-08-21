@@ -379,6 +379,209 @@ def inferpymc(
     return result
 
 
+def inferanalytical( 
+    Hx: np.ndarray,
+    Y: np.ndarray,
+    error: np.ndarray,
+    siteindicator: np.ndarray,
+    Hbc: np.ndarray | None = None,
+    xprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+    bcprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+    use_bc: bool = True,
+    pollution_events_from_obs: bool = False,
+    no_model_error: bool = False,
+) -> dict:  
+    """Uses PyMC module for Bayesian inference for emissions field, boundary
+    conditions and (currently) a single model error value.
+    This uses a Normal likelihood but the (hyper)prior PDFs can be selected by user.
+
+    Args:
+      Hx:
+        Transpose of the sensitivity matrix to map emissions to measurement.
+        This is the same as what is given from fp_data[site].H.values, where
+        fp_data is the output from e.g. footprint_data_merge, but where it
+        has been stacked for all sites.
+      Y:
+        Measurement vector containing all measurements
+      siteindicator:
+        Array of indexing integers that relate each measurement to a site
+      Hbc:
+        Same as Hx but for boundary conditions. Only used if use_bc=True.
+      xprior:
+        Dictionary containing information about the prior PDF for emissions.
+        The entry "pdf" is the name of the analytical PDF used, see
+        https://docs.pymc.io/api/distributions/continuous.html for PDFs
+        built into pymc3, although they may have to be coded into the script.
+        The other entries in the dictionary should correspond to the shape
+        parameters describing that PDF as the online documentation,
+        e.g. N(1,1**2) would be: `xprior={pdf: "normal", "mu": 1.0, "sigma": 1.0}`.
+        Note that the standard deviation should be used rather than the
+        precision. Currently all variables are considered iid.
+      bcprior:
+        Same as xprior but for boundary conditions. Only used if use_bc=True.
+      use_bc:
+        When True, use and infer boundary conditions.
+      reparameterise_log_normal:
+        If there are many divergences when using a log normal prior, setting this to True might help. It samples from a normal prior, then puts the normal samples through a function that converts them to log normal samples; this changes the space the sampler needs to explore.
+      pollution_events_from_obs:
+        When True, calculate the pollution events from obs; when false pollution events are set
+        to the modeled concentration.
+
+    Returns:
+      Dictionary containing:
+        xouts (array):
+          MCMC chain for emissions scaling factors for each basis function.
+        bcouts (array):
+          MCMC chain for boundary condition scaling factors. Only if use_bc is True.
+    """
+
+    if use_bc and Hbc is None:
+        raise ValueError("If `use_bc` is True, then `Hbc` must be provided.")
+
+    nx = Hx.shape[0]
+
+    if use_bc:
+        Hx = np.vstack(Hx, Hbc)
+        nbc = Hbc.shape[0]
+
+    hx = Hx.T
+    
+
+    
+
+    ny = len(Y)
+
+    nit = int(nit)
+
+    # convert siteindicator into a site indexer
+    if sigma_per_site:
+        sites = siteindicator.astype(int)
+        nsites = np.amax(sites) + 1
+    else:
+        sites = np.zeros_like(siteindicator).astype(int)
+        nsites = 1
+    nsigmas = np.amax(sigma_freq_index) + 1
+
+    if add_offset:
+        B = offset_matrix(siteindicator)
+
+    with pm.Model():
+        step1_vars = []
+
+        if reparameterise_log_normal and xprior["pdf"] == "lognormal":
+            x0 = pm.Normal("x0", 0, 1, shape=nx)
+            x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0))
+            step1_vars.append(x0)
+        else:
+            x = parse_prior("x", xprior, shape=nx)
+            step1_vars.append(x)
+
+        if use_bc:
+            if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
+                xbc0 = pm.Normal("xbc0", 0, 1, shape=nbc)
+                xbc = pm.Deterministic("xbc", pt.exp(bcprior["mu"] + bcprior["sigma"] * xbc0))
+                step1_vars.append(xbc0)
+            else:
+                xbc = parse_prior("xbc", bcprior, shape=nbc)
+                step1_vars.append(xbc)
+
+        sig = parse_prior("sig", sigprior, shape=(nsites, nsigmas))
+
+        mu = pt.dot(hx, x)
+
+        if use_bc:
+            mu += pt.dot(hbc, xbc)
+
+        if add_offset:
+            offset = parse_prior("offset", offsetprior, shape=nsites - 1)
+            offset_vec = pt.concatenate((np.array([0]), offset), axis=0)
+            mu += pt.dot(B, offset_vec)
+
+        if pollution_events_from_obs is True:
+            if use_bc is True:
+                pollution_event = np.abs(Y - pt.dot(hbc, xbc))
+            else:
+                pollution_event = np.abs(Y) + 1e-6 * np.mean(Y)  # small non-zero term to prevent NaNs
+        else:
+            pollution_event = np.abs(pt.dot(hx, x))
+
+        pollution_event_scaled_error = pollution_event * sig[sites, sigma_freq_index]
+
+        if no_model_error is True:
+            epsilon = np.abs(error)
+        else:
+            epsilon = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)
+
+        pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
+
+        step1 = pm.NUTS(vars=step1_vars)
+        step2 = pm.Slice(vars=[sig])
+        step = [step1, step2] if nuts_sampler == "pymc" else None
+        trace = pm.sample(
+            nit,
+            tune=int(tune),
+            chains=nchain,
+            step=step,
+            progressbar=verbose,
+            cores=nchain,
+            nuts_sampler=nuts_sampler,
+        )
+
+    if save_trace:
+        trace.to_netcdf(str(save_trace), engine="netcdf4")
+
+    xouts = trace.posterior["x"][0, burn:nit]
+
+    if use_bc:
+        bcouts = trace.posterior["xbc"][0, burn:nit]
+
+    sigouts = trace.posterior["sig"][0, burn:nit]
+
+    # Check for convergence
+    gelrub = pm.rhat(trace)["x"].max()
+    if gelrub > 1.05:
+        print("Failed Gelman-Rubin at 1.05")
+        convergence = "Failed"
+    else:
+        convergence = "Passed"
+
+    if nuts_sampler != "pymc":
+        divergences = np.sum(trace.sample_stats.diverging).values
+        if divergences > 0:
+            print(f"There were {divergences} divergences. Try increasing target accept or reparameterise.")
+
+    if add_offset:
+        offset_outs = trace.posterior["offset"][0, burn:nit]
+        OFFSETtrace = np.hstack([np.zeros((int(nit - burn), 1)), offset_outs])
+        OFFtrace = np.dot(B, OFFSETtrace.T)
+    else:
+        offset_outs = xouts * 0
+        OFFtrace = np.zeros((ny, nit - burn))
+
+    if use_bc:
+        YBCtrace = np.dot(Hbc.T, bcouts.T) + OFFtrace
+        Ytrace = np.dot(Hx.T, xouts.T) + YBCtrace
+    else:
+        Ytrace = np.dot(Hx.T, xouts.T) + OFFtrace
+
+    result = {
+        "xouts": xouts,
+        "sigouts": sigouts,
+        "offset_outs": offset_outs,
+        "Ytrace": Ytrace,
+        "OFFSETtrace": OFFtrace,
+        "convergence": convergence,
+        "step1": step1,
+        "step2": step2,
+    }
+
+    if use_bc:
+        result["bcouts"] = bcouts
+        result["YBCtrace"] = YBCtrace
+
+    return result
+
+
 def inferpymc_postprocessouts(
     xouts: np.ndarray,
     sigouts: np.ndarray,
