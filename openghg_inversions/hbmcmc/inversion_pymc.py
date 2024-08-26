@@ -383,13 +383,9 @@ def inferanalytical(
     Hx: np.ndarray,
     Y: np.ndarray,
     error: np.ndarray,
-    siteindicator: np.ndarray,
+    x_covariance: np.ndarray,
     Hbc: np.ndarray | None = None,
-    xprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-    bcprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     use_bc: bool = True,
-    pollution_events_from_obs: bool = False,
-    no_model_error: bool = False,
 ) -> dict:  
     """Uses PyMC module for Bayesian inference for emissions field, boundary
     conditions and (currently) a single model error value.
@@ -407,22 +403,8 @@ def inferanalytical(
         Array of indexing integers that relate each measurement to a site
       Hbc:
         Same as Hx but for boundary conditions. Only used if use_bc=True.
-      xprior:
-        Dictionary containing information about the prior PDF for emissions.
-        The entry "pdf" is the name of the analytical PDF used, see
-        https://docs.pymc.io/api/distributions/continuous.html for PDFs
-        built into pymc3, although they may have to be coded into the script.
-        The other entries in the dictionary should correspond to the shape
-        parameters describing that PDF as the online documentation,
-        e.g. N(1,1**2) would be: `xprior={pdf: "normal", "mu": 1.0, "sigma": 1.0}`.
-        Note that the standard deviation should be used rather than the
-        precision. Currently all variables are considered iid.
-      bcprior:
-        Same as xprior but for boundary conditions. Only used if use_bc=True.
       use_bc:
         When True, use and infer boundary conditions.
-      reparameterise_log_normal:
-        If there are many divergences when using a log normal prior, setting this to True might help. It samples from a normal prior, then puts the normal samples through a function that converts them to log normal samples; this changes the space the sampler needs to explore.
       pollution_events_from_obs:
         When True, calculate the pollution events from obs; when false pollution events are set
         to the modeled concentration.
@@ -438,146 +420,52 @@ def inferanalytical(
     if use_bc and Hbc is None:
         raise ValueError("If `use_bc` is True, then `Hbc` must be provided.")
 
-    nx = Hx.shape[0]
-
-    if use_bc:
-        Hx = np.vstack(Hx, Hbc)
-        nbc = Hbc.shape[0]
-
     hx = Hx.T
-    
-
-    
-
-    ny = len(Y)
-
-    nit = int(nit)
-
-    # convert siteindicator into a site indexer
-    if sigma_per_site:
-        sites = siteindicator.astype(int)
-        nsites = np.amax(sites) + 1
-    else:
-        sites = np.zeros_like(siteindicator).astype(int)
-        nsites = 1
-    nsigmas = np.amax(sigma_freq_index) + 1
-
-    if add_offset:
-        B = offset_matrix(siteindicator)
-
-    with pm.Model():
-        step1_vars = []
-
-        if reparameterise_log_normal and xprior["pdf"] == "lognormal":
-            x0 = pm.Normal("x0", 0, 1, shape=nx)
-            x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0))
-            step1_vars.append(x0)
-        else:
-            x = parse_prior("x", xprior, shape=nx)
-            step1_vars.append(x)
-
-        if use_bc:
-            if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
-                xbc0 = pm.Normal("xbc0", 0, 1, shape=nbc)
-                xbc = pm.Deterministic("xbc", pt.exp(bcprior["mu"] + bcprior["sigma"] * xbc0))
-                step1_vars.append(xbc0)
-            else:
-                xbc = parse_prior("xbc", bcprior, shape=nbc)
-                step1_vars.append(xbc)
-
-        sig = parse_prior("sig", sigprior, shape=(nsites, nsigmas))
-
-        mu = pt.dot(hx, x)
-
-        if use_bc:
-            mu += pt.dot(hbc, xbc)
-
-        if add_offset:
-            offset = parse_prior("offset", offsetprior, shape=nsites - 1)
-            offset_vec = pt.concatenate((np.array([0]), offset), axis=0)
-            mu += pt.dot(B, offset_vec)
-
-        if pollution_events_from_obs is True:
-            if use_bc is True:
-                pollution_event = np.abs(Y - pt.dot(hbc, xbc))
-            else:
-                pollution_event = np.abs(Y) + 1e-6 * np.mean(Y)  # small non-zero term to prevent NaNs
-        else:
-            pollution_event = np.abs(pt.dot(hx, x))
-
-        pollution_event_scaled_error = pollution_event * sig[sites, sigma_freq_index]
-
-        if no_model_error is True:
-            epsilon = np.abs(error)
-        else:
-            epsilon = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)
-
-        pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
-
-        step1 = pm.NUTS(vars=step1_vars)
-        step2 = pm.Slice(vars=[sig])
-        step = [step1, step2] if nuts_sampler == "pymc" else None
-        trace = pm.sample(
-            nit,
-            tune=int(tune),
-            chains=nchain,
-            step=step,
-            progressbar=verbose,
-            cores=nchain,
-            nuts_sampler=nuts_sampler,
-        )
-
-    if save_trace:
-        trace.to_netcdf(str(save_trace), engine="netcdf4")
-
-    xouts = trace.posterior["x"][0, burn:nit]
+    nx = hx.shape[1]
+    x_prior = np.ones(nx)
+    y_covariance = np.diag(error)
 
     if use_bc:
-        bcouts = trace.posterior["xbc"][0, burn:nit]
+        hbc = Hbc.T
+        nbc = hbc.shape[1]
+        hx = np.hstack(hx, hbc)
+        bc_prior = np.ones(nbc)
+        x_prior = np.concatenate((x_prior, bc_prior))
 
-    sigouts = trace.posterior["sig"][0, burn:nit]
+    calc_1 = np.dot(x_covariance, hx.T)
+    calc_2 = np.dot(np.dot(hx, x_covariance), hx.T)
+    calc_3 = np.linalg.inv(calc_2 + y_covariance)
+    calc_4 = np.dot(hx, x_prior)
 
-    # Check for convergence
-    gelrub = pm.rhat(trace)["x"].max()
-    if gelrub > 1.05:
-        print("Failed Gelman-Rubin at 1.05")
-        convergence = "Failed"
-    else:
-        convergence = "Passed"
-
-    if nuts_sampler != "pymc":
-        divergences = np.sum(trace.sample_stats.diverging).values
-        if divergences > 0:
-            print(f"There were {divergences} divergences. Try increasing target accept or reparameterise.")
-
-    if add_offset:
-        offset_outs = trace.posterior["offset"][0, burn:nit]
-        OFFSETtrace = np.hstack([np.zeros((int(nit - burn), 1)), offset_outs])
-        OFFtrace = np.dot(B, OFFSETtrace.T)
-    else:
-        offset_outs = xouts * 0
-        OFFtrace = np.zeros((ny, nit - burn))
-
+    xouts = x_prior + np.dot(np.dot(calc_1, calc_3), (Y - calc_4))
+    xouts_covariance = x_covariance - np.dot(np.dot(calc_1, calc_3), np.dot(hx, x_covariance))
+    
     if use_bc:
-        YBCtrace = np.dot(Hbc.T, bcouts.T) + OFFtrace
-        Ytrace = np.dot(Hx.T, xouts.T) + YBCtrace
+        bcouts = xouts[-nbc:]
+        xouts = xouts[:-nbc]
+        bcouts_covariance = xouts_covariance[-nbc:, -nbc:]
+        xouts_covariance = xouts_covariance[:-nbc, :-nbc]
+
+        YBC_mod = np.dot(hbc, bcouts.T)
+        Y_mod = np.dot(hx, xouts.T) + YBC_mod
+        YBC_mod_covariance = np.dot(np.dot(hbc, bcouts_covariance), hbc.T)
     else:
-        Ytrace = np.dot(Hx.T, xouts.T) + OFFtrace
+        Y_mod = np.dot(hx, xouts.T)
+
+    Y_mod_covariance = np.dot(np.dot(hx, xouts_covariance), hx.T)
 
     result = {
         "xouts": xouts,
-        "sigouts": sigouts,
-        "offset_outs": offset_outs,
-        "Ytrace": Ytrace,
-        "OFFSETtrace": OFFtrace,
-        "convergence": convergence,
-        "step1": step1,
-        "step2": step2,
+        "xouts_covariance": xouts_covariance,
+        "Y_mod": Y_mod,
+        "Y_mod_covariance": Y_mod_covariance,
     }
 
     if use_bc:
         result["bcouts"] = bcouts
-        result["YBCtrace"] = YBCtrace
+        result["bcouts_covariance"] = bcouts_covariance
+        result["YBC_mod"] = YBC_mod
+        result["YBC_mod_covariance"] = YBC_mod_covariance
 
     return result
 
@@ -1024,6 +912,501 @@ def inferpymc_postprocessouts(
             "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
         })
         coords["numBC"] = (["nBC"], nBC)
+
+    outds = xr.Dataset(data_vars, coords=coords)
+
+    outds.fluxmode.attrs["units"] = "mol/m2/s"
+    outds.fluxapriori.attrs["units"] = "mol/m2/s"
+    outds.Yobs.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Yerror.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Yerror_repeatability.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Yerror_variability.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.min_model_error.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Yapriori.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Ymodmean.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Ymodmedian.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Ymodmode.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Ymod95.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Ymod68.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Yoffmean.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Yoffmedian.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Yoffmode.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Yoff95.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Yoff68.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.countrymean.attrs["units"] = country_units
+    outds.countrymedian.attrs["units"] = country_units
+    outds.countrymode.attrs["units"] = country_units
+    outds.country68.attrs["units"] = country_units
+    outds.country95.attrs["units"] = country_units
+    outds.countrysd.attrs["units"] = country_units
+    outds.countryapriori.attrs["units"] = country_units
+    outds.xsensitivity.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.sigtrace.attrs["units"] = obs_units + " " + "mol/mol"
+
+    outds.Yobs.attrs["longname"] = "observations"
+    outds.Yerror.attrs["longname"] = "measurement error"
+    outds.min_model_error.attrs["longname"] = "minimum model error"
+    outds.Ytime.attrs["longname"] = "time of measurements"
+    outds.Yapriori.attrs["longname"] = "a priori simulated measurements"
+    outds.Ymodmean.attrs["longname"] = "mean of posterior simulated measurements"
+    outds.Ymodmedian.attrs["longname"] = "median of posterior simulated measurements"
+    outds.Ymodmode.attrs["longname"] = "mode of posterior simulated measurements"
+    outds.Ymod68.attrs["longname"] = " 0.68 Bayesian credible interval of posterior simulated measurements"
+    outds.Ymod95.attrs["longname"] = " 0.95 Bayesian credible interval of posterior simulated measurements"
+    outds.Yoffmean.attrs["longname"] = "mean of posterior simulated offset between measurements"
+    outds.Yoffmedian.attrs["longname"] = "median of posterior simulated offset between measurements"
+    outds.Yoffmode.attrs["longname"] = "mode of posterior simulated offset between measurements"
+    outds.Yoff68.attrs["longname"] = (
+        " 0.68 Bayesian credible interval of posterior simulated offset between measurements"
+    )
+    outds.Yoff95.attrs["longname"] = (
+        " 0.95 Bayesian credible interval of posterior simulated offset between measurements"
+    )
+    outds.xtrace.attrs["longname"] = "trace of unitless scaling factors for emissions parameters"
+    outds.sigtrace.attrs["longname"] = "trace of model error parameters"
+    outds.siteindicator.attrs["longname"] = "index of site of measurement corresponding to sitenames"
+    outds.sigmafreqindex.attrs["longname"] = "perdiod over which the model error is estimated"
+    outds.sitenames.attrs["longname"] = "site names"
+    outds.sitelons.attrs["longname"] = "site longitudes corresponding to site names"
+    outds.sitelats.attrs["longname"] = "site latitudes corresponding to site names"
+    outds.fluxapriori.attrs["longname"] = "mean a priori flux over period"
+    outds.fluxmode.attrs["longname"] = "mode posterior flux over period"
+    outds.scalingmean.attrs["longname"] = "mean scaling factor field over period"
+    outds.scalingmode.attrs["longname"] = "mode scaling factor field over period"
+    outds.basisfunctions.attrs["longname"] = "basis function field"
+    outds.countrymean.attrs["longname"] = "mean of ocean and country totals"
+    outds.countrymedian.attrs["longname"] = "median of ocean and country totals"
+    outds.countrymode.attrs["longname"] = "mode of ocean and country totals"
+    outds.country68.attrs["longname"] = "0.68 Bayesian credible interval of ocean and country totals"
+    outds.country95.attrs["longname"] = "0.95 Bayesian credible interval of ocean and country totals"
+    outds.countrysd.attrs["longname"] = "standard deviation of ocean and country totals"
+    outds.countryapriori.attrs["longname"] = "prior mean of ocean and country totals"
+    outds.countrydefinition.attrs["longname"] = "grid definition of countries"
+    outds.xsensitivity.attrs["longname"] = "emissions sensitivity timeseries"
+
+    if use_bc:
+        outds.YmodmeanBC.attrs["units"] = obs_units + " " + "mol/mol"
+        outds.YmodmedianBC.attrs["units"] = obs_units + " " + "mol/mol"
+        outds.YmodmodeBC.attrs["units"] = obs_units + " " + "mol/mol"
+        outds.Ymod95BC.attrs["units"] = obs_units + " " + "mol/mol"
+        outds.Ymod68BC.attrs["units"] = obs_units + " " + "mol/mol"
+        outds.YaprioriBC.attrs["units"] = obs_units + " " + "mol/mol"
+        outds.bcsensitivity.attrs["units"] = obs_units + " " + "mol/mol"
+
+        outds.YaprioriBC.attrs["longname"] = "a priori simulated boundary conditions"
+        outds.YmodmeanBC.attrs["longname"] = "mean of posterior simulated boundary conditions"
+        outds.YmodmedianBC.attrs["longname"] = "median of posterior simulated boundary conditions"
+        outds.YmodmodeBC.attrs["longname"] = "mode of posterior simulated boundary conditions"
+        outds.Ymod68BC.attrs["longname"] = (
+            " 0.68 Bayesian credible interval of posterior simulated boundary conditions"
+        )
+        outds.Ymod95BC.attrs["longname"] = (
+            " 0.95 Bayesian credible interval of posterior simulated boundary conditions"
+        )
+        outds.bctrace.attrs["longname"] = (
+            "trace of unitless scaling factors for boundary condition parameters"
+        )
+        outds.bcsensitivity.attrs["longname"] = "boundary conditions sensitivity timeseries"
+
+    outds.attrs["Start date"] = start_date
+    outds.attrs["End date"] = end_date
+    outds.attrs["Latent sampler"] = str(step1)[20:33]
+    outds.attrs["Hyper sampler"] = str(step2)[20:33]
+    outds.attrs["Burn in"] = str(int(burn))
+    outds.attrs["Tuning steps"] = str(int(tune))
+    outds.attrs["Number of chains"] = str(int(nchain))
+    outds.attrs["Error for each site"] = str(sigma_per_site)
+    outds.attrs["Emissions Prior"] = "".join([f"{k},{v}," for k, v in xprior.items()])[:-1]
+    outds.attrs["Model error Prior"] = "".join([f"{k},{v}," for k, v in sigprior.items()])[:-1]
+    if use_bc:
+        outds.attrs["BCs Prior"] = "".join([f"{k},{v}," for k, v in bcprior.items()])[:-1]
+    if add_offset:
+        outds.attrs["Offset Prior"] = "".join([f"{k},{v}," for k, v in offsetprior.items()])[:-1]
+    outds.attrs["Creator"] = getpass.getuser()
+    outds.attrs["Date created"] = str(pd.Timestamp("today"))
+    outds.attrs["Convergence"] = convergence
+    outds.attrs["Repository version"] = code_version()
+    outds.attrs["min_model_error"] = (
+        min_error  # TODO: remove this once PARIS formatting switches over to using min error data var
+    )
+
+    # variables with variable length data types shouldn't be compressed
+    # e.g. object ("O") or unicode ("U") type
+    do_not_compress = []
+    dtype_pat = re.compile(r"[<>=]?[UO]")  # regex for Unicode and Object dtypes
+    for dv in outds.data_vars:
+        if dtype_pat.match(outds[dv].data.dtype.str):
+            do_not_compress.append(dv)
+
+    # setting compression levels for data vars in outds
+    comp = dict(zlib=True, complevel=5)
+    encoding = {var: comp for var in outds.data_vars if var not in do_not_compress}
+
+    output_filename = define_output_filename(outputpath, species, domain, outputname, start_date, ext=".nc")
+    Path(outputpath).mkdir(parents=True, exist_ok=True)
+    outds.to_netcdf(output_filename, encoding=encoding, mode="w")
+
+    return outds
+
+
+def inferanalytical_postprocessouts(
+    xouts: np.ndarray,
+    xouts_covariance: np.ndarray,
+    Hx: np.ndarray,
+    Y: np.ndarray,
+    Y_mod: np.ndarray,
+    Y_mod_covariance: np.ndarray,
+    error: np.ndarray,
+    Ytime: np.ndarray,
+    siteindicator: np.ndarray,
+    domain: str,
+    species: str,
+    sites: list,
+    start_date: str,
+    end_date: str,
+    outputname: str,
+    outputpath: str,
+    country_unit_prefix: str | None,
+    emissions_name: str,
+    bcouts: np.ndarray | None = None,
+    bcouts_covariance: np.ndarray | None = None,
+    YBC_mod: np.ndarray | None = None,
+    YBC_mod_covariance: np.ndarray | None = None,
+    Hbc: np.ndarray | None = None,
+    obs_repeatability: np.ndarray | None = None,
+    obs_variability: np.ndarray | None = None,
+    fp_data: dict | None = None,
+    country_file: str | None = None,
+    rerun_file: xr.Dataset | None = None,
+    use_bc: bool = False,
+    nbasis: int | None = None,
+    nperiod: int | None = None,
+    temporal_correlation: bool = False,
+) -> xr.Dataset:
+    r"""Takes the output from inferpymc function, along with some other input
+    information, calculates statistics on them and places it all in a dataset.
+    Also calculates statistics on posterior emissions for the countries in
+    the inversion domain and saves all in netcdf.
+
+    Note that the uncertainties are defined by the highest posterior
+    density (HPD) region and NOT percentiles (as the tdMCMC code).
+    The HPD region is defined, for probability content (1-a), as:
+        1) P(x \in R | y) = (1-a)
+        2) for x1 \in R and x2 \notin R, P(x1|y)>=P(x2|y)
+
+    Args:
+      xouts:
+        MCMC chain for emissions scaling factors for each basis function.
+      Hx:
+        Transpose of the sensitivity matrix to map emissions to measurement.
+        This is the same as what is given from fp_data[site].H.values, where
+        fp_data is the output from e.g. footprint_data_merge, but where it
+        has been stacked for all sites.
+      Y:
+        Measurement vector containing all measurements
+      error:
+        Measurement error vector, containg a value for each element of Y.
+      Ytime:
+        Time stamp of measurements as used by the inversion.
+      siteindicator:
+        Numerical indicator of which site the measurements belong to,
+        same length at Y.
+      domain:
+        Inversion spatial domain.
+      species:
+        Species of interest
+      sites:
+        List of sites in inversion
+      start_date:
+        Start time of inversion "YYYY-mm-dd"
+      end_date:
+        End time of inversion "YYYY-mm-dd"
+      outputname:
+        Unique identifier for output/run name.
+      outputpath:
+        Path to where output should be saved.
+      country_unit_prefix:
+        A prefix for scaling the country emissions. Current options are:
+        'T' will scale to Tg, 'G' to Gg, 'M' to Mg, 'P' to Pg.
+        To add additional options add to acrg_convert.prefix
+        Default is none and no scaling will be applied (output in g).
+      emissions_name:
+        List with "source" values as used when adding emissions data to the OpenGHG object store.
+      bcouts:
+        MCMC chain for boundary condition scaling factors.
+      Hbc:
+        Same as Hx but for boundary conditions
+      obs_repeatability:
+        Instrument error
+      obs_variability:
+        Error from resampling observations
+      fp_data:
+        Output from footprints_data_merge + sensitivies
+      country_file:
+        Path of country definition file
+      use_bc:
+        When True, use and infer boundary conditions
+
+    Returns:
+        xarray dataset containing results from inversion
+
+    """
+    print("Post-processing analytical output")
+
+    # Get parameters for output file
+    nx = Hx.shape[0]
+    ny = len(Y)
+
+    if use_bc:
+        nbc = Hbc.shape[0]
+        nBC = np.arange(nbc)
+
+    nui = np.arange(2)
+    nmeasure = np.arange(ny)
+    nparam = np.arange(nx)
+        
+    if use_bc:
+        YaprioriBC = np.sum(Hbc, axis=0)
+        Yapriori = np.sum(Hx.T, axis=1) + np.sum(Hbc.T, axis=1)
+    else:
+        Yapriori = np.sum(Hx.T, axis=1)
+
+    sitenum = np.arange(len(sites))
+
+    lon = fp_data[sites[0]].lon.values
+    lat = fp_data[sites[0]].lat.values
+    site_lat = np.zeros(len(sites))
+    site_lon = np.zeros(len(sites))
+    for si, site in enumerate(sites):
+        site_lat[si] = fp_data[site].release_lat.values[0]
+        site_lon[si] = fp_data[site].release_lon.values[0]
+    bfds = fp_data[".basis"]
+
+    # Calculate mean  and mode posterior scale map and flux field
+    if temporal_correlation:
+        scalemap = []
+
+        for period in np.arange(nperiod):
+        
+            scalemap_single = np.zeros_like(bfds.values)
+
+            for basis in np.arange(nbasis):
+                indx = int(basis + period*nbasis)
+                scalemap_single[bfds.values == (basis + 1)] = xouts[indx]
+
+            scalemap.append(scalemap_single)
+        
+        scalemap = np.stack(scalemap, axis=-1)
+
+    else:
+
+        scalemap = np.zeros_like(bfds.values)
+
+        for npm in nparam:
+            scalemap[bfds.values == (npm + 1)] = xouts[npm]
+
+    if rerun_file is not None:
+        flux_array_all = np.expand_dims(rerun_file.fluxapriori.values, 2)
+    elif emissions_name is None:
+        raise ValueError("Emissions name not provided.")
+    else:
+        emds = fp_data[".flux"][emissions_name[0]]
+        flux_array_all = emds.data.flux.values
+
+    # HACK: assume that smallest flux dim is time, then re-order flux so that
+    # time is the last coordinate
+    flux_dim_shape = flux_array_all.shape
+    flux_dim_positions = range(len(flux_dim_shape))
+    smallest_dim_position = min(list(zip(flux_dim_positions, flux_dim_shape)), key=(lambda x: x[1]))[0]
+
+    flux_array_all = np.moveaxis(flux_array_all, smallest_dim_position, -1)
+    # end HACK
+
+    if flux_array_all.shape[2] == 1:
+        print("\nAssuming flux prior is annual and extracting first index of flux array.")
+        apriori_flux = flux_array_all[:, :, 0]
+    else:
+        print("\nAssuming flux prior is monthly.")
+        print(f"Extracting weighted average flux prior from {start_date} to {end_date}")
+        allmonths = pd.date_range(start_date, end_date).month[:-1].values
+        allmonths -= 1  # to align with zero indexed array
+
+        apriori_flux = np.zeros_like(flux_array_all[:, :, 0])
+
+        # calculate the weighted average flux across the whole inversion period
+        for m in np.unique(allmonths):
+            apriori_flux += flux_array_all[:, :, m] * np.sum(allmonths == m) / len(allmonths)
+
+    if temporal_correlation:
+        flux = np.zeros_like(scalemap)
+        for period in np.arange(nperiod):
+            flux[:, :, period] = scalemap[:, :, period] * apriori_flux
+    else:
+        flux = scalemap * apriori_flux
+
+    # Basis functions to save
+    bfarray = bfds.values - 1
+
+    # Calculate country totals
+    area = utils.areagrid(lat, lon)
+    if not rerun_file:
+        c_object = utils.get_country(domain, country_file=country_file)
+        cntryds = xr.Dataset(
+            {"country": (["lat", "lon"], c_object.country), "name": (["ncountries"], c_object.name)},
+            coords={"lat": (c_object.lat), "lon": (c_object.lon)},
+        )
+        cntrynames = cntryds.name.values
+        cntrygrid = cntryds.country.values
+    else:
+        cntrynames = rerun_file.countrynames.values
+        cntrygrid = rerun_file.countrydefinition.values
+
+    molarmass = convert.molar_mass(species)
+    unit_factor = convert.prefix(country_unit_prefix)
+
+    if temporal_correlation:
+        cntrymean = np.zeros((len(cntrynames), nperiod))
+        # cntry68 = np.zeros((len(cntrynames), len(nui), nperiod))
+        # cntry95 = np.zeros((len(cntrynames), len(nui), nperiod))
+        # cntrysd = np.zeros((len(cntrynames), nperiod))
+        cntryprior = np.zeros((len(cntrynames), nperiod))
+
+        if country_unit_prefix is None:
+            country_unit_prefix = ""
+        country_units = country_unit_prefix + "g"
+        if rerun_file is not None:
+            obs_units = rerun_file.Yobs.attrs["units"].split(" ")[0]
+        else:
+            obs_units = str(fp_data[".units"])
+
+        for period in np.arange(nperiod):
+
+            for ci, cntry in enumerate(cntrynames):
+                cntrytot = 0
+                cntrytotprior = 0
+                for bf in range(int(np.max(bfarray)) + 1):
+                    indx = int(basis + period*nbasis)
+                    bothinds = np.logical_and(cntrygrid == ci, bfarray == bf)
+                    cntrytot += (
+                        np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                        * xouts[indx]
+                        / unit_factor
+                    )
+                    cntrytotprior += (
+                        np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                        / unit_factor
+                    )
+                
+                cntrymean[ci, period] = cntrytot
+                # cntrysd[ci, period] = np.std(cntrytottrace)
+                # cntry68[ci, :, period] = pm.stats.hdi(cntrytottrace.values, 0.68)
+                # cntry95[ci, :, period] = pm.stats.hdi(cntrytottrace.values, 0.95)
+                cntryprior[ci, period] = cntrytotprior
+    else:
+        cntrymean = np.zeros((len(cntrynames)))
+        # cntry68 = np.zeros((len(cntrynames), len(nui)))
+        # cntry95 = np.zeros((len(cntrynames), len(nui)))
+        # cntrysd = np.zeros(len(cntrynames))
+        cntryprior = np.zeros(len(cntrynames))
+
+        if country_unit_prefix is None:
+            country_unit_prefix = ""
+        country_units = country_unit_prefix + "g"
+        if rerun_file is not None:
+            obs_units = rerun_file.Yobs.attrs["units"].split(" ")[0]
+        else:
+            obs_units = str(fp_data[".units"])
+
+        for ci, cntry in enumerate(cntrynames):
+            cntrytot = 0
+            cntrytotprior = 0
+            for bf in range(int(np.max(bfarray)) + 1):
+                bothinds = np.logical_and(cntrygrid == ci, bfarray == bf)
+                cntrytottrace += (
+                    np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                    * xouts[bf]
+                    / unit_factor
+                )
+                cntrytotprior += (
+                    np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
+                    / unit_factor
+                )
+            cntrymean[ci] = cntrytot
+            # cntrysd[ci] = np.std(cntrytottrace)
+            # cntry68[ci, :] = az.hdi(cntrytottrace.values, 0.68)
+            # cntry95[ci, :] = az.hdi(cntrytottrace.values, 0.95)
+            cntryprior[ci] = cntrytotprior
+
+
+    # Make output netcdf file
+    data_vars = {
+        "Yobs": (["nmeasure"], Y),
+        "Yerror": (["nmeasure"], error),
+        "Yerror_repeatability": (["nmeasure"], obs_repeatability),
+        "Yerror_variability": (["nmeasure"], obs_variability),
+        "min_model_error": (["nmeasure"], min_error),
+        "Ytime": (["nmeasure"], Ytime),
+        "Yapriori": (["nmeasure"], Yapriori),
+        "Ymod": (["nmeasure"], Y_mod),
+        "Ymod_covariance": (["nmeasure", "nmeasure"], Y_mod_covariance),
+        "xouts": (["nparam"], xouts),
+        "xouts_covariance": (["nparam", "nparam"], xouts_covariance),
+        "siteindicator": (["nmeasure"], siteindicator),
+        "sitenames": (["nsite"], sites),
+        "sitelons": (["nsite"], site_lon),
+        "sitelats": (["nsite"], site_lat),
+        "fluxapriori": (["lat", "lon"], apriori_flux),
+        "flux": (["lat", "lon"], flux),
+        "scaling": (["lat", "lon"], scalemap),
+        "basisfunctions": (["lat", "lon"], bfarray),
+        "countrymean": (["countrynames"], cntrymean),
+        "countryapriori": (["countrynames"], cntryprior),
+        "countrydefinition": (["lat", "lon"], cntrygrid),
+        "xsensitivity": (["nmeasure", "nparam"], Hx.T),
+    }
+
+
+    coords = {
+        "paramnum": (["nlatent"], nparam),
+        "measurenum": (["nmeasure"], nmeasure),
+        "UInum": (["nUI"], nui),
+        "nsites": (["nsite"], sitenum),
+        "lat": (["lat"], lat),
+        "lon": (["lon"], lon),
+        "countrynames": (["countrynames"], cntrynames),
+    }
+
+    if use_bc:
+        data_vars.update({
+            "YaprioriBC": (["nmeasure"], YaprioriBC),
+            "YmodBC": (["nmeasure"], YBC_mod),
+            "YmodBC_covariance": (["nmeasure", "nmeasure"], YBC_mod_covariance),
+            "bcouts": (["nBC"], bcouts),
+            "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
+        })
+        coords["numBC"] = (["nBC"], nBC)
+
+    if temporal_correlation:
+        coords["numPeriod"] = (["nPeriod"], np.arange(nperiod).astype(int))
+
+        data_vars.update(
+          {
+              "flux": (["lat", "lon", "nPeriod"], flux),
+              "scaling": (["lat", "lon", "nPeriod"], scalemap),
+              "countrymean": (["countrynames", "nPeriod"], cntrymean),
+              "countryapriori": (["countrynames", "nPeriod"], cntryprior),
+          }
+      )
+    
+    else:
+        data_vars.update(
+            {
+                "flux": (["lat", "lon"], flux),
+                "scaling": (["lat", "lon"], scalemap),
+                "countrymean": (["countrynames"], cntrymean),
+                "countryapriori": (["countrynames"], cntryprior),
+            }
+        )
 
     outds = xr.Dataset(data_vars, coords=coords)
 

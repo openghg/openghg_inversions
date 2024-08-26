@@ -1,4 +1,5 @@
-"""Contains functions for running all steps of the MCMC inversion using PyMC:
+"""
+Contains functions for running all steps of the MCMC inversion using PyMC:
 getting data, filtering, applying basis functions, sampling, and processing
 the outputs.
 
@@ -18,7 +19,7 @@ the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 """
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional, Union
 
 import numpy as np
 import xarray as xr
@@ -74,6 +75,9 @@ def fixedbasisMCMC(
     filters: None | list | dict[str, list[str] | None] = None,
     fix_basis_outer_regions: bool = False,
     averaging_error: bool = True,
+    x_freq: Optional[str] = None,
+    decay_tau: Optional[float] = None,
+    analytical_inversion: Optional[bool] = False,
     bc_freq: str | None = None,
     sigma_freq: str | None = None,
     sigma_per_site: bool = True,
@@ -204,6 +208,17 @@ def fixedbasisMCMC(
       averaging_error:
         Adds the variability in the averaging period to the measurement
         error if set to True
+      x_freq:
+        The maximum period over which the inversion is divided into. E.g. set
+        to "monthly", the inversion will be subdivided into calendar months. 
+        Currently only setup to read "monthly" or None. If None, the inversion 
+        will be run for one single period from start_date to end_date.
+      decay_tau:
+        The exponential time constant representing the time at which the covariance 
+        between period paramters is equal to 1/e. Units reflect the period chosen in x_freq.
+      analytical_inversion:
+        If set to true, the mcmc will be bypassed in favour of a Gaussian analytical solution. This is a 
+        non-hierarchical solution with no hyper-parameters.
       bc_freq:
         The perdiod over which the baseline is estimated. Set to "monthly"
         to estimate per calendar month; set to a number of days,
@@ -404,10 +419,20 @@ def fixedbasisMCMC(
             siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
             if si == 0:
                 Ytime = fp_data[site].time.values
+                if x_freq == "monthly":
+                    Hx, nbasis, nperiod = setup.monthly_h(start_date, end_date, site, fp_data)
+                    x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis, decay_tau)
+                elif x_freq is None:
+                    Hx = fp_data[site].H.values
+                else:
+                    raise ValueError("Inversion currently only setup for monthly x_freq")
             else:
                 Ytime = np.concatenate((Ytime, fp_data[site].time.values))
-
-            Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
+                if x_freq == "monthly":
+                    Hmx = setup.monthly_h(start_date, end_date, site, fp_data)[0]
+                    Hx = np.hstack((Hx, Hmx))
+                else:
+                    Hx = np.hstack((Hx, fp_data[site].H.values))
 
         # Calculate min error
         if calculate_min_error == "residual":
@@ -461,24 +486,36 @@ def fixedbasisMCMC(
         update_log_normal_prior(xprior)
         update_log_normal_prior(bcprior)
 
-        mcmc_args = {
-            "Hx": Hx,
-            "Y": Y,
-            "error": error,
-            "siteindicator": siteindicator,
-            "sigma_freq_index": sigma_freq_index,
-            "xprior": xprior,
-            "sigprior": sigprior,
-            "nit": nit,
-            "burn": burn,
-            "tune": tune,
-            "nchain": nchain,
-            "sigma_per_site": sigma_per_site,
-            "offsetprior": offsetprior,
-            "add_offset": add_offset,
-            "verbose": verbose,
-            "save_trace": trace_path,
-        }
+        if analytical_inversion:
+            inversion_args = {
+                "Hx": Hx,
+                "Y": Y,
+                "error": error,
+            }
+        else:
+            inversion_args = {
+                "Hx": Hx,
+                "Y": Y,
+                "error": error,
+                "siteindicator": siteindicator,
+                "sigma_freq_index": sigma_freq_index,
+                "xprior": xprior,
+                "sigprior": sigprior,
+                "nit": nit,
+                "burn": burn,
+                "tune": tune,
+                "nchain": nchain,
+                "sigma_per_site": sigma_per_site,
+                "offsetprior": offsetprior,
+                "add_offset": add_offset,
+                "verbose": verbose,
+                "save_trace": trace_path,
+            }
+
+        if x_freq is not None:
+            inversion_args["temporal_correlation"] = True
+            post_process_args["nbasis"] = nbasis
+            post_process_args["nperiod"] = nperiod
 
         if use_bc is True:
             Hbc = np.zeros(0)
@@ -496,11 +533,17 @@ def fixedbasisMCMC(
                 else:
                     Hbc = np.hstack((Hbc, Hmbc))
 
-            mcmc_args["Hbc"] = Hbc
-            mcmc_args["bcprior"] = bcprior
-            mcmc_args["use_bc"] = True
+            inversion_args["Hbc"] = Hbc
+            inversion_args["bcprior"] = bcprior
+            inversion_args["use_bc"] = True
+            nbc = Hbc.shape[0]
+            if analytical_inversion:
+                x_covariance = setup.covariance_extension(x_covariance, nbc)
         else:
-            mcmc_args["use_bc"] = False
+            inversion_args["use_bc"] = False
+
+        if analytical_inversion:
+            del inversion_args["bcprior"]
 
         post_process_args = {
             "Ytime": Ytime,
@@ -517,31 +560,39 @@ def fixedbasisMCMC(
             "country_file": country_file,
             "obs_repeatability": obs_repeatability,
             "obs_variability": obs_variability,
+            "x_freq": x_freq
         }
 
         # add mcmc_args to post_process_args
         # and delete a few we don't need
-        post_process_args.update(mcmc_args)
-        del post_process_args["nit"]
-        del post_process_args["verbose"]
-        del post_process_args["save_trace"]
+        post_process_args.update(inversion_args)
+        if analytical_inversion is False:
+            del post_process_args["nit"]
+            del post_process_args["verbose"]
+            del post_process_args["save_trace"]
 
         # pass min model error to post-processing
         post_process_args["min_error"] = kwargs.get("min_error", 0.0)
 
         # add any additional kwargs to mcmc_args (these aren't needed for post processing)
-        mcmc_args.update(kwargs)
+        inversion_args.update(kwargs)
 
         # Run PyMC inversion
-        mcmc_results = mcmc.inferpymc(**mcmc_args)  # type: ignore
+        if analytical_inversion:
+            inversion_results = mcmc.inferanalytical(**inversion_args)
+        else:
+            inversion_results = mcmc.inferpymc(**inversion_args)  # type: ignore
 
         if skip_postprocessing:
-            return mcmc_results
+            return inversion_results
 
         # Process and save inversion output
-        post_process_args.update(mcmc_results)
-        del post_process_args["offset_outs"]
-        out = mcmc.inferpymc_postprocessouts(**post_process_args)
+        post_process_args.update(inversion_results)
+        if analytical_inversion:
+            out = mcmc.inferanalytical_postprocessouts(**post_process_args)
+        else:
+            del post_process_args["offset_outs"]
+            out = mcmc.inferpymc_postprocessouts(**post_process_args)
 
     elif use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
