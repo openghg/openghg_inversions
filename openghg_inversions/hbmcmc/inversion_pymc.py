@@ -1344,7 +1344,6 @@ def inferanalytical_postprocessouts(
         "Yerror": (["nmeasure"], error),
         "Yerror_repeatability": (["nmeasure"], obs_repeatability),
         "Yerror_variability": (["nmeasure"], obs_variability),
-        "min_model_error": (["nmeasure"], min_error),
         "Ytime": (["nmeasure"], Ytime),
         "Yapriori": (["nmeasure"], Yapriori),
         "Ymod": (["nmeasure"], Y_mod),
@@ -1356,11 +1355,7 @@ def inferanalytical_postprocessouts(
         "sitelons": (["nsite"], site_lon),
         "sitelats": (["nsite"], site_lat),
         "fluxapriori": (["lat", "lon"], apriori_flux),
-        "flux": (["lat", "lon"], flux),
-        "scaling": (["lat", "lon"], scalemap),
         "basisfunctions": (["lat", "lon"], bfarray),
-        "countrymean": (["countrynames"], cntrymean),
-        "countryapriori": (["countrynames"], cntryprior),
         "countrydefinition": (["lat", "lon"], cntrygrid),
         "xsensitivity": (["nmeasure", "nparam"], Hx.T),
     }
@@ -1410,120 +1405,46 @@ def inferanalytical_postprocessouts(
 
     outds = xr.Dataset(data_vars, coords=coords)
 
-    outds.fluxmode.attrs["units"] = "mol/m2/s"
+    outds.flux.attrs["units"] = "mol/m2/s"
     outds.fluxapriori.attrs["units"] = "mol/m2/s"
     outds.Yobs.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yerror.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yerror_repeatability.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yerror_variability.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.min_model_error.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yapriori.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Ymodmean.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Ymodmedian.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Ymodmode.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Ymod95.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Ymod68.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Yoffmean.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Yoffmedian.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Yoffmode.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Yoff95.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.Yoff68.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.Ymod.attrs["units"] = obs_units + " " + "mol/mol"
     outds.countrymean.attrs["units"] = country_units
-    outds.countrymedian.attrs["units"] = country_units
-    outds.countrymode.attrs["units"] = country_units
-    outds.country68.attrs["units"] = country_units
-    outds.country95.attrs["units"] = country_units
-    outds.countrysd.attrs["units"] = country_units
     outds.countryapriori.attrs["units"] = country_units
-    outds.xsensitivity.attrs["units"] = obs_units + " " + "mol/mol"
-    outds.sigtrace.attrs["units"] = obs_units + " " + "mol/mol"
 
     outds.Yobs.attrs["longname"] = "observations"
     outds.Yerror.attrs["longname"] = "measurement error"
-    outds.min_model_error.attrs["longname"] = "minimum model error"
     outds.Ytime.attrs["longname"] = "time of measurements"
     outds.Yapriori.attrs["longname"] = "a priori simulated measurements"
-    outds.Ymodmean.attrs["longname"] = "mean of posterior simulated measurements"
-    outds.Ymodmedian.attrs["longname"] = "median of posterior simulated measurements"
-    outds.Ymodmode.attrs["longname"] = "mode of posterior simulated measurements"
-    outds.Ymod68.attrs["longname"] = " 0.68 Bayesian credible interval of posterior simulated measurements"
-    outds.Ymod95.attrs["longname"] = " 0.95 Bayesian credible interval of posterior simulated measurements"
-    outds.Yoffmean.attrs["longname"] = "mean of posterior simulated offset between measurements"
-    outds.Yoffmedian.attrs["longname"] = "median of posterior simulated offset between measurements"
-    outds.Yoffmode.attrs["longname"] = "mode of posterior simulated offset between measurements"
-    outds.Yoff68.attrs["longname"] = (
-        " 0.68 Bayesian credible interval of posterior simulated offset between measurements"
-    )
-    outds.Yoff95.attrs["longname"] = (
-        " 0.95 Bayesian credible interval of posterior simulated offset between measurements"
-    )
-    outds.xtrace.attrs["longname"] = "trace of unitless scaling factors for emissions parameters"
-    outds.sigtrace.attrs["longname"] = "trace of model error parameters"
+    outds.Ymod.attrs["longname"] = "Analytical posterior simulated measurements"
     outds.siteindicator.attrs["longname"] = "index of site of measurement corresponding to sitenames"
-    outds.sigmafreqindex.attrs["longname"] = "perdiod over which the model error is estimated"
     outds.sitenames.attrs["longname"] = "site names"
     outds.sitelons.attrs["longname"] = "site longitudes corresponding to site names"
     outds.sitelats.attrs["longname"] = "site latitudes corresponding to site names"
     outds.fluxapriori.attrs["longname"] = "mean a priori flux over period"
-    outds.fluxmode.attrs["longname"] = "mode posterior flux over period"
-    outds.scalingmean.attrs["longname"] = "mean scaling factor field over period"
-    outds.scalingmode.attrs["longname"] = "mode scaling factor field over period"
+    outds.flux.attrs["longname"] = "posterior flux over period"
+    outds.scaling.attrs["longname"] = "scaling factor field over period"
     outds.basisfunctions.attrs["longname"] = "basis function field"
     outds.countrymean.attrs["longname"] = "mean of ocean and country totals"
-    outds.countrymedian.attrs["longname"] = "median of ocean and country totals"
-    outds.countrymode.attrs["longname"] = "mode of ocean and country totals"
-    outds.country68.attrs["longname"] = "0.68 Bayesian credible interval of ocean and country totals"
-    outds.country95.attrs["longname"] = "0.95 Bayesian credible interval of ocean and country totals"
-    outds.countrysd.attrs["longname"] = "standard deviation of ocean and country totals"
     outds.countryapriori.attrs["longname"] = "prior mean of ocean and country totals"
     outds.countrydefinition.attrs["longname"] = "grid definition of countries"
     outds.xsensitivity.attrs["longname"] = "emissions sensitivity timeseries"
 
     if use_bc:
-        outds.YmodmeanBC.attrs["units"] = obs_units + " " + "mol/mol"
-        outds.YmodmedianBC.attrs["units"] = obs_units + " " + "mol/mol"
-        outds.YmodmodeBC.attrs["units"] = obs_units + " " + "mol/mol"
-        outds.Ymod95BC.attrs["units"] = obs_units + " " + "mol/mol"
-        outds.Ymod68BC.attrs["units"] = obs_units + " " + "mol/mol"
+        outds.YmodBC.attrs["units"] = obs_units + " " + "mol/mol"
         outds.YaprioriBC.attrs["units"] = obs_units + " " + "mol/mol"
         outds.bcsensitivity.attrs["units"] = obs_units + " " + "mol/mol"
 
         outds.YaprioriBC.attrs["longname"] = "a priori simulated boundary conditions"
-        outds.YmodmeanBC.attrs["longname"] = "mean of posterior simulated boundary conditions"
-        outds.YmodmedianBC.attrs["longname"] = "median of posterior simulated boundary conditions"
-        outds.YmodmodeBC.attrs["longname"] = "mode of posterior simulated boundary conditions"
-        outds.Ymod68BC.attrs["longname"] = (
-            " 0.68 Bayesian credible interval of posterior simulated boundary conditions"
-        )
-        outds.Ymod95BC.attrs["longname"] = (
-            " 0.95 Bayesian credible interval of posterior simulated boundary conditions"
-        )
-        outds.bctrace.attrs["longname"] = (
-            "trace of unitless scaling factors for boundary condition parameters"
-        )
+        outds.YmodBC.attrs["longname"] = "mean of posterior simulated boundary conditions"
         outds.bcsensitivity.attrs["longname"] = "boundary conditions sensitivity timeseries"
 
     outds.attrs["Start date"] = start_date
     outds.attrs["End date"] = end_date
-    outds.attrs["Latent sampler"] = str(step1)[20:33]
-    outds.attrs["Hyper sampler"] = str(step2)[20:33]
-    outds.attrs["Burn in"] = str(int(burn))
-    outds.attrs["Tuning steps"] = str(int(tune))
-    outds.attrs["Number of chains"] = str(int(nchain))
-    outds.attrs["Error for each site"] = str(sigma_per_site)
-    outds.attrs["Emissions Prior"] = "".join([f"{k},{v}," for k, v in xprior.items()])[:-1]
-    outds.attrs["Model error Prior"] = "".join([f"{k},{v}," for k, v in sigprior.items()])[:-1]
-    if use_bc:
-        outds.attrs["BCs Prior"] = "".join([f"{k},{v}," for k, v in bcprior.items()])[:-1]
-    if add_offset:
-        outds.attrs["Offset Prior"] = "".join([f"{k},{v}," for k, v in offsetprior.items()])[:-1]
-    outds.attrs["Creator"] = getpass.getuser()
-    outds.attrs["Date created"] = str(pd.Timestamp("today"))
-    outds.attrs["Convergence"] = convergence
-    outds.attrs["Repository version"] = code_version()
-    outds.attrs["min_model_error"] = (
-        min_error  # TODO: remove this once PARIS formatting switches over to using min error data var
-    )
 
     # variables with variable length data types shouldn't be compressed
     # e.g. object ("O") or unicode ("U") type

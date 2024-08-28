@@ -214,7 +214,6 @@ if __name__ == "__main__":
         else:
             copyfile(template_file, config_file)
         sys.exit(f"New configuration file has been generated: {config_file}")
-
     if not config_file.exists():
         raise ValueError(
             "Configuration file cannot be found.\n"
