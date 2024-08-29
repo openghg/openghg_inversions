@@ -24,6 +24,7 @@ This file will need to be edited to add parameters for your MCMC run.
 
 import json
 import sys
+import os
 import argparse
 from shutil import copyfile
 from collections.abc import Callable
@@ -214,7 +215,7 @@ if __name__ == "__main__":
         else:
             copyfile(template_file, config_file)
         sys.exit(f"New configuration file has been generated: {config_file}")
-    if not config_file.exists():
+    if not os.path.exists(config_file):
         raise ValueError(
             "Configuration file cannot be found.\n"
             f"Please check path and filename are correct: {config_file}"

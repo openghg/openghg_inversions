@@ -512,11 +512,6 @@ def fixedbasisMCMC(
                 "save_trace": trace_path,
             }
 
-        if x_freq is not None:
-            inversion_args["temporal_correlation"] = True
-            post_process_args["nbasis"] = nbasis
-            post_process_args["nperiod"] = nperiod
-
         if use_bc is True:
             Hbc = np.zeros(0)
 
@@ -539,11 +534,10 @@ def fixedbasisMCMC(
             nbc = Hbc.shape[0]
             if analytical_inversion:
                 x_covariance = setup.covariance_extension(x_covariance, nbc)
+            inversion_args["xprior_covariance"] = x_covariance
         else:
+            inversion_args["xprior_covariance"] = x_covariance
             inversion_args["use_bc"] = False
-
-        if analytical_inversion:
-            del inversion_args["bcprior"]
 
         post_process_args = {
             "Ytime": Ytime,
@@ -560,8 +554,12 @@ def fixedbasisMCMC(
             "country_file": country_file,
             "obs_repeatability": obs_repeatability,
             "obs_variability": obs_variability,
-            "x_freq": x_freq
         }
+
+        if x_freq is not None:
+            inversion_args["temporal_correlation"] = True
+            post_process_args["nbasis"] = nbasis
+            post_process_args["nperiod"] = nperiod
 
         # add mcmc_args to post_process_args
         # and delete a few we don't need
@@ -571,12 +569,18 @@ def fixedbasisMCMC(
             del post_process_args["verbose"]
             del post_process_args["save_trace"]
 
-        # pass min model error to post-processing
-        post_process_args["min_error"] = kwargs.get("min_error", 0.0)
+            # pass min model error to post-processing
+            post_process_args["min_error"] = kwargs.get("min_error", 0.0)
 
-        # add any additional kwargs to mcmc_args (these aren't needed for post processing)
-        inversion_args.update(kwargs)
-
+            # add any additional kwargs to mcmc_args (these aren't needed for post processing)
+            inversion_args.update(kwargs)
+        else:
+            post_process_args["siteindicator"] = siteindicator
+            del inversion_args["temporal_correlation"]
+            del inversion_args["bcprior"]
+            del post_process_args["bcprior"]
+            del post_process_args["xprior_covariance"]
+      
         # Run PyMC inversion
         if analytical_inversion:
             inversion_results = mcmc.inferanalytical(**inversion_args)

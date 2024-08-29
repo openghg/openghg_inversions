@@ -383,7 +383,7 @@ def inferanalytical(
     Hx: np.ndarray,
     Y: np.ndarray,
     error: np.ndarray,
-    x_covariance: np.ndarray,
+    xprior_covariance: np.ndarray,
     Hbc: np.ndarray | None = None,
     use_bc: bool = True,
 ) -> dict:  
@@ -423,22 +423,22 @@ def inferanalytical(
     hx = Hx.T
     nx = hx.shape[1]
     x_prior = np.ones(nx)
-    y_covariance = np.diag(error)
+    y_covariance = np.diag(error**2)
 
     if use_bc:
         hbc = Hbc.T
         nbc = hbc.shape[1]
-        hx = np.hstack(hx, hbc)
+        hx = np.hstack((hx, hbc))
         bc_prior = np.ones(nbc)
         x_prior = np.concatenate((x_prior, bc_prior))
 
-    calc_1 = np.dot(x_covariance, hx.T)
-    calc_2 = np.dot(np.dot(hx, x_covariance), hx.T)
+    calc_1 = np.dot(xprior_covariance, hx.T)
+    calc_2 = np.dot(np.dot(hx, xprior_covariance), hx.T)
     calc_3 = np.linalg.inv(calc_2 + y_covariance)
     calc_4 = np.dot(hx, x_prior)
 
     xouts = x_prior + np.dot(np.dot(calc_1, calc_3), (Y - calc_4))
-    xouts_covariance = x_covariance - np.dot(np.dot(calc_1, calc_3), np.dot(hx, x_covariance))
+    xouts_covariance = xprior_covariance - np.dot(np.dot(calc_1, calc_3), np.dot(hx, xprior_covariance))
     
     if use_bc:
         bcouts = xouts[-nbc:]
@@ -447,12 +447,12 @@ def inferanalytical(
         xouts_covariance = xouts_covariance[:-nbc, :-nbc]
 
         YBC_mod = np.dot(hbc, bcouts.T)
-        Y_mod = np.dot(hx, xouts.T) + YBC_mod
+        Y_mod = np.dot(Hx.T, xouts.T) + YBC_mod
         YBC_mod_covariance = np.dot(np.dot(hbc, bcouts_covariance), hbc.T)
     else:
-        Y_mod = np.dot(hx, xouts.T)
+        Y_mod = np.dot(Hx.T, xouts.T)
 
-    Y_mod_covariance = np.dot(np.dot(hx, xouts_covariance), hx.T)
+    Y_mod_covariance = np.dot(np.dot(Hx.T, xouts_covariance), Hx)
 
     result = {
         "xouts": xouts,
