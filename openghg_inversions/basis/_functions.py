@@ -209,6 +209,7 @@ def _mean_fp_times_mean_flux(
 def quadtreebasisfunction(
     fp_all: dict,
     start_date: str,
+    domain : str,
     emissions_name: list[str] | None = None,
     nbasis: int = 100,
     abs_flux: bool = False,
@@ -263,6 +264,7 @@ def quadtreebasisfunction(
 
     quad_basis.attrs["creator"] = getpass.getuser()
     quad_basis.attrs["date created"] = str(pd.Timestamp.today())
+    quad_basis.attrs["domain"] = domain
 
     return quad_basis
 
@@ -270,10 +272,11 @@ def quadtreebasisfunction(
 def bucketbasisfunction(
     fp_all: dict,
     start_date: str,
+    domain : str,
     emissions_name: list[str] | None = None,
     nbasis: int = 100,
     abs_flux: bool = False,
-    mask: xr.DataArray | None = None,
+    mask: xr.DataArray | None = None
 ) -> xr.DataArray:
     """Basis functions calculated using a weighted region approach
     where each basis function / scaling region contains approximately
@@ -297,6 +300,8 @@ def bucketbasisfunction(
       mask (xarray.DataArray):
         Boolean mask on lat/lon coordinates. Used to find basis on sub-region
         Default None
+      domain (str):
+        domain for the basis functions to be calculated over
 
     Returns:
       bucket_basis (xarray.DataArray):
@@ -306,7 +311,7 @@ def bucketbasisfunction(
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
 
     # use xr.apply_ufunc to keep xarray coords
-    func = partial(weighted_algorithm, nregion=nbasis, bucket=1)
+    func = partial(weighted_algorithm, nregion=nbasis, bucket=1, domain=domain)
     bucket_basis = xr.apply_ufunc(func, fps)
 
     bucket_basis = bucket_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
@@ -314,6 +319,7 @@ def bucketbasisfunction(
 
     bucket_basis.attrs["creator"] = getpass.getuser()
     bucket_basis.attrs["date created"] = str(pd.Timestamp.today())
+    bucket_basis.attrs["domain"] = domain
 
     return bucket_basis
 
