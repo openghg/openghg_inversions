@@ -5,6 +5,9 @@ by input data.
 from pathlib import Path
 import numpy as np
 import xarray as xr
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # BUCKET BASIS FUNCTIONS
@@ -19,9 +22,12 @@ def load_landsea_indices(domain : str) -> np.ndarray:
         Array containing 0 (where there is sea)
         and 1 (where there is land).
     """
-    if domain == 'EASTASIA':
+    if domain == "EASTASIA":
         landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_EASTASIA.nc")
+    elif domain == "EUROPE":
+        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
     else:
+        logger.warning(f"No land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)")
         landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
     return landsea_indices["country"].values
 
