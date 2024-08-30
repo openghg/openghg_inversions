@@ -1,6 +1,8 @@
 # OpenGHG Inversions Change Log
 
 
+- Added option to use 'weighted' algorithm to derive basis functions for EASTASIA domain [#PR 199](https://github.com/openghg/openghg_inversions/pull/199)
+
 # Version 0.2.0
 
 - Added option to pass "mean" and "stdev" as parameters for lognormal BC prior [#PR 190](https://github.com/openghg/openghg_inversions/pull/190)
