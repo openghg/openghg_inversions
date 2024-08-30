@@ -231,6 +231,8 @@ def quadtreebasisfunction(
         fp_all dictionary of datasets as produced from get_data functions
       start_date (str):
         Start date of period of inversion
+      domain (str):
+        Domain across which to calculate basis functions. 
       emissions_name (list):
         List of keyword "source" args used for retrieving emissions files
         from the Object store
@@ -287,6 +289,8 @@ def bucketbasisfunction(
         fp_all dictionary of datasets as produced from get_data functions
       start_date (str):
         Start date of period of inversion
+      domain (str):
+        domain for the basis functions to be calculated over
       emissions_name (list):
         List of keyword "source" args used for retrieving emissions files
         from the Object store
@@ -300,8 +304,6 @@ def bucketbasisfunction(
       mask (xarray.DataArray):
         Boolean mask on lat/lon coordinates. Used to find basis on sub-region
         Default None
-      domain (str):
-        domain for the basis functions to be calculated over
 
     Returns:
       bucket_basis (xarray.DataArray):

@@ -13,7 +13,7 @@ def load_landsea_indices(domain : str) -> np.ndarray:
     land and sea regions in specified domain.
 
     Args:
-        domain (str): domain for which to load landsea indices. Currently only EASTASIA or EUROPE. 
+        domain (str): domain for which to load landsea indices. Currently only "EASTASIA" or "EUROPE". 
 
     Returns :
         Array containing 0 (where there is sea)
@@ -81,6 +81,9 @@ def get_nregions(bucket: float, grid: np.ndarray, domain: str) -> int:
             2D grid of footprints * flux, or whatever
             grid you want to split. Could be: population
             data, spatial distribution of bakeries, you choose!
+        domain:
+            Domain across which to calculate basis functions. 
+            Currently limited to "EUROPE" or "EASTASIA"
 
     Return :
         number of basis functions for bucket value
@@ -104,6 +107,9 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
         tol:
             Tolerance to find number of basis function regions.
             i.e. optimizes nregions to +/- tol
+        domain:
+            Domain across which to calculate basis functions. 
+            Currently limited to "EUROPE" or "EASTASIA"
 
     Return :
         Optimized bucket value
@@ -132,6 +138,9 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain : str) ->
             data, spatial distribution of bakeries, you choose!
         bucket:
             Maximum value for each basis function region
+        domain:
+            Domain across which to calculate basis functions. 
+            Currently limited to "EUROPE" or "EASTASIA"
 
     Returns:
         2D array with basis function values
@@ -184,6 +193,9 @@ def nregion_landsea_basis(
             Tolerance to find number of basis function regions.
             i.e. optimizes nregions to +/- tol
             Defaults to 1
+        domain:
+            Domain across which to calculate basis functions. 
+            Currently limited to "EUROPE" or "EASTASIA"
 
     Returns:
         basis_function: 2D basis function array
