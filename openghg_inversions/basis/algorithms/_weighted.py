@@ -71,7 +71,7 @@ def bucket_value_split(
         )
 
 
-def get_nregions(bucket: float, grid: np.ndarray) -> int:
+def get_nregions(bucket: float, grid: np.ndarray, domain: str) -> int:
     """Optimize bucket value to number of desired regions.
 
     Args:
@@ -85,10 +85,10 @@ def get_nregions(bucket: float, grid: np.ndarray) -> int:
     Return :
         number of basis functions for bucket value
     """
-    return np.max(bucket_split_landsea_basis(grid, bucket))
+    return np.max(bucket_split_landsea_basis(grid, bucket, domain))
 
 
-def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int) -> float:
+def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, domain: str) -> float:
     """Optimize bucket value to obtain nregion basis functions
     within +/- tol.
 
@@ -109,16 +109,16 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int) -
         Optimized bucket value
     """
     # print(bucket, get_nregions(bucket, grid))
-    if get_nregions(bucket, grid) <= nregion + tol and get_nregions(bucket, grid) >= nregion - tol:
+    if get_nregions(bucket, grid, domain) <= nregion + tol and get_nregions(bucket, grid, domain) >= nregion - tol:
         return bucket
 
-    if get_nregions(bucket, grid) < nregion + tol:
+    if get_nregions(bucket, grid, domain) < nregion + tol:
         bucket *= 0.995
-        return optimize_nregions(bucket, grid, nregion, tol)
+        return optimize_nregions(bucket, grid, nregion, tol, domain)
 
-    elif get_nregions(bucket, grid) > nregion - tol:
+    elif get_nregions(bucket, grid, domain) > nregion - tol:
         bucket *= 1.005
-        return optimize_nregions(bucket, grid, nregion, tol)
+        return optimize_nregions(bucket, grid, nregion, tol, domain)
 
 
 def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain : str) -> np.ndarray:
@@ -188,6 +188,6 @@ def nregion_landsea_basis(
     Returns:
         basis_function: 2D basis function array
     """
-    bucket_opt = optimize_nregions(bucket, grid, nregion, tol)
+    bucket_opt = optimize_nregions(bucket, grid, nregion, tol, domain)
     basis_function = bucket_split_landsea_basis(grid, bucket_opt, domain)
     return basis_function

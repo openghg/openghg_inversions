@@ -113,7 +113,7 @@ def basis_functions_wrapper(
                 "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
             ) from e
         print(f"Using {basis_function.description} to derive basis functions.")
-        basis_data_array = basis_function.algorithm(fp_all, start_date, emissions_name, nbasis, domain)
+        basis_data_array = basis_function.algorithm(fp_all, start_date, domain, emissions_name, nbasis)
 
     fp_data = fp_sensitivity(fp_all, basis_func=basis_data_array)
 
