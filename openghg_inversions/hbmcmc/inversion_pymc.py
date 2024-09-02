@@ -327,6 +327,7 @@ def inferpymc(Hx: np.ndarray,
 
         y = pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
 
+        # step1 = pm.Metropolis(vars=step1_vars)
         step1 = pm.NUTS(vars=step1_vars)
         step2 = pm.Slice(vars=[sig])
         step = [step1, step2] if nuts_sampler == "pymc" else None
