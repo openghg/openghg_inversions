@@ -338,6 +338,7 @@ def fixed_outer_regions_basis(
     fp_all: dict,
     start_date: str,
     basis_algorithm: str,
+    domain: str,
     emissions_name: list[str] | None = None,
     nbasis: int = 100,
     abs_flux: bool = False,
@@ -351,6 +352,8 @@ def fixed_outer_regions_basis(
         Start date of period of inference
       basis_algorithm (str):
         Name of the basis algorithm used. Options are "quadtree", "weighted"
+      domain (str):
+        domain for the basis functions to be calculated over
       emissions_name (list):
         List of keyword "source" args used for retrieving emissions files
         from the Object store.
@@ -375,7 +378,7 @@ def fixed_outer_regions_basis(
     mask = intem_regions == 6
 
     basis_function = basis_functions[basis_algorithm].algorithm
-    inner_region = basis_function(fp_all, start_date, emissions_name, nbasis, abs_flux, mask=mask)
+    inner_region = basis_function(fp_all, start_date, domain, emissions_name, nbasis, abs_flux, mask=mask)
 
     basis = intem_regions.rename("basis")
 

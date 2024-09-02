@@ -97,7 +97,7 @@ def basis_functions_wrapper(
     elif fix_outer_regions is True:
         try:
             basis_data_array = fixed_outer_regions_basis(
-                fp_all, start_date, basis_algorithm, emissions_name, nbasis
+                fp_all, start_date, basis_algorithm, domain, emissions_name, nbasis
             )
         except KeyError as e:
             raise ValueError(
