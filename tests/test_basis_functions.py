@@ -1,7 +1,7 @@
 import pandas as pd
 import xarray as xr
 from openghg_inversions.basis._functions import basis, _flux_fp_from_fp_all, _mean_fp_times_mean_flux
-from openghg_inversions.basis import bucketbasisfunction, quadtreebasisfunction
+from openghg_inversions.basis import bucketbasisfunction, quadtreebasisfunction, fixed_outer_regions_basis
 from openghg_inversions.get_data import data_processing_surface_notracer
 
 
@@ -82,3 +82,29 @@ def test_bucket_basis_function(tac_ch4_data_args, raw_data_path):
     # TODO: create new "fixed" basis function file, since we've switched basis functions from
     # dataset to data array
     xr.testing.assert_allclose(basis_func, basis_func_reloaded.basis)
+
+def test_fixed_outer_region_basis_function(tac_ch4_data_args, raw_data_path):
+    """Check if fixed outer region basis created wtih seed 42 and TAC CH4 args matches 
+    a basis created with the same argumenst and saved to file.
+    
+    This is to check against changes in the code from when this test was made 
+    (2 Sep 2024)
+    """
+    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+    emissions_name = next(iter(fp_all[".flux"].keys()))
+    basis_func = fixed_outer_regions_basis(
+        emissions_name=[emissions_name],
+        fp_all=fp_all,
+        start_date="2019-01-01",
+        domain="EUROPE",
+        basis_algorithm='weighted'
+    )
+
+    basis_func_reloaded = basis(
+        domain="EUROPE", basis_case="fixed_outer_region_ch4-test_basis", basis_directory=raw_data_path / "basis"
+    )
+
+    # TODO: create new "fixed" basis function file, since we've switched basis functions from
+    # dataset to data array
+    xr.testing.assert_allclose(basis_func, basis_func_reloaded.basis)
+
