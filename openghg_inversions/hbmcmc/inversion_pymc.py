@@ -800,7 +800,7 @@ def inferpymc_postprocessouts(
                 cntrytottrace = np.zeros(len(steps))
                 cntrytotprior = 0
                 for bf in range(int(np.max(bfarray)) + 1):
-                    indx = int(basis + period*nbasis)
+                    indx = int(bf + period*nbasis)
                     bothinds = np.logical_and(cntrygrid == ci, bfarray == bf)
                     cntrytottrace += (
                         np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
