@@ -20,7 +20,6 @@ def make_inv_out(
     site_names: np.ndarray | list[str],  # could be a list?
     sigma_freq_index: np.ndarray,
     mcmc_results: dict,
-    model: Optional[pm.Model] = None,
 ):
     nmeasure = np.arange(len(Y))
     y_obs = xr.DataArray(Y, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs")
@@ -60,6 +59,19 @@ def make_inv_out(
     except AttributeError:
         flux = next(iter(fp_data[".flux"].values())).data
 
+    # set up model with coords and dimensions
+    model = mcmc_results["model"]
+    model.add_coords(traces_ds.drop_vars(["chain", "draw"]).coords)
+    model.named_vars_to_dims["x"] = ("nx",)
+    model.named_vars_to_dims["sig"] = ("nsigma_time", "nsigma_site")
+
+    if not "nmeasure" in model.coords:
+        model.add_coord(y_obs.nmeasure)
+    model.named_vars_to_dims["y"] = ("nmeasure",)
+
+    if "xbc" in model:
+        model.named_vars_to_dims["xbc"] = ("nbc",)
+
 
     return InversionOutput(
         obs=y_obs,
@@ -69,7 +81,7 @@ def make_inv_out(
         site_indicators=site_indicator_da,
         flux=flux,
         basis=basis,
-        model=model if model is not None else mcmc_results["model"],
+        model=model,
         trace=trace,
         site_names=site_names_da,
         times=times,
