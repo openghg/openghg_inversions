@@ -262,7 +262,7 @@ def inferpymc(
     if add_offset:
         B = offset_matrix(siteindicator)
 
-    with pm.Model():
+    with pm.Model() as model:
         step1_vars = []
 
         if reparameterise_log_normal and xprior["pdf"] == "lognormal":
@@ -372,6 +372,7 @@ def inferpymc(
         "convergence": convergence,
         "step1": step1,
         "step2": step2,
+        "model": model,
     }
 
     if use_bc:

@@ -553,7 +553,6 @@ def fixedbasisMCMC(
                 site_names=sites,
                 sigma_freq_index=sigma_freq_index,
                 mcmc_results=mcmc_results,
-                model=None,
             )
 
         # Process and save inversion output

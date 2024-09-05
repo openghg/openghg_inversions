@@ -60,6 +60,7 @@ def make_inv_out(
     except AttributeError:
         flux = next(iter(fp_data[".flux"].values())).data
 
+
     return InversionOutput(
         obs=y_obs,
         obs_err=y_error,
@@ -68,7 +69,7 @@ def make_inv_out(
         site_indicators=site_indicator_da,
         flux=flux,
         basis=basis,
-        model=model if model is not None else pm.Model(),
+        model=model if model is not None else mcmc_results["model"],
         trace=trace,
         site_names=site_names_da,
         times=times,
