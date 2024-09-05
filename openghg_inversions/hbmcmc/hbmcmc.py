@@ -90,6 +90,7 @@ def fixedbasisMCMC(
     merged_data_only: bool = False,
     calculate_min_error: Literal["percentile", "residual"] | None = None,
     min_error_options: dict | None = None,
+    return_inv_out: bool = False,  # for testing new postprocessing
     **kwargs,
 ) -> xr.Dataset | dict:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference
@@ -537,6 +538,23 @@ def fixedbasisMCMC(
 
         if skip_postprocessing:
             return mcmc_results
+
+        if return_inv_out:
+            from ..postprocessing.inversion_output import make_inv_out
+
+            return make_inv_out(
+                fp_data=fp_data,
+                Y=Y,
+                Ytime=Ytime,
+                error=error,
+                obs_repeatability=obs_repeatability,
+                obs_variability=obs_variability,
+                site_indicator=siteindicator,
+                site_names=sites,
+                sigma_freq_index=sigma_freq_index,
+                mcmc_results=mcmc_results,
+                model=None,
+            )
 
         # Process and save inversion output
         post_process_args.update(mcmc_results)

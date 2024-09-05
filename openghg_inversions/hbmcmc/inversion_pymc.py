@@ -123,7 +123,7 @@ def inferpymc(
     tune: int = int(1.25e5),
     nchain: int = 2,
     sigma_per_site: bool = True,
-    offsetprior: dict | None = {"pdf": "normal", "mu": 0, "sigma": 1},
+    offsetprior: dict | None = None,
     add_offset: bool = False,
     verbose: bool = False,
     min_error: float | None = 0.0,
@@ -290,7 +290,9 @@ def inferpymc(
             mu += pt.dot(hbc, xbc)
 
         if add_offset:
-            offset = parse_prior("offset", offsetprior, shape=nsites - 1)
+            if offsetprior is None:
+                offsetprior = {"pdf": "normal", "mu": 0.0, "sigma": 1.0}
+            offset = parse_prior("offset", offsetprior, shape=int(nsites - 1))
             offset_vec = pt.concatenate((np.array([0]), offset), axis=0)
             mu += pt.dot(B, offset_vec)
 
@@ -353,7 +355,7 @@ def inferpymc(
         OFFtrace = np.dot(B, OFFSETtrace.T)
     else:
         offset_outs = xouts * 0
-        OFFtrace = np.zeros((ny, nit - burn))
+        OFFtrace = np.zeros((nit - burn, ny))
 
     if use_bc:
         YBCtrace = np.dot(Hbc.T, bcouts.T) + OFFtrace
