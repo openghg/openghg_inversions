@@ -357,12 +357,14 @@ def inferpymc(
     if save_trace:
         trace.to_netcdf(str(save_trace), engine="netcdf4")
 
-    xouts = trace.posterior["x"][0, burn:nit]
+    posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit))
+
+    xouts = posterior_burned.x
 
     if use_bc:
-        bcouts = trace.posterior["bc"][0, burn:nit]
+        bcouts = posterior_burned.bc
 
-    sigouts = trace.posterior["sigma"][0, burn:nit]
+    sigouts = posterior_burned.sigma
 
     # Check for convergence
     gelrub = pm.rhat(trace)["x"].max()
@@ -378,15 +380,15 @@ def inferpymc(
             print(f"There were {divergences} divergences. Try increasing target accept or reparameterise.")
 
     if add_offset:
-        OFFtrace = trace.posterior.offset.isel(chain=0, draw=slice(burn, nit))
+        OFFtrace = posterior_burned.offset
     else:
-        OFFtrace = xr.zeros_like(trace.posterior.mu).isel(chain=0, draw=slice(burn, nit))
+        OFFtrace = xr.zeros_like(posterior_burned.mu)
 
     if use_bc:
-        YBCtrace = trace.posterior.mu_bc.isel(chain=0, draw=slice(burn, nit)) + OFFtrace
-        Ytrace = trace.posterior.mu.isel(chain=0, draw=slice(burn, nit)) + YBCtrace
+        YBCtrace = posterior_burned.mu_bc + OFFtrace
+        Ytrace = posterior_burned.mu + YBCtrace
     else:
-        Ytrace = trace.posterior.mu.isel(chain=0, draw=slice(burn, nit)) + OFFtrace
+        Ytrace = posterior_burned.mu + OFFtrace
 
     result = {
         "xouts": xouts,
