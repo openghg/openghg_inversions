@@ -290,7 +290,7 @@ def inferpymc(
             mu += pt.dot(hbc, xbc)
 
         if add_offset:
-            offset = parse_prior("offset", offsetprior, shape=nsites - 1)
+            offset = parse_prior("offset", offsetprior, shape=int(nsites - 1))
             offset_vec = pt.concatenate((np.array([0]), offset), axis=0)
             mu += pt.dot(B, offset_vec)
 
