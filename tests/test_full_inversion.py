@@ -42,6 +42,7 @@ def test_full_inversion_inv_out(mcmc_args):
 
 def test_full_inversion_no_model_error(mcmc_args):
     mcmc_args["no_model_error"] = True
+    fixedbasisMCMC(**mcmc_args)
 
 
 def test_full_inversion_flux_dim_shuffled(mcmc_args):
