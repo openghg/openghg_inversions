@@ -148,7 +148,6 @@ def inferpymc(
     add_offset: bool = False,
     verbose: bool = False,
     min_error: float | None = 0.0,
-    save_trace: str | Path | None = None,
     use_bc: bool = True,
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
@@ -353,9 +352,6 @@ def inferpymc(
             cores=nchain,
             nuts_sampler=nuts_sampler,
         )
-
-    if save_trace:
-        trace.to_netcdf(str(save_trace), engine="netcdf4")
 
     posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit))
 
