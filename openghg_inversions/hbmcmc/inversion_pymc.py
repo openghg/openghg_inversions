@@ -107,6 +107,27 @@ def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
     return dist(name, **params, **kwargs)
 
 
+def _make_coords(
+    Y: np.ndarray,
+    Hx: np.ndarray,
+    site_indicator: np.ndarray,
+    sigma_freq_indices: np.ndarray,
+    Hbc: np.ndarray | None = None,
+    sites: list[str] | None = None,
+    sigma_per_site: bool = False,
+) -> dict:
+    result = {
+        "nmeasure": np.arange(len(Y)),
+        "nx": np.arange(Hx.shape[0]),
+        "sites": sites if sites is not None else np.unique(site_indicator),
+        "nsigma_time": np.unique(sigma_freq_indices),
+        "nsigma_site": np.unique(site_indicator) if sigma_per_site else [0],
+    }
+    if Hbc is not None:
+        result["nbc"] = np.arange(Hbc.shape[0])
+    return result
+
+
 def inferpymc(
     Hx: np.ndarray,
     Y: np.ndarray,
@@ -123,11 +144,10 @@ def inferpymc(
     tune: int = int(1.25e5),
     nchain: int = 2,
     sigma_per_site: bool = True,
-    offsetprior: dict | None = {"pdf": "normal", "mu": 0, "sigma": 1},
+    offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
     add_offset: bool = False,
     verbose: bool = False,
     min_error: float | None = 0.0,
-    save_trace: str | Path | None = None,
     use_bc: bool = True,
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
@@ -262,57 +282,66 @@ def inferpymc(
     if add_offset:
         B = offset_matrix(siteindicator)
 
-    with pm.Model():
+    coords = _make_coords(Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None)
+
+    with pm.Model(coords=coords) as model:
         step1_vars = []
 
         if reparameterise_log_normal and xprior["pdf"] == "lognormal":
-            x0 = pm.Normal("x0", 0, 1, shape=nx)
+            x0 = pm.Normal("x0", 0, 1, dims="nx")
             x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0))
             step1_vars.append(x0)
         else:
-            x = parse_prior("x", xprior, shape=nx)
+            x = parse_prior("x", xprior, dims="nx")
             step1_vars.append(x)
 
         if use_bc:
             if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
-                xbc0 = pm.Normal("xbc0", 0, 1, shape=nbc)
-                xbc = pm.Deterministic("xbc", pt.exp(bcprior["mu"] + bcprior["sigma"] * xbc0))
-                step1_vars.append(xbc0)
+                bc0 = pm.Normal("bc0", 0, 1, dims="nbc")
+                bc = pm.Deterministic("bc", pt.exp(bcprior["mu"] + bcprior["sigma"] * bc0))
+                step1_vars.append(bc0)
             else:
-                xbc = parse_prior("xbc", bcprior, shape=nbc)
-                step1_vars.append(xbc)
+                bc = parse_prior("bc", bcprior, dims="nbc")
+                step1_vars.append(bc)
 
-        sig = parse_prior("sig", sigprior, shape=(nsites, nsigmas))
+        sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
 
-        mu = pt.dot(hx, x)
+        mu = pm.Deterministic("mu", pt.dot(hx, x), dims="nmeasure")
 
         if use_bc:
-            mu += pt.dot(hbc, xbc)
+            mu_bc = pm.Deterministic("mu_bc", pt.dot(hbc, bc), dims="nmeasure")
+            mu += mu_bc
 
         if add_offset:
-            offset = parse_prior("offset", offsetprior, shape=int(nsites - 1))
-            offset_vec = pt.concatenate((np.array([0]), offset), axis=0)
-            mu += pt.dot(B, offset_vec)
+            offset0 = parse_prior("offset0", offsetprior, shape=int(nsites - 1))
+            offset_vec = pt.concatenate((np.array([0]), offset0), axis=0)
+            offset = pm.Deterministic("offset", pt.dot(B, offset_vec), dims="nmeasure")
+            mu += offset
 
         if pollution_events_from_obs is True:
             if use_bc is True:
-                pollution_event = np.abs(Y - pt.dot(hbc, xbc))
+                pollution_event = np.abs(Y - pt.dot(hbc, bc))
             else:
                 pollution_event = np.abs(Y) + 1e-6 * np.mean(Y)  # small non-zero term to prevent NaNs
         else:
             pollution_event = np.abs(pt.dot(hx, x))
 
-        pollution_event_scaled_error = pollution_event * sig[sites, sigma_freq_index]
+        pollution_event_scaled_error = pollution_event * sigma[sites, sigma_freq_index]
 
         if no_model_error is True:
-            epsilon = np.abs(error)
+            # need some small non-zero value to avoid sampling problems
+            mean_obs = np.nanmean(Y)
+            small_amount = 1e-12 * mean_obs
+            eps = pt.maximum(pt.abs(error), small_amount)  # type: ignore
         else:
-            epsilon = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)
+            eps = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)  # type: ignore
 
-        pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, shape=ny)
+        epsilon = pm.Deterministic("epsilon", eps, dims="nmeasure")
+
+        pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, dims="nmeasure")
 
         step1 = pm.NUTS(vars=step1_vars)
-        step2 = pm.Slice(vars=[sig])
+        step2 = pm.Slice(vars=[sigma])
         step = [step1, step2] if nuts_sampler == "pymc" else None
         trace = pm.sample(
             nit,
@@ -324,15 +353,14 @@ def inferpymc(
             nuts_sampler=nuts_sampler,
         )
 
-    if save_trace:
-        trace.to_netcdf(str(save_trace), engine="netcdf4")
+    posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit))
 
-    xouts = trace.posterior["x"][0, burn:nit]
+    xouts = posterior_burned.x
 
     if use_bc:
-        bcouts = trace.posterior["xbc"][0, burn:nit]
+        bcouts = posterior_burned.bc
 
-    sigouts = trace.posterior["sig"][0, burn:nit]
+    sigouts = posterior_burned.sigma
 
     # Check for convergence
     gelrub = pm.rhat(trace)["x"].max()
@@ -348,33 +376,31 @@ def inferpymc(
             print(f"There were {divergences} divergences. Try increasing target accept or reparameterise.")
 
     if add_offset:
-        offset_outs = trace.posterior["offset"][0, burn:nit]
-        OFFSETtrace = np.hstack([np.zeros((int(nit - burn), 1)), offset_outs])
-        OFFtrace = np.dot(B, OFFSETtrace.T)
+        OFFtrace = posterior_burned.offset
     else:
-        offset_outs = xouts * 0
-        OFFtrace = np.zeros((ny, nit - burn))
+        OFFtrace = xr.zeros_like(posterior_burned.mu)
 
     if use_bc:
-        YBCtrace = np.dot(Hbc.T, bcouts.T) + OFFtrace
-        Ytrace = np.dot(Hx.T, xouts.T) + YBCtrace
+        YBCtrace = posterior_burned.mu_bc + OFFtrace
+        Ytrace = posterior_burned.mu + YBCtrace
     else:
-        Ytrace = np.dot(Hx.T, xouts.T) + OFFtrace
+        Ytrace = posterior_burned.mu + OFFtrace
 
     result = {
         "xouts": xouts,
         "sigouts": sigouts,
-        "offset_outs": offset_outs,
-        "Ytrace": Ytrace,
-        "OFFSETtrace": OFFtrace,
+        "Ytrace": Ytrace.values.T,
+        "OFFSETtrace": OFFtrace.values.T,
         "convergence": convergence,
         "step1": step1,
         "step2": step2,
+        "model": model,
+        "trace": trace,
     }
 
     if use_bc:
         result["bcouts"] = bcouts
-        result["YBCtrace"] = YBCtrace
+        result["YBCtrace"] = YBCtrace.values.T
 
     return result
 
