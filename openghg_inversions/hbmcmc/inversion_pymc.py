@@ -396,6 +396,7 @@ def inferpymc(
         "step2": step2,
         "model": model,
         "trace": trace,
+        "epsilon": epsilon.eval().values
     }
 
     if use_bc:
@@ -422,6 +423,7 @@ def inferpymc_postprocessouts(
     Ytime: np.ndarray,
     siteindicator: np.ndarray,
     sigma_freq_index: np.ndarray,
+    epsilon: np.ndarray,
     domain: str,
     species: str,
     sites: list,
@@ -801,6 +803,7 @@ def inferpymc_postprocessouts(
         "Yoff95": (["nmeasure", "nUI"], Ymod95OFF),
         "xtrace": (["steps", "nparam"], xouts.values),
         "sigtrace": (["steps", "nsigma_site", "nsigma_time"], sigouts.values),
+        "epsilon": (["nmeasure"], epsilon),
         "siteindicator": (["nmeasure"], siteindicator),
         "sigmafreqindex": (["nmeasure"], sigma_freq_index),
         "sitenames": (["nsite"], sites),
@@ -868,6 +871,7 @@ def inferpymc_postprocessouts(
     outds.Yoffmode.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yoff95.attrs["units"] = obs_units + " " + "mol/mol"
     outds.Yoff68.attrs["units"] = obs_units + " " + "mol/mol"
+    outds.epsilon.attrs["units"] = obs_units + " " + "mol/mol"
     outds.countrymean.attrs["units"] = country_units
     outds.countrymedian.attrs["units"] = country_units
     outds.countrymode.attrs["units"] = country_units
@@ -897,6 +901,7 @@ def inferpymc_postprocessouts(
     outds.Yoff95.attrs["longname"] = (
         " 0.95 Bayesian credible interval of posterior simulated offset between measurements"
     )
+    outds.epsilon.attrs["longname"] = "model error applied to measurements"
     outds.xtrace.attrs["longname"] = "trace of unitless scaling factors for emissions parameters"
     outds.sigtrace.attrs["longname"] = "trace of model error parameters"
     outds.siteindicator.attrs["longname"] = "index of site of measurement corresponding to sitenames"
