@@ -368,25 +368,27 @@ def fixed_outer_regions_basis(
         basis (xarray.DataArray) :
           Array with lat/lon dimensions and basis regions encoded by integers.
     """
-    intem_regions_path = Path(__file__).parent / "intem_region_definition.nc"
+    intem_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
     intem_regions = xr.open_dataset(intem_regions_path).region
 
     # force intem_regions to use flux coordinates
     flux, _ = _flux_fp_from_fp_all(fp_all, emissions_name)
     _, intem_regions = xr.align(flux, intem_regions, join="override")
 
-    mask = intem_regions == 6
+    inner_index = intem_regions.values.max()
+
+    mask = intem_regions == inner_index
 
     basis_function = basis_functions[basis_algorithm].algorithm
     inner_region = basis_function(fp_all, start_date, domain, emissions_name, nbasis, abs_flux, mask=mask)
 
-    basis = intem_regions.rename("basis")
+    basis = intem_regions.rename("basis") 
 
     loc_dict = {
         "lat": slice(inner_region.lat.min(), inner_region.lat.max() + 0.1),
         "lon": slice(inner_region.lon.min(), inner_region.lon.max() + 0.1),
     }
-    basis.loc[loc_dict] = (inner_region + 5).squeeze().values
+    basis.loc[loc_dict] = (inner_region + inner_index-1).squeeze().values
 
     basis += 1  # intem_region_definitions.nc regions start at 0, not 1
 
