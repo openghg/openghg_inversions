@@ -422,14 +422,20 @@ def fixedbasisMCMC(
                 if x_freq == "monthly":
                     Hx, nbasis, nperiod = setup.monthly_h(start_date, end_date, site, fp_data)
                     x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis, decay_tau)
+                elif isinstance(x_freq, str):
+                    Hx, nbasis, nperiod = setup.create_h_sensitivity(start_date, end_date, site, fp_data, x_freq)
+                    x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis, decay_tau)
                 elif x_freq is None:
                     Hx = fp_data[site].H.values
                 else:
-                    raise ValueError("Inversion currently only setup for monthly x_freq")
+                    raise ValueError(f"Inversion not setup for x_freq = {x_freq}")
             else:
                 Ytime = np.concatenate((Ytime, fp_data[site].time.values))
                 if x_freq == "monthly":
                     Hmx = setup.monthly_h(start_date, end_date, site, fp_data)[0]
+                    Hx = np.hstack((Hx, Hmx))
+                elif isinstance(x_freq, str):
+                    Hmx = setup.create_h_sensitivity(start_date, end_date, site, fp_data, x_freq)[0]
                     Hx = np.hstack((Hx, Hmx))
                 else:
                     Hx = np.hstack((Hx, fp_data[site].H.values))
