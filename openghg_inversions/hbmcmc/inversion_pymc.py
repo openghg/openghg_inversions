@@ -353,7 +353,7 @@ def inferpymc(
             nuts_sampler=nuts_sampler,
         )
 
-    posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit))
+    posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit)).drop_vars("chain")
 
     xouts = posterior_burned.x
 

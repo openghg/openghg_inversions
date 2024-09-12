@@ -542,7 +542,6 @@ def fixedbasisMCMC(
                 obs_variability=obs_variability,
                 site_indicator=siteindicator,
                 site_names=sites,
-                sigma_freq_index=sigma_freq_index,
                 mcmc_results=mcmc_results,
             )
 

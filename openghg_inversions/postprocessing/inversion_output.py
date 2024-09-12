@@ -18,7 +18,6 @@ def make_inv_out(
     obs_variability: np.ndarray,
     site_indicator: np.ndarray,
     site_names: np.ndarray | list[str],  # could be a list?
-    sigma_freq_index: np.ndarray,
     mcmc_results: dict,
 ):
     nmeasure = np.arange(len(Y))
@@ -30,27 +29,10 @@ def make_inv_out(
     site_indicator_da = xr.DataArray(site_indicator, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="site_indicator")
     site_names_da = xr.DataArray(site_names, dims=["nsite"], coords={"nsite": np.arange(len(site_names))}, name="site_names")
 
-    # traces
-    draw, nx = mcmc_results["xouts"].shape
-    coords={"draw": np.arange(draw), "nx": np.arange(nx), "nsigma_time": np.unique(sigma_freq_index), "nsigma_site": np.arange(mcmc_results["sigouts"].shape[1])}
+    _, nx = mcmc_results["xouts"].shape
+    nx = np.arange(nx)
 
-    traces = {
-        "x": (["draw", "nx"], mcmc_results["xouts"].values),
-        "sigma": (["draw", "nsigma_site", "nsigma_time"], mcmc_results["sigouts"].values),
-    }
-
-    if "bcouts" in mcmc_results:
-        traces["bc"] = (["draw", "nbc"], mcmc_results["bcouts"].values)
-        coords["nbc"] = np.arange(mcmc_results["bcouts"].shape[1])
-
-    if "OFFSETtrace" in mcmc_results:
-        traces["offset"] = (["draw", "nmeasure"], mcmc_results["OFFSETtrace"])
-        coords["nmeasure"] = nmeasure
-
-    traces_ds = xr.Dataset(traces, coords=coords).expand_dims({"chain": [0]})
-    trace = az.InferenceData(posterior=traces_ds)
-
-    basis = get_xr_dummies(fp_data[".basis"], cat_dim="nx", categories=traces_ds.nx.values)
+    basis = get_xr_dummies(fp_data[".basis"], cat_dim="nx", categories=nx)
 
     scenarios = [v for k, v in fp_data.items() if not k.startswith(".")]
 
@@ -59,19 +41,11 @@ def make_inv_out(
     except AttributeError:
         flux = next(iter(fp_data[".flux"].values())).data
 
-    # set up model with coords and dimensions
-    model = mcmc_results["model"]
-    model.add_coords(traces_ds.drop_vars(["chain", "draw"]).coords)
-    model.named_vars_to_dims["x"] = ("nx",)
-    model.named_vars_to_dims["sig"] = ("nsigma_time", "nsigma_site")
-
-    if not "nmeasure" in model.coords:
-        model.add_coord(y_obs.nmeasure)
-    model.named_vars_to_dims["y"] = ("nmeasure",)
-
-    if "xbc" in model:
-        model.named_vars_to_dims["xbc"] = ("nbc",)
-
+    if isinstance(flux, xr.Dataset):
+        if "flux" in flux:
+            flux = flux.flux
+        else:
+            flux = flux[flux.data_vars[0]]
 
     return InversionOutput(
         obs=y_obs,
@@ -81,8 +55,8 @@ def make_inv_out(
         site_indicators=site_indicator_da,
         flux=flux,
         basis=basis,
-        model=model,
-        trace=trace,
+        model=mcmc_results["model"],
+        trace=mcmc_results["trace"],
         site_names=site_names_da,
         times=times,
     )
@@ -170,11 +144,20 @@ class InversionOutput:
     site_names: xr.DataArray
     times: xr.DataArray
 
-    def sample_predictive_distributions(self, ndraw: int = 10000) -> None:
+    def __post_init__(self) -> None:
+        """Check that trace has posterior traces, and keep only chain 0"""
+        if not hasattr(self.trace, "posterior"):
+            raise ValueError("`trace` InferenceData must have `posterior` traces.")
+        if "chain" in self.trace.posterior.dims:
+            self.trace = self.trace.isel(chain=[0])  # select chain 0, but don't drop chain dimension
+
+    def sample_predictive_distributions(self, ndraw: int | None = None) -> None:
         """Sample prior and posterior predictive distributions.
 
         This creates prior samples as a side-effect.
         """
+        if ndraw is None:
+            ndraw = self.trace.posterior.sizes["draw"]
         self.trace.extend(pm.sample_prior_predictive(ndraw, self.model))
         self.trace.extend(pm.sample_posterior_predictive(self.trace, model=self.model, var_names=["y"]))
 
