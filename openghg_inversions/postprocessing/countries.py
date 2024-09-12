@@ -9,7 +9,7 @@ import xarray as xr
 from openghg_inversions import convert, utils
 from xarray.core.common import DataWithCoords
 
-from array_ops import align_sparse_lat_lon, get_xr_dummies, sparse_xr_dot
+from openghg_inversions.array_ops import align_sparse_lat_lon, get_xr_dummies, sparse_xr_dot
 from .inversion_output import InversionOutput
 
 # type for xr.Dataset *or* xr.DataArray
@@ -90,16 +90,17 @@ class Countries:
             xr.DataArray with coordinate dimensions ("country", "basis_region")
         """
         # multiply flux and basis and align to country lat/lon
-        flux_x_basis = align_sparse_lat_lon(inv_out.flux * inv_out.basis, self.area_grid)
+        basis = align_sparse_lat_lon(inv_out.basis, inv_out.flux)
+        flux_x_basis = align_sparse_lat_lon(inv_out.flux * basis, self.area_grid)
 
         # compute matrix/tensor product: country_mat.T @ (area_grid * flux * basis_mat)
         # transpose doesn't need to be taken explicitly because alignment is done by dimension name
-        result = sparse_xr_dot(self.matrix, self.area_grid * flux_x_basis)
-
+        result = self.matrix @ (self.area_grid * flux_x_basis)
+        #result = sparse_xr_dot(self.matrix, self.area_grid * flux_x_basis)
         if sparse:
             return result
 
-        # hack since `.to_numpy()` doesn't work right with sparse arrays
+        # hack since `.to_numpy()` doesn't work correctly with sparse arrays
         return xr.apply_ufunc(lambda x: x.todense(), result)
 
     @staticmethod
@@ -120,7 +121,7 @@ class Countries:
         Returns:
             xr.DataArray with coordinate dimensions ("country", "draw")
 
-        TODO: there is a "country unit" conversion in the old code, but it seems to always product
+        TODO: there is a "country unit" conversion in the old code, but it seems to always produce
               1.0, based on how it is used in hbmcmc
         """
         raw_trace = sparse_xr_dot(x_to_country, x_trace)
