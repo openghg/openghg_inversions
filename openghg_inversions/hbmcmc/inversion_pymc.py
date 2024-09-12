@@ -396,7 +396,7 @@ def inferpymc(
         "step2": step2,
         "model": model,
         "trace": trace,
-        "epsilon": epsilon.eval().values
+        "epsilon": epsilon.eval()
     }
 
     if use_bc:

@@ -302,6 +302,8 @@ def _local_ratio(dataset: xr.Dataset) -> np.ndarray:
     dlat = dataset.lat[1].values - dataset.lat[0].values
     local_sum = np.zeros(len(dataset.mf))
 
+    dataset.load()
+
     for ti in range(len(dataset.mf)):
         release_lon = dataset.release_lon[ti].values
         release_lat = dataset.release_lat[ti].values
