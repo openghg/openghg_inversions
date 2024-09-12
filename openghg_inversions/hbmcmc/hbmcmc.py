@@ -209,10 +209,10 @@ def fixedbasisMCMC(
         Adds the variability in the averaging period to the measurement
         error if set to True
       x_freq:
-        The maximum period over which the inversion is divided into. E.g. set
-        to "monthly", the inversion will be subdivided into calendar months. 
-        Currently only setup to read "monthly" or None. If None, the inversion 
-        will be run for one single period from start_date to end_date.
+        The maximum period over which the inversion is divided into. Set to "monthly"
+        to estimate per calendar month; set to a number of days,
+        as e.g. "30D" for 30 days; or set to None to estimate to have one
+        scaling for the whole inversion period.
       decay_tau:
         The exponential time constant representing the time at which the covariance 
         between period paramters is equal to 1/e. Units reflect the period chosen in x_freq.
@@ -424,14 +424,20 @@ def fixedbasisMCMC(
                 if x_freq == "monthly":
                     Hx, nbasis, nperiod = setup.monthly_h(start_date, end_date, site, fp_data)
                     x_precision = setup.xprior_covariance(nperiod, nbasis, decay_tau)
+                elif isinstance(x_freq, str):
+                    Hx, nbasis, nperiod = setup.create_h_sensitivity(start_date, end_date, site, fp_data, x_freq)
                     print(f"Site {si} H shape: {Hx.shape}")
+                    x_precision = setup.xprior_covariance(nperiod, nbasis, decay_tau)
                 elif x_freq is None:
                     Hx = fp_data[site].H.values
                 else:
-                    raise ValueError("Inversion currently only setup for monthly x_freq")
+                    raise ValueError(f"Inversion not setup for x_freq = {x_freq}")
             else:
                 if x_freq == "monthly":
                     Hmx = setup.monthly_h(start_date, end_date, site, fp_data)[0]
+                    Hx = np.hstack((Hx, Hmx))
+                elif isinstance(x_freq, str):
+                    Hmx = setup.create_h_sensitivity(start_date, end_date, site, fp_data, x_freq)[0]
                     print(f"Site {si} H shape: {Hmx.shape}")
                     Hx = np.hstack((Hx, Hmx))
                 else:

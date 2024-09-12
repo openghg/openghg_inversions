@@ -218,6 +218,60 @@ def monthly_h(start_date : str,
     return hx, nbasis, nmonth
 
 
+def create_h_sensitivity(start_date : str, 
+                          end_date : str, 
+                          site : str, 
+                          fp_data : dict, 
+                          freq : str) -> np.ndarray:
+    """
+    Creates a sensitivity matrix (H-matrix) for the emissions, 
+    which will map emission scalings to the observations. This 
+    is for a single site. The frequency that the emission 
+    sensitivity is specified over must be given in days. 
+
+    Args:
+      start_date:
+        Start time of inversion "YYYY-mm-dd"
+      end_date:
+        End time of inversion "YYYY-mm-dd"
+      site:
+        Site that you're creating it for
+      fp_data:
+        Output from ModelScenario()
+        Should be a dictionary of xr.Dataset/DataArray
+      freq:
+        Length-scale over which emissions sensitivities are
+        specified over. Specified as in pandas, e.g. "30D".
+
+    Returns:
+      hx:
+        Sensitivity matrix by for observations to emissions
+    """
+    nbasis = fp_data[site].coords["region"].shape[0]
+    dys = int("".join([s for s in freq if s.isdigit()]))
+    alldates = pd.date_range(
+        pd.to_datetime(start_date), pd.to_datetime(end_date) + pd.DateOffset(days=dys), freq=freq
+    )
+    ndates = np.sum(alldates < pd.to_datetime(end_date))
+    curdates = fp_data[site].time.values
+    hx = np.zeros((nbasis * ndates, len(fp_data[site].time.values)))
+    count = 0
+    for m in range(0, ndates):
+        dateloc = np.where(
+            np.logical_and(
+                curdates >= alldates[m].to_datetime64(), curdates < alldates[m + 1].to_datetime64()
+            )
+        )[0]
+        if len(dateloc) == 0:
+            count += nbasis
+            continue
+        for basis in range(nbasis):
+            hx[count, dateloc] = fp_data[site].H.values[basis, dateloc]
+            count += 1
+
+    return hx, nbasis, int(ndates)
+
+
 def xprior_covariance(nperiod : int,
                       nbasis : int,
                       decay_tau : float,
