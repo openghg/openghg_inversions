@@ -152,6 +152,7 @@ def inferpymc(
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
+    likelihood: str = 'normal'
 ) -> dict:
     """Uses PyMC module for Bayesian inference for emissions field, boundary
     conditions and (currently) a single model error value.
@@ -223,6 +224,10 @@ def inferpymc(
       no_model_error:
         When True, only use observation error in likelihood function (omitting min. model error
         and model error from scaling pollution events.)
+      likelihood (str):
+        What form the likelihood distribution should take (can be 'student_t (which is hard coded to
+        have nu=1), but defaults to 'normal')
+
 
     Returns:
       Dictionary containing:
@@ -338,8 +343,17 @@ def inferpymc(
 
         epsilon = pm.Deterministic("epsilon", eps, dims="nmeasure")
 
-        pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, dims="nmeasure")
+        if likelihood == 'normal':
+          pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, dims="nmeasure")
+          print('Using Normal likelihood')
+        
+        elif likelihood == 'student_t':
+          pm.StudentT("y", mu=mu, sigma=epsilon, nu=1, observed=Y, dims="nmeasure")
+          print('Using Student T likelihood')
 
+        else:
+            raise ValueError(f"likelihood ({likelihood})must be 'normal' or 'student_t'")
+        
         step1 = pm.NUTS(vars=step1_vars)
         step2 = pm.Slice(vars=[sigma])
         step = [step1, step2] if nuts_sampler == "pymc" else None
