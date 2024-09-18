@@ -74,6 +74,7 @@ def fixedbasisMCMC(
     filters: None | list | dict[str, list[str] | None] = None,
     fix_basis_outer_regions: bool = False,
     averaging_error: bool = True,
+    x_freq: str | None = None,
     bc_freq: str | None = None,
     sigma_freq: str | None = None,
     sigma_per_site: bool = True,
@@ -204,6 +205,11 @@ def fixedbasisMCMC(
       averaging_error:
         Adds the variability in the averaging period to the measurement
         error if set to True
+      x_freq:
+        The period over which the emissions scalings are estimated. Set to "monthly"
+        to estimate per calendar month; set to a number of days,
+        as e.g. "30D" for 30 days; or set to None to estimate to have one
+        scaling for the whole inversion period
       bc_freq:
         The perdiod over which the baseline is estimated. Set to "monthly"
         to estimate per calendar month; set to a number of days,
@@ -404,10 +410,26 @@ def fixedbasisMCMC(
             siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
             if si == 0:
                 Ytime = fp_data[site].time.values
+                if x_freq == "monthly":
+                    Hx, nbasis, nperiod = setup.monthly_h(start_date, end_date, site, fp_data)
+                    x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis)
+                elif isinstance(x_freq, str):
+                    Hx, nbasis, nperiod = setup.create_h_sensitivity(start_date, end_date, site, fp_data, x_freq)
+                    x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis)
+                elif x_freq is None:
+                    Hx = fp_data[site].H.values
+                else:
+                    raise ValueError(f"Inversion not setup for x_freq = {x_freq}")
             else:
                 Ytime = np.concatenate((Ytime, fp_data[site].time.values))
-
-            Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
+                if x_freq == "monthly":
+                    Hmx = setup.monthly_h(start_date, end_date, site, fp_data)[0]
+                    Hx = np.hstack((Hx, Hmx))
+                elif isinstance(x_freq, str):
+                    Hmx = setup.create_h_sensitivity(start_date, end_date, site, fp_data, x_freq)[0]
+                    Hx = np.hstack((Hx, Hmx))
+                else:
+                    Hx = np.hstack((Hx, fp_data[site].H.values))
 
         # Calculate min error
         if calculate_min_error == "residual":
@@ -461,6 +483,7 @@ def fixedbasisMCMC(
             "siteindicator": siteindicator,
             "sigma_freq_index": sigma_freq_index,
             "xprior": xprior,
+            "x_freq": x_freq,
             "sigprior": sigprior,
             "nit": nit,
             "burn": burn,
@@ -494,6 +517,10 @@ def fixedbasisMCMC(
         else:
             mcmc_args["use_bc"] = False
 
+        if x_freq is not None:
+            mcmc_args["xprior_covariance"] = x_covariance
+            mcmc_args["xprior_precision"] = x_precision
+
         post_process_args = {
             "Ytime": Ytime,
             "domain": domain,
@@ -509,6 +536,7 @@ def fixedbasisMCMC(
             "country_file": country_file,
             "obs_repeatability": obs_repeatability,
             "obs_variability": obs_variability,
+            "x_freq": x_freq,
         }
 
         # add mcmc_args to post_process_args
@@ -516,6 +544,12 @@ def fixedbasisMCMC(
         post_process_args.update(mcmc_args)
         del post_process_args["nit"]
         del post_process_args["verbose"]
+
+        if x_freq is not None:
+            del post_process_args["xprior_covariance"]
+            del post_process_args["xprior_precision"]
+            post_process_args["nbasis"] = nbasis
+            post_process_args["nperiod"] = nperiod
 
         # pass min model error to post-processing
         post_process_args["min_error"] = kwargs.get("min_error", 0.0)
