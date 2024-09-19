@@ -74,6 +74,7 @@ def fixedbasisMCMC(
     filters: None | list | dict[str, list[str] | None] = None,
     fix_basis_outer_regions: bool = False,
     averaging_error: bool = True,
+    analytical_inversion: bool = False,
     x_freq: str | None = None,
     bc_freq: str | None = None,
     sigma_freq: str | None = None,
@@ -205,6 +206,9 @@ def fixedbasisMCMC(
       averaging_error:
         Adds the variability in the averaging period to the measurement
         error if set to True
+      analytical_inversion:
+        If true, a Gaussian non-hierarchical analytical inversion will run instead of the MCMC. Only compatible 
+        with Gaussian prior distributions. No model error is calculated. If false, MCMC will run as usual.
       x_freq:
         The period over which the emissions scalings are estimated. Set to "monthly"
         to estimate per calendar month; set to a number of days,
@@ -418,6 +422,11 @@ def fixedbasisMCMC(
                     x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis)
                 elif x_freq is None:
                     Hx = fp_data[site].H.values
+                    if analytical_inversion:
+                        nbasis = Hx.shape[0]
+                        nperiod = 1
+                        x_covariance = np.eye(nbasis)
+                        x_precision = np.eye(nbasis)
                 else:
                     raise ValueError(f"Inversion not setup for x_freq = {x_freq}")
             else:
@@ -476,24 +485,35 @@ def fixedbasisMCMC(
         update_log_normal_prior(xprior)
         update_log_normal_prior(bcprior)
 
-        mcmc_args = {
-            "Hx": Hx,
-            "Y": Y,
-            "error": error,
-            "siteindicator": siteindicator,
-            "sigma_freq_index": sigma_freq_index,
-            "xprior": xprior,
-            "x_freq": x_freq,
-            "sigprior": sigprior,
-            "nit": nit,
-            "burn": burn,
-            "tune": tune,
-            "nchain": nchain,
-            "sigma_per_site": sigma_per_site,
-            "offsetprior": offsetprior,
-            "add_offset": add_offset,
-            "verbose": verbose,
-        }
+        if analytical_inversion:
+            if xprior["pdf"] == "normal":
+                inversion_args = {
+                    "Hx": Hx,
+                    "Y": Y,
+                    "error": error,
+                }
+            else:
+                raise ValueError("Analytical inversion only possible with normal xprior.")
+            
+        else:
+            inversion_args = {
+                "Hx": Hx,
+                "Y": Y,
+                "error": error,
+                "siteindicator": siteindicator,
+                "sigma_freq_index": sigma_freq_index,
+                "xprior": xprior,
+                "x_freq": x_freq,
+                "sigprior": sigprior,
+                "nit": nit,
+                "burn": burn,
+                "tune": tune,
+                "nchain": nchain,
+                "sigma_per_site": sigma_per_site,
+                "offsetprior": offsetprior,
+                "add_offset": add_offset,
+                "verbose": verbose,
+            }
 
         if use_bc is True:
             Hbc = np.zeros(0)
@@ -511,15 +531,24 @@ def fixedbasisMCMC(
                 else:
                     Hbc = np.hstack((Hbc, Hmbc))
 
-            mcmc_args["Hbc"] = Hbc
-            mcmc_args["bcprior"] = bcprior
-            mcmc_args["use_bc"] = True
-        else:
-            mcmc_args["use_bc"] = False
+            inversion_args["Hbc"] = Hbc
+            inversion_args["use_bc"] = True
+            nbc = Hbc.shape[0]
+            if analytical_inversion:
+                if bcprior["pdf"] == "normal":
+                    sigbc = bcprior["sigma"]
+                    x_covariance = setup.covariance_extension(x_covariance, nbc, sigbc)
+                else:
+                    raise ValueError("Analytical inversion only possible with normal bcprior.")
+            else:
+                inversion_args["bcprior"] = bcprior
 
-        if x_freq is not None:
-            mcmc_args["xprior_covariance"] = x_covariance
-            mcmc_args["xprior_precision"] = x_precision
+        else:
+            inversion_args["use_bc"] = False
+        
+        if x_freq is not None or analytical_inversion is True:
+            inversion_args["xprior_covariance"] = x_covariance
+            inversion_args["xprior_precision"] = x_precision
 
         post_process_args = {
             "Ytime": Ytime,
@@ -541,47 +570,54 @@ def fixedbasisMCMC(
 
         # add mcmc_args to post_process_args
         # and delete a few we don't need
-        post_process_args.update(mcmc_args)
-        del post_process_args["nit"]
-        del post_process_args["verbose"]
+        post_process_args.update(inversion_args)
+        if analytical_inversion is False:
+            del post_process_args["nit"]
+            del post_process_args["verbose"]
+            # pass min model error to post-processing
+            post_process_args["min_error"] = kwargs.get("min_error", 0.0)
 
-        if x_freq is not None:
+        if x_freq is not None or analytical_inversion is True:
             del post_process_args["xprior_covariance"]
             del post_process_args["xprior_precision"]
             post_process_args["nbasis"] = nbasis
             post_process_args["nperiod"] = nperiod
 
-        # pass min model error to post-processing
-        post_process_args["min_error"] = kwargs.get("min_error", 0.0)
-
-        # add any additional kwargs to mcmc_args (these aren't needed for post processing)
-        mcmc_args.update(kwargs)
-
-        # Run PyMC inversion
-        mcmc_results = mcmc.inferpymc(**mcmc_args)  # type: ignore
+        # Run inversion
+        if analytical_inversion:
+            inversion_results = mcmc.inferanalytical(**inversion_args)
+        else:
+            # add any additional kwargs to inversion_args (these aren't needed for post processing)
+            inversion_args.update(kwargs)
+            inversion_results = mcmc.inferpymc(**inversion_args)  # type: ignore
 
         if skip_postprocessing:
-            return mcmc_results
+            return inversion_results
 
 
         # get trace and model: for future updates
-        trace = mcmc_results.pop("trace")
-        model = mcmc_results.pop("model")
+        if analytical_inversion is False:
+            trace = inversion_results.pop("trace")
+            model = inversion_results.pop("model")
 
-        # Path to save trace
-        if save_trace:
-            if isinstance(save_trace, str | Path):
-                trace_path = save_trace
-            else:
-                trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
+            # Path to save trace
+            if save_trace:
+                if isinstance(save_trace, str | Path):
+                    trace_path = save_trace
+                else:
+                    trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
 
-            trace.to_netcdf(str(trace_path), engine="netcdf4")
+                trace.to_netcdf(str(trace_path), engine="netcdf4")
 
 
 
-        # Process and save inversion output
-        post_process_args.update(mcmc_results)
-        out = mcmc.inferpymc_postprocessouts(**post_process_args)
+            # Process and save inversion output
+            post_process_args.update(inversion_results)
+            out = mcmc.inferpymc_postprocessouts(**post_process_args)
+        else:
+            post_process_args["siteindicator"] = siteindicator
+            post_process_args.update(inversion_results)
+            out = mcmc.inferanalytical_postprocessouts(**post_process_args)
 
     elif use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")

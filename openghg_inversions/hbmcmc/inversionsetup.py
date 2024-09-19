@@ -325,3 +325,24 @@ def xprior_covariance(nperiod : int,
     # precision_matrix = np.kron(inv_cov_period, inv_cov_space)  # calculate the precision matrix; precision = cov^-1 = kron( cov_p^-1, cov_b^-1 )
 
     return covariance_matrix, precision_matrix
+
+
+def covariance_extension(x_covariance: np.ndarray,
+                         nbc: int,
+                         bc_sig: float = 0.1) -> np.ndarray:
+    """
+    Extends the dimensions of the xprior covariance matrix to account for the boundary
+    conditions. This is only necessary if the analytical inversion is being run.
+    Currently set up for all zero off diagonal boundary condition covariance (uncorrelated)
+    bcs.
+    """
+
+    nx = x_covariance.shape[0]
+    
+    bc_var = np.ones(nbc)*bc_sig**2
+    cov_extended = np.zeros((nx+nbc, nx+nbc))
+
+    cov_extended[:nx, :nx] = x_covariance
+    cov_extended[nx:, nx:] = np.diag(bc_var)
+
+    return cov_extended
