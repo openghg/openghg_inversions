@@ -245,6 +245,10 @@ def data_processing_surface_notracer(
                 end_date=end_date,
                 store=emissions_store,
             )
+
+            # fix to prevent empty time coordinate:
+            if len(get_flux_data.data.time) == 0:
+                raise SearchError
         except SearchError:
             print(f"No flux data found between {start_date} and {end_date}.")
             print(f"Searching for flux data from before {start_date}.")
