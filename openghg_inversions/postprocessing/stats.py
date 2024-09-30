@@ -1,5 +1,7 @@
+from collections import namedtuple
 from functools import wraps
-from typing import Callable, Optional, Sequence
+import inspect
+from typing import Callable, Iterable, Optional, Sequence
 
 import arviz as az
 import numpy as np
@@ -7,8 +9,10 @@ import scipy
 import xarray as xr
 
 
+StatsFunction = namedtuple("StatsFunction", ["func", "params"])
+
 # this dictionary will be populated by using the decorator `register_stat`
-stats_functions = {}
+stats_functions: dict[str, StatsFunction] = {}
 
 
 def register_stat(stat: Callable) -> Callable:
@@ -20,7 +24,7 @@ def register_stat(stat: Callable) -> Callable:
     Returns:
         stat, the input function (no modifications made)
     """
-    stats_functions[stat.__name__] = stat
+    stats_functions[stat.__name__] = StatsFunction(stat, _get_parameters(stat))
     return stat
 
 
@@ -55,20 +59,28 @@ def add_suffix(suffix: str):
     def calc_mean():
         pass
     """
+
     def decorate(func):
         @wraps(func)
         def call(*args, **kwargs):
             result = func(*args, **kwargs)
             rename_dict = {dv: str(dv) + "_" + suffix for dv in result.data_vars}
             return result.rename(rename_dict)
+
         return call
+
     return decorate
+
+
+def _get_parameters(func: Callable) -> list[str]:
+    """Return list of parameters for a function."""
+    return list(inspect.signature(func).parameters.keys())
 
 
 @register_stat
 @add_suffix("quantile")
-def quantiles(ds: xr.Dataset, q: Sequence[float] = [0.159, 0.841], sample_dim: str = "draw"):
-    return ds.quantile(q=q, dim=sample_dim)
+def quantiles(ds: xr.Dataset, quantiles: Sequence[float] = [0.159, 0.841], sample_dim: str = "draw"):
+    return ds.quantile(q=quantiles, dim=sample_dim)
 
 
 @register_stat
@@ -82,6 +94,7 @@ def mode(data, sample_dim="draw", thin: int = 1):
     Thinning by some integer factor will produce a corresponding speed up. For instance,
     if `thin = 2` is passed, then the running time will be roughly half.
     """
+
     def mode_of_arr(arr, k):
         arr = np.sort(arr, axis=-1)
         id_med = np.argmin(arr[..., k:] - arr[..., :-k], axis=-1, keepdims=True)
@@ -99,7 +112,9 @@ def mode(data, sample_dim="draw", thin: int = 1):
 
 @register_stat
 @add_suffix("mode")
-def mode_kde(da: xr.DataArray, sample_dim="draw") -> xr.DataArray:
+def mode_kde(
+    da: xr.DataArray, sample_dim="draw", chunk_dim: str | None = None, chunk_size: int = 10
+) -> xr.DataArray:
     """Calculate the (KDE smoothed) mode of a data array containing MCMC
     samples.
 
@@ -122,11 +137,22 @@ def mode_kde(da: xr.DataArray, sample_dim="draw") -> xr.DataArray:
     def func(arr):
         return np.apply_along_axis(func1d=mode_of_row, axis=-1, arr=arr)
 
+    if chunk_dim is not None:
+        return xr.apply_ufunc(
+            func,
+            da.dropna(dim=sample_dim).chunk({chunk_dim: chunk_size}),
+            input_core_dims=[[sample_dim]],
+            dask="parallelized",
+        )
     return xr.apply_ufunc(func, da, input_core_dims=[[sample_dim]], dask="parallelized")
 
 
 @register_stat
-def hdi(data, hdi_prob=0.68, sample_dim="draw"):
+def hdi(data, hdi_prob: float | Iterable[float] = 0.68, sample_dim: str = "draw"):
+    # handle case of multiple hdi_probs
+    if isinstance(hdi_prob, Iterable):
+        return xr.merge([hdi(data, hdi_prob=prob, sample_dim=sample_dim) for prob in hdi_prob])
+
     # wrap here to get hdi prob in suffix
     @add_suffix(f"hdi_{int(100 * hdi_prob)}")
     def calc(data, hdi_prob):
@@ -159,39 +185,76 @@ def median(data, sample_dim="draw"):
     return data.median(dim=sample_dim)
 
 
-def calculate_stats(
-    ds: xr.Dataset,
-    name: str,
-    chunk_dim: str,
-    chunk_size: int = 10,
-    var_names: Optional[list[str]] = None,
-    report_mode: bool = False,
-    add_bc_suffix: bool = False,
-) -> list[xr.Dataset]:
-    output = []
-    if var_names is None:
-        var_names = list(ds.data_vars)
-    for var_name in var_names:
-        suffix = "apost" if "posterior" in var_name else "apriori"
-        if add_bc_suffix:
-            suffix += "BC"
+def calculate_stats(ds: xr.Dataset, stats: list[str] = ["mean", "quantiles"], **kwargs) -> xr.Dataset:
+    """Calculate stats on dataset.
 
-        if report_mode:
-            stats = [
-                calc_mode_kde(ds[var_name].dropna(dim="draw").chunk({chunk_dim: chunk_size}), sample_dim="draw")
-                .compute()
-                .rename(f"{name}{suffix}"),
-            ]
-        else:
-            stats = [
-                ds[var_name].mean("draw").rename(f"{name}{suffix}"),
-                # calc_mode(ds[var_name].dropna(dim="draw").chunk({chunk_dim: chunk_size}), sample_dim="draw")
-                # .compute()
-                # .rename(f"{name}{suffix}_mode"),
-            ]
-        stats.append(
-            make_quantiles(ds[var_name].dropna(dim="draw"), sample_dim="draw").rename(f"q{name}{suffix}")
-        )
+    Args:
+        ds: dataset to calculate stats on.
+        stats: list of stats to calculate.
+        **kwargs: arguments to pass to stats functions. If a parameter can be passed to a stats function,
+            it will be passed. To pass to a specific stats function, use `<stats func name>__<key> = <value>`.
+            Note: that is a double underscore. For instance `mode_kde__chunk_dim="country"` would specify `chunk_dim`
+            only for the stats function "mode_kde".
 
-        output.extend(stats)
-    return output
+    Returns:
+        dataset containing all stats calculated on all variables in input dataset.
+    """
+    stats_datasets = []
+
+    for stat in stats:
+        if stat not in stats_functions:
+            raise ValueError(f"Statistic {stat} not available.")
+        sf = stats_functions[stat]
+
+        # get any kwargs that could be passed to this stat
+        sf_kwargs = {k: v for k, v in kwargs.items() if k in sf.params}
+
+        # add "specific" kwargs of the form `<stat name>__<key>`
+        for k, v in kwargs.items():
+            if k.startswith(f"{stat}__"):
+                sf_kwargs[k.removeprefix(f"{stat}__")] = v
+
+        sf_result = sf.func(ds, **sf_kwargs)
+        stats_datasets.append(sf_result)
+
+    return xr.merge(stats_datasets)
+
+
+# def calculate_stats(
+#     ds: xr.Dataset,
+#     name: str,
+#     chunk_dim: str,
+#     chunk_size: int = 10,
+#     var_names: Optional[list[str]] = None,
+#     report_mode: bool = False,
+#     add_bc_suffix: bool = False,
+# ) -> list[xr.Dataset]:
+#     output = []
+#     if var_names is None:
+#         var_names = list(ds.data_vars)
+#     for var_name in var_names:
+#         suffix = "apost" if "posterior" in var_name else "apriori"
+#         if add_bc_suffix:
+#             suffix += "BC"
+
+#         if report_mode:
+#             stats = [
+#                 calc_mode_kde(
+#                     ds[var_name].dropna(dim="draw").chunk({chunk_dim: chunk_size}), sample_dim="draw"
+#                 )
+#                 .compute()
+#                 .rename(f"{name}{suffix}"),
+#             ]
+#         else:
+#             stats = [
+#                 ds[var_name].mean("draw").rename(f"{name}{suffix}"),
+#                 # calc_mode(ds[var_name].dropna(dim="draw").chunk({chunk_dim: chunk_size}), sample_dim="draw")
+#                 # .compute()
+#                 # .rename(f"{name}{suffix}_mode"),
+#             ]
+#         stats.append(
+#             make_quantiles(ds[var_name].dropna(dim="draw"), sample_dim="draw").rename(f"q{name}{suffix}")
+#         )
+
+#         output.extend(stats)
+#     return output
