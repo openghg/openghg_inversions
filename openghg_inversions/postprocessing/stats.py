@@ -1,32 +1,105 @@
-from typing import Optional, Sequence
+from functools import wraps
+from typing import Callable, Optional, Sequence
 
+import arviz as az
 import numpy as np
 import scipy
 import xarray as xr
 
 
-def make_quantiles(
-    da: xr.DataArray, probs: Sequence[float] = [0.159, 0.841], sample_dim="steps"
-) -> xr.DataArray:
-    """Return xr.DataArray of quantiles computed over dimension `sample_dim`.
+# this dictionary will be populated by using the decorator `register_stat`
+stats_functions = {}
 
-    NOTE: xarray has a .quantiles method built in, maybe we should use this.
+
+def register_stat(stat: Callable) -> Callable:
+    """Decorator function to register stats functions.
+
+    Args:
+        stat: stats function to register
+
+    Returns:
+        stat, the input function (no modifications made)
     """
-    probs_da = xr.DataArray(probs, coords=[probs], dims=["probs"])
-
-    # make function to apply
-    # we will pass `q=probs_da` so that the coordinates of probs will be propegated
-    def func(a, q):
-        qs = np.quantile(a, q, axis=-1)  # apply along input_core_dim = sample_dim
-        qs = qs[..., 0]  # contracted dimension at axis=-1 is left with length 1, need to remove it
-        qs = np.moveaxis(qs, 0, -1)
-        return qs
-
-    result = xr.apply_ufunc(func, da, probs_da, input_core_dims=[[sample_dim], []])
-    return result.transpose("probs", ...)  # we want "probs" first
+    stats_functions[stat.__name__] = stat
+    return stat
 
 
-def calc_mode(da: xr.DataArray, sample_dim="steps") -> xr.DataArray:
+def add_suffix(suffix: str):
+    """Decorator to add suffix to variable names of dataset returned by decorated function.
+
+    For example:
+
+    @add_suffix("abc")
+    def some_func():
+       ...
+
+    will add "_abc" to the end of all the data variables in the dataset returned by
+    `some_func`. (So this only works is the output of `some_func` is an xr.Dataset or xr.DataArray.)
+
+    Note: technically, `add_suffix` creates a new decorator
+    each time it is called. This is the `decorate` function
+    that is returned. Then the actual "decoration" is done by
+    the `decorate` function.
+
+    So
+
+    @add_suffix("mean")
+    def calc_mean():
+        pass
+
+    is the same as
+
+    temp = add_suffix("mean")  # get `decorate`
+
+    @temp
+    def calc_mean():
+        pass
+    """
+    def decorate(func):
+        @wraps(func)
+        def call(*args, **kwargs):
+            result = func(*args, **kwargs)
+            rename_dict = {dv: str(dv) + "_" + suffix for dv in result.data_vars}
+            return result.rename(rename_dict)
+        return call
+    return decorate
+
+
+@register_stat
+@add_suffix("quantile")
+def quantiles(ds: xr.Dataset, q: Sequence[float] = [0.159, 0.841], sample_dim: str = "draw"):
+    return ds.quantile(q=q, dim=sample_dim)
+
+
+@register_stat
+@add_suffix("mode")
+def mode(data, sample_dim="draw", thin: int = 1):
+    """Approximate the mode by the midpoint of the shorted interval containing k samples.
+
+    The slowest step is sorting. Still, this is over 30x faster than computing the KDE.
+    (Unless you parallelise the KDE version by chunking the input.)
+
+    Thinning by some integer factor will produce a corresponding speed up. For instance,
+    if `thin = 2` is passed, then the running time will be roughly half.
+    """
+    def mode_of_arr(arr, k):
+        arr = np.sort(arr, axis=-1)
+        id_med = np.argmin(arr[..., k:] - arr[..., :-k], axis=-1, keepdims=True)
+        mid = (np.take_along_axis(arr, id_med, axis=-1) + np.take_along_axis(arr, id_med + k, axis=-1)) / 2
+        return mid.squeeze(axis=-1)
+
+    if thin > 1:
+        data = data.isel({sample_dim: slice(None, None, int(thin))})
+        k = int((data.sizes[sample_dim] // thin) ** 0.8)  # k = (# draws)^{4/5}
+    else:
+        k = int(data.sizes[sample_dim] ** 0.8)  # k = (# draws)^{4/5}
+
+    return xr.apply_ufunc(mode_of_arr, data, input_core_dims=[[sample_dim]], kwargs={"k": k})
+
+
+@register_stat
+@add_suffix("mode")
+def mode_kde(da: xr.DataArray, sample_dim="draw") -> xr.DataArray:
     """Calculate the (KDE smoothed) mode of a data array containing MCMC
     samples.
 
@@ -52,6 +125,40 @@ def calc_mode(da: xr.DataArray, sample_dim="steps") -> xr.DataArray:
     return xr.apply_ufunc(func, da, input_core_dims=[[sample_dim]], dask="parallelized")
 
 
+@register_stat
+def hdi(data, hdi_prob=0.68, sample_dim="draw"):
+    # wrap here to get hdi prob in suffix
+    @add_suffix(f"hdi_{int(100 * hdi_prob)}")
+    def calc(data, hdi_prob):
+        return az.hdi(data, hdi_prob=hdi_prob)
+
+    if not "chain" in data.dims:
+        data = data.expand_dims({"chain": [0]})
+
+    if sample_dim != "draw":
+        data = data.rename({sample_dim: "draw"})
+
+    return calc(data, hdi_prob)
+
+
+@register_stat
+@add_suffix("stdev")
+def stdev(data, sample_dim="draw"):
+    return data.std(dim=sample_dim)
+
+
+@register_stat
+@add_suffix("mean")
+def mean(data, sample_dim="draw"):
+    return data.mean(dim=sample_dim)
+
+
+@register_stat
+@add_suffix("median")
+def median(data, sample_dim="draw"):
+    return data.median(dim=sample_dim)
+
+
 def calculate_stats(
     ds: xr.Dataset,
     name: str,
@@ -71,7 +178,7 @@ def calculate_stats(
 
         if report_mode:
             stats = [
-                calc_mode(ds[var_name].dropna(dim="draw").chunk({chunk_dim: chunk_size}), sample_dim="draw")
+                calc_mode_kde(ds[var_name].dropna(dim="draw").chunk({chunk_dim: chunk_size}), sample_dim="draw")
                 .compute()
                 .rename(f"{name}{suffix}"),
             ]
