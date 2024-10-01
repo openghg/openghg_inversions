@@ -71,7 +71,7 @@ def convert_idata_to_dataset(idata: az.InferenceData) -> xr.Dataset:
         if "prior" in group or "posterior" in group:
             trace = idata[group]
             rename_dict = {dv: f"{dv}_{group}" for dv in trace.data_vars}
-            traces.append(trace.rename_vars(rename_dict).squeeze("chain", drop=True))
+            traces.append(trace.rename_vars(rename_dict).isel(chain=0, drop=True))
     return xr.merge(traces)
 
 
@@ -148,8 +148,6 @@ class InversionOutput:
         """Check that trace has posterior traces, and keep only chain 0"""
         if not hasattr(self.trace, "posterior"):
             raise ValueError("`trace` InferenceData must have `posterior` traces.")
-        if "chain" in self.trace.posterior.dims:
-            self.trace = self.trace.isel(chain=[0])  # select chain 0, but don't drop chain dimension
 
     def sample_predictive_distributions(self, ndraw: int | None = None) -> None:
         """Sample prior and posterior predictive distributions.
