@@ -6,7 +6,9 @@ import numpy as np
 import pymc as pm
 import xarray as xr
 
-from ..array_ops import get_xr_dummies
+from openghg_inversions.postprocessing.utils import add_suffix
+
+from openghg_inversions.array_ops import get_xr_dummies
 
 
 def make_inv_out(

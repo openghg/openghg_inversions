@@ -7,7 +7,7 @@ import numpy as np
 import scipy
 import xarray as xr
 
-from .utils import add_suffix
+from openghg_inversions.postprocessing.utils import add_suffix
 
 StatsFunction = namedtuple("StatsFunction", ["func", "params"])
 
