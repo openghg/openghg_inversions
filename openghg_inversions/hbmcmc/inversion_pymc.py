@@ -351,6 +351,7 @@ def inferpymc(
             progressbar=verbose,
             cores=nchain,
             nuts_sampler=nuts_sampler,
+            idata_kwargs={"log_likelihood": True},
         )
 
     posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit)).drop_vars("chain")
