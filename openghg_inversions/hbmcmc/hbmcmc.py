@@ -543,6 +543,8 @@ def fixedbasisMCMC(
                 site_indicator=siteindicator,
                 site_names=sites,
                 mcmc_results=mcmc_results,
+                start_date=start_date,
+                end_date=end_date,
             )
 
         # get trace and model: for future updates

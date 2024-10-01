@@ -3,65 +3,13 @@ from typing import Optional, Union
 
 import arviz as az
 import numpy as np
+import pandas as pd
 import pymc as pm
 import xarray as xr
 
 from openghg_inversions.postprocessing.utils import add_suffix
 
-from openghg_inversions.array_ops import get_xr_dummies
-
-
-def make_inv_out(
-    fp_data: dict,
-    Y: np.ndarray,
-    Ytime: np.ndarray,
-    error: np.ndarray,
-    obs_repeatability: np.ndarray,
-    obs_variability: np.ndarray,
-    site_indicator: np.ndarray,
-    site_names: np.ndarray | list[str],  # could be a list?
-    mcmc_results: dict,
-):
-    nmeasure = np.arange(len(Y))
-    y_obs = xr.DataArray(Y, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs")
-    times = xr.DataArray(Ytime, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="times")
-    y_error = xr.DataArray(error, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror")
-    y_error_repeatability = xr.DataArray(obs_repeatability, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror_repeatability")
-    y_error_variability = xr.DataArray(obs_variability, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror_variability")
-    site_indicator_da = xr.DataArray(site_indicator, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="site_indicator")
-    site_names_da = xr.DataArray(site_names, dims=["nsite"], coords={"nsite": np.arange(len(site_names))}, name="site_names")
-
-    _, nx = mcmc_results["xouts"].shape
-    nx = np.arange(nx)
-
-    basis = get_xr_dummies(fp_data[".basis"], cat_dim="nx", categories=nx)
-
-    scenarios = [v for k, v in fp_data.items() if not k.startswith(".")]
-
-    try:
-        flux = scenarios[0].flux_stacked
-    except AttributeError:
-        flux = next(iter(fp_data[".flux"].values())).data
-
-    if isinstance(flux, xr.Dataset):
-        if "flux" in flux:
-            flux = flux.flux
-        else:
-            flux = flux[flux.data_vars[0]]
-
-    return InversionOutput(
-        obs=y_obs,
-        obs_err=y_error,
-        obs_repeatability=y_error_repeatability,
-        obs_variability=y_error_variability,
-        site_indicators=site_indicator_da,
-        flux=flux,
-        basis=basis,
-        model=mcmc_results["model"],
-        trace=mcmc_results["trace"],
-        site_names=site_names_da,
-        times=times,
-    )
+from openghg_inversions.array_ops import get_xr_dummies, align_sparse_lat_lon
 
 
 def convert_idata_to_dataset(idata: az.InferenceData) -> xr.Dataset:
@@ -145,11 +93,33 @@ class InversionOutput:
     site_indicators: xr.DataArray
     site_names: xr.DataArray
     times: xr.DataArray
+    start_date: str | None = None
+    end_date: str | None = None
 
     def __post_init__(self) -> None:
         """Check that trace has posterior traces, and keep only chain 0"""
         if not hasattr(self.trace, "posterior"):
             raise ValueError("`trace` InferenceData must have `posterior` traces.")
+        self.sample_predictive_distributions()
+
+        # check if flux has time coordinate, and add one if necessary
+        if "time" not in self.flux.dims:
+            self.flux = self.flux.expand_dims(time=[self.start_time])
+
+        # change "time" dim of flux to "flux_time" to avoid NaNs when merging with obs times
+        self.flux = self.flux.rename(time="flux_time")
+
+        # align basis with flux; this is necessary due to an issue with sparse matrices
+        self.basis = align_sparse_lat_lon(self.basis, self.flux)
+
+        # if basis has time, make sure it is aligned to flux
+        if "time" in self.basis.dims:
+            self.basis = self.basis.rename(time="flux_time")
+            # self.basis = self.basis.assign_coords(flux_time=self.flux.flux_time)
+        elif "time" in self.basis.coords:
+            # time not in dims, so just delete the coord
+            self.basis = self.basis.drop_vars("time")
+
 
     def sample_predictive_distributions(self, ndraw: int | None = None) -> None:
         """Sample prior and posterior predictive distributions.
@@ -192,14 +162,24 @@ class InversionOutput:
 
         return trace_ds
 
-    def start_time(self) -> np.datetime64:
+    @property
+    def start_time(self) -> pd.Timestamp:
         """Return start date of inversion."""
-        return self.times.min().values  # type: ignore
+        if self.start_date is not None:
+            return pd.Timestamp(self.start_date)
+        return pd.Timestamp(self.times.min().values)  # type: ignore
 
-    def period_midpoint(self) -> np.datetime64:
+    @property
+    def end_time(self) -> pd.Timestamp:
+        """Return end date of inversion."""
+        if self.end_date is not None:
+            return pd.Timestamp(self.end_date)
+        return pd.Timestamp(self.times.min().values)  # type: ignore
+
+    @property
+    def period_midpoint(self) -> pd.Timestamp:
         """Return midpoint of inversion period."""
-        half_of_period = (self.times.max().values - self.times.min().values) / 2
-        return self.times.min().values + half_of_period  # type: ignore
+        return self.start_time + (self.start_time - self.end_time) / 2
 
     def get_obs(self, unstack_nmeasure: bool = True) -> xr.DataArray:
         """Return y observations.
@@ -296,3 +276,60 @@ class InversionOutput:
             xr.Dataset
         """
         return az.summary(self.trace, kind="diagnostics", fmt="xarray")  # type; ignore
+
+
+def make_inv_out(
+    fp_data: dict,
+    Y: np.ndarray,
+    Ytime: np.ndarray,
+    error: np.ndarray,
+    obs_repeatability: np.ndarray,
+    obs_variability: np.ndarray,
+    site_indicator: np.ndarray,
+    site_names: np.ndarray | list[str],  # could be a list?
+    mcmc_results: dict,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> InversionOutput:
+    nmeasure = np.arange(len(Y))
+    y_obs = xr.DataArray(Y, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs")
+    times = xr.DataArray(Ytime, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="times")
+    y_error = xr.DataArray(error, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror")
+    y_error_repeatability = xr.DataArray(obs_repeatability, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror_repeatability")
+    y_error_variability = xr.DataArray(obs_variability, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror_variability")
+    site_indicator_da = xr.DataArray(site_indicator, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="site_indicator")
+    site_names_da = xr.DataArray(site_names, dims=["nsite"], coords={"nsite": np.arange(len(site_names))}, name="site_names")
+
+    _, nx = mcmc_results["xouts"].shape
+    nx = np.arange(nx)
+
+    basis = get_xr_dummies(fp_data[".basis"], cat_dim="nx", categories=nx)
+
+    scenarios = [v for k, v in fp_data.items() if not k.startswith(".")]
+
+    try:
+        flux = scenarios[0].flux_stacked
+    except AttributeError:
+        flux = next(iter(fp_data[".flux"].values())).data
+
+    if isinstance(flux, xr.Dataset):
+        if "flux" in flux:
+            flux = flux.flux
+        else:
+            flux = flux[flux.data_vars[0]]
+
+    return InversionOutput(
+        obs=y_obs,
+        obs_err=y_error,
+        obs_repeatability=y_error_repeatability,
+        obs_variability=y_error_variability,
+        site_indicators=site_indicator_da,
+        flux=flux,
+        basis=basis,
+        model=mcmc_results["model"],
+        trace=mcmc_results["trace"],
+        site_names=site_names_da,
+        times=times,
+        start_date=start_date,
+        end_date=end_date,
+    )
