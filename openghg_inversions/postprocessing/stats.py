@@ -1,13 +1,13 @@
 from collections import namedtuple
-from functools import wraps
 import inspect
-from typing import Callable, Iterable, Optional, Sequence
+from typing import Callable, Iterable, Sequence
 
 import arviz as az
 import numpy as np
 import scipy
 import xarray as xr
 
+from .utils import add_suffix
 
 StatsFunction = namedtuple("StatsFunction", ["func", "params"])
 
@@ -26,50 +26,6 @@ def register_stat(stat: Callable) -> Callable:
     """
     stats_functions[stat.__name__] = StatsFunction(stat, _get_parameters(stat))
     return stat
-
-
-def add_suffix(suffix: str):
-    """Decorator to add suffix to variable names of dataset returned by decorated function.
-
-    For example:
-
-    @add_suffix("abc")
-    def some_func():
-       ...
-
-    will add "_abc" to the end of all the data variables in the dataset returned by
-    `some_func`. (So this only works is the output of `some_func` is an xr.Dataset or xr.DataArray.)
-
-    Note: technically, `add_suffix` creates a new decorator
-    each time it is called. This is the `decorate` function
-    that is returned. Then the actual "decoration" is done by
-    the `decorate` function.
-
-    So
-
-    @add_suffix("mean")
-    def calc_mean():
-        pass
-
-    is the same as
-
-    temp = add_suffix("mean")  # get `decorate`
-
-    @temp
-    def calc_mean():
-        pass
-    """
-
-    def decorate(func):
-        @wraps(func)
-        def call(*args, **kwargs):
-            result = func(*args, **kwargs)
-            rename_dict = {dv: str(dv) + "_" + suffix for dv in result.data_vars}
-            return result.rename(rename_dict)
-
-        return call
-
-    return decorate
 
 
 def _get_parameters(func: Callable) -> list[str]:
