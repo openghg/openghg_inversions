@@ -287,3 +287,12 @@ class InversionOutput:
         result = np.sqrt(np.maximum(total_err**2 - total_obs_err**2, 0)).mean("draw")  # type: ignore
 
         return result.rename("model_error")
+
+    @add_suffix("diagnostics")
+    def get_diagnostics(self) -> xr.Dataset:
+        """Return diagnostics computed by arviz.
+
+        Returns:
+            xr.Dataset
+        """
+        return az.summary(self.trace, kind="diagnostics", fmt="xarray")  # type; ignore
