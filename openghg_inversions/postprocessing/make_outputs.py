@@ -58,6 +58,92 @@ def make_flux_outputs(inv_out: InversionOutput, stats_args: dict | None = None):
     flux_stats = rename_by_replacement(flux_stats, "x", "flux")
 
     scale_factor_stats = sparse_xr_dot(inv_out.basis, stats_ds)
-    scale_factor_stats = rename_by_replacement(scale_factor_stats, "x", "flux_scaling")
+    scale_factor_stats = rename_by_replacement(scale_factor_stats, "x", "scaling")
 
     return xr.merge([flux_stats, scale_factor_stats])
+
+
+def flatten_post_prior(ds: xr.Dataset) -> xr.Dataset:
+    """Add a dimension `when` that is either "post" or "prior".
+
+    This reduces the number of data variables in the outputs.
+
+    Note: do this before flattening suffixes.
+    """
+    ds_list = []
+    dvs_list = []
+    for coord, when in [("post", "posterior"), ("prior", "prior")]:
+        dvs = [str(dv) for dv in ds.data_vars if when in dv]
+        dvs_list.extend(dvs)
+        # select either "posterior" or "prior" vars, remove those from the variable names
+        # then add "post" or "prior" as a coordinate for the dimension "when"
+        ds_list.append(rename_by_replacement(ds[dvs], f"{when}_", "").expand_dims({"when": [coord]}))
+
+    result_ds = xr.concat(ds_list, dim="when")
+
+    # check if any data vars have been left out, and add them to the result
+    other_dvs = [str(dv) for dv in ds.data_vars if str(dv) not in dvs_list]
+    if other_dvs:
+        result_ds = xr.merge([result_ds, ds[other_dvs]])
+
+    return result_ds
+
+
+def convert_suffixes_to_dim(ds: xr.Dataset, suffixes: list[str], new_dim: str) -> xr.Dataset:
+    ds_list = []
+    dvs_list = []
+    for suff in suffixes:
+        dvs = [str(dv) for dv in ds.data_vars if str(dv).endswith(suff)]
+        dvs_list.extend(dvs)
+        # select either "posterior" or "prior" vars, remove those from the variable names
+        # then add "post" or "prior" as a coordinate for the dimension "when"
+        ds_list.append(rename_by_replacement(ds[dvs], f"_{suff}", "").expand_dims({new_dim: [suff]}))
+
+    result_ds = xr.concat(ds_list, dim=new_dim)
+
+    # check if any data vars have been left out, and add them to the result
+    other_dvs = [str(dv) for dv in ds.data_vars if str(dv) not in dvs_list]
+    if other_dvs:
+        result_ds = xr.merge([result_ds, ds[other_dvs]])
+
+    return result_ds
+
+
+def sort_data_vars(ds: xr.Dataset) -> xr.Dataset:
+    """Sort data variables by variable name, then suffix."""
+
+    def sort_key(s: str):
+        s_split = s.rsplit("_", maxsplit=1)
+        if len(s_split) == 1:
+            s_split.append("")
+        return tuple(s_split)
+
+    dv_sorted = sorted(list(ds.data_vars), key=sort_key)
+    return ds[dv_sorted]  # type: ignore
+
+
+def make_concentration_outputs(inv_out: InversionOutput, stats_args: dict | None = None):
+    conc_vars = ["y", "mu_bc"] if "mu_bc" in inv_out.trace.posterior else ["y"]
+    trace = inv_out.get_trace_dataset(var_names=conc_vars)
+
+    if stats_args is None:
+        stats_args = {}
+
+    stats_args["chunk_dim"] = "nmeasure"
+    stats_args["chunk_size"] = 1
+
+    conc_stats = calculate_stats(trace, **stats_args)
+
+    return conc_stats
+
+
+def get_obs_and_errors(inv_out: InversionOutput) -> xr.Dataset:
+    to_merge = [
+        inv_out.get_obs(),
+        inv_out.get_obs_err(),
+        inv_out.get_obs_repeatability(),
+        inv_out.get_obs_variability(),
+        inv_out.get_model_err(),
+        inv_out.get_total_err(),
+    ]
+    return xr.merge(to_merge)

@@ -189,9 +189,9 @@ class InversionOutput:
         result = nmeasure_to_site_time_data_array(self.obs, self.site_indicators, self.site_names, self.times)
 
         if unstack_nmeasure:
-            return result.unstack("nmeasure")
+            result = result.unstack("nmeasure")
 
-        return result
+        return result.rename("y_obs")
 
     def get_obs_err(self, unstack_nmeasure: bool = True) -> xr.DataArray:
         """Return y observations errors.
@@ -203,9 +203,9 @@ class InversionOutput:
         )
 
         if unstack_nmeasure:
-            return result.unstack("nmeasure")
+            result = result.unstack("nmeasure")
 
-        return result
+        return result.rename("y_obs_error")
 
     def get_obs_repeatability(self, unstack_nmeasure: bool = True) -> xr.DataArray:
         """Return "repeatbility" uncertainty term for y observations.
@@ -220,9 +220,9 @@ class InversionOutput:
         )
 
         if unstack_nmeasure:
-            return result.unstack("nmeasure")
+            result = result.unstack("nmeasure")
 
-        return result.rename("obs_repeatability")
+        return result.rename("y_obs_repeatability")
 
     def get_obs_variability(self, unstack_nmeasure: bool = True) -> xr.DataArray:
         """Return "variability" uncertainty term for y observations.
@@ -236,7 +236,7 @@ class InversionOutput:
         if unstack_nmeasure:
             result = result.unstack("nmeasure")
 
-        return xr.zeros_like(result).rename("obs_variability")
+        return result.rename("y_obs_variability")
 
     def get_total_err(self, unstack_nmeasure: bool = True, take_mean: bool = True) -> xr.DataArray:
         """Return sqrt(repeatability**2 + variability**2 + model_error**2)
