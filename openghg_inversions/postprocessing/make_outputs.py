@@ -78,7 +78,7 @@ def add_country_regions(country_trace: xr.Dataset, regions: dict):
 def make_flux_outputs(inv_out: InversionOutput, stats_args: dict | None = None):
     """Return dataset of stats for fluxes and scaling factors."""
 
-    trace = inv_out.get_trace_dataset(convert_nmeasure=False, var_names="x")
+    trace = inv_out.get_trace_dataset(unstack_nmeasure=False, var_names="x")
 
     if stats_args is None:
         stats_args = {}
@@ -184,7 +184,7 @@ def get_obs_and_errors(inv_out: InversionOutput) -> xr.Dataset:
 
 def basic_output(inv_out: InversionOutput, species: str, country_file: str | Path | None = None, domain: str | None = None) -> xr.Dataset:
     obs_and_errs = get_obs_and_errors(inv_out)
-    conc_outs = make_concentration_outputs(inv_out).unstack("nmeasure")
+    conc_outs = make_concentration_outputs(inv_out)
     flux_outs = make_flux_outputs(inv_out)
 
     country_traces = make_country_traces(inv_out, species=species, country_file=country_file, domain=domain)

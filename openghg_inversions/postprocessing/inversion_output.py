@@ -7,8 +7,6 @@ import pandas as pd
 import pymc as pm
 import xarray as xr
 
-from openghg_inversions.postprocessing.utils import add_suffix
-
 from openghg_inversions.array_ops import get_xr_dummies, align_sparse_lat_lon
 
 
@@ -97,7 +95,7 @@ class InversionOutput:
     end_date: str | None = None
 
     def __post_init__(self) -> None:
-        """Check that trace has posterior traces, and keep only chain 0"""
+        """Check that trace has posterior traces, and fix flux time values."""
         if not hasattr(self.trace, "posterior"):
             raise ValueError("`trace` InferenceData must have `posterior` traces.")
         self.sample_predictive_distributions()
@@ -120,7 +118,6 @@ class InversionOutput:
             # time not in dims, so just delete the coord
             self.basis = self.basis.drop_vars("time")
 
-
     def sample_predictive_distributions(self, ndraw: int | None = None) -> None:
         """Sample prior and posterior predictive distributions.
 
@@ -132,7 +129,7 @@ class InversionOutput:
         self.trace.extend(pm.sample_posterior_predictive(self.trace, model=self.model, var_names=["y"]))
 
     def get_trace_dataset(
-        self, convert_nmeasure: bool = True, var_names: Optional[Union[str, list[str]]] = None
+        self, unstack_nmeasure: bool = True, var_names: Optional[Union[str, list[str]]] = None
     ) -> xr.Dataset:
         """Return an xarray Dataset containing a prior/posterior parameter/predictive samples.
 
@@ -145,8 +142,8 @@ class InversionOutput:
         """
         trace_ds = convert_idata_to_dataset(self.trace)
 
-        if convert_nmeasure:
-            trace_ds = nmeasure_to_site_time(trace_ds, self.site_indicators, self.site_names, self.times)
+        if unstack_nmeasure:
+            trace_ds = nmeasure_to_site_time(trace_ds, self.site_indicators, self.site_names, self.times).unstack("nmeasure")
 
         if var_names is not None:
             if isinstance(var_names, str):
@@ -246,10 +243,7 @@ class InversionOutput:
             take_mean: if True, take mean over trace of error term
 
         """
-        result = self.get_trace_dataset(var_names="epsilon").epsilon_posterior
-
-        if unstack_nmeasure:
-            result = result.unstack("nmeasure")
+        result = self.get_trace_dataset(var_names="epsilon", unstack_nmeasure=unstack_nmeasure).epsilon_posterior
 
         if take_mean:
             result = result.mean("draw")
@@ -268,14 +262,6 @@ class InversionOutput:
 
         return result.rename("model_error")
 
-    @add_suffix("diagnostics")
-    def get_diagnostics(self) -> xr.Dataset:
-        """Return diagnostics computed by arviz.
-
-        Returns:
-            xr.Dataset
-        """
-        return az.summary(self.trace, kind="diagnostics", fmt="xarray")  # type; ignore
 
 
 def make_inv_out(

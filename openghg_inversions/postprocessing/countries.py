@@ -142,7 +142,7 @@ class Countries:
               1.0, based on how it is used in hbmcmc
         """
         x_to_country_mat = self.get_x_to_country_mat(inv_out)
-        x_trace = inv_out.get_trace_dataset(convert_nmeasure=False, var_names="x")
+        x_trace = inv_out.get_trace_dataset(unstack_nmeasure=False, var_names="x")
 
         country_traces = Countries._get_country_trace(species, x_trace, x_to_country_mat)
 
