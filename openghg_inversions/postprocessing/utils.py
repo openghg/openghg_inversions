@@ -43,3 +43,12 @@ def add_suffix(suffix: str):
         return call
 
     return decorate
+
+
+def make_replace_names_dict(names: list[str], old: str, new: str) -> dict[str, str]:
+    return {name: name.replace(old, new) for name in names}
+
+
+def rename_by_replacement(ds: xr.Dataset, old: str, new: str) -> xr.Dataset:
+    rename_dict = make_replace_names_dict(list(ds.data_vars), old, new)
+    return ds.rename(rename_dict)

@@ -6,6 +6,7 @@ from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.stats import calculate_stats
+from openghg_inversions.postprocessing.utils import rename_by_replacement
 from openghg_inversions.utils import get_country_file_path
 
 
