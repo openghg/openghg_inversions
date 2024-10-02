@@ -1,5 +1,7 @@
 from functools import wraps
 
+import xarray as xr
+
 
 def add_suffix(suffix: str):
     """Decorator to add suffix to variable names of dataset returned by decorated function.

@@ -24,7 +24,10 @@ def sample_predictive_distributions(inv_out: InversionOutput) -> None:
         inv_out.sample_predictive_distributions()
 
 
-def make_country_traces(inv_out: InversionOutput, species: str, country_file: str | Path | None = None, domain: str | None = None):
+def make_country_traces(
+    inv_out: InversionOutput, species: str, country_file: str | Path | None = None, domain: str | None = None
+):
+    # TODO: species and domain should be available to InversionOutput?
     # TODO: add regions that are aggregates of several countries?
     sample_predictive_distributions(inv_out)  # make sure we have prior distributions
 
@@ -36,13 +39,40 @@ def make_country_traces(inv_out: InversionOutput, species: str, country_file: st
     return country_trace
 
 
-def make_replace_names_dict(names: list[str], old: str, new: str) -> dict[str, str]:
-    return {name: name.replace(old, new) for name in names}
+paris_regions_dict = {
+    "BELUX": ["BEL", "LUX"],
+    "BENELUX": ["BEL", "LUX", "NLD"],
+    "CW_EU": [
+        "AUT",
+        "BEL",
+        "CHE",
+        "CZE",
+        "DEU",
+        "ESP",
+        "FRA",
+        "GBR",
+        "HRV",
+        "HUN",
+        "IRL",
+        "ITA",
+        "LUX",
+        "NLD",
+        "POL",
+        "PRT",
+        "SVK",
+        "SVN",
+    ],
+    "EU_GRP2": ["AUT", "BEL", "CHE", "DEU", "DNK", "FRA", "GBR", "IRL", "ITA", "LUX", "NLD"],
+    "NW_EU": ["BEL", "DEU", "DNK", "FRA", "GBR", "IRL", "LUX", "NLD"],
+    "NW_EU2": ["BEL", "DEU", "FRA", "GBR", "IRL", "LUX", "NLD"],
+    "NW_EU_CONTINENT": ["BEL", "DEU", "FRA", "LUX", "NLD"],
+}
 
 
-def rename_by_replacement(ds: xr.Dataset, old: str, new: str) -> xr.Dataset:
-    rename_dict = make_replace_names_dict(list(ds.data_vars), old, new)
-    return ds.rename(rename_dict)
+def add_country_regions(country_trace: xr.Dataset, regions: dict):
+    if not regions:
+        return country_trace
+    # TODO: check length of country names and decide if we need to convert to alpha 2 or 3 (or not)
 
 
 def make_flux_outputs(inv_out: InversionOutput, stats_args: dict | None = None):
@@ -112,7 +142,7 @@ def convert_suffixes_to_dim(ds: xr.Dataset, suffixes: list[str], new_dim: str) -
 
 def sort_data_vars(ds: xr.Dataset) -> xr.Dataset:
     """Sort data variables by variable name, then suffix."""
-
+    # TODO: this doesn't always work, e.g. for hdi_68
     def sort_key(s: str):
         s_split = s.rsplit("_", maxsplit=1)
         if len(s_split) == 1:
@@ -139,6 +169,8 @@ def make_concentration_outputs(inv_out: InversionOutput, stats_args: dict | None
 
 
 def get_obs_and_errors(inv_out: InversionOutput) -> xr.Dataset:
+    # TODO: some of these variables could just be stored in a dataset in InversionOutput,
+    # rather than in separate data arrays
     to_merge = [
         inv_out.get_obs(),
         inv_out.get_obs_err(),
@@ -148,3 +180,14 @@ def get_obs_and_errors(inv_out: InversionOutput) -> xr.Dataset:
         inv_out.get_total_err(),
     ]
     return xr.merge(to_merge)
+
+
+def basic_output(inv_out: InversionOutput, species: str, country_file: str | Path | None = None, domain: str | None = None) -> xr.Dataset:
+    obs_and_errs = get_obs_and_errors(inv_out)
+    conc_outs = make_concentration_outputs(inv_out).unstack("nmeasure")
+    flux_outs = make_flux_outputs(inv_out)
+
+    country_traces = make_country_traces(inv_out, species=species, country_file=country_file, domain=domain)
+    country_outs = calculate_stats(country_traces)
+
+    return xr.merge([obs_and_errs, conc_outs, flux_outs, country_outs])
