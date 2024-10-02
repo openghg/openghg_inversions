@@ -1,5 +1,4 @@
 from collections import namedtuple
-import inspect
 from typing import Callable, Iterable, Sequence
 
 import arviz as az
@@ -7,7 +6,7 @@ import numpy as np
 import scipy
 import xarray as xr
 
-from openghg_inversions.postprocessing.utils import add_suffix
+from openghg_inversions.postprocessing.utils import add_suffix, get_parameters
 
 StatsFunction = namedtuple("StatsFunction", ["func", "params"])
 
@@ -24,13 +23,8 @@ def register_stat(stat: Callable) -> Callable:
     Returns:
         stat, the input function (no modifications made)
     """
-    stats_functions[stat.__name__] = StatsFunction(stat, _get_parameters(stat))
+    stats_functions[stat.__name__] = StatsFunction(stat, get_parameters(stat))
     return stat
-
-
-def _get_parameters(func: Callable) -> list[str]:
-    """Return list of parameters for a function."""
-    return list(inspect.signature(func).parameters.keys())
 
 
 @register_stat

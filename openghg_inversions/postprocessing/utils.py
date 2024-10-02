@@ -1,4 +1,6 @@
 from functools import wraps
+import inspect
+from typing import Callable
 
 import xarray as xr
 
@@ -54,3 +56,8 @@ def make_replace_names_dict(names: list[str], old: str, new: str) -> dict[str, s
 def rename_by_replacement(ds: xr.Dataset, old: str, new: str) -> xr.Dataset:
     rename_dict = make_replace_names_dict(list(ds.data_vars), old, new)
     return ds.rename(rename_dict)
+
+
+def get_parameters(func: Callable) -> list[str]:
+    """Return list of parameters for a function."""
+    return list(inspect.signature(func).parameters.keys())
