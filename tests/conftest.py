@@ -235,3 +235,26 @@ def tac_ch4_data_args():
         "averaging_period": ["1H"],
     }
     return data_args
+
+
+@pytest.fixture(scope="module")
+def mhd_and_tac_ch4_data_args():
+    data_args = {
+        "species": "ch4",
+        "sites": ["MHD", "TAC"],
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-02",
+        "bc_store": "inversions_tests",
+        "obs_store": "inversions_tests",
+        "footprint_store": "inversions_tests",
+        "emissions_store": "inversions_tests",
+        "inlet": ["10m", "185m"],
+        "instrument": ["gcmd", "picarro"],
+        "domain": "EUROPE",
+        "fp_height": ["10m", "185m"],
+        "fp_model": "NAME",
+        "emissions_name": ["total-ukghg-edgar7"],
+        # "met_model": "ukv",
+        "averaging_period": ["1h", "1h"],
+    }
+    return data_args
