@@ -29,7 +29,8 @@ def merged_data_dir():
 
 @pytest.fixture(scope="session", autouse=True)
 def using_zarr_store():
-    return version("openghg") >= "0.8"
+    current_version = tuple(int(x) for x in version("openghg").split("."))
+    return current_version >= (0, 8)
 
 
 @pytest.fixture(scope="session")
