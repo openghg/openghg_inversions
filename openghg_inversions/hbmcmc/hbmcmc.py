@@ -76,6 +76,7 @@ def fixedbasisMCMC(
     averaging_error: bool = True,
     analytical_inversion: bool = False,
     x_freq: str | None = None,
+    x_correlation: float | None = None,
     bc_freq: str | None = None,
     sigma_freq: str | None = None,
     sigma_per_site: bool = True,
@@ -214,6 +215,9 @@ def fixedbasisMCMC(
         to estimate per calendar month; set to a number of days,
         as e.g. "30D" for 30 days; or set to None to estimate to have one
         scaling for the whole inversion period
+      x_correlation:
+        The exponential time constant representing the time at which the covariance 
+        between period paramters is equal to 1/e. Units reflect the period chosen in x_freq.
       bc_freq:
         The perdiod over which the baseline is estimated. Set to "monthly"
         to estimate per calendar month; set to a number of days,
@@ -416,17 +420,16 @@ def fixedbasisMCMC(
                 Ytime = fp_data[site].time.values
                 if x_freq == "monthly":
                     Hx, nbasis, nperiod = setup.monthly_h(start_date, end_date, site, fp_data)
-                    x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis)
+                    x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis, x_correlation)
                 elif isinstance(x_freq, str):
                     Hx, nbasis, nperiod = setup.create_h_sensitivity(start_date, end_date, site, fp_data, x_freq)
-                    x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis)
+                    x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis, x_correlation)
                 elif x_freq is None:
                     Hx = fp_data[site].H.values
                     if analytical_inversion:
                         nbasis = Hx.shape[0]
                         nperiod = 1
-                        x_covariance = np.eye(nbasis)
-                        x_precision = np.eye(nbasis)
+                        x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis, x_correlation)
                 else:
                     raise ValueError(f"Inversion not setup for x_freq = {x_freq}")
             else:

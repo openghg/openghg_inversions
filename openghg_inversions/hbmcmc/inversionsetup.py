@@ -260,7 +260,7 @@ def xprior_covariance(nperiod : int,
                       nbasis : int,
                       sigma_period: float=1.0,
                       sigma_space: float=1.0,
-                      decay_tau : float | None = None,
+                      x_correlation : float | None = None,
                       ) -> np.ndarray:
     """
     Introduces a covariance matrix (with non-zero off-diagonal values) to allow for 
@@ -287,42 +287,32 @@ def xprior_covariance(nperiod : int,
     
     """
 
-    # if decay_tau == 0:
+    if x_correlation == 0 or x_correlation is None:
         
-    covariance_matrix = np.eye(int(nbasis*nperiod))
-    
-    precision_matrix = np.eye(int(nbasis*nperiod))
+        covariance_matrix = np.eye(int(nbasis*nperiod))
+        precision_matrix = np.eye(int(nbasis*nperiod))
 
-    # range_time = np.arange(nperiod)  # period indexes 
+    else:
+        
+        range_time = np.arange(nperiod)  # period indexes 
+        cov_period = sigma_period**2 * np.eye(nperiod)  # standard deviation of distribution for each period parameter
+        cov_period_offdiag = []  # initialisation of array for of diagonal components of covariance matrix
+        
+        for i in np.arange(nperiod - 1) + 1:
+            for j in np.arange(i):
+                
+                dt = range_time[i] - range_time[j]  # delta t for each time period
+                rho_time = np.exp(-dt/x_correlation)  # calculation of correlation coefficent
+                covariance_ij = cov_period[i, i] * cov_period[j, j] * rho_time  # calculation of correlation; cov(X, Y) = rho(X, Y) * var(X) * var(Y)
+                cov_period_offdiag.append(covariance_ij)  # append covaraiance to off diagonal array
 
-    # cov_period = sigma_period**2 * np.eye(nperiod)  # standard deviation of distribution for each period parameter
-
-    # cov_period_offdiag = []  # initialisation of array for of diagonal components of covariance matrix
-
-    # for i in np.arange(nperiod - 1) + 1:
-    #     for j in np.arange(i):
-            
-    #         dt = range_time[i] - range_time[j]  # delta t for each time period
-
-    #         rho_time = np.exp(-dt/decay_tau)  # calculation of correlation coefficent
-
-    #         covariance_ij = cov_period[i, i] * cov_period[j, j] * rho_time  # calculation of correlation; cov(X, Y) = rho(X, Y) * var(X) * var(Y)
-
-    #         cov_period_offdiag.append(covariance_ij)  # append covaraiance to off diagonal array
-
-    # cov_period[np.tril_indices(n=nperiod, k=-1)] = cov_period_offdiag  # assign off-diagonal values to lower left corner of matrix
-
-    # cov_period = cov_period + np.tril(cov_period, k=-1).T  # assign off-diagonal values to upper right corner of matrix
-    
-    # inv_cov_period = np.linalg.inv(cov_period)  # calculate the inverse of the covariance matrix
-
-    # cov_space = sigma_space**2 * np.eye(nbasis)  # construct covariance matrix with off-diagonal zeros and diagonal variance; cov(X, X) = var(X)**2
-    
-    # inv_cov_space = np.linalg.inv(cov_space)  # calculate the inverse of the covariance matrix
-
-    # covariance_matrix = np.kron(cov_period, cov_space)  # combine covariance matrices using the Kronecker product
-
-    # precision_matrix = np.kron(inv_cov_period, inv_cov_space)  # calculate the precision matrix; precision = cov^-1 = kron( cov_p^-1, cov_b^-1 )
+        cov_period[np.tril_indices(n=nperiod, k=-1)] = cov_period_offdiag  # assign off-diagonal values to lower left corner of matrix
+        cov_period = cov_period + np.tril(cov_period, k=-1).T  # assign off-diagonal values to upper right corner of matrix
+        inv_cov_period = np.linalg.inv(cov_period)  # calculate the inverse of the covariance matrix
+        cov_space = sigma_space**2 * np.eye(nbasis)  # construct covariance matrix with off-diagonal zeros and diagonal variance; cov(X, X) = var(X)**2
+        inv_cov_space = np.linalg.inv(cov_space)  # calculate the inverse of the covariance matrix
+        covariance_matrix = np.kron(cov_period, cov_space)  # combine covariance matrices using the Kronecker product
+        precision_matrix = np.kron(inv_cov_period, inv_cov_space)  # calculate the precision matrix; precision = cov^-1 = kron( cov_p^-1, cov_b^-1 )
 
     return covariance_matrix, precision_matrix
 

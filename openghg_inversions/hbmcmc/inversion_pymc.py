@@ -551,6 +551,7 @@ def inferpymc_postprocessouts(
     nbasis: int | None = None,
     nperiod: int = 1,
     x_freq: str | None = None,
+    x_correlation: float | None = None,
     bcprior: dict | None = None,
     YBCtrace: np.ndarray | None = None,
     bcouts: np.ndarray | None = None,
@@ -661,6 +662,9 @@ def inferpymc_postprocessouts(
         to estimate per calendar month; set to a number of days,
         as e.g. "30D" for 30 days; or set to None to estimate to have one
         scaling for the whole inversion period
+      x_correlation:
+        The exponential time constant representing the time at which the covariance 
+        between period paramters is equal to 1/e. Units reflect the period chosen in x_freq.
       bcprior:
         Same as xrpior but for boundary conditions.
       YBCtrace:
@@ -1263,6 +1267,7 @@ def inferanalytical_postprocessouts(
     nbasis: int | None = None,
     nperiod: int | None = None,
     x_freq: str | None = None,
+    x_correlation: float | None = None,
 ) -> xr.Dataset:
     r"""Takes the output from inferpymc function, along with some other input
     information, calculates statistics on them and places it all in a dataset.
@@ -1332,6 +1337,9 @@ def inferanalytical_postprocessouts(
         to estimate per calendar month; set to a number of days,
         as e.g. "30D" for 30 days; or set to None to estimate to have one
         scaling for the whole inversion period
+      x_correlation:
+        The exponential time constant representing the time at which the covariance 
+        between period paramters is equal to 1/e. Units reflect the period chosen in x_freq.
     Returns:
         xarray dataset containing results from inversion
 
@@ -1575,6 +1583,7 @@ def inferanalytical_postprocessouts(
               "countryapriori": (["countrynames", "period"], cntryprior),
           }
       )
+        coords["temporal_correlation"] = x_correlation
         if x_freq == "monthly":
             coords["periodstart"] = (["period"], date_range(pd.to_datetime(start_date), pd.to_datetime(end_date), freq="MS")[:-1])
         else:
