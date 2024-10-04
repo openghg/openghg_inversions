@@ -301,6 +301,7 @@ def data_processing_surface_notracer(
                 instrument=instrument[i],
                 calibration_scale=calibration_scale,
                 store=obs_store,
+                keep_missing = True,
             )
         except SearchError:
             print(
