@@ -142,6 +142,7 @@ def convert_suffixes_to_dim(ds: xr.Dataset, suffixes: list[str], new_dim: str) -
 
 def sort_data_vars(ds: xr.Dataset) -> xr.Dataset:
     """Sort data variables by variable name, then suffix."""
+
     # TODO: this doesn't always work, e.g. for hdi_68
     def sort_key(s: str):
         s_split = s.rsplit("_", maxsplit=1)
@@ -182,7 +183,9 @@ def get_obs_and_errors(inv_out: InversionOutput) -> xr.Dataset:
     return xr.merge(to_merge)
 
 
-def basic_output(inv_out: InversionOutput, species: str, country_file: str | Path | None = None, domain: str | None = None) -> xr.Dataset:
+def basic_output(
+    inv_out: InversionOutput, species: str, country_file: str | Path | None = None, domain: str | None = None
+) -> xr.Dataset:
     obs_and_errs = get_obs_and_errors(inv_out)
     conc_outs = make_concentration_outputs(inv_out)
     flux_outs = make_flux_outputs(inv_out)
@@ -190,4 +193,8 @@ def basic_output(inv_out: InversionOutput, species: str, country_file: str | Pat
     country_traces = make_country_traces(inv_out, species=species, country_file=country_file, domain=domain)
     country_outs = calculate_stats(country_traces)
 
-    return xr.merge([obs_and_errs, conc_outs, flux_outs, country_outs])
+    model_data = inv_out.get_model_data(var_names=["hx", "hbc", "min_error"]).rename(
+        {"hx": "Hx", "hbc": "Hbc", "min_error": "min_model_error"}
+    )
+
+    return xr.merge([obs_and_errs, conc_outs, flux_outs, country_outs, model_data])
