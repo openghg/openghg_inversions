@@ -10,16 +10,20 @@ import xarray as xr
 from openghg_inversions.array_ops import get_xr_dummies, align_sparse_lat_lon
 
 
-def convert_idata_to_dataset(idata: az.InferenceData) -> xr.Dataset:
+def convert_idata_to_dataset(idata: az.InferenceData, group_filters = ["prior", "posterior"], add_suffix=True) -> xr.Dataset:
     """Merge prior, prior predictive, posterior, and posterior predictive samples into a single
     xr.Dataset.
     """
     traces = []
     for group in idata.groups():
-        if "prior" in group or "posterior" in group:
+        if any(filt in group for filt in group_filters):
             trace = idata[group]
-            rename_dict = {dv: f"{dv}_{group}" for dv in trace.data_vars}
-            traces.append(trace.rename_vars(rename_dict).isel(chain=0, drop=True))
+            if add_suffix:
+                rename_dict = {dv: f"{dv}_{group}" for dv in trace.data_vars}
+                trace = trace.rename_vars(rename_dict)
+            if "chain" in trace.dims:
+                trace = trace.isel(chain=0, drop=True)
+            traces.append(trace)
     return xr.merge(traces)
 
 
@@ -141,6 +145,38 @@ class InversionOutput:
             xarray Dataset containing a prior/posterior parameter/predictive samples.
         """
         trace_ds = convert_idata_to_dataset(self.trace)
+
+        if unstack_nmeasure:
+            trace_ds = nmeasure_to_site_time(trace_ds, self.site_indicators, self.site_names, self.times).unstack("nmeasure")
+
+        if var_names is not None:
+            if isinstance(var_names, str):
+                var_names = [var_names]
+
+            data_vars = []
+            for dv in trace_ds.data_vars:
+                for name in var_names:
+                    if str(dv).startswith(name):
+                        data_vars.append(dv)
+
+            trace_ds = trace_ds[data_vars]
+
+        return trace_ds
+
+    def get_model_data(self, unstack_nmeasure: bool = True, var_names: Optional[Union[str, list[str]]] = None
+    ) -> xr.Dataset:
+        """Return an xarray Dataset containing the data input to the model.
+
+        This data is captured using `pm.Data`, or when data is observed.
+
+        Args:
+            convert_nmeasure: if True, convert `nmeasure` coordinate to multi-index comprising `time` and `site`.
+            var_names: (list of) variables to select. For instance, "hx" or "min_error"
+
+        Returns:
+            xarray Dataset containing model data
+        """
+        trace_ds = convert_idata_to_dataset(self.trace, group_filters=["data"], add_suffix=False)
 
         if unstack_nmeasure:
             trace_ds = nmeasure_to_site_time(trace_ds, self.site_indicators, self.site_names, self.times).unstack("nmeasure")
