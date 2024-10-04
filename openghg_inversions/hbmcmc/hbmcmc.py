@@ -74,6 +74,7 @@ def fixedbasisMCMC(
     filters: None | list | dict[str, list[str] | None] = None,
     fix_basis_outer_regions: bool = False,
     averaging_error: bool = True,
+    ignore_repeatability: bool = False,
     bc_freq: str | None = None,
     sigma_freq: str | None = None,
     sigma_per_site: bool = True,
@@ -204,6 +205,8 @@ def fixedbasisMCMC(
       averaging_error:
         Adds the variability in the averaging period to the measurement
         error if set to True
+      ignore_repeatability:
+        Ignores the repeatability in the measurement error if set to True
       bc_freq:
         The perdiod over which the baseline is estimated. Set to "monthly"
         to estimate per calendar month; set to a number of days,
@@ -323,6 +326,7 @@ def fixedbasisMCMC(
                 footprint_store=footprint_store,
                 emissions_store=emissions_store,
                 averagingerror=averaging_error,
+                ignore_repeatability=ignore_repeatability,
                 save_merged_data=save_merged_data,
                 merged_data_name=merged_data_name,
                 merged_data_dir=merged_data_dir,

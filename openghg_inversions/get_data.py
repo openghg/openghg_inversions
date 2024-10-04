@@ -32,9 +32,10 @@ import xarray as xr
 logger = logging.getLogger(__name__)
 
 
-def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = True) -> None:
+def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = True, ignore_repeatability: bool = False) -> None:
     """Create `mf_error` variable that contains either `mf_repeatablility`, `mf_variability`
     or the square root of the sum of the squares of both, if `add_averaging_error` is True.
+    If `ignore_repeatability` and `add_averaging_error` are true, `mf_error` will contain `mf_variability`.
 
     This function modifies `fp_all` in place, adding `mf_error` and making sure that both
     `mf_repeatability` and `mf_variability` are present.
@@ -64,16 +65,20 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
             ds["mf_variability"] = xr.zeros_like(ds.mf)
             variability_missing = True
 
-        if "mf_repeatability" not in ds:
+        if "mf_repeatability" not in ds or ignore_repeatability:
             if variability_missing:
                 raise ValueError(f"Obs data for site {site} is missing both repeatability and variability.")
 
             ds["mf_repeatability"] = xr.zeros_like(ds.mf_variability)
             ds["mf_error"] = ds["mf_variability"]
 
-            if add_averaging_error:
+            if add_averaging_error and not ignore_repeatability:
                 logger.info(
                     "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site %s", site
+                )
+            elif add_averaging_error and ignore_repeatability:
+                logger.info(
+                    "`mf_repeatability` ignored; using `mf_variability` for `mf_error` at site %s", site
                 )
 
         elif add_averaging_error:
@@ -117,6 +122,7 @@ def data_processing_surface_notracer(
     footprint_store: str | None = None,
     emissions_store: str | None = None,
     averagingerror: bool = True,
+    ignore_repeatability: bool = False,
     save_merged_data: bool = False,
     merged_data_name: str | None = None,
     merged_data_dir: str | None = None,
@@ -186,6 +192,8 @@ def data_processing_surface_notracer(
         averagingerror:
             Adds the variability in the averaging period to the measurement
             error if set to True.
+        ignore_repeatability:
+            Ignore the repeatability in the measurement error if set to True.
         save_merged_data:
             Save forward simulations data and observations
         merged_data_name:
@@ -434,7 +442,7 @@ def data_processing_surface_notracer(
     fp_all[".units"] = float(scenario_combined.mf.units)
 
     # create `mf_error`
-    add_obs_error(sites, fp_all, add_averaging_error=averagingerror)
+    add_obs_error(sites, fp_all, add_averaging_error=averagingerror, ignore_repeatability=ignore_repeatability)
 
     if save_merged_data:
         if merged_data_dir is None:
