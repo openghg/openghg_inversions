@@ -209,6 +209,7 @@ def _mean_fp_times_mean_flux(
 def quadtreebasisfunction(
     fp_all: dict,
     start_date: str,
+    domain : str,
     emissions_name: list[str] | None = None,
     nbasis: int = 100,
     abs_flux: bool = False,
@@ -230,6 +231,8 @@ def quadtreebasisfunction(
         fp_all dictionary of datasets as produced from get_data functions
       start_date (str):
         Start date of period of inversion
+      domain (str):
+        Domain across which to calculate basis functions. 
       emissions_name (list):
         List of keyword "source" args used for retrieving emissions files
         from the Object store
@@ -263,6 +266,7 @@ def quadtreebasisfunction(
 
     quad_basis.attrs["creator"] = getpass.getuser()
     quad_basis.attrs["date created"] = str(pd.Timestamp.today())
+    quad_basis.attrs["domain"] = domain
 
     return quad_basis
 
@@ -270,10 +274,11 @@ def quadtreebasisfunction(
 def bucketbasisfunction(
     fp_all: dict,
     start_date: str,
+    domain : str,
     emissions_name: list[str] | None = None,
     nbasis: int = 100,
     abs_flux: bool = False,
-    mask: xr.DataArray | None = None,
+    mask: xr.DataArray | None = None
 ) -> xr.DataArray:
     """Basis functions calculated using a weighted region approach
     where each basis function / scaling region contains approximately
@@ -284,6 +289,8 @@ def bucketbasisfunction(
         fp_all dictionary of datasets as produced from get_data functions
       start_date (str):
         Start date of period of inversion
+      domain (str):
+        domain for the basis functions to be calculated over
       emissions_name (list):
         List of keyword "source" args used for retrieving emissions files
         from the Object store
@@ -306,7 +313,7 @@ def bucketbasisfunction(
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
 
     # use xr.apply_ufunc to keep xarray coords
-    func = partial(weighted_algorithm, nregion=nbasis, bucket=1)
+    func = partial(weighted_algorithm, nregion=nbasis, bucket=1, domain=domain)
     bucket_basis = xr.apply_ufunc(func, fps)
 
     bucket_basis = bucket_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
@@ -314,6 +321,7 @@ def bucketbasisfunction(
 
     bucket_basis.attrs["creator"] = getpass.getuser()
     bucket_basis.attrs["date created"] = str(pd.Timestamp.today())
+    bucket_basis.attrs["domain"] = domain
 
     return bucket_basis
 
@@ -330,6 +338,7 @@ def fixed_outer_regions_basis(
     fp_all: dict,
     start_date: str,
     basis_algorithm: str,
+    domain: str,
     emissions_name: list[str] | None = None,
     nbasis: int = 100,
     abs_flux: bool = False,
@@ -343,6 +352,8 @@ def fixed_outer_regions_basis(
         Start date of period of inference
       basis_algorithm (str):
         Name of the basis algorithm used. Options are "quadtree", "weighted"
+      domain (str):
+        domain for the basis functions to be calculated over
       emissions_name (list):
         List of keyword "source" args used for retrieving emissions files
         from the Object store.
@@ -357,25 +368,27 @@ def fixed_outer_regions_basis(
         basis (xarray.DataArray) :
           Array with lat/lon dimensions and basis regions encoded by integers.
     """
-    intem_regions_path = Path(__file__).parent / "intem_region_definition.nc"
+    intem_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
     intem_regions = xr.open_dataset(intem_regions_path).region
 
     # force intem_regions to use flux coordinates
     flux, _ = _flux_fp_from_fp_all(fp_all, emissions_name)
     _, intem_regions = xr.align(flux, intem_regions, join="override")
 
-    mask = intem_regions == 6
+    inner_index = intem_regions.values.max()
+
+    mask = intem_regions == inner_index
 
     basis_function = basis_functions[basis_algorithm].algorithm
-    inner_region = basis_function(fp_all, start_date, emissions_name, nbasis, abs_flux, mask=mask)
+    inner_region = basis_function(fp_all, start_date, domain, emissions_name, nbasis, abs_flux, mask=mask)
 
-    basis = intem_regions.rename("basis")
+    basis = intem_regions.rename("basis") 
 
     loc_dict = {
         "lat": slice(inner_region.lat.min(), inner_region.lat.max() + 0.1),
         "lon": slice(inner_region.lon.min(), inner_region.lon.max() + 0.1),
     }
-    basis.loc[loc_dict] = (inner_region + 5).squeeze().values
+    basis.loc[loc_dict] = (inner_region + inner_index-1).squeeze().values
 
     basis += 1  # intem_region_definitions.nc regions start at 0, not 1
 

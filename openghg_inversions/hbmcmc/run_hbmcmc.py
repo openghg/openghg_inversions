@@ -25,6 +25,7 @@ This file will need to be edited to add parameters for your MCMC run.
 import json
 import sys
 import argparse
+from pathlib import Path
 from shutil import copyfile
 from collections.abc import Callable
 
@@ -191,7 +192,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    config_file = args.config
+    config_file = Path(args.config)
     command_line_args = {}
     if args.start:
         command_line_args["start_date"] = args.start

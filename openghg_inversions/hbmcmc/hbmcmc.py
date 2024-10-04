@@ -436,13 +436,6 @@ def fixedbasisMCMC(
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
 
-        # Path to save trace
-        if isinstance(save_trace, str | Path):
-            trace_path = save_trace
-        elif save_trace is True:
-            trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
-        else:
-            trace_path = None
 
         # check if lognormal mu and sigma need to be calculated
         def update_log_normal_prior(prior):
@@ -477,7 +470,6 @@ def fixedbasisMCMC(
             "offsetprior": offsetprior,
             "add_offset": add_offset,
             "verbose": verbose,
-            "save_trace": trace_path,
         }
 
         if use_bc is True:
@@ -524,7 +516,6 @@ def fixedbasisMCMC(
         post_process_args.update(mcmc_args)
         del post_process_args["nit"]
         del post_process_args["verbose"]
-        del post_process_args["save_trace"]
 
         # pass min model error to post-processing
         post_process_args["min_error"] = kwargs.get("min_error", 0.0)
@@ -538,9 +529,24 @@ def fixedbasisMCMC(
         if skip_postprocessing:
             return mcmc_results
 
+
+        # get trace and model: for future updates
+        trace = mcmc_results.pop("trace")
+        model = mcmc_results.pop("model")
+
+        # Path to save trace
+        if save_trace:
+            if isinstance(save_trace, str | Path):
+                trace_path = save_trace
+            else:
+                trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
+
+            trace.to_netcdf(str(trace_path), engine="netcdf4")
+
+
+
         # Process and save inversion output
         post_process_args.update(mcmc_results)
-        del post_process_args["offset_outs"]
         out = mcmc.inferpymc_postprocessouts(**post_process_args)
 
     elif use_tracer:
