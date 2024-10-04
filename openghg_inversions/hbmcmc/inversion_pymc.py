@@ -147,7 +147,7 @@ def inferpymc(
     offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
     add_offset: bool = False,
     verbose: bool = False,
-    min_error: float | None = 0.0,
+    min_error: np.ndarray | float | None = 0.0,
     use_bc: bool = True,
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
@@ -284,6 +284,10 @@ def inferpymc(
 
     coords = _make_coords(Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None)
 
+    if isinstance(min_error, float):
+        min_error = min_error * np.ones_like(Y)
+
+
     with pm.Model(coords=coords) as model:
         step1_vars = []
 
@@ -306,9 +310,11 @@ def inferpymc(
 
         sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
 
+        hx = pm.Data("hx", hx, dims=("nmeasure", "nx"))
         mu = pm.Deterministic("mu", pt.dot(hx, x), dims="nmeasure")
 
         if use_bc:
+            hbc = pm.Data("hbc", hbc, dims=("nmeasure", "nbc"))
             mu_bc = pm.Deterministic("mu_bc", pt.dot(hbc, bc), dims="nmeasure")
             mu += mu_bc
 
@@ -317,6 +323,10 @@ def inferpymc(
             offset_vec = pt.concatenate((np.array([0]), offset0), axis=0)
             offset = pm.Deterministic("offset", pt.dot(B, offset_vec), dims="nmeasure")
             mu += offset
+
+        Y = pm.Data("Y", Y, dims="nmeasure")  # type: ignore
+        error = pm.Data("error", error, dims="nmeasure")  # type: ignore
+        min_error = pm.Data("min_error", min_error, dims="nmeasure")  # type: ignore
 
         if pollution_events_from_obs is True:
             if use_bc is True:
