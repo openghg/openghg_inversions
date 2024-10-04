@@ -125,6 +125,13 @@ def test_full_inversion_pollution_events_from_obs_no_bc(mcmc_args):
     fixedbasisMCMC(**mcmc_args)
 
 
+def test_full_inversion_two_sites(mcmc_args, mhd_and_tac_ch4_data_args):
+    mcmc_args.update(mhd_and_tac_ch4_data_args)
+    mcmc_args["reload_merged_data"] = False
+    print(mcmc_args)
+    fixedbasisMCMC(**mcmc_args)
+
+
 @pytest.mark.slow
 def test_full_inversion_long(mcmc_args):
     mcmc_args.update(
