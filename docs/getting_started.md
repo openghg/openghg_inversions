@@ -164,7 +164,8 @@ This script assumes that you have already created a conda env called `pymc_env` 
 
 
 # Set up Python environment
-module load lang/python/anaconda
+module --force purge
+module load git/2.45.1
 eval "$(conda shell.bash hook)"
 conda activate pymc_env
 
