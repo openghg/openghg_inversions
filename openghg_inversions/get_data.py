@@ -296,22 +296,22 @@ def data_processing_surface_notracer(
                     average=averaging_period[i],
                     instrument=instrument[i],
                     calibration_scale=calibration_scale,
-                    store=obs_store,
+                    store=store,
                 )
             except SearchError:
                 print(
-                    f"\nNo obs data found for {site} with inlet {inlet[i]} and instrument {instrument[i]}. Check these values."
+                    f"\nNo obs data found for {site} with inlet {inlet[i]} and instrument {instrument[i]} in store {store}."
                 )
                 continue  # skip this site
             except AttributeError:
                 print(
-                    f"\nNo data found for {site} between {start_date} and {end_date}."
+                    f"\nNo data found for {site} between {start_date} and {end_date} in store {store}."
                 )
                 continue  # skip this site
             else:
                 if site_data is None:
                     print(
-                        f"\nNo data found for {site} between {start_date} and {end_date}."
+                        f"\nNo data found for {site} between {start_date} and {end_date} in store {store}."
                     )
                     continue  # skip this site
                 else:
@@ -345,7 +345,7 @@ def data_processing_surface_notracer(
                 footprint_found = True
                 break  # stop checking stores
 
-        if not footprint_store:
+        if not footprint_found:
             print(
                 f"\nNo footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}.",
                 f"Check these values.\nContinuing model run without {site}.\n",
