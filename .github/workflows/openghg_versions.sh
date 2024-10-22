@@ -32,16 +32,21 @@ while getopts t:N: flag
 do
     case "${flag}" in
         t) test=true;;
-        N) N=${OPTARG};;
+        N) minor_N=${OPTARG};;
     esac
 done
 
 
-OPENGHG_VERSIONS_STR=$(curl https://api.github.com/repos/openghg/openghg/tags -s | jq .[] | jq .name -r | grep -E "\d+\.\d+\.\d+")
+#OPENGHG_VERSIONS_STR=$(curl https://api.github.com/repos/openghg/openghg/tags -s | jq .[] | jq .name -r | grep -E "[0-9]+\.[0-9]+\.[0-9]+")
+OPENGHG_TAGS=$(curl https://api.github.com/repos/openghg/openghg/tags -s)
+#IFS=','
+#OPENGHG_VERSIONS_STR=$(echo "$OPENGHG_TAGS" | grep "name" | grep -oE "([0-9]+\.[0-9]+\.[0-9]+)")
+#IFS=' '
+OPENGHG_VERSIONS_STR=$(echo $OPENGHG_TAGS | jq .[] | jq .name -r | grep -E "[0-9]+\.[0-9]+\.[0-9]+")
 
-for x in $OPENGHG_VERSIONS_STR; do
-    OPENGHG_VERSIONS+=($x)
-done
+# for x in $OPENGHG_VERSIONS_STR; do
+#     OPENGHG_VERSIONS+=($x)
+# done
 
 # versions are sorted, so take first
 MAJOR_VERSION=$(echo $OPENGHG_VERSIONS_STR | cut -d. -f1)
@@ -63,11 +68,25 @@ done
 
 # get lastest release on last two minor versions
 ULTIMATE_MINOR_VERSION_LATEST=$(echo $OPENGHG_VERSIONS_STR | cut -d" " -f1)
-PENULTIMATE_MINOR_VERSION_LATEST=$(echo $OPENGHG_VERSIONS_STR | grep -oE "${MAJOR_VERSION}\.${MINOR_VERSIONS[1]}\.\d+" | head -n 1)
+PENULTIMATE_MINOR_VERSION_LATEST=$(echo $OPENGHG_VERSIONS_STR | grep -oE "${MAJOR_VERSION}\.${MINOR_VERSIONS[1]}\.[0-9]+" | head -n 1)
 
 
 # test
 if [[ "$test" = true ]]; then
+    echo "Tags:"
+    echo $OPENGHG_TAGS
+    echo "names from tags via jq:"
+    echo $OPENGHG_TAGS | jq .[] | jq .name -r
+    echo "names from tags via jq w/ regex:"
+    echo $OPENGHG_TAGS | jq .[] | jq .name -r | grep -E "[0-9]+\.[0-9]+\.[0-9]+"
+    echo "regex test"
+    echo "0.10.0" " 0.10.0" | grep -E "[0-9]+\.[0-9]+\.[0-9]+"
+    echo "major version"
+    echo $OPENGHG_VERSIONS_STR | cut -d. -f1
+
+
+    echo "OPENGHG_VERSIONS_STR:"
+    echo "${OPENGHG_VERSIONS_STR}"
     echo "MAJOR_VERSION = ${MAJOR_VERSION}"
 
     echo "MINOR_VERSIONS:"
@@ -78,5 +97,5 @@ if [[ "$test" = true ]]; then
 fi
 
 # return specified minor
-MINOR_VERSION=${MINOR_VERSIONS[$N]}
-echo $OPENGHG_VERSIONS_STR | grep -oE "${MAJOR_VERSION}\.${MINOR_VERSION}\.\d+" | head -n 1
+MINOR_VERSION=${MINOR_VERSIONS[$minor_N]}
+echo $OPENGHG_VERSIONS_STR | grep -oE "${MAJOR_VERSION}\.${MINOR_VERSION}\.[0-9]+" | head -n 1
