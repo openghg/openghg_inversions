@@ -11,6 +11,13 @@ on:
       - 'CHANGELOG.md'
 
 jobs:
+  set_env_vars:
+    runs-on: ubuntu-latest
+    steps:
+      - name: set openghg latest
+        run: echo "OPENGHG_LATEST_MINOR=$(./openghg_versions.sh)" >> $GITHUB_ENV
+      - name: set openghg last major
+        run: echo "OPENGHG_PREVIOUS_MINOR=$(./openghg_versions.sh -N 1)" >> $GITHUB_ENV
   test:
     name: Run tests on (${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -20,7 +27,7 @@ jobs:
       matrix:
         os: ["ubuntu-latest"]
         python-version: ["3.10"]
-        openghg-version: ["openghg==0.8", "openghg==0.9", "git+https://github.com/openghg/openghg.git@devel"]
+        openghg-version: ["openghg==$OPENGHG_PREVIOUS_MINOR", "openghg==$OPENGHG_LATEST_MINOR", "git+https://github.com/openghg/openghg.git@devel"]
         # python-version: ["3.8", "3.9", "3.10"]
     steps:
       - name: Checkout
