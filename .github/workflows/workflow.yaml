@@ -12,7 +12,7 @@ on:
 
 jobs:
   openghg-version:
-    name: Get
+    name: Get OpenGHG version
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,7 +37,7 @@ jobs:
           echo "OpenGHG devel: ${{ steps.versions.outputs.OPENGHG_DEVEL }}"
 
   test:
-    name: Run tests on (python ${{ matrix.python-version }}, ${{ matrix.openghg-version }}, ${{ matrix.os }})
+    name: Run tests on (${{ matrix.openghg-version }}, python ${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     needs: openghg-version
     strategy:
