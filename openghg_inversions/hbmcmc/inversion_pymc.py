@@ -284,7 +284,7 @@ def inferpymc(
 
     coords = _make_coords(Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None)
 
-    if isinstance(min_error, float):
+    if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
         min_error = min_error * np.ones_like(Y)
 
 
