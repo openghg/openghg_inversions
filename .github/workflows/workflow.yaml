@@ -12,11 +12,11 @@ on:
 
 jobs:
   openghg-version:
+    name: Get
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
-        # working-directory: .github/workflows
     outputs:
       latest_minor: ${{ steps.versions.outputs.OPENGHG_LATEST_MINOR }}
       previous_minor: ${{ steps.versions.outputs.OPENGHG_PREVIOUS_MINOR }}
@@ -24,16 +24,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: set openghg latest and previous minor versions
+      - name: set OpenGHG latest and previous minor versions, and devel
         id: versions
         run: |
           echo "OPENGHG_LATEST_MINOR=openghg==$(bash .github/workflows/openghg_versions.sh)" >> "$GITHUB_OUTPUT"
           echo "OPENGHG_PREVIOUS_MINOR=openghg==$(bash .github/workflows/openghg_versions.sh -N 1)" >> "$GITHUB_OUTPUT"
           echo "OPENGHG_DEVEL=git+https://github.com/openghg/openghg.git@devel" >> "$GITHUB_OUTPUT"
-      - name: check openghg minor versions
+      - name: check OpenGHG  versions
         run: |
-          echo "OPENGHG_LATEST_MINOR=${{ steps.versions.outputs.OPENGHG_LATEST_MINOR }}"
-          echo "OPENGHG_PREVIOUS_MINOR=${{ steps.versions.outputs.OPENGHG_PREVIOUS_MINOR }}"
+          echo "OpenGHG latest minor release: ${{ steps.versions.outputs.OPENGHG_LATEST_MINOR }}"
+          echo "OpenGHG previous minor release: ${{ steps.versions.outputs.OPENGHG_PREVIOUS_MINOR }}"
+          echo "OpenGHG devel: ${{ steps.versions.outputs.OPENGHG_DEVEL }}"
 
   test:
     name: Run tests on (${{ matrix.python-version }}, ${{ matrix.os }})
@@ -46,10 +47,10 @@ jobs:
         os: ["ubuntu-latest"]
         python-version: ["3.10"]
         openghg-version: ["${{ needs.openghg-version.outputs.latest_minor }}", "${{ needs.openghg-version.outputs.previous_minor }}", "${{ needs.openghg-version.outputs.devel }}"]
-        # python-version: ["3.8", "3.9", "3.10"]
     steps:
       - name: check versions
         run: |
+          echo "Running tests against OpenGHG versions:"
           echo "${{ needs.openghg-version.outputs.latest_minor }}"
           echo "${{ needs.openghg-version.outputs.previous_minor }}"
           echo "${{ needs.openghg-version.outputs.devel }}"
