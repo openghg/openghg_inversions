@@ -1,5 +1,7 @@
 # OpenGHG Inversions Change Log
 
+- Fixed Github workflow so that the last two versions of OpenGHG are automatically selected. [#PR 216](https://github.com/openghg/openghg_inversions/pull/216)
+
 - Added coordinates and deterministics to pymc model, moved "save trace" from `inferpymc` to `fixedbasisMCMC`, and renamed variables in pymc model in preparation for adding in PARIS formatting code. [#PR 204](https://github.com/openghg/openghg_inversions/pull/204)
 
 - Added option to use 'weighted' algorithm to derive basis functions for EASTASIA domain [#PR 199](https://github.com/openghg/openghg_inversions/pull/199)
