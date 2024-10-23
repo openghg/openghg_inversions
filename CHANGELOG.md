@@ -1,5 +1,7 @@
 # OpenGHG Inversions Change Log
 
+- Added MHD obs and footprint to test data. [#PR 209](https://github.com/openghg/openghg_inversions/pull/209)
+
 - Fixed Github workflow so that the last two versions of OpenGHG are automatically selected. [#PR 216](https://github.com/openghg/openghg_inversions/pull/216)
 
 - Added coordinates and deterministics to pymc model, moved "save trace" from `inferpymc` to `fixedbasisMCMC`, and renamed variables in pymc model in preparation for adding in PARIS formatting code. [#PR 204](https://github.com/openghg/openghg_inversions/pull/204)
