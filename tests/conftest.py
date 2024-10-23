@@ -29,7 +29,11 @@ def merged_data_dir():
 
 @pytest.fixture(scope="session", autouse=True)
 def using_zarr_store():
-    current_version = tuple(int(x) for x in version("openghg").split("."))
+    try:
+        current_version = tuple(int(x) for x in version("openghg").split("."))
+    except ValueError:
+        # assume tests are being run on devel
+        return True
     return current_version >= (0, 8)
 
 
