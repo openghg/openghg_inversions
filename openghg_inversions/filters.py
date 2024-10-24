@@ -423,7 +423,7 @@ def pblh_inlet_diff(
     filt = pblh_da > inlet_height + diff_threshold
     drop = not keep_missing
 
-    return dataset.where(filt, drop=drop)
+    return dataset.where(filt.compute(), drop=drop)
 
 
 @register_filter

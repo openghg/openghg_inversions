@@ -5,18 +5,30 @@ by input data.
 from pathlib import Path
 import numpy as np
 import xarray as xr
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # BUCKET BASIS FUNCTIONS
-def load_landsea_indices() -> np.ndarray:
-    """Load UKMO array with indices that separate
-    land and sea regions in EUROPE domain.
+def load_landsea_indices(domain : str) -> np.ndarray:
+    """Load array with indices that separate
+    land and sea regions in specified domain.
+
+    Args:
+        domain (str): domain for which to load landsea indices. Currently only "EASTASIA" or "EUROPE". 
 
     Returns :
         Array containing 0 (where there is sea)
         and 1 (where there is land).
     """
-    landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
+    if domain == "EASTASIA":
+        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_EASTASIA.nc")
+    elif domain == "EUROPE":
+        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
+    else:
+        logger.warning(f"No land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)")
+        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
     return landsea_indices["country"].values
 
 
@@ -65,7 +77,7 @@ def bucket_value_split(
         )
 
 
-def get_nregions(bucket: float, grid: np.ndarray) -> int:
+def get_nregions(bucket: float, grid: np.ndarray, domain: str) -> int:
     """Optimize bucket value to number of desired regions.
 
     Args:
@@ -75,14 +87,17 @@ def get_nregions(bucket: float, grid: np.ndarray) -> int:
             2D grid of footprints * flux, or whatever
             grid you want to split. Could be: population
             data, spatial distribution of bakeries, you choose!
+        domain:
+            Domain across which to calculate basis functions. 
+            Currently limited to "EUROPE" or "EASTASIA"
 
     Return :
         number of basis functions for bucket value
     """
-    return np.max(bucket_split_landsea_basis(grid, bucket))
+    return np.max(bucket_split_landsea_basis(grid, bucket, domain))
 
 
-def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int) -> float:
+def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, domain: str) -> float:
     """Optimize bucket value to obtain nregion basis functions
     within +/- tol.
 
@@ -98,24 +113,27 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int) -
         tol:
             Tolerance to find number of basis function regions.
             i.e. optimizes nregions to +/- tol
+        domain:
+            Domain across which to calculate basis functions. 
+            Currently limited to "EUROPE" or "EASTASIA"
 
     Return :
         Optimized bucket value
     """
     # print(bucket, get_nregions(bucket, grid))
-    if get_nregions(bucket, grid) <= nregion + tol and get_nregions(bucket, grid) >= nregion - tol:
+    if get_nregions(bucket, grid, domain) <= nregion + tol and get_nregions(bucket, grid, domain) >= nregion - tol:
         return bucket
 
-    if get_nregions(bucket, grid) < nregion + tol:
+    if get_nregions(bucket, grid, domain) < nregion + tol:
         bucket *= 0.995
-        return optimize_nregions(bucket, grid, nregion, tol)
+        return optimize_nregions(bucket, grid, nregion, tol, domain)
 
-    elif get_nregions(bucket, grid) > nregion - tol:
+    elif get_nregions(bucket, grid, domain) > nregion - tol:
         bucket *= 1.005
-        return optimize_nregions(bucket, grid, nregion, tol)
+        return optimize_nregions(bucket, grid, nregion, tol, domain)
 
 
-def bucket_split_landsea_basis(grid: np.ndarray, bucket: float) -> np.ndarray:
+def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain : str) -> np.ndarray:
     """Same as bucket_split_basis but includes
     land-sea split. i.e. basis functions cannot overlap sea and land.
 
@@ -126,12 +144,15 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float) -> np.ndarray:
             data, spatial distribution of bakeries, you choose!
         bucket:
             Maximum value for each basis function region
+        domain:
+            Domain across which to calculate basis functions. 
+            Currently limited to "EUROPE" or "EASTASIA"
 
     Returns:
         2D array with basis function values
 
     """
-    landsea_indices = load_landsea_indices()
+    landsea_indices = load_landsea_indices(domain)
     myregions = bucket_value_split(grid, bucket)
 
     mybasis_function = np.zeros(shape=grid.shape)
@@ -159,7 +180,7 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float) -> np.ndarray:
 
 
 def nregion_landsea_basis(
-    grid: np.ndarray, bucket: float = 1, nregion: int = 100, tol: int = 1
+    grid: np.ndarray, bucket: float = 1, nregion: int = 100, tol: int = 1, domain: str = 'EUROPE'
 ) -> np.ndarray:
     """Obtain basis function with nregions (for land-sea split).
 
@@ -178,10 +199,13 @@ def nregion_landsea_basis(
             Tolerance to find number of basis function regions.
             i.e. optimizes nregions to +/- tol
             Defaults to 1
+        domain:
+            Domain across which to calculate basis functions. 
+            Currently limited to "EUROPE" or "EASTASIA"
 
     Returns:
         basis_function: 2D basis function array
     """
-    bucket_opt = optimize_nregions(bucket, grid, nregion, tol)
-    basis_function = bucket_split_landsea_basis(grid, bucket_opt)
+    bucket_opt = optimize_nregions(bucket, grid, nregion, tol, domain)
+    basis_function = bucket_split_landsea_basis(grid, bucket_opt, domain)
     return basis_function
