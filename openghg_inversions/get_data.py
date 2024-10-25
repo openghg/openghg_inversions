@@ -308,15 +308,11 @@ def data_processing_surface_notracer(
                 )
                 continue  # skip this site
             except AttributeError:
-                print(
-                    f"\nNo data found for {site} between {start_date} and {end_date} in store {store}."
-                )
+                print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
                 continue  # skip this site
             else:
                 if site_data is None:
-                    print(
-                        f"\nNo data found for {site} between {start_date} and {end_date} in store {store}."
-                    )
+                    print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
                     continue  # skip this site
                 else:
                     obs_found = True
@@ -336,11 +332,13 @@ def data_processing_surface_notracer(
                     height=fp_height[i],
                     domain=domain,
                     model=fp_model,
+                    met_model=met_model[i],
                     start_date=start_date,
                     end_date=end_date,
                     store=store,
+                    species=fp_species,
                 )
-                if get_fps.data.time.size==0:
+                if get_fps.data.time.size == 0:
                     raise SearchError
             except SearchError:
                 continue  # try next store
