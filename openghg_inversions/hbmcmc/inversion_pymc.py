@@ -284,7 +284,7 @@ def inferpymc(
 
     coords = _make_coords(Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None)
 
-    if isinstance(min_error, float):
+    if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
         min_error = min_error * np.ones_like(Y)
 
 
@@ -330,11 +330,11 @@ def inferpymc(
 
         if pollution_events_from_obs is True:
             if use_bc is True:
-                pollution_event = np.abs(Y - pt.dot(hbc, bc))
+                pollution_event = pt.abs(Y - pt.dot(hbc, bc))
             else:
-                pollution_event = np.abs(Y) + 1e-6 * np.mean(Y)  # small non-zero term to prevent NaNs
+                pollution_event = pt.abs(Y) + 1e-6 * pt.mean(Y)  # small non-zero term to prevent NaNs
         else:
-            pollution_event = np.abs(pt.dot(hx, x))
+            pollution_event = pt.abs(pt.dot(hx, x))
 
         pollution_event_scaled_error = pollution_event * sigma[sites, sigma_freq_index]
 
