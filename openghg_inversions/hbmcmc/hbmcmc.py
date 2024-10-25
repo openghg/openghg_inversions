@@ -91,6 +91,7 @@ def fixedbasisMCMC(
     calculate_min_error: Literal["percentile", "residual"] | None = None,
     min_error_options: dict | None = None,
     return_inv_out: bool = False,  # for testing new postprocessing
+    new_postprocessing: bool = False,  # for testing new postprocessing
     **kwargs,
 ) -> xr.Dataset | dict:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference
@@ -547,6 +548,29 @@ def fixedbasisMCMC(
                 end_date=end_date,
             )
 
+
+        if new_postprocessing:
+            from ..postprocessing.inversion_output import make_inv_out
+            from ..postprocessing.make_outputs import basic_output
+
+            inv_out = make_inv_out(
+                fp_data=fp_data,
+                Y=Y,
+                Ytime=Ytime,
+                error=error,
+                obs_repeatability=obs_repeatability,
+                obs_variability=obs_variability,
+                site_indicator=siteindicator,
+                site_names=sites,
+                mcmc_results=mcmc_results,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+            outputs = basic_output(inv_out, species=species, country_file=country_file, domain=domain)
+            return outputs
+
+
         # get trace and model: for future updates
         trace = mcmc_results.pop("trace")
         model = mcmc_results.pop("model")
@@ -559,8 +583,6 @@ def fixedbasisMCMC(
                 trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
 
             trace.to_netcdf(str(trace_path), engine="netcdf4")
-
-
 
         # Process and save inversion output
         post_process_args.update(mcmc_results)
