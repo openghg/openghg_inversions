@@ -337,12 +337,16 @@ def data_processing_surface_notracer(
                     end_date=end_date,
                     store=store,
                     species=fp_species,
+                    combine_multiple_inlets=True,
                 )
                 if get_fps.data.time.size == 0:
                     raise SearchError
             except SearchError:
                 continue  # try next store
             else:
+                get_fps.data = get_fps.data.drop_vars(
+                    "inlet", errors="ignore"
+                )  # JP hack for change in TAC inlet
                 footprint_dict[site] = get_fps
                 footprint_found = True
                 break  # stop checking stores
