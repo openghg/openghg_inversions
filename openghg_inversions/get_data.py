@@ -204,7 +204,7 @@ def get_footprint_to_match(
         metadata["inlet"] = "varies"
         metadata["height"] = "varies"
 
-    data = xr.concat([fp.data for fp in footprints], dim="time")
+    data = xr.concat([fp.data for fp in footprints], dim="time").sortby("time")
 
     return FootprintData(data=data, metadata=metadata)
 
