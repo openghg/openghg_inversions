@@ -145,8 +145,6 @@ def get_footprint_to_match(
     fp_heights_strs = list(results.results.inlet.unique())
     fp_heights = _convert_inlets_to_float(fp_heights_strs)
 
-    # convert fp_heights to array of floats
-
     # special case: only a single inlet height
     if "inlet" not in obs.data.data_vars:
         inlet = float(obs.metadata["inlet"][:-1])
