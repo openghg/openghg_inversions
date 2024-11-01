@@ -166,7 +166,7 @@ def get_footprint_to_match(
     # check tolerance
     inlet_tolerance_passed = np.min(distances, axis=1) <= tolerance
     if (s := np.sum(inlet_tolerance_passed)) > 0:
-        warnings.warn(f"{s} times where obs. inlet height was not within {tolerance}m of a footprint height.")
+        logger.warning(f"For site {site}: {s} times where obs. inlet height was not within {tolerance}m of a footprint height.")
         inlets_to_heights = inlets_to_heights[inlet_tolerance_passed]
 
     # footprint heights to load
