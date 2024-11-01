@@ -318,7 +318,7 @@ def data_processing_surface_notracer(
                     obs_found = True
                     break
         if not obs_found:
-            print("No obs. found, continuing model run without {site}.\n")
+            print(f"No obs. found, continuing model run without {site}.\n")
             continue
         else:
             unit = float(site_data[site].mf.units)
