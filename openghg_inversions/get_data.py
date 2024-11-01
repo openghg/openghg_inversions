@@ -126,7 +126,7 @@ def get_footprint_to_match(
     site = obs.metadata["site"]
     species = fp_species or obs.metadata.get("species", "inert")
     if store is None:
-        store = Path(obs.metadata.get("object_store")).name
+        store = Path(obs.metadata.get("object_store", "")).name or "user"
     start_date = obs._start_date
     end_date = obs._end_date
 
