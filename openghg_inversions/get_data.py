@@ -188,7 +188,10 @@ def get_footprint_to_match(
     try:
         averaging_period = averaging_period or obs.metadata["averaged_period_str"]
     except KeyError:
-        raise ValueError("`averaging_period` could not be inferred from ObsData; please provide a value.")
+        if "sampling_period" in obs.metadata and "sampling_period_unit" in obs.metadata:
+            averaging_period = f"{obs.metadata['sampling_period']}{obs.metadata['sampling_period_unit']}"
+        else:
+            raise ValueError("`averaging_period` could not be inferred from ObsData; please provide a value.")
 
     # select times from footprints to match with obs
     for i, fp in zip(np.unique(inlets_to_heights), footprints):
