@@ -19,14 +19,17 @@ import pickle
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, cast, Literal
+import warnings
 
 import numpy as np
+import pandas as pd
+import xarray as xr
+
 from openghg.analyse import ModelScenario
-from openghg.dataobjects import BoundaryConditionsData, FluxData
-from openghg.retrieve import get_bc, get_flux, get_footprint, get_obs_surface
+from openghg.dataobjects import ObsData, BoundaryConditionsData, FluxData, FootprintData
+from openghg.retrieve import get_bc, get_flux, get_footprint, get_obs_surface, search_footprints
 from openghg.types import SearchError
 from openghg.util import timestamp_now
-import xarray as xr
 
 
 logger = logging.getLogger(__name__)
@@ -94,6 +97,115 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
             logger.info(info_msg)
 
 
+def _convert_inlets_to_float(inlets):
+    return np.array(list(map(lambda x: float(x[:-1]), inlets)))
+
+
+def get_fp_indexer(obs: xr.Dataset, fp: xr.Dataset, averaging_period: str):
+    obs_idx = obs.indexes["time"]
+    fp_idx = fp.indexes["time"]
+
+    period = pd.Timedelta(averaging_period)
+    tol = period / 2  # type: ignore
+
+    fp_reidx = fp_idx.get_indexer(obs_idx, method="nearest", tolerance=tol)
+    int_idx = pd.IntervalIndex.from_arrays(fp_idx[fp_reidx], fp_idx[fp_reidx] + period, closed="left")
+    return pd.DatetimeIndex([t for t in fp_idx if int_idx.contains(t).any()])
+
+
+def get_footprint_to_match(
+    obs: ObsData,
+    domain: str,
+    model: str | None = None,
+    met_model: str = "not_set",
+    fp_species: str | None = None,
+    store: str | None = None,
+    averaging_period: str | None = None,
+    tolerance: float = 10.0,
+) -> FootprintData:
+    site = obs.metadata["site"]
+    species = fp_species or obs.metadata.get("species", "inert")
+    if store is None:
+        store = Path(obs.metadata.get("object_store")).name
+    start_date = obs._start_date
+    end_date = obs._end_date
+
+    # get available footprint heights
+    fp_kwargs = {
+        "site": site,
+        "species": species,
+        "domain": domain,
+        "model": model,
+        "met_model": met_model,
+        "store": store,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    results = search_footprints(**fp_kwargs)
+    fp_heights_strs = list(results.results.inlet.unique())
+    fp_heights = _convert_inlets_to_float(fp_heights_strs)
+
+    # convert fp_heights to array of floats
+
+    # special case: only a single inlet height
+    if "inlet" not in obs.data.data_vars:
+        inlet = float(obs.metadata["inlet"][:-1])
+
+        if np.min(np.abs(fp_heights - inlet)) > tolerance:
+            raise SearchError("No footprints found with inlet heights matching given obs.")
+
+        fp_height_idx = np.argmin(np.abs(fp_heights - inlet))
+        fp_height = fp_heights_strs[fp_height_idx]
+        return get_footprint(**fp_kwargs, inlet=fp_height)
+
+    # get inlet values
+    inlets = obs.data.inlet.values
+
+    # match inlets to fp heights
+    distances = np.abs(inlets.reshape((-1, 1)) - fp_heights.reshape((1, -1)))
+    inlets_to_heights = np.argmin(distances, axis=1)
+
+    # check tolerance
+    inlet_tolerance_passed = np.min(distances, axis=1) <= tolerance
+    if (s := np.sum(inlet_tolerance_passed)) > 0:
+        warnings.warn(f"{s} times where obs. inlet height was not within {tolerance}m of a footprint height.")
+        inlets_to_heights = inlets_to_heights[inlet_tolerance_passed]
+
+    # footprint heights to load
+    matched_fp_heights = [fp_heights_strs[i] for i in np.unique(inlets_to_heights)]
+    footprints = []
+
+    for fp_height in matched_fp_heights:
+        fp_data = get_footprint(**fp_kwargs, inlet=fp_height)
+        footprints.append(fp_data)
+
+    if not footprints:
+        raise SearchError("No footprints found with inlet heights matching given obs.")
+
+    # select footprints to match inlets
+    # note: we need to take into account the difference between the obs frequency
+    # and the footprint frequency
+    try:
+        averaging_period = averaging_period or obs.metadata["averaged_period_str"]
+    except KeyError:
+        raise ValueError("`averaging_period` could not be inferred from ObsData; please provide a value.")
+
+    # select times from footprints to match with obs
+    for i, fp in zip(np.unique(inlets_to_heights), footprints):
+        i_idx = np.where(inlets_to_heights == i)[0]
+        fp_idx = get_fp_indexer(obs.data.isel(time=i_idx), fp.data, averaging_period=averaging_period)
+        fp.data = fp.data.sel(time=fp_idx)
+
+    # make FootprintData to return
+    metadata = footprints[0].metadata
+    metadata["inlet"] = "varies"
+    metadata["height"] = "varies"
+
+    data = xr.concat([fp.data for fp in footprints], dim="time")
+
+    return FootprintData(data=data, metadata=metadata)
+
+
 def data_processing_surface_notracer(
     species: str,
     sites: list | str,
@@ -107,7 +219,7 @@ def data_processing_surface_notracer(
     calibration_scale: str | None = None,
     met_model: list[str | None] | str | None = None,
     fp_model: str | None = None,
-    fp_height: list[str | None] | str | None = None,
+    fp_height: list[str | None | Literal["auto"]] | Literal["auto"] | str | None = None,
     fp_species: str | None = None,
     emissions_name: list | None = None,
     use_bc: bool = True,
@@ -327,17 +439,27 @@ def data_processing_surface_notracer(
         footprint_found = False
         for store in footprint_store:
             try:
-                get_fps = get_footprint(
-                    site=site,
-                    height=fp_height[i],
-                    domain=domain,
-                    model=fp_model,
-                    met_model=met_model[i],
-                    start_date=start_date,
-                    end_date=end_date,
-                    store=store,
-                    species=fp_species,
-                )
+                if fp_height[i] == "auto":
+                    get_fps = get_footprint_to_match(
+                        site_data,
+                        domain=domain,
+                        model=fp_model,
+                        met_model=met_model[i],
+                        store=store,
+                        fp_species=fp_species,
+                    )
+                else:
+                    get_fps = get_footprint(
+                        site=site,
+                        height=fp_height[i],
+                        domain=domain,
+                        model=fp_model,
+                        met_model=met_model[i],
+                        start_date=start_date,
+                        end_date=end_date,
+                        store=store,
+                        species=fp_species,
+                    )
                 if get_fps.data.time.size == 0:
                     raise SearchError
             except SearchError:
