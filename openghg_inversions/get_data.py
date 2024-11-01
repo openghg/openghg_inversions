@@ -201,8 +201,10 @@ def get_footprint_to_match(
 
     # make FootprintData to return
     metadata = footprints[0].metadata
-    metadata["inlet"] = "varies"
-    metadata["height"] = "varies"
+
+    if len(footprints) > 1:
+        metadata["inlet"] = "varies"
+        metadata["height"] = "varies"
 
     data = xr.concat([fp.data for fp in footprints], dim="time")
 
