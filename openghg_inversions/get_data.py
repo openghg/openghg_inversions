@@ -148,7 +148,7 @@ def get_footprint_to_match(
     # check that we got results with inlet values
     # Note: results `search_footprints` should always have inlet values
     # so the second check shouldn't be necessary...
-    if not results.results or "inlet" not in results.results:
+    if results.results.empty or "inlet" not in results.results:
         raise SearchError(f"No footprints found for search terms {fp_kwargs}")
 
     fp_heights_strs = list(results.results.inlet.unique())
