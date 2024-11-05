@@ -454,7 +454,7 @@ def data_processing_surface_notracer(
                         met_model=met_model[i],
                         store=store,
                         fp_species=fp_species,
-                        averaging_period=averaging_period,
+                        averaging_period=averaging_period[i],
                     )
                 else:
                     get_fps = get_footprint(
