@@ -449,7 +449,7 @@ def data_processing_surface_notracer(
                         site_data,
                         domain=domain,
                         start_date=start_date,
-                        end_date=end_date
+                        end_date=end_date,
                         model=fp_model,
                         met_model=met_model[i],
                         store=store,
