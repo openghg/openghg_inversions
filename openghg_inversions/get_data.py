@@ -117,6 +117,8 @@ def get_footprint_to_match(
     obs: ObsData,
     domain: str,
     model: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     met_model: str = "not_set",
     fp_species: str | None = None,
     store: str | None = None,
@@ -127,8 +129,8 @@ def get_footprint_to_match(
     species = fp_species or obs.metadata.get("species", "inert")
     if store is None:
         store = Path(obs.metadata.get("object_store", "")).name or "user"
-    start_date = obs._start_date
-    end_date = obs._end_date
+    start_date = start_date or obs._start_date
+    end_date = end_date or obs._end_date
 
     # get available footprint heights
     fp_kwargs = {
@@ -446,6 +448,8 @@ def data_processing_surface_notracer(
                     get_fps = get_footprint_to_match(
                         site_data,
                         domain=domain,
+                        start_date=start_date,
+                        end_date=end_date
                         model=fp_model,
                         met_model=met_model[i],
                         store=store,
