@@ -132,7 +132,7 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
     for _ in range(10):
         current_tol += 1
         # try 1000 iterations
-        for j in range(10000):
+        for j in range(1000):
             current_nregion = get_nregions(current_bucket, grid, domain)
 
             if current_nregion <= nregion + current_tol and current_nregion >= nregion - current_tol:
@@ -141,7 +141,7 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
                 )
                 return current_bucket
 
-            if get_nregions(bucket, grid, domain) < nregion + current_tol:
+            if current_nregion < nregion + current_tol:
                 current_bucket *= 0.995
             else:
                 current_bucket *= 1.005
