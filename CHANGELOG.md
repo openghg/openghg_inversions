@@ -1,5 +1,7 @@
 # OpenGHG Inversions Change Log
 
+- Changed optimization in weighted basis function from recursion to loop. [#PR 224](https://github.com/openghg/openghg_inversions/pull/224)
+
 - Added MHD obs and footprint to test data. [#PR 209](https://github.com/openghg/openghg_inversions/pull/209)
 
 - Fixed Github workflow so that the last two versions of OpenGHG are automatically selected. [#PR 216](https://github.com/openghg/openghg_inversions/pull/216)
