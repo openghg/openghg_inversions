@@ -47,13 +47,19 @@ def make_country_traces(
     return country_trace
 
 
-def make_flux_outputs(inv_out: InversionOutput, stats_args: dict | None = None):
+def make_flux_outputs(
+    inv_out: InversionOutput, stats: list[str] | None = None, stats_args: dict | None = None
+):
     """Return dataset of stats for fluxes and scaling factors."""
 
     trace = inv_out.get_trace_dataset(unstack_nmeasure=False, var_names="x")
 
     if stats_args is None:
         stats_args = {}
+
+    if stats is not None:
+        stats_args["stats"] = stats
+
     stats_args["chunk_dim"] = "nx"
     stats_ds = calculate_stats(trace, **stats_args)
 
@@ -62,7 +68,9 @@ def make_flux_outputs(inv_out: InversionOutput, stats_args: dict | None = None):
     for dv in flux_stats.data_vars:
         if dv in stats_ds.data_vars:
             flux_stats[dv].attrs = stats_ds[dv].attrs
-            flux_stats[dv].attrs["long_name"] = flux_stats[dv].attrs["long_name"].replace("trace_of_flux_scaling_factor", "flux")
+            flux_stats[dv].attrs["long_name"] = (
+                flux_stats[dv].attrs["long_name"].replace("trace_of_flux_scaling_factor", "flux")
+            )
             flux_stats[dv].attrs["units"] = inv_out.flux.attrs.get("units", "mol/m2/s")
 
     flux_stats = rename_by_replacement(flux_stats, "x", "flux")
@@ -72,7 +80,9 @@ def make_flux_outputs(inv_out: InversionOutput, stats_args: dict | None = None):
     for dv in scale_factor_stats.data_vars:
         if dv in stats_ds.data_vars:
             scale_factor_stats[dv].attrs = stats_ds[dv].attrs
-            scale_factor_stats[dv].attrs["long_name"] = scale_factor_stats[dv].attrs["long_name"].replace("trace_of_", "")
+            scale_factor_stats[dv].attrs["long_name"] = (
+                scale_factor_stats[dv].attrs["long_name"].replace("trace_of_", "")
+            )
 
     scale_factor_stats = rename_by_replacement(scale_factor_stats, "x", "scaling")
 
@@ -139,12 +149,17 @@ def sort_data_vars(ds: xr.Dataset) -> xr.Dataset:
     return ds[dv_sorted]  # type: ignore
 
 
-def make_concentration_outputs(inv_out: InversionOutput, stats_args: dict | None = None):
+def make_concentration_outputs(
+    inv_out: InversionOutput, stats: list[str] | None = None, stats_args: dict | None = None
+):
     conc_vars = ["y", "mu_bc"] if "mu_bc" in inv_out.trace.posterior else ["y"]
     trace = inv_out.get_trace_dataset(var_names=conc_vars)
 
     if stats_args is None:
         stats_args = {}
+
+    if stats is not None:
+        stats_args["stats"] = stats
 
     stats_args["chunk_dim"] = "nmeasure"
     stats_args["chunk_size"] = 1
@@ -201,11 +216,16 @@ paris_regions_dict = {
 
 
 def basic_output(
-    inv_out: InversionOutput, species: str, country_file: str | Path | None = None, domain: str | None = None
+    inv_out: InversionOutput,
+    species: str,
+    country_file: str | Path | None = None,
+    domain: str | None = None,
+    stats: list[str] | None = None,
+    stats_args: dict | None = None,
 ) -> xr.Dataset:
     obs_and_errs = get_obs_and_errors(inv_out)
-    conc_outs = make_concentration_outputs(inv_out)
-    flux_outs = make_flux_outputs(inv_out)
+    conc_outs = make_concentration_outputs(inv_out, stats=stats, stats_args=stats_args)
+    flux_outs = make_flux_outputs(inv_out, stats=stats, stats_args=stats_args)
 
     country_traces = make_country_traces(
         inv_out,
@@ -215,13 +235,21 @@ def basic_output(
         country_code="alpha3",
         country_regions=paris_regions_dict,
     )
+
+    if stats_args is None:
+        stats_args = {}
+    if stats is not None:
+        stats_args["stats"] = stats
+
     country_outs = calculate_stats(country_traces)
 
     model_data = inv_out.get_model_data(var_names=["hx", "hbc", "min_error"]).rename(
         {"hx": "Hx", "hbc": "Hbc", "min_error": "min_model_error"}
     )
 
-    result = xr.merge([obs_and_errs, conc_outs, flux_outs, country_outs, model_data, inv_out.get_flat_basis()])
+    result = xr.merge(
+        [obs_and_errs, conc_outs, flux_outs, country_outs, model_data, inv_out.get_flat_basis()]
+    )
 
     for dv in result.data_vars:
         for k, v in result[dv].attrs.items():
