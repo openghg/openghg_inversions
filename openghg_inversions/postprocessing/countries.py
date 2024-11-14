@@ -1,9 +1,13 @@
 """
 Module with code related to country maps.
 """
+
 from __future__ import annotations
 
-from typing import Optional, TypeVar, Union, cast
+import functools
+import json
+from pathlib import Path
+from typing import Any, cast, Literal, Optional, TypeVar, Union
 
 import xarray as xr
 from openghg_inversions import convert, utils
@@ -31,6 +35,42 @@ def get_area_grid(lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
     return xr.DataArray(ag_vals, coords=[lat, lon], dims=["lat", "lon"], name="area_grid")
 
 
+@functools.lru_cache
+def get_iso3166_codes() -> dict[str, Any]:
+    """Load dictionary mapping alpha-2 country codes to other country information."""
+    postprocessing_path = Path(__file__).parent
+    with open(postprocessing_path / "iso3166.json", "r", encoding="utf8") as f:
+        iso3166 = json.load(f)
+    return iso3166
+
+
+def get_country_code(
+    x: str, iso3166: Optional[dict[str, dict[str, Any]]] = None, code: Literal["alpha2", "alpha3"] = "alpha3"
+) -> str:
+    """Get alpha-2 or alpha-3 (default) country code given the name of a country."""
+    if iso3166 is None:
+        iso3166 = get_iso3166_codes()
+
+    # first try to match long names, ignoring "The " at the beginning of a name
+    for v in iso3166.values():  # type: ignore
+        if x.lower().lstrip("the ") == v["iso_long_name"].lower().lstrip("the "):
+            return v[code]
+
+    # next try to match unofficial names
+    for v in iso3166.values():  # type: ignore
+        if any(x.lower() == name.lower() for name in v["unofficial_names"]):
+            return v[code]
+
+    # next try to match substrings...
+    for v in iso3166.values():
+        names = [v["iso_long_name"].lower()] + [name.lower() for name in v["unofficial_names"]]
+        if any(x.lower() in name for name in names):
+            return v[code]
+
+    # if no matches are found, return x
+    return x
+
+
 class Countries:
     """Class to load country files (and list of countries to use from that file), and provide methods
     to create country traces bases on these country files.
@@ -38,14 +78,27 @@ class Countries:
     Multiple Country objects can be merged together to use multiple country files.
     """
 
-    def __init__(self, countries: xr.Dataset, country_selections: Optional[list[str]] = None) -> None:
+    def __init__(
+        self,
+        countries: xr.Dataset,
+        country_selections: Optional[list[str]] = None,
+        country_code: Literal["alpha2", "alpha3"] | None = None,
+    ) -> None:
         """Create Countries object given country map Dataset and optional list of countries to select.
 
         Args:
             countries: country map Dataset with `country` and `name` data variables.
             country_selections: optional list of country names to select.
         """
-        self.matrix = get_xr_dummies(countries.country, cat_dim="country", categories=countries.name.values)
+        if country_code is None:
+            country_labels = countries.name.values
+        else:
+            # apply `get_country_code` to each element of `country` coordinate
+            country_labels = list(
+                map(functools.partial(get_country_code, code=country_code), map(str, countries.name.values))
+            )
+
+        self.matrix = get_xr_dummies(countries.country, cat_dim="country", categories=country_labels)
         self.area_grid = get_area_grid(countries.lat, countries.lon)
 
         if country_selections is not None:
@@ -96,7 +149,7 @@ class Countries:
         # compute matrix/tensor product: country_mat.T @ (area_grid * flux * basis_mat)
         # transpose doesn't need to be taken explicitly because alignment is done by dimension name
         result = self.matrix @ (self.area_grid * flux_x_basis)
-        #result = sparse_xr_dot(self.matrix, self.area_grid * flux_x_basis)
+        # result = sparse_xr_dot(self.matrix, self.area_grid * flux_x_basis)
         if sparse:
             return result
 
@@ -128,7 +181,35 @@ class Countries:
         molar_mass = convert.molar_mass(species)
         return raw_trace * 365 * 24 * 3600 * molar_mass  # type: ignore
 
-    def get_country_trace(self, species: str, inv_out: InversionOutput) -> xr.Dataset:
+    @staticmethod
+    def _country_region_traces(country_traces: xr.Dataset, country_regions: dict[str, list[str]] | Path) -> xr.Dataset:
+        if isinstance(country_regions, Path):
+            with open(country_regions, "r", encoding="utf8") as f:
+                _country_regions = json.load(f)
+            if not isinstance(_country_regions, dict) or any(not isinstance(v, list) for v in _country_regions.values()):
+                raise ValueError(f"Country regions from file {country_regions} is not in the correct format."
+                                 " It must be a dictionary mapping regions to the list of countries forming that region.")
+            country_regions = _country_regions
+
+        region_traces = []
+
+        for region, countries in country_regions.items():
+            try:
+                region_ds = (
+                    country_traces.sel(country=countries).sum("country").expand_dims({"country": [region]})
+                )
+            except KeyError as e:
+                print(f"Country region {region} was not added due to key error {e}.")
+            else:
+                region_traces.append(region_ds)
+
+        if not region_traces:
+            return xr.Dataset()
+
+        return xr.concat(region_traces, dim="country")
+
+    def get_country_trace(self, species: str, inv_out: InversionOutput, country_regions: dict[str, list[str]] | Path | None = None,
+) -> xr.Dataset:
         """Calculate trace(s) for total country emissions.
 
         Args:
@@ -147,7 +228,13 @@ class Countries:
         country_traces = Countries._get_country_trace(species, x_trace, x_to_country_mat)
 
         rename_dict = {dv: "country_" + str(dv).split("_")[1] for dv in country_traces.data_vars}
-        return country_traces.rename_vars(rename_dict)
+        country_traces = country_traces.rename_vars(rename_dict)
+
+        if country_regions is not None:
+            region_traces = self._country_region_traces(country_traces, country_regions)
+            country_traces = xr.merge([country_traces, region_traces])
+
+        return country_traces
 
     def merge(self, other: Union[Countries, list[Countries]]) -> None:
         """Merge in another Countries object (in-place).
