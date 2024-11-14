@@ -62,6 +62,7 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
         variability_missing = False
         if "mf_variability" not in ds:
             ds["mf_variability"] = xr.zeros_like(ds.mf)
+            ds["mf_variability"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_variability"
             variability_missing = True
 
         if "mf_repeatability" not in ds:
@@ -69,6 +70,8 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
                 raise ValueError(f"Obs data for site {site} is missing both repeatability and variability.")
 
             ds["mf_repeatability"] = xr.zeros_like(ds.mf_variability)
+            ds["mf_repeatability"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_repeatability"
+
             ds["mf_error"] = ds["mf_variability"]
 
             if add_averaging_error:
@@ -80,6 +83,9 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
             ds["mf_error"] = np.sqrt(ds["mf_repeatability"] ** 2 + ds["mf_variability"] ** 2)
         else:
             ds["mf_error"] = ds["mf_repeatability"]
+
+        ds["mf_error"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_error"
+        ds["mf_error"].attrs["units"] = ds.mf.attrs.get("units", None)
 
         # warnings/info for debugging
         err0 = ds["mf_error"] == 0
