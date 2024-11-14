@@ -260,7 +260,6 @@ def fixedbasisMCMC(
 
     if merged_data_only:
         reload_merged_data = False
-        save_merged_data = True
 
     if reload_merged_data is True and merged_data_dir is not None:
         try:
@@ -335,7 +334,7 @@ def fixedbasisMCMC(
             raise ValueError("Model does not currently include tracer model. Watch this space")
 
         if merged_data_only:
-            return xr.Dataset()  # return empty dataset
+            return fp_all # type: ignore
 
     # Basis function regions and sensitivity matrices
     fp_data = basis_functions_wrapper(
