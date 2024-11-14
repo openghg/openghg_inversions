@@ -164,6 +164,8 @@ class Countries:
     ) -> DataSetOrArray:
         """Calculate trace(s) for total country emissions.
 
+        The totals are in grams/year.
+
         Args:
             species: name of species, e.g. "co2", "ch4", "sf6", etc.
             x_trace: xr.DataArray or xr.Dataset with coordinate dimensions ("draw", "nx").
@@ -233,6 +235,11 @@ class Countries:
         if country_regions is not None:
             region_traces = self._country_region_traces(country_traces, country_regions)
             country_traces = xr.merge([country_traces, region_traces])
+
+        for dv in country_traces.data_vars:
+            suffix = str(dv).removeprefix("country_")
+            country_traces[dv].attrs["units"] = "g/yr"
+            country_traces[dv].attrs["long_name"] = f"{suffix}_country_flux_total"
 
         return country_traces
 

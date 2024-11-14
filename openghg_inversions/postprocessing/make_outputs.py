@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 import xarray as xr
 
@@ -25,54 +26,25 @@ def sample_predictive_distributions(inv_out: InversionOutput) -> None:
 
 
 def make_country_traces(
-    inv_out: InversionOutput, species: str, country_file: str | Path | None = None, domain: str | None = None
+    inv_out: InversionOutput,
+    species: str,
+    country_file: str | Path | None = None,
+    domain: str | None = None,
+    country_regions: dict[str, list[str]] | Path | None = None,
+    country_code: Literal["alpha2", "alpha3"] | None = None,
 ):
     # TODO: species and domain should be available to InversionOutput?
     # TODO: add regions that are aggregates of several countries?
     sample_predictive_distributions(inv_out)  # make sure we have prior distributions
 
     country_file_path = get_country_file_path(country_file=country_file, domain=domain)
-    countries = Countries(xr.open_dataset(country_file_path))
+    countries = Countries(xr.open_dataset(country_file_path), country_code=country_code)
 
-    country_trace = countries.get_country_trace(species=species, inv_out=inv_out)
+    country_trace = countries.get_country_trace(
+        species=species, inv_out=inv_out, country_regions=country_regions
+    )
 
     return country_trace
-
-
-paris_regions_dict = {
-    "BELUX": ["BEL", "LUX"],
-    "BENELUX": ["BEL", "LUX", "NLD"],
-    "CW_EU": [
-        "AUT",
-        "BEL",
-        "CHE",
-        "CZE",
-        "DEU",
-        "ESP",
-        "FRA",
-        "GBR",
-        "HRV",
-        "HUN",
-        "IRL",
-        "ITA",
-        "LUX",
-        "NLD",
-        "POL",
-        "PRT",
-        "SVK",
-        "SVN",
-    ],
-    "EU_GRP2": ["AUT", "BEL", "CHE", "DEU", "DNK", "FRA", "GBR", "IRL", "ITA", "LUX", "NLD"],
-    "NW_EU": ["BEL", "DEU", "DNK", "FRA", "GBR", "IRL", "LUX", "NLD"],
-    "NW_EU2": ["BEL", "DEU", "FRA", "GBR", "IRL", "LUX", "NLD"],
-    "NW_EU_CONTINENT": ["BEL", "DEU", "FRA", "LUX", "NLD"],
-}
-
-
-def add_country_regions(country_trace: xr.Dataset, regions: dict):
-    if not regions:
-        return country_trace
-    # TODO: check length of country names and decide if we need to convert to alpha 2 or 3 (or not)
 
 
 def make_flux_outputs(inv_out: InversionOutput, stats_args: dict | None = None):
@@ -86,9 +58,22 @@ def make_flux_outputs(inv_out: InversionOutput, stats_args: dict | None = None):
     stats_ds = calculate_stats(trace, **stats_args)
 
     flux_stats = sparse_xr_dot((inv_out.flux * inv_out.basis), stats_ds)
+
+    for dv in flux_stats.data_vars:
+        if dv in stats_ds.data_vars:
+            flux_stats[dv].attrs = stats_ds[dv].attrs
+            flux_stats[dv].attrs["long_name"] = flux_stats[dv].attrs["long_name"].replace("trace_of_flux_scaling_factor", "flux")
+            flux_stats[dv].attrs["units"] = inv_out.flux.attrs.get("units", "mol/m2/s")
+
     flux_stats = rename_by_replacement(flux_stats, "x", "flux")
 
     scale_factor_stats = sparse_xr_dot(inv_out.basis, stats_ds)
+
+    for dv in scale_factor_stats.data_vars:
+        if dv in stats_ds.data_vars:
+            scale_factor_stats[dv].attrs = stats_ds[dv].attrs
+            scale_factor_stats[dv].attrs["long_name"] = scale_factor_stats[dv].attrs["long_name"].replace("trace_of_", "")
+
     scale_factor_stats = rename_by_replacement(scale_factor_stats, "x", "scaling")
 
     return xr.merge([flux_stats, scale_factor_stats])
@@ -180,7 +165,39 @@ def get_obs_and_errors(inv_out: InversionOutput) -> xr.Dataset:
         inv_out.get_model_err(),
         inv_out.get_total_err(),
     ]
-    return xr.merge(to_merge)
+    result = xr.merge(to_merge)
+    result.attrs = {}
+    return result
+
+
+paris_regions_dict = {
+    "BELUX": ["BEL", "LUX"],
+    "BENELUX": ["BEL", "LUX", "NLD"],
+    "CW_EU": [
+        "AUT",
+        "BEL",
+        "CHE",
+        "CZE",
+        "DEU",
+        "ESP",
+        "FRA",
+        "GBR",
+        "HRV",
+        "HUN",
+        "IRL",
+        "ITA",
+        "LUX",
+        "NLD",
+        "POL",
+        "PRT",
+        "SVK",
+        "SVN",
+    ],
+    "EU_GRP2": ["AUT", "BEL", "CHE", "DEU", "DNK", "FRA", "GBR", "IRL", "ITA", "LUX", "NLD"],
+    "NW_EU": ["BEL", "DEU", "DNK", "FRA", "GBR", "IRL", "LUX", "NLD"],
+    "NW_EU2": ["BEL", "DEU", "FRA", "GBR", "IRL", "LUX", "NLD"],
+    "NW_EU_CONTINENT": ["BEL", "DEU", "FRA", "LUX", "NLD"],
+}
 
 
 def basic_output(
@@ -190,11 +207,26 @@ def basic_output(
     conc_outs = make_concentration_outputs(inv_out)
     flux_outs = make_flux_outputs(inv_out)
 
-    country_traces = make_country_traces(inv_out, species=species, country_file=country_file, domain=domain)
+    country_traces = make_country_traces(
+        inv_out,
+        species=species,
+        country_file=country_file,
+        domain=domain,
+        country_code="alpha3",
+        country_regions=paris_regions_dict,
+    )
     country_outs = calculate_stats(country_traces)
 
     model_data = inv_out.get_model_data(var_names=["hx", "hbc", "min_error"]).rename(
         {"hx": "Hx", "hbc": "Hbc", "min_error": "min_model_error"}
     )
 
-    return xr.merge([obs_and_errs, conc_outs, flux_outs, country_outs, model_data])
+    result = xr.merge([obs_and_errs, conc_outs, flux_outs, country_outs, model_data, inv_out.get_flat_basis()])
+
+    for dv in result.data_vars:
+        for k, v in result[dv].attrs.items():
+            result[dv].attrs[k] = v.replace("_", " ")
+
+    result.attrs["description"] = "RHIME inversion outputs."
+
+    return result

@@ -161,6 +161,41 @@ class InversionOutput:
 
             trace_ds = trace_ds[data_vars]
 
+        # add attributes for predictive traces (usually these are obs traces)
+        for dv in trace_ds.data_vars:
+            if str(dv).endswith("prior_predictive"):
+                trace_ds[dv].attrs["units"] = self.obs.attrs["units"]
+                trace_ds[dv].attrs["long_name"] = "prior_predictive_" + self.obs.attrs["long_name"]
+            elif str(dv).endswith("posterior_predictive"):
+                trace_ds[dv].attrs["units"] = self.obs.attrs["units"]
+                trace_ds[dv].attrs["long_name"] = "posterior_predictive_" + self.obs.attrs["long_name"]
+            elif str(dv).startswith("mu_bc"):
+                suffix = str(dv).removeprefix("mu_bc_")
+                trace_ds[dv].attrs["units"] = self.obs.attrs["units"]
+                trace_ds[dv].attrs["long_name"] = suffix + "_modelled_baseline"
+            elif str(dv).endswith("prior"):
+                prefix = str(dv).removesuffix("_prior")
+                if prefix == "x":
+                    name = "flux_scaling_factor"
+                elif "sig" in prefix:
+                    name = "pollution_event_scaling_factor"
+                elif prefix == "bc":
+                    name = "boundary_conditions_scaling_factor"
+                else:
+                    name = str(dv)
+                trace_ds[dv].attrs["long_name"] = f"prior_trace_of_{name}"
+            elif str(dv).endswith("posterior"):
+                prefix = str(dv).removesuffix("_posterior")
+                if prefix == "x":
+                    name = "flux_scaling_factor"
+                elif "sig" in prefix:
+                    name = "pollution_event_scaling_factor"
+                elif prefix == "bc":
+                    name = "boundary_conditions_scaling_factor"
+                else:
+                    name = str(dv)
+                trace_ds[dv].attrs["long_name"] = f"posterior_trace_of_{name}"
+
         return trace_ds
 
     def get_model_data(self, unstack_nmeasure: bool = True, var_names: Optional[Union[str, list[str]]] = None
@@ -199,15 +234,15 @@ class InversionOutput:
     def start_time(self) -> pd.Timestamp:
         """Return start date of inversion."""
         if self.start_date is not None:
-            return pd.Timestamp(self.start_date)
-        return pd.Timestamp(self.times.min().values)  # type: ignore
+            return pd.to_datetime(self.start_date)
+        return pd.to_datetime(self.times.min().values[0])
 
     @property
     def end_time(self) -> pd.Timestamp:
         """Return end date of inversion."""
         if self.end_date is not None:
-            return pd.Timestamp(self.end_date)
-        return pd.Timestamp(self.times.min().values)  # type: ignore
+            return pd.to_datetime(self.end_date)
+        return pd.to_datetime(self.times.max().values[0])
 
     @property
     def period_midpoint(self) -> pd.Timestamp:
@@ -284,6 +319,9 @@ class InversionOutput:
         if take_mean:
             result = result.mean("draw")
 
+        result.attrs["units"] = self.obs.attrs["units"]
+        result.attrs["long_name"] = "total model-data mismatch error"
+
         return result.rename("total_error")
 
     def get_model_err(self, unstack_nmeasure: bool = True) -> xr.DataArray:
@@ -295,9 +333,18 @@ class InversionOutput:
         total_obs_err = self.get_obs_err(unstack_nmeasure=unstack_nmeasure)
 
         result = np.sqrt(np.maximum(total_err**2 - total_obs_err**2, 0)).mean("draw")  # type: ignore
-
+        result.attrs["units"] = self.obs.attrs["units"]
+        result.attrs["long_name"] = "inferred model error"
         return result.rename("model_error")
 
+    def get_flat_basis(self) -> xr.DataArray:
+        """Return 2D DataArray encoding basis regions."""
+        if len(self.basis.dims) == 2:
+            return self.basis
+
+        region_dim = next(str(dim) for dim in self.basis.dims if dim not in ["lat", "lon", "latitude", "longitude"])
+
+        return (self.basis * self.basis[region_dim]).sum(region_dim).as_numpy().rename("basis")
 
 
 def make_inv_out(
@@ -334,11 +381,20 @@ def make_inv_out(
     except AttributeError:
         flux = next(iter(fp_data[".flux"].values())).data
 
+    # TODO: this only works if there is one flux used (or if multiple, but ModelScenario stacks them)
     if isinstance(flux, xr.Dataset):
         if "flux" in flux:
             flux = flux.flux
         else:
             flux = flux[flux.data_vars[0]]
+
+    # add attributes
+    scenario = scenarios[0]
+    y_obs.attrs = scenario.mf.attrs
+    times.attrs = scenario.time.attrs
+    y_error.attrs = scenario.mf_error.attrs
+    y_error_variability.attrs = scenario.mf_variability.attrs
+    y_error_repeatability.attrs = scenario.mf_repeatability.attrs
 
     return InversionOutput(
         obs=y_obs,

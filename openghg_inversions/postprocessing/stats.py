@@ -6,9 +6,15 @@ import numpy as np
 import scipy
 import xarray as xr
 
-from openghg_inversions.postprocessing.utils import add_suffix, get_parameters
+from openghg_inversions.postprocessing.utils import add_suffix, get_parameters, update_attrs
 
-StatsFunction = namedtuple("StatsFunction", ["func", "params"])
+StatsFunction = namedtuple("StatsFunction", ["name", "func", "params"])
+"""Tuple holding a stats function and the parameters it accepts.
+
+Storing the parameters the stats function accepts helps with passing
+optional arguments to the stats functions without having to specify
+extra parameters for each stats function separately.
+"""
 
 # this dictionary will be populated by using the decorator `register_stat`
 stats_functions: dict[str, StatsFunction] = {}
@@ -23,19 +29,21 @@ def register_stat(stat: Callable) -> Callable:
     Returns:
         stat, the input function (no modifications made)
     """
-    stats_functions[stat.__name__] = StatsFunction(stat, get_parameters(stat))
+    stats_functions[stat.__name__] = StatsFunction(stat.__name__, stat, get_parameters(stat))
     return stat
 
 
 @register_stat
 @add_suffix("quantile")
+@update_attrs("quantile_of")
 def quantiles(ds: xr.Dataset, quantiles: Sequence[float] = [0.159, 0.841], sample_dim: str = "draw"):
     return ds.quantile(q=quantiles, dim=sample_dim)
 
 
 @register_stat
 @add_suffix("mode")
-def mode(data, sample_dim="draw", thin: int = 1):
+@update_attrs("mode_of")
+def mode(ds: xr.Dataset, sample_dim="draw", thin: int = 1):
     """Approximate the mode by the midpoint of the shorted interval containing k samples.
 
     The slowest step is sorting. Still, this is over 30x faster than computing the KDE.
@@ -52,19 +60,20 @@ def mode(data, sample_dim="draw", thin: int = 1):
         return mid.squeeze(axis=-1)
 
     if thin > 1:
-        data = data.isel({sample_dim: slice(None, None, int(thin))})
-        k = int((data.sizes[sample_dim] // thin) ** 0.8)  # k = (# draws)^{4/5}
+        ds = ds.isel({sample_dim: slice(None, None, int(thin))})
+        k = int((ds.sizes[sample_dim] // thin) ** 0.8)  # k = (# draws)^{4/5}
     else:
-        k = int(data.sizes[sample_dim] ** 0.8)  # k = (# draws)^{4/5}
+        k = int(ds.sizes[sample_dim] ** 0.8)  # k = (# draws)^{4/5}
 
-    return xr.apply_ufunc(mode_of_arr, data, input_core_dims=[[sample_dim]], kwargs={"k": k})
+    return xr.apply_ufunc(mode_of_arr, ds, input_core_dims=[[sample_dim]], kwargs={"k": k})
 
 
 @register_stat
 @add_suffix("mode")
+@update_attrs("mode_of")
 def mode_kde(
-    da: xr.DataArray, sample_dim="draw", chunk_dim: str | None = None, chunk_size: int = 10
-) -> xr.DataArray:
+    ds: xr.Dataset, sample_dim="draw", chunk_dim: str | None = None, chunk_size: int = 10
+) -> xr.Dataset:
     """Calculate the (KDE smoothed) mode of a data array containing MCMC
     samples.
 
@@ -90,49 +99,53 @@ def mode_kde(
     if chunk_dim is not None:
         return xr.apply_ufunc(
             func,
-            da.dropna(dim=sample_dim).chunk({chunk_dim: chunk_size}),
+            ds.dropna(dim=sample_dim).chunk({chunk_dim: chunk_size}),
             input_core_dims=[[sample_dim]],
             dask="parallelized",
         )
-    return xr.apply_ufunc(func, da, input_core_dims=[[sample_dim]], dask="parallelized")
+    return xr.apply_ufunc(func, ds, input_core_dims=[[sample_dim]], dask="parallelized")
 
 
 @register_stat
-def hdi(data, hdi_prob: float | Iterable[float] = 0.68, sample_dim: str = "draw"):
+def hdi(ds: xr.Dataset, hdi_prob: float | Iterable[float] = 0.68, sample_dim: str = "draw"):
     # handle case of multiple hdi_probs
     if isinstance(hdi_prob, Iterable):
-        return xr.merge([hdi(data, hdi_prob=prob, sample_dim=sample_dim) for prob in hdi_prob])
+        return xr.merge([hdi(ds, hdi_prob=prob, sample_dim=sample_dim) for prob in hdi_prob])
 
     # wrap here to get hdi prob in suffix
     @add_suffix(f"hdi_{int(100 * hdi_prob)}")
+    @update_attrs(f"hdi_{int(100 * hdi_prob)}_of")
     def calc(data, hdi_prob):
         return az.hdi(data, hdi_prob=hdi_prob)
 
-    if not "chain" in data.dims:
-        data = data.expand_dims({"chain": [0]})
+    if not "chain" in ds.dims:
+        ds = ds.expand_dims({"chain": [0]})
 
     if sample_dim != "draw":
-        data = data.rename({sample_dim: "draw"})
+        ds = ds.rename({sample_dim: "draw"})
 
-    return calc(data, hdi_prob)
+    return calc(ds, hdi_prob)
 
 
 @register_stat
 @add_suffix("stdev")
-def stdev(data, sample_dim="draw"):
-    return data.std(dim=sample_dim)
+@update_attrs("standard_deviation_of")
+def stdev(ds: xr.Dataset, sample_dim="draw"):
+    return ds.std(dim=sample_dim)
 
 
 @register_stat
 @add_suffix("mean")
-def mean(data, sample_dim="draw"):
-    return data.mean(dim=sample_dim)
+@update_attrs("mean_of")
+def mean(ds: xr.Dataset, sample_dim="draw"):
+    return ds.mean(dim=sample_dim)
 
 
 @register_stat
 @add_suffix("median")
-def median(data, sample_dim="draw"):
-    return data.median(dim=sample_dim)
+@update_attrs("median_of")
+def median(ds: xr.Dataset, sample_dim="draw"):
+    return ds.median(dim=sample_dim)
 
 
 def calculate_stats(ds: xr.Dataset, stats: list[str] = ["mean", "quantiles"], **kwargs) -> xr.Dataset:

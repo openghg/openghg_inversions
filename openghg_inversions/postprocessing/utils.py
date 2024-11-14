@@ -49,6 +49,40 @@ def add_suffix(suffix: str):
     return decorate
 
 
+def update_attrs(prefix: str):
+    """Decorator to copy attributes and add prefix to long name.
+
+    Note: this should come before @add_suffix, so that the data variable names in the input
+    and output match.
+    """
+
+    def decorate(func):
+        @wraps(func)
+        def call(*args, **kwargs):
+            try:
+                data = next(arg for arg in args if isinstance(arg, xr.Dataset))
+            except StopIteration:
+                try:
+                    data = next(arg for arg in kwargs.values() if isinstance(arg, xr.Dataset))
+                except StopIteration:
+                    raise ValueError("`update_attrs` can only decorate functions that accept and return an xr.Dataset.")
+
+            result = func(*args, **kwargs)
+
+            for dv in data.data_vars:
+                if dv in result:
+                    result[dv].attrs = data[dv].attrs
+
+                    if "long_name" in result[dv].attrs:
+                        result[dv].attrs["long_name"] = prefix + "_" + result[dv].attrs["long_name"]
+
+            return result
+
+        return call
+
+    return decorate
+
+
 def make_replace_names_dict(names: list[str], old: str, new: str) -> dict[str, str]:
     return {name: name.replace(old, new) for name in names}
 
