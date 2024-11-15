@@ -48,7 +48,11 @@ def make_country_traces(
 
 
 def make_flux_outputs(
-    inv_out: InversionOutput, stats: list[str] | None = None, stats_args: dict | None = None
+    inv_out: InversionOutput,
+    stats: list[str] | None = None,
+    stats_args: dict | None = None,
+    include_scale_factors: bool = True,
+    report_flux_on_inversion_grid: bool = True,
 ):
     """Return dataset of stats for fluxes and scaling factors."""
 
@@ -63,7 +67,11 @@ def make_flux_outputs(
     stats_args["chunk_dim"] = "nx"
     stats_ds = calculate_stats(trace, **stats_args)
 
-    flux_stats = sparse_xr_dot((inv_out.flux * inv_out.basis), stats_ds)
+    if report_flux_on_inversion_grid:
+        agg_flux = ((inv_out.basis * inv_out.flux).sum(["lat", "lon"]) / inv_out.basis.sum(["lat", "lon"])).fillna(0.0)
+        flux_stats = sparse_xr_dot(inv_out.basis, agg_flux * stats_ds)
+    else:
+        flux_stats = sparse_xr_dot((inv_out.flux * inv_out.basis), stats_ds)
 
     for dv in flux_stats.data_vars:
         if dv in stats_ds.data_vars:
@@ -75,18 +83,21 @@ def make_flux_outputs(
 
     flux_stats = rename_by_replacement(flux_stats, "x", "flux")
 
-    scale_factor_stats = sparse_xr_dot(inv_out.basis, stats_ds)
+    if include_scale_factors:
+        scale_factor_stats = sparse_xr_dot(inv_out.basis, stats_ds)
 
-    for dv in scale_factor_stats.data_vars:
-        if dv in stats_ds.data_vars:
-            scale_factor_stats[dv].attrs = stats_ds[dv].attrs
-            scale_factor_stats[dv].attrs["long_name"] = (
-                scale_factor_stats[dv].attrs["long_name"].replace("trace_of_", "")
-            )
+        for dv in scale_factor_stats.data_vars:
+            if dv in stats_ds.data_vars:
+                scale_factor_stats[dv].attrs = stats_ds[dv].attrs
+                scale_factor_stats[dv].attrs["long_name"] = (
+                    scale_factor_stats[dv].attrs["long_name"].replace("trace_of_", "")
+                )
 
-    scale_factor_stats = rename_by_replacement(scale_factor_stats, "x", "scaling")
+        scale_factor_stats = rename_by_replacement(scale_factor_stats, "x", "scaling")
 
-    return xr.merge([flux_stats, scale_factor_stats])
+        flux_stats =  xr.merge([flux_stats, scale_factor_stats])
+
+    return flux_stats
 
 
 def flatten_post_prior(ds: xr.Dataset) -> xr.Dataset:
@@ -169,6 +180,37 @@ def make_concentration_outputs(
     return conc_stats
 
 
+def make_country_outputs(
+    inv_out: InversionOutput,
+    country_file: str | Path | None = None,
+    country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
+    stats: list[str] | None = None,
+    stats_args: dict | None = None,
+):
+    if country_regions == "paris":
+        country_regions = paris_regions_dict
+    elif isinstance(country_regions, str):
+        country_regions = Path(country_regions)
+
+    country_traces = make_country_traces(
+        inv_out,
+        species=inv_out.species,
+        country_file=country_file,
+        domain=inv_out.domain,
+        country_code="alpha3",
+        country_regions=country_regions,
+    )
+
+    if stats_args is None:
+        stats_args = {}
+    if stats is not None:
+        stats_args["stats"] = stats
+
+    country_stats = calculate_stats(country_traces)
+
+    return country_stats
+
+
 def get_obs_and_errors(inv_out: InversionOutput) -> xr.Dataset:
     # TODO: some of these variables could just be stored in a dataset in InversionOutput,
     # rather than in separate data arrays
@@ -217,31 +259,21 @@ paris_regions_dict = {
 
 def basic_output(
     inv_out: InversionOutput,
-    species: str,
     country_file: str | Path | None = None,
-    domain: str | None = None,
+    country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
 ) -> xr.Dataset:
     obs_and_errs = get_obs_and_errors(inv_out)
     conc_outs = make_concentration_outputs(inv_out, stats=stats, stats_args=stats_args)
     flux_outs = make_flux_outputs(inv_out, stats=stats, stats_args=stats_args)
-
-    country_traces = make_country_traces(
+    country_outs = make_country_outputs(
         inv_out,
-        species=species,
         country_file=country_file,
-        domain=domain,
-        country_code="alpha3",
-        country_regions=paris_regions_dict,
+        country_regions=country_regions,
+        stats=stats,
+        stats_args=stats_args,
     )
-
-    if stats_args is None:
-        stats_args = {}
-    if stats is not None:
-        stats_args["stats"] = stats
-
-    country_outs = calculate_stats(country_traces)
 
     model_data = inv_out.get_model_data(var_names=["hx", "hbc", "min_error"]).rename(
         {"hx": "Hx", "hbc": "Hbc", "min_error": "min_model_error"}

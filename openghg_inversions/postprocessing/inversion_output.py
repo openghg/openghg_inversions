@@ -10,7 +10,9 @@ import xarray as xr
 from openghg_inversions.array_ops import get_xr_dummies, align_sparse_lat_lon
 
 
-def convert_idata_to_dataset(idata: az.InferenceData, group_filters = ["prior", "posterior"], add_suffix=True) -> xr.Dataset:
+def convert_idata_to_dataset(
+    idata: az.InferenceData, group_filters=["prior", "posterior"], add_suffix=True
+) -> xr.Dataset:
     """Merge prior, prior predictive, posterior, and posterior predictive samples into a single
     xr.Dataset.
     """
@@ -95,8 +97,10 @@ class InversionOutput:
     site_indicators: xr.DataArray
     site_names: xr.DataArray
     times: xr.DataArray
-    start_date: str | None = None
-    end_date: str | None = None
+    start_date: str
+    end_date: str
+    species: str
+    domain: str
 
     def __post_init__(self) -> None:
         """Check that trace has posterior traces, and fix flux time values."""
@@ -147,7 +151,9 @@ class InversionOutput:
         trace_ds = convert_idata_to_dataset(self.trace)
 
         if unstack_nmeasure:
-            trace_ds = nmeasure_to_site_time(trace_ds, self.site_indicators, self.site_names, self.times).unstack("nmeasure")
+            trace_ds = nmeasure_to_site_time(
+                trace_ds, self.site_indicators, self.site_names, self.times
+            ).unstack("nmeasure")
 
         if var_names is not None:
             if isinstance(var_names, str):
@@ -198,7 +204,8 @@ class InversionOutput:
 
         return trace_ds
 
-    def get_model_data(self, unstack_nmeasure: bool = True, var_names: Optional[Union[str, list[str]]] = None
+    def get_model_data(
+        self, unstack_nmeasure: bool = True, var_names: Optional[Union[str, list[str]]] = None
     ) -> xr.Dataset:
         """Return an xarray Dataset containing the data input to the model.
 
@@ -214,7 +221,9 @@ class InversionOutput:
         trace_ds = convert_idata_to_dataset(self.trace, group_filters=["data"], add_suffix=False)
 
         if unstack_nmeasure:
-            trace_ds = nmeasure_to_site_time(trace_ds, self.site_indicators, self.site_names, self.times).unstack("nmeasure")
+            trace_ds = nmeasure_to_site_time(
+                trace_ds, self.site_indicators, self.site_names, self.times
+            ).unstack("nmeasure")
 
         if var_names is not None:
             if isinstance(var_names, str):
@@ -314,7 +323,9 @@ class InversionOutput:
             take_mean: if True, take mean over trace of error term
 
         """
-        result = self.get_trace_dataset(var_names="epsilon", unstack_nmeasure=unstack_nmeasure).epsilon_posterior
+        result = self.get_trace_dataset(
+            var_names="epsilon", unstack_nmeasure=unstack_nmeasure
+        ).epsilon_posterior
 
         if take_mean:
             result = result.mean("draw")
@@ -342,7 +353,9 @@ class InversionOutput:
         if len(self.basis.dims) == 2:
             return self.basis
 
-        region_dim = next(str(dim) for dim in self.basis.dims if dim not in ["lat", "lon", "latitude", "longitude"])
+        region_dim = next(
+            str(dim) for dim in self.basis.dims if dim not in ["lat", "lon", "latitude", "longitude"]
+        )
 
         return (self.basis * self.basis[region_dim]).sum(region_dim).as_numpy().rename("basis")
 
@@ -357,17 +370,27 @@ def make_inv_out(
     site_indicator: np.ndarray,
     site_names: np.ndarray | list[str],  # could be a list?
     mcmc_results: dict,
-    start_date: str | None = None,
-    end_date: str | None = None,
+    start_date: str,
+    end_date: str,
+    species: str,
+    domain: str,
 ) -> InversionOutput:
     nmeasure = np.arange(len(Y))
     y_obs = xr.DataArray(Y, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs")
     times = xr.DataArray(Ytime, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="times")
     y_error = xr.DataArray(error, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror")
-    y_error_repeatability = xr.DataArray(obs_repeatability, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror_repeatability")
-    y_error_variability = xr.DataArray(obs_variability, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror_variability")
-    site_indicator_da = xr.DataArray(site_indicator, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="site_indicator")
-    site_names_da = xr.DataArray(site_names, dims=["nsite"], coords={"nsite": np.arange(len(site_names))}, name="site_names")
+    y_error_repeatability = xr.DataArray(
+        obs_repeatability, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror_repeatability"
+    )
+    y_error_variability = xr.DataArray(
+        obs_variability, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror_variability"
+    )
+    site_indicator_da = xr.DataArray(
+        site_indicator, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="site_indicator"
+    )
+    site_names_da = xr.DataArray(
+        site_names, dims=["nsite"], coords={"nsite": np.arange(len(site_names))}, name="site_names"
+    )
 
     _, nx = mcmc_results["xouts"].shape
     nx = np.arange(nx)
@@ -410,4 +433,6 @@ def make_inv_out(
         times=times,
         start_date=start_date,
         end_date=end_date,
+        species=species,
+        domain=domain,
     )

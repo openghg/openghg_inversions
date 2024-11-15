@@ -6,7 +6,13 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.postprocessing.make_outputs import get_obs_and_errors, make_concentration_outputs
+from openghg_inversions.postprocessing.make_outputs import (
+    get_obs_and_errors,
+    make_concentration_outputs,
+    make_flux_outputs,
+    make_country_outputs,
+)
+from openghg_inversions.postprocessing.stats import stats_functions
 
 
 # path to `paris_formatting` submodule
@@ -100,10 +106,7 @@ def convert_time_to_unix_epoch(x: xr.Dataset, units: str = "1s") -> xr.Dataset:
     """Convert `time` coordinate of xarray Dataset or DataArray to number of "units" since
     1 Jan 1970 (the "UNIX epoch").
     """
-    if units == "1s":
-        time_converted = (pd.DatetimeIndex(x.time) - pd.Timestamp("1970-01-01")) // pd.Timedelta(units) / (24 * 3600)
-    else:
-        time_converted = (pd.DatetimeIndex(x.time) - pd.Timestamp("1970-01-01")) // pd.Timedelta(units)
+    time_converted = (pd.DatetimeIndex(x.time) - pd.Timestamp("1970-01-01")) / pd.Timedelta(units)
 
     return x.assign_coords(time=time_converted)
 
@@ -118,6 +121,10 @@ def shift_measurement_time_to_midpoint(ds: xr.Dataset, period: str = "4h") -> xr
 def paris_concentration_outputs(
     inv_out: InversionOutput, report_mode: bool = False, obs_avg_period: str = "4h"
 ) -> xr.Dataset:
+    """Create PARIS concentration outputs.
+
+    TODO: add offset
+    """
     if report_mode:
         stats = ["kde_mode", "quantiles"]
     else:
@@ -125,16 +132,23 @@ def paris_concentration_outputs(
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
 
-    obs_and_errs = get_obs_and_errors(inv_out).rename({
-        "y_obs": "Yobs",
-        "y_obs_repeatability": "uYobs_repeatability",
-        "y_obs_variability": "uYobs_variability",
-        "model_error": "uYmod",
-        "total_error": "uYtotal",
-    }).drop_vars("y_obs_error")
+    obs_and_errs = (
+        get_obs_and_errors(inv_out)
+        .rename(
+            {
+                "y_obs": "Yobs",
+                "y_obs_repeatability": "uYobs_repeatability",
+                "y_obs_variability": "uYobs_variability",
+                "model_error": "uYmod",
+                "total_error": "uYtotal",
+            }
+        )
+        .drop_vars("y_obs_error")
+    )
 
     conc_outputs = make_concentration_outputs(inv_out, stats, stats_args)
 
+    # rename to match PARIS concentrations template
     def renamer(name: str) -> str:
         when = "apost" if "posterior" in name else "apriori"
         suffix = "BC" if "bc" in name else ""
@@ -147,6 +161,7 @@ def paris_concentration_outputs(
 
     conc_outputs = conc_outputs.rename(rename_dict)
 
+    # We produce these, but they aren't in the template
     if "qYapostBC" in conc_outputs.data_vars:
         conc_outputs = conc_outputs.drop_vars(["qYapostBC", "qYaprioriBC"])
 
@@ -156,17 +171,132 @@ def paris_concentration_outputs(
 
     common_rename_dict = {"site": "nsite"}
 
-    result = (xr.merge([obs_and_errs, conc_outputs])
-              .pipe(shift_measurement_time_to_midpoint, obs_avg_period)
-              .pipe(convert_time_to_unix_epoch, "1s")
-              .rename(common_rename_dict)
-              .pipe(add_variable_attrs, conc_attrs, units)
-              .transpose("time", "percentile", "nsite")
-              .rename_vars(nsite="sitenames")
-              )
+    result = (
+        xr.merge([obs_and_errs, conc_outputs])
+        .pipe(shift_measurement_time_to_midpoint, obs_avg_period)
+        .pipe(convert_time_to_unix_epoch, "1s")
+        .rename(common_rename_dict)
+        .pipe(add_variable_attrs, conc_attrs, units)
+        .transpose("time", "percentile", "nsite")
+        .rename_vars(nsite="sitenames")
+    )
 
     result.sitenames.attrs["long_name"] = "identifier of site"
 
     result.attrs = make_global_attrs("conc")
+
+    return result
+
+
+def paris_flux_output(
+    inv_out: InversionOutput,
+    country_file: str | Path | None = None,
+    time_point: Literal["start", "midpoint"] = "midpoint",
+    report_mode: bool = False,
+    inversion_grid: bool = False,
+    flux_frequency: Literal["monthly", "yearly"] | str  = "yearly",
+) -> xr.Dataset:
+    if report_mode:
+        stats = ["kde_mode", "quantiles"]
+    else:
+        stats = ["mean", "quantiles"]
+
+    stats_args = {"quantiles__quantiles": [0.159, 0.841]}
+
+    flux_outs = make_flux_outputs(
+        inv_out,
+        stats=stats,
+        stats_args=stats_args,
+        report_flux_on_inversion_grid=False,
+        include_scale_factors=False,
+    )
+
+    emissions_attrs = get_data_var_attrs(flux_template_path, inv_out.species)
+
+    country_outs = make_country_outputs(
+        inv_out,
+        country_file=country_file,
+        country_regions="paris",
+        stats=stats,
+        stats_args=stats_args,
+    )
+    country_outs = country_outs * 1e-3  # convert g/yr to kg/yr
+
+    # rename to match PARIS flux template
+    def renamer(name: str) -> str:
+        """Rename variables to match PARIS flux template.
+
+        NOTE: this won't work correctly if HDI is used instead of quantiles.
+        """
+        if "country" in name:
+            name = name.replace("country", "country_flux_total")
+        elif "flux" in name:
+            name = name.replace("flux", "flux_total")
+
+        if "quantile" in name:
+            name = "percentile_" + name
+
+        for stats_func_name in stats_functions:
+            if name.endswith(f"_{stats_func_name}"):
+                name = name.removesuffix(f"_{stats_func_name}")
+
+        return name
+
+    flux_rename_dict = {str(dv): renamer(str(dv)) for dv in flux_outs.data_vars}
+    country_rename_dict = {str(dv): renamer(str(dv)) for dv in country_outs.data_vars}
+    rename_dict = {**flux_rename_dict, **country_rename_dict}
+
+    if time_point == "midpoint":
+        if flux_frequency == "monthly":
+            offset = pd.DateOffset(weeks=2)
+        elif flux_frequency == "yearly":
+            offset = pd.DateOffset(months=6)
+        else:
+            offset = pd.to_timedelta(flux_frequency) / 2
+
+        time_func = lambda ds: ds.assign_coords(time=(pd.to_datetime(ds.time.values) + offset))
+    else:
+        time_func = lambda ds: ds
+
+    result = (
+        xr.merge([flux_outs, country_outs])
+        .rename(flux_time="time")
+        .pipe(time_func)
+        .pipe(convert_time_to_unix_epoch, "1d")
+        .rename(rename_dict)
+        .pipe(add_variable_attrs, emissions_attrs)
+    )
+
+    if inversion_grid:
+        inversion_grid_flux_rename_dict = {v: f"{v}_inversion_grid" for v in flux_rename_dict.values()}
+        inversion_grid_flux_outs = (
+            make_flux_outputs(
+                inv_out,
+                stats=stats,
+                stats_args=stats_args,
+                report_flux_on_inversion_grid=True,
+                include_scale_factors=False,
+            )
+            .rename(flux_time="time")
+            .pipe(time_func)
+            .pipe(convert_time_to_unix_epoch, "1d")
+            .rename(flux_rename_dict)
+            .pipe(add_variable_attrs, emissions_attrs)
+            .rename(inversion_grid_flux_rename_dict)
+        )
+        result = result.merge(inversion_grid_flux_outs)
+
+    dim_rename_dict = {"quantile": "percentile"}
+
+    if "lat" in result.dims:
+        dim_rename_dict["lat"] = "latitude"
+    if "lon" in result.dims:
+        dim_rename_dict["lon"] = "longitude"
+
+    result = result.rename(dim_rename_dict).transpose(
+        "time", "latitude", "longitude", "percentile", "country"
+    )
+
+    result.attrs = make_global_attrs("flux")
 
     return result

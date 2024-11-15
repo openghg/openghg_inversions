@@ -564,6 +564,8 @@ def fixedbasisMCMC(
                 mcmc_results=mcmc_results,
                 start_date=start_date,
                 end_date=end_date,
+                species=species,
+                domain=domain,
             )
 
             outputs = basic_output(inv_out, species=species, country_file=country_file, domain=domain)
