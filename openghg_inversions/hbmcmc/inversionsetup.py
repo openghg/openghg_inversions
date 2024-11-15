@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+from scipy.optimize import fsolve
 
 
 def monthly_bcs(start_date: str, end_date: str, site: str, fp_data: dict) -> np.ndarray:
@@ -258,8 +259,9 @@ def create_h_sensitivity(start_date : str,
 
 def xprior_covariance(nperiod : int,
                       nbasis : int,
-                      sigma_period: float=1.0,
-                      sigma_space: float=1.0,
+                      sigma : float | None = None,
+                      sigma_period: float | None = None,
+                      sigma_space: float | None = None,
                       x_correlation : float | None = None,
                       ) -> np.ndarray:
     """
@@ -274,10 +276,14 @@ def xprior_covariance(nperiod : int,
             is divided into 4 (nearly) equal time periods.
         nbasis (int):
             The number of basis functions in the inversion.
-        sigma_time (float):
-            The standard deviation of the prior distribution of each temporal parameter.
+        sigma (float):
+            The prior standard deviation. Only used if assumption that sigma_period = sigma_space
+        sigma_period (float):
+            The standard deviation of the prior distribution of each temporal parameter. Only necessary if
+            difference between spatial and temporal prior variance.
         sigma_space (float):
-            The standard deviation of the prior distribution of each spatial parameter.
+            The standard deviation of the prior distribution of each spatial parameter. Only necessary if
+            difference between spatial and temporal prior variance.
         decay_tau (float):
             The time constant of the expontential decay of the temporal correlation.
 
@@ -286,11 +292,21 @@ def xprior_covariance(nperiod : int,
             Precision matrix to be inserted directly into pymc inversion.
     
     """
-
+    if sigma_period is None and sigma_space is None:
+        # square root of sigma sigma = sigma_period * sigma_space
+        sigma_period = sigma**0.5
+        sigma_space = sigma**0.5
+    elif sigma_period is None and sigma_space is not None or sigma_period is not None and sigma_space is None:
+        raise ValueError("Either both or neither sigma_period and sigma_space to be defined.")
+    elif sigma is None:
+        raise ValueError("Standard deviation of xprior undefined")
+    else:
+        pass
+             
     if x_correlation == 0 or x_correlation is None:
         
-        covariance_matrix = np.eye(int(nbasis*nperiod))
-        precision_matrix = np.eye(int(nbasis*nperiod))
+        covariance_matrix = np.eye(int(nbasis*nperiod)) * sigma**2
+        precision_matrix = np.eye(int(nbasis*nperiod)) / sigma**2
 
     else:
         
@@ -303,7 +319,7 @@ def xprior_covariance(nperiod : int,
                 
                 dt = range_time[i] - range_time[j]  # delta t for each time period
                 rho_time = np.exp(-dt/x_correlation)  # calculation of correlation coefficent
-                covariance_ij = cov_period[i, i] * cov_period[j, j] * rho_time  # calculation of correlation; cov(X, Y) = rho(X, Y) * var(X) * var(Y)
+                covariance_ij = rho_time * sigma_period**2   # calculation of correlation; cov(X, Y) = rho(X, Y) * stdev(X) * stdev(Y)
                 cov_period_offdiag.append(covariance_ij)  # append covaraiance to off diagonal array
 
         cov_period[np.tril_indices(n=nperiod, k=-1)] = cov_period_offdiag  # assign off-diagonal values to lower left corner of matrix
@@ -336,3 +352,90 @@ def covariance_extension(x_covariance: np.ndarray,
     cov_extended[nx:, nx:] = np.diag(bc_var)
 
     return cov_extended
+
+
+def multivariate_lognormal_transform(covariance_lognormal: np.ndarray,
+                                    mode_lognormal: float | None = None,
+                                    mean_lognormal: float | None = None,
+                                    norm_variance_guess: float = 1.0, 
+                                    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    
+    """Return the pymc `mu` and `covariance` parameters that give a multivariate normal distribution
+    corresponding to the lognormal distribution with mode/mean = mode/mean_lognormal and covariance matrix
+    = covariance_lognormal. One of mode_lognormal or mean_lognormal must be included. A multivariate lognormal 
+    distribution Y is defined such that Y = ln(X) where X ~ N(mu, covariance). We can say that Y ~ LN(mu_lognormal, 
+    covariance_lognormal). The parameter transform shown here is shown in detail by Žerovnik et al. (2013) 
+    http://dx.doi.org/10.1016/j.nima.2013.06.025
+
+    Args:
+        covariance_lognormal: desired covariance matrix of multivariate lognormal distribution
+        mode_lognormal: (optional) desired mode that will populate modes vector of multivariate lognormal distribution
+        mean_lognormal: (optional) desired mean that will populate means vector of multivariate lognormal distribution
+        norma_variance_guess: (optional) initial guess for the variance of the marginal distributions of the underlying
+        normal distribution.
+        
+    Returns:
+        tuple (mu, covariance, precision), where `pymc.MvNormal(mu, covariance/precision)` forms the underlying
+        normal distribution of the desired multivariate lognormal distribution.
+
+    Formulas for multivariate log normal mean and (co)variance:
+
+    mu_i = ln(mode_lognormal_i) + covariance_ii
+    mean_lognormal_i = exp(mu_i + 0.5 * covariance_ii)
+    covariance_lognormal_ii = var_lognormal_i = exp(2*mu_i + 2*covariance_ii) - exp(2*mu_i + covariance_ii)
+    covariance_lognormal_ij = (exp(covariance_ij) - 1) * mean_lognormal_i*mean_lognormal_j
+
+    Finding the roots of these non-linear equations gives the correct values for covariance_ii and covariance_ij
+    and thus allow us to construct the covariance matrix of the underlying normal distribution.
+
+    """
+    
+    if mode_lognormal is None and mean_lognormal is None:
+        raise ValueError("One of mode_lognormal or mean_lognormal must be defined")
+    elif mode_lognormal is not None and mean_lognormal is not None:
+        raise ValueError("Both mode_lognormal and mean_lognormal are defined. Only one is needed.")
+    elif mode_lognormal is not None:
+        dim = len(covariance_lognormal)
+    else:
+        dim = len(covariance_lognormal)
+    
+    def equations(vars): 
+        """
+        For brevity, the lognormal distribution represented by y and the underlying normal represented by x
+        """
+        var_y = covariance_lognormal[0,0]
+
+        if mode_lognormal is not None:
+            mode_y = mode_lognormal
+            var_x = vars[0]
+            mu_x = np.log(mode_y) + var_x
+        else:
+            mu_y = mean_lognormal
+            var_x = vars[0]
+            mu_x = np.log(mu_y) - 0.5*var_x
+                
+        return np.exp(2*mu_x + 2*var_x) - np.exp(2*mu_x + var_x) - var_y
+    
+    initial_guess = [norm_variance_guess]
+    
+    variance = fsolve(equations, initial_guess)
+
+    print(f"Variance values: {variance}")
+
+    covariance = np.diag(np.ones(dim)*variance)
+    if mode_lognormal is not None:
+        mean_normal = variance + np.log(mode_lognormal)
+        mean_lognormal = np.exp(mean_normal + 0.5*variance)
+    else:
+        mean_normal = np.log(mean_lognormal) - 0.5*variance
+    
+
+    idx = dim
+    for i in range(dim):
+        for j in range(i+1, dim):
+            covariance[i, j] = covariance[j, i] = np.log(1 + covariance_lognormal[i,j] / (mean_lognormal**2))
+            idx += 1
+
+    precision = np.linalg.inv(covariance)
+    
+    return mean_normal, covariance, precision

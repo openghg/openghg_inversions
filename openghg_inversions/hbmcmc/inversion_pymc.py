@@ -151,6 +151,8 @@ def inferpymc(
     offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
     add_offset: bool = False,
     verbose: bool = False,
+    multivariate_lognormal: bool = False,
+    mu_multivariate: np.ndarray | None = None,
     min_error: float | None = 0.0,
     use_bc: bool = True,
     reparameterise_log_normal: bool = False,
@@ -222,6 +224,11 @@ def inferpymc(
         Add an offset (intercept) to all sites but the first in the site list. Default False.
       verbose:
         When True, prints progress bar
+      multivariate_lognormal (bool):
+        When True, transforms samples from multivariate normal prior into multivariate lognormal prior
+      mu_multivariate:
+        The means vector of the multivariate distribution. If multivariate_lognormal = True, then this is the means vector of the multivaraite 
+        normal that defines the multivariate lognormal
       min_error:
         Minimum error to use during inversion. Only used if no_model_error is False.
       save_trace:
@@ -302,8 +309,13 @@ def inferpymc(
         step1_vars = []
 
         if x_freq is not None:
-            x = pm.MvNormal("x", mu=np.ones(nx), tau=xprior_precision)
-            step1_vars.append(x)
+            if multivariate_lognormal:
+                x0 = pm.MvNormal("x0", mu=mu_multivariate, tau=xprior_precision)
+                x = pm.Deterministic("x", pt.exp(x0))
+                step1_vars.append(x0)
+            else:
+                x = pm.MvNormal("x0", mu=mu_multivariate, tau=xprior_precision)
+                step1_vars.append(x)
         else:
             if reparameterise_log_normal and xprior["pdf"] == "lognormal":
                 x0 = pm.Normal("x0", 0, 1, dims="nx")
@@ -551,7 +563,7 @@ def inferpymc_postprocessouts(
     nbasis: int | None = None,
     nperiod: int = 1,
     x_freq: str | None = None,
-    x_correlation: float | None = None,
+    xprior_covariance: np.ndarray | None = None,
     bcprior: dict | None = None,
     YBCtrace: np.ndarray | None = None,
     bcouts: np.ndarray | None = None,
@@ -662,9 +674,9 @@ def inferpymc_postprocessouts(
         to estimate per calendar month; set to a number of days,
         as e.g. "30D" for 30 days; or set to None to estimate to have one
         scaling for the whole inversion period
-      x_correlation:
-        The exponential time constant representing the time at which the covariance 
-        between period paramters is equal to 1/e. Units reflect the period chosen in x_freq.
+      xprior_covariance:
+        Covariance matrix associated with multivariate prior distribution. If multivariate lognormal, the
+        matrix corresponds to the underlying Normal distribution from which MC samples were drawn.
       bcprior:
         Same as xrpior but for boundary conditions.
       YBCtrace:
@@ -805,15 +817,15 @@ def inferpymc_postprocessouts(
             scalemap_mu_single = np.zeros_like(bfds.values)
             scalemap_mode_single = np.zeros_like(bfds.values)
 
-            for basis in np.arange(nbasis):
-                indx = int(basis + period*nbasis)
-                scalemap_mu_single[bfds.values == (basis + 1)] = np.mean(xouts[:, indx])
+            for bf in np.arange(nbasis):
+                indx = int(bf + period*nbasis)
+                scalemap_mu_single[bfds.values == (bf + 1)] = np.mean(xouts[:, indx])
                 if np.nanmax(xouts[:, indx]) > np.nanmin(xouts[:, indx]):
                     xes = np.arange(np.nanmin(xouts[:, indx]), np.nanmax(xouts[:, indx]), 0.01)
                     kde = stats.gaussian_kde(xouts[:, indx]).evaluate(xes)
-                    scalemap_mode_single[bfds.values == (basis + 1)] = xes[kde.argmax()]
+                    scalemap_mode_single[bfds.values == (bf + 1)] = xes[kde.argmax()]
                 else:
-                    scalemap_mode_single[bfds.values == (basis + 1)] = np.mean(xouts[:, indx])
+                    scalemap_mode_single[bfds.values == (bf + 1)] = np.mean(xouts[:, indx])
 
             scalemap_mu.append(scalemap_mu_single)
             scalemap_mode.append(scalemap_mode_single)
@@ -918,7 +930,7 @@ def inferpymc_postprocessouts(
                 cntrytottrace = np.zeros(len(steps))
                 cntrytotprior = 0
                 for bf in range(int(np.max(bfarray)) + 1):
-                    indx = int(basis + period*nbasis)
+                    indx = int(bf + period*nbasis)
                     bothinds = np.logical_and(cntrygrid == ci, bfarray == bf)
                     cntrytottrace += (
                         np.sum(area[bothinds].ravel() * apriori_flux[bothinds].ravel() * 3600 * 24 * 365 * molarmass)
@@ -1095,6 +1107,15 @@ def inferpymc_postprocessouts(
                 "country68": (["countrynames", "nUI"], cntry68),
                 "country95": (["countrynames", "nUI"], cntry95),
                 "countryapriori": (["countrynames"], cntryprior),
+            }
+        )
+    
+    if xprior_covariance is not None:
+        coords["row_nums"] = (["row"], np.arange(nperiod*nbasis))
+        coords["col_nums"] = (["column"], np.arange(nperiod*nbasis))
+        data_vars.update(
+            {
+                "prior_covariance": (["row", "column"], xprior_covariance)
             }
         )
 

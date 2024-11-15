@@ -420,16 +420,25 @@ def fixedbasisMCMC(
                 Ytime = fp_data[site].time.values
                 if x_freq == "monthly":
                     Hx, nbasis, nperiod = setup.monthly_h(start_date, end_date, site, fp_data)
-                    x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis, x_correlation)
+                    x_covariance, x_precision = setup.xprior_covariance(nperiod=nperiod, 
+                                                                        nbasis=nbasis,
+                                                                        sigma=xprior["sigma"],
+                                                                        x_correlation=x_correlation)
                 elif isinstance(x_freq, str):
                     Hx, nbasis, nperiod = setup.create_h_sensitivity(start_date, end_date, site, fp_data, x_freq)
-                    x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis, x_correlation)
+                    x_covariance, x_precision = setup.xprior_covariance(nperiod=nperiod, 
+                                                                        nbasis=nbasis,
+                                                                        sigma=xprior["sigma"],
+                                                                        x_correlation=x_correlation)
                 elif x_freq is None:
                     Hx = fp_data[site].H.values
                     if analytical_inversion:
                         nbasis = Hx.shape[0]
                         nperiod = 1
-                        x_covariance, x_precision = setup.xprior_covariance(nperiod, nbasis, x_correlation)
+                        x_covariance, x_precision = setup.xprior_covariance(nperiod=nperiod, 
+                                                                            nbasis=nbasis,
+                                                                            sigma=xprior["sigma"],
+                                                                            x_correlation=x_correlation)
                 else:
                     raise ValueError(f"Inversion not setup for x_freq = {x_freq}")
             else:
@@ -480,13 +489,35 @@ def fixedbasisMCMC(
                 mu, sigma = mcmc.lognormal_mu_sigma(mean, stdev)
                 prior["mu"] = mu
                 prior["sigma"] = sigma
+                print(f"Prior Parameters: Mu={mu}, Variance={sigma**2}")
+
 
                 del prior["stdev"]
                 if "mean" in prior:
                     del prior["mean"]
 
-        update_log_normal_prior(xprior)
-        update_log_normal_prior(bcprior)
+        if x_correlation is None:
+            update_log_normal_prior(xprior)
+            update_log_normal_prior(bcprior)
+            multivariate_lognormal = False
+            mu_multivariate = None
+        elif xprior["pdf"].lower() == "lognormal":
+            multivariate_lognormal = True
+            if "mode" in xprior:
+                print(f"ln_covariance: {x_covariance} \nmode:", xprior["mode"])
+                mu_multivariate, x_covariance, x_precision = setup.multivariate_lognormal_transform(covariance_lognormal=x_covariance, 
+                                                                                       mode_lognormal=xprior["mode"],
+                                                                                       )
+            else:
+                mu_multivariate, x_covariance, x_precision = setup.multivariate_lognormal_transform(covariance_lognormal=x_covariance, 
+                                                                                       mean_lognormal=xprior["mu"],
+                                                                                       )
+            
+            print(f"Prior Parameters: Mu={mu_multivariate}, Variance={x_covariance[0,0]}")
+
+        else:
+            multivariate_lognormal = False
+            mu_multivariate = np.ones(nbasis*nperiod) * xprior["mu"]
 
         if analytical_inversion:
             if xprior["pdf"] == "normal":
@@ -516,6 +547,8 @@ def fixedbasisMCMC(
                 "offsetprior": offsetprior,
                 "add_offset": add_offset,
                 "verbose": verbose,
+                "multivariate_lognormal": multivariate_lognormal,
+                "mu_multivariate": mu_multivariate,
             }
 
         if use_bc is True:
@@ -575,13 +608,14 @@ def fixedbasisMCMC(
         # and delete a few we don't need
         post_process_args.update(inversion_args)
         if analytical_inversion is False:
+            del post_process_args["multivariate_lognormal"]
+            del post_process_args["mu_multivariate"]
             del post_process_args["nit"]
             del post_process_args["verbose"]
             # pass min model error to post-processing
             post_process_args["min_error"] = kwargs.get("min_error", 0.0)
 
         if x_freq is not None or analytical_inversion is True:
-            del post_process_args["xprior_covariance"]
             del post_process_args["xprior_precision"]
             post_process_args["nbasis"] = nbasis
             post_process_args["nperiod"] = nperiod
