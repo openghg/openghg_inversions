@@ -312,8 +312,8 @@ def make_paris_outputs(
 ) -> tuple[xr.Dataset, xr.Dataset]:
     # infer flux frequency
     # NOTE: this only works in certain cases
-    if "time_period" in inv_out.flux.data.attrs:
-        time_period = inv_out.flux.data.attrs["time_period"]
+    if "time_period" in inv_out.flux.attrs:
+        time_period = inv_out.flux.attrs["time_period"]
         if "year" in time_period:
             flux_frequency = "yearly"
         elif "month" in time_period:
@@ -323,8 +323,12 @@ def make_paris_outputs(
             flux_frequency = time_period
     else:
         # take most frequent gap between times
-        flux_frequency_delta = pd.Series(inv_out.flux.time.values).diff().mode()[0]
+        flux_frequency_delta = pd.Series(inv_out.flux.flux_time.values).diff().mode()[0]
         flux_frequency = pd.tseries.frequencies.to_offset(flux_frequency_delta).freqstr  # type: ignore
+
+        # "1 days" will be converted to "D" by the previous two lines, so we need to add a "1" in front
+        if not flux_frequency[0].isdigit():
+            flux_frequency = "1" + flux_frequency
 
     conc_outs = paris_concentration_outputs(inv_out, report_mode=report_mode, obs_avg_period=obs_avg_period)
     flux_outs = paris_flux_output(
