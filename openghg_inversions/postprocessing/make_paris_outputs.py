@@ -194,7 +194,7 @@ def paris_flux_output(
     time_point: Literal["start", "midpoint"] = "midpoint",
     report_mode: bool = False,
     inversion_grid: bool = False,
-    flux_frequency: Literal["monthly", "yearly"] | str  = "yearly",
+    flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
 ) -> xr.Dataset:
     if report_mode:
         stats = ["kde_mode", "quantiles"]
@@ -300,3 +300,40 @@ def paris_flux_output(
     result.attrs = make_global_attrs("flux")
 
     return result
+
+
+def make_paris_outputs(
+    inv_out: InversionOutput,
+    country_file: str | Path | None = None,
+    time_point: Literal["start", "midpoint"] = "midpoint",
+    report_mode: bool = False,
+    inversion_grid: bool = False,
+    obs_avg_period: str = "4h",
+) -> tuple[xr.Dataset, xr.Dataset]:
+    # infer flux frequency
+    # NOTE: this only works in certain cases
+    if "time_period" in inv_out.flux.data.attrs:
+        time_period = inv_out.flux.data.attrs["time_period"]
+        if "year" in time_period:
+            flux_frequency = "yearly"
+        elif "month" in time_period:
+            flux_frequency = "monthly"
+        else:
+            # hopefully this can be parsed by pd.to_timedelta
+            flux_frequency = time_period
+    else:
+        # take most frequent gap between times
+        flux_frequency_delta = pd.Series(inv_out.flux.time.values).diff().mode()[0]
+        flux_frequency = pd.tseries.frequencies.to_offset(flux_frequency_delta).freqstr  # type: ignore
+
+    conc_outs = paris_concentration_outputs(inv_out, report_mode=report_mode, obs_avg_period=obs_avg_period)
+    flux_outs = paris_flux_output(
+        inv_out,
+        report_mode=report_mode,
+        country_file=country_file,
+        inversion_grid=inversion_grid,
+        time_point=time_point,
+        flux_frequency=flux_frequency,
+    )
+
+    return flux_outs, conc_outs

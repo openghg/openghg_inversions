@@ -92,6 +92,8 @@ def fixedbasisMCMC(
     min_error_options: dict | None = None,
     return_inv_out: bool = False,  # for testing new postprocessing
     new_postprocessing: bool = False,  # for testing new postprocessing
+    paris_postprocessing: bool = False,
+    paris_postprocessing_kwargs: dict | None = None,
     **kwargs,
 ) -> xr.Dataset | dict:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference
@@ -545,6 +547,8 @@ def fixedbasisMCMC(
                 mcmc_results=mcmc_results,
                 start_date=start_date,
                 end_date=end_date,
+                species=species,
+                domain=domain,
             )
 
 
@@ -568,9 +572,42 @@ def fixedbasisMCMC(
                 domain=domain,
             )
 
-            outputs = basic_output(inv_out, species=species, country_file=country_file, domain=domain)
+            outputs = basic_output(inv_out, country_file=country_file)
             return outputs
 
+        if paris_postprocessing:
+            from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
+            from openghg_inversions.postprocessing.inversion_output import make_inv_out
+            from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
+
+            inv_out = make_inv_out(
+                fp_data=fp_data,
+                Y=Y,
+                Ytime=Ytime,
+                error=error,
+                obs_repeatability=obs_repeatability,
+                obs_variability=obs_variability,
+                site_indicator=siteindicator,
+                site_names=sites,
+                mcmc_results=mcmc_results,
+                start_date=start_date,
+                end_date=end_date,
+                species=species,
+                domain=domain,
+            )
+
+            obs_avg_period = averaging_period[0] or "1h"
+            paris_postprocessing_kwargs = paris_postprocessing_kwargs or {}
+            flux_outs, conc_outs = make_paris_outputs(inv_out, country_file=country_file, obs_avg_period=obs_avg_period, **paris_postprocessing_kwargs)
+
+            conc_output_filename = define_output_filename(outputpath, species, domain, outputname + "_conc", start_date, ext=".nc")
+            flux_output_filename = define_output_filename(outputpath, species, domain, outputname + "_flux", start_date, ext=".nc")
+            Path(outputpath).mkdir(parents=True, exist_ok=True)
+
+            conc_outs.to_netcdf(conc_output_filename, unlimited_dims=["time"], mode="w")
+            flux_outs.to_netcdf(flux_output_filename, unlimited_dims=["time"], mode="w")
+
+            return xr.merge([conc_outs, flux_outs.rename(time="flux_time")])
 
         # get trace and model: for future updates
         trace = mcmc_results.pop("trace")
