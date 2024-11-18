@@ -293,7 +293,7 @@ def inferpymc(
 
         if reparameterise_log_normal and xprior["pdf"] == "lognormal":
             x0 = pm.Normal("x0", 0, 1, dims="nx")
-            x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0))
+            x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0), dims="nx")
             step1_vars.append(x0)
         else:
             x = parse_prior("x", xprior, dims="nx")
@@ -302,7 +302,7 @@ def inferpymc(
         if use_bc:
             if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
                 bc0 = pm.Normal("bc0", 0, 1, dims="nbc")
-                bc = pm.Deterministic("bc", pt.exp(bcprior["mu"] + bcprior["sigma"] * bc0))
+                bc = pm.Deterministic("bc", pt.exp(bcprior["mu"] + bcprior["sigma"] * bc0), dims="nbc")
                 step1_vars.append(bc0)
             else:
                 bc = parse_prior("bc", bcprior, dims="nbc")

@@ -162,7 +162,7 @@ class InversionOutput:
             data_vars = []
             for dv in trace_ds.data_vars:
                 for name in var_names:
-                    if str(dv).startswith(name):
+                    if str(dv).startswith(f"{name}_"):
                         data_vars.append(dv)
 
             trace_ds = trace_ds[data_vars]
