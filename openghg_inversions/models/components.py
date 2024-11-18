@@ -9,6 +9,7 @@ import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.models.priors import parse_prior, PriorArgs
+from openghg_inversions.models.setup import sigma_freq_indicies
 
 
 class ModelComponent(ABC):
@@ -236,10 +237,11 @@ class RHIMELikelihood(ModelComponent):
         error: np.ndarray,
         sigma_prior: PriorArgs,
         site_indicator: np.ndarray,
-        sigma_freq_index: np.ndarray,
         min_error: np.ndarray | float = 0.0,
         pollution_events_from_obs: bool = True,
         no_model_error: bool = False,
+        sigma_freq: str | None = None,
+        y_time: np.ndarray | None = None,
         sigma_per_site: bool = True,
         sites: list[str] | None = None,
         name: str = "likelihood",
@@ -251,6 +253,13 @@ class RHIMELikelihood(ModelComponent):
         self.error = error
 
         self.sigma_prior = sigma_prior
+
+        if sigma_freq is not None:
+            if y_time is None:
+                raise ValueError("If `sigma_freq` is not None, then `y_time` must be provided.")
+            sigma_freq_index = sigma_freq_indicies(y_time, sigma_freq)
+        else:
+            sigma_freq_index = np.zeros_like(y_obs, dtype=int)
 
         self.site_indicator = site_indicator
         self.sigma_freq_index = sigma_freq_index

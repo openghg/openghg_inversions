@@ -1,4 +1,5 @@
 import numpy as np
+import pymc as pm
 import pytest
 
 from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
@@ -74,13 +75,17 @@ def test_full_inversion_with_min_error_by_site(mcmc_args):
 
 
 def test_full_inversion_lognormal_infer(mcmc_args):
-    mcmc_args["xprior"] = {"pdf": "lognormal", "stdev": 2.0}
-    out = fixedbasisMCMC(**mcmc_args)
+    mcmc_args["xprior"] = {"pdf": "lognormal", "stdev": 2.0, "reparameterise": True}
+    mcmc_outs = fixedbasisMCMC(**mcmc_args, skip_postprocessing=True)
 
-    expected_sigma = str(np.sqrt(np.log(5)))
+    trace = mcmc_outs["trace"]
+    trace.extend(pm.sample_prior_predictive(10000, mcmc_outs["model"], random_seed=196883))
 
-    # look for a few decimal places of expected sigma in output attributes
-    assert expected_sigma[:4] in out.attrs["Emissions Prior"]
+    prior_scaling_stdev = trace.prior["flux::x"].std("draw").values
+
+    # check if computed prior stdev is somewhat close to 2.0...
+    # the tolerance is needed because the sample stdev seems to converge very slowly
+    np.testing.assert_allclose(prior_scaling_stdev, 2.0, atol=0.2)
 
 
 def test_full_inversion_lognormal_reparam(mcmc_args):

@@ -10,16 +10,12 @@ import numpy as np
 import pymc as pm
 import pandas as pd
 import xarray as xr
-import pytensor.tensor as pt
 import arviz as az
 from scipy import stats
-from pymc.distributions import continuous
-from pytensor.tensor import TensorVariable
 
 from openghg_inversions import convert
 from openghg_inversions import utils
 from openghg_inversions.models.rhime import build_rhime_model
-from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
 
@@ -28,113 +24,11 @@ from openghg_inversions.config.version import code_version
 PriorArgs = dict[str, str | float]
 
 
-def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
-    """Return the pymc `mu` and `sigma` parameters that give a log normal distribution
-    with the given mean and stdev.
-
-    Args:
-        mean: desired mean of log normal
-        stdev: desired standard deviation of log normal
-
-    Returns:
-        tuple (mu, sigma), where `pymc.LogNormal(mu, sigma)` has the given mean and stdev.
-
-    Formulas for log normal mean and variance:
-
-    mean = exp(mu + 0.5 * sigma ** 2)
-    stdev ** 2 = var = exp(2*mu + sigma ** 2) * (exp(sigma ** 2) - 1)
-
-    This gives linear equations for `mu` and `sigma ** 2`:
-
-    mu + 0.5 * sigma ** 2 = log(mean)
-    sigma ** 2 = log(1 + (stdev / mean)**2)
-
-    So
-
-    mu = log(mean) - 0.5 * log(1 + (stdev/mean)**2)
-    sigma = sqrt(log(1 + (stdev / mean)**2))
-    """
-    var = np.log(1 + (stdev / mean) ** 2)
-    mu = np.log(mean) - 0.5 * var
-    sigma = np.sqrt(var)
-    return mu, sigma
-
-
-def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
-    """Parses all PyMC continuous distributions:
-    https://docs.pymc.io/api/distributions/continuous.html.
-
-    Args:
-        name:
-          name of variable in the pymc model
-        prior_params:
-          dict of parameters for the distribution, including 'pdf' for the distribution to use.
-          The value of `prior_params["pdf"]` must match the name of a PyMC continuous
-          distribution: https://docs.pymc.io/api/distributions/continuous.html
-        **kwargs: for instance, `shape` or `dims`
-    Returns:
-        continuous PyMC distribution
-
-    For example:
-    ```
-    params = {"pdf": "uniform", "lower": 0.0, "upper": 1.0}
-    parse_prior("x", params, shape=(20, 20))
-    ```
-    will create a 20 x 20 array of uniform random variables.
-    Alternatively,
-    ```
-    params = {"pdf": "uniform", "lower": 0.0, "upper": 1.0}
-    parse_prior("x", params, dims="nmeasure"))
-    ```
-    will create an array of uniform random variables with the same shape
-    as the dimension coordinate `nmeasure`. This can be used if `pm.Model`
-    is provided with coordinates.
-
-    Note: `parse_prior` must be called inside a `pm.Model` context (i.e. after `with pm.Model()`)
-    has an important side-effect of registering the random variable with the model.
-    """
-    # create dict to lookup continuous PyMC distributions by name, ignoring case
-    pdf_dict = {cd.lower(): cd for cd in continuous.__all__}
-
-    params = prior_params.copy()
-    pdf = str(params.pop("pdf")).lower()  # str is just for typing...
-    try:
-        dist = getattr(continuous, pdf_dict[pdf])
-    except AttributeError:
-        raise ValueError(
-            f"The distribution '{pdf}' doesn't appear to be a continuous distribution defined by PyMC."
-        )
-
-    return dist(name, **params, **kwargs)
-
-
-def _make_coords(
-    Y: np.ndarray,
-    Hx: np.ndarray,
-    site_indicator: np.ndarray,
-    sigma_freq_indices: np.ndarray,
-    Hbc: np.ndarray | None = None,
-    sites: list[str] | None = None,
-    sigma_per_site: bool = False,
-) -> dict:
-    result = {
-        "nmeasure": np.arange(len(Y)),
-        "nx": np.arange(Hx.shape[0]),
-        "sites": sites if sites is not None else np.unique(site_indicator),
-        "nsigma_time": np.unique(sigma_freq_indices),
-        "nsigma_site": np.unique(site_indicator) if sigma_per_site else [0],
-    }
-    if Hbc is not None:
-        result["nbc"] = np.arange(Hbc.shape[0])
-    return result
-
-
 def inferpymc(
     Hx: np.ndarray,
     Y: np.ndarray,
     error: np.ndarray,
     siteindicator: np.ndarray,
-    sigma_freq_index: np.ndarray,
     Hbc: np.ndarray | None = None,
     xprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     bcprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
@@ -145,6 +39,8 @@ def inferpymc(
     tune: int = int(1.25e5),
     nchain: int = 2,
     sigma_per_site: bool = True,
+    sigma_freq: str | None = None,
+    y_time: np.ndarray | None = None,
     offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
     add_offset: bool = False,
     verbose: bool = False,
@@ -266,11 +162,12 @@ def inferpymc(
         Y=Y,
         error=error,
         siteindicator=siteindicator,
-        sigma_freq_index=sigma_freq_index,
         Hbc=Hbc,
         xprior=xprior,
         bcprior=bcprior,
         sigprior=sigprior,
+        sigma_freq=sigma_freq,
+        y_time=y_time,
         sigma_per_site=sigma_per_site,
         offsetprior=offsetprior,
         add_offset=add_offset,

@@ -11,11 +11,12 @@ def build_rhime_model(
     Y: np.ndarray,
     error: np.ndarray,
     siteindicator: np.ndarray,
-    sigma_freq_index: np.ndarray,
     Hbc: np.ndarray | None = None,
     xprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     bcprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     sigprior: dict = {"pdf": "uniform", "lower": 0.1, "upper": 3.0},
+    sigma_freq: str | None = None,
+    y_time: np.ndarray | None = None,
     sigma_per_site: bool = True,
     offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
     add_offset: bool = False,
@@ -43,15 +44,16 @@ def build_rhime_model(
 
     # make likelihood
     likelihood = RHIMELikelihood(
-        Y,
-        error,
-        sigprior,
-        siteindicator,
-        sigma_freq_index,
-        min_error,
-        pollution_events_from_obs,
-        no_model_error,
-        sigma_per_site,
+        y_obs=Y,
+        error=error,
+        sigma_prior=sigprior,
+        site_indicator=siteindicator,
+        min_error=min_error,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+        sigma_per_site=sigma_per_site,
+        sigma_freq=sigma_freq,
+        y_time=y_time,
     )
 
     with pm.Model() as model:
@@ -63,8 +65,4 @@ def build_rhime_model(
 
         likelihood.build()
 
-    print(model.unobserved_RVs)
-    print(model.coords)
-    print(model.named_vars_to_dims)
-    print(model.deterministics)
     return model
