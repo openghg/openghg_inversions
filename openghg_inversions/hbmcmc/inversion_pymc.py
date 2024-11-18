@@ -18,6 +18,7 @@ from pytensor.tensor import TensorVariable
 
 from openghg_inversions import convert
 from openghg_inversions import utils
+from openghg_inversions.models.rhime import build_rhime_model
 from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
@@ -282,82 +283,103 @@ def inferpymc(
     if add_offset:
         B = offset_matrix(siteindicator)
 
-    coords = _make_coords(Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None)
+    coords = _make_coords(
+        Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None
+    )
 
-    if isinstance(min_error, float):
-        min_error = min_error * np.ones_like(Y)
+    # if isinstance(min_error, float):
+    #     min_error = min_error * np.ones_like(Y)
 
+    # with pm.Model(coords=coords) as model:
+    #     step1_vars = []
 
-    with pm.Model(coords=coords) as model:
-        step1_vars = []
+    #     if reparameterise_log_normal and xprior["pdf"] == "lognormal":
+    #         x0 = pm.Normal("x0", 0, 1, dims="nx")
+    #         x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0))
+    #         step1_vars.append(x0)
+    #     else:
+    #         x = parse_prior("x", xprior, dims="nx")
+    #         step1_vars.append(x)
 
-        if reparameterise_log_normal and xprior["pdf"] == "lognormal":
-            x0 = pm.Normal("x0", 0, 1, dims="nx")
-            x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0))
-            step1_vars.append(x0)
-        else:
-            x = parse_prior("x", xprior, dims="nx")
-            step1_vars.append(x)
+    #     if use_bc:
+    #         if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
+    #             bc0 = pm.Normal("bc0", 0, 1, dims="nbc")
+    #             bc = pm.Deterministic("bc", pt.exp(bcprior["mu"] + bcprior["sigma"] * bc0))
+    #             step1_vars.append(bc0)
+    #         else:
+    #             bc = parse_prior("bc", bcprior, dims="nbc")
+    #             step1_vars.append(bc)
 
-        if use_bc:
-            if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
-                bc0 = pm.Normal("bc0", 0, 1, dims="nbc")
-                bc = pm.Deterministic("bc", pt.exp(bcprior["mu"] + bcprior["sigma"] * bc0))
-                step1_vars.append(bc0)
-            else:
-                bc = parse_prior("bc", bcprior, dims="nbc")
-                step1_vars.append(bc)
+    #     sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
 
-        sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
+    #     hx = pm.Data("hx", hx, dims=("nmeasure", "nx"))
+    #     mu = pm.Deterministic("mu", pt.dot(hx, x), dims="nmeasure")
 
-        hx = pm.Data("hx", hx, dims=("nmeasure", "nx"))
-        mu = pm.Deterministic("mu", pt.dot(hx, x), dims="nmeasure")
+    #     if use_bc:
+    #         hbc = pm.Data("hbc", hbc, dims=("nmeasure", "nbc"))
+    #         mu_bc = pm.Deterministic("mu_bc", pt.dot(hbc, bc), dims="nmeasure")
+    #         mu += mu_bc
 
-        if use_bc:
-            hbc = pm.Data("hbc", hbc, dims=("nmeasure", "nbc"))
-            mu_bc = pm.Deterministic("mu_bc", pt.dot(hbc, bc), dims="nmeasure")
-            mu += mu_bc
+    #     if add_offset:
+    #         offset0 = parse_prior("offset0", offsetprior, shape=int(nsites - 1))
+    #         offset_vec = pt.concatenate((np.array([0]), offset0), axis=0)
+    #         offset = pm.Deterministic("offset", pt.dot(B, offset_vec), dims="nmeasure")
+    #         mu += offset
 
-        if add_offset:
-            offset0 = parse_prior("offset0", offsetprior, shape=int(nsites - 1))
-            offset_vec = pt.concatenate((np.array([0]), offset0), axis=0)
-            offset = pm.Deterministic("offset", pt.dot(B, offset_vec), dims="nmeasure")
-            mu += offset
+    #     Y = pm.Data("Y", Y, dims="nmeasure")  # type: ignore
+    #     error = pm.Data("error", error, dims="nmeasure")  # type: ignore
+    #     min_error = pm.Data("min_error", min_error, dims="nmeasure")  # type: ignore
 
-        Y = pm.Data("Y", Y, dims="nmeasure")  # type: ignore
-        error = pm.Data("error", error, dims="nmeasure")  # type: ignore
-        min_error = pm.Data("min_error", min_error, dims="nmeasure")  # type: ignore
+    #     if pollution_events_from_obs is True:
+    #         if use_bc is True:
+    #             pollution_event = np.abs(Y - pt.dot(hbc, bc))
+    #         else:
+    #             pollution_event = np.abs(Y) + 1e-6 * np.mean(Y)  # small non-zero term to prevent NaNs
+    #     else:
+    #         pollution_event = np.abs(pt.dot(hx, x))
 
-        if pollution_events_from_obs is True:
-            if use_bc is True:
-                pollution_event = np.abs(Y - pt.dot(hbc, bc))
-            else:
-                pollution_event = np.abs(Y) + 1e-6 * np.mean(Y)  # small non-zero term to prevent NaNs
-        else:
-            pollution_event = np.abs(pt.dot(hx, x))
+    #     pollution_event_scaled_error = pollution_event * sigma[sites, sigma_freq_index]
 
-        pollution_event_scaled_error = pollution_event * sigma[sites, sigma_freq_index]
+    #     if no_model_error is True:
+    #         # need some small non-zero value to avoid sampling problems
+    #         mean_obs = np.nanmean(Y)
+    #         small_amount = 1e-12 * mean_obs
+    #         eps = pt.maximum(pt.abs(error), small_amount)  # type: ignore
+    #     else:
+    #         eps = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)  # type: ignore
 
-        if no_model_error is True:
-            # need some small non-zero value to avoid sampling problems
-            mean_obs = np.nanmean(Y)
-            small_amount = 1e-12 * mean_obs
-            eps = pt.maximum(pt.abs(error), small_amount)  # type: ignore
-        else:
-            eps = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)  # type: ignore
+    #     epsilon = pm.Deterministic("epsilon", eps, dims="nmeasure")
 
-        epsilon = pm.Deterministic("epsilon", eps, dims="nmeasure")
+    #     pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, dims="nmeasure")
 
-        pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, dims="nmeasure")
+    #     step1 = pm.NUTS(vars=step1_vars)
+    #     step2 = pm.Slice(vars=[sigma])
+    #     step = [step1, step2] if nuts_sampler == "pymc" else None
 
-        step1 = pm.NUTS(vars=step1_vars)
-        step2 = pm.Slice(vars=[sigma])
-        step = [step1, step2] if nuts_sampler == "pymc" else None
+    model = build_rhime_model(
+        Hx=Hx,
+        Y=Y,
+        error=error,
+        siteindicator=siteindicator,
+        sigma_freq_index=sigma_freq_index,
+        xprior=xprior,
+        bcprior=bcprior,
+        sigprior=sigprior,
+        sigma_per_site=sigma_per_site,
+        offsetprior=offsetprior,
+        add_offset=add_offset,
+        min_error=min_error or 0.0,
+        reparameterise_log_normal=reparameterise_log_normal,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+    )
+
+    with model:
         trace = pm.sample(
             nit,
             tune=int(tune),
             chains=nchain,
-            step=step,
+            # step=step,
             progressbar=verbose,
             cores=nchain,
             nuts_sampler=nuts_sampler,
@@ -846,16 +868,18 @@ def inferpymc_postprocessouts(
     }
 
     if use_bc:
-        data_vars.update({
-            "YaprioriBC": (["nmeasure"], YaprioriBC),
-            "YmodmeanBC": (["nmeasure"], YmodmuBC),
-            "YmodmedianBC": (["nmeasure"], YmodmedBC),
-            "YmodmodeBC": (["nmeasure"], YmodmodeBC),
-            "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
-            "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
-            "bctrace": (["steps", "nBC"], bcouts.values),
-            "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
-        })
+        data_vars.update(
+            {
+                "YaprioriBC": (["nmeasure"], YaprioriBC),
+                "YmodmeanBC": (["nmeasure"], YmodmuBC),
+                "YmodmedianBC": (["nmeasure"], YmodmedBC),
+                "YmodmodeBC": (["nmeasure"], YmodmodeBC),
+                "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
+                "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
+                "bctrace": (["steps", "nBC"], bcouts.values),
+                "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
+            }
+        )
         coords["numBC"] = (["nBC"], nBC)
 
     outds = xr.Dataset(data_vars, coords=coords)
