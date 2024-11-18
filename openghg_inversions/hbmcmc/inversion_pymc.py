@@ -362,24 +362,32 @@ def inferpymc(
         error=error,
         siteindicator=siteindicator,
         sigma_freq_index=sigma_freq_index,
+        Hbc=Hbc,
         xprior=xprior,
         bcprior=bcprior,
         sigprior=sigprior,
         sigma_per_site=sigma_per_site,
         offsetprior=offsetprior,
         add_offset=add_offset,
-        min_error=min_error or 0.0,
+        min_error=min_error if min_error is not None else 0.0,
         reparameterise_log_normal=reparameterise_log_normal,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
     )
+
+
+    with model:
+        step1 = pm.NUTS(vars=[rv for rv in model.value_vars if "sigma" not in rv.name])
+        step2 = pm.Slice(vars=[rv for rv in model.value_vars if "sigma" in rv.name])
+
+    step = [step1, step2] if nuts_sampler == "pymc" else None
 
     with model:
         trace = pm.sample(
             nit,
             tune=int(tune),
             chains=nchain,
-            # step=step,
+            step=step,
             progressbar=verbose,
             cores=nchain,
             nuts_sampler=nuts_sampler,
@@ -387,15 +395,15 @@ def inferpymc(
 
     posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit))
 
-    xouts = posterior_burned.x
+    xouts = posterior_burned["flux::x"]
 
     if use_bc:
-        bcouts = posterior_burned.bc
+        bcouts = posterior_burned["bc::x"]
 
-    sigouts = posterior_burned.sigma
+    sigouts = posterior_burned["likelihood::sigma"]
 
     # Check for convergence
-    gelrub = pm.rhat(trace)["x"].max()
+    gelrub = pm.rhat(trace)["flux::x"].max()
     if gelrub > 1.05:
         print("Failed Gelman-Rubin at 1.05")
         convergence = "Failed"
@@ -408,15 +416,15 @@ def inferpymc(
             print(f"There were {divergences} divergences. Try increasing target accept or reparameterise.")
 
     if add_offset:
-        OFFtrace = posterior_burned.offset
+        OFFtrace = posterior_burned["offset::mu"]
     else:
-        OFFtrace = xr.zeros_like(posterior_burned.mu)
+        OFFtrace = xr.zeros_like(posterior_burned["flux::mu"])
 
     if use_bc:
-        YBCtrace = posterior_burned.mu_bc + OFFtrace
-        Ytrace = posterior_burned.mu + YBCtrace
+        YBCtrace = posterior_burned["bc::mu"] + OFFtrace
+        Ytrace = posterior_burned["mu"]
     else:
-        Ytrace = posterior_burned.mu + OFFtrace
+        Ytrace = posterior_burned["mu"]
 
     result = {
         "xouts": xouts,

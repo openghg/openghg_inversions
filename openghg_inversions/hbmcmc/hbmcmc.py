@@ -66,7 +66,7 @@ def fixedbasisMCMC(
     xprior: dict = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 1.0, "lower": 0.0},
     bcprior: dict = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0},
     sigprior: dict = {"pdf": "uniform", "lower": 0.1, "upper": 3},
-    offsetprior: dict = {"pdf": "normal", "mu": 0, "sd": 1},
+    offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
     nit: int = int(2.5e5),
     burn: int = 50000,
     tune: int = int(1.25e5),

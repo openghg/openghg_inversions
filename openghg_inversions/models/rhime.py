@@ -1,7 +1,9 @@
+from functools import reduce
+
 import numpy as np
 import pymc as pm
 
-from .components import LinearForwardComponent, RHIMELikelihood
+from .components import LinearForwardComponent, Offset, RHIMELikelihood
 
 
 def build_rhime_model(
@@ -37,7 +39,7 @@ def build_rhime_model(
         forward_model_components.append(LinearForwardComponent(name="bc", h_matrix=Hbc.T, prior_args=bcprior))
 
     if add_offset:
-        pass
+        forward_model_components.append(Offset(site_indicator=siteindicator, prior_args=offsetprior))
 
     # make likelihood
     likelihood = RHIMELikelihood(
@@ -56,6 +58,13 @@ def build_rhime_model(
         for component in forward_model_components:
             component.build()
 
+        mu_total = reduce(lambda x, y: x + y, [rv for rv in model.deterministics if "mu" in rv.name])
+        pm.Deterministic("mu", mu_total)
+
         likelihood.build()
 
+    print(model.unobserved_RVs)
+    print(model.coords)
+    print(model.named_vars_to_dims)
+    print(model.deterministics)
     return model

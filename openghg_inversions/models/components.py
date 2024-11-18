@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 import numpy as np
+import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
@@ -38,6 +39,7 @@ class LinearForwardComponent(ModelComponent):
     The name of the component will be prepended to any variables in this model, so these
     variables can be accessed by names: `<name>::x` and `<name>::mu`.
     """
+
     # TODO: component registry and staticmethod to sum up components
     # this method should check that output coords are aligned...
     def __init__(
@@ -63,7 +65,9 @@ class LinearForwardComponent(ModelComponent):
             None.
         """
         super().__init__()
-        self.name = name  # TODO: add class level code to make names automatically/fix name conflicts, e.g. counter
+        self.name = (
+            name  # TODO: add class level code to make names automatically/fix name conflicts, e.g. counter
+        )
 
         self.h_matrix = h_matrix
         self.h_matrix_values = h_matrix if isinstance(h_matrix, np.ndarray) else h_matrix.values
@@ -74,14 +78,18 @@ class LinearForwardComponent(ModelComponent):
         input_coords = input_coords or np.arange(self.h_matrix_values.shape[1])
 
         if len(input_coords) != self.h_matrix_values.shape[1]:
-            raise ValueError(f"Length of specified input coordinates is not equal to the number of rows of the given H matrix.")
+            raise ValueError(
+                f"Length of specified input coordinates is not equal to the number of rows of the given H matrix."
+            )
 
         self.input_coords = {self.input_dim: input_coords}
 
         output_coords = output_coords or np.arange(self.h_matrix_values.shape[0])
 
         if len(output_coords) != self.h_matrix_values.shape[0]:
-            raise ValueError(f"Length of specified output coordinates is not equal to the number of columns of the given H matrix.")
+            raise ValueError(
+                f"Length of specified output coordinates is not equal to the number of columns of the given H matrix."
+            )
 
         self.output_coords = {self.output_dim: output_coords}
 
@@ -98,8 +106,55 @@ class LinearForwardComponent(ModelComponent):
         with self.model:
             x = parse_prior("x", self.prior_args, dims=self.input_dim)
             hx = pm.Data("h", self.h_matrix, dims=(self.output_dim, self.input_dim))
-            pm.Deterministic("mu", pt.dot(hx, x))
+            pm.Deterministic("mu", pt.dot(hx, x), dims=self.output_dim)
 
+
+class Offset(ModelComponent):
+    def __init__(
+        self,
+        site_indicator: np.ndarray,
+        prior_args: PriorArgs,
+        output_dim: str = "nmeasure",
+        name: str | None = None
+    ) -> None:
+        super().__init__()
+
+        if name is not None:
+            self.name = f"{name}_offset"
+        else:
+            self.name = "offset"
+
+        self.site_indicator = site_indicator
+        self.offset_matrix = pd.get_dummies(site_indicator, drop_first=True, dtype=int).values
+
+        self.input_dim = "offset_site_number"
+
+        if len(uniq := np.unique(self.site_indicator)) < 2:
+            raise ValueError("Cannot add offset for inversion with less than 2 sites.")
+        else:
+            self.input_coord = uniq[1:]
+
+        self.output_dim = output_dim
+
+        self.prior_args = prior_args
+
+    def coords(self) -> dict:
+        result = {
+            self.output_dim: np.arange(len(self.site_indicator)),
+            self.input_dim: self.input_coord,
+        }
+        return result
+
+    def build(self) -> None:
+        self.model = pm.Model(
+            name=self.name, coords=self.coords()
+        )  # name used to distinguish variables created by this component
+
+        with self.model:
+            x = parse_prior("x", self.prior_args, dims=self.input_dim)
+            hx = pm.Data("h", self.offset_matrix, dims=(self.output_dim, self.input_dim))
+            pm.Deterministic("mu", pt.dot(hx, x), dims=self.output_dim)
+            
 
 class FluxForwardModel(ModelComponent):
     """Flux component of forward model."""

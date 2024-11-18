@@ -44,18 +44,18 @@ def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
     return mu, sigma
 
 
-def update_log_normal_prior(prior):
-    if prior["pdf"].lower() == "lognormal" and "stdev" in prior:
-        stdev = float(prior["stdev"])
-        mean = float(prior.get("mean", 1.0))
+def update_log_normal_prior(prior_params):
+    if "stdev" in prior_params:
+        stdev = float(prior_params["stdev"])
+        mean = float(prior_params.get("mean", 1.0))
 
         mu, sigma = lognormal_mu_sigma(mean, stdev)
-        prior["mu"] = mu
-        prior["sigma"] = sigma
+        prior_params["mu"] = mu
+        prior_params["sigma"] = sigma
 
-        del prior["stdev"]
-        if "mean" in prior:
-            del prior["mean"]
+        del prior_params["stdev"]
+        if "mean" in prior_params:
+            del prior_params["mean"]
 
 
 def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
@@ -103,7 +103,7 @@ def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
 
         if params.get("reparameterise", False):
             temp = pm.Normal(f"{name}0", 0, 1, **kwargs)
-            return pm.Deterministic(name, pt.exp(params["mu"] + params["sigma"] * temp, **kwargs))
+            return pm.Deterministic(name, pt.exp(params["mu"] + params["sigma"] * temp), **kwargs)
 
     try:
         dist = getattr(continuous, pdf_dict[pdf])
