@@ -60,7 +60,7 @@ def build_rhime_model(
         for component in forward_model_components:
             component.build()
 
-        mu_total = reduce(lambda x, y: x + y, [rv for rv in model.deterministics if "mu" in rv.name])
+        mu_total = reduce(lambda x, y: x + y, [component.model.mu for component in forward_model_components])
         pm.Deterministic("mu", mu_total)
 
         likelihood.build()
