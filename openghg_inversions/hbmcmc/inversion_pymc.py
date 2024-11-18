@@ -259,102 +259,7 @@ def inferpymc(
         raise ValueError("If `use_bc` is True, then `Hbc` must be provided.")
 
     burn = int(burn)
-
-    hx = Hx.T
-    nx = hx.shape[1]
-
-    if use_bc:
-        hbc = Hbc.T
-        nbc = hbc.shape[1]
-
-    ny = len(Y)
-
     nit = int(nit)
-
-    # convert siteindicator into a site indexer
-    if sigma_per_site:
-        sites = siteindicator.astype(int)
-        nsites = np.amax(sites) + 1
-    else:
-        sites = np.zeros_like(siteindicator).astype(int)
-        nsites = 1
-    nsigmas = np.amax(sigma_freq_index) + 1
-
-    if add_offset:
-        B = offset_matrix(siteindicator)
-
-    coords = _make_coords(
-        Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None
-    )
-
-    # if isinstance(min_error, float):
-    #     min_error = min_error * np.ones_like(Y)
-
-    # with pm.Model(coords=coords) as model:
-    #     step1_vars = []
-
-    #     if reparameterise_log_normal and xprior["pdf"] == "lognormal":
-    #         x0 = pm.Normal("x0", 0, 1, dims="nx")
-    #         x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0))
-    #         step1_vars.append(x0)
-    #     else:
-    #         x = parse_prior("x", xprior, dims="nx")
-    #         step1_vars.append(x)
-
-    #     if use_bc:
-    #         if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
-    #             bc0 = pm.Normal("bc0", 0, 1, dims="nbc")
-    #             bc = pm.Deterministic("bc", pt.exp(bcprior["mu"] + bcprior["sigma"] * bc0))
-    #             step1_vars.append(bc0)
-    #         else:
-    #             bc = parse_prior("bc", bcprior, dims="nbc")
-    #             step1_vars.append(bc)
-
-    #     sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
-
-    #     hx = pm.Data("hx", hx, dims=("nmeasure", "nx"))
-    #     mu = pm.Deterministic("mu", pt.dot(hx, x), dims="nmeasure")
-
-    #     if use_bc:
-    #         hbc = pm.Data("hbc", hbc, dims=("nmeasure", "nbc"))
-    #         mu_bc = pm.Deterministic("mu_bc", pt.dot(hbc, bc), dims="nmeasure")
-    #         mu += mu_bc
-
-    #     if add_offset:
-    #         offset0 = parse_prior("offset0", offsetprior, shape=int(nsites - 1))
-    #         offset_vec = pt.concatenate((np.array([0]), offset0), axis=0)
-    #         offset = pm.Deterministic("offset", pt.dot(B, offset_vec), dims="nmeasure")
-    #         mu += offset
-
-    #     Y = pm.Data("Y", Y, dims="nmeasure")  # type: ignore
-    #     error = pm.Data("error", error, dims="nmeasure")  # type: ignore
-    #     min_error = pm.Data("min_error", min_error, dims="nmeasure")  # type: ignore
-
-    #     if pollution_events_from_obs is True:
-    #         if use_bc is True:
-    #             pollution_event = np.abs(Y - pt.dot(hbc, bc))
-    #         else:
-    #             pollution_event = np.abs(Y) + 1e-6 * np.mean(Y)  # small non-zero term to prevent NaNs
-    #     else:
-    #         pollution_event = np.abs(pt.dot(hx, x))
-
-    #     pollution_event_scaled_error = pollution_event * sigma[sites, sigma_freq_index]
-
-    #     if no_model_error is True:
-    #         # need some small non-zero value to avoid sampling problems
-    #         mean_obs = np.nanmean(Y)
-    #         small_amount = 1e-12 * mean_obs
-    #         eps = pt.maximum(pt.abs(error), small_amount)  # type: ignore
-    #     else:
-    #         eps = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)  # type: ignore
-
-    #     epsilon = pm.Deterministic("epsilon", eps, dims="nmeasure")
-
-    #     pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, dims="nmeasure")
-
-    #     step1 = pm.NUTS(vars=step1_vars)
-    #     step2 = pm.Slice(vars=[sigma])
-    #     step = [step1, step2] if nuts_sampler == "pymc" else None
 
     model = build_rhime_model(
         Hx=Hx,
@@ -375,7 +280,6 @@ def inferpymc(
         no_model_error=no_model_error,
     )
 
-
     with model:
         step1 = pm.NUTS(vars=[rv for rv in model.value_vars if "sigma" not in rv.name])
         step2 = pm.Slice(vars=[rv for rv in model.value_vars if "sigma" in rv.name])
@@ -393,15 +297,6 @@ def inferpymc(
             nuts_sampler=nuts_sampler,
         )
 
-    posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit))
-
-    xouts = posterior_burned["flux::x"]
-
-    if use_bc:
-        bcouts = posterior_burned["bc::x"]
-
-    sigouts = posterior_burned["likelihood::sigma"]
-
     # Check for convergence
     gelrub = pm.rhat(trace)["flux::x"].max()
     if gelrub > 1.05:
@@ -415,16 +310,17 @@ def inferpymc(
         if divergences > 0:
             print(f"There were {divergences} divergences. Try increasing target accept or reparameterise.")
 
+    # select outputs
+    posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit))
+
+    xouts = posterior_burned["flux::x"]
+    sigouts = posterior_burned["likelihood::sigma"]
+    Ytrace = posterior_burned["mu"]
+
     if add_offset:
         OFFtrace = posterior_burned["offset::mu"]
     else:
         OFFtrace = xr.zeros_like(posterior_burned["flux::mu"])
-
-    if use_bc:
-        YBCtrace = posterior_burned["bc::mu"] + OFFtrace
-        Ytrace = posterior_burned["mu"]
-    else:
-        Ytrace = posterior_burned["mu"]
 
     result = {
         "xouts": xouts,
@@ -439,6 +335,8 @@ def inferpymc(
     }
 
     if use_bc:
+        bcouts = posterior_burned["bc::x"]
+        YBCtrace = posterior_burned["bc::mu"] + OFFtrace
         result["bcouts"] = bcouts
         result["YBCtrace"] = YBCtrace.values.T
 
