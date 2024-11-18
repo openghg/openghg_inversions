@@ -203,7 +203,7 @@ class RHIMELikelihood(ModelComponent):
 
         self.sites = sites
 
-        if isinstance(min_error, float):
+        if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
             self.min_error = min_error * np.ones_like(y_obs)
         else:
             self.min_error = min_error

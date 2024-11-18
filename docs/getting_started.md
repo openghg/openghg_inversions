@@ -33,7 +33,7 @@ This is an overview of what OpenGHG Inversions does, and how to use it.
 -   The sensitivities are considered deterministic, and the fluxes and boundary conditions are modelled as random quantities
 -   We place prior distributions on the fluxes and boundary conditions and use the observation data and MCMC to sample from their posterior distributions. (These are specified by the `xprior` and `bcprior` variables in the .ini file below.)
 -   Roughly, an inversion attempts to solve $\mathrm{obs} - \mathrm{baseline} \approx \mathrm{sensitivities} \times \mathrm{flux}$; the sensitivity matrix is not invertible, so a method like least-squares is necessary. We use a hierarchical Bayesian regression approach, which estimates uncertainties in a natural way.
--   The output of an inversion contains prior and posterior: modelled observations (&ldquo;$Y$&rdquo; variables), fluxes, and boundary conditions.
+-   The output of an inversion contains prior and posterior: modelled observations (&ldquo; $Y$ &rdquo; variables), fluxes, and boundary conditions.
 
 
 <a id="org4510696"></a>
@@ -136,7 +136,7 @@ This is assuming you can ssh into blue pebble, and are able to modify files and 
 -   Typically you will use the latest anaconda module: `module load lang/python/anaconda`.
 -   To make your own environment for `openghg_inversions`, you should:
     1.  make a conda env `conda create --name inv_env numpy` (note: installing `numpy` from `conda` will install `openblas`, which is a fast linear algebra library; these libraries are in non-standard locations on Blue Pebble, and `pip install numpy` will not find them.)
-    2.  clone openghg<sub>inversions</sub>: `git clone https://github.com/openghg/openghg_inversions.git`
+    2.  clone openghg_inversions: `git clone https://github.com/openghg/openghg_inversions.git`
     3.  `pip install openghg_inversions` (in the same directory where you just cloned `openghg_inversions`)
 
 
@@ -164,7 +164,8 @@ This script assumes that you have already created a conda env called `pymc_env` 
 
 
 # Set up Python environment
-module load lang/python/anaconda
+module --force purge
+module load git/2.45.1
 eval "$(conda shell.bash hook)"
 conda activate pymc_env
 

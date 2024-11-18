@@ -19,14 +19,17 @@ import pickle
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, cast, Literal
+import warnings
 
 import numpy as np
+import pandas as pd
+import xarray as xr
+
 from openghg.analyse import ModelScenario
-from openghg.dataobjects import BoundaryConditionsData, FluxData
-from openghg.retrieve import get_bc, get_flux, get_footprint, get_obs_surface
+from openghg.dataobjects import ObsData, BoundaryConditionsData, FluxData, FootprintData
+from openghg.retrieve import get_bc, get_flux, get_footprint, get_obs_surface, search_footprints
 from openghg.types import SearchError
 from openghg.util import timestamp_now
-import xarray as xr
 
 
 logger = logging.getLogger(__name__)
@@ -94,6 +97,127 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
             logger.info(info_msg)
 
 
+def _convert_inlets_to_float(inlets):
+    return np.array(list(map(lambda x: float(x[:-1]), inlets)))
+
+
+def get_fp_indexer(obs: xr.Dataset, fp: xr.Dataset, averaging_period: str):
+    obs_idx = obs.indexes["time"]
+    fp_idx = fp.indexes["time"]
+
+    period = pd.Timedelta(averaging_period)
+    tol = period / 2  # type: ignore
+
+    fp_reidx = fp_idx.get_indexer(obs_idx, method="nearest", tolerance=tol)
+    int_idx = pd.IntervalIndex.from_arrays(fp_idx[fp_reidx], fp_idx[fp_reidx] + period, closed="left")
+    return pd.DatetimeIndex([t for t in fp_idx if int_idx.contains(t).any()])
+
+
+def get_footprint_to_match(
+    obs: ObsData,
+    domain: str,
+    model: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    met_model: str = "not_set",
+    fp_species: str | None = None,
+    store: str | None = None,
+    averaging_period: str | None = None,
+    tolerance: float = 10.0,
+) -> FootprintData:
+    site = obs.metadata["site"]
+    species = fp_species or obs.metadata.get("species", "inert")
+    if store is None:
+        store = Path(obs.metadata.get("object_store", "")).name or "user"
+    start_date = start_date or obs._start_date
+    end_date = end_date or obs._end_date
+
+    # get available footprint heights
+    fp_kwargs = {
+        "site": site,
+        "species": species,
+        "domain": domain,
+        "model": model,
+        "met_model": met_model,
+        "store": store,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    results = search_footprints(**fp_kwargs)
+
+    # check that we got results with inlet values
+    # Note: results `search_footprints` should always have inlet values
+    # so the second check shouldn't be necessary...
+    if results.results.empty or "inlet" not in results.results:
+        raise SearchError(f"No footprints found for search terms {fp_kwargs}")
+
+    fp_heights_strs = list(results.results.inlet.unique())
+    fp_heights = _convert_inlets_to_float(fp_heights_strs)
+
+    # special case: only a single inlet height
+    if "inlet" not in obs.data.data_vars:
+        inlet = float(obs.metadata["inlet"][:-1])
+
+        if np.min(np.abs(fp_heights - inlet)) > tolerance:
+            raise SearchError("No footprints found with inlet heights matching given obs.")
+
+        fp_height_idx = np.argmin(np.abs(fp_heights - inlet))
+        fp_height = fp_heights_strs[fp_height_idx]
+        return get_footprint(**fp_kwargs, inlet=fp_height)
+
+    # get inlet values
+    inlets = obs.data.inlet.values
+
+    # match inlets to fp heights
+    distances = np.abs(inlets.reshape((-1, 1)) - fp_heights.reshape((1, -1)))
+    inlets_to_heights = np.argmin(distances, axis=1)
+
+    # check tolerance
+    inlet_tolerance_passed = np.min(distances, axis=1) <= tolerance
+    if (s := np.sum(inlet_tolerance_passed)) > 0:
+        logger.warning(f"For site {site}: {s} times where obs. inlet height was not within {tolerance}m of a footprint height.")
+        inlets_to_heights = inlets_to_heights[inlet_tolerance_passed]
+
+    # footprint heights to load
+    matched_fp_heights = [fp_heights_strs[i] for i in np.unique(inlets_to_heights)]
+    footprints = []
+
+    for fp_height in matched_fp_heights:
+        fp_data = get_footprint(**fp_kwargs, inlet=fp_height)
+        footprints.append(fp_data)
+
+    if not footprints:
+        raise SearchError("No footprints found with inlet heights matching given obs.")
+
+    # select footprints to match inlets
+    # note: we need to take into account the difference between the obs frequency
+    # and the footprint frequency
+    try:
+        averaging_period = averaging_period or obs.metadata["averaged_period_str"]
+    except KeyError:
+        if "sampling_period" in obs.metadata and "sampling_period_unit" in obs.metadata:
+            averaging_period = f"{obs.metadata['sampling_period']}{obs.metadata['sampling_period_unit']}"
+        else:
+            raise ValueError("`averaging_period` could not be inferred from ObsData; please provide a value.")
+
+    # select times from footprints to match with obs
+    for i, fp in zip(np.unique(inlets_to_heights), footprints):
+        i_idx = np.where(inlets_to_heights == i)[0]
+        fp_idx = get_fp_indexer(obs.data.isel(time=i_idx), fp.data, averaging_period=averaging_period)
+        fp.data = fp.data.sel(time=fp_idx)
+
+    # make FootprintData to return
+    metadata = footprints[0].metadata
+
+    if len(footprints) > 1:
+        metadata["inlet"] = "varies"
+        metadata["height"] = "varies"
+
+    data = xr.concat([fp.data for fp in footprints], dim="time").sortby("time")
+
+    return FootprintData(data=data, metadata=metadata)
+
+
 def data_processing_surface_notracer(
     species: str,
     sites: list | str,
@@ -107,14 +231,14 @@ def data_processing_surface_notracer(
     calibration_scale: str | None = None,
     met_model: list[str | None] | str | None = None,
     fp_model: str | None = None,
-    fp_height: list[str | None] | str | None = None,
+    fp_height: list[str | None | Literal["auto"]] | Literal["auto"] | str | None = None,
     fp_species: str | None = None,
     emissions_name: list | None = None,
     use_bc: bool = True,
     bc_input: str | None = None,
     bc_store: str | None = None,
-    obs_store: str | None = None,
-    footprint_store: str | None = None,
+    obs_store: str | list[str] | None = None,
+    footprint_store: str | list[str] | None = None,
     emissions_store: str | None = None,
     averagingerror: bool = True,
     save_merged_data: bool = False,
@@ -245,6 +369,10 @@ def data_processing_surface_notracer(
                 end_date=end_date,
                 store=emissions_store,
             )
+
+            # fix to prevent empty time coordinate:
+            if len(get_flux_data.data.time) == 0:
+                raise SearchError
         except SearchError:
             print(f"No flux data found between {start_date} and {end_date}.")
             print(f"Searching for flux data from before {start_date}.")
@@ -275,55 +403,88 @@ def data_processing_surface_notracer(
     check_scales = set()
     site_indices_to_keep = []
 
+    if not isinstance(obs_store, list):
+        obs_store = [obs_store]
+
+    if not isinstance(footprint_store, list):
+        footprint_store = [footprint_store]
+
     for i, site in enumerate(sites):
         # Get observations data
-        try:
-            site_data = get_obs_surface(
-                site=site,
-                species=species.lower(),
-                inlet=inlet[i],
-                start_date=start_date,
-                end_date=end_date,
-                icos_data_level=obs_data_level[i],  # NB. Variable name may be later updated in OpenGHG
-                average=averaging_period[i],
-                instrument=instrument[i],
-                calibration_scale=calibration_scale,
-                store=obs_store,
-            )
-        except SearchError:
-            print(
-                f"\nNo obs data found for {site} with inlet {inlet[i]} and instrument {instrument[i]}. Check these values.\nContinuing model run without {site}.\n"
-            )
-            continue  # skip this site
-        except AttributeError:
-            print(
-                f"\nNo data found for {site} between {start_date} and {end_date}.\nContinuing model run without {site}.\n"
-            )
-            continue  # skip this site
-        else:
-            if site_data is None:
+        obs_found = False
+        for store in obs_store:
+            try:
+                site_data = get_obs_surface(
+                    site=site,
+                    species=species.lower(),
+                    inlet=inlet[i],
+                    start_date=start_date,
+                    end_date=end_date,
+                    icos_data_level=obs_data_level[i],  # NB. Variable name may be later updated in OpenGHG
+                    average=averaging_period[i],
+                    instrument=instrument[i],
+                    calibration_scale=calibration_scale,
+                    store=store,
+                )
+            except SearchError:
                 print(
-                    f"\nNo data found for {site} between {start_date} and {end_date}.\nContinuing model run without {site}.\n"
+                    f"\nNo obs data found for {site} with inlet {inlet[i]} and instrument {instrument[i]} in store {store}."
                 )
                 continue  # skip this site
+            except AttributeError:
+                print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
+                continue  # skip this site
+            else:
+                if site_data is None:
+                    print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
+                    continue  # skip this site
+                else:
+                    obs_found = True
+                    break
+        if not obs_found:
+            print(f"No obs. found, continuing model run without {site}.\n")
+            continue
+        else:
             unit = float(site_data[site].mf.units)
 
         # Get footprints data
-        try:
-            get_fps = get_footprint(
-                site=site,
-                height=fp_height[i],
-                domain=domain,
-                model=fp_model,
-                met_model=met_model[i],
-                start_date=start_date,
-                end_date=end_date,
-                store=footprint_store,
-                species=fp_species,
-            )
-            if get_fps.data.time.size==0:
-                raise SearchError
-        except SearchError:
+        footprint_found = False
+        for store in footprint_store:
+            try:
+                if fp_height[i] == "auto":
+                    get_fps = get_footprint_to_match(
+                        site_data,
+                        domain=domain,
+                        start_date=start_date,
+                        end_date=end_date,
+                        model=fp_model,
+                        met_model=met_model[i],
+                        store=store,
+                        fp_species=fp_species,
+                        averaging_period=averaging_period[i],
+                    )
+                else:
+                    get_fps = get_footprint(
+                        site=site,
+                        height=fp_height[i],
+                        domain=domain,
+                        model=fp_model,
+                        met_model=met_model[i],
+                        start_date=start_date,
+                        end_date=end_date,
+                        store=store,
+                        species=fp_species,
+                    )
+                if get_fps.data.time.size == 0:
+                    raise SearchError
+            except SearchError:
+                continue  # try next store
+            else:
+                footprint_dict[site] = get_fps
+                footprint_found = True
+                break  # stop checking stores
+
+        if not footprint_found:
             print(
                 f"\nNo footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}.",
                 f"Check these values.\nContinuing model run without {site}.\n",
