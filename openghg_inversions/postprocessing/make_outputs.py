@@ -164,7 +164,7 @@ def make_concentration_outputs(
     inv_out: InversionOutput, stats: list[str] | None = None, stats_args: dict | None = None
 ):
     conc_vars = ["y", "mu_bc"] if "mu_bc" in inv_out.trace.posterior else ["y"]
-    trace = inv_out.get_trace_dataset(var_names=conc_vars)
+    trace = inv_out.get_trace_dataset(var_names=conc_vars, unstack_nmeasure=False)
 
     if stats_args is None:
         stats_args = {}
@@ -177,7 +177,7 @@ def make_concentration_outputs(
 
     conc_stats = calculate_stats(trace, **stats_args)
 
-    return conc_stats
+    return inv_out.unstack_nmeasure(conc_stats)
 
 
 def make_country_outputs(
@@ -215,16 +215,16 @@ def get_obs_and_errors(inv_out: InversionOutput) -> xr.Dataset:
     # TODO: some of these variables could just be stored in a dataset in InversionOutput,
     # rather than in separate data arrays
     to_merge = [
-        inv_out.get_obs(),
-        inv_out.get_obs_err(),
-        inv_out.get_obs_repeatability(),
-        inv_out.get_obs_variability(),
-        inv_out.get_model_err(),
-        inv_out.get_total_err(),
+        inv_out.get_obs(unstack_nmeasure=False),
+        inv_out.get_obs_err(unstack_nmeasure=False),
+        inv_out.get_obs_repeatability(unstack_nmeasure=False),
+        inv_out.get_obs_variability(unstack_nmeasure=False),
+        inv_out.get_model_err(unstack_nmeasure=False),
+        inv_out.get_total_err(unstack_nmeasure=False),
     ]
     result = xr.merge(to_merge)
     result.attrs = {}
-    return result
+    return inv_out.unstack_nmeasure(result)
 
 
 paris_regions_dict = {
