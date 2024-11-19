@@ -266,26 +266,28 @@ class InversionOutput:
 
         By default, `nmeasure` is converted to `site` and `time`.
         """
-        result = nmeasure_to_site_time_data_array(self.obs, self.site_indicators, self.site_names, self.times)
+        result = self.obs.rename("y_obs")
 
         if unstack_nmeasure:
-            result = result.unstack("nmeasure")
+            result = nmeasure_to_site_time_data_array(
+                self.obs, self.site_indicators, self.site_names, self.times
+            ).unstack("nmeasure")
 
-        return result.rename("y_obs")
+        return result
 
     def get_obs_err(self, unstack_nmeasure: bool = True) -> xr.DataArray:
         """Return y observations errors.
 
         By default, `nmeasure` is converted to `site` and `time`.
         """
-        result = nmeasure_to_site_time_data_array(
-            self.obs_err, self.site_indicators, self.site_names, self.times
-        )
+        result = self.obs_err.rename("y_obs_error")
 
         if unstack_nmeasure:
-            result = result.unstack("nmeasure")
+            result = nmeasure_to_site_time_data_array(
+                result, self.site_indicators, self.site_names, self.times
+            ).unstack("nmeasure")
 
-        return result.rename("y_obs_error")
+        return result
 
     def get_obs_repeatability(self, unstack_nmeasure: bool = True) -> xr.DataArray:
         """Return "repeatbility" uncertainty term for y observations.
@@ -295,28 +297,28 @@ class InversionOutput:
         TODO: this needs to be fixed when we have separate repeatability and variability outputs
         from RHIME
         """
-        result = nmeasure_to_site_time_data_array(
-            self.obs_repeatability, self.site_indicators, self.site_names, self.times
-        )
+        result = self.obs_repeatability.rename("y_obs_repeatability")
 
         if unstack_nmeasure:
-            result = result.unstack("nmeasure")
+            result = nmeasure_to_site_time_data_array(
+                result, self.site_indicators, self.site_names, self.times
+            ).unstack("nmeasure")
 
-        return result.rename("y_obs_repeatability")
+        return result
 
     def get_obs_variability(self, unstack_nmeasure: bool = True) -> xr.DataArray:
         """Return "variability" uncertainty term for y observations.
 
         By default, `nmeasure` is converted to `site` and `time`.
         """
-        result = nmeasure_to_site_time_data_array(
-            self.obs_variability, self.site_indicators, self.site_names, self.times
-        )
+        result = self.obs_variability.rename("y_obs_variability")
 
         if unstack_nmeasure:
-            result = result.unstack("nmeasure")
+            result = nmeasure_to_site_time_data_array(
+            result, self.site_indicators, self.site_names, self.times
+        ).unstack("nmeasure")
 
-        return result.rename("y_obs_variability")
+        return result
 
     def get_total_err(self, unstack_nmeasure: bool = True, take_mean: bool = True) -> xr.DataArray:
         """Return sqrt(repeatability**2 + variability**2 + model_error**2)

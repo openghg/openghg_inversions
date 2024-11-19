@@ -177,7 +177,7 @@ def make_concentration_outputs(
 
     conc_stats = calculate_stats(trace, **stats_args)
 
-    return inv_out.unstack_nmeasure(conc_stats)
+    return inv_out.unstack_nmeasure(conc_stats).unstack("nmeasure")
 
 
 def make_country_outputs(
@@ -224,7 +224,7 @@ def get_obs_and_errors(inv_out: InversionOutput) -> xr.Dataset:
     ]
     result = xr.merge(to_merge)
     result.attrs = {}
-    return inv_out.unstack_nmeasure(result)
+    return inv_out.unstack_nmeasure(result).unstack("nmeasure")
 
 
 paris_regions_dict = {
