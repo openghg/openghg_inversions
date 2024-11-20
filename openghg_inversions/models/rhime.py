@@ -1,12 +1,80 @@
 from functools import reduce
+from typing import Iterable
 
 import numpy as np
 import pymc as pm
+from pytensor.tensor.variable import TensorVariable
 
-from .components import LinearForwardComponent, Offset, RHIMELikelihood
+from openghg_inversions.models.components import (
+    HasOutput,
+    LinearForwardComponent,
+    ModelComponent,
+    Offset,
+    RHIMELikelihood,
+)
 
 
-def build_rhime_model(
+def sum_outputs(components: Iterable[HasOutput]) -> TensorVariable:
+    """Sum the output variables of a list of components."""
+    return reduce(lambda x, y: x + y, (component.output for component in components))
+
+
+class RHIMEForwardModel(ModelComponent):
+    def __init__(
+        self,
+        Hx: np.ndarray,
+        Hbc: np.ndarray | None = None,
+        add_offset: bool = False,
+        xprior: dict | None = None,
+        bcprior: dict | None = None,
+        offsetprior: dict | None = None,
+        site_indicator: np.ndarray | None = None,
+        reparameterise_log_normal: bool = False,
+    ) -> None:
+        super().__init__()
+
+        self.name = "forward"
+
+        # set default prior params
+        xprior = xprior or {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
+        bcprior = bcprior or {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
+        offsetprior = offsetprior or {"pdf": "normal", "mu": 0.0, "sigma": 1.0}
+
+        if reparameterise_log_normal:
+            for prior in [xprior, bcprior, offsetprior]:
+                if prior["pdf"] == "lognormal":
+                    prior["reparameterise"] = True
+
+        # add forward model components
+        components = []
+
+        components.append(LinearForwardComponent(name="flux", h_matrix=Hx.T, prior_args=xprior))
+
+        if Hbc is not None:
+            components.append(LinearForwardComponent(name="bc", h_matrix=Hbc.T, prior_args=bcprior))
+
+        if add_offset:
+            if site_indicator is None:
+                raise ValueError("Need `site_indicator` to add Offset.")
+            components.append(Offset(site_indicator=site_indicator, prior_args=offsetprior))
+
+        self.components = components
+
+    def build(self) -> None:
+        self._model = pm.Model(name=self.name)
+
+        with self.model:
+            for component in self.components:
+                component.build()
+
+            non_flux_components = [component for component in self.components if "flux" not in component.name]
+            if non_flux_components:
+                pm.Deterministic("baseline", sum_outputs(non_flux_components))
+                
+            pm.Deterministic("mu", sum_outputs(self.components))
+
+
+def rhime_model(
     Hx: np.ndarray,
     Y: np.ndarray,
     error: np.ndarray,
@@ -26,23 +94,17 @@ def build_rhime_model(
     no_model_error: bool = False,
 ) -> pm.Model:
 
-    if reparameterise_log_normal:
-        for prior in [xprior, bcprior, sigprior, offsetprior]:
-            if prior["pdf"] == "lognormal":
-                prior["reparameterise"] = True
+    forward_model = RHIMEForwardModel(
+        Hx=Hx,
+        Hbc=Hbc,
+        xprior=xprior,
+        bcprior=bcprior,
+        offsetprior=offsetprior,
+        add_offset=add_offset,
+        site_indicator=siteindicator,
+        reparameterise_log_normal=reparameterise_log_normal,
+    )
 
-    # add forward model components
-    forward_model_components = []
-
-    forward_model_components.append(LinearForwardComponent(name="flux", h_matrix=Hx.T, prior_args=xprior))
-
-    if Hbc is not None:
-        forward_model_components.append(LinearForwardComponent(name="bc", h_matrix=Hbc.T, prior_args=bcprior))
-
-    if add_offset:
-        forward_model_components.append(Offset(site_indicator=siteindicator, prior_args=offsetprior))
-
-    # make likelihood
     likelihood = RHIMELikelihood(
         y_obs=Y,
         error=error,
@@ -57,12 +119,12 @@ def build_rhime_model(
     )
 
     with pm.Model() as model:
-        for component in forward_model_components:
-            component.build()
+        forward_model.build()
 
-        mu_total = reduce(lambda x, y: x + y, [component.model.mu for component in forward_model_components])
-        pm.Deterministic("mu", mu_total)
+        mu_flux = forward_model["flux::mu"]
+        mu = forward_model["mu"]
+        baseline = forward_model.get("baseline")
 
-        likelihood.build()
+        likelihood.build(mu=mu, mu_flux=mu_flux, baseline=baseline)
 
     return model

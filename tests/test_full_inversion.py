@@ -81,7 +81,7 @@ def test_full_inversion_lognormal_infer(mcmc_args):
     trace = mcmc_outs["trace"]
     trace.extend(pm.sample_prior_predictive(10000, mcmc_outs["model"], random_seed=196883))
 
-    prior_scaling_stdev = trace.prior["flux::x"].std("draw").values
+    prior_scaling_stdev = trace.prior["forward::flux::x"].std("draw").values
 
     # check if computed prior stdev is somewhat close to 2.0...
     # the tolerance is needed because the sample stdev seems to converge very slowly

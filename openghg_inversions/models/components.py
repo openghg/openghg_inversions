@@ -1,18 +1,24 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
+from pytensor.tensor.variable import TensorVariable
 import xarray as xr
 
 from openghg_inversions.models.priors import parse_prior, PriorArgs
 from openghg_inversions.models.setup import sigma_freq_indicies
 
 
+
 class ModelComponent(ABC):
+    _name: str
+    _model: pm.Model | None = None
+
     @abstractmethod
     def build(self) -> None:
         """Construct a (sub)model for the component.
@@ -28,6 +34,38 @@ class ModelComponent(ABC):
         with the parent model.
         """
         pass
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @name.setter
+    def name(self, name: str) -> None:
+        self._name = name
+
+    @property
+    def model(self) -> pm.Model:
+        if self._model is None:
+            raise AttributeError("model for this component has not been built yet.")
+        return self._model
+
+    def __getitem__(self, name: str, /) -> Any:
+        """Access model variables directly from ModelComponent."""
+        if self.model is None:
+            raise AttributeError(f"Cannot access variable {name}; this component has not been built yet.")
+        return self.model[f"{self.name}::{name}"]
+
+    def get(self, name: str, default: Any = None) -> Any:
+        try:
+            result = self[name]
+        except KeyError:
+            result = default
+        return result
+
+class HasOutput(Protocol):
+    @property
+    @abstractmethod
+    def output(self) -> TensorVariable: ...
 
 
 class LinearForwardComponent(ModelComponent):
@@ -76,6 +114,7 @@ class LinearForwardComponent(ModelComponent):
         self.input_dim = f"nx_{self.name}"
         self.output_dim = output_dim
 
+        # TODO: if h_matrix is DataArray, use its coordinates?
         input_coords = input_coords or np.arange(self.h_matrix_values.shape[1])
 
         if len(input_coords) != self.h_matrix_values.shape[1]:
@@ -96,11 +135,12 @@ class LinearForwardComponent(ModelComponent):
 
         self.prior_args = prior_args
 
+
     def coords(self) -> dict:
         return {**self.input_coords, **self.output_coords}
 
     def build(self) -> None:
-        self.model = pm.Model(
+        self._model = pm.Model(
             name=self.name, coords=self.coords()
         )  # name used to distinguish variables created by this component
 
@@ -108,6 +148,10 @@ class LinearForwardComponent(ModelComponent):
             x = parse_prior("x", self.prior_args, dims=self.input_dim)
             hx = pm.Data("h", self.h_matrix, dims=(self.output_dim, self.input_dim))
             pm.Deterministic("mu", pt.dot(hx, x), dims=self.output_dim)
+
+    @property
+    def output(self) -> TensorVariable:
+        return self.model["mu"]
 
 
 class Offset(ModelComponent):
@@ -147,7 +191,7 @@ class Offset(ModelComponent):
         return result
 
     def build(self) -> None:
-        self.model = pm.Model(
+        self._model = pm.Model(
             name=self.name, coords=self.coords()
         )  # name used to distinguish variables created by this component
 
@@ -155,6 +199,10 @@ class Offset(ModelComponent):
             x = parse_prior("x", self.prior_args, dims=self.input_dim)
             hx = pm.Data("h", self.offset_matrix, dims=(self.output_dim, self.input_dim))
             pm.Deterministic("mu", pt.dot(hx, x), dims=self.output_dim)
+
+    @property
+    def output(self) -> TensorVariable:
+        return self.model["mu"]
 
 
 class RHIMELikelihood(ModelComponent):
@@ -213,8 +261,8 @@ class RHIMELikelihood(ModelComponent):
         }
         return result
 
-    def build(self, mu_flux=None, mu_bc=None) -> None:
-        self.model = pm.Model(name=self.name, coords=self.coords())
+    def build(self, mu=None, mu_flux=None, baseline=None) -> None:
+        self._model = pm.Model(name=self.name, coords=self.coords())
 
         with self.model as likelihood:
             y_obs = pm.Data("y_obs", self.y_obs, dims="nmeasure")
@@ -223,9 +271,9 @@ class RHIMELikelihood(ModelComponent):
 
             sigma = parse_prior("sigma", self.sigma_prior, dims=("nsigma_site", "nsigma_time"))
 
-            if mu_bc is None:
+            if baseline is None:
                 if "bc::mu" in likelihood.parent:
-                    mu_bc = likelihood.parent["bc::mu"]
+                    baseline = likelihood.parent["bc::mu"]
 
             if mu_flux is None:
                 if "flux::mu" in likelihood.parent:
@@ -234,8 +282,8 @@ class RHIMELikelihood(ModelComponent):
                     raise ValueError("No flux forward model found.")
 
             if self.pollution_events_from_obs is True:
-                if mu_bc is not None:
-                    pollution_event = pt.abs(y_obs - mu_bc)
+                if baseline is not None:
+                    pollution_event = pt.abs(y_obs - baseline)
                 else:
                     pollution_event = pt.abs(y_obs) + 1e-6 * pt.mean(
                         y_obs
@@ -263,9 +311,10 @@ class RHIMELikelihood(ModelComponent):
 
             # this try/except block shouldn't really be necessary if `RHIMELikelihood.build` is called inside
             # a model context that defines `mu`, but this is (I hope) easier to understand.
-            try:
-                mu = likelihood.parent["mu"]
-            except KeyError as e:
-                raise ValueError("No modelled mole fractions calculated in parent model of likelihood") from e
+            if mu is None:
+                try:
+                    mu = likelihood.parent["mu"]
+                except KeyError as e:
+                    raise ValueError("No modelled mole fractions calculated in parent model of likelihood") from e
 
             pm.Normal("y", mu=mu, sigma=epsilon, observed=y_obs, dims="nmeasure")

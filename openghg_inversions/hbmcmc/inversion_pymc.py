@@ -15,7 +15,7 @@ from scipy import stats
 
 from openghg_inversions import convert
 from openghg_inversions import utils
-from openghg_inversions.models.rhime import build_rhime_model
+from openghg_inversions.models.rhime import rhime_model
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
 
@@ -157,7 +157,7 @@ def inferpymc(
     burn = int(burn)
     nit = int(nit)
 
-    model = build_rhime_model(
+    model = rhime_model(
         Hx=Hx,
         Y=Y,
         error=error,
@@ -195,7 +195,7 @@ def inferpymc(
         )
 
     # Check for convergence
-    gelrub = pm.rhat(trace)["flux::x"].max()
+    gelrub = pm.rhat(trace)["forward::flux::x"].max()
     if gelrub > 1.05:
         print("Failed Gelman-Rubin at 1.05")
         convergence = "Failed"
@@ -210,14 +210,14 @@ def inferpymc(
     # select outputs
     posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit))
 
-    xouts = posterior_burned["flux::x"]
+    xouts = posterior_burned["forward::flux::x"]
     sigouts = posterior_burned["likelihood::sigma"]
-    Ytrace = posterior_burned["mu"]
+    Ytrace = posterior_burned["forward::mu"]
 
     if add_offset:
-        OFFtrace = posterior_burned["offset::mu"]
+        OFFtrace = posterior_burned["forward::offset::mu"]
     else:
-        OFFtrace = xr.zeros_like(posterior_burned["flux::mu"])
+        OFFtrace = xr.zeros_like(posterior_burned["forward::flux::mu"])
 
     result = {
         "xouts": xouts,
@@ -232,8 +232,8 @@ def inferpymc(
     }
 
     if use_bc:
-        bcouts = posterior_burned["bc::x"]
-        YBCtrace = posterior_burned["bc::mu"] + OFFtrace
+        bcouts = posterior_burned["forward::bc::x"]
+        YBCtrace = posterior_burned["forward::bc::mu"] + OFFtrace
         result["bcouts"] = bcouts
         result["YBCtrace"] = YBCtrace.values.T
 
