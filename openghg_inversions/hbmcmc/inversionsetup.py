@@ -333,6 +333,66 @@ def xprior_covariance(nperiod : int,
     return covariance_matrix, precision_matrix
 
 
+def bcprior_covariance(nperiod : int,
+                      nbc : int,
+                      sigma_bc : float,
+                      bc_correlation : float | None,
+                      ) -> np.ndarray:
+    """
+    Introduces a covariance matrix (with non-zero off-diagonal values) to allow for 
+    temporal correlation between state vector boundary condition(xbc) parameters. 
+
+    Args:
+        nperiod (int): 
+            The number of temporal periods in the inversion. If nperiod=4, the inversion
+            is divided into 4 (nearly) equal time periods.
+        nbc (int):
+            The number of boundary condition parameters in the inversion.
+        sigma (float):
+            The prior_bc standard deviation.
+        bc_correlation (float):
+            The exponential decay constant (tau) of the the temporal correlation.
+
+    Returns:
+        numpy array:
+            Precision matrix to be inserted directly into pymc inversion.
+    
+    """
+             
+    if bc_correlation == 0 or bc_correlation is None:
+        
+        bc_covariance_matrix = np.eye(nbc) * sigma_bc**2
+        bc_precision_matrix = np.eye(nbc) / sigma_bc**2
+
+    elif nbc != int(nperiod*4):
+        
+        raise ValueError("Correlated baseline only setup for NESW boundary conditions. nbc != nperiod*4")
+    
+    else:
+        
+        range_time = np.arange(nperiod)
+        cov_period = np.eye(nperiod) * sigma_bc**2
+        cov_period_offdiag = []
+        
+        for i in np.arange(nperiod - 1) + 1:
+            for j in np.arange(i):
+                
+                dt = range_time[i] - range_time[j]  # delta t for each time period
+                rho_time = np.exp(-dt/bc_correlation)  # calculation of correlation coefficent
+                covariance_ij = rho_time * sigma_bc**2   # calculation of correlation; cov(X, Y) = rho(X, Y) * stdev(X) * stdev(Y)
+                cov_period_offdiag.append(covariance_ij)  # append covaraiance to off diagonal array
+
+        cov_period[np.tril_indices(n=nperiod, k=-1)] = cov_period_offdiag  # assign off-diagonal values to lower left corner of matrix
+        cov_period = cov_period + np.tril(cov_period, k=-1).T  # assign off-diagonal values to upper right corner of matrix
+        inv_cov_period = np.linalg.inv(cov_period)  # calculate the inverse of the covariance matrix
+        cov_bc = np.eye(4)  # 4 bcs corresponds to NESW. No spatial correlation currently considered
+        inv_cov_bc = np.eye(4)  # inverse of the covariance matrix
+        bc_covariance_matrix = np.kron(cov_bc, cov_period)  # combine covariance matrices using the Kronecker product
+        bc_precision_matrix = np.kron(inv_cov_bc, inv_cov_period)  # calculate the precision matrix; precision = cov^-1 = kron( cov_p^-1, cov_b^-1 )
+
+    return bc_covariance_matrix, bc_precision_matrix
+
+
 def covariance_extension(x_covariance: np.ndarray,
                          nbc: int,
                          bc_sig: float = 0.1) -> np.ndarray:

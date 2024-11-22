@@ -147,14 +147,19 @@ def inferpymc(
     x_freq: str | None = None,
     xprior_covariance: np.ndarray | None = None,
     xprior_precision: np.ndarray | None = None,
+    xmultivariate_lognormal: bool = False,
+    xmu_multivariate: np.ndarray | None = None,
     sigma_per_site: bool = True,
     offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
     add_offset: bool = False,
     verbose: bool = False,
-    multivariate_lognormal: bool = False,
-    mu_multivariate: np.ndarray | None = None,
     min_error: float | None = 0.0,
     use_bc: bool = True,
+    bc_freq: str | None = None,
+    bcprior_covariance: np.ndarray | None = None,
+    bcprior_precision: np.ndarray | None = None,
+    bcmultivariate_lognormal: bool = False,
+    bcmu_multivariate: np.ndarray | None = None,
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
@@ -224,10 +229,10 @@ def inferpymc(
         Add an offset (intercept) to all sites but the first in the site list. Default False.
       verbose:
         When True, prints progress bar
-      multivariate_lognormal (bool):
+      xmultivariate_lognormal (bool):
         When True, transforms samples from multivariate normal prior into multivariate lognormal prior
-      mu_multivariate:
-        The means vector of the multivariate distribution. If multivariate_lognormal = True, then this is the means vector of the multivaraite 
+      xmu_multivariate:
+        The means vector of the multivariate distribution. If xmultivariate_lognormal = True, then this is the means vector of the multivaraite 
         normal that defines the multivariate lognormal
       min_error:
         Minimum error to use during inversion. Only used if no_model_error is False.
@@ -309,12 +314,12 @@ def inferpymc(
         step1_vars = []
 
         if x_freq is not None:
-            if multivariate_lognormal:
-                x0 = pm.MvNormal("x0", mu=mu_multivariate, tau=xprior_precision)
+            if xmultivariate_lognormal:
+                x0 = pm.MvNormal("x0", mu=xmu_multivariate, tau=xprior_precision)
                 x = pm.Deterministic("x", pt.exp(x0))
                 step1_vars.append(x0)
             else:
-                x = pm.MvNormal("x0", mu=mu_multivariate, tau=xprior_precision)
+                x = pm.MvNormal("x", mu=xmu_multivariate, tau=xprior_precision)
                 step1_vars.append(x)
         else:
             if reparameterise_log_normal and xprior["pdf"] == "lognormal":
@@ -326,13 +331,22 @@ def inferpymc(
                 step1_vars.append(x)
 
         if use_bc:
-            if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
-                bc0 = pm.Normal("bc0", 0, 1, dims="nbc")
-                bc = pm.Deterministic("bc", pt.exp(bcprior["mu"] + bcprior["sigma"] * bc0))
-                step1_vars.append(bc0)
+            if bcmu_multivariate is not None:
+                if bcmultivariate_lognormal:
+                    bc0 = pm.MvNormal("bc0", mu=bcmu_multivariate, tau=bcprior_precision)
+                    bc = pm.Deterministic("bc", pt.exp(bc0))
+                    step1_vars.append(bc0)
+                else:
+                    bc = pm.MvNormal("bc", mu=bcmu_multivariate, tau=bcprior_precision)
+                    step1_vars.append(bc)
             else:
-                bc = parse_prior("bc", bcprior, dims="nbc")
-                step1_vars.append(bc)
+                if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
+                    bc0 = pm.Normal("bc0", 0, 1, dims="nbc")
+                    bc = pm.Deterministic("bc", pt.exp(bcprior["mu"] + bcprior["sigma"] * bc0))
+                    step1_vars.append(bc0)
+                else:
+                    bc = parse_prior("bc", bcprior, dims="nbc")
+                    step1_vars.append(bc)
 
         sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
 
@@ -446,7 +460,7 @@ def inferanalytical(
 ) -> dict:  
     """Under the assumption of complete Gaussianity, this module performs an analytical inversion.
     Boundary conditions can be included, so long as the prior is normal. No hyperparameters can
-    be calculated. As the solution is numerical, no model error is included.
+    be calculated. As the solution is analytical, no model error is included.
 
     Args:
       Hx:
@@ -565,6 +579,7 @@ def inferpymc_postprocessouts(
     x_freq: str | None = None,
     xprior_covariance: np.ndarray | None = None,
     bcprior: dict | None = None,
+    bcprior_covariance: np.ndarray | None = None,
     YBCtrace: np.ndarray | None = None,
     bcouts: np.ndarray | None = None,
     Hbc: np.ndarray | None = None,
@@ -1111,11 +1126,20 @@ def inferpymc_postprocessouts(
         )
     
     if xprior_covariance is not None:
-        coords["row_nums"] = (["row"], np.arange(nperiod*nbasis))
-        coords["col_nums"] = (["column"], np.arange(nperiod*nbasis))
+        coords["xrow_nums"] = (["xrow"], nparam)
+        coords["xcol_nums"] = (["xcolumn"], nparam)
         data_vars.update(
             {
-                "prior_covariance": (["row", "column"], xprior_covariance)
+                "xprior_covariance": (["xrow", "xcolumn"], xprior_covariance)
+            }
+        )
+    
+    if bcprior_covariance is not None:
+        coords["bcrow_nums"] = (["bcrow"], nBC)
+        coords["bccol_nums"] = (["bccolumn"], nBC)
+        data_vars.update(
+            {
+                "bcprior_covariance": (["bcrow", "bccolumn"], bcprior_covariance)
             }
         )
 
