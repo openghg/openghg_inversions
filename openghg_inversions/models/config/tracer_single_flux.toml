@@ -1,0 +1,54 @@
+[forward]
+# the "forward" heading is implicitly defined
+# if we use [forward.ch4]
+# what should this do in the model?
+# ideally headings here would mirror the variable
+# names in pymc, so we should define a model
+# named "forward", and build all subsequent components inside it
+
+[forward.ch4]
+type = "forward model"
+
+[forward.ch4.flux]
+type = "flux"
+
+[forward.ch4.baseline]
+type = "baseline"
+optional = true
+
+[forward.ch4.baseline.bc]
+type = "bc"
+optional = true
+
+[forward.ch4.baseline.offset]
+type = "offset"
+optional = true
+
+[forward.c2h6]
+type = "forward model"
+
+[forward.c2h6.flux]
+type = "tracer"
+inputs = ["forward.ch4.flux"]
+
+[forward.c2h6.baseline]
+type = "baseline"
+optional = true
+
+[forward.c2h6.baseline.bc]
+type = "bc"
+optional = true
+
+[forward.c2h6.baseline.offset]
+type = "offset"
+optional = true
+
+[likelihood]
+
+[likelihood.ch4]
+type = "rhime likelihood"
+inputs = ["forward.ch4"]
+
+[likelihood.c2h6]
+type = "rhime tracer likelihood"
+inputs = ["likelihood.ch4", "forward.ch4"]

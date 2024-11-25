@@ -1,0 +1,48 @@
+[ch4] # implicit heading... may as well include it for clarity
+
+[ch4.forward]
+type = "forward model"
+
+[ch4.forward.flux]
+type = "flux"
+
+[ch4.forward.baseline]
+type = "baseline"
+optional = true
+
+[ch4.forward.baseline.bc]
+type = "bc"
+optional = true
+
+[ch4.forward.baseline.offset]
+type = "offset"
+optional = true
+
+[ch4.likelihood]
+type = "rhime likelihood"
+inputs = ["ch4.forward"]
+
+[c2h6]
+
+[c2h6.forward]
+type = "forward model"
+
+[c2h6.forward.flux]
+type = "tracer"
+inputs = ["ch4.forward.flux"]
+
+[c2h6.forward.baseline]
+type = "baseline"
+optional = true
+
+[c2h6.forward.baseline.bc]
+type = "bc"
+optional = true
+
+[c2h6.forward.baseline.offset]
+type = "offset"
+optional = true
+
+[c2h6.likelihood]
+type = "rhime tracer likelihood"
+inputs = ["ch4.likelihood", "ch4.forward"]
