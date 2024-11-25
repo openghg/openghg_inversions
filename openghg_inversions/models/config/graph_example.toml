@@ -11,3 +11,10 @@ inputs = ["node1.child1"]
 
 [node3.child1]
 inputs = ["node1", "node2"]
+
+[node4]
+
+[node4.child1]
+
+[node4.child2]
+inputs = ["node4.child1"]
