@@ -51,4 +51,4 @@ inputs = ["forward.ch4"]
 
 [likelihood.c2h6]
 type = "rhime tracer likelihood"
-inputs = ["likelihood.ch4", "forward.ch4"]
+inputs = ["likelihood.ch4", "forward.c2h6"]

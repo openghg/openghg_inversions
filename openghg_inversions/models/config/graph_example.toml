@@ -1,3 +1,13 @@
 [node1]
 
-[node1.node2]
+[node1.child1]
+
+[node1.child2]
+
+[node2]
+inputs = ["node1.child1"]
+
+[node3]
+
+[node3.child1]
+inputs = ["node1", "node2"]
