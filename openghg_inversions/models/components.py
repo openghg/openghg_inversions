@@ -254,6 +254,14 @@ class Baseline(ModelComponent):
     def __bool__(self) -> bool:
         return bool(self.child_components)
 
+    def __getattr__(self, name: str) -> Any:
+        for child in self.child_components:
+            try:
+                return getattr(child, name)
+            except AttributeError:
+                continue
+        raise AttributeError(f"Attribute {name} not found in Baseline {self.name} or its child components.")
+
     def build(self) -> None:
         self.model = pm.Model(name=self._name)
 
@@ -262,7 +270,7 @@ class Baseline(ModelComponent):
                 child.build()
 
             if self.child_components:
-                pm.Deterministic("mu", sum_outputs(self.child_components), dims=self.child_components[0].output_dim)
+                pm.Deterministic("mu", sum_outputs(self.child_components), dims=self.output_dim)
 
     @property
     def output(self) -> TensorVariable:
@@ -283,6 +291,14 @@ class ForwardModel(ModelComponent):
         if baseline:  # baseline evaluates to False if there is no offset and no bc
             self.child_components.append(baseline)
 
+    def __getattr__(self, name: str) -> Any:
+        for child in self.child_components:
+            try:
+                return getattr(child, name)
+            except AttributeError:
+                continue
+        raise AttributeError(f"Attribute {name} not found in ForwardModel {self.name} or its child components.")
+
     def build(self) -> None:
         self.model = pm.Model(name=self._name)
 
@@ -290,7 +306,7 @@ class ForwardModel(ModelComponent):
             for child in self.child_components:
                 child.build()
 
-            pm.Deterministic("mu", sum_outputs(self.child_components), dims=self.child_components[0].output_dim)
+            pm.Deterministic("mu", sum_outputs(self.child_components), dims=self.output_dim)
 
     @property
     def output(self) -> TensorVariable:
