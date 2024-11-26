@@ -87,7 +87,6 @@ def rhime_model(
         y_obs=Y,
         error=error,
         sigma=sigma,
-        site_indicator=siteindicator,
         min_error=min_error,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,

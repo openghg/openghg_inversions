@@ -369,6 +369,7 @@ class Sigma(ModelComponent):
             sigma = parse_prior("sigma", self.sigma_prior, dims=("nsigma_site", "nsigma_time"))
 
             # convert siteindicator into a site indexer
+            # TODO: use self.sites here?
             if self.sigma_per_site:
                 sites = self.site_indicator.astype(int)
             else:
@@ -390,12 +391,10 @@ class RHIMELikelihood(ModelComponent):
         self,
         y_obs: np.ndarray,
         error: np.ndarray,
-        site_indicator: np.ndarray,
         sigma: Sigma,
         min_error: np.ndarray | float = 0.0,
         pollution_events_from_obs: bool = True,
         no_model_error: bool = False,
-        sites: list[str] | None = None,
         name: str = "likelihood",
     ) -> None:
         super().__init__()
@@ -406,10 +405,6 @@ class RHIMELikelihood(ModelComponent):
 
         self.sigma = sigma
 
-        self.site_indicator = site_indicator
-
-        self.sites = sites
-
         if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
             self.min_error = min_error * np.ones_like(y_obs)
         else:
@@ -419,11 +414,7 @@ class RHIMELikelihood(ModelComponent):
         self.no_model_error = no_model_error
 
     def coords(self) -> dict:
-        result = {
-            "nmeasure": np.arange(len(self.y_obs)),
-            "sites": self.sites if self.sites is not None else np.unique(self.site_indicator),
-        }
-        return result
+        return {"nmeasure": np.arange(len(self.y_obs))}
 
     def build(self, forward: ForwardModel) -> None:
         self.model = pm.Model(name=self.name, coords=self.coords())
