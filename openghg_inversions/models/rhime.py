@@ -8,6 +8,7 @@ from openghg_inversions.models.components import (
     Baseline,
     ForwardModel,
     RHIMELikelihood,
+    Sigma,
 )
 
 
@@ -80,17 +81,16 @@ def rhime_model(
         reparameterise_log_normal=reparameterise_log_normal,
     )
 
+    sigma = Sigma(sigma_prior=sigprior, site_indicator=siteindicator, sigma_freq=sigma_freq, y_time=y_time, sigma_per_site=sigma_per_site)
+
     likelihood = RHIMELikelihood(
         y_obs=Y,
         error=error,
-        sigma_prior=sigprior,
+        sigma=sigma,
         site_indicator=siteindicator,
         min_error=min_error,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
-        sigma_per_site=sigma_per_site,
-        sigma_freq=sigma_freq,
-        y_time=y_time,
     )
 
     with pm.Model() as model:

@@ -80,6 +80,7 @@ class ModelComponent(ABC):
             result = default
         return result
 
+
 class HasOutput(Protocol):
     @property
     @abstractmethod
@@ -155,7 +156,6 @@ class LinearForwardComponent(ModelComponent):
 
         self.prior_args = prior_args
 
-
     def coords(self) -> dict:
         return {**self.input_coords, **self.output_coords}
 
@@ -190,7 +190,7 @@ class Offset(ModelComponent):
         site_indicator: np.ndarray,
         prior_args: PriorArgs,
         output_dim: str = "nmeasure",
-        name: str | None = None
+        name: str | None = None,
     ) -> None:
         super().__init__()
 
@@ -297,7 +297,9 @@ class ForwardModel(ModelComponent):
                 return getattr(child, name)
             except AttributeError:
                 continue
-        raise AttributeError(f"Attribute {name} not found in ForwardModel {self.name} or its child components.")
+        raise AttributeError(
+            f"Attribute {name} not found in ForwardModel {self.name} or its child components."
+        )
 
     def build(self) -> None:
         self.model = pm.Model(name=self._name)
@@ -313,6 +315,72 @@ class ForwardModel(ModelComponent):
         return self.model["mu"]
 
 
+class Sigma(ModelComponent):
+    """Minimal component for setting up sigma prior in likelihoods."""
+
+    component_name = "sigma"
+
+    def __init__(
+        self,
+        sigma_prior: PriorArgs,
+        site_indicator: np.ndarray,
+        sigma_freq: str | None = None,
+        y_time: np.ndarray | None = None,
+        sigma_per_site: bool = True,
+        sites: list[str] | None = None,
+    ) -> None:
+        super().__init__()
+
+        self.sigma_prior = sigma_prior
+
+        if sigma_freq is not None:
+            if y_time is None:
+                raise ValueError("If `sigma_freq` is not None, then `y_time` must be provided.")
+            sigma_freq_index = sigma_freq_indicies(y_time, sigma_freq)
+        else:
+            sigma_freq_index = np.zeros_like(site_indicator, dtype=int)
+
+        self.site_indicator = site_indicator
+        self.sigma_freq_index = sigma_freq_index
+        self.sigma_per_site = sigma_per_site
+
+        self.sites = sites
+
+    def coords(self) -> dict:
+        result = {
+            "nmeasure": np.arange(len(self.site_indicator)),
+            "sites": self.sites if self.sites is not None else np.unique(self.site_indicator),
+            "nsigma_time": np.unique(self.sigma_freq_index),
+            "nsigma_site": np.unique(self.site_indicator) if self.sigma_per_site else [0],
+        }
+        return result
+
+    def build(self) -> None:
+        """This is a bit of a hack to build this component inside of another component without
+        creating a long name.
+
+        See usage in `RHIMELikelihood`.
+        """
+        self.model = pm.modelcontext(None)
+
+        with self.model as model:
+            model.add_coords(self.coords())
+
+            sigma = parse_prior("sigma", self.sigma_prior, dims=("nsigma_site", "nsigma_time"))
+
+            # convert siteindicator into a site indexer
+            if self.sigma_per_site:
+                sites = self.site_indicator.astype(int)
+            else:
+                sites = np.zeros_like(self.site_indicator).astype(int)
+
+            pm.Deterministic("sigma_obs_aligned", sigma[sites, self.sigma_freq_index], dims="nmeasure")
+
+    @property
+    def output(self) -> TensorVariable:
+        return self.model["sigma_obs_aligned"]
+
+
 class RHIMELikelihood(ModelComponent):
     """Likelihood for RHIME model."""
 
@@ -322,14 +390,11 @@ class RHIMELikelihood(ModelComponent):
         self,
         y_obs: np.ndarray,
         error: np.ndarray,
-        sigma_prior: PriorArgs,
         site_indicator: np.ndarray,
+        sigma: Sigma,
         min_error: np.ndarray | float = 0.0,
         pollution_events_from_obs: bool = True,
         no_model_error: bool = False,
-        sigma_freq: str | None = None,
-        y_time: np.ndarray | None = None,
-        sigma_per_site: bool = True,
         sites: list[str] | None = None,
         name: str = "likelihood",
     ) -> None:
@@ -339,18 +404,9 @@ class RHIMELikelihood(ModelComponent):
         self.y_obs = y_obs
         self.error = error
 
-        self.sigma_prior = sigma_prior
-
-        if sigma_freq is not None:
-            if y_time is None:
-                raise ValueError("If `sigma_freq` is not None, then `y_time` must be provided.")
-            sigma_freq_index = sigma_freq_indicies(y_time, sigma_freq)
-        else:
-            sigma_freq_index = np.zeros_like(y_obs, dtype=int)
+        self.sigma = sigma
 
         self.site_indicator = site_indicator
-        self.sigma_freq_index = sigma_freq_index
-        self.sigma_per_site = sigma_per_site
 
         self.sites = sites
 
@@ -366,20 +422,18 @@ class RHIMELikelihood(ModelComponent):
         result = {
             "nmeasure": np.arange(len(self.y_obs)),
             "sites": self.sites if self.sites is not None else np.unique(self.site_indicator),
-            "nsigma_time": np.unique(self.sigma_freq_index),
-            "nsigma_site": np.unique(self.site_indicator) if self.sigma_per_site else [0],
         }
         return result
 
     def build(self, forward: ForwardModel) -> None:
         self.model = pm.Model(name=self.name, coords=self.coords())
 
-        with self.model as likelihood:
+        with self.model:
+            self.sigma.build()
+
             y_obs = pm.Data("y_obs", self.y_obs, dims="nmeasure")
             error = pm.Data("error", self.error, dims="nmeasure")
             min_error = pm.Data("min_error", self.min_error, dims="nmeasure")
-
-            sigma = parse_prior("sigma", self.sigma_prior, dims=("nsigma_site", "nsigma_time"))
 
             try:
                 baseline = forward.model["baseline::mu"]
@@ -398,13 +452,7 @@ class RHIMELikelihood(ModelComponent):
             else:
                 pollution_event = pt.abs(mu_flux)
 
-            # convert siteindicator into a site indexer
-            if self.sigma_per_site:
-                sites = self.site_indicator.astype(int)
-            else:
-                sites = np.zeros_like(self.site_indicator).astype(int)
-
-            pollution_event_scaled_error = pollution_event * sigma[sites, self.sigma_freq_index]
+            pollution_event_scaled_error = pollution_event * self.sigma.output
 
             if self.no_model_error is True:
                 # need some small non-zero value to avoid sampling problems
