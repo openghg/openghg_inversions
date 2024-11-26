@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Protocol
+from typing import Any, Iterable, Protocol, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -14,13 +14,27 @@ from openghg_inversions.models.priors import parse_prior, PriorArgs
 from openghg_inversions.models.setup import sigma_freq_indicies
 
 
+def sum_outputs(components: Iterable[HasOutput]) -> TensorVariable:
+    """Sum the output variables of a list of components."""
+    return sum(component.output for component in components)
+
+
+MCT = TypeVar("MCT", bound="ModelComponent")
+
 
 class ModelComponent(ABC):
+    component_name: str
+    _component_registry: dict = {}
     _name: str
     _model: pm.Model | None = None
 
+    @classmethod
+    def __init_subclass__(cls):
+        """Register ModelComponents by name, for lookup by model config."""
+        ModelComponent._component_registry[cls.component_name] = cls
+
     @abstractmethod
-    def build(self) -> None:
+    def build(self, *args, **kwargs) -> None:
         """Construct a (sub)model for the component.
 
         This should set the values of `self.model`.
@@ -48,6 +62,10 @@ class ModelComponent(ABC):
         if self._model is None:
             raise AttributeError("model for this component has not been built yet.")
         return self._model
+
+    @model.setter
+    def model(self, model_: pm.Model) -> None:
+        self._model = model_
 
     def __getitem__(self, name: str, /) -> Any:
         """Access model variables directly from ModelComponent."""
@@ -78,6 +96,8 @@ class LinearForwardComponent(ModelComponent):
     The name of the component will be prepended to any variables in this model, so these
     variables can be accessed by names: `<name>::x` and `<name>::mu`.
     """
+
+    component_name = "linear_forward_component"
 
     # TODO: component registry and staticmethod to sum up components
     # this method should check that output coords are aligned...
@@ -140,7 +160,7 @@ class LinearForwardComponent(ModelComponent):
         return {**self.input_coords, **self.output_coords}
 
     def build(self) -> None:
-        self._model = pm.Model(
+        self.model = pm.Model(
             name=self.name, coords=self.coords()
         )  # name used to distinguish variables created by this component
 
@@ -154,7 +174,17 @@ class LinearForwardComponent(ModelComponent):
         return self.model["mu"]
 
 
+class Flux(LinearForwardComponent):
+    component_name = "flux"
+
+
+class BoundaryConditions(LinearForwardComponent):
+    component_name = "bc"
+
+
 class Offset(ModelComponent):
+    component_name = "offset"
+
     def __init__(
         self,
         site_indicator: np.ndarray,
@@ -191,7 +221,7 @@ class Offset(ModelComponent):
         return result
 
     def build(self) -> None:
-        self._model = pm.Model(
+        self.model = pm.Model(
             name=self.name, coords=self.coords()
         )  # name used to distinguish variables created by this component
 
@@ -205,8 +235,72 @@ class Offset(ModelComponent):
         return self.model["mu"]
 
 
+class Baseline(ModelComponent):
+    component_name = "baseline"
+
+    def __init__(self, bc: BoundaryConditions | None = None, offset: Offset | None = None) -> None:
+        super().__init__()
+        self.name = "baseline"
+
+        # components
+        self.child_components = []
+
+        if bc is not None:
+            self.child_components.append(bc)
+
+        if offset is not None:
+            self.child_components.append(offset)
+
+    def __bool__(self) -> bool:
+        return bool(self.child_components)
+
+    def build(self) -> None:
+        self.model = pm.Model(name=self._name)
+
+        with self.model:
+            for child in self.child_components:
+                child.build()
+
+            if self.child_components:
+                pm.Deterministic("mu", sum_outputs(self.child_components), dims=self.child_components[0].output_dim)
+
+    @property
+    def output(self) -> TensorVariable:
+        return self.model["mu"]
+
+
+class ForwardModel(ModelComponent):
+    component_name = "forward_model"
+
+    def __init__(self, flux: Flux, baseline: Baseline | None = None) -> None:
+        super().__init__()
+        self.name = "forward"
+
+        # components
+        self.child_components = []
+        self.child_components.append(flux)  # empty list followed by append is to trick mypy...
+
+        if baseline:  # baseline evaluates to False if there is no offset and no bc
+            self.child_components.append(baseline)
+
+    def build(self) -> None:
+        self.model = pm.Model(name=self._name)
+
+        with self.model:
+            for child in self.child_components:
+                child.build()
+
+            pm.Deterministic("mu", sum_outputs(self.child_components), dims=self.child_components[0].output_dim)
+
+    @property
+    def output(self) -> TensorVariable:
+        return self.model["mu"]
+
+
 class RHIMELikelihood(ModelComponent):
     """Likelihood for RHIME model."""
+
+    component_name = "rhime_likelihood"
 
     def __init__(
         self,
@@ -261,8 +355,8 @@ class RHIMELikelihood(ModelComponent):
         }
         return result
 
-    def build(self, mu=None, mu_flux=None, baseline=None) -> None:
-        self._model = pm.Model(name=self.name, coords=self.coords())
+    def build(self, forward: ForwardModel) -> None:
+        self.model = pm.Model(name=self.name, coords=self.coords())
 
         with self.model as likelihood:
             y_obs = pm.Data("y_obs", self.y_obs, dims="nmeasure")
@@ -271,15 +365,12 @@ class RHIMELikelihood(ModelComponent):
 
             sigma = parse_prior("sigma", self.sigma_prior, dims=("nsigma_site", "nsigma_time"))
 
-            if baseline is None:
-                if "bc::mu" in likelihood.parent:
-                    baseline = likelihood.parent["bc::mu"]
+            try:
+                baseline = forward.model["baseline::mu"]
+            except KeyError:
+                baseline = None
 
-            if mu_flux is None:
-                if "flux::mu" in likelihood.parent:
-                    mu_flux = likelihood.parent["flux::mu"]
-                else:
-                    raise ValueError("No flux forward model found.")
+            mu_flux = forward.model["flux::mu"]
 
             if self.pollution_events_from_obs is True:
                 if baseline is not None:
@@ -309,12 +400,6 @@ class RHIMELikelihood(ModelComponent):
 
             epsilon = pm.Deterministic("epsilon", eps, dims="nmeasure")
 
-            # this try/except block shouldn't really be necessary if `RHIMELikelihood.build` is called inside
-            # a model context that defines `mu`, but this is (I hope) easier to understand.
-            if mu is None:
-                try:
-                    mu = likelihood.parent["mu"]
-                except KeyError as e:
-                    raise ValueError("No modelled mole fractions calculated in parent model of likelihood") from e
+            mu = forward.output
 
             pm.Normal("y", mu=mu, sigma=epsilon, observed=y_obs, dims="nmeasure")

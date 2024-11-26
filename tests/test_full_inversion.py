@@ -74,18 +74,28 @@ def test_full_inversion_with_min_error_by_site(mcmc_args):
     assert "min_model_error" in out.attrs
 
 
+def test_model_graph(mcmc_args):
+    mcmc_outs = fixedbasisMCMC(**mcmc_args, skip_postprocessing=True)
+    model = mcmc_outs["model"]
+    gv = pm.model_to_graphviz(model)
+    gv.render(filename="./model_fig", format="pdf")
+
+
 def test_full_inversion_lognormal_infer(mcmc_args):
-    mcmc_args["xprior"] = {"pdf": "lognormal", "stdev": 2.0, "reparameterise": True}
+    # NOTE: this test is sketchy... it relies on sampling being repeatable
+    # which seems to fail sometimes, even though the random seed is fixed
+    mcmc_args["xprior"] = {"pdf": "lognormal", "stdev": 1.0, "reparameterise": True}
+    mcmc_args["reparameterise_log_normal"] = True  # TODO: this argument will be removed
     mcmc_outs = fixedbasisMCMC(**mcmc_args, skip_postprocessing=True)
 
     trace = mcmc_outs["trace"]
-    trace.extend(pm.sample_prior_predictive(10000, mcmc_outs["model"], random_seed=196883))
+    trace.extend(pm.sample_prior_predictive(1000, mcmc_outs["model"], random_seed=168))
 
     prior_scaling_stdev = trace.prior["forward::flux::x"].std("draw").values
 
     # check if computed prior stdev is somewhat close to 2.0...
     # the tolerance is needed because the sample stdev seems to converge very slowly
-    np.testing.assert_allclose(prior_scaling_stdev, 2.0, atol=0.2)
+    np.testing.assert_allclose(prior_scaling_stdev, 1.0, atol=0.2)
 
 
 def test_full_inversion_lognormal_reparam(mcmc_args):

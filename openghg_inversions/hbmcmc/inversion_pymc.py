@@ -215,7 +215,7 @@ def inferpymc(
     Ytrace = posterior_burned["forward::mu"]
 
     if add_offset:
-        OFFtrace = posterior_burned["forward::offset::mu"]
+        OFFtrace = posterior_burned["forward::baseline::offset::mu"]
     else:
         OFFtrace = xr.zeros_like(posterior_burned["forward::flux::mu"])
 
@@ -232,8 +232,8 @@ def inferpymc(
     }
 
     if use_bc:
-        bcouts = posterior_burned["forward::bc::x"]
-        YBCtrace = posterior_burned["forward::bc::mu"] + OFFtrace
+        bcouts = posterior_burned["forward::baseline::bc::x"]
+        YBCtrace = posterior_burned["forward::baseline::bc::mu"] + OFFtrace
         result["bcouts"] = bcouts
         result["YBCtrace"] = YBCtrace.values.T
 

@@ -1,27 +1,17 @@
-from functools import reduce
-from typing import Iterable
-
 import numpy as np
 import pymc as pm
-from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.components import (
-    HasOutput,
-    LinearForwardComponent,
-    ModelComponent,
+    Flux,
+    BoundaryConditions,
     Offset,
+    Baseline,
+    ForwardModel,
     RHIMELikelihood,
 )
 
 
-def sum_outputs(components: Iterable[HasOutput]) -> TensorVariable:
-    """Sum the output variables of a list of components."""
-    return reduce(lambda x, y: x + y, (component.output for component in components))
-
-
-class RHIMEForwardModel(ModelComponent):
-    def __init__(
-        self,
+def make_rhime_forward_component(
         Hx: np.ndarray,
         Hbc: np.ndarray | None = None,
         add_offset: bool = False,
@@ -30,10 +20,7 @@ class RHIMEForwardModel(ModelComponent):
         offsetprior: dict | None = None,
         site_indicator: np.ndarray | None = None,
         reparameterise_log_normal: bool = False,
-    ) -> None:
-        super().__init__()
-
-        self.name = "forward"
+    ) -> ForwardModel:
 
         # set default prior params
         xprior = xprior or {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
@@ -45,33 +32,21 @@ class RHIMEForwardModel(ModelComponent):
                 if prior["pdf"] == "lognormal":
                     prior["reparameterise"] = True
 
-        # add forward model components
-        components = []
+        # create forward model components
+        flux = Flux(name="flux", h_matrix=Hx.T, prior_args=xprior)
 
-        components.append(LinearForwardComponent(name="flux", h_matrix=Hx.T, prior_args=xprior))
-
+        baseline_components = {}
         if Hbc is not None:
-            components.append(LinearForwardComponent(name="bc", h_matrix=Hbc.T, prior_args=bcprior))
+            baseline_components["bc"] = BoundaryConditions(name="bc", h_matrix=Hbc.T, prior_args=bcprior)
 
         if add_offset:
             if site_indicator is None:
                 raise ValueError("Need `site_indicator` to add Offset.")
-            components.append(Offset(site_indicator=site_indicator, prior_args=offsetprior))
+            baseline_components["offset"] = Offset(site_indicator=site_indicator, prior_args=offsetprior)
 
-        self.components = components
+        baseline = Baseline(**baseline_components)
 
-    def build(self) -> None:
-        self._model = pm.Model(name=self.name)
-
-        with self.model:
-            for component in self.components:
-                component.build()
-
-            non_flux_components = [component for component in self.components if "flux" not in component.name]
-            if non_flux_components:
-                pm.Deterministic("baseline", sum_outputs(non_flux_components))
-                
-            pm.Deterministic("mu", sum_outputs(self.components))
+        return ForwardModel(flux=flux, baseline=baseline)
 
 
 def rhime_model(
@@ -94,7 +69,7 @@ def rhime_model(
     no_model_error: bool = False,
 ) -> pm.Model:
 
-    forward_model = RHIMEForwardModel(
+    forward_model = make_rhime_forward_component(
         Hx=Hx,
         Hbc=Hbc,
         xprior=xprior,
@@ -121,10 +96,6 @@ def rhime_model(
     with pm.Model() as model:
         forward_model.build()
 
-        mu_flux = forward_model["flux::mu"]
-        mu = forward_model["mu"]
-        baseline = forward_model.get("baseline")
-
-        likelihood.build(mu=mu, mu_flux=mu_flux, baseline=baseline)
+        likelihood.build(forward=forward_model)
 
     return model
