@@ -1,5 +1,6 @@
 from collections import defaultdict
 from copy import deepcopy
+import inspect
 import re
 from typing import Any
 
@@ -84,6 +85,8 @@ def get_nodes(conf: dict) -> list[Node]:
                 node.children = get_children(values, name, cache)
 
                 for child in node.children:
+                    # append dict in the form {name: value}
+                    # take last part of child name, since it includes all ancestors' names
                     stack.append({child: values.pop(child.split(".")[-1])})
 
                 if "inputs" in values:
@@ -192,15 +195,68 @@ def create_components(G: nx.DiGraph, func_dict: dict, data_dict: dict) -> dict[N
 
     component_dict = {}
 
-
     for node, comp_type in component_type_dict.items():
-        if node.type in func_dict:
+        print("processing component for node", node.name)
+        if hasattr(node, f"use_{node.name.split('.')[-1]}") and not getattr(node, f"use_{node.name.split('.')[-1]}"):
+            component_dict[node] = None
+        elif node.type in func_dict:
             component_dict[node] = func_dict[node.type](node, **data_dict[node.name])
         else:
+            kwargs = data_dict.get(node.name, {}).copy()
+
             children = [v for k, v in component_dict.items() if k.name in node.children]
-            kwargs = data_dict.get(node.name, {})
+
+            # try to infer parameter names for children
+            # TODO: need a way to specify this explicitly
+            annotations = inspect.get_annotations(comp_type.__init__, eval_str=True)
+            parameters = inspect.signature(comp_type.__init__).parameters
+            parameter_values = list(parameters.values())
+            var_positionals = [param.name for param in parameter_values if param.kind == param.VAR_POSITIONAL]
+            remaining_children = []
+            for child in children:
+                for param, ann in annotations.items():
+                    if param not in var_positionals and type(child) is ann:
+                        kwargs[param] = child
+                        break
+                else:
+                    remaining_children.append(child)
+
+
+            # remaining children need to be positional args; check this is valid
+            if var_positionals:
+                var_pos_type = annotations[var_positionals[0]]
+                bad_remaining_children = [child for child in remaining_children if not isinstance(child, var_pos_type)]
+
+                if bad_remaining_children:
+                    raise ValueError(f"The following child nodes must be specified by name: {', '.join(bad_remaining_children)}")
+
             kwargs.update(node.__dict__.get("options", {}))
-            component_dict[node] = comp_type(*children, **kwargs)
+
+            # grab any other arguments available
+            for param in parameter_values:
+                if param.name in kwargs:
+                    continue
+
+                try:
+                    val = getattr(node, param.name)
+                except AttributeError:
+                    continue
+                else:
+                    if param.name == "name":
+                        val = val.split(".")[-1]  # if name has dots, we only want the last part
+                    kwargs[param.name] = val
+
+            # separate any positional args that must come before variable args
+            args = []
+            if var_positionals:
+                for k, param in parameters.items():
+                    if k in var_positionals:
+                        break
+                    if k in kwargs and param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD):
+                        args.append(kwargs.pop(k))
+
+            # print(args, remaining_children, kwargs)
+            component_dict[node] = comp_type(*args, *remaining_children, **kwargs)
 
     return component_dict
 

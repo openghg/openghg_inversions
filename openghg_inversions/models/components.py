@@ -106,7 +106,7 @@ class LinearForwardComponent(ModelComponent):
         self,
         name: str,
         h_matrix: xr.DataArray | np.ndarray,
-        prior_args: PriorArgs,
+        prior: PriorArgs,
         input_coords: xr.DataArray | np.ndarray | None = None,
         output_dim: str = "nmeasure",
         output_coords: xr.DataArray | np.ndarray | None = None,
@@ -154,7 +154,7 @@ class LinearForwardComponent(ModelComponent):
 
         self.output_coords = {self.output_dim: output_coords}
 
-        self.prior_args = prior_args
+        self.prior_args = prior
 
     def coords(self) -> dict:
         return {**self.input_coords, **self.output_coords}
@@ -178,6 +178,41 @@ class Flux(LinearForwardComponent):
     component_name = "flux"
 
 
+class MultisectorFlux(ModelComponent):
+    component_name = "multisector_flux"
+
+    def __init__(self, name: str, *fluxes: Flux) -> None:
+        super().__init__()
+        self.name = name
+
+        # components
+        self.child_components = fluxes
+
+    def __getattr__(self, name: str) -> Any:
+        for child in self.child_components:
+            try:
+                return getattr(child, name)
+            except AttributeError:
+                continue
+        raise AttributeError(
+            f"Attribute {name} not found in ForwardModel {self.name} or its child components."
+        )
+
+    def build(self) -> None:
+        self.model = pm.Model(name=self._name)
+
+        with self.model:
+            for child in self.child_components:
+                child.build()
+
+            pm.Deterministic("mu", sum_outputs(self.child_components), dims=self.output_dim)
+
+    @property
+    def output(self) -> TensorVariable:
+        return self.model["mu"]
+
+
+
 class BoundaryConditions(LinearForwardComponent):
     component_name = "bc"
 
@@ -188,7 +223,7 @@ class Offset(ModelComponent):
     def __init__(
         self,
         site_indicator: np.ndarray,
-        prior_args: PriorArgs,
+        prior: PriorArgs,
         output_dim: str = "nmeasure",
         name: str | None = None,
     ) -> None:
@@ -211,7 +246,7 @@ class Offset(ModelComponent):
 
         self.output_dim = output_dim
 
-        self.prior_args = prior_args
+        self.prior_args = prior
 
     def coords(self) -> dict:
         result = {
@@ -322,27 +357,27 @@ class Sigma(ModelComponent):
 
     def __init__(
         self,
-        sigma_prior: PriorArgs,
+        prior: PriorArgs,
         site_indicator: np.ndarray,
-        sigma_freq: str | None = None,
+        freq: str | None = None,
         y_time: np.ndarray | None = None,
-        sigma_per_site: bool = True,
+        per_site: bool = True,
         sites: list[str] | None = None,
     ) -> None:
         super().__init__()
 
-        self.sigma_prior = sigma_prior
+        self.prior = prior
 
-        if sigma_freq is not None:
+        if freq is not None:
             if y_time is None:
-                raise ValueError("If `sigma_freq` is not None, then `y_time` must be provided.")
-            sigma_freq_index = sigma_freq_indicies(y_time, sigma_freq)
+                raise ValueError("If `freq` is not None, then `y_time` must be provided.")
+            freq_index = sigma_freq_indicies(y_time, freq)
         else:
-            sigma_freq_index = np.zeros_like(site_indicator, dtype=int)
+            freq_index = np.zeros_like(site_indicator, dtype=int)
 
         self.site_indicator = site_indicator
-        self.sigma_freq_index = sigma_freq_index
-        self.sigma_per_site = sigma_per_site
+        self.freq_index = freq_index
+        self.per_site = per_site
 
         self.sites = sites
 
@@ -350,8 +385,8 @@ class Sigma(ModelComponent):
         result = {
             "nmeasure": np.arange(len(self.site_indicator)),
             "sites": self.sites if self.sites is not None else np.unique(self.site_indicator),
-            "nsigma_time": np.unique(self.sigma_freq_index),
-            "nsigma_site": np.unique(self.site_indicator) if self.sigma_per_site else [0],
+            "nsigma_time": np.unique(self.freq_index),
+            "nsigma_site": np.unique(self.site_indicator) if self.per_site else [0],
         }
         return result
 
@@ -364,18 +399,19 @@ class Sigma(ModelComponent):
         self.model = pm.modelcontext(None)
 
         with self.model as model:
+
             model.add_coords(self.coords())
 
-            sigma = parse_prior("sigma", self.sigma_prior, dims=("nsigma_site", "nsigma_time"))
+            sigma = parse_prior("sigma", self.prior, dims=("nsigma_site", "nsigma_time"))
 
             # convert siteindicator into a site indexer
             # TODO: use self.sites here?
-            if self.sigma_per_site:
+            if self.per_site:
                 sites = self.site_indicator.astype(int)
             else:
                 sites = np.zeros_like(self.site_indicator).astype(int)
 
-            pm.Deterministic("sigma_obs_aligned", sigma[sites, self.sigma_freq_index], dims="nmeasure")
+            pm.Deterministic("sigma_obs_aligned", sigma[sites, self.freq_index], dims="nmeasure")
 
     @property
     def output(self) -> TensorVariable:
@@ -420,8 +456,6 @@ class RHIMELikelihood(ModelComponent):
         self.model = pm.Model(name=self.name, coords=self.coords())
 
         with self.model:
-            self.sigma.build()
-
             y_obs = pm.Data("y_obs", self.y_obs, dims="nmeasure")
             error = pm.Data("error", self.error, dims="nmeasure")
             min_error = pm.Data("min_error", self.min_error, dims="nmeasure")
@@ -443,6 +477,8 @@ class RHIMELikelihood(ModelComponent):
             else:
                 pollution_event = pt.abs(mu_flux)
 
+
+            self.sigma.build()
             pollution_event_scaled_error = pollution_event * self.sigma.output
 
             if self.no_model_error is True:

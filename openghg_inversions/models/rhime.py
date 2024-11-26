@@ -34,16 +34,16 @@ def make_rhime_forward_component(
                     prior["reparameterise"] = True
 
         # create forward model components
-        flux = Flux(name="flux", h_matrix=Hx.T, prior_args=xprior)
+        flux = Flux(name="flux", h_matrix=Hx.T, prior=xprior)
 
         baseline_components = {}
         if Hbc is not None:
-            baseline_components["bc"] = BoundaryConditions(name="bc", h_matrix=Hbc.T, prior_args=bcprior)
+            baseline_components["bc"] = BoundaryConditions(name="bc", h_matrix=Hbc.T, prior=bcprior)
 
         if add_offset:
             if site_indicator is None:
                 raise ValueError("Need `site_indicator` to add Offset.")
-            baseline_components["offset"] = Offset(site_indicator=site_indicator, prior_args=offsetprior)
+            baseline_components["offset"] = Offset(site_indicator=site_indicator, prior=offsetprior)
 
         baseline = Baseline(**baseline_components)
 
@@ -81,7 +81,7 @@ def rhime_model(
         reparameterise_log_normal=reparameterise_log_normal,
     )
 
-    sigma = Sigma(sigma_prior=sigprior, site_indicator=siteindicator, sigma_freq=sigma_freq, y_time=y_time, sigma_per_site=sigma_per_site)
+    sigma = Sigma(prior=sigprior, site_indicator=siteindicator, freq=sigma_freq, y_time=y_time, per_site=sigma_per_site)
 
     likelihood = RHIMELikelihood(
         y_obs=Y,

@@ -1,0 +1,49 @@
+[model]
+
+[model.forward]
+type = "forward model"
+
+[model.forward.flux]
+type = "multisector flux"
+
+[model.forward.flux.agric]
+type = "flux"
+source = "edgar-annual-agricultural"
+prior = {pdf = "lognormal", mean = 1.0, stdev = 2.0, reparameterise = true}
+
+[model.forward.flux.indust]
+type = "flux"
+source = "edgar-annual-industrial"
+prior = {pdf = "lognormal", mean = 1.0, stdev = 2.0, reparameterise = true}
+
+[model.forward.flux.energy]
+type = "flux"
+source = "edgar-annual-energy"
+prior = {pdf = "lognormal", mean = 1.0, stdev = 2.0, reparameterise = true}
+
+[model.forward.baseline]
+type = "baseline"
+use_baseline = true
+
+[model.forward.baseline.bc]
+type = "bc"
+use_bc = true
+prior = {pdf = "truncatednormal", mu = 1.0, sigma = 0.1, lower = 0.0}
+
+[model.forward.baseline.offset]
+type = "offset"
+use_offset = false
+
+[model.likelihood]
+type = "rhime likelihood"
+inputs = ["forward"]
+
+[model.likelihood.sigma]
+type = "sigma"
+prior = {pdf = "uniform", lower = 0.1, upper = 3.0}
+freq = "8D"
+per_site = true
+
+[model.likelihood.options]
+pollution_events_from_obs = true
+no_model_error = false
