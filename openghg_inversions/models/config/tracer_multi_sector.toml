@@ -1,10 +1,4 @@
 [forward]
-# the "forward" heading is implicitly defined
-# if we use [forward.ch4]
-# what should this do in the model?
-# ideally headings here would mirror the variable
-# names in pymc, so we should define a model
-# named "forward", and build all subsequent components inside it
 
 [forward.ch4]
 type = "forward model"
@@ -40,7 +34,7 @@ optional = true
 type = "forward model"
 
 [forward.c2h6.flux]
-type = "multisector flux"  # TODO: is this right?
+type = "multisector flux"
 #
 [forward.c2h6.flux.agric]
 type = "tracer"

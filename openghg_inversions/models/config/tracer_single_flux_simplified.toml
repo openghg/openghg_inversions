@@ -1,0 +1,25 @@
+[forward]
+
+[forward.ch4]
+type = "forward model"
+
+[forward.ch4.flux]
+type = "flux"
+
+
+[forward.c2h6]
+type = "forward model"
+
+[forward.c2h6.flux]
+type = "tracer"
+inputs = ["forward.ch4.flux"]
+
+[likelihood]
+
+[likelihood.ch4]
+type = "rhime likelihood"
+inputs = ["forward.ch4"]
+
+[likelihood.c2h6]
+type = "rhime likelihood"
+inputs = ["forward.c2h6"]

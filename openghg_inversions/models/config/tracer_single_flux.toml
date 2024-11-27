@@ -12,17 +12,17 @@ type = "forward model"
 [forward.ch4.flux]
 type = "flux"
 
-[forward.ch4.baseline]
-type = "baseline"
-optional = true
+# [forward.ch4.baseline]
+# type = "baseline"
+# optional = true
 
-[forward.ch4.baseline.bc]
-type = "bc"
-optional = true
+# [forward.ch4.baseline.bc]
+# type = "bc"
+# optional = true
 
-[forward.ch4.baseline.offset]
-type = "offset"
-optional = true
+# [forward.ch4.baseline.offset]
+# type = "offset"
+# optional = true
 
 [forward.c2h6]
 type = "forward model"
@@ -31,17 +31,17 @@ type = "forward model"
 type = "tracer"
 inputs = ["forward.ch4.flux"]
 
-[forward.c2h6.baseline]
-type = "baseline"
-optional = true
+# [forward.c2h6.baseline]
+# type = "baseline"
+# optional = true
 
-[forward.c2h6.baseline.bc]
-type = "bc"
-optional = true
+# [forward.c2h6.baseline.bc]
+# type = "bc"
+# optional = true
 
-[forward.c2h6.baseline.offset]
-type = "offset"
-optional = true
+# [forward.c2h6.baseline.offset]
+# type = "offset"
+# optional = true
 
 [likelihood]
 
