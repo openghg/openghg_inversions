@@ -87,6 +87,32 @@ class HasOutput(Protocol):
     def output(self) -> TensorVariable: ...
 
 
+class Default(ModelComponent):
+    """Component that just builds its child components."""
+    component_name = "default"
+
+    def __init__(self, name: str, *child_components: ModelComponent) -> None:
+        # NOTE: we can't use `children` in place of `child_components` because it will create an error during parsing
+        # TODO: fix this problem ^^^
+        super().__init__()
+        self.name = name
+        self.children = child_components
+
+    def build(self) -> None:
+        self.model = pm.Model(name=self.name)
+
+        with self.model:
+            for child in self.children:
+                if hasattr(child, "inputs") and child.inputs: # type: ignore ...we just checked that this attribute exists
+                    inputs = child.inputs  # type: ignore ...we just checked that this attribute exists
+                    child.build(*inputs)
+                else:
+                    try:
+                        child.build()
+                    except TypeError as e:
+                        raise ValueError(f"Model component {child.name} requires `inputs`.") from e
+
+
 class LinearForwardComponent(ModelComponent):
     """Linear Component of forward model.
 
@@ -154,7 +180,7 @@ class LinearForwardComponent(ModelComponent):
 
         self.output_coords = {self.output_dim: output_coords}
 
-        self.prior_args = prior
+        self.prior = prior
 
     def coords(self) -> dict:
         return {**self.input_coords, **self.output_coords}
@@ -165,7 +191,7 @@ class LinearForwardComponent(ModelComponent):
         )  # name used to distinguish variables created by this component
 
         with self.model:
-            x = parse_prior("x", self.prior_args, dims=self.input_dim)
+            x = parse_prior("x", self.prior, dims=self.input_dim)
             hx = pm.Data("h", self.h_matrix, dims=(self.output_dim, self.input_dim))
             pm.Deterministic("mu", pt.dot(hx, x), dims=self.output_dim)
 
@@ -178,10 +204,79 @@ class Flux(LinearForwardComponent):
     component_name = "flux"
 
 
+class Tracer(ModelComponent):
+    component_name = "tracer"
+
+    def __init__(
+        self,
+        name: str,
+        h_matrix: xr.DataArray | np.ndarray,
+        prior: PriorArgs,
+        inputs: list[Flux],
+        input_coords: xr.DataArray | np.ndarray | None = None,
+        output_dim: str = "nmeasure",
+        output_coords: xr.DataArray | np.ndarray | None = None,
+    ) -> None:
+        super().__init__()
+        self.name = name
+
+        self.inputs = inputs
+
+        self.h_matrix = h_matrix
+        self.h_matrix_values = h_matrix if isinstance(h_matrix, np.ndarray) else h_matrix.values
+
+        self.input_dim = f"nx_{self.name}"
+        self.output_dim = output_dim
+
+        # TODO: if h_matrix is DataArray, use its coordinates?
+        input_coords = input_coords or np.arange(self.h_matrix_values.shape[1])
+
+        if len(input_coords) != self.h_matrix_values.shape[1]:
+            raise ValueError(
+                f"Length of specified input coordinates is not equal to the number of rows of the given H matrix."
+            )
+
+        self.input_coords = {self.input_dim: input_coords}
+
+        output_coords = output_coords or np.arange(self.h_matrix_values.shape[0])
+
+        if len(output_coords) != self.h_matrix_values.shape[0]:
+            raise ValueError(
+                f"Length of specified output coordinates is not equal to the number of columns of the given H matrix."
+            )
+
+        self.output_coords = {self.output_dim: output_coords}
+
+
+        self.scaling_dim = f"nr_{self.name}"
+        self.scaling_coords = {self.scaling_dim: [0]}
+
+        self.prior = prior
+
+    def coords(self) -> dict:
+        return {**self.input_coords, **self.output_coords, **self.scaling_coords}
+
+    def build(self, flux: Flux) -> None:
+        self.model = pm.Model(
+            name=self.name, coords=self.coords()
+        )  # name used to distinguish variables created by this component
+
+        with self.model:
+            x = flux.model["x"]
+            r = parse_prior("r", self.prior, dims=self.scaling_dim)
+            hx = pm.Data("h", self.h_matrix, dims=(self.output_dim, self.input_dim))
+            pm.Deterministic("mu", pt.dot(hx, r * x), dims=self.output_dim)
+
+    @property
+    def output(self) -> TensorVariable:
+        return self.model["mu"]
+
+
+
 class MultisectorFlux(ModelComponent):
     component_name = "multisector_flux"
 
-    def __init__(self, name: str, *fluxes: Flux) -> None:
+    def __init__(self, name: str, *fluxes: Flux | Tracer) -> None:
         super().__init__()
         self.name = name
 
@@ -189,11 +284,12 @@ class MultisectorFlux(ModelComponent):
         self.child_components = fluxes
 
     def __getattr__(self, name: str) -> Any:
-        for child in self.child_components:
-            try:
-                return getattr(child, name)
-            except AttributeError:
-                continue
+        if name != "inputs":
+            for child in self.child_components:
+                try:
+                    return getattr(child, name)
+                except AttributeError:
+                    continue
         raise AttributeError(
             f"Attribute {name} not found in ForwardModel {self.name} or its child components."
         )
@@ -201,16 +297,19 @@ class MultisectorFlux(ModelComponent):
     def build(self) -> None:
         self.model = pm.Model(name=self._name)
 
-        with self.model:
+        with self.model as model:
             for child in self.child_components:
-                child.build()
+                if isinstance(child, Tracer):
+                    inputs = child.inputs
+                    child.build(*inputs)
+                else:
+                    child.build()
 
             pm.Deterministic("mu", sum_outputs(self.child_components), dims=self.output_dim)
 
     @property
     def output(self) -> TensorVariable:
         return self.model["mu"]
-
 
 
 class BoundaryConditions(LinearForwardComponent):
@@ -290,11 +389,12 @@ class Baseline(ModelComponent):
         return bool(self.child_components)
 
     def __getattr__(self, name: str) -> Any:
-        for child in self.child_components:
-            try:
-                return getattr(child, name)
-            except AttributeError:
-                continue
+        if name != "inputs":
+            for child in self.child_components:
+                try:
+                    return getattr(child, name)
+                except AttributeError:
+                    continue
         raise AttributeError(f"Attribute {name} not found in Baseline {self.name} or its child components.")
 
     def build(self) -> None:
@@ -315,7 +415,7 @@ class Baseline(ModelComponent):
 class ForwardModel(ModelComponent):
     component_name = "forward_model"
 
-    def __init__(self, flux: Flux, baseline: Baseline | None = None) -> None:
+    def __init__(self, flux: Flux | MultisectorFlux | Tracer, baseline: Baseline | None = None) -> None:
         super().__init__()
         self.name = "forward"
 
@@ -323,15 +423,16 @@ class ForwardModel(ModelComponent):
         self.child_components = []
         self.child_components.append(flux)  # empty list followed by append is to trick mypy...
 
-        if baseline:  # baseline evaluates to False if there is no offset and no bc
+        if baseline is not None and bool(baseline) is not False:  # shouldn't need explicit call to `bool` but it fails otherwise...
             self.child_components.append(baseline)
 
     def __getattr__(self, name: str) -> Any:
-        for child in self.child_components:
-            try:
-                return getattr(child, name)
-            except AttributeError:
-                continue
+        if name != "inputs":
+            for child in self.child_components:
+                try:
+                    return getattr(child, name)
+                except AttributeError:
+                    continue
         raise AttributeError(
             f"Attribute {name} not found in ForwardModel {self.name} or its child components."
         )
@@ -341,13 +442,29 @@ class ForwardModel(ModelComponent):
 
         with self.model:
             for child in self.child_components:
-                child.build()
+                if isinstance(child, Tracer):
+                    inputs = child.inputs
+                    child.build(*inputs)
+                else:
+                    child.build()
 
             pm.Deterministic("mu", sum_outputs(self.child_components), dims=self.output_dim)
 
     @property
     def output(self) -> TensorVariable:
         return self.model["mu"]
+
+    @property
+    def flux_output(self) -> TensorVariable:
+        return self.child_components[0].model["mu"]
+
+    @property
+    def baseline_output(self) -> TensorVariable | None:
+        try:
+            return self.child_components[1].model["mu"]
+        except IndexError:
+            return None
+
 
 
 class Sigma(ModelComponent):
@@ -363,6 +480,7 @@ class Sigma(ModelComponent):
         y_time: np.ndarray | None = None,
         per_site: bool = True,
         sites: list[str] | None = None,
+        output_dim: str = "nmeasure"
     ) -> None:
         super().__init__()
 
@@ -381,9 +499,11 @@ class Sigma(ModelComponent):
 
         self.sites = sites
 
+        self.output_dim = output_dim
+
     def coords(self) -> dict:
         result = {
-            "nmeasure": np.arange(len(self.site_indicator)),
+            self.output_dim: np.arange(len(self.site_indicator)),
             "sites": self.sites if self.sites is not None else np.unique(self.site_indicator),
             "nsigma_time": np.unique(self.freq_index),
             "nsigma_site": np.unique(self.site_indicator) if self.per_site else [0],
@@ -411,7 +531,7 @@ class Sigma(ModelComponent):
             else:
                 sites = np.zeros_like(self.site_indicator).astype(int)
 
-            pm.Deterministic("sigma_obs_aligned", sigma[sites, self.freq_index], dims="nmeasure")
+            pm.Deterministic("sigma_obs_aligned", sigma[sites, self.freq_index], dims=self.output_dim)
 
     @property
     def output(self) -> TensorVariable:
@@ -428,13 +548,16 @@ class RHIMELikelihood(ModelComponent):
         y_obs: np.ndarray,
         error: np.ndarray,
         sigma: Sigma,
+        inputs: Iterable[ModelComponent],
         min_error: np.ndarray | float = 0.0,
         pollution_events_from_obs: bool = True,
         no_model_error: bool = False,
         name: str = "likelihood",
+        output_dim: str = "nmeasure,"
     ) -> None:
         super().__init__()
         self.name = name
+        self.inputs = list(inputs)
 
         self.y_obs = y_obs
         self.error = error
@@ -449,23 +572,22 @@ class RHIMELikelihood(ModelComponent):
         self.pollution_events_from_obs = pollution_events_from_obs
         self.no_model_error = no_model_error
 
+        self.output_dim = output_dim
+
     def coords(self) -> dict:
-        return {"nmeasure": np.arange(len(self.y_obs))}
+        return {self.output_dim: np.arange(len(self.y_obs))}
 
     def build(self, forward: ForwardModel) -> None:
         self.model = pm.Model(name=self.name, coords=self.coords())
 
         with self.model:
-            y_obs = pm.Data("y_obs", self.y_obs, dims="nmeasure")
-            error = pm.Data("error", self.error, dims="nmeasure")
-            min_error = pm.Data("min_error", self.min_error, dims="nmeasure")
+            y_obs = pm.Data("y_obs", self.y_obs, dims=self.output_dim)
+            error = pm.Data("error", self.error, dims=self.output_dim)
+            min_error = pm.Data("min_error", self.min_error, dims=self.output_dim)
 
-            try:
-                baseline = forward.model["baseline::mu"]
-            except KeyError:
-                baseline = None
+            baseline = forward.baseline_output
 
-            mu_flux = forward.model["flux::mu"]
+            mu_flux = forward.flux_output
 
             if self.pollution_events_from_obs is True:
                 if baseline is not None:
@@ -476,7 +598,6 @@ class RHIMELikelihood(ModelComponent):
                     )  # small non-zero term to prevent NaNs
             else:
                 pollution_event = pt.abs(mu_flux)
-
 
             self.sigma.build()
             pollution_event_scaled_error = pollution_event * self.sigma.output
@@ -489,8 +610,8 @@ class RHIMELikelihood(ModelComponent):
             else:
                 eps = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)  # type: ignore
 
-            epsilon = pm.Deterministic("epsilon", eps, dims="nmeasure")
+            epsilon = pm.Deterministic("epsilon", eps, dims=self.output_dim)
 
             mu = forward.output
 
-            pm.Normal("y", mu=mu, sigma=epsilon, observed=y_obs, dims="nmeasure")
+            pm.Normal("y", mu=mu, sigma=epsilon, observed=y_obs, dims=self.output_dim)

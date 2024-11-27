@@ -1,8 +1,11 @@
 from collections import defaultdict
 from copy import deepcopy
 import inspect
+from pathlib import Path
 import re
-from typing import Any
+from types import UnionType
+import typing
+from typing import Any, Union
 
 from openghg_inversions.models.components import ModelComponent
 
@@ -168,22 +171,25 @@ def nodes_to_components(G: nx.DiGraph, topo_sort: bool = True) -> dict[Node, typ
 
     for node in nodes:
         node_type = node.type
-        if node_type != "default":
-            node_type = pat.sub("_", node_type)
-            try:
-                components[node] = ModelComponent._component_registry[node_type]
-            except KeyError:
-                raise TypeError(f"No `ModelComponent` registered with name {node_type}.")
+        node_type = pat.sub("_", node_type)
+        try:
+            components[node] = ModelComponent._component_registry[node_type]
+        except KeyError:
+            raise TypeError(f"No `ModelComponent` registered with name {node_type}.")
 
     return components
 
 
-def create_components(G: nx.DiGraph, func_dict: dict, data_dict: dict) -> dict[Node, ModelComponent]:
+def _valid_arg(type_name, ann) -> bool:
+    if typing.get_origin(ann) is UnionType:
+        return any((type_name is sub_ann) or (type_name.__name__ == sub_ann.__name__) for sub_ann in typing.get_args(ann))
+    return (type_name is ann) or (type_name.__name__ == ann.__name__)
+
+
+def create_components(G: nx.DiGraph, data_dict: dict, verbose: bool = False) -> dict[Node, ModelComponent]:
     """Create instantiated model components.
 
     Example args:
-
-    func_dict = {"flux": make_flux_component, "bc": make_bc_component, "rhime likelihood": make_rhime_likelihood}
 
     data_dict = {"forward.flux": {"h_matrix": flux_h_matrix},
                  "forward.baseline.bc": {"h_matrix": bc_h_matrix},
@@ -197,10 +203,13 @@ def create_components(G: nx.DiGraph, func_dict: dict, data_dict: dict) -> dict[N
 
     for node, comp_type in component_type_dict.items():
         print("processing component for node", node.name)
-        if hasattr(node, f"use_{node.name.split('.')[-1]}") and not getattr(node, f"use_{node.name.split('.')[-1]}"):
-            component_dict[node] = None
-        elif node.type in func_dict:
-            component_dict[node] = func_dict[node.type](node, **data_dict[node.name])
+        node_type = re.sub(r"\s+", "_", node.type)
+        if hasattr(node, f"use_{node_type}") and not getattr(node, f"use_{node_type}"):
+            try:
+                comp = comp_type()
+            except TypeError:
+                comp = None
+            component_dict[node] = comp
         else:
             kwargs = data_dict.get(node.name, {}).copy()
 
@@ -209,16 +218,20 @@ def create_components(G: nx.DiGraph, func_dict: dict, data_dict: dict) -> dict[N
             # try to infer parameter names for children
             # TODO: need a way to specify this explicitly
             annotations = inspect.get_annotations(comp_type.__init__, eval_str=True)
+            del annotations["return"]
+
             parameters = inspect.signature(comp_type.__init__).parameters
             parameter_values = list(parameters.values())
+
             var_positionals = [param.name for param in parameter_values if param.kind == param.VAR_POSITIONAL]
+
             remaining_children = []
             for child in children:
                 for param, ann in annotations.items():
-                    if param not in var_positionals and type(child) is ann:
+                    if param not in var_positionals and _valid_arg(type(child), ann):
                         kwargs[param] = child
                         break
-                else:
+                else:  # no keyword found
                     remaining_children.append(child)
 
 
@@ -228,7 +241,10 @@ def create_components(G: nx.DiGraph, func_dict: dict, data_dict: dict) -> dict[N
                 bad_remaining_children = [child for child in remaining_children if not isinstance(child, var_pos_type)]
 
                 if bad_remaining_children:
-                    raise ValueError(f"The following child nodes must be specified by name: {', '.join(bad_remaining_children)}")
+                    raise ValueError(f"The following child nodes must be specified by name: {', '.join(brc.name for brc in bad_remaining_children)}")
+            elif remaining_children:
+                raise ValueError(f"The following child nodes  must be specified by name: {', '.join(rc.name for rc in remaining_children)}")
+
 
             kwargs.update(node.__dict__.get("options", {}))
 
@@ -255,25 +271,66 @@ def create_components(G: nx.DiGraph, func_dict: dict, data_dict: dict) -> dict[N
                     if k in kwargs and param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD):
                         args.append(kwargs.pop(k))
 
+            # node has inputs, get the built components
+            if node.inputs:
+                kwargs["inputs"] = [v for k, v in component_dict.items() if k.name in node.inputs]
+
+            if verbose:
+                print("args:", args, "var args:", remaining_children, "kwargs:", kwargs)
+                print()
             # print(args, remaining_children, kwargs)
             component_dict[node] = comp_type(*args, *remaining_children, **kwargs)
 
     return component_dict
 
 
-def build_model(G: nx.DiGraph, component_dict: dict[Node, ModelComponent]) -> pm.Model:
+def build_model(G: nx.DiGraph, component_dict: dict[Node, ModelComponent], verbose: bool = False) -> pm.Model:
     all_children = set()
     for node in G.nodes:
         all_children = all_children.union(set(node.children))
 
-    to_build = {k: v for k, v in component_dict.items() if k.name not in all_children}
+    build_order = list(nx.topological_sort(G))
 
-    build_order = nx.topological_sort(G.subgraph(to_build.keys()))
+    if verbose:
+        print("Full build order:")
+        for i, k in enumerate(build_order):
+            print(f"{i + 1}) {k.name}")
+        print()
+
+    to_build = {k: component_dict[k] for k in build_order if k.name not in all_children}
+
+    if verbose:
+        print("Build order:")
+        for i, k in enumerate(to_build.keys()):
+            print(f"{i + 1}) {k.name}")
+        print()
 
     with pm.Model() as model:
-        for node in build_order:
-            component = to_build[node]
+        for node, component in to_build.items():
+            if verbose:
+                print("Building component", node.name)
+
             inputs = [comp for k, comp in component_dict.items() if k.name in node.inputs]
+
+            if inputs and verbose:
+                print("\tcomponent inputs:", [comp.name for comp in inputs])
+
             component.build(*inputs)
 
     return model
+
+
+def model_from_config(config_path: str | Path, data_dict: dict, verbose: bool = False) -> pm.Model:
+    config_path = Path(config_path)
+
+    with open(config_path, "rb") as f:
+        config = toml.load(f)
+
+    if "model" in config:
+        G = make_nx_graph(config["model"])
+    else:
+        G = make_nx_graph(config)
+
+    comp_dict = create_components(G, data_dict, verbose)
+
+    return build_model(G, comp_dict, verbose)
