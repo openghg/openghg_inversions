@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 from types import UnionType
 import typing
-from typing import Any, Union
+from typing import Any, Sequence, Union
 
 from openghg_inversions.models.components import ModelComponent
 
@@ -213,7 +213,7 @@ def create_components(G: nx.DiGraph, data_dict: dict, verbose: bool = False) -> 
         else:
             kwargs = data_dict.get(node.name, {}).copy()
 
-            children = [v for k, v in component_dict.items() if k.name in node.children]
+            children = {k: v for k, v in component_dict.items() if k.name in node.children}
 
             # try to infer parameter names for children
             # TODO: need a way to specify this explicitly
@@ -225,20 +225,20 @@ def create_components(G: nx.DiGraph, data_dict: dict, verbose: bool = False) -> 
 
             var_positionals = [param.name for param in parameter_values if param.kind == param.VAR_POSITIONAL]
 
-            remaining_children = []
-            for child in children:
+            remaining_children = {}
+            for k, child in children.items():
                 for param, ann in annotations.items():
                     if param not in var_positionals and _valid_arg(type(child), ann):
                         kwargs[param] = child
                         break
                 else:  # no keyword found
-                    remaining_children.append(child)
+                    remaining_children[k] = child
 
 
             # remaining children need to be positional args; check this is valid
             if var_positionals:
                 var_pos_type = annotations[var_positionals[0]]
-                bad_remaining_children = [child for child in remaining_children if not isinstance(child, var_pos_type)]
+                bad_remaining_children = [k.name for k, child in remaining_children.items() if not isinstance(child, var_pos_type)]
 
                 if bad_remaining_children:
                     raise ValueError(f"The following child nodes must be specified by name: {', '.join(brc.name for brc in bad_remaining_children)}")
@@ -271,15 +271,32 @@ def create_components(G: nx.DiGraph, data_dict: dict, verbose: bool = False) -> 
                     if k in kwargs and param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD):
                         args.append(kwargs.pop(k))
 
-            # node has inputs, get the built components
+            # if node has inputs, get the built components
             if node.inputs:
                 kwargs["inputs"] = [v for k, v in component_dict.items() if k.name in node.inputs]
 
+            # try to fix var args order
+            if remaining_children:
+                full_build_order = nx.topological_sort(G)
+                temp = {}
+                for n in full_build_order:
+                    if n in remaining_children:
+                        temp[n] = remaining_children[n]
+                remaining_children = temp
+
             if verbose:
-                print("args:", args, "var args:", remaining_children, "kwargs:", kwargs)
+                print_kwargs = {}
+                for k, v in kwargs.items():
+                    import numpy as np
+                    import pandas as pd
+                    if isinstance(v, pd.Series | pd.Index | np.ndarray):
+                        print_kwargs[k] = type(v)
+                    else:
+                        print_kwargs[k] = v
+                print("args:", args, "var args:", [k.name for k in remaining_children.keys()], "kwargs:", print_kwargs)
                 print()
-            # print(args, remaining_children, kwargs)
-            component_dict[node] = comp_type(*args, *remaining_children, **kwargs)
+
+            component_dict[node] = comp_type(*args, *remaining_children.values(), **kwargs)
 
     return component_dict
 

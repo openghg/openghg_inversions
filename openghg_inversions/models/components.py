@@ -96,13 +96,13 @@ class Default(ModelComponent):
         # TODO: fix this problem ^^^
         super().__init__()
         self.name = name
-        self.children = child_components
+        self.child_components = child_components
 
     def build(self) -> None:
         self.model = pm.Model(name=self.name)
 
         with self.model:
-            for child in self.children:
+            for child in self.child_components:
                 if hasattr(child, "inputs") and child.inputs: # type: ignore ...we just checked that this attribute exists
                     inputs = child.inputs  # type: ignore ...we just checked that this attribute exists
                     child.build(*inputs)
@@ -415,9 +415,9 @@ class Baseline(ModelComponent):
 class ForwardModel(ModelComponent):
     component_name = "forward_model"
 
-    def __init__(self, flux: Flux | MultisectorFlux | Tracer, baseline: Baseline | None = None) -> None:
+    def __init__(self, name: str, flux: Flux | MultisectorFlux | Tracer, baseline: Baseline | None = None) -> None:
         super().__init__()
-        self.name = "forward"
+        self.name = name
 
         # components
         self.child_components = []
