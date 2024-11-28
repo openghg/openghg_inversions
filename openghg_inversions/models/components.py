@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import inspect
 from typing import Any, Iterable, Protocol, TypeVar
 
 import numpy as np
@@ -111,7 +112,8 @@ class Default(ModelComponent):
                         child.build()
                     except TypeError as e:
                         # TODO: print args from child.build
-                        raise ValueError(f"Model component {child.name} requires `inputs`.") from e
+                        input_args = inspect.signature(child.build).parameters.keys()
+                        raise ValueError(f"Model component {child.name} requires inputs {', '.join(input_args)}") from e
 
 
 class LinearForwardComponent(ModelComponent):
@@ -226,19 +228,7 @@ class Tracer(ModelComponent):
         self.h_matrix = h_matrix
         self.h_matrix_values = h_matrix if isinstance(h_matrix, np.ndarray) else h_matrix.values
 
-        self.input_dim = f"nx_{self.name}"
         self.output_dim = output_dim
-
-        # TODO: if h_matrix is DataArray, use its coordinates?
-        input_coords = input_coords or np.arange(self.h_matrix_values.shape[1])
-
-        if len(input_coords) != self.h_matrix_values.shape[1]:
-            raise ValueError(
-                f"Length of specified input coordinates is not equal to the number of rows of the given H matrix."
-            )
-
-        self.input_coords = {self.input_dim: input_coords}
-
         output_coords = output_coords or np.arange(self.h_matrix_values.shape[0])
 
         if len(output_coords) != self.h_matrix_values.shape[0]:
@@ -248,24 +238,25 @@ class Tracer(ModelComponent):
 
         self.output_coords = {self.output_dim: output_coords}
 
-
-        self.scaling_dim = f"nr_{self.name}"
-        self.scaling_coords = {self.scaling_dim: [0]}
-
         self.prior = prior
 
     def coords(self) -> dict:
-        return {**self.input_coords, **self.output_coords, **self.scaling_coords}
+        return self.output_coords
+
 
     def build(self, flux: Flux) -> None:
         self.model = pm.Model(
-            name=self.name, coords=self.coords()
+            name=self.name,
+            coords=self.coords()
         )  # name used to distinguish variables created by this component
 
         with self.model:
             x = flux.model["x"]
-            r = parse_prior("r", self.prior, dims=self.scaling_dim)
-            hx = pm.Data("h", self.h_matrix, dims=(self.output_dim, self.input_dim))
+            input_dim = flux.model.named_vars_to_dims[x.name][0]
+
+            r = parse_prior("r", self.prior)
+
+            hx = pm.Data("h", self.h_matrix, dims=(self.output_dim, input_dim))
             pm.Deterministic("mu", pt.dot(hx, r * x), dims=self.output_dim)
 
     @property
@@ -298,13 +289,25 @@ class MultisectorFlux(ModelComponent):
     def build(self) -> None:
         self.model = pm.Model(name=self._name)
 
-        with self.model as model:
+        with self.model:
             for child in self.child_components:
-                if isinstance(child, Tracer):
-                    inputs = child.inputs
+                if hasattr(child, "inputs") and child.inputs: # type: ignore ...we just checked that this attribute exists
+                    inputs = child.inputs  # type: ignore ...we just checked that this attribute exists
                     child.build(*inputs)
                 else:
-                    child.build()
+                    try:
+                        child.build()
+                    except TypeError as e:
+                        # TODO: print args from child.build
+                        input_args = inspect.signature(child.build).parameters.keys()
+                        raise ValueError(f"Model component {child.name} requires inputs {', '.join(input_args)}") from e
+
+                # print(child.name, type(child))
+                # if isinstance(child, Tracer):
+                #     inputs = child.inputs
+                #     child.build(*inputs)
+                # else:
+                #     child.build()
 
             pm.Deterministic("mu", sum_outputs(self.child_components), dims=self.output_dim)
 

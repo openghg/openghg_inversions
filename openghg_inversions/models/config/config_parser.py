@@ -36,7 +36,7 @@ class Node:
             raise TypeError(f"No `ModelComponent` registered with name {self.type}.")
 
         # info on required arguments
-        self.annotations = inspect.get_annotations(self.component_type, eval_str=True)
+        self.annotations = inspect.get_annotations(self.component_type.__init__, eval_str=True)
         if "return" in self.annotations:
             del self.annotations["return"]
 
@@ -119,7 +119,7 @@ class Node:
         for child in self.children:
             if child not in kwarg_values and child not in var_args:
                 for param, ann in self.annotations.items():
-                    if param != self.var_args and _valid_arg(type(child), ann):
+                    if param != self.var_args and _valid_arg(child.component_type, ann):
                         kwargs[param] = child
                         break
                 else:  # no keyword found
@@ -327,93 +327,72 @@ def create_components(G: nx.DiGraph, data_dict: dict, verbose: bool = False) -> 
                 comp = None
             component_dict[node] = comp
         else:
-            kwargs = data_dict.get(node.name, {}).copy()
+            node_params = node.check_component_parameters(partial=True)
+            missing_required, missing_optional = node.missing_params
 
-            children = {k: v for k, v in component_dict.items() if k.name in node.children}
+            # TODO: add "options" from node?
+            node_data = data_dict.get(node.name, {}).copy()
+            node_data_keys = set(node_data.keys())
 
-            # try to infer parameter names for children
-            # TODO: need a way to specify this explicitly
-            annotations = inspect.get_annotations(comp_type.__init__, eval_str=True)
-            del annotations["return"]
+            if not missing_required.issubset(node_data_keys):
+                still_missing = missing_required - node_data_keys
+                raise ValueError(f"Node {node.name} is missing required parameters: {still_missing}.")
 
-            parameters = inspect.signature(comp_type.__init__).parameters
-            parameter_values = list(parameters.values())
+            all_missing = missing_required | missing_optional
 
-            var_positionals = [param.name for param in parameter_values if param.kind == param.VAR_POSITIONAL]
-
-            remaining_children = {}
-
-            for child in node.children:
-                for param, ann in annotations.items():
-                    if param not in var_positionals and _valid_arg(type(child), ann):
-                        kwargs[param] = child
-                        break
-                else:  # no keyword found
-                    remaining_children[child.name] = child
-
-
-            # remaining children need to be positional args; check this is valid
-            if var_positionals:
-                var_pos_type = annotations[var_positionals[0]]
-                bad_remaining_children = [k.name for k, child in remaining_children.items() if not isinstance(child, var_pos_type)]
-
-                if bad_remaining_children:
-                    raise ValueError(f"The following child nodes must be specified by name: {', '.join(brc.name for brc in bad_remaining_children)}")
-            elif remaining_children:
-                raise ValueError(f"The following child nodes  must be specified by name: {', '.join(rc.name for rc in remaining_children)}")
-
-
-            kwargs.update(node.__dict__.get("options", {}))
-
-            # grab any other arguments available
-            for param in parameter_values:
-                if param.name in kwargs:
-                    continue
-
-                try:
-                    val = getattr(node, param.name)
-                except AttributeError:
-                    continue
+            for k, v in node_data.items():
+                if k in all_missing:
+                    node_params.arguments[k] = v
                 else:
-                    if param.name == "name":
-                        val = val.split(".")[-1]  # if name has dots, we only want the last part
-                    kwargs[param.name] = val
+                    if verbose:
+                        print(f"Ignoring value for {k} from data_dict; it was already supplied.")
 
-            # separate any positional args that must come before variable args
-            args = []
-            if var_positionals:
-                for k, param in parameters.items():
-                    if k in var_positionals:
-                        break
-                    if k in kwargs and param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD):
-                        args.append(kwargs.pop(k))
+            # get components from child nodes
+            for k, v in node_params.arguments.items():
+                if isinstance(v, Node):
+                    try:
+                        v_comp = component_dict[v]
+                    except KeyError:
+                        # TODO make a new exception class
+                        raise ValueError(f"Child component {v.name} of node {node.name} has not been created yet.")
+                    else:
+                        node_params.arguments[k] = v_comp
+                elif isinstance(v, tuple):
+                    temp = []
+
+                    for item in v:
+                        if isinstance(item, Node):
+                            try:
+                                item_comp = component_dict[item]
+                            except KeyError:
+                                # TODO make a new exception class
+                                raise ValueError(f"Child component {item.name} of node {node.name} has not been created yet.")
+                            else:
+                                temp.append(item_comp)
+                        else:
+                            temp.append(item)
+
+                    node_params.arguments[k] = tuple(temp)
 
             # if node has inputs, get the built components
             if node.inputs:
-                kwargs["inputs"] = node.inputs
+                node_params.arguments["inputs"] = [component_dict[inp] for inp in node.inputs]
 
-            # try to fix var args order
-            if remaining_children:
-                full_build_order = nx.topological_sort(G)
-                temp = {}
-                for n in full_build_order:
-                    if n in remaining_children:
-                        temp[n] = remaining_children[n]
-                remaining_children = temp
+            # use short name for component
+            node_params.arguments["name"] = node.short_name
 
             if verbose:
+                import numpy as np
+                import pandas as pd
                 print_kwargs = {}
-                for k, v in kwargs.items():
-                    import numpy as np
-                    import pandas as pd
-                    if isinstance(v, pd.Series | pd.Index | np.ndarray):
+                for k, v in node_params.arguments.items():
+                    if isinstance(v, np.ndarray | pd.Series | pd.Index):
                         print_kwargs[k] = type(v)
                     else:
                         print_kwargs[k] = v
-                print("args:", args, "var args:", [k.name for k in remaining_children.keys()], "kwargs:", print_kwargs)
-                print()
+                print(print_kwargs, "\n")
 
-            component_dict[node] = comp_type(*args, *remaining_children.values(), **kwargs)
+            component_dict[node] = node.component_type(*node_params.args, **node_params.kwargs)
 
     return component_dict
 
@@ -431,7 +410,7 @@ def build_model(G: nx.DiGraph, component_dict: dict[Node, ModelComponent], verbo
             print(f"{i + 1}) {k.name}")
         print()
 
-    to_build = {k: component_dict[k] for k in build_order if k.name not in all_children}
+    to_build = {k: component_dict[k] for k in build_order if k not in all_children}
 
     if verbose:
         print("Build order:")
@@ -444,7 +423,7 @@ def build_model(G: nx.DiGraph, component_dict: dict[Node, ModelComponent], verbo
             if verbose:
                 print("Building component", node.name)
 
-            inputs = [comp for k, comp in component_dict.items() if k.name in node.inputs]
+            inputs = [comp for k, comp in component_dict.items() if k in node.inputs]
 
             if inputs and verbose:
                 print("\tcomponent inputs:", [comp.name for comp in inputs])
