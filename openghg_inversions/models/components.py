@@ -110,6 +110,7 @@ class Default(ModelComponent):
                     try:
                         child.build()
                     except TypeError as e:
+                        # TODO: print args from child.build
                         raise ValueError(f"Model component {child.name} requires `inputs`.") from e
 
 
@@ -372,9 +373,9 @@ class Offset(ModelComponent):
 class Baseline(ModelComponent):
     component_name = "baseline"
 
-    def __init__(self, bc: BoundaryConditions | None = None, offset: Offset | None = None) -> None:
+    def __init__(self, name: str = "baseline", bc: BoundaryConditions | None = None, offset: Offset | None = None) -> None:
         super().__init__()
-        self.name = "baseline"
+        self.name = name
 
         # components
         self.child_components = []

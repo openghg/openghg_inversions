@@ -95,15 +95,10 @@ type = "rhime likelihood"
 inputs = ["forward"]  # TODO: should this be "model.forward"? ...no because we'll parse the "model" table like we would the template
 
 [model.likelihood.sigma]  # TODO how do we know to add this?
+type = "sigma"
 
-[model.likelihood.sigma.prior]
-# sigma prior
-pdf = "uniform"
-lower = 0.1
-upper = 3.0
-
-[model.likelihood.sigma.setup]
-freq = "8D"  # no option for none here...
+prior = {pdf = "uniform", lower = 0.1, upper = 3.0}
+freq = "8D"
 per_site = true
 
 [model.likelihood.min_error]

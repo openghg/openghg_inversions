@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections import defaultdict
 from copy import deepcopy
 import inspect
@@ -20,27 +22,135 @@ import pymc as pm
 
 
 class Node:
-    def __init__(self, name):
+    def __init__(self, name: str, type_: str = "default", children: list[str] | None = None, inputs: list[str] | None = None, **kwargs) -> None:
         self.name = name
-        self.type = "default"
+        self.type = type_
+        self.children_names = children or []
+        self.input_names = inputs or []
+
+        self.__dict__.update(kwargs)
+
+        try:
+            self.component_type = ModelComponent._component_registry[self.type]
+        except KeyError:
+            raise TypeError(f"No `ModelComponent` registered with name {self.type}.")
+
+        # info on required arguments
+        self.annotations = inspect.get_annotations(self.component_type, eval_str=True)
+        if "return" in self.annotations:
+            del self.annotations["return"]
+
+        self.signature =  inspect.signature(self.component_type)
+        self.parameters = self.signature.parameters
+
+        var_args = [param.name for param in self.parameters.values() if param.kind == param.VAR_POSITIONAL]
+        self.var_args = var_args[0] if var_args else None
+
+
+        # these attributes will be set when the model graph is created.
         self.children = []
         self.inputs = []
 
+
     def __str__(self):
-        return f"{self.name}, type={self.type}, children={self.children}, inputs={self.inputs}"
+        return self.name
 
     def __repr__(self):
-        return f"Node({self.__str__()})"
+        # repr_str = f"Node('{self.name}', type='{self.type}'"
+
+        # if self.children_names:
+        #     repr_str += f", children={self.children_names}"
+
+        # if self.input_names:
+        #     repr_str += f", inputs={self.input_names}"
+
+        # return repr_str + ")"
+
+        return f"Node({self.name})"  # full repr is too long for debugging...
 
     def __hash__(self):
         return hash(self.name)
 
     def __eq__(self, other) -> bool:
+        if not isinstance(other, Node):
+            return False
         return self.name == other.name
 
     def __lt__(self, other) -> bool:
         return self.name in other.children or self.name in other.inputs
 
+    @property
+    def type(self) -> str:
+        return self._type
+
+    @type.setter
+    def type(self, value: str) -> None:
+        self._type = re.sub(r"\s+", "_", value)
+
+    @property
+    def short_name(self) -> str:
+        return self.name.split(".")[-1]
+
+    def check_component_parameters(self, verbose: bool = False, partial: bool = True) -> inspect.BoundArguments:
+        args = []
+        var_args = []
+        kwargs = {}
+        if self.var_args:
+            past_var_args = False
+
+            for k, param in self.parameters.items():
+                if k in self.var_args:
+                    past_var_args = True
+                elif hasattr(self, k):
+                    if param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD) and not past_var_args:
+                        args.append(getattr(self, k))
+                    else:
+                        kwargs[k] = getattr(self, k)
+
+            var_args = [child for child in self.children if child not in list(kwargs.values())]
+
+        else:
+            for k, param in self.parameters.items():
+                if hasattr(self, k):
+                    kwargs[k] = getattr(self, k)
+
+        remaining_children = {}
+        kwarg_values = list(kwargs.values())
+        for child in self.children:
+            if child not in kwarg_values and child not in var_args:
+                for param, ann in self.annotations.items():
+                    if param != self.var_args and _valid_arg(type(child), ann):
+                        kwargs[param] = child
+                        break
+                else:  # no keyword found
+                    remaining_children[child.name] = child
+
+        if verbose:
+            print(self.name, args, var_args, kwargs)
+            if remaining_children:
+                print("remaining children:", ", ".join(rc for rc in remaining_children))
+
+        if partial:
+            return self.signature.bind_partial(*args, *var_args, **kwargs)
+
+        return self.signature.bind(*args, *var_args, **kwargs)
+
+
+    @property
+    def missing_params(self) -> tuple[set[str], set[str]]:
+        required = []
+        optional = []
+
+        params_we_have = self.check_component_parameters(partial=True).arguments
+
+        for param in self.parameters.values():
+            if param.name not in params_we_have:
+                if param.kind != param.VAR_POSITIONAL and param.default == param.empty:
+                    required.append(param.name)
+                else:
+                    optional.append(param.name)
+
+        return set(required), set(optional)
 
 def is_node(conf: Any, name: str | None = None, cache: dict[str, bool] | None = None) -> bool:
 
@@ -84,19 +194,20 @@ def get_nodes(conf: dict) -> list[Node]:
 
         for name, values in top.items():
             if is_node(values, name, cache):
-                node = Node(name)
-                node.children = get_children(values, name, cache)
+                node_kwargs = {}
+                if "inputs" in values:
+                    node_kwargs["inputs"] = values.pop("inputs")
 
-                for child in node.children:
+                if "type" in values:
+                    node_kwargs["type_"] = values.pop("type")
+
+                node = Node(name, **node_kwargs)
+                node.children_names = get_children(values, name, cache)
+
+                for child in node.children_names:
                     # append dict in the form {name: value}
                     # take last part of child name, since it includes all ancestors' names
                     stack.append({child: values.pop(child.split(".")[-1])})
-
-                if "inputs" in values:
-                    node.inputs = values.pop("inputs")
-
-                if "type" in values:
-                    node.type = values.pop("type")
 
                 # store all remaining values in node
                 node.__dict__.update(values)
@@ -106,23 +217,45 @@ def get_nodes(conf: dict) -> list[Node]:
     return nodes
 
 
-def prepare_graph(nodes: list[Node]):
-    nodes_hash = {node.name: node for node in nodes}
-    edges = defaultdict(list)
-    for node in nodes:
-        for child in node.children:
-            edges[nodes_hash[child]].append(node)
-        for input_ in node.inputs:
-            edges[nodes_hash[input_]].append(node)
-    return edges
-
-
 def make_nx_graph(config: dict) -> nx.DiGraph:
-    graph_nodes = get_nodes(config)
-    graph = prepare_graph(graph_nodes)
+    nodes = get_nodes(config)
+    nodes_hash = {node.name: node for node in nodes}
+
+    child_edges = defaultdict(list)
+    input_edges = defaultdict(list)
+
+    for node in nodes:
+        for child in node.children_names:
+            child_edges[nodes_hash[child]].append(node)
+        for input_ in node.input_names:
+            input_edges[nodes_hash[input_]].append(node)
+
     G = nx.DiGraph()
-    G.add_nodes_from(graph_nodes)
-    G.add_edges_from((k, x) for k, v in graph.items() for x in v)
+    G.add_nodes_from(nodes)
+
+    G.add_edges_from(((k, x) for k, v in child_edges.items() for x in v), kind="child")
+    G.add_edges_from(((k, x) for k, v in input_edges.items() for x in v), kind="input")
+
+    for node in G.nodes:
+        for pred in G.predecessors(node):
+            kind = G.edges[pred, node]["kind"]
+
+            if kind == "child":
+                node.children.append(pred)
+
+            if kind == "input":
+                node.inputs.append(pred)
+
+    # put child nodes into build order
+    build_order = list(nx.topological_sort(G))
+
+    for node in G.nodes:
+        temp = []
+        for bnode in build_order:
+            if bnode in node.children:
+                temp.append(bnode)
+        node.children = temp
+
     return G
 
 
@@ -160,26 +293,6 @@ def plot_graph(G, title="", show_types=False, show_inputs=False, edge_labels=Non
     plt.show()
 
 
-def nodes_to_components(G: nx.DiGraph, topo_sort: bool = True) -> dict[Node, type[ModelComponent]]:
-    components = {}
-    pat = re.compile(r"\s+")
-
-    if topo_sort:
-        nodes = nx.lexicographical_topological_sort(G, key=lambda node: node.name)
-    else:
-        nodes = G.nodes
-
-    for node in nodes:
-        node_type = node.type
-        node_type = pat.sub("_", node_type)
-        try:
-            components[node] = ModelComponent._component_registry[node_type]
-        except KeyError:
-            raise TypeError(f"No `ModelComponent` registered with name {node_type}.")
-
-    return components
-
-
 def _valid_arg(type_name, ann) -> bool:
     if typing.get_origin(ann) is UnionType:
         return any((type_name is sub_ann) or (type_name.__name__ == sub_ann.__name__) for sub_ann in typing.get_args(ann))
@@ -197,14 +310,17 @@ def create_components(G: nx.DiGraph, data_dict: dict, verbose: bool = False) -> 
                  "forward.baseline.offset": {"site_indicator": site_indicator, "prior_args": {"pdf": "normal", "mu": 0.0, "sigma": 1.0}}}
 
     """
-    component_type_dict = nodes_to_components(G)
+    nodes = nx.lexicographical_topological_sort(G, key=lambda node: node.name)
 
     component_dict = {}
 
-    for node, comp_type in component_type_dict.items():
+    for node in nodes:
+        comp_type = node.component_type
+
         print("processing component for node", node.name)
-        node_type = re.sub(r"\s+", "_", node.type)
-        if hasattr(node, f"use_{node_type}") and not getattr(node, f"use_{node_type}"):
+
+        # try to handle nodes that should be skipped (e.g. if `use_bc = False`)
+        if hasattr(node, f"use_{node.type}") and not getattr(node, f"use_{node.type}"):
             try:
                 comp = comp_type()
             except TypeError:
@@ -226,13 +342,14 @@ def create_components(G: nx.DiGraph, data_dict: dict, verbose: bool = False) -> 
             var_positionals = [param.name for param in parameter_values if param.kind == param.VAR_POSITIONAL]
 
             remaining_children = {}
-            for k, child in children.items():
+
+            for child in node.children:
                 for param, ann in annotations.items():
                     if param not in var_positionals and _valid_arg(type(child), ann):
                         kwargs[param] = child
                         break
                 else:  # no keyword found
-                    remaining_children[k] = child
+                    remaining_children[child.name] = child
 
 
             # remaining children need to be positional args; check this is valid
@@ -273,7 +390,7 @@ def create_components(G: nx.DiGraph, data_dict: dict, verbose: bool = False) -> 
 
             # if node has inputs, get the built components
             if node.inputs:
-                kwargs["inputs"] = [v for k, v in component_dict.items() if k.name in node.inputs]
+                kwargs["inputs"] = node.inputs
 
             # try to fix var args order
             if remaining_children:
