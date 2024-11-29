@@ -1,0 +1,154 @@
+# structure of "data" section should match structure of "model" section
+# data can be specified in the "model" section by including "data_args"
+# for a component
+[data] # global data
+domain = "europe"
+
+start_date = "2019-01-01"
+end_date = "2019-02-01"
+
+obs_store = "obs_paris_2024_07_store"
+emissions_store = "c2h6_bc_flux_zarr_store"  # in /group/chem/acrg/c2h6_data_for_testing_tracer_rhime
+footprint_store = "shared_store_zarr"
+
+[data.ch4]
+
+species = "ch4"
+sites = ['jfj', 'mhd', 'cmn', 'tac', 'tob']
+inlets = ["10m", "10m", "10m", "185m", "12m"]
+fp_heights = ["1000m", "10m", "500m", "185m", "10m"]
+averaging_period = ["4h", "4h", "4h", "4h", "4h"]
+
+# full data from PARIS runs
+# sites = ['BIR', 'BSD', 'CBW', 'CMN', 'GAT', 'HEI', 'HEL', 'HFD', 'HPB', 'HTM', 'HUN', 'JFJ', 'KIT', 'KRE', 'LIN', 'LUT', 'MHD', 'NOR', 'OPE', 'OXK', 'PAL', 'RGL', 'SAC', 'SSL', 'STE', 'TAC', 'TOH', 'TRN', 'UTO', 'WAO', 'WES']
+# averaging_period = ['4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H', '4H']
+# inlet = ['75m', '248m', '207m', '8m', '341m', '30m', '110m', '100m', '131m', '150m', 'multiple', None, '200m', '250m', '98m', '60m', '24m', '100m', '120m', '163m', '12m', '90m', '100m', 'multiple', '252m', '185m', '147m', '180m', '57m', '10m', '14m']
+# instrument = [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
+# filters = [['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], None, ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], None, ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff'], ['pblh_min', 'pblh_inlet_diff']]
+
+[data.c2h6]
+
+species = "c2h6"
+sites = ['jfj', 'mhd', 'cmn', 'tac', 'tob']
+inlets = ["10m", "10m", "10m", "185m", "12m"]
+fp_heights = ["1000m", "10m", "500m", "185m", "10m"]
+averaging_period = ["4h", "4h", "4h", "4h", "4h"]
+
+[model]
+
+[model.ch4]
+
+[model.ch4.forward]
+type = "forward model"
+
+[model.ch4.forward.flux]
+type = "multisector flux"
+
+# support short hand for multisector basis?
+# basis = {basis_algorithm = "quadtree", nbasis = 250, per_sector = true}
+
+[model.ch4.forward.flux.ff]
+type = "flux"
+data_args = {source = "ch4-edgar-ukghg-fftotal"}
+
+prior = {pdf = "lognormal", mean = 1.0, stdev = 4.0, reparameterise = true}
+basis = {basis_algorithm = "quadtree", nbasis = 250, fix_basis_out_regions = true}
+
+[model.ch4.forward.flux.nonff]
+type = "flux"
+data_args = {source = "ch4-edgar-ukghg-nonfftotal"}
+
+prior = {pdf = "lognormal", mean = 1.0, stdev = 4.0, reparameterise = true}
+basis = {basis_algorithm = "quadtree", nbasis = 250, fix_basis_out_regions = true}
+
+[model.ch4.forward.baseline]
+type = "baseline"
+use_baseline = true
+
+[model.ch4.forward.baseline.bc]
+type = "bc"
+use_bc = true
+
+prior = {pdf = "truncatednormal", mu = 1.0, sigma = 0.1, lower = 0.0}
+freq = "monthly"
+
+data_args = {bc_input = "camsv22r2_daily", bc_store = "shared_store_zarr"}
+basis = {bc_basis_directory = "/group/chem/acrg/LPDM/bc_basis_functions/", bc_basis_case = "NESW"}
+
+[model.ch4.forward.baseline.offset]
+type = "offset"
+use_offset = false
+
+[model.ch4.likelihood]
+type = "rhime likelihood"
+inputs = ["ch4.forward"]
+
+pollution_events_from_obs = true
+no_model_error = false
+
+
+[model.ch4.likelihood.sigma]
+type = "sigma"
+prior = {pdf = "uniform", lower = 0.1, upper = 1.0}
+freq = "monthly"
+per_site = true
+
+[model.c2h6]
+
+[model.c2h6.forward]
+type = "forward model"
+
+[model.c2h6.forward.ff_tracer]
+type = "tracer"
+inputs = ["ch4.forward.flux.ff"]
+
+prior = {pdf = "uniform", lower = 0.1, upper = 2.7}
+
+
+[model.c2h6.forward.baseline]
+type = "baseline"
+use_baseline = true
+
+[model.c2h6.forward.baseline.bc]
+type = "bc"
+use_bc = true
+
+prior = {pdf = "truncatednormal", mu = 1.0, sigma = 0.1, lower = 0.0}
+freq = "monthly"
+
+data_args = {bc_input = "mhd_clean_sector", bc_store = "c2h6_bc_flux_zarr_store"}
+basis = {bc_basis_directory = "/group/chem/acrg/LPDM/bc_basis_functions/", bc_basis_case = "NESW"}
+
+[model.c2h6.forward.baseline.offset]
+type = "offset"
+use_offset = false
+
+[model.c2h6.likelihood]
+type = "rhime likelihood"
+inputs = ["c2h6.forward"]
+
+# type = "rhime tracer likelihood"
+# inputs = ["ch4.likelihood", "c2h6.forward"]
+
+pollution_events_from_obs = true
+no_model_error = false
+
+[model.c2h6.likelihood.sigma]
+type = "sigma"
+prior = {pdf = "uniform", lower = 0.1, upper = 1.0}
+freq = "monthly"
+per_site = true
+
+
+[sampling]
+
+nit = 20000
+burn = 10000
+tune = 10000
+
+nchain = 4
+
+nuts_sampler = "numpyro"
+
+[output]
+save_trace = true
