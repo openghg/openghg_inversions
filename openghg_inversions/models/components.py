@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import inspect
-from typing import Any, Iterable, Protocol, TypeVar
+from typing import Any, Iterable, Protocol, TypeVar, runtime_checkable
 
 import numpy as np
 import pandas as pd
@@ -48,7 +48,8 @@ class ModelComponent(ABC):
         This mechanism allows PyMC to check if the components (sub-models) are consistent
         with the parent model.
         """
-        pass
+        if self._model is None:
+            self.instantiate_model()
 
     @property
     def name(self) -> str:
@@ -81,15 +82,29 @@ class ModelComponent(ABC):
             result = default
         return result
 
+    def instantiate_model(self):
+        if isinstance(self, HasCoords):
+            self.model = pm.Model(name=self.name, coords=self.coords())
+        else:
+            self.model = pm.Model(name=self.name)
 
+
+@runtime_checkable
 class HasOutput(Protocol):
     @property
     @abstractmethod
     def output(self) -> TensorVariable: ...
 
 
+@runtime_checkable
+class HasCoords(Protocol):
+    @abstractmethod
+    def coords(self) -> dict: ...
+
+
 class Default(ModelComponent):
     """Component that just builds its child components."""
+
     component_name = "default"
 
     def __init__(self, name: str, *child_components: ModelComponent) -> None:
@@ -100,11 +115,11 @@ class Default(ModelComponent):
         self.child_components = child_components
 
     def build(self) -> None:
-        self.model = pm.Model(name=self.name)
+        super().build()
 
         with self.model:
             for child in self.child_components:
-                if hasattr(child, "inputs") and child.inputs: # type: ignore ...we just checked that this attribute exists
+                if hasattr(child, "inputs") and child.inputs:  # type: ignore ...we just checked that this attribute exists
                     inputs = child.inputs  # type: ignore ...we just checked that this attribute exists
                     child.build(*inputs)
                 else:
@@ -113,7 +128,9 @@ class Default(ModelComponent):
                     except TypeError as e:
                         # TODO: print args from child.build
                         input_args = inspect.signature(child.build).parameters.keys()
-                        raise ValueError(f"Model component {child.name} requires inputs {', '.join(input_args)}") from e
+                        raise ValueError(
+                            f"Model component {child.name} requires inputs {', '.join(input_args)}"
+                        ) from e
 
 
 class LinearForwardComponent(ModelComponent):
@@ -189,9 +206,7 @@ class LinearForwardComponent(ModelComponent):
         return {**self.input_coords, **self.output_coords}
 
     def build(self) -> None:
-        self.model = pm.Model(
-            name=self.name, coords=self.coords()
-        )  # name used to distinguish variables created by this component
+        super().build()
 
         with self.model:
             x = parse_prior("x", self.prior, dims=self.input_dim)
@@ -243,12 +258,8 @@ class Tracer(ModelComponent):
     def coords(self) -> dict:
         return self.output_coords
 
-
     def build(self, flux: Flux) -> None:
-        self.model = pm.Model(
-            name=self.name,
-            coords=self.coords()
-        )  # name used to distinguish variables created by this component
+        super().build()  # instantiate model
 
         with self.model:
             x = flux.model["x"]
@@ -262,7 +273,6 @@ class Tracer(ModelComponent):
     @property
     def output(self) -> TensorVariable:
         return self.model["mu"]
-
 
 
 class MultisectorFlux(ModelComponent):
@@ -287,11 +297,11 @@ class MultisectorFlux(ModelComponent):
         )
 
     def build(self) -> None:
-        self.model = pm.Model(name=self._name)
+        super().build()
 
         with self.model:
             for child in self.child_components:
-                if hasattr(child, "inputs") and child.inputs: # type: ignore ...we just checked that this attribute exists
+                if hasattr(child, "inputs") and child.inputs:  # type: ignore ...we just checked that this attribute exists
                     inputs = child.inputs  # type: ignore ...we just checked that this attribute exists
                     child.build(*inputs)
                 else:
@@ -300,7 +310,9 @@ class MultisectorFlux(ModelComponent):
                     except TypeError as e:
                         # TODO: print args from child.build
                         input_args = inspect.signature(child.build).parameters.keys()
-                        raise ValueError(f"Model component {child.name} requires inputs {', '.join(input_args)}") from e
+                        raise ValueError(
+                            f"Model component {child.name} requires inputs {', '.join(input_args)}"
+                        ) from e
 
                 # print(child.name, type(child))
                 # if isinstance(child, Tracer):
@@ -359,9 +371,7 @@ class Offset(ModelComponent):
         return result
 
     def build(self) -> None:
-        self.model = pm.Model(
-            name=self.name, coords=self.coords()
-        )  # name used to distinguish variables created by this component
+        super().build()
 
         with self.model:
             x = parse_prior("x", self.prior_args, dims=self.input_dim)
@@ -376,7 +386,9 @@ class Offset(ModelComponent):
 class Baseline(ModelComponent):
     component_name = "baseline"
 
-    def __init__(self, name: str = "baseline", bc: BoundaryConditions | None = None, offset: Offset | None = None) -> None:
+    def __init__(
+        self, name: str = "baseline", bc: BoundaryConditions | None = None, offset: Offset | None = None
+    ) -> None:
         super().__init__()
         self.name = name
 
@@ -402,7 +414,7 @@ class Baseline(ModelComponent):
         raise AttributeError(f"Attribute {name} not found in Baseline {self.name} or its child components.")
 
     def build(self) -> None:
-        self.model = pm.Model(name=self._name)
+        super().build()
 
         with self.model:
             for child in self.child_components:
@@ -419,7 +431,9 @@ class Baseline(ModelComponent):
 class ForwardModel(ModelComponent):
     component_name = "forward_model"
 
-    def __init__(self, name: str, flux: Flux | MultisectorFlux | Tracer, baseline: Baseline | None = None) -> None:
+    def __init__(
+        self, name: str, flux: Flux | MultisectorFlux | Tracer, baseline: Baseline | None = None
+    ) -> None:
         super().__init__()
         self.name = name
 
@@ -427,7 +441,9 @@ class ForwardModel(ModelComponent):
         self.child_components = []
         self.child_components.append(flux)  # empty list followed by append is to trick mypy...
 
-        if baseline is not None and bool(baseline) is not False:  # shouldn't need explicit call to `bool` but it fails otherwise...
+        if (
+            baseline is not None and bool(baseline) is not False
+        ):  # shouldn't need explicit call to `bool` but it fails otherwise...
             self.child_components.append(baseline)
 
     def __getattr__(self, name: str) -> Any:
@@ -442,7 +458,7 @@ class ForwardModel(ModelComponent):
         )
 
     def build(self) -> None:
-        self.model = pm.Model(name=self._name)
+        super().build()
 
         with self.model:
             for child in self.child_components:
@@ -470,7 +486,6 @@ class ForwardModel(ModelComponent):
             return None
 
 
-
 class Sigma(ModelComponent):
     """Minimal component for setting up sigma prior in likelihoods."""
 
@@ -484,7 +499,7 @@ class Sigma(ModelComponent):
         y_time: np.ndarray | None = None,
         per_site: bool = True,
         sites: list[str] | None = None,
-        output_dim: str = "nmeasure"
+        output_dim: str = "nmeasure",
     ) -> None:
         super().__init__()
 
@@ -514,13 +529,16 @@ class Sigma(ModelComponent):
         }
         return result
 
+    def instantiate_model(self) -> None:
+        self.model = pm.modelcontext(None)
+
     def build(self) -> None:
         """This is a bit of a hack to build this component inside of another component without
         creating a long name.
 
         See usage in `RHIMELikelihood`.
         """
-        self.model = pm.modelcontext(None)
+        super().build()
 
         with self.model as model:
 
@@ -557,7 +575,7 @@ class RHIMELikelihood(ModelComponent):
         pollution_events_from_obs: bool = True,
         no_model_error: bool = False,
         name: str = "likelihood",
-        output_dim: str = "nmeasure,"
+        output_dim: str = "nmeasure,",
     ) -> None:
         super().__init__()
         self.name = name
@@ -582,7 +600,7 @@ class RHIMELikelihood(ModelComponent):
         return {self.output_dim: np.arange(len(self.y_obs))}
 
     def build(self, forward: ForwardModel) -> None:
-        self.model = pm.Model(name=self.name, coords=self.coords())
+        super().build()
 
         with self.model:
             y_obs = pm.Data("y_obs", self.y_obs, dims=self.output_dim)
