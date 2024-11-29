@@ -7,7 +7,8 @@ from pathlib import Path
 import re
 from types import UnionType
 import typing
-from typing import Any, Sequence, Union
+from typing import Any, Iterable, Literal, Sequence, Union, cast
+from typing_extensions import Self
 
 from openghg_inversions.models.components import ModelComponent
 
@@ -21,6 +22,15 @@ import networkx as nx
 import pymc as pm
 
 
+def _valid_arg(type_name, ann) -> bool:
+    if typing.get_origin(ann) is UnionType:
+        return any((type_name is sub_ann) or (type_name.__name__ == sub_ann.__name__) for sub_ann in typing.get_args(ann))
+    return (type_name is ann) or (type_name.__name__ == ann.__name__)
+
+
+class ModelBuildError(Exception): ...
+
+
 class Node:
     def __init__(self, name: str, type_: str = "default", children: list[str] | None = None, inputs: list[str] | None = None, **kwargs) -> None:
         self.name = name
@@ -28,6 +38,21 @@ class Node:
         self.children_names = children or []
         self.input_names = inputs or []
 
+        if f"use_{self.type}" in kwargs:
+            self.skip = not kwargs.pop(f"use_{self.type}")
+        else:
+            self.skip = False
+
+        # args to be used for finding data
+        if "data_args" in kwargs:
+            self.data_args = kwargs.pop("data_args")
+        else:
+            self.data_args = {}
+
+        # data used to create component
+        self.data = {}
+
+        # store all other args
         self.__dict__.update(kwargs)
 
         try:
@@ -46,11 +71,15 @@ class Node:
         var_args = [param.name for param in self.parameters.values() if param.kind == param.VAR_POSITIONAL]
         self.var_args = var_args[0] if var_args else None
 
+        # data needed to build component; this should be updated before using the component
+        self.data = {}
 
         # these attributes will be set when the model graph is created.
         self.children = []
         self.inputs = []
 
+        # model component; initially set to None
+        self._component: ModelComponent | None = None
 
     def __str__(self):
         return self.name
@@ -91,57 +120,82 @@ class Node:
     def short_name(self) -> str:
         return self.name.split(".")[-1]
 
-    def check_component_parameters(self, verbose: bool = False, partial: bool = True) -> inspect.BoundArguments:
+    def component_args(self, verbose: bool = False, partial: bool = True, create_children: bool = False) -> inspect.BoundArguments:
         args = []
-        var_args = []
         kwargs = {}
-        if self.var_args:
+        var_args = []
+
+        if self.var_args is not None:
             past_var_args = False
 
             for k, param in self.parameters.items():
-                if k in self.var_args:
+                val = None
+                if k == self.var_args:
                     past_var_args = True
                 elif hasattr(self, k):
+                    val = getattr(self, k)
+                elif k in self.data:
+                    val = self.data[k]
+
+                if val is not None:
                     if param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD) and not past_var_args:
                         args.append(getattr(self, k))
                     else:
                         kwargs[k] = getattr(self, k)
 
-            var_args = [child for child in self.children if child not in list(kwargs.values())]
-
         else:
             for k, param in self.parameters.items():
                 if hasattr(self, k):
                     kwargs[k] = getattr(self, k)
+                elif k in self.data:
+                    kwargs[k] = self.data[k]
 
         remaining_children = {}
-        kwarg_values = list(kwargs.values())
         for child in self.children:
-            if child not in kwarg_values and child not in var_args:
-                for param, ann in self.annotations.items():
-                    if param != self.var_args and _valid_arg(child.component_type, ann):
+            if child.skip is True:
+                if verbose:
+                    print(f"Skipping child {child.name}")
+                continue
+            for param, ann in self.annotations.items():
+                if param != self.var_args and _valid_arg(child.component_type, ann):
+                    if create_children:
+                        kwargs[param] = child.component(verbose=verbose)
+                    else:
                         kwargs[param] = child
-                        break
-                else:  # no keyword found
-                    remaining_children[child.name] = child
+                    break
+            else:  # no keyword found
+                remaining_children[child.name] = child
 
-        if verbose:
-            print(self.name, args, var_args, kwargs)
-            if remaining_children:
-                print("remaining children:", ", ".join(rc for rc in remaining_children))
+        if remaining_children:
+            if create_children:
+                var_args = [child.component(verbose=verbose) for child in remaining_children.values()]
+            else:
+                var_args = list(remaining_children.values())
 
         if partial:
-            return self.signature.bind_partial(*args, *var_args, **kwargs)
+            result = self.signature.bind_partial(*args, *var_args, **kwargs)
+        else:
+            result = self.signature.bind(*args, *var_args, **kwargs)
 
-        return self.signature.bind(*args, *var_args, **kwargs)
+        return result
 
+    def print_args(self) -> None:
+        import numpy as np
+        import pandas as pd
+        print_kwargs = {}
+        for k, v in self.component_args().arguments.items():
+            if isinstance(v, np.ndarray | pd.Series | pd.Index):
+                print_kwargs[k] = type(v)
+            else:
+                print_kwargs[k] = v
+        print(self.name, print_kwargs, "\n")
 
     @property
     def missing_params(self) -> tuple[set[str], set[str]]:
         required = []
         optional = []
 
-        params_we_have = self.check_component_parameters(partial=True).arguments
+        params_we_have = self.component_args(partial=True).arguments
 
         for param in self.parameters.values():
             if param.name not in params_we_have:
@@ -151,6 +205,35 @@ class Node:
                     optional.append(param.name)
 
         return set(required), set(optional)
+
+
+    def _create_component(self, verbose: bool = False) -> None:
+        try:
+            comp_args = self.component_args(partial=False, create_children=True, verbose=verbose)
+        except TypeError as e:
+            required_missing, _ = self.missing_params
+            raise ModelBuildError(f"Cannot create component {self.name}; "
+                                  "the following required arguments are missing: "
+                                  f"{', '.join(required_missing)}") from e
+
+        comp_args.arguments["name"] = self.short_name
+
+        # add inputs
+        # TODO: remove inputs from ModelComponent subclass __init__ methods
+        if self.inputs:
+            comp_args.arguments["inputs"] = [inp.component() for inp in self.inputs if not inp.skip]
+
+        self._component = self.component_type(*comp_args.args, **comp_args.kwargs)
+
+    def component(self, verbose: bool = False) -> ModelComponent:
+        if self._component is None:
+            if verbose:
+                print(f"Creating component {self.name}")
+            self._create_component(verbose=verbose)
+
+        return cast(ModelComponent, self._component)
+
+
 
 def is_node(conf: Any, name: str | None = None, cache: dict[str, bool] | None = None) -> bool:
 
@@ -201,102 +284,146 @@ def get_nodes(conf: dict) -> list[Node]:
                 if "type" in values:
                     node_kwargs["type_"] = values.pop("type")
 
-                node = Node(name, **node_kwargs)
-                node.children_names = get_children(values, name, cache)
+                node_children_names = get_children(values, name, cache)
+                node_kwargs["children"] = node_children_names
 
-                for child in node.children_names:
+                for child in node_children_names:
                     # append dict in the form {name: value}
                     # take last part of child name, since it includes all ancestors' names
                     stack.append({child: values.pop(child.split(".")[-1])})
 
                 # store all remaining values in node
-                node.__dict__.update(values)
+                node_kwargs.update(values)
+
+                node = Node(name, **node_kwargs)
 
                 nodes.append(node)
 
     return nodes
 
 
+class ModelGraph:
+    def __init__(self, nodes: Iterable[Node], child_edges: Iterable[tuple[Node, Node]], input_edges: Iterable[tuple[Node, Node]] | None = None) -> None:
+        self.graph = nx.DiGraph()
+        self.graph.add_nodes_from(nodes)
+        self.graph.add_edges_from(child_edges, kind="child")
+        if input_edges:
+            self.graph.add_edges_from(input_edges, kind="input")
+
+        self.build_order = list(nx.topological_sort(self.graph))
+
+
+        # create .child and .inputs attributes for each Node
+        for node in self.graph.nodes:
+            for pred in self.graph.predecessors(node):
+                kind = self.graph.edges[pred, node]["kind"]
+
+                if kind == "child":
+                    node.children.append(pred)
+
+                if kind == "input":
+                    node.inputs.append(pred)
+
+        # put child nodes in build order
+        # this might not be necessary once we can set the name spaces of the model components ahead of time
+        for node in self.nodes:
+            temp = []
+            for bnode in self.build_order:
+                if bnode in node.children:
+                    temp.append(bnode)
+            node.children = temp
+
+        self._node_hash = {node.name: node for node in self.nodes}
+
+    @property
+    def nodes(self) -> list[Node]:
+        """Return copy of nodes in graph."""
+        return list(self.graph.nodes)
+
+    def subgraph(self, kind: Literal["child", "input"] = "child") -> nx.DiGraph:
+        result = self.graph.edge_subgraph((u, v) for u, v, d in self.graph.edges(data=True) if d["kind"] == kind)
+        return cast(nx.DiGraph, result)  # this cast shouldn't be necessary...
+
+    @classmethod
+    def from_config(cls, config: dict) -> Self:
+        config = config["model"] if "model" in config else config
+
+        nodes = get_nodes(config)
+        nodes_hash = {node.name: node for node in nodes}
+
+        child_edges = defaultdict(list)
+        input_edges = defaultdict(list)
+
+        for node in nodes:
+            for child in node.children_names:
+                child_edges[nodes_hash[child]].append(node)
+            for input_ in node.input_names:
+                input_edges[nodes_hash[input_]].append(node)
+
+        return cls(nodes, ((k, x) for k, v in child_edges.items() for x in v), ((k, x) for k, v in input_edges.items() for x in v))
+
+    def plot(self, title="", show_types=False, show_inputs=False, edge_labels=None, **kwargs) -> None:
+        for layer, nodes in enumerate(nx.topological_generations(self.graph)):
+        # `multipartite_layout` expects the layer as a node attribute, so add the
+        # numeric layer value as a node attribute
+            for node in nodes:
+                self.graph.nodes[node]["layer"] = layer
+
+        # Compute the multipartite_layout using the "layer" node attribute
+        pos = nx.multipartite_layout(self.graph, subset_key="layer", align="horizontal")
+        pos = dict(sorted(pos.items(), key=lambda x: (x[1][1], x[1][0])))
+        layers = {v[1] for v in pos.values()}
+        for layer in layers:
+            nodes, positions = zip(*((k, v) for k, v in pos.items() if v[1] == layer))
+            pos.update(dict(zip(sorted(nodes, key=lambda x: x.name), positions)))
+
+        # plot
+        fig, ax = plt.subplots()
+        options = dict(node_shape="s",  node_color="none", bbox=dict(facecolor="white", edgecolor='black', boxstyle='round,pad=0.2'))
+        options.update(kwargs)
+        if show_types:
+            node_labels = {node: f"{node.name}\ntype: {node.type}" for node in self.nodes}
+        else:
+            node_labels = {node: node.name for node in self.nodes}
+
+        nx.draw_networkx(self.graph, pos=pos, ax=ax, labels=node_labels, **options)  # type: ignore
+
+        # add edge labels
+        if show_inputs:
+            edge_labels = edge_labels or {}
+            for edge in self.graph.edges:
+                if edge[0].name in edge[1].inputs:
+                    edge_labels[edge] = "input"
+
+        if edge_labels is not None:
+            nx.draw_networkx_edge_labels(self.graph, pos=pos, edge_labels=edge_labels, ax=ax)
+
+        # draw plot
+        ax.set_title(title)
+        fig.tight_layout()
+        plt.show()
+
+    def add_data(self, data_dict: dict) -> None:
+        for node in self.nodes:
+            node.data.update(data_dict.get(node.name, {}))
+
+    def create_components(self, data_dict: dict | None = None, verbose: bool = False) -> None:
+        """Create ModelComponent for each Node in the ModelGraph
+
+        Nodes are built according to the `build_order` for this graph.
+        """
+        if data_dict is not None:
+            self.add_data(data_dict)
+
+        for node in self.build_order:
+            if node.skip:
+                continue
+
+            node.component(verbose=verbose)
+
+
 def make_nx_graph(config: dict) -> nx.DiGraph:
-    nodes = get_nodes(config)
-    nodes_hash = {node.name: node for node in nodes}
-
-    child_edges = defaultdict(list)
-    input_edges = defaultdict(list)
-
-    for node in nodes:
-        for child in node.children_names:
-            child_edges[nodes_hash[child]].append(node)
-        for input_ in node.input_names:
-            input_edges[nodes_hash[input_]].append(node)
-
-    G = nx.DiGraph()
-    G.add_nodes_from(nodes)
-
-    G.add_edges_from(((k, x) for k, v in child_edges.items() for x in v), kind="child")
-    G.add_edges_from(((k, x) for k, v in input_edges.items() for x in v), kind="input")
-
-    for node in G.nodes:
-        for pred in G.predecessors(node):
-            kind = G.edges[pred, node]["kind"]
-
-            if kind == "child":
-                node.children.append(pred)
-
-            if kind == "input":
-                node.inputs.append(pred)
-
-    # put child nodes into build order
-    build_order = list(nx.topological_sort(G))
-
-    for node in G.nodes:
-        temp = []
-        for bnode in build_order:
-            if bnode in node.children:
-                temp.append(bnode)
-        node.children = temp
-
-    return G
-
-
-def plot_graph(G, title="", show_types=False, show_inputs=False, edge_labels=None, **kwargs):
-    for layer, nodes in enumerate(nx.topological_generations(G)):
-    # `multipartite_layout` expects the layer as a node attribute, so add the
-    # numeric layer value as a node attribute
-        for node in sorted(nodes, key=lambda x: x.name):
-            G.nodes[node]["layer"] = layer
-
-    # Compute the multipartite_layout using the "layer" node attribute
-    pos = nx.multipartite_layout(G, subset_key="layer", align="horizontal")
-    pos = dict(sorted(pos.items(), key=lambda x: (x[1][1], x[1][0])))
-    layers = {v[1] for v in pos.values()}
-    for layer in layers:
-        nodes, positions = zip(*((k, v) for k, v in pos.items() if v[1] == layer))
-        pos.update(dict(zip(sorted(nodes, key=lambda x: x.name), positions)))
-    fig, ax = plt.subplots()
-    options = dict(node_shape="s",  node_color="none", bbox=dict(facecolor="white", edgecolor='black', boxstyle='round,pad=0.2'))
-    options.update(kwargs)
-    if show_types:
-        node_labels = {node: f"{node.name}\ntype: {node.type}" for node in G.nodes}
-    else:
-        node_labels = {node: node.name for node in G.nodes}
-    nx.draw_networkx(G, pos=pos, ax=ax, labels=node_labels, **options)  # type: ignore
-    if show_inputs:
-        edge_labels = edge_labels or {}
-        for edge in G.edges:
-            if edge[0].name in edge[1].inputs:
-                edge_labels[edge] = "input"
-    if edge_labels is not None:
-        nx.draw_networkx_edge_labels(G, pos=pos, edge_labels=edge_labels, ax=ax)
-    ax.set_title(title)
-    fig.tight_layout()
-    plt.show()
-
-
-def _valid_arg(type_name, ann) -> bool:
-    if typing.get_origin(ann) is UnionType:
-        return any((type_name is sub_ann) or (type_name.__name__ == sub_ann.__name__) for sub_ann in typing.get_args(ann))
-    return (type_name is ann) or (type_name.__name__ == ann.__name__)
+    return ModelGraph.from_config(config).graph
 
 
 def create_components(G: nx.DiGraph, data_dict: dict, verbose: bool = False) -> dict[Node, ModelComponent]:
