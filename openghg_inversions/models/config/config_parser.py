@@ -368,6 +368,10 @@ class ModelGraph:
 
         self._model = None
 
+        # data related attributes
+        self.data_args = {}
+
+
     @property
     def model(self) -> pm.Model:
         if self._model is None:
