@@ -263,7 +263,7 @@ class Tracer(ModelComponent):
 
         with self.model:
             x = flux.model["x"]
-            input_dim = flux.model.named_vars_to_dims[x.name][0]
+            input_dim = flux.model.named_vars_to_dims[x.name][0]  # TODO: make `input_dim` an attribute of `Flux`
 
             r = parse_prior("r", self.prior)
 
