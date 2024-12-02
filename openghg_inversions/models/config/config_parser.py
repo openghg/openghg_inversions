@@ -510,11 +510,12 @@ class ModelGraph:
 
         with self.model:
             for node in self.build_order:
-                if node in all_children:
+                if node.skip is True:
                     continue
 
                 if verbose:
-                    print(f"Building node {node.name}")
+                    print(f"Building {repr(node)}")
+
                 if node.inputs:
                     node.component().build(*(inp.component() for inp in node.inputs))
                 else:
@@ -522,6 +523,17 @@ class ModelGraph:
                 if verbose:
                     print(node.component().model.basic_RVs)
 
+                # HACK: to prevent the same node from building twice
+                node.component()._temp_build = node.component().build
+                node.component().build = lambda *x: None
+
+        # restore build methods
+        for node in self.nodes:
+            if node.skip is True:
+                continue
+
+            node.component().build = node.component()._temp_build  # type: ignore
+            delattr(node.component(), "_temp_build")
 
 def make_nx_graph(config: dict) -> nx.DiGraph:
     return ModelGraph.from_config(config).graph
