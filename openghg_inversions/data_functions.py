@@ -1,20 +1,27 @@
-
+from functools import partial
 import logging
-from typing import cast, Literal, overload
+from typing import ChainMap, cast, Literal, overload
+from typing_extensions import Self
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg.dataobjects import BoundaryConditionsData, FluxData, FootprintData
 from openghg.analyse import ModelScenario
+from openghg.dataobjects import BoundaryConditionsData, FluxData, FootprintData
+from openghg.retrieve import get_obs_surface, get_footprint, get_flux, get_bc
+from openghg.util import split_function_inputs
+
+from openghg_inversions.array_ops import get_xr_dummies
+from openghg_inversions.basis._functions import basis_functions
+from openghg_inversions.models.config.config_parser import ModelGraph, Node
 
 
 logger = logging.getLogger("openghg_inversions.data_functions")
 logger.setLevel(logging.INFO)  # Have to set level for logger as well as handler
 
 
-def fp_x_flux(fp: FootprintData, flux: FluxData | dict[str, FluxData], units: float | None = None) -> xr.DataArray:
+def fp_x_flux(fp: FootprintData, flux: FluxData | dict[str, FluxData]) -> xr.DataArray:
     """Calculate array with footprints * flux.
 
     TODO: make this a function that accepts a model scenario and source?
@@ -27,9 +34,6 @@ def fp_x_flux(fp: FootprintData, flux: FluxData | dict[str, FluxData], units: fl
     else:
         result = ms._calc_modelled_obs_integrated(output_TS=False, output_fpXflux=True)
 
-    if units is not None:
-        result /= units
-
     return result
 
 
@@ -37,17 +41,26 @@ def fp_x_bc(fp: FootprintData, bc: BoundaryConditionsData, units: float | None =
     pass
 
 
-def nesw_bc(fp: FootprintData, bc: BoundaryConditionsData, units: float | None = None) -> xr.DataArray:
+def nesw_bc(fp: FootprintData | xr.Dataset, bc: BoundaryConditionsData | xr.Dataset) -> xr.DataArray:
     """This only works for inert footprints, and only applies the NESW boundary conditions."""
     directions = ["n", "e", "s", "w"]
 
-    fp_bc = fp.data[[f"particle_locations_{x}" for x in directions]].rename({f"particle_locations_{x}": x for x in directions})
-    bc_aligned = bc.data.rename({f"vmr_{x}": x for x in directions}).reindex_like(fp_bc, method="ffill")
+    if isinstance(fp, FootprintData):
+        fp = fp.data
+
+    if isinstance(bc, BoundaryConditionsData):
+        bc = bc.data
+
+    fp_bc = fp[[f"particle_locations_{x}" for x in directions]].rename(
+        {f"particle_locations_{x}": x for x in directions}
+    )
+    bc_aligned = (
+        bc.rename({f"vmr_{x}": x for x in directions})
+        .reindex_like(fp_bc, method="ffill")
+        .chunk(time=fp_bc.chunks["time"])
+    )
 
     result = (fp_bc * bc_aligned).sum(["lat", "lon", "height"]).to_dataarray(dim="region", name="h_bc")
-
-    if units is not None:
-        result /= units
 
     return result
 
@@ -228,3 +241,266 @@ def align_obs_and_other(
             obs = obs.resample(indexer={"time": resample_period}, offset=offset).mean()
 
     return obs, other
+
+
+class MultiObs:
+    def __init__(
+        self,
+        species,
+        start_date,
+        end_date,
+        sites,
+        inlets,
+        store=None,
+        obs_store=None,
+        averaging_period=None,
+        **kwargs,
+    ) -> None:
+        self.species = species
+        self.start_date = start_date
+        self.end_date = end_date
+        self._sites = sites
+        self._inlets = inlets
+        self.store = obs_store or store
+
+        self.average = averaging_period or [None] * len(self._sites)
+
+        self.kwargs = kwargs
+
+        self.obs = []
+
+        for site, inlet, avg in zip(self._sites, self._inlets, self.average):
+            try:
+                obs = get_obs_surface(
+                    species=self.species,
+                    start_date=self.start_date,
+                    end_date=self.end_date,
+                    site=site,
+                    inlet=inlet,
+                    average=avg,
+                    store=self.store,
+                    **self.kwargs,
+                )
+            except Exception as e:
+                print(f"Couldn't get obs for site {site} and inlet {inlet} from store {self.store}: {e}")
+            else:
+                self.obs.append(obs)
+
+        self._combined_ds = xr.concat(
+            [x.data.expand_dims(site=[x.metadata["site"]]) for x in self.obs], dim="site"
+        )
+
+    def combined_ds(self) -> xr.Dataset:
+        return self._combined_ds
+
+    @property
+    def data(self) -> xr.Dataset:
+        return self._combined_ds
+
+    @property
+    def sites(self) -> list[str]:
+        return list(self.data.site)
+
+    @property
+    def inlets(self) -> list[str]:
+        result = []
+        for site, inlet in zip(self._sites, self._inlets):
+            if site in self.sites:
+                result.append(inlet)
+        return result
+
+    @classmethod
+    def from_node(cls, node: Node, comp_data_args: dict[str, ChainMap], **kwargs) -> Self:
+        if not node.type.endswith("likelihood"):
+            raise ValueError(f"{repr(node)} is not a likelihood: it has type {node.type}.")
+
+        get_kwargs = comp_data_args[node.name]
+        get_kwargs.update(kwargs)
+
+        return cls(**get_kwargs)
+
+
+class MultiFootprint:
+    def __init__(
+        self,
+        domain,
+        start_date,
+        end_date,
+        fp_heights,
+        sites,
+        fp_species="inert",
+        store=None,
+        footprint_store=None,
+        **kwargs,
+    ) -> None:
+        self.domain = domain
+        self.species = fp_species
+        self.start_date = start_date
+        self.end_date = end_date
+        self._sites = sites
+        self._inlets = fp_heights
+        self.store = footprint_store or store
+        self.model = kwargs.get("model")
+        self.met_model = kwargs.get("met_model")
+        self.kwargs = {}
+
+        self.footprints = []
+        for site, inlet in zip(self._sites, self._inlets):
+            try:
+                fp = get_footprint(
+                    domain=self.domain,
+                    start_date=self.start_date,
+                    end_date=self.end_date,
+                    species=self.species,
+                    site=site,
+                    inlet=inlet,
+                    model=self.model,
+                    met_model=self.met_model,
+                    store=self.store,
+                    **self.kwargs,
+                )
+            except Exception as e:
+                print(
+                    f"Couldn't get footprint for site {site} and inlet {inlet} from store {self.store}: {e}"
+                )
+            else:
+                self.footprints.append(fp)
+
+        self._combined_ds = xr.concat(
+            [x.data.expand_dims(site=[x.metadata["site"]]) for x in self.footprints], dim="site"
+        )
+
+    def combined_ds(self) -> xr.Dataset:
+        return self._combined_ds
+
+    @property
+    def data(self) -> xr.Dataset:
+        return self._combined_ds
+
+    @property
+    def sites(self) -> list[str]:
+        return list(self.data.site)
+
+    @property
+    def inlets(self) -> list[str]:
+        result = []
+        for site, inlet in zip(self._sites, self._inlets):
+            if site in self._sites:
+                result.append(inlet)
+        return result
+
+    @classmethod
+    def from_node(cls, node: Node, comp_data_args: dict[str, ChainMap], **kwargs) -> Self:
+        if not node.type.endswith("likelihood"):
+            raise ValueError(f"{repr(node)} is not a likelihood: it has type {node.type}.")
+
+        get_kwargs = comp_data_args[node.name]
+        get_kwargs.update(kwargs)
+
+        return cls(**get_kwargs)
+
+
+class FluxComponentData:
+    def __init__(
+        self, node: Node, comp_data_args: dict[str, ChainMap], basis: xr.DataArray | None = None, **kwargs
+    ) -> None:
+        if node.type != "flux":
+            raise ValueError(f"{repr(node)} must have type 'flux'; received node of type '{node.type}'")
+
+        self.node = node
+
+        have, missing = split_function_inputs(comp_data_args[node.name], get_flux)  # type: ignore
+        if "emissions_store" in missing:
+            have["store"] = missing["emissions_store"]
+
+        self.flux_data = get_flux(**have, **kwargs)
+
+        self.flux = self.flux_data.data.flux
+
+        self._basis = basis
+        self.input_dim = f"{node.short_name}_region"
+
+    @property
+    def basis(self) -> xr.DataArray:
+        if self._basis is None:
+            raise AttributeError("Basis has not been provided, or has not been computed yet.")
+        return self._basis
+
+    def compute_basis(self, mean_fp: xr.DataArray, **kwargs) -> None:
+        """Compute basis and store.
+
+        This does not compute basis functions with a time coordinate, which
+        is fine for the current setup, but will need to be changed when
+        temporal covariance is added.
+        """
+        # TODO: add fixed outer regions
+        try:
+            basis_info = self.node.basis
+        except AttributeError:
+            basis_info = self.node.data_args.get("basis", {})
+
+        basis_info.update(kwargs)
+
+        # TODO: choose a coordinate name for region!!!
+        try:
+            basis_algorithm = basis_info.pop("algorithm")
+        except KeyError as e:
+            raise ValueError(
+                f"{repr(self.node)} doesn't specify a basis algorithm. Pass `algorithm` as a kwarg."
+            ) from e
+
+        try:
+            basis_func = basis_functions[basis_algorithm]
+        except KeyError:
+            raise ValueError(f"Basis algorithm '{basis_algorithm}' not found.")
+
+        func = partial(basis_func.algorithm, **basis_info)
+
+        fp_x_flux = mean_fp * self.flux.mean("time")
+
+        self.flat_basis = xr.apply_ufunc(func, fp_x_flux.as_numpy()).rename("basis")
+        self._basis = get_xr_dummies(self.flat_basis, cat_dim=self.input_dim)
+
+    def compute_h_matrix(self, footprint: xr.Dataset) -> None:
+        flux = self.flux.reindex_like(footprint, method="ffill").chunk(time=footprint.chunks["time"])  # type: ignore
+        fp_x_flux = footprint.fp * flux
+        self.h_matrix = fp_x_flux @ self.basis
+
+
+class BoundaryConditionsComponentData:
+    """Data getting functions for BoundaryConditions model component.
+
+    NOTE: currently this only allows NESW bc boundary conditions
+    """
+
+    def __init__(self, node: Node, comp_data_args: dict[str, ChainMap], **kwargs) -> None:
+        if node.type != "boundary_conditions":
+            raise ValueError(
+                f"{repr(node)} must have type 'boundary_conditions'; received node of type '{node.type}'"
+            )
+
+        self.node = node
+
+        have, missing = split_function_inputs(comp_data_args[node.name], get_bc)  # type: ignore
+        if "bc_store" in missing:
+            have["store"] = missing["bc_store"]
+
+        self.bc_data = get_bc(**have, **kwargs)
+
+        self.bc = self.bc_data.data
+
+        self.input_dim = f"{node.short_name}_region"
+
+    def compute_h_matrix(self, footprint: xr.Dataset) -> None:
+        self.h_matrix = nesw_bc(footprint, self.bc).rename(region=self.input_dim)
+
+
+class TracerComponentData:
+    def __init__(self, node: Node, flux_data: FluxComponentData) -> None:
+        if node.type != "tracer":
+            raise ValueError(f"{repr(node)} must have type 'tracer'; received node of type '{node.type}'")
+
+        self.node = node
+
+        self.input_dim = flux_data.input_dim
+        self.h_matrix = flux_data.h_matrix
