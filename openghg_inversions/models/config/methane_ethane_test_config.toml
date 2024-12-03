@@ -14,10 +14,10 @@ footprint_store = "shared_store_zarr"
 [data.ch4]
 
 species = "ch4"
-sites = ['jfj', 'mhd', 'cmn', 'tac', 'tob']
-inlets = ["10m", "10m", "10m", "185m", "12m"]
-fp_heights = ["1000m", "10m", "500m", "185m", "10m"]
-averaging_period = ["4h", "4h", "4h", "4h", "4h"]
+sites = ['jfj', 'mhd', 'cmn', 'tac', 'tob', 'bsd', 'hfd', 'rgl']
+inlets = ["10m", "10m", "10m", "185m", "12m", "248m", "100m", "90m"]
+fp_heights = ["1000m", "10m", "500m", "185m", "10m", "248m", "100m", "90m"]
+averaging_period = ["4h", "4h", "4h", "4h", "4h", "4h", "4h", "4h"]
 
 # full data from PARIS runs
 # sites = ['BIR', 'BSD', 'CBW', 'CMN', 'GAT', 'HEI', 'HEL', 'HFD', 'HPB', 'HTM', 'HUN', 'JFJ', 'KIT', 'KRE', 'LIN', 'LUT', 'MHD', 'NOR', 'OPE', 'OXK', 'PAL', 'RGL', 'SAC', 'SSL', 'STE', 'TAC', 'TOH', 'TRN', 'UTO', 'WAO', 'WES']
@@ -103,6 +103,7 @@ type = "tracer"
 inputs = ["ch4.forward.flux.ff"]
 
 prior = {pdf = "uniform", lower = 0.1, upper = 2.7}
+flux_ratio = 0.075
 
 
 [model.c2h6.forward.baseline]
