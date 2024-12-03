@@ -637,3 +637,45 @@ class RHIMELikelihood(ModelComponent):
             mu = forward.output
 
             pm.Normal("y", mu=mu, sigma=epsilon, observed=y_obs, dims=self.output_dim)
+
+class GaussianLikelihood(ModelComponent):
+    """Likelihood for RHIME model."""
+
+    component_name = "gaussian_likelihood"
+
+    def __init__(
+        self,
+        y_obs: np.ndarray,
+        error: np.ndarray,
+        sigma: Sigma,
+        inputs: Iterable[ModelComponent],
+        name: str = "likelihood",
+        output_dim: str = "nmeasure,",
+    ) -> None:
+        super().__init__()
+        self.name = name
+        self.inputs = list(inputs)
+
+        self.y_obs = y_obs
+        self.error = error
+
+        self.sigma = sigma
+
+        self.output_dim = output_dim
+
+    def coords(self) -> dict:
+        return {self.output_dim: np.arange(len(self.y_obs))}
+
+    def build(self, forward: ForwardModel) -> None:
+        super().build()
+
+        with self.model:
+            y_obs = pm.Data("y_obs", self.y_obs, dims=self.output_dim)
+            error = pm.Data("error", self.error, dims=self.output_dim)
+
+            self.sigma.build()
+
+            epsilon = pm.Deterministic("epsilon", pt.sqrt(error**2 + self.sigma.output**2), dims=self.output_dim)
+            mu = forward.output
+
+            pm.Normal("y", mu=mu, sigma=epsilon, observed=y_obs, dims=self.output_dim)
