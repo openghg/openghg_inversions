@@ -263,7 +263,9 @@ class Tracer(ModelComponent):
 
         with self.model:
             x = flux.model["x"]
-            input_dim = flux.model.named_vars_to_dims[x.name][0]  # TODO: make `input_dim` an attribute of `Flux`
+            input_dim = flux.model.named_vars_to_dims[x.name][
+                0
+            ]  # TODO: make `input_dim` an attribute of `Flux`
 
             r = parse_prior("r", self.prior)
 
@@ -498,8 +500,9 @@ class Sigma(ModelComponent):
         freq: str | None = None,
         y_time: np.ndarray | None = None,
         per_site: bool = True,
-        sites: list[str] | None = None,
         output_dim: str = "nmeasure",
+        output_coord: np.ndarray | None = None,
+        coord_prefix: str | None = None,
     ) -> None:
         super().__init__()
 
@@ -516,21 +519,37 @@ class Sigma(ModelComponent):
         self.freq_index = freq_index
         self.per_site = per_site
 
-        self.sites = sites
+        if self.per_site:
+            self.sites = self.site_indicator.astype(int)
+        else:
+            self.sites = np.zeros_like(self.site_indicator).astype(int)
 
         self.output_dim = output_dim
 
+        self.output_coord = output_coord if output_coord is not None else np.arange(len(self.site_indicator))
+
+        self._coord_prefix = coord_prefix
+
+        if self._coord_prefix is not None:
+            self.sig_dims = ("nsigma_site", "nsigma_time")
+        else:
+            self.sig_dims = (f"{self._coord_prefix}_nsigma_site", f"{self._coord_prefix}_nsigma_time")
+
     def coords(self) -> dict:
         result = {
-            self.output_dim: np.arange(len(self.site_indicator)),
-            "sites": self.sites if self.sites is not None else np.unique(self.site_indicator),
-            "nsigma_time": np.unique(self.freq_index),
-            "nsigma_site": np.unique(self.site_indicator) if self.per_site else [0],
+            self.output_dim: self.output_coord,
+            self.sig_dims[0]: np.unique(self.site_indicator) if self.per_site else [0],
+            self.sig_dims[1]: np.unique(self.freq_index),
         }
         return result
 
     def instantiate_model(self) -> None:
         self.model = pm.modelcontext(None)
+
+        with self.model as model:
+            model.add_coords(
+                self.coords()
+            )  # add coordinates here so that they are added to existing model context
 
     def build(self) -> None:
         """This is a bit of a hack to build this component inside of another component without
@@ -540,20 +559,9 @@ class Sigma(ModelComponent):
         """
         super().build()
 
-        with self.model as model:
-
-            model.add_coords(self.coords())
-
-            sigma = parse_prior("sigma", self.prior, dims=("nsigma_site", "nsigma_time"))
-
-            # convert siteindicator into a site indexer
-            # TODO: use self.sites here?
-            if self.per_site:
-                sites = self.site_indicator.astype(int)
-            else:
-                sites = np.zeros_like(self.site_indicator).astype(int)
-
-            pm.Deterministic("sigma_obs_aligned", sigma[sites, self.freq_index], dims=self.output_dim)
+        with self.model:
+            sigma = parse_prior("sigma", self.prior, dims=self.sig_dims)
+            pm.Deterministic("sigma_obs_aligned", sigma[self.sites, self.freq_index], dims=self.output_dim)
 
     @property
     def output(self) -> TensorVariable:
@@ -638,6 +646,7 @@ class RHIMELikelihood(ModelComponent):
 
             pm.Normal("y", mu=mu, sigma=epsilon, observed=y_obs, dims=self.output_dim)
 
+
 class GaussianLikelihood(ModelComponent):
     """Likelihood for RHIME model."""
 
@@ -675,7 +684,9 @@ class GaussianLikelihood(ModelComponent):
 
             self.sigma.build()
 
-            epsilon = pm.Deterministic("epsilon", pt.sqrt(error**2 + self.sigma.output**2), dims=self.output_dim)
+            epsilon = pm.Deterministic(
+                "epsilon", pt.sqrt(error**2 + self.sigma.output**2), dims=self.output_dim
+            )
             mu = forward.output
 
             pm.Normal("y", mu=mu, sigma=epsilon, observed=y_obs, dims=self.output_dim)
