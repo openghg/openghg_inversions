@@ -1,3 +1,4 @@
+from abc import ABC
 from functools import partial
 import logging
 from typing import ChainMap, cast, Literal, overload
@@ -400,14 +401,31 @@ class MultiFootprint:
         return cls(**get_kwargs)
 
 
-class FluxComponentData:
+class ComponentData:
+    component_name: str
+    _component_registry: dict = {}
+
+    def __init__(self, node: Node, *args, **kwargs) -> None:
+        if node.type != self.component_name:
+            raise ValueError(f"{repr(node)} must have type '{self.component_name}'; received node of type '{node.type}'")
+
+        self.node = node
+
+    @classmethod
+    def __init_subclass__(cls):
+        """Register ModelComponents by name, for lookup by model config."""
+        ComponentData._component_registry[cls.component_name] = cls
+
+
+
+class Flux(ComponentData):
+
+    component_name = "flux"
+
     def __init__(
         self, node: Node, comp_data_args: dict[str, ChainMap], basis: xr.DataArray | None = None, **kwargs
     ) -> None:
-        if node.type != "flux":
-            raise ValueError(f"{repr(node)} must have type 'flux'; received node of type '{node.type}'")
-
-        self.node = node
+        super().__init__(node)
 
         have, missing = split_function_inputs(comp_data_args[node.name], get_flux)  # type: ignore
         if "emissions_store" in missing:
@@ -467,19 +485,16 @@ class FluxComponentData:
         self.h_matrix = fp_x_flux @ self.basis
 
 
-class BoundaryConditionsComponentData:
+class BoundaryConditions(ComponentData):
     """Data getting functions for BoundaryConditions model component.
 
     NOTE: currently this only allows NESW bc boundary conditions
     """
 
-    def __init__(self, node: Node, comp_data_args: dict[str, ChainMap], **kwargs) -> None:
-        if node.type != "boundary_conditions":
-            raise ValueError(
-                f"{repr(node)} must have type 'boundary_conditions'; received node of type '{node.type}'"
-            )
+    component_name = "boundary_conditions"
 
-        self.node = node
+    def __init__(self, node: Node, comp_data_args: dict[str, ChainMap], **kwargs) -> None:
+        super().__init__(node)
 
         have, missing = split_function_inputs(comp_data_args[node.name], get_bc)  # type: ignore
         if "bc_store" in missing:
@@ -495,12 +510,63 @@ class BoundaryConditionsComponentData:
         self.h_matrix = nesw_bc(footprint, self.bc).rename(region=self.input_dim)
 
 
-class TracerComponentData:
-    def __init__(self, node: Node, flux_data: FluxComponentData) -> None:
-        if node.type != "tracer":
-            raise ValueError(f"{repr(node)} must have type 'tracer'; received node of type '{node.type}'")
+class Tracer(ComponentData):
 
-        self.node = node
+    component_name = "tracer"
+
+    def __init__(self, node: Node, flux_data: Flux) -> None:
+        super().__init__(node)
 
         self.input_dim = flux_data.input_dim
         self.h_matrix = flux_data.h_matrix
+
+
+class MultisectorFlux(ComponentData):
+
+    component_name = "multisector_flux"
+
+    def __init__(self, node: Node, *fluxes: Flux | Tracer) -> None:
+        super().__init__(node)
+
+        self.children_data = fluxes
+
+        self.h_matrix = xr.merge(child_data.h_matrix.rename(f"{child_data.node.name}_h") for child_data in self.children_data)
+
+
+class Baseline(ComponentData):
+
+    component_name = "baseline"
+
+    def __init__(self, node: Node, bc_data: BoundaryConditions | None = None, offset_data = None) -> None:
+        super().__init__(node)
+
+        # TODO: add offset data here when it is available...
+        self.children_data = [bc_data] if bc_data is not None else []
+
+        self.h_matrix = xr.merge(child_data.h_matrix.rename(f"{child_data.node.name}_h") for child_data in self.children_data)
+
+
+class ForwardModel(ComponentData):
+
+    component_name = "forward_model"
+
+    def __init__(self, node: Node, flux, baseline: Baseline | None = None) -> None:
+        super().__init__(node)
+
+        self.flux = flux
+        self.baseline = baseline
+
+        to_merge = []
+
+        if isinstance(self.flux, Flux | Tracer):
+            to_merge.append(self.flux.h_matrix.rename(f"{self.flux.node.name}_h"))
+        else:
+            to_merge.append(self.flux)
+
+        if self.baseline is not None:
+            to_merge.append(self.baseline)
+
+        self.h_matrix = xr.merge(to_merge)
+
+# TODO: likelihoods, Sigma, need to align Likelihood and Forward
+# TODO: functions to add data to pm.Data correctly
