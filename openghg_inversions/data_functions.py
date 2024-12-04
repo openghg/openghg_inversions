@@ -10,6 +10,7 @@ import xarray as xr
 from openghg.analyse import ModelScenario
 from openghg.dataobjects import BoundaryConditionsData, FluxData, FootprintData
 from openghg.retrieve import get_obs_surface, get_footprint, get_flux, get_bc
+from openghg.types import SearchError
 from openghg.util import split_function_inputs
 
 from openghg_inversions.array_ops import get_xr_dummies
@@ -286,6 +287,9 @@ class MultiObs:
                 print(f"Couldn't get obs for site {site} and inlet {inlet} from store {self.store}: {e}")
             else:
                 self.obs.append(obs)
+
+        if not self.obs:
+            raise SearchError(f"No obs. found for {self.species} at sites {self._sites} in store {self.store}")
 
         self._combined_ds = xr.concat(
             [x.data.expand_dims(site=[x.metadata["site"]]) for x in self.obs], dim="site"
