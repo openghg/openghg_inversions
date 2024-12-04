@@ -84,7 +84,7 @@ def get_data(mg: ModelGraph):
         cd_type = ComponentData._component_registry[node.type]
         cd_kwargs = {"node": node}
 
-        if node.type in ("flux", "boundary_conditions", "forward_model") or node.type.endswith("likelihood"):
+        if node.type in ("flux", "bc", "forward_model") or node.type.endswith("likelihood"):
             cd_kwargs["comp_data_args"] = comp_data_args[node.name]
 
         comp_data[node.name] = cd_type(**cd_kwargs)
@@ -114,7 +114,7 @@ def get_data(mg: ModelGraph):
             comp_data[node.name].compute_basis(forward_data.mean_fp)
             comp_data[node.name].compute_h_matrix(forward_data.footprints)
 
-        elif node.type == "boundary_conditions":
+        elif node.type == "bc":
             forward_data = comp_data[get_parent_name_by_type(mg, node, "forward_model")]
 
             comp_data[node.name].compute_h_matrix(forward_data.footprints)
