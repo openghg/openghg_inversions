@@ -554,7 +554,7 @@ class MultisectorFlux(ComponentData):
         to_merge = []
 
         for child in self.node.children:
-            if child.node.skip:
+            if child.skip:
                 continue
 
             child_data = comp_data[child.name]
@@ -575,7 +575,7 @@ class Baseline(ComponentData):
         to_merge = []
 
         for child in self.node.children:
-            if child.node.skip:
+            if child.skip:
                 continue
 
             child_data = comp_data[child.name]
@@ -603,7 +603,7 @@ class ForwardModel(ComponentData):
         to_merge = []
 
         for child in self.node.children:
-            if child.node.skip:
+            if child.skip:
                 continue
 
             child_data = comp_data[child.name]
@@ -686,7 +686,7 @@ class LikelihoodComponentData(ComponentData):
         children_to_merge = []
 
         for child in self.node.children:
-            if child.node.skip:
+            if child.skip:
                 continue
 
             child_data = comp_data[child.name]
