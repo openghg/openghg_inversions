@@ -718,8 +718,8 @@ class GaussianLikelihood(LikelihoodComponentData):
         variability = self.data.mf_variability if "mf_variability" in self.data else xr.zeros_like(self.y_obs)
 
         if ffill_error:
-            repeatability = repeatability.ffill()
-            variability = variability.ffill()
+            repeatability = repeatability.ffill("time")
+            variability = variability.ffill("time")
 
         self.error = np.sqrt(repeatability**2 + variability**2).rename("error")
         self.error.attrs["param"] = "error"
