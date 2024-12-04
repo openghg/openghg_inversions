@@ -599,7 +599,7 @@ class ForwardModel(ComponentData):
 
         self._multi_footprint = MultiFootprint(**comp_data_args)
         self.footprints = self._multi_footprint.data
-        self.mean_fp = self.footprints.data.fp.mean("time")
+        self.mean_fp = self.footprints.fp.mean("time")
 
     def merge_data(self, comp_data: dict[str, ComponentData]) -> None:
         to_merge = []
