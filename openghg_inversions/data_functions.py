@@ -672,7 +672,8 @@ class LikelihoodComponentData(ComponentData):
         self._multi_obs = MultiObs(**comp_data_args)
         self.obs = self._multi_obs.data
 
-        self.y_obs = self.obs.mf.stack(nmeasure=["site", "time"]).rename("y_obs")
+        self.y_obs = self.obs.mf.rename("y_obs")
+        # self.y_obs = self.obs.mf.stack(nmeasure=["site", "time"]).rename("y_obs")
         self.y_obs.attrs["param"] = "y_obs"
 
         self._to_merge = [self.y_obs]
