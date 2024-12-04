@@ -149,7 +149,7 @@ def get_quadtree_basis(fps: np.ndarray, nbasis: int, seed: int | None = None) ->
     cost = 1e6
     pwr = 0
     search_max = 10 * np.sum(fps)
-    while cost > 3.0:
+    while cost > 9.0:
         optim = scipy.optimize.dual_annealing(
             qtoptim, np.expand_dims([0, search_max / 10**pwr], axis=0), seed=seed
         )
