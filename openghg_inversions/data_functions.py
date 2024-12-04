@@ -14,7 +14,7 @@ from openghg.types import SearchError
 from openghg.util import split_function_inputs
 
 from openghg_inversions.array_ops import get_xr_dummies
-from openghg_inversions.basis._functions import basis_functions
+from openghg_inversions.basis.algorithms import quadtree_algorithm, weighted_algorithm
 from openghg_inversions.models.config.config_parser import ModelGraph, Node
 
 
@@ -465,12 +465,14 @@ class Flux(ComponentData):
                 f"{repr(self.node)} doesn't specify a basis algorithm. Pass `algorithm` as a kwarg."
             ) from e
 
-        try:
-            basis_func = basis_functions[basis_algorithm]
-        except KeyError:
-            raise ValueError(f"Basis algorithm '{basis_algorithm}' not found.")
+        if basis_algorithm == "quadtree":
+            basis_func = quadtree_algorithm
+        elif basis_algorithm == "weighted":
+            basis_func = weighted_algorithm
+        else:
+            raise ValueError(f"basis algorithm {basis_algorithm} not found.")
 
-        func = partial(basis_func.algorithm, **basis_info)
+        func = partial(basis_func, **basis_info)
 
         fp_x_flux = mean_fp * self.flux.mean("time")
 
