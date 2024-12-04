@@ -76,8 +76,10 @@ def get_data(mg: ModelGraph):
 
     comp_data = {}
 
+    nodes = [node for node in mg.build_order if node.type != "default"]
+
     # first pass: create component data objects for nodes without inputs
-    for node in mg.build_order:
+    for node in nodes:
         if node.inputs:
             continue
 
@@ -90,7 +92,7 @@ def get_data(mg: ModelGraph):
         comp_data[node.name] = cd_type(**cd_kwargs)
 
     # second pass: create nodes with inputs, build h matrices
-    for node in mg.build_order:
+    for node in nodes:
 
         if node.type == "tracer":
             cd_type = ComponentData._component_registry[node.type]
