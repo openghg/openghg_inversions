@@ -71,10 +71,10 @@ def get_parent_name_by_type(mg: ModelGraph, node: Node, parent_type: str, exact_
         raise ModelBuildError(f"{repr(node.name)} does not have a parent component matching type {parent_type}.")
 
 
-def get_data(mg: ModelGraph):
+def get_data(mg: ModelGraph, comp_data: dict | None = None):
     comp_data_args = component_to_data_args_map(mg)
 
-    comp_data = {}
+    comp_data = comp_data or {}
 
     nodes = [node for node in mg.build_order if node.type != "default"]
 

@@ -396,6 +396,7 @@ class MultiFootprint:
 
         return cls(**get_kwargs)
 
+verbose = True
 
 class ComponentData:
     component_name: str
@@ -412,7 +413,16 @@ class ComponentData:
         """Register ModelComponents by name, for lookup by model config."""
         ComponentData._component_registry[cls.component_name] = cls
 
+    def __getattr__(self, name):
+        result = getattr(self, name)
 
+        if not verbose:
+            return result
+
+        if isinstance(result, Callable):
+            print(f"ComponentData for {self.node.name} calling {result.__name__}")
+
+        return result
 
 class Flux(ComponentData):
 
