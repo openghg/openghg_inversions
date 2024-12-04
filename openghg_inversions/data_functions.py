@@ -270,6 +270,8 @@ class MultiObs:
         self.kwargs = valid_kwargs
 
         self.obs = []
+        self.sites = []
+        self.inlets = []
 
         for site, inlet, avg in zip(self._sites, self._inlets, self.average):
             try:
@@ -287,6 +289,8 @@ class MultiObs:
                 print(f"Couldn't get obs for site {site} and inlet {inlet} from store {self.store}: {e}")
             else:
                 self.obs.append(obs)
+                self.sites.append(site)
+                self.inlets.append(inlet)
 
         if not self.obs:
             raise SearchError(f"No obs. found for {self.species} at sites {self._sites} in store {self.store}")
@@ -301,18 +305,6 @@ class MultiObs:
     @property
     def data(self) -> xr.Dataset:
         return self._combined_ds
-
-    @property
-    def sites(self) -> list[str]:
-        return list(self.data.site)
-
-    @property
-    def inlets(self) -> list[str]:
-        result = []
-        for site, inlet in zip(self._sites, self._inlets):
-            if site in self.sites:
-                result.append(inlet)
-        return result
 
     @classmethod
     def from_node(cls, node: Node, comp_data_args: dict[str, ChainMap], **kwargs) -> Self:
@@ -358,6 +350,8 @@ class MultiFootprint:
             del self.kwargs["species"]
 
         self.footprints = []
+        self.sites = []
+        self.inlets = []
         for site, inlet in zip(self._sites, self._inlets):
             try:
                 fp = get_footprint(
@@ -378,6 +372,8 @@ class MultiFootprint:
                 )
             else:
                 self.footprints.append(fp)
+                self.sites.append(site)
+                self.inlets.append(inlet)
 
         self._combined_ds = xr.concat(
             [x.data.expand_dims(site=[x.metadata["site"]]) for x in self.footprints], dim="site"
@@ -389,18 +385,6 @@ class MultiFootprint:
     @property
     def data(self) -> xr.Dataset:
         return self._combined_ds
-
-    @property
-    def sites(self) -> list[str]:
-        return list(self.data.site)
-
-    @property
-    def inlets(self) -> list[str]:
-        result = []
-        for site, inlet in zip(self._sites, self._inlets):
-            if site in self._sites:
-                result.append(inlet)
-        return result
 
     @classmethod
     def from_node(cls, node: Node, comp_data_args: dict[str, ChainMap], **kwargs) -> Self:
