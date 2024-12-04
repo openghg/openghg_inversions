@@ -618,7 +618,7 @@ class ForwardModel(ComponentData):
 # TODO: functions to add data to pm.Data correctly
 def site_indicator_func(sites: Iterable[str]) -> Callable:
     site_dict = {site: i for i, site in enumerate(sites)}
-    return lambda x: site_dict.get(x, -1)
+    return lambda arr: [site_dict.get(x, -1) for x in arr]
 
 
 class Sigma(ComponentData):
