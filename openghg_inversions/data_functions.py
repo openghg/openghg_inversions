@@ -293,7 +293,9 @@ class MultiObs:
                 self.inlets.append(inlet)
 
         if not self.obs:
-            raise SearchError(f"No obs. found for {self.species} at sites {self._sites} in store {self.store}")
+            raise SearchError(
+                f"No obs. found for {self.species} at sites {self._sites} in store {self.store}"
+            )
 
         self._combined_ds = xr.concat(
             [x.data.expand_dims(site=[x.metadata["site"]]) for x in self.obs], dim="site"
@@ -328,8 +330,8 @@ class MultiFootprint:
         fp_species="inert",
         store=None,
         footprint_store=None,
-        model = None,
-        met_model = None,
+        model=None,
+        met_model=None,
         **kwargs,
     ) -> None:
         self.domain = domain
@@ -403,7 +405,9 @@ class ComponentData:
 
     def __init__(self, node: Node, *args, **kwargs) -> None:
         if node.type != self.component_name:
-            raise ValueError(f"{repr(node)} must have type '{self.component_name}'; received node of type '{node.type}'")
+            raise ValueError(
+                f"{repr(node)} must have type '{self.component_name}'; received node of type '{node.type}'"
+            )
 
         self.node = node
 
@@ -526,6 +530,7 @@ class BoundaryConditions(ComponentData):
         self._h_matrix.attrs["param"] = "h_matrix"
         return self._h_matrix
 
+
 class Tracer(ComponentData):
 
     component_name = "tracer"
@@ -569,7 +574,6 @@ class Baseline(ComponentData):
 
     def __init__(self, node: Node) -> None:
         super().__init__(node)
-
 
     def merge_data(self, comp_data: dict[str, ComponentData]) -> None:
         to_merge = []
@@ -640,10 +644,12 @@ class Sigma(ComponentData):
             None, stores data
         """
 
-        si_func = site_indicator_func(parent.sites) # type: ignore
+        si_func = site_indicator_func(parent.sites)  # type: ignore
 
         # need to stack and unstack here?
-        self.site_indicator = xr.apply_ufunc(si_func, parent.data.stack(nmeasure=["site", "time"]).site).unstack("nmeasure")  # type: ignore
+        self.site_indicator = (xr.apply_ufunc(si_func, parent.data.stack(nmeasure=["site", "time"]).site)   # type: ignore
+                               .unstack("nmeasure")
+                               .rename("site_indicator"))
         self.site_indicator.attrs["origin"] = self.node.name
         self.site_indicator.attrs["param"] = "site_indicator"
 
@@ -703,7 +709,9 @@ class GaussianLikelihood(LikelihoodComponentData):
 
     def __init__(self, node: Node, comp_data_args: Mapping, ffill_error: bool = True) -> None:
         super().__init__(node, comp_data_args)
-        repeatability = self.data.mf_repeatability if "mf_repeatability" in self.data else xr.zeros_like(self.y_obs)
+        repeatability = (
+            self.data.mf_repeatability if "mf_repeatability" in self.data else xr.zeros_like(self.y_obs)
+        )
         variability = self.data.mf_variability if "mf_variability" in self.data else xr.zeros_like(self.y_obs)
 
         if ffill_error:
@@ -720,7 +728,13 @@ class RHIMELikelihood(GaussianLikelihood):
 
     component_name = "rhime_likelihood"
 
-    def __init__(self, node: Node, comp_data_args: Mapping, ffill_error: bool = True, min_error: np.ndarray | xr.DataArray | float = 0.0) -> None:
+    def __init__(
+        self,
+        node: Node,
+        comp_data_args: Mapping,
+        ffill_error: bool = True,
+        min_error: np.ndarray | xr.DataArray | float = 0.0,
+    ) -> None:
         super().__init__(node, comp_data_args, ffill_error)
 
         # TODO: add options to calculate min error...
@@ -734,4 +748,3 @@ class RHIMELikelihood(GaussianLikelihood):
         self.min_error.attrs["param"] = "min_error"
 
         self.to_merge.append(self.min_error)
-
