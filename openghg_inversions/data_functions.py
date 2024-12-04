@@ -349,6 +349,10 @@ class MultiFootprint:
         valid_kwargs, _ = split_function_inputs(kwargs, get_obs_surface)
         self.kwargs = valid_kwargs
 
+        # need more robust way to do this...
+        if "species" in self.kwargs:
+            del self.kwargs["species"]
+
         self.footprints = []
         for site, inlet in zip(self._sites, self._inlets):
             try:
