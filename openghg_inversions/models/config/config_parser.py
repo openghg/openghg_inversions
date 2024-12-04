@@ -389,6 +389,9 @@ class ModelGraph:
         )
         return cast(nx.DiGraph, result)  # this cast shouldn't be necessary...
 
+    def parents(self, node: Node) -> list[Node]:
+        return list(nx.descendants(self.subgraph(), node))
+
     @classmethod
     def from_config(cls, config: dict) -> Self:
         config = config["model"] if "model" in config else config

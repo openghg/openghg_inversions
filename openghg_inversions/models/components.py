@@ -231,6 +231,7 @@ class Tracer(ModelComponent):
         h_matrix: xr.DataArray | np.ndarray,
         prior: PriorArgs,
         inputs: list[Flux],
+        flux_ratio: float = 1.0,
         input_coords: xr.DataArray | np.ndarray | None = None,
         output_dim: str = "nmeasure",
         output_coords: xr.DataArray | np.ndarray | None = None,
@@ -255,6 +256,8 @@ class Tracer(ModelComponent):
 
         self.prior = prior
 
+        self.flux_ratio = flux_ratio
+
     def coords(self) -> dict:
         return self.output_coords
 
@@ -270,7 +273,7 @@ class Tracer(ModelComponent):
             r = parse_prior("r", self.prior)
 
             hx = pm.Data("h", self.h_matrix, dims=(self.output_dim, input_dim))
-            pm.Deterministic("mu", pt.dot(hx, r * x), dims=self.output_dim)
+            pm.Deterministic("mu", pt.dot(hx, self.flux_ratio * r * x), dims=self.output_dim)
 
     @property
     def output(self) -> TensorVariable:

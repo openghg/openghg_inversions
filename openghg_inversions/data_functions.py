@@ -1,7 +1,6 @@
-from abc import ABC
 from functools import partial
 import logging
-from typing import ChainMap, cast, Literal, overload
+from typing import Any, Callable, ChainMap, Iterable, cast, Literal, Mapping, overload
 from typing_extensions import Self
 
 import numpy as np
@@ -423,11 +422,11 @@ class Flux(ComponentData):
     component_name = "flux"
 
     def __init__(
-        self, node: Node, comp_data_args: dict[str, ChainMap], basis: xr.DataArray | None = None, **kwargs
+        self, node: Node, comp_data_args: Mapping, basis: xr.DataArray | None = None, **kwargs
     ) -> None:
         super().__init__(node)
 
-        have, missing = split_function_inputs(comp_data_args[node.name], get_flux)  # type: ignore
+        have, missing = split_function_inputs(comp_data_args, get_flux)  # type: ignore
         if "emissions_store" in missing:
             have["store"] = missing["emissions_store"]
 
@@ -437,6 +436,8 @@ class Flux(ComponentData):
 
         self._basis = basis
         self.input_dim = f"{node.short_name}_region"
+
+        self._h_matrix = None
 
     @property
     def basis(self) -> xr.DataArray:
@@ -482,7 +483,14 @@ class Flux(ComponentData):
     def compute_h_matrix(self, footprint: xr.Dataset) -> None:
         flux = self.flux.reindex_like(footprint, method="ffill").chunk(time=footprint.chunks["time"])  # type: ignore
         fp_x_flux = footprint.fp * flux
-        self.h_matrix = fp_x_flux @ self.basis
+        self._h_matrix = fp_x_flux @ self.basis
+
+    @property
+    def h_matrix(self) -> xr.DataArray:
+        if self._h_matrix is None:
+            raise AttributeError(f"h_matrix for {self.node.name} has not been computed yet.")
+        self._h_matrix.attrs["origin"] = self.node.name
+        return self._h_matrix
 
 
 class BoundaryConditions(ComponentData):
@@ -493,10 +501,10 @@ class BoundaryConditions(ComponentData):
 
     component_name = "boundary_conditions"
 
-    def __init__(self, node: Node, comp_data_args: dict[str, ChainMap], **kwargs) -> None:
+    def __init__(self, node: Node, comp_data_args: Mapping, **kwargs) -> None:
         super().__init__(node)
 
-        have, missing = split_function_inputs(comp_data_args[node.name], get_bc)  # type: ignore
+        have, missing = split_function_inputs(comp_data_args, get_bc)  # type: ignore
         if "bc_store" in missing:
             have["store"] = missing["bc_store"]
 
@@ -506,9 +514,17 @@ class BoundaryConditions(ComponentData):
 
         self.input_dim = f"{node.short_name}_region"
 
-    def compute_h_matrix(self, footprint: xr.Dataset) -> None:
-        self.h_matrix = nesw_bc(footprint, self.bc).rename(region=self.input_dim)
+        self._h_matrix = None
 
+    def compute_h_matrix(self, footprint: xr.Dataset) -> None:
+        self._h_matrix = nesw_bc(footprint, self.bc).rename(region=self.input_dim)
+
+    @property
+    def h_matrix(self) -> xr.DataArray:
+        if self._h_matrix is None:
+            raise AttributeError(f"h_matrix for {self.node.name} has not been computed yet.")
+        self._h_matrix.attrs["origin"] = self.node.name
+        return self._h_matrix
 
 class Tracer(ComponentData):
 
@@ -518,55 +534,198 @@ class Tracer(ComponentData):
         super().__init__(node)
 
         self.input_dim = flux_data.input_dim
-        self.h_matrix = flux_data.h_matrix
+        self._h_matrix = flux_data.h_matrix
+
+    @property
+    def h_matrix(self) -> xr.DataArray:
+        self._h_matrix.attrs["origin"] = self.node.name
+        return self._h_matrix
 
 
 class MultisectorFlux(ComponentData):
 
     component_name = "multisector_flux"
 
-    def __init__(self, node: Node, *fluxes: Flux | Tracer) -> None:
+    def __init__(self, node: Node) -> None:
         super().__init__(node)
 
-        self.children_data = fluxes
+    def merge_data(self, comp_data: dict[str, ComponentData]) -> None:
+        to_merge = []
 
-        self.h_matrix = xr.merge(child_data.h_matrix.rename(f"{child_data.node.name}_h") for child_data in self.children_data)
+        for child in self.node.children:
+            if child.node.skip:
+                continue
+
+            child_data = comp_data[child.name]
+            to_merge.append(child_data.h_matrix.rename(f"{child_data.node.name}_h"))  # type: ignore
+
+        self.h_matrix = xr.merge(to_merge)
 
 
 class Baseline(ComponentData):
 
     component_name = "baseline"
 
-    def __init__(self, node: Node, bc_data: BoundaryConditions | None = None, offset_data = None) -> None:
+    def __init__(self, node: Node) -> None:
         super().__init__(node)
 
-        # TODO: add offset data here when it is available...
-        self.children_data = [bc_data] if bc_data is not None else []
 
-        self.h_matrix = xr.merge(child_data.h_matrix.rename(f"{child_data.node.name}_h") for child_data in self.children_data)
+    def merge_data(self, comp_data: dict[str, ComponentData]) -> None:
+        to_merge = []
+
+        for child in self.node.children:
+            if child.node.skip:
+                continue
+
+            child_data = comp_data[child.name]
+            if isinstance(child_data, BoundaryConditions):
+                to_merge.append(child_data.h_matrix.rename(f"{child_data.node.name}_h"))
+            # else:
+            #     # TODO: need to add Offset ComponentData and heck here
+            #     to_merge.append(child_data.h_matrix)
+
+        self.h_matrix = xr.merge(to_merge)
 
 
 class ForwardModel(ComponentData):
 
     component_name = "forward_model"
 
-    def __init__(self, node: Node, flux, baseline: Baseline | None = None) -> None:
+    def __init__(self, node: Node, comp_data_args: Mapping) -> None:
         super().__init__(node)
 
-        self.flux = flux
-        self.baseline = baseline
+        self._multi_footprint = MultiFootprint(**comp_data_args)
+        self.footprints = self._multi_footprint.data
+        self.mean_fp = self.footprints.data.fp.mean("time")
 
+    def merge_data(self, comp_data: dict[str, ComponentData]) -> None:
         to_merge = []
 
-        if isinstance(self.flux, Flux | Tracer):
-            to_merge.append(self.flux.h_matrix.rename(f"{self.flux.node.name}_h"))
-        else:
-            to_merge.append(self.flux)
+        for child in self.node.children:
+            if child.node.skip:
+                continue
 
-        if self.baseline is not None:
-            to_merge.append(self.baseline)
+            child_data = comp_data[child.name]
+            if isinstance(child_data, Flux | Tracer):
+                to_merge.append(child_data.h_matrix.rename(f"{child_data.node.name}_h"))
+            else:
+                to_merge.append(child_data.h_matrix)  # type: ignore
 
         self.h_matrix = xr.merge(to_merge)
 
+
 # TODO: likelihoods, Sigma, need to align Likelihood and Forward
 # TODO: functions to add data to pm.Data correctly
+def site_indicator_func(sites: Iterable[str]) -> Callable:
+    site_dict = {site: i for i, site in enumerate(sites)}
+    return lambda x: site_dict.get(x, -1)
+
+
+class Sigma(ComponentData):
+
+    component_name = "sigma"
+
+    def __init__(self, node: Node) -> None:
+        super().__init__(node)
+
+    def get_data(self, parent: ComponentData) -> None:
+        """Get data from parent.
+
+        Args:
+            parent: a ComponentData object that has obs info; typically a likelihood.
+                This could also be a `MultiObs` object.
+
+        Returns:
+            None, stores data
+        """
+
+        si_func = site_indicator_func(parent.sites) # type: ignore
+
+        self.site_indicator = xr.apply_ufunc(si_func, parent.data.site)  # type: ignore
+        self.site_indicator.attrs["origin"] = self.node.name
+
+
+        self.to_merge = [self.site_indicator]
+
+
+class LikelihoodComponentData(ComponentData):
+    """Wrapper for MultiObs. Should be subclasses for each likelihood ModelComponent"""
+
+    component_name = "likelihood"
+
+    def __init_subclass__(cls) -> None:
+        """Check that the subclass component names end with 'likelihood'."""
+        super().__init_subclass__()
+        assert cls.component_name.endswith("likelihood")
+
+    def __init__(self, node: Node, comp_data_args: Mapping) -> None:
+        super().__init__(node)
+
+        self._multi_obs = MultiObs(**comp_data_args)
+        self.obs = self._multi_obs.data
+
+        self.y_obs = self.obs.mf.rename("y_obs")
+
+        self._to_merge = [self.y_obs]
+
+    @property
+    def to_merge(self) -> list[xr.DataArray]:
+        for x in self._to_merge:
+            x.attrs["origin"] = self.node.name
+
+        return self._to_merge
+
+    def __getattr__(self, name: str, /) -> Any:
+        """Pass through attribute requires to underlying MultiObs object."""
+        return getattr(self._multi_obs, name)
+
+    def merge_data(self, comp_data: dict[str, ComponentData]) -> None:
+        children_to_merge = []
+
+        for child in self.node.children:
+            if child.node.skip:
+                continue
+
+            child_data = comp_data[child.name]
+
+            if hasattr(child_data, "to_merge"):
+                children_to_merge.extend(child_data.to_merge)  # type: ignore ...we just checked this exists
+
+        self.merged_data = xr.merge(self.to_merge + children_to_merge)
+
+
+class GaussianLikelihood(LikelihoodComponentData):
+
+    component_name = "gaussian_likelihood"
+
+    def __init__(self, node: Node, comp_data_args: Mapping, ffill_error: bool = True) -> None:
+        super().__init__(node, comp_data_args)
+        repeatability = self.data.mf_repeatability if "mf_repeatability" in self.data else xr.zeros_like(self.y_obs)
+        variability = self.data.mf_variability if "mf_variability" in self.data else xr.zeros_like(self.y_obs)
+
+        if ffill_error:
+            repeatability = repeatability.ffill()
+            variability = variability.ffill()
+
+        self.error = np.sqrt(repeatability**2 + variability**2).rename("error")
+
+        self.to_merge.append(self.error)
+
+
+class RHIMELikelihood(GaussianLikelihood):
+
+    component_name = "rhime_likelihood"
+
+    def __init__(self, node: Node, comp_data_args: Mapping, ffill_error: bool = True, min_error: np.ndarray | xr.DataArray | float = 0.0) -> None:
+        super().__init__(node, comp_data_args, ffill_error)
+
+        # TODO: add options to calculate min error...
+        if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
+            self.min_error = min_error * xr.ones_like(self.y_obs).rename("min_error")
+        elif isinstance(min_error, np.ndarray):
+            self.min_error = xr.DataArray(min_error, coords=self.y_obs.coords).rename("min_error")
+        else:
+            self.min_error = min_error.rename("min_error")  # type: ignore
+
+        self.to_merge.append(self.min_error)
+
