@@ -490,6 +490,7 @@ class Flux(ComponentData):
         if self._h_matrix is None:
             raise AttributeError(f"h_matrix for {self.node.name} has not been computed yet.")
         self._h_matrix.attrs["origin"] = self.node.name
+        self._h_matrix.attrs["param"] = "h_matrix"
         return self._h_matrix
 
 
@@ -524,6 +525,7 @@ class BoundaryConditions(ComponentData):
         if self._h_matrix is None:
             raise AttributeError(f"h_matrix for {self.node.name} has not been computed yet.")
         self._h_matrix.attrs["origin"] = self.node.name
+        self._h_matrix.attrs["param"] = "h_matrix"
         return self._h_matrix
 
 class Tracer(ComponentData):
@@ -539,6 +541,7 @@ class Tracer(ComponentData):
     @property
     def h_matrix(self) -> xr.DataArray:
         self._h_matrix.attrs["origin"] = self.node.name
+        self._h_matrix.attrs["param"] = "h_matrix"
         return self._h_matrix
 
 
@@ -641,9 +644,10 @@ class Sigma(ComponentData):
 
         si_func = site_indicator_func(parent.sites) # type: ignore
 
-        self.site_indicator = xr.apply_ufunc(si_func, parent.data.site)  # type: ignore
+        # need to stack and unstack here?
+        self.site_indicator = xr.apply_ufunc(si_func, parent.data.stack(nmeasure=["site", "time"]).site).unstack("nmeasure")  # type: ignore
         self.site_indicator.attrs["origin"] = self.node.name
-
+        self.site_indicator.attrs["param"] = "site_indicator"
 
         self.to_merge = [self.site_indicator]
 
@@ -664,7 +668,8 @@ class LikelihoodComponentData(ComponentData):
         self._multi_obs = MultiObs(**comp_data_args)
         self.obs = self._multi_obs.data
 
-        self.y_obs = self.obs.mf.rename("y_obs")
+        self.y_obs = self.obs.mf.stack(nmeasure=["site", "time"]).rename("y_obs")
+        self.y_obs.attrs["param"] = "y_obs"
 
         self._to_merge = [self.y_obs]
 
@@ -708,6 +713,7 @@ class GaussianLikelihood(LikelihoodComponentData):
             variability = variability.ffill()
 
         self.error = np.sqrt(repeatability**2 + variability**2).rename("error")
+        self.error.attrs["param"] = "error"
 
         self.to_merge.append(self.error)
 
@@ -726,6 +732,8 @@ class RHIMELikelihood(GaussianLikelihood):
             self.min_error = xr.DataArray(min_error, coords=self.y_obs.coords).rename("min_error")
         else:
             self.min_error = min_error.rename("min_error")  # type: ignore
+
+        self.min_error.attrs["param"] = "min_error"
 
         self.to_merge.append(self.min_error)
 
