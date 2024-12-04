@@ -342,7 +342,7 @@ class ModelGraph:
         if input_edges:
             self.graph.add_edges_from(input_edges, kind="input")
 
-        self.build_order = list(nx.topological_sort(self.graph))
+        self.build_order = [node for node in nx.topological_sort(self.graph) if not node.skip]
 
         # create .child and .inputs attributes for each Node
         for node in self.graph.nodes:

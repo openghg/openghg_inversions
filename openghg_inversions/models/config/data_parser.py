@@ -91,6 +91,7 @@ def get_data(mg: ModelGraph):
 
     # second pass: create nodes with inputs, build h matrices
     for node in mg.build_order:
+
         if node.type == "tracer":
             cd_type = ComponentData._component_registry[node.type]
             cd_kwargs = {"node": node}
