@@ -500,7 +500,7 @@ class BoundaryConditions(ComponentData):
     NOTE: currently this only allows NESW bc boundary conditions
     """
 
-    component_name = "boundary_conditions"
+    component_name = "bc"
 
     def __init__(self, node: Node, comp_data_args: Mapping, **kwargs) -> None:
         super().__init__(node)
