@@ -81,11 +81,11 @@ type = "offset"
 use_offset = false
 
 [model.ch4.likelihood]
-type = "rhime likelihood"
+type = "gaussian likelihood"
 inputs = ["ch4.forward"]
 
-pollution_events_from_obs = true
-no_model_error = false
+# pollution_events_from_obs = true
+# no_model_error = false
 
 
 [model.ch4.likelihood.sigma]
@@ -126,14 +126,14 @@ type = "offset"
 use_offset = false
 
 [model.c2h6.likelihood]
-type = "rhime likelihood"
+type = "gaussian likelihood"
 inputs = ["c2h6.forward"]
 
 # type = "rhime tracer likelihood"
 # inputs = ["ch4.likelihood", "c2h6.forward"]
 
-pollution_events_from_obs = true
-no_model_error = false
+# pollution_events_from_obs = true
+# no_model_error = false
 
 [model.c2h6.likelihood.sigma]
 type = "sigma"
