@@ -265,7 +265,8 @@ class MultiObs:
 
         self.average = averaging_period or [None] * len(self._sites)
 
-        self.kwargs = kwargs
+        valid_kwargs, _ = split_function_inputs(kwargs, get_obs_surface)
+        self.kwargs = valid_kwargs
 
         self.obs = []
 
@@ -331,6 +332,8 @@ class MultiFootprint:
         fp_species="inert",
         store=None,
         footprint_store=None,
+        model = None,
+        met_model = None,
         **kwargs,
     ) -> None:
         self.domain = domain
@@ -340,9 +343,11 @@ class MultiFootprint:
         self._sites = sites
         self._inlets = fp_heights
         self.store = footprint_store or store
-        self.model = kwargs.get("model")
-        self.met_model = kwargs.get("met_model")
-        self.kwargs = {}
+        self.model = model
+        self.met_model = met_model
+
+        valid_kwargs, _ = split_function_inputs(kwargs, get_obs_surface)
+        self.kwargs = valid_kwargs
 
         self.footprints = []
         for site, inlet in zip(self._sites, self._inlets):
