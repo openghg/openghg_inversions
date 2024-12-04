@@ -53,14 +53,14 @@ type = "flux"
 data_args = {source = "ch4-edgar-ukghg-fftotal"}
 
 prior = {pdf = "lognormal", mean = 1.0, stdev = 4.0, reparameterise = true}
-basis = {basis_algorithm = "quadtree", nbasis = 250, fix_basis_out_regions = true}
+basis = {algorithm = "quadtree", nbasis = 250, fix_basis_out_regions = true}
 
 [model.ch4.forward.flux.nonff]
 type = "flux"
 data_args = {source = "ch4-edgar-ukghg-nonfftotal"}
 
 prior = {pdf = "lognormal", mean = 1.0, stdev = 4.0, reparameterise = true}
-basis = {basis_algorithm = "quadtree", nbasis = 250, fix_basis_out_regions = true}
+basis = {algorithm = "quadtree", nbasis = 250, fix_basis_out_regions = true}
 
 [model.ch4.forward.baseline]
 type = "baseline"
