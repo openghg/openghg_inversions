@@ -80,7 +80,8 @@ def get_data(mg: ModelGraph):
 
     # first pass: create component data objects for nodes without inputs
     for node in nodes:
-        if node.inputs:
+        # TODO: make a more generic check?
+        if node.type in ("tracer", "sigma"):
             continue
 
         cd_type = ComponentData._component_registry[node.type]
