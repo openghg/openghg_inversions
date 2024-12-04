@@ -100,7 +100,7 @@ def get_data(mg: ModelGraph, comp_data: dict | None = None):
             cd_kwargs = {"node": node}
 
             try:
-                cd_kwargs["flux"] = comp_data[node.inputs[0].name]
+                cd_kwargs["flux_data"] = comp_data[node.inputs[0].name]
             except KeyError as e:
                 raise ModelBuildError(f"Tracer node data for {node.name} must be created after data for its flux input.") from e
 
