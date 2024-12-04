@@ -7,12 +7,12 @@ domain = "europe"
 start_date = "2019-01-01"
 end_date = "2019-02-01"
 
-obs_store = "obs_paris_2024_07_store"
 emissions_store = "c2h6_bc_flux_zarr_store"  # in /group/chem/acrg/c2h6_data_for_testing_tracer_rhime
 footprint_store = "shared_store_zarr"
 
 [data.ch4]
 
+obs_store = "obs_paris_2024_07_store"
 species = "ch4"
 sites = ['jfj', 'mhd', 'cmn', 'tac', 'tob', 'bsd', 'hfd', 'rgl']
 inlets = ["10m", "10m", "10m", "185m", "12m", "248m", "100m", "90m"]
@@ -28,6 +28,7 @@ averaging_period = ["4h", "4h", "4h", "4h", "4h", "4h", "4h", "4h"]
 
 [data.c2h6]
 
+obs_store = "/group/chem/acrg/object_stores/paris/obs_nir_2024_01_25_store_zarr"
 species = "c2h6"
 sites = ['jfj', 'mhd', 'cmn', 'tac', 'tob']
 inlets = ["10m", "10m", "10m", "185m", "12m"]
