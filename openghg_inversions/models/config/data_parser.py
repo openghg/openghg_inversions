@@ -122,3 +122,6 @@ def get_data(mg: ModelGraph):
             comp_data[node.name].merge_data(comp_data)
 
     # third pass: align likelihoods and forward models
+
+    # return data
+    return comp_data
