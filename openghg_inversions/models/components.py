@@ -499,7 +499,7 @@ class Sigma(ModelComponent):
     def __init__(
         self,
         prior: PriorArgs,
-        site_indicator: np.ndarray,
+        site_indicator: np.ndarray | xr.DataArray,
         freq: str | None = None,
         y_time: np.ndarray | None = None,
         per_site: bool = True,
@@ -510,6 +510,12 @@ class Sigma(ModelComponent):
         super().__init__()
 
         self.prior = prior
+
+        if isinstance(site_indicator, xr.DataArray):
+            y_time = site_indicator.time.values
+            output_dim = str(site_indicator.dims[0])
+            output_coord = site_indicator.coords[output_dim]
+            site_indicator = site_indicator.values
 
         if freq is not None:
             if y_time is None:

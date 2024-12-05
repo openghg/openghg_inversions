@@ -563,7 +563,7 @@ class MultisectorFlux(ComponentData):
                 continue
 
             child_data = comp_data[child.name]
-            to_merge.append(child_data.h_matrix.rename(f"{child_data.node.name}_h"))  # type: ignore
+            to_merge.append(child_data.h_matrix.rename(f"{child_data.node.name}_h".replace(".", "_")))  # type: ignore
 
         self.h_matrix = xr.merge(to_merge)
 
@@ -584,7 +584,7 @@ class Baseline(ComponentData):
 
             child_data = comp_data[child.name]
             if isinstance(child_data, BoundaryConditions):
-                to_merge.append(child_data.h_matrix.rename(f"{child_data.node.name}_h"))
+                to_merge.append(child_data.h_matrix.rename(f"{child_data.node.name}_h".replace(".", "_")))
             # else:
             #     # TODO: need to add Offset ComponentData and heck here
             #     to_merge.append(child_data.h_matrix)
@@ -612,7 +612,7 @@ class ForwardModel(ComponentData):
 
             child_data = comp_data[child.name]
             if isinstance(child_data, Flux | Tracer):
-                to_merge.append(child_data.h_matrix.rename(f"{child_data.node.name}_h"))
+                to_merge.append(child_data.h_matrix.rename(f"{child_data.node.name}_h".replace(".", "_")))
             else:
                 to_merge.append(child_data.h_matrix)  # type: ignore
 
@@ -702,6 +702,9 @@ class LikelihoodComponentData(ComponentData):
                 children_to_merge.extend(child_data.to_merge)  # type: ignore ...we just checked this exists
 
         self.merged_data = xr.merge(self.to_merge + children_to_merge)
+
+        if "averaged_period" in self.obs.attrs:
+            self.merged_data.attrs["averaged_period"] = self.obs.attrs["averaged_period"]
 
 
 class GaussianLikelihood(LikelihoodComponentData):
