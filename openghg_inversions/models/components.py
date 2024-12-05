@@ -189,7 +189,7 @@ class LinearForwardComponent(ModelComponent):
         self.output_dim = output_dim
 
         # TODO: if h_matrix is DataArray, use its coordinates?
-        input_coord = input_coord or np.arange(self.h_matrix_values.shape[1])
+        input_coord = input_coord if input_coord is not None else np.arange(self.h_matrix_values.shape[1])
 
         if len(input_coord) != self.h_matrix_values.shape[1]:
             raise ValueError(
@@ -198,7 +198,7 @@ class LinearForwardComponent(ModelComponent):
 
         self.input_coords = {self.input_dim: input_coord}
 
-        output_coord = output_coord or np.arange(self.h_matrix_values.shape[0])
+        output_coord = output_coord if output_coord is not None else np.arange(self.h_matrix_values.shape[0])
 
         if len(output_coord) != self.h_matrix_values.shape[0]:
             raise ValueError(
@@ -255,7 +255,7 @@ class Tracer(ModelComponent):
         self.h_matrix = h_matrix
 
         self.output_dim = output_dim
-        self.output_coord = output_coord or np.arange(self.h_matrix.shape[0])
+        self.output_coord = output_coord if output_coord is not None else np.arange(self.h_matrix.shape[0])
 
         if len(self.output_coord) != self.h_matrix.shape[0]:
             raise ValueError(
@@ -695,7 +695,7 @@ class GaussianLikelihood(ModelComponent):
         self.sigma = sigma
 
         self.output_dim = output_dim
-        self.output_coord = output_coord or np.arange(len(self.y_obs))
+        self.output_coord = output_coord if output_coord is not None else np.arange(len(self.y_obs))
 
     def coords(self) -> dict:
         return {self.output_dim: self.output_coord}
