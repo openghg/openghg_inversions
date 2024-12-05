@@ -580,7 +580,7 @@ class Sigma(ModelComponent):
 
         with self.model as model:
             model.add_coords(
-                self.coords()
+                convert_multiindex_coords(self.coords())
             )  # add coordinates here so that they are added to existing model context
 
     def build(self) -> None:
