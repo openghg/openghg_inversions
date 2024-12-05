@@ -234,7 +234,7 @@ def paris_flux_output(
             name = name.replace("flux", "flux_total")
 
         if "quantile" in name:
-            name = "percentile_" + name
+            name = "percentile_" + name.replace("_quantile", "")
 
         for stats_func_name in stats_functions:
             if name.endswith(f"_{stats_func_name}"):
