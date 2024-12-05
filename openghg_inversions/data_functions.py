@@ -454,9 +454,9 @@ class Flux(ComponentData):
         """
         # TODO: add fixed outer regions
         try:
-            basis_info = self.node.basis
+            basis_info = self.node.basis.copy()
         except AttributeError:
-            basis_info = self.node.data_args.get("basis", {})
+            basis_info = self.node.data_args.get("basis", {}).copy()
 
         basis_info.update(kwargs)
 
