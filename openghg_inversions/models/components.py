@@ -46,7 +46,7 @@ def convert_multiindex_coords(coords: dict):
             if isinstance(next(iter(v.indexes.values())), pd.MultiIndex):
                 result[k] = np.arange(len(v))
             else:
-                result[k] = v
+                result[k] = v.values
         else:
             result[k] = v
     return result
@@ -194,6 +194,7 @@ class LinearForwardComponent(ModelComponent):
         )
 
         if isinstance(h_matrix, xr.DataArray):
+            # NOTE: this assumes that "nmeasure", or whatever is the first dimension
             output_dim, input_dim = map(str, h_matrix.dims)
             input_coord = h_matrix.coords[input_dim]
             output_coord = h_matrix.coords[output_dim]
