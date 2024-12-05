@@ -153,9 +153,10 @@ class LinearForwardComponent(ModelComponent):
         name: str,
         h_matrix: xr.DataArray | np.ndarray,
         prior: PriorArgs,
-        input_coords: xr.DataArray | np.ndarray | None = None,
+        input_dim: str | None = None,
+        input_coord: xr.DataArray | np.ndarray | None = None,
         output_dim: str = "nmeasure",
-        output_coords: xr.DataArray | np.ndarray | None = None,
+        output_coord: xr.DataArray | np.ndarray | None = None,
     ) -> None:
         """Create LinearForwardComponent object.
 
@@ -175,30 +176,36 @@ class LinearForwardComponent(ModelComponent):
             name  # TODO: add class level code to make names automatically/fix name conflicts, e.g. counter
         )
 
+        if isinstance(h_matrix, xr.DataArray):
+            output_dim, input_dim = map(str, h_matrix.dims)
+            input_coord = h_matrix.coords[input_dim]
+            output_coord = h_matrix.coords[output_dim]
+            h_matrix = h_matrix.values
+
         self.h_matrix = h_matrix
         self.h_matrix_values = h_matrix if isinstance(h_matrix, np.ndarray) else h_matrix.values
 
-        self.input_dim = f"nx_{self.name}"
+        self.input_dim = input_dim or f"nx_{self.name}"
         self.output_dim = output_dim
 
         # TODO: if h_matrix is DataArray, use its coordinates?
-        input_coords = input_coords or np.arange(self.h_matrix_values.shape[1])
+        input_coord = input_coord or np.arange(self.h_matrix_values.shape[1])
 
-        if len(input_coords) != self.h_matrix_values.shape[1]:
+        if len(input_coord) != self.h_matrix_values.shape[1]:
             raise ValueError(
                 f"Length of specified input coordinates is not equal to the number of rows of the given H matrix."
             )
 
-        self.input_coords = {self.input_dim: input_coords}
+        self.input_coords = {self.input_dim: input_coord}
 
-        output_coords = output_coords or np.arange(self.h_matrix_values.shape[0])
+        output_coord = output_coord or np.arange(self.h_matrix_values.shape[0])
 
-        if len(output_coords) != self.h_matrix_values.shape[0]:
+        if len(output_coord) != self.h_matrix_values.shape[0]:
             raise ValueError(
-                f"Length of specified output coordinates is not equal to the number of columns of the given H matrix."
+                f"Length of specified output coordinates is not equal to the number of columns of the H matrix for {name}."
             )
 
-        self.output_coords = {self.output_dim: output_coords}
+        self.output_coords = {self.output_dim: output_coord}
 
         self.prior = prior
 
@@ -232,43 +239,42 @@ class Tracer(ModelComponent):
         prior: PriorArgs,
         inputs: list[Flux],
         flux_ratio: float = 1.0,
-        input_coords: xr.DataArray | np.ndarray | None = None,
         output_dim: str = "nmeasure",
-        output_coords: xr.DataArray | np.ndarray | None = None,
+        output_coord: xr.DataArray | np.ndarray | None = None,
     ) -> None:
         super().__init__()
         self.name = name
 
         self.inputs = inputs
 
+        if isinstance(h_matrix, xr.DataArray):
+            output_dim, _ = map(str, h_matrix.dims)
+            output_coord = h_matrix.coords[output_dim]
+            h_matrix = h_matrix.values
+
         self.h_matrix = h_matrix
-        self.h_matrix_values = h_matrix if isinstance(h_matrix, np.ndarray) else h_matrix.values
 
         self.output_dim = output_dim
-        output_coords = output_coords or np.arange(self.h_matrix_values.shape[0])
+        self.output_coord = output_coord or np.arange(self.h_matrix.shape[0])
 
-        if len(output_coords) != self.h_matrix_values.shape[0]:
+        if len(self.output_coord) != self.h_matrix.shape[0]:
             raise ValueError(
-                f"Length of specified output coordinates is not equal to the number of columns of the given H matrix."
+                f"Length of specified output coordinates is not equal to the number of columns of the H matrix for {name}."
             )
-
-        self.output_coords = {self.output_dim: output_coords}
 
         self.prior = prior
 
         self.flux_ratio = flux_ratio
 
     def coords(self) -> dict:
-        return self.output_coords
+        return {self.output_dim: self.output_coord}
 
     def build(self, flux: Flux) -> None:
         super().build()  # instantiate model
 
         with self.model:
             x = flux.model["x"]
-            input_dim = flux.model.named_vars_to_dims[x.name][
-                0
-            ]  # TODO: make `input_dim` an attribute of `Flux`
+            input_dim = flux.input_dim
 
             r = parse_prior("r", self.prior)
 
@@ -663,16 +669,25 @@ class GaussianLikelihood(ModelComponent):
 
     def __init__(
         self,
-        y_obs: np.ndarray,
-        error: np.ndarray,
+        y_obs: np.ndarray | xr.DataArray,
+        error: np.ndarray | xr.DataArray,
         sigma: Sigma,
         inputs: Iterable[ModelComponent],
         name: str = "likelihood",
-        output_dim: str = "nmeasure,",
+        output_dim: str = "nmeasure",
+        output_coord: np.ndarray | None = None,
     ) -> None:
         super().__init__()
         self.name = name
         self.inputs = list(inputs)
+
+        if isinstance(y_obs, xr.DataArray):
+            output_dim = str(y_obs.dims[0])
+            output_coord = y_obs.coords[output_dim]
+            y_obs = y_obs.values
+
+        if isinstance(error, xr.DataArray):
+            error = error.values
 
         self.y_obs = y_obs
         self.error = error
@@ -680,9 +695,10 @@ class GaussianLikelihood(ModelComponent):
         self.sigma = sigma
 
         self.output_dim = output_dim
+        self.output_coord = output_coord or np.arange(len(self.y_obs))
 
     def coords(self) -> dict:
-        return {self.output_dim: np.arange(len(self.y_obs))}
+        return {self.output_dim: self.output_coord}
 
     def build(self, forward: ForwardModel) -> None:
         super().build()
