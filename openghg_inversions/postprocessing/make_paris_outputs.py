@@ -174,7 +174,7 @@ def paris_concentration_outputs(
     result = (
         xr.merge([obs_and_errs, conc_outputs])
         .pipe(shift_measurement_time_to_midpoint, obs_avg_period)
-        .pipe(convert_time_to_unix_epoch, "1s")
+        .pipe(convert_time_to_unix_epoch, "1d")
         .rename(common_rename_dict)
         .pipe(add_variable_attrs, conc_attrs, units)
         .transpose("time", "percentile", "nsite")
