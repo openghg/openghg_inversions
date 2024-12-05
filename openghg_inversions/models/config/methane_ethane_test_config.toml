@@ -94,6 +94,7 @@ type = "sigma"
 prior = {pdf = "uniform", lower = 0.1, upper = 1.0}
 freq = "monthly"
 per_site = true
+coord_prefix = "ch4"
 
 [model.c2h6]
 
@@ -141,6 +142,7 @@ type = "sigma"
 prior = {pdf = "uniform", lower = 0.1, upper = 1.0}
 freq = "monthly"
 per_site = true
+coord_prefix = "c2h6"
 
 
 [sampling]
