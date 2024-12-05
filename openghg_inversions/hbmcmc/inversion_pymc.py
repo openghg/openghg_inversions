@@ -28,38 +28,6 @@ from openghg_inversions.config.version import code_version
 PriorArgs = dict[str, str | float]
 
 
-def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
-    """Return the pymc `mu` and `sigma` parameters that give a log normal distribution
-    with the given mean and stdev.
-
-    Args:
-        mean: desired mean of log normal
-        stdev: desired standard deviation of log normal
-
-    Returns:
-        tuple (mu, sigma), where `pymc.LogNormal(mu, sigma)` has the given mean and stdev.
-
-    Formulas for log normal mean and variance:
-
-    mean = exp(mu + 0.5 * sigma ** 2)
-    stdev ** 2 = var = exp(2*mu + sigma ** 2) * (exp(sigma ** 2) - 1)
-
-    This gives linear equations for `mu` and `sigma ** 2`:
-
-    mu + 0.5 * sigma ** 2 = log(mean)
-    sigma ** 2 = log(1 + (stdev / mean)**2)
-
-    So
-
-    mu = log(mean) - 0.5 * log(1 + (stdev/mean)**2)
-    sigma = sqrt(log(1 + (stdev / mean)**2))
-    """
-    var = np.log(1 + (stdev / mean) ** 2)
-    mu = np.log(mean) - 0.5 * var
-    sigma = np.sqrt(var)
-    return mu, sigma
-
-
 def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
     """Parses all PyMC continuous distributions:
     https://docs.pymc.io/api/distributions/continuous.html.

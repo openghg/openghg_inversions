@@ -401,6 +401,32 @@ def fixedbasisMCMC(
         Y = np.zeros(0)
         siteindicator = np.zeros(0)
 
+        # check if lognormal mu and sigma need to be calculated
+        def update_log_normal_prior(prior):
+            if prior["pdf"].lower() == "lognormal":
+                if "stdev" in prior:
+                    stdev = float(prior["stdev"])
+                    if "mean" in prior:
+                        mean = float(prior["mean"])
+                        mu, sigma = setup.lognormal_mean_stdev(mean, stdev)
+                        del prior["mean"]
+                    elif "mode" in prior:
+                        mode = float(prior["mode"])
+                        mu, sigma = setup.lognormal_mode_stdev(mode, stdev)
+                        del prior["mode"]
+                    else:
+                        raise ValueError("prior['stdev'] must be coupled with prior['mean'] or prior['mode']")
+                    del prior["stdev"]
+                    prior["mu"] = mu
+                    prior["sigma"] = sigma
+                elif "mu" and "sigma" in prior: 
+                    pass
+                else:
+                    raise ValueError("Incompatible combination of prior parameters.") 
+
+        if xprior["pdf"].lower() == "lognormal":
+            update_log_normal_prior(xprior)
+
         for si, site in enumerate(sites):
             # select variables to drop NaNs from
             drop_vars = []
@@ -445,6 +471,7 @@ def fixedbasisMCMC(
                                                                             x_correlation=x_correlation)
                 else:
                     raise ValueError(f"Inversion not setup for x_freq = {x_freq}")
+                
             else:
                 Ytime = np.concatenate((Ytime, fp_data[site].time.values))
                 if x_freq == "monthly":
@@ -481,48 +508,24 @@ def fixedbasisMCMC(
                 f" {calculate_min_error} not recognised."
             )
 
-        sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
-
-
-        # check if lognormal mu and sigma need to be calculated
-        def update_log_normal_prior(prior):
-            if prior["pdf"].lower() == "lognormal" and "stdev" in prior:
-                stdev = float(prior["stdev"])
-                mean = float(prior.get("mean", 1.0))
-
-                mu, sigma = mcmc.lognormal_mu_sigma(mean, stdev)
-                prior["mu"] = mu
-                prior["sigma"] = sigma
-                print(f"Prior Parameters: Mu={mu}, Variance={sigma**2}")
-
-
-                del prior["stdev"]
-                if "mean" in prior:
-                    del prior["mean"]
-
-        if x_correlation is None:
-            update_log_normal_prior(xprior)
-            update_log_normal_prior(bcprior)
-            xmultivariate_lognormal = False
-            xmu_multivariate = None
-        elif xprior["pdf"].lower() == "lognormal":
-            xmultivariate_lognormal = True
-            if "mode" in xprior:
-                xmu_multivariate, x_covariance, x_precision = setup.multivariate_lognormal_transform(covariance_lognormal=x_covariance, 
-                                                                                       mode_lognormal=xprior["mode"],
-                                                                                       )
+        sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq) 
+        
+        if xprior["pdf"].lower() == "lognormal":
+            if x_correlation is None:
+                xmultivariate_lognormal = False
             else:
-                xmu_multivariate, x_covariance, x_precision = setup.multivariate_lognormal_transform(covariance_lognormal=x_covariance, 
-                                                                                       mean_lognormal=xprior["mu"],
-                                                                                       )
-            
-            print(f"X Prior Parameters: Mu={xmu_multivariate}, Variance={x_covariance[0,0]}")
-        elif xprior["pdf"].lower() == "normal":
-            xmultivariate_lognormal = False
+                xmultivariate_lognormal = True
+                x_covariance, x_precision = setup.covariance_lognormal_transform(covariance_lognormal=x_covariance,
+                                                                                mean_normal=xprior["mu"],
+                                                                                stdev_normal=xprior["sigma"])
+
+        print(f"X Prior Parameters: Mu={xprior['mu']}, Variance={xprior['sigma']}")
+
+        if x_correlation is not None:
+            print(f"xprior covariance/precision shape: {x_covariance.shape} / {x_precision.shape} ")
             xmu_multivariate = np.ones(nbasis*nperiod) * xprior["mu"]
         else:
-            raise ValueError("Only possible to sample from normal or lognormal multivariate xprior.")
-
+            xmu_multivariate = None
 
         if analytical_inversion:
             if xprior["pdf"] == "normal":
@@ -576,29 +579,19 @@ def fixedbasisMCMC(
             inversion_args["use_bc"] = True
             nbc = Hbc.shape[0]
 
-            if analytical_inversion: # Not setup for analytical bc correlation
-                if bcprior["pdf"] == "normal":
-                    sigbc = bcprior["sigma"]
-                    x_covariance = setup.covariance_extension(x_covariance, nbc, sigbc)
-                else:
-                    raise ValueError("Analytical inversion only possible with normal bcprior.")
-            elif bc_correlation is not None:
+            if bcprior["pdf"].lower() == "lognormal":
+                update_log_normal_prior(bcprior)
+                
+            if bc_correlation is not None:
                 bc_covariance, bc_precision = setup.bcprior_covariance(nperiod, nbc, bcprior["sigma"], bc_correlation)
-                if bcprior["pdf"] == "lognormal":
+                bcmu_multivariate = np.ones(nbc) * bcprior["mu"]
+                if bcprior["pdf"].lower() == "lognormal":
                     bcmultivariate_lognormal = True
-                    if "mode" in bcprior:
-                        bcmu_multivariate, bc_covariance, bc_precision = setup.multivariate_lognormal_transform(covariance_lognormal=bc_covariance, 
-                                                                                              mode_lognormal=bcprior["mode"],
-                                                                                              )
-                    else:
-                        bcmu_multivariate, bc_covariance, bc_precision = setup.multivariate_lognormal_transform(covariance_lognormal=bc_covariance, 
-                                                                                              mean_lognormal=bcprior["mu"],
-                                                                                              )
-                    print(f"BC Prior Parameters: Mu={bcmu_multivariate}, Variance={bc_covariance[0,0]}")
-                                                                                              
-                elif bcprior["pdf"] == "normal":
-                    bcmultivariate_lognormal = True
-                    bcmu_multivariate = np.ones(nbc) * bcprior["mu"]
+                    bc_covariance, bc_precision = setup.covariance_lognormal_transform(covariance_lognormal=bc_covariance,
+                                                                                        mean_normal=bcprior["mu"],
+                                                                                        stdev_normal=bcprior["sigma"])
+                elif bcprior["pdf"].lower() == "normal":
+                    bcmultivariate_lognormal = False
                 else:
                     raise ValueError("Only possible to sample from normal or lognormal multivariate bcprior.")
                 inversion_args["bc_freq"] = bc_freq
@@ -606,13 +599,27 @@ def fixedbasisMCMC(
                 inversion_args["bcprior_precision"] = bc_precision
                 inversion_args["bcmultivariate_lognormal"] = bcmultivariate_lognormal
                 inversion_args["bcmu_multivariate"] = bcmu_multivariate
-                inversion_args["bcprior"] = bcprior
+
+                print(f"bcprior covariance/precision shape: {bc_covariance.shape} / {bc_precision.shape} ")
             else:
-                inversion_args["bcprior"] = bcprior
+                bcmu_multivariate = None
+
+            inversion_args["bcprior"] = bcprior
+
+            print(f"BC Prior Parameters: Mu={bcprior['mu']}, Variance={bcprior['sigma']}")
+              
+            if analytical_inversion: # Not setup for analytical bc correlation
+                if bcprior["pdf"] == "normal":
+                    if bc_correlation is None:
+                        x_covariance = setup.covariance_extension(x_covariance=x_covariance, nbc=nbc, sigbc=bcprior["sigma"])
+                    else:
+                        x_covariance = setup.covariance_extension(x_covariance=x_covariance, bc_covariance=bc_covariance)
+                else:
+                    raise ValueError("Analytical inversion only possible with normal bcprior.")
 
         else:
             inversion_args["use_bc"] = False
-        
+
         if x_freq is not None or analytical_inversion is True:
             inversion_args["xprior_covariance"] = x_covariance
             inversion_args["xprior_precision"] = x_precision
