@@ -15,12 +15,41 @@ from openghg_inversions.models.priors import parse_prior, PriorArgs
 from openghg_inversions.models.setup import sigma_freq_indicies
 
 
+@runtime_checkable
+class HasOutput(Protocol):
+    @property
+    @abstractmethod
+    def output(self) -> TensorVariable: ...
+
+
+@runtime_checkable
+class HasCoords(Protocol):
+    @abstractmethod
+    def coords(self) -> dict: ...
+
+
 def sum_outputs(components: Iterable[HasOutput]) -> TensorVariable:
     """Sum the output variables of a list of components."""
     return sum(component.output for component in components)
 
 
 MCT = TypeVar("MCT", bound="ModelComponent")
+
+
+def convert_multiindex_coords(coords: dict):
+    result = {}
+
+    for k, v in coords.items():
+        if isinstance(v, pd.MultiIndex):
+            result[k] = np.arange(len(v))
+        elif isinstance(v, xr.DataArray):
+            if isinstance(next(iter(v.indexes.values())), pd.MultiIndex):
+                result[k] = np.arange(len(v))
+            else:
+                result[k] = v
+        else:
+            result[k] = v
+    return result
 
 
 class ModelComponent(ABC):
@@ -84,22 +113,10 @@ class ModelComponent(ABC):
 
     def instantiate_model(self):
         if isinstance(self, HasCoords):
-            self.model = pm.Model(name=self.name, coords=self.coords())
+            coords = convert_multiindex_coords(self.coords())
+            self.model = pm.Model(name=self.name, coords=coords)
         else:
             self.model = pm.Model(name=self.name)
-
-
-@runtime_checkable
-class HasOutput(Protocol):
-    @property
-    @abstractmethod
-    def output(self) -> TensorVariable: ...
-
-
-@runtime_checkable
-class HasCoords(Protocol):
-    @abstractmethod
-    def coords(self) -> dict: ...
 
 
 class Default(ModelComponent):
