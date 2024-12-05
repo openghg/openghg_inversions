@@ -563,7 +563,7 @@ class Sigma(ModelComponent):
 
         self._coord_prefix = coord_prefix
 
-        if self._coord_prefix is not None:
+        if self._coord_prefix is None:
             self.sig_dims = ("nsigma_site", "nsigma_time")
         else:
             self.sig_dims = (f"{self._coord_prefix}_nsigma_site", f"{self._coord_prefix}_nsigma_time")
