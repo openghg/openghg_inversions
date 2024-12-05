@@ -719,7 +719,7 @@ class GaussianLikelihood(ModelComponent):
 
     def build(self, forward: ForwardModel) -> None:
         super().build()
-
+        print(np.sum(np.isnan(self.y_obs)))
         with self.model:
             y_obs = pm.Data("y_obs", self.y_obs, dims=self.output_dim)
             error = pm.Data("error", self.error, dims=self.output_dim)
