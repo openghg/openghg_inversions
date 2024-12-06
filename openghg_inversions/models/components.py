@@ -257,6 +257,7 @@ class Tracer(ModelComponent):
         prior: PriorArgs,
         inputs: list[Flux],
         flux_ratio: float = 1.0,
+        scalar_ratio: bool = True,
         output_dim: str = "nmeasure",
         output_coord: xr.DataArray | np.ndarray | None = None,
     ) -> None:
@@ -283,6 +284,7 @@ class Tracer(ModelComponent):
         self.prior = prior
 
         self.flux_ratio = flux_ratio
+        self.scalar_ratio = scalar_ratio
 
     def coords(self) -> dict:
         return {self.output_dim: self.output_coord}
@@ -292,11 +294,13 @@ class Tracer(ModelComponent):
 
         with self.model:
             x = flux.model["x"]
-            input_dim = flux.input_dim
 
-            r = parse_prior("r", self.prior)
+            if self.scalar_ratio:
+                r = parse_prior("r", self.prior)
+            else:
+                r = parse_prior("r", self.prior, dims=flux.input_dim)
 
-            hx = pm.Data("h", self.h_matrix, dims=(self.output_dim, input_dim))
+            hx = pm.Data("h", self.h_matrix, dims=(self.output_dim, flux.input_dim))
             pm.Deterministic("mu", pt.dot(hx, self.flux_ratio * r * x), dims=self.output_dim)
 
     @property

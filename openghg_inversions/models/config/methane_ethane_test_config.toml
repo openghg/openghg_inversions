@@ -107,6 +107,7 @@ inputs = ["ch4.forward.flux.ff"]
 
 prior = {pdf = "uniform", lower = 0.1, upper = 2.7}
 flux_ratio = 0.075
+scalar_ratio = true  # if true, use one variable for R, otherwise, use one R value for each basis function
 
 
 [model.c2h6.forward.baseline]
