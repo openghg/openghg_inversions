@@ -174,7 +174,7 @@ def paris_concentration_outputs(
     result = (
         xr.merge([obs_and_errs, conc_outputs])
         .pipe(shift_measurement_time_to_midpoint, obs_avg_period)
-        .pipe(convert_time_to_unix_epoch, "1s")
+        .pipe(convert_time_to_unix_epoch, "1d")
         .rename(common_rename_dict)
         .pipe(add_variable_attrs, conc_attrs, units)
         .transpose("time", "percentile", "nsite")
@@ -234,7 +234,7 @@ def paris_flux_output(
             name = name.replace("flux", "flux_total")
 
         if "quantile" in name:
-            name = "percentile_" + name
+            name = "percentile_" + name.replace("_quantile", "")
 
         for stats_func_name in stats_functions:
             if name.endswith(f"_{stats_func_name}"):
