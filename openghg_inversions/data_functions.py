@@ -745,8 +745,8 @@ class GaussianLikelihood(LikelihoodComponentData):
 
     component_name = "gaussian_likelihood"
 
-    def __init__(self, node: Node, comp_data_args: Mapping, ffill_error: bool = True) -> None:
-        super().__init__(node, comp_data_args)
+    def __init__(self, node: Node, comp_data_args: Mapping, units: float | None = None, ffill_error: bool = True) -> None:
+        super().__init__(node, comp_data_args, units)
         repeatability = (
             self.data.mf_repeatability if "mf_repeatability" in self.data else xr.zeros_like(self.y_obs)
         )
@@ -770,10 +770,11 @@ class RHIMELikelihood(GaussianLikelihood):
         self,
         node: Node,
         comp_data_args: Mapping,
+        units: float | None = None,
         ffill_error: bool = True,
         min_error: np.ndarray | xr.DataArray | float = 0.0,
     ) -> None:
-        super().__init__(node, comp_data_args, ffill_error)
+        super().__init__(node, comp_data_args, units, ffill_error)
 
         # TODO: add options to calculate min error...
         if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
