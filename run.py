@@ -139,11 +139,15 @@ def sample(
     else:
         idata = default_idata(mg.model)
 
+    return idata
+
+
+def unstack_output_dims(mg: ModelGraph, idata: az.InferenceData):
     # convert "nmeasure" coords back to site and time
     output_coords = {node.component().output_dim: node.component().output_coord for node in mg.nodes if node.type.endswith("likelihood")}  # type: ignore
-    idata.assign_coords(output_coords, inplace=True)
-
+    idata = idata.assign_coords(output_coords, inplace=False)  # type: ignore
     return idata
+
 
 
 def main(

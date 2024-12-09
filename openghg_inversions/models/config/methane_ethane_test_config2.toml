@@ -132,6 +132,8 @@ use_offset = false
 type = "gaussian likelihood"
 inputs = ["c2h6.forward"]
 
+units = 1e-12  # workaround since units in obs are wrong
+
 # type = "rhime tracer likelihood"
 # inputs = ["ch4.likelihood", "c2h6.forward"]
 
