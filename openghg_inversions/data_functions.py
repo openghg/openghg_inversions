@@ -698,7 +698,7 @@ class LikelihoodComponentData(ComponentData):
         super().__init_subclass__()
         assert cls.component_name.endswith("likelihood")
 
-    def __init__(self, node: Node, comp_data_args: Mapping) -> None:
+    def __init__(self, node: Node, comp_data_args: Mapping, units: float | None = None) -> None:
         super().__init__(node)
 
         self._multi_obs = MultiObs(**comp_data_args)
@@ -710,7 +710,7 @@ class LikelihoodComponentData(ComponentData):
 
         self._to_merge = [self.y_obs]
 
-        self.units = comp_data_args.get("units", None) or float(self.obs.mf.attrs["units"])
+        self.units = units or comp_data_args.get("units", None) or float(self.obs.mf.attrs["units"])
 
     @property
     def to_merge(self) -> list[xr.DataArray]:
