@@ -1,4 +1,5 @@
 from collections import ChainMap, defaultdict
+import inspect
 from pathlib import Path
 from typing import Literal
 
@@ -90,6 +91,10 @@ def get_data(mg: ModelGraph, comp_data: dict | None = None) -> dict[str, Compone
 
         if node.type in ("flux", "bc", "forward_model") or node.type.endswith("likelihood"):
             cd_kwargs["comp_data_args"] = comp_data_args[node.name]
+
+        for param in inspect.signature(cd_type).parameters.values():
+            if hasattr(node, param.name) and param not in cd_kwargs:
+                cd_kwargs[param.name] = getattr(node, param.name)
 
         comp_data[node.name] = cd_type(**cd_kwargs)
 
