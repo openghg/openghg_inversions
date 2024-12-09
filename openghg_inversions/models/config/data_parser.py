@@ -114,7 +114,7 @@ def get_data(mg: ModelGraph, comp_data: dict | None = None) -> dict[str, Compone
 
         elif node.type == "flux":
             forward_data = comp_data[get_parent_name_by_type(mg, node, "forward_model")]
-            likelihood_data = comp_data[get_parent_name_by_type(mg, node, "likelihood", exact_match=False)]
+            likelihood_data = comp_data[get_parent_name_by_type(mg, node, "likelihood", exact_match=False, subgraph_kind=None)]
             units = likelihood_data.units
 
             comp_data[node.name].compute_basis(forward_data.mean_fp)
@@ -122,7 +122,7 @@ def get_data(mg: ModelGraph, comp_data: dict | None = None) -> dict[str, Compone
 
         elif node.type == "bc":
             forward_data = comp_data[get_parent_name_by_type(mg, node, "forward_model")]
-            likelihood_data = comp_data[get_parent_name_by_type(mg, node, "likelihood", exact_match=False)]
+            likelihood_data = comp_data[get_parent_name_by_type(mg, node, "likelihood", exact_match=False, subgraph_kind=None)]
             units = likelihood_data.units
 
             comp_data[node.name].compute_h_matrix(forward_data.footprints, units=units)
