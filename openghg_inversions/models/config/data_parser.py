@@ -1,5 +1,6 @@
 from collections import ChainMap, defaultdict
 from pathlib import Path
+from typing import Literal
 
 import networkx as nx
 
@@ -64,8 +65,8 @@ def component_to_data_args_map(mg: ModelGraph) -> dict[str, ChainMap]:
     return node_data
 
 
-def get_parent_name_by_type(mg: ModelGraph, node: Node, parent_type: str, exact_match: bool = True) -> str:
-        for n in mg.parents(node):
+def get_parent_name_by_type(mg: ModelGraph, node: Node, parent_type: str, exact_match: bool = True, subgraph_kind: Literal["child", "input"] | None = "child") -> str:
+        for n in mg.parents(node, subgraph_kind=subgraph_kind):
                 if n.type == parent_type or (not exact_match and parent_type in n.type):
                     return n.name
         raise ModelBuildError(f"{repr(node.name)} does not have a parent component matching type {parent_type}.")

@@ -389,8 +389,10 @@ class ModelGraph:
         )
         return cast(nx.DiGraph, result)  # this cast shouldn't be necessary...
 
-    def parents(self, node: Node) -> list[Node]:
-        return list(nx.descendants(self.subgraph(), node))
+    def parents(self, node: Node, subgraph_kind: Literal["child", "input"] | None = "child") -> list[Node]:
+        if subgraph_kind is not None:
+            return list(nx.descendants(self.subgraph(kind=subgraph_kind), node))
+        return list(nx.descendants(self.graph, node))
 
     @classmethod
     def from_config(cls, config: dict) -> Self:
