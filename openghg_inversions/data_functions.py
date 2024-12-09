@@ -710,7 +710,7 @@ class LikelihoodComponentData(ComponentData):
 
         self._to_merge = [self.y_obs]
 
-        self.units = float(self.obs.attrs["units"])
+        self.units = float(self.obs.mf.attrs["units"])
 
     @property
     def to_merge(self) -> list[xr.DataArray]:
