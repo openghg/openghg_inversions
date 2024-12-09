@@ -244,6 +244,38 @@ def align_obs_and_other(
     return obs, other
 
 
+def align_and_merge(likelihood, forward, units: float | dict | None = None, output_prefix: str | None = None, sites: list[str] | None = None):
+    if sites:
+        forward = forward.sel(site=sites)
+
+    lds, fds = align_obs_and_other(likelihood, forward)
+
+    if not isinstance(units, dict):
+        obs_units = units or float(likelihood.attrs["units"])
+    else:
+        obs_units = 1.0
+
+    output_dim = f"{output_prefix}_nmeasure" if output_prefix is not None else "nmeasure"
+
+    combined_data = xr.merge([lds, fds / obs_units]).stack({output_dim: ["site", "time"]})
+    combined_data = combined_data.rename(bc_region=f"{output_prefix}_bc_region")
+
+    if isinstance(units, dict):
+        for k, v in units.items():
+            combined_data = combined_data.assign({k: combined_data[k] / v})
+
+    # copy over attributes
+    for dv in forward:
+        combined_data[dv].attrs = forward[dv].attrs
+    for dv in likelihood:
+        combined_data[dv].attrs = likelihood[dv].attrs
+
+    # make sure output dim comes first
+    combined_data = combined_data.transpose(output_dim, ...).dropna(output_dim)
+
+    return combined_data
+
+
 class MultiObs:
     def __init__(
         self,
@@ -482,10 +514,10 @@ class Flux(ComponentData):
         self.flat_basis = xr.apply_ufunc(func, fp_x_flux.as_numpy()).rename("basis")
         self._basis = get_xr_dummies(self.flat_basis, cat_dim=self.input_dim)
 
-    def compute_h_matrix(self, footprint: xr.Dataset) -> None:
+    def compute_h_matrix(self, footprint: xr.Dataset, obs_units: float = 1.0) -> None:
         flux = self.flux.reindex_like(footprint, method="ffill").chunk(time=footprint.chunks["time"])  # type: ignore
         fp_x_flux = footprint.fp * flux
-        self._h_matrix = fp_x_flux @ self.basis
+        self._h_matrix = (fp_x_flux @ self.basis) / obs_units
 
     @property
     def h_matrix(self) -> xr.DataArray:
@@ -519,8 +551,8 @@ class BoundaryConditions(ComponentData):
 
         self._h_matrix = None
 
-    def compute_h_matrix(self, footprint: xr.Dataset) -> None:
-        self._h_matrix = nesw_bc(footprint, self.bc).rename(region=self.input_dim)
+    def compute_h_matrix(self, footprint: xr.Dataset, obs_units: float = 1.0) -> None:
+        self._h_matrix = nesw_bc(footprint, self.bc).rename(region=self.input_dim) / obs_units
 
     @property
     def h_matrix(self) -> xr.DataArray:
@@ -677,6 +709,8 @@ class LikelihoodComponentData(ComponentData):
         self.y_obs.attrs["param"] = "y_obs"
 
         self._to_merge = [self.y_obs]
+
+        self.units = float(self.obs.attrs["units"])
 
     @property
     def to_merge(self) -> list[xr.DataArray]:

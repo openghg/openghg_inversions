@@ -1,9 +1,9 @@
-from collections import ChainMap
+from collections import ChainMap, defaultdict
 from pathlib import Path
 
 import networkx as nx
 
-from openghg_inversions.data_functions import ComponentData
+from openghg_inversions.data_functions import align_and_merge, ComponentData
 from openghg_inversions.models.config.config_parser import Node, ModelGraph, ModelBuildError
 
 try:
@@ -71,7 +71,7 @@ def get_parent_name_by_type(mg: ModelGraph, node: Node, parent_type: str, exact_
         raise ModelBuildError(f"{repr(node.name)} does not have a parent component matching type {parent_type}.")
 
 
-def get_data(mg: ModelGraph, comp_data: dict | None = None):
+def get_data(mg: ModelGraph, comp_data: dict | None = None) -> dict[str, ComponentData]:
     comp_data_args = component_to_data_args_map(mg)
 
     comp_data = comp_data if comp_data is not None else {}
@@ -113,14 +113,18 @@ def get_data(mg: ModelGraph, comp_data: dict | None = None):
 
         elif node.type == "flux":
             forward_data = comp_data[get_parent_name_by_type(mg, node, "forward_model")]
+            likelihood_data = comp_data[get_parent_name_by_type(mg, node, "likelihood", exact_match=False)]
+            units = likelihood_data.units
 
             comp_data[node.name].compute_basis(forward_data.mean_fp)
-            comp_data[node.name].compute_h_matrix(forward_data.footprints)
+            comp_data[node.name].compute_h_matrix(forward_data.footprints, units=units)
 
         elif node.type == "bc":
             forward_data = comp_data[get_parent_name_by_type(mg, node, "forward_model")]
+            likelihood_data = comp_data[get_parent_name_by_type(mg, node, "likelihood", exact_match=False)]
+            units = likelihood_data.units
 
-            comp_data[node.name].compute_h_matrix(forward_data.footprints)
+            comp_data[node.name].compute_h_matrix(forward_data.footprints, units=units)
 
         elif node.name in comp_data and hasattr(comp_data[node.name], "merge_data"):
             comp_data[node.name].merge_data(comp_data)
@@ -129,3 +133,34 @@ def get_data(mg: ModelGraph, comp_data: dict | None = None):
 
     # return data
     return comp_data
+
+
+def make_data_dict(model_graph: ModelGraph, conf: dict, units_dict: dict | None = None, comp_data: dict | None = None) -> tuple[dict, dict]:
+    """Make data dict for model graph.
+
+    Returns:
+        tuple of data dict for model and dict to ComponentData objects for model
+    """
+    # get component data from graph; this contains arguments that can be used to find data for components
+    add_data_args(model_graph, conf["data"])
+    comp_data = comp_data or {}
+    comp_data = get_data(model_graph, comp_data)
+
+    combined_data = {}
+    units_dict = units_dict or {}
+
+    for node in model_graph.build_order:
+        if node.type.endswith("likelihood"):
+            likelihood = comp_data[node.name].merged_data
+            forward = comp_data[node.inputs[0].name].h_matrix
+            species = comp_data[node.name].species
+            units = units_dict.get(species)
+            combined_data[species] = align_and_merge(likelihood, forward, units=units, output_prefix=species)
+
+    data_dict = defaultdict(dict)
+    for node in model_graph.build_order:
+        for ds in combined_data.values():
+            for da in ds.filter_by_attrs(origin=node.name).values():
+                data_dict[node.name][da.attrs["param"]] = da
+
+    return data_dict, comp_data

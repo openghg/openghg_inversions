@@ -370,7 +370,7 @@ class ModelGraph:
 
         # data related attributes
         self.data_args = {}
-
+        self.component_data = {}
 
     @property
     def model(self) -> pm.Model:
