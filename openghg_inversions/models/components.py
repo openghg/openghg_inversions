@@ -300,8 +300,10 @@ class Tracer(ModelComponent):
             else:
                 r = parse_prior("r", self.prior, dims=flux.input_dim)
 
+            tracer_x = pm.Deterministic("x", self.flux_ratio * r * x, dims=flux.input_dim)
+
             hx = pm.Data("h", self.h_matrix, dims=(self.output_dim, flux.input_dim))
-            pm.Deterministic("mu", pt.dot(hx, self.flux_ratio * r * x), dims=self.output_dim)
+            pm.Deterministic("mu", pt.dot(hx, tracer_x), dims=self.output_dim)
 
     @property
     def output(self) -> TensorVariable:
