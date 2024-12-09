@@ -102,7 +102,7 @@ def setup_model_graph(conf: dict, verbose: bool = False) -> ModelGraph:
     mg = ModelGraph.from_config(conf)
 
     # get data for model
-    data_dict, comp_data = make_data_dict(mg, conf)
+    data_dict, comp_data = make_data_dict(mg, conf, units=1.0)
     mg.add_data(data_dict)
     mg.component_data.update(comp_data)
 
