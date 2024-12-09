@@ -141,7 +141,7 @@ def get_data(mg: ModelGraph, comp_data: dict | None = None) -> dict[str, Compone
     return comp_data
 
 
-def make_data_dict(model_graph: ModelGraph, conf: dict, units_dict: dict | None = None, comp_data: dict | None = None) -> tuple[dict, dict]:
+def make_data_dict(model_graph: ModelGraph, conf: dict, units: float | dict | None = None, comp_data: dict | None = None) -> tuple[dict, dict]:
     """Make data dict for model graph.
 
     Returns:
@@ -153,14 +153,14 @@ def make_data_dict(model_graph: ModelGraph, conf: dict, units_dict: dict | None 
     comp_data = get_data(model_graph, comp_data)
 
     combined_data = {}
-    units_dict = units_dict or {}
+    units = units or {}
 
     for node in model_graph.build_order:
         if node.type.endswith("likelihood"):
             likelihood = comp_data[node.name].merged_data
             forward = comp_data[node.inputs[0].name].h_matrix
             species = comp_data[node.name].species
-            units = units_dict.get(species)
+            units = units.get(species)
             combined_data[species] = align_and_merge(likelihood, forward, units=units, output_prefix=species)
 
     data_dict = defaultdict(dict)
