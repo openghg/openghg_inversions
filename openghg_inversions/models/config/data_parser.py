@@ -153,15 +153,17 @@ def make_data_dict(model_graph: ModelGraph, conf: dict, units: float | dict | No
     comp_data = get_data(model_graph, comp_data)
 
     combined_data = {}
-    units = units or {}
 
     for node in model_graph.build_order:
         if node.type.endswith("likelihood"):
             likelihood = comp_data[node.name].merged_data
             forward = comp_data[node.inputs[0].name].h_matrix
             species = comp_data[node.name].species
-            units = units.get(species)
-            combined_data[species] = align_and_merge(likelihood, forward, units=units, output_prefix=species)
+            if isinstance(units, dict):
+                temp_units = units.get(species)
+            else:
+                temp_units = units
+            combined_data[species] = align_and_merge(likelihood, forward, units=temp_units, output_prefix=species)
 
     data_dict = defaultdict(dict)
     for node in model_graph.build_order:
