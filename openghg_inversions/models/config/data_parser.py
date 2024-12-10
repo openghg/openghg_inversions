@@ -119,7 +119,10 @@ def get_data(mg: ModelGraph, comp_data: dict | None = None) -> dict[str, Compone
 
         elif node.type == "flux":
             forward_data = comp_data[get_parent_name_by_type(mg, node, "forward_model")]
-            likelihood_data = comp_data[get_parent_name_by_type(mg, node, "likelihood", exact_match=False, subgraph_kind=None)]
+
+            # TODO: if the output of the likelihood for this gas is an input to another likelihood, then
+            # this could still give the wrong units...
+            likelihood_data = comp_data[get_parent_name_by_type(mg, forward_data.node, "likelihood", exact_match=False, subgraph_kind="input")]
             obs_units = likelihood_data.units
 
             comp_data[node.name].compute_basis(forward_data.mean_fp)
@@ -127,7 +130,7 @@ def get_data(mg: ModelGraph, comp_data: dict | None = None) -> dict[str, Compone
 
         elif node.type == "bc":
             forward_data = comp_data[get_parent_name_by_type(mg, node, "forward_model")]
-            likelihood_data = comp_data[get_parent_name_by_type(mg, node, "likelihood", exact_match=False, subgraph_kind=None)]
+            likelihood_data = comp_data[get_parent_name_by_type(mg, forward_data.node, "likelihood", exact_match=False, subgraph_kind="input")]
             obs_units = likelihood_data.units
 
             comp_data[node.name].compute_h_matrix(forward_data.footprints, obs_units=obs_units)

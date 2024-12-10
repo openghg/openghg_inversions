@@ -132,6 +132,8 @@ use_offset = false
 type = "gaussian likelihood"
 inputs = ["c2h6.forward"]
 
+units = 1e-12  # workaround since units in obs are wrong
+
 # type = "rhime tracer likelihood"
 # inputs = ["ch4.likelihood", "c2h6.forward"]
 
@@ -149,13 +151,11 @@ coord_prefix = "c2h6"
 
 [sampling]
 
-nit = 20000
-burn = 10000
+draws = 10000
 tune = 10000
-
 nchain = 4
-
 nuts_sampler = "numpyro"
 
 [output]
 save_trace = true
+#burn = 10000  # this needs to go into output

@@ -150,13 +150,11 @@ coord_prefix = "c2h6"
 
 [sampling]
 
-nit = 20000
-burn = 10000
+draws = 10000
 tune = 10000
-
 nchain = 4
-
 nuts_sampler = "numpyro"
 
 [output]
 save_trace = true
+#burn = 10000  # this needs to go into output
