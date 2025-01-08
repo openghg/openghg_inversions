@@ -131,8 +131,13 @@ def read_netcdfs(
 
 
 def get_country_file_path(country_file: str | Path | None = None, domain: str | None = None):
-    if isinstance(country_file, Path):
-        return country_file
+    if isinstance(country_file, (str, Path)):
+        result = Path(country_file)
+
+        if not result.exists():
+            raise FileNotFoundError(f"No country file found at path {result}")
+
+        return result
 
     if isinstance(country_file, str):
         return Path(country_file)
