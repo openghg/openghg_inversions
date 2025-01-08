@@ -22,6 +22,9 @@ logger = logging.getLogger("openghg_inversions.data_functions")
 logger.setLevel(logging.INFO)  # Have to set level for logger as well as handler
 
 
+# TODO: incorporate "averaging" argument for when obs are resampled?
+
+
 def fp_x_flux(fp: FootprintData, flux: FluxData | dict[str, FluxData]) -> xr.DataArray:
     """Calculate array with footprints * flux.
 
@@ -36,6 +39,107 @@ def fp_x_flux(fp: FootprintData, flux: FluxData | dict[str, FluxData]) -> xr.Dat
         result = ms._calc_modelled_obs_integrated(output_TS=False, output_fpXflux=True)
 
     return result
+
+
+def make_hf_flux_rolling_avg_array(
+    flux_high_freq: xr.DataArray,
+    fp_high_time_res: xr.DataArray,
+    max_h_back: int | float,
+    common_freq_h: int = 1,
+) -> xr.DataArray:
+    """Make data array of rolling windows from flux.
+
+    The rolling windows have a `H_back` coordinate that matches the time resolved
+    footprint's `H_back` coordinate.
+
+    Args:
+        flux_high_freq: flux DataArray with time frequency < 24 hours
+        fp_high_time_res: footprint DataArray with `H_back` coordinate.
+            The "residual" footprint must be removed.
+        common_freq_h: greatest common divisor of flux and footprint frequencies (in hours)
+        max_h_back: max value of `H_back` coordinate.
+
+    Returns:
+        xr.DataArray constructed from flux with `H_back` coordinate for rolling windows
+    """
+    max_h_back = int(max_h_back)
+
+    # create windows (backwards in time) with `max_h_back` many time points,
+    # starting at each time point in flux_hf_rolling.time
+    window_size = max_h_back // common_freq_h
+    flux_hf_rolling = flux_high_freq.rolling(time=window_size).construct("H_back")
+
+    # set H_back coordinates using highest_res_H frequency
+    # NOTE: it is important that the coordinates are assigned in reverse order, since the
+    # rolling windows go *backwards* in time.
+    h_back_type = fp_high_time_res.H_back.dtype
+    flux_hf_rolling = flux_hf_rolling.assign_coords(
+        {"H_back": np.arange(0, max_h_back, common_freq_h, dtype=h_back_type)[::-1]}
+    )
+
+    # select subsequence of H_back times to match high res fp (i.e. fp without max H_back coord)
+    flux_hf_rolling = flux_hf_rolling.sel(H_back=fp_high_time_res.H_back)
+
+    return flux_hf_rolling
+
+
+def compute_fp_x_flux_time_resolved(
+    fp_time_resolved: xr.DataArray,
+    flux_high_freq: xr.DataArray,
+    flux_low_freq: xr.DataArray,
+    common_freq_h: int = 1,
+) -> xr.DataArray:
+    """Compute footprint times flux for time resolved footprints.
+
+    Args:
+        fp_time_resolved: footprint including time resolved and residual components.
+        flux_high_freq: high frequency (< 24 hours) flux
+        flux_low_freq: residual flux (usually monthly)
+        highest_res_h: greatest common divisor of flux and footprint frequencies (in hours)
+    """
+    max_h_back = fp_time_resolved.H_back.max()
+
+    # do low res calculation
+    fp_residual = fp_time_resolved.sel(H_back=max_h_back, drop=True)  # take last H_back value
+
+    # forward fill times and rechunk to match footprint
+    flux_low_freq = flux_low_freq.reindex_like(fp_residual, method="ffill").chunk(
+        time=fp_residual.chunksizes["time"][0],
+        lat=fp_residual.chunksizes["lat"][0],
+        lon=fp_residual.chunksizes["lon"][0],
+    )
+
+    fpXflux_residual = flux_low_freq * fp_residual
+
+    # get high freq fp
+    h_back_vals = sorted(fp_time_resolved.H_back.values)[:-1]  # all but max value
+    fp_high_freq = fp_time_resolved.sel(H_back = h_back_vals, drop=True)
+
+    flux_high_freq = make_hf_flux_rolling_avg_array(flux_high_freq, fp_high_freq, max_h_back, common_freq_h)
+    fpXflux = (flux_high_freq * fp_high_freq).sum("H_back")
+
+    return fpXflux + fpXflux_residual.compute()  # force computation to avoid opening all fp data eagerly
+
+
+def fp_x_flux_time_resolved(fp: xr.DataArray, flux: xr.DataArray) -> xr.DataArray:
+    """This assumes that the the footprint and flux have the same frequency.
+
+    It also assumes the data is sliced to the desired date range. (So it does not
+    go back an extra 24 hours on the flux data.)
+
+    This also assumes that the greatest common divisor of the flux and footprint
+    frequencies is 1 hour. This could cause problems if the flux is not hourly.
+    """
+    flux = flux.reindex_like(fp, method="ffill").chunk(
+        time=fp.chunksizes["time"][0],
+        lat=fp.chunksizes["lat"][0],
+        lon=fp.chunksizes["lon"][0],
+    )
+
+    flux_low_freq = flux.resample(time="1MS").mean()
+
+    # NOTE: we're just assuming common freq is 1 hour...
+    return compute_fp_x_flux_time_resolved(fp, flux, flux_low_freq, 1)
 
 
 def fp_x_bc(fp: FootprintData, bc: BoundaryConditionsData, units: float | None = None) -> xr.Dataset:
@@ -244,7 +348,13 @@ def align_obs_and_other(
     return obs, other
 
 
-def align_and_merge(likelihood, forward, units: float | dict | None = None, output_prefix: str | None = None, sites: list[str] | None = None):
+def align_and_merge(
+    likelihood,
+    forward,
+    units: float | dict | None = None,
+    output_prefix: str | None = None,
+    sites: list[str] | None = None,
+):
     if sites:
         forward = forward.sel(site=sites)
 
@@ -376,7 +486,7 @@ class MultiFootprint:
         self.model = model
         self.met_model = met_model
 
-        valid_kwargs, _ = split_function_inputs(kwargs, get_obs_surface)
+        valid_kwargs, _ = split_function_inputs(kwargs, get_footprint)
         self.kwargs = valid_kwargs
 
         # need more robust way to do this...
@@ -471,6 +581,8 @@ class Flux(ComponentData):
 
         self._h_matrix = None
 
+        self._time_resolved = "time_resolved" in kwargs or "time_resolved" in comp_data_args
+
     @property
     def basis(self) -> xr.DataArray:
         if self._basis is None:
@@ -515,9 +627,12 @@ class Flux(ComponentData):
         self._basis = get_xr_dummies(self.flat_basis, cat_dim=self.input_dim)
 
     def compute_h_matrix(self, footprint: xr.Dataset, obs_units: float = 1.0) -> None:
-        flux = self.flux.reindex_like(footprint, method="ffill").chunk(time=footprint.chunks["time"])  # type: ignore
-        fp_x_flux = footprint.fp * flux
-        self._h_matrix = (fp_x_flux @ self.basis) / obs_units
+        if self._time_resolved:
+            self._h_matrix = fp_x_flux_time_resolved(footprint.fp_HiTRes, self.flux) / obs_units
+        else:
+            flux = self.flux.reindex_like(footprint, method="ffill").chunk(time=footprint.chunks["time"])  # type: ignore
+            fp_x_flux = footprint.fp * flux
+            self._h_matrix = (fp_x_flux @ self.basis) / obs_units
 
     @property
     def h_matrix(self) -> xr.DataArray:
@@ -679,9 +794,11 @@ class Sigma(ComponentData):
         si_func = site_indicator_func(parent.sites)  # type: ignore
 
         # need to stack and unstack here?
-        self.site_indicator = (xr.apply_ufunc(si_func, parent.data.stack(nmeasure=["site", "time"]).site)   # type: ignore
-                               .unstack("nmeasure")
-                               .rename("site_indicator"))
+        self.site_indicator = (
+            xr.apply_ufunc(si_func, parent.data.stack(nmeasure=["site", "time"]).site)  # type: ignore
+            .unstack("nmeasure")
+            .rename("site_indicator")
+        )
         self.site_indicator.attrs["origin"] = self.node.name
         self.site_indicator.attrs["param"] = "site_indicator"
 
@@ -745,7 +862,9 @@ class GaussianLikelihood(LikelihoodComponentData):
 
     component_name = "gaussian_likelihood"
 
-    def __init__(self, node: Node, comp_data_args: Mapping, units: float | None = None, ffill_error: bool = True) -> None:
+    def __init__(
+        self, node: Node, comp_data_args: Mapping, units: float | None = None, ffill_error: bool = True
+    ) -> None:
         super().__init__(node, comp_data_args, units)
         repeatability = (
             self.data.mf_repeatability if "mf_repeatability" in self.data else xr.zeros_like(self.y_obs)
