@@ -27,22 +27,17 @@ def sample_predictive_distributions(inv_out: InversionOutput) -> None:
 
 def make_country_traces(
     inv_out: InversionOutput,
-    species: str,
     country_file: str | Path | None = None,
-    domain: str | None = None,
     country_regions: dict[str, list[str]] | Path | None = None,
     country_code: Literal["alpha2", "alpha3"] | None = None,
 ):
-    # TODO: species and domain should be available to InversionOutput?
     # TODO: add regions that are aggregates of several countries?
     sample_predictive_distributions(inv_out)  # make sure we have prior distributions
 
-    country_file_path = get_country_file_path(country_file=country_file, domain=domain)
+    country_file_path = get_country_file_path(country_file=country_file, domain=inv_out.domain)
     countries = Countries(xr.open_dataset(country_file_path), country_code=country_code)
 
-    country_trace = countries.get_country_trace(
-        species=species, inv_out=inv_out, country_regions=country_regions
-    )
+    country_trace = countries.get_country_trace(inv_out=inv_out, country_regions=country_regions)
 
     return country_trace
 
@@ -194,9 +189,7 @@ def make_country_outputs(
 
     country_traces = make_country_traces(
         inv_out,
-        species=inv_out.species,
         country_file=country_file,
-        domain=inv_out.domain,
         country_code="alpha3",
         country_regions=country_regions,
     )

@@ -210,7 +210,7 @@ class Countries:
 
         return xr.concat(region_traces, dim="country")
 
-    def get_country_trace(self, species: str, inv_out: InversionOutput, country_regions: dict[str, list[str]] | Path | None = None,
+    def get_country_trace(self, inv_out: InversionOutput, country_regions: dict[str, list[str]] | Path | None = None,
 ) -> xr.Dataset:
         """Calculate trace(s) for total country emissions.
 
@@ -226,6 +226,8 @@ class Countries:
         """
         x_to_country_mat = self.get_x_to_country_mat(inv_out)
         x_trace = inv_out.get_trace_dataset(unstack_nmeasure=False, var_names="x")
+
+        species = inv_out.species
 
         country_traces = Countries._get_country_trace(species, x_trace, x_to_country_mat)
 
