@@ -63,7 +63,9 @@ def make_flux_outputs(
     stats_ds = calculate_stats(trace, **stats_args)
 
     if report_flux_on_inversion_grid:
-        agg_flux = ((inv_out.basis * inv_out.flux).sum(["lat", "lon"]) / inv_out.basis.sum(["lat", "lon"])).fillna(0.0)
+        agg_flux = (
+            (inv_out.basis * inv_out.flux).sum(["lat", "lon"]) / inv_out.basis.sum(["lat", "lon"])
+        ).fillna(0.0)
         flux_stats = sparse_xr_dot(inv_out.basis, agg_flux * stats_ds)
     else:
         flux_stats = sparse_xr_dot((inv_out.flux * inv_out.basis), stats_ds)
@@ -90,7 +92,7 @@ def make_flux_outputs(
 
         scale_factor_stats = rename_by_replacement(scale_factor_stats, "x", "scaling")
 
-        flux_stats =  xr.merge([flux_stats, scale_factor_stats])
+        flux_stats = xr.merge([flux_stats, scale_factor_stats])
 
     return flux_stats
 
@@ -156,7 +158,10 @@ def sort_data_vars(ds: xr.Dataset) -> xr.Dataset:
 
 
 def make_concentration_outputs(
-    inv_out: InversionOutput, stats: list[str] | None = None, stats_args: dict | None = None
+    inv_out: InversionOutput,
+    stats: list[str] | None = None,
+    stats_args: dict | None = None,
+    unstack_nmeasure: bool = False,
 ):
     conc_vars = ["y", "mu_bc"] if "mu_bc" in inv_out.trace.posterior else ["y"]
     trace = inv_out.get_trace_dataset(var_names=conc_vars, unstack_nmeasure=False)
@@ -172,7 +177,10 @@ def make_concentration_outputs(
 
     conc_stats = calculate_stats(trace, **stats_args)
 
-    return inv_out.unstack_nmeasure(conc_stats).unstack("nmeasure")
+    if unstack_nmeasure:
+        conc_stats = inv_out.unstack_nmeasure(conc_stats).unstack("nmeasure")
+
+    return conc_stats
 
 
 def make_country_outputs(
@@ -204,7 +212,7 @@ def make_country_outputs(
     return country_stats
 
 
-def get_obs_and_errors(inv_out: InversionOutput) -> xr.Dataset:
+def get_obs_and_errors(inv_out: InversionOutput, unstack_nmeasure: bool = False) -> xr.Dataset:
     # TODO: some of these variables could just be stored in a dataset in InversionOutput,
     # rather than in separate data arrays
     to_merge = [
@@ -217,7 +225,11 @@ def get_obs_and_errors(inv_out: InversionOutput) -> xr.Dataset:
     ]
     result = xr.merge(to_merge)
     result.attrs = {}
-    return inv_out.unstack_nmeasure(result).unstack("nmeasure")
+
+    if unstack_nmeasure:
+        inv_out.unstack_nmeasure(result).unstack("nmeasure")
+
+    return result
 
 
 paris_regions_dict = {

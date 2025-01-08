@@ -133,7 +133,7 @@ def paris_concentration_outputs(
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
 
     obs_and_errs = (
-        get_obs_and_errors(inv_out)
+        get_obs_and_errors(inv_out, unstack_nmeasure=True)
         .rename(
             {
                 "y_obs": "Yobs",
@@ -146,7 +146,7 @@ def paris_concentration_outputs(
         .drop_vars("y_obs_error")
     )
 
-    conc_outputs = make_concentration_outputs(inv_out, stats, stats_args)
+    conc_outputs = make_concentration_outputs(inv_out, stats, stats_args, unstack_nmeasure=True)
 
     # rename to match PARIS concentrations template
     def renamer(name: str) -> str:
