@@ -17,6 +17,7 @@ object stores and for the paths to object stores to already be set in
 the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 """
 
+import logging
 from pathlib import Path
 from typing import Literal
 
@@ -258,9 +259,6 @@ def fixedbasisMCMC(
     Return:
       Results from the inversion in a Dataset if skip_post_processing==False, in a dictionnary if True
     """
-    print("Arguments:")
-    print(locals())
-    print()
 
     rerun_merge = True
 
@@ -534,8 +532,8 @@ def fixedbasisMCMC(
         mcmc_results = mcmc.inferpymc(**mcmc_args)  # type: ignore
 
         # get trace and model: for future updates
-        trace = mcmc_results.pop("trace")
-        model = mcmc_results.pop("model")
+        trace = mcmc_results["trace"]
+        model = mcmc_results["model"]
 
         # Path to save trace
         if save_trace:
@@ -624,13 +622,15 @@ def fixedbasisMCMC(
             conc_outs.to_netcdf(conc_output_filename, unlimited_dims=["time"], mode="w")
             flux_outs.to_netcdf(flux_output_filename, unlimited_dims=["time"], mode="w")
 
-            print("PARIS concentration outputs saved to", conc_output_filename)
-            print("PARIS flux outputs saved to", flux_output_filename)
+            logging.info("PARIS concentration outputs saved to", conc_output_filename)
+            logging.info("PARIS flux outputs saved to", flux_output_filename)
 
             return xr.merge([conc_outs, flux_outs.rename(time="flux_time")])
 
 
         # Process and save inversion output
+        del mcmc_results["trace"]
+        del mcmc_results["model"]
         post_process_args.update(mcmc_results)
         out = mcmc.inferpymc_postprocessouts(**post_process_args)
 
