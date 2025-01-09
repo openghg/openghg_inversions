@@ -7,6 +7,7 @@ are all below the threshold.
 
 The threshold is optimised to create a specific number of regions.
 """
+
 from functools import lru_cache
 import logging
 from pathlib import Path
@@ -46,7 +47,10 @@ def load_landsea_indices(domain: str) -> np.ndarray:
 
 
 def bucket_value_split(
-        grid: np.ndarray, bucket: float, offset_x: int = 0, offset_y: int = 0, cache: dict | None = None,
+    grid: np.ndarray,
+    bucket: float,
+    offset_x: int = 0,
+    offset_y: int = 0,
 ) -> list[tuple]:
     """Algorithm that will split the input grid (e.g. fp * flux)
     such that the sum of each basis function region will
@@ -156,7 +160,6 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
 
         # if no convergence, increase tol
         current_tol += 1
-
 
     raise OptimizationError(
         f"optimize_nregions failed to converge for all tolerances from {tol} to {current_tol}. Try the 'quadtree' algorithm."
