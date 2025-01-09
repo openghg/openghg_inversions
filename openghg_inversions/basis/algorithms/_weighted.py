@@ -1,11 +1,19 @@
-"""Module to create basis regions used in the inversion using an algorihtm that splits region
+"""Module to create basis regions used in the inversion using an algorithm that splits regions
 by input data.
-"""
 
+If the total (sum) of the input data in a region exceeds a certain threshold, then the region
+is split in two. This continues recursively until we have a collection of regions whose totals
+are all below the threshold.
+
+The threshold is optimised to create a specific number of regions.
+"""
+from functools import lru_cache
+import logging
 from pathlib import Path
+
 import numpy as np
 import xarray as xr
-import logging
+
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +21,7 @@ logger = logging.getLogger(__name__)
 class OptimizationError(Exception): ...
 
 
-# BUCKET BASIS FUNCTIONS
+@lru_cache
 def load_landsea_indices(domain: str) -> np.ndarray:
     """Load array with indices that separate
     land and sea regions in specified domain.
@@ -38,7 +46,7 @@ def load_landsea_indices(domain: str) -> np.ndarray:
 
 
 def bucket_value_split(
-    grid: np.ndarray, bucket: float, offset_x: int | None = 0, offset_y: int | None = 0
+        grid: np.ndarray, bucket: float, offset_x: int = 0, offset_y: int = 0, cache: dict | None = None,
 ) -> list[tuple]:
     """Algorithm that will split the input grid (e.g. fp * flux)
     such that the sum of each basis function region will
@@ -69,17 +77,18 @@ def bucket_value_split(
     if np.sum(grid) <= bucket or grid.shape == (1, 1):
         return [(offset_y, offset_y + grid.shape[0], offset_x, offset_x + grid.shape[1])]
 
-    elif grid.shape[0] >= grid.shape[1]:
+    # grid total too large; split on longer axis
+    if grid.shape[0] >= grid.shape[1]:
         half_y = grid.shape[0] // 2
         return bucket_value_split(grid[0:half_y, :], bucket, offset_x, offset_y) + bucket_value_split(
             grid[half_y:, :], bucket, offset_x, offset_y + half_y
         )
 
-    elif grid.shape[0] < grid.shape[1]:
-        half_x = grid.shape[1] // 2
-        return bucket_value_split(grid[:, 0:half_x], bucket, offset_x, offset_y) + bucket_value_split(
-            grid[:, half_x:], bucket, offset_x + half_x, offset_y
-        )
+    # else: grid.shape[0] < grid.shape[1]:
+    half_x = grid.shape[1] // 2
+    return bucket_value_split(grid[:, 0:half_x], bucket, offset_x, offset_y) + bucket_value_split(
+        grid[:, half_x:], bucket, offset_x + half_x, offset_y
+    )
 
 
 def get_nregions(bucket: float, grid: np.ndarray, domain: str) -> int:
@@ -128,9 +137,8 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
     current_bucket = bucket
     current_tol = tol
 
-    # outer loop over tol; increase by 1 to
+    # outer loop over tol; increase by 1 each time inner loops fails
     for _ in range(10):
-        current_tol += 1
         # try 1000 iterations
         for j in range(1000):
             current_nregion = get_nregions(current_bucket, grid, domain)
@@ -145,6 +153,10 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
                 current_bucket *= 0.995
             else:
                 current_bucket *= 1.005
+
+        # if no convergence, increase tol
+        current_tol += 1
+
 
     raise OptimizationError(
         f"optimize_nregions failed to converge for all tolerances from {tol} to {current_tol}. Try the 'quadtree' algorithm."
