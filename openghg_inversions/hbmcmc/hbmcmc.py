@@ -258,6 +258,10 @@ def fixedbasisMCMC(
     Return:
       Results from the inversion in a Dataset if skip_post_processing==False, in a dictionnary if True
     """
+    print("Arguments:")
+    print(locals())
+    print()
+
     rerun_merge = True
 
     if merged_data_only:
