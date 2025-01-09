@@ -620,6 +620,9 @@ def fixedbasisMCMC(
             conc_outs.to_netcdf(conc_output_filename, unlimited_dims=["time"], mode="w")
             flux_outs.to_netcdf(flux_output_filename, unlimited_dims=["time"], mode="w")
 
+            print("PARIS concentration outputs saved to", conc_output_filename)
+            print("PARIS flux outputs saved to", flux_output_filename)
+
             return xr.merge([conc_outs, flux_outs.rename(time="flux_time")])
 
 
