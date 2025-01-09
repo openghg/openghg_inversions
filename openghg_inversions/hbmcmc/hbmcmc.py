@@ -529,6 +529,19 @@ def fixedbasisMCMC(
         # Run PyMC inversion
         mcmc_results = mcmc.inferpymc(**mcmc_args)  # type: ignore
 
+        # get trace and model: for future updates
+        trace = mcmc_results.pop("trace")
+        model = mcmc_results.pop("model")
+
+        # Path to save trace
+        if save_trace:
+            if isinstance(save_trace, str | Path):
+                trace_path = save_trace
+            else:
+                trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
+
+            trace.to_netcdf(str(trace_path), engine="netcdf4")
+
         if skip_postprocessing:
             return mcmc_results
 
@@ -609,18 +622,6 @@ def fixedbasisMCMC(
 
             return xr.merge([conc_outs, flux_outs.rename(time="flux_time")])
 
-        # get trace and model: for future updates
-        trace = mcmc_results.pop("trace")
-        model = mcmc_results.pop("model")
-
-        # Path to save trace
-        if save_trace:
-            if isinstance(save_trace, str | Path):
-                trace_path = save_trace
-            else:
-                trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
-
-            trace.to_netcdf(str(trace_path), engine="netcdf4")
 
         # Process and save inversion output
         post_process_args.update(mcmc_results)
