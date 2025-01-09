@@ -1,6 +1,9 @@
 # OpenGHG Inversions Change Log
 
+
 - Changed optimization in weighted basis function from recursion to loop. [#PR 224](https://github.com/openghg/openghg_inversions/pull/224)
+
+- Updated and simplified `sparse_xr_dot`. The old version caused errors due to upstream changes. [#PR 231](https://github.com/openghg/openghg_inversions/pull/231) 
 
 - Added MHD obs and footprint to test data. [#PR 209](https://github.com/openghg/openghg_inversions/pull/209)
 
