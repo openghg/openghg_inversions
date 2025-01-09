@@ -323,8 +323,13 @@ def make_paris_outputs(
             flux_frequency = time_period
     else:
         # take most frequent gap between times
-        flux_frequency_delta = pd.Series(inv_out.flux.flux_time.values).diff().mode()[0]
-        flux_frequency = pd.tseries.frequencies.to_offset(flux_frequency_delta).freqstr  # type: ignore
+        try:
+            flux_frequency_delta = pd.Series(inv_out.flux.flux_time.values).diff().mode()[0]
+        except IndexError:
+            # only one time value
+            flux_frequency = "yearly"
+        else:
+            flux_frequency = pd.tseries.frequencies.to_offset(flux_frequency_delta).freqstr  # type: ignore
 
         # "1 days" will be converted to "D" by the previous two lines, so we need to add a "1" in front
         if not flux_frequency[0].isdigit():
