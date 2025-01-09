@@ -12,15 +12,14 @@ xarray Datasets and DataArrays, and return either a Dataset or a DataArray.
 work correctly.
 """
 
-from typing import Any, TypeVar
+from typing import Any, overload, TypeVar
 from collections.abc import Sequence
 
 import numpy as np
 import pandas as pd
-import sparse
 import xarray as xr
-from sparse import COO
-from xarray.core.common import DataWithCoords
+from sparse import COO, SparseArray
+from xarray.core.common import DataWithCoords, is_chunked_array  # type: ignore
 
 
 # type for xr.Dataset *or* xr.DataArray
@@ -72,12 +71,15 @@ def get_xr_dummies(
     return result.unstack(stack_dim) if stack_dim else result
 
 
-def sparse_xr_dot(
-    da1: xr.DataArray,
-    da2: DataSetOrArray,
-    debug: bool = False,
-    broadcast_dims: Sequence[str] | None = None,
-) -> DataSetOrArray:
+@overload
+def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray) -> xr.DataArray: ...
+
+
+@overload
+def sparse_xr_dot(da1: xr.DataArray, da2: xr.Dataset) -> xr.Dataset: ...
+
+
+def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray | xr.Dataset) -> xr.DataArray | xr.Dataset:
     """Compute the matrix "dot" of a tuple of DataArrays with sparse.COO values.
 
     This multiplies and sums over all common dimensions of the input DataArrays, and
@@ -86,108 +88,21 @@ def sparse_xr_dot(
     Common dimensions are automatically selected by name. The input arrays must  have at
     least one dimension in common. All matching dimensions will be used for multiplication.
 
-    NOTE: this function shouldn't be necessary, but `da1 @ da2` doesn't work properly if the
-    values of `da1` and `da2` are `sparse.COO` arrays.
+    Compared to just using da1 @ da2, this function has two advantages:
+    1. if da1 is sparse but not a dask array, then da1 @ da2 will fail if da2 is a dask array
+    2. da2 can be a Dataset, and current DataArray @ Dataset is not allowed by xarray
 
     Args:
         da1, da2: xr.DataArrays to multiply and sum along common dimensions.
-        debug: if true, will print the dimensions of the inputs to `sparse.tensordot`
-            as well as the dimension of the result.
-        along_dim: name
 
     Returns:
         xr.Dataset or xr.DataArray containing the result of matrix/tensor multiplication.
         The type that is returned will be the same as the type of `da2`.
-
-    Raises:
-        ValueError if the input DataArrays have no common dimensions to multiply.
     """
-    common_dims = set(da1.dims).intersection(set(da2.dims))
-    nc = len(common_dims)
+    if isinstance(da1.data, SparseArray) and not is_chunked_array(da1):  # type: ignore
+        da1 = da1.chunk()
 
-    if nc == 0:
-        raise ValueError(f"DataArrays \n{da1}\n{da2}\n have no common dimensions. Cannot compute `dot`.")
+    if isinstance(da2, xr.DataArray):
+        return da1 @ da2
 
-    if broadcast_dims is not None:
-        _broadcast_dims = set(broadcast_dims).intersection(common_dims)
-    else:
-        _broadcast_dims = set([])
-
-    contract_dims = common_dims.difference(_broadcast_dims)
-    ncontract = len(contract_dims)
-
-    tensor_dot_axes = tuple([tuple(range(-ncontract, 0))] * 2)
-    input_core_dims = [list(contract_dims)] * 2
-
-    # compute tensor dot on last nc coordinates (because core dims are moved to end)
-    # and then drop 1D coordinates resulting from summing
-    def _func(x, y, debug=False):
-        result = sparse.tensordot(x, y, axes=tensor_dot_axes)  # type: ignore
-
-        xs = list(x.shape[:-ncontract])
-        nxs = len(xs)
-        ys = list(y.shape[:-ncontract])
-        nys = len(ys)
-        pad_y = nxs - nys
-        if pad_y > 0:
-            ys = [1] * pad_y + ys
-
-        idx1, idx2 = [], []
-        for i, j in zip(xs, ys):
-            if j in {i, 1}:
-                idx1.append(slice(None))
-                idx2.append(0)
-            elif i == 1:
-                # x broadcasted to match y's dim
-                idx1.append(0)
-                idx2.append(slice(None))
-
-        if debug:
-            print("pad y", pad_y)
-            print(xs, ys)
-            print(idx1, idx2)
-
-        idx2 = idx2[pad_y:]
-        idx3 = [0] * (result.ndim - len(idx1) - len(idx2))
-        idx = tuple(idx1 + idx3 + idx2)
-
-        if debug:
-            print("x.shape", x.shape, "y.shape", y.shape)
-            print("idx", idx)
-            print("result shape:", result.shape)
-
-        return result[idx]  # type: ignore
-
-    def wrapper(da1, da2):
-        for arr in [da1, da2]:
-            print(f"_func received array of type {type(arr)}, shape {arr.shape}")
-        result = _func(da1, da2, debug=True)
-        print(f"_func result shape: {result.shape}\n")
-        return result
-
-    func = wrapper if debug else _func
-
-    return xr.apply_ufunc(func, da1, da2.as_numpy(), input_core_dims=input_core_dims, join="outer")
-
-
-def align_sparse_lat_lon(sparse_da: xr.DataArray, other_array: DataWithCoords) -> xr.DataArray:
-    """Align lat/lon coordinates of sparse_da with lat/lon coordinates from other_array.
-
-    NOTE: This is a work-around for an xarray Issue: https://github.com/pydata/xarray/issues/3445
-
-    Args:
-        sparse_da: xarray DataArray with sparse underlying array
-        other_array: xarray Dataset or DataArray whose lat/lon coordinates should be used
-            to replace the lat/lon coordinates in sparse_da
-
-    Returns:
-        copy of sparse_da with lat/lon coords from other_array
-    """
-    if len(sparse_da.lon) != len(other_array.lon):
-        raise ValueError("Both arrays must have the same number lon "
-                         f"coordinates: {len(sparse_da.lon)} != {len(other_array.lon)}")
-    if len(sparse_da.lat) != len(other_array.lat):
-        raise ValueError("Both arrays must have the same number lat "
-                         f"coordinates: {len(sparse_da.lat)} != {len(other_array.lat)}")
-
-    return sparse_da.assign_coords(lat=other_array.lat, lon=other_array.lon)
+    return da2.map(lambda x: da1 @ x)

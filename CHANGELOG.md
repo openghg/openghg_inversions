@@ -1,5 +1,7 @@
 # OpenGHG Inversions Change Log
 
+- Updated and simplified `sparse_xr_dot`. The old version caused errors due to upstream changes. [#PR 231](https://github.com/openghg/openghg_inversions/pull/231) 
+
 - Added MHD obs and footprint to test data. [#PR 209](https://github.com/openghg/openghg_inversions/pull/209)
 
 - Fixed Github workflow so that the last two versions of OpenGHG are automatically selected. [#PR 216](https://github.com/openghg/openghg_inversions/pull/216)
