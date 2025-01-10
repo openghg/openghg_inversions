@@ -227,7 +227,7 @@ def get_obs_and_errors(inv_out: InversionOutput, unstack_nmeasure: bool = False)
     result.attrs = {}
 
     if unstack_nmeasure:
-        inv_out.unstack_nmeasure(result)
+        result = inv_out.unstack_nmeasure(result)
 
     return result
 
