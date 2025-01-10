@@ -331,9 +331,9 @@ def make_paris_outputs(
         else:
             flux_frequency = pd.tseries.frequencies.to_offset(flux_frequency_delta).freqstr  # type: ignore
 
-        # "1 days" will be converted to "D" by the previous two lines, so we need to add a "1" in front
-        if not flux_frequency[0].isdigit():
-            flux_frequency = "1" + flux_frequency
+            # "1 days" will be converted to "D" by the previous two lines, so we need to add a "1" in front
+            if not flux_frequency[0].isdigit():
+                flux_frequency = "1" + flux_frequency
 
     conc_outs = paris_concentration_outputs(inv_out, report_mode=report_mode, obs_avg_period=obs_avg_period)
     flux_outs = paris_flux_output(
