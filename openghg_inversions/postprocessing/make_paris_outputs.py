@@ -246,6 +246,14 @@ def paris_flux_output(
     country_rename_dict = {str(dv): renamer(str(dv)) for dv in country_outs.data_vars}
     rename_dict = {**flux_rename_dict, **country_rename_dict}
 
+    dim_rename_dict = {"quantile": "percentile", "flux_time": "time"}
+
+    if "lat" in flux_outs.dims:
+        dim_rename_dict["lat"] = "latitude"
+    if "lon" in flux_outs.dims:
+        dim_rename_dict["lon"] = "longitude"
+
+
     if time_point == "midpoint":
         if flux_frequency == "monthly":
             offset = pd.DateOffset(weeks=2)
@@ -260,7 +268,7 @@ def paris_flux_output(
 
     result = (
         xr.merge([flux_outs, country_outs])
-        .rename(flux_time="time")
+        .rename(dim_rename_dict)
         .pipe(time_func)
         .pipe(convert_time_to_unix_epoch, "1d")
         .rename(rename_dict)
@@ -277,7 +285,7 @@ def paris_flux_output(
                 report_flux_on_inversion_grid=True,
                 include_scale_factors=False,
             )
-            .rename(flux_time="time")
+            .rename(dim_rename_dict)
             .pipe(time_func)
             .pipe(convert_time_to_unix_epoch, "1d")
             .rename(flux_rename_dict)
@@ -286,14 +294,8 @@ def paris_flux_output(
         )
         result = result.merge(inversion_grid_flux_outs)
 
-    dim_rename_dict = {"quantile": "percentile"}
 
-    if "lat" in result.dims:
-        dim_rename_dict["lat"] = "latitude"
-    if "lon" in result.dims:
-        dim_rename_dict["lon"] = "longitude"
-
-    result = result.rename(dim_rename_dict).transpose(
+    result = result.transpose(
         "time", "latitude", "longitude", "percentile", "country"
     )
 
