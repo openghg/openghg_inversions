@@ -95,6 +95,7 @@ def fixedbasisMCMC(
     new_postprocessing: bool = False,  # for testing new postprocessing
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
+    return_mcmc_args: bool = False,
     **kwargs,
 ) -> xr.Dataset | dict:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference
@@ -527,6 +528,10 @@ def fixedbasisMCMC(
 
         # add any additional kwargs to mcmc_args (these aren't needed for post processing)
         mcmc_args.update(kwargs)
+
+        # for debugging
+        if return_mcmc_args:
+            return mcmc_args
 
         # Run PyMC inversion
         mcmc_results = mcmc.inferpymc(**mcmc_args)  # type: ignore
