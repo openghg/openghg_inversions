@@ -178,7 +178,7 @@ def make_concentration_outputs(
     conc_stats = calculate_stats(trace, **stats_args)
 
     if unstack_nmeasure:
-        conc_stats = inv_out.unstack_nmeasure(conc_stats).unstack("nmeasure")
+        conc_stats = inv_out.unstack_nmeasure(conc_stats)
 
     return conc_stats
 
@@ -227,7 +227,7 @@ def get_obs_and_errors(inv_out: InversionOutput, unstack_nmeasure: bool = False)
     result.attrs = {}
 
     if unstack_nmeasure:
-        inv_out.unstack_nmeasure(result).unstack("nmeasure")
+        inv_out.unstack_nmeasure(result)
 
     return result
 

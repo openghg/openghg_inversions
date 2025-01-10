@@ -137,7 +137,7 @@ class InversionOutput:
         self.trace.extend(pm.sample_posterior_predictive(self.trace, model=self.model, var_names=["y"]))
 
     def unstack_nmeasure(self, ds: xr.Dataset) -> xr.Dataset:
-        return nmeasure_to_site_time(ds, self.site_indicators, self.site_names, self.times)
+        return nmeasure_to_site_time(ds, self.site_indicators, self.site_names, self.times).unstack("nmeasure")
 
     def get_trace_dataset(
         self, unstack_nmeasure: bool = True, var_names: Optional[Union[str, list[str]]] = None
