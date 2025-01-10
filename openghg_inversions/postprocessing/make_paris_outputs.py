@@ -325,7 +325,7 @@ def make_paris_outputs(
         # take most frequent gap between times
         try:
             flux_frequency_delta = pd.Series(inv_out.flux.flux_time.values).diff().mode()[0]
-        except IndexError:
+        except KeyError:
             # only one time value
             flux_frequency = "yearly"
         else:
