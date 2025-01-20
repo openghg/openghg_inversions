@@ -77,6 +77,7 @@ def fixedbasisMCMC(
     analytical_inversion: bool = False,
     x_freq: str | None = None,
     x_correlation: float | None = None,
+    spatial_decay: float | None = None,
     bc_freq: str | None = None,
     bc_correlation: float | None = None,
     sigma_freq: str | None = None,
@@ -452,8 +453,10 @@ def fixedbasisMCMC(
                     Hx, nbasis, nperiod = setup.monthly_h(start_date, end_date, site, fp_data)
                     x_covariance, x_precision = setup.xprior_covariance(nperiod=nperiod, 
                                                                         nbasis=nbasis,
+                                                                        fp_data = fp_data,
                                                                         sigma=xprior["sigma"],
-                                                                        x_correlation=x_correlation)
+                                                                        x_correlation=x_correlation,
+                                                                        spatial_decay=spatial_decay)
                 elif isinstance(x_freq, str):
                     Hx, nbasis, nperiod = setup.create_h_sensitivity(start_date, end_date, site, fp_data, x_freq)
                     x_covariance, x_precision = setup.xprior_covariance(nperiod=nperiod, 

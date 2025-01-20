@@ -257,12 +257,76 @@ def create_h_sensitivity(start_date : str,
     return hx, nbasis, int(ndates)
 
 
+def spatial_covariance(cov_space : np.ndarray,
+                       sigma_space : float,
+                       spatial_decay : float,
+                       nbasis : int,
+                       fp_data : dict,
+                       ):
+    
+    def haversine(
+            centre1, 
+            centre2
+            ):
+        """
+        This function finds the shortest path between 2 points on the surface of a sphere.
+        Using the Haversine formula, this method finds the great-circle distance between
+        2 lat/lon points.
+
+        d = 2 * R * arcsin(((sin(dlat/2)**2 + cos(lat1) * cos(lat2) * (sin(dlon/2)**2))**0.5))
+        """
+
+        R = 6371 # ~radius of the Earth in km
+
+        lat1, lon1, lat2, lon2 = map(np.deg2rad, [centre1[0], centre1[1], centre2[0], centre2[1]])
+
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        
+        a = np.sin(dlat / 2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2)**2
+        distance = 2 * R * np.arcsin(np.sqrt(a))
+
+        return distance
+    
+    keys = fp_data[".basis"].data
+    bfs = fp_data[".basis"]
+    bf_values = bfs.data
+    bf_unique = np.unique(bf_values)
+    lats = bfs.coords["lat"].data
+    lons = bfs.coords["lon"].data
+
+    bf_centres = {}
+    bf_weight_centres = {}
+
+    for bi in np.arange(nbasis):
+
+        bf_where = np.where(bf_values==bf_unique[bi])
+        bf_lat = lats[bf_where[0]]
+        bf_lon = lons[bf_where[1]]
+
+        bf_lat_weight = np.cos(np.deg2rad(bf_lat))
+
+        bf_centres[bi] = [np.mean(bf_lat), np.mean(bf_lon)]
+        bf_weight_centres[bi] = [np.average(bf_lat, weights=bf_lat_weight), np.mean(bf_lon)]
+        
+    for i in np.arange(nbasis - 1) + 1:
+        for j in np.arange(i):
+            distance = haversine(bf_weight_centres[i], bf_weight_centres[j])
+            rho_space = np.exp(-distance/spatial_decay) 
+            cov_space[i,j] = cov_space[j,i] = rho_space * sigma_space**2
+
+    return cov_space
+
+
+
 def xprior_covariance(nperiod : int,
                       nbasis : int,
+                      fp_data : dict,
                       sigma : float | None = None,
                       sigma_period: float | None = None,
                       sigma_space: float | None = None,
                       x_correlation : float | None = None,
+                      spatial_decay : float | None = None,
                       ) -> np.ndarray:
     """
     Introduces a covariance matrix (with non-zero off-diagonal values) to allow for 
@@ -284,8 +348,10 @@ def xprior_covariance(nperiod : int,
         sigma_space (float):
             The standard deviation of the prior distribution of each spatial parameter. Only necessary if
             difference between spatial and temporal prior variance.
-        decay_tau (float):
+        x_correlation (float):
             The time constant of the expontential decay of the temporal correlation.
+        spatial_decay (float):
+            The space constant of the expontential decay of the spatial correlation.
 
     Returns:
         numpy array:
@@ -303,30 +369,40 @@ def xprior_covariance(nperiod : int,
     else:
         pass
              
-    if x_correlation == 0 or x_correlation is None:
+    if x_correlation is None or spatial_decay is None:
         
         covariance_matrix = np.eye(int(nbasis*nperiod)) * sigma**2
         precision_matrix = np.eye(int(nbasis*nperiod)) / sigma**2
 
     else:
         
-        range_time = np.arange(nperiod)  # period indexes 
-        cov_period = sigma_period**2 * np.eye(nperiod)  # standard deviation of distribution for each period parameter
-        # cov_period_offdiag = []  # initialisation of array for of diagonal components of covariance matrix
-        
-        for i in np.arange(nperiod - 1) + 1:
-            for j in np.arange(i):
-                
-                dt = range_time[i] - range_time[j]  # delta t for each time period
-                rho_time = np.exp(-dt/x_correlation)  # calculation of correlation coefficent
-                # covariance_ij = rho_time * sigma_period**2   # calculation of correlation; cov(X, Y) = rho(X, Y) * stdev(X) * stdev(Y)
-                cov_period[i,j] = cov_period[j,i] = rho_time * sigma_period**2   # calculation of correlation; cov(X, Y) = rho(X, Y) * stdev(X) * stdev(Y)
-                # cov_period_offdiag.append(covariance_ij)  # append covaraiance to off diagonal array
+        if x_correlation == 0:
+            cov_period = sigma_period**2 * np.eye(nperiod)
+        else:    
+            range_time = np.arange(nperiod)  # period indexes 
+            cov_period = sigma_period**2 * np.eye(nperiod)  # standard deviation of distribution for each period parameter
+            # cov_period_offdiag = []  # initialisation of array for of diagonal components of covariance matrix
+            
+            for i in np.arange(nperiod - 1) + 1:
+                for j in np.arange(i):
+                    
+                    dt = range_time[i] - range_time[j]  # delta t for each time period
+                    rho_time = np.exp(-dt/x_correlation)  # calculation of correlation coefficent
+                    # covariance_ij = rho_time * sigma_period**2   # calculation of correlation; cov(X, Y) = rho(X, Y) * stdev(X) * stdev(Y)
+                    cov_period[i,j] = cov_period[j,i] = rho_time * sigma_period**2   # calculation of correlation; cov(X, Y) = rho(X, Y) * stdev(X) * stdev(Y)
+                    # cov_period_offdiag.append(covariance_ij)  # append covaraiance to off diagonal array
 
-        # cov_period[np.tril_indices(n=nperiod, k=-1)] = cov_period_offdiag  # assign off-diagonal values to lower left corner of matrix
-        # cov_period = cov_period + np.tril(cov_period, k=-1).T  # assign off-diagonal values to upper right corner of matrix
+            # cov_period[np.tril_indices(n=nperiod, k=-1)] = cov_period_offdiag  # assign off-diagonal values to lower left corner of matrix
+            # cov_period = cov_period + np.tril(cov_period, k=-1).T  # assign off-diagonal values to upper right corner of matrix
         inv_cov_period = np.linalg.inv(cov_period)  # calculate the inverse of the covariance matrix
+        
         cov_space = sigma_space**2 * np.eye(nbasis)  # construct covariance matrix with off-diagonal zeros and diagonal variance; cov(X, X) = var(X)**2
+
+        if spatial_decay != 0:
+
+            cov_space = spatial_covariance(cov_space, sigma_space, spatial_decay, nbasis, fp_data)
+            
+
         inv_cov_space = np.linalg.inv(cov_space)  # calculate the inverse of the covariance matrix
         covariance_matrix = np.kron(cov_period, cov_space)  # combine covariance matrices using the Kronecker product
         precision_matrix = np.kron(inv_cov_period, inv_cov_space)  # calculate the precision matrix; precision = cov^-1 = kron( cov_p^-1, cov_b^-1 )
