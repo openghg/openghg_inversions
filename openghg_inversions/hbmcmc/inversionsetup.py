@@ -321,7 +321,7 @@ def spatial_covariance(cov_space : np.ndarray,
 
 def xprior_covariance(nperiod : int,
                       nbasis : int,
-                      fp_data : dict,
+                      fp_data : dict | None = None,
                       sigma : float | None = None,
                       sigma_period: float | None = None,
                       sigma_space: float | None = None,
@@ -557,7 +557,7 @@ def lognormal_mode_stdev(mode_lognormal: float,
         """
         For brevity, the lognormal distribution represented by y and the underlying normal represented by x
         """
-        var_y = stdev_lognormal
+        var_y = stdev_lognormal**2
         mode_y = mode_lognormal
         var_x = vars[0]
         mu_x = np.log(mode_y) + var_x
