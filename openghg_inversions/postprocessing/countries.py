@@ -14,6 +14,7 @@ from openghg_inversions import convert, utils
 from xarray.core.common import DataWithCoords
 
 from openghg_inversions.array_ops import align_sparse_lat_lon, get_xr_dummies, sparse_xr_dot
+from ._country_codes import get_country_codes
 from .inversion_output import InversionOutput
 
 # type for xr.Dataset *or* xr.DataArray
@@ -33,42 +34,6 @@ def get_area_grid(lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
     """
     ag_vals = utils.areagrid(lat.values, lon.values)
     return xr.DataArray(ag_vals, coords=[lat, lon], dims=["lat", "lon"], name="area_grid")
-
-
-@functools.lru_cache
-def get_iso3166_codes() -> dict[str, Any]:
-    """Load dictionary mapping alpha-2 country codes to other country information."""
-    postprocessing_path = Path(__file__).parent
-    with open(postprocessing_path / "iso3166.json", "r", encoding="utf8") as f:
-        iso3166 = json.load(f)
-    return iso3166
-
-
-def get_country_code(
-    x: str, iso3166: Optional[dict[str, dict[str, Any]]] = None, code: Literal["alpha2", "alpha3"] = "alpha3"
-) -> str:
-    """Get alpha-2 or alpha-3 (default) country code given the name of a country."""
-    if iso3166 is None:
-        iso3166 = get_iso3166_codes()
-
-    # first try to match long names, ignoring "The " at the beginning of a name
-    for v in iso3166.values():  # type: ignore
-        if x.lower().lstrip("the ") == v["iso_long_name"].lower().lstrip("the "):
-            return v[code]
-
-    # next try to match unofficial names
-    for v in iso3166.values():  # type: ignore
-        if any(x.lower() == name.lower() for name in v["unofficial_names"]):
-            return v[code]
-
-    # next try to match substrings...
-    for v in iso3166.values():
-        names = [v["iso_long_name"].lower()] + [name.lower() for name in v["unofficial_names"]]
-        if any(x.lower() in name for name in names):
-            return v[code]
-
-    # if no matches are found, return x
-    return x
 
 
 class Countries:
@@ -94,9 +59,7 @@ class Countries:
             country_labels = countries.name.values
         else:
             # apply `get_country_code` to each element of `country` coordinate
-            country_labels = list(
-                map(functools.partial(get_country_code, code=country_code), map(str, countries.name.values))
-            )
+            country_labels = get_country_codes(countries.name.values)
 
         self.matrix = get_xr_dummies(countries.country, cat_dim="country", categories=country_labels)
         self.area_grid = get_area_grid(countries.lat, countries.lon)
@@ -184,13 +147,19 @@ class Countries:
         return raw_trace * 365 * 24 * 3600 * molar_mass  # type: ignore
 
     @staticmethod
-    def _country_region_traces(country_traces: xr.Dataset, country_regions: dict[str, list[str]] | Path) -> xr.Dataset:
+    def _country_region_traces(
+        country_traces: xr.Dataset, country_regions: dict[str, list[str]] | Path
+    ) -> xr.Dataset:
         if isinstance(country_regions, Path):
             with open(country_regions, "r", encoding="utf8") as f:
                 _country_regions = json.load(f)
-            if not isinstance(_country_regions, dict) or any(not isinstance(v, list) for v in _country_regions.values()):
-                raise ValueError(f"Country regions from file {country_regions} is not in the correct format."
-                                 " It must be a dictionary mapping regions to the list of countries forming that region.")
+            if not isinstance(_country_regions, dict) or any(
+                not isinstance(v, list) for v in _country_regions.values()
+            ):
+                raise ValueError(
+                    f"Country regions from file {country_regions} is not in the correct format."
+                    " It must be a dictionary mapping regions to the list of countries forming that region."
+                )
             country_regions = _country_regions
 
         region_traces = []
@@ -210,8 +179,11 @@ class Countries:
 
         return xr.concat(region_traces, dim="country")
 
-    def get_country_trace(self, inv_out: InversionOutput, country_regions: dict[str, list[str]] | Path | None = None,
-) -> xr.Dataset:
+    def get_country_trace(
+        self,
+        inv_out: InversionOutput,
+        country_regions: dict[str, list[str]] | Path | None = None,
+    ) -> xr.Dataset:
         """Calculate trace(s) for total country emissions.
 
         Args:
