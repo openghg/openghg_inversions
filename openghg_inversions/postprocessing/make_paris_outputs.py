@@ -5,6 +5,7 @@ from typing import Any, Literal
 import pandas as pd
 import xarray as xr
 
+from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
     get_obs_and_errors,
@@ -13,6 +14,7 @@ from openghg_inversions.postprocessing.make_outputs import (
     make_country_outputs,
 )
 from openghg_inversions.postprocessing.stats import stats_functions
+from openghg_inversions.utils import get_country_file_path
 
 
 # path to `paris_formatting` submodule
@@ -294,9 +296,13 @@ def paris_flux_output(
         )
         result = result.merge(inversion_grid_flux_outs)
 
+    # add country mask
+    country_path = get_country_file_path(country_file)
+    countries = Countries(xr.open_dataset(country_path))
+    result["country_fraction"] = countries.matrix
 
     result = result.transpose(
-        "time", "percentile", "latitude", "longitude", "country"
+        "time", "percentile", "country", "latitude", "longitude"
     )
 
     # use "countrynumber" instead of "country"
