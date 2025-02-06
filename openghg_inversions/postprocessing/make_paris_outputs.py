@@ -296,8 +296,11 @@ def paris_flux_output(
 
 
     result = result.transpose(
-        "time", "latitude", "longitude", "percentile", "country"
+        "time", "percentile", "latitude", "longitude", "country"
     )
+
+    # use "countrynumber" instead of "country"
+    result = result.rename_dims(country="countrynumber")
 
     result.attrs = make_global_attrs("flux")
 
