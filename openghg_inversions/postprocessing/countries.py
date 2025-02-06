@@ -4,10 +4,9 @@ Module with code related to country maps.
 
 from __future__ import annotations
 
-import functools
 import json
 from pathlib import Path
-from typing import Any, cast, Literal, Optional, TypeVar, Union
+from typing import cast, Literal, Optional, TypeVar, Union
 
 import xarray as xr
 from openghg_inversions import convert, utils
