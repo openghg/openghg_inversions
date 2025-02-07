@@ -299,7 +299,9 @@ def paris_flux_output(
     # add country mask
     country_path = get_country_file_path(country_file)
     countries = Countries(xr.open_dataset(country_path))
-    result["country_fraction"] = countries.matrix
+
+    country_fraction = countries.matrix.rename(dim_rename_dict).pipe(add_variable_attrs, emissions_attrs)
+    result["country_fraction"] = country_fraction
 
     result = result.transpose(
         "time", "percentile", "country", "latitude", "longitude"
