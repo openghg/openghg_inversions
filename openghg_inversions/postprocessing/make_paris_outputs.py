@@ -224,6 +224,12 @@ def paris_flux_output(
     )
     country_outs = country_outs * 1e-3  # convert g/yr to kg/yr
 
+    # add country mask
+    country_path = get_country_file_path(country_file)
+    countries = Countries(xr.open_dataset(country_path))
+
+    country_fraction = countries.matrix
+
     # rename to match PARIS flux template
     def renamer(name: str) -> str:
         """Rename variables to match PARIS flux template.
@@ -269,7 +275,7 @@ def paris_flux_output(
         time_func = lambda ds: ds
 
     result = (
-        xr.merge([flux_outs, country_outs])
+        xr.merge([flux_outs, country_outs, country_fraction])
         .rename(dim_rename_dict)
         .pipe(time_func)
         .pipe(convert_time_to_unix_epoch, "1d")
@@ -296,12 +302,6 @@ def paris_flux_output(
         )
         result = result.merge(inversion_grid_flux_outs)
 
-    # add country mask
-    country_path = get_country_file_path(country_file)
-    countries = Countries(xr.open_dataset(country_path))
-
-    country_fraction = countries.matrix.rename(dim_rename_dict).pipe(add_variable_attrs, emissions_attrs)
-    result["country_fraction"] = country_fraction
 
     result = result.transpose(
         "time", "percentile", "country", "latitude", "longitude"
