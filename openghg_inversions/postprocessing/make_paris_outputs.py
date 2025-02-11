@@ -228,7 +228,7 @@ def paris_flux_output(
     country_path = get_country_file_path(country_file)
     countries = Countries(xr.open_dataset(country_path))
 
-    country_fraction = countries.matrix
+    country_fraction = countries.matrix.rename("country_fraction")
 
     # rename to match PARIS flux template
     def renamer(name: str) -> str:
