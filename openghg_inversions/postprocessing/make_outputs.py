@@ -189,6 +189,8 @@ def make_country_outputs(
     country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
+    country_code: Literal["alpha2", "alpha3"] | None = "alpha3",
+
 ):
     if country_regions == "paris":
         country_regions = paris_regions_dict
@@ -198,7 +200,7 @@ def make_country_outputs(
     country_traces = make_country_traces(
         inv_out,
         country_file=country_file,
-        country_code="alpha3",
+        country_code=country_code,
         country_regions=country_regions,
     )
 

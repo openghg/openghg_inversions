@@ -221,12 +221,13 @@ def paris_flux_output(
         country_regions="paris",
         stats=stats,
         stats_args=stats_args,
+        country_code="alpha3",
     )
     country_outs = country_outs * 1e-3  # convert g/yr to kg/yr
 
     # add country mask
     country_path = get_country_file_path(country_file)
-    countries = Countries(xr.open_dataset(country_path))
+    countries = Countries(xr.open_dataset(country_path), country_code="alpha3")
 
     country_fraction = countries.matrix.as_numpy().rename("country_fraction")
 
