@@ -161,7 +161,7 @@ def make_concentration_outputs(
     conc_stats = calculate_stats(trace, **stats_args)
 
     if unstack_nmeasure:
-        conc_stats = inv_out.unstack_nmeasure(conc_stats)
+        conc_stats = inv_out.nmeasure_to_site_time(conc_stats)
 
     return conc_stats
 
@@ -173,7 +173,6 @@ def make_country_outputs(
     stats: list[str] | None = None,
     stats_args: dict | None = None,
     country_code: Literal["alpha2", "alpha3"] | None = "alpha3",
-
 ):
     if country_regions == "paris":
         country_regions = paris_regions_dict
@@ -212,7 +211,7 @@ def get_obs_and_errors(inv_out: InversionOutput, unstack_nmeasure: bool = False)
     result.attrs = {}
 
     if unstack_nmeasure:
-        result = inv_out.unstack_nmeasure(result)
+        result = result.unstack("nmeasure")
 
     return result
 
@@ -268,7 +267,8 @@ def basic_output(
     model_data = inv_out.get_model_data(var_names=["hx", "hbc", "min_error"]).rename(
         {"hx": "Hx", "hbc": "Hbc", "min_error": "min_model_error"}
     )
-
+    for ds in [obs_and_errs, conc_outs, flux_outs, country_outs, model_data, inv_out.get_flat_basis()]:
+        print(ds)
     result = xr.merge(
         [obs_and_errs, conc_outs, flux_outs, country_outs, model_data, inv_out.get_flat_basis()]
     )

@@ -1,6 +1,6 @@
 import warnings
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import TypeVar
 
 import arviz as az
 import numpy as np
@@ -30,57 +30,35 @@ def convert_idata_to_dataset(
     return xr.merge(traces)
 
 
-def nmeasure_to_site_time_data_array(
-    da: xr.DataArray, site_indicators: xr.DataArray, site_names: xr.DataArray, times: xr.DataArray
-) -> xr.DataArray:
+XrDataArrayOrSet = TypeVar("XrDataArrayOrSet", xr.DataArray, xr.Dataset)
+
+
+def _nmeasure_to_site_time(
+    data: XrDataArrayOrSet,
+    site_indicators: xr.DataArray,
+    times: xr.DataArray,
+    site_names: xr.DataArray | dict | None = None,
+) -> XrDataArrayOrSet:
     """Convert `nmeasure` dimension to multi-index over `site` and `time.`"""
-    site_dict = dict(site_names.to_series())
-    da = (
-        xr.concat(
-            [
-                da.where(site_indicators == site_num, drop=True)
-                .assign_coords(nmeasure=times.where(site_indicators == site_num, drop=True))
-                .rename(nmeasure="time")
-                .expand_dims({"site": [site_code]})
-                for site_num, site_code in site_dict.items()
-            ],
-            dim="site",
+    if len(site_indicators) != len(times):
+        raise ValueError(
+            "Site indicators and times must be same length, got:"
+            f"\nsite indicators:\n{site_indicators}\ntimes:\n{times}"
         )
-        .stack(nmeasure=["site", "time"])
-        .dropna("nmeasure")
-        .transpose("nmeasure", ...)
-    )
+    if site_names is None:
+        site_codes = site_indicators.values
+    else:
+        if isinstance(site_names, xr.DataArray):
+            site_names = dict(site_names.to_series())
 
-    return da
+        site_codes = [site_names.get(x) for x in site_indicators.values]
 
+    nmeasure_multiindex = pd.MultiIndex.from_arrays([site_codes, times.values], names=["site", "time"])
 
-def nmeasure_to_site_time(
-    ds: xr.Dataset, site_indicators: xr.DataArray, site_names: xr.DataArray, times: xr.DataArray
-) -> xr.Dataset:
-    """Convert `nmeasure` dimension to multi-index over `site` and `time.`"""
-    time_vars = [dv for dv in ds.data_vars if "nmeasure" in list(ds[dv].coords)]
-    ds_tv = ds[time_vars]
-    ds_no_tv = ds.drop_dims("nmeasure")
+    result = data.assign_coords(nmeasure=nmeasure_multiindex)
+    result.time.attrs = times.attrs
 
-    site_dict = dict(site_names.to_series())
-    ds_tv = (
-        xr.concat(
-            [
-                ds_tv.where(site_indicators == site_num, drop=True)
-                .expand_dims({"site": [site_code]})
-                .assign_coords(nmeasure=times.where(site_indicators == site_num, drop=True))
-                .rename_vars(nmeasure="time")
-                for site_num, site_code in site_dict.items()
-            ],
-            dim="site",
-        )
-        .swap_dims(nmeasure="time")
-        .stack(nmeasure=["site", "time"])
-        .dropna("nmeasure")
-        .transpose("nmeasure", ...)
-    )
-
-    return xr.merge([ds_no_tv, ds_tv])
+    return result
 
 
 @dataclass
@@ -143,13 +121,15 @@ class InversionOutput:
         self.trace.extend(pm.sample_prior_predictive(ndraw, self.model))
         self.trace.extend(pm.sample_posterior_predictive(self.trace, model=self.model, var_names=["y"]))
 
-    def unstack_nmeasure(self, ds: xr.Dataset) -> xr.Dataset:
-        return nmeasure_to_site_time(ds, self.site_indicators, self.site_names, self.times).unstack(
-            "nmeasure"
-        )
+    def nmeasure_to_site_time(self, data: XrDataArrayOrSet, unstack: bool = True) -> XrDataArrayOrSet:
+        result = _nmeasure_to_site_time(data, self.site_indicators, self.times, self.site_names)
+
+        if unstack:
+            result = result.unstack("nmeasure")
+        return result
 
     def get_trace_dataset(
-        self, unstack_nmeasure: bool = True, var_names: Optional[Union[str, list[str]]] = None
+        self, unstack_nmeasure: bool = True, var_names: str | list[str] | None = None
     ) -> xr.Dataset:
         """Return an xarray Dataset containing a prior/posterior parameter/predictive samples.
 
@@ -161,11 +141,7 @@ class InversionOutput:
             xarray Dataset containing a prior/posterior parameter/predictive samples.
         """
         trace_ds = convert_idata_to_dataset(self.trace)
-
-        if unstack_nmeasure:
-            trace_ds = nmeasure_to_site_time(
-                trace_ds, self.site_indicators, self.site_names, self.times
-            ).unstack("nmeasure")
+        trace_ds = self.nmeasure_to_site_time(trace_ds, unstack=unstack_nmeasure)
 
         if var_names is not None:
             if isinstance(var_names, str):
@@ -217,7 +193,7 @@ class InversionOutput:
         return trace_ds
 
     def get_model_data(
-        self, unstack_nmeasure: bool = True, var_names: Optional[Union[str, list[str]]] = None
+        self, unstack_nmeasure: bool = False, var_names: str | list[str] | None = None
     ) -> xr.Dataset:
         """Return an xarray Dataset containing the data input to the model.
 
@@ -231,11 +207,7 @@ class InversionOutput:
             xarray Dataset containing model data
         """
         trace_ds = convert_idata_to_dataset(self.trace, group_filters=["data"], add_suffix=False)
-
-        if unstack_nmeasure:
-            trace_ds = nmeasure_to_site_time(
-                trace_ds, self.site_indicators, self.site_names, self.times
-            ).unstack("nmeasure")
+        trace_ds = self.nmeasure_to_site_time(trace_ds, unstack=unstack_nmeasure)
 
         if var_names is not None:
             if isinstance(var_names, str):
@@ -276,11 +248,7 @@ class InversionOutput:
         By default, `nmeasure` is converted to `site` and `time`.
         """
         result = self.obs.rename("y_obs")
-
-        if unstack_nmeasure:
-            result = nmeasure_to_site_time_data_array(
-                self.obs, self.site_indicators, self.site_names, self.times
-            ).unstack("nmeasure")
+        result = self.nmeasure_to_site_time(self.obs, unstack=unstack_nmeasure)
 
         return result
 
@@ -290,11 +258,7 @@ class InversionOutput:
         By default, `nmeasure` is converted to `site` and `time`.
         """
         result = self.obs_err.rename("y_obs_error")
-
-        if unstack_nmeasure:
-            result = nmeasure_to_site_time_data_array(
-                result, self.site_indicators, self.site_names, self.times
-            ).unstack("nmeasure")
+        result = self.nmeasure_to_site_time(result, unstack=unstack_nmeasure)
 
         return result
 
@@ -307,11 +271,7 @@ class InversionOutput:
         from RHIME
         """
         result = self.obs_repeatability.rename("y_obs_repeatability")
-
-        if unstack_nmeasure:
-            result = nmeasure_to_site_time_data_array(
-                result, self.site_indicators, self.site_names, self.times
-            ).unstack("nmeasure")
+        result = self.nmeasure_to_site_time(result, unstack=unstack_nmeasure)
 
         return result
 
@@ -321,11 +281,7 @@ class InversionOutput:
         By default, `nmeasure` is converted to `site` and `time`.
         """
         result = self.obs_variability.rename("y_obs_variability")
-
-        if unstack_nmeasure:
-            result = nmeasure_to_site_time_data_array(
-                result, self.site_indicators, self.site_names, self.times
-            ).unstack("nmeasure")
+        result = self.nmeasure_to_site_time(result, unstack=unstack_nmeasure)
 
         return result
 
@@ -519,7 +475,9 @@ def _make_idata_from_rhime_outs(rhime_out_ds: xr.Dataset) -> az.InferenceData:
     return az.InferenceData(posterior=traces)
 
 
-def make_inv_out_from_rhime_outputs(ds: xr.Dataset, species: str, domain: str, start_date: str | None = None, end_date: str | None = None) -> InversionOutput:
+def make_inv_out_from_rhime_outputs(
+    ds: xr.Dataset, species: str, domain: str, start_date: str | None = None, end_date: str | None = None
+) -> InversionOutput:
     flux = ds.fluxapriori
 
     ds_clean = _clean_rhime_output(ds)
