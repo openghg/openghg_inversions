@@ -10,14 +10,13 @@ from typing import cast, Literal, Optional, TypeVar, Union
 
 import xarray as xr
 from openghg_inversions import convert, utils
-from xarray.core.common import DataWithCoords
 
 from openghg_inversions.array_ops import align_sparse_lat_lon, get_xr_dummies, sparse_xr_dot
 from ._country_codes import get_country_codes
 from .inversion_output import InversionOutput
 
 # type for xr.Dataset *or* xr.DataArray
-DataSetOrArray = TypeVar("DataSetOrArray", bound=DataWithCoords)
+DataSetOrArray = TypeVar("DataSetOrArray", xr.DataArray, xr.Dataset)
 
 
 def get_area_grid(lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:

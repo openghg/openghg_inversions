@@ -553,9 +553,9 @@ def fixedbasisMCMC(
             return mcmc_results
 
         if return_inv_out:
-            from ..postprocessing.inversion_output import make_inv_out
+            from ..postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
 
-            return make_inv_out(
+            return make_inv_out_for_fixed_basis_mcmc(
                 fp_data=fp_data,
                 Y=Y,
                 Ytime=Ytime,
@@ -573,10 +573,10 @@ def fixedbasisMCMC(
 
 
         if new_postprocessing:
-            from ..postprocessing.inversion_output import make_inv_out
+            from ..postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
             from ..postprocessing.make_outputs import basic_output
 
-            inv_out = make_inv_out(
+            inv_out = make_inv_out_for_fixed_basis_mcmc(
                 fp_data=fp_data,
                 Y=Y,
                 Ytime=Ytime,
@@ -597,10 +597,10 @@ def fixedbasisMCMC(
 
         if paris_postprocessing:
             from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-            from openghg_inversions.postprocessing.inversion_output import make_inv_out
+            from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
             from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
-            inv_out = make_inv_out(
+            inv_out = make_inv_out_for_fixed_basis_mcmc(
                 fp_data=fp_data,
                 Y=Y,
                 Ytime=Ytime,

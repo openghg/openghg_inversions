@@ -1,3 +1,4 @@
+import warnings
 from dataclasses import dataclass
 from typing import Optional, Union
 
@@ -92,7 +93,6 @@ class InversionOutput:
     obs_variability: xr.DataArray
     flux: xr.DataArray
     basis: xr.DataArray
-    model: pm.Model
     trace: az.InferenceData
     site_indicators: xr.DataArray
     site_names: xr.DataArray
@@ -101,12 +101,15 @@ class InversionOutput:
     end_date: str
     species: str
     domain: str
+    model: pm.Model | None = None
 
     def __post_init__(self) -> None:
         """Check that trace has posterior traces, and fix flux time values."""
         if not hasattr(self.trace, "posterior"):
             raise ValueError("`trace` InferenceData must have `posterior` traces.")
-        self.sample_predictive_distributions()
+
+        if self.model is not None:
+            self.sample_predictive_distributions()
 
         # check if flux has time coordinate, and add one if necessary
         if "time" not in self.flux.dims:
@@ -131,13 +134,19 @@ class InversionOutput:
 
         This creates prior samples as a side-effect.
         """
+        if self.model is None:
+            warnings.warn("Cannot sample predictive distributions without PyMC model.")
+            return None
+
         if ndraw is None:
             ndraw = self.trace.posterior.sizes["draw"]
         self.trace.extend(pm.sample_prior_predictive(ndraw, self.model))
         self.trace.extend(pm.sample_posterior_predictive(self.trace, model=self.model, var_names=["y"]))
 
     def unstack_nmeasure(self, ds: xr.Dataset) -> xr.Dataset:
-        return nmeasure_to_site_time(ds, self.site_indicators, self.site_names, self.times).unstack("nmeasure")
+        return nmeasure_to_site_time(ds, self.site_indicators, self.site_names, self.times).unstack(
+            "nmeasure"
+        )
 
     def get_trace_dataset(
         self, unstack_nmeasure: bool = True, var_names: Optional[Union[str, list[str]]] = None
@@ -315,8 +324,8 @@ class InversionOutput:
 
         if unstack_nmeasure:
             result = nmeasure_to_site_time_data_array(
-            result, self.site_indicators, self.site_names, self.times
-        ).unstack("nmeasure")
+                result, self.site_indicators, self.site_names, self.times
+            ).unstack("nmeasure")
 
         return result
 
@@ -365,7 +374,7 @@ class InversionOutput:
         return (self.basis * self.basis[region_dim]).sum(region_dim).as_numpy().rename("basis")
 
 
-def make_inv_out(
+def make_inv_out_for_fixed_basis_mcmc(
     fp_data: dict,
     Y: np.ndarray,
     Ytime: np.ndarray,
@@ -416,6 +425,9 @@ def make_inv_out(
         else:
             flux = flux[flux.data_vars[0]]
 
+    if not isinstance(flux, xr.DataArray):
+        raise ValueError("Flux from `fp_data` could not be converted to a xr.DataArray.")
+
     # add attributes
     scenario = scenarios[0]
     y_obs.attrs = scenario.mf.attrs
@@ -440,4 +452,99 @@ def make_inv_out(
         end_date=end_date,
         species=species,
         domain=domain,
+    )
+
+
+# Functions to re-run post-processing on standard RHIME outputs
+#
+# This is a temporary fix. A more general fix will be possible when we can recreate the
+# RHIME model using the modular model set-up.
+#
+# In particular, there are not prior or predictive traces, so only flux and country totals
+# can be recomputed.
+def _clean_rhime_output(ds: xr.Dataset) -> xr.Dataset:
+    """Take raw RHIME output and rename/drop/create variables to get dataset ready for further processing."""
+    use_bc = "bctrace" in ds.data_vars
+
+    rename_vars_dict = dict(stepnum="draw", paramnum="nlatent", measurenum="nmeasure")
+
+    rename_dict = {
+        "nsites": "nsite",
+        "nparam": "nx",
+        "xtrace": "x",
+        "sigtrace": "sigma",
+    }
+
+    if use_bc:
+        rename_vars_dict["numBC"] = "nBC"
+        rename_dict.update({"bctrace": "bc", "nBC": "nbc"})
+
+    ds = (
+        ds.rename_vars(rename_vars_dict)
+        .drop_dims(["nUI", "nlatent"])
+        .swap_dims(nsite="nsites", steps="draw")
+        .rename(rename_dict)
+    )
+    ds["x"] = ds.x.assign_coords(nx=("nx", ds.basisfunctions.to_series().sort_values().unique()))
+
+    data_vars = [
+        "Yobs",
+        "Yerror",
+        "Yerror_repeatability",
+        "Yerror_variability",
+        "Ytime",
+        "x",
+        "sigma",
+        "siteindicator",
+        "sigmafreqindex",
+        "sitenames",
+        "fluxapriori",
+        "basisfunctions",
+        "xsensitivity",
+    ]
+
+    if use_bc:
+        data_vars.extend(["bc", "bcsensitivity"])
+
+    ds = ds[data_vars]
+
+    return ds
+
+
+def _make_idata_from_rhime_outs(rhime_out_ds: xr.Dataset) -> az.InferenceData:
+    """Create arviz InferenceData with posterior group created from RHIME output."""
+    trace_dvs = [dv for dv in rhime_out_ds.data_vars if "draw" in list(rhime_out_ds[dv].coords)]
+    traces = rhime_out_ds[trace_dvs].expand_dims({"chain": [0]})
+
+    return az.InferenceData(posterior=traces)
+
+
+def make_inv_out_from_rhime_outputs(ds: xr.Dataset, species: str, domain: str, start_date: str | None = None, end_date: str | None = None) -> InversionOutput:
+    flux = ds.fluxapriori
+
+    ds_clean = _clean_rhime_output(ds)
+    site_indicators = ds_clean.siteindicator
+    basis = get_xr_dummies(ds_clean.basisfunctions, cat_dim="nx", categories=ds_clean.nx.values)
+
+    start_date = start_date or ds_clean.Ytime.min().values
+    end_date = end_date or ds_clean.Ytime.max().values
+
+    trace = _make_idata_from_rhime_outs(ds_clean)
+    trace.add_groups(prior={"x": xr.ones_like(trace.posterior["x"])}, dims={"x": ["nx"]})
+
+    return InversionOutput(
+        obs=ds_clean.Yobs,
+        obs_err=ds_clean.Yerror,
+        obs_repeatability=ds_clean.Yerror_repeatability,
+        obs_variability=ds_clean.Yerror_variability,
+        flux=flux,
+        basis=basis,
+        trace=trace,
+        site_indicators=site_indicators,
+        site_names=ds_clean.sitenames,
+        times=ds_clean.Ytime,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        end_date=end_date,
     )
