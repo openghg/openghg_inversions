@@ -6,7 +6,10 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.postprocessing.countries import Countries
-from openghg_inversions.postprocessing.inversion_output import InversionOutput, make_inv_out_from_rhime_outputs
+from openghg_inversions.postprocessing.inversion_output import (
+    InversionOutput,
+    make_inv_out_from_rhime_outputs,
+)
 from openghg_inversions.postprocessing.make_outputs import (
     get_obs_and_errors,
     make_concentration_outputs,
@@ -304,9 +307,6 @@ def paris_flux_output(
 
     result = result.transpose("time", "percentile", "country", "latitude", "longitude")
 
-    # use "countrynumber" instead of "country"
-    result = result.rename_dims(country="countrynumber")
-
     result.attrs = make_global_attrs("flux")
 
     return result
@@ -368,10 +368,14 @@ def make_paris_flux_outputs_from_rhime(
     inversion_grid: bool = False,
     flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
     start_date: str | None = None,
-    end_date: str | None = None
+    end_date: str | None = None,
 ) -> xr.Dataset:
-    inv_out = make_inv_out_from_rhime_outputs(rhime_outputs, species=species, domain=domain, start_date=start_date, end_date=end_date)
+    inv_out = make_inv_out_from_rhime_outputs(
+        rhime_outputs, species=species, domain=domain, start_date=start_date, end_date=end_date
+    )
 
-    flux_outputs = paris_flux_output(inv_out, country_file, time_point, report_mode, inversion_grid, flux_frequency)
+    flux_outputs = paris_flux_output(
+        inv_out, country_file, time_point, report_mode, inversion_grid, flux_frequency
+    )
 
     return flux_outputs
