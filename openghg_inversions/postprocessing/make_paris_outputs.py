@@ -11,7 +11,6 @@ from openghg_inversions.postprocessing.inversion_output import (
     make_inv_out_from_rhime_outputs,
 )
 from openghg_inversions.postprocessing.make_outputs import (
-    get_obs_and_errors,
     make_concentration_outputs,
     make_flux_outputs,
     make_country_outputs,
@@ -138,7 +137,7 @@ def paris_concentration_outputs(
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
 
     obs_and_errs = (
-        get_obs_and_errors(inv_out, unstack_nmeasure=True)
+        inv_out.get_obs_and_errors(unstack_nmeasure=True)
         .rename(
             {
                 "y_obs": "Yobs",
