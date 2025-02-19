@@ -33,8 +33,7 @@ def make_flux_outputs(
     report_flux_on_inversion_grid: bool = True,
 ):
     """Return dataset of stats for fluxes and scaling factors."""
-
-    trace = inv_out.get_trace_dataset(unstack_nmeasure=False, var_names="x")
+    trace = inv_out.get_trace_dataset(var_names="x")
 
     if stats_args is None:
         stats_args = {}
@@ -144,10 +143,9 @@ def make_concentration_outputs(
     inv_out: InversionOutput,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
-    unstack_nmeasure: bool = False,
-):
+) -> xr.Dataset:
     conc_vars = ["y", "mu_bc"] if "mu_bc" in inv_out.trace.posterior else ["y"]
-    trace = inv_out.get_trace_dataset(var_names=conc_vars, unstack_nmeasure=False)
+    trace = inv_out.get_trace_dataset(var_names=conc_vars)
 
     if stats_args is None:
         stats_args = {}
@@ -159,9 +157,6 @@ def make_concentration_outputs(
     stats_args["chunk_size"] = 1
 
     conc_stats = calculate_stats(trace, **stats_args)
-
-    if unstack_nmeasure:
-        conc_stats = inv_out.nmeasure_to_site_time(conc_stats)
 
     return conc_stats
 

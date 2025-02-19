@@ -1,12 +1,10 @@
-"""
-Module with code related to country maps.
-"""
+"""Module with code related to country maps."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import cast, Literal, Optional, TypeVar, Union
+from typing import cast, Literal, TypeVar
 
 import xarray as xr
 from openghg_inversions import convert, utils
@@ -44,7 +42,7 @@ class Countries:
     def __init__(
         self,
         countries: xr.Dataset,
-        country_selections: Optional[list[str]] = None,
+        country_selections: list[str] | None = None,
         country_code: Literal["alpha2", "alpha3"] | None = None,
     ) -> None:
         """Create Countries object given country map Dataset and optional list of countries to select.
@@ -149,7 +147,7 @@ class Countries:
         country_traces: xr.Dataset, country_regions: dict[str, list[str]] | Path
     ) -> xr.Dataset:
         if isinstance(country_regions, Path):
-            with open(country_regions, "r", encoding="utf8") as f:
+            with open(country_regions, encoding="utf8") as f:
                 _country_regions = json.load(f)
             if not isinstance(_country_regions, dict) or any(
                 not isinstance(v, list) for v in _country_regions.values()
@@ -195,7 +193,7 @@ class Countries:
               1.0, based on how it is used in hbmcmc
         """
         x_to_country_mat = self.get_x_to_country_mat(inv_out)
-        x_trace = inv_out.get_trace_dataset(unstack_nmeasure=False, var_names="x")
+        x_trace = inv_out.get_trace_dataset(var_names="x")
 
         species = inv_out.species
 
@@ -215,7 +213,7 @@ class Countries:
 
         return country_traces
 
-    def merge(self, other: Union[Countries, list[Countries]]) -> None:
+    def merge(self, other: Countries | list[Countries]) -> None:
         """Merge in another Countries object (in-place).
 
         Args:

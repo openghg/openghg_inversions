@@ -35,7 +35,7 @@ def get_data_var_attrs(template_file: str | Path, species: str | None = None) ->
     """Extract data variable attributes from template file."""
     attr_dict: dict[str, Any] = {}
 
-    with open(template_file, "r") as f:
+    with open(template_file) as f:
         in_vars = False
         for line in f.readlines():
             if line.startswith("variables"):
@@ -137,7 +137,8 @@ def paris_concentration_outputs(
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
 
     obs_and_errs = (
-        inv_out.get_obs_and_errors(unstack_nmeasure=True)
+        inv_out.get_obs_and_errors()
+        .unstack("nmeasure")
         .rename(
             {
                 "y_obs": "Yobs",
@@ -150,7 +151,7 @@ def paris_concentration_outputs(
         .drop_vars("y_obs_error")
     )
 
-    conc_outputs = make_concentration_outputs(inv_out, stats, stats_args, unstack_nmeasure=True)
+    conc_outputs = make_concentration_outputs(inv_out, stats, stats_args).unstack("nmeasure")
 
     # rename to match PARIS concentrations template
     def renamer(name: str) -> str:

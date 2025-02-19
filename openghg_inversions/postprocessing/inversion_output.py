@@ -11,7 +11,9 @@ import xarray as xr
 from openghg_inversions.array_ops import get_xr_dummies, align_sparse_lat_lon
 
 
-def filter_data_vars_by_prefix(ds: xr.Dataset, var_name_prefixes: str | list[str], sep: str = "_") -> xr.Dataset:
+def filter_data_vars_by_prefix(
+    ds: xr.Dataset, var_name_prefixes: str | list[str], sep: str = "_"
+) -> xr.Dataset:
     """Select data variables that match the specified filters."""
     if isinstance(var_name_prefixes, str):
         var_name_prefixes = [var_name_prefixes]
@@ -169,14 +171,22 @@ class InversionOutput:
 
         # create trace dataset
         trace_ds = convert_idata_to_dataset(self.trace)
-        _add_attributes_to_trace_dataset(trace_ds, self.obs.attrs["units"], self.obs.attrs["long_name"])
-        self.trace_ds = self.nmeasure_to_site_time(trace_ds, unstack=False)
+
+        if "longname" in self.obs.attrs:
+            obs_long_name = self.obs.attrs["longname"]
+        else:
+            obs_long_name = self.obs.attrs.get("long_name", "observed_mole_fraction")
+
+        _add_attributes_to_trace_dataset(trace_ds, self.obs.attrs["units"], obs_long_name)
+        self.trace_ds = self.nmeasure_to_site_time(trace_ds)
 
         # format obs data and errors
-        self.obs = self.nmeasure_to_site_time(self.obs.rename("y_obs"), unstack=False)
-        self.obs_err = self.nmeasure_to_site_time(self.obs_err.rename("y_obs_error"), unstack=False)
-        self.obs_repeatability = self.nmeasure_to_site_time(self.obs_repeatability.rename("y_obs_repeatability"), unstack=False)
-        self.obs_variability = self.nmeasure_to_site_time(self.obs_variability.rename("y_obs_variability"), unstack=False)
+        self.obs = self.nmeasure_to_site_time(self.obs.rename("y_obs"))
+        self.obs_err = self.nmeasure_to_site_time(self.obs_err.rename("y_obs_error"))
+        self.obs_repeatability = self.nmeasure_to_site_time(
+            self.obs_repeatability.rename("y_obs_repeatability")
+        )
+        self.obs_variability = self.nmeasure_to_site_time(self.obs_variability.rename("y_obs_variability"))
 
     def sample_predictive_distributions(self, ndraw: int | None = None) -> None:
         """Sample prior and posterior predictive distributions.
@@ -193,16 +203,10 @@ class InversionOutput:
         self.trace.extend(pm.sample_prior_predictive(ndraw, self.model))
         self.trace.extend(pm.sample_posterior_predictive(self.trace, model=self.model, var_names=["y"]))
 
-    def nmeasure_to_site_time(self, data: XrDataArrayOrSet, unstack: bool = True) -> XrDataArrayOrSet:
-        result = _nmeasure_to_site_time(data, self.site_indicators, self.times, self.site_names)
+    def nmeasure_to_site_time(self, data: XrDataArrayOrSet) -> XrDataArrayOrSet:
+        return _nmeasure_to_site_time(data, self.site_indicators, self.times, self.site_names)
 
-        if unstack:
-            result = result.unstack("nmeasure")
-        return result
-
-    def get_trace_dataset(
-        self, unstack_nmeasure: bool = True, var_names: str | list[str] | None = None
-    ) -> xr.Dataset:
+    def get_trace_dataset(self, var_names: str | list[str] | None = None) -> xr.Dataset:
         """Return an xarray Dataset containing a prior/posterior parameter/predictive samples.
 
         Args:
@@ -214,17 +218,12 @@ class InversionOutput:
         """
         result = self.trace_ds
 
-        if unstack_nmeasure:
-            result = result.unstack("nmeasure")
-
         if var_names is not None:
             result = filter_data_vars_by_prefix(result, var_names)
 
         return result
 
-    def get_model_data(
-        self, unstack_nmeasure: bool = False, var_names: str | list[str] | None = None
-    ) -> xr.Dataset:
+    def get_model_data(self, var_names: str | list[str] | None = None) -> xr.Dataset:
         """Return an xarray Dataset containing the data input to the model.
 
         This data is captured using `pm.Data`, or when data is observed.
@@ -237,7 +236,7 @@ class InversionOutput:
             xarray Dataset containing model data
         """
         result = convert_idata_to_dataset(self.trace, group_filters=["data"], add_suffix=False)
-        result = self.nmeasure_to_site_time(result, unstack=unstack_nmeasure)
+        result = self.nmeasure_to_site_time(result)
 
         if var_names is not None:
             result = filter_data_vars_by_prefix(result, var_names, sep="")
@@ -263,56 +262,14 @@ class InversionOutput:
         """Return midpoint of inversion period."""
         return self.start_time + (self.start_time - self.end_time) / 2
 
-    def get_obs(self, unstack_nmeasure: bool = True) -> xr.DataArray:
-        """Return y observations.
-
-        By default, `nmeasure` is converted to `site` and `time`.
-        """
-        if unstack_nmeasure:
-            return self.obs.unstack("nmeasure")
-        return self.obs
-
-    def get_obs_err(self, unstack_nmeasure: bool = True) -> xr.DataArray:
-        """Return y observations errors.
-
-        By default, `nmeasure` is converted to `site` and `time`.
-        """
-        if unstack_nmeasure:
-            return self.obs_err.unstack("nmeasure")
-        return self.obs_err
-
-    def get_obs_repeatability(self, unstack_nmeasure: bool = True) -> xr.DataArray:
-        """Return "repeatbility" uncertainty term for y observations.
-
-        By default, `nmeasure` is converted to `site` and `time`.
-
-        TODO: this needs to be fixed when we have separate repeatability and variability outputs
-        from RHIME
-        """
-        if unstack_nmeasure:
-            return self.obs_repeatability.unstack("nmeasure")
-        return self.obs_repeatability
-
-    def get_obs_variability(self, unstack_nmeasure: bool = True) -> xr.DataArray:
-        """Return "variability" uncertainty term for y observations.
-
-        By default, `nmeasure` is converted to `site` and `time`.
-        """
-        if unstack_nmeasure:
-            return self.obs_variability.unstack("nmeasure")
-        return self.obs_variability
-
-    def get_total_err(self, unstack_nmeasure: bool = True, take_mean: bool = True) -> xr.DataArray:
+    def get_total_err(self, take_mean: bool = True) -> xr.DataArray:
         """Return sqrt(repeatability**2 + variability**2 + model_error**2)
 
         Args:
-            unstack_nmeasure: if True, convert `nmeasure` `site` and `time`. (Default: True)
             take_mean: if True, take mean over trace of error term
 
         """
-        result = self.get_trace_dataset(
-            var_names="epsilon", unstack_nmeasure=unstack_nmeasure
-        ).epsilon_posterior
+        result = self.get_trace_dataset(var_names="epsilon").epsilon_posterior
 
         if take_mean:
             result = result.mean("draw")
@@ -322,35 +279,32 @@ class InversionOutput:
 
         return result.rename("total_error")
 
-    def get_model_err(self, unstack_nmeasure: bool = True) -> xr.DataArray:
+    def get_model_err(self) -> xr.DataArray:
         """Return model_error
 
         By default, `nmeasure` is converted to `site` and `time`.
         """
-        total_err = self.get_total_err(unstack_nmeasure=unstack_nmeasure, take_mean=False)
-        total_obs_err = self.get_obs_err(unstack_nmeasure=unstack_nmeasure)
+        total_err = self.get_total_err(take_mean=False)
+        total_obs_err = self.obs_err
 
         result = np.sqrt(np.maximum(total_err**2 - total_obs_err**2, 0)).mean("draw")  # type: ignore
         result.attrs["units"] = self.obs.attrs["units"]
         result.attrs["long_name"] = "inferred model error"
         return result.rename("model_error")
 
-    def get_obs_and_errors(self, unstack_nmeasure: bool = False) -> xr.Dataset:
+    def get_obs_and_errors(self) -> xr.Dataset:
         # TODO: some of these variables could just be stored in a dataset in InversionOutput,
         # rather than in separate data arrays
         to_merge = [
-            self.get_obs(unstack_nmeasure=False),
-            self.get_obs_err(unstack_nmeasure=False),
-            self.get_obs_repeatability(unstack_nmeasure=False),
-            self.get_obs_variability(unstack_nmeasure=False),
-            self.get_model_err(unstack_nmeasure=False),
-            self.get_total_err(unstack_nmeasure=False),
+            self.obs,
+            self.obs_err,
+            self.obs_repeatability,
+            self.obs_variability,
+            self.get_model_err(),
+            self.get_total_err(),
         ]
         result = xr.merge(to_merge)
         result.attrs = {}
-
-        if unstack_nmeasure:
-            result = result.unstack("nmeasure")
 
         return result
 
