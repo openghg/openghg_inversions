@@ -198,7 +198,7 @@ def paris_flux_output(
     country_file: str | Path | None = None,
     time_point: Literal["start", "midpoint"] = "midpoint",
     report_mode: bool = False,
-    inversion_grid: bool = False,
+    inversion_grid: bool = True,
     flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
 ) -> xr.Dataset:
     if report_mode:
@@ -317,7 +317,7 @@ def make_paris_outputs(
     country_file: str | Path | None = None,
     time_point: Literal["start", "midpoint"] = "midpoint",
     report_mode: bool = False,
-    inversion_grid: bool = False,
+    inversion_grid: bool = True,
     obs_avg_period: str = "4h",
 ) -> tuple[xr.Dataset, xr.Dataset]:
     # infer flux frequency
@@ -365,7 +365,7 @@ def make_paris_flux_outputs_from_rhime(
     country_file: str | Path | None = None,
     time_point: Literal["start", "midpoint"] = "midpoint",
     report_mode: bool = False,
-    inversion_grid: bool = False,
+    inversion_grid: bool = True,
     flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
     start_date: str | None = None,
     end_date: str | None = None,
