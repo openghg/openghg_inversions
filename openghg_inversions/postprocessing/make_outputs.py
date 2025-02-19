@@ -196,26 +196,6 @@ def make_country_outputs(
     return country_stats
 
 
-def get_obs_and_errors(inv_out: InversionOutput, unstack_nmeasure: bool = False) -> xr.Dataset:
-    # TODO: some of these variables could just be stored in a dataset in InversionOutput,
-    # rather than in separate data arrays
-    to_merge = [
-        inv_out.get_obs(unstack_nmeasure=False),
-        inv_out.get_obs_err(unstack_nmeasure=False),
-        inv_out.get_obs_repeatability(unstack_nmeasure=False),
-        inv_out.get_obs_variability(unstack_nmeasure=False),
-        inv_out.get_model_err(unstack_nmeasure=False),
-        inv_out.get_total_err(unstack_nmeasure=False),
-    ]
-    result = xr.merge(to_merge)
-    result.attrs = {}
-
-    if unstack_nmeasure:
-        result = result.unstack("nmeasure")
-
-    return result
-
-
 paris_regions_dict = {
     "BELUX": ["BEL", "LUX"],
     "BENELUX": ["BEL", "LUX", "NLD"],
@@ -253,7 +233,7 @@ def basic_output(
     stats: list[str] | None = None,
     stats_args: dict | None = None,
 ) -> xr.Dataset:
-    obs_and_errs = get_obs_and_errors(inv_out)
+    obs_and_errs = inv_out.get_obs_and_errors()
     conc_outs = make_concentration_outputs(inv_out, stats=stats, stats_args=stats_args)
     flux_outs = make_flux_outputs(inv_out, stats=stats, stats_args=stats_args)
     country_outs = make_country_outputs(
@@ -267,8 +247,7 @@ def basic_output(
     model_data = inv_out.get_model_data(var_names=["hx", "hbc", "min_error"]).rename(
         {"hx": "Hx", "hbc": "Hbc", "min_error": "min_model_error"}
     )
-    for ds in [obs_and_errs, conc_outs, flux_outs, country_outs, model_data, inv_out.get_flat_basis()]:
-        print(ds)
+
     result = xr.merge(
         [obs_and_errs, conc_outs, flux_outs, country_outs, model_data, inv_out.get_flat_basis()]
     )

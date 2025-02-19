@@ -11,6 +11,20 @@ import xarray as xr
 from openghg_inversions.array_ops import get_xr_dummies, align_sparse_lat_lon
 
 
+def filter_data_vars_by_prefix(ds: xr.Dataset, var_name_prefixes: str | list[str]) -> xr.Dataset:
+    """Select data variables that match the specified filters."""
+    if isinstance(var_name_prefixes, str):
+        var_name_prefixes = [var_name_prefixes]
+
+    data_vars = []
+    for dv in ds.data_vars:
+        for name in var_name_prefixes:
+            if str(dv).startswith(f"{name}_"):
+                data_vars.append(dv)
+
+    return ds[data_vars]
+
+
 def convert_idata_to_dataset(
     idata: az.InferenceData, group_filters=["prior", "posterior"], add_suffix=True
 ) -> xr.Dataset:
@@ -28,6 +42,50 @@ def convert_idata_to_dataset(
                 trace = trace.isel(chain=0, drop=True)
             traces.append(trace)
     return xr.merge(traces)
+
+
+def _add_attributes_to_trace_dataset(trace_ds: xr.Dataset, obs_units: str, obs_longname: str) -> None:
+    """Add attributes to trace dataset.
+
+    Args:
+        trace_ds: trace dataset (probably created by `convert_idata_to_dataset`)
+        obs_units: units for observation data used in inversion
+    Returns:
+        None: updates Dataset in-place
+    """
+    for dv in trace_ds.data_vars:
+        if str(dv).endswith("prior_predictive"):
+            trace_ds[dv].attrs["units"] = obs_units
+            trace_ds[dv].attrs["long_name"] = "prior_predictive_" + obs_longname
+        elif str(dv).endswith("posterior_predictive"):
+            trace_ds[dv].attrs["units"] = obs_units
+            trace_ds[dv].attrs["long_name"] = "posterior_predictive_" + obs_longname
+        elif str(dv).startswith("mu_bc"):
+            suffix = str(dv).removeprefix("mu_bc_")
+            trace_ds[dv].attrs["units"] = obs_units
+            trace_ds[dv].attrs["long_name"] = suffix + "_modelled_baseline"
+        elif str(dv).endswith("prior"):
+            prefix = str(dv).removesuffix("_prior")
+            if prefix == "x":
+                name = "flux_scaling_factor"
+            elif "sig" in prefix:
+                name = "pollution_event_scaling_factor"
+            elif prefix == "bc":
+                name = "boundary_conditions_scaling_factor"
+            else:
+                name = str(dv)
+            trace_ds[dv].attrs["long_name"] = f"prior_trace_of_{name}"
+        elif str(dv).endswith("posterior"):
+            prefix = str(dv).removesuffix("_posterior")
+            if prefix == "x":
+                name = "flux_scaling_factor"
+            elif "sig" in prefix:
+                name = "pollution_event_scaling_factor"
+            elif prefix == "bc":
+                name = "boundary_conditions_scaling_factor"
+            else:
+                name = str(dv)
+            trace_ds[dv].attrs["long_name"] = f"posterior_trace_of_{name}"
 
 
 XrDataArrayOrSet = TypeVar("XrDataArrayOrSet", xr.DataArray, xr.Dataset)
@@ -107,6 +165,17 @@ class InversionOutput:
             # time not in dims, so just delete the coord
             self.basis = self.basis.drop_vars("time")
 
+        # create trace dataset
+        trace_ds = convert_idata_to_dataset(self.trace)
+        _add_attributes_to_trace_dataset(trace_ds, self.obs.attrs["units"], self.obs.attrs["long_name"])
+        self.trace_ds = self.nmeasure_to_site_time(trace_ds, unstack=False)
+
+        # format obs data and errors
+        self.obs = self.nmeasure_to_site_time(self.obs.rename("y_obs"), unstack=False)
+        self.obs_err = self.nmeasure_to_site_time(self.obs_err.rename("y_obs_error"), unstack=False)
+        self.obs_repeatability = self.nmeasure_to_site_time(self.obs_repeatability.rename("y_obs_repeatability"), unstack=False)
+        self.obs_variability = self.nmeasure_to_site_time(self.obs_variability.rename("y_obs_variability"), unstack=False)
+
     def sample_predictive_distributions(self, ndraw: int | None = None) -> None:
         """Sample prior and posterior predictive distributions.
 
@@ -118,6 +187,7 @@ class InversionOutput:
 
         if ndraw is None:
             ndraw = self.trace.posterior.sizes["draw"]
+
         self.trace.extend(pm.sample_prior_predictive(ndraw, self.model))
         self.trace.extend(pm.sample_posterior_predictive(self.trace, model=self.model, var_names=["y"]))
 
@@ -140,57 +210,15 @@ class InversionOutput:
         Returns:
             xarray Dataset containing a prior/posterior parameter/predictive samples.
         """
-        trace_ds = convert_idata_to_dataset(self.trace)
-        trace_ds = self.nmeasure_to_site_time(trace_ds, unstack=unstack_nmeasure)
+        result = self.trace_ds
+
+        if unstack_nmeasure:
+            result = result.unstack("nmeasure")
 
         if var_names is not None:
-            if isinstance(var_names, str):
-                var_names = [var_names]
+            result = filter_data_vars_by_prefix(result, var_names)
 
-            data_vars = []
-            for dv in trace_ds.data_vars:
-                for name in var_names:
-                    if str(dv).startswith(f"{name}_"):
-                        data_vars.append(dv)
-
-            trace_ds = trace_ds[data_vars]
-
-        # add attributes for predictive traces (usually these are obs traces)
-        for dv in trace_ds.data_vars:
-            if str(dv).endswith("prior_predictive"):
-                trace_ds[dv].attrs["units"] = self.obs.attrs["units"]
-                trace_ds[dv].attrs["long_name"] = "prior_predictive_" + self.obs.attrs["long_name"]
-            elif str(dv).endswith("posterior_predictive"):
-                trace_ds[dv].attrs["units"] = self.obs.attrs["units"]
-                trace_ds[dv].attrs["long_name"] = "posterior_predictive_" + self.obs.attrs["long_name"]
-            elif str(dv).startswith("mu_bc"):
-                suffix = str(dv).removeprefix("mu_bc_")
-                trace_ds[dv].attrs["units"] = self.obs.attrs["units"]
-                trace_ds[dv].attrs["long_name"] = suffix + "_modelled_baseline"
-            elif str(dv).endswith("prior"):
-                prefix = str(dv).removesuffix("_prior")
-                if prefix == "x":
-                    name = "flux_scaling_factor"
-                elif "sig" in prefix:
-                    name = "pollution_event_scaling_factor"
-                elif prefix == "bc":
-                    name = "boundary_conditions_scaling_factor"
-                else:
-                    name = str(dv)
-                trace_ds[dv].attrs["long_name"] = f"prior_trace_of_{name}"
-            elif str(dv).endswith("posterior"):
-                prefix = str(dv).removesuffix("_posterior")
-                if prefix == "x":
-                    name = "flux_scaling_factor"
-                elif "sig" in prefix:
-                    name = "pollution_event_scaling_factor"
-                elif prefix == "bc":
-                    name = "boundary_conditions_scaling_factor"
-                else:
-                    name = str(dv)
-                trace_ds[dv].attrs["long_name"] = f"posterior_trace_of_{name}"
-
-        return trace_ds
+        return result
 
     def get_model_data(
         self, unstack_nmeasure: bool = False, var_names: str | list[str] | None = None
@@ -206,22 +234,13 @@ class InversionOutput:
         Returns:
             xarray Dataset containing model data
         """
-        trace_ds = convert_idata_to_dataset(self.trace, group_filters=["data"], add_suffix=False)
-        trace_ds = self.nmeasure_to_site_time(trace_ds, unstack=unstack_nmeasure)
+        result = convert_idata_to_dataset(self.trace, group_filters=["data"], add_suffix=False)
+        result = self.nmeasure_to_site_time(result, unstack=unstack_nmeasure)
 
         if var_names is not None:
-            if isinstance(var_names, str):
-                var_names = [var_names]
+            result = filter_data_vars_by_prefix(result, var_names)
 
-            data_vars = []
-            for dv in trace_ds.data_vars:
-                for name in var_names:
-                    if str(dv).startswith(name):
-                        data_vars.append(dv)
-
-            trace_ds = trace_ds[data_vars]
-
-        return trace_ds
+        return result
 
     @property
     def start_time(self) -> pd.Timestamp:
@@ -247,20 +266,18 @@ class InversionOutput:
 
         By default, `nmeasure` is converted to `site` and `time`.
         """
-        result = self.obs.rename("y_obs")
-        result = self.nmeasure_to_site_time(self.obs, unstack=unstack_nmeasure)
-
-        return result
+        if unstack_nmeasure:
+            return self.obs.unstack("nmeasure")
+        return self.obs
 
     def get_obs_err(self, unstack_nmeasure: bool = True) -> xr.DataArray:
         """Return y observations errors.
 
         By default, `nmeasure` is converted to `site` and `time`.
         """
-        result = self.obs_err.rename("y_obs_error")
-        result = self.nmeasure_to_site_time(result, unstack=unstack_nmeasure)
-
-        return result
+        if unstack_nmeasure:
+            return self.obs_err.unstack("nmeasure")
+        return self.obs_err
 
     def get_obs_repeatability(self, unstack_nmeasure: bool = True) -> xr.DataArray:
         """Return "repeatbility" uncertainty term for y observations.
@@ -270,20 +287,18 @@ class InversionOutput:
         TODO: this needs to be fixed when we have separate repeatability and variability outputs
         from RHIME
         """
-        result = self.obs_repeatability.rename("y_obs_repeatability")
-        result = self.nmeasure_to_site_time(result, unstack=unstack_nmeasure)
-
-        return result
+        if unstack_nmeasure:
+            return self.obs_repeatability.unstack("nmeasure")
+        return self.obs_repeatability
 
     def get_obs_variability(self, unstack_nmeasure: bool = True) -> xr.DataArray:
         """Return "variability" uncertainty term for y observations.
 
         By default, `nmeasure` is converted to `site` and `time`.
         """
-        result = self.obs_variability.rename("y_obs_variability")
-        result = self.nmeasure_to_site_time(result, unstack=unstack_nmeasure)
-
-        return result
+        if unstack_nmeasure:
+            return self.obs_variability.unstack("nmeasure")
+        return self.obs_variability
 
     def get_total_err(self, unstack_nmeasure: bool = True, take_mean: bool = True) -> xr.DataArray:
         """Return sqrt(repeatability**2 + variability**2 + model_error**2)
@@ -317,6 +332,25 @@ class InversionOutput:
         result.attrs["units"] = self.obs.attrs["units"]
         result.attrs["long_name"] = "inferred model error"
         return result.rename("model_error")
+
+    def get_obs_and_errors(self, unstack_nmeasure: bool = False) -> xr.Dataset:
+        # TODO: some of these variables could just be stored in a dataset in InversionOutput,
+        # rather than in separate data arrays
+        to_merge = [
+            self.get_obs(unstack_nmeasure=False),
+            self.get_obs_err(unstack_nmeasure=False),
+            self.get_obs_repeatability(unstack_nmeasure=False),
+            self.get_obs_variability(unstack_nmeasure=False),
+            self.get_model_err(unstack_nmeasure=False),
+            self.get_total_err(unstack_nmeasure=False),
+        ]
+        result = xr.merge(to_merge)
+        result.attrs = {}
+
+        if unstack_nmeasure:
+            result = result.unstack("nmeasure")
+
+        return result
 
     def get_flat_basis(self) -> xr.DataArray:
         """Return 2D DataArray encoding basis regions."""
