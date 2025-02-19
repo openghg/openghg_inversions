@@ -11,15 +11,17 @@ import xarray as xr
 from openghg_inversions.array_ops import get_xr_dummies, align_sparse_lat_lon
 
 
-def filter_data_vars_by_prefix(ds: xr.Dataset, var_name_prefixes: str | list[str]) -> xr.Dataset:
+def filter_data_vars_by_prefix(ds: xr.Dataset, var_name_prefixes: str | list[str], sep: str = "_") -> xr.Dataset:
     """Select data variables that match the specified filters."""
     if isinstance(var_name_prefixes, str):
         var_name_prefixes = [var_name_prefixes]
 
+    var_name_prefixes = [f"{name}{sep}" for name in var_name_prefixes]
+
     data_vars = []
     for dv in ds.data_vars:
         for name in var_name_prefixes:
-            if str(dv).startswith(f"{name}_"):
+            if str(dv).startswith(name):
                 data_vars.append(dv)
 
     return ds[data_vars]
@@ -238,7 +240,7 @@ class InversionOutput:
         result = self.nmeasure_to_site_time(result, unstack=unstack_nmeasure)
 
         if var_names is not None:
-            result = filter_data_vars_by_prefix(result, var_names)
+            result = filter_data_vars_by_prefix(result, var_names, sep="")
 
         return result
 
