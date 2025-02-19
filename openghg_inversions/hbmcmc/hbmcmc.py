@@ -283,7 +283,7 @@ def fixedbasisMCMC(
 
             if len(sites) != len(sites_merged):
                 keep_i = [i for i, s in enumerate(sites) if s in sites_merged]
-                s_dropped = [s for s in sites if s not in sites_merged]
+                dropped_sites = [s for s in sites if s not in sites_merged]
 
                 sites = [s for i, s in enumerate(sites) if i in keep_i]
                 inlet = [s for i, s in enumerate(inlet) if i in keep_i]
@@ -291,7 +291,7 @@ def fixedbasisMCMC(
                 instrument = [s for i, s in enumerate(instrument) if i in keep_i]
                 averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
 
-                print(f"\nDropping {s_dropped} sites as they are not included in the merged data object.\n")
+                print(f"\nDropping {dropped_sites} sites as they are not included in the merged data object.\n")
 
     if reload_merged_data is True and merged_data_dir is None:
         print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
@@ -365,16 +365,15 @@ def fixedbasisMCMC(
         fp_data = filtering(fp_data, filters)
 
     # check for sites dropped by filtering
-    s_dropped = []
+    dropped_sites = []
     for site in sites:
         # check if some datasets are empty due to filtering
         if fp_data[site].time.values.shape[0] == 0:
-            s_dropped.append(site)
-            del fp_data[site]
+            dropped_sites.append(site)
 
-    if len(s_dropped) != 0:
-        sites = [s for i, s in enumerate(sites) if s not in s_dropped]
-        print(f"\nDropping {s_dropped} sites as no data passed the filtering.\n")
+    if len(dropped_sites) != 0:
+        sites = [s for i, s in enumerate(sites) if s not in dropped_sites]
+        print(f"\nDropping {dropped_sites} sites as no data passed the filtering.\n")
 
     for si, site in enumerate(sites):
         fp_data[site].attrs["Domain"] = domain
@@ -390,6 +389,11 @@ def fixedbasisMCMC(
         siteindicator = np.zeros(0)
 
         for si, site in enumerate(sites):
+            # if site was dropped, skip; this makes the site indicator numbers consistent
+            # even if a site is dropped
+            if site in dropped_sites:
+                continue
+
             # select variables to drop NaNs from
             drop_vars = []
             for var in ["H", "H_bc", "mf", "mf_error", "mf_variability", "mf_repeatability"]:
