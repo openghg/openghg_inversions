@@ -1,10 +1,13 @@
 from pathlib import Path
+import getpass
 import re
 from typing import Any, Literal
 
 import pandas as pd
 import xarray as xr
 
+from openghg.util import timestamp_now
+from openghg_inversions.config.version import code_version
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import (
     InversionOutput,
@@ -56,7 +59,7 @@ def get_data_var_attrs(template_file: str | Path, species: str | None = None) ->
 
 def make_global_attrs(
     output_type: Literal["flux", "conc"],
-    author: str = "OpenGHG",
+    author: str | None = None,
     species: str = "inert",
     domain: str = "EUROPE",
     apriori_description: str = "EDGAR 8.0",
@@ -69,20 +72,30 @@ def make_global_attrs(
         if output_type == "conc"
         else "Flux estimates: spatially-resolved and by country"
     )
+
     global_attrs.update(
-        author=author,
-        source="processed NAME(8.0) model output",
+        institution="ACRG, University of Bristol, UK",
+        author=author or getpass.getuser(),
+        inversion_system="RHIME",
+        inversion_system_version=code_version(),
+        apriori_description=apriori_description,
         transport_model="NAME",
         transport_model_version="NAME III (version 8.0)",
         met_model="UKV",
-        species=species,
         domain=domain,
-        inversion_method="RHIME",
-        apriori_description=apriori_description,
-        publication_acknowledgements="Please acknowledge ACRG, University of Bristol, in any publication that uses this data.",
+        species=species,
+        project="Process Attribution of Regional emISsions (PARIS)",
+        references="Ganesan, et.al., 2014, doi: 10.5194/acp-14-3855-2014",
+        acknowledgements="Please acknowledge ACRG, University of Bristol, in any publication that uses this data.",
     )
-    global_attrs["history"] = history if history is not None else ""
-    global_attrs["comment"] = comment if comment is not None else ""
+    default_history = f"RHIME results processed at: {timestamp_now()}"
+    global_attrs["history"] = history or default_history
+
+    if comment is not None:
+        global_attrs["comment"] = comment
+
+    global_attrs["conventions"] = "CF-1.8"
+    global_attrs["license"] = "CC-BY-4.0"
 
     return global_attrs
 
