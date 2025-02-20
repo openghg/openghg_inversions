@@ -76,7 +76,7 @@ def make_flux_outputs(
 
         flux_stats = xr.merge([flux_stats, scale_factor_stats])
 
-    return flux_stats
+    return flux_stats.as_numpy()
 
 
 def flatten_post_prior(ds: xr.Dataset) -> xr.Dataset:
@@ -188,7 +188,7 @@ def make_country_outputs(
 
     country_stats = calculate_stats(country_traces)
 
-    return country_stats
+    return country_stats.as_numpy()
 
 
 paris_regions_dict = {
