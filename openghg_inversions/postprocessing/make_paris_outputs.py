@@ -309,7 +309,7 @@ def paris_flux_output(
 
     result.attrs = make_global_attrs("flux")
 
-    return result
+    return result.to_numpy()
 
 
 def make_paris_outputs(
