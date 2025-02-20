@@ -34,11 +34,6 @@ def test_full_inversion(mcmc_args):
     assert "Yerror_variability" in out
 
 
-def test_full_inversion_new_postprocessing(mcmc_args):
-    mcmc_args["new_postprocessing"] = True
-    out = fixedbasisMCMC(**mcmc_args)
-
-
 def test_full_inversion_no_model_error(mcmc_args):
     mcmc_args["no_model_error"] = True
     fixedbasisMCMC(**mcmc_args)

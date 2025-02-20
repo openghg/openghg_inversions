@@ -1,6 +1,8 @@
+from pathlib import Path
+from typing_extensions import Self
 import warnings
-from dataclasses import dataclass
-from typing import TypeVar
+from dataclasses import dataclass, field
+from typing import Literal, TypeVar
 
 import arviz as az
 import numpy as np
@@ -116,8 +118,9 @@ def _nmeasure_to_site_time(
         site_codes = [site_names.get(x) for x in site_indicators.values]
 
     nmeasure_multiindex = pd.MultiIndex.from_arrays([site_codes, times.values], names=["site", "time"])
+    xr_nmeasure_multiindex = xr.Coordinates.from_pandas_multiindex(nmeasure_multiindex, "nmeasure")
 
-    result = data.assign_coords(nmeasure=nmeasure_multiindex)
+    result = data.assign_coords(xr_nmeasure_multiindex)
     result.time.attrs = times.attrs
 
     return result
@@ -134,14 +137,14 @@ class InversionOutput:
     flux: xr.DataArray
     basis: xr.DataArray
     trace: az.InferenceData
-    site_indicators: xr.DataArray
-    site_names: xr.DataArray
-    times: xr.DataArray
+    site_indicators: xr.DataArray = field(compare=False)
+    times: xr.DataArray = field(compare=False)
     start_date: str
     end_date: str
     species: str
     domain: str
-    model: pm.Model | None = None
+    site_names: xr.DataArray | None = field(default=None, compare=False)
+    model: pm.Model | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         """Check that trace has posterior traces, and fix flux time values."""
@@ -319,6 +322,77 @@ class InversionOutput:
 
         return (self.basis * self.basis[region_dim]).sum(region_dim).as_numpy().rename("basis")
 
+    def to_datatree(self) -> xr.DataTree:
+        """Convert InversionOutput to xarray DataTree.
+
+        The output of this method can be saved to netCDF or zarr.
+
+        To make it possible to save the data, the `nmeasure` multi-index needs to be removed.
+        The multi-index is restored by the `from_datatree` method.
+        """
+        dt_dict = {
+            "trace": xr.DataTree.from_dict({group: ds for group, ds in self.trace.items()}),
+            "obs_and_errors": xr.merge(
+                [self.obs, self.obs_err, self.obs_repeatability, self.obs_variability]
+            ).reset_index("nmeasure"),
+            "basis": self.get_flat_basis().to_dataset(),
+            "flux": self.flux.rename(flux_time="time").rename("flux").to_dataset(),
+        }
+        dt = xr.DataTree.from_dict(dt_dict)
+        dt.attrs = {
+            "start_date": str(self.start_date),
+            "end_date": str(self.end_date),
+            "species": self.species,
+            "domain": self.domain,
+        }
+        return dt
+
+    def save(self, output_file: str | Path, format: Literal["netcdf", "zarr"] | None = None) -> None:
+        output_file = Path(output_file)
+
+        if format is None:
+            try:
+                format = {".nc": "netcdf", ".zarr": "zarr"}[output_file.suffix]  # type: ignore
+            except KeyError:
+                raise ValueError(f"Output file {output_file} does not end in '.nc' or '.zarr'; please specify `format`.")
+
+        if format == "netcdf":
+            if output_file.suffix != ".nc":
+                output_file = Path(output_file.stem + ".nc")
+            self.to_datatree().to_netcdf(output_file)
+
+        if format == "zarr":
+            if output_file.suffix != ".zarr":
+                output_file = Path(output_file.stem + ".zarr")
+            self.to_datatree().to_zarr(output_file)
+
+    @classmethod
+    def from_datatree(cls: type[Self], dt: xr.DataTree) -> Self:
+        obs_and_errs_ds = dt.obs_and_errors.to_dataset().drop_vars(["site", "time"])
+        obs_and_errs = tuple(obs_and_errs_ds.values())
+        inv_info = {
+            "start_date": dt.attrs.get("start_date"),
+            "end_date": dt.attrs.get("end_date"),
+            "species": dt.attrs.get("species"),
+            "domain": dt.attrs.get("domain"),
+        }
+        basis = get_xr_dummies(dt.basis.basis, cat_dim="nx", categories=dt.trace.posterior.nx)
+        trace = az.InferenceData(**{group: val.to_dataset() for group, val in dt.trace.items()})
+        return cls(
+            *obs_and_errs,
+            flux=dt.flux.flux,
+            basis=basis,
+            trace=trace,
+            site_indicators=dt.obs_and_errors.site,
+            times=dt.obs_and_errors.time,
+            **inv_info,
+        )
+
+    @classmethod
+    def load(cls: type[Self], file_path: str | Path) -> Self:
+        dt = xr.open_datatree(file_path)
+        return cls.from_datatree(dt)
+
 
 def make_inv_out_for_fixed_basis_mcmc(
     fp_data: dict,
@@ -461,8 +535,12 @@ def _make_idata_from_rhime_outs(rhime_out_ds: xr.Dataset) -> az.InferenceData:
     """Create arviz InferenceData with posterior group created from RHIME output."""
     trace_dvs = [dv for dv in rhime_out_ds.data_vars if "draw" in list(rhime_out_ds[dv].coords)]
     traces = rhime_out_ds[trace_dvs].expand_dims({"chain": [0]})
-
-    return az.InferenceData(posterior=traces)
+    prior = xr.ones_like(traces[["x"]])
+    constant_data = rhime_out_ds[["xsensitivity"]]
+    constant_data["min_model_error"] = xr.DataArray(
+        rhime_out_ds.attrs["min_model_error"], coords={"nmeasure": rhime_out_ds.nmeasure}, dims="nmeasure"
+    )
+    return az.InferenceData(posterior=traces, prior=prior, constant_data=constant_data)
 
 
 def make_inv_out_from_rhime_outputs(
@@ -478,7 +556,6 @@ def make_inv_out_from_rhime_outputs(
     end_date = end_date or ds_clean.Ytime.max().values
 
     trace = _make_idata_from_rhime_outs(ds_clean)
-    trace.add_groups(prior={"x": xr.ones_like(trace.posterior["x"])}, dims={"x": ["nx"]})
 
     return InversionOutput(
         obs=ds_clean.Yobs,
