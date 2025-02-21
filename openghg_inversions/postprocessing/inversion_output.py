@@ -1,8 +1,8 @@
 from pathlib import Path
 from typing_extensions import Self
 import warnings
-from dataclasses import dataclass, field
-from typing import Literal, TypeVar
+from dataclasses import dataclass
+from typing import Any, Literal, TypeVar
 
 import arviz as az
 import numpy as np
@@ -137,14 +137,14 @@ class InversionOutput:
     flux: xr.DataArray
     basis: xr.DataArray
     trace: az.InferenceData
-    site_indicators: xr.DataArray = field(compare=False)
-    times: xr.DataArray = field(compare=False)
+    site_indicators: xr.DataArray
+    times: xr.DataArray
     start_date: str
     end_date: str
     species: str
     domain: str
-    site_names: xr.DataArray | None = field(default=None, compare=False)
-    model: pm.Model | None = field(default=None, compare=False)
+    site_names: xr.DataArray | None = None
+    model: pm.Model | None = None
 
     def __post_init__(self) -> None:
         """Check that trace has posterior traces, and fix flux time values."""
@@ -190,6 +190,26 @@ class InversionOutput:
             self.obs_repeatability.rename("y_obs_repeatability")
         )
         self.obs_variability = self.nmeasure_to_site_time(self.obs_variability.rename("y_obs_variability"))
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, self.__class__):
+            raise NotImplementedError
+
+        checks = [
+            (self.obs == other.obs).all(),
+            (self.obs_err == other.obs_err).all(),
+            (self.obs_repeatability == other.obs_repeatability).all(),
+            (self.obs_variability == other.obs_variability).all(),
+            (self.flux == other.flux).all(),
+            (self.get_flat_basis() == other.get_flat_basis()).all(),
+            (self.get_trace_dataset() == other.get_trace_dataset()).all(),
+            str(self.start_date) == str(other.start_date),
+            str(self.end_date) == str(other.end_date),
+            self.species == other.species,
+            self.domain == other.domain,
+        ]
+        return all(checks)
+
 
     def sample_predictive_distributions(self, ndraw: int | None = None) -> None:
         """Sample prior and posterior predictive distributions.

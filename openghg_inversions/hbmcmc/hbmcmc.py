@@ -20,6 +20,7 @@ the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 import logging
 from pathlib import Path
 from typing import Literal
+import warnings
 
 import numpy as np
 import xarray as xr
@@ -30,6 +31,7 @@ from openghg_inversions import get_data
 from openghg_inversions.basis import basis_functions_wrapper
 from openghg_inversions.filters import filtering
 from openghg_inversions.model_error import residual_error_method, percentile_error_method, setup_min_error
+from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
 
 
 def fixedbasisMCMC(
@@ -87,15 +89,12 @@ def fixedbasisMCMC(
     merged_data_name: str | None = None,
     basis_output_path: str | None = None,
     save_trace: str | Path | bool = False,
-    skip_postprocessing: bool = False,
-    merged_data_only: bool = False,
+    save_inversion_output: str | Path | bool = False,
     calculate_min_error: Literal["percentile", "residual"] | None = None,
     min_error_options: dict | None = None,
-    return_inv_out: bool = False,  # for testing new postprocessing
-    new_postprocessing: bool = False,  # for testing new postprocessing
+    output_format: Literal["hbmcmc", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"] = "hbmcmc",
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
-    return_mcmc_args: bool = False,
     **kwargs,
 ) -> xr.Dataset | dict:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference
@@ -245,8 +244,6 @@ def fixedbasisMCMC(
         If True, save arviz `InferenceData` trace to `outputpath`. Alternatively,
         A file path (including file name and extension) can be passed, and the trace will be
         saved there.
-      skip_post_processing:
-        If True, return raw trace from sampling.
       merged_data_only:
         If True, save merged data, and do nothing else.
       calculate_min_error:
@@ -256,10 +253,47 @@ def fixedbasisMCMC(
       min_error_options:
         Dictionary of additional arguments to pass the the function used to calculate min. model
         error (as specified by `calculate_min_error`).
+      output_format: select what is returned/saved by inversion
+        - "hbmcmc": (default) return the results of `inferpymc_postprocessouts`, and save result as netCDF
+        - "merged_data": return `fp_all` dictionary, no further processing and inversion *not* run
+        - "inv_out": return `InversionOutput` object
+        - "basic": return basic output created by new `postprocessing` submodule
+        - "paris": return flux and concentration datasets with PARIS formatting; these are also saved
+            as netCDF files in the directory `outputpath`
+        - "mcmc_args": return the arguments passed to `fixedbasisMCMC`, but do not run the inversion
+        - "mcmc_results": return the results of `fixedbasisMCMC` with no further processing
+      paris_postprocessing_kwargs: dict of kwargs to pass to `make_paris_outputs`
 
     Return:
       Results from the inversion in a Dataset if skip_post_processing==False, in a dictionnary if True
     """
+    # select output format
+    merged_data_only = False
+    return_inv_out = False
+    new_postprocessing = False
+    paris_postprocessing = False
+    return_mcmc_args = False
+    skip_postprocessing = False
+
+    if paris_postprocessing is True:
+        output_format = "paris"
+        warnings.warn("The `paris_postprocessing` argument will be deprecated. Use `output_format = 'paris'` instead.")
+
+    output_format = output_format.lower()  # type: ignore
+
+    if output_format == "merged_data":
+        merged_data_only = True
+    elif output_format == "inv_out":
+        return_inv_out = True
+    elif output_format == "basic":
+        new_postprocessing = True
+    elif output_format == "paris":
+        paris_postprocessing = True
+    elif output_format == "mcmc_args":
+        return_mcmc_args = True
+    elif output_format == "mcmc_results":
+        skip_postprocessing = True
+    # otherwise (i.e. output_format == "hbmcmc"), mcmc.inferpymc_postprocessouts is used
 
     rerun_merge = True
 
@@ -553,12 +587,34 @@ def fixedbasisMCMC(
 
             trace.to_netcdf(str(trace_path), engine="netcdf4")
 
+        # Path to save trace
+        if save_inversion_output:
+            if isinstance(save_inversion_output, str | Path):
+                inversion_output_path = save_inversion_output
+            else:
+                inversion_output_path = Path(outputpath) / (outputname + f"{start_date}_inversion_output.nc")
+
+            inversion_output = make_inv_out_for_fixed_basis_mcmc(
+                fp_data=fp_data,
+                Y=Y,
+                Ytime=Ytime,
+                error=error,
+                obs_repeatability=obs_repeatability,
+                obs_variability=obs_variability,
+                site_indicator=siteindicator,
+                site_names=sites,
+                mcmc_results=mcmc_results,
+                start_date=start_date,
+                end_date=end_date,
+                species=species,
+                domain=domain,
+            )
+            inversion_output.save(inversion_output_path)
+
         if skip_postprocessing:
             return mcmc_results
 
         if return_inv_out:
-            from ..postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
-
             return make_inv_out_for_fixed_basis_mcmc(
                 fp_data=fp_data,
                 Y=Y,
@@ -577,7 +633,7 @@ def fixedbasisMCMC(
 
 
         if new_postprocessing:
-            from ..postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
+            #from ..postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
             from ..postprocessing.make_outputs import basic_output
 
             inv_out = make_inv_out_for_fixed_basis_mcmc(
@@ -601,7 +657,7 @@ def fixedbasisMCMC(
 
         if paris_postprocessing:
             from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-            from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
+            #from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
             from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
             inv_out = make_inv_out_for_fixed_basis_mcmc(
