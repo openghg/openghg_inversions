@@ -120,9 +120,7 @@ def add_variable_attrs(
 
 
 def convert_time_to_unix_epoch(x: xr.Dataset, units: str = "1s") -> xr.Dataset:
-    """Convert `time` coordinate of xarray Dataset or DataArray to number of "units" since
-    1 Jan 1970 (the "UNIX epoch").
-    """
+    """Convert `time` coordinate of xarray Dataset or DataArray to number of "units" since 1 Jan 1970 (the "UNIX epoch")."""
     time_converted = (pd.DatetimeIndex(x.time) - pd.Timestamp("1970-01-01")) / pd.Timedelta(units)
 
     return x.assign_coords(time=time_converted)
@@ -142,10 +140,7 @@ def paris_concentration_outputs(
 
     TODO: add offset
     """
-    if report_mode:
-        stats = ["kde_mode", "quantiles"]
-    else:
-        stats = ["mean", "quantiles"]
+    stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
 
@@ -214,10 +209,7 @@ def paris_flux_output(
     inversion_grid: bool = True,
     flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
 ) -> xr.Dataset:
-    if report_mode:
-        stats = ["kde_mode", "quantiles"]
-    else:
-        stats = ["mean", "quantiles"]
+    stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
 
@@ -286,9 +278,13 @@ def paris_flux_output(
         else:
             offset = pd.to_timedelta(flux_frequency) / 2
 
-        time_func = lambda ds: ds.assign_coords(time=(pd.to_datetime(ds.time.values) + offset))
+        def time_func(ds):
+            return ds.assign_coords(time=(pd.to_datetime(ds.time.values) + offset))
+
     else:
-        time_func = lambda ds: ds
+
+        def time_func(ds):
+            return ds
 
     result = (
         xr.merge([flux_outs, country_outs, country_fraction])
@@ -325,6 +321,68 @@ def paris_flux_output(
     return result.as_numpy()
 
 
+def infer_flux_frequency(flux: xr.DataArray) -> str:
+    """Attempt to infer flux frequency.
+
+    This does not work in all cases. If the flux has a "time_period" attribute,
+    then that will be used. Otherwise, we try to infer the period by looking at
+    the differences between timestamps. If only one timestamp is found, then a
+    default value of "yearly" is returned.
+
+    Args:
+        flux: flux DataArray
+
+    Returns:
+        frequency string that can be parsed by pd.to_timedelta, or is "yearly" or "monthly"
+
+    Raises:
+        ValueError: if inferred frequency is not "yearly" or "monthly", and cannot be parsed by pd.to_timedelta
+
+    """
+
+    if "time_period" in flux.attrs:
+        time_period = flux.attrs["time_period"]
+        if "year" in time_period:
+            return "yearly"
+        if "month" in time_period:
+            return "monthly"
+
+        # check if the result can be parsed by pd.to_timedelta
+        try:
+            pd.to_timedelta(time_period)
+        except ValueError as e:
+            raise ValueError(
+                f"Flux frequency {time_period} from flux.attrs['time_period'] cannot be parsed by pd.to_timedelta."
+            ) from e
+        else:
+            return time_period
+
+    else:
+        # take most frequent gap between times
+        try:
+            flux_frequency_delta = pd.Series(flux.flux_time.values).diff().mode()[0]
+        except KeyError:
+            # only one time value
+            return "yearly"
+        else:
+            flux_frequency = pd.tseries.frequencies.to_offset(flux_frequency_delta).freqstr  # type: ignore
+
+            # "1 days" will be converted to "D" by the previous two lines, so we need to add a "1" in front
+            if not flux_frequency[0].isdigit():
+                flux_frequency = "1" + flux_frequency
+
+            # check if the result can be parsed
+            try:
+                pd.to_timedelta(flux_frequency)
+            except ValueError as e:
+                raise ValueError(
+                    f"Flux frequency {flux_frequency} inferred from gaps in flux.time cannot be parsed by pd.to_timedelta"
+                    "(and flux.attrs['time_period'] is not set)."
+                ) from e
+            else:
+                return flux_frequency
+
+
 def make_paris_outputs(
     inv_out: InversionOutput,
     country_file: str | Path | None = None,
@@ -334,30 +392,7 @@ def make_paris_outputs(
     obs_avg_period: str = "4h",
 ) -> tuple[xr.Dataset, xr.Dataset]:
     # infer flux frequency
-    # NOTE: this only works in certain cases
-    if "time_period" in inv_out.flux.attrs:
-        time_period = inv_out.flux.attrs["time_period"]
-        if "year" in time_period:
-            flux_frequency = "yearly"
-        elif "month" in time_period:
-            flux_frequency = "monthly"
-        else:
-            # hopefully this can be parsed by pd.to_timedelta
-            flux_frequency = time_period
-    else:
-        # take most frequent gap between times
-        try:
-            flux_frequency_delta = pd.Series(inv_out.flux.flux_time.values).diff().mode()[0]
-        except KeyError:
-            # only one time value
-            flux_frequency = "yearly"
-        else:
-            flux_frequency = pd.tseries.frequencies.to_offset(flux_frequency_delta).freqstr  # type: ignore
-
-            # "1 days" will be converted to "D" by the previous two lines, so we need to add a "1" in front
-            if not flux_frequency[0].isdigit():
-                flux_frequency = "1" + flux_frequency
-
+    flux_frequency = infer_flux_frequency(inv_out.flux)
     conc_outs = paris_concentration_outputs(inv_out, report_mode=report_mode, obs_avg_period=obs_avg_period)
     flux_outs = paris_flux_output(
         inv_out,
