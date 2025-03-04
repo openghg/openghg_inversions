@@ -8,21 +8,6 @@ from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.stats import calculate_stats
 from openghg_inversions.postprocessing.utils import rename_by_replacement
-from openghg_inversions.utils import get_country_file_path
-
-
-def make_country_traces(
-    inv_out: InversionOutput,
-    country_file: str | Path | None = None,
-    country_regions: dict[str, list[str]] | Path | None = None,
-    country_code: Literal["alpha2", "alpha3"] | None = None,
-):
-    country_file_path = get_country_file_path(country_file=country_file, domain=inv_out.domain)
-    countries = Countries(xr.open_dataset(country_file_path), country_code=country_code)
-
-    country_trace = countries.get_country_trace(inv_out=inv_out, country_regions=country_regions)
-
-    return country_trace
 
 
 def make_flux_outputs(
@@ -31,8 +16,32 @@ def make_flux_outputs(
     stats_args: dict | None = None,
     include_scale_factors: bool = True,
     report_flux_on_inversion_grid: bool = True,
-):
-    """Return dataset of stats for fluxes and scaling factors."""
+) -> xr.Dataset:
+    """Return dataset of stats for fluxes and scaling factors.
+
+    Args:
+        inv_out: InversionOutput containing MCMC traces.
+        stats: list of stats to use. If `None`, the default for
+          `calculate_stats` is used, which is "mean" and "quantiles". See the
+          `postprocessing.stats` submodule for more options.
+        stats_args: dict of arguments to be passed to stats functions. If a key
+          in this dict is the name of an argument for a stats function, then the
+          value for this key will be passed to the stats function. To pass an
+          option to a specific stats function, write the key in the form `<stat
+          function name>__<key>`, with a double underscore.
+            For instance, `stats_args = {"mode_kde__chunk_size": 20}` would pass the
+          argument `chunk_size = 20` to the stat function `mode_kde`, and no others.
+        include_scale_factors: If True, report stats for scale factors, in
+          addition to stats for fluxes (which are calculated by transforming the
+          scale factor stats to the lat/lon grid using the prior flux).
+        report_flux_on_inversion_grid: If True, report fluxes by basis function,
+          without incorporating the prior flux. Note: we do not actually optimise
+          for this quantity, since the prior flux is used in the forward model.
+
+    Returns:
+        xr.Dataset with computed flux stats.
+
+    """
     trace = inv_out.get_trace_dataset(var_names="x")
 
     if stats_args is None:
@@ -144,6 +153,25 @@ def make_concentration_outputs(
     stats: list[str] | None = None,
     stats_args: dict | None = None,
 ) -> xr.Dataset:
+    """Return dataset of stats for concentrations.
+
+    Args:
+        inv_out: InversionOutput containing MCMC traces.
+        stats: list of stats to use. If `None`, the default for
+          `calculate_stats` is used, which is "mean" and "quantiles". See the
+          `postprocessing.stats` submodule for more options.
+        stats_args: dict of arguments to be passed to stats functions. If a key
+          in this dict is the name of an argument for a stats function, then the
+          value for this key will be passed to the stats function. To pass an
+          option to a specific stats function, write the key in the form `<stat
+          function name>__<key>`, with a double underscore.
+            For instance, `stats_args = {"mode_kde__chunk_size": 20}` would pass the
+          argument `chunk_size = 20` to the stat function `mode_kde`, and no others.
+
+    Returns:
+        xr.Dataset with computed flux stats.
+
+    """
     conc_vars = ["y", "mu_bc"] if "mu_bc" in inv_out.trace.posterior else ["y"]
     trace = inv_out.get_trace_dataset(var_names=conc_vars)
 
@@ -168,25 +196,51 @@ def make_country_outputs(
     stats: list[str] | None = None,
     stats_args: dict | None = None,
     country_code: Literal["alpha2", "alpha3"] | None = "alpha3",
-):
+) -> xr.Dataset:
+    """Calculate country emission stats.
+
+    Args:
+        inv_out: InversionOutput containing MCMC traces
+        country_file: path to country definition file. If `None`, the default
+          country file location and the domain of the InversionOutput will be used
+          to try to find a suitable country file.
+        country_regions: dict mapping country region names (e.g. "BENELUX") to a
+          list of (country codes) of the countries comprising that regions (e.g.
+          `["BEL", "NLD", "LUX"]`).
+        stats: list of stats to use. If `None`, the default for
+          `calculate_stats` is used, which is "mean" and "quantiles". See the
+          `postprocessing.stats` submodule for more options.
+        stats_args: dict of arguments to be passed to stats functions. If a key
+          in this dict is the name of an argument for a stats function, then the
+          value for this key will be passed to the stats function. To pass an
+          option to a specific stats function, write the key in the form `<stat
+          function name>__<key>`, with a double underscore.
+            For instance, `stats_args = {"mode_kde__chunk_size": 20}` would pass the
+          argument `chunk_size = 20` to the stat function `mode_kde`, and no others.
+        country_code: If set to "alpha2" or "alpha3", country names will be
+          converted to two or three digit country codes, respectively. Country
+          region definitions should use the same type of code as specified here.
+
+    Returns:
+        xr.Dataset containing statistics for the specified countries and regions.
+
+    """
     if country_regions == "paris":
         country_regions = paris_regions_dict
     elif isinstance(country_regions, str):
         country_regions = Path(country_regions)
 
-    country_traces = make_country_traces(
-        inv_out,
-        country_file=country_file,
-        country_code=country_code,
-        country_regions=country_regions,
+    countries = Countries.from_file(
+        country_file=country_file, country_code=country_code, country_regions=country_regions
     )
+    country_traces = countries.get_country_trace(inv_out=inv_out)
 
     if stats_args is None:
         stats_args = {}
     if stats is not None:
         stats_args["stats"] = stats
 
-    country_stats = calculate_stats(country_traces)
+    country_stats = calculate_stats(country_traces, **stats_args)
 
     return country_stats.as_numpy()
 

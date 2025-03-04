@@ -16,7 +16,21 @@ from openghg_inversions.array_ops import get_xr_dummies, align_sparse_lat_lon
 def filter_data_vars_by_prefix(
     ds: xr.Dataset, var_name_prefixes: str | list[str], sep: str = "_"
 ) -> xr.Dataset:
-    """Select data variables that match the specified filters."""
+    """Select data variables that match the specified filters.
+
+    For instance, if `var_name_prefixes = "prior"`, then any data variable
+    whose name begins with "prior_" will be selected. The underscore "_" is
+    added by default, but can be changed by specifying `sep`.
+
+    Args:
+        ds: dataset to filter
+        var_name_prefixes: (list of) prefix(s) to filter data variables by.
+        sep: separator for prefix; default is "_".
+
+    Returns:
+        xr.Dataset restricted to data variables whose names match the filter.
+
+    """
     if isinstance(var_name_prefixes, str):
         var_name_prefixes = [var_name_prefixes]
 
@@ -34,8 +48,22 @@ def filter_data_vars_by_prefix(
 def convert_idata_to_dataset(
     idata: az.InferenceData, group_filters=["prior", "posterior"], add_suffix=True
 ) -> xr.Dataset:
-    """Merge prior, prior predictive, posterior, and posterior predictive samples into a single
-    xr.Dataset.
+    """Merge all groups in an arviz InferenceData object into a single xr.Dataset.
+
+    Args:
+        idata: arviz InferenceData containing traces (and other data)
+        group_filters: Filters for the groups of the InferenceData. A group will
+          be selected if a filter is a substring of the group name. So the groups
+          "prior" and "prior_predictive" will both match the filter "prior". The
+          default filters select the "prior", "prior_predictive", "posterior", and
+          "posterior_predictive" groups.
+        add_suffix: if True, rename the data variables so that they end in the
+          name of the group they came from.
+
+    Returns:
+        xr.Dataset containing all data variables in the selected groups of the
+        InferenceData
+
     """
     traces = []
     for group in idata.groups():
@@ -56,8 +84,11 @@ def _add_attributes_to_trace_dataset(trace_ds: xr.Dataset, obs_units: str, obs_l
     Args:
         trace_ds: trace dataset (probably created by `convert_idata_to_dataset`)
         obs_units: units for observation data used in inversion
+        obs_longname: long name for observation data used in inversion
+
     Returns:
         None: updates Dataset in-place
+
     """
     for dv in trace_ds.data_vars:
         if str(dv).endswith("prior_predictive"):
@@ -99,36 +130,61 @@ XrDataArrayOrSet = TypeVar("XrDataArrayOrSet", xr.DataArray, xr.Dataset)
 
 def _nmeasure_to_site_time(
     data: XrDataArrayOrSet,
-    site_indicators: xr.DataArray,
-    times: xr.DataArray,
+    site_indicators: xr.DataArray | np.ndarray,
+    times: xr.DataArray | np.ndarray,
     site_names: xr.DataArray | dict | None = None,
 ) -> XrDataArrayOrSet:
-    """Convert `nmeasure` dimension to multi-index over `site` and `time.`"""
+    """Convert `nmeasure` dimension to multi-index over `site` and `time`.
+
+    This uses an array of `site_indicators` and an array of times to construct
+    coordinates for the dimension `nmeasure`. If the `site_indicators` are
+    numbers, `site_names` can be provided to convert these numbers into site
+    names.
+
+    Args:
+        data: xr.DataArray or xr.Dataset. Typically, this has a `nmeasure`
+          coordinate, but this isn't a strict requirement.
+        site_indicators: array specifying the site where a measurement was taken
+        times: array specifying the time a measurement was taken
+        site_names: optional DataArray or dict mapping the values of
+          `site_indicator` to strings. If `None`, the values of `site_indicator`
+          will be used unchanged.
+
+    Returns:
+        xr.DataArray or xr.Dataset (same type as input) with `nmeasure`
+          coordinate consisting of stacked `site` and `time` coordinates.
+
+    Raises:
+        ValueError: if `site_indicators` and `times` have different lengths.
+
+    """
     if len(site_indicators) != len(times):
         raise ValueError(
             "Site indicators and times must be same length, got:"
             f"\nsite indicators:\n{site_indicators}\ntimes:\n{times}"
         )
-    if site_names is None:
-        site_codes = site_indicators.values
-    else:
+
+    time_vals = times.values if isinstance(times, xr.DataArray) else times
+    site_codes = site_indicators.values if isinstance(site_indicators, xr.DataArray) else site_indicators
+
+    if site_names is not None:
         if isinstance(site_names, xr.DataArray):
             site_names = dict(site_names.to_series())
 
-        site_codes = [site_names.get(x) for x in site_indicators.values]
+        site_codes = [site_names.get(x) for x in site_codes]
 
-    nmeasure_multiindex = pd.MultiIndex.from_arrays([site_codes, times.values], names=["site", "time"])
+    nmeasure_multiindex = pd.MultiIndex.from_arrays([site_codes, time_vals], names=["site", "time"])
     xr_nmeasure_multiindex = xr.Coordinates.from_pandas_multiindex(nmeasure_multiindex, "nmeasure")
 
     result = data.assign_coords(xr_nmeasure_multiindex)
-    result.time.attrs = times.attrs
+    result.time.attrs = times.attrs if isinstance(times, xr.DataArray) else {}
 
     return result
 
 
 @dataclass
 class InversionOutput:
-    """dataclass to hold the quantities we need to calculate outputs."""
+    """Outputs of inversion needed for post-processing."""
 
     obs: xr.DataArray
     obs_err: xr.DataArray
@@ -167,7 +223,6 @@ class InversionOutput:
         # if basis has time, make sure it is aligned to flux
         if "time" in self.basis.dims:
             self.basis = self.basis.rename(time="flux_time")
-            # self.basis = self.basis.assign_coords(flux_time=self.flux.flux_time)
         elif "time" in self.basis.coords:
             # time not in dims, so just delete the coord
             self.basis = self.basis.drop_vars("time")
@@ -192,6 +247,24 @@ class InversionOutput:
         self.obs_variability = self.nmeasure_to_site_time(self.obs_variability.rename("y_obs_variability"))
 
     def __eq__(self, other: Any) -> bool:
+        """Check equality between InversionOutput objects.
+
+        The `dataclass` default `__eq__` method doesn't work because the
+        `.basis` attribute is a sparse matrix, which causes problems when
+        testing equality.
+
+        Args:
+            other: object to compare with
+
+        Returns:
+            True if obs and errors, flux, flat basis, trace, start/end dates,
+              species, and domain are equal.
+
+        Raises:
+            NotImplementedError: if equality is tested with an object that is
+              not InversionOutput.
+
+        """
         if not isinstance(other, self.__class__):
             raise NotImplementedError
 
@@ -210,11 +283,15 @@ class InversionOutput:
         ]
         return all(checks)
 
-
     def sample_predictive_distributions(self, ndraw: int | None = None) -> None:
         """Sample prior and posterior predictive distributions.
 
         This creates prior samples as a side-effect.
+
+        Args:
+            ndraw: optional number of prior samples to draw; defaults to the number of
+              posterior samples.
+
         """
         if self.model is None:
             warnings.warn("Cannot sample predictive distributions without PyMC model.")
@@ -227,6 +304,15 @@ class InversionOutput:
         self.trace.extend(pm.sample_posterior_predictive(self.trace, model=self.model, var_names=["y"]))
 
     def nmeasure_to_site_time(self, data: XrDataArrayOrSet) -> XrDataArrayOrSet:
+        """Convert `nmeasure` coordinate of dataset to stacked (site, time) coordinate.
+
+        Args:
+            data: xr.DataArray or xr.Dataset
+
+        Returns:
+            data with `nmeasure` converted to a stacked (site, time) coordinate.
+
+        """
         return _nmeasure_to_site_time(data, self.site_indicators, self.times, self.site_names)
 
     def get_trace_dataset(self, var_names: str | list[str] | None = None) -> xr.Dataset:
@@ -268,28 +354,36 @@ class InversionOutput:
 
     @property
     def start_time(self) -> pd.Timestamp:
-        """Return start date of inversion."""
+        """Start date of inversion."""
         if self.start_date is not None:
             return pd.to_datetime(self.start_date)
         return pd.to_datetime(self.times.min().values[0])
 
     @property
     def end_time(self) -> pd.Timestamp:
-        """Return end date of inversion."""
+        """End date of inversion."""
         if self.end_date is not None:
             return pd.to_datetime(self.end_date)
         return pd.to_datetime(self.times.max().values[0])
 
     @property
     def period_midpoint(self) -> pd.Timestamp:
-        """Return midpoint of inversion period."""
+        """Midpoint of inversion period."""
         return self.start_time + (self.start_time - self.end_time) / 2
 
     def get_total_err(self, take_mean: bool = True) -> xr.DataArray:
-        """Return sqrt(repeatability**2 + variability**2 + model_error**2)
+        """Return the posterior model-data mismatch error.
+
+        This is the variable `epsilon` in the RHIME model. It can be thought of
+        as sqrt(repeatability**2 + variability**2 + model_error**2), although the
+        actual definition is more complicated.
 
         Args:
-            take_mean: if True, take mean over trace of error term
+            take_mean: if True, take mean over trace of error term, otherwise
+              return the full trace.
+
+        Returns:
+            xr.DataArray containing total error
 
         """
         result = self.get_trace_dataset(var_names="epsilon").epsilon_posterior
@@ -303,9 +397,14 @@ class InversionOutput:
         return result.rename("total_error")
 
     def get_model_err(self) -> xr.DataArray:
-        """Return model_error
+        """Return model_error.
 
-        By default, `nmeasure` is converted to `site` and `time`.
+        The model error is calculated by subtracting the square of the obs error
+        from the square of the total error, and then taking a square root.
+
+        Returns:
+            xr.DataArray containing model error
+
         """
         total_err = self.get_total_err(take_mean=False)
         total_obs_err = self.obs_err
@@ -316,6 +415,16 @@ class InversionOutput:
         return result.rename("model_error")
 
     def get_obs_and_errors(self) -> xr.Dataset:
+        """Return dataset containing observations and related error terms.
+
+        The dataset return contains: obs, obs error (as used by the inversion),
+        obs repeatability and variability, model error, and total error (i.e.
+        the model-data mismatch error).
+
+        Returns:
+            xr.Dataset containing obs and error data
+
+        """
         # TODO: some of these variables could just be stored in a dataset in InversionOutput,
         # rather than in separate data arrays
         to_merge = [
@@ -332,7 +441,20 @@ class InversionOutput:
         return result
 
     def get_flat_basis(self) -> xr.DataArray:
-        """Return 2D DataArray encoding basis regions."""
+        """Return 2D DataArray encoding basis regions.
+
+        The `InversionOutput.basis` matrix is sparse, with three dimensions: latitude, longitude, and region
+        (which corresponds to a basis function). A sparse matrix cannot be saved directly to disk, or compared
+        with other matrices of this type, and converting directly to a dense matrix could use a very large
+        amount of memory.
+
+        This function converts the basis matrix to a 2D array with latitude and longitude coordinates, and basis
+        regions encoded by numbers in this 2D array.
+
+        Returns:
+            xr.DataArray encoding basis functions, with latitude and longitude coordinates
+
+        """
         if len(self.basis.dims) == 2:
             return self.basis
 
@@ -349,6 +471,12 @@ class InversionOutput:
 
         To make it possible to save the data, the `nmeasure` multi-index needs to be removed.
         The multi-index is restored by the `from_datatree` method.
+
+        Returns:
+            xr.DataTree containing the trace (as a sub-DataTree), obs and errors, the flat basis
+              functions, and the flux, as well as the start/end dates, species, and domain in its
+              attributes.
+
         """
         dt_dict = {
             "trace": xr.DataTree.from_dict({group: ds for group, ds in self.trace.items()}),
@@ -367,27 +495,55 @@ class InversionOutput:
         }
         return dt
 
-    def save(self, output_file: str | Path, format: Literal["netcdf", "zarr"] | None = None) -> None:
+    def save(self, output_file: str | Path, output_format: Literal["netcdf", "zarr"] | None = None) -> None:
+        """Save InversionOutput to netCDF or Zarr.
+
+        There is a corresponding `load` method to recover the InversionOutput
+        from a saved version.
+
+        Args:
+            output_file: path to file where the InversionOutput should be saved
+            output_format: format to save to; if `None`, this will be inferred by the
+              extension of `output_file`
+
+        Raises:
+            ValueError: If `output_format` is not specified and cannot be inferred
+              from the output file extension.
+
+        """
         output_file = Path(output_file)
 
-        if format is None:
+        if output_format is None:
             try:
-                format = {".nc": "netcdf", ".zarr": "zarr"}[output_file.suffix]  # type: ignore
+                output_format = {".nc": "netcdf", ".zarr": "zarr"}[output_file.suffix]  # type: ignore
             except KeyError:
-                raise ValueError(f"Output file {output_file} does not end in '.nc' or '.zarr'; please specify `format`.")
+                raise ValueError(
+                    f"Output file {output_file} does not end in '.nc' or '.zarr'; please specify `output_format`."
+                )
 
-        if format == "netcdf":
+        if output_format == "netcdf":
             if output_file.suffix != ".nc":
                 output_file = Path(output_file.stem + ".nc")
             self.to_datatree().to_netcdf(output_file)
 
-        if format == "zarr":
+        if output_format == "zarr":
             if output_file.suffix != ".zarr":
                 output_file = Path(output_file.stem + ".zarr")
             self.to_datatree().to_zarr(output_file)
 
     @classmethod
     def from_datatree(cls: type[Self], dt: xr.DataTree) -> Self:
+        """Construct InversionOutput from serialised InversionOutput xr.DataTree.
+
+        This method is the inverse of `to_datatree`.
+
+        Args:
+            dt: xr.DataTree constructed using `InversionOutput.to_datatree`
+
+        Returns:
+            InversionOutput reconstructed from datatree
+
+        """
         obs_and_errs_ds = dt.obs_and_errors.to_dataset().drop_vars(["site", "time"])
         obs_and_errs = tuple(obs_and_errs_ds.values())
         inv_info = {
@@ -410,6 +566,18 @@ class InversionOutput:
 
     @classmethod
     def load(cls: type[Self], file_path: str | Path) -> Self:
+        """Load InversionOutput from file.
+
+        Use this to load `InversionOutput` that was previously saved using
+        `InversionOutput.save`.
+
+        Args:
+            file_path: path to saved InversionOutput
+
+        Returns:
+            InversionOutput loaded from saved file
+
+        """
         dt = xr.open_datatree(file_path)
         return cls.from_datatree(dt)
 
@@ -460,10 +628,7 @@ def make_inv_out_for_fixed_basis_mcmc(
 
     # TODO: this only works if there is one flux used (or if multiple, but ModelScenario stacks them)
     if isinstance(flux, xr.Dataset):
-        if "flux" in flux:
-            flux = flux.flux
-        else:
-            flux = flux[flux.data_vars[0]]
+        flux = flux.flux if "flux" in flux else flux[flux.data_vars[0]]
 
     if not isinstance(flux, xr.DataArray):
         raise ValueError("Flux from `fp_data` could not be converted to a xr.DataArray.")

@@ -131,16 +131,13 @@ def read_netcdfs(
 
 
 def get_country_file_path(country_file: str | Path | None = None, domain: str | None = None):
-    if isinstance(country_file, (str, Path)):
+    if isinstance(country_file, str | Path):
         result = Path(country_file)
 
         if not result.exists():
             raise FileNotFoundError(f"No country file found at path {result}")
 
         return result
-
-    if isinstance(country_file, str):
-        return Path(country_file)
 
     if domain is None:
         raise ValueError("If `country_file` is None, then `domain` must be specified.")
@@ -152,12 +149,17 @@ def get_country_file_path(country_file: str | Path | None = None, domain: str | 
         country_directory.mkdir()
 
         raise FileNotFoundError(
-            "Country definition file not found." f" Please add to {openghginv_path}/countries/"
+            f"Country definition file not found. Please add to {openghginv_path}/countries/"
         )
 
-    filenames = list(country_directory.glob(f"country_{domain}.nc"))
-    filename = filenames[0]
-    return Path(filename)
+    result = country_directory / f"country_{domain}.nc"
+
+    if not result.exists():
+        raise FileNotFoundError(
+            f"Country definition file not found. Please add to {openghginv_path}/countries/"
+        )
+
+    return result
 
 
 def get_country(domain: str, country_file: str | Path | None = None):

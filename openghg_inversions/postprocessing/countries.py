@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from pathlib import Path
 from typing import cast, Literal, TypeVar
+from typing_extensions import Self
 
 import xarray as xr
 from openghg_inversions import convert, utils
 
 from openghg_inversions.array_ops import align_sparse_lat_lon, get_xr_dummies, sparse_xr_dot
-from ._country_codes import get_country_codes
+from openghg_inversions.utils import get_country_file_path
+from ._country_codes import CountryInfoList
 from .inversion_output import InversionOutput
 
 # type for xr.Dataset *or* xr.DataArray
@@ -18,7 +21,9 @@ DataSetOrArray = TypeVar("DataSetOrArray", xr.DataArray, xr.Dataset)
 
 
 def get_area_grid(lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
-    """Return xr.DataArray with coordinate dimensions ("lat", "lon") containing
+    """Return array containing area of each grid cell centered on given coordinates.
+
+    This creates an xr.DataArray with coordinate dimensions ("lat", "lon") containing
     the area of each grid cell centered on the coordinates.
 
     Args:
@@ -32,10 +37,57 @@ def get_area_grid(lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
     return xr.DataArray(ag_vals, coords=[lat, lon], dims=["lat", "lon"], name="area_grid")
 
 
-class Countries:
-    """Class to load country files (and list of countries to use from that file), and provide methods
-    to create country traces bases on these country files.
+class CountryRegions:
+    def __init__(self, country_regions: dict[str, list[str]]) -> None:
+        # validate input
+        if not isinstance(country_regions, dict) or any(
+            not isinstance(v, list) for v in country_regions.values()
+        ):
+            raise ValueError(
+                "Country regions are not in the correct format; they must be a dictionary mapping"
+                "region names to the list of countries forming that region."
+            )
 
+        self._regions = country_regions
+
+    @classmethod
+    def from_file(cls, filepath: str | Path):  # TODO: return type: Self
+        with open(filepath, encoding="utf8") as f:
+            country_regions = json.load(f)
+
+        return cls(country_regions)
+
+    def __bool__(self) -> bool:
+        return bool(self._regions)
+
+    def to_dict(self, country_code: Literal["alpha2", "alpha3"] | None = None) -> dict[str, CountryInfoList]:
+        return {
+            region: CountryInfoList(region_countries, country_code=country_code)
+            for region, region_countries in self._regions.items()
+        }
+
+    def region_countries_missing_from(self, country_list: CountryInfoList) -> dict[str, CountryInfoList]:
+        missing = defaultdict(CountryInfoList)
+
+        for region, region_countries in self.to_dict().items():
+            for rc in region_countries:
+                if rc not in country_list:
+                    missing[region].append(rc)
+
+        return missing
+
+    def region_countries_present_in(self, country_list: CountryInfoList) -> bool:
+        return not self.region_countries_missing_from(country_list)
+
+    @property
+    def region_names(self) -> list[str]:
+        return list(self._regions.keys())
+
+
+class Countries:
+    """Class to load country files and create country traces.
+
+    A list of specifying a subset of the countries in the country file can be provided.
     Multiple Country objects can be merged together to use multiple country files.
     """
 
@@ -44,28 +96,65 @@ class Countries:
         countries: xr.Dataset,
         country_selections: list[str] | None = None,
         country_code: Literal["alpha2", "alpha3"] | None = None,
+        country_regions: dict[str, list[str]] | str | Path | None = None,
     ) -> None:
         """Create Countries object given country map Dataset and optional list of countries to select.
 
         Args:
             countries: country map Dataset with `country` and `name` data variables.
             country_selections: optional list of country names to select.
-        """
-        if country_code is None:
-            country_labels = countries.name.values
-        else:
-            # apply `get_country_code` to each element of `country` coordinate
-            country_labels = get_country_codes(countries.name.values)
+            country_code: if not None, convert country names to specified codes. These names or codes
+              will be used in the `country` coordinate.
+            country_regions: dict mapping country region names (e.g. "BENELUX") to a
+              list of (country codes) of the countries comprising that regions (e.g.
+              `["BEL", "NLD", "LUX"]`). Alternatively, a path (or string representing a path)
+              to a JSON file with a similar specification can be passed.
 
-        self.matrix = get_xr_dummies(countries.country, cat_dim="country", categories=country_labels)
+        """
+        self.country_code = country_code
+        self.country_labels = CountryInfoList(countries.name.values, country_code=country_code)
+
+        # get country regions
+        if country_regions is None:
+            self.country_regions = CountryRegions({})
+        elif isinstance(country_regions, str | Path):
+            self.country_regions = CountryRegions.from_file(country_regions)
+        else:
+            self.country_regions = CountryRegions(country_regions)
+
+        # check that country regions are specified in correct country code
+        missing_countries = self.country_regions.region_countries_missing_from(self.country_labels)
+        if missing_countries:
+            msg = "\n".join(
+                f"{region}: {list(countries)}" for region, countries in missing_countries.items() if countries
+            )
+            raise ValueError(f"Could not find the following countries needed for regions:\n{msg}")
+
+        # create matrix with dimensions: lat, lon, country
+        self.matrix = get_xr_dummies(countries.country, cat_dim="country", categories=self.country_labels)
+
+        # add regions to matrix
+        if self.country_regions:
+            region_matrix = xr.concat(
+                [
+                    self.matrix.sel(country=region_countries).sum("country").expand_dims(country=[region])
+                    for region, region_countries in self.country_regions.to_dict(
+                        country_code=self.country_code
+                    ).items()
+                ],
+                dim="country",
+            )
+            self.matrix = xr.concat([self.matrix, region_matrix], dim="country")
+
         self.area_grid = get_area_grid(countries.lat, countries.lon)
 
+        # restrict matrix to selected countries
         if country_selections is not None:
-            # check that selected countries are in the `name` variable of `countries` Dataset
+            # check that selected countries are in the input country file
             selections_check = []
-            all_countries = list(map(lambda x: str(x).lower(), countries.name.values))
+
             for selection in country_selections:
-                if selection.lower() not in all_countries:
+                if selection not in self.country_labels:
                     selections_check.append(selection)
             if selections_check:
                 raise ValueError(
@@ -73,12 +162,46 @@ class Countries:
                     f"`countries` Dataset: {selections_check}"
                 )
 
+            # add regions to selection
+            self.country_selections = CountryInfoList(country_selections, country_code=self.country_code)
+            self.country_selections.extend(self.country_regions.region_names)
+
             # only keep selected countries in country matrix
             filt = self.matrix.country.isin(country_selections)
             self.matrix = self.matrix.where(filt, drop=True)
-            self.country_selections = country_selections
         else:
-            self.country_selections = list(self.matrix.country.values)
+            self.country_selections = self.country_labels + self.country_regions.region_names
+
+    @classmethod
+    def from_file(
+        cls,
+        country_file: str | Path | None = None,
+        domain: str | None = None,
+        country_selections: list[str] | None = None,
+        country_code: Literal["alpha2", "alpha3"] | None = None,
+        country_regions: dict[str, list[str]] | str | Path | None = None,
+    ) -> Self:
+        """Create Countries object given country map Dataset and optional list of countries to select.
+
+        Args:
+            country_file: path to country file
+            domain: used to select country file from `openghg_inversions/countries` if `country_file` is None.
+            country_selections: optional list of country names to select.
+            country_code: if not None, convert country names to specified codes. These names or codes
+              will be used in the `country` coordinate.
+            country_regions: dict mapping country region names (e.g. "BENELUX") to a
+              list of (country codes) of the countries comprising that regions (e.g.
+              `["BEL", "NLD", "LUX"]`). Alternatively, a path (or string representing a path)
+              to a JSON file with a similar specification can be passed.
+
+        """
+        country_file_path = get_country_file_path(country_file=country_file, domain=domain)
+        return cls(
+            xr.open_dataset(country_file_path),
+            country_code=country_code,
+            country_selections=country_selections,
+            country_regions=country_regions,
+        )
 
     def get_x_to_country_mat(
         self,
@@ -88,14 +211,7 @@ class Countries:
         """Construct a sparse matrix mapping from x sensitivities to country totals.
 
         Args:
-            countries: xr.Dataset from country file. Must have variables: "country" with coordinate
-                dimensions ("lat", "lon"), and "name" (with no coordinate dimensions).
-            hbmcmc_outs: xr.Dataset from `hbmcmc_postprocessouts`.
-            flux: flux used in inversion. If a constant flux was used, then `aprioriflux` from
-                `hbmcmc_outs` can be used.
-            area_grid: areas of each grid cell in inversion domain.
-            basis_functions: xr.DataArray with coordinate dimensions ("lat", "lon") whose values assign
-                grid cells to basis function boxes.
+            inv_out: InversionOutput object, used to get basis functions and flux.
             sparse: if True, values of returned DataArray are `sparse.COO` array.
 
         Returns:
@@ -108,12 +224,11 @@ class Countries:
         # compute matrix/tensor product: country_mat.T @ (area_grid * flux * basis_mat)
         # transpose doesn't need to be taken explicitly because alignment is done by dimension name
         result = self.matrix @ (self.area_grid * flux_x_basis)
-        # result = sparse_xr_dot(self.matrix, self.area_grid * flux_x_basis)
+
         if sparse:
             return result
 
-        # hack since `.to_numpy()` doesn't work correctly with sparse arrays
-        return xr.apply_ufunc(lambda x: x.todense(), result)
+        return result.as_numpy()
 
     @staticmethod
     def _get_country_trace(
@@ -142,43 +257,9 @@ class Countries:
         molar_mass = convert.molar_mass(species)
         return raw_trace * 365 * 24 * 3600 * molar_mass  # type: ignore
 
-    @staticmethod
-    def _country_region_traces(
-        country_traces: xr.Dataset, country_regions: dict[str, list[str]] | Path
-    ) -> xr.Dataset:
-        if isinstance(country_regions, Path):
-            with open(country_regions, encoding="utf8") as f:
-                _country_regions = json.load(f)
-            if not isinstance(_country_regions, dict) or any(
-                not isinstance(v, list) for v in _country_regions.values()
-            ):
-                raise ValueError(
-                    f"Country regions from file {country_regions} is not in the correct format."
-                    " It must be a dictionary mapping regions to the list of countries forming that region."
-                )
-            country_regions = _country_regions
-
-        region_traces = []
-
-        for region, countries in country_regions.items():
-            try:
-                region_ds = (
-                    country_traces.sel(country=countries).sum("country").expand_dims({"country": [region]})
-                )
-            except KeyError as e:
-                print(f"Country region {region} was not added due to key error {e}.")
-            else:
-                region_traces.append(region_ds)
-
-        if not region_traces:
-            return xr.Dataset()
-
-        return xr.concat(region_traces, dim="country")
-
     def get_country_trace(
         self,
         inv_out: InversionOutput,
-        country_regions: dict[str, list[str]] | Path | None = None,
     ) -> xr.Dataset:
         """Calculate trace(s) for total country emissions.
 
@@ -201,10 +282,6 @@ class Countries:
 
         rename_dict = {dv: "country_" + str(dv).split("_")[1] for dv in country_traces.data_vars}
         country_traces = country_traces.rename_vars(rename_dict)
-
-        if country_regions is not None:
-            region_traces = self._country_region_traces(country_traces, country_regions)
-            country_traces = xr.merge([country_traces, region_traces])
 
         for dv in country_traces.data_vars:
             suffix = str(dv).removeprefix("country_")
