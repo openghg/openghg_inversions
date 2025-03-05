@@ -280,7 +280,6 @@ def paris_flux_output(
 
         def time_func(ds):
             return ds.assign_coords(time=(pd.to_datetime(ds.time.values) + offset))
-
     else:
 
         def time_func(ds):
@@ -339,7 +338,6 @@ def infer_flux_frequency(flux: xr.DataArray) -> str:
         ValueError: if inferred frequency is not "yearly" or "monthly", and cannot be parsed by pd.to_timedelta
 
     """
-
     if "time_period" in flux.attrs:
         time_period = flux.attrs["time_period"]
         if "year" in time_period:

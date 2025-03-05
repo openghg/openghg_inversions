@@ -78,7 +78,7 @@ def test_make_paris_outputs(inv_out, europe_country_file, tmpdir):
 
 
 def test_save_inversion_output(mcmc_args, tmpdir):
-    """Check that we can save and reload inversion ouputs"""
+    """Check that we can save and reload inversion outputs"""
     mcmc_args["save_inversion_output"] = str(tmpdir / "inv_out.nc")
     mcmc_args["output_format"] = "inv_out"
     inv_out = fixedbasisMCMC(**mcmc_args)

@@ -1,5 +1,7 @@
+"""Functions for computing statistics on datasets."""
+
 from collections import namedtuple
-from typing import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 
 import arviz as az
 import numpy as np
@@ -36,7 +38,23 @@ def register_stat(stat: Callable) -> Callable:
 @register_stat
 @add_suffix("quantile")
 @update_attrs("quantile_of")
-def quantiles(ds: xr.Dataset, quantiles: Sequence[float] = [0.159, 0.841], sample_dim: str = "draw"):
+def quantiles(
+    ds: xr.Dataset, quantiles: Sequence[float] = [0.159, 0.841], sample_dim: str = "draw"
+) -> xr.Dataset:
+    """Compute quantiles.
+
+    Args:
+        ds: input dataset; must have dimension specified by `sample_dim`
+          (default is "draw")
+        quantiles: sequence of quantiles to compute; default values correspond
+          to mean +/- 1 stdev for a normally distributed sequence.
+        sample_dim: dimension to compute quantiles over; defaults to "draw",
+          which is the default sample dimension for PyMC outputs.
+
+    Returns:
+        xr.Dataset of specified quantiles, with a new `quantile` dimension.
+
+    """
     return ds.quantile(q=quantiles, dim=sample_dim)
 
 
@@ -118,7 +136,7 @@ def hdi(ds: xr.Dataset, hdi_prob: float | Iterable[float] = 0.68, sample_dim: st
     def calc(data, hdi_prob):
         return az.hdi(data, hdi_prob=hdi_prob)
 
-    if not "chain" in ds.dims:
+    if "chain" not in ds.dims:
         ds = ds.expand_dims({"chain": [0]})
 
     if sample_dim != "draw":
@@ -155,12 +173,16 @@ def calculate_stats(ds: xr.Dataset, stats: list[str] = ["mean", "quantiles"], **
         ds: dataset to calculate stats on.
         stats: list of stats to calculate.
         **kwargs: arguments to pass to stats functions. If a parameter can be passed to a stats function,
-            it will be passed. To pass to a specific stats function, use `<stats func name>__<key> = <value>`.
-            Note: that is a double underscore. For instance `mode_kde__chunk_dim="country"` would specify `chunk_dim`
-            only for the stats function "mode_kde".
+          it will be passed. To pass to a specific stats function, use `<stats func name>__<key> = <value>`.
+          Note: that is a double underscore. For instance `mode_kde__chunk_dim="country"` would specify `chunk_dim`
+          only for the stats function "mode_kde".
 
     Returns:
         dataset containing all stats calculated on all variables in input dataset.
+
+    Raises:
+        ValueError: if a statistic in `stats` is not found in the registry.
+
     """
     stats_datasets = []
 
@@ -181,43 +203,3 @@ def calculate_stats(ds: xr.Dataset, stats: list[str] = ["mean", "quantiles"], **
         stats_datasets.append(sf_result)
 
     return xr.merge(stats_datasets)
-
-
-# def calculate_stats(
-#     ds: xr.Dataset,
-#     name: str,
-#     chunk_dim: str,
-#     chunk_size: int = 10,
-#     var_names: Optional[list[str]] = None,
-#     report_mode: bool = False,
-#     add_bc_suffix: bool = False,
-# ) -> list[xr.Dataset]:
-#     output = []
-#     if var_names is None:
-#         var_names = list(ds.data_vars)
-#     for var_name in var_names:
-#         suffix = "apost" if "posterior" in var_name else "apriori"
-#         if add_bc_suffix:
-#             suffix += "BC"
-
-#         if report_mode:
-#             stats = [
-#                 calc_mode_kde(
-#                     ds[var_name].dropna(dim="draw").chunk({chunk_dim: chunk_size}), sample_dim="draw"
-#                 )
-#                 .compute()
-#                 .rename(f"{name}{suffix}"),
-#             ]
-#         else:
-#             stats = [
-#                 ds[var_name].mean("draw").rename(f"{name}{suffix}"),
-#                 # calc_mode(ds[var_name].dropna(dim="draw").chunk({chunk_dim: chunk_size}), sample_dim="draw")
-#                 # .compute()
-#                 # .rename(f"{name}{suffix}_mode"),
-#             ]
-#         stats.append(
-#             make_quantiles(ds[var_name].dropna(dim="draw"), sample_dim="draw").rename(f"q{name}{suffix}")
-#         )
-
-#         output.extend(stats)
-#     return output
