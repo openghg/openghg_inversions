@@ -6,6 +6,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 from typing import cast, Literal, TypeVar
+from collections.abc import Iterable, Mapping, Sequence
 from typing_extensions import Self
 
 import xarray as xr
@@ -37,11 +38,41 @@ def get_area_grid(lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
     return xr.DataArray(ag_vals, coords=[lat, lon], dims=["lat", "lon"], name="area_grid")
 
 
+paris_regions_dict = {
+    "BELUX": ["BEL", "LUX"],
+    "BENELUX": ["BEL", "LUX", "NLD"],
+    "CW_EU": [
+        "AUT",
+        "BEL",
+        "CHE",
+        "CZE",
+        "DEU",
+        "ESP",
+        "FRA",
+        "GBR",
+        "HRV",
+        "HUN",
+        "IRL",
+        "ITA",
+        "LUX",
+        "NLD",
+        "POL",
+        "PRT",
+        "SVK",
+        "SVN",
+    ],
+    "EU_GRP2": ["AUT", "BEL", "CHE", "DEU", "DNK", "FRA", "GBR", "IRL", "ITA", "LUX", "NLD"],
+    "NW_EU": ["BEL", "DEU", "DNK", "FRA", "GBR", "IRL", "LUX", "NLD"],
+    "NW_EU2": ["BEL", "DEU", "FRA", "GBR", "IRL", "LUX", "NLD"],
+    "NW_EU_CONTINENT": ["BEL", "DEU", "FRA", "LUX", "NLD"],
+}
+
+
 class CountryRegions:
-    def __init__(self, country_regions: dict[str, list[str]]) -> None:
+    def __init__(self, country_regions: Mapping[str, Sequence[str]]) -> None:
         # validate input
         if not isinstance(country_regions, dict) or any(
-            not isinstance(v, list) for v in country_regions.values()
+            not isinstance(v, Sequence) for v in country_regions.values()
         ):
             raise ValueError(
                 "Country regions are not in the correct format; they must be a dictionary mapping"
@@ -66,7 +97,11 @@ class CountryRegions:
             for region, region_countries in self._regions.items()
         }
 
-    def region_countries_missing_from(self, country_list: CountryInfoList) -> dict[str, CountryInfoList]:
+    def region_countries_missing_from(
+        self, country_list: CountryInfoList | Iterable[str]
+    ) -> dict[str, CountryInfoList]:
+        country_list = CountryInfoList(country_list)
+
         missing = defaultdict(CountryInfoList)
 
         for region, region_countries in self.to_dict().items():
@@ -76,7 +111,19 @@ class CountryRegions:
 
         return missing
 
-    def region_countries_present_in(self, country_list: CountryInfoList) -> bool:
+    def align(self, country_list: CountryInfoList) -> Self:
+        """Return CountryRegions with values aligned to a given list of countries.
+
+        This is used to make sure that the region definitions have the same "input names"
+        as the given country list, which is necessary if country codes are not being used.
+        """
+        aligned_country_regions = {
+            region: country_list.select_by_country_info(region_countries)
+            for region, region_countries in self._regions.items()
+        }
+        return type(self)(aligned_country_regions)
+
+    def all_region_countries_present_in(self, country_list: CountryInfoList) -> bool:
         return not self.region_countries_missing_from(country_list)
 
     @property
@@ -122,6 +169,8 @@ class Countries:
         else:
             self.country_regions = CountryRegions(country_regions)
 
+        self.country_regions = self.country_regions.align(self.country_labels)
+
         # check that country regions are specified in correct country code
         missing_countries = self.country_regions.region_countries_missing_from(self.country_labels)
         if missing_countries:
@@ -135,16 +184,23 @@ class Countries:
 
         # add regions to matrix
         if self.country_regions:
-            region_matrix = xr.concat(
-                [
+            try:
+                region_vectors = [
                     self.matrix.sel(country=region_countries).sum("country").expand_dims(country=[region])
                     for region, region_countries in self.country_regions.to_dict(
                         country_code=self.country_code
                     ).items()
-                ],
-                dim="country",
-            )
-            self.matrix = xr.concat([self.matrix, region_matrix], dim="country")
+                ]
+            except KeyError:
+                raise ValueError(
+                    "Country region definitions not consistent with country file names. Try setting `country_code`"
+                )
+            else:
+                region_matrix = xr.concat(
+                    region_vectors,
+                    dim="country",
+                )
+                self.matrix = xr.concat([self.matrix, region_matrix], dim="country")
 
         self.area_grid = get_area_grid(countries.lat, countries.lon)
 

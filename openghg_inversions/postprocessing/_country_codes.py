@@ -7,9 +7,10 @@ import json
 import re
 import string
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, SupportsIndex, overload
 from collections import UserList
 from collections.abc import Iterable
+from typing_extensions import Self
 
 
 # PREPROCESSING FUNCTIONS
@@ -52,8 +53,12 @@ def remove_punctuation(x: str, skip_dot: bool = False) -> str:
 
 def remove_common_words(x: str) -> str:
     """Remove common words from a string."""
-    common_words_pat = r"the|and|&|of"
-    return re.sub(common_words_pat, "", x, flags=re.IGNORECASE)
+    common_words = ["the", "and", "&", "of"]
+
+    # surround by \b to avoid matching substrings
+    common_words_pat = r"|".join(rf"\b{word}\b" for word in common_words)
+
+    return re.sub(common_words_pat, r"", x, flags=re.IGNORECASE)
 
 
 def drop_extra_whitespace(x: str) -> str:
@@ -62,11 +67,24 @@ def drop_extra_whitespace(x: str) -> str:
 
 
 def extend_abbrs(x: str) -> str:
-    """Convert abbreviations into a patterns to matches words beginning with the abbreviation."""
+    """Convert abbreviations into a patterns to matches words beginning with the abbreviation.
+
+    For instance, "N. Wales" --> r"N[a-zA-Z]* Wales", which is a pattern that would match "North Wales".
+
+    Special handling is added for "St."
+    """
     parts = x.split(".")
     if len(parts) == 1:
         return x
-    return r" ".join(p + r"[a-zA-Z]*" for p in parts if p)
+
+    def convert_abbr(abbr: str) -> str:
+        if abbr.lower().strip() == "st":
+            return r"[sS]aint"
+        return abbr + r"[a-zA-Z]*"
+
+    # add extension pattern to all but last part
+    extended_parts = [convert_abbr(p) for p in parts[:-1] if p]
+    return r" ".join(extended_parts) + parts[-1]  # last part would typically have its own whitespace
 
 
 # ISO country code info
@@ -188,6 +206,21 @@ def get_country_codes(
 
 
 class CountryInfo:
+    """Stores country name and ISO alpha2/alpha3 codes.
+
+    The input can be an alpha2 or alpha3 code, or a country name, which will be
+    associated (if possible) with an alpha2 code.
+
+    Once created, if a match for the alpha2 code is found, then the input country name, alpha2
+    and alpha3 codes, and official ISO long and short names will be available.
+
+    If no match is found, these values all default to the input country name. To check if a match
+    was found, use the `.is_recognised` attribute.
+
+    Equality of `CountryInfo` objects is based on the alpha2 code, so no conversions are needed to
+    test equality. (This also works if comparing a `CountryInfo` object to a string.)
+    """
+
     def __init__(self, country_name: str | CountryInfo) -> None:
         self.input_name = country_name if isinstance(country_name, str) else country_name.input_name
 
@@ -231,6 +264,28 @@ class CountryInfo:
 
 
 class CountryInfoList(UserList):
+    """Container class for CountryInfo objects.
+
+    The `country_code` argument sets the behavior for accessing values.
+    For instance, if `country_code = "alpha3"`, then when retrieving values by
+    indexing or iterating over the CountryInfoList, the values will be the alpha3
+    codes.
+
+    This means that the format used to input country names doesn't matter: the output
+    format is controlled by `country_code`, and comparisons are done using equality of
+    `CountryInfo` objects, so no conversion is required before comparing.
+
+    NOTE: to iterate over underlying `CountryInfo` objects, use the `.data` attribute.
+    For instance:
+    >>> type(next(iter(country_info_list.data)))
+    CountryInfo
+
+    versus
+    >>> type(next(iter(country_info_list)))
+    str
+
+    """
+
     def __init__(
         self,
         country_names: Iterable[str] | None = None,
@@ -241,17 +296,30 @@ class CountryInfoList(UserList):
         else:
             super().__init__(CountryInfo(name) for name in country_names)
 
-        self.mode = country_code or "input_name"
+        self._country_code = country_code
 
-    def __setitem__(self, index: int, item: Any) -> None:
-        if isinstance(item, str | CountryInfo):
-            self.data[index] = CountryInfo(item)
-        else:
-            raise ValueError("Can only assign `str` or `CountryInfo`.")
+    @property
+    def country_code(self) -> Literal["alpha2", "alpha3"] | None:
+        return self._country_code  # type: ignore
 
-    def insert(self, index: int, item: Any) -> None:
+    @country_code.setter
+    def _(self, value: Literal["alpha2", "alpha3"] | None) -> None:
+        self._country_code = value
+
+    def __str__(self) -> str:
+        return str(list(self))
+
+    def __setitem__(self, index: SupportsIndex | slice, item: Any) -> None:
+        if isinstance(index, SupportsIndex):
+            if isinstance(item, str | CountryInfo):
+                self.data[index] = CountryInfo(item)
+            else:
+                raise ValueError("Can only assign `str` or `CountryInfo`.")
+        raise ValueError("Cannot assign to slice of CountryInfoList.")
+
+    def insert(self, i: int, item: Any) -> None:
         if isinstance(item, str | CountryInfo):
-            self.data.insert(index, CountryInfo(item))
+            self.data.insert(i, CountryInfo(item))
         else:
             raise ValueError("Can only insert `str` or `CountryInfo`.")
 
@@ -263,10 +331,33 @@ class CountryInfoList(UserList):
 
     def extend(self, other: Iterable) -> None:
         if isinstance(other, type(self)):
-            self.data.extend(other)
+            self.data.extend(other.data)
         else:
             self.data.extend(CountryInfo(item) for item in other)
 
-    def __getitem__(self, index: int) -> str:
+    @overload
+    def __getitem__(self, index: SupportsIndex) -> str: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Self: ...
+
+    def __getitem__(self, index: SupportsIndex | slice) -> str | Self:
         """Return alpha2, alpha3, or input name of item at given index, depending on mode."""
-        return getattr(self.data[index], self.mode)
+        if isinstance(index, SupportsIndex):
+            mode = self.country_code or "input_name"  # use "input_name" if country code is None
+            return getattr(self.data[index], mode)
+
+        return type(self)(self.data[index], self.country_code)
+
+    def select_by_country_info(self, country_list: CountryInfoList | Iterable[str]) -> CountryInfoList:
+        matches = []
+
+        for country in country_list:
+            try:
+                match_idx = self.index(country)
+            except ValueError as e:
+                raise ValueError(f"No match for '{country}' in CountryInfoList.") from e
+            else:
+                matches.append(self[match_idx])
+
+        return type(self)(matches, self.country_code)
