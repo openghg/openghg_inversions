@@ -15,4 +15,4 @@ def test_summary(inv_out):
 
     assert [f"{dv}_trace" for dv in inv_out.trace.posterior.data_vars] == list(summ.data_vars)
 
-    assert list(summ.metric) == ["mcse_mean", "mcse_sd", "ess_bulk", "ess_tail", "rhat"]
+    assert list(summ.metric) == ["mcse_mean", "mcse_sd", "ess_bulk", "ess_tail", "r_hat"]
