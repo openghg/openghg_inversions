@@ -29,6 +29,7 @@ from openghg_inversions import get_data
 from openghg_inversions.basis import basis_functions_wrapper
 from openghg_inversions.filters import filtering
 from openghg_inversions.model_error import residual_error_method, percentile_error_method, setup_min_error
+from openghg_inversions.models.setup import sigma_freq_indicies
 
 
 def fixedbasisMCMC(
@@ -66,7 +67,7 @@ def fixedbasisMCMC(
     xprior: dict = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 1.0, "lower": 0.0},
     bcprior: dict = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0},
     sigprior: dict = {"pdf": "uniform", "lower": 0.1, "upper": 3},
-    offsetprior: dict = {"pdf": "normal", "mu": 0, "sd": 1},
+    offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
     nit: int = int(2.5e5),
     burn: int = 50000,
     tune: int = int(1.25e5),
@@ -434,32 +435,13 @@ def fixedbasisMCMC(
                 f" {calculate_min_error} not recognised."
             )
 
-        sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
-
-
-        # check if lognormal mu and sigma need to be calculated
-        def update_log_normal_prior(prior):
-            if prior["pdf"].lower() == "lognormal" and "stdev" in prior:
-                stdev = float(prior["stdev"])
-                mean = float(prior.get("mean", 1.0))
-
-                mu, sigma = mcmc.lognormal_mu_sigma(mean, stdev)
-                prior["mu"] = mu
-                prior["sigma"] = sigma
-
-                del prior["stdev"]
-                if "mean" in prior:
-                    del prior["mean"]
-
-        update_log_normal_prior(xprior)
-        update_log_normal_prior(bcprior)
+        sigma_freq_index = sigma_freq_indicies(Ytime, sigma_freq)
 
         mcmc_args = {
             "Hx": Hx,
             "Y": Y,
             "error": error,
             "siteindicator": siteindicator,
-            "sigma_freq_index": sigma_freq_index,
             "xprior": xprior,
             "sigprior": sigprior,
             "nit": nit,
@@ -467,6 +449,8 @@ def fixedbasisMCMC(
             "tune": tune,
             "nchain": nchain,
             "sigma_per_site": sigma_per_site,
+            "sigma_freq": sigma_freq,
+            "y_time": Ytime,
             "offsetprior": offsetprior,
             "add_offset": add_offset,
             "verbose": verbose,
@@ -509,6 +493,7 @@ def fixedbasisMCMC(
             "country_file": country_file,
             "obs_repeatability": obs_repeatability,
             "obs_variability": obs_variability,
+            "sigma_freq_index": sigma_freq_index
         }
 
         # add mcmc_args to post_process_args
@@ -516,6 +501,8 @@ def fixedbasisMCMC(
         post_process_args.update(mcmc_args)
         del post_process_args["nit"]
         del post_process_args["verbose"]
+        del post_process_args["sigma_freq"]
+        del post_process_args["y_time"]
 
         # pass min model error to post-processing
         post_process_args["min_error"] = kwargs.get("min_error", 0.0)
@@ -542,8 +529,6 @@ def fixedbasisMCMC(
                 trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
 
             trace.to_netcdf(str(trace_path), engine="netcdf4")
-
-
 
         # Process and save inversion output
         post_process_args.update(mcmc_results)

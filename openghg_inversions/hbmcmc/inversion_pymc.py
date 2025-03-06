@@ -10,15 +10,12 @@ import numpy as np
 import pymc as pm
 import pandas as pd
 import xarray as xr
-import pytensor.tensor as pt
 import arviz as az
 from scipy import stats
-from pymc.distributions import continuous
-from pytensor.tensor import TensorVariable
 
 from openghg_inversions import convert
 from openghg_inversions import utils
-from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
+from openghg_inversions.models.rhime import build_rhime_model
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
 
@@ -27,113 +24,11 @@ from openghg_inversions.config.version import code_version
 PriorArgs = dict[str, str | float]
 
 
-def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
-    """Return the pymc `mu` and `sigma` parameters that give a log normal distribution
-    with the given mean and stdev.
-
-    Args:
-        mean: desired mean of log normal
-        stdev: desired standard deviation of log normal
-
-    Returns:
-        tuple (mu, sigma), where `pymc.LogNormal(mu, sigma)` has the given mean and stdev.
-
-    Formulas for log normal mean and variance:
-
-    mean = exp(mu + 0.5 * sigma ** 2)
-    stdev ** 2 = var = exp(2*mu + sigma ** 2) * (exp(sigma ** 2) - 1)
-
-    This gives linear equations for `mu` and `sigma ** 2`:
-
-    mu + 0.5 * sigma ** 2 = log(mean)
-    sigma ** 2 = log(1 + (stdev / mean)**2)
-
-    So
-
-    mu = log(mean) - 0.5 * log(1 + (stdev/mean)**2)
-    sigma = sqrt(log(1 + (stdev / mean)**2))
-    """
-    var = np.log(1 + (stdev / mean) ** 2)
-    mu = np.log(mean) - 0.5 * var
-    sigma = np.sqrt(var)
-    return mu, sigma
-
-
-def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
-    """Parses all PyMC continuous distributions:
-    https://docs.pymc.io/api/distributions/continuous.html.
-
-    Args:
-        name:
-          name of variable in the pymc model
-        prior_params:
-          dict of parameters for the distribution, including 'pdf' for the distribution to use.
-          The value of `prior_params["pdf"]` must match the name of a PyMC continuous
-          distribution: https://docs.pymc.io/api/distributions/continuous.html
-        **kwargs: for instance, `shape` or `dims`
-    Returns:
-        continuous PyMC distribution
-
-    For example:
-    ```
-    params = {"pdf": "uniform", "lower": 0.0, "upper": 1.0}
-    parse_prior("x", params, shape=(20, 20))
-    ```
-    will create a 20 x 20 array of uniform random variables.
-    Alternatively,
-    ```
-    params = {"pdf": "uniform", "lower": 0.0, "upper": 1.0}
-    parse_prior("x", params, dims="nmeasure"))
-    ```
-    will create an array of uniform random variables with the same shape
-    as the dimension coordinate `nmeasure`. This can be used if `pm.Model`
-    is provided with coordinates.
-
-    Note: `parse_prior` must be called inside a `pm.Model` context (i.e. after `with pm.Model()`)
-    has an important side-effect of registering the random variable with the model.
-    """
-    # create dict to lookup continuous PyMC distributions by name, ignoring case
-    pdf_dict = {cd.lower(): cd for cd in continuous.__all__}
-
-    params = prior_params.copy()
-    pdf = str(params.pop("pdf")).lower()  # str is just for typing...
-    try:
-        dist = getattr(continuous, pdf_dict[pdf])
-    except AttributeError:
-        raise ValueError(
-            f"The distribution '{pdf}' doesn't appear to be a continuous distribution defined by PyMC."
-        )
-
-    return dist(name, **params, **kwargs)
-
-
-def _make_coords(
-    Y: np.ndarray,
-    Hx: np.ndarray,
-    site_indicator: np.ndarray,
-    sigma_freq_indices: np.ndarray,
-    Hbc: np.ndarray | None = None,
-    sites: list[str] | None = None,
-    sigma_per_site: bool = False,
-) -> dict:
-    result = {
-        "nmeasure": np.arange(len(Y)),
-        "nx": np.arange(Hx.shape[0]),
-        "sites": sites if sites is not None else np.unique(site_indicator),
-        "nsigma_time": np.unique(sigma_freq_indices),
-        "nsigma_site": np.unique(site_indicator) if sigma_per_site else [0],
-    }
-    if Hbc is not None:
-        result["nbc"] = np.arange(Hbc.shape[0])
-    return result
-
-
 def inferpymc(
     Hx: np.ndarray,
     Y: np.ndarray,
     error: np.ndarray,
     siteindicator: np.ndarray,
-    sigma_freq_index: np.ndarray,
     Hbc: np.ndarray | None = None,
     xprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     bcprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
@@ -144,6 +39,8 @@ def inferpymc(
     tune: int = int(1.25e5),
     nchain: int = 2,
     sigma_per_site: bool = True,
+    sigma_freq: str | None = None,
+    y_time: np.ndarray | None = None,
     offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
     add_offset: bool = False,
     verbose: bool = False,
@@ -258,101 +155,35 @@ def inferpymc(
         raise ValueError("If `use_bc` is True, then `Hbc` must be provided.")
 
     burn = int(burn)
-
-    hx = Hx.T
-    nx = hx.shape[1]
-
-    if use_bc:
-        hbc = Hbc.T
-        nbc = hbc.shape[1]
-
-    ny = len(Y)
-
     nit = int(nit)
 
-    # convert siteindicator into a site indexer
-    if sigma_per_site:
-        sites = siteindicator.astype(int)
-        nsites = np.amax(sites) + 1
-    else:
-        sites = np.zeros_like(siteindicator).astype(int)
-        nsites = 1
-    nsigmas = np.amax(sigma_freq_index) + 1
+    model = build_rhime_model(
+        Hx=Hx,
+        Y=Y,
+        error=error,
+        siteindicator=siteindicator,
+        Hbc=Hbc,
+        xprior=xprior,
+        bcprior=bcprior,
+        sigprior=sigprior,
+        sigma_freq=sigma_freq,
+        y_time=y_time,
+        sigma_per_site=sigma_per_site,
+        offsetprior=offsetprior,
+        add_offset=add_offset,
+        min_error=min_error if min_error is not None else 0.0,
+        reparameterise_log_normal=reparameterise_log_normal,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+    )
 
-    if add_offset:
-        B = offset_matrix(siteindicator)
+    with model:
+        step1 = pm.NUTS(vars=[rv for rv in model.value_vars if "sigma" not in rv.name])
+        step2 = pm.Slice(vars=[rv for rv in model.value_vars if "sigma" in rv.name])
 
-    coords = _make_coords(Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None)
+    step = [step1, step2] if nuts_sampler == "pymc" else None
 
-    if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
-        min_error = min_error * np.ones_like(Y)
-
-
-    with pm.Model(coords=coords) as model:
-        step1_vars = []
-
-        if reparameterise_log_normal and xprior["pdf"] == "lognormal":
-            x0 = pm.Normal("x0", 0, 1, dims="nx")
-            x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0))
-            step1_vars.append(x0)
-        else:
-            x = parse_prior("x", xprior, dims="nx")
-            step1_vars.append(x)
-
-        if use_bc:
-            if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
-                bc0 = pm.Normal("bc0", 0, 1, dims="nbc")
-                bc = pm.Deterministic("bc", pt.exp(bcprior["mu"] + bcprior["sigma"] * bc0))
-                step1_vars.append(bc0)
-            else:
-                bc = parse_prior("bc", bcprior, dims="nbc")
-                step1_vars.append(bc)
-
-        sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
-
-        hx = pm.Data("hx", hx, dims=("nmeasure", "nx"))
-        mu = pm.Deterministic("mu", pt.dot(hx, x), dims="nmeasure")
-
-        if use_bc:
-            hbc = pm.Data("hbc", hbc, dims=("nmeasure", "nbc"))
-            mu_bc = pm.Deterministic("mu_bc", pt.dot(hbc, bc), dims="nmeasure")
-            mu += mu_bc
-
-        if add_offset:
-            offset0 = parse_prior("offset0", offsetprior, shape=int(nsites - 1))
-            offset_vec = pt.concatenate((np.array([0]), offset0), axis=0)
-            offset = pm.Deterministic("offset", pt.dot(B, offset_vec), dims="nmeasure")
-            mu += offset
-
-        Y = pm.Data("Y", Y, dims="nmeasure")  # type: ignore
-        error = pm.Data("error", error, dims="nmeasure")  # type: ignore
-        min_error = pm.Data("min_error", min_error, dims="nmeasure")  # type: ignore
-
-        if pollution_events_from_obs is True:
-            if use_bc is True:
-                pollution_event = pt.abs(Y - pt.dot(hbc, bc))
-            else:
-                pollution_event = pt.abs(Y) + 1e-6 * pt.mean(Y)  # small non-zero term to prevent NaNs
-        else:
-            pollution_event = pt.abs(pt.dot(hx, x))
-
-        pollution_event_scaled_error = pollution_event * sigma[sites, sigma_freq_index]
-
-        if no_model_error is True:
-            # need some small non-zero value to avoid sampling problems
-            mean_obs = np.nanmean(Y)
-            small_amount = 1e-12 * mean_obs
-            eps = pt.maximum(pt.abs(error), small_amount)  # type: ignore
-        else:
-            eps = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)  # type: ignore
-
-        epsilon = pm.Deterministic("epsilon", eps, dims="nmeasure")
-
-        pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, dims="nmeasure")
-
-        step1 = pm.NUTS(vars=step1_vars)
-        step2 = pm.Slice(vars=[sigma])
-        step = [step1, step2] if nuts_sampler == "pymc" else None
+    with model:
         trace = pm.sample(
             nit,
             tune=int(tune),
@@ -363,17 +194,8 @@ def inferpymc(
             nuts_sampler=nuts_sampler,
         )
 
-    posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit))
-
-    xouts = posterior_burned.x
-
-    if use_bc:
-        bcouts = posterior_burned.bc
-
-    sigouts = posterior_burned.sigma
-
     # Check for convergence
-    gelrub = pm.rhat(trace)["x"].max()
+    gelrub = pm.rhat(trace)["flux::x"].max()
     if gelrub > 1.05:
         print("Failed Gelman-Rubin at 1.05")
         convergence = "Failed"
@@ -385,16 +207,17 @@ def inferpymc(
         if divergences > 0:
             print(f"There were {divergences} divergences. Try increasing target accept or reparameterise.")
 
-    if add_offset:
-        OFFtrace = posterior_burned.offset
-    else:
-        OFFtrace = xr.zeros_like(posterior_burned.mu)
+    # select outputs
+    posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit))
 
-    if use_bc:
-        YBCtrace = posterior_burned.mu_bc + OFFtrace
-        Ytrace = posterior_burned.mu + YBCtrace
+    xouts = posterior_burned["flux::x"]
+    sigouts = posterior_burned["likelihood::sigma"]
+    Ytrace = posterior_burned["mu"]
+
+    if add_offset:
+        OFFtrace = posterior_burned["offset::mu"]
     else:
-        Ytrace = posterior_burned.mu + OFFtrace
+        OFFtrace = xr.zeros_like(posterior_burned["flux::mu"])
 
     result = {
         "xouts": xouts,
@@ -409,6 +232,8 @@ def inferpymc(
     }
 
     if use_bc:
+        bcouts = posterior_burned["bc::x"]
+        YBCtrace = posterior_burned["bc::mu"] + OFFtrace
         result["bcouts"] = bcouts
         result["YBCtrace"] = YBCtrace.values.T
 
@@ -846,16 +671,18 @@ def inferpymc_postprocessouts(
     }
 
     if use_bc:
-        data_vars.update({
-            "YaprioriBC": (["nmeasure"], YaprioriBC),
-            "YmodmeanBC": (["nmeasure"], YmodmuBC),
-            "YmodmedianBC": (["nmeasure"], YmodmedBC),
-            "YmodmodeBC": (["nmeasure"], YmodmodeBC),
-            "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
-            "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
-            "bctrace": (["steps", "nBC"], bcouts.values),
-            "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
-        })
+        data_vars.update(
+            {
+                "YaprioriBC": (["nmeasure"], YaprioriBC),
+                "YmodmeanBC": (["nmeasure"], YmodmuBC),
+                "YmodmedianBC": (["nmeasure"], YmodmedBC),
+                "YmodmodeBC": (["nmeasure"], YmodmodeBC),
+                "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
+                "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
+                "bctrace": (["steps", "nBC"], bcouts.values),
+                "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
+            }
+        )
         coords["numBC"] = (["nBC"], nBC)
 
     outds = xr.Dataset(data_vars, coords=coords)
