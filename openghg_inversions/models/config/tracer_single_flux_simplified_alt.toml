@@ -1,0 +1,44 @@
+[ch4] # implicit heading... may as well include it for clarity
+
+[ch4.forward]
+type = "forward model"
+
+[ch4.forward.flux]
+type = "flux"
+
+source = "ch4-edgar-ukghg-fftotal"
+
+prior = {pdf = "lognormal", mean = 1.0, stdev = 2.0, reparameterise = true}
+
+[ch4.forward.baseline]
+use_baseline = false
+
+[ch4.likelihood]
+type = "rhime likelihood"
+inputs = ["ch4.forward"]
+
+[c2h6]
+
+[c2h6.forward]
+type = "forward model"
+
+[c2h6.forward.flux]
+type = "tracer"
+inputs = ["ch4.forward.flux"]
+
+source = "c2h6-edgar-ukghg-fftotal-0075r"
+
+prior = {pdf = "truncatednormal", mu = 1.0, sigma = 1.0, lower = 0.1, upper = 2.7}
+
+[c2h6.forward.baseline]
+use_baseline = false
+
+[c2h6.likelihood]
+type = "rhime likelihood"
+inputs = ["ch4.forward"]
+
+[c2h6.likelihood.sigma]
+type = "sigma"
+prior = {pdf = "uniform", lower = 0.1, upper = 3.0}
+freq = "8D"
+per_site = true

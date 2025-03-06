@@ -1,0 +1,131 @@
+# The template in single_gas_single_sector.toml would be converted to the following
+# "ini" files.
+#
+# Note: the values shown are examples, and they would need to have placeholders in them
+# for a real "ini template" output.
+
+[data]
+
+# arguments that apply to all obs/fp data
+species = "ch4"
+averaging_period = "4h"
+start_date = "2019-01-01"
+end_date = "2019-02-01"
+
+domain = "europe"
+fp_model = "NAME"
+met_model = "UKV"
+fp_species = "inert"  # TODO: this should be inferred if possible...
+
+obs_store = "obs_store"
+footprint_store = "paris_openghg_store"
+flux_store = "paris_openghg_store"
+bc_store = "paris_openghg_store"
+
+[[surface]]
+site = "TAC"
+inlet = "185m"
+fp_height = "185m"
+
+[[surface]]
+site = "MHD"
+inlet = "py:slice(0, 20)"  # the "py:" indicates that this will be passed through `eval` (or some limited parser...)
+fp_height = "10m"
+
+
+[model]
+
+
+[model.forward]
+type = "forward model"
+
+
+[model.forward.flux]
+type = "flux"
+
+[model.forward.flux.data_kwargs]
+source = "edgar-annual-total"  # this could be a list; the fluxes would be stacked in that case
+
+[model.forward.flux.basis]
+algorithm = "quadtree"
+nbasis = 250
+fix_basis_outer_regions = false
+
+[model.forward.flux.prior]
+pdf = "lognormal"
+mean = 1.0
+stdev = 2.0
+reparameterise = true
+
+
+[model.forward.baseline]
+type = "baseline"
+use_baseline = true  # "optional" turns into "use_{name}"
+
+
+[model.forward.baseline.bc]
+type = "bc"
+use_bc = true
+
+[model.forward.baseline.bc.data_kwargs]
+bc_input = "camsv19"  # TODO: why isn't this called "source"?
+bc_store = "not_the_paris_openghg_store"  # specify alternative just for this component (...if there were multiple)
+
+[model.forward.baseline.bc.basis]
+basis_directory = "default"
+basis_type = "NESW"
+
+[model.forward.baseline.bc.prior]
+pdf = "truncatednormal"
+mu = 1.0
+sigma = 0.1
+lower = 0.0
+
+[model.forward.baseline.bc.setup]
+freq = "monthly"
+
+
+[model.forward.baseline.offset]
+type = "offset"
+use_offset = false
+
+
+[model.likelihood]
+type = "rhime likelihood"
+inputs = ["forward"]  # TODO: should this be "model.forward"? ...no because we'll parse the "model" table like we would the template
+
+[model.likelihood.sigma]  # TODO how do we know to add this?
+type = "sigma"
+
+prior = {pdf = "uniform", lower = 0.1, upper = 3.0}
+freq = "8D"
+per_site = true
+
+[model.likelihood.min_error]
+min_error = 0.0
+calculate_min_error = "residual"
+by_site = true
+
+[model.likelihood.options]
+pollution_events_from_obs = true
+no_model_error = false
+
+
+[sampling]
+# sampling options...
+nuts_sampler = "numpyro"
+
+nit = 20000
+burn = 10000
+tune = 20000
+
+nchain = 4
+
+
+[output]
+# output options...
+save_trace = true
+output_path = "/user/work/ab12345/inversion_outputs"
+output_name = "my_inversion"
+
+country_file = "/group/chemistry/acrg/PARIS_results_sharing/country_masks/EUROPE_EEZ_PARIS_gapfilled.nc"

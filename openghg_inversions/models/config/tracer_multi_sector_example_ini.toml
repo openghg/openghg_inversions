@@ -1,0 +1,98 @@
+[forward]
+
+[forward.ch4]
+type = "forward model"
+
+[forward.ch4.flux]
+type = "multisector flux"
+
+[forward.ch4.flux.ff]
+type = "flux"
+source = "ch4-edgar-ukghg-fftotal"  # this is for getting data, which isn't implemented yet
+
+prior = {pdf = "lognormal", mean = 1.0, stdev = 2.0, reparameterise = true}
+
+[forward.ch4.flux.nonff]
+type = "flux"
+source = "ch4-edgar-ukghg-nonfftotal"
+
+prior = {pdf = "lognormal", mean = 1.0, stdev = 2.0, reparameterise = true}
+
+[forward.ch4.baseline]
+type = "baseline"
+use_baseline = true
+
+[forward.ch4.baseline.bc]
+type = "bc"
+use_bc = true
+
+prior = {pdf = "truncatednormal", mu = 1.0, sigma = 0.1, lower = 0.0}
+
+[forward.ch4.baseline.offset]
+type = "offset"
+use_offset = false
+
+[forward.c2h6]
+type = "forward model"
+
+[forward.c2h6.tracer]
+type = "multisector flux"
+#
+[forward.c2h6.tracer.ff]
+type = "tracer"
+inputs = ["forward.ch4.flux.ff"]
+
+prior = {pdf = "truncatednormal", mu = 1.0, sigma = 1.0, lower = 0.1, upper = 2.7}
+
+[forward.c2h6.tracer.bio]
+type = "tracer"
+inputs = ["forward.ch4.flux.nonff"]
+
+prior = {pdf = "normal", mu = 0.0, sigma = 0.001}  # it looks like in Alice's "multi gas" PR, this is constant?
+
+[forward.c2h6.baseline]
+type = "baseline"
+use_baseline = true
+
+[forward.c2h6.baseline.bc]
+type = "bc"
+use_bc = true
+
+prior = {pdf = "truncatednormal", mu = 1.0, sigma = 0.1, lower = 0.0}
+
+[forward.c2h6.baseline.offset]
+type = "offset"
+use_offset = false
+
+[likelihood]
+
+[likelihood.ch4]
+type = "rhime likelihood"
+inputs = ["forward.ch4"]
+
+[likelihood.ch4.sigma]
+type = "sigma"
+prior = {pdf = "uniform", lower = 0.1, upper = 3.0}
+freq = "8D"
+per_site = true
+
+[likelihood.ch4.options]
+pollution_events_from_obs = false
+no_model_error = false
+
+[likelihood.c2h6]
+type = "rhime likelihood"
+inputs = ["forward.c2h6"]
+
+# type = "rhime tracer likelihood"
+# inputs = ["likelihood.ch4", "forward.c2h6"]
+
+[likelihood.c2h6.sigma]
+type = "sigma"
+prior = {pdf = "uniform", lower = 0.1, upper = 3.0}
+freq = "8D"
+per_site = true
+
+[likelihood.c2h6.options]
+pollution_events_from_obs = false
+no_model_error = false

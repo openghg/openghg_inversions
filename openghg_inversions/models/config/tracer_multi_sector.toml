@@ -1,0 +1,71 @@
+[forward]
+
+[forward.ch4]
+type = "forward model"
+
+[forward.ch4.flux]
+type = "multisector flux"
+
+[forward.ch4.flux.agric]
+type = "flux"
+source = "edgar-annual-agricultural"
+
+[forward.ch4.flux.indust]
+type = "flux"
+source = "edgar-annual-industrial"
+
+[forward.ch4.flux.energy]
+type = "flux"
+source = "edgar-annual-energy"
+
+[forward.ch4.baseline]
+type = "baseline"
+optional = true
+
+[forward.ch4.baseline.bc]
+type = "bc"
+optional = true
+
+[forward.ch4.baseline.offset]
+type = "offset"
+optional = true
+
+[forward.c2h6]
+type = "forward model"
+
+[forward.c2h6.flux]
+type = "multisector flux"
+#
+[forward.c2h6.flux.agric]
+type = "tracer"
+inputs = ["forward.ch4.flux.agric"]
+
+[forward.c2h6.flux.indust]
+type = "tracer"
+inputs = ["forward.ch4.flux.indust"]
+
+[forward.c2h6.flux.energy]
+type = "tracer"
+inputs = ["forward.ch4.flux.energy"]
+
+[forward.c2h6.baseline]
+type = "baseline"
+optional = true
+
+[forward.c2h6.baseline.bc]
+type = "bc"
+optional = true
+
+[forward.c2h6.baseline.offset]
+type = "offset"
+optional = true
+
+[likelihood]
+
+[likelihood.ch4]
+type = "rhime likelihood"
+inputs = ["forward.ch4"]
+
+[likelihood.c2h6]
+type = "rhime tracer likelihood"
+inputs = ["likelihood.ch4", "forward.c2h6"]

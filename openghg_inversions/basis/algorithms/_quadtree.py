@@ -141,15 +141,15 @@ def get_quadtree_basis(fps: np.ndarray, nbasis: int, seed: int | None = None) ->
     Returns:
         2D numpy array with positive integer values representing basis regions.
     """
-
+    fps = fps / min(1.0, np.sum(fps))
     def qtoptim(x):
         basisQuad = quadTreeGrid(fps, x)
         return (nbasis - np.max(basisQuad) - 1) ** 2
 
     cost = 1e6
     pwr = 0
-    search_max = 10 * np.sum(fps)
-    while cost > 3.0:
+    search_max = 10
+    while cost > 4.0:
         optim = scipy.optimize.dual_annealing(
             qtoptim, np.expand_dims([0, search_max / 10**pwr], axis=0), seed=seed
         )

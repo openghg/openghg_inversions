@@ -1,0 +1,33 @@
+[forward]
+type = "forward model"
+
+[forward.flux]
+type = "multisector flux"
+
+[forward.flux.agric]
+type = "flux"
+source = "edgar-annual-agricultural"
+
+[forward.flux.indust]
+type = "flux"
+source = "edgar-annual-industrial"
+
+[forward.flux.energy]
+type = "flux"
+source = "edgar-annual-energy"
+
+[forward.baseline]
+type = "baseline"
+optional = true
+
+[forward.baseline.bc]
+type = "bc"
+optional = true
+
+[forward.baseline.offset]
+type = "offset"
+optional = true
+
+[likelihood]
+type = "rhime likelihood"
+inputs = ["forward"]
