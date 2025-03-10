@@ -282,6 +282,25 @@ def basic_output(
     stats: list[str] | None = None,
     stats_args: dict | None = None,
 ) -> xr.Dataset:
+    """Create basic output with concentrations, flux totals, and country totals.
+
+    The dataset returned also contains the basis functions, and other data used
+    to create the model, like "H matrices" and the flux used.
+
+    Args:
+        inv_out: InversionOutput to process
+        country_file: path to country file
+        country_regions: optional country regions to use. If "paris" is passed,
+        then the PARIS regions will be used.
+        stats: list of stats to use; if `None`, defaults to ["mean",
+        "quantile"].
+        stats_args: optional arguments to pass to the stats functions.
+
+    Returns:
+        xr.Dataset containing statistics for concentrations, fluxes, and country
+        totals.
+
+    """
     obs_and_errs = inv_out.get_obs_and_errors()
     conc_outs = make_concentration_outputs(inv_out, stats=stats, stats_args=stats_args)
     flux_outs = make_flux_outputs(inv_out, stats=stats, stats_args=stats_args)

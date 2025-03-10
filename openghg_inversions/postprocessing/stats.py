@@ -92,12 +92,10 @@ def mode(ds: xr.Dataset, sample_dim="draw", thin: int = 1):
 def mode_kde(
     ds: xr.Dataset, sample_dim="draw", chunk_dim: str | None = None, chunk_size: int = 10
 ) -> xr.Dataset:
-    """Calculate the (KDE smoothed) mode of a data array containing MCMC
-    samples.
+    """Calculate the (KDE smoothed) mode of a data array containing MCMC samples.
 
     This can be parallelized if you chunk the DataArray first, e.g.
-
-    da_chunked = da.chunk({"basis_region": 10})
+    >>> da_chunked = da.chunk({"basis_region": 10})
     """
 
     def mode_of_row(row):
@@ -126,6 +124,7 @@ def mode_kde(
 
 @register_stat
 def hdi(ds: xr.Dataset, hdi_prob: float | Iterable[float] = 0.68, sample_dim: str = "draw"):
+    """Compute highest density interval with the given probabilities."""
     # handle case of multiple hdi_probs
     if isinstance(hdi_prob, Iterable):
         return xr.merge([hdi(ds, hdi_prob=prob, sample_dim=sample_dim) for prob in hdi_prob])
@@ -149,6 +148,7 @@ def hdi(ds: xr.Dataset, hdi_prob: float | Iterable[float] = 0.68, sample_dim: st
 @add_suffix("stdev")
 @update_attrs("standard_deviation_of")
 def stdev(ds: xr.Dataset, sample_dim="draw"):
+    """Compute sample standard deviation."""
     return ds.std(dim=sample_dim)
 
 
@@ -156,6 +156,7 @@ def stdev(ds: xr.Dataset, sample_dim="draw"):
 @add_suffix("mean")
 @update_attrs("mean_of")
 def mean(ds: xr.Dataset, sample_dim="draw"):
+    """Compute sample mean."""
     return ds.mean(dim=sample_dim)
 
 
@@ -163,6 +164,7 @@ def mean(ds: xr.Dataset, sample_dim="draw"):
 @add_suffix("median")
 @update_attrs("median_of")
 def median(ds: xr.Dataset, sample_dim="draw"):
+    """Compute sample median."""
     return ds.median(dim=sample_dim)
 
 

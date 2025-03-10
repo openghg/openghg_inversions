@@ -597,6 +597,7 @@ def make_inv_out_for_fixed_basis_mcmc(
     species: str,
     domain: str,
 ) -> InversionOutput:
+    """Create InversionOutput in `fixedbasisMCMC`."""
     nmeasure = np.arange(len(Y))
     y_obs = xr.DataArray(Y, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs")
     times = xr.DataArray(Ytime, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="times")
@@ -731,6 +732,11 @@ def _make_idata_from_rhime_outs(rhime_out_ds: xr.Dataset) -> az.InferenceData:
 def make_inv_out_from_rhime_outputs(
     ds: xr.Dataset, species: str, domain: str, start_date: str | None = None, end_date: str | None = None
 ) -> InversionOutput:
+    """Create inversion output from RHIME outputs.
+
+    This can be used to re-run flux and country total outputs using the PARIS postprocessing.
+    However, this doesn't recover enough information to re-compute concentration outputs.
+    """
     flux = ds.fluxapriori
 
     ds_clean = _clean_rhime_output(ds)

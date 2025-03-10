@@ -69,7 +69,22 @@ paris_regions_dict = {
 
 
 class CountryRegions:
-    def __init__(self, country_regions: Mapping[str, Sequence[str]]) -> None:
+    """Regions defined by combining several countries."""
+
+    def __init__(self, country_regions: Mapping[str, Sequence[str]] | None = None) -> None:
+        """Create CountryRegions object from dictionary defining regions.
+
+        Args:
+            country_regions: mapping from region name to sequence of countries
+            that comprise the region.
+
+        Raises:
+            ValueError: if the `country_regions` input isn't in the right
+            format.
+
+        """
+        country_regions = country_regions or {}  # default to empty list if None is passed
+
         # validate input
         if not isinstance(country_regions, dict) or any(
             not isinstance(v, Sequence) for v in country_regions.values()
@@ -82,16 +97,42 @@ class CountryRegions:
         self._regions = country_regions
 
     @classmethod
-    def from_file(cls, filepath: str | Path):  # TODO: return type: Self
+    def from_file(cls, filepath: str | Path) -> Self:
+        """Load country regions from JSON file.
+
+        Args:
+            filepath: path to JSON file containing country region definitions.
+
+        Returns:
+            new CountryRegions object representing the regions on the given
+            file.
+
+        """
         with open(filepath, encoding="utf8") as f:
             country_regions = json.load(f)
 
         return cls(country_regions)
 
     def __bool__(self) -> bool:
+        """Return True if region definitions are not empty."""
         return bool(self._regions)
 
     def to_dict(self, country_code: Literal["alpha2", "alpha3"] | None = None) -> dict[str, CountryInfoList]:
+        """Return dict mapping region name to CountryInfoList of countries comprising the region.
+
+        This method is used to apply country region definitions to be applied in cases where
+        the country names from the country file aren't in the same format as the country names/codes
+        in the country region definitions.
+
+        Args:
+            country_code: country code to set for countries comprising a region
+            in the output.
+
+        Returns:
+            dict mapping country regions to CountryInfoLists of the countries
+            comprising each region.
+
+        """
         return {
             region: CountryInfoList(region_countries, country_code=country_code)
             for region, region_countries in self._regions.items()
@@ -100,6 +141,16 @@ class CountryRegions:
     def region_countries_missing_from(
         self, country_list: CountryInfoList | Iterable[str]
     ) -> dict[str, CountryInfoList]:
+        """Report countries from region definitions that are missing from the given country list.
+
+        Args:
+            country_list: List of countries to compare with. This is usually the
+            list of country names from a country file.
+
+        Returns:
+            dict mapping regions to a list of missing countries.
+
+        """
         country_list = CountryInfoList(country_list)
 
         missing = defaultdict(CountryInfoList)
@@ -124,10 +175,12 @@ class CountryRegions:
         return type(self)(aligned_country_regions)
 
     def all_region_countries_present_in(self, country_list: CountryInfoList) -> bool:
+        """Return True if all countries needed to define regions are in the given country list."""
         return not self.region_countries_missing_from(country_list)
 
     @property
     def region_names(self) -> list[str]:
+        """List of region names stored."""
         return list(self._regions.keys())
 
 
@@ -162,9 +215,7 @@ class Countries:
         self.country_labels = CountryInfoList(countries.name.values, country_code=country_code)
 
         # get country regions
-        if country_regions is None:
-            self.country_regions = CountryRegions({})
-        elif isinstance(country_regions, str | Path):
+        if isinstance(country_regions, str | Path):
             self.country_regions = CountryRegions.from_file(country_regions)
         else:
             self.country_regions = CountryRegions(country_regions)
@@ -193,7 +244,7 @@ class Countries:
                 ]
             except KeyError:
                 raise ValueError(
-                    "Country region definitions not consistent with country file names. Try setting `country_code`"
+                    "Country region definitions not consistent with country file names. Try setting `country_code`."
                 )
             else:
                 region_matrix = xr.concat(
