@@ -21,7 +21,7 @@ from openghg_inversions.get_data import (
 )
 
 
-def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, using_zarr_store):
+def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, using_zarr_store, openghg_version):
     """
     Check that `data_processing_surface_notracer` produces the same output
     as v0.1, with test data frozen on 9 Feb 2024, or the same as v0.2, with test data frozen on
@@ -35,7 +35,16 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, usin
     # check keys of "fp_all"
     assert list(result[0].keys()) == [".species", ".flux", ".bc", "TAC", ".scales", ".units"]
 
-    if using_zarr_store:
+    if openghg_version >= (0, 13):
+        # get combined scenario for TAC at time 2019-01-01 00:00:00; "frozen" data made
+        # with OpenGHG 0.13
+        ds = xr.open_dataset(raw_data_path / "merged_data_test_tac_combined_scenario_v13.nc")
+        expected_tac_combined_scenario = fp_all_from_dataset(ds)
+
+        xr.testing.assert_allclose(
+            result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario["TAC"].isel(time=0)
+        )
+    elif using_zarr_store:
         # get combined scenario for TAC at time 2019-01-01 00:00:00
         ds = xr.open_dataset(raw_data_path / "merged_data_test_tac_combined_scenario_v8.nc")
         expected_tac_combined_scenario = fp_all_from_dataset(ds)
