@@ -18,6 +18,14 @@ _raw_data_path = Path(".").resolve() / "tests/data/"
 
 
 @pytest.fixture(scope="session")
+def openghg_version():
+    try:
+        return tuple(map(int, version("openghg").split(".")))
+    except ValueError:
+        return (1000, 0, 0)
+
+
+@pytest.fixture(scope="session")
 def raw_data_path():
     return _raw_data_path
 
@@ -38,8 +46,10 @@ def using_zarr_store():
 
 
 @pytest.fixture(scope="session")
-def merged_data_file_name(using_zarr_store):
-    if using_zarr_store:
+def merged_data_file_name(using_zarr_store, openghg_version):
+    if openghg_version >= (0, 13):
+        return "merged_data_test_tac_combined_scenario_v13"
+    elif using_zarr_store:
         return "merged_data_test_tac_combined_scenario_v8"
     else:
         return "merged_data_test_tac_combined_scenario"
@@ -242,7 +252,7 @@ def tac_ch4_data_args():
         "fp_model": "NAME",
         "emissions_name": ["total-ukghg-edgar7"],
         # "met_model": "ukv",
-        "averaging_period": ["1H"],
+        "averaging_period": ["1h"],
     }
     return data_args
 
