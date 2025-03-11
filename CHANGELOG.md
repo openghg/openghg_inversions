@@ -1,6 +1,9 @@
 # OpenGHG Inversions Change Log
 
+
 - Updated post-processing, including adding PARIS formatting option. [#PR 225](https://github.com/openghg/openghg_inversions/pull/225) 
+
+- Unpinned numpy now that pymc upgraded. [#PR 236](https://github.com/openghg/openghg_inversions/pull/236)
 
 - Changed optimization in weighted basis function from recursion to loop. [#PR 224](https://github.com/openghg/openghg_inversions/pull/224)
 
