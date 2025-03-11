@@ -27,7 +27,7 @@ import xarray as xr
 
 from openghg.analyse import ModelScenario
 from openghg.dataobjects import ObsData, BoundaryConditionsData, FluxData, FootprintData
-from openghg.retrieve import get_bc, get_flux, get_footprint, get_obs_surface, search_footprints
+from openghg.retrieve import get_bc, get_flux, get_footprint, get_obs_surface, search_footprints, search_flux
 from openghg.types import SearchError
 from openghg.util import timestamp_now
 
@@ -65,6 +65,7 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
         variability_missing = False
         if "mf_variability" not in ds:
             ds["mf_variability"] = xr.zeros_like(ds.mf)
+            ds["mf_variability"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_variability"
             variability_missing = True
 
         if "mf_repeatability" not in ds:
@@ -72,6 +73,8 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
                 raise ValueError(f"Obs data for site {site} is missing both repeatability and variability.")
 
             ds["mf_repeatability"] = xr.zeros_like(ds.mf_variability)
+            ds["mf_repeatability"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_repeatability"
+
             ds["mf_error"] = ds["mf_variability"]
 
             if add_averaging_error:
@@ -83,6 +86,9 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
             ds["mf_error"] = np.sqrt(ds["mf_repeatability"] ** 2 + ds["mf_variability"] ** 2)
         else:
             ds["mf_error"] = ds["mf_repeatability"]
+
+        ds["mf_error"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_error"
+        ds["mf_error"].attrs["units"] = ds.mf.attrs.get("units", None)
 
         # warnings/info for debugging
         err0 = ds["mf_error"] == 0
@@ -217,6 +223,24 @@ def get_footprint_to_match(
 
     return FootprintData(data=data, metadata=metadata)
 
+def adjust_flux_start_date(start_date: str, species: str, source: str, domain: str, store: str):
+    """
+    Adjusts the flux start_date to align with the flux data's temporal resolution.
+    """
+
+    flux_search = search_flux(species=species, source=source, domain=domain, store=store)
+    flux_period = flux_search.results["time_period"][0]
+
+    start_date_flux = pd.to_datetime(start_date)
+
+    if flux_period=="1 year":
+        if not start_date_flux.is_year_start:
+            start_date_flux = start_date_flux - pd.offsets.YearBegin()
+    elif flux_period=="1 month":
+        if not start_date_flux.is_month_start:
+            start_date_flux = start_date_flux - pd.offsets.MonthBegin()
+
+    return start_date_flux
 
 def data_processing_surface_notracer(
     species: str,
@@ -361,11 +385,12 @@ def data_processing_surface_notracer(
     for source in emissions_name:
         logging.Logger.disabled = True  # suppress confusing OpenGHG warnings
         try:
+            start_date_flux = adjust_flux_start_date(start_date, species, source, domain, emissions_store)
             get_flux_data = get_flux(
                 species=species,
                 domain=domain,
                 source=source,
-                start_date=start_date,
+                start_date=start_date_flux,
                 end_date=end_date,
                 store=emissions_store,
             )

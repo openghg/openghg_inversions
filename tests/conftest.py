@@ -84,6 +84,11 @@ bc_basis_function_path = Path(".").resolve() / "bc_basis_functions"
 countries_path = Path(".").resolve() / "countries"
 
 
+@pytest.fixture
+def europe_country_file():
+    return countries_path / "country_EUROPE.nc"
+
+
 @pytest.fixture(scope="session", autouse=True)
 def session_config_mocker(using_zarr_store) -> Iterator[None]:
     if using_zarr_store:
