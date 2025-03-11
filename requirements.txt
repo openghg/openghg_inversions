@@ -4,7 +4,7 @@ xarray
 pandas
 matplotlib
 scipy
-numpy < 2.0
+numpy
 openghg
 sparse
 tfp-nightly

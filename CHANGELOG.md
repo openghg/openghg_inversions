@@ -1,5 +1,6 @@
 # OpenGHG Inversions Change Log
 
+- Unpinned numpy now that pymc upgraded. [#PR 236](https://github.com/openghg/openghg_inversions/pull/236)
 
 - Changed optimization in weighted basis function from recursion to loop. [#PR 224](https://github.com/openghg/openghg_inversions/pull/224)
 
