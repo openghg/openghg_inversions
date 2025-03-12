@@ -29,6 +29,7 @@ import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
 from openghg_inversions import get_data
 from openghg_inversions.basis import basis_functions_wrapper
+from openghg_inversions.data import load_merged_data
 from openghg_inversions.filters import filtering
 from openghg_inversions.model_error import residual_error_method, percentile_error_method, setup_min_error
 from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
@@ -302,7 +303,7 @@ def fixedbasisMCMC(
 
     if reload_merged_data is True and merged_data_dir is not None:
         try:
-            fp_all = get_data.load_merged_data(
+            fp_all = load_merged_data(
                 merged_data_dir, species, start_date, outputname, merged_data_name
             )
         except ValueError as e:
