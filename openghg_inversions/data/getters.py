@@ -90,9 +90,70 @@ def get_flux_data(
     return flux_dict
 
 
+# Boundary conditions data
+def convert_bc_units(bc_data: BoundaryConditionsData, unit: float) -> BoundaryConditionsData:
+    # Divide by trace gas species units
+    # See if R+G can include this 'behind the scenes'
+    bc_data.data.vmr_n.values /= unit
+    bc_data.data.vmr_e.values /= unit
+    bc_data.data.vmr_s.values /= unit
+    bc_data.data.vmr_w.values /= unit
+
+    return BoundaryConditionsData(
+        data=bc_data.data.transpose("height", "lat", "lon", "time"),
+        metadata=bc_data.metadata,
+    )
+
+
+# Obs data
+def get_obs_data(
+    site: str,
+    species: str,
+    inlet: str | None,
+    start_date: str,
+    end_date: str,
+    data_level: str | None = None,
+    average: str | None = None,
+    instrument: str | None = None,
+    calibration_scale: str | None = None,
+    stores: str | None | Iterable[str | None] = None,
+) -> ObsData | None:
+    """Try to retrieve obs. data from listed stores."""
+    if stores is None or isinstance(stores, str):
+        stores = [stores]
+
+    for store in stores:
+        try:
+            obs_data = get_obs_surface(
+                site=site,
+                species=species.lower(),
+                inlet=inlet,
+                start_date=start_date,
+                end_date=end_date,
+                icos_data_level=data_level,
+                average=average,
+                instrument=instrument,
+                calibration_scale=calibration_scale,
+                store=store,
+            )
+        except SearchError:
+            print(
+                f"\nNo obs data found for {site} with inlet {inlet} and instrument {instrument} in store {store}."
+            )
+            continue  # skip this site
+        except AttributeError:
+            print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
+            continue  # skip this site
+        else:
+            if obs_data is None:
+                print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
+                continue  # skip this site
+            else:
+                return obs_data
+    return None
+
+
 # Footprints
-
-
 def _convert_inlets_to_float(inlets):
     return np.array(list(map(lambda x: float(x[:-1]), inlets)))
 
@@ -115,7 +176,7 @@ def get_footprint_to_match(
     model: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    met_model: str = "not_set",
+    met_model: str | None = None,
     fp_species: str | None = None,
     store: str | None = None,
     averaging_period: str | None = None,
@@ -127,6 +188,8 @@ def get_footprint_to_match(
         store = Path(obs.metadata.get("object_store", "")).name or "user"
     start_date = start_date or obs._start_date
     end_date = end_date or obs._end_date
+
+    met_model = met_model or "not_set"  # replace None with 'not_set'
 
     # get available footprint heights
     fp_kwargs = {
@@ -214,3 +277,69 @@ def get_footprint_to_match(
     data = xr.concat([fp.data for fp in footprints], dim="time").sortby("time")
 
     return FootprintData(data=data, metadata=metadata)
+
+
+def get_footprint_data(
+    site: str,
+    domain: str,
+    fp_height: str | None,
+    start_date: str,
+    end_date: str,
+    model: str | None,
+    met_model: str | None,
+    fp_species: str | None,
+    averaging_period: str | None = None,
+    obs_data: ObsData | None = None,
+    stores: str | None | Iterable[str | None] = None,
+) -> FootprintData | None:
+    """Try to retrieve Footprint data from given stores.
+
+    If `fp_height` is 'auto', then `get_footprint_to_match`
+    is used to search for a footprint matching the given ObsData.
+    Otherwise, `get_footprint` is used.
+    """
+    # if fp_height is 'auto', use `get_footprint_to_match`
+    # otherwise, use `get_footprint`
+    if fp_height == "auto":
+        if obs_data is None:
+            raise ValueError("If `fp_height` is 'auto', you must provide `obs_data`.")
+
+        def get_func(store):
+            return get_footprint_to_match(
+                    obs_data,
+                    domain=domain,
+                    start_date=start_date,
+                    end_date=end_date,
+                    model=model,
+                    met_model=met_model,
+                    store=store,
+                    fp_species=fp_species,
+                    averaging_period=averaging_period,
+                )
+    else:
+        def get_func(store):
+            return get_footprint(
+                    site=site,
+                    height=fp_height,
+                    domain=domain,
+                    model=model,
+                    met_model=met_model,
+                    start_date=start_date,
+                    end_date=end_date,
+                    store=store,
+                    species=fp_species,
+                )
+
+    if stores is None or isinstance(stores, str):
+        stores = [stores]
+
+    for store in stores:
+        try:
+            footprint_data = get_func(store)
+            if footprint_data.data.time.size == 0:
+                raise SearchError
+        except SearchError:
+            continue  # try next store
+        else:
+            return footprint_data
+    return None
