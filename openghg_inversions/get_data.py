@@ -15,21 +15,13 @@ by the data processing functions.
 """
 
 import logging
-import pickle
-from collections import defaultdict
-from pathlib import Path
-from typing import Any, cast, Literal
-import warnings
+from typing import Literal
 
 import numpy as np
-import pandas as pd
 import xarray as xr
 
-from openghg.analyse import ModelScenario
-from openghg.dataobjects import ObsData, BoundaryConditionsData, FluxData, FootprintData
-from openghg.retrieve import get_bc, get_flux, get_footprint, get_obs_surface, search_footprints, search_flux
+from openghg.retrieve import get_bc
 from openghg.types import SearchError
-from openghg.util import timestamp_now
 
 from openghg_inversions.data.getters import convert_bc_units, get_flux_data, get_footprint_data, get_obs_data
 from openghg_inversions.data.scenario import merged_scenario_data
@@ -270,7 +262,9 @@ def data_processing_surface_notracer(
             end_date=end_date,
             store=bc_store,
         )
-        fp_all[".bc"] = convert_bc_units(bc_data, 1.0)  # transpose coordinates, keep for consistency with old format
+        fp_all[".bc"] = convert_bc_units(
+            bc_data, 1.0
+        )  # transpose coordinates, keep for consistency with old format
     else:
         bc_data = None
 
@@ -327,7 +321,6 @@ def data_processing_surface_notracer(
 
         site_indices_to_keep.append(i)
 
-
     if len(site_indices_to_keep) == 0:
         raise SearchError("No site data found. Exiting process.")
 
@@ -366,5 +359,3 @@ def data_processing_surface_notracer(
             print(f"\nfp_all saved in {merged_data_dir}\n")
 
     return fp_all, sites, inlet, fp_height, instrument, averaging_period
-
-
