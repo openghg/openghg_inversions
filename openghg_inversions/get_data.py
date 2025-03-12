@@ -32,6 +32,7 @@ from openghg.types import SearchError
 from openghg.util import timestamp_now
 
 from openghg_inversions.data.getters import convert_bc_units, get_flux_data, get_footprint_data, get_obs_data
+from openghg_inversions.data.scenario import merged_scenario_data
 
 
 logger = logging.getLogger(__name__)
@@ -268,6 +269,7 @@ def data_processing_surface_notracer(
             end_date=end_date,
             store=bc_store,
         )
+        fp_all[".bc"] = convert_bc_units(bc_data, 1.0)  # transpose for consistency with old format
     else:
         bc_data = None
 
@@ -294,8 +296,6 @@ def data_processing_surface_notracer(
         if site_data is None:
             print(f"No obs. found, continuing model run without {site}.\n")
             continue
-        else:
-            unit = float(site_data.data.mf.units)
 
         # Get footprints data
         footprint_data = get_footprint_data(
@@ -318,47 +318,7 @@ def data_processing_surface_notracer(
             )
             continue  # skip this site
 
-        # convert bc units, if using bc
-        my_bc = convert_bc_units(bc_data, unit) if bc_data is not None else None
-
-        # Create ModelScenario object for all emissions_sectors
-        # and combine into one object
-        model_scenario = ModelScenario(
-            site=site,
-            species=species,
-            inlet=inlet[i],
-            start_date=start_date,
-            end_date=end_date,
-            obs=site_data,
-            footprint=footprint_data,
-            flux=flux_dict,
-            bc=my_bc,
-        )
-
-        if len(emissions_name) == 1:
-            scenario_combined = model_scenario.footprints_data_merge()
-            if use_bc is True:
-                scenario_combined.bc_mod.values *= unit
-
-        elif len(emissions_name) > 1:
-            # Create model scenario object for each flux sector
-            model_scenario_dict = {}
-
-            for source in emissions_name:
-                scenario_sector = model_scenario.footprints_data_merge(sources=source, recalculate=True)
-
-                if species.lower() == "co2":
-                    model_scenario_dict["mf_mod_high_res_" + source] = scenario_sector["mf_mod_high_res"]
-                else:
-                    model_scenario_dict["mf_mod_" + source] = scenario_sector["mf_mod"]
-
-            scenario_combined = model_scenario.footprints_data_merge(recalculate=True)
-
-            for k, v in model_scenario_dict.items():
-                scenario_combined[k] = v
-                if use_bc is True:
-                    scenario_combined.bc_mod.values *= unit
-
+        scenario_combined = merged_scenario_data(site_data, footprint_data, flux_dict, bc_data)
         fp_all[site] = scenario_combined
 
         scales[site] = scenario_combined.scale

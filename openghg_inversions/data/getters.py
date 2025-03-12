@@ -1,15 +1,14 @@
 import logging
 from pathlib import Path
-from typing import Any, Iterable, cast, Literal
+from collections.abc import Iterable
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
 from openghg.dataobjects import ObsData, BoundaryConditionsData, FluxData, FootprintData
-from openghg.retrieve import get_bc, get_flux, get_footprint, get_obs_surface, search_footprints, search_flux
+from openghg.retrieve import get_flux, get_footprint, get_obs_surface, search_footprints, search_flux
 from openghg.types import SearchError
-from openghg.util import timestamp_now
 
 
 logger = logging.getLogger(__name__)
@@ -306,29 +305,30 @@ def get_footprint_data(
 
         def get_func(store):
             return get_footprint_to_match(
-                    obs_data,
-                    domain=domain,
-                    start_date=start_date,
-                    end_date=end_date,
-                    model=model,
-                    met_model=met_model,
-                    store=store,
-                    fp_species=fp_species,
-                    averaging_period=averaging_period,
-                )
+                obs_data,
+                domain=domain,
+                start_date=start_date,
+                end_date=end_date,
+                model=model,
+                met_model=met_model,
+                store=store,
+                fp_species=fp_species,
+                averaging_period=averaging_period,
+            )
     else:
+
         def get_func(store):
             return get_footprint(
-                    site=site,
-                    height=fp_height,
-                    domain=domain,
-                    model=model,
-                    met_model=met_model,
-                    start_date=start_date,
-                    end_date=end_date,
-                    store=store,
-                    species=fp_species,
-                )
+                site=site,
+                height=fp_height,
+                domain=domain,
+                model=model,
+                met_model=met_model,
+                start_date=start_date,
+                end_date=end_date,
+                store=store,
+                species=fp_species,
+            )
 
     if stores is None or isinstance(stores, str):
         stores = [stores]
