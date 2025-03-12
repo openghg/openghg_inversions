@@ -31,6 +31,8 @@ from openghg.retrieve import get_bc, get_flux, get_footprint, get_obs_surface, s
 from openghg.types import SearchError
 from openghg.util import timestamp_now
 
+from openghg_inversions.data.getters import get_flux_data
+
 
 logger = logging.getLogger(__name__)
 
@@ -223,24 +225,6 @@ def get_footprint_to_match(
 
     return FootprintData(data=data, metadata=metadata)
 
-def adjust_flux_start_date(start_date: str, species: str, source: str, domain: str, store: str):
-    """
-    Adjusts the flux start_date to align with the flux data's temporal resolution.
-    """
-
-    flux_search = search_flux(species=species, source=source, domain=domain, store=store)
-    flux_period = flux_search.results["time_period"][0]
-
-    start_date_flux = pd.to_datetime(start_date)
-
-    if flux_period=="1 year":
-        if not start_date_flux.is_year_start:
-            start_date_flux = start_date_flux - pd.offsets.YearBegin()
-    elif flux_period=="1 month":
-        if not start_date_flux.is_month_start:
-            start_date_flux = start_date_flux - pd.offsets.MonthBegin()
-
-    return start_date_flux
 
 def data_processing_surface_notracer(
     species: str,
@@ -380,47 +364,11 @@ def data_processing_surface_notracer(
     fp_all = {}
     fp_all[".species"] = species.upper()
 
-    # Get flux data and add to dict.
-    flux_dict = {}
-    for source in emissions_name:
-        logging.Logger.disabled = True  # suppress confusing OpenGHG warnings
-        try:
-            start_date_flux = adjust_flux_start_date(start_date, species, source, domain, emissions_store)
-            get_flux_data = get_flux(
-                species=species,
-                domain=domain,
-                source=source,
-                start_date=start_date_flux,
-                end_date=end_date,
-                store=emissions_store,
-            )
+    # Get flux data
+    if emissions_name is None:
+        raise ValueError("`emissions_name` must be specified")
 
-            # fix to prevent empty time coordinate:
-            if len(get_flux_data.data.time) == 0:
-                raise SearchError
-        except SearchError:
-            print(f"No flux data found between {start_date} and {end_date}.")
-            print(f"Searching for flux data from before {start_date}.")
-
-            # re-try without start date
-            try:
-                get_flux_data = get_flux(
-                    species=species,
-                    domain=domain,
-                    source=source,
-                    start_date=None,
-                    end_date=end_date,
-                    store=emissions_store,
-                )
-            except SearchError as e:
-                raise SearchError(f"No flux data found before {start_date}") from e
-            else:
-                get_flux_data.data = get_flux_data.data.isel(time=[-1])
-                print(f"Using flux data from {str(get_flux_data.data.time.values[0]).split(':')[0]}.")
-
-        logging.Logger.disabled = False  # resume confusing OpenGHG warnings
-
-        flux_dict[source] = get_flux_data
+    flux_dict = get_flux_data(sources=emissions_name, species=species, domain=domain, start_date=start_date, end_date=end_date, store=emissions_store)
     fp_all[".flux"] = flux_dict
 
     footprint_dict = {}
