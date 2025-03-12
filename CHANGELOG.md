@@ -1,5 +1,6 @@
 # OpenGHG Inversions Change Log
 
+- Tidied `get_data.py`, splitting it into several files. [#PR 237](https://github.com/openghg/openghg_inversions/pull/237) 
 
 - Updated post-processing, including adding PARIS formatting option. [#PR 225](https://github.com/openghg/openghg_inversions/pull/225) 
 
