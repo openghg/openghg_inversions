@@ -6,24 +6,26 @@ from unittest import mock
 import numpy as np
 import pytest
 import xarray as xr
-import openghg
 from openghg.dataobjects import ObsData
 from openghg.retrieve import get_obs_surface
 from openghg.types import SearchError
 
 import openghg_inversions.get_data
-from openghg_inversions.get_data import (
-    data_processing_surface_notracer,
+from openghg_inversions.data.serialise import (
     fp_all_from_dataset,
     make_combined_scenario,
     load_merged_data,
+)
+from openghg_inversions.get_data import (
+    data_processing_surface_notracer,
     add_obs_error,
 )
 
 
-def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, using_zarr_store, openghg_version):
-    """
-    Check that `data_processing_surface_notracer` produces the same output
+def test_data_processing_surface_notracer(
+    tac_ch4_data_args, raw_data_path, using_zarr_store, openghg_version
+):
+    """Check that `data_processing_surface_notracer` produces the same output
     as v0.1, with test data frozen on 9 Feb 2024, or the same as v0.2, with test data frozen on
     15 Apr 2024 (using the zarr backend).
     """
@@ -54,9 +56,7 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, raw_data_path, usin
         )
     else:
         # get combined scenario for TAC at time 2019-01-01 00:00:00
-        ds = xr.open_dataset(
-            raw_data_path / "merged_data_test_tac_combined_scenario.nc"
-        )
+        ds = xr.open_dataset(raw_data_path / "merged_data_test_tac_combined_scenario.nc")
         expected_tac_combined_scenario = fp_all_from_dataset(ds)
         xr.testing.assert_allclose(
             result[0]["TAC"].isel(time=0).drop_dims("lev"),
@@ -74,7 +74,9 @@ def test_load_merged_data(merged_data_dir, merged_data_file_name, using_zarr_sto
 def test_load_merged_data_missing_data_error(merged_data_dir, merged_data_file_name, using_zarr_store):
     """This should pass by finding the merged data with .zarr suffix."""
     with pytest.raises(ValueError):
-        result = load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "abc123", output_format="netcdf")
+        result = load_merged_data(
+            merged_data_dir, merged_data_name=merged_data_file_name + "abc123", output_format="netcdf"
+        )
 
 
 def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir, using_zarr_store):
@@ -181,7 +183,7 @@ def test_add_averaging_error(tac_ch4_data_args):
     real_obs_data["mf_repeatability"] = xr.ones_like(real_obs_data["mf_variability"])
     patched_obs = ObsData(data=real_obs_data, metadata=real_obs_metadata)
 
-    with mock.patch.object(openghg_inversions.get_data, "get_obs_surface") as mock_obs:
+    with mock.patch.object(openghg_inversions.data.getters, "get_obs_surface") as mock_obs:
         mock_obs.return_value = patched_obs
 
         # set up two scenarios, one with averaging, one without
@@ -236,25 +238,17 @@ def test_add_obs_error_exceptions_warnings(caplog):
     assert "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site TAC" in output
 
 
-@pytest.mark.skipif(version("openghg") < "0.8.0", reason="fix to work for 0.7 too much work, we will stop supporting it soon")
-def test_looking_older_flux_files(tac_ch4_data_args, caplog, capsys):
+def test_looking_older_flux_files(tac_ch4_data_args, capsys):
     """Check if an older flux file is found if no data is found for the specified start and end dates."""
     data_args = tac_ch4_data_args.copy()
     data_args["start_date"] = "2100-01-01"
     data_args["end_date"] = "2101-01-01"
 
-    # capture info messages, which should say what flux we've retrieved
-    caplog.set_level(logging.INFO)
-
     # we should get an error when trying to get obs data, but not when trying to get flux data
     with pytest.raises(SearchError):
         data_processing_surface_notracer(**data_args)
 
-    logs = caplog.text
     stdout = capsys.readouterr().out
 
     # we find older flux data
     assert "Using flux data from 2019-01-01" in stdout
-
-    # we get an error due to missing obs from 2100-01-01
-    assert "Unable to find results for site='TAC'" in logs

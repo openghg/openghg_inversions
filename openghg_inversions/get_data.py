@@ -253,18 +253,21 @@ def data_processing_surface_notracer(
 
     # Get BC data
     if use_bc is True:
-        # Get boundary conditions data
-        bc_data = get_bc(
-            species=species,
-            domain=domain,
-            bc_input=bc_input,
-            start_date=start_date,
-            end_date=end_date,
-            store=bc_store,
-        )
-        fp_all[".bc"] = convert_bc_units(
-            bc_data, 1.0
-        )  # transpose coordinates, keep for consistency with old format
+        try:
+            bc_data = get_bc(
+                species=species,
+                domain=domain,
+                bc_input=bc_input,
+                start_date=start_date,
+                end_date=end_date,
+                store=bc_store,
+            )
+        except SearchError as e:
+            raise SearchError("Could not find matching boundary conditions.") from e
+        else:
+            fp_all[".bc"] = convert_bc_units(
+                bc_data, 1.0
+            )  # transpose coordinates, keep for consistency with old format
     else:
         bc_data = None
 
