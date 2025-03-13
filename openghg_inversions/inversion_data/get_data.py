@@ -1,8 +1,4 @@
-# *****************************************************************************
-# get_data.py
-# Author: Atmospheric Chemistry Research Group, University of Bristol
-"""Functions for retrieving observations and datasets for creating forward
-simulations.
+"""Functions for retrieving observations and datasets for creating forward simulations.
 
 Current data processing options include:
 - "data_processing_surface_notracer": Surface based measurements, without tracers
@@ -23,16 +19,23 @@ import xarray as xr
 from openghg.retrieve import get_bc
 from openghg.types import SearchError
 
-from openghg_inversions.data.getters import convert_bc_units, get_flux_data, get_footprint_data, get_obs_data
-from openghg_inversions.data.scenario import merged_scenario_data
-from openghg_inversions.data.serialise import _save_merged_data
+from openghg_inversions.inversion_data.getters import (
+    convert_bc_units,
+    get_flux_data,
+    get_footprint_data,
+    get_obs_data,
+)
+from openghg_inversions.inversion_data.scenario import merged_scenario_data
+from openghg_inversions.inversion_data.serialise import _save_merged_data
 
 
 logger = logging.getLogger(__name__)
 
 
 def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = True) -> None:
-    """Create `mf_error` variable that contains either `mf_repeatablility`, `mf_variability`
+    """Create `mf_error` variable.
+
+    The `mf_error` variables contains either `mf_repeatablility`, `mf_variability`
     or the square root of the sum of the squares of both, if `add_averaging_error` is True.
 
     This function modifies `fp_all` in place, adding `mf_error` and making sure that both

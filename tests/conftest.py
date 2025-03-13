@@ -12,7 +12,6 @@ from openghg.standardise import standardise_surface, standardise_bc, standardise
 from openghg.types import ObjectStoreError
 import xarray as xr
 
-from openghg_inversions.get_data import data_processing_surface_notracer, _save_merged_data
 
 _raw_data_path = Path(".").resolve() / "tests/data/"
 

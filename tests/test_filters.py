@@ -1,7 +1,7 @@
 import pytest
 
 from openghg_inversions.filters import filtering, filtering_functions
-from openghg_inversions.data.serialise import load_merged_data
+from openghg_inversions.inversion_data.serialise import load_merged_data
 
 
 @pytest.fixture

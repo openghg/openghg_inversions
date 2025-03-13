@@ -1,5 +1,4 @@
 import copy
-from importlib.metadata import version
 import logging
 from unittest import mock
 
@@ -10,13 +9,13 @@ from openghg.dataobjects import ObsData
 from openghg.retrieve import get_obs_surface
 from openghg.types import SearchError
 
-import openghg_inversions.get_data
-from openghg_inversions.data.serialise import (
+import openghg_inversions.inversion_data.get_data
+from openghg_inversions.inversion_data.serialise import (
     fp_all_from_dataset,
     make_combined_scenario,
     load_merged_data,
 )
-from openghg_inversions.get_data import (
+from openghg_inversions.inversion_data.get_data import (
     data_processing_surface_notracer,
     add_obs_error,
 )
@@ -183,7 +182,7 @@ def test_add_averaging_error(tac_ch4_data_args):
     real_obs_data["mf_repeatability"] = xr.ones_like(real_obs_data["mf_variability"])
     patched_obs = ObsData(data=real_obs_data, metadata=real_obs_metadata)
 
-    with mock.patch.object(openghg_inversions.data.getters, "get_obs_surface") as mock_obs:
+    with mock.patch.object(openghg_inversions.inversions_data.getters, "get_obs_surface") as mock_obs:
         mock_obs.return_value = patched_obs
 
         # set up two scenarios, one with averaging, one without

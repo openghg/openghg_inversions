@@ -27,9 +27,8 @@ import xarray as xr
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
-from openghg_inversions import get_data
 from openghg_inversions.basis import basis_functions_wrapper
-from openghg_inversions.data import load_merged_data
+from openghg_inversions.inversion_data import data_processing_surface_notracer, load_merged_data
 from openghg_inversions.filters import filtering
 from openghg_inversions.model_error import residual_error_method, percentile_error_method, setup_min_error
 from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
@@ -341,7 +340,7 @@ def fixedbasisMCMC(
                 fp_height,
                 instrument,
                 averaging_period,
-            ) = get_data.data_processing_surface_notracer(
+            ) = data_processing_surface_notracer(
                 species,
                 sites,
                 domain,
