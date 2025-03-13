@@ -2,7 +2,7 @@ import pandas as pd
 import xarray as xr
 from openghg_inversions.basis._functions import basis, _flux_fp_from_fp_all, _mean_fp_times_mean_flux
 from openghg_inversions.basis import bucketbasisfunction, quadtreebasisfunction, fixed_outer_regions_basis
-from openghg_inversions.get_data import data_processing_surface_notracer
+from openghg_inversions.inversion_data import data_processing_surface_notracer
 
 
 def test_fp_x_flux(tac_ch4_data_args):
