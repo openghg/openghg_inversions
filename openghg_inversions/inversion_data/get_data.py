@@ -102,6 +102,32 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
             logger.info(info_msg)
 
 
+def convert_to_list(x: list[str | None] | str | None, length: int, name: str | None = None) -> list[str | None]:
+    """Convert variable that might be list, str, or None to a list of the expected size.
+
+    Args:
+        x: variable to convert to list
+        length: length of the output list
+        name: name to use for error message
+
+    Returns:
+        list of specified length; either the original list, or a list containing
+        repeats of the input value
+
+    Raises:
+        ValueError: if input is a list and its length differs from the specified
+        length.
+
+    """
+    if x is None or isinstance(x, str):
+        return [x] * length
+
+    if len(x) != length:
+        msg_name = name or x  # display entire list if name is not given
+        raise ValueError(f"List {msg_name} does not have specified length: {len(x)} != {length}.")
+    return x
+
+
 def data_processing_surface_notracer(
     species: str,
     sites: list | str,
@@ -224,18 +250,12 @@ def data_processing_surface_notracer(
 
     # Convert 'None' args to list
     nsites = len(sites)
-    if inlet is None or isinstance(inlet, str):
-        inlet = [inlet] * nsites
-    if instrument is None or isinstance(instrument, str):
-        instrument = [instrument] * nsites
-    if fp_height is None or isinstance(fp_height, str):
-        fp_height = [fp_height] * nsites
-    if obs_data_level is None or isinstance(obs_data_level, str):
-        obs_data_level = [obs_data_level] * nsites
-    if met_model is None or isinstance(met_model, str):
-        met_model = [met_model] * nsites
-    if averaging_period is None or isinstance(averaging_period, str):
-        averaging_period = [averaging_period] * nsites
+    inlet = convert_to_list(inlet, nsites, "inlet")
+    instrument = convert_to_list(instrument, nsites, "instrument")
+    fp_height = convert_to_list(fp_height, nsites, "instrument")
+    obs_data_level = convert_to_list(obs_data_level, nsites, "obs_data_level")
+    met_model = convert_to_list(met_model, nsites, "met_model")
+    averaging_period = convert_to_list(averaging_period, nsites, "averaging_period")
 
     fp_all = {}
     fp_all[".species"] = species.upper()
