@@ -1,3 +1,10 @@
+"""Functions for saving and loading data used for inversions.
+
+- `_save_merged_data` saves the `fp_all` dict created by `get_data.data_processing_surface_notracer`
+  to disk (either as a pickle file, netCDF, or zarr)
+- `load_merged_data` restores the `fp_all` dict from these saved formats
+- `make_combined_scenario` converts the `fp_all` dict into a xr.Dataset
+"""
 import pickle
 from collections import defaultdict
 from pathlib import Path

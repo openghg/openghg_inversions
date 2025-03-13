@@ -1,3 +1,13 @@
+"""Functions for retrieving data from an OpenGHG store.
+
+These functions customise the behavior of `get_flux`, `get_footprint`, etc.
+
+- `get_flux_data` calls `get_flux` after adjusting the start date to begin at the
+  start of a year or month; if nothing is found, then the start date restriction
+  is dropped and the most recent result found is used.
+
+TODO: add more docs (and add more detailed docstrings)
+"""
 import logging
 from pathlib import Path
 from collections.abc import Iterable
