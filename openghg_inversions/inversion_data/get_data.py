@@ -136,6 +136,7 @@ def data_processing_surface_notracer(
     start_date: str,
     end_date: str,
     obs_data_level: list[str | None] | str | None = None,
+    platform: list[str | None] | str | None = None,
     inlet: list[str | None] | str | None = None,
     instrument: list[str | None] | str | None = None,
     calibration_scale: str | None = None,
@@ -256,6 +257,7 @@ def data_processing_surface_notracer(
     obs_data_level = convert_to_list(obs_data_level, nsites, "obs_data_level")
     met_model = convert_to_list(met_model, nsites, "met_model")
     averaging_period = convert_to_list(averaging_period, nsites, "averaging_period")
+    platform = convert_to_list(platform, nsites, "platform")
 
     fp_all = {}
     fp_all[".species"] = species.upper()
