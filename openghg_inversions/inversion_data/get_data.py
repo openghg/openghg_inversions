@@ -252,7 +252,7 @@ def data_processing_surface_notracer(
     nsites = len(sites)
     inlet = convert_to_list(inlet, nsites, "inlet")
     instrument = convert_to_list(instrument, nsites, "instrument")
-    fp_height = convert_to_list(fp_height, nsites, "instrument")
+    fp_height = convert_to_list(fp_height, nsites, "fp_height")
     obs_data_level = convert_to_list(obs_data_level, nsites, "obs_data_level")
     met_model = convert_to_list(met_model, nsites, "met_model")
     averaging_period = convert_to_list(averaging_period, nsites, "averaging_period")
