@@ -182,7 +182,7 @@ def test_add_averaging_error(tac_ch4_data_args):
     real_obs_data["mf_repeatability"] = xr.ones_like(real_obs_data["mf_variability"])
     patched_obs = ObsData(data=real_obs_data, metadata=real_obs_metadata)
 
-    with mock.patch.object(openghg_inversions.inversions_data.getters, "get_obs_surface") as mock_obs:
+    with mock.patch.object(openghg_inversions.inversion_data.getters, "get_obs_surface") as mock_obs:
         mock_obs.return_value = patched_obs
 
         # set up two scenarios, one with averaging, one without
