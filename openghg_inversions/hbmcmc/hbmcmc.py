@@ -654,7 +654,7 @@ def fixedbasisMCMC(
                 domain=domain,
             )
 
-            outputs = basic_output(inv_out, country_file=country_file)
+            outputs = basic_output(inv_out, country_file=country_file, domain=domain)
             return outputs
 
         if paris_postprocessing:
@@ -680,7 +680,7 @@ def fixedbasisMCMC(
 
             obs_avg_period = averaging_period[0] or "1h"
             paris_postprocessing_kwargs = paris_postprocessing_kwargs or {}
-            flux_outs, conc_outs = make_paris_outputs(inv_out, country_file=country_file, obs_avg_period=obs_avg_period, **paris_postprocessing_kwargs)
+            flux_outs, conc_outs = make_paris_outputs(inv_out, country_file=country_file, domain=domain, obs_avg_period=obs_avg_period, **paris_postprocessing_kwargs)
 
             conc_output_filename = define_output_filename(outputpath, species, domain, outputname + "_conc", start_date, ext=".nc")
             flux_output_filename = define_output_filename(outputpath, species, domain, outputname + "_flux", start_date, ext=".nc")

@@ -87,6 +87,10 @@ countries_path = Path(".").resolve() / "countries"
 def europe_country_file():
     return countries_path / "country_EUROPE.nc"
 
+@pytest.fixture
+def eastasia_country_file():
+    return countries_path / "country_EASTASIA.nc"
+
 
 @pytest.fixture(scope="session", autouse=True)
 def session_config_mocker(using_zarr_store) -> Iterator[None]:

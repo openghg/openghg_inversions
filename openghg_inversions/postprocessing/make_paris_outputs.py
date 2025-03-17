@@ -208,6 +208,7 @@ def paris_flux_output(
     report_mode: bool = False,
     inversion_grid: bool = True,
     flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
+    domain: str | None = None
 ) -> xr.Dataset:
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
 
@@ -222,7 +223,6 @@ def paris_flux_output(
     )
 
     emissions_attrs = get_data_var_attrs(flux_template_path, inv_out.species)
-
     country_outs = make_country_outputs(
         inv_out,
         country_file=country_file,
@@ -230,12 +230,13 @@ def paris_flux_output(
         stats=stats,
         stats_args=stats_args,
         country_code="alpha3",
+        domain=domain
     )
     country_outs = country_outs * 1e-3  # convert g/yr to kg/yr
 
     # add country mask
     country_path = get_country_file_path(country_file)
-    countries = Countries(xr.open_dataset(country_path), country_code="alpha3")
+    countries = Countries(xr.open_dataset(country_path), country_code="alpha3", domain=domain)
 
     country_fraction = countries.matrix.as_numpy().rename("country_fraction")
 
@@ -388,6 +389,7 @@ def make_paris_outputs(
     report_mode: bool = False,
     inversion_grid: bool = True,
     obs_avg_period: str = "4h",
+    domain: str | None = None
 ) -> tuple[xr.Dataset, xr.Dataset]:
     # infer flux frequency
     flux_frequency = infer_flux_frequency(inv_out.flux)
@@ -399,6 +401,7 @@ def make_paris_outputs(
         inversion_grid=inversion_grid,
         time_point=time_point,
         flux_frequency=flux_frequency,
+        domain=domain
     )
 
     return flux_outs, conc_outs
@@ -421,7 +424,7 @@ def make_paris_flux_outputs_from_rhime(
     )
 
     flux_outputs = paris_flux_output(
-        inv_out, country_file, time_point, report_mode, inversion_grid, flux_frequency
+        inv_out, country_file, time_point, report_mode, inversion_grid, flux_frequency, domain=domain
     )
 
     return flux_outputs

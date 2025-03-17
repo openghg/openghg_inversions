@@ -4,7 +4,7 @@ from typing import Literal
 import xarray as xr
 
 from openghg_inversions.array_ops import sparse_xr_dot
-from openghg_inversions.postprocessing.countries import Countries
+from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.stats import calculate_stats
 from openghg_inversions.postprocessing.utils import rename_by_replacement
@@ -196,6 +196,7 @@ def make_country_outputs(
     stats: list[str] | None = None,
     stats_args: dict | None = None,
     country_code: Literal["alpha2", "alpha3"] | None = "alpha3",
+    domain: str | None = None
 ) -> xr.Dataset:
     """Calculate country emission stats.
 
@@ -226,12 +227,12 @@ def make_country_outputs(
 
     """
     if country_regions == "paris":
-        country_regions = paris_regions_dict
+        country_regions = paris_regions_dict[domain]
     elif isinstance(country_regions, str):
         country_regions = Path(country_regions)
 
     countries = Countries.from_file(
-        country_file=country_file, country_code=country_code, country_regions=country_regions
+        country_file=country_file, country_code=country_code, country_regions=country_regions, domain=domain
     )
     country_traces = countries.get_country_trace(inv_out=inv_out)
 
@@ -245,42 +246,13 @@ def make_country_outputs(
     return country_stats.as_numpy()
 
 
-paris_regions_dict = {
-    "BELUX": ["BEL", "LUX"],
-    "BENELUX": ["BEL", "LUX", "NLD"],
-    "CW_EU": [
-        "AUT",
-        "BEL",
-        "CHE",
-        "CZE",
-        "DEU",
-        "ESP",
-        "FRA",
-        "GBR",
-        "HRV",
-        "HUN",
-        "IRL",
-        "ITA",
-        "LUX",
-        "NLD",
-        "POL",
-        "PRT",
-        "SVK",
-        "SVN",
-    ],
-    "EU_GRP2": ["AUT", "BEL", "CHE", "DEU", "DNK", "FRA", "GBR", "IRL", "ITA", "LUX", "NLD"],
-    "NW_EU": ["BEL", "DEU", "DNK", "FRA", "GBR", "IRL", "LUX", "NLD"],
-    "NW_EU2": ["BEL", "DEU", "FRA", "GBR", "IRL", "LUX", "NLD"],
-    "NW_EU_CONTINENT": ["BEL", "DEU", "FRA", "LUX", "NLD"],
-}
-
-
 def basic_output(
     inv_out: InversionOutput,
     country_file: str | Path | None = None,
     country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
+    domain: str | None = None
 ) -> xr.Dataset:
     """Create basic output with concentrations, flux totals, and country totals.
 
@@ -310,6 +282,7 @@ def basic_output(
         country_regions=country_regions,
         stats=stats,
         stats_args=stats_args,
+        domain=domain
     )
 
     model_data = inv_out.get_model_data(var_names=["hx", "hbc", "min_error"]).rename(
