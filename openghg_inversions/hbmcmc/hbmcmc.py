@@ -33,6 +33,7 @@ from openghg_inversions.filters import filtering
 from openghg_inversions.model_error import residual_error_method, percentile_error_method, setup_min_error
 from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
 
+logger = logging.getLogger(__name__)
 
 def fixedbasisMCMC(
     species: str,
@@ -456,6 +457,9 @@ def fixedbasisMCMC(
             Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
 
         # Calculate min error
+        if calculate_min_error is not None and "min_error" in kwargs:
+            logger.warning(f"`calculate_min_error` set to `{calculate_min_error}` but `min_error` also set in .ini file." 
+                           f"Using the value calculated by the `{calculate_min_error}` method")
         if calculate_min_error == "residual":
             if min_error_options is not None:
                 min_error = residual_error_method(fp_data, **min_error_options)
