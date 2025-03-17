@@ -566,13 +566,39 @@ def lognormal_mode_stdev(mode_lognormal: float,
     
     initial_guess = [initial_var]
     
-    variance_normal = fsolve(equations, initial_guess)
-    
+    variance_normal = fsolve(equations, initial_guess)[0]
     sigma = np.sqrt(variance_normal)
     mu = variance_normal + np.log(mode_lognormal)
 
     return mu, sigma
 
+
+def lognormal_median_stdev(median_lognormal: float,
+                        stdev_lognormal: float,
+                        ) -> tuple[float, float]:
+
+    """Return the pymc `mu` and `sigma` parameters that give a log normal distribution
+    with the given median and stdev.
+
+    Args:
+        median: desired mode of log normal
+        stdev: desired standard deviation of log normal
+
+    Returns:
+        tuple (mu, sigma), where `pymc.LogNormal(mu, sigma)` has the given mean and stdev.
+
+    Formulas for mu and var:
+
+    mu = ln(median_y)
+    stdev ** 2 = ln((1 + sqrt(1 + 4 * stdev_y^2 / median_y)) / 2)
+    
+    """
+
+    mu = np.log(median_lognormal)
+
+    sigma = 0.5 * np.log((1 + (1 + 4 * stdev_lognormal**2 / median_lognormal)**0.5) / 2)
+
+    return mu, sigma
     
 # def multivariate_lognormal_transform(covariance_lognormal: np.ndarray,
 #                                     mode_lognormal: float | None = None,
