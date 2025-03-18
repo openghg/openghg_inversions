@@ -52,6 +52,16 @@ def test_rhime_flux_reprocessing(europe_country_file, raw_data_path):
     assert "flux_total_prior" in paris_outs
     assert "flux_total_posterior" in paris_outs
 
+def test_rhime_flux_reprocessing_EASTASIA(eastasia_country_file, raw_data_path):
+    """Check that we can re-run PARIS flux outputs on standard RHIME outputs."""
+    rhime_outs = xr.open_dataset(raw_data_path / "standard_rhime_outs_EASTASIA.nc")
+    paris_outs = make_paris_flux_outputs_from_rhime(
+        rhime_outs, species="hfc23", domain="eastasia", country_file=eastasia_country_file
+    )
+
+    assert "flux_total_prior" in paris_outs
+    assert "flux_total_posterior" in paris_outs
+
 
 def test_basic_outputs(inv_out, europe_country_file):
     """Test creation of basic output.
@@ -99,7 +109,12 @@ def test_make_paris_outputs(inv_out, europe_country_file, tmpdir):
     flux_outs.to_netcdf(tmpdir / "flux.nc")
     conc_outs.to_netcdf(tmpdir / "conc.nc")
 
-# TODO : adopt the rest of these tests for EASTASIA. test_basic_outputs_EASTASIA works fine!
+def test_make_paris_outputs_EASTASIA(inv_out_EASTASIA, eastasia_country_file, tmpdir):
+    """Check that we can create and save PARIS outputs"""
+    flux_outs, conc_outs = make_paris_outputs(inv_out_EASTASIA, country_file=eastasia_country_file, obs_avg_period="1h", domain="eastasia")
+
+    flux_outs.to_netcdf(tmpdir / "flux.nc")
+    conc_outs.to_netcdf(tmpdir / "conc.nc")
 
 def test_save_inversion_output(mcmc_args, tmpdir):
     """Check that we can save and reload inversion outputs"""
