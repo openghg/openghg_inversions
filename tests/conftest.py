@@ -84,12 +84,12 @@ countries_path = Path(".").resolve() / "countries"
 
 
 @pytest.fixture
-def europe_country_file():
+def europe_country_file(raw_data_path):
     """Provides path to the EUROPE countryfile"""
     return raw_data_path / "country_EUROPE.nc"
 
 @pytest.fixture
-def eastasia_country_file():
+def eastasia_country_file(raw_data_path):
     """Provides path to the EASTASIA countryfile"""
     return raw_data_path / "country_EASTASIA.nc"
 
