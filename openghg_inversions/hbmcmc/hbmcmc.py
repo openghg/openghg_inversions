@@ -252,7 +252,7 @@ def fixedbasisMCMC(
         details.) Combines the functionality of the previous min_error and calculate_min_error parameters.
       min_error_options:
         Dictionary of additional arguments to pass the the function used to calculate min. model
-        error (as specified by `calculate_min_error`).
+        error (as specified by `min_error`).
       output_format: select what is returned/saved by inversion
         - "hbmcmc": (default) return the results of `inferpymc_postprocessouts`, and save result as netCDF
         - "merged_data": return `fp_all` dictionary, no further processing and inversion *not* run
