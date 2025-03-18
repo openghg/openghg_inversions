@@ -6,9 +6,15 @@ from openghg_inversions.postprocessing.countries import Countries, CountryRegion
 from openghg_inversions.postprocessing._country_codes import CountryInfoList
 
 
+# TODO : Extend these into EASTASIA. Currently, no standard countryfile for inversions (although Ben has used Alistair's UKMO setup)
+
 @pytest.fixture
 def country_ds():
     return xr.open_dataset(get_country_file_path(domain="EUROPE"))
+
+@pytest.fixture
+def country_ds_EASTASIA():
+    return xr.open_dataset(get_country_file_path(domain="EASTASIA"))
 
 
 def test_country_regions_missing_check():
@@ -36,7 +42,7 @@ def test_country_regions_missing_check():
         ]
     )
 
-    paris_regions = CountryRegions(paris_regions_dict)
+    paris_regions = CountryRegions(paris_regions_dict['europe'])
 
     # check 1: "ITALY" vs "ITA" and "POLAND" vs "POL" doesn't affect check
     missing = paris_regions.region_countries_missing_from(paris_regions_countries)
@@ -50,18 +56,36 @@ def test_country_regions_missing_check():
 
 
 def test_country_regions_align(country_ds):
-    """Check that aligning country regions defined with alpha3 codes results in definitions with input names."""
-    paris_regions = CountryRegions(paris_regions_dict)
+    """Check that aligning country regions defined with alpha3 codes results in definitions with input names
+    for EUROPE domain."""
+    paris_regions = CountryRegions(paris_regions_dict['europe'])
     countries_list = CountryInfoList(country_ds.name.values)
 
     assert list(paris_regions.align(countries_list).to_dict()["BELUX"]) == ["BELGIUM", "LUXEMBOURG"]
 
 
+def test_country_regions_align_EASTASIA(country_ds_EASTASIA):
+    """Check that aligning country regions defined with alpha3 codes results in definitions with input names
+    for EASTASIA domain."""
+    paris_regions = CountryRegions(paris_regions_dict['eastasia'])
+    countries_list = CountryInfoList(country_ds_EASTASIA.name.values)
+
+    assert list(paris_regions.align(countries_list).to_dict()["EASTERN_ASIA"]) == ["EChi1", "N.Kor", "S.Kor", "Japan"]
+
 @pytest.mark.parametrize("country_code", ["alpha2", "alpha3", None])
 def test_countries_matrix_with_regions(country_code, country_ds):
-    """Check that country regions combine with countries correctly."""
+    """Check that country regions combine with countries correctly in EUROPE domain."""
     countries = Countries.from_file(
-        domain="EUROPE", country_regions=paris_regions_dict, country_code=country_code
+        domain="EUROPE", country_regions=paris_regions_dict['europe'], country_code=country_code
     )
 
-    assert len(countries.country_selections) == len(country_ds.name) + len(paris_regions_dict)
+    assert len(countries.country_selections) == len(country_ds.name) + len(paris_regions_dict['europe'])
+
+@pytest.mark.parametrize("country_code", ["alpha2", "alpha3", None])
+def test_countries_matrix_with_regions_EASTASIA(country_code, country_ds_EASTASIA):
+    """Check that country regions combine with countries correctly in EASTASIA domain."""
+    countries = Countries.from_file(
+        domain="EASTASIA", country_regions=paris_regions_dict['eastasia'], country_code=country_code
+    )
+
+    assert len(countries.country_selections) == len(country_ds_EASTASIA.name) + len(paris_regions_dict['eastasia'])

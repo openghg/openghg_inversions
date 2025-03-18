@@ -68,7 +68,7 @@ paris_regions_dict = {
         "NW_EU_CONTINENT": ["BEL", "DEU", "FRA", "LUX", "NLD"],
     },
     "eastasia":{
-        "EASTERN_ASIA":["EChi1", "S.Kor", "N.Kor", "Japan"]
+        "EASTERN_ASIA":["EChi1", "PRK", "KOR", "JPN"]
     }
     }
 
