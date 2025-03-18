@@ -8,7 +8,7 @@
 
 # arguments that apply to all obs/fp data
 species = "ch4"
-averaging_period = "4h"
+averaging_period = ["4h", "4h"]
 start_date = "2019-01-01"
 end_date = "2019-02-01"
 
@@ -17,20 +17,14 @@ fp_model = "NAME"
 met_model = "UKV"
 fp_species = "inert"  # TODO: this should be inferred if possible...
 
-obs_store = "obs_store"
-footprint_store = "paris_openghg_store"
-flux_store = "paris_openghg_store"
-bc_store = "paris_openghg_store"
+obs_store = "obs_paris_2024_07_store"
+footprint_store = "shared_store_zarr"
+emissions_store = "paris_store_zarr"
+bc_store = "shared_store_zarr"
 
-[[surface]]
-site = "TAC"
-inlet = "185m"
-fp_height = "185m"
-
-[[surface]]
-site = "MHD"
-inlet = "py:slice(0, 20)"  # the "py:" indicates that this will be passed through `eval` (or some limited parser...)
-fp_height = "10m"
+sites = ["TAC", "MHD"]
+inlets = ["185m", "10m"]
+fp_heights = ["185m", "10m"]
 
 
 [model]
@@ -43,13 +37,14 @@ type = "forward model"
 [model.forward.flux]
 type = "flux"
 
-[model.forward.flux.data_kwargs]
-source = "edgar-annual-total"  # this could be a list; the fluxes would be stacked in that case
+[model.forward.flux.data_args]
+source = "edgarv80_wetchartsv131_constant"  # this could be a list; the fluxes would be stacked in that case
+source_format = "openghg"
 
 [model.forward.flux.basis]
 algorithm = "quadtree"
 nbasis = 250
-fix_basis_outer_regions = false
+# fix_basis_outer_regions = false
 
 [model.forward.flux.prior]
 pdf = "lognormal"
@@ -67,9 +62,8 @@ use_baseline = true  # "optional" turns into "use_{name}"
 type = "bc"
 use_bc = true
 
-[model.forward.baseline.bc.data_kwargs]
-bc_input = "camsv19"  # TODO: why isn't this called "source"?
-bc_store = "not_the_paris_openghg_store"  # specify alternative just for this component (...if there were multiple)
+[model.forward.baseline.bc.data_args]
+bc_input = "camsv19_daily"  # TODO: why isn't this called "source"?
 
 [model.forward.baseline.bc.basis]
 basis_directory = "default"
@@ -101,10 +95,10 @@ prior = {pdf = "uniform", lower = 0.1, upper = 3.0}
 freq = "8D"
 per_site = true
 
-[model.likelihood.min_error]
-min_error = 0.0
-calculate_min_error = "residual"
-by_site = true
+# [model.likelihood.min_error]
+# min_error = 0.0
+# calculate_min_error = "residual"
+# by_site = true
 
 [model.likelihood.options]
 pollution_events_from_obs = true
@@ -125,7 +119,7 @@ nchain = 4
 [output]
 # output options...
 save_trace = true
-output_path = "/user/work/ab12345/inversion_outputs"
-output_name = "my_inversion"
+output_path = "/user/work/ro21302/inversion_outputs"
+output_name = "modular_test"
 
 country_file = "/group/chemistry/acrg/PARIS_results_sharing/country_masks/EUROPE_EEZ_PARIS_gapfilled.nc"

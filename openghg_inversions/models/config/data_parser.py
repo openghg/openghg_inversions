@@ -82,6 +82,7 @@ def get_data(mg: ModelGraph, comp_data: dict | None = None) -> dict[str, Compone
 
     # first pass: create component data objects for nodes without inputs
     for node in nodes:
+        print(node.name)
         # TODO: make a more generic check?
         if node.type in ("tracer", ):
             continue
@@ -95,7 +96,7 @@ def get_data(mg: ModelGraph, comp_data: dict | None = None) -> dict[str, Compone
         for param in inspect.signature(cd_type).parameters.values():
             if hasattr(node, param.name) and param not in cd_kwargs:
                 cd_kwargs[param.name] = getattr(node, param.name)
-
+        print(cd_kwargs)
         comp_data[node.name] = cd_type(**cd_kwargs)
 
     # second pass: create nodes with inputs, build h matrices
