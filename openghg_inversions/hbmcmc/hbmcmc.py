@@ -90,7 +90,7 @@ def fixedbasisMCMC(
     basis_output_path: str | None = None,
     save_trace: str | Path | bool = False,
     save_inversion_output: str | Path | bool = False,
-    calculate_min_error: Literal["percentile", "residual"] | None = None,
+    min_error: Literal["percentile", "residual"] | float = 0.0,
     min_error_options: dict | None = None,
     output_format: Literal["hbmcmc", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"] = "hbmcmc",
     paris_postprocessing: bool = False,
@@ -246,10 +246,10 @@ def fixedbasisMCMC(
         saved there.
       merged_data_only:
         If True, save merged data, and do nothing else.
-      calculate_min_error:
-        If None, use value in `kwargs[min_error]`. Otherwise, compute min model error
+      min_error:
+        If float, the value represents the minimun error. Otherwise, compute min model error
         using the "residual" method or the "percentile" method. (See `openghg_inversions.model_error.py` for
-        details.)
+        details.) Combines the functionality of the previous min_error and calculate_min_error parameters.
       min_error_options:
         Dictionary of additional arguments to pass the the function used to calculate min. model
         error (as specified by `calculate_min_error`).
@@ -455,10 +455,7 @@ def fixedbasisMCMC(
             Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
 
         # Calculate min error
-        if calculate_min_error is not None and "min_error" in kwargs:
-            warnings.warn(f"`calculate_min_error` set to `{calculate_min_error}` but `min_error` also set in .ini file." 
-                           f"Using the value calculated by the `{calculate_min_error}` method")
-        if calculate_min_error == "residual":
+        if min_error == "residual":
             if min_error_options is not None:
                 min_error = residual_error_method(fp_data, **min_error_options)
             else:
@@ -468,18 +465,16 @@ def fixedbasisMCMC(
             if min_error_options and min_error_options.get("by_site", False):
                 min_error = setup_min_error(min_error, siteindicator)
 
-            kwargs["min_error"] = min_error  # currently `min_error` is passed via kwargs to `infer_pymc`
-        elif calculate_min_error == "percentile":
+        elif min_error == "percentile":
             min_error = percentile_error_method(fp_data)
             min_error = setup_min_error(min_error, siteindicator)
-            kwargs["min_error"] = min_error  # currently `min_error` is passed via kwargs to `infer_pymc`
 
-        elif calculate_min_error is None:
+        elif isinstance(min_error, float | int) and min_error >= 0:
             pass
         else:
             raise ValueError(
-                "`calculate_min_error` must have values: 'residual', 'percentile', or `None`;"
-                f" {calculate_min_error} not recognised."
+                "`min_error` must have values: 'residual', 'percentile', or `float`;"
+                f" {min_error} not recognised."
             )
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
@@ -518,6 +513,7 @@ def fixedbasisMCMC(
             "offsetprior": offsetprior,
             "add_offset": add_offset,
             "verbose": verbose,
+            "min_error": min_error,
         }
 
         if use_bc is True:
@@ -557,6 +553,7 @@ def fixedbasisMCMC(
             "country_file": country_file,
             "obs_repeatability": obs_repeatability,
             "obs_variability": obs_variability,
+            "min_error": min_error,
         }
 
         # add mcmc_args to post_process_args
@@ -564,9 +561,6 @@ def fixedbasisMCMC(
         post_process_args.update(mcmc_args)
         del post_process_args["nit"]
         del post_process_args["verbose"]
-
-        # pass min model error to post-processing
-        post_process_args["min_error"] = kwargs.get("min_error", 0.0)
 
         # add any additional kwargs to mcmc_args (these aren't needed for post processing)
         mcmc_args.update(kwargs)
