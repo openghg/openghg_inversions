@@ -1,0 +1,122 @@
+# The template in single_gas_single_sector.toml would be converted to the following
+# "ini" files.
+#
+# Note: the values shown are examples, and they would need to have placeholders in them
+# for a real "ini template" output.
+
+[data]
+
+# arguments that apply to all obs/fp data
+species = "hfc143a"
+averaging_period = ["4h", "4h", "4h", "4h", "4h"]
+start_date = "2019-01-01"
+end_date = "2020-01-01"
+
+domain = "europe"
+fp_model = "NAME"
+met_model = "not_set" # change to UKV when available in the object store
+fp_species = "inert"  # TODO: this should be inferred if possible...
+
+obs_store = "obs_paris_2024_07_store"
+footprint_store = "merged_footprints"
+flux_store = "shared_store_zarr"
+bc_store = "paris_store_zarr"
+
+sites = ["cmn", "jfj", "mhd", "tac", "tob", "zep"]
+inlets = ["-20", "2m", "10m", "185m", "12m", "0m"]
+fp_heights = ["500m", "1000m", "10m", "185m", "10m", "10m"]
+
+#[data.filters] => not applied yet (I think)
+#mhd = ["pblh_min", "pblh_inlet_diff"]
+#tac = ["pblh_min", "pblh_inlet_diff"]
+#tob = ["pblh_min", "pblh_inlet_diff"]
+#zep = ["pblh_min", "pblh_inlet_diff"]
+
+[model]
+
+[model.forward]
+type = "forward model"
+
+[model.forward.flux]
+type = "flux"
+
+[model.forward.flux.data_args]
+source = "edgar-annual-total"  # this could be a list; the fluxes would be stacked in that case
+
+[model.forward.flux.basis]
+algorithm = "weighted"
+nregion = 250 # change to nbasis for weighted algo
+# fix_basis_outer_regions = true # Not working yet
+
+[model.forward.flux.prior]
+pdf = "lognormal"
+mean = 1.0
+stdev = 8.0
+reparameterise = true
+
+[model.forward.baseline]
+type = "baseline"
+use_baseline = true  # "optional" turns into "use_{name}"
+
+[model.forward.baseline.bc]
+type = "bc"
+use_bc = true
+
+[model.forward.baseline.bc.data_args]
+bc_input = "mhd_clean_sector"  # TODO: why isn't this called "source"?
+bc_store = "paris_store_zarr"  # specify alternative just for this component (...if there were multiple)
+
+[model.forward.baseline.bc.basis]
+basis_directory = "/group/chem/acrg/LPDM/bc_basis_functions/"
+basis_type = "NESW"
+
+[model.forward.baseline.bc.prior]
+pdf = "truncatednormal"
+mu = 1.0
+sigma = 0.1
+lower = 0.0
+
+[model.forward.baseline.bc.setup]
+freq = "monthly"
+
+[model.forward.baseline.offset]
+type = "offset"
+use_offset = false
+
+[model.likelihood]
+type = "rhime likelihood"
+inputs = ["forward"]  # TODO: should this be "model.forward"? ...no because we'll parse the "model" table like we would the template
+
+[model.likelihood.sigma]  # TODO how do we know to add this?
+type = "sigma"
+
+prior = {pdf = "uniform", lower = 0.1, upper = 3.0}
+freq = "monthly"
+per_site = true
+
+# [model.likelihood.min_error] # Not working yet
+# min_error = 0.0
+# calculate_min_error = "percentile"
+# by_site = false
+
+[model.likelihood.options]
+pollution_events_from_obs = true
+no_model_error = false
+
+[sampling]
+# sampling options...
+nuts_sampler = "numpyro"
+
+nit = 20000
+burn = 10000
+tune = 20000
+
+nchain = 4
+
+[output]
+# output options...
+save_trace = true
+output_path = "/user/work/qq24644/my_inversion"
+output_name = "my_inversion"
+
+country_file = "/group/chemistry/acrg/LPDM/countries/country_EUROPE_EEZ_PARIS_gapfilled.nc"
