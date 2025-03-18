@@ -5,18 +5,6 @@ from openghg_inversions.utils import get_country_file_path
 from openghg_inversions.postprocessing.countries import Countries, CountryRegions, paris_regions_dict
 from openghg_inversions.postprocessing._country_codes import CountryInfoList
 
-
-# TODO : Extend these into EASTASIA. Currently, no standard countryfile for inversions (although Ben has used Alistair's UKMO setup)
-
-@pytest.fixture
-def country_ds(raw_data_path):
-    return xr.open_dataset(raw_data_path / "country_EUROPE.nc")
-
-@pytest.fixture
-def country_ds_EASTASIA(raw_data_path):
-    return xr.open_dataset(raw_data_path / "country_EASTASIA.nc")
-
-
 def test_country_regions_missing_check():
     paris_regions_countries = CountryInfoList(
         [
