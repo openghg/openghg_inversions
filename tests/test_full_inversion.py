@@ -46,19 +46,19 @@ def test_full_inversion_flux_dim_shuffled(mcmc_args):
 
 
 def test_full_inversion_with_min_error_calc(mcmc_args):
-    mcmc_args["calculate_min_error"] = "residual"
+    mcmc_args["min_error"] = "residual"
     out = fixedbasisMCMC(**mcmc_args)
 
     assert "min_model_error" in out.attrs
 
-    mcmc_args["calculate_min_error"] = "percentile"
+    mcmc_args["min_error"] = "percentile"
     out = fixedbasisMCMC(**mcmc_args)
 
     assert "min_model_error" in out.attrs
 
 
 def test_full_inversion_with_min_error_calc_no_bc(mcmc_args):
-    mcmc_args["calculate_min_error"] = "residual"
+    mcmc_args["min_error"] = "residual"
     mcmc_args["use_bc"] = False
     out = fixedbasisMCMC(**mcmc_args)
 
@@ -66,7 +66,7 @@ def test_full_inversion_with_min_error_calc_no_bc(mcmc_args):
 
 
 def test_full_inversion_with_min_error_by_site(mcmc_args):
-    mcmc_args["calculate_min_error"] = "residual"
+    mcmc_args["min_error"] = "residual"
     mcmc_args["min_error_options"] = {"by_site": True}
     out = fixedbasisMCMC(**mcmc_args)
 
