@@ -1,5 +1,6 @@
 # OpenGHG Inversions Change Log
 
+- Merged functionality of `min_error` and `calculate_min_error` into a single variable (`min_error`). [#PR 240](https://github.com/openghg/openghg_inversions/pull/240)
 
 - Tidied `get_data.py`, splitting it into several files. [#PR 237](https://github.com/openghg/openghg_inversions/pull/237) 
 
