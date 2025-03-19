@@ -90,7 +90,8 @@ def fixedbasisMCMC(
     basis_output_path: str | None = None,
     save_trace: str | Path | bool = False,
     save_inversion_output: str | Path | bool = False,
-    min_error: Literal["percentile", "residual"] | float = 0.0,
+    min_error: Literal["percentile", "residual"] | None | float = 0.0,
+    calculate_min_error: Literal["percentile", "residual"] | None = None,
     min_error_options: dict | None = None,
     output_format: Literal["hbmcmc", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"] = "hbmcmc",
     paris_postprocessing: bool = False,
@@ -250,6 +251,9 @@ def fixedbasisMCMC(
         If float, the value represents the minimun error. Otherwise, compute min model error
         using the "residual" method or the "percentile" method. (See `openghg_inversions.model_error.py` for
         details.) Combines the functionality of the previous min_error and calculate_min_error parameters.
+        None only an option to accomodate old ini files.
+      calculate_min_error:
+        Is deprecated and will be removed in a future update.
       min_error_options:
         Dictionary of additional arguments to pass the the function used to calculate min. model
         error (as specified by `min_error`).
@@ -455,6 +459,10 @@ def fixedbasisMCMC(
             Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
 
         # Calculate min error
+        if calculate_min_error is not None:
+            warnings.warn(f"`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead.")
+            min_error = calculate_min_error
+
         if min_error == "residual":
             if min_error_options is not None:
                 min_error = residual_error_method(fp_data, **min_error_options)
