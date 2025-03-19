@@ -99,7 +99,7 @@ def country_ds(raw_data_path):
     return xr.open_dataset(raw_data_path / "country_EUROPE.nc")
 
 @pytest.fixture
-def country_ds_EASTASIA(raw_data_path):
+def country_ds_eastasia(raw_data_path):
     """Provides EUROPE countryfile dataset"""
     return xr.open_dataset(raw_data_path / "country_EASTASIA.nc")
 
