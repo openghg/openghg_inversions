@@ -654,7 +654,7 @@ def fixedbasisMCMC(
                 domain=domain,
             )
 
-            outputs = basic_output(inv_out, country_file=country_file, domain=domain)
+            outputs = basic_output(inv_out, country_file=country_file)
             return outputs
 
         if paris_postprocessing:

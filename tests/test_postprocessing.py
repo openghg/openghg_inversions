@@ -69,7 +69,7 @@ def test_basic_outputs(inv_out, europe_country_file):
     The default stats calculated are "mean" and "quantile".
     Check that these are all present.
     """
-    outs = basic_output(inv_out, country_file=europe_country_file, domain="europe")
+    outs = basic_output(inv_out, country_file=europe_country_file)
 
     conc_vars = ["y_posterior_predictive", "y_prior_predictive"]
     for x in ["flux", "scaling", "country", "mu_bc"]:
@@ -88,7 +88,7 @@ def test_basic_outputs_EASTASIA(inv_out_EASTASIA, eastasia_country_file):
     The default stats calculated are "mean" and "quantile".
     Check that these are all present.
     """
-    outs = basic_output(inv_out_EASTASIA, country_file=eastasia_country_file, domain="eastasia")
+    outs = basic_output(inv_out_EASTASIA, country_file=eastasia_country_file)
 
     conc_vars = ["y_posterior_predictive", "y_prior_predictive"]
     for x in ["flux", "scaling", "country", "mu_bc"]:

@@ -201,8 +201,7 @@ class Countries:
         countries: xr.Dataset,
         country_selections: list[str] | None = None,
         country_code: Literal["alpha2", "alpha3"] | None = None,
-        country_regions: dict[str, list[str]] | str | Path | None = None,
-        domain: str | None = None
+        country_regions: dict[str, list[str]] | str | Path | None = None
     ) -> None:
         """Create Countries object given country map Dataset and optional list of countries to select.
 
@@ -219,7 +218,6 @@ class Countries:
         """
         self.country_code = country_code
         self.country_labels = CountryInfoList(countries.name.values, country_code=country_code)
-        self.domain = domain
 
         # get country regions
         if isinstance(country_regions, str | Path):
