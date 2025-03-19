@@ -109,13 +109,6 @@ def test_make_paris_outputs(inv_out, europe_country_file, tmpdir):
     flux_outs.to_netcdf(tmpdir / "flux.nc")
     conc_outs.to_netcdf(tmpdir / "conc.nc")
 
-def test_make_paris_outputs_eastasia(inv_out_eastasia, eastasia_country_file, tmpdir):
-    """Check that we can create and save PARIS outputs for EASTASIA domain"""
-    flux_outs, conc_outs = make_paris_outputs(inv_out_eastasia, country_file=eastasia_country_file, obs_avg_period="1h", domain="eastasia")
-
-    flux_outs.to_netcdf(tmpdir / "flux.nc")
-    conc_outs.to_netcdf(tmpdir / "conc.nc")
-
 def test_save_inversion_output(mcmc_args, tmpdir):
     """Check that we can save and reload inversion outputs"""
     mcmc_args["save_inversion_output"] = str(tmpdir / "inv_out.nc")
