@@ -200,7 +200,7 @@ class Node:
 
         print_kwargs = {}
         for k, v in self.component_args().arguments.items():
-            if isinstance(v, np.ndarray | pd.Series | pd.Index):
+            if isinstance(v, np.ndarray | pd.Series | pd.Index | xr.DataArray):
                 print_kwargs[k] = type(v)
             else:
                 print_kwargs[k] = v
@@ -416,7 +416,8 @@ class ModelGraph:
             ((k, x) for k, v in input_edges.items() for x in v),
         )
 
-    def plot(self, title="", show_types=False, show_inputs=False, edge_labels=None, **kwargs) -> None:
+    def plot(self, title="", show_types=False, show_inputs=False, edge_labels=None, short_names=False, **kwargs) -> None:
+        # TODO: add option to display short names instead of long names
         for layer, nodes in enumerate(nx.topological_generations(self.graph)):
             # `multipartite_layout` expects the layer as a node attribute, so add the
             # numeric layer value as a node attribute
@@ -439,11 +440,21 @@ class ModelGraph:
             bbox=dict(facecolor="white", edgecolor="black", boxstyle="round,pad=0.2"),
         )
         options.update(kwargs)
-        if show_types:
-            node_labels = {node: f"{node.name}\ntype: {node.type}" for node in self.nodes}
-        else:
-            node_labels = {node: node.name for node in self.nodes}
 
+        # make node labels
+        if short_names:
+            def name_func(name):
+                return name.split(".")[-1]
+        else:
+            def name_func(name):
+                return name
+
+        if show_types:
+            node_labels = {node: f"{name_func(node.name)}\ntype: {node.type}" for node in self.nodes}
+        else:
+            node_labels = {node: name_func(node.name) for node in self.nodes}
+
+        # draw
         nx.draw_networkx(self.graph, pos=pos, ax=ax, labels=node_labels, **options)  # type: ignore
 
         # add edge labels
