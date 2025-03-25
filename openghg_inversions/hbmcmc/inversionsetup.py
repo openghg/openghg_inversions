@@ -497,7 +497,7 @@ def covariance_extension(x_covariance: np.ndarray,
     return cov_extended
 
 
-def lognormal_mean_stdev(mean: float, stdev: float) -> tuple[float, float]:
+def lognormal_mean_stdev(mean_lognormal: float, stdev_lognormal: float) -> tuple[float, float]:
     """Return the pymc `mu` and `sigma` parameters that give a log normal distribution
     with the given mean and stdev.
 
@@ -523,8 +523,8 @@ def lognormal_mean_stdev(mean: float, stdev: float) -> tuple[float, float]:
     mu = log(mean) - 0.5 * log(1 + (stdev/mean)**2)
     sigma = sqrt(log(1 + (stdev / mean)**2))
     """
-    var = np.log(1 + (stdev / mean) ** 2)
-    mu = np.log(mean) - 0.5 * var
+    var = np.log(1 + (stdev_lognormal / mean_lognormal) ** 2)
+    mu = np.log(mean_lognormal) - 0.5 * var
     sigma = np.sqrt(var)
     return mu, sigma
 
