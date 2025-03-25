@@ -416,7 +416,7 @@ class ModelGraph:
             ((k, x) for k, v in input_edges.items() for x in v),
         )
 
-    def plot(self, title="", show_types=False, show_inputs=False, edge_labels=None, short_names=False, **kwargs) -> None:
+    def plot(self, title="", show_types=False, show_inputs=False, edge_labels=None, short_names=False, figsize=(15, 7), **kwargs) -> None:
         # TODO: add option to display short names instead of long names
         for layer, nodes in enumerate(nx.topological_generations(self.graph)):
             # `multipartite_layout` expects the layer as a node attribute, so add the
@@ -433,7 +433,7 @@ class ModelGraph:
             pos.update(dict(zip(sorted(nodes, key=lambda x: x.name), positions)))
 
         # plot
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=figsize)
         options = dict(
             node_shape="s",
             node_color="none",
