@@ -123,11 +123,8 @@ def sigma_freq_indicies(ytime: np.ndarray, sigma_freq: str | None) -> np.ndarray
         for y in years_u:
             for m in months_u:
                 indicies = (years == y) & (months == m)
-                if not np.any(indicies):
-                  continue
-                else:
-                  output[indicies] = count
-                  count += 1
+                output[indicies] = count
+                count += 1
     else:
         # divide the time between t0 and ti by sigma_freq, then floor
         # to calculate number of integer intervals the calculation is

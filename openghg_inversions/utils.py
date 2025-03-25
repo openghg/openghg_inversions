@@ -130,38 +130,6 @@ def read_netcdfs(
     return combined
 
 
-def get_country_file_path(country_file: str | Path | None = None, domain: str | None = None):
-    if isinstance(country_file, str | Path):
-        result = Path(country_file)
-
-        if not result.exists():
-            raise FileNotFoundError(f"No country file found at path {result}")
-
-        return result
-
-    if domain is None:
-        raise ValueError("If `country_file` is None, then `domain` must be specified.")
-
-    # try to find country file in default location
-    country_directory = openghginv_path / "countries"
-
-    if not country_directory.exists():
-        country_directory.mkdir()
-
-        raise FileNotFoundError(
-            f"Country definition file not found. Please add to {openghginv_path}/countries/"
-        )
-
-    result = country_directory / f"country_{domain}.nc"
-
-    if not result.exists():
-        raise FileNotFoundError(
-            f"Country definition file not found. Please add to {openghginv_path}/countries/"
-        )
-
-    return result
-
-
 def get_country(domain: str, country_file: str | Path | None = None):
     """Open country file for given domain and return as a SimpleNamespace.
 
@@ -175,7 +143,20 @@ def get_country(domain: str, country_file: str | Path | None = None):
     Returns:
         SimpleNamespace with attributes: lon, lat, lonmax, lonmin, latmax, latmin, country, and name
     """
-    filename = get_country_file_path(country_file=country_file, domain=domain)
+    if country_file is None:
+        country_directory = openghginv_path / "countries"
+
+        if not country_directory.exists():
+            country_directory.mkdir()
+
+            raise FileNotFoundError(
+                "Country definition file not found." f" Please add to {openghginv_path}/countries/"
+            )
+
+        filenames = list(country_directory.glob(f"country_{domain}.nc"))
+        filename = filenames[0]
+    else:
+        filename = country_file
 
     with xr.open_dataset(filename) as f:
         lon = f.variables["lon"][:].values

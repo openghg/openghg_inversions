@@ -12,16 +12,9 @@ from openghg.standardise import standardise_surface, standardise_bc, standardise
 from openghg.types import ObjectStoreError
 import xarray as xr
 
+from openghg_inversions.get_data import data_processing_surface_notracer, _save_merged_data
 
 _raw_data_path = Path(".").resolve() / "tests/data/"
-
-
-@pytest.fixture(scope="session")
-def openghg_version():
-    try:
-        return tuple(map(int, version("openghg").split(".")))
-    except ValueError:
-        return (1000, 0, 0)
 
 
 @pytest.fixture(scope="session")
@@ -45,10 +38,8 @@ def using_zarr_store():
 
 
 @pytest.fixture(scope="session")
-def merged_data_file_name(using_zarr_store, openghg_version):
-    if openghg_version >= (0, 13):
-        return "merged_data_test_tac_combined_scenario_v13"
-    elif using_zarr_store:
+def merged_data_file_name(using_zarr_store):
+    if using_zarr_store:
         return "merged_data_test_tac_combined_scenario_v8"
     else:
         return "merged_data_test_tac_combined_scenario"
@@ -81,32 +72,6 @@ def add_frozen_merged_data(merged_data_dir, merged_data_file_name, using_zarr_st
 
 bc_basis_function_path = Path(".").resolve() / "bc_basis_functions"
 countries_path = Path(".").resolve() / "countries"
-
-
-@pytest.fixture
-def europe_country_file(raw_data_path):
-    """Provides path to the EUROPE countryfile"""
-    return raw_data_path / "country_EUROPE.nc"
-
-
-@pytest.fixture
-def eastasia_country_file(raw_data_path):
-    """Provides path to the EASTASIA countryfile"""
-    return raw_data_path / "country_EASTASIA.nc"
-
-
-@pytest.fixture
-def country_ds(raw_data_path):
-    """Provides EUROPE countryfile dataset"""
-    with xr.open_dataset(raw_data_path / "country_EUROPE.nc") as ds:
-        yield ds
-
-
-@pytest.fixture
-def country_ds_eastasia(raw_data_path):
-    """Provides EUROPE countryfile dataset"""
-    with xr.open_dataset(raw_data_path / "country_EASTASIA.nc") as ds:
-        yield ds
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -272,7 +237,7 @@ def tac_ch4_data_args():
         "fp_model": "NAME",
         "emissions_name": ["total-ukghg-edgar7"],
         # "met_model": "ukv",
-        "averaging_period": ["1h"],
+        "averaging_period": ["1H"],
     }
     return data_args
 

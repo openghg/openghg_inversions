@@ -11,7 +11,6 @@ Updated by Eric Saboya (Dec. 2022)
 """
 
 import subprocess
-from importlib.metadata import version as il_version
 from openghg_inversions.config.paths import Paths
 
 openghginv_path = Paths.openghginv
@@ -27,7 +26,6 @@ def code_version():
                 or "Unknown" if git is unavailable
     -----------------------------------
     """
-
     try:
         output = subprocess.run(
             ["git", "describe"],
@@ -41,7 +39,7 @@ def code_version():
             "WARNING: Unable to identify version using git."
             " Check that git is available to the python process."
         )
-        version = il_version("openghg_inversions")
+        version = "Unknown"
     else:
         # remove newlines and cast as string
         version = output.stdout.strip("\n")

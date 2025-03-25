@@ -2,4 +2,3 @@
 flake8
 pytest >= 6.2.5
 black
-tox >= 4.24

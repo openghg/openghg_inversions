@@ -200,8 +200,6 @@ TODO: complete this part
 
 ## Contributing
 
-### Code quality tools
-
 To contribute to `openghg_inversions`, you should also install the developer packages:
 ```bash
 pip install -r requirements-dev.txt
@@ -231,42 +229,6 @@ pytest
 ```
 in the `openghg_inversions` repository. (Make sure your virtual env is activated.)
 
-### Using `tox` to check code
-
-Alternatively, use `tox` to run tests and check the code format. 
-`tox` creates isolated environments to run the tests, which means it can test against different
-versions of OpenGHG.
-It does this automatically, so you don't need to manage pip or conda virtual environments to do this.
-
-To install `tox` globally in a "safe" way, use:
-
-```bash
-python -m pip install pipx-in-pipx --user
-pipx install tox
-```
-or, within a virtual environment, do `pip install tox`.
-
-Calling `tox -p` will run tests against OpenGHG devel and the last two releases of OpenGHG, and run black, flake8, and mypy.
-
-To specify individual jobs, you can use, e.g.:
-
-```bash
-tox -e openghgDev
-```
-
-to run the tests against the devel branch.
-
-Use `tox -l` to list all options.
-
-To pass arguments to pytest, mypy, black, etc, you can use, e.g.
-
-```bash
-tox -- "openghg_inversions/hbmcmc"
-```
-
-which will pass the positional argument "openghg_inversions/hbmcmc" to the commands invoked by tox.
-
-### Using branches
 
 To contribute new code, make a branch off of the `devel` branch.
 When your code is ready to be added, push it to github (`origin`).

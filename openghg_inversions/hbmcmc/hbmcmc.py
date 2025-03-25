@@ -17,21 +17,19 @@ object stores and for the paths to object stores to already be set in
 the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 """
 
-import logging
 from pathlib import Path
 from typing import Literal
-import warnings
 
 import numpy as np
 import xarray as xr
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
+from openghg_inversions import get_data
 from openghg_inversions.basis import basis_functions_wrapper
-from openghg_inversions.inversion_data import data_processing_surface_notracer, load_merged_data
 from openghg_inversions.filters import filtering
 from openghg_inversions.model_error import residual_error_method, percentile_error_method, setup_min_error
-from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
+
 
 def fixedbasisMCMC(
     species: str,
@@ -55,7 +53,6 @@ def fixedbasisMCMC(
     instrument: list[str] | None = None,
     calibration_scale: str | None = None,
     obs_data_level: list | None = None,
-    platform: list[str | None] | str | None = None,
     use_tracer: bool = False,
     use_bc: bool = True,
     fp_basis_case: str | None = None,
@@ -89,13 +86,10 @@ def fixedbasisMCMC(
     merged_data_name: str | None = None,
     basis_output_path: str | None = None,
     save_trace: str | Path | bool = False,
-    save_inversion_output: str | Path | bool = False,
-    min_error: Literal["percentile", "residual"] | None | float = 0.0,
+    skip_postprocessing: bool = False,
+    merged_data_only: bool = False,
     calculate_min_error: Literal["percentile", "residual"] | None = None,
     min_error_options: dict | None = None,
-    output_format: Literal["hbmcmc", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"] = "hbmcmc",
-    paris_postprocessing: bool = False,
-    paris_postprocessing_kwargs: dict | None = None,
     **kwargs,
 ) -> xr.Dataset | dict:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference
@@ -245,68 +239,30 @@ def fixedbasisMCMC(
         If True, save arviz `InferenceData` trace to `outputpath`. Alternatively,
         A file path (including file name and extension) can be passed, and the trace will be
         saved there.
+      skip_post_processing:
+        If True, return raw trace from sampling.
       merged_data_only:
         If True, save merged data, and do nothing else.
-      min_error:
-        If float, the value represents the minimun error. Otherwise, compute min model error
-        using the "residual" method or the "percentile" method. (See `openghg_inversions.model_error.py` for
-        details.) Combines the functionality of the previous min_error and calculate_min_error parameters.
-        None only an option to accomodate old ini files.
       calculate_min_error:
-        Is deprecated and will be removed in a future update.
+        If None, use value in `kwargs[min_error]`. Otherwise, compute min model error
+        using the "residual" method or the "percentile" method. (See `openghg_inversions.model_error.py` for
+        details.)
       min_error_options:
         Dictionary of additional arguments to pass the the function used to calculate min. model
-        error (as specified by `min_error`).
-      output_format: select what is returned/saved by inversion
-        - "hbmcmc": (default) return the results of `inferpymc_postprocessouts`, and save result as netCDF
-        - "merged_data": return `fp_all` dictionary, no further processing and inversion *not* run
-        - "inv_out": return `InversionOutput` object
-        - "basic": return basic output created by new `postprocessing` submodule
-        - "paris": return flux and concentration datasets with PARIS formatting; these are also saved
-            as netCDF files in the directory `outputpath`
-        - "mcmc_args": return the arguments passed to `fixedbasisMCMC`, but do not run the inversion
-        - "mcmc_results": return the results of `fixedbasisMCMC` with no further processing
-      paris_postprocessing_kwargs: dict of kwargs to pass to `make_paris_outputs`
+        error (as specified by `calculate_min_error`).
 
     Return:
       Results from the inversion in a Dataset if skip_post_processing==False, in a dictionnary if True
     """
-    # select output format
-    merged_data_only = False
-    return_inv_out = False
-    new_postprocessing = False
-    paris_postprocessing = False
-    return_mcmc_args = False
-    skip_postprocessing = False
-
-    if paris_postprocessing is True:
-        output_format = "paris"
-        warnings.warn("The `paris_postprocessing` argument will be deprecated. Use `output_format = 'paris'` instead.")
-
-    output_format = output_format.lower()  # type: ignore
-
-    if output_format == "merged_data":
-        merged_data_only = True
-    elif output_format == "inv_out":
-        return_inv_out = True
-    elif output_format == "basic":
-        new_postprocessing = True
-    elif output_format == "paris":
-        paris_postprocessing = True
-    elif output_format == "mcmc_args":
-        return_mcmc_args = True
-    elif output_format == "mcmc_results":
-        skip_postprocessing = True
-    # otherwise (i.e. output_format == "hbmcmc"), mcmc.inferpymc_postprocessouts is used
-
     rerun_merge = True
 
     if merged_data_only:
         reload_merged_data = False
+        save_merged_data = True
 
     if reload_merged_data is True and merged_data_dir is not None:
         try:
-            fp_all = load_merged_data(
+            fp_all = get_data.load_merged_data(
                 merged_data_dir, species, start_date, outputname, merged_data_name
             )
         except ValueError as e:
@@ -321,7 +277,7 @@ def fixedbasisMCMC(
 
             if len(sites) != len(sites_merged):
                 keep_i = [i for i, s in enumerate(sites) if s in sites_merged]
-                dropped_sites = [s for s in sites if s not in sites_merged]
+                s_dropped = [s for s in sites if s not in sites_merged]
 
                 sites = [s for i, s in enumerate(sites) if i in keep_i]
                 inlet = [s for i, s in enumerate(inlet) if i in keep_i]
@@ -329,7 +285,7 @@ def fixedbasisMCMC(
                 instrument = [s for i, s in enumerate(instrument) if i in keep_i]
                 averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
 
-                print(f"\nDropping {dropped_sites} sites as they are not included in the merged data object.\n")
+                print(f"\nDropping {s_dropped} sites as they are not included in the merged data object.\n")
 
     if reload_merged_data is True and merged_data_dir is None:
         print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
@@ -344,7 +300,7 @@ def fixedbasisMCMC(
                 fp_height,
                 instrument,
                 averaging_period,
-            ) = data_processing_surface_notracer(
+            ) = get_data.data_processing_surface_notracer(
                 species,
                 sites,
                 domain,
@@ -352,7 +308,6 @@ def fixedbasisMCMC(
                 start_date,
                 end_date,
                 obs_data_level=obs_data_level,
-                platform=platform,
                 met_model=met_model,
                 fp_model=fp_model,
                 fp_height=fp_height,
@@ -378,7 +333,7 @@ def fixedbasisMCMC(
             raise ValueError("Model does not currently include tracer model. Watch this space")
 
         if merged_data_only:
-            return fp_all # type: ignore
+            return xr.Dataset()  # return empty dataset
 
     # Basis function regions and sensitivity matrices
     fp_data = basis_functions_wrapper(
@@ -404,15 +359,16 @@ def fixedbasisMCMC(
         fp_data = filtering(fp_data, filters)
 
     # check for sites dropped by filtering
-    dropped_sites = []
+    s_dropped = []
     for site in sites:
         # check if some datasets are empty due to filtering
         if fp_data[site].time.values.shape[0] == 0:
-            dropped_sites.append(site)
+            s_dropped.append(site)
+            del fp_data[site]
 
-    if len(dropped_sites) != 0:
-        sites = [s for i, s in enumerate(sites) if s not in dropped_sites]
-        print(f"\nDropping {dropped_sites} sites as no data passed the filtering.\n")
+    if len(s_dropped) != 0:
+        sites = [s for i, s in enumerate(sites) if s not in s_dropped]
+        print(f"\nDropping {s_dropped} sites as no data passed the filtering.\n")
 
     for si, site in enumerate(sites):
         fp_data[site].attrs["Domain"] = domain
@@ -428,11 +384,6 @@ def fixedbasisMCMC(
         siteindicator = np.zeros(0)
 
         for si, site in enumerate(sites):
-            # if site was dropped, skip; this makes the site indicator numbers consistent
-            # even if a site is dropped
-            if site in dropped_sites:
-                continue
-
             # select variables to drop NaNs from
             drop_vars = []
             for var in ["H", "H_bc", "mf", "mf_error", "mf_variability", "mf_repeatability"]:
@@ -459,11 +410,7 @@ def fixedbasisMCMC(
             Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
 
         # Calculate min error
-        if calculate_min_error is not None:
-            warnings.warn(f"`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead.")
-            min_error = calculate_min_error
-
-        if min_error == "residual":
+        if calculate_min_error == "residual":
             if min_error_options is not None:
                 min_error = residual_error_method(fp_data, **min_error_options)
             else:
@@ -473,16 +420,18 @@ def fixedbasisMCMC(
             if min_error_options and min_error_options.get("by_site", False):
                 min_error = setup_min_error(min_error, siteindicator)
 
-        elif min_error == "percentile":
+            kwargs["min_error"] = min_error  # currently `min_error` is passed via kwargs to `infer_pymc`
+        elif calculate_min_error == "percentile":
             min_error = percentile_error_method(fp_data)
             min_error = setup_min_error(min_error, siteindicator)
+            kwargs["min_error"] = min_error  # currently `min_error` is passed via kwargs to `infer_pymc`
 
-        elif isinstance(min_error, float | int) and min_error >= 0:
+        elif calculate_min_error is None:
             pass
         else:
             raise ValueError(
-                "`min_error` must have values: 'residual', 'percentile', or `float`;"
-                f" {min_error} not recognised."
+                "`calculate_min_error` must have values: 'residual', 'percentile', or `None`;"
+                f" {calculate_min_error} not recognised."
             )
 
         sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
@@ -521,7 +470,6 @@ def fixedbasisMCMC(
             "offsetprior": offsetprior,
             "add_offset": add_offset,
             "verbose": verbose,
-            "min_error": min_error,
         }
 
         if use_bc is True:
@@ -561,7 +509,6 @@ def fixedbasisMCMC(
             "country_file": country_file,
             "obs_repeatability": obs_repeatability,
             "obs_variability": obs_variability,
-            "min_error": min_error,
         }
 
         # add mcmc_args to post_process_args
@@ -570,19 +517,22 @@ def fixedbasisMCMC(
         del post_process_args["nit"]
         del post_process_args["verbose"]
 
+        # pass min model error to post-processing
+        post_process_args["min_error"] = kwargs.get("min_error", 0.0)
+
         # add any additional kwargs to mcmc_args (these aren't needed for post processing)
         mcmc_args.update(kwargs)
-
-        # for debugging
-        if return_mcmc_args:
-            return mcmc_args
 
         # Run PyMC inversion
         mcmc_results = mcmc.inferpymc(**mcmc_args)  # type: ignore
 
+        if skip_postprocessing:
+            return mcmc_results
+
+
         # get trace and model: for future updates
-        trace = mcmc_results["trace"]
-        model = mcmc_results["model"]
+        trace = mcmc_results.pop("trace")
+        model = mcmc_results.pop("model")
 
         # Path to save trace
         if save_trace:
@@ -593,115 +543,9 @@ def fixedbasisMCMC(
 
             trace.to_netcdf(str(trace_path), engine="netcdf4")
 
-        # Path to save trace
-        if save_inversion_output:
-            if isinstance(save_inversion_output, str | Path):
-                inversion_output_path = save_inversion_output
-            else:
-                inversion_output_path = Path(outputpath) / (outputname + f"{start_date}_inversion_output.nc")
-
-            inversion_output = make_inv_out_for_fixed_basis_mcmc(
-                fp_data=fp_data,
-                Y=Y,
-                Ytime=Ytime,
-                error=error,
-                obs_repeatability=obs_repeatability,
-                obs_variability=obs_variability,
-                site_indicator=siteindicator,
-                site_names=sites,
-                mcmc_results=mcmc_results,
-                start_date=start_date,
-                end_date=end_date,
-                species=species,
-                domain=domain,
-            )
-            inversion_output.save(inversion_output_path)
-
-        if skip_postprocessing:
-            return mcmc_results
-
-        if return_inv_out:
-            return make_inv_out_for_fixed_basis_mcmc(
-                fp_data=fp_data,
-                Y=Y,
-                Ytime=Ytime,
-                error=error,
-                obs_repeatability=obs_repeatability,
-                obs_variability=obs_variability,
-                site_indicator=siteindicator,
-                site_names=sites,
-                mcmc_results=mcmc_results,
-                start_date=start_date,
-                end_date=end_date,
-                species=species,
-                domain=domain,
-            )
-
-
-        if new_postprocessing:
-            #from ..postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
-            from ..postprocessing.make_outputs import basic_output
-
-            inv_out = make_inv_out_for_fixed_basis_mcmc(
-                fp_data=fp_data,
-                Y=Y,
-                Ytime=Ytime,
-                error=error,
-                obs_repeatability=obs_repeatability,
-                obs_variability=obs_variability,
-                site_indicator=siteindicator,
-                site_names=sites,
-                mcmc_results=mcmc_results,
-                start_date=start_date,
-                end_date=end_date,
-                species=species,
-                domain=domain,
-            )
-
-            outputs = basic_output(inv_out, country_file=country_file)
-            return outputs
-
-        if paris_postprocessing:
-            from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-            #from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
-            from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
-
-            inv_out = make_inv_out_for_fixed_basis_mcmc(
-                fp_data=fp_data,
-                Y=Y,
-                Ytime=Ytime,
-                error=error,
-                obs_repeatability=obs_repeatability,
-                obs_variability=obs_variability,
-                site_indicator=siteindicator,
-                site_names=sites,
-                mcmc_results=mcmc_results,
-                start_date=start_date,
-                end_date=end_date,
-                species=species,
-                domain=domain,
-            )
-
-            obs_avg_period = averaging_period[0] or "1h"
-            paris_postprocessing_kwargs = paris_postprocessing_kwargs or {}
-            flux_outs, conc_outs = make_paris_outputs(inv_out, country_file=country_file, domain=domain, obs_avg_period=obs_avg_period, **paris_postprocessing_kwargs)
-
-            conc_output_filename = define_output_filename(outputpath, species, domain, outputname + "_conc", start_date, ext=".nc")
-            flux_output_filename = define_output_filename(outputpath, species, domain, outputname + "_flux", start_date, ext=".nc")
-            Path(outputpath).mkdir(parents=True, exist_ok=True)
-
-            conc_outs.to_netcdf(conc_output_filename, unlimited_dims=["time"], mode="w")
-            flux_outs.to_netcdf(flux_output_filename, unlimited_dims=["time"], mode="w")
-
-            logging.info("PARIS concentration outputs saved to", conc_output_filename)
-            logging.info("PARIS flux outputs saved to", flux_output_filename)
-
-            return xr.merge([conc_outs, flux_outs.rename(time="flux_time")])
 
 
         # Process and save inversion output
-        del mcmc_results["trace"]
-        del mcmc_results["model"]
         post_process_args.update(mcmc_results)
         out = mcmc.inferpymc_postprocessouts(**post_process_args)
 
