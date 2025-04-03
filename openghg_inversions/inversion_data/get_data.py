@@ -19,6 +19,7 @@ import xarray as xr
 
 from openghg.retrieve import get_bc
 from openghg.types import SearchError
+from openghg.util import extract_float
 
 from openghg_inversions.inversion_data.getters import (
     convert_bc_units,
@@ -300,6 +301,7 @@ def data_processing_surface_notracer(
     # get obs and footprints, and make scenarios for each site
     scales = {}
     check_scales = set()
+    units = {}
     site_indices_to_keep = []
 
     keep_variables = [f"{species}",
@@ -352,6 +354,7 @@ def data_processing_surface_notracer(
         fp_all[site] = scenario_combined
 
         scales[site] = scenario_combined.scale
+        units[site] = scenario_combined.mf.attrs.get("units")
         check_scales.add(scenario_combined.scale)
 
         site_indices_to_keep.append(i)
@@ -374,7 +377,23 @@ def data_processing_surface_notracer(
 
     fp_all[".scales"] = scales
 
-    fp_all[".units"] = float(scenario_combined.mf.units)
+    units_set = set(list(units.values()))
+
+    if len(units_set) > 1:
+        logger.warning(f"Multiple units found {units}.")
+
+    try:
+        unit = next(unit for unit in units.values() if unit is not None)
+    except StopIteration:
+        raise ValueError("No obs. units detected.")
+    else:
+        if isinstance(unit, str):
+            unit = extract_float(unit)
+        fp_all[".units"] = unit
+
+    # need to convert bc units because this bc data will be used again in `bc_sensitivity`
+    if use_bc:
+        fp_all[".bc"] = convert_bc_units(fp_all[".bc"], fp_all[".units"])
 
     # create `mf_error`
     add_obs_error(sites, fp_all, add_averaging_error=averagingerror)
