@@ -27,12 +27,14 @@ def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_nam
 
 
 def test_full_inversion(mcmc_args):
-    #mcmc_args["reload_merged_data"] = False
+    mcmc_args["reload_merged_data"] = False
     out = fixedbasisMCMC(**mcmc_args)
 
     assert "Yerror_repeatability" in out
     assert "Yerror_variability" in out
 
+    # sanity check for modelled values to make sure baseline has correct order of magnitude
+    assert np.mean(np.abs(out.Yobs.values - out.Yapriori.values)) < 0.5 * np.mean(out.Yobs.values)
 
 def test_full_inversion_no_model_error(mcmc_args):
     mcmc_args["no_model_error"] = True
