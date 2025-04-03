@@ -156,7 +156,7 @@ def get_obs_data(
             print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
             continue  # skip this site
         else:
-            if obs_data is None:
+            if obs_data is None or obs_data.data.sizes["time"] == 0:
                 print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
                 continue  # skip this site
             else:
