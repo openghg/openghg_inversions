@@ -385,7 +385,8 @@ def data_processing_surface_notracer(
         fp_all[".units"] = unit
 
     # need to convert bc units because this bc data will be used again in `bc_sensitivity`
-    fp_all[".bc"] = convert_bc_units(fp_all[".bc"], fp_all[".units"])
+    if use_bc:
+        fp_all[".bc"] = convert_bc_units(fp_all[".bc"], fp_all[".units"])
 
     # create `mf_error`
     add_obs_error(sites, fp_all, add_averaging_error=averagingerror)
