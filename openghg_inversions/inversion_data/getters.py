@@ -126,6 +126,7 @@ def get_obs_data(
     instrument: str | None = None,
     calibration_scale: str | None = None,
     stores: str | None | Iterable[str | None] = None,
+    keep_variables : list | None = None
 ) -> ObsData | None:
     """Try to retrieve obs. data from listed stores."""
     if stores is None or isinstance(stores, str):
@@ -144,6 +145,7 @@ def get_obs_data(
                 instrument=instrument,
                 calibration_scale=calibration_scale,
                 store=store,
+                keep_variables = keep_variables
             )
         except SearchError:
             print(
