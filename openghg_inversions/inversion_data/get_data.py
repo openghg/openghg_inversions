@@ -308,7 +308,8 @@ def data_processing_surface_notracer(
                         f"{species}_variability", 
                         f"{species}_repeatability",
                         f"{species}_number_of_observations",
-                        "inlet"]
+                        "inlet",  # needed if multiple inlets combined
+                        ]
     warnings.warn(f"Dropping all variables besides {keep_variables}")
     for i, site in enumerate(sites):
         # Get observations data
