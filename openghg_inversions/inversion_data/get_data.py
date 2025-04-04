@@ -11,6 +11,7 @@ by the data processing functions.
 """
 
 import logging
+import warnings
 from typing import Literal
 
 import numpy as np
@@ -303,6 +304,11 @@ def data_processing_surface_notracer(
     units = {}
     site_indices_to_keep = []
 
+    keep_variables = [f"{species}",
+                        f"{species}_variability", 
+                        f"{species}_repeatability",
+                        f"{species}_number_of_observations"]
+    warnings.warn(f"Dropping all variables besides {keep_variables}")
     for i, site in enumerate(sites):
         # Get observations data
         site_data = get_obs_data(
@@ -316,6 +322,7 @@ def data_processing_surface_notracer(
             instrument=instrument[i],
             calibration_scale=calibration_scale,
             stores=obs_store,
+            keep_variables=keep_variables
         )
 
         if site_data is None:
