@@ -200,8 +200,6 @@ def get_footprint_to_match(
     start_date = start_date or obs._start_date
     end_date = end_date or obs._end_date
 
-    met_model = met_model or "not_set"  # replace None with 'not_set'
-
     # get available footprint heights
     fp_kwargs = {
         "site": site,
