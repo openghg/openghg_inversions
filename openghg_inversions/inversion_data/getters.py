@@ -242,11 +242,12 @@ def get_footprint_to_match(
 
     # check tolerance
     inlet_tolerance_passed = np.min(distances, axis=1) <= tolerance
-    if (s := np.sum(inlet_tolerance_passed)) > 0:
+    inlet_tolerance_failed = ~inlet_tolerance_passed
+    if (s := np.sum(inlet_tolerance_failed)) > 0:
         logger.warning(
             f"For site {site}: {s} times where obs. inlet height was not within {tolerance}m of a footprint height."
         )
-        inlets_to_heights = inlets_to_heights[inlet_tolerance_passed]
+    inlets_to_heights = inlets_to_heights[inlet_tolerance_passed]
 
     # footprint heights to load
     matched_fp_heights = [fp_heights_strs[i] for i in np.unique(inlets_to_heights)]
