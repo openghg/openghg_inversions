@@ -399,6 +399,10 @@ def fixedbasisMCMC(
         output_path=basis_output_path,
     )
 
+    # Apply compute before filtering to avoid dask issue
+    for site in sites:
+      fp_data[site] = fp_data[site].compute()
+
     # Apply named filters to the data
     if filters is not None:
         fp_data = filtering(fp_data, filters)
@@ -436,7 +440,7 @@ def fixedbasisMCMC(
 
             # select variables to drop NaNs from
             drop_vars = []
-            for var in ["H", "H_bc", "mf", "mf_error", "mf_variability", "mf_repeatability"]:
+            for var in ["H", "H_bc", "mf", "mf_error"]:
                 if var in fp_data[site].data_vars:
                     drop_vars.append(var)
 

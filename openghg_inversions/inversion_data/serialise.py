@@ -355,7 +355,9 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
     except KeyError:
         pass
     else:
-        bc_ds = bc_ds.expand_dims({"time": [ds.time.min().values]}).transpose(..., "time")
+        if "time" not in bc_ds.dims:
+            bc_ds = bc_ds.expand_dims({"time": [ds.time.min().values]}).transpose(..., "time")
+            
         fp_all[".bc"] = BoundaryConditionsData(data=bc_ds, metadata={})
 
     species = ds.attrs.get("species", None)
