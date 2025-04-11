@@ -84,7 +84,10 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
                 )
 
         elif add_averaging_error:
-            ds["mf_error"] = np.sqrt(ds["mf_repeatability"] ** 2 + ds["mf_variability"] ** 2)
+            # Fill with zeros so that if one of repeatability and variability is not NaN, then mf_error will not be NaN.
+            ds["mf_error"] = np.sqrt(ds["mf_repeatability"].fillna(0) ** 2 + ds["mf_variability"].fillna(0) ** 2)
+            # Fill "mf_error" with nans if repeatability and variability are both NaN
+            ds["mf_error"] = ds["mf_error"].where(~(np.isnan(ds["mf_repeatability"]) & np.isnan(ds["mf_variability"])))
         else:
             ds["mf_error"] = ds["mf_repeatability"]
 
@@ -309,6 +312,7 @@ def data_processing_surface_notracer(
                         f"{species}_repeatability",
                         f"{species}_number_of_observations",
                         "inlet",  # needed if multiple inlets combined
+                        "inlet_height",  # sometimes needed if inlet='multiple' (may be outdated soon)
                         ]
     warnings.warn(f"Dropping all variables besides {keep_variables}")
     for i, site in enumerate(sites):
