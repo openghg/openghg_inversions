@@ -84,8 +84,10 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
                 )
 
         elif add_averaging_error:
+            # Fill with zeros so that if one of repeatability and variability is not NaN, then mf_error will not be NaN.
             ds["mf_error"] = np.sqrt(ds["mf_repeatability"].fillna(0) ** 2 + ds["mf_variability"].fillna(0) ** 2)
-            ds = ds.where(~(np.isnan(ds["mf_repeatability"]) & np.isnan(ds["mf_variability"])))
+            # Fill "mf_error" with nans if repeatability and variability are both NaN
+            ds["mf_error"] = ds["mf_error"].where(~(np.isnan(ds["mf_repeatability"]) & np.isnan(ds["mf_variability"])))
         else:
             ds["mf_error"] = ds["mf_repeatability"]
 
