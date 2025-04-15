@@ -17,7 +17,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg.dataobjects import ObsData, BoundaryConditionsData, FluxData, FootprintData
-from openghg.retrieve import get_flux, get_footprint, get_obs_surface, search_footprints, search_flux
+from openghg.retrieve import get_flux, get_footprint, get_obs_surface, get_obs_column, search_footprints, search_flux
 from openghg.types import SearchError
 
 
@@ -30,7 +30,12 @@ def adjust_flux_start_date(
 ) -> pd.Timestamp:
     """Adjusts the flux start_date to align with the flux data's temporal resolution."""
     flux_search = search_flux(species=species, source=source, domain=domain, store=store)
-    flux_period = flux_search.results["time_period"][0]
+    try:
+        flux_period = flux_search.results["time_period"][0]
+
+    except KeyError:
+        if len(flux_search)==0:
+            raise SearchError(f"No flux data found!")
 
     start_date_flux = pd.to_datetime(start_date)
 
@@ -121,6 +126,9 @@ def get_obs_data(
     inlet: str | None,
     start_date: str,
     end_date: str,
+    platform : str | None = None,
+    satellite : str | None = None,
+    max_level : int | None = None,
     data_level: str | None = None,
     average: str | None = None,
     instrument: str | None = None,
@@ -128,23 +136,54 @@ def get_obs_data(
     stores: str | None | Iterable[str | None] = None,
 ) -> ObsData | None:
     """Try to retrieve obs. data from listed stores."""
+
+    if platform == "satellite":
+        if max_level is None:
+            raise AttributeError(
+                "If you are using column-based data (i.e. platform is 'satellite' or 'site-column'), you need to pass max_level"
+            )
+            
     if stores is None or isinstance(stores, str):
         stores = [stores]
 
     for store in stores:
         try:
-            obs_data = get_obs_surface(
-                site=site,
-                species=species.lower(),
-                inlet=inlet,
-                start_date=start_date,
-                end_date=end_date,
-                icos_data_level=data_level,
-                average=average,
-                instrument=instrument,
-                calibration_scale=calibration_scale,
-                store=store,
-            )
+            if platform == "satellite":
+                # current convention: for satellite data, the site name
+                # has format satellitename-obs_region
+                # or format satellitename-obs_region-selection
+                split_site_name = site.split("-")
+                satellite = split_site_name[0]
+                obs_region = split_site_name[1]
+                if len(split_site_name) == 3:
+                    selection = split_site_name[2]
+                else:
+                    selection = None
+
+                obs_data = get_obs_column(
+                    species=species,
+                    max_level=max_level,
+                    satellite=satellite,
+                    platform = "satellite", 
+                    obs_region=obs_region,
+                    selection=selection,
+                    start_date=start_date,
+                    end_date=end_date,
+                    store=store,
+                )
+            else:
+                obs_data = get_obs_surface(
+                    site=site,
+                    species=species.lower(),
+                    inlet=inlet,
+                    start_date=start_date,
+                    end_date=end_date,
+                    icos_data_level=data_level,
+                    average=average,
+                    instrument=instrument,
+                    calibration_scale=calibration_scale,
+                    store=store,
+                )
         except SearchError:
             print(
                 f"\nNo obs data found for {site} with inlet {inlet} and instrument {instrument} in store {store}."

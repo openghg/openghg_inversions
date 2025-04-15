@@ -139,6 +139,7 @@ def data_processing_surface_notracer(
     platform: list[str | None] | str | None = None,
     inlet: list[str | None] | str | None = None,
     instrument: list[str | None] | str | None = None,
+    max_level: int | None = None,
     calibration_scale: str | None = None,
     met_model: list[str | None] | str | None = None,
     fp_model: str | None = None,
@@ -170,6 +171,7 @@ def data_processing_surface_notracer(
             List of strings containing measurement
             station/site abbreviations
             e.g. ["MHD", "TAC"]
+            NOTE: for satellite, pass as "satellitename-obs_region" eg "GOSAT-BRAZIL" and pass corresponding platform as "satellite"
         domain:
             Model domain region of interest
             e.g. "EUROPE"
@@ -192,6 +194,9 @@ def data_processing_surface_notracer(
         instrument:
             Specific instrument for the site
             (length must match number of sites)
+      max_level:
+        Maximum atmospheric level to extract. Only needed if using 
+        satellite data. Must be an int 
         calibration_scale:
             Convert measurements to defined calibration scale
         met_model:
@@ -303,9 +308,11 @@ def data_processing_surface_notracer(
 
     for i, site in enumerate(sites):
         # Get observations data
+        # TO DO update this to get column data if platform is satellite
         site_data = get_obs_data(
             site=site,
             species=species,
+            platform=platform[i],
             inlet=inlet[i],
             start_date=start_date,
             end_date=end_date,
@@ -313,6 +320,7 @@ def data_processing_surface_notracer(
             average=averaging_period[i],
             instrument=instrument[i],
             calibration_scale=calibration_scale,
+            max_level=max_level,
             stores=obs_store,
         )
 
@@ -321,6 +329,8 @@ def data_processing_surface_notracer(
             continue
 
         # Get footprints data
+
+        print(site, domain, fp_height[i], start_date, end_date, fp_model, met_model, fp_species, averaging_period, site_data, footprint_store)
         footprint_data = get_footprint_data(
             site=site,
             domain=domain,
