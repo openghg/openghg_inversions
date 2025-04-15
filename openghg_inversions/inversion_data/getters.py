@@ -255,7 +255,7 @@ def get_footprint_to_match(
 
     for fp_height in matched_fp_heights:
         fp_data = get_footprint(**fp_kwargs, inlet=fp_height)
-        footprints.append(fp_data)
+        if fp_data.data.time.size > 0: footprints.append(fp_data)
 
     if not footprints:
         raise SearchError("No footprints found with inlet heights matching given obs.")
