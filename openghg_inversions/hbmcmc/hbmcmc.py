@@ -413,6 +413,7 @@ def fixedbasisMCMC(
         # check if some datasets are empty due to filtering
         if fp_data[site].time.values.shape[0] == 0:
             dropped_sites.append(site)
+            del fp_data[site]
 
     if len(dropped_sites) != 0:
         sites = [s for i, s in enumerate(sites) if s not in dropped_sites]
