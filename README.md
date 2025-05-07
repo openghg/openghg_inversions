@@ -7,7 +7,7 @@ OpenGHG Inversions is a Python package that is being develoepd as part of the [O
 Currently, OpenGHG Inversions includes the following regional inversion models:
 - Hierarchical Bayesian Markov Chain Monte Carlo (HBMCMC) model (as described in Ganesan et al., 2014, _ACP_)
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10650596.svg)](https://doi.org/10.5281/zenodo.10650596)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10650595.svg)](https://doi.org/10.5281/zenodo.10650595)
 
 ## Installation and Setup
 As OpenGHG Inversions is dependent on OpenGHG, please ensure that when running locally you are using Python 3.10 or later on Linux or MacOS. Please see the [OpenGHG project](https://github.com/openghg/openghg/) for further installation instructions of OpenGHG and setting up an object store.

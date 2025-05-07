@@ -91,8 +91,9 @@ def get_flux_data(
             except SearchError as e:
                 raise SearchError(f"No flux data found before {start_date}") from e
             else:
-                flux_data.data = flux_data.data.isel(time=[-1])
+                flux_data.data = flux_data.data.isel(time=[-1]) # select the last time step
                 print(f"Using flux data from {str(flux_data.data.time.values[0]).split(':')[0]}.")
+                flux_data.data = flux_data.data.assign_coords(time=[pd.to_datetime(start_date)]) # set time to start_date
 
         logging.Logger.disabled = False  # resume confusing OpenGHG warnings
 
