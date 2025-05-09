@@ -282,11 +282,12 @@ def inferpymc(
     if add_offset:
         B = offset_matrix(siteindicator)
 
-    coords = _make_coords(Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None)
+    coords = _make_coords(
+        Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None
+    )
 
     if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
         min_error = min_error * np.ones_like(Y)
-
 
     with pm.Model(coords=coords) as model:
         step1_vars = []
@@ -362,6 +363,7 @@ def inferpymc(
             progressbar=False,
             cores=nchain,
             nuts_sampler=nuts_sampler,
+            target_accept=0.99,
             idata_kwargs={"log_likelihood": True},
         )
 
@@ -848,16 +850,18 @@ def inferpymc_postprocessouts(
     }
 
     if use_bc:
-        data_vars.update({
-            "YaprioriBC": (["nmeasure"], YaprioriBC),
-            "YmodmeanBC": (["nmeasure"], YmodmuBC),
-            "YmodmedianBC": (["nmeasure"], YmodmedBC),
-            "YmodmodeBC": (["nmeasure"], YmodmodeBC),
-            "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
-            "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
-            "bctrace": (["steps", "nBC"], bcouts.values),
-            "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
-        })
+        data_vars.update(
+            {
+                "YaprioriBC": (["nmeasure"], YaprioriBC),
+                "YmodmeanBC": (["nmeasure"], YmodmuBC),
+                "YmodmedianBC": (["nmeasure"], YmodmedBC),
+                "YmodmodeBC": (["nmeasure"], YmodmodeBC),
+                "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
+                "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
+                "bctrace": (["steps", "nBC"], bcouts.values),
+                "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
+            }
+        )
         coords["numBC"] = (["nBC"], nBC)
 
     outds = xr.Dataset(data_vars, coords=coords)
