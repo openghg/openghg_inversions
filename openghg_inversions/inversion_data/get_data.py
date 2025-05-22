@@ -308,7 +308,7 @@ def data_processing_surface_notracer(
 
     for i, site in enumerate(sites):
         # Get observations data
-        # TO DO update this to get column data if platform is satellite
+        # TODO: update this to get column data if platform is satellite
         site_data = get_obs_data(
             site=site,
             species=species,
@@ -334,6 +334,7 @@ def data_processing_surface_notracer(
         footprint_data = get_footprint_data(
             site=site,
             domain=domain,
+            platform=platform[i],
             fp_height=fp_height[i],
             start_date=start_date,
             end_date=end_date,
@@ -350,17 +351,16 @@ def data_processing_surface_notracer(
                 f"Check these values.\nContinuing model run without {site}.\n",
             )
             continue  # skip this site
-
-        scenario_combined = merged_scenario_data(site_data, footprint_data, flux_dict, bc_data)
+        scenario_combined = merged_scenario_data(site_data, footprint_data, flux_dict, bc_data, platform=platform)
         fp_all[site] = scenario_combined
 
         scales[site] = scenario_combined.scale
         check_scales.add(scenario_combined.scale)
 
         site_indices_to_keep.append(i)
-
-    if len(site_indices_to_keep) == 0:
-        raise SearchError("No site data found. Exiting process.")
+    if "satellite" not in footprint_data.metadata:
+        if len(site_indices_to_keep) == 0:
+          raise SearchError("No site data found. Exiting process.")
 
     # If data was not extracted correctly for any sites, drop these from the rest of the inversion
     if len(site_indices_to_keep) < len(sites):
