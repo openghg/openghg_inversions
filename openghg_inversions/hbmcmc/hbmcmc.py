@@ -346,12 +346,12 @@ def fixedbasisMCMC(
                 instrument,
                 averaging_period,
             ) = data_processing_surface_notracer(
-                species,
-                sites,
-                domain,
-                averaging_period,
-                start_date,
-                end_date,
+                species=species,
+                sites=sites,
+                domain=domain,
+                averaging_period=averaging_period,
+                start_date=start_date,
+                end_date= end_date,
                 obs_data_level=obs_data_level,
                 platform=platform,
                 met_model=met_model,
@@ -779,6 +779,7 @@ def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: boo
 
     file_list = input_file.split("/")[-1].split("_")
     species = file_list[0]
+    print(species)
     domain = file_list[1]
     if ds_in.countrymean.attrs["units"] != "g":
         country_unit_prefix = ds_in.countrymean.attrs["units"][0]
