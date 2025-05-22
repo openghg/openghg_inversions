@@ -11,6 +11,7 @@ by the data processing functions.
 """
 
 import logging
+import warnings
 from typing import Literal
 
 import numpy as np
@@ -18,6 +19,7 @@ import xarray as xr
 
 from openghg.retrieve import get_bc
 from openghg.types import SearchError
+from openghg.util import extract_float
 
 from openghg_inversions.inversion_data.getters import (
     convert_bc_units,
@@ -82,7 +84,10 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
                 )
 
         elif add_averaging_error:
-            ds["mf_error"] = np.sqrt(ds["mf_repeatability"] ** 2 + ds["mf_variability"] ** 2)
+            # Fill with zeros so that if one of repeatability and variability is not NaN, then mf_error will not be NaN.
+            ds["mf_error"] = np.sqrt(ds["mf_repeatability"].fillna(0) ** 2 + ds["mf_variability"].fillna(0) ** 2)
+            # Fill "mf_error" with nans if repeatability and variability are both NaN
+            ds["mf_error"] = ds["mf_error"].where(~(np.isnan(ds["mf_repeatability"]) & np.isnan(ds["mf_variability"])))
         else:
             ds["mf_error"] = ds["mf_repeatability"]
 
@@ -304,8 +309,17 @@ def data_processing_surface_notracer(
     # get obs and footprints, and make scenarios for each site
     scales = {}
     check_scales = set()
+    units = {}
     site_indices_to_keep = []
 
+    keep_variables = [f"{species}",
+                        f"{species}_variability", 
+                        f"{species}_repeatability",
+                        f"{species}_number_of_observations",
+                        "inlet",  # needed if multiple inlets combined
+                        "inlet_height",  # sometimes needed if inlet='multiple' (may be outdated soon)
+                        ]
+    warnings.warn(f"Dropping all variables besides {keep_variables}")
     for i, site in enumerate(sites):
         # Get observations data
         # TO DO update this to get column data if platform is satellite
@@ -322,6 +336,7 @@ def data_processing_surface_notracer(
             calibration_scale=calibration_scale,
             max_level=max_level,
             stores=obs_store,
+            keep_variables=keep_variables
         )
 
         if site_data is None:
@@ -355,6 +370,7 @@ def data_processing_surface_notracer(
         fp_all[site] = scenario_combined
 
         scales[site] = scenario_combined.scale
+        units[site] = scenario_combined.mf.attrs.get("units")
         check_scales.add(scenario_combined.scale)
 
         site_indices_to_keep.append(i)
@@ -377,7 +393,23 @@ def data_processing_surface_notracer(
 
     fp_all[".scales"] = scales
 
-    fp_all[".units"] = float(scenario_combined.mf.units)
+    units_set = set(list(units.values()))
+
+    if len(units_set) > 1:
+        logger.warning(f"Multiple units found {units}.")
+
+    try:
+        unit = next(unit for unit in units.values() if unit is not None)
+    except StopIteration:
+        raise ValueError("No obs. units detected.")
+    else:
+        if isinstance(unit, str):
+            unit = extract_float(unit)
+        fp_all[".units"] = unit
+
+    # need to convert bc units because this bc data will be used again in `bc_sensitivity`
+    if use_bc:
+        fp_all[".bc"] = convert_bc_units(fp_all[".bc"], fp_all[".units"])
 
     # create `mf_error`
     add_obs_error(sites, fp_all, add_averaging_error=averagingerror)

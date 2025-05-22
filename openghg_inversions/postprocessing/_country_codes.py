@@ -84,7 +84,7 @@ def extend_abbrs(x: str) -> str:
 
     # add extension pattern to all but last part
     extended_parts = [convert_abbr(p) for p in parts[:-1] if p]
-    return r" ".join(extended_parts) + parts[-1]  # last part would typically have its own whitespace
+    return drop_extra_whitespace(r" ".join(extended_parts) + ' ' + parts[-1]).strip()  # last part would typically have its own whitespace
 
 
 # ISO country code info
