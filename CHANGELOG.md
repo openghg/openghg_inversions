@@ -1,8 +1,15 @@
 # OpenGHG Inversions Change Log
 
+
+# Version 0.3.0
+
+- Fixed bug due to wrong BC units. [#PR 249](https://github.com/openghg/openghg_inversions/pull/249)
+
+- Merged functionality of `min_error` and `calculate_min_error` into a single variable (`min_error`). [#PR 240](https://github.com/openghg/openghg_inversions/pull/240)
+
 - Tidied `get_data.py`, splitting it into several files. [#PR 237](https://github.com/openghg/openghg_inversions/pull/237) 
 
-- Updated post-processing, including adding PARIS formatting option. [#PR 225](https://github.com/openghg/openghg_inversions/pull/225) 
+- Updated post-processing, including adding PARIS formatting option. [#PR 225](https://github.com/openghg/openghg_inversions/pull/225). This works for both the EUROPE domain and EASTASIA [#PR 242](https://github.com/openghg/openghg_inversions/pull/242) 
 
 - Unpinned numpy now that pymc upgraded. [#PR 236](https://github.com/openghg/openghg_inversions/pull/236)
 

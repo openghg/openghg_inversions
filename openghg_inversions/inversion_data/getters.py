@@ -94,8 +94,9 @@ def get_flux_data(
             except SearchError as e:
                 raise SearchError(f"No flux data found before {start_date}") from e
             else:
-                flux_data.data = flux_data.data.isel(time=[-1])
+                flux_data.data = flux_data.data.isel(time=[-1]) # select the last time step
                 print(f"Using flux data from {str(flux_data.data.time.values[0]).split(':')[0]}.")
+                flux_data.data = flux_data.data.assign_coords(time=[pd.to_datetime(start_date)]) # set time to start_date
 
         logging.Logger.disabled = False  # resume confusing OpenGHG warnings
 
@@ -134,6 +135,7 @@ def get_obs_data(
     instrument: str | None = None,
     calibration_scale: str | None = None,
     stores: str | None | Iterable[str | None] = None,
+    keep_variables : list | None = None
 ) -> ObsData | None:
     """Try to retrieve obs. data from listed stores."""
 
@@ -148,6 +150,7 @@ def get_obs_data(
 
     for store in stores:
         try:
+
             if platform == "satellite":
                 # current convention: for satellite data, the site name
                 # has format satellitename-obs_region
@@ -173,17 +176,19 @@ def get_obs_data(
                 )
             else:
                 obs_data = get_obs_surface(
-                    site=site,
-                    species=species.lower(),
-                    inlet=inlet,
-                    start_date=start_date,
-                    end_date=end_date,
-                    icos_data_level=data_level,
-                    average=average,
-                    instrument=instrument,
-                    calibration_scale=calibration_scale,
-                    store=store,
-                )
+                  site=site,
+                  species=species.lower(),
+                  inlet=inlet,
+                  start_date=start_date,
+                  end_date=end_date,
+                  icos_data_level=data_level,
+                  average=average,
+                  instrument=instrument,
+                  calibration_scale=calibration_scale,
+                  store=store,
+                  keep_variables = keep_variables
+            )
+
         except SearchError:
             print(
                 f"\nNo obs data found for {site} with inlet {inlet} and instrument {instrument} in store {store}."
@@ -193,7 +198,7 @@ def get_obs_data(
             print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
             continue  # skip this site
         else:
-            if obs_data is None:
+            if obs_data is None or obs_data.data.sizes["time"] == 0:
                 print(f"\nNo data found for {site} between {start_date} and {end_date} in store {store}.")
                 continue  # skip this site
             else:
@@ -239,7 +244,7 @@ def get_footprint_to_match(
     start_date = start_date or obs._start_date
     end_date = end_date or obs._end_date
 
-    met_model = met_model or "not_set"  # replace None with 'not_set'
+    # get available footprint heights
     fp_kwargs = {
         "site": site,
         "species": species,
@@ -307,11 +312,12 @@ def get_footprint_to_match(
 
     # check tolerance
     inlet_tolerance_passed = np.min(distances, axis=1) <= tolerance
-    if (s := np.sum(inlet_tolerance_passed)) > 0:
+    inlet_tolerance_failed = ~inlet_tolerance_passed
+    if (s := np.sum(inlet_tolerance_failed)) > 0:
         logger.warning(
             f"For site {site}: {s} times where obs. inlet height was not within {tolerance}m of a footprint height."
         )
-        inlets_to_heights = inlets_to_heights[inlet_tolerance_passed]
+    inlets_to_heights = inlets_to_heights[inlet_tolerance_passed]
 
     # footprint heights to load
     matched_fp_heights = [fp_heights_strs[i] for i in np.unique(inlets_to_heights)]

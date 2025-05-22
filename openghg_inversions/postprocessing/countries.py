@@ -39,33 +39,38 @@ def get_area_grid(lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
 
 
 paris_regions_dict = {
-    "BELUX": ["BEL", "LUX"],
-    "BENELUX": ["BEL", "LUX", "NLD"],
-    "CW_EU": [
-        "AUT",
-        "BEL",
-        "CHE",
-        "CZE",
-        "DEU",
-        "ESP",
-        "FRA",
-        "GBR",
-        "HRV",
-        "HUN",
-        "IRL",
-        "ITA",
-        "LUX",
-        "NLD",
-        "POL",
-        "PRT",
-        "SVK",
-        "SVN",
-    ],
-    "EU_GRP2": ["AUT", "BEL", "CHE", "DEU", "DNK", "FRA", "GBR", "IRL", "ITA", "LUX", "NLD"],
-    "NW_EU": ["BEL", "DEU", "DNK", "FRA", "GBR", "IRL", "LUX", "NLD"],
-    "NW_EU2": ["BEL", "DEU", "FRA", "GBR", "IRL", "LUX", "NLD"],
-    "NW_EU_CONTINENT": ["BEL", "DEU", "FRA", "LUX", "NLD"],
-}
+    "europe":{
+        "BELUX": ["BEL", "LUX"],
+        "BENELUX": ["BEL", "LUX", "NLD"],
+        "CW_EU": [
+            "AUT",
+            "BEL",
+            "CHE",
+            "CZE",
+            "DEU",
+            "ESP",
+            "FRA",
+            "GBR",
+            "HRV",
+            "HUN",
+            "IRL",
+            "ITA",
+            "LUX",
+            "NLD",
+            "POL",
+            "PRT",
+            "SVK",
+            "SVN",
+        ],
+        "EU_GRP2": ["AUT", "BEL", "CHE", "DEU", "DNK", "FRA", "GBR", "IRL", "ITA", "LUX", "NLD"],
+        "NW_EU": ["BEL", "DEU", "DNK", "FRA", "GBR", "IRL", "LUX", "NLD"],
+        "NW_EU2": ["BEL", "DEU", "FRA", "GBR", "IRL", "LUX", "NLD"],
+        "NW_EU_CONTINENT": ["BEL", "DEU", "FRA", "LUX", "NLD"],
+    },
+    "eastasia":{
+        "EASTERN_ASIA":["EChi1", "PRK", "KOR", "JPN"]
+    }
+    }
 
 
 class CountryRegions:
@@ -196,7 +201,7 @@ class Countries:
         countries: xr.Dataset,
         country_selections: list[str] | None = None,
         country_code: Literal["alpha2", "alpha3"] | None = None,
-        country_regions: dict[str, list[str]] | str | Path | None = None,
+        country_regions: dict[str, list[str]] | str | Path | None = None
     ) -> None:
         """Create Countries object given country map Dataset and optional list of countries to select.
 
