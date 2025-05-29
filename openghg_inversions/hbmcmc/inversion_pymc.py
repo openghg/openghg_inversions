@@ -330,7 +330,8 @@ def inferpymc(
 
         if pollution_events_from_obs is True:
             if use_bc is True:
-                pollution_event = pt.abs(Y - pt.dot(hbc, bc))
+                # if Y <= modelled baseline, pollution event is zero
+                pollution_event = pt.switch(pt.gt(Y, mu_bc), Y - mu_bc, 0)
             else:
                 pollution_event = pt.abs(Y) + 1e-6 * pt.mean(Y)  # small non-zero term to prevent NaNs
         else:
@@ -344,7 +345,9 @@ def inferpymc(
             small_amount = 1e-12 * mean_obs
             eps = pt.maximum(pt.abs(error), small_amount)  # type: ignore
         else:
-            eps = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)  # type: ignore
+            # eps = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)  # type: ignore
+            # TODO: make power configurable
+            eps = pt.sqrt(error**2 + pt.pow(pollution_event_scaled_error, 1.5) + min_error**2)  # type: ignore
 
         epsilon = pm.Deterministic("epsilon", eps, dims="nmeasure")
 
