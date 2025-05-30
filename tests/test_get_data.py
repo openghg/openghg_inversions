@@ -208,7 +208,7 @@ def test_add_averaging_error(tac_ch4_data_args):
 
 def test_add_obs_error_exceptions_warnings(caplog):
     ds = xr.Dataset()
-    ds["mf"] = xr.DataArray([1] * 10)
+    ds["mf"] = xr.DataArray([1] * 10, dims = "time")
     fp_all = {"TAC": ds}
 
     with pytest.raises(ValueError):
@@ -218,8 +218,8 @@ def test_add_obs_error_exceptions_warnings(caplog):
     # plus INFO suggesting fix
     caplog.set_level(logging.INFO)
 
-    ds["mf_repeatability"] = xr.DataArray([0] * 5 + [1] * 5)
-    ds["mf_variability"] = xr.DataArray([0] * 10)
+    ds["mf_repeatability"] = xr.DataArray([0] * 5 + [1] * 5, dims = "time")
+    ds["mf_variability"] = xr.DataArray([0] * 10, dims = "time")
 
     add_obs_error(sites=["TAC"], fp_all=fp_all, add_averaging_error=False)
 
