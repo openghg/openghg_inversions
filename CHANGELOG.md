@@ -1,5 +1,8 @@
 # OpenGHG Inversions Change Log
 
+# Unreleased
+
+- Added offset to PARIS concentration outputs. [#PR 282](https://github.com/openghg/openghg_inversions/pull/282)
 
 # Version 0.3.0
 

@@ -152,6 +152,7 @@ def make_concentration_outputs(
     inv_out: InversionOutput,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
+    combine_bc_and_offset: bool = False,
 ) -> xr.Dataset:
     """Return dataset of stats for concentrations.
 
@@ -167,13 +168,31 @@ def make_concentration_outputs(
           function name>__<key>`, with a double underscore.
             For instance, `stats_args = {"mode_kde__chunk_size": 20}` would pass the
           argument `chunk_size = 20` to the stat function `mode_kde`, and no others.
+        combine_bc_and_offset: if True, the offset is added to the baseline (before stats
+          are calculated.)
 
     Returns:
         xr.Dataset with computed flux stats.
 
     """
-    conc_vars = ["y", "mu_bc"] if "mu_bc" in inv_out.trace.posterior else ["y"]
+    conc_vars = ["y"]
+
+    if "mu_bc" in inv_out.trace.posterior:
+        conc_vars.append("mu_bc")
+
+    if "offset" in inv_out.trace.posterior:
+        conc_vars.append("offset")
+
     trace = inv_out.get_trace_dataset(var_names=conc_vars)
+
+    if combine_bc_and_offset and "offset" in conc_vars:
+        for dv in trace.data_vars:
+            if str(dv).startswith("mu_bc"):
+                offset_dv = str(dv).replace("mu_bc", "offset")
+                trace[dv] = trace[dv] + trace[offset_dv]
+
+                # update long name, creating if not present
+                trace[dv].attrs["long_name"] = trace[dv].attrs.get("long_name", str(dv).split("_")[-1] + "_baseline") + "_including_offset"
 
     if stats_args is None:
         stats_args = {}
