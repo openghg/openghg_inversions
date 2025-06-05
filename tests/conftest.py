@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 from openghg.retrieve import search
-from openghg.standardise import standardise_surface, standardise_bc, standardise_flux, standardise_footprint
+from openghg.standardise import standardise_surface, standardise_bc, standardise_flux, standardise_footprint, standardise_column
 from openghg.types import ObjectStoreError
 import xarray as xr
 
@@ -154,10 +154,27 @@ mhd_obs_metadata = {
 mhd_obs_data_path = _raw_data_path / "obs_mhd_ch4_10m_2019-01-01_2019-01-07_data.nc"
 test_data_list.append(TestData(standardise_surface, mhd_obs_metadata, mhd_obs_data_path, "surface"))
 
+## Satellite Column data
+satellite_gosat_obs_metadata = {
+    "source_format": "openghg",
+    "satellite":"gosat",
+    "network": "gosat",
+    "inlet": "column",
+    "calibration_scale": "WMO-x2004a",
+    "domain":"southamerica",
+    "species":"ch4"
+}
+satellite_gosat_obs_data_path = _raw_data_path / "obs_mhd_ch4_10m_2019-01-01_2019-01-07_data.nc"
+test_data_list.append(TestData(standardise_column, satellite_gosat_obs_metadata, satellite_gosat_obs_data_path, "column"))
+
 ## BC data
 bc_metadata = {"species": "ch4", "bc_input": "cams", "domain": "europe", "store": "inversions_tests"}
 bc_data_path = _raw_data_path / "bc_ch4_europe_cams_2019-01-01_2019-12-31_data.nc"
 test_data_list.append(TestData(standardise_bc, bc_metadata, bc_data_path, "boundary_conditions"))
+
+satellite_bc_metadata = {"species": "ch4", "bc_input": "cams", "domain": "europe", "store": "inversions_tests"}
+satellite_bc_data_path = _raw_data_path / "satellite"/ "bc" /"ch4_SOUTHAMERICA_201601_CAMS-inversion.nc"
+test_data_list.append(TestData(standardise_bc, satellite_bc_metadata, satellite_bc_data_path, "boundary_conditions"))
 
 ## Footprint data
 tac_footprints_metadata = {
@@ -178,8 +195,21 @@ mhd_footprints_metadata = {
     "source_format": "paris",
     # "metmodel": "ukv",
 }
-mhd_footprints_data_path = _raw_data_path / "footprints_mhd_europe_name_10m_2019-01-01_2019-01-07_data.nc"
+mhd_footprints_data_path = _raw_data_path/"footprints_mhd_europe_name_10m_2019-01-01_2019-01-07_data.nc"
 test_data_list.append(TestData(standardise_footprint, mhd_footprints_metadata, mhd_footprints_data_path, "footprints"))
+
+footprints_satellite_metadata = {
+    "satellite": "GOSAT",
+    "domain": "southamerica",
+    "model": "NAME",
+    "inlet": "column",
+    "source_format": "acrg_org",
+    "obs_region": "brazil",
+    "species": "ch4"
+
+}
+footprints_satellite_data = _raw_data_path /"satellite"/ "footprints" / "GOSAT-BRAZIL-column_SOUTHAMERICA_201601.nc"
+test_data_list.append(TestData(standardise_footprint, footprints_satellite_metadata, footprints_satellite_data, "footprints"))
 
 ## Flux data
 flux_metadata = {"species": "ch4", "source": "total-ukghg-edgar7", "domain": "europe"}
@@ -192,6 +222,10 @@ flux_dim_shuffled_data_path = (
 )
 test_data_list.append(TestData(standardise_flux, flux_dim_shuffle_metadata, flux_dim_shuffled_data_path, "flux"))
 
+flux_satellite_metadata = {"species":"ch4", "source":"SWAMPS",
+                           "domain":"southamerica"}
+flux_satellite_datapath = (_raw_data_path/"satellite"/ "flux"/"ch4_SOUTHAMERICA_2016_SWAMPS-v32-5_Saunois-Annual-Mean.nc")
+test_data_list.append(TestData(standardise_flux, flux_satellite_metadata, flux_satellite_datapath, "flux"))
 
 @pytest.fixture(scope="session", autouse=True)
 def session_object_store(session_config_mocker) -> None:
@@ -276,6 +310,30 @@ def tac_ch4_data_args():
     }
     return data_args
 
+@pytest.fixture(scope="module")
+def satellite_ch4_data_args():
+    data_args = {
+        "species" : "ch4",
+        "sites": ['GOSAT-BRAZIL'], 
+        "averaging_period": ["1H"],
+        "start_date": "2016-01-01",
+        "end_date": "2016-02-01",
+        "platform": ["satellite"],
+        "max_level": 3,
+        "bc_store": "inversions_tests",
+        "obs_store": "inversions_tests",
+        "footprint_store": "inversions_tests",
+        "emissions_store": "inversions_tests",
+        "inlet": ["column"],
+        "instrument": [None],
+        "domain": "southamerica",
+        "fp_height": ["column"],
+        "fp_species": "inert",
+        "fp_model": None,
+        "emissions_name": ["SWAMPS"],
+        # "met_model": "ukv",
+    }
+    return data_args
 
 @pytest.fixture(scope="module")
 def mhd_and_tac_ch4_data_args():
