@@ -159,12 +159,11 @@ satellite_gosat_obs_metadata = {
     "source_format": "openghg",
     "satellite":"gosat",
     "network": "gosat",
-    "inlet": "column",
-    "calibration_scale": "WMO-x2004a",
     "domain":"southamerica",
-    "species":"ch4"
+    "instrument":"tanso-fts",
+    "species":"ch4",
 }
-satellite_gosat_obs_data_path = _raw_data_path / "obs_mhd_ch4_10m_2019-01-01_2019-01-07_data.nc"
+satellite_gosat_obs_data_path = _raw_data_path / "satellite"/"column"/"gosat-fts_gosat_20160101_ch4-column.nc"
 test_data_list.append(TestData(standardise_column, satellite_gosat_obs_metadata, satellite_gosat_obs_data_path, "column"))
 
 ## BC data
@@ -172,7 +171,7 @@ bc_metadata = {"species": "ch4", "bc_input": "cams", "domain": "europe", "store"
 bc_data_path = _raw_data_path / "bc_ch4_europe_cams_2019-01-01_2019-12-31_data.nc"
 test_data_list.append(TestData(standardise_bc, bc_metadata, bc_data_path, "boundary_conditions"))
 
-satellite_bc_metadata = {"species": "ch4", "bc_input": "cams", "domain": "europe", "store": "inversions_tests"}
+satellite_bc_metadata = {"species": "ch4", "bc_input": "cams", "domain": "southamerica", "store": "inversions_tests"}
 satellite_bc_data_path = _raw_data_path / "satellite"/ "bc" /"ch4_SOUTHAMERICA_201601_CAMS-inversion.nc"
 test_data_list.append(TestData(standardise_bc, satellite_bc_metadata, satellite_bc_data_path, "boundary_conditions"))
 
@@ -328,7 +327,7 @@ def satellite_ch4_data_args():
         "instrument": [None],
         "domain": "southamerica",
         "fp_height": ["column"],
-        "fp_species": "inert",
+        "fp_species": "ch4",
         "fp_model": None,
         "emissions_name": ["SWAMPS"],
         # "met_model": "ukv",
