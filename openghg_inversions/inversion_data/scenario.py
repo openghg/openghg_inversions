@@ -12,22 +12,38 @@ def merged_scenario_data(
     flux_dict: dict[str, FluxData],
     bc_data: BoundaryConditionsData | None = None,
     platform: str | None = None,
+    max_level: int | None = None
 ) -> xr.Dataset:
     """Create ModelScenario and get result of `footprint_data_merge`."""
     # convert bc units, if using bc
-    use_bc = bc_data is not None and "satellite" not in platform    
-    if "satellite" not in platform:
+    use_bc = bc_data is not None and (platform is not None and "satellite" not in platform)
+   
+    if platform is not None and "satellite" not in platform:
         unit = float(obs_data.data.mf.units)
-    bc_data = convert_bc_units(bc_data, unit) if use_bc else None
-
+    if use_bc:
+        bc_data = convert_bc_units(bc_data, unit)
+    elif platform is not None and "satellite" in platform:
+        bc_data = bc_data
+    else:
+        bc_data = None
     # Create ModelScenario object for all emissions_sectors
     # and combine into one object
-    model_scenario = ModelScenario(
-        obs=obs_data,
-        footprint=footprint_data,
-        flux=flux_dict,
-        bc=bc_data,
-    )
+    if platform is not None and "satellite" in platform:
+        model_scenario = ModelScenario(
+            obs_column=obs_data,
+            footprint=footprint_data,
+            flux=flux_dict,
+            bc=bc_data,
+            platform=platform,
+            max_level=max_level
+        )
+    else: 
+        model_scenario = ModelScenario(
+            obs=obs_data,
+            footprint=footprint_data,
+            flux=flux_dict,
+            bc=bc_data,
+        )
 
     if len(flux_dict) == 1:
         scenario_combined = model_scenario.footprints_data_merge(platform=platform)
