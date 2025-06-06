@@ -345,9 +345,6 @@ def data_processing_surface_notracer(
             continue
 
         # Get footprints data
-
-        # print(site, domain, fp_height[i], start_date, end_date, fp_model, met_model, fp_species, averaging_period, site_data, footprint_store)
-        # print(type(str(platform[i])))
         footprint_data = get_footprint_data(
             site=site,
             domain=domain,
