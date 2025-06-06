@@ -325,7 +325,7 @@ def satellite_ch4_data_args():
         "emissions_store": "inversions_tests",
         "inlet": ["column"],
         "instrument": [None],
-        "domain": "southamerica",
+        "domain": "SOUTHAMERICA",
         "fp_height": ["column"],
         "fp_species": "ch4",
         "fp_model": None,
