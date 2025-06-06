@@ -36,6 +36,9 @@ def test_data_processing_surface_notracer(
     # check keys of "fp_all"
     assert list(result[0].keys()) == [".species", ".flux", ".bc", "TAC", ".scales", ".units"]
 
+    # variables to check (to avoid surprises from new variables added to data)
+    check_vars = ["mf", "fp", "mf_mod", "bc_mod"]
+
     if openghg_version >= (0, 13):
         # get combined scenario for TAC at time 2019-01-01 00:00:00; "frozen" data made
         # with OpenGHG 0.13
@@ -43,7 +46,7 @@ def test_data_processing_surface_notracer(
         expected_tac_combined_scenario = fp_all_from_dataset(ds)
 
         xr.testing.assert_allclose(
-            result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario["TAC"].isel(time=0)
+            result[0]["TAC"][check_vars].isel(time=0).load(), expected_tac_combined_scenario["TAC"][check_vars].isel(time=0)
         )
     elif using_zarr_store:
         # get combined scenario for TAC at time 2019-01-01 00:00:00
