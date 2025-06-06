@@ -159,12 +159,19 @@ def paris_concentration_outputs(
         .drop_vars("y_obs_error")
     )
 
-    conc_outputs = make_concentration_outputs(inv_out, stats, stats_args).unstack("nmeasure")
+    conc_outputs = make_concentration_outputs(inv_out, stats, stats_args, combine_bc_and_offset=True).unstack("nmeasure")
 
     # rename to match PARIS concentrations template
     def renamer(name: str) -> str:
         when = "apost" if "posterior" in name else "apriori"
-        suffix = "BC" if "bc" in name else ""
+
+        if "bc" in name:
+            suffix = "BC"
+        elif "offset" in name:
+            suffix = "_bias"
+        else:
+            suffix = ""
+
         prefix = "qY" if "quantile" in name else "Y"
         return prefix + when + suffix
 
@@ -177,6 +184,9 @@ def paris_concentration_outputs(
     # We produce these, but they aren't in the template
     if "qYapostBC" in conc_outputs.data_vars:
         conc_outputs = conc_outputs.drop_vars(["qYapostBC", "qYaprioriBC"])
+
+    if "qYapost_bias" in conc_outputs.data_vars:
+        conc_outputs = conc_outputs.drop_vars(["qYapost_bias", "qYapriori_bias"])
 
     conc_attrs = get_data_var_attrs(conc_template_path)
 
