@@ -152,6 +152,7 @@ def inferpymc(
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
+    offset_args: dict | None = None,
 ) -> dict:
     """Uses PyMC module for Bayesian inference for emissions field, boundary
     conditions and (currently) a single model error value.
@@ -223,6 +224,7 @@ def inferpymc(
       no_model_error:
         When True, only use observation error in likelihood function (omitting min. model error
         and model error from scaling pollution events.)
+      offset_args: optional arguments to pass to `make_offset`.
 
     Returns:
       Dictionary containing:
@@ -310,7 +312,8 @@ def inferpymc(
             mu += mu_bc
 
         if add_offset:
-            offset = make_offset(siteindicator, offsetprior, drop_first=True)
+            offset_args = offset_args or {}
+            offset = make_offset(siteindicator, offsetprior, **offset_args)
             mu += offset
 
         Y = pm.Data("Y", Y, dims="nmeasure")  # type: ignore
