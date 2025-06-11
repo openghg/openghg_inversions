@@ -18,7 +18,7 @@ from pytensor.tensor import TensorVariable
 
 from openghg_inversions import convert
 from openghg_inversions import utils
-from openghg_inversions.hbmcmc.inversionsetup import offset_matrix
+from openghg_inversions.hbmcmc.components import make_offset
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
 
@@ -152,6 +152,7 @@ def inferpymc(
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
+    offset_args: dict | None = None,
 ) -> dict:
     """Uses PyMC module for Bayesian inference for emissions field, boundary
     conditions and (currently) a single model error value.
@@ -223,6 +224,7 @@ def inferpymc(
       no_model_error:
         When True, only use observation error in likelihood function (omitting min. model error
         and model error from scaling pollution events.)
+      offset_args: optional arguments to pass to `make_offset`.
 
     Returns:
       Dictionary containing:
@@ -271,16 +273,7 @@ def inferpymc(
     nit = int(nit)
 
     # convert siteindicator into a site indexer
-    if sigma_per_site:
-        sites = siteindicator.astype(int)
-        nsites = np.amax(sites) + 1
-    else:
-        sites = np.zeros_like(siteindicator).astype(int)
-        nsites = 1
-    nsigmas = np.amax(sigma_freq_index) + 1
-
-    if add_offset:
-        B = offset_matrix(siteindicator)
+    sites = siteindicator.astype(int) if sigma_per_site else np.zeros_like(siteindicator).astype(int)
 
     coords = _make_coords(Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None)
 
@@ -319,9 +312,8 @@ def inferpymc(
             mu += mu_bc
 
         if add_offset:
-            offset0 = parse_prior("offset0", offsetprior, shape=int(nsites - 1))
-            offset_vec = pt.concatenate((np.array([0]), offset0), axis=0)
-            offset = pm.Deterministic("offset", pt.dot(B, offset_vec), dims="nmeasure")
+            offset_args = offset_args or {}
+            offset = make_offset(siteindicator, offsetprior, **offset_args)
             mu += offset
 
         Y = pm.Data("Y", Y, dims="nmeasure")  # type: ignore
