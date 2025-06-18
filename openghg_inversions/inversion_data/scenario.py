@@ -18,8 +18,7 @@ def merged_scenario_data(
     # convert bc units, if using bc
     use_bc = bc_data is not None and (platform is not None and "satellite" not in platform)
    
-    if platform is not None and "satellite" not in platform:
-        unit = float(obs_data.data.mf.units)
+    unit = float(obs_data.data.mf.units)
     if use_bc:
         bc_data = convert_bc_units(bc_data, unit)
     elif platform is not None and "satellite" in platform:
