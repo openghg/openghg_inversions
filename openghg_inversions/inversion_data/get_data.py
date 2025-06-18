@@ -368,9 +368,10 @@ def data_processing_surface_notracer(
         scenario_combined = merged_scenario_data(obs_data=site_data, footprint_data=footprint_data, flux_dict=flux_dict, bc_data=bc_data, platform=platform[i], max_level=max_level)
         fp_all[site] = scenario_combined
 
+        units[site] = scenario_combined.mf.attrs.get("units")
+
         if not "satellite" in platform:
             scales[site] = scenario_combined.scale
-            units[site] = scenario_combined.mf.attrs.get("units")
             check_scales.add(scenario_combined.scale)
 
         site_indices_to_keep.append(i)
@@ -385,27 +386,27 @@ def data_processing_surface_notracer(
         instrument = [instrument[s] for s in site_indices_to_keep]
         averaging_period = [averaging_period[s] for s in site_indices_to_keep]
 
-    if "satellite" not in footprint_data.metadata:
+    # if "satellite" not in footprint_data.metadata:
         # check for consistency of calibration scales
-        if len(check_scales) > 1:
-            msg = f"Not all sites using the same calibration scale: {len(check_scales)} scales found."
-            logger.warning(msg)
+    if len(check_scales) > 1:
+        msg = f"Not all sites using the same calibration scale: {len(check_scales)} scales found."
+        logger.warning(msg)
 
-        fp_all[".scales"] = scales
+    fp_all[".scales"] = scales
 
-        units_set = set(list(units.values()))
+    units_set = set(list(units.values()))
 
-        if len(units_set) > 1:
-            logger.warning(f"Multiple units found {units}.")
+    if len(units_set) > 1:
+        logger.warning(f"Multiple units found {units}.")
 
-        try:
-            unit = next(unit for unit in units.values() if unit is not None)
-        except StopIteration:
-            raise ValueError("No obs. units detected.")
-        else:
-            if isinstance(unit, str):
-                unit = extract_float(unit)
-            fp_all[".units"] = unit
+    try:
+        unit = next(unit for unit in units.values() if unit is not None)
+    except StopIteration:
+        raise ValueError("No obs. units detected.")
+    else:
+        if isinstance(unit, str):
+            unit = extract_float(unit)
+        fp_all[".units"] = unit
 
     # need to convert bc units because this bc data will be used again in `bc_sensitivity`
 
