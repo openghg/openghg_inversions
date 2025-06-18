@@ -26,7 +26,7 @@ def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_nam
     return mcmc_args
 
 @pytest.fixture
-def satellite_mcmc_args(tmp_path,satellite_ch4_data_args, merged_data_dir,):
+def satellite_mcmc_args(tmp_path,satellite_ch4_data_args, southamerica_country_file, merged_data_dir,):
     mcmc_args = satellite_ch4_data_args.copy()
     mcmc_args.update(
         {
@@ -59,7 +59,8 @@ def satellite_mcmc_args(tmp_path,satellite_ch4_data_args, merged_data_dir,):
             "reparameterise_log_normal" :False,
             "basis_directory" : "/user/home/vq21425/projects/openghg_inversions/tests/data/satellite/bc_basis_directory",
             "bc_basis_directory" : "/user/home/vq21425/projects/openghg_inversions/tests/data/satellite/bc_basis_directory",
-            "output_format":"mcmc_results",
+            "output_format":"hbmcmc",
+            "country_file": southamerica_country_file
         }
     )
     return mcmc_args
