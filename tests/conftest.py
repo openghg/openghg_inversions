@@ -108,6 +108,10 @@ def country_ds_eastasia(raw_data_path):
     with xr.open_dataset(raw_data_path / "country_EASTASIA.nc") as ds:
         yield ds
 
+@pytest.fixture
+def southamerica_country_file(raw_data_path):
+    """Provides path to the SOUTHAMERICA countryfile"""
+    return raw_data_path /"satellite"/"country"/ "country_SOUTHAMERICA.nc"
 
 @pytest.fixture(scope="session", autouse=True)
 def session_config_mocker(using_zarr_store) -> Iterator[None]:
