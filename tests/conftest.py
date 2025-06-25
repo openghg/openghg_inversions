@@ -322,7 +322,7 @@ def satellite_ch4_data_args():
         "start_date": "2016-01-01",
         "end_date": "2016-02-01",
         "platform": ["satellite"],
-        "max_level": 3,
+        "max_level": 17,
         "bc_store": "inversions_tests",
         "obs_store": "inversions_tests",
         "footprint_store": "inversions_tests",

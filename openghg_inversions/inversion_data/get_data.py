@@ -409,8 +409,8 @@ def data_processing_surface_notracer(
         fp_all[".units"] = unit
 
     # need to convert bc units because this bc data will be used again in `bc_sensitivity`
-
-    if use_bc  and "satellite" not in footprint_data.metadata:
+    if use_bc:
+    # if use_bc  and "satellite" not in footprint_data.metadata:
         fp_all[".bc"] = convert_bc_units(fp_all[".bc"], fp_all[".units"])
 
     # create `mf_error`

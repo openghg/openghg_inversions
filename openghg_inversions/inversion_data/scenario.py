@@ -19,12 +19,11 @@ def merged_scenario_data(
     use_bc = bc_data is not None and (platform is not None and "satellite" not in platform)
    
     unit = float(obs_data.data.mf.units)
-    if use_bc:
-        bc_data = convert_bc_units(bc_data, unit)
-    elif platform is not None and "satellite" in platform:
-        bc_data = bc_data
-    else:
-        bc_data = None
+    use_bc = bc_data is not None
+
+    unit = float(obs_data.data.mf.units)
+    bc_data = convert_bc_units(bc_data, unit) if use_bc else None
+
     # Create ModelScenario object for all emissions_sectors
     # and combine into one object
     if platform is not None and "satellite" in platform:
@@ -43,6 +42,7 @@ def merged_scenario_data(
             flux=flux_dict,
             bc=bc_data,
         )
+
 
     if len(flux_dict) == 1:
         scenario_combined = model_scenario.footprints_data_merge(platform=platform)
