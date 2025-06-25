@@ -6,6 +6,8 @@
 
 - Offsets can be applied to all but one site (ini option `offset_args = {"drop_first": True}`) or to all sites, which is the default option (ini option `offset_args = {"drop_first": False}`). [#PR 285](https://github.com/openghg/openghg_inversions/pull/285)
 
+- Updated RHIME likelihood to use a power of 1.99 instead of 2. The power can be specified with the `power` argument an ini file. The value of `power` can be a float or a dict of prior args, which will create a hyperprior for `power`. [#PR 277](https://github.com/openghg/openghg_inversions/pull/277)
+
 ## Code changes
 
 - Added offset to PARIS concentration outputs. [#PR 282](https://github.com/openghg/openghg_inversions/pull/282)
