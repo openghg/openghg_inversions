@@ -1,5 +1,14 @@
 # OpenGHG Inversions Change Log
 
+# Unreleased
+
+## Model updates
+
+- Offsets can be applied to all but one site (ini option `offset_args = {"drop_first": True}`) or to all sites, which is the default option (ini option `offset_args = {"drop_first": False}`). [#PR 285](https://github.com/openghg/openghg_inversions/pull/285)
+
+## Code changes
+
+- Added offset to PARIS concentration outputs. [#PR 282](https://github.com/openghg/openghg_inversions/pull/282)
 
 # Version 0.3.0
 

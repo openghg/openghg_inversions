@@ -30,12 +30,9 @@ def adjust_flux_start_date(
 ) -> pd.Timestamp:
     """Adjusts the flux start_date to align with the flux data's temporal resolution."""
     flux_search = search_flux(species=species, source=source, domain=domain, store=store)
-    try:
-        flux_period = flux_search.results["time_period"][0]
-
-    except KeyError:
-        if len(flux_search)==0:
-            raise SearchError(f"No flux data found!")
+    if flux_search.results.empty:
+        raise SearchError(f"No flux found with species={species}, source={source}, domain={domain}, store={store}.")
+    flux_period = flux_search.results["time_period"][0]
 
     start_date_flux = pd.to_datetime(start_date)
 
@@ -326,7 +323,7 @@ def get_footprint_to_match(
 
     for fp_height in matched_fp_heights:
         fp_data = get_footprint(**fp_kwargs, inlet=fp_height)
-        footprints.append(fp_data)
+        if fp_data.data.time.size > 0: footprints.append(fp_data)
 
     if not footprints:
         raise SearchError("No footprints found with inlet heights matching given obs.")

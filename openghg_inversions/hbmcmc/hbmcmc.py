@@ -70,7 +70,8 @@ def fixedbasisMCMC(
     xprior: dict = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 1.0, "lower": 0.0},
     bcprior: dict = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0},
     sigprior: dict = {"pdf": "uniform", "lower": 0.1, "upper": 3},
-    offsetprior: dict = {"pdf": "normal", "mu": 0, "sd": 1},
+    offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
+    offset_args: dict | None = None,
     nit: int = int(2.5e5),
     burn: int = 50000,
     tune: int = int(1.25e5),
@@ -190,11 +191,14 @@ def fixedbasisMCMC(
         Note that the standard deviation should be used rather than the
         precision. Currently all variables are considered iid
       bcprior:
-        Same as xrior but for boundary conditions.
+        Same as xprior but for boundary conditions.
       sigprior:
-        Same as xrior but for model error.
+        Same as xprior but for model error.
       offsetprior:
-        Same as xrior but for bias offset. Only used is addoffset=True.
+        Same as xprior but for bias offset. Only used is addoffset=True.
+      offset_args: dictionary of args to pass to `make_offset`. For instance
+        `{"drop_first": False}` will put an offset on all site (rather than using 0
+        offset for the first site).
       nit:
         Number of iterations for MCMC
       burn:
@@ -418,6 +422,7 @@ def fixedbasisMCMC(
         # check if some datasets are empty due to filtering
         if fp_data[site].time.values.shape[0] == 0:
             dropped_sites.append(site)
+            del fp_data[site]
 
     if len(dropped_sites) != 0:
         sites = [s for i, s in enumerate(sites) if s not in dropped_sites]
@@ -531,6 +536,7 @@ def fixedbasisMCMC(
             "add_offset": add_offset,
             "verbose": verbose,
             "min_error": min_error,
+            "offset_args": offset_args
         }
 
         if use_bc is True:
@@ -578,6 +584,7 @@ def fixedbasisMCMC(
         post_process_args.update(mcmc_args)
         del post_process_args["nit"]
         del post_process_args["verbose"]
+        del post_process_args["offset_args"]
 
         # add any additional kwargs to mcmc_args (these aren't needed for post processing)
         mcmc_args.update(kwargs)

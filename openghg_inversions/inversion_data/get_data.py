@@ -86,8 +86,6 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
         elif add_averaging_error:
             # Fill with zeros so that if one of repeatability and variability is not NaN, then mf_error will not be NaN.
             ds["mf_error"] = np.sqrt(ds["mf_repeatability"].fillna(0) ** 2 + ds["mf_variability"].fillna(0) ** 2)
-            # Fill "mf_error" with nans if repeatability and variability are both NaN
-            ds["mf_error"] = ds["mf_error"].where(~(np.isnan(ds["mf_repeatability"]) & np.isnan(ds["mf_variability"])))
         else:
             ds["mf_error"] = ds["mf_repeatability"]
 
@@ -99,7 +97,13 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
 
         if err0.any():
             percent0 = 100 * err0.mean()
-            logger.warning("`mf_error` is zero for %.0f percent of times at site %s.", percent0, site)
+            logger.warning("`mf_error` is zero/nan for %.0f percent of times at site %s.", percent0, site)
+
+            if percent0 > 10:
+                fill_value = np.nanmax([ds["mf_error"].where(ds["mf_error"] != 0).dropna(dim='time').median(),
+                                        ds["mf"].std(dim="time")])
+                ds["mf_error"] = ds["mf_error"].where(ds["mf_error"] != 0, fill_value)
+                logger.warning("More than 10% of `mf_error` is zero/nan, it is thus filled with the max of median `mf_error` and stdev of `mf`.")
             info_msg = (
                 "If `averaging_period` matches the frequency of the obs data, then `mf_variability` "
                 "will be zero. Try setting `averaging_period = None`."

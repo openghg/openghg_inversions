@@ -137,22 +137,3 @@ def sigma_freq_indicies(ytime: np.ndarray, sigma_freq: str | None) -> np.ndarray
         output[:] = np.floor(fractional_freq_time.values).astype(int)
 
     return output
-
-
-def offset_matrix(siteindicator: np.ndarray) -> np.ndarray:
-    """Set up a matrix that can be used to add an offset to each site.
-    This will anchor to the first site (i.e. first site has no offset).
-
-    Args:
-      siteindicator:
-        Array of values used for indicating the indices associated
-        with each site used in the inversion
-
-    Returns:
-      2D array
-    """
-    b = np.zeros((int(len(siteindicator)), int(max(siteindicator)) + 1))
-    for i in range(int(max(siteindicator) + 1)):
-        b[siteindicator == i, i] = 1.0
-
-    return b

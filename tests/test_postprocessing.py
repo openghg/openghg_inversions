@@ -102,10 +102,25 @@ def test_basic_outputs_eastasia(inv_out_eastasia, eastasia_country_file):
             assert cv + "_" + stat in outs    
 
 
-def test_make_paris_outputs(inv_out, europe_country_file, tmpdir):
+@pytest.mark.parametrize("offset", [False, True])
+def test_make_paris_outputs(inv_out, europe_country_file, tmpdir, offset):
     """Check that we can create and save PARIS outputs for EUROPE domain"""
+
+    if offset:
+        # fake an offset trace
+        inv_out.trace.posterior["offset"] = xr.ones_like(inv_out.trace.posterior["mu_bc"])
+        inv_out.trace.prior["offset"] = xr.ones_like(inv_out.trace.prior["mu_bc"])
+        inv_out.trace_ds["offset_posterior"] = xr.ones_like(inv_out.trace_ds.mu_bc_posterior)
+        inv_out.trace_ds["offset_prior"] = xr.ones_like(inv_out.trace_ds.mu_bc_prior)
+
+    print(inv_out.trace.posterior)
+
     flux_outs, conc_outs = make_paris_outputs(inv_out, country_file=europe_country_file, obs_avg_period="1h", domain="europe")
 
+    if offset:
+        assert "Yapriori_bias" in conc_outs
+
+    # check we can write to netCDF
     flux_outs.to_netcdf(tmpdir / "flux.nc")
     conc_outs.to_netcdf(tmpdir / "conc.nc")
 
