@@ -98,15 +98,15 @@ def eastasia_country_file(raw_data_path):
 @pytest.fixture
 def country_ds(raw_data_path):
     """Provides EUROPE countryfile dataset"""
-    with xr.open_dataset(raw_data_path / "country_EUROPE.nc") as ds:
-        yield ds
+    ds = xr.load_dataset(raw_data_path / "country_EUROPE.nc")
+    yield ds
 
 
 @pytest.fixture
 def country_ds_eastasia(raw_data_path):
     """Provides EUROPE countryfile dataset"""
-    with xr.open_dataset(raw_data_path / "country_EASTASIA.nc") as ds:
-        yield ds
+    ds = xr.load_dataset(raw_data_path / "country_EASTASIA.nc")
+    yield ds
 
 
 @pytest.fixture(scope="session", autouse=True)
