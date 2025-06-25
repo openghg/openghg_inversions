@@ -21,6 +21,7 @@ import logging
 from pathlib import Path
 from typing import Literal
 import warnings
+import time
 
 import numpy as np
 import xarray as xr
@@ -334,6 +335,8 @@ def fixedbasisMCMC(
     if reload_merged_data is True and merged_data_dir is None:
         print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
 
+    start_data = time.time()
+
     # Get datasets for forward simulations
     if rerun_merge:
         if not use_tracer:
@@ -573,12 +576,22 @@ def fixedbasisMCMC(
         # add any additional kwargs to mcmc_args (these aren't needed for post processing)
         mcmc_args.update(kwargs)
 
+        end_data = time.time()
+        
+        print(f"Data extraction and preparation complete. Time taken = {end_data-start_data:.2f} seconds")
+
         # for debugging
         if return_mcmc_args:
             return mcmc_args
+        
+        start_inversion = time.time()
 
         # Run PyMC inversion
         mcmc_results = mcmc.inferpymc(**mcmc_args)  # type: ignore
+
+        end_inversion = time.time()
+
+        print(f"MCMC Inversion complete. Time taken = {end_inversion-start_inversion:.2f} seconds")
 
         # get trace and model: for future updates
         trace = mcmc_results["trace"]
@@ -637,6 +650,7 @@ def fixedbasisMCMC(
                 domain=domain,
             )
 
+        start_post = time.time()
 
         if new_postprocessing:
             #from ..postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
@@ -704,6 +718,10 @@ def fixedbasisMCMC(
         del mcmc_results["model"]
         post_process_args.update(mcmc_results)
         out = mcmc.inferpymc_postprocessouts(**post_process_args)
+        
+        end_post = time.time()
+
+        print(f"Post processing Complete. Time taken = {end_post-start_post:.2f} seconds")
 
     elif use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
