@@ -794,7 +794,6 @@ def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: boo
 
     file_list = input_file.split("/")[-1].split("_")
     species = file_list[0]
-    print(species)
     domain = file_list[1]
     if ds_in.countrymean.attrs["units"] != "g":
         country_unit_prefix = ds_in.countrymean.attrs["units"][0]
