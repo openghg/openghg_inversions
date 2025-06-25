@@ -153,6 +153,7 @@ def inferpymc(
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
     offset_args: dict | None = None,
+    power: dict | float = 1.99,
 ) -> dict:
     """Uses PyMC module for Bayesian inference for emissions field, boundary
     conditions and (currently) a single model error value.
@@ -225,6 +226,9 @@ def inferpymc(
         When True, only use observation error in likelihood function (omitting min. model error
         and model error from scaling pollution events.)
       offset_args: optional arguments to pass to `make_offset`.
+      power: power to raise pollution events to when using pollution events from obs. Default is 1.99.
+        Any value (strictly) between 1 and 2 will work. If a dictionary is passed, this is used to create
+        a prior for the power, making the power a hyper-parameter.
 
     Returns:
       Dictionary containing:
@@ -322,7 +326,7 @@ def inferpymc(
 
         if pollution_events_from_obs is True:
             if use_bc is True:
-                pollution_event = pt.abs(Y - pt.dot(hbc, bc))
+                pollution_event = pt.abs(Y - mu_bc)
             else:
                 pollution_event = pt.abs(Y) + 1e-6 * pt.mean(Y)  # small non-zero term to prevent NaNs
         else:
@@ -336,7 +340,8 @@ def inferpymc(
             small_amount = 1e-12 * mean_obs
             eps = pt.maximum(pt.abs(error), small_amount)  # type: ignore
         else:
-            eps = pt.maximum(pt.sqrt(error**2 + pollution_event_scaled_error**2), min_error)  # type: ignore
+            power0 = parse_prior("power", power) if isinstance(power, dict) else power
+            eps = pt.maximum(pt.sqrt(error**2 + pt.pow(pollution_event_scaled_error, power0)), min_error)  # type: ignore
 
         epsilon = pm.Deterministic("epsilon", eps, dims="nmeasure")
 

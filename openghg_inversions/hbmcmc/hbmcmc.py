@@ -98,6 +98,7 @@ def fixedbasisMCMC(
     output_format: Literal["hbmcmc", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"] = "hbmcmc",
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
+    power: dict | float = 1.99,
     **kwargs,
 ) -> xr.Dataset | dict:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference
@@ -272,6 +273,7 @@ def fixedbasisMCMC(
         - "mcmc_args": return the arguments passed to `fixedbasisMCMC`, but do not run the inversion
         - "mcmc_results": return the results of `fixedbasisMCMC` with no further processing
       paris_postprocessing_kwargs: dict of kwargs to pass to `make_paris_outputs`
+      power: power to raise pollution event size to if using pollution events from obs. Default is 1.99
 
     Return:
       Results from the inversion in a Dataset if skip_post_processing==False, in a dictionnary if True
@@ -537,7 +539,8 @@ def fixedbasisMCMC(
             "add_offset": add_offset,
             "verbose": verbose,
             "min_error": min_error,
-            "offset_args": offset_args
+            "offset_args": offset_args,
+            "power": power,
         }
 
         if use_bc is True:
@@ -589,6 +592,7 @@ def fixedbasisMCMC(
         del post_process_args["nit"]
         del post_process_args["verbose"]
         del post_process_args["offset_args"]
+        del post_process_args["power"]
 
         # add any additional kwargs to mcmc_args (these aren't needed for post processing)
         mcmc_args.update(kwargs)
