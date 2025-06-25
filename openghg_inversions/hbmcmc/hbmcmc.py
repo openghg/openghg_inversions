@@ -461,6 +461,9 @@ def fixedbasisMCMC(
 
             Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
 
+        if np.isnan(Hx).any():
+            raise ValueError(f"Hx matrix contains {np.isnan(Hx).flatten().sum()} NaN values")
+        
         # Calculate min error
         if calculate_min_error is not None:
             warnings.warn(f"`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead.")
@@ -542,6 +545,9 @@ def fixedbasisMCMC(
                     Hbc = np.copy(Hmbc)  # fp_data[site].H_bc.values
                 else:
                     Hbc = np.hstack((Hbc, Hmbc))
+
+            if np.isnan(Hbc).any():
+                raise ValueError(f"Hbc matrix contains {np.isnan(Hbc).flatten().sum()} NaN values")
 
             mcmc_args["Hbc"] = Hbc
             mcmc_args["bcprior"] = bcprior
