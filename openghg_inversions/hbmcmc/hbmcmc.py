@@ -54,6 +54,7 @@ def fixedbasisMCMC(
     emissions_name: list[str] | None = None,
     inlet: list[str] | None = None,
     instrument: list[str] | None = None,
+    max_level: int | None = None,
     calibration_scale: str | None = None,
     obs_data_level: list | None = None,
     platform: list[str | None] | str | None = None,
@@ -145,6 +146,9 @@ def fixedbasisMCMC(
         Specific inlet height for the site (must match number of sites)
       instrument:
         Specific instrument for the site (must match number of sites)
+      max_level:
+        Maximum atmospheric level to extract. Only needed if using 
+        satellite data. Must be an int 
       calibration_scale:
         Calibration scale to use for measurements data
       obs_data_level:
@@ -354,12 +358,12 @@ def fixedbasisMCMC(
                 instrument,
                 averaging_period,
             ) = data_processing_surface_notracer(
-                species,
-                sites,
-                domain,
-                averaging_period,
-                start_date,
-                end_date,
+                species=species,
+                sites=sites,
+                domain=domain,
+                averaging_period=averaging_period,
+                start_date=start_date,
+                end_date= end_date,
                 obs_data_level=obs_data_level,
                 platform=platform,
                 met_model=met_model,
@@ -369,6 +373,7 @@ def fixedbasisMCMC(
                 emissions_name=emissions_name,
                 inlet=inlet,
                 instrument=instrument,
+                max_level=max_level,
                 calibration_scale=calibration_scale,
                 use_bc=use_bc,
                 bc_input=bc_input,

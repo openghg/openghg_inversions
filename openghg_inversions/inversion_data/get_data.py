@@ -148,6 +148,7 @@ def data_processing_surface_notracer(
     platform: list[str | None] | str | None = None,
     inlet: list[str | None] | str | None = None,
     instrument: list[str | None] | str | None = None,
+    max_level: int | None = None,
     calibration_scale: str | None = None,
     met_model: list[str | None] | str | None = None,
     fp_model: str | None = None,
@@ -179,6 +180,7 @@ def data_processing_surface_notracer(
             List of strings containing measurement
             station/site abbreviations
             e.g. ["MHD", "TAC"]
+            NOTE: for satellite, pass as "satellitename-obs_region" eg "GOSAT-BRAZIL" and pass corresponding platform as "satellite"
         domain:
             Model domain region of interest
             e.g. "EUROPE"
@@ -201,6 +203,9 @@ def data_processing_surface_notracer(
         instrument:
             Specific instrument for the site
             (length must match number of sites)
+      max_level:
+        Maximum atmospheric level to extract. Only needed if using 
+        satellite data. Must be an int 
         calibration_scale:
             Convert measurements to defined calibration scale
         met_model:
@@ -321,16 +326,19 @@ def data_processing_surface_notracer(
     warnings.warn(f"Dropping all variables besides {keep_variables}")
     for i, site in enumerate(sites):
         # Get observations data
+        # TODO: update this to get column data if platform is satellite
         site_data = get_obs_data(
             site=site,
             species=species,
             inlet=inlet[i],
             start_date=start_date,
+            domain=domain,
             end_date=end_date,
             data_level=obs_data_level[i],
             average=averaging_period[i],
             instrument=instrument[i],
             calibration_scale=calibration_scale,
+            max_level=max_level,
             stores=obs_store,
             keep_variables=keep_variables
         )
@@ -343,6 +351,7 @@ def data_processing_surface_notracer(
         footprint_data = get_footprint_data(
             site=site,
             domain=domain,
+            platform=platform[i],
             fp_height=fp_height[i],
             start_date=start_date,
             end_date=end_date,
@@ -359,16 +368,16 @@ def data_processing_surface_notracer(
                 f"Check these values.\nContinuing model run without {site}.\n",
             )
             continue  # skip this site
-
-        scenario_combined = merged_scenario_data(site_data, footprint_data, flux_dict, bc_data)
+        scenario_combined = merged_scenario_data(obs_data=site_data, footprint_data=footprint_data, flux_dict=flux_dict, bc_data=bc_data, platform=platform[i], max_level=max_level)
         fp_all[site] = scenario_combined
 
-        scales[site] = scenario_combined.scale
         units[site] = scenario_combined.mf.attrs.get("units")
-        check_scales.add(scenario_combined.scale)
+
+        if not "satellite" in platform:
+            scales[site] = scenario_combined.scale
+            check_scales.add(scenario_combined.scale)
 
         site_indices_to_keep.append(i)
-
     if len(site_indices_to_keep) == 0:
         raise SearchError("No site data found. Exiting process.")
 
@@ -380,7 +389,8 @@ def data_processing_surface_notracer(
         instrument = [instrument[s] for s in site_indices_to_keep]
         averaging_period = [averaging_period[s] for s in site_indices_to_keep]
 
-    # check for consistency of calibration scales
+    # if "satellite" not in footprint_data.metadata:
+        # check for consistency of calibration scales
     if len(check_scales) > 1:
         msg = f"Not all sites using the same calibration scale: {len(check_scales)} scales found."
         logger.warning(msg)
@@ -403,6 +413,7 @@ def data_processing_surface_notracer(
 
     # need to convert bc units because this bc data will be used again in `bc_sensitivity`
     if use_bc:
+    # if use_bc  and "satellite" not in footprint_data.metadata:
         fp_all[".bc"] = convert_bc_units(fp_all[".bc"], fp_all[".units"])
 
     # create `mf_error`
