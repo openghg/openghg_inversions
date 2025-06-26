@@ -340,7 +340,6 @@ def data_processing_surface_notracer(
         site_data = get_obs_data(
             site=site,
             species=species,
-            platform=platform[i],
             inlet=inlet[i],
             start_date=start_date,
             domain=domain,
@@ -389,8 +388,8 @@ def data_processing_surface_notracer(
             check_scales.add(scenario_combined.scale)
 
         site_indices_to_keep.append(i)
-        if len(site_indices_to_keep) == 0:
-          raise SearchError("No site data found. Exiting process.")
+    if len(site_indices_to_keep) == 0:
+        raise SearchError("No site data found. Exiting process.")
 
     # If data was not extracted correctly for any sites, drop these from the rest of the inversion
     if len(site_indices_to_keep) < len(sites):
