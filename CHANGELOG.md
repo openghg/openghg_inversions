@@ -9,6 +9,7 @@
 ## Code changes
 
 - Added offset to PARIS concentration outputs. [#PR 282](https://github.com/openghg/openghg_inversions/pull/282)
+- Compression added for output PARIS netcdf files. Standard RHIME output now shuffles to save space.
 
 # Version 0.3.0
 
