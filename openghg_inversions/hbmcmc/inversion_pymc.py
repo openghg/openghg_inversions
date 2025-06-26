@@ -978,7 +978,7 @@ def inferpymc_postprocessouts(
             do_not_compress.append(dv)
 
     # setting compression levels for data vars in outds
-    comp = dict(zlib=True, complevel=5)
+    comp = dict(zlib=True, complevel=5, shuffle=True)
     encoding = {var: comp for var in outds.data_vars if var not in do_not_compress}
 
     output_filename = define_output_filename(outputpath, species, domain, outputname, start_date, ext=".nc")

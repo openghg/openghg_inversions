@@ -27,6 +27,7 @@ import xarray as xr
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
+from openghg_inversions.hbmcmc.hbmcmc_output import ncdf_encoding
 from openghg_inversions.basis import basis_functions_wrapper
 from openghg_inversions.inversion_data import data_processing_surface_notracer, load_merged_data
 from openghg_inversions.filters import filtering
@@ -602,7 +603,7 @@ def fixedbasisMCMC(
             else:
                 trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
 
-            trace.to_netcdf(str(trace_path), engine="netcdf4")
+            trace.to_netcdf(str(trace_path), engine="netcdf4", encoding=ncdf_encoding(trace))
 
         # Path to save trace
         if save_inversion_output:
@@ -701,8 +702,8 @@ def fixedbasisMCMC(
             flux_output_filename = define_output_filename(outputpath, species, domain, outputname + "_flux", start_date, ext=".nc")
             Path(outputpath).mkdir(parents=True, exist_ok=True)
 
-            conc_outs.to_netcdf(conc_output_filename, unlimited_dims=["time"], mode="w")
-            flux_outs.to_netcdf(flux_output_filename, unlimited_dims=["time"], mode="w")
+            conc_outs.to_netcdf(conc_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(conc_outs))
+            flux_outs.to_netcdf(flux_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(flux_outs))
 
             logging.info("PARIS concentration outputs saved to", conc_output_filename)
             logging.info("PARIS flux outputs saved to", flux_output_filename)
