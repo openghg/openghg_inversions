@@ -1,4 +1,5 @@
 from collections import Counter, namedtuple
+import getpass
 from pathlib import Path
 import shutil
 import tempfile
@@ -15,6 +16,11 @@ import xarray as xr
 
 _raw_data_path = Path(".").resolve() / "tests/data/"
 
+@pytest.fixture(scope="session", autouse=True)
+def user_data_path():
+    _user_data_path = Path(tempfile.gettempdir()) / f"{getpass.getuser()}_openghg_inversions_test_data"
+    _user_data_path.mkdir(exist_ok=True)
+    return _user_data_path
 
 @pytest.fixture(scope="session")
 def openghg_version():
@@ -30,8 +36,8 @@ def raw_data_path():
 
 
 @pytest.fixture(scope="session")
-def merged_data_dir():
-    return Path(tempfile.gettempdir(), "openghg_inversions_testing_merged_data_dir")
+def merged_data_dir(user_data_path):
+    return user_data_path / "openghg_inversions_testing_merged_data_dir"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -110,11 +116,11 @@ def country_ds_eastasia(raw_data_path):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def session_config_mocker(using_zarr_store) -> Iterator[None]:
+def session_config_mocker(using_zarr_store, user_data_path) -> Iterator[None]:
     if using_zarr_store:
-        inversions_test_store_path = Path(tempfile.gettempdir(), "openghg_inversions_zarr_testing_store")
+        inversions_test_store_path = user_data_path / "openghg_inversions_zarr_testing_store"
     else:
-        inversions_test_store_path = Path(tempfile.gettempdir(), "openghg_inversions_testing_store")
+        inversions_test_store_path = user_data_path / "openghg_inversions_testing_store"
 
     mock_config = {
         "object_store": {
