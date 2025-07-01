@@ -12,6 +12,7 @@
 
 - Added offset to PARIS concentration outputs. [#PR 282](https://github.com/openghg/openghg_inversions/pull/282)
 - Compression added for output PARIS netcdf files. Standard RHIME output now shuffles to save space.
+- Fixed warning messages for zeros/NaNs in `mf_error`. [#PR 292](https://github.com/openghg/openghg_inversions/pull/292)
 
 # Version 0.3.0
 
