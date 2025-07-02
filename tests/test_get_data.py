@@ -230,15 +230,25 @@ def test_add_obs_error_exceptions_warnings(rept_vals, perc_missing, caplog):
     ds["mf_repeatability"] = xr.DataArray(rept_vals, dims="time")
     ds["mf_variability"] = xr.DataArray([0] * n, dims="time")
 
+    fp_all["TAC"] = ds.chunk(time=n // 3)
+
     add_obs_error(sites=["TAC"], fp_all=fp_all, add_averaging_error=False)
 
     output = caplog.text
     assert f"{perc_missing} percent" in output
     assert "Try setting `averaging_period = None`" in output
 
-    # check for logger info if repeatability isn't present and add_averaging_error is True
-    del ds["mf_repeatability"]
-    del ds["mf_error"]
+
+def test_add_obs_error_without_repeatability(caplog):
+    """Check for logger info if repeatability isn't present and add_averaging_error is True."""
+    ds = xr.Dataset()
+    ds["mf"] = xr.DataArray([1] * 10, dims="time")
+    ds["mf_variability"] = xr.DataArray([0] * 10, dims="time")
+    fp_all = {"TAC": ds}
+
+    # check for WARNING when `mf_error` contains zeros
+    # plus INFO suggesting fix
+    caplog.set_level(logging.INFO)
 
     add_obs_error(sites=["TAC"], fp_all=fp_all, add_averaging_error=True)
 
