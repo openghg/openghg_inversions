@@ -46,7 +46,8 @@ def test_data_processing_surface_notracer(
         expected_tac_combined_scenario = fp_all_from_dataset(ds)
 
         xr.testing.assert_allclose(
-            result[0]["TAC"][check_vars].isel(time=0).load(), expected_tac_combined_scenario["TAC"][check_vars].isel(time=0)
+            result[0]["TAC"][check_vars].isel(time=0).load(),
+            expected_tac_combined_scenario["TAC"][check_vars].isel(time=0),
         )
     elif using_zarr_store:
         # get combined scenario for TAC at time 2019-01-01 00:00:00
@@ -209,9 +210,14 @@ def test_add_averaging_error(tac_ch4_data_args):
         xr.testing.assert_allclose(ds2.mf_error, ds2.mf_repeatability)
 
 
-def test_add_obs_error_exceptions_warnings(caplog):
+@pytest.mark.parametrize(
+    "rept_vals, perc_missing",
+    [([0] * 5 + [1] * 5, "50.00"), ([np.nan] * 5 + [1] * 5, "50.00"), ([0] + [1] * 999, "0.10")],
+)
+def test_add_obs_error_exceptions_warnings(rept_vals, perc_missing, caplog):
+    n = len(rept_vals)
     ds = xr.Dataset()
-    ds["mf"] = xr.DataArray([1] * 10, dims = "time")
+    ds["mf"] = xr.DataArray([1] * n, dims="time")
     fp_all = {"TAC": ds}
 
     with pytest.raises(ValueError):
@@ -221,13 +227,13 @@ def test_add_obs_error_exceptions_warnings(caplog):
     # plus INFO suggesting fix
     caplog.set_level(logging.INFO)
 
-    ds["mf_repeatability"] = xr.DataArray([0] * 5 + [1] * 5, dims = "time")
-    ds["mf_variability"] = xr.DataArray([0] * 10, dims = "time")
+    ds["mf_repeatability"] = xr.DataArray(rept_vals, dims="time")
+    ds["mf_variability"] = xr.DataArray([0] * n, dims="time")
 
     add_obs_error(sites=["TAC"], fp_all=fp_all, add_averaging_error=False)
 
     output = caplog.text
-    assert "50 percent" in output
+    assert f"{perc_missing} percent" in output
     assert "Try setting `averaging_period = None`" in output
 
     # check for logger info if repeatability isn't present and add_averaging_error is True
