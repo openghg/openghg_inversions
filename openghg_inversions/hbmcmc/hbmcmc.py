@@ -718,7 +718,8 @@ def fixedbasisMCMC(
                 domain=domain,
             )
 
-            obs_avg_period = averaging_period[0] or "1h"
+            obs_avg_period = averaging_period[0] or "0h"
+            if not averaging_period[0]: logging.info("Default obs averaging period %s used in PARIS post-processing.", obs_avg_period)
             paris_postprocessing_kwargs = paris_postprocessing_kwargs or {}
             flux_outs, conc_outs = make_paris_outputs(inv_out, country_file=country_file, domain=domain, obs_avg_period=obs_avg_period, **paris_postprocessing_kwargs)
 
