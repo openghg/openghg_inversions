@@ -352,6 +352,7 @@ def inferpymc(
         step1 = pm.NUTS(vars=step1_vars)
         step2 = pm.Slice(vars=[sigma])
         step = [step1, step2] if nuts_sampler == "pymc" else None
+        sampler_kwargs = sampler_kwargs or {}
         trace = pm.sample(
             nit,
             tune=int(tune),
