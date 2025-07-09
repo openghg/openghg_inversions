@@ -21,12 +21,14 @@ import logging
 from pathlib import Path
 from typing import Literal
 import warnings
+import time
 
 import numpy as np
 import xarray as xr
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
+from openghg_inversions.hbmcmc.hbmcmc_output import ncdf_encoding
 from openghg_inversions.basis import basis_functions_wrapper
 from openghg_inversions.inversion_data import data_processing_surface_notracer, load_merged_data
 from openghg_inversions.filters import filtering
@@ -69,7 +71,8 @@ def fixedbasisMCMC(
     xprior: dict = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 1.0, "lower": 0.0},
     bcprior: dict = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0},
     sigprior: dict = {"pdf": "uniform", "lower": 0.1, "upper": 3},
-    offsetprior: dict = {"pdf": "normal", "mu": 0, "sd": 1},
+    offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
+    offset_args: dict | None = None,
     nit: int = int(2.5e5),
     burn: int = 50000,
     tune: int = int(1.25e5),
@@ -96,6 +99,7 @@ def fixedbasisMCMC(
     output_format: Literal["hbmcmc", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"] = "hbmcmc",
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
+    power: dict | float = 1.99,
     **kwargs,
 ) -> xr.Dataset | dict:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference
@@ -186,11 +190,14 @@ def fixedbasisMCMC(
         Note that the standard deviation should be used rather than the
         precision. Currently all variables are considered iid
       bcprior:
-        Same as xrior but for boundary conditions.
+        Same as xprior but for boundary conditions.
       sigprior:
-        Same as xrior but for model error.
+        Same as xprior but for model error.
       offsetprior:
-        Same as xrior but for bias offset. Only used is addoffset=True.
+        Same as xprior but for bias offset. Only used is addoffset=True.
+      offset_args: dictionary of args to pass to `make_offset`. For instance
+        `{"drop_first": False}` will put an offset on all site (rather than using 0
+        offset for the first site).
       nit:
         Number of iterations for MCMC
       burn:
@@ -267,6 +274,7 @@ def fixedbasisMCMC(
         - "mcmc_args": return the arguments passed to `fixedbasisMCMC`, but do not run the inversion
         - "mcmc_results": return the results of `fixedbasisMCMC` with no further processing
       paris_postprocessing_kwargs: dict of kwargs to pass to `make_paris_outputs`
+      power: power to raise pollution event size to if using pollution events from obs. Default is 1.99
 
     Return:
       Results from the inversion in a Dataset if skip_post_processing==False, in a dictionnary if True
@@ -333,6 +341,8 @@ def fixedbasisMCMC(
 
     if reload_merged_data is True and merged_data_dir is None:
         print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
+
+    start_data = time.time()
 
     # Get datasets for forward simulations
     if rerun_merge:
@@ -413,6 +423,7 @@ def fixedbasisMCMC(
         # check if some datasets are empty due to filtering
         if fp_data[site].time.values.shape[0] == 0:
             dropped_sites.append(site)
+            del fp_data[site]
 
     if len(dropped_sites) != 0:
         sites = [s for i, s in enumerate(sites) if s not in dropped_sites]
@@ -462,6 +473,9 @@ def fixedbasisMCMC(
 
             Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
 
+        if np.isnan(Hx).any():
+            warnings.warn(f"Hx matrix contains {np.isnan(Hx).flatten().sum()} NaN values")
+        
         # Calculate min error
         if calculate_min_error is not None:
             warnings.warn(f"`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead.")
@@ -526,6 +540,8 @@ def fixedbasisMCMC(
             "add_offset": add_offset,
             "verbose": verbose,
             "min_error": min_error,
+            "offset_args": offset_args,
+            "power": power,
         }
 
         if use_bc is True:
@@ -543,6 +559,9 @@ def fixedbasisMCMC(
                     Hbc = np.copy(Hmbc)  # fp_data[site].H_bc.values
                 else:
                     Hbc = np.hstack((Hbc, Hmbc))
+
+            if np.isnan(Hbc).any():
+                warnings.warn(f"Hbc matrix contains {np.isnan(Hbc).flatten().sum()} NaN values")
 
             mcmc_args["Hbc"] = Hbc
             mcmc_args["bcprior"] = bcprior
@@ -573,16 +592,28 @@ def fixedbasisMCMC(
         post_process_args.update(mcmc_args)
         del post_process_args["nit"]
         del post_process_args["verbose"]
+        del post_process_args["offset_args"]
+        del post_process_args["power"]
 
         # add any additional kwargs to mcmc_args (these aren't needed for post processing)
         mcmc_args.update(kwargs)
 
+        end_data = time.time()
+        
+        print(f"Data extraction and preparation complete. Time taken = {end_data-start_data:.2f} seconds")
+
         # for debugging
         if return_mcmc_args:
             return mcmc_args
+        
+        start_inversion = time.time()
 
         # Run PyMC inversion
         mcmc_results = mcmc.inferpymc(**mcmc_args)  # type: ignore
+
+        end_inversion = time.time()
+
+        print(f"MCMC Inversion complete. Time taken = {end_inversion-start_inversion:.2f} seconds")
 
         # get trace and model: for future updates
         trace = mcmc_results["trace"]
@@ -595,7 +626,7 @@ def fixedbasisMCMC(
             else:
                 trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
 
-            trace.to_netcdf(str(trace_path), engine="netcdf4")
+            trace.to_netcdf(str(trace_path), engine="netcdf4", encoding=ncdf_encoding(trace))
 
         # Path to save trace
         if save_inversion_output:
@@ -641,6 +672,7 @@ def fixedbasisMCMC(
                 domain=domain,
             )
 
+        start_post = time.time()
 
         if new_postprocessing:
             #from ..postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
@@ -686,7 +718,8 @@ def fixedbasisMCMC(
                 domain=domain,
             )
 
-            obs_avg_period = averaging_period[0] or "1h"
+            obs_avg_period = averaging_period[0] or "0h"
+            if not averaging_period[0]: logging.info("Default obs averaging period %s used in PARIS post-processing.", obs_avg_period)
             paris_postprocessing_kwargs = paris_postprocessing_kwargs or {}
             flux_outs, conc_outs = make_paris_outputs(inv_out, country_file=country_file, domain=domain, obs_avg_period=obs_avg_period, **paris_postprocessing_kwargs)
 
@@ -694,8 +727,8 @@ def fixedbasisMCMC(
             flux_output_filename = define_output_filename(outputpath, species, domain, outputname + "_flux", start_date, ext=".nc")
             Path(outputpath).mkdir(parents=True, exist_ok=True)
 
-            conc_outs.to_netcdf(conc_output_filename, unlimited_dims=["time"], mode="w")
-            flux_outs.to_netcdf(flux_output_filename, unlimited_dims=["time"], mode="w")
+            conc_outs.to_netcdf(conc_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(conc_outs))
+            flux_outs.to_netcdf(flux_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(flux_outs))
 
             logging.info("PARIS concentration outputs saved to", conc_output_filename)
             logging.info("PARIS flux outputs saved to", flux_output_filename)
@@ -708,6 +741,10 @@ def fixedbasisMCMC(
         del mcmc_results["model"]
         post_process_args.update(mcmc_results)
         out = mcmc.inferpymc_postprocessouts(**post_process_args)
+        
+        end_post = time.time()
+
+        print(f"Post processing Complete. Time taken = {end_post-start_post:.2f} seconds")
 
     elif use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
