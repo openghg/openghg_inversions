@@ -154,6 +154,7 @@ def inferpymc(
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
+    sampler_kwargs: dict | None = None,
 ) -> dict:
     """Uses PyMC module for Bayesian inference for emissions field, boundary
     conditions and (currently) a single model error value.
@@ -360,8 +361,8 @@ def inferpymc(
             progressbar=False,
             cores=nchain,
             nuts_sampler=nuts_sampler,
-            target_accept=0.99,
             idata_kwargs={"log_likelihood": True},
+            **sampler_kwargs,
         )
 
     posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit)).drop_vars("chain")
