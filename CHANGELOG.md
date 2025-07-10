@@ -8,6 +8,8 @@
 
 - Updated RHIME likelihood to use a power of 1.99 instead of 2. The power can be specified with the `power` argument an ini file. The value of `power` can be a float or a dict of prior args, which will create a hyperprior for `power`. [#PR 277](https://github.com/openghg/openghg_inversions/pull/277)
 
+- Can now specify kwargs to pass to the sampler as a dictionary called sampler_kwargs in the .ini file (e.g. sampler_kwargs = {"target_accept": 0.99})
+
 ## Code changes
 
 - Added offset to PARIS concentration outputs. [#PR 282](https://github.com/openghg/openghg_inversions/pull/282)
@@ -20,15 +22,15 @@
 
 - Merged functionality of `min_error` and `calculate_min_error` into a single variable (`min_error`). [#PR 240](https://github.com/openghg/openghg_inversions/pull/240)
 
-- Tidied `get_data.py`, splitting it into several files. [#PR 237](https://github.com/openghg/openghg_inversions/pull/237) 
+- Tidied `get_data.py`, splitting it into several files. [#PR 237](https://github.com/openghg/openghg_inversions/pull/237)
 
-- Updated post-processing, including adding PARIS formatting option. [#PR 225](https://github.com/openghg/openghg_inversions/pull/225). This works for both the EUROPE domain and EASTASIA [#PR 242](https://github.com/openghg/openghg_inversions/pull/242) 
+- Updated post-processing, including adding PARIS formatting option. [#PR 225](https://github.com/openghg/openghg_inversions/pull/225). This works for both the EUROPE domain and EASTASIA [#PR 242](https://github.com/openghg/openghg_inversions/pull/242)
 
 - Unpinned numpy now that pymc upgraded. [#PR 236](https://github.com/openghg/openghg_inversions/pull/236)
 
 - Changed optimization in weighted basis function from recursion to loop. [#PR 224](https://github.com/openghg/openghg_inversions/pull/224)
 
-- Updated and simplified `sparse_xr_dot`. The old version caused errors due to upstream changes. [#PR 231](https://github.com/openghg/openghg_inversions/pull/231) 
+- Updated and simplified `sparse_xr_dot`. The old version caused errors due to upstream changes. [#PR 231](https://github.com/openghg/openghg_inversions/pull/231)
 
 - Added MHD obs and footprint to test data. [#PR 209](https://github.com/openghg/openghg_inversions/pull/209)
 
@@ -44,39 +46,39 @@
 
 - Pinned numpy to version < 2.0 since PyTensor hasn't updated to numpy >= 2.0 [#PR 148](https://github.com/openghg/openghg_inversions/pull/148)
 
-- Updated filtering to handle case `inlet == "multiple"`. [#PR 189](https://github.com/openghg/openghg_inversions/pull/189) 
+- Updated filtering to handle case `inlet == "multiple"`. [#PR 189](https://github.com/openghg/openghg_inversions/pull/189)
 
 - Added option to store merged data in a zarr ZipStore, which is essentially just a zipped zarr store. This should reduce the number of files created when saving merged data. [#PR 185](https://github.com/openghg/openghg_inversions/pull/185)
 
-- Fixed issue where missing footprints times were dropped from basis function calculations. [#PR 186](https://github.com/openghg/openghg_inversions/pull/186) 
+- Fixed issue where missing footprints times were dropped from basis function calculations. [#PR 186](https://github.com/openghg/openghg_inversions/pull/186)
 
 - Made format for `filtering` in ini file allow for missing sites. Made `inlet`, `instrument`, `fp_height`, `obs_data_level`, and `met_model`
   accept a single string in the ini file, which will be converted to a list of the correct length.  [#PR 182](https://github.com/openghg/openghg_inversions/pull/182). Bug fix: [#PR 188](https://github.com/openghg/openghg_inversions/pull/188)
 
 - Added code to look for older flux data if none is found between start and end dates [#PR 177](https://github.com/openghg/openghg_inversions/pull/177)
 
-- Moved code related to basis functions from `utils.py` to `basis` submodule [#PR 162](https://github.com/openghg/openghg_inversions/pull/162) 
+- Moved code related to basis functions from `utils.py` to `basis` submodule [#PR 162](https://github.com/openghg/openghg_inversions/pull/162)
 
-- Fixed bug in `filtering` function and updated tests to cover all filters [#PR 179](https://github.com/openghg/openghg_inversions/pull/179) 
+- Fixed bug in `filtering` function and updated tests to cover all filters [#PR 179](https://github.com/openghg/openghg_inversions/pull/179)
 
 - Updated all docstrings (various PRs)
 
-- Cleaned up `utils.py`: adding typing, and updated docstrings [#PR 158](https://github.com/openghg/openghg_inversions/pull/158) 
+- Cleaned up `utils.py`: adding typing, and updated docstrings [#PR 158](https://github.com/openghg/openghg_inversions/pull/158)
 
 - Refactored `filters.py` so filter functions aren't nested inside `filtering`. Added code to keep track of filter functions. Updated docstrings. [#PR 163](https://github.com/openghg/openghg_inversions/pull/163)
 
 - Replaced `utils.combine_datasets` with (nearly) equivalent function from `openghg.analyse._scenario`. There is currently a thin wrapper to make sure that the second
-  dataset is loaded into memory, since this change is only on the devel branch of OpenGHG [#PR 160](https://github.com/openghg/openghg_inversions/pull/160) 
+  dataset is loaded into memory, since this change is only on the devel branch of OpenGHG [#PR 160](https://github.com/openghg/openghg_inversions/pull/160)
 
 - Moved `basis` and related functions from `utils.py` to `basis._functions.py` to make more consistent [#PR 162](https://github.com/openghg/openghg_inversions/pull/162)
 
-- Moved filters from `utils.py` to new submodule `filters.py` [#PR 159](https://github.com/openghg/openghg_inversions/pull/159) 
+- Moved filters from `utils.py` to new submodule `filters.py` [#PR 159](https://github.com/openghg/openghg_inversions/pull/159)
 
-- Removed `site_info.json` and `species_info.json` and replaced with calls to functions in `openghg.util`, which pull the same info from `openghg_defs`. [#PR 152](https://github.com/openghg/openghg_inversions/pull/152) 
+- Removed `site_info.json` and `species_info.json` and replaced with calls to functions in `openghg.util`, which pull the same info from `openghg_defs`. [#PR 152](https://github.com/openghg/openghg_inversions/pull/152)
 
-- Removed unused functions from `convert.py` and updated docstrings. [#PR 151](https://github.com/openghg/openghg_inversions/pull/151) 
+- Removed unused functions from `convert.py` and updated docstrings. [#PR 151](https://github.com/openghg/openghg_inversions/pull/151)
 
-- Added new option for computing min. model error based on percentiles. [#PR 142](https://github.com/openghg/openghg_inversions/pull/142) 
+- Added new option for computing min. model error based on percentiles. [#PR 142](https://github.com/openghg/openghg_inversions/pull/142)
 
 - Update the docstrings of `openghg_inversions.basis` and `openghg_inversions.array_ops` [#PR 150](https://github.com/openghg/openghg_inversions/pull/150)
 
@@ -94,7 +96,7 @@
 
 - `met_model` is now used by `data_processing_surface_notracer`; it is an optional argument, passed as a list with the same length as the number of sites. [#PR 125](https://github.com/openghg/openghg_inversions/pull/125)
 
-- Added option to pass "mean" and "stdev" to lognormal xpriors. Additionally, if `reparameterise_log_normal = True` is added to an ini file, then the 
+- Added option to pass "mean" and "stdev" to lognormal xpriors. Additionally, if `reparameterise_log_normal = True` is added to an ini file, then the
   log normal prior will be sampled by transforming samples from standard normal random variable to samples from the appropriate log normal distribution. [#PR 107](https://github.com/openghg/openghg_inversions/pull/107)
 
 - Updated `pblh` filter to work with new variable names in footprints. [#PR 101](https://github.com/openghg/openghg_inversions/pull/101)
@@ -134,7 +136,7 @@
 
 - Added option to run an inversion without boundary conditions. This is specified by adding `use_bc = False` in an .ini file. This assumes that the baseline has already been factored into the observations.
 
-- Added tests to test `get_data.py`, including creating, saving, and loading merged data. Refactored inversions tests to reload merged data, instead of creating merged data. 
+- Added tests to test `get_data.py`, including creating, saving, and loading merged data. Refactored inversions tests to reload merged data, instead of creating merged data.
 
 # Version 0.1.2
 

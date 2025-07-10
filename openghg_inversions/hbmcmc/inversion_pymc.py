@@ -154,6 +154,7 @@ def inferpymc(
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
+    sampler_kwargs: dict | None = None,
 ) -> dict:
     """Uses PyMC module for Bayesian inference for emissions field, boundary
     conditions and (currently) a single model error value.
@@ -279,11 +280,12 @@ def inferpymc(
     # convert siteindicator into a site indexer
     sites = siteindicator.astype(int) if sigma_per_site else np.zeros_like(siteindicator).astype(int)
 
-    coords = _make_coords(Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None)
+    coords = _make_coords(
+        Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None
+    )
 
     if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
         min_error = min_error * np.ones_like(Y)
-
 
     with pm.Model(coords=coords) as model:
         step1_vars = []
@@ -350,6 +352,7 @@ def inferpymc(
         step1 = pm.NUTS(vars=step1_vars)
         step2 = pm.Slice(vars=[sigma])
         step = [step1, step2] if nuts_sampler == "pymc" else None
+        sampler_kwargs = sampler_kwargs or {}
         trace = pm.sample(
             nit,
             tune=int(tune),
@@ -360,6 +363,7 @@ def inferpymc(
             cores=nchain,
             nuts_sampler=nuts_sampler,
             idata_kwargs={"log_likelihood": True},
+            **sampler_kwargs,
         )
 
     posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit)).drop_vars("chain")
@@ -845,16 +849,18 @@ def inferpymc_postprocessouts(
     }
 
     if use_bc:
-        data_vars.update({
-            "YaprioriBC": (["nmeasure"], YaprioriBC),
-            "YmodmeanBC": (["nmeasure"], YmodmuBC),
-            "YmodmedianBC": (["nmeasure"], YmodmedBC),
-            "YmodmodeBC": (["nmeasure"], YmodmodeBC),
-            "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
-            "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
-            "bctrace": (["steps", "nBC"], bcouts.values),
-            "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
-        })
+        data_vars.update(
+            {
+                "YaprioriBC": (["nmeasure"], YaprioriBC),
+                "YmodmeanBC": (["nmeasure"], YmodmuBC),
+                "YmodmedianBC": (["nmeasure"], YmodmedBC),
+                "YmodmodeBC": (["nmeasure"], YmodmodeBC),
+                "Ymod95BC": (["nmeasure", "nUI"], Ymod95BC),
+                "Ymod68BC": (["nmeasure", "nUI"], Ymod68BC),
+                "bctrace": (["steps", "nBC"], bcouts.values),
+                "bcsensitivity": (["nmeasure", "nBC"], Hbc.T),
+            }
+        )
         coords["numBC"] = (["nBC"], nBC)
 
     outds = xr.Dataset(data_vars, coords=coords)
