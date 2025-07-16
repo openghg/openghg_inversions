@@ -15,6 +15,7 @@
 - Added offset to PARIS concentration outputs. [#PR 282](https://github.com/openghg/openghg_inversions/pull/282)
 - Compression added for output PARIS netcdf files. Standard RHIME output now shuffles to save space.
 - Fixed warning messages for zeros/NaNs in `mf_error`. [#PR 292](https://github.com/openghg/openghg_inversions/pull/292)
+- `get_flux_data` tries to infer the "time period" of the flux, which is used to set the time offset for PARIS flux outputs. [#PR 302](https://github.com/openghg/openghg_inversions/pull/302)
 
 # Version 0.3.0
 

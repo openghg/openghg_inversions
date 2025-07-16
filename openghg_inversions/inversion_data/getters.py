@@ -8,6 +8,7 @@ These functions customise the behavior of `get_flux`, `get_footprint`, etc.
 
 TODO: add more docs (and add more detailed docstrings)
 """
+
 import logging
 from pathlib import Path
 from collections.abc import Iterable
@@ -31,7 +32,9 @@ def adjust_flux_start_date(
     """Adjusts the flux start_date to align with the flux data's temporal resolution."""
     flux_search = search_flux(species=species, source=source, domain=domain, store=store)
     if flux_search.results.empty:
-        raise SearchError(f"No flux found with species={species}, source={source}, domain={domain}, store={store}.")
+        raise SearchError(
+            f"No flux found with species={species}, source={source}, domain={domain}, store={store}."
+        )
     flux_period = flux_search.results["time_period"][0]
 
     start_date_flux = pd.to_datetime(start_date)
@@ -91,12 +94,41 @@ def get_flux_data(
             except SearchError as e:
                 raise SearchError(f"No flux data found before {start_date}") from e
             else:
-                flux_data.data = flux_data.data.isel(time=[-1]) # select the last time step
+                flux_data.data = flux_data.data.isel(time=[-1])  # select the last time step
                 print(f"Using flux data from {str(flux_data.data.time.values[0]).split(':')[0]}.")
-                flux_data.data = flux_data.data.assign_coords(time=[pd.to_datetime(start_date)]) # set time to start_date
+                flux_data.data = flux_data.data.assign_coords(
+                    time=[pd.to_datetime(start_date)]
+                )  # set time to start_date
 
         logging.Logger.disabled = False  # resume confusing OpenGHG warnings
 
+        # try to guess flux time period
+        # PARIS post-processing uses the time period of the flux
+        time_period = pd.to_datetime(end_date) - pd.to_datetime(start_date)
+
+        # check number of days, with extra day at start and end for buffer
+        if time_period.days in (27, 28, 29, 30, 31, 32):
+            inferred_time_period_str = "monthly"
+        elif time_period.days in (364, 365, 366, 367):
+            inferred_time_period_str = "yearly"
+        else:
+            inferred_time_period_str = "other"
+
+        existing_time_period_str = flux_data.data.attrs.get("time_period", "")
+
+        if (
+            ("year" in inferred_time_period_str and "year" in existing_time_period_str.lower())
+            or ("month" in inferred_time_period_str and "month" in existing_time_period_str.lower())
+            or (inferred_time_period_str == "other")
+        ):
+            flux_data.data.flux.attrs["time_period"] = existing_time_period_str
+        elif "month" in existing_time_period_str.lower():
+            logger.warning("Monthly flux detected, but inversion period is {time_period.days} days. Setting flux time_period to 'monthly'.")
+            flux_data.data.flux.attrs["time_period"] = existing_time_period_str
+        else:
+            flux_data.data.flux.attrs["time_period"] = inferred_time_period_str
+
+        # add flux data to result dict
         flux_dict[source] = flux_data
 
     return flux_dict
@@ -129,7 +161,7 @@ def get_obs_data(
     instrument: str | None = None,
     calibration_scale: str | None = None,
     stores: str | None | Iterable[str | None] = None,
-    keep_variables : list | None = None
+    keep_variables: list | None = None,
 ) -> ObsData | None:
     """Try to retrieve obs. data from listed stores."""
     if stores is None or isinstance(stores, str):
@@ -148,7 +180,7 @@ def get_obs_data(
                 instrument=instrument,
                 calibration_scale=calibration_scale,
                 store=store,
-                keep_variables = keep_variables
+                keep_variables=keep_variables,
             )
         except SearchError:
             print(
@@ -258,7 +290,8 @@ def get_footprint_to_match(
 
     for fp_height in matched_fp_heights:
         fp_data = get_footprint(**fp_kwargs, inlet=fp_height)
-        if fp_data.data.time.size > 0: footprints.append(fp_data)
+        if fp_data.data.time.size > 0:
+            footprints.append(fp_data)
 
     if not footprints:
         raise SearchError("No footprints found with inlet heights matching given obs.")
