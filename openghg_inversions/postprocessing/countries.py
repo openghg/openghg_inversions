@@ -67,22 +67,7 @@ paris_regions_dict = {
         "NW_EU2": ["BEL", "DEU", "FRA", "GBR", "IRL", "LUX", "NLD"],
         "NW_EU_CONTINENT": ["BEL", "DEU", "FRA", "LUX", "NLD"],
     },
-    "eastasia":{
-        "SouthK": ["Jeju", "S.Kor"],
-        "KorPen": ["Jeju", "S.Kor", "N.Kor"],
-        "EChina": ["EChi1", "EChi2"],
-        "CHINA": ["WChina", "NChina", "EChi1", "EChi2"],
-        "KoreaPeninsula": ["Jeju", "S.Kor", "N.Kor"],
-        "East1_China": ["EChi1"],
-        "Japan": ["Japan"],
-        "Taiwan": ["Taiwan"],
-        "NorthChina": ["NChina"],
-        "EastChina": ["EChi1", "EChi2"],
-        "East2China": ["EChi2"],
-        "NorthKorea": ["N.Kor"],
-        "Mongolia": ["Mongol"],
-        "WestChina": ["WChina"]
-    }
+    "eastasia":{}
     }
 
 
