@@ -63,6 +63,9 @@ def fp_sensitivity(
                     "There should either only be one basis_func, or it should be a dictionary keyed by sources."
                     )
 
+    if "time" in basis_func.dims:
+        basis_func = basis_func.squeeze("time")
+
     fp_and_data[".basis"] = basis_func
 
     for site in sites:
