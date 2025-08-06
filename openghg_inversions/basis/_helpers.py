@@ -86,6 +86,7 @@ def apply_fp_basis_functions(
     more info about the sensitivity matrix.
 
     # TODO: accept more complex basis functions
+    # TODO: accept time varying basis functions?
 
     Args:
         fp_x_flux: xr.DataArray from `ModelScenario.footprints_data_merge`, e.g. `fp_all["TAC"].fp_x_flux` or
@@ -96,7 +97,7 @@ def apply_fp_basis_functions(
         sensitivity ("H") xr.DataArray
     """
     _, basis_aligned = xr.align(fp_x_flux.isel(time=0), basis_func, join="override")
-    basis_mat = get_xr_dummies(basis_aligned.squeeze("time"), cat_dim="region")
+    basis_mat = get_xr_dummies(basis_aligned, cat_dim="region")
     sensitivity = sparse_xr_dot(basis_mat, fp_x_flux.fillna(0.0)).transpose("region", "time")
     return sensitivity
 
