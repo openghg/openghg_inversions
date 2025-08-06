@@ -11,9 +11,7 @@ from openghg_inversions.array_ops import get_xr_dummies
 from ._functions import basis_boundary_conditions
 
 
-def fp_sensitivity(
-    fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.DataArray]
-) -> dict:
+def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.DataArray]) -> dict:
     """Add a sensitivity matrix, H, to each site xr.Dataset in fp_and_data.
 
     The sensitivity matrix H takes the footprint sensitivities (the `fp` variable),
@@ -49,7 +47,7 @@ def fp_sensitivity(
         fp_x_flux_name = "fp_x_flux"
 
     else:
-    # multi-sector case
+        # multi-sector case
         fp_x_flux_name = "fp_x_flux_sectoral"
 
         if isinstance(basis_func, dict):
@@ -57,11 +55,15 @@ def fp_sensitivity(
                 basis_func = next(iter(basis_func.values()))
             elif all(fs in basis_func for fs in flux_sources):
                 # concat along sources
-                basis_func = xr.concat([bf.expand_dims({"source": [k]}) for k, bf in basis_func.items()], dim="source", join="outer")
+                basis_func = xr.concat(
+                    [bf.expand_dims({"source": [k]}) for k, bf in basis_func.items()],
+                    dim="source",
+                    join="outer",
+                )
             else:
                 raise ValueError(
                     "There should either only be one basis_func, or it should be a dictionary keyed by sources."
-                    )
+                )
 
     if "time" in basis_func.dims:
         basis_func = basis_func.squeeze("time")
@@ -70,7 +72,7 @@ def fp_sensitivity(
 
     for site in sites:
         sensitivity = apply_fp_basis_functions(
-                            fp_x_flux=fp_and_data[site][fp_x_flux_name],
+            fp_x_flux=fp_and_data[site][fp_x_flux_name],
             basis_func=basis_func,
         )
         fp_and_data[site]["H"] = sensitivity
@@ -175,16 +177,18 @@ def bc_sensitivity(
             loss_s[:] = 1
             loss_w[:] = 1
 
-        DS_particle_loc = xr.Dataset({
-            "particle_locations_n": fp_and_data[site]["particle_locations_n"],
-            "particle_locations_e": fp_and_data[site]["particle_locations_e"],
-            "particle_locations_s": fp_and_data[site]["particle_locations_s"],
-            "particle_locations_w": fp_and_data[site]["particle_locations_w"],
-            "loss_n": loss_n,
-            "loss_e": loss_e,
-            "loss_s": loss_s,
-            "loss_w": loss_w,
-        })
+        DS_particle_loc = xr.Dataset(
+            {
+                "particle_locations_n": fp_and_data[site]["particle_locations_n"],
+                "particle_locations_e": fp_and_data[site]["particle_locations_e"],
+                "particle_locations_s": fp_and_data[site]["particle_locations_s"],
+                "particle_locations_w": fp_and_data[site]["particle_locations_w"],
+                "loss_n": loss_n,
+                "loss_e": loss_e,
+                "loss_s": loss_s,
+                "loss_w": loss_w,
+            }
+        )
         #                                 "bc":fp_and_data[site]["bc"]})
 
         DS_temp = combine_datasets(DS_particle_loc, fp_and_data[".bc"].data, method="ffill")
@@ -193,12 +197,14 @@ def bc_sensitivity(
 
         DS = DS.transpose("height", "lat", "lon", "region", "time")
 
-        part_loc = np.hstack([
-            DS.particle_locations_n,
-            DS.particle_locations_e,
-            DS.particle_locations_s,
-            DS.particle_locations_w,
-        ])
+        part_loc = np.hstack(
+            [
+                DS.particle_locations_n,
+                DS.particle_locations_e,
+                DS.particle_locations_s,
+                DS.particle_locations_w,
+            ]
+        )
 
         loss = np.hstack([DS.loss_n, DS.loss_e, DS.loss_s, DS.loss_w])
 
