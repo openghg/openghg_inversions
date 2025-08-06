@@ -7,7 +7,7 @@ import numpy as np
 
 from openghg_inversions import convert
 from openghg_inversions.utils import combine_datasets
-from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
+from openghg_inversions.array_ops import get_xr_dummies
 from ._functions import basis_boundary_conditions
 
 
@@ -57,7 +57,7 @@ def fp_sensitivity(
                 basis_func = next(iter(basis_func.values()))
             elif all(fs in basis_func for fs in flux_sources):
                 # concat along sources
-                basis_func = xr.concat([bf.expand_dims({"source": k}) for k, bf in basis_func.items()], dim="source", join="outer")
+                basis_func = xr.concat([bf.expand_dims({"source": [k]}) for k, bf in basis_func.items()], dim="source", join="outer")
             else:
                 raise ValueError(
                     "There should either only be one basis_func, or it should be a dictionary keyed by sources."
@@ -98,8 +98,8 @@ def apply_fp_basis_functions(
     """
     _, basis_aligned = xr.align(fp_x_flux.isel(time=0), basis_func, join="override")
     basis_mat = get_xr_dummies(basis_aligned, cat_dim="region")
-    sensitivity = sparse_xr_dot(basis_mat, fp_x_flux.fillna(0.0)).transpose("region", "time")
-    return sensitivity
+    sensitivity = (basis_mat * fp_x_flux.fillna(0.0)).sum(["lat", "lon"]).transpose("region", "time", ...)
+    return sensitivity.as_numpy()
 
 
 def bc_sensitivity(
