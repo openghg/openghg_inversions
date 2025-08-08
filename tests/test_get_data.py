@@ -19,6 +19,7 @@ from openghg_inversions.inversion_data.get_data import (
     data_processing_surface_notracer,
     add_obs_error,
 )
+from openghg_inversions.inversion_data.getters import get_flux_data
 
 
 def test_data_processing_surface_notracer(
@@ -270,3 +271,17 @@ def test_looking_older_flux_files(tac_ch4_data_args, capsys):
 
     # we find older flux data
     assert "Using flux data from 2019-01-01" in stdout
+
+
+@pytest.mark.parametrize("end_date, time_period", [("2019-02-01", "monthly"), ("2020-01-01", "1 year"), ("2019-01-02", "1 year")])
+def test_flux_time_period_infernece(end_date, time_period, tac_ch4_data_args):
+    kwargs = {"sources": tac_ch4_data_args["emissions_name"],
+              "species": tac_ch4_data_args["species"],
+              "domain": tac_ch4_data_args["domain"],
+              "start_date": "2019-01-01",
+              "end_date": end_date,
+              }
+    flux_data = get_flux_data(**kwargs)
+
+    source = tac_ch4_data_args["emissions_name"][0]
+    assert flux_data[source].data.flux.attrs["time_period"] == time_period
