@@ -100,7 +100,7 @@ def apply_fp_basis_functions(
     """
     _, basis_aligned = xr.align(fp_x_flux.isel(time=0), basis_func, join="override")
     basis_mat = get_xr_dummies(basis_aligned, cat_dim="region")
-    sensitivity = (basis_mat * fp_x_flux.fillna(0.0)).sum(["lat", "lon"]).transpose("region", "time", ...)
+    sensitivity = xr.dot(basis_mat, fp_x_flux.fillna(0.0), dim=["lat", "lon"]).transpose("region", "time", ...)
     return sensitivity.as_numpy()
 
 
