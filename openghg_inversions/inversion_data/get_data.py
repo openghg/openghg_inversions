@@ -101,7 +101,14 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
 
         if err0.any():
             percent0 = 100 * err0.mean()
-            logger.warning("`mf_error` is zero/nan for %.2f percent of times at site %s.", percent0, site)
+            logger.warning(
+                (
+                    "`mf_error` is zero/nan for %.2f percent of times at site %s;"
+                    "filling with max(median(mf_error), std(mf))."
+                ),
+                percent0,
+                site,
+            )
 
             mf_err_da = ds["mf_error"].as_numpy()  # load into memory to avoid Dask issues
             fill_value = np.nanmax(
@@ -111,9 +118,6 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
                 ]
             )
             ds["mf_error"] = mf_err_da.where(mf_err_da != 0, fill_value)
-            logger.warning(
-                "More than 10% of `mf_error` is zero/nan, it is thus filled with the max of median `mf_error` and stdev of `mf`."
-            )
             info_msg = (
                 "If `averaging_period` matches the frequency of the obs data, then `mf_variability` "
                 "will be zero. Try setting `averaging_period = None`."
