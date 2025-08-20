@@ -5,6 +5,7 @@
 - `load_merged_data` restores the `fp_all` dict from these saved formats
 - `make_combined_scenario` converts the `fp_all` dict into a xr.Dataset
 """
+
 import pickle
 from collections import defaultdict
 from pathlib import Path
@@ -357,7 +358,7 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
     else:
         if "time" not in bc_ds.dims:
             bc_ds = bc_ds.expand_dims({"time": [ds.time.min().values]}).transpose(..., "time")
-            
+
         fp_all[".bc"] = BoundaryConditionsData(data=bc_ds, metadata={})
 
     species = ds.attrs.get("species", None)

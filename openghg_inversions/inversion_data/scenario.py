@@ -30,6 +30,12 @@ def merged_scenario_data(
 
     # TODO: should we make this option explicit? Multiple fluxes can be stacked and used as a single flux
     split_by_sectors = len(flux_dict) > 1
-    scenario_combined = model_scenario.footprints_data_merge(platform=platform, calc_fp_x_flux=True, split_by_sectors=split_by_sectors)
+    scenario_combined = model_scenario.footprints_data_merge(
+        platform=platform,
+        calc_fp_x_flux=True,
+        split_by_sectors=split_by_sectors,
+        calc_bc_sensitivity=True,
+        cache=False,
+    )
 
     return scenario_combined

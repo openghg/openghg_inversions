@@ -124,105 +124,33 @@ def bc_sensitivity(
     """
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
 
+    if basis_case.lower() == "nesw":
+        for site in sites:
+            ds = fp_and_data[site]
+            bc_ds = ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
+            sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region").transpose("bc_region", ...)
+            fp_and_data[site]["H_bc"] = sensitivity
+
+        return fp_and_data
+
     basis_func = basis_boundary_conditions(
         domain=domain, basis_case=basis_case, bc_basis_directory=bc_basis_directory
     )
-    # sort basis_func into time order
-    ind = basis_func.time.argsort()
-    timenew = basis_func.time[ind]
-    basis_func = basis_func.reindex({"time": timenew})
 
-    species_info = get_species_info()
+    # drop time if there is only one value
+    if basis_func.sizes.get("time", -1) == 1:
+        basis_func = basis_func.squeeze("time")
+    else:
+        basis_func = basis_func.sortby("time")
 
-    species = fp_and_data[".species"]
-    species = synonyms(species, lower=False)
+    # align basis data var names with baseline sensitivity data var names from ModelScenario
+    bc_basis = basis_func.rename({dv: str(dv).replace("basis_", "") for dv in basis_func.data_vars})
 
     for site in sites:
-        # ES commented out line below as .bc not attribute.
-        # Also assume openghg adds all relevant particle data to file.  TODO: what does this mean? BM, 2024
-        #        if fp_and_data[site].bc.chunks is not None:
-        for particles in [
-            "particle_locations_n",
-            "particle_locations_e",
-            "particle_locations_s",
-            "particle_locations_w",
-        ]:
-            fp_and_data[site][particles] = fp_and_data[site][particles].compute()
-
-        # compute any chemical loss to the BCs, use lifetime or else set loss to 1 (no loss)
-        if "lifetime" in species_info[species]:
-            lifetime = species_info[species]["lifetime"]
-            lifetime_hrs_list_or_float = convert.convert_to_hours(lifetime)
-
-            # calculate the lifetime_hrs associated with each time point in fp_and_data
-            # this is because lifetime can be a list of monthly values
-
-            time_month = fp_and_data[site].time.dt.month
-            if isinstance(lifetime_hrs_list_or_float, list):
-                lifetime_hrs = [lifetime_hrs_list_or_float[item - 1] for item in time_month.values]
-            else:
-                lifetime_hrs = lifetime_hrs_list_or_float
-
-            loss_n = np.exp(-1 * fp_and_data[site].mean_age_particles_n / lifetime_hrs).rename("loss_n")
-            loss_e = np.exp(-1 * fp_and_data[site].mean_age_particles_e / lifetime_hrs).rename("loss_e")
-            loss_s = np.exp(-1 * fp_and_data[site].mean_age_particles_s / lifetime_hrs).rename("loss_s")
-            loss_w = np.exp(-1 * fp_and_data[site].mean_age_particles_w / lifetime_hrs).rename("loss_w")
-        else:
-            loss_n = fp_and_data[site].particle_locations_n.copy()
-            loss_e = fp_and_data[site].particle_locations_e.copy()
-            loss_s = fp_and_data[site].particle_locations_s.copy()
-            loss_w = fp_and_data[site].particle_locations_w.copy()
-            loss_n[:] = 1
-            loss_e[:] = 1
-            loss_s[:] = 1
-            loss_w[:] = 1
-
-        DS_particle_loc = xr.Dataset(
-            {
-                "particle_locations_n": fp_and_data[site]["particle_locations_n"],
-                "particle_locations_e": fp_and_data[site]["particle_locations_e"],
-                "particle_locations_s": fp_and_data[site]["particle_locations_s"],
-                "particle_locations_w": fp_and_data[site]["particle_locations_w"],
-                "loss_n": loss_n,
-                "loss_e": loss_e,
-                "loss_s": loss_s,
-                "loss_w": loss_w,
-            }
-        )
-        #                                 "bc":fp_and_data[site]["bc"]})
-
-        DS_temp = combine_datasets(DS_particle_loc, fp_and_data[".bc"].data, method="ffill")
-
-        DS = combine_datasets(DS_temp, basis_func, method="ffill")
-
-        DS = DS.transpose("height", "lat", "lon", "region", "time")
-
-        part_loc = np.hstack(
-            [
-                DS.particle_locations_n,
-                DS.particle_locations_e,
-                DS.particle_locations_s,
-                DS.particle_locations_w,
-            ]
-        )
-
-        loss = np.hstack([DS.loss_n, DS.loss_e, DS.loss_s, DS.loss_w])
-
-        vmr_ed = np.hstack([DS.vmr_n, DS.vmr_e, DS.vmr_s, DS.vmr_w])
-
-        bf = np.hstack([DS.bc_basis_n, DS.bc_basis_e, DS.bc_basis_s, DS.bc_basis_w])
-
-        H_bc = np.zeros((len(DS.coords["region"]), len(DS["particle_locations_n"]["time"])))
-
-        for i in range(len(DS.coords["region"])):
-            reg = bf[:, :, i, :]
-            H_bc[i, :] = np.nansum((part_loc * loss * vmr_ed * reg), axis=(0, 1))
-
-        sensitivity = xr.Dataset(
-            {"H_bc": (["region_bc", "time"], H_bc)},
-            coords={"region_bc": (DS.coords["region"].values), "time": (DS.coords["time"])},
-        )
-
-        fp_and_data[site] = fp_and_data[site].merge(sensitivity)
+        ds = fp_and_data[site]
+        bc_ds = ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
+        sensitivity = (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__dummy").sum("__dummy")
+        sensitivity = sensitivity.rename(region="bc_region").transpose("bc_region", ...)
+        fp_and_data[site]["H_bc"] = sensitivity
 
     return fp_and_data
