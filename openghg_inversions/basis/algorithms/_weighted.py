@@ -201,13 +201,13 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str) -> 
 
         if len(inds_y0) != 0:
             count += 1
-            for i in range(len(inds_y0)):
-                mybasis_function[inds_y0[i] + ymin, inds_x0[i] + xmin] = count
+            for j in range(len(inds_y0)):
+                mybasis_function[inds_y0[j] + ymin, inds_x0[j] + xmin] = count
 
         if len(inds_y1) != 0:
             count += 1
-            for i in range(len(inds_y1)):
-                mybasis_function[inds_y1[i] + ymin, inds_x1[i] + xmin] = count
+            for j in range(len(inds_y1)):
+                mybasis_function[inds_y1[j] + ymin, inds_x1[j] + xmin] = count
 
     return mybasis_function
 
