@@ -22,7 +22,6 @@ from openghg.types import SearchError
 from openghg.util import extract_float
 
 from openghg_inversions.inversion_data.getters import (
-    convert_bc_units,
     get_flux_data,
     get_footprint_data,
     get_obs_data,
@@ -312,9 +311,7 @@ def data_processing_surface_notracer(
         except SearchError as e:
             raise SearchError("Could not find matching boundary conditions.") from e
         else:
-            fp_all[".bc"] = convert_bc_units(
-                bc_data, 1.0
-            )  # transpose coordinates, keep for consistency with old format
+            fp_all[".bc"] = bc_data
     else:
         bc_data = None
 
@@ -415,9 +412,6 @@ def data_processing_surface_notracer(
             unit = extract_float(unit)
         fp_all[".units"] = unit
 
-    # need to convert bc units because this bc data will be used again in `bc_sensitivity`
-    if use_bc:
-        fp_all[".bc"] = convert_bc_units(fp_all[".bc"], fp_all[".units"])
 
     # create `mf_error`
     add_obs_error(sites, fp_all, add_averaging_error=averagingerror)

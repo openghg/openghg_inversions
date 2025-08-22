@@ -37,36 +37,17 @@ def test_data_processing_surface_notracer(
     assert list(result[0].keys()) == [".species", ".flux", ".bc", "TAC", ".scales", ".units"]
 
     # variables to check (to avoid surprises from new variables added to data)
-    check_vars = ["mf", "fp", "mf_mod", "bc_mod"]
+    check_vars = ["mf", "fp", "mf_mod", "bc_mod", "fp_x_flux", "bc_n"]
 
-    if openghg_version >= (0, 13):
-        # get combined scenario for TAC at time 2019-01-01 00:00:00; "frozen" data made
-        # with OpenGHG 0.13
-        ds = xr.open_dataset(raw_data_path / "merged_data_test_tac_combined_scenario_v13.nc")
-        expected_tac_combined_scenario = fp_all_from_dataset(ds)
-
-        xr.testing.assert_allclose(
-            result[0]["TAC"][check_vars].isel(time=0).load(),
-            expected_tac_combined_scenario["TAC"][check_vars].isel(time=0),
-        )
-    elif using_zarr_store:
-        # get combined scenario for TAC at time 2019-01-01 00:00:00
-        ds = xr.open_dataset(raw_data_path / "merged_data_test_tac_combined_scenario_v8.nc")
-        expected_tac_combined_scenario = fp_all_from_dataset(ds)
-
-        xr.testing.assert_allclose(
-            result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario["TAC"].isel(time=0)
-        )
-    else:
-        # get combined scenario for TAC at time 2019-01-01 00:00:00
-        ds = xr.open_dataset(raw_data_path / "merged_data_test_tac_combined_scenario.nc")
-        expected_tac_combined_scenario = fp_all_from_dataset(ds)
-        xr.testing.assert_allclose(
-            result[0]["TAC"].isel(time=0).drop_dims("lev"),
-            expected_tac_combined_scenario["TAC"].isel(time=0),
-            rtol=1e-2,
-        )
-
+    # get combined scenario for TAC at time 2019-01-01 00:00:00; "frozen" data made
+    # with OpenGHG 0.16 ModelScenario
+    ds = xr.open_dataset(raw_data_path / "merged_data_test_tac_combined_scenario_v14.nc")
+    expected_tac_combined_scenario = fp_all_from_dataset(ds)
+    print(expected_tac_combined_scenario)
+    xr.testing.assert_allclose(
+        result[0]["TAC"][check_vars].isel(time=0).load(),
+        expected_tac_combined_scenario["TAC"][check_vars].isel(time=0),
+    )
 
 def test_load_merged_data(merged_data_dir, merged_data_file_name, using_zarr_store):
     """This should pass by finding the merged data with .zarr suffix."""

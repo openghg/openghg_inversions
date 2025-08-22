@@ -75,7 +75,8 @@ def test_bucket_basis_function(tac_ch4_data_args, raw_data_path):
         emissions_name=[emissions_name],
         fp_all=fp_all,
         start_date="2019-01-01",
-        domain="EUROPE"
+        domain="EUROPE",
+        nbasis=98,
     )
 
 

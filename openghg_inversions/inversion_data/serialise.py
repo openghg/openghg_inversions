@@ -328,7 +328,7 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
             else:
                 scenario.attrs[k] = val
 
-        fp_all[site] = scenario.dropna("time")
+        fp_all[site] = scenario.dropna("time", subset=["mf"])
 
     # get fluxes
     fp_all[".flux"] = {}
@@ -349,7 +349,7 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
                 val = "None"
             flux_ds.attrs[k] = val
 
-        fp_all[".flux"][source] = FluxData(data=flux_ds, metadata={})
+        fp_all[".flux"][source] = FluxData(data=flux_ds, metadata={"data_type": "flux"})
 
     try:
         bc_ds = ds[bc_vars]

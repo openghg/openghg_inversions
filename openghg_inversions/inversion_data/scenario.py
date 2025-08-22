@@ -3,8 +3,6 @@ import xarray as xr
 from openghg.analyse import ModelScenario
 from openghg.dataobjects import ObsData, BoundaryConditionsData, FluxData, FootprintData
 
-from .getters import convert_bc_units
-
 
 def merged_scenario_data(
     obs_data: ObsData,
@@ -14,11 +12,6 @@ def merged_scenario_data(
     platform: str | None = None,
 ) -> xr.Dataset:
     """Create ModelScenario and get result of `footprint_data_merge`."""
-    # convert bc units, if using bc
-    use_bc = bc_data is not None
-    unit = float(obs_data.data.mf.units)
-    bc_data = convert_bc_units(bc_data, unit) if use_bc else None
-
     # Create ModelScenario object for all emissions_sectors
     # and combine into one object
     model_scenario = ModelScenario(

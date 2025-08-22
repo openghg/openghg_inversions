@@ -7,7 +7,7 @@ import numpy as np
 
 from openghg_inversions import convert
 from openghg_inversions.utils import combine_datasets
-from openghg_inversions.array_ops import get_xr_dummies
+from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 from ._functions import basis_boundary_conditions
 
 
@@ -100,7 +100,7 @@ def apply_fp_basis_functions(
     """
     _, basis_aligned = xr.align(fp_x_flux.isel(time=0), basis_func, join="override")
     basis_mat = get_xr_dummies(basis_aligned, cat_dim="region")
-    sensitivity = xr.dot(basis_mat, fp_x_flux.fillna(0.0), dim=["lat", "lon"]).transpose("region", "time", ...)
+    sensitivity = sparse_xr_dot(basis_mat, fp_x_flux.fillna(0.0), dim=["lat", "lon"]).transpose("region", "time", ...)
     return sensitivity.as_numpy()
 
 
@@ -148,8 +148,8 @@ def bc_sensitivity(
 
     for site in sites:
         ds = fp_and_data[site]
-        bc_ds = ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
-        sensitivity = (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__dummy").sum("__dummy")
+        bc_ds = ds[[f"bc_{d}" for d in "nesw"]]
+        sensitivity = (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
         sensitivity = sensitivity.rename(region="bc_region").transpose("bc_region", ...)
         fp_and_data[site]["H_bc"] = sensitivity
 

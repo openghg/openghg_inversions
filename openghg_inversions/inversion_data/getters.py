@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg.dataobjects import ObsData, BoundaryConditionsData, FluxData, FootprintData
+from openghg.dataobjects import ObsData, FluxData, FootprintData
 from openghg.retrieve import get_flux, get_footprint, get_obs_surface, search_footprints, search_flux
 from openghg.types import SearchError
 
@@ -105,21 +105,6 @@ def get_flux_data(
         flux_dict[source] = flux_data
 
     return flux_dict
-
-
-# Boundary conditions data
-def convert_bc_units(bc_data: BoundaryConditionsData, unit: float) -> BoundaryConditionsData:
-    # Divide by trace gas species units
-    # See if R+G can include this 'behind the scenes'
-    bc_data.data.vmr_n.values /= unit
-    bc_data.data.vmr_e.values /= unit
-    bc_data.data.vmr_s.values /= unit
-    bc_data.data.vmr_w.values /= unit
-
-    return BoundaryConditionsData(
-        data=bc_data.data.transpose("height", "lat", "lon", "time"),
-        metadata=bc_data.metadata,
-    )
 
 
 # Obs data

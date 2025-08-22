@@ -15,12 +15,13 @@
 - Added offset to PARIS concentration outputs. [#PR 282](https://github.com/openghg/openghg_inversions/pull/282)
 - Compression added for output PARIS netcdf files. Standard RHIME output now shuffles to save space.
 - Fixed warning messages for zeros/NaNs in `mf_error`. [#PR 292](https://github.com/openghg/openghg_inversions/pull/292)
+- `get_flux_data` tries to infer the "time period" of the flux, which is used to set the time offset for PARIS flux outputs. [#PR 302](https://github.com/openghg/openghg_inversions/pull/302)
 
 # Version 0.3.0
 
 - Fixed bug due to wrong BC units. [#PR 249](https://github.com/openghg/openghg_inversions/pull/249)
 
-- Merged functionality of `min_error` and `calculate_min_error` into a single variable (`min_error`). [#PR 240](https://github.com/openghg/openghg_inversions/pull/240)
+- Merged funactionality of `min_error` and `calculate_min_error` into a single variable (`min_error`). [#PR 240](https://github.com/openghg/openghg_inversions/pull/240)
 
 - Tidied `get_data.py`, splitting it into several files. [#PR 237](https://github.com/openghg/openghg_inversions/pull/237)
 

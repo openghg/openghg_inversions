@@ -53,7 +53,7 @@ def using_zarr_store():
 @pytest.fixture(scope="session")
 def merged_data_file_name(using_zarr_store, openghg_version):
     if openghg_version >= (0, 13):
-        return "merged_data_test_tac_combined_scenario_v13"
+        return "merged_data_test_tac_combined_scenario_v14"
     elif using_zarr_store:
         return "merged_data_test_tac_combined_scenario_v8"
     else:
