@@ -1,12 +1,7 @@
 """Functions to create fit basis functiosn and apply to data."""
 
-from openghg.util import get_species_info, synonyms
 import xarray as xr
-import numpy as np
 
-
-from openghg_inversions import convert
-from openghg_inversions.utils import combine_datasets
 from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 from ._functions import basis_boundary_conditions
 
@@ -84,8 +79,9 @@ def apply_fp_basis_functions(
     fp_x_flux: xr.DataArray,
     basis_func: xr.DataArray,
 ) -> xr.DataArray:
-    """Computes sensitivity matrix `H` for one site. See `fp_sensitivity` for
-    more info about the sensitivity matrix.
+    """Computes sensitivity matrix `H` for one site.
+
+    See `fp_sensitivity` for more info about the sensitivity matrix.
 
     # TODO: accept more complex basis functions
     # TODO: accept time varying basis functions?
