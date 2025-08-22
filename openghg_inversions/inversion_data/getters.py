@@ -102,6 +102,33 @@ def get_flux_data(
 
         logging.Logger.disabled = False  # resume confusing OpenGHG warnings
 
+        # try to guess flux time period
+        # PARIS post-processing uses the time period of the flux
+        time_period = pd.to_datetime(end_date) - pd.to_datetime(start_date)
+
+        # check number of days, with extra day at start and end for buffer
+        if time_period.days in (27, 28, 29, 30, 31, 32):
+            inferred_time_period_str = "monthly"
+        elif time_period.days in (364, 365, 366, 367):
+            inferred_time_period_str = "yearly"
+        else:
+            inferred_time_period_str = "other"
+
+        existing_time_period_str = flux_data.data.attrs.get("time_period", "")
+
+        if (
+            ("year" in inferred_time_period_str and "year" in existing_time_period_str.lower())
+            or ("month" in inferred_time_period_str and "month" in existing_time_period_str.lower())
+            or (inferred_time_period_str == "other")
+        ):
+            flux_data.data.flux.attrs["time_period"] = existing_time_period_str
+        elif "month" in existing_time_period_str.lower():
+            logger.warning("Monthly flux detected, but inversion period is {time_period.days} days. Setting flux time_period to 'monthly'.")
+            flux_data.data.flux.attrs["time_period"] = existing_time_period_str
+        else:
+            flux_data.data.flux.attrs["time_period"] = inferred_time_period_str
+
+        # add flux data to result dict
         flux_dict[source] = flux_data
 
     return flux_dict
