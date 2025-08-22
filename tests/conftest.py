@@ -12,6 +12,7 @@ from openghg.retrieve import search
 from openghg.standardise import standardise_surface, standardise_bc, standardise_flux, standardise_footprint
 from openghg.types import ObjectStoreError
 import xarray as xr
+import zarr
 
 
 _raw_data_path = Path(".").resolve() / "tests/data/"
@@ -40,28 +41,13 @@ def merged_data_dir(user_data_path):
     return user_data_path / "openghg_inversions_testing_merged_data_dir"
 
 
-@pytest.fixture(scope="session", autouse=True)
-def using_zarr_store():
-    try:
-        current_version = tuple(int(x) for x in version("openghg").split("."))
-    except ValueError:
-        # assume tests are being run on devel
-        return True
-    return current_version >= (0, 8)
-
-
 @pytest.fixture(scope="session")
-def merged_data_file_name(using_zarr_store, openghg_version):
-    if openghg_version >= (0, 13):
-        return "merged_data_test_tac_combined_scenario_v14"
-    elif using_zarr_store:
-        return "merged_data_test_tac_combined_scenario_v8"
-    else:
-        return "merged_data_test_tac_combined_scenario"
+def merged_data_file_name():
+    return "merged_data_test_tac_combined_scenario_v14"
 
 
 @pytest.fixture(scope="session", autouse=True)
-def add_frozen_merged_data(merged_data_dir, merged_data_file_name, using_zarr_store):
+def add_frozen_merged_data(merged_data_dir, merged_data_file_name):
     """Copy merged data from tests/data to temporary merged_data_dir.
 
     Data created/frozen around 15 Apr, 2024.
@@ -71,8 +57,7 @@ def add_frozen_merged_data(merged_data_dir, merged_data_file_name, using_zarr_st
     """
     merged_data_dir.mkdir(exist_ok=True)
 
-    if using_zarr_store and not (merged_data_dir / (merged_data_file_name + ".zarr.zip")).exists():
-        import zarr
+    if not (merged_data_dir / (merged_data_file_name + ".zarr.zip")).exists():
 
         ds = xr.open_dataset(_raw_data_path / (merged_data_file_name + ".nc"))
 
@@ -80,9 +65,6 @@ def add_frozen_merged_data(merged_data_dir, merged_data_file_name, using_zarr_st
             ds.to_zarr(store)
 
         ds.to_zarr(merged_data_dir / (merged_data_file_name + "no_zip" + ".zarr"))
-
-    elif not (merged_data_dir / (merged_data_file_name + ".nc")).exists():
-        shutil.copy(_raw_data_path / (merged_data_file_name + ".nc"), merged_data_dir)
 
 
 bc_basis_function_path = Path(".").resolve() / "bc_basis_functions"
@@ -116,11 +98,8 @@ def country_ds_eastasia(raw_data_path):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def session_config_mocker(using_zarr_store, user_data_path) -> Iterator[None]:
-    if using_zarr_store:
-        inversions_test_store_path = user_data_path / "openghg_inversions_zarr_testing_store"
-    else:
-        inversions_test_store_path = user_data_path / "openghg_inversions_testing_store"
+def session_config_mocker(user_data_path) -> Iterator[None]:
+    inversions_test_store_path = user_data_path / "openghg_inversions_testing_store"
 
     mock_config = {
         "object_store": {
