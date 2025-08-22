@@ -42,7 +42,7 @@ def test_data_processing_surface_notracer(
 
     # get combined scenario for TAC at time 2019-01-01 00:00:00; "frozen" data made
     # with OpenGHG 0.16 ModelScenario
-    ds = xr.open_dataset(raw_data_path / merged_data_file_name)
+    ds = xr.open_dataset(raw_data_path / (merged_data_file_name + ".nc"))
     expected_tac_combined_scenario = fp_all_from_dataset(ds)
     print(expected_tac_combined_scenario)
     xr.testing.assert_allclose(

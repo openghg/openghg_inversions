@@ -357,7 +357,7 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
         pass
     else:
         if "time" not in bc_ds.dims:
-            bc_ds = bc_ds.expand_dims({"time": [ds.time.min().values]}).transpose(..., "time")
+            bc_ds = bc_ds.expand_dims({"time": [ds.time.min().values]})
 
         fp_all[".bc"] = BoundaryConditionsData(data=bc_ds, metadata={})
 

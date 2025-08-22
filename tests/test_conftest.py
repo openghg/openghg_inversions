@@ -14,7 +14,7 @@ def test_default_session_fixture():
     assert conf
     assert "inversions_tests" in conf["object_store"]
 
-    assert "openghg_inversions_zarr_testing_store" in conf["object_store"]["inversions_tests"]["path"]
+    assert "openghg_inversions_testing_store" in conf["object_store"]["inversions_tests"]["path"]
 
 
 def test_obs_in_test_store():
