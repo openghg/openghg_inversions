@@ -72,14 +72,14 @@ def get_xr_dummies(
 
 
 @overload
-def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray) -> xr.DataArray: ...
+def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray, dim: list[str] | None = None) -> xr.DataArray: ...
 
 
 @overload
-def sparse_xr_dot(da1: xr.DataArray, da2: xr.Dataset) -> xr.Dataset: ...
+def sparse_xr_dot(da1: xr.DataArray, da2: xr.Dataset, dim: list[str] | None = None) -> xr.Dataset: ...
 
 
-def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray | xr.Dataset) -> xr.DataArray | xr.Dataset:
+def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray | xr.Dataset, dim: list[str] | None = None) -> xr.DataArray | xr.Dataset:
     """Compute the matrix "dot" of a tuple of DataArrays with sparse.COO values.
 
     This multiplies and sums over all common dimensions of the input DataArrays, and
@@ -94,6 +94,8 @@ def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray | xr.Dataset) -> xr.DataA
 
     Args:
         da1, da2: xr.DataArrays to multiply and sum along common dimensions.
+        dim: optional list of dimensions to sum over; if `None`, then all common
+          dimensions are summed over.
 
     Returns:
         xr.Dataset or xr.DataArray containing the result of matrix/tensor multiplication.
@@ -103,9 +105,13 @@ def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray | xr.Dataset) -> xr.DataA
         da1 = da1.chunk()
 
     if isinstance(da2, xr.DataArray):
-        return da1 @ da2
+        if dim is None:
+            return da1 @ da2
+        return xr.dot(da1, da2, dim=dim)
 
-    return da2.map(lambda x: da1 @ x)
+    if dim is None:
+        return da2.map(lambda x: da1 @ x)
+    return da2.map(lambda x: xr.dot(da1, x, dim=dim))
 
 
 def align_sparse_lat_lon(sparse_da: xr.DataArray, other_array: DataWithCoords) -> xr.DataArray:

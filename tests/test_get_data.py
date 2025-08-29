@@ -23,7 +23,7 @@ from openghg_inversions.inversion_data.getters import get_flux_data
 
 
 def test_data_processing_surface_notracer(
-    tac_ch4_data_args, raw_data_path, using_zarr_store, openghg_version
+        tac_ch4_data_args, merged_data_file_name, raw_data_path
 ):
     """Check that `data_processing_surface_notracer` produces the same output
     as v0.1, with test data frozen on 9 Feb 2024, or the same as v0.2, with test data frozen on
@@ -38,44 +38,24 @@ def test_data_processing_surface_notracer(
     assert list(result[0].keys()) == [".species", ".flux", ".bc", "TAC", ".scales", ".units"]
 
     # variables to check (to avoid surprises from new variables added to data)
-    check_vars = ["mf", "fp", "mf_mod", "bc_mod"]
+    check_vars = ["mf", "fp", "mf_mod", "bc_mod", "fp_x_flux", "bc_n"]
 
-    if openghg_version >= (0, 13):
-        # get combined scenario for TAC at time 2019-01-01 00:00:00; "frozen" data made
-        # with OpenGHG 0.13
-        ds = xr.open_dataset(raw_data_path / "merged_data_test_tac_combined_scenario_v13.nc")
-        expected_tac_combined_scenario = fp_all_from_dataset(ds)
+    # get combined scenario for TAC at time 2019-01-01 00:00:00; "frozen" data made
+    # with OpenGHG 0.16 ModelScenario
+    ds = xr.open_dataset(raw_data_path / (merged_data_file_name + ".nc"))
+    expected_tac_combined_scenario = fp_all_from_dataset(ds)
+    print(expected_tac_combined_scenario)
+    xr.testing.assert_allclose(
+        result[0]["TAC"][check_vars].isel(time=0).load(),
+        expected_tac_combined_scenario["TAC"][check_vars].isel(time=0),
+    )
 
-        xr.testing.assert_allclose(
-            result[0]["TAC"][check_vars].isel(time=0).load(),
-            expected_tac_combined_scenario["TAC"][check_vars].isel(time=0),
-        )
-    elif using_zarr_store:
-        # get combined scenario for TAC at time 2019-01-01 00:00:00
-        ds = xr.open_dataset(raw_data_path / "merged_data_test_tac_combined_scenario_v8.nc")
-        expected_tac_combined_scenario = fp_all_from_dataset(ds)
-
-        xr.testing.assert_allclose(
-            result[0]["TAC"].isel(time=0).load(), expected_tac_combined_scenario["TAC"].isel(time=0)
-        )
-    else:
-        # get combined scenario for TAC at time 2019-01-01 00:00:00
-        ds = xr.open_dataset(raw_data_path / "merged_data_test_tac_combined_scenario.nc")
-        expected_tac_combined_scenario = fp_all_from_dataset(ds)
-        xr.testing.assert_allclose(
-            result[0]["TAC"].isel(time=0).drop_dims("lev"),
-            expected_tac_combined_scenario["TAC"].isel(time=0),
-            rtol=1e-2,
-        )
-
-
-def test_load_merged_data(merged_data_dir, merged_data_file_name, using_zarr_store):
+def test_load_merged_data(merged_data_dir, merged_data_file_name):
     """This should pass by finding the merged data with .zarr suffix."""
-    if using_zarr_store:
-        result = load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "no_zip")
+    result = load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "no_zip")
 
 
-def test_load_merged_data_missing_data_error(merged_data_dir, merged_data_file_name, using_zarr_store):
+def test_load_merged_data_missing_data_error(merged_data_dir, merged_data_file_name):
     """This should pass by finding the merged data with .zarr suffix."""
     with pytest.raises(ValueError):
         result = load_merged_data(
@@ -83,7 +63,7 @@ def test_load_merged_data_missing_data_error(merged_data_dir, merged_data_file_n
         )
 
 
-def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir, using_zarr_store):
+def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir):
     merged_data_name = "test_save_load_merged_data"
 
     # make merged data dir
@@ -98,10 +78,7 @@ def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir, using_zarr_st
 
     fp_all_reloaded = load_merged_data(merged_data_dir=merged_data_dir, merged_data_name=merged_data_name)
 
-    if using_zarr_store:
-        xr.testing.assert_allclose(fp_all["TAC"].load(), fp_all_reloaded["TAC"])
-    else:
-        xr.testing.assert_allclose(fp_all["TAC"], fp_all_reloaded["TAC"])
+    xr.testing.assert_allclose(fp_all["TAC"].load(), fp_all_reloaded["TAC"])
 
 
 def test_missing_data_at_one_site(tac_ch4_data_args):
