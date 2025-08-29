@@ -60,7 +60,7 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
                     "There should either only be one basis_func, or it should be a dictionary keyed by sources."
                 )
 
-    if "time" in basis_func.dims:
+    if "time" in basis_func.dims and basis_func.sizes["time"] <= 1:
         basis_func = basis_func.squeeze("time")
 
     fp_and_data[".basis"] = basis_func
@@ -94,9 +94,17 @@ def apply_fp_basis_functions(
     Returns:
         sensitivity ("H") xr.DataArray
     """
+    # add squeeze just in case this function is used directly
+    if "time" in basis_func.dims and basis_func.sizes["time"] <= 1:
+        basis_func = basis_func.squeeze("time")
+
     _, basis_aligned = xr.align(fp_x_flux.isel(time=0), basis_func, join="override")
     basis_mat = get_xr_dummies(basis_aligned, cat_dim="region")
-    sensitivity = sparse_xr_dot(basis_mat, fp_x_flux.fillna(0.0), dim=["lat", "lon"]).transpose("region", "time", ...)
+    sensitivity = sparse_xr_dot(basis_mat, fp_x_flux.fillna(0.0), dim=["lat", "lon"])
+
+    if sensitivity.dims[:2] != ("region", "time"):
+        sensitivity = sensitivity.transpose("region", "time", ...)
+
     return sensitivity.as_numpy()
 
 
@@ -124,7 +132,7 @@ def bc_sensitivity(
         for site in sites:
             ds = fp_and_data[site]
             bc_ds = ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
-            sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region").transpose("bc_region", ...)
+            sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region")
             fp_and_data[site]["H_bc"] = sensitivity
 
         return fp_and_data
@@ -146,7 +154,7 @@ def bc_sensitivity(
         ds = fp_and_data[site]
         bc_ds = ds[[f"bc_{d}" for d in "nesw"]]
         sensitivity = (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
-        sensitivity = sensitivity.rename(region="bc_region").transpose("bc_region", ...)
+        sensitivity = sensitivity.rename(region="bc_region")
         fp_and_data[site]["H_bc"] = sensitivity
 
     return fp_and_data
