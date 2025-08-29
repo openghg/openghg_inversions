@@ -442,6 +442,13 @@ def fixedbasisMCMC(
     if use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
 
+    # Trigger dask computations
+    # we only compute the variables we need below
+    to_compute = ["H", "H_bc", "mf", "mf_error", "mf_repeatability", "mf_variability", "bc_mod", "mf_mod"]
+    for site in sites:
+        to_compute_site = [dv for dv in to_compute if dv in fp_data[site].data_vars]
+        fp_data[site][to_compute_site] = fp_data[site][to_compute_site].compute()
+
     # Get inputs ready
     error = np.zeros(0)
     obs_repeatability = np.zeros(0)
