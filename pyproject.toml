@@ -20,7 +20,7 @@ requires-python = ">=3.10"
 dependencies = [
     "pymc",
     "numpyro[cpu]",
-    "xarray>=2025.08.0",
+    "xarray>=2025.06.0",
     "pandas",
     "matplotlib",
     "scipy", 

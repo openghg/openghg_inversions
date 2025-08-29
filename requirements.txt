@@ -1,6 +1,6 @@
 numpyro[cpu]
 pymc
-xarray >= 2025.08
+xarray >= 2025.06
 pandas
 matplotlib
 scipy
