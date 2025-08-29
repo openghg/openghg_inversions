@@ -15,6 +15,7 @@ work correctly.
 from typing import Any, overload, TypeVar
 from collections.abc import Sequence
 
+from dask.array.core import Array as DaskArray
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -135,3 +136,25 @@ def align_sparse_lat_lon(sparse_da: xr.DataArray, other_array: DataWithCoords) -
                          f"coordinates: {len(sparse_da.lat)} != {len(other_array.lat)}")
 
     return sparse_da.assign_coords(lat=other_array.lat, lon=other_array.lon)
+
+
+def _sparse_dask_to_dense(da: DaskArray) -> DaskArray:
+    """Convert chunks of dask array from sparse to dense."""
+    return da.map_blocks(lambda arr: arr.todense())  # type: ignore
+
+
+def to_dense(da: xr.DataArray) -> xr.DataArray:
+    """Convert sparse to numpy.
+
+    If the data array has chunks, these are preserved, but the underlying arrays are converted.
+    Does nothing if chunks are already numpy.
+    """
+    if not isinstance(da.data, DaskArray):  # type: ignore
+        return da.as_numpy()
+
+    # check chunk types
+    if isinstance(da.data._meta, SparseArray):
+        # hack to apply the Sparse `todense()` method to chunks
+        return xr.apply_ufunc(_sparse_dask_to_dense, da, dask="allowed")
+
+    return da

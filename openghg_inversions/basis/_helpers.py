@@ -2,7 +2,7 @@
 
 import xarray as xr
 
-from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
+from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot, to_dense
 from ._functions import basis_boundary_conditions
 
 
@@ -105,7 +105,7 @@ def apply_fp_basis_functions(
     if sensitivity.dims[:2] != ("region", "time"):
         sensitivity = sensitivity.transpose("region", "time", ...)
 
-    return sensitivity.as_numpy()
+    return to_dense(sensitivity)
 
 
 def bc_sensitivity(
