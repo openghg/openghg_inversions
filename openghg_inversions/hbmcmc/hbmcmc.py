@@ -409,13 +409,19 @@ def fixedbasisMCMC(
         output_path=basis_output_path,
     )
 
-    # Apply compute before filtering to avoid dask issue
-    for site in sites:
-      fp_data[site] = fp_data[site].compute()
 
     # Apply named filters to the data
     if filters is not None:
-        fp_data = filtering(fp_data, filters)
+        try:
+            fp_data = filtering(fp_data, filters)
+        except ValueError:
+            # possible dask issue, but should be fixed
+            # https://github.com/openghg/openghg_inversions/issues/264
+            #
+            # Apply compute before filtering to avoid dask issue
+            for site in sites:
+                fp_data[site] = fp_data[site].compute()
+            fp_data = filtering(fp_data, filters)
 
     # check for sites dropped by filtering
     dropped_sites = []
