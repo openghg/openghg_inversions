@@ -703,6 +703,9 @@ def fixedbasisMCMC(
         )
 
         outputs = basic_output(inv_out, country_file=country_file)
+        end_post = time.time()
+        print(f"Post processing Complete. Time taken = {end_post-start_post:.2f} seconds")
+
         return outputs
 
     if paris_postprocessing:
@@ -740,6 +743,9 @@ def fixedbasisMCMC(
 
         logging.info("PARIS concentration outputs saved to", conc_output_filename)
         logging.info("PARIS flux outputs saved to", flux_output_filename)
+
+        end_post = time.time()
+        print(f"Post processing Complete. Time taken = {end_post-start_post:.2f} seconds")
 
         return xr.merge([conc_outs, flux_outs.rename(time="flux_time")])
 
