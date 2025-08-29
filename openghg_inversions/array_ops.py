@@ -58,7 +58,7 @@ def get_xr_dummies(
         stack_dim = "".join([str(dim) for dim in da.dims])
         da = da.stack({stack_dim: da.dims})
 
-    dummies = pd.get_dummies(da.values, dtype=int, sparse=return_sparse)
+    dummies = pd.get_dummies(da.values, dtype="float32", sparse=return_sparse)
 
     # put dummies into DataArray with the right coords and dims
     values = COO.from_scipy_sparse(dummies.sparse.to_coo()) if return_sparse else dummies.values
