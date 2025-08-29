@@ -139,10 +139,10 @@ def inferpymc(
     bcprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     sigprior: dict = {"pdf": "uniform", "lower": 0.1, "upper": 3.0},
     nuts_sampler: str = "pymc",
-    nit: int = int(2.5e5),
-    burn: int = 50000,
-    tune: int = int(1.25e5),
-    nchain: int = 2,
+    nit: int = 20000,
+    burn: int = 10000,
+    tune: int = 10000,
+    nchain: int = 4,
     sigma_per_site: bool = True,
     offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
     add_offset: bool = False,
@@ -408,7 +408,7 @@ def inferpymc(
         "step1": step1,
         "step2": step2,
         "model": model,
-        "trace": trace,
+        "trace": trace.isel(draw=slice(burn, None)),  # remove
     }
 
     if use_bc:
