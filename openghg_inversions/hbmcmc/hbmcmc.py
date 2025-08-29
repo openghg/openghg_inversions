@@ -589,6 +589,12 @@ def fixedbasisMCMC(
         "min_error": min_error,
     }
 
+    # cast float64 to float32
+    for k in list(post_process_args.keys()):  # use list to get keys before modifying dict
+        v = post_process_args[k]
+        if isinstance(v, np.ndarray) and v.dtype == "float64":
+            post_process_args[k] = v.astype("float32")
+
     # add mcmc_args to post_process_args
     # and delete a few we don't need
     post_process_args.update(mcmc_args)
