@@ -405,6 +405,15 @@ def inferpymc(
     else:
         Ytrace = posterior_burned.mu + OFFtrace
 
+
+    # truncate trace and sample prior and predictive distributions
+    trace = trace.isel(draw=slice(burn, None))
+    ndraw = nit - burn
+    trace.extend(pm.sample_prior_predictive(ndraw, model))
+    trace.extend(pm.sample_posterior_predictive(trace, model=model, var_names=["y"]))
+
+
+
     result = {
         "xouts": xouts,
         "sigouts": sigouts,
@@ -414,7 +423,7 @@ def inferpymc(
         "step1": step1,
         "step2": step2,
         "model": model,
-        "trace": trace.isel(draw=slice(burn, None)),  # remove
+        "trace": trace,
     }
 
     if use_bc:

@@ -297,6 +297,10 @@ class InversionOutput:
             warnings.warn("Cannot sample predictive distributions without PyMC model.")
             return None
 
+        # don't recompute if prior and predictive samples already present
+        if all(group in self.trace for group in ("posterior_predictive", "prior", "prior_predictive")):
+            return None
+
         if ndraw is None:
             ndraw = self.trace.posterior.sizes["draw"]
 
