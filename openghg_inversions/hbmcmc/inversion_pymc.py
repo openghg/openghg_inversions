@@ -7,6 +7,12 @@ import getpass
 from pathlib import Path
 
 import numpy as np
+
+# import pytensor before pymc so we can set config values
+import pytensor
+pytensor.config.floatX = "float32"
+pytensor.config.warn_float64 = "warn"
+
 import pymc as pm
 import pandas as pd
 import xarray as xr
