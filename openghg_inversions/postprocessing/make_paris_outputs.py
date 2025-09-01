@@ -243,8 +243,9 @@ def paris_flux_output(
     country_outs = country_outs * 1e-3  # convert g/yr to kg/yr
 
     # add country mask
-    country_path = get_country_file_path(country_file)
-    countries = Countries(xr.open_dataset(country_path), country_code="alpha3")
+    countries = Countries.from_file(
+        country_file=country_file, country_code="alpha3", domain=inv_out.domain
+    )
 
     country_fraction = countries.matrix.as_numpy().rename("country_fraction")
 
