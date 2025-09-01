@@ -258,7 +258,7 @@ class Countries:
                 )
                 self.matrix = xr.concat([self.matrix, region_matrix], dim="country")
 
-        self.area_grid = get_area_grid(countries.lat, countries.lon)
+        self.area_grid = get_area_grid(countries.lat, countries.lon).astype("float32")
 
         # restrict matrix to selected countries
         if country_selections is not None:

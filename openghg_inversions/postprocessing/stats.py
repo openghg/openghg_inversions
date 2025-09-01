@@ -55,7 +55,9 @@ def quantiles(
         xr.Dataset of specified quantiles, with a new `quantile` dimension.
 
     """
-    return ds.quantile(q=quantiles, dim=sample_dim)
+    # cast to float32 since quantiles involve interpolation, and this always converts to
+    # float64 in numpy and scipy interpolation routines
+    return ds.quantile(q=quantiles, dim=sample_dim).astype("float32")
 
 
 @register_stat
