@@ -40,7 +40,14 @@ openghg_prev_minor = "toxfile.py"
 where = ["."]
 
 [tool.setuptools.package-data]
-openghg_inversions = ["data/*"]
+openghg_inversions = [
+    "data/*",
+    "basis/*.nc",
+    "basis/algorithms/*.nc", 
+    "postprocessing/*.cdl",
+    "postprocessing/*.json",
+    "hbmcmc/config/*.ini"
+]
 
 [tool.black]
 line-length = 110
