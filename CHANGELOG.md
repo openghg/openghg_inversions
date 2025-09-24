@@ -2,6 +2,14 @@
 
 # Unreleased
 
+## Code changes
+
+- Optimisations for speeding up data processing (also some improvements to memory usage during MCMC and postprocessing). [#PR 311](https://github.com/openghg/openghg_inversions/pull/311)
+- Removed duplicate code for computing "fp x flux" and "bc sensitivity" matrices. This is done using `ModelScenario` now. This also means that units are aligned using `pint`. [#PR 305](https://github.com/openghg/openghg_inversions/pull/305)
+- Removed threshold for filling missing obs. error. [#PR 306](https://github.com/openghg/openghg_inversions/pull/306)
+
+# Version 0.4.0
+
 ## Model updates
 
 - Offsets can be applied to all but one site (ini option `offset_args = {"drop_first": True}`) or to all sites, which is the default option (ini option `offset_args = {"drop_first": False}`). [#PR 285](https://github.com/openghg/openghg_inversions/pull/285)

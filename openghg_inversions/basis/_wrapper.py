@@ -1,6 +1,7 @@
 """Functions to calling basis function algorithms and applying basis functions to data."""
 
 from pathlib import Path
+from time import time
 
 import xarray as xr
 
@@ -82,6 +83,8 @@ def basis_functions_wrapper(
     if use_bc is True and bc_basis_case is None:
         raise ValueError("If `use_bc` is True, you must specify `bc_basis_case`.")
 
+    basis_start = time()
+
     if fp_basis_case is not None:
         if basis_algorithm:
             print(
@@ -115,15 +118,21 @@ def basis_functions_wrapper(
         print(f"Using {basis_function.description} to derive basis functions.")
         basis_data_array = basis_function.algorithm(fp_all, start_date, domain, emissions_name, nbasis)
 
+    print(f"Computing basis took {time() - basis_start}s.")
+
+    fp_sens_start = time()
     fp_data = fp_sensitivity(fp_all, basis_func=basis_data_array)
+    print(f"Computing fp sensitivity took {time() - fp_sens_start}s.")
 
     if use_bc is True:
+        bc_sens_start = time()
         fp_data = bc_sensitivity(
             fp_data,
             domain=domain,
             basis_case=bc_basis_case,  # type: ignore ...check ensures bc_basis_case not None if use_bc True
             bc_basis_directory=bc_basis_directory,
         )
+        print(f"Computing bc sensitivity took {time() - bc_sens_start}s.")
 
     if output_path is not None and basis_algorithm is not None and fp_basis_case is None:
         _save_basis(

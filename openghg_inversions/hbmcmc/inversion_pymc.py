@@ -7,6 +7,12 @@ import getpass
 from pathlib import Path
 
 import numpy as np
+
+# import pytensor before pymc so we can set config values
+import pytensor
+pytensor.config.floatX = "float32"
+pytensor.config.warn_float64 = "warn"
+
 import pymc as pm
 import pandas as pd
 import xarray as xr
@@ -139,10 +145,10 @@ def inferpymc(
     bcprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     sigprior: dict = {"pdf": "uniform", "lower": 0.1, "upper": 3.0},
     nuts_sampler: str = "pymc",
-    nit: int = int(2.5e5),
-    burn: int = 50000,
-    tune: int = int(1.25e5),
-    nchain: int = 2,
+    nit: int = 20000,
+    burn: int = 10000,
+    tune: int = 10000,
+    nchain: int = 4,
     sigma_per_site: bool = True,
     offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
     add_offset: bool = False,
@@ -398,6 +404,15 @@ def inferpymc(
         Ytrace = posterior_burned.mu + YBCtrace
     else:
         Ytrace = posterior_burned.mu + OFFtrace
+
+
+    # truncate trace and sample prior and predictive distributions
+    trace = trace.isel(draw=slice(burn, None))
+    ndraw = nit - burn
+    trace.extend(pm.sample_prior_predictive(ndraw, model))
+    trace.extend(pm.sample_posterior_predictive(trace, model=model, var_names=["y"]))
+
+
 
     result = {
         "xouts": xouts,

@@ -131,6 +131,11 @@ def get_flux_data(
         # add flux data to result dict
         flux_dict[source] = flux_data
 
+    # cast to float32 to avoid up-casting H matrix
+    for v in flux_dict.values():
+        if v.data.flux.dtype != "float32":
+            v.data["flux"] = v.data.flux.astype("float32")
+
     return flux_dict
 
 
