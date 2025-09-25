@@ -13,7 +13,42 @@ author = 'Eric Saboya and Brendan Murphy'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = []
+extensions = [
+    "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.intersphinx",
+]
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "xarray": ("https://docs.xarray.dev/en/stable/", None),
+    "pandas": ("https://pandas.pydata.org/pandas-docs/stable/", None),
+    "pytensor": ("https://pytensor.readthedocs.io/en/latest/", None),
+    "arviz": ("https://python.arviz.org/en/latest/", None),
+    "pymc": ("https://www.pymc.io/projects/docs/en/stable/", None),
+    "openghg": ("https://docs.openghg.org", None)
+}
+
+# Mock heavy or optional imports to prevent autodoc import failures
+autodoc_mock_imports = ["cartopy"]
+
+# Optionally, ignore missing references for certain types
+nitpicky = False  # TODO: set to True once docs working
+nitpick_ignore = [
+    ('py:class', 'optional'),
+    ('py:class', 'list'),
+    ('py:class', 'dict'),
+    ('py:class', 'OrderedDict'),
+    ('py:class', 'dictionary'),
+    ('py:class', 'function'),
+    ('py:class', 'output'),
+    ('py:class', 'outputname'),
+    ('py:class', 'lists'),
+    ('py:class', 'area'),
+    ('py:class', 'version'),
+    # Add others as needed
+]
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
