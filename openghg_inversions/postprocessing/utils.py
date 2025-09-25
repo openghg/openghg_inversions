@@ -8,33 +8,36 @@ import xarray as xr
 def add_suffix(suffix: str):
     """Decorator to add suffix to variable names of dataset returned by decorated function.
 
-    For example:
+    For example::
 
-    @add_suffix("abc")
-    def some_func():
-       ...
+        @add_suffix("abc")
+        def some_func():
+           ...
 
     will add "_abc" to the end of all the data variables in the dataset returned by
-    `some_func`. (So this only works is the output of `some_func` is an xr.Dataset or xr.DataArray.)
+    some_func. (So this only works if the output of some_func is an xr.Dataset or xr.DataArray.)
 
-    Note: technically, `add_suffix` creates a new decorator
-    each time it is called. This is the `decorate` function
+    Note: technically, add_suffix creates a new decorator
+    each time it is called. This is the decorate function
     that is returned. Then the actual "decoration" is done by
-    the `decorate` function.
+    the decorate function.
 
-    So
+    So::
 
-    @add_suffix("mean")
-    def calc_mean():
-        pass
+        @add_suffix("mean")
+        def calc_mean():
+            pass
 
-    is the same as
+    is the same as::
 
-    temp = add_suffix("mean")  # get `decorate`
+        temp = add_suffix("mean")  # get `decorate`
 
-    @temp
-    def calc_mean():
-        pass
+        @temp
+        def calc_mean():
+            pass
+
+    Args:
+        suffix: Suffix to add to variable names.
     """
 
     def decorate(func):
