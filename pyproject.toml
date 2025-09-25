@@ -35,9 +35,6 @@ dependencies = [
 "Home" = "https://github.com/openghg/openghg_inversions"
 "Bug Tracker" = "https://github.com/openghg/openghg_inversions/issues"
 
-[project.entry-points.tox]
-openghg_prev_minor = "toxfile.py"
-
 [tool.setuptools.packages.find]
 where = ["."]
 
