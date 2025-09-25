@@ -1,12 +1,9 @@
 #!/usr/bin/env python2
-"""Created on Mon Sep 25 16:39:01 2017.
+"""Configuration file utilities for INI format files.
 
 This module allows configuration files in the INI format to be read and used.
 
-------------------------------------------------
-
-Example of a section in the configuration file:
-::
+Example of a section in the configuration file::
 
     [MEASUREMENTS]
     # Measurement details
@@ -18,47 +15,51 @@ Example of a section in the configuration file:
     domain = "EASTASIA"
     network = "AGAGE"
 
-------------------------------------------------
+Configuration file format:
 
- - Sections are included in square brackets
- - Parameter name and value pairs are separated by an equals sign
-     - Values can be specified with the same syntax as when creating a python object e.g. '' for string, [] for lists (and also for np.array - will be converted if their type has been set as an array)
- - ; and # symbols can be used to create new line and inline comments
+- Sections are included in square brackets
+- Parameter name and value pairs are separated by an equals sign
+- Values can be specified with the same syntax as when creating a python object 
+  e.g. '' for string, [] for lists (and also for np.array - will be converted 
+  if their type has been set as an array)
+- ; and # symbols can be used to create new line and inline comments
 
-Section headings can be of the form [NAME] or [GROUP.NAME]. This allows paramaters to be separated into several
-section headings in the configuration file for clarity but grouped into one overall classification when inputted based
-on the GROUP name.
+Section headings can be of the form [NAME] or [GROUP.NAME]. This allows parameters 
+to be separated into several section headings in the configuration file for clarity 
+but grouped into one overall classification when inputted based on the GROUP name.
 
-param_type dictionary
-+++++++++++++++++++++
+param_type dictionary:
 
-To specify inputs and the types they should be cast to (e.g. str, array, boolean etc) a nested dictionary should be created.
-This can be passed into several functions as the param_type argument.
+To specify inputs and the types they should be cast to (e.g. str, array, boolean etc) 
+a nested dictionary should be created. This can be passed into several functions as 
+the param_type argument.
 
 This should be of the form of one of the following:
-   - {'SECTION_GROUP1':{'param1':str,'param2':float},'SECTION_GROUP2':{'param3':list,'param4':np.array}}
-   - {'SECTION1':{'param1':str},'SECTION2':'{param2':float},'SECTION3':{'param3':list},'SECTION4':{'param4':np.array}}
-   - OrderedDict(['SECTION_GROUP1':OrderedDict([('param1':str),('param2':float)]),'SECTION_GROUP2':OrderedDict([('param3':list),('param4':np.array)]))
-   - OrderedDict(['SECTION1':{'param1':str},'SECTION2':{'param2':float},'SECTION3':{'param3':list},'SECTION4':{'param4':np.array}])
 
-This can either be created directly or a template configuration file can be created and a param_type dictionary created
-from this using the generate_param_dict() function.
-These template files should be kept within the acrg_config/templates/ directory and, after creation, should not be altered
-unless you wish to change the format for all config files of this type.
+- {'SECTION_GROUP1':{'param1':str,'param2':float},'SECTION_GROUP2':{'param3':list,'param4':np.array}}
+- {'SECTION1':{'param1':str},'SECTION2':'{param2':float},'SECTION3':{'param3':list},'SECTION4':{'param4':np.array}}
+- OrderedDict(['SECTION_GROUP1':OrderedDict([('param1':str),('param2':float)]),'SECTION_GROUP2':OrderedDict([('param3':list),('param4':np.array)]))
+- OrderedDict(['SECTION1':{'param1':str},'SECTION2':{'param2':float},'SECTION3':{'param3':list},'SECTION4':{'param4':np.array}])
 
-Note: if param_type is not defined, the code will attempt to cast the inputs to the most sensible type.
-This should be fine in most cases but could cause issues.
+This can either be created directly or a template configuration file can be created and 
+a param_type dictionary created from this using the generate_param_dict() function.
+These template files should be kept within the acrg_config/templates/ directory and, 
+after creation, should not be altered unless you wish to change the format for all 
+config files of this type.
+
+Note: if param_type is not defined, the code will attempt to cast the inputs to the 
+most sensible type. This should be fine in most cases but could cause issues.
 This also means the the set of input parameters will not be checked for any missing values.
 
-How to run
-++++++++++
+How to run:
 
 The main functions to use for reading in parameters from a config file are:
 
-    * all_param(config_file,...)      ; Extract all parameters from a configuration file.
-    * extract_params(config_file,...) ; Extract specific parameters from a file either based on parameter names, sections or groups.
+- all_param(config_file,...)      ; Extract all parameters from a configuration file.
+- extract_params(config_file,...) ; Extract specific parameters from a file either based on parameter names, sections or groups.
 
-A param_type dictionary can be defined both to fix expected inputs and to explictly specify the parameter types.
+A param_type dictionary can be defined both to fix expected inputs and to explictly 
+specify the parameter types.
 
 @author: rt17603
 """

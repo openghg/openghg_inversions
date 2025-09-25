@@ -780,24 +780,20 @@ def fixedbasisMCMC(
 
 
 def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: bool = False) -> None:
-    """Rerun the MCMC code by taking the inputs from a previous output
-    using this code and rewrite a new output. This allows reproducibility
-    of results without the need to transfer all raw input files.
+    """Rerun the MCMC code using inputs from a previous output.
+    
+    This allows reproducibility of results without the need to transfer all raw input files.
 
     Args:
-      input_file:
-        Full path to previously written ncdf file
-      outputname:
-        Unique identifier new for output/run name.
-      outputpath:
-        Path to where output should be saved.
-      verbose:
-        When True, prints progress bar of mcmc.inferpymc
+        input_file: Full path to previously written ncdf file.
+        outputname: Unique identifier new for output/run name.
+        outputpath: Path to where output should be saved.
+        verbose: When True, prints progress bar of mcmc.inferpymc.
 
-    Note: At the moment fluxapriori in the output is the mean apriori flux
-          over the inversion period and so will not be identical to the
-          original a priori flux, if it varies over the inversion period.
-    -----------------------------------
+    Note:
+        At the moment fluxapriori in the output is the mean apriori flux
+        over the inversion period and so will not be identical to the
+        original a priori flux, if it varies over the inversion period.
     """
 
     def isFloat(string):

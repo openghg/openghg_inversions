@@ -47,22 +47,15 @@ def define_output_filename(
     e.g. /home/user/output/CH4_EUROPE_test_2014-01-01.nc
 
     Args:
-      outputpath:
-        Directory where to save outputfile
-      species:
-        Atmospheric trace gas species of interest (e.g. 'co2')
-      domain:
-        Name of modelling domain used (e.g. 'EUROPE')
-      outputname:
-        Additional str to include in filename (e.g. 'Test')
-      start_date:
-        Start date of inversion in format YYYY-MM-DD
-      ext:
-        file extension. Defaults to .nc
+        outputpath: Directory where to save outputfile.
+        species: Atmospheric trace gas species of interest (e.g. 'co2').
+        domain: Name of modelling domain used (e.g. 'EUROPE').
+        outputname: Additional str to include in filename (e.g. 'Test').
+        start_date: Start date of inversion in format YYYY-MM-DD.
+        ext: File extension. Defaults to .nc.
 
     Returns:
-       outputname: fullpath with filename of output file.
-     ----------------------------------
+        str: Fullpath with filename of output file.
     """
     outputname = os.path.join(outputpath, f"{species.upper()}_{domain}_{outputname}_{start_date}{ext}")
 
