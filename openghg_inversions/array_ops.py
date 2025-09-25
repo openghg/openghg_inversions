@@ -4,12 +4,10 @@ The functions here are not specific to OpenGHG inversions: they
 add functionality missing from xarray. These functions should accept
 xarray Datasets and DataArrays, and return either a Dataset or a DataArray.
 
-
-`get_xr_dummies` applies pandas `get_dummies` to xarray DataArrays.
-
-`sparse_xr_dot` multiplies a Dataset or DataArray by a DataArray
- with sparse underlying array. The built-in xarray functionality doesn't
-work correctly.
+Functions:
+    get_xr_dummies: Applies pandas `get_dummies` to xarray DataArrays.
+    sparse_xr_dot: Multiplies a Dataset or DataArray by a DataArray with sparse 
+        underlying array. The built-in xarray functionality doesn't work correctly.
 """
 
 from typing import Any, overload, TypeVar

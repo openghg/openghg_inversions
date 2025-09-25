@@ -34,21 +34,21 @@ def summary(inv_out: InversionOutput) -> xr.Dataset:
     """Return diagnostics summary computed by arviz.
 
     Diagnostics reported:
-    - `mcse_mean`: mean Monte Carlo standard error
-    - `mcse_sd`: standard deviation of Monte Carlo standard error
-    - `ess_bulk`: effective sample size (see e.g. Gelman et. al.
-      "Bayesian Data Analysis", equation (11.8)) after "rank normalising"
-    - `ess_tail`: minimum effective sample size for 5% and 95% quantiles.
-    - `r_hat`: the "potential scale reduction", which compares variance within
-      chains to pooled variance across chains. If all chains have converged,
-      these will be the same and r_hat will be 1. Otherwise, r_hat will be
-      greater than 1. Ideally, all r_hat values should be below 1.01
+        - mcse_mean: mean Monte Carlo standard error
+        - mcse_sd: standard deviation of Monte Carlo standard error
+        - ess_bulk: effective sample size (see e.g. Gelman et. al.
+          "Bayesian Data Analysis", equation (11.8)) after "rank normalising"
+        - ess_tail: minimum effective sample size for 5% and 95% quantiles.
+        - r_hat: the "potential scale reduction", which compares variance within
+          chains to pooled variance across chains. If all chains have converged,
+          these will be the same and r_hat will be 1. Otherwise, r_hat will be
+          greater than 1. Ideally, all r_hat values should be below 1.01
 
     Args:
         inv_out: InversionOutput to summarise.
 
     Returns:
-        xr.Dataset with diagnostic summary
+        xr.Dataset: Dataset with diagnostic summary.
     """
     return az.summary(inv_out.trace, kind="diagnostics", fmt="xarray")  # type: ignore
 

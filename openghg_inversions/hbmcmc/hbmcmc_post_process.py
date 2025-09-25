@@ -68,22 +68,19 @@ def define_stations(
     dictionary for this site.
 
     Args:
-        ds:
-            Output from run_hbmcmc() function.
+        ds: Output from run_hbmcmc() function.
             Expects dataset to contain:
                 sitelons - Longitude values for each site. Dimension = len(sites)
                 sitelats - Latitude values for each site. Dimension = len(sites)
-                y_site       - Site identifier for each measurement. Dimension = nmeasure
-        sites:
-            List of sites to look for within dataset.
+                y_site - Site identifier for each measurement. Dimension = nmeasure
+        sites: List of sites to look for within dataset.
             If not specified, the sites will be extracted from the input dataset assuming a
             data variable "sites" is included within the dataset.
-        use_site_info:
-            Use positions from openghg_defs rather than extract them from the tdmcmc dataset.
+        use_site_info: Use positions from openghg_defs rather than extract them from the tdmcmc dataset.
             Default = False.
 
     Returns:
-        Dictionary containing sitelats, sitelons for each site.
+        dict: Dictionary containing sitelats, sitelons for each site.
     """
     if sites is None:
         sites = list(ds.sitenames.values.astype(str))
@@ -118,27 +115,25 @@ def define_stations(
 
 
 def subplot_fmt(num: int, row_dims: list[int] = [3, 2, 4], fill: bool | None = False) -> tuple[int, int]:
-    """The subplot_fmt function decides the placement of a grid of figures dependent on the number.
+    """Decide the placement of a grid of figures dependent on the number.
+    
     The row_dims input determines which placement is preferable for the user.
 
     Args:
-        num:
-            Number of figures to be placed
-        row_dims:
-            Row dimensions in order of preference.
+        num: Number of figures to be placed.
+        row_dims: Row dimensions in order of preference.
             For the default row_dims=[3,2,4] the preferences of placement is as follows:
                 - equal rows of 3
                 - equal rows of 2
                 - equal rows of 4
             If none of the above are possible the format will be num x number of columns if fill
             is True or the configuration suitable for num+1 if fill is False.
-        fill:
-            All panels in subplot must be filled. If not, for uneven numbers an extra panel will
+        fill: All panels in subplot must be filled. If not, for uneven numbers an extra panel will
             be added which will be left blank when plotting.
-            Default = False (i.e. allow an empty panel to be included within subplot)
+            Default = False (i.e. allow an empty panel to be included within subplot).
 
     Returns:
-        2 item tuple containing the row number and column number for the subplots.
+        tuple: 2 item tuple containing the row number and column number for the subplots.
     """
     for r in row_dims:
         if not num % r:
@@ -891,38 +886,26 @@ def plot_diff_map(
 
 
 def country_emissions(ds, species, domain, country_file=None, country_unit_prefix=None, countries=None):
-    """Extract indiviudal country emissions from a dataset.
+    """Extract individual country emissions from a dataset.
 
     Args:
-        ds (xarray.Dataset) :
-            Output dataset from HBMCMC inversion
-        species (str) :
-            species run in the inversion (e.g. 'hfc23')
-        domain (str) :
-            domain over which the inversion was run (e.g. 'EASTASIA')
-        country_file (filepath) :
-            country file from which to extract country definitions. Defaults to None, in which case
-            the function looks for it in 'data/countries/[domain]' using the utils.get_country function
-        country_unit_prefix (str) :
-            prefix for which to report emissions in (e.g. 'G' for Gg). Conversion done by convert.prefix.
-            Defaults to None, in which case emissions are reported in g
-        countries (data array) :
-            array of country names for which to calculate emissions for. Defaults to None, in which case these
-            are extracted from the country file
+        ds: Output dataset from HBMCMC inversion.
+        species: Species run in the inversion (e.g. 'hfc23').
+        domain: Domain over which the inversion was run (e.g. 'EASTASIA').
+        country_file: Country file from which to extract country definitions. Defaults to None, in which case
+            the function looks for it in 'data/countries/[domain]' using the utils.get_country function.
+        country_unit_prefix: Prefix for which to report emissions in (e.g. 'G' for Gg). Conversion done by convert.prefix.
+            Defaults to None, in which case emissions are reported in g.
+        countries: Array of country names for which to calculate emissions for. Defaults to None, in which case these
+            are extracted from the country file.
 
     Returns:
-        cntrymean (data array):
-            1D array of mean emissions from each country
-        cntry68 (data array):
-            2D array of 68% CI emissions from each country
-        cntry95 (data array):
-            2D array of 95% CI emissions from each country
-        cntryprior (data array) :
-            1D array of prior emissions from each country
-        cntrymode (data array) :
-            1D array of mode emissions from each country
-
-
+        tuple: (cntrymean, cntry68, cntry95, cntryprior, cntrymode) where:
+            - cntrymean: 1D array of mean emissions from each country
+            - cntry68: 2D array of 68% CI emissions from each country  
+            - cntry95: 2D array of 95% CI emissions from each country
+            - cntryprior: 1D array of prior emissions from each country
+            - cntrymode: 1D array of mode emissions from each country
     """
     c_object = utils.get_country(domain, country_file=country_file)
     cntryds = xr.Dataset(
@@ -1029,18 +1012,17 @@ def country_emissions_mult(
     ds_list, species, domain, country_file=None, country_unit_prefix=None, countries=None
 ):
     """Calculate country emissions across multiple datasets.
-    See process.country_emissions() function for details of inputs
+    
+    See process.country_emissions() function for details of inputs.
+    
     Returns:
-        cntrymean_arr (np.ndarray):
-            array of country means for each ds, with size [number of ds x number of countries]
-        cntry68_arr (np.ndarray):
-            array of 68th percentile upper and lower bounds of country emissions for each ds,
-            with size [number of ds x number of countries x 2]
-        cntry95_arr (np.ndarray):
-            array of 95th percentile upper and lower bounds of country emissions for each ds,
-            with size [number of ds x number of countries x 2]
-        cntryprior_arr (np.ndarray):
-            array of country priors for each ds, with size [number of ds x number of countries].
+        tuple: (cntrymean_arr, cntry68_arr, cntry95_arr, cntryprior_arr) where:
+            - cntrymean_arr: Array of country means for each ds, with size [number of ds x number of countries]
+            - cntry68_arr: Array of 68th percentile upper and lower bounds of country emissions for each ds,
+                with size [number of ds x number of countries x 2]
+            - cntry95_arr: Array of 95th percentile upper and lower bounds of country emissions for each ds,
+                with size [number of ds x number of countries x 2]
+            - cntryprior_arr: Array of country priors for each ds, with size [number of ds x number of countries].
     """
     if countries is None:
         countries = ds_list[0].countrynames.values
@@ -1444,30 +1426,24 @@ def open_ds(path):
 
 
 def extract_hbmcmc_files(directory, species, domain, runname, dates, return_filenames=False):
-    """Find hbmcmc output filenames based on naming convention:
-        "directory"/"species"+"domain"+"runname"_"date".nc"
+    """Find hbmcmc output filenames based on naming convention.
+    
+    Naming convention: "directory"/"species"+"domain"+"runname"_"date".nc"
     Open as xarray.Dataset objects and return as a list.
 
     Args:
-        directory (str) :
-            path to output directory to where hbmcmc files are written
-        species (str) :
-            species of inversion (e.g. "hfc23")
-        domain (str) :
-            domain of inversion (e.g. "EASTASIA")
-        runname (str) :
-            name of run (as specified in .ini file)
-        dates (list) :
-            list of dates of the inversion, as specified at the top of the .ini file and
-            in the output file name
-        return_filenames (bool) :
-            whether to return the filenames. Defaults to False
+        directory: Path to output directory where hbmcmc files are written.
+        species: Species of inversion (e.g. "hfc23").
+        domain: Domain of inversion (e.g. "EASTASIA").
+        runname: Name of run (as specified in .ini file).
+        dates: List of dates of the inversion, as specified at the top of the .ini file and
+            in the output file name.
+        return_filenames: Whether to return the filenames. Defaults to False.
 
     Returns:
-        ds_list (list) :
-            list of xarray datasets matching the input parameters
-        filenames (list) :
-            list of filenames. Only returned if return_filenames is True
+        tuple or list: If return_filenames is True, returns (ds_list, filenames), otherwise just ds_list.
+            - ds_list: List of xarray datasets matching the input parameters
+            - filenames: List of filenames (only if return_filenames is True)
     """
     species = species.upper()
     domain = domain.upper()
@@ -1494,20 +1470,16 @@ def extract_hbmcmc_files(directory, species, domain, runname, dates, return_file
 
 
 def check_missing_dates(filenames, dates, labels=[]):
-    """Checks for missing dates from a list of filenames.
+    """Check for missing dates from a list of filenames.
 
     Args:
-        filenames (list) :
-            list of filenames to check
-        dates (list) :
-            list of expected dates to check in filenames
-        labels (list) :
-            list of labels for the dates that do match
+        filenames: List of filenames to check.
+        dates: List of expected dates to check in filenames.
+        labels: List of labels for the dates that do match.
 
     Returns:
-        dates (list) :
-            list of dates with matching filenames
-        labels (list) :
+        tuple: (dates, labels) - List of dates with matching filenames and 
+            corresponding list of labels.
             labels associated with dates, as specified in input
     """
     if len(filenames) != len(dates):

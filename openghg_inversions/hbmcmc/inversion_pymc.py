@@ -476,48 +476,38 @@ def inferpymc_postprocessouts(
     use_bc: bool = False,
     min_error: float | np.ndarray = 0.0,
 ) -> xr.Dataset:
-    r"""Takes the output from inferpymc function, along with some other input
-    information, calculates statistics on them and places it all in a dataset.
+    r"""Take the output from inferpymc function along with other input information.
+    
+    Calculates statistics on them and places it all in a dataset.
     Also calculates statistics on posterior emissions for the countries in
     the inversion domain and saves all in netcdf.
 
     Note that the uncertainties are defined by the highest posterior
     density (HPD) region and NOT percentiles (as the tdMCMC code).
     The HPD region is defined, for probability content (1-a), as:
-        1) P(x \in R | y) = (1-a)
-        2) for x1 \in R and x2 \notin R, P(x1|y)>=P(x2|y)
+        1) P(x ∈ R | y) = (1-a)
+        2) for x1 ∈ R and x2 ∉ R, P(x1|y)>=P(x2|y)
 
     Args:
-      xouts:
-        MCMC chain for emissions scaling factors for each basis function.
-      sigouts:
-        MCMC chain for model error.
-      convergence:
-        Passed/Failed convergence test as to whether mutliple chains
-        have a Gelman-Rubin diagnostic value <1.05
-      Hx:
-        Transpose of the sensitivity matrix to map emissions to measurement.
-        This is the same as what is given from fp_data[site].H.values, where
-        fp_data is the output from e.g. footprint_data_merge, but where it
-        has been stacked for all sites.
-      Y:
-        Measurement vector containing all measurements
-      error:
-        Measurement error vector, containg a value for each element of Y.
-      Ytrace:
-        Trace of modelled y values calculated from mcmc outputs and H matrices
-      OFFSETtrace:
-        Trace from offsets (if used).
-      step1:
-        Type of MCMC sampler for emissions and boundary condition updates.
-      step2:
-        Type of MCMC sampler for model error updates.
-      xprior:
-        Dictionary containing information about the prior PDF for emissions.
-        The entry "pdf" is the name of the analytical PDF used, see
-        https://docs.pymc.io/api/distributions/continuous.html for PDFs
-        built into pymc3, although they may have to be coded into the script.
-        The other entries in the dictionary should correspond to the shape
+        xouts: MCMC chain for emissions scaling factors for each basis function.
+        sigouts: MCMC chain for model error.
+        convergence: Passed/Failed convergence test as to whether multiple chains
+            have a Gelman-Rubin diagnostic value <1.05.
+        Hx: Transpose of the sensitivity matrix to map emissions to measurement.
+            This is the same as what is given from fp_data[site].H.values, where
+            fp_data is the output from e.g. footprint_data_merge, but where it
+            has been stacked for all sites.
+        Y: Measurement vector containing all measurements.
+        error: Measurement error vector, containing a value for each element of Y.
+        Ytrace: Trace of modelled y values calculated from mcmc outputs and H matrices.
+        OFFSETtrace: Trace from offsets (if used).
+        step1: Type of MCMC sampler for emissions and boundary condition updates.
+        step2: Type of MCMC sampler for model error updates.
+        xprior: Dictionary containing information about the prior PDF for emissions.
+            The entry "pdf" is the name of the analytical PDF used, see
+            https://docs.pymc.io/api/distributions/continuous.html for PDFs
+            built into pymc3, although they may have to be coded into the script.
+            The other entries in the dictionary should correspond to the shape
         parameters describing that PDF as the online documentation,
         e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sigma":1}.
         Note that the standard deviation should be used rather than the
