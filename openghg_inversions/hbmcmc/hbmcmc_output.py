@@ -9,11 +9,12 @@ from openghg_inversions.config import config
 
 def ncdf_encoding(ds_in: xr.Dataset) -> dict:
     """Define encoding for netCDF4 files.
+    
     Args:
-      ds_in: xarray dataset to define encoding for
+        ds_in: Xarray dataset to define encoding for.
 
     Returns:
-      Dictionary with encoding parameters for netCDF4 files.
+        dict: Dictionary with encoding parameters for netCDF4 files.
     """
     # variables with variable length data types shouldn't be compressed
     # e.g. object ("O") or unicode ("U") type
@@ -31,7 +32,7 @@ def check_and_create_folder(outputpath: str | Path) -> None:
     """Check folder exists and create if not.
 
     Args:
-      outputpath: path of folder to check exists
+        outputpath: Path of folder to check exists.
     """
     if not os.path.exists(outputpath):
         os.makedirs(outputpath)
@@ -63,32 +64,27 @@ def define_output_filename(
 
 
 def copy_config_file(config_file: str, param: dict | None = None, **command_line) -> None:
-    """Creating a copy of the inputs used to run MCMC code based
-    on the input config file and any additional parameters
-    specified on the command line.
+    """Create a copy of the inputs used to run MCMC code.
+    
+    Based on the input config file and any additional parameters specified on the command line.
 
-    Writes output file to same location as MCMC output
-    (output filename based on define_output_filename()
-    function with '.ini' extension)
+    Writes output file to same location as MCMC output (output filename based on 
+    define_output_filename() function with '.ini' extension).
 
-    Values to create the output filename and location are either
-    extracted from the config_file directly or from the input
-    param dictionary if specified.
+    Values to create the output filename and location are either extracted from the 
+    config_file directly or from the input param dictionary if specified.
 
     Any additional command line arguments can be specified as keyword arguments.
     e.g. start_date="2018-01-01", end_date="2019-01-01"
 
     Args:
-      config_file:
-        Input configuration file name. Should be an .ini file.
-      param:
-        Optional param dictionary used directly in input to MCMC code.
-        Just included as a convenience so config_file doesn't have to be
-        read twice but should be the same inputs contained within
-        the configuration file unless they have been superceeded by command
-        line arguments.
-      **command_line :
-        Any additional keyword arguments from the command line input.
+        config_file: Input configuration file name. Should be an .ini file.
+        param: Optional param dictionary used directly in input to MCMC code.
+            Just included as a convenience so config_file doesn't have to be
+            read twice but should be the same inputs contained within
+            the configuration file unless they have been superceeded by command
+            line arguments.
+        **command_line: Any additional keyword arguments from the command line input.
     """
     param_for_output_name = ["outputpath", "species", "domain", "outputname", "start_date"]
 
