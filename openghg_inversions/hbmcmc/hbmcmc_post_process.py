@@ -1,14 +1,18 @@
 """Script to process HBMCMC (RHIME) output.
 
-Includes:
-Write netcdf and append netcdf to write output to nc file
+This module includes functions for processing and visualizing HBMCMC inversion results.
 
-plot_scaling - plot posterior scaling map
-
-regions_histogram - plot histogram of number of regions
-
-country_emissions - calculate emissions from given list of countries
-                    Currently hard-wired for methane
+Functions
+---------
+write_netcdf, append_netcdf
+    Write output to netCDF files.
+plot_scaling
+    Plot posterior scaling map.
+regions_histogram
+    Plot histogram of number of regions.
+country_emissions
+    Calculate emissions from given list of countries.
+    Currently hard-wired for methane.
 """
 
 import os
@@ -280,15 +284,14 @@ def plot_map(
     ax=None,
     show=True,
 ):
-    """Plot 2d map of data
-    e.g. scaling map of posterior x i.e. degree of scaling applied to prior emissions. Mainly used within the
-    wrappers of plot_abs_map, plot_diff_map etc.
+    """Plot 2D map of data.
+    
+    e.g. scaling map of posterior x i.e. degree of scaling applied to prior emissions. 
+    Mainly used within the wrappers of plot_abs_map, plot_diff_map etc.
 
     Args:
-        data (numpy.array) :
-            2D (lat,lon) array of whatever you want
-        lon (numpy.array) :
-            Longitude array matching to data grid
+        data: 2D (lat,lon) array of whatever you want.
+        lon: Longitude array matching to data grid.
         lat (numpy.array) :
             Latitude array  matching to data grid
         clevels (numpy.array, optional) :
@@ -437,47 +440,35 @@ def plot_map_mult(
     extend="both",
     figsize=None,
 ):
-    """Uses plot_map function to plot a set of maps either on a grid or as separate figures.
+    """Use plot_map function to plot a set of maps either on a grid or as separate figures.
+    
     If plotting on a grid the subplots are either determined automatically based on shape of
     input or using subplot input.
 
     Expect data_all to either be:
-         - a numpy.array of the shape: nlat x nlon (x ngrid)
-         - list of numpy.array objects each of shape nlat x nlon.
+        - a numpy.array of the shape: nlat x nlon (x ngrid)
+        - list of numpy.array objects each of shape nlat x nlon.
+        
     Either the ngrid dimension or the len of the list is taken as the number of panels to
     include on the plot.
 
     Args:
-        data_all (numpy.array/list) :
-            Multiple lat-lon grids to be plotted on one figure as a set of sub-plots or as
-            multiple figures.
-            Can either be a list of grids or an array of dimension nlat x nlon (x ngrid).
-        lon (numpy.array) :
-            Longitude array matching to longitude points in each grid in grid_data.
-        lat (numpy.array) :
-            Latitude array matching to longitude points in each grid in grid_data.
-        grid (bool, optional) :
-            Whether to plot on a grid.
-            Default = True.
-        subplot (str/list, optional) :
-            If grid is True, subplot grid to use. If this is set to "auto" this will be
+        data_all: Multiple lat-lon grids to be plotted on one figure as a set of sub-plots or as
+            multiple figures. Can either be a list of grids or an array of dimension nlat x nlon (x ngrid).
+        lon: Longitude array matching to longitude points in each grid in grid_data.
+        lat: Latitude array matching to longitude points in each grid in grid_data.
+        grid: Whether to plot on a grid. Default = True.
+        subplot: If grid is True, subplot grid to use. If this is set to "auto" this will be
             automatically determined based on the size of ngrid (see subplot_fmt() function).
-            Otherwise, this should be a two item list of [nrows, ncols]
-            Default = "auto".
-        labels (str/list, optional) :
-            Can specify either one label for all plots (str) or a different label for
-            each plot as a list.
-            If list is specified, it must match ngrid length.
+            Otherwise, this should be a two item list of [nrows, ncols]. Default = "auto".
+        labels: Can specify either one label for all plots (str) or a different label for
+            each plot as a list. If list is specified, it must match ngrid length.
 
+    Note:
         See plot_map() function for definition of remaining inputs.
 
     Returns:
-        None
-
-        If out_filename specified:
-            Plot is written to file
-        Otherwise:
-            Plot is displayed interactively
+        None. If out_filename specified, plot is written to file. Otherwise, plot is displayed interactively.
     """
     if isinstance(data_all, list):
         data_all = np.moveaxis(np.stack(data_all), 0, 2)
@@ -608,27 +599,22 @@ def plot_scale_map(
     extend="both",
     figsize=None,
 ):
-    """The plot_scale_map function plots 2D scaling map(s) of posterior x. This is the degree of
-    scaling which has been applied to prior emissions.
+    """Plot 2D scaling map(s) of posterior x.
+    
+    This is the degree of scaling which has been applied to prior emissions.
 
     Args:
-        ds_list (list) :
-            List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
+        ds_list: List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
             function (tdmcmc_inputs.py script).
             Expects each data set to contain:
                 x_post_vit - posterior values for each iteration flattened along lat-lon axis.
                              Dimensions = nIt x NGrid (nlat x nlon)
-        lat (data array):
-            Data array of lat values to plot over - must match values in ds exactly
-        lon (data array):
-            Data array of lon values to plot over - must match values in ds exactly
-        grid (bool, optional) :
-            Whether to plot the posterior on one figure as a grid or on individual plots.
-        labels (str/list, optional) :
-            Can specify either one label for all plots (str) or a different label for
-            each plot.
-            If list is specified, it must match number of datasets in ds_list.
-        plot_stations (bool, optional) :
+        lat: Data array of lat values to plot over - must match values in ds exactly.
+        lon: Data array of lon values to plot over - must match values in ds exactly.
+        grid: Whether to plot the posterior on one figure as a grid or on individual plots.
+        labels: Can specify either one label for all plots (str) or a different label for
+            each plot. If list is specified, it must match number of datasets in ds_list.
+        plot_stations: Whether to plot station locations.
             Plot site positions on the output map. Will not plot aircraft or satellite positions.
         use_site_info (bool, optional) :
             If plotting site positions, use positions from site_info.json file rather
@@ -703,27 +689,21 @@ def plot_abs_map(
     figsize=None,
     flux_data_var="fluxmode",
 ):
-    """The plot_abs_map function plots 2D map(s) of posterior x in g/m2/s.
+    """Plot 2D map(s) of posterior x in g/m2/s.
 
     Args:
-        ds_list (list) :
-            List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
+        ds_list: List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
             function (tdmcmc_inputs.py script).
             Expects each data set to contain:
                 x_post_vit - posterior values for each iteration flattened along lat-lon axis.
                              Dimensions = nIt x NGrid (nlat x nlon)
                 q_ap       - a priori flux values on a latitude x longitude grid.
                              Dimensions = nlat x nlon
-        lat (data array):
-            Data array of lat values to plot over - must match values in ds exactly
-        lon (data array):
-            Data array of lon values to plot over - must match values in ds exactly
-        species (str) :
-            Species for the tdmcmc output.
-        grid (bool, optional) :
-            Whether to plot the posterior on one figure as a grid or on individual plots.
-        labels (str/list) :
-            Can specify either one label for all plots (str) or a different label for
+        lat: Data array of lat values to plot over - must match values in ds exactly.
+        lon: Data array of lon values to plot over - must match values in ds exactly.
+        species: Species for the tdmcmc output.
+        grid: Whether to plot the posterior on one figure as a grid or on individual plots.
+        labels: Can specify either one label for all plots (str) or a different label for
             each plot.
             If list is specified, it must match number of datasets in ds_list.
         plot_stations (bool, optional) :
@@ -804,26 +784,20 @@ def plot_diff_map(
     figsize=None,
     flux_data_var="fluxmode",
 ):
-    """The plot_diff_map function plots 2D map(s) of the difference between the prior and
-    posterior x in g/m2/s.
+    """Plot 2D map(s) of the difference between the prior and posterior x in g/m2/s.
 
     Args:
-        ds_list (list) :
-            List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
+        ds_list: List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
             function (tdmcmc_inputs.py script).
             Expects each data set to contain:
                 x_post_vit - posterior values for each iteration flattened along lat-lon axis.
                              Dimensions = nIt x NGrid (nlat x nlon)
                 q_ap       - a priori flux values on a latitude x longitude grid.
                              Dimensions = nlat x nlon
-        lat (data array):
-            Data array of lat values to plot over - must match values in ds exactly
-        lon (data array):
-            Data array of lon values to plot over - must match values in ds exactly
-        species (str) :
-            Species for the tdmcmc output.
-        grid (bool, optional) :
-            Whether to plot the posterior on one figure as a grid or on individual plots.
+        lat: Data array of lat values to plot over - must match values in ds exactly.
+        lon: Data array of lon values to plot over - must match values in ds exactly.
+        species: Species for the tdmcmc output.
+        grid: Whether to plot the posterior on one figure as a grid or on individual plots.
         labels (str/list) :
             Can specify either one label for all plots (str) or a different label for
             each plot.

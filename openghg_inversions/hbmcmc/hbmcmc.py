@@ -1,18 +1,25 @@
-"""Contains functions for running all steps of the MCMC inversion using PyMC:
-getting data, filtering, applying basis functions, sampling, and processing
-the outputs.
+"""Contains functions for running all steps of the MCMC inversion using PyMC.
 
-If not using on an HPC in the terminal you should do:
-export OPENBLAS_NUM_THREADS=XX
-and/or
-export OMP_NUM_THREADS=XX
+This module handles getting data, filtering, applying basis functions, sampling, 
+and processing the outputs.
+
+Notes
+-----
+If not using on an HPC in the terminal you should do::
+
+    export OPENBLAS_NUM_THREADS=XX
+
+and/or::
+
+    export OMP_NUM_THREADS=XX
+
 where XX is the number of chains you are running.
 
 If running in Spyder do this before launching Spyder, else you will use every
 available thread. Apart from being annoying it will also slow down your run
 due to unnecessary forking.
 
-Note. RHIME with OpenGHG expects ALL data to already be included in the
+RHIME with OpenGHG expects ALL data to already be included in the
 object stores and for the paths to object stores to already be set in
 the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 """
@@ -128,26 +135,18 @@ def fixedbasisMCMC(
         inlet: Specific inlet height for the site (must match number of sites).
         instrument: Specific instrument for the site (must match number of sites).
         calibration_scale: Calibration scale to use for measurements data.
-      obs_data_level:
-        Data quality level for measurements data. (must match number of sites)
-      use_tracer:
-        Option to use inverse model that uses tracers of species
-        (e.g. d13C, CO, C2H4)
-      use_bc:
-        When True, use and infer boundary conditions.
-      fp_basis_case:
-        Name of basis function to use for emission
-      basis_directory:
-        Directory containing the basis function
-      bc_basis_case:
-        Name of basis case type for boundary conditions (NOTE, I don't
-        think that currently you can do anything apart from scaling NSEW
-        boundary conditions if you want to scale these monthly.)
-      bc_basis_directory:
-        Directory containing the boundary condition basis functions
-        (e.g. files starting with "NESW")
-      country_file:
-        Path to the country definition file
+        obs_data_level: Data quality level for measurements data. (must match number of sites).
+        use_tracer: Option to use inverse model that uses tracers of species
+            (e.g. d13C, CO, C2H4).
+        use_bc: When True, use and infer boundary conditions.
+        fp_basis_case: Name of basis function to use for emission.
+        basis_directory: Directory containing the basis function.
+        bc_basis_case: Name of basis case type for boundary conditions (NOTE, I don't
+            think that currently you can do anything apart from scaling NSEW
+            boundary conditions if you want to scale these monthly).
+        bc_basis_directory: Directory containing the boundary condition basis functions
+            (e.g. files starting with "NESW").
+        country_file: Path to the country definition file.
         bc_input: Variable for calling BC data from 'bc_store' - equivalent of
             'emissions_name' for fluxes.
         basis_algorithm: Select basis function algorithm for creating basis function file
@@ -177,15 +176,12 @@ def fixedbasisMCMC(
         nchain: Number of independent chains to run (there is no way at all of
             knowing whether your distribution has converged by running only
             one chain).
-      filters (list, or dictionary of lists, optional):
-        list of filters to apply to all sites, or dictionary with sites as keys
-        and a list of filters for each site, e.g. filters = {"MHD": ["pblh_inlet_diff", "pblh_min"], "JFJ": None}
-      fix_basis_outer_regions:
-        When set to True uses InTEM regions to derive basis functions for inner region
-        Default False
-      averaging_error:
-        Adds the variability in the averaging period to the measurement
-        error if set to True
+        filters: List of filters to apply to all sites, or dictionary with sites as keys
+            and a list of filters for each site, e.g. filters = {"MHD": ["pblh_inlet_diff", "pblh_min"], "JFJ": None}.
+        fix_basis_outer_regions: When set to True uses InTEM regions to derive basis functions for inner region.
+            Default False.
+        averaging_error: Adds the variability in the averaging period to the measurement
+            error if set to True.
         bc_freq: The period over which the baseline is estimated. Set to "monthly"
             to estimate per calendar month; set to a number of days,
             as e.g. "30D" for 30 days; or set to None to estimate to have one

@@ -508,36 +508,24 @@ def inferpymc_postprocessouts(
             https://docs.pymc.io/api/distributions/continuous.html for PDFs
             built into pymc3, although they may have to be coded into the script.
             The other entries in the dictionary should correspond to the shape
-        parameters describing that PDF as the online documentation,
-        e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sigma":1}.
-        Note that the standard deviation should be used rather than the
-        precision. Currently all variables are considered iid.
-      sigprior:
-        Same as xprior but for model error.
-      offsetprior:
-        Same as xprior but for bias offset. Only used is add_offset=True.
-      Ytime:
-        Time stamp of measurements as used by the inversion.
-      siteindicator:
-        Numerical indicator of which site the measurements belong to,
-        same length at Y.
-      sigma_freq_index:
-        Array of integer indexes that converts time into periods
-      domain:
-        Inversion spatial domain.
-      species:
-        Species of interest
-      sites:
-        List of sites in inversion
-      start_date:
-        Start time of inversion "YYYY-mm-dd"
-      end_date:
-        End time of inversion "YYYY-mm-dd"
-      outputname:
-        Unique identifier for output/run name.
-      outputpath:
-        Path to where output should be saved.
-      country_unit_prefix:
+            parameters describing that PDF as the online documentation,
+            e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sigma":1}.
+            Note that the standard deviation should be used rather than the
+            precision. Currently all variables are considered iid.
+        sigprior: Same as xprior but for model error.
+        offsetprior: Same as xprior but for bias offset. Only used is add_offset=True.
+        Ytime: Time stamp of measurements as used by the inversion.
+        siteindicator: Numerical indicator of which site the measurements belong to,
+            same length at Y.
+        sigma_freq_index: Array of integer indexes that converts time into periods.
+        domain: Inversion spatial domain.
+        species: Species of interest.
+        sites: List of sites in inversion.
+        start_date: Start time of inversion "YYYY-mm-dd".
+        end_date: End time of inversion "YYYY-mm-dd".
+        outputname: Unique identifier for output/run name.
+        outputpath: Path to where output should be saved.
+        country_unit_prefix:
         A prefix for scaling the country emissions. Current options are:
         'T' will scale to Tg, 'G' to Gg, 'M' to Mg, 'P' to Pg.
         To add additional options add to acrg_convert.prefix
