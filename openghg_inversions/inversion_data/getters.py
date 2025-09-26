@@ -122,9 +122,10 @@ def get_flux_data(
             or (inferred_time_period_str == "other")
         ):
             flux_data.data.flux.attrs["time_period"] = existing_time_period_str
-        elif "month" in existing_time_period_str.lower():
-            logger.warning("Monthly flux detected, but inversion period is {time_period.days} days. Setting flux time_period to 'monthly'.")
-            flux_data.data.flux.attrs["time_period"] = existing_time_period_str
+        elif "month" in existing_time_period_str.lower() and inferred_time_period_str == "yearly":
+            flux_data.data = flux_data.data.resample(time="YS").mean()
+            flux_data.data.flux.attrs["time_period"] = inferred_time_period_str
+            logger.warning(f"Monthly flux detected, but inversion period is {time_period.days} days. Resampling flux to 'yearly'.")
         else:
             flux_data.data.flux.attrs["time_period"] = inferred_time_period_str
 
