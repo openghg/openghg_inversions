@@ -255,20 +255,16 @@ def data_processing_surface_notracer(
             Optional name used to create merged data name.
 
     Returns:
-        fp_all:
-            dictionnary containing flux data (key ".flux"), bc data (key ".bc"),
-            and observations data (site short name as key)
-        sites:
-            Updated list of sites. All put in upper case and if data was not extracted
-            correctly for any sites, drop these from the rest of the inversion.
-        inlet:
-            List of inlet height for the updated list of sites
-        fp_height:
-            List of footprint height for the updated list of sites
-        instrument:
-            List of instrument for the updated list of sites
-        averaging_period:
-            List of averaging_period for the updated list of sites
+        tuple: containing
+
+            - fp_all: dictionary containing flux data (key ".flux"), bc data (key ".bc"),
+              and observations data (site short name as key)
+            - sites: Updated list of sites. All put in upper case and if data was not extracted
+              correctly for any sites, drop these from the rest of the inversion.
+            - inlet: List of inlet height for the updated list of sites
+            - fp_height: List of footprint height for the updated list of sites
+            - instrument: List of instrument for the updated list of sites
+            - averaging_period: List of averaging_period for the updated list of sites
 
     """
     sites = [site.upper() for site in sites]

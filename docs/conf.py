@@ -14,9 +14,13 @@ author = 'Eric Saboya and Brendan Murphy'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autodoc.typehints",
     "sphinx.ext.intersphinx",
+    "sphinx.ext.autosummary",
+    "sphinx.ext.autosectionlabel",
+    "sphinx.ext.mathjax",
 ]
 
 intersphinx_mapping = {
@@ -29,6 +33,21 @@ intersphinx_mapping = {
     "pymc": ("https://www.pymc.io/projects/docs/en/stable/", None),
     "openghg": ("https://docs.openghg.org", None)
 }
+
+autosectionlabel_prefix_document = True
+
+# napoleon settings (for google docstring style)
+napoleon_google_docstring = True
+# napoleon_numpy_docstring = True
+# napoleon_include_private_with_doc = False
+# napoleon_include_special_with_doc = False
+# napoleon_use_admonition_for_examples = False
+# napoleon_use_admonition_for_notes = False
+# napoleon_use_admonition_for_references = False
+napoleon_use_ivar = True
+napoleon_use_param = True
+napoleon_use_rtype = True
+
 
 # Mock heavy or optional imports to prevent autodoc import failures
 autodoc_mock_imports = ["cartopy"]
@@ -58,5 +77,6 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'alabaster'
+# html_theme = 'alabaster'
+html_theme = 'pydata_sphinx_theme'
 html_static_path = ['_static']

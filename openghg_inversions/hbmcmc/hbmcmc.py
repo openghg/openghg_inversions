@@ -109,9 +109,10 @@ def fixedbasisMCMC(
     power: dict | float = 1.99,
     **kwargs,
 ) -> xr.Dataset | dict:
-    """Script to run hierarchical Bayesian MCMC (RHIME) for inference
-    of emissions using PyMC to solve the inverse problem.
-    Saves an output from the inversion code using inferpymc_postprocessouts.
+    """Script to run hierarchical Bayesian MCMC (RHIME) for inference of emissions.
+
+    Uses PyMC to solve the inverse problem. Saves an output from the inversion code
+    using inferpymc_postprocessouts.
 
     Args:
         species: Atmospheric trace gas species of interest (e.g. 'co2').
@@ -212,14 +213,16 @@ def fixedbasisMCMC(
         min_error_options: Dictionary of additional arguments to pass the function used to calculate min. model
             error (as specified by `min_error`).
         output_format: Select what is returned/saved by inversion:
+
             - "hbmcmc": (default) return the results of `inferpymc_postprocessouts`, and save result as netCDF
             - "merged_data": return `fp_all` dictionary, no further processing and inversion *not* run
             - "inv_out": return `InversionOutput` object
             - "basic": return basic output created by new `postprocessing` submodule
             - "paris": return flux and concentration datasets with PARIS formatting; these are also saved
-                as netCDF files in the directory `outputpath`
+              as netCDF files in the directory `outputpath`
             - "mcmc_args": return the arguments passed to `fixedbasisMCMC`, but do not run the inversion
             - "mcmc_results": return the results of `fixedbasisMCMC` with no further processing
+
         paris_postprocessing_kwargs: Dict of kwargs to pass to `make_paris_outputs`.
         power: Power to raise pollution event size to if using pollution events from obs. Default is 1.99.
 

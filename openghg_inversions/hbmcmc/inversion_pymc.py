@@ -485,6 +485,7 @@ def inferpymc_postprocessouts(
     Note that the uncertainties are defined by the highest posterior
     density (HPD) region and NOT percentiles (as the tdMCMC code).
     The HPD region is defined, for probability content (1-a), as:
+
         1) P(x ∈ R | y) = (1-a)
         2) for x1 ∈ R and x2 ∉ R, P(x1|y)>=P(x2|y)
 
@@ -525,46 +526,28 @@ def inferpymc_postprocessouts(
         end_date: End time of inversion "YYYY-mm-dd".
         outputname: Unique identifier for output/run name.
         outputpath: Path to where output should be saved.
-        country_unit_prefix:
-        A prefix for scaling the country emissions. Current options are:
-        'T' will scale to Tg, 'G' to Gg, 'M' to Mg, 'P' to Pg.
-        To add additional options add to acrg_convert.prefix
-        Default is none and no scaling will be applied (output in g).
-      burn:
-        Number of iterations burned in MCMC
-      tune:
-        Number of iterations used to tune step size
-      nchain:
-        Number of independent chains run
-      sigma_per_site:
-        Whether a model sigma value will be calculated for each site independantly (True)
-        or all sites together (False).
-      emissions_name:
-        List with "source" values as used when adding emissions data to the OpenGHG object store.
-      bcprior:
-        Same as xrpior but for boundary conditions.
-      YBCtrace:
-        Trace of modelled boundary condition values calculated from mcmc outputs and Hbc matrices
-      bcouts:
-        MCMC chain for boundary condition scaling factors.
-      Hbc:
-        Same as Hx but for boundary conditions
-      obs_repeatability:
-        Instrument error
-      obs_variability:
-        Error from resampling observations
-      fp_data:
-        Output from footprints_data_merge + sensitivies
-      country_file:
-        Path of country definition file
-      add_offset:
-        Add an offset (intercept) to all sites but the first in the site list. Default False.
-      rerun_file (xarray dataset, optional):
-        An xarray dataset containing the ncdf output from a previous run of the MCMC code.
-      use_bc:
-        When True, use and infer boundary conditions.
-      min_error:
-        Minimum error to use during inversion. Only used if no_model_error is False.
+        country_unit_prefix: A prefix for scaling the country emissions. Current options are:
+            'T' will scale to Tg, 'G' to Gg, 'M' to Mg, 'P' to Pg.
+            To add additional options add to acrg_convert.prefix
+            Default is none and no scaling will be applied (output in g).
+        burn: Number of iterations burned in MCMC
+        tune: Number of iterations used to tune step size
+        nchain: Number of independent chains run
+        sigma_per_site: Whether a model sigma value will be calculated for each site independantly (True)
+            or all sites together (False).
+        emissions_name: List with "source" values as used when adding emissions data to the OpenGHG object store.
+        bcprior: Same as xrpior but for boundary conditions.
+        YBCtrace: Trace of modelled boundary condition values calculated from mcmc outputs and Hbc matrices
+        bcouts: MCMC chain for boundary condition scaling factors.
+        Hbc: Same as Hx but for boundary conditions
+        obs_repeatability: Instrument error
+        obs_variability: Error from resampling observations
+        fp_data: Output from footprints_data_merge + sensitivies
+        country_file: Path of country definition file
+        add_offset: Add an offset (intercept) to all sites but the first in the site list. Default False.
+        rerun_file (xarray dataset, optional): An xarray dataset containing the ncdf output from a previous run of the MCMC code.
+        use_bc: When True, use and infer boundary conditions.
+        min_error: Minimum error to use during inversion. Only used if no_model_error is False.
 
     Returns:
         xarray dataset containing results from inversion

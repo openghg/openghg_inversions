@@ -22,7 +22,7 @@ def register_diagnostic(diagnostic: Callable) -> Callable:
         diagnostic: diagnostics function to register
 
     Returns:
-        diagnostic, the input function (no modifications made)
+        Callable: diagnostic, the input function (no modifications made)
     """
     diagnostics[diagnostic.__name__] = Diagnostic(diagnostic, get_parameters(diagnostic))
     return diagnostic
@@ -119,8 +119,8 @@ def bayes_r2_by_site(inv_out: InversionOutput, report_prior: bool = False) -> xr
         report_prior: if True, return prior R2 in addition to posterior R2
 
     Returns:
-        xr.Dataset containing posterior (and optionally, prior) Bayesian R2 values,
-          with uncertainties.
+        xr.Dataset: containing posterior (and optionally, prior) Bayesian R2 values,
+            with uncertainties.
 
     """
     y_true = inv_out.obs.unstack("nmeasure")
@@ -150,8 +150,8 @@ def bayes_r2_by_site_resample(
         report_prior: if True, return prior R2 in addition to posterior R2
 
     Returns:
-        xr.Dataset containing posterior (and optionally, prior) Bayesian R2 values,
-          with uncertainties.
+        xr.Dataset: containing posterior (and optionally, prior) Bayesian R2 values,
+            with uncertainties.
 
     """
     y_true = inv_out.obs.unstack("nmeasure")

@@ -49,8 +49,8 @@ def check_platform(site: str, network: str | None = None) -> str | None:
             the platform
 
     Returns:
-        platform type (e.g. "site", "satellite", "aircraft") if specified by site_info.json,
-        otherwise None
+        str or None: platform type (e.g. "site", "satellite", "aircraft") if specified by site_info.json,
+            otherwise None
     """
     if network is None:
         network = next(iter(site_info[site].keys()))
@@ -74,9 +74,11 @@ def define_stations(
     Args:
         ds: Output from run_hbmcmc() function.
             Expects dataset to contain:
-                sitelons - Longitude values for each site. Dimension = len(sites)
-                sitelats - Latitude values for each site. Dimension = len(sites)
-                y_site - Site identifier for each measurement. Dimension = nmeasure
+
+                - sitelons: Longitude values for each site. Dimension = len(sites)
+                - sitelats: Latitude values for each site. Dimension = len(sites)
+                - y_site: Site identifier for each measurement. Dimension = nmeasure
+
         sites: List of sites to look for within dataset.
             If not specified, the sites will be extracted from the input dataset assuming a
             data variable "sites" is included within the dataset.
@@ -84,7 +86,7 @@ def define_stations(
             Default = False.
 
     Returns:
-        dict: Dictionary containing sitelats, sitelons for each site.
+        dict or None: Dictionary containing sitelats, sitelons for each site.
     """
     if sites is None:
         sites = list(ds.sitenames.values.astype(str))
@@ -127,9 +129,11 @@ def subplot_fmt(num: int, row_dims: list[int] = [3, 2, 4], fill: bool | None = F
         num: Number of figures to be placed.
         row_dims: Row dimensions in order of preference.
             For the default row_dims=[3,2,4] the preferences of placement is as follows:
+
                 - equal rows of 3
                 - equal rows of 2
                 - equal rows of 4
+
             If none of the above are possible the format will be num x number of columns if fill
             is True or the configuration suitable for num+1 if fill is False.
         fill: All panels in subplot must be filled. If not, for uneven numbers an extra panel will
@@ -314,10 +318,9 @@ def plot_map(
         stations (dict, optional) :
             Default is None. If specified needs to be a dictionary containing the list of sites
             and site locations for each site. For example:
-                {"sites": ['MHD', 'TAC'],
-                 "MHDlons": -9.02,
-                 "MHDlats": 55.2,
-                 "TAClons": etc...
+
+            {"sites": ['MHD', 'TAC'], "MHDlons": -9.02, "MHDlats": 55.2, "TAClons": etc...}
+
             This is the default output from the define_stations function, but can't default to this
             as the data argument doesn't have a sitenames attribute
         fignum (int, optional) :
@@ -607,8 +610,10 @@ def plot_scale_map(
         ds_list: List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
             function (tdmcmc_inputs.py script).
             Expects each data set to contain:
-                x_post_vit - posterior values for each iteration flattened along lat-lon axis.
-                             Dimensions = nIt x NGrid (nlat x nlon)
+
+                - x_post_vit: posterior values for each iteration flattened along lat-lon axis.
+                  Dimensions = nIt x NGrid (nlat x nlon)
+
         lat: Data array of lat values to plot over - must match values in ds exactly.
         lon: Data array of lon values to plot over - must match values in ds exactly.
         grid: Whether to plot the posterior on one figure as a grid or on individual plots.
@@ -695,10 +700,12 @@ def plot_abs_map(
         ds_list: List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
             function (tdmcmc_inputs.py script).
             Expects each data set to contain:
-                x_post_vit - posterior values for each iteration flattened along lat-lon axis.
-                             Dimensions = nIt x NGrid (nlat x nlon)
-                q_ap       - a priori flux values on a latitude x longitude grid.
-                             Dimensions = nlat x nlon
+
+                - x_post_vit: posterior values for each iteration flattened along lat-lon axis.
+                  Dimensions = nIt x NGrid (nlat x nlon)
+                - q_ap: a priori flux values on a latitude x longitude grid.
+                  Dimensions = nlat x nlon
+
         lat: Data array of lat values to plot over - must match values in ds exactly.
         lon: Data array of lon values to plot over - must match values in ds exactly.
         species: Species for the tdmcmc output.
@@ -790,10 +797,12 @@ def plot_diff_map(
         ds_list: List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
             function (tdmcmc_inputs.py script).
             Expects each data set to contain:
-                x_post_vit - posterior values for each iteration flattened along lat-lon axis.
-                             Dimensions = nIt x NGrid (nlat x nlon)
-                q_ap       - a priori flux values on a latitude x longitude grid.
-                             Dimensions = nlat x nlon
+
+                - x_post_vit: posterior values for each iteration flattened along lat-lon axis.
+                  Dimensions = nIt x NGrid (nlat x nlon)
+                - q_ap: a priori flux values on a latitude x longitude grid.
+                  Dimensions = nlat x nlon
+
         lat: Data array of lat values to plot over - must match values in ds exactly.
         lon: Data array of lon values to plot over - must match values in ds exactly.
         species: Species for the tdmcmc output.
@@ -1390,8 +1399,7 @@ def open_ds(path):
             path to xarray dataset
 
     Returns:
-        ds (xarray dataset) :
-            dataset
+        xr.Dataset: dataset
     """
     # use a context manager, to ensure the file gets closed after use
     with xr.open_dataset(path) as ds:
