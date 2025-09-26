@@ -25,6 +25,7 @@ import time
 
 import numpy as np
 import xarray as xr
+import pandas as pd
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
@@ -197,7 +198,8 @@ def fixedbasisMCMC(
         Same as xprior but for bias offset. Only used is addoffset=True.
       offset_args: dictionary of args to pass to `make_offset`. For instance
         `{"drop_first": False}` will put an offset on all site (rather than using 0
-        offset for the first site).
+        offset for the first site). If "offset_freq" is passed, then the
+        offset will be applied at the specified frequency (e.g. monthly).
       nit:
         Number of iterations for MCMC
       burn:
@@ -522,6 +524,16 @@ def fixedbasisMCMC(
 
         update_log_normal_prior(xprior)
         update_log_normal_prior(bcprior)
+
+        # check if offset args needs to contain an offset_freq_indicator
+
+        if offset_args:
+            if "offset_freq" in offset_args:
+                offset_freq = offset_args["offset_freq"]
+                time_index = pd.to_datetime(Ytime)
+                offset_freq_indicator = time_index.to_period(offset_freq).astype(str)
+                offset_args["offset_freq_indicator"] = offset_freq_indicator.values
+                
 
         mcmc_args = {
             "Hx": Hx,

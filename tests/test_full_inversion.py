@@ -134,6 +134,11 @@ def test_full_inversion_two_sites(mcmc_args, mhd_and_tac_ch4_data_args):
     mcmc_args["offset_args"] = {"drop_first": True}
     fixedbasisMCMC(**mcmc_args)
 
+def test_full_inversion_offset_args(mcmc_args):
+    mcmc_args["offset_args"] = {"drop_first": False,
+                                "offset_freq": "D"}
+    fixedbasisMCMC(**mcmc_args)
+
 
 @pytest.mark.slow
 def test_full_inversion_long(mcmc_args):
