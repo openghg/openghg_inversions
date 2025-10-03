@@ -4,12 +4,13 @@ The functions here are not specific to OpenGHG inversions: they
 add functionality missing from xarray. These functions should accept
 xarray Datasets and DataArrays, and return either a Dataset or a DataArray.
 
-
-`get_xr_dummies` applies pandas `get_dummies` to xarray DataArrays.
-
-`sparse_xr_dot` multiplies a Dataset or DataArray by a DataArray
- with sparse underlying array. The built-in xarray functionality doesn't
-work correctly.
+Functions
+---------
+get_xr_dummies
+    Applies pandas ``get_dummies`` to xarray DataArrays.
+sparse_xr_dot
+    Multiplies a Dataset or DataArray by a DataArray with sparse 
+    underlying array. The built-in xarray functionality doesn't work correctly.
 """
 
 from typing import Any, overload, TypeVar
@@ -50,8 +51,8 @@ def get_xr_dummies(
 
     Returns:
         Dummy matrix corresponding to the input vector. Its dimensions are the same as the
-    input DataArray, plus an additional "categories" dimension, which  has one value for each
-    distinct value in the input DataArray.
+            input DataArray, plus an additional "categories" dimension, which  has one value for each
+            distinct value in the input DataArray.
     """
     # stack if `da` is not one dimensional
     stack_dim = ""
@@ -99,8 +100,8 @@ def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray | xr.Dataset, dim: list[s
           dimensions are summed over.
 
     Returns:
-        xr.Dataset or xr.DataArray containing the result of matrix/tensor multiplication.
-        The type that is returned will be the same as the type of `da2`.
+        xr.Dataset or xr.DataArray: containing the result of matrix/tensor multiplication.
+            The type that is returned will be the same as the type of `da2`.
     """
     if isinstance(da1.data, SparseArray) and not is_chunked_array(da1):  # type: ignore
         da1 = da1.chunk()
@@ -126,7 +127,7 @@ def align_sparse_lat_lon(sparse_da: xr.DataArray, other_array: DataWithCoords) -
             to replace the lat/lon coordinates in sparse_da
 
     Returns:
-        copy of sparse_da with lat/lon coords from other_array
+        xr.DataArray: copy of sparse_da with lat/lon coords from other_array
     """
     if len(sparse_da.lon) != len(other_array.lon):
         raise ValueError("Both arrays must have the same number lon "

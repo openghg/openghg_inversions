@@ -18,18 +18,17 @@ def filter_data_vars_by_prefix(
 ) -> xr.Dataset:
     """Select data variables that match the specified filters.
 
-    For instance, if `var_name_prefixes = "prior"`, then any data variable
-    whose name begins with "prior_" will be selected. The underscore "_" is
-    added by default, but can be changed by specifying `sep`.
+    For instance, if var_name_prefixes = 'prior', then any data variable
+    whose name begins with 'prior_' will be selected. The underscore '_' is
+    added by default, but can be changed by specifying sep.
 
     Args:
-        ds: dataset to filter
-        var_name_prefixes: (list of) prefix(s) to filter data variables by.
-        sep: separator for prefix; default is "_".
+        ds: Dataset to filter.
+        var_name_prefixes: (List of) prefix(s) to filter data variables by.
+        sep: Separator for prefix; default is "_".
 
     Returns:
-        xr.Dataset restricted to data variables whose names match the filter.
-
+        xr.Dataset: Dataset restricted to data variables whose names match the filter.
     """
     if isinstance(var_name_prefixes, str):
         var_name_prefixes = [var_name_prefixes]
@@ -545,7 +544,7 @@ class InversionOutput:
             dt: xr.DataTree constructed using `InversionOutput.to_datatree`
 
         Returns:
-            InversionOutput reconstructed from datatree
+            InversionOutput: reconstructed from datatree
 
         """
         obs_and_errs_ds = dt.obs_and_errors.to_dataset().drop_vars(["site", "time"])
