@@ -330,7 +330,13 @@ def data_processing_surface_notracer(
     ]
     warnings.warn(f"Dropping all variables besides {keep_variables}")
     for i, site in enumerate(sites):
+
         # Get observations data
+        if isinstance(platform[i], str) and platform[i].lower() == "flask":
+            avg_period = None
+        else:
+            avg_period = averaging_period[i]
+
         site_data = get_obs_data(
             site=site,
             species=species,
@@ -338,7 +344,7 @@ def data_processing_surface_notracer(
             start_date=start_date,
             end_date=end_date,
             data_level=obs_data_level[i],
-            average=averaging_period[i],
+            average=avg_period,
             instrument=instrument[i],
             calibration_scale=calibration_scale,
             stores=obs_store,
@@ -370,7 +376,7 @@ def data_processing_surface_notracer(
             )
             continue  # skip this site
 
-        scenario_combined = merged_scenario_data(site_data, footprint_data, flux_dict, bc_data)
+        scenario_combined = merged_scenario_data(site_data, footprint_data, flux_dict, bc_data, platform=platform[i])
         fp_all[site] = scenario_combined
 
         scales[site] = scenario_combined.scale
