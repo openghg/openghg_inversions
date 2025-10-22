@@ -18,7 +18,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg.dataobjects import ObsData, FluxData, FootprintData
-from openghg.retrieve import get_flux, get_footprint, get_obs_surface, search_footprints, search_flux
+from openghg.retrieve import get_flux, get_footprint, get_obs_surface, get_obs_column, search_footprints, search_flux
 from openghg.types import SearchError
 
 
@@ -150,6 +150,7 @@ def get_obs_data(
     average: str | None = None,
     instrument: str | None = None,
     calibration_scale: str | None = None,
+    max_level : int | None = None,
     stores: str | None | Iterable[str | None] = None,
     keep_variables: list | None = None,
 ) -> ObsData | None:
@@ -158,20 +159,33 @@ def get_obs_data(
         stores = [stores]
 
     for store in stores:
-        try:
-            obs_data = get_obs_surface(
-                site=site,
-                species=species.lower(),
-                inlet=inlet,
-                start_date=start_date,
-                end_date=end_date,
-                icos_data_level=data_level,
-                average=average,
-                instrument=instrument,
-                calibration_scale=calibration_scale,
-                store=store,
-                keep_variables=keep_variables,
-            )
+        try: 
+            if inlet=="column":
+                obs_data = get_obs_column(
+                    site=site,
+                    species=species.lower(),
+                    inlet=inlet,
+                    start_date=start_date,
+                    end_date=end_date,
+                    max_level=max_level,
+                    average=average,
+                    instrument=instrument,
+                    store=store,
+                )
+            else:
+                obs_data = get_obs_surface(
+                    site=site,
+                    species=species.lower(),
+                    inlet=inlet,
+                    start_date=start_date,
+                    end_date=end_date,
+                    icos_data_level=data_level,
+                    average=average,
+                    instrument=instrument,
+                    calibration_scale=calibration_scale,
+                    store=store,
+                    keep_variables=keep_variables,
+                )
         except SearchError:
             print(
                 f"\nNo obs data found for {site} with inlet {inlet} and instrument {instrument} in store {store}."
