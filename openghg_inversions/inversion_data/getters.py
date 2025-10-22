@@ -150,6 +150,7 @@ def get_obs_data(
     average: str | None = None,
     instrument: str | None = None,
     calibration_scale: str | None = None,
+    max_level : int | None = None,
     stores: str | None | Iterable[str | None] = None,
     keep_variables: list | None = None,
 ) -> ObsData | None:
@@ -166,7 +167,7 @@ def get_obs_data(
                     inlet=inlet,
                     start_date=start_date,
                     end_date=end_date,
-                    max_level=15,
+                    max_level=max_level,
                     average=average,
                     instrument=instrument,
                     store=store,

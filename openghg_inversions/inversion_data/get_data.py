@@ -163,6 +163,7 @@ def data_processing_surface_notracer(
     platform: list[str | None] | str | None = None,
     inlet: list[str | None] | str | None = None,
     instrument: list[str | None] | str | None = None,
+    max_level: list[int | None] | int | None = None,
     calibration_scale: str | None = None,
     met_model: list[str | None] | str | None = None,
     fp_model: str | None = None,
@@ -277,6 +278,7 @@ def data_processing_surface_notracer(
     nsites = len(sites)
     inlet = convert_to_list(inlet, nsites, "inlet")
     instrument = convert_to_list(instrument, nsites, "instrument")
+    max_level = convert_to_list(max_level, nsites, "max_level")
     fp_height = convert_to_list(fp_height, nsites, "fp_height")
     obs_data_level = convert_to_list(obs_data_level, nsites, "obs_data_level")
     met_model = convert_to_list(met_model, nsites, "met_model")
@@ -345,6 +347,7 @@ def data_processing_surface_notracer(
             average=averaging_period[i],
             instrument=instrument[i],
             calibration_scale=calibration_scale,
+            max_level=max_level[i],
             stores=obs_store,
             keep_variables=keep_variables,
         )
