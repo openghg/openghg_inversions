@@ -62,6 +62,7 @@ def fixedbasisMCMC(
     emissions_name: list[str] | None = None,
     inlet: list[str] | None = None,
     instrument: list[str] | None = None,
+    max_level: int | None = None,
     calibration_scale: str | None = None,
     obs_data_level: list | None = None,
     platform: list[str | None] | str | None = None,
@@ -135,6 +136,7 @@ def fixedbasisMCMC(
             from 'emissions_store'.
         inlet: Specific inlet height for the site (must match number of sites).
         instrument: Specific instrument for the site (must match number of sites).
+        max_level: Maximum atmospheric level to extract. Only needed if using satellite data.
         calibration_scale: Calibration scale to use for measurements data.
         obs_data_level: Data quality level for measurements data. (must match number of sites).
         use_tracer: Option to use inverse model that uses tracers of species
@@ -306,12 +308,12 @@ def fixedbasisMCMC(
                 instrument,
                 averaging_period,
             ) = data_processing_surface_notracer(
-                species,
-                sites,
-                domain,
-                averaging_period,
-                start_date,
-                end_date,
+                species=species,
+                sites=sites,
+                domain=domain,
+                averaging_period=averaging_period,
+                start_date=start_date,
+                end_date= end_date,
                 obs_data_level=obs_data_level,
                 platform=platform,
                 met_model=met_model,
@@ -321,6 +323,7 @@ def fixedbasisMCMC(
                 emissions_name=emissions_name,
                 inlet=inlet,
                 instrument=instrument,
+                max_level=max_level,
                 calibration_scale=calibration_scale,
                 use_bc=use_bc,
                 bc_input=bc_input,
@@ -598,7 +601,7 @@ def fixedbasisMCMC(
         else:
             trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
 
-        trace.to_netcdf(str(trace_path), engine="netcdf4", encoding=ncdf_encoding(trace))
+        trace.to_netcdf(str(trace_path), engine="netcdf4", compress=True)
 
     # Path to save trace
     if save_inversion_output:

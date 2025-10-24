@@ -18,7 +18,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg.dataobjects import ObsData, FluxData, FootprintData
-from openghg.retrieve import get_flux, get_footprint, get_obs_surface, search_footprints, search_flux
+from openghg.retrieve import get_flux, get_footprint, get_obs_column, get_obs_surface, search_footprints, search_flux
 from openghg.types import SearchError
 
 
@@ -146,6 +146,10 @@ def get_obs_data(
     inlet: str | None,
     start_date: str,
     end_date: str,
+    domain: str | None = None,
+    platform : str | None = None,
+    satellite : str | None = None,
+    max_level : int | None = None,
     data_level: str | None = None,
     average: str | None = None,
     instrument: str | None = None,
@@ -154,24 +158,55 @@ def get_obs_data(
     keep_variables: list | None = None,
 ) -> ObsData | None:
     """Try to retrieve obs. data from listed stores."""
+
+    if platform == "satellite":
+        if max_level is None:
+            raise AttributeError(
+                "If you are using column-based data (i.e. platform is 'satellite' or 'site-column'), you need to pass max_level"
+            )
+            
     if stores is None or isinstance(stores, str):
         stores = [stores]
 
     for store in stores:
         try:
-            obs_data = get_obs_surface(
-                site=site,
-                species=species.lower(),
-                inlet=inlet,
-                start_date=start_date,
-                end_date=end_date,
-                icos_data_level=data_level,
-                average=average,
-                instrument=instrument,
-                calibration_scale=calibration_scale,
-                store=store,
-                keep_variables=keep_variables,
-            )
+            if platform == "satellite":
+                # current convention: for satellite data, the site name
+                # has format satellitename-obs_region
+                # or format satellitename-obs_region-selection
+                split_site_name = site.split("-")
+                satellite = split_site_name[0]
+                obs_region = split_site_name[1]
+                if len(split_site_name) == 3:
+                    selection = split_site_name[2]
+                else:
+                    selection = None
+
+                obs_data = get_obs_column(
+                    species=species,
+                    max_level=max_level,
+                    satellite=satellite,
+                    platform = "satellite", 
+                    domain=domain,
+                    selection=selection,
+                    start_date=start_date,
+                    end_date=end_date,
+                    store=store,
+                )
+            else:
+                obs_data = get_obs_surface(
+                    site=site,
+                    species=species.lower(),
+                    inlet=inlet,
+                    start_date=start_date,
+                    end_date=end_date,
+                    icos_data_level=data_level,
+                    average=average,
+                    instrument=instrument,
+                    calibration_scale=calibration_scale,
+                    store=store,
+                    keep_variables=keep_variables,
+                )
         except SearchError:
             print(
                 f"\nNo obs data found for {site} with inlet {inlet} and instrument {instrument} in store {store}."
@@ -210,10 +245,12 @@ def get_footprint_to_match(
     obs: ObsData,
     domain: str,
     model: str | None = None,
+    platform : str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
     met_model: str | None = None,
     fp_species: str | None = None,
+    fp_height: str | None = None,
     store: str | None = None,
     averaging_period: str | None = None,
     tolerance: float = 10.0,
@@ -226,6 +263,7 @@ def get_footprint_to_match(
     end_date = end_date or obs._end_date
 
     # get available footprint heights
+    met_model = met_model or "not_set"  # replace None with 'not_set'
     fp_kwargs = {
         "site": site,
         "species": species,
@@ -236,6 +274,32 @@ def get_footprint_to_match(
         "start_date": start_date,
         "end_date": end_date,
     }
+
+    if platform == "satellite":
+        # current convention: for satellite data, the site name
+        # has format satellitename-obs_region
+        # or format satellitename-obs_region-selection
+        split_site_name = site.split("-")
+        satellite = split_site_name[0]
+        obs_region = split_site_name[1]
+        if len(split_site_name) == 3:
+            selection = split_site_name[2]
+        else:
+            selection = None
+
+        # get available footprint heights
+        fp_kwargs = {
+            "domain": domain,
+            "satellite": satellite,
+            "obs_region": obs_region,
+            "inlet": fp_height,
+            "model": model,
+            "met_model": met_model,
+            "store": store,
+            "start_date": start_date,
+            "end_date": end_date,
+        }
+
     results = search_footprints(**fp_kwargs)
 
     # check that we got results with inlet values
@@ -316,14 +380,15 @@ def get_footprint_to_match(
 
 
 def get_footprint_data(
-    site: str,
     domain: str,
-    fp_height: str | None,
     start_date: str,
     end_date: str,
     model: str | None,
     met_model: str | None,
     fp_species: str | None,
+    fp_height: str | None,
+    site: str | None = None,
+    platform : str | None = None,
     averaging_period: str | None = None,
     obs_data: ObsData | None = None,
     stores: str | None | Iterable[str | None] = None,
@@ -336,35 +401,63 @@ def get_footprint_data(
     """
     # if fp_height is 'auto', use `get_footprint_to_match`
     # otherwise, use `get_footprint`
-    if fp_height == "auto":
-        if obs_data is None:
-            raise ValueError("If `fp_height` is 'auto', you must provide `obs_data`.")
+    satellite = None
+    obs_region = None
+    try:
+        if fp_height == "auto":
+            if obs_data is None:
+                raise ValueError("If `fp_height` is 'auto', you must provide `obs_data`.")
 
-        def get_func(store):
-            return get_footprint_to_match(
-                obs_data,
-                domain=domain,
-                start_date=start_date,
-                end_date=end_date,
-                model=model,
-                met_model=met_model,
-                store=store,
-                fp_species=fp_species,
-                averaging_period=averaging_period,
-            )
-    else:
+            def get_func(store):
+                return get_footprint_to_match(
+                    obs_data,
+                    domain=domain,
+                    start_date=start_date,
+                    end_date=end_date,
+                    model=model,
+                    met_model=met_model,
+                    store=store,
+                    fp_species=fp_species,
+                    averaging_period=averaging_period,
+                )
+        elif platform=="satellite":
+            # current convention: for satellite data, the site name
+            # has format satellitename-obs_region
+            # or format satellitename-obs_region-selection
+            split_site_name = site.split("-")
+            satellite = split_site_name[0]
+            obs_region = split_site_name[1]
+            if len(split_site_name) == 3:
+                selection = split_site_name[2]
+            else:
+                selection = None
+            def get_func(store):
+                return get_footprint(domain=domain,
+                    satellite=satellite,
+                    obs_region=obs_region,
+                    inlet=fp_height,
+                    model=model,
+                    start_date=start_date,
+                    end_date=end_date,
+                    species=fp_species,
+                    store=store)
+        else:
 
-        def get_func(store):
-            return get_footprint(
-                site=site,
-                height=fp_height,
-                domain=domain,
-                model=model,
-                met_model=met_model,
-                start_date=start_date,
-                end_date=end_date,
-                store=store,
-                species=fp_species,
+            def get_func(store):
+                return get_footprint(
+                    site=site,
+                    height=fp_height,
+                    domain=domain,
+                    model=model,
+                    met_model=met_model,
+                    start_date=start_date,
+                    end_date=end_date,
+                    store=store,
+                    species=fp_species,
+                )
+    except SearchError:
+        print(
+            f"\nNo obs data found for {site} with inlet {fp_height} and in store {store}."
             )
 
     if stores is None or isinstance(stores, str):
