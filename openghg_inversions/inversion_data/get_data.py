@@ -218,10 +218,10 @@ def data_processing_surface_notracer(
         instrument:
             Specific instrument for the site
             (length must match number of sites)
-      max_level:
-        Maximum atmospheric level to extract. Only needed if using 
-        satellite data. Must be an int 
-        calibration_scale:
+        max_level:
+            Maximum atmospheric level to extract. Only needed if using 
+            satellite data. Must be an int 
+            calibration_scale:
             Convert measurements to defined calibration scale
         met_model:
             Meteorological model used in the LPDM. List must be same length as number of sites.
@@ -283,6 +283,7 @@ def data_processing_surface_notracer(
     met_model = convert_to_list(met_model, nsites, "met_model")
     averaging_period = convert_to_list(averaging_period, nsites, "averaging_period")
     platform = convert_to_list(platform, nsites, "platform")
+    max_level = convert_to_list(max_level, nsites, "max_level")
 
     fp_all = {}
     fp_all[".species"] = species.upper()
@@ -349,7 +350,7 @@ def data_processing_surface_notracer(
             average=averaging_period[i],
             instrument=instrument[i],
             calibration_scale=calibration_scale,
-            max_level=max_level,
+            max_level=max_level[i],
             stores=obs_store,
             keep_variables=keep_variables,
         )
