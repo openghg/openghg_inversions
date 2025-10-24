@@ -343,6 +343,7 @@ def data_processing_surface_notracer(
             inlet=inlet[i],
             start_date=start_date,
             domain=domain,
+            platform=platform[i],
             end_date=end_date,
             data_level=obs_data_level[i],
             average=averaging_period[i],

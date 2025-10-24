@@ -601,7 +601,7 @@ def fixedbasisMCMC(
         else:
             trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
 
-        trace.to_netcdf(str(trace_path), engine="netcdf4", encoding=ncdf_encoding(trace))
+        trace.to_netcdf(str(trace_path), engine="netcdf4", compress=True)
 
     # Path to save trace
     if save_inversion_output:
