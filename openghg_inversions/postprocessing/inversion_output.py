@@ -620,6 +620,7 @@ def make_inv_out_for_fixed_basis_mcmc(
     )
     y_obs_prior_upper_level_factor = xr.DataArray(
         obs_prior_upper_level_factor, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs_prior_upper_level_factor"
+    )
     y_error_repeatability = xr.DataArray(
         obs_repeatability, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror_repeatability"
     )
