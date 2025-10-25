@@ -150,6 +150,8 @@ def paris_concentration_outputs(
         .rename(
             {
                 "y_obs": "Yobs",
+                "y_obs_prior_factor": "Yobss_prior_factor",
+                "y_obs_prior_upper_level_factor": "Yobs_prior_upper_level_factor",
                 "y_obs_repeatability": "uYobs_repeatability",
                 "y_obs_variability": "uYobs_variability",
                 "model_error": "uYmod",

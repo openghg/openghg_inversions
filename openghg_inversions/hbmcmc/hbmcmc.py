@@ -288,6 +288,7 @@ def fixedbasisMCMC(
                 inlet = [s for i, s in enumerate(inlet) if i in keep_i]
                 fp_height = [s for i, s in enumerate(fp_height) if i in keep_i]
                 instrument = [s for i, s in enumerate(instrument) if i in keep_i]
+                max_level = [s for i, s in enumerate(max_level) if i in keep_i]
                 averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
 
                 print(f"\nDropping {dropped_sites} sites as they are not included in the merged data object.\n")
@@ -405,6 +406,8 @@ def fixedbasisMCMC(
 
     # Get inputs ready
     error = np.zeros(0)
+    obs_prior_factor = np.zeros(0)
+    obs_prior_upper_level_factor = np.zeros(0)
     obs_repeatability = np.zeros(0)
     obs_variability = np.zeros(0)
     Hx = np.zeros(0)
@@ -434,6 +437,12 @@ def fixedbasisMCMC(
         obs_variability = np.concatenate((obs_variability, fp_data[site].mf_variability.values))
 
         Y = np.concatenate((Y, fp_data[site].mf.values))
+        if inlet[si]=="column" or platform=="satellite":
+            obs_prior_factor = np.concatenate((obs_prior_factor, fp_data[site].mf_prior_factor.values))
+            obs_prior_upper_level_factor = np.concatenate((obs_prior_upper_level_factor, fp_data[site].mf_prior_upper_level_factor.values))
+        else:
+            obs_prior_factor = np.concatenate((obs_prior_factor, np.zeros(fp_data[site].mf.size)))
+            obs_prior_upper_level_factor = np.concatenate((obs_prior_upper_level_factor, np.zeros(fp_data[site].mf.size)))  
         siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
         if si == 0:
             Ytime = fp_data[site].time.values
@@ -551,6 +560,8 @@ def fixedbasisMCMC(
         "fp_data": fp_data,
         "emissions_name": emissions_name,
         "country_file": country_file,
+        "obs_prior_factor": obs_prior_factor,
+        "obs_prior_upper_level_factor": obs_prior_upper_level_factor,
         "obs_repeatability": obs_repeatability,
         "obs_variability": obs_variability,
         "min_error": min_error,
@@ -615,6 +626,8 @@ def fixedbasisMCMC(
             Y=Y,
             Ytime=Ytime,
             error=error,
+            obs_prior_factor=obs_prior_factor,
+            obs_prior_upper_level_factor=obs_prior_upper_level_factor,
             obs_repeatability=obs_repeatability,
             obs_variability=obs_variability,
             site_indicator=siteindicator,
@@ -636,6 +649,8 @@ def fixedbasisMCMC(
             Y=Y,
             Ytime=Ytime,
             error=error,
+            obs_prior_factor=obs_prior_factor,
+            obs_prior_upper_level_factor=obs_prior_upper_level_factor,
             obs_repeatability=obs_repeatability,
             obs_variability=obs_variability,
             site_indicator=siteindicator,
@@ -658,6 +673,8 @@ def fixedbasisMCMC(
             Y=Y,
             Ytime=Ytime,
             error=error,
+            obs_prior_factor=obs_prior_factor,
+            obs_prior_upper_level_factor=obs_prior_upper_level_factor,
             obs_repeatability=obs_repeatability,
             obs_variability=obs_variability,
             site_indicator=siteindicator,
@@ -685,6 +702,8 @@ def fixedbasisMCMC(
             Y=Y,
             Ytime=Ytime,
             error=error,
+            obs_prior_factor=obs_prior_factor,
+            obs_prior_upper_level_factor=obs_prior_upper_level_factor,
             obs_repeatability=obs_repeatability,
             obs_variability=obs_variability,
             site_indicator=siteindicator,
