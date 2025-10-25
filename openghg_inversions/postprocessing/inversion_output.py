@@ -664,6 +664,8 @@ def make_inv_out_for_fixed_basis_mcmc(
     return InversionOutput(
         obs=y_obs,
         obs_err=y_error,
+        obs_prior_factor=y_obs_prior_factor,
+        obs_prior_upper_level_factor=y_obs_prior_upper_level_factor,
         obs_repeatability=y_error_repeatability,
         obs_variability=y_error_variability,
         site_indicators=site_indicator_da,
