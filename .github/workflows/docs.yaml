@@ -1,24 +1,48 @@
-name: Build & Deploy Docs
+name: Build & Deploy Docs (devel)
 
 on:
   push:
-    branches: [main]
+    branches:
+      - devel
+    paths:
+      - 'docs/**'
+      - 'tox.ini'
+      - 'pyproject.toml'
+      - 'setup.cfg'
+      - 'setup.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
 
 jobs:
   docs:
     runs-on: ubuntu-latest
+    concurrency:
+      group: docs-deploy
+      cancel-in-progress: true
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v3
         with:
           python-version: '3.11'
-      - name: Install tox
-        run: pip install tox
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip tox
+
       - name: Build docs using tox
         run: tox -e docs
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: docs/_build/html
+          publish_branch: gh-pages
