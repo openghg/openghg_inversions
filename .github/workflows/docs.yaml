@@ -42,13 +42,13 @@ jobs:
         
       - name: Show built docs (debug)
         run: |
-          echo "Listing docs/_build/html (if present):"
-          if [ -d docs/_build/html ]; then
-            find docs/_build/html -maxdepth 3 -type f -print || true
+          echo "Listing docs/_build/ (if present):"
+          if [ -d docs/_build/ ]; then
+            find docs/_build/ -maxdepth 3 -type f -print || true
             echo "Total files:"
-            find docs/_build/html -type f | wc -l
+            find docs/_build/ -type f | wc -l
           else
-            echo "Directory docs/_build/html does not exist"
+            echo "Directory docs/_build/ does not exist"
           fi
 
       - name: Upload built docs artifact (for inspection)
