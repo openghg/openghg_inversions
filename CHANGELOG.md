@@ -2,6 +2,8 @@
 
 # Unreleased
 
+# Version 0.5.0
+
 ## Model updates
 - Passing `platform="flask"` for obs data (same format as e.g. inlet or averaging period) will 1) prevent the data from being resampled, and 2) tell ModelScenario to align the footprints to the obs without resampling. If you want to resample flask data, use `platform=None`. [#PR 322](https://github.com/openghg/openghg_inversions/pull/322)
 
