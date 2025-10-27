@@ -39,6 +39,31 @@ jobs:
 
       - name: Build docs using tox
         run: tox -e docs
+        
+      - name: Show built docs (debug)
+        run: |
+          echo "Listing docs/_build/html (if present):"
+          if [ -d docs/_build/html ]; then
+            find docs/_build/html -maxdepth 3 -type f -print || true
+            echo "Total files:"
+            find docs/_build/html -type f | wc -l
+          else
+            echo "Directory docs/_build/html does not exist"
+          fi
+
+      - name: Upload built docs artifact (for inspection)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-docs
+          path: docs/_build/html
+
+      - name: Fail if publish dir empty
+        run: |
+          if [ ! -d docs/_build/html ] || [ -z "$(ls -A docs/_build/html 2>/dev/null)" ]; then
+            echo "ERROR: publish_dir docs/_build/html is empty or missing. Aborting deploy."
+            exit 1
+          fi
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
