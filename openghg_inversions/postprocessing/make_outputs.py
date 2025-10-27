@@ -21,22 +21,22 @@ def make_flux_outputs(
 
     Args:
         inv_out: InversionOutput containing MCMC traces.
-        stats: list of stats to use. If `None`, the default for
-          `calculate_stats` is used, which is "mean" and "quantiles". See the
-          `postprocessing.stats` submodule for more options.
-        stats_args: dict of arguments to be passed to stats functions. If a key
-          in this dict is the name of an argument for a stats function, then the
-          value for this key will be passed to the stats function. To pass an
-          option to a specific stats function, write the key in the form `<stat
-          function name>__<key>`, with a double underscore.
-            For instance, `stats_args = {"mode_kde__chunk_size": 20}` would pass the
-          argument `chunk_size = 20` to the stat function `mode_kde`, and no others.
+        stats: List of stats to use. If None, the default for
+            calculate_stats is used, which is "mean" and "quantiles". See the
+            postprocessing.stats submodule for more options.
+        stats_args: Dict of arguments to be passed to stats functions. If a key
+            in this dict is the name of an argument for a stats function, then the
+            value for this key will be passed to the stats function. To pass an
+            option to a specific stats function, write the key in the form "<stat
+            function name>__<key>", with a double underscore.
+            For instance, stats_args = {"mode_kde__chunk_size": 20} would pass the
+            argument chunk_size = 20 to the stat function mode_kde, and no others.
         include_scale_factors: If True, report stats for scale factors, in
-          addition to stats for fluxes (which are calculated by transforming the
-          scale factor stats to the lat/lon grid using the prior flux).
+            addition to stats for fluxes (which are calculated by transforming the
+            scale factor stats to the lat/lon grid using the prior flux).
         report_flux_on_inversion_grid: If True, report fluxes by basis function,
-          without incorporating the prior flux. Note: we do not actually optimise
-          for this quantity, since the prior flux is used in the forward model.
+            without incorporating the prior flux. Note: we do not actually optimise
+            for this quantity, since the prior flux is used in the forward model.
 
     Returns:
         xr.Dataset with computed flux stats.
@@ -158,18 +158,18 @@ def make_concentration_outputs(
 
     Args:
         inv_out: InversionOutput containing MCMC traces.
-        stats: list of stats to use. If `None`, the default for
-          `calculate_stats` is used, which is "mean" and "quantiles". See the
-          `postprocessing.stats` submodule for more options.
-        stats_args: dict of arguments to be passed to stats functions. If a key
-          in this dict is the name of an argument for a stats function, then the
-          value for this key will be passed to the stats function. To pass an
-          option to a specific stats function, write the key in the form `<stat
-          function name>__<key>`, with a double underscore.
-            For instance, `stats_args = {"mode_kde__chunk_size": 20}` would pass the
-          argument `chunk_size = 20` to the stat function `mode_kde`, and no others.
-        combine_bc_and_offset: if True, the offset is added to the baseline (before stats
-          are calculated.)
+        stats: List of stats to use. If None, the default for
+            calculate_stats is used, which is "mean" and "quantiles". See the
+            postprocessing.stats submodule for more options.
+        stats_args: Dict of arguments to be passed to stats functions. If a key
+            in this dict is the name of an argument for a stats function, then the
+            value for this key will be passed to the stats function. To pass an
+            option to a specific stats function, write the key in the form "<stat
+            function name>__<key>", with a double underscore.
+            For instance, stats_args = {"mode_kde__chunk_size": 20} would pass the
+            argument chunk_size = 20 to the stat function mode_kde, and no others.
+        combine_bc_and_offset: If True, the offset is added to the baseline (before stats
+            are calculated).
 
     Returns:
         xr.Dataset with computed flux stats.
@@ -219,26 +219,26 @@ def make_country_outputs(
     """Calculate country emission stats.
 
     Args:
-        inv_out: InversionOutput containing MCMC traces
-        country_file: path to country definition file. If `None`, the default
-          country file location and the domain of the InversionOutput will be used
-          to try to find a suitable country file.
-        country_regions: dict mapping country region names (e.g. "BENELUX") to a
-          list of (country codes) of the countries comprising that regions (e.g.
-          `["BEL", "NLD", "LUX"]`).
-        stats: list of stats to use. If `None`, the default for
-          `calculate_stats` is used, which is "mean" and "quantiles". See the
-          `postprocessing.stats` submodule for more options.
-        stats_args: dict of arguments to be passed to stats functions. If a key
-          in this dict is the name of an argument for a stats function, then the
-          value for this key will be passed to the stats function. To pass an
-          option to a specific stats function, write the key in the form `<stat
-          function name>__<key>`, with a double underscore.
-            For instance, `stats_args = {"mode_kde__chunk_size": 20}` would pass the
-          argument `chunk_size = 20` to the stat function `mode_kde`, and no others.
+        inv_out: InversionOutput containing MCMC traces.
+        country_file: Path to country definition file. If None, the default
+            country file location and the domain of the InversionOutput will be used
+            to try to find a suitable country file.
+        country_regions: Dict mapping country region names (e.g. "BENELUX") to a
+            list of (country codes) of the countries comprising that regions (e.g.
+            ["BEL", "NLD", "LUX"]).
+        stats: List of stats to use. If None, the default for
+            calculate_stats is used, which is "mean" and "quantiles". See the
+            postprocessing.stats submodule for more options.
+        stats_args: Dict of arguments to be passed to stats functions. If a key
+            in this dict is the name of an argument for a stats function, then the
+            value for this key will be passed to the stats function. To pass an
+            option to a specific stats function, write the key in the form "<stat
+            function name>__<key>", with a double underscore.
+            For instance, stats_args = {"mode_kde__chunk_size": 20} would pass the
+            argument chunk_size = 20 to the stat function mode_kde, and no others.
         country_code: If set to "alpha2" or "alpha3", country names will be
-          converted to two or three digit country codes, respectively. Country
-          region definitions should use the same type of code as specified here.
+            converted to two or three digit country codes, respectively. Country
+            region definitions should use the same type of code as specified here.
 
     Returns:
         xr.Dataset containing statistics for the specified countries and regions.

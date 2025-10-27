@@ -22,7 +22,6 @@ from openghg.types import SearchError
 from openghg.util import extract_float
 
 from openghg_inversions.inversion_data.getters import (
-    convert_bc_units,
     get_flux_data,
     get_footprint_data,
     get_obs_data,
@@ -101,20 +100,23 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
 
         if err0.any():
             percent0 = 100 * err0.mean()
-            logger.warning("`mf_error` is zero/nan for %.2f percent of times at site %s.", percent0, site)
+            logger.warning(
+                (
+                    "`mf_error` is zero/nan for %.2f percent of times at site %s;"
+                    "filling with max(median(mf_error), std(mf))."
+                ),
+                percent0,
+                site,
+            )
 
-            if percent0 > 10:
-                mf_err_da = ds["mf_error"].as_numpy()  # load into memory to avoid Dask issues
-                fill_value = np.nanmax(
-                    [
-                        mf_err_da.where(mf_err_da != 0).dropna(dim="time").median(),
-                        ds["mf"].std(dim="time"),
-                    ]
-                )
-                ds["mf_error"] = mf_err_da.where(mf_err_da != 0, fill_value)
-                logger.warning(
-                    "More than 10% of `mf_error` is zero/nan, it is thus filled with the max of median `mf_error` and stdev of `mf`."
-                )
+            mf_err_da = ds["mf_error"].as_numpy()  # load into memory to avoid Dask issues
+            fill_value = np.nanmax(
+                [
+                    mf_err_da.where(mf_err_da != 0).dropna(dim="time").median(),
+                    ds["mf"].std(dim="time"),
+                ]
+            )
+            ds["mf_error"] = mf_err_da.where(mf_err_da != 0, fill_value)
             info_msg = (
                 "If `averaging_period` matches the frequency of the obs data, then `mf_variability` "
                 "will be zero. Try setting `averaging_period = None`."
@@ -161,6 +163,7 @@ def data_processing_surface_notracer(
     platform: list[str | None] | str | None = None,
     inlet: list[str | None] | str | None = None,
     instrument: list[str | None] | str | None = None,
+    max_level: int | None = None,
     calibration_scale: str | None = None,
     met_model: list[str | None] | str | None = None,
     fp_model: str | None = None,
@@ -192,6 +195,7 @@ def data_processing_surface_notracer(
             List of strings containing measurement
             station/site abbreviations
             e.g. ["MHD", "TAC"]
+            NOTE: for satellite, pass as "satellitename-obs_region" eg "GOSAT-BRAZIL" and pass corresponding platform as "satellite"
         domain:
             Model domain region of interest
             e.g. "EUROPE"
@@ -214,6 +218,9 @@ def data_processing_surface_notracer(
         instrument:
             Specific instrument for the site
             (length must match number of sites)
+      max_level:
+        Maximum atmospheric level to extract. Only needed if using 
+        satellite data. Must be an int 
         calibration_scale:
             Convert measurements to defined calibration scale
         met_model:
@@ -253,20 +260,16 @@ def data_processing_surface_notracer(
             Optional name used to create merged data name.
 
     Returns:
-        fp_all:
-            dictionnary containing flux data (key ".flux"), bc data (key ".bc"),
-            and observations data (site short name as key)
-        sites:
-            Updated list of sites. All put in upper case and if data was not extracted
-            correctly for any sites, drop these from the rest of the inversion.
-        inlet:
-            List of inlet height for the updated list of sites
-        fp_height:
-            List of footprint height for the updated list of sites
-        instrument:
-            List of instrument for the updated list of sites
-        averaging_period:
-            List of averaging_period for the updated list of sites
+        tuple: containing
+
+            - fp_all: dictionary containing flux data (key ".flux"), bc data (key ".bc"),
+              and observations data (site short name as key)
+            - sites: Updated list of sites. All put in upper case and if data was not extracted
+              correctly for any sites, drop these from the rest of the inversion.
+            - inlet: List of inlet height for the updated list of sites
+            - fp_height: List of footprint height for the updated list of sites
+            - instrument: List of instrument for the updated list of sites
+            - averaging_period: List of averaging_period for the updated list of sites
 
     """
     sites = [site.upper() for site in sites]
@@ -312,9 +315,7 @@ def data_processing_surface_notracer(
         except SearchError as e:
             raise SearchError("Could not find matching boundary conditions.") from e
         else:
-            fp_all[".bc"] = convert_bc_units(
-                bc_data, 1.0
-            )  # transpose coordinates, keep for consistency with old format
+            fp_all[".bc"] = bc_data
     else:
         bc_data = None
 
@@ -335,16 +336,20 @@ def data_processing_surface_notracer(
     warnings.warn(f"Dropping all variables besides {keep_variables}")
     for i, site in enumerate(sites):
         # Get observations data
+        # TODO: update this to get column data if platform is satellite
         site_data = get_obs_data(
             site=site,
             species=species,
             inlet=inlet[i],
             start_date=start_date,
+            domain=domain,
+            platform=platform[i],
             end_date=end_date,
             data_level=obs_data_level[i],
             average=averaging_period[i],
             instrument=instrument[i],
             calibration_scale=calibration_scale,
+            max_level=max_level,
             stores=obs_store,
             keep_variables=keep_variables,
         )
@@ -357,6 +362,7 @@ def data_processing_surface_notracer(
         footprint_data = get_footprint_data(
             site=site,
             domain=domain,
+            platform=platform[i],
             fp_height=fp_height[i],
             start_date=start_date,
             end_date=end_date,
@@ -373,16 +379,16 @@ def data_processing_surface_notracer(
                 f"Check these values.\nContinuing model run without {site}.\n",
             )
             continue  # skip this site
-
-        scenario_combined = merged_scenario_data(site_data, footprint_data, flux_dict, bc_data)
+        scenario_combined = merged_scenario_data(obs_data=site_data, footprint_data=footprint_data, flux_dict=flux_dict, bc_data=bc_data, platform=platform[i], max_level=max_level)
         fp_all[site] = scenario_combined
 
-        scales[site] = scenario_combined.scale
         units[site] = scenario_combined.mf.attrs.get("units")
-        check_scales.add(scenario_combined.scale)
+
+        if not "satellite" in platform:
+            scales[site] = scenario_combined.scale
+            check_scales.add(scenario_combined.scale)
 
         site_indices_to_keep.append(i)
-
     if len(site_indices_to_keep) == 0:
         raise SearchError("No site data found. Exiting process.")
 
@@ -394,7 +400,8 @@ def data_processing_surface_notracer(
         instrument = [instrument[s] for s in site_indices_to_keep]
         averaging_period = [averaging_period[s] for s in site_indices_to_keep]
 
-    # check for consistency of calibration scales
+    # if "satellite" not in footprint_data.metadata:
+        # check for consistency of calibration scales
     if len(check_scales) > 1:
         msg = f"Not all sites using the same calibration scale: {len(check_scales)} scales found."
         logger.warning(msg)
@@ -415,9 +422,6 @@ def data_processing_surface_notracer(
             unit = extract_float(unit)
         fp_all[".units"] = unit
 
-    # need to convert bc units because this bc data will be used again in `bc_sensitivity`
-    if use_bc:
-        fp_all[".bc"] = convert_bc_units(fp_all[".bc"], fp_all[".units"])
 
     # create `mf_error`
     add_obs_error(sites, fp_all, add_averaging_error=averagingerror)

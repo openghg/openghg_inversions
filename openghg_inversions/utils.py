@@ -55,23 +55,19 @@ def open_ds(
     chunks: dict | None = None,
     combine: Literal["by_coords", "nested"] = "by_coords",
 ) -> xr.Dataset:
-    """Function efficiently opens xarray Datasets.
+    """Efficiently open xarray Datasets.
 
     Args:
-      path: path to file to open
-      chunks (dict, optional):
-        size of chunks for each dimension
-        e.g. {'lat': 50, 'lon': 50}
-        opens dataset with dask, such that it is opened 'lazily'
-        and all of the data is not loaded into memory
-        defaults to None - dataset is opened with out dask
-      combine (str, optional):
-        Way in which the data should be combined (if using chunks), either:
-        'by_coords': order the datasets before concatenating (default)
-        'nested': concatenate datasets in the order supplied
+        path: Path to file to open.
+        chunks: Size of chunks for each dimension, e.g. {'lat': 50, 'lon': 50}.
+            Opens dataset with dask, such that it is opened 'lazily' and all of the data 
+            is not loaded into memory. Defaults to None - dataset is opened without dask.
+        combine: Way in which the data should be combined (if using chunks), either:
+            'by_coords': order the datasets before concatenating (default)
+            'nested': concatenate datasets in the order supplied.
 
     Returns:
-        xarray Dataset
+        xr.Dataset: Opened xarray Dataset.
     """
     if chunks is not None:
         ds = xr.open_mfdataset(path, chunks=chunks, combine=combine)
@@ -89,23 +85,23 @@ def read_netcdfs(
     chunks: dict | None = None,
     verbose: bool = True,
 ) -> xr.Dataset:
-    """The read_netcdfs function uses xarray to open sequential netCDF files and
-    and concatenates them along the specified dimension.
+    """Use xarray to open sequential netCDF files and concatenate them along the specified dimension.
+    
     Note: this function makes sure that file is closed after open_dataset call.
 
     Args:
         files: List of netCDF filenames.
         dim: Dimension of netCDF to use for concatenating the files. Default = "time".
-        chunks: size of chunks for each dimension
-            e.g. {'lat': 50, 'lon': 50}
-            opens dataset with dask, such that it is opened 'lazily'
-            and all of the data is not loaded into memory
-            defaults to None - dataset is opened with out dask
+        chunks: Size of chunks for each dimension, e.g. {'lat': 50, 'lon': 50}.
+            Opens dataset with dask, such that it is opened 'lazily' and all of the data 
+            is not loaded into memory. Defaults to None - dataset is opened without dask.
+        verbose: If True, print progress information.
 
     Returns:
-        xarray.Dataset: All files open as one concatenated xarray.Dataset object
+        xr.Dataset: All files open as one concatenated xarray.Dataset object.
 
-    # TODO: this could be done more efficiently with xr.open_mfdataset (most likely)
+    Note:
+        This could be done more efficiently with xr.open_mfdataset (most likely).
     """
     if verbose:
         print("Reading and concatenating files ...")
@@ -205,14 +201,14 @@ def get_country(domain: str, country_file: str | Path | None = None):
 
 
 def areagrid(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
-    """Calculates grid of areas (m^2), given arrays of latitudes and longitudes.
+    """Calculate grid of areas (m^2), given arrays of latitudes and longitudes.
 
     Args:
-        lat: 1D array of latitudes
-        lon: 1D array of longitudes
+        lat: 1D array of latitudes.
+        lon: 1D array of longitudes.
 
     Returns:
-        area: 2D array of areas of of size lat x lon
+        np.ndarray: 2D array of areas of size lat x lon.
 
     Examples:
         >>> import utils.areagrid

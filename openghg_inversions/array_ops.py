@@ -4,17 +4,19 @@ The functions here are not specific to OpenGHG inversions: they
 add functionality missing from xarray. These functions should accept
 xarray Datasets and DataArrays, and return either a Dataset or a DataArray.
 
-
-`get_xr_dummies` applies pandas `get_dummies` to xarray DataArrays.
-
-`sparse_xr_dot` multiplies a Dataset or DataArray by a DataArray
- with sparse underlying array. The built-in xarray functionality doesn't
-work correctly.
+Functions
+---------
+get_xr_dummies
+    Applies pandas ``get_dummies`` to xarray DataArrays.
+sparse_xr_dot
+    Multiplies a Dataset or DataArray by a DataArray with sparse 
+    underlying array. The built-in xarray functionality doesn't work correctly.
 """
 
 from typing import Any, overload, TypeVar
 from collections.abc import Sequence
 
+from dask.array.core import Array as DaskArray
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -49,8 +51,8 @@ def get_xr_dummies(
 
     Returns:
         Dummy matrix corresponding to the input vector. Its dimensions are the same as the
-    input DataArray, plus an additional "categories" dimension, which  has one value for each
-    distinct value in the input DataArray.
+            input DataArray, plus an additional "categories" dimension, which  has one value for each
+            distinct value in the input DataArray.
     """
     # stack if `da` is not one dimensional
     stack_dim = ""
@@ -58,7 +60,7 @@ def get_xr_dummies(
         stack_dim = "".join([str(dim) for dim in da.dims])
         da = da.stack({stack_dim: da.dims})
 
-    dummies = pd.get_dummies(da.values, dtype=int, sparse=return_sparse)
+    dummies = pd.get_dummies(da.values, dtype="float32", sparse=return_sparse)
 
     # put dummies into DataArray with the right coords and dims
     values = COO.from_scipy_sparse(dummies.sparse.to_coo()) if return_sparse else dummies.values
@@ -72,14 +74,14 @@ def get_xr_dummies(
 
 
 @overload
-def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray) -> xr.DataArray: ...
+def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray, dim: list[str] | None = None) -> xr.DataArray: ...
 
 
 @overload
-def sparse_xr_dot(da1: xr.DataArray, da2: xr.Dataset) -> xr.Dataset: ...
+def sparse_xr_dot(da1: xr.DataArray, da2: xr.Dataset, dim: list[str] | None = None) -> xr.Dataset: ...
 
 
-def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray | xr.Dataset) -> xr.DataArray | xr.Dataset:
+def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray | xr.Dataset, dim: list[str] | None = None) -> xr.DataArray | xr.Dataset:
     """Compute the matrix "dot" of a tuple of DataArrays with sparse.COO values.
 
     This multiplies and sums over all common dimensions of the input DataArrays, and
@@ -94,18 +96,24 @@ def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray | xr.Dataset) -> xr.DataA
 
     Args:
         da1, da2: xr.DataArrays to multiply and sum along common dimensions.
+        dim: optional list of dimensions to sum over; if `None`, then all common
+          dimensions are summed over.
 
     Returns:
-        xr.Dataset or xr.DataArray containing the result of matrix/tensor multiplication.
-        The type that is returned will be the same as the type of `da2`.
+        xr.Dataset or xr.DataArray: containing the result of matrix/tensor multiplication.
+            The type that is returned will be the same as the type of `da2`.
     """
     if isinstance(da1.data, SparseArray) and not is_chunked_array(da1):  # type: ignore
         da1 = da1.chunk()
 
     if isinstance(da2, xr.DataArray):
-        return da1 @ da2
+        if dim is None:
+            return da1 @ da2
+        return xr.dot(da1, da2, dim=dim)
 
-    return da2.map(lambda x: da1 @ x)
+    if dim is None:
+        return da2.map(lambda x: da1 @ x)
+    return da2.map(lambda x: xr.dot(da1, x, dim=dim))
 
 
 def align_sparse_lat_lon(sparse_da: xr.DataArray, other_array: DataWithCoords) -> xr.DataArray:
@@ -119,7 +127,7 @@ def align_sparse_lat_lon(sparse_da: xr.DataArray, other_array: DataWithCoords) -
             to replace the lat/lon coordinates in sparse_da
 
     Returns:
-        copy of sparse_da with lat/lon coords from other_array
+        xr.DataArray: copy of sparse_da with lat/lon coords from other_array
     """
     if len(sparse_da.lon) != len(other_array.lon):
         raise ValueError("Both arrays must have the same number lon "
@@ -129,3 +137,25 @@ def align_sparse_lat_lon(sparse_da: xr.DataArray, other_array: DataWithCoords) -
                          f"coordinates: {len(sparse_da.lat)} != {len(other_array.lat)}")
 
     return sparse_da.assign_coords(lat=other_array.lat, lon=other_array.lon)
+
+
+def _sparse_dask_to_dense(da: DaskArray) -> DaskArray:
+    """Convert chunks of dask array from sparse to dense."""
+    return da.map_blocks(lambda arr: arr.todense())  # type: ignore
+
+
+def to_dense(da: xr.DataArray) -> xr.DataArray:
+    """Convert sparse to numpy.
+
+    If the data array has chunks, these are preserved, but the underlying arrays are converted.
+    Does nothing if chunks are already numpy.
+    """
+    if not isinstance(da.data, DaskArray):  # type: ignore
+        return da.as_numpy()
+
+    # check chunk types
+    if isinstance(da.data._meta, SparseArray):
+        # hack to apply the Sparse `todense()` method to chunks
+        return xr.apply_ufunc(_sparse_dask_to_dense, da, dask="allowed")
+
+    return da

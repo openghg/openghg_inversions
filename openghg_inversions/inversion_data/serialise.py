@@ -5,6 +5,7 @@
 - `load_merged_data` restores the `fp_all` dict from these saved formats
 - `make_combined_scenario` converts the `fp_all` dict into a xr.Dataset
 """
+
 import pickle
 from collections import defaultdict
 from pathlib import Path
@@ -327,7 +328,7 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
             else:
                 scenario.attrs[k] = val
 
-        fp_all[site] = scenario.dropna("time")
+        fp_all[site] = scenario.dropna("time", subset=["mf"])
 
     # get fluxes
     fp_all[".flux"] = {}
@@ -348,7 +349,7 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
                 val = "None"
             flux_ds.attrs[k] = val
 
-        fp_all[".flux"][source] = FluxData(data=flux_ds, metadata={})
+        fp_all[".flux"][source] = FluxData(data=flux_ds, metadata={"data_type": "flux"})
 
     try:
         bc_ds = ds[bc_vars]
@@ -356,8 +357,8 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
         pass
     else:
         if "time" not in bc_ds.dims:
-            bc_ds = bc_ds.expand_dims({"time": [ds.time.min().values]}).transpose(..., "time")
-            
+            bc_ds = bc_ds.expand_dims({"time": [ds.time.min().values]})
+
         fp_all[".bc"] = BoundaryConditionsData(data=bc_ds, metadata={})
 
     species = ds.attrs.get("species", None)

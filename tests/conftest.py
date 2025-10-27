@@ -9,9 +9,10 @@ from unittest.mock import patch
 
 import pytest
 from openghg.retrieve import search
-from openghg.standardise import standardise_surface, standardise_bc, standardise_flux, standardise_footprint
+from openghg.standardise import standardise_surface, standardise_bc, standardise_flux, standardise_footprint, standardise_column
 from openghg.types import ObjectStoreError
 import xarray as xr
+import zarr
 
 
 _raw_data_path = Path(".").resolve() / "tests/data/"
@@ -40,28 +41,13 @@ def merged_data_dir(user_data_path):
     return user_data_path / "openghg_inversions_testing_merged_data_dir"
 
 
-@pytest.fixture(scope="session", autouse=True)
-def using_zarr_store():
-    try:
-        current_version = tuple(int(x) for x in version("openghg").split("."))
-    except ValueError:
-        # assume tests are being run on devel
-        return True
-    return current_version >= (0, 8)
-
-
 @pytest.fixture(scope="session")
-def merged_data_file_name(using_zarr_store, openghg_version):
-    if openghg_version >= (0, 13):
-        return "merged_data_test_tac_combined_scenario_v13"
-    elif using_zarr_store:
-        return "merged_data_test_tac_combined_scenario_v8"
-    else:
-        return "merged_data_test_tac_combined_scenario"
+def merged_data_file_name():
+    return "merged_data_test_tac_combined_scenario_v14"
 
 
 @pytest.fixture(scope="session", autouse=True)
-def add_frozen_merged_data(merged_data_dir, merged_data_file_name, using_zarr_store):
+def add_frozen_merged_data(merged_data_dir, merged_data_file_name):
     """Copy merged data from tests/data to temporary merged_data_dir.
 
     Data created/frozen around 15 Apr, 2024.
@@ -71,8 +57,7 @@ def add_frozen_merged_data(merged_data_dir, merged_data_file_name, using_zarr_st
     """
     merged_data_dir.mkdir(exist_ok=True)
 
-    if using_zarr_store and not (merged_data_dir / (merged_data_file_name + ".zarr.zip")).exists():
-        import zarr
+    if not (merged_data_dir / (merged_data_file_name + ".zarr.zip")).exists():
 
         ds = xr.open_dataset(_raw_data_path / (merged_data_file_name + ".nc"))
 
@@ -80,9 +65,6 @@ def add_frozen_merged_data(merged_data_dir, merged_data_file_name, using_zarr_st
             ds.to_zarr(store)
 
         ds.to_zarr(merged_data_dir / (merged_data_file_name + "no_zip" + ".zarr"))
-
-    elif not (merged_data_dir / (merged_data_file_name + ".nc")).exists():
-        shutil.copy(_raw_data_path / (merged_data_file_name + ".nc"), merged_data_dir)
 
 
 bc_basis_function_path = Path(".").resolve() / "bc_basis_functions"
@@ -114,13 +96,14 @@ def country_ds_eastasia(raw_data_path):
     ds = xr.load_dataset(raw_data_path / "country_EASTASIA.nc")
     yield ds
 
+@pytest.fixture
+def southamerica_country_file(raw_data_path):
+    """Provides path to the SOUTHAMERICA countryfile"""
+    return raw_data_path /"satellite"/"country"/ "country_SOUTHAMERICA.nc"
 
 @pytest.fixture(scope="session", autouse=True)
-def session_config_mocker(using_zarr_store, user_data_path) -> Iterator[None]:
-    if using_zarr_store:
-        inversions_test_store_path = user_data_path / "openghg_inversions_zarr_testing_store"
-    else:
-        inversions_test_store_path = user_data_path / "openghg_inversions_testing_store"
+def session_config_mocker(user_data_path) -> Iterator[None]:
+    inversions_test_store_path = user_data_path / "openghg_inversions_testing_store"
 
     mock_config = {
         "object_store": {
@@ -160,10 +143,26 @@ mhd_obs_metadata = {
 mhd_obs_data_path = _raw_data_path / "obs_mhd_ch4_10m_2019-01-01_2019-01-07_data.nc"
 test_data_list.append(TestData(standardise_surface, mhd_obs_metadata, mhd_obs_data_path, "surface"))
 
+## Satellite Column data
+satellite_gosat_obs_metadata = {
+    "source_format": "openghg",
+    "satellite":"gosat",
+    "network": "gosat",
+    "domain":"southamerica",
+    "instrument":"tanso-fts",
+    "species":"ch4",
+}
+satellite_gosat_obs_data_path = _raw_data_path / "satellite"/"column"/"gosat-fts_gosat_20160101_ch4-column.nc"
+test_data_list.append(TestData(standardise_column, satellite_gosat_obs_metadata, satellite_gosat_obs_data_path, "column"))
+
 ## BC data
 bc_metadata = {"species": "ch4", "bc_input": "cams", "domain": "europe", "store": "inversions_tests"}
 bc_data_path = _raw_data_path / "bc_ch4_europe_cams_2019-01-01_2019-12-31_data.nc"
 test_data_list.append(TestData(standardise_bc, bc_metadata, bc_data_path, "boundary_conditions"))
+
+satellite_bc_metadata = {"species": "ch4", "bc_input": "cams", "domain": "southamerica", "store": "inversions_tests"}
+satellite_bc_data_path = _raw_data_path / "satellite"/ "bc" /"ch4_SOUTHAMERICA_201601_CAMS-inversion.nc"
+test_data_list.append(TestData(standardise_bc, satellite_bc_metadata, satellite_bc_data_path, "boundary_conditions"))
 
 ## Footprint data
 tac_footprints_metadata = {
@@ -184,8 +183,21 @@ mhd_footprints_metadata = {
     "source_format": "paris",
     # "metmodel": "ukv",
 }
-mhd_footprints_data_path = _raw_data_path / "footprints_mhd_europe_name_10m_2019-01-01_2019-01-07_data.nc"
+mhd_footprints_data_path = _raw_data_path/"footprints_mhd_europe_name_10m_2019-01-01_2019-01-07_data.nc"
 test_data_list.append(TestData(standardise_footprint, mhd_footprints_metadata, mhd_footprints_data_path, "footprints"))
+
+footprints_satellite_metadata = {
+    "satellite": "GOSAT",
+    "domain": "southamerica",
+    "model": "NAME",
+    "inlet": "column",
+    "source_format": "acrg_org",
+    "obs_region": "brazil",
+    "species": "ch4"
+
+}
+footprints_satellite_data = _raw_data_path /"satellite"/ "footprints" / "GOSAT-BRAZIL-column_SOUTHAMERICA_201601.nc"
+test_data_list.append(TestData(standardise_footprint, footprints_satellite_metadata, footprints_satellite_data, "footprints"))
 
 ## Flux data
 flux_metadata = {"species": "ch4", "source": "total-ukghg-edgar7", "domain": "europe"}
@@ -198,6 +210,10 @@ flux_dim_shuffled_data_path = (
 )
 test_data_list.append(TestData(standardise_flux, flux_dim_shuffle_metadata, flux_dim_shuffled_data_path, "flux"))
 
+flux_satellite_metadata = {"species":"ch4", "source":"SWAMPS",
+                           "domain":"southamerica"}
+flux_satellite_datapath = (_raw_data_path/"satellite"/ "flux"/"ch4_SOUTHAMERICA_2016_SWAMPS-v32-5_Saunois-Annual-Mean.nc")
+test_data_list.append(TestData(standardise_flux, flux_satellite_metadata, flux_satellite_datapath, "flux"))
 
 @pytest.fixture(scope="session", autouse=True)
 def session_object_store(session_config_mocker) -> None:
@@ -282,6 +298,30 @@ def tac_ch4_data_args():
     }
     return data_args
 
+@pytest.fixture(scope="module")
+def satellite_ch4_data_args():
+    data_args = {
+        "species" : "ch4",
+        "sites": ['GOSAT-BRAZIL'], 
+        "averaging_period": ["1H"],
+        "start_date": "2016-01-01",
+        "end_date": "2016-02-01",
+        "platform": ["satellite"],
+        "max_level": 17,
+        "bc_store": "inversions_tests",
+        "obs_store": "inversions_tests",
+        "footprint_store": "inversions_tests",
+        "emissions_store": "inversions_tests",
+        "inlet": ["column"],
+        "instrument": [None],
+        "domain": "SOUTHAMERICA",
+        "fp_height": ["column"],
+        "fp_species": "ch4",
+        "fp_model": None,
+        "emissions_name": ["SWAMPS"],
+        # "met_model": "ukv",
+    }
+    return data_args
 
 @pytest.fixture(scope="module")
 def mhd_and_tac_ch4_data_args():

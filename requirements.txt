@@ -1,6 +1,6 @@
 numpyro[cpu]
 pymc
-xarray >= 2024.10
+xarray >= 2025.06
 pandas
 matplotlib
 scipy
@@ -8,3 +8,5 @@ numpy
 openghg
 sparse
 tfp-nightly
+flox
+opt_einsum

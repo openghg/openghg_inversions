@@ -7,6 +7,12 @@ import getpass
 from pathlib import Path
 
 import numpy as np
+
+# import pytensor before pymc so we can set config values
+import pytensor
+pytensor.config.floatX = "float32"
+pytensor.config.warn_float64 = "warn"
+
 import pymc as pm
 import pandas as pd
 import xarray as xr
@@ -139,10 +145,10 @@ def inferpymc(
     bcprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     sigprior: dict = {"pdf": "uniform", "lower": 0.1, "upper": 3.0},
     nuts_sampler: str = "pymc",
-    nit: int = int(2.5e5),
-    burn: int = 50000,
-    tune: int = int(1.25e5),
-    nchain: int = 2,
+    nit: int = 20000,
+    burn: int = 10000,
+    tune: int = 10000,
+    nchain: int = 4,
     sigma_per_site: bool = True,
     offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
     add_offset: bool = False,
@@ -399,6 +405,15 @@ def inferpymc(
     else:
         Ytrace = posterior_burned.mu + OFFtrace
 
+
+    # truncate trace and sample prior and predictive distributions
+    trace = trace.isel(draw=slice(burn, None))
+    ndraw = nit - burn
+    trace.extend(pm.sample_prior_predictive(ndraw, model))
+    trace.extend(pm.sample_posterior_predictive(trace, model=model, var_names=["y"]))
+
+
+
     result = {
         "xouts": xouts,
         "sigouts": sigouts,
@@ -461,117 +476,78 @@ def inferpymc_postprocessouts(
     use_bc: bool = False,
     min_error: float | np.ndarray = 0.0,
 ) -> xr.Dataset:
-    r"""Takes the output from inferpymc function, along with some other input
-    information, calculates statistics on them and places it all in a dataset.
+    r"""Take the output from inferpymc function along with other input information.
+    
+    Calculates statistics on them and places it all in a dataset.
     Also calculates statistics on posterior emissions for the countries in
     the inversion domain and saves all in netcdf.
 
     Note that the uncertainties are defined by the highest posterior
     density (HPD) region and NOT percentiles (as the tdMCMC code).
     The HPD region is defined, for probability content (1-a), as:
-        1) P(x \in R | y) = (1-a)
-        2) for x1 \in R and x2 \notin R, P(x1|y)>=P(x2|y)
+
+        1) P(x ∈ R | y) = (1-a)
+        2) for x1 ∈ R and x2 ∉ R, P(x1|y)>=P(x2|y)
 
     Args:
-      xouts:
-        MCMC chain for emissions scaling factors for each basis function.
-      sigouts:
-        MCMC chain for model error.
-      convergence:
-        Passed/Failed convergence test as to whether mutliple chains
-        have a Gelman-Rubin diagnostic value <1.05
-      Hx:
-        Transpose of the sensitivity matrix to map emissions to measurement.
-        This is the same as what is given from fp_data[site].H.values, where
-        fp_data is the output from e.g. footprint_data_merge, but where it
-        has been stacked for all sites.
-      Y:
-        Measurement vector containing all measurements
-      error:
-        Measurement error vector, containg a value for each element of Y.
-      Ytrace:
-        Trace of modelled y values calculated from mcmc outputs and H matrices
-      OFFSETtrace:
-        Trace from offsets (if used).
-      step1:
-        Type of MCMC sampler for emissions and boundary condition updates.
-      step2:
-        Type of MCMC sampler for model error updates.
-      xprior:
-        Dictionary containing information about the prior PDF for emissions.
-        The entry "pdf" is the name of the analytical PDF used, see
-        https://docs.pymc.io/api/distributions/continuous.html for PDFs
-        built into pymc3, although they may have to be coded into the script.
-        The other entries in the dictionary should correspond to the shape
-        parameters describing that PDF as the online documentation,
-        e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sigma":1}.
-        Note that the standard deviation should be used rather than the
-        precision. Currently all variables are considered iid.
-      sigprior:
-        Same as xprior but for model error.
-      offsetprior:
-        Same as xprior but for bias offset. Only used is add_offset=True.
-      Ytime:
-        Time stamp of measurements as used by the inversion.
-      siteindicator:
-        Numerical indicator of which site the measurements belong to,
-        same length at Y.
-      sigma_freq_index:
-        Array of integer indexes that converts time into periods
-      domain:
-        Inversion spatial domain.
-      species:
-        Species of interest
-      sites:
-        List of sites in inversion
-      start_date:
-        Start time of inversion "YYYY-mm-dd"
-      end_date:
-        End time of inversion "YYYY-mm-dd"
-      outputname:
-        Unique identifier for output/run name.
-      outputpath:
-        Path to where output should be saved.
-      country_unit_prefix:
-        A prefix for scaling the country emissions. Current options are:
-        'T' will scale to Tg, 'G' to Gg, 'M' to Mg, 'P' to Pg.
-        To add additional options add to acrg_convert.prefix
-        Default is none and no scaling will be applied (output in g).
-      burn:
-        Number of iterations burned in MCMC
-      tune:
-        Number of iterations used to tune step size
-      nchain:
-        Number of independent chains run
-      sigma_per_site:
-        Whether a model sigma value will be calculated for each site independantly (True)
-        or all sites together (False).
-      emissions_name:
-        List with "source" values as used when adding emissions data to the OpenGHG object store.
-      bcprior:
-        Same as xrpior but for boundary conditions.
-      YBCtrace:
-        Trace of modelled boundary condition values calculated from mcmc outputs and Hbc matrices
-      bcouts:
-        MCMC chain for boundary condition scaling factors.
-      Hbc:
-        Same as Hx but for boundary conditions
-      obs_repeatability:
-        Instrument error
-      obs_variability:
-        Error from resampling observations
-      fp_data:
-        Output from footprints_data_merge + sensitivies
-      country_file:
-        Path of country definition file
-      add_offset:
-        Add an offset (intercept) to all sites but the first in the site list. Default False.
-      rerun_file (xarray dataset, optional):
-        An xarray dataset containing the ncdf output from a previous run of the MCMC code.
-      use_bc:
-        When True, use and infer boundary conditions.
-      min_error:
-        Minimum error to use during inversion. Only used if no_model_error is False.
+        xouts: MCMC chain for emissions scaling factors for each basis function.
+        sigouts: MCMC chain for model error.
+        convergence: Passed/Failed convergence test as to whether multiple chains
+            have a Gelman-Rubin diagnostic value <1.05.
+        Hx: Transpose of the sensitivity matrix to map emissions to measurement.
+            This is the same as what is given from fp_data[site].H.values, where
+            fp_data is the output from e.g. footprint_data_merge, but where it
+            has been stacked for all sites.
+        Y: Measurement vector containing all measurements.
+        error: Measurement error vector, containing a value for each element of Y.
+        Ytrace: Trace of modelled y values calculated from mcmc outputs and H matrices.
+        OFFSETtrace: Trace from offsets (if used).
+        step1: Type of MCMC sampler for emissions and boundary condition updates.
+        step2: Type of MCMC sampler for model error updates.
+        xprior: Dictionary containing information about the prior PDF for emissions.
+            The entry "pdf" is the name of the analytical PDF used, see
+            https://docs.pymc.io/api/distributions/continuous.html for PDFs
+            built into pymc3, although they may have to be coded into the script.
+            The other entries in the dictionary should correspond to the shape
+            parameters describing that PDF as the online documentation,
+            e.g. N(1,1**2) would be: xprior={pdf:"normal", "mu":1, "sigma":1}.
+            Note that the standard deviation should be used rather than the
+            precision. Currently all variables are considered iid.
+        sigprior: Same as xprior but for model error.
+        offsetprior: Same as xprior but for bias offset. Only used is add_offset=True.
+        Ytime: Time stamp of measurements as used by the inversion.
+        siteindicator: Numerical indicator of which site the measurements belong to,
+            same length at Y.
+        sigma_freq_index: Array of integer indexes that converts time into periods.
+        domain: Inversion spatial domain.
+        species: Species of interest.
+        sites: List of sites in inversion.
+        start_date: Start time of inversion "YYYY-mm-dd".
+        end_date: End time of inversion "YYYY-mm-dd".
+        outputname: Unique identifier for output/run name.
+        outputpath: Path to where output should be saved.
+        country_unit_prefix: A prefix for scaling the country emissions. Current options are:
+            'T' will scale to Tg, 'G' to Gg, 'M' to Mg, 'P' to Pg.
+            To add additional options add to acrg_convert.prefix
+            Default is none and no scaling will be applied (output in g).
+        burn: Number of iterations burned in MCMC
+        tune: Number of iterations used to tune step size
+        nchain: Number of independent chains run
+        sigma_per_site: Whether a model sigma value will be calculated for each site independantly (True)
+            or all sites together (False).
+        emissions_name: List with "source" values as used when adding emissions data to the OpenGHG object store.
+        bcprior: Same as xrpior but for boundary conditions.
+        YBCtrace: Trace of modelled boundary condition values calculated from mcmc outputs and Hbc matrices
+        bcouts: MCMC chain for boundary condition scaling factors.
+        Hbc: Same as Hx but for boundary conditions
+        obs_repeatability: Instrument error
+        obs_variability: Error from resampling observations
+        fp_data: Output from footprints_data_merge + sensitivies
+        country_file: Path of country definition file
+        add_offset: Add an offset (intercept) to all sites but the first in the site list. Default False.
+        rerun_file (xarray dataset, optional): An xarray dataset containing the ncdf output from a previous run of the MCMC code.
+        use_bc: When True, use and infer boundary conditions.
+        min_error: Minimum error to use during inversion. Only used if no_model_error is False.
 
     Returns:
         xarray dataset containing results from inversion

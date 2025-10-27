@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openghg_inversions"
-version = "0.2.0"
+version = "0.4.0"
 
 authors = [{name = "Eric Saboya", email = "eric.saboya@bristol.ac.uk"}]
 maintainers = [{name = "Brendan Murphy", email = "brendan.murphy@bristol.ac.uk"}]
@@ -19,28 +19,34 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "pymc",
-    "numpyro",
-    "xarray>=2024.10.0",
+    "numpyro[cpu]",
+    "xarray>=2025.06.0",
     "pandas",
     "matplotlib",
     "scipy", 
     "numpy",
     "openghg",
-    "sparse"
+    "sparse",
+    "flox",
+    "opt_einsum",
 ]
 
 [project.urls]
 "Home" = "https://github.com/openghg/openghg_inversions"
 "Bug Tracker" = "https://github.com/openghg/openghg_inversions/issues"
 
-[project.entry-points.tox]
-openghg_prev_minor = "toxfile.py"
-
 [tool.setuptools.packages.find]
 where = ["."]
 
 [tool.setuptools.package-data]
-openghg_inversions = ["data/*"]
+openghg_inversions = [
+    "data/*",
+    "basis/*.nc",
+    "basis/algorithms/*.nc", 
+    "postprocessing/*.cdl",
+    "postprocessing/*.json",
+    "hbmcmc/config/*.ini"
+]
 
 [tool.black]
 line-length = 110

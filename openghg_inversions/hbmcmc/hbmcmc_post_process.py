@@ -1,14 +1,18 @@
 """Script to process HBMCMC (RHIME) output.
 
-Includes:
-Write netcdf and append netcdf to write output to nc file
+This module includes functions for processing and visualizing HBMCMC inversion results.
 
-plot_scaling - plot posterior scaling map
-
-regions_histogram - plot histogram of number of regions
-
-country_emissions - calculate emissions from given list of countries
-                    Currently hard-wired for methane
+Functions
+---------
+write_netcdf, append_netcdf
+    Write output to netCDF files.
+plot_scaling
+    Plot posterior scaling map.
+regions_histogram
+    Plot histogram of number of regions.
+country_emissions
+    Calculate emissions from given list of countries.
+    Currently hard-wired for methane.
 """
 
 import os
@@ -45,8 +49,8 @@ def check_platform(site: str, network: str | None = None) -> str | None:
             the platform
 
     Returns:
-        platform type (e.g. "site", "satellite", "aircraft") if specified by site_info.json,
-        otherwise None
+        str or None: platform type (e.g. "site", "satellite", "aircraft") if specified by site_info.json,
+            otherwise None
     """
     if network is None:
         network = next(iter(site_info[site].keys()))
@@ -68,22 +72,21 @@ def define_stations(
     dictionary for this site.
 
     Args:
-        ds:
-            Output from run_hbmcmc() function.
+        ds: Output from run_hbmcmc() function.
             Expects dataset to contain:
-                sitelons - Longitude values for each site. Dimension = len(sites)
-                sitelats - Latitude values for each site. Dimension = len(sites)
-                y_site       - Site identifier for each measurement. Dimension = nmeasure
-        sites:
-            List of sites to look for within dataset.
+
+                - sitelons: Longitude values for each site. Dimension = len(sites)
+                - sitelats: Latitude values for each site. Dimension = len(sites)
+                - y_site: Site identifier for each measurement. Dimension = nmeasure
+
+        sites: List of sites to look for within dataset.
             If not specified, the sites will be extracted from the input dataset assuming a
             data variable "sites" is included within the dataset.
-        use_site_info:
-            Use positions from openghg_defs rather than extract them from the tdmcmc dataset.
+        use_site_info: Use positions from openghg_defs rather than extract them from the tdmcmc dataset.
             Default = False.
 
     Returns:
-        Dictionary containing sitelats, sitelons for each site.
+        dict or None: Dictionary containing sitelats, sitelons for each site.
     """
     if sites is None:
         sites = list(ds.sitenames.values.astype(str))
@@ -118,27 +121,27 @@ def define_stations(
 
 
 def subplot_fmt(num: int, row_dims: list[int] = [3, 2, 4], fill: bool | None = False) -> tuple[int, int]:
-    """The subplot_fmt function decides the placement of a grid of figures dependent on the number.
+    """Decide the placement of a grid of figures dependent on the number.
+    
     The row_dims input determines which placement is preferable for the user.
 
     Args:
-        num:
-            Number of figures to be placed
-        row_dims:
-            Row dimensions in order of preference.
+        num: Number of figures to be placed.
+        row_dims: Row dimensions in order of preference.
             For the default row_dims=[3,2,4] the preferences of placement is as follows:
+
                 - equal rows of 3
                 - equal rows of 2
                 - equal rows of 4
+
             If none of the above are possible the format will be num x number of columns if fill
             is True or the configuration suitable for num+1 if fill is False.
-        fill:
-            All panels in subplot must be filled. If not, for uneven numbers an extra panel will
+        fill: All panels in subplot must be filled. If not, for uneven numbers an extra panel will
             be added which will be left blank when plotting.
-            Default = False (i.e. allow an empty panel to be included within subplot)
+            Default = False (i.e. allow an empty panel to be included within subplot).
 
     Returns:
-        2 item tuple containing the row number and column number for the subplots.
+        tuple: 2 item tuple containing the row number and column number for the subplots.
     """
     for r in row_dims:
         if not num % r:
@@ -285,15 +288,14 @@ def plot_map(
     ax=None,
     show=True,
 ):
-    """Plot 2d map of data
-    e.g. scaling map of posterior x i.e. degree of scaling applied to prior emissions. Mainly used within the
-    wrappers of plot_abs_map, plot_diff_map etc.
+    """Plot 2D map of data.
+    
+    e.g. scaling map of posterior x i.e. degree of scaling applied to prior emissions. 
+    Mainly used within the wrappers of plot_abs_map, plot_diff_map etc.
 
     Args:
-        data (numpy.array) :
-            2D (lat,lon) array of whatever you want
-        lon (numpy.array) :
-            Longitude array matching to data grid
+        data: 2D (lat,lon) array of whatever you want.
+        lon: Longitude array matching to data grid.
         lat (numpy.array) :
             Latitude array  matching to data grid
         clevels (numpy.array, optional) :
@@ -316,10 +318,9 @@ def plot_map(
         stations (dict, optional) :
             Default is None. If specified needs to be a dictionary containing the list of sites
             and site locations for each site. For example:
-                {"sites": ['MHD', 'TAC'],
-                 "MHDlons": -9.02,
-                 "MHDlats": 55.2,
-                 "TAClons": etc...
+
+            {"sites": ['MHD', 'TAC'], "MHDlons": -9.02, "MHDlats": 55.2, "TAClons": etc...}
+
             This is the default output from the define_stations function, but can't default to this
             as the data argument doesn't have a sitenames attribute
         fignum (int, optional) :
@@ -442,47 +443,35 @@ def plot_map_mult(
     extend="both",
     figsize=None,
 ):
-    """Uses plot_map function to plot a set of maps either on a grid or as separate figures.
+    """Use plot_map function to plot a set of maps either on a grid or as separate figures.
+    
     If plotting on a grid the subplots are either determined automatically based on shape of
     input or using subplot input.
 
     Expect data_all to either be:
-         - a numpy.array of the shape: nlat x nlon (x ngrid)
-         - list of numpy.array objects each of shape nlat x nlon.
+        - a numpy.array of the shape: nlat x nlon (x ngrid)
+        - list of numpy.array objects each of shape nlat x nlon.
+        
     Either the ngrid dimension or the len of the list is taken as the number of panels to
     include on the plot.
 
     Args:
-        data_all (numpy.array/list) :
-            Multiple lat-lon grids to be plotted on one figure as a set of sub-plots or as
-            multiple figures.
-            Can either be a list of grids or an array of dimension nlat x nlon (x ngrid).
-        lon (numpy.array) :
-            Longitude array matching to longitude points in each grid in grid_data.
-        lat (numpy.array) :
-            Latitude array matching to longitude points in each grid in grid_data.
-        grid (bool, optional) :
-            Whether to plot on a grid.
-            Default = True.
-        subplot (str/list, optional) :
-            If grid is True, subplot grid to use. If this is set to "auto" this will be
+        data_all: Multiple lat-lon grids to be plotted on one figure as a set of sub-plots or as
+            multiple figures. Can either be a list of grids or an array of dimension nlat x nlon (x ngrid).
+        lon: Longitude array matching to longitude points in each grid in grid_data.
+        lat: Latitude array matching to longitude points in each grid in grid_data.
+        grid: Whether to plot on a grid. Default = True.
+        subplot: If grid is True, subplot grid to use. If this is set to "auto" this will be
             automatically determined based on the size of ngrid (see subplot_fmt() function).
-            Otherwise, this should be a two item list of [nrows, ncols]
-            Default = "auto".
-        labels (str/list, optional) :
-            Can specify either one label for all plots (str) or a different label for
-            each plot as a list.
-            If list is specified, it must match ngrid length.
+            Otherwise, this should be a two item list of [nrows, ncols]. Default = "auto".
+        labels: Can specify either one label for all plots (str) or a different label for
+            each plot as a list. If list is specified, it must match ngrid length.
 
+    Note:
         See plot_map() function for definition of remaining inputs.
 
     Returns:
-        None
-
-        If out_filename specified:
-            Plot is written to file
-        Otherwise:
-            Plot is displayed interactively
+        None. If out_filename specified, plot is written to file. Otherwise, plot is displayed interactively.
     """
     if isinstance(data_all, list):
         data_all = np.moveaxis(np.stack(data_all), 0, 2)
@@ -613,27 +602,24 @@ def plot_scale_map(
     extend="both",
     figsize=None,
 ):
-    """The plot_scale_map function plots 2D scaling map(s) of posterior x. This is the degree of
-    scaling which has been applied to prior emissions.
+    """Plot 2D scaling map(s) of posterior x.
+    
+    This is the degree of scaling which has been applied to prior emissions.
 
     Args:
-        ds_list (list) :
-            List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
+        ds_list: List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
             function (tdmcmc_inputs.py script).
             Expects each data set to contain:
-                x_post_vit - posterior values for each iteration flattened along lat-lon axis.
-                             Dimensions = nIt x NGrid (nlat x nlon)
-        lat (data array):
-            Data array of lat values to plot over - must match values in ds exactly
-        lon (data array):
-            Data array of lon values to plot over - must match values in ds exactly
-        grid (bool, optional) :
-            Whether to plot the posterior on one figure as a grid or on individual plots.
-        labels (str/list, optional) :
-            Can specify either one label for all plots (str) or a different label for
-            each plot.
-            If list is specified, it must match number of datasets in ds_list.
-        plot_stations (bool, optional) :
+
+                - x_post_vit: posterior values for each iteration flattened along lat-lon axis.
+                  Dimensions = nIt x NGrid (nlat x nlon)
+
+        lat: Data array of lat values to plot over - must match values in ds exactly.
+        lon: Data array of lon values to plot over - must match values in ds exactly.
+        grid: Whether to plot the posterior on one figure as a grid or on individual plots.
+        labels: Can specify either one label for all plots (str) or a different label for
+            each plot. If list is specified, it must match number of datasets in ds_list.
+        plot_stations: Whether to plot station locations.
             Plot site positions on the output map. Will not plot aircraft or satellite positions.
         use_site_info (bool, optional) :
             If plotting site positions, use positions from site_info.json file rather
@@ -708,27 +694,23 @@ def plot_abs_map(
     figsize=None,
     flux_data_var="fluxmode",
 ):
-    """The plot_abs_map function plots 2D map(s) of posterior x in g/m2/s.
+    """Plot 2D map(s) of posterior x in g/m2/s.
 
     Args:
-        ds_list (list) :
-            List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
+        ds_list: List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
             function (tdmcmc_inputs.py script).
             Expects each data set to contain:
-                x_post_vit - posterior values for each iteration flattened along lat-lon axis.
-                             Dimensions = nIt x NGrid (nlat x nlon)
-                q_ap       - a priori flux values on a latitude x longitude grid.
-                             Dimensions = nlat x nlon
-        lat (data array):
-            Data array of lat values to plot over - must match values in ds exactly
-        lon (data array):
-            Data array of lon values to plot over - must match values in ds exactly
-        species (str) :
-            Species for the tdmcmc output.
-        grid (bool, optional) :
-            Whether to plot the posterior on one figure as a grid or on individual plots.
-        labels (str/list) :
-            Can specify either one label for all plots (str) or a different label for
+
+                - x_post_vit: posterior values for each iteration flattened along lat-lon axis.
+                  Dimensions = nIt x NGrid (nlat x nlon)
+                - q_ap: a priori flux values on a latitude x longitude grid.
+                  Dimensions = nlat x nlon
+
+        lat: Data array of lat values to plot over - must match values in ds exactly.
+        lon: Data array of lon values to plot over - must match values in ds exactly.
+        species: Species for the tdmcmc output.
+        grid: Whether to plot the posterior on one figure as a grid or on individual plots.
+        labels: Can specify either one label for all plots (str) or a different label for
             each plot.
             If list is specified, it must match number of datasets in ds_list.
         plot_stations (bool, optional) :
@@ -809,26 +791,22 @@ def plot_diff_map(
     figsize=None,
     flux_data_var="fluxmode",
 ):
-    """The plot_diff_map function plots 2D map(s) of the difference between the prior and
-    posterior x in g/m2/s.
+    """Plot 2D map(s) of the difference between the prior and posterior x in g/m2/s.
 
     Args:
-        ds_list (list) :
-            List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
+        ds_list: List of xarray.Dataset objects. Each dataset is an output from run_tdmcmc()
             function (tdmcmc_inputs.py script).
             Expects each data set to contain:
-                x_post_vit - posterior values for each iteration flattened along lat-lon axis.
-                             Dimensions = nIt x NGrid (nlat x nlon)
-                q_ap       - a priori flux values on a latitude x longitude grid.
-                             Dimensions = nlat x nlon
-        lat (data array):
-            Data array of lat values to plot over - must match values in ds exactly
-        lon (data array):
-            Data array of lon values to plot over - must match values in ds exactly
-        species (str) :
-            Species for the tdmcmc output.
-        grid (bool, optional) :
-            Whether to plot the posterior on one figure as a grid or on individual plots.
+
+                - x_post_vit: posterior values for each iteration flattened along lat-lon axis.
+                  Dimensions = nIt x NGrid (nlat x nlon)
+                - q_ap: a priori flux values on a latitude x longitude grid.
+                  Dimensions = nlat x nlon
+
+        lat: Data array of lat values to plot over - must match values in ds exactly.
+        lon: Data array of lon values to plot over - must match values in ds exactly.
+        species: Species for the tdmcmc output.
+        grid: Whether to plot the posterior on one figure as a grid or on individual plots.
         labels (str/list) :
             Can specify either one label for all plots (str) or a different label for
             each plot.
@@ -891,38 +869,26 @@ def plot_diff_map(
 
 
 def country_emissions(ds, species, domain, country_file=None, country_unit_prefix=None, countries=None):
-    """Extract indiviudal country emissions from a dataset.
+    """Extract individual country emissions from a dataset.
 
     Args:
-        ds (xarray.Dataset) :
-            Output dataset from HBMCMC inversion
-        species (str) :
-            species run in the inversion (e.g. 'hfc23')
-        domain (str) :
-            domain over which the inversion was run (e.g. 'EASTASIA')
-        country_file (filepath) :
-            country file from which to extract country definitions. Defaults to None, in which case
-            the function looks for it in 'data/countries/[domain]' using the utils.get_country function
-        country_unit_prefix (str) :
-            prefix for which to report emissions in (e.g. 'G' for Gg). Conversion done by convert.prefix.
-            Defaults to None, in which case emissions are reported in g
-        countries (data array) :
-            array of country names for which to calculate emissions for. Defaults to None, in which case these
-            are extracted from the country file
+        ds: Output dataset from HBMCMC inversion.
+        species: Species run in the inversion (e.g. 'hfc23').
+        domain: Domain over which the inversion was run (e.g. 'EASTASIA').
+        country_file: Country file from which to extract country definitions. Defaults to None, in which case
+            the function looks for it in 'data/countries/[domain]' using the utils.get_country function.
+        country_unit_prefix: Prefix for which to report emissions in (e.g. 'G' for Gg). Conversion done by convert.prefix.
+            Defaults to None, in which case emissions are reported in g.
+        countries: Array of country names for which to calculate emissions for. Defaults to None, in which case these
+            are extracted from the country file.
 
     Returns:
-        cntrymean (data array):
-            1D array of mean emissions from each country
-        cntry68 (data array):
-            2D array of 68% CI emissions from each country
-        cntry95 (data array):
-            2D array of 95% CI emissions from each country
-        cntryprior (data array) :
-            1D array of prior emissions from each country
-        cntrymode (data array) :
-            1D array of mode emissions from each country
-
-
+        tuple: (cntrymean, cntry68, cntry95, cntryprior, cntrymode) where:
+            - cntrymean: 1D array of mean emissions from each country
+            - cntry68: 2D array of 68% CI emissions from each country  
+            - cntry95: 2D array of 95% CI emissions from each country
+            - cntryprior: 1D array of prior emissions from each country
+            - cntrymode: 1D array of mode emissions from each country
     """
     c_object = utils.get_country(domain, country_file=country_file)
     cntryds = xr.Dataset(
@@ -1029,18 +995,17 @@ def country_emissions_mult(
     ds_list, species, domain, country_file=None, country_unit_prefix=None, countries=None
 ):
     """Calculate country emissions across multiple datasets.
-    See process.country_emissions() function for details of inputs
+    
+    See process.country_emissions() function for details of inputs.
+    
     Returns:
-        cntrymean_arr (np.ndarray):
-            array of country means for each ds, with size [number of ds x number of countries]
-        cntry68_arr (np.ndarray):
-            array of 68th percentile upper and lower bounds of country emissions for each ds,
-            with size [number of ds x number of countries x 2]
-        cntry95_arr (np.ndarray):
-            array of 95th percentile upper and lower bounds of country emissions for each ds,
-            with size [number of ds x number of countries x 2]
-        cntryprior_arr (np.ndarray):
-            array of country priors for each ds, with size [number of ds x number of countries].
+        tuple: (cntrymean_arr, cntry68_arr, cntry95_arr, cntryprior_arr) where:
+            - cntrymean_arr: Array of country means for each ds, with size [number of ds x number of countries]
+            - cntry68_arr: Array of 68th percentile upper and lower bounds of country emissions for each ds,
+                with size [number of ds x number of countries x 2]
+            - cntry95_arr: Array of 95th percentile upper and lower bounds of country emissions for each ds,
+                with size [number of ds x number of countries x 2]
+            - cntryprior_arr: Array of country priors for each ds, with size [number of ds x number of countries].
     """
     if countries is None:
         countries = ds_list[0].countrynames.values
@@ -1434,8 +1399,7 @@ def open_ds(path):
             path to xarray dataset
 
     Returns:
-        ds (xarray dataset) :
-            dataset
+        xr.Dataset: dataset
     """
     # use a context manager, to ensure the file gets closed after use
     with xr.open_dataset(path) as ds:
@@ -1444,30 +1408,24 @@ def open_ds(path):
 
 
 def extract_hbmcmc_files(directory, species, domain, runname, dates, return_filenames=False):
-    """Find hbmcmc output filenames based on naming convention:
-        "directory"/"species"+"domain"+"runname"_"date".nc"
+    """Find hbmcmc output filenames based on naming convention.
+    
+    Naming convention: "directory"/"species"+"domain"+"runname"_"date".nc"
     Open as xarray.Dataset objects and return as a list.
 
     Args:
-        directory (str) :
-            path to output directory to where hbmcmc files are written
-        species (str) :
-            species of inversion (e.g. "hfc23")
-        domain (str) :
-            domain of inversion (e.g. "EASTASIA")
-        runname (str) :
-            name of run (as specified in .ini file)
-        dates (list) :
-            list of dates of the inversion, as specified at the top of the .ini file and
-            in the output file name
-        return_filenames (bool) :
-            whether to return the filenames. Defaults to False
+        directory: Path to output directory where hbmcmc files are written.
+        species: Species of inversion (e.g. "hfc23").
+        domain: Domain of inversion (e.g. "EASTASIA").
+        runname: Name of run (as specified in .ini file).
+        dates: List of dates of the inversion, as specified at the top of the .ini file and
+            in the output file name.
+        return_filenames: Whether to return the filenames. Defaults to False.
 
     Returns:
-        ds_list (list) :
-            list of xarray datasets matching the input parameters
-        filenames (list) :
-            list of filenames. Only returned if return_filenames is True
+        tuple or list: If return_filenames is True, returns (ds_list, filenames), otherwise just ds_list.
+            - ds_list: List of xarray datasets matching the input parameters
+            - filenames: List of filenames (only if return_filenames is True)
     """
     species = species.upper()
     domain = domain.upper()
@@ -1494,20 +1452,16 @@ def extract_hbmcmc_files(directory, species, domain, runname, dates, return_file
 
 
 def check_missing_dates(filenames, dates, labels=[]):
-    """Checks for missing dates from a list of filenames.
+    """Check for missing dates from a list of filenames.
 
     Args:
-        filenames (list) :
-            list of filenames to check
-        dates (list) :
-            list of expected dates to check in filenames
-        labels (list) :
-            list of labels for the dates that do match
+        filenames: List of filenames to check.
+        dates: List of expected dates to check in filenames.
+        labels: List of labels for the dates that do match.
 
     Returns:
-        dates (list) :
-            list of dates with matching filenames
-        labels (list) :
+        tuple: (dates, labels) - List of dates with matching filenames and 
+            corresponding list of labels.
             labels associated with dates, as specified in input
     """
     if len(filenames) != len(dates):
