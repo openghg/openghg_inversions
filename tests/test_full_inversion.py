@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
-from tests.conftest import raw_data_path
+from conftest import raw_data_path
 
 
 @pytest.fixture

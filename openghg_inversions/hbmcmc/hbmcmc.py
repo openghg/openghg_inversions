@@ -553,34 +553,34 @@ def fixedbasisMCMC(
 
         # check if offset args needs to contain an offset_freq_indicator
 
-        if offset_args:
-            if "offset_freq" in offset_args:
-                offset_freq = offset_args["offset_freq"]
-                time_index = pd.to_datetime(Ytime)
-                offset_freq_indicator = time_index.to_period(offset_freq).astype(str)
-                offset_args["offset_freq_indicator"] = offset_freq_indicator.values
+    if offset_args:
+        if "offset_freq" in offset_args:
+            offset_freq = offset_args["offset_freq"]
+            time_index = pd.to_datetime(Ytime)
+            offset_freq_indicator = time_index.to_period(offset_freq).astype(str)
+            offset_args["offset_freq_indicator"] = offset_freq_indicator.values
                 
 
-        mcmc_args = {
-            "Hx": Hx,
-            "Y": Y,
-            "error": error,
-            "siteindicator": siteindicator,
-            "sigma_freq_index": sigma_freq_index,
-            "xprior": xprior,
-            "sigprior": sigprior,
-            "nit": nit,
-            "burn": burn,
-            "tune": tune,
-            "nchain": nchain,
-            "sigma_per_site": sigma_per_site,
-            "offsetprior": offsetprior,
-            "add_offset": add_offset,
-            "verbose": verbose,
-            "min_error": min_error,
-            "offset_args": offset_args,
-            "power": power,
-        }
+    mcmc_args = {
+        "Hx": Hx,
+        "Y": Y,
+        "error": error,
+        "siteindicator": siteindicator,
+        "sigma_freq_index": sigma_freq_index,
+        "xprior": xprior,
+        "sigprior": sigprior,
+        "nit": nit,
+        "burn": burn,
+        "tune": tune,
+        "nchain": nchain,
+        "sigma_per_site": sigma_per_site,
+        "offsetprior": offsetprior,
+        "add_offset": add_offset,
+        "verbose": verbose,
+        "min_error": min_error,
+        "offset_args": offset_args,
+        "power": power,
+    }
 
     if use_bc is True:
         Hbc = np.zeros(0)
