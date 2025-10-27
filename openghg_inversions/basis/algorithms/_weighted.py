@@ -28,7 +28,7 @@ def load_landsea_indices(domain: str) -> np.ndarray:
     land and sea regions in specified domain.
 
     Args:
-        domain (str): domain for which to load landsea indices. Currently only "EASTASIA" or "EUROPE".
+        domain (str): domain for which to load landsea indices. Currently only "EASTASIA", "CENTRALASIA" or "EUROPE".
 
     Returns :
         Array containing 0 (where there is sea)
@@ -38,6 +38,8 @@ def load_landsea_indices(domain: str) -> np.ndarray:
         landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_EASTASIA.nc")
     elif domain == "EUROPE":
         landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
+    elif domain == "CENTRALASIA":
+        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_CENTRALASIA.nc")
     else:
         logger.warning(
             f"No land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)"
@@ -107,7 +109,7 @@ def get_nregions(bucket: float, grid: np.ndarray, domain: str) -> int:
             data, spatial distribution of bakeries, you choose!
         domain:
             Domain across which to calculate basis functions.
-            Currently limited to "EUROPE" or "EASTASIA"
+            Currently limited to "EUROPE", "CENTRALASIA" or "EASTASIA"
 
     Return :
         number of basis functions for bucket value
@@ -133,7 +135,7 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
             i.e. optimizes nregions to +/- tol
         domain:
             Domain across which to calculate basis functions.
-            Currently limited to "EUROPE" or "EASTASIA"
+            Currently limited to "EUROPE", "CENTRALASIA" or "EASTASIA"
 
     Return :
         Optimized bucket value
@@ -179,7 +181,7 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str) -> 
             Maximum value for each basis function region
         domain:
             Domain across which to calculate basis functions.
-            Currently limited to "EUROPE" or "EASTASIA"
+            Currently limited to "EUROPE", "CENTRALASIA" or "EASTASIA"
 
     Returns:
         2D array with basis function values
@@ -234,7 +236,7 @@ def nregion_landsea_basis(
             Defaults to 1
         domain:
             Domain across which to calculate basis functions.
-            Currently limited to "EUROPE" or "EASTASIA"
+            Currently limited to "EUROPE", "CENTRALASIA" or "EASTASIA"
 
     Returns:
         basis_function: 2D basis function array

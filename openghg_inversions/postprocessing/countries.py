@@ -67,7 +67,8 @@ paris_regions_dict = {
         "NW_EU2": ["BEL", "DEU", "FRA", "GBR", "IRL", "LUX", "NLD"],
         "NW_EU_CONTINENT": ["BEL", "DEU", "FRA", "LUX", "NLD"],
     },
-    "eastasia":{}
+    "eastasia":{},
+    "centralasia":{}
     }
 
 
