@@ -1,0 +1,922 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Getting started with OpenGHG Inversions &#8212; openghg_inversions  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'usage/getting_started';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="openghg_inversions" href="../reference/modules.html" />
+    <link rel="prev" title="Installation and Setup" href="installation.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">openghg_inversions  documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="usage.html">
+    Using OpenGHG Inversions
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../reference/modules.html">
+    openghg_inversions
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation and Setup</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Getting started with OpenGHG Inversions</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="usage.html" class="nav-link">Using OpenGHG Inversions</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Getting started with OpenGHG Inversions</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="getting-started-with-openghg-inversions">
+<h1>Getting started with OpenGHG Inversions<a class="headerlink" href="#getting-started-with-openghg-inversions" title="Link to this heading">#</a></h1>
+<p>This is an overview of what OpenGHG Inversions does, and how to use it.</p>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p>Countries are required to create “bottom-up” inventories of emissions.
+These may be totals for a country, or may be a map of estimated
+emissions for a given time period.</p></li>
+<li><p>To check these inventories, we create “top-down” constraints by
+passing emissions/flux maps through a physical model and comparing the
+result with observations. We use a Bayesian model to update the flux
+maps using the given observation data.</p></li>
+<li><p>The model is roughly
+<span class="math notranslate nohighlight">\(\mathrm{obs} \approx \mathrm{sensitivities} \times \mathrm{flux} + \mathrm{baseline} + \mathrm{error}\)</span></p></li>
+<li><p>The baseline is calculated by multiplying the flux at the boundaries
+by a sensivity map for each boundary “curtain” (NESW).</p></li>
+<li><p>Disturbances from the baseline are calculated by multiplying a
+“footprint” (sensitivities for fluxes) times a flux map.</p></li>
+<li><p>The sensitivities are considered deterministic, and the fluxes and
+boundary conditions are modelled as random quantities</p></li>
+<li><p>We place prior distributions on the fluxes and boundary conditions and
+use the observation data and MCMC to sample from their posterior
+distributions. (These are specified by the <code class="docutils literal notranslate"><span class="pre">xprior</span></code> and <code class="docutils literal notranslate"><span class="pre">bcprior</span></code>
+variables in the .ini file below.)</p></li>
+<li><p>Roughly, an inversion attempts to solve
+<span class="math notranslate nohighlight">\(\mathrm{obs} - \mathrm{baseline} \approx \mathrm{sensitivities} \times \mathrm{flux}\)</span>;
+the sensitivity matrix is not invertible, so a method like
+least-squares is necessary. We use a hierarchical Bayesian regression
+approach, which estimates uncertainties in a natural way.</p></li>
+<li><p>The output of an inversion contains prior and posterior: modelled
+observations (“ <span class="math notranslate nohighlight">\(Y\)</span> ” variables), fluxes, and boundary
+conditions.</p></li>
+</ul>
+</section>
+<section id="what-do-you-need-to-run-an-inversion">
+<h2>What do you need to run an inversion?<a class="headerlink" href="#what-do-you-need-to-run-an-inversion" title="Link to this heading">#</a></h2>
+<p>For an inversion, you need to decide the:</p>
+<ul class="simple">
+<li><p>gas species (currently you can only choose one)</p></li>
+<li><p>sites (how many, which sites)</p></li>
+<li><p>time period (specified using <code class="docutils literal notranslate"><span class="pre">start_date</span></code>, <code class="docutils literal notranslate"><span class="pre">end_date</span></code>)</p></li>
+<li><p>domain for inversion (for sites in the UK, this is usually
+<code class="docutils literal notranslate"><span class="pre">'EUROPE'</span></code>)</p></li>
+</ul>
+<p>Once you know the rough outline of your inversion, you need to make sure
+the right data is stored in OpenGHG, and you will need a few extra files
+not stored in OpenGHG.</p>
+<section id="data-stored-in-openghg">
+<h3>Data stored in OpenGHG<a class="headerlink" href="#data-stored-in-openghg" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p>Observation data: stored using <code class="docutils literal notranslate"><span class="pre">standardise_surface</span></code>; look for it
+using <code class="docutils literal notranslate"><span class="pre">search_surface</span></code>. You need observation data for each site.</p></li>
+<li><p>Flux data: stored using <code class="docutils literal notranslate"><span class="pre">standardise_flux</span></code>; look for it using
+<code class="docutils literal notranslate"><span class="pre">search_flux</span></code>.</p></li>
+<li><p>Boundary conditions data: stored using <code class="docutils literal notranslate"><span class="pre">standardise_bc</span></code>; look for it
+using <code class="docutils literal notranslate"><span class="pre">search_bc</span></code>.</p></li>
+<li><p>Footprints: stored using <code class="docutils literal notranslate"><span class="pre">standardise_footprint</span></code>; look for it using
+<code class="docutils literal notranslate"><span class="pre">search_footprints</span></code> (NOTE: footprint(s) is plural for search,
+singular for standardise). You need separate footprints for each site.</p></li>
+</ul>
+<p>NOTE: flux and boundary conditions data usually has a specific <em>domain</em>,
+but it is not specific to any one measurement site, so for multiple
+sites, you will usually use the same flux and boundary conditions.</p>
+</section>
+<section id="data-not-stored-in-openghg">
+<h3>Data not stored in OpenGHG<a class="headerlink" href="#data-not-stored-in-openghg" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p>countries file</p>
+<ul>
+<li><p>e.g. <code class="docutils literal notranslate"><span class="pre">country_EUROPE.nc</span></code></p></li>
+<li><p>default location is <code class="docutils literal notranslate"><span class="pre">openghg_inversions/countries</span></code></p></li>
+</ul>
+</li>
+<li><p>basis functions</p>
+<ul>
+<li><p>“basis function” usually means a netCDF file with latitude and
+longitude coordinates, with integer values. So all of the
+coordinates with value 1 are in region 1, and so on.</p></li>
+<li><p>basis functions for fluxes are created on the fly by a “quadtree
+basis” algorithm. You can also read in pre-defined basis functions.
+Default location: <code class="docutils literal notranslate"><span class="pre">openghg_inversions/basis_functions</span></code></p></li>
+<li><p>basis functions for the boundary conditions have a similar format.
+Defaul location <code class="docutils literal notranslate"><span class="pre">openghg_inversions/bc_basis_functions</span></code></p></li>
+</ul>
+</li>
+</ul>
+<p>Summary</p>
+<ul class="simple">
+<li><p>basis functions (for flux) are created on the fly, or you can provide
+them; you need to provide a country file and <code class="docutils literal notranslate"><span class="pre">bc_basis_functions</span></code>
+files.</p></li>
+<li><p>all of these files can be found in <code class="docutils literal notranslate"><span class="pre">/group/chemistry/acrg/LPDM</span></code>.</p></li>
+</ul>
+</section>
+</section>
+<section id="how-do-you-run-an-inversion">
+<h2>How do you run an inversion?<a class="headerlink" href="#how-do-you-run-an-inversion" title="Link to this heading">#</a></h2>
+<section id="method-1-python-script-or-notebook">
+<h3>Method 1: python script or notebook<a class="headerlink" href="#method-1-python-script-or-notebook" title="Link to this heading">#</a></h3>
+<p>Assuming you have the necessary data, you just need to run the
+<code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> function from <code class="docutils literal notranslate"><span class="pre">hbmcmc.py</span></code> in
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmbmc</span></code>.</p>
+</section>
+<section id="method-2-ini-file">
+<h3>Method 2: ini file<a class="headerlink" href="#method-2-ini-file" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p>Create a <code class="docutils literal notranslate"><span class="pre">my_inversion.ini</span></code> file based on the template in
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions/hbmcmc/config/</span></code>.</p></li>
+<li><p>Activate a conda or venv environment with inversions installed, and
+call
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">&lt;path</span> <span class="pre">to</span> <span class="pre">openghg_inversions&gt;/openghg_inversions/hbmcmc/run_hbmcmc.py</span> <span class="pre">-c</span> <span class="pre">my_inversion.ini</span></code></p></li>
+<li><p>A sample <code class="docutils literal notranslate"><span class="pre">.ini</span></code> script is at the bottom of this document.</p></li>
+</ul>
+</section>
+<section id="method-3-as-a-job-on-blue-pebble">
+<h3>Method 3: as a job on Blue Pebble<a class="headerlink" href="#method-3-as-a-job-on-blue-pebble" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p>Create a <code class="docutils literal notranslate"><span class="pre">.sh</span></code> file to run a <a class="reference external" href="https://www.acrc.bris.ac.uk/protected/hpc-docs/job_types/serial.html">batch job using
+SLURM</a>
+using <code class="docutils literal notranslate"><span class="pre">sbatch</span></code>.</p></li>
+<li><p>This file will specify:</p>
+<ul>
+<li><p>the name of the job</p></li>
+<li><p>resources required (number of nodes, number of tasks per node,
+number of cpus per task, memory required, compute time required).
+Typically, you need 1 node, 1 task, and as many cpus per task as
+chains in your inversion (each chain is an indepedent MCMC process;
+using 4 is best for checking convergence)</p></li>
+<li><p>where terminal output and errors should be written</p></li>
+<li><p>shell commands to run on the compute node:</p>
+<ul>
+<li><p>commands to activate your virtual environment</p></li>
+<li><p>commands to run an inversion (usually method 2, but you could use
+method 1 in a python script)</p></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p>On the blue pebble login node, run <code class="docutils literal notranslate"><span class="pre">sbatch</span> <span class="pre">my_inversion_script.sh</span></code>
+(replace <code class="docutils literal notranslate"><span class="pre">'my_inversion_script'</span></code> with whatever your script is
+called).</p></li>
+<li><p>Use the command <code class="docutils literal notranslate"><span class="pre">sacct</span></code> to see what batch jobs you have running.</p></li>
+</ul>
+<p>Note: if you are running multiple inversions with a similar ini file (for instance,
+several years of yearly inversions), then you should use a SLURM array job.</p>
+</section>
+</section>
+<section id="getting-set-up-on-blue-pebble">
+<h2>Getting set up on Blue Pebble<a class="headerlink" href="#getting-set-up-on-blue-pebble" title="Link to this heading">#</a></h2>
+<p>This is assuming you can ssh into blue pebble, and are able to modify
+files and run commands there (either on the terminal or through VS code
+or similar).</p>
+<p>(This section is specific to the ACRG group at Bristol, but the parts
+about running jobs on SLURM could apply elsewhere.)</p>
+<section id="virtual-environment">
+<h3>Virtual environment<a class="headerlink" href="#virtual-environment" title="Link to this heading">#</a></h3>
+<p>TODO: update conda instructions</p>
+<ul class="simple">
+<li><p>Blue pebble has pre-installed software called “modules”.</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">module</span> <span class="pre">avail</span></code> shows available modules</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">module</span> <span class="pre">load</span> <span class="pre">...</span></code> will load a module</p></li>
+</ul>
+</li>
+<li><p>Typically you will use the latest anaconda module:
+<code class="docutils literal notranslate"><span class="pre">module</span> <span class="pre">load</span> <span class="pre">lang/python/anaconda</span></code>.</p></li>
+<li><p>To make your own environment for <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>, you should:</p>
+<ol class="arabic simple">
+<li><p>make a conda env <code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">create</span> <span class="pre">--name</span> <span class="pre">inv_env</span> <span class="pre">numpy</span></code> (note:
+installing <code class="docutils literal notranslate"><span class="pre">numpy</span></code> from <code class="docutils literal notranslate"><span class="pre">conda</span></code> will install <code class="docutils literal notranslate"><span class="pre">openblas</span></code>,
+which is a fast linear algebra library; these libraries are in
+non-standard locations on Blue Pebble, and <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">numpy</span></code>
+will not find them.)</p></li>
+<li><p>clone openghg_inversions:
+<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">clone</span> <span class="pre">https://github.com/openghg/openghg_inversions.git</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">openghg_inversions</span></code> (in the same directory where you
+just cloned <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>)</p></li>
+</ol>
+</li>
+</ul>
+</section>
+<section id="example-batch-job-script">
+<h3>Example batch job script<a class="headerlink" href="#example-batch-job-script" title="Link to this heading">#</a></h3>
+<p>This script assumes that you have already created a conda env called
+<code class="docutils literal notranslate"><span class="pre">pymc_env</span></code> and you have an <code class="docutils literal notranslate"><span class="pre">.ini</span></code> file in a folder called
+<code class="docutils literal notranslate"><span class="pre">my_inversions</span></code>.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/sh</span>
+<span class="c1"># ****************************************************************************</span>
+<span class="c1"># Wrapper script for submitting jobs on ACRC HPC</span>
+<span class="c1"># docs: https://www.acrc.bris.ac.uk/protected/hpc-docs/index.html</span>
+<span class="c1"># ****************************************************************************</span>
+<span class="c1">#SBATCH --job-name=my_inv</span>
+<span class="c1">#SBATCH --output=openghg_inversions.out</span>
+<span class="c1">#SBATCH --error=openghg_inversions.err</span>
+<span class="c1">#SBATCH --nodes=1</span>
+<span class="c1">#SBATCH --ntasks-per-node=1</span>
+<span class="c1">#SBATCH --cpus-per-task=4</span>
+<span class="c1">#SBATCH --time=04:00:00</span>
+<span class="c1">#SBATCH --mem=30gb</span>
+<span class="c1">#SBATCH --account=dept123456</span>
+
+
+<span class="c1"># Set up Python environment</span>
+module<span class="w"> </span>--force<span class="w"> </span>purge
+module<span class="w"> </span>load<span class="w"> </span>git/2.45.1
+<span class="nb">eval</span><span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>conda<span class="w"> </span>shell.bash<span class="w"> </span>hook<span class="k">)</span><span class="s2">&quot;</span>
+conda<span class="w"> </span>activate<span class="w"> </span>pymc_env
+
+<span class="c1">#conda info</span>
+
+<span class="c1"># run inversion script</span>
+<span class="nv">INI_FILE</span><span class="o">=</span>/user/home/bm13805/my_inversions/my_hbmcmc_inputs.ini
+python<span class="w"> </span>/user/home/bm13805/openghg_inversions/openghg_inversions/hbmcmc/run_hbmcmc.py<span class="w"> </span>-c<span class="w"> </span><span class="nv">$INI_FILE</span>
+
+<span class="c1"># check numpy config</span>
+<span class="c1"># python -c &quot;import numpy as np; np.show_config()&quot;</span>
+<span class="c1"># python -c &quot;import pymc&quot;</span>
+</pre></div>
+</div>
+<p>If this script is saved as <code class="docutils literal notranslate"><span class="pre">my_inversions_script.sh</span></code>, you would run it
+with <code class="docutils literal notranslate"><span class="pre">sbatch</span> <span class="pre">my_inversion_script.sh</span></code>.</p>
+<p>If you comment out the lines under <code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">run</span> <span class="pre">inversion</span> <span class="pre">script</span></code> and
+uncomment the lines under <code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">check</span> <span class="pre">numpy</span> <span class="pre">config</span></code>, you can check if
+numpy is using a fast linear algebra library. If you are <strong>not</strong> using a
+fast linear algebra library, then in the <code class="docutils literal notranslate"><span class="pre">.err</span></code> output file you will
+see the warning:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">WARNING</span> <span class="p">(</span><span class="n">pytensor</span><span class="p">):</span> <span class="n">Using</span> <span class="n">NumPy</span> <span class="n">C</span><span class="o">-</span><span class="n">API</span> <span class="n">based</span> <span class="n">implementation</span> <span class="k">for</span> <span class="n">BLAS</span> <span class="n">functions</span><span class="o">.</span>
+</pre></div>
+</div>
+<p>Your inversion will run much slower if this is the case; try using conda
+to install numpy before installing <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>, as mentioned
+above.</p>
+</section>
+<section id="work-vs-home-directory">
+<h3>Work vs. Home directory<a class="headerlink" href="#work-vs-home-directory" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p>Your home directory <code class="docutils literal notranslate"><span class="pre">/user/home/ab12345</span></code> (replace ab12345 with your
+using name) has a storage quota of 25GB.</p></li>
+<li><p>Check you usage with command <code class="docutils literal notranslate"><span class="pre">user-quota</span></code>.</p></li>
+<li><p>Your work directory <code class="docutils literal notranslate"><span class="pre">/user/work/ab12345</span></code> has a storage quota of
+1000GB.</p></li>
+<li><p>Conda environments and the inversion output files can be quite large,
+so if you are doing many inversions, you should put the output
+directory in your work directory. (And if you are making multiple
+conda environments, you should put them in your work directory as
+well.)</p></li>
+</ul>
+</section>
+</section>
+<section id="sample-ini-file">
+<h2>Sample .ini file<a class="headerlink" href="#sample-ini-file" title="Link to this heading">#</a></h2>
+<p>The following file, <code class="docutils literal notranslate"><span class="pre">my_hbmcmc_inputs.ini</span></code> can be used to run an</p>
+<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="c1">; Configuration file for HBMCMC code</span>
+<span class="c1">; Required inputs are marked as such.</span>
+<span class="c1">; All other inputs are optional (defaults will be used)</span>
+
+<span class="k">[INPUT.MEASUREMENTS]</span>
+<span class="c1">; Input values for extracting observations</span>
+<span class="c1">; species (str) - species name,  e.g. &quot;ch4&quot;, &quot;co2&quot;, &quot;n2o&quot;, etc.</span>
+<span class="c1">; sites (list) - site codes as a list, e.g. [&quot;TAC&quot;, &quot;MHD&quot;]</span>
+<span class="c1">; averaging_period (list) - Time periods for to average the measurements to (can be None and must match length of sites)</span>
+<span class="c1">; start_date (str) - Start of observations to extract (format YYYY-MM-DD)</span>
+<span class="c1">; end_date (str) - End of observations to extract (format YYYY-MM-DD) (non-inclusive)</span>
+<span class="c1">; inlet (list/None) - Specific inlet height for the site (list - must match number of sites)</span>
+<span class="c1">; instrument (list/None) - Specific instrument for the site (list - must match number of sites)</span>
+
+<span class="na">species</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;ch4&#39;</span><span class="w">   </span><span class="c1">; (required)</span>
+<span class="na">sites</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s">[&#39;TAC&#39;]</span><span class="w"> </span><span class="c1">; (required)</span>
+<span class="na">averaging_period</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[&#39;1H&#39;]</span><span class="w">  </span><span class="c1">; (required)</span>
+<span class="na">start_date</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;2019-01-01&#39;</span><span class="w">      </span><span class="c1">; (required)</span>
+<span class="na">end_date</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;2019-02-01&#39;</span><span class="w">      </span><span class="c1">; (required)</span>
+<span class="na">inlet</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;185m&quot;]</span>
+<span class="na">instrument</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;picarro&quot;]</span>
+
+
+<span class="k">[INPUT.PRIORS]</span>
+<span class="c1">; Input values for extracting footprints, emissions and boundary conditions files (also uses values from INPUT.MEASUREMENTS)</span>
+<span class="c1">; domain (str) - Name of inversion spatial domain</span>
+<span class="c1">; fp_height (list) - Release height for footprints (must match number of sites).</span>
+<span class="c1">; emissions_name (list/None) - Name for specific emissions source.</span>
+
+<span class="na">domain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;EUROPE&#39;</span><span class="w">  </span><span class="c1">; (required)</span>
+<span class="na">fp_height</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;185m&quot;]</span><span class="w">  </span><span class="c1">; typically the same as inlet, but may differ slightly (e.g. if instrument moved to 180m, for instance)</span>
+<span class="na">fp_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;NAME&quot;</span><span class="w">  </span><span class="c1">; LPDM model, usually NAME</span>
+<span class="na">emissions_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[&quot;total-ukghg-edgar7&quot;]</span><span class="w">  </span><span class="c1">; total = all emissions sources; agric-ukghg-edgar7 would be agricultural sources only</span>
+<span class="na">met_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;UKV&#39;</span><span class="w">  </span><span class="c1">; or None if not specified, check the metadata for your footprint</span>
+
+<span class="k">[INPUT.BASIS_CASE]</span>
+<span class="c1">; Input values to extract the basis cases to use within the inversion for boundary conditions nd emissions</span>
+<span class="c1">; basis_algorithm (str): Choice of basis function algorithm to use. One of &quot;quadtree&quot; or &quot;weighted&quot;</span>
+<span class="c1">; bc_basis_case (str): Boundary conditions basis, defaults to &quot;NESW&quot; (looks for file format {bc_basis_case}_{domain}_*.nc)</span>
+<span class="c1">; bc_basis_directory (str/None): Directory for bc_basis functions. If None provided, creates new folder in openghg_inversions expecting to find bc_basis_function files there.</span>
+<span class="c1">; fp_basis_case (str/None): Emissions bases:</span>
+<span class="c1">; - if specified, looks for file format {fp_basis_case}_{domain}_*.nc</span>
+<span class="c1">; - if None, creates basis function using algorithm specified and associated parameters</span>
+<span class="c1">; nbasis: Number of basis functions to use for algorithm-specified basis function (rounded to %4) in domain</span>
+<span class="c1">; basis_directory (str/None): Directory containing the basis functions (with domain name as subdirectories)</span>
+<span class="c1">; country_file (str/None): Directory with filename  containing the indices of country boundaries in domain</span>
+
+<span class="na">basis_algorithm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;quadtree&quot;</span>
+<span class="na">bc_basis_case</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;NESW&quot;</span>
+<span class="na">fp_basis_case</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">None</span>
+<span class="na">nbasis</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">50</span>
+<span class="na">basis_directory</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;/group/chemistry/acrg/LPDM/basis_functions/&quot;</span>
+<span class="na">bc_basis_directory</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">None</span>
+<span class="na">country_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">None</span>
+
+<span class="k">[MCMC.TYPE]</span>
+<span class="c1">; Which MCMC setup to use. This defines the function which will be called and the expected inputs.</span>
+<span class="c1">; Options include: &quot;fixed_basis&quot;</span>
+
+<span class="na">mcmc_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;fixed_basis&quot;</span>
+
+
+<span class="k">[MCMC.PDF]</span>
+<span class="c1">; Definitions of PDF shape and parameters for inputs</span>
+<span class="c1">; - xprior (dict) - emissions</span>
+<span class="c1">; - bcprior (dict) - boundary conditions</span>
+<span class="c1">; - sigprior (dict) - model error</span>
+
+<span class="c1">; Each of these inputs should be dictionary with the name of probability distribution and shape parameters.</span>
+<span class="c1">; See https://docs.pymc.io/api/distributions/continuous.html</span>
+<span class="c1">; Check openghg_inversions.hbmcmc.inversion_pymc for options.</span>
+
+<span class="na">xprior   = {&quot;pdf&quot;</span><span class="o">:</span><span class="s">&quot;lognormal&quot;</span><span class="na">, &quot;stdev&quot;</span><span class="o">:</span><span class="s">1}</span><span class="w">  </span><span class="c1">; lognormal with mean = 1, stdev = 1</span>
+<span class="na">bcprior  = {&quot;pdf&quot;</span><span class="o">:</span><span class="s">&quot;truncatednormal&quot;</span><span class="na">, &quot;mu&quot;</span><span class="o">:</span><span class="s">1.0, &quot;sigma&quot;:0.02}</span><span class="w">  </span><span class="c1">; truncated normal with mean = 1, stdev 0.02</span>
+<span class="na">sigprior = {&quot;pdf&quot;</span><span class="o">:</span><span class="s">&quot;uniform&quot;</span><span class="na">, &quot;lower&quot;</span><span class="o">:</span><span class="s">0.5, &quot;upper&quot;:10}</span>
+<span class="c1">;add_offset = False</span>
+<span class="c1">;offsetprior = {&quot;pdf&quot;: &quot;normal&quot;}</span>
+<span class="c1">;offset_args = {&quot;drop_first&quot;: False}  ;; set to True if you want first site to have offset 0.0</span>
+
+<span class="k">[MCMC.BC_SPLIT]</span>
+<span class="c1">; Boundary conditions setup</span>
+<span class="c1">; - bc_freq - The period over which the baseline is estimated. e.g.</span>
+<span class="c1">;  - None - one scaling for the whole inversion</span>
+<span class="c1">;  - &quot;monthly&quot; - per calendar monthly</span>
+<span class="c1">;  - &quot;*D&quot; (e.g. &quot;30D&quot;) - per number of days (e.g. 30 days)</span>
+
+<span class="na">bc_freq</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;monthly&quot;</span>
+<span class="na">sigma_freq</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">None</span>
+<span class="na">sigma_per_site</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+
+
+<span class="k">[MCMC.ITERATIONS]</span>
+<span class="c1">; Iteration parameters</span>
+<span class="c1">; nit (int) - Number of iterations for MCMC</span>
+<span class="c1">; burn (int) - Number of iterations to burn in MCMC</span>
+<span class="c1">; tune (int) - Number of iterations to use to tune step size</span>
+
+<span class="na">nit</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s">5000</span>
+<span class="na">burn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">1000</span>
+<span class="na">tune</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">2000</span>
+
+
+<span class="k">[MCMC.NCHAIN]</span>
+<span class="c1">; Number of chains to run simultaneously. Must be at least 2 to allow convergence to be checked.</span>
+
+<span class="na">nchain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">4</span>
+
+<span class="k">[MCMC.OPTIONS]</span>
+<span class="c1">; averaging_error (bool): Add variability in averaging period to the measurement error (Note: currently this</span>
+<span class="c1">;                         doesn&#39;t work correctly)</span>
+<span class="c1">; min_error (float): value specifying a lower bound for the model-measurement mismatch error (i.e. the error on</span>
+<span class="c1">;                    (y - y_mod)). Ignored if compute_min_error = True.</span>
+<span class="c1">; fix_basis_outer_regions (bool): If True, the &quot;outer regions&quot; of the domain use basis regions specified by a</span>
+<span class="c1">;                                 file provided by the Met Office (from their &quot;InTem&quot; model), and the &quot;inner</span>
+<span class="c1">;                                 region&quot;, which includes the UK, is fit using our basis algorithms.</span>
+<span class="c1">; use_bc (bool): defaults to True. If False, no boundary conditions will be used in the inversion. This</span>
+<span class="c1">;                implicitly assumes that contributions from the boundary have been subtracted from the</span>
+<span class="c1">;                observations.</span>
+<span class="c1">; nuts_sampler (str): defaults to &quot;pymc&quot;. The other option is &quot;numpyro&quot;, which will the JAX accelerated sampler</span>
+<span class="c1">;                     from Numpyro; this tends to be significantly faster than the NUTS sampler built into PyMC.</span>
+<span class="c1">; save_trace (bool): If True, the arviz InferenceData output from sampling will be saved to the output path of</span>
+<span class="c1">;                    the inversion, with a file name of the form f&quot;{outputname}{start_data}_trace.nc.</span>
+<span class="c1">;                    Alternatively, you can pass a path (including filename), and that path will be used.</span>
+<span class="c1">; calculate_min_error: computes min_error on the fly using the &quot;residual error method&quot; or a method based on percentiles.</span>
+<span class="c1">;                      values can be: &quot;residual&quot;, &quot;percentile&quot;, None. If value is None, then value passed to `min_error`</span>
+<span class="c1">;                      is used.</span>
+<span class="c1">; pollution_events_from_obs (bool): Determines whether the model error is calculated as a fraction of:</span>
+<span class="c1">;                                   - the measured enhancement above the modelled baseline (if True)</span>
+<span class="c1">;                                   - the prior modelled enhancement (if False)</span>
+<span class="c1">; reparameterise_log_normal (bool): If True, rewrite log normal prior samples as a function of standard normal samples.</span>
+<span class="c1">;                                   This may reduce divergences when sampling.</span>
+<span class="c1">; sampler_kwargs (dict): Kwargs to pass to the sampler (e.g. sampler_kwargs = {&#39;target_accept&#39;: 0.99})</span>
+
+<span class="na">averaging_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">min_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">0.0</span>
+<span class="na">fix_basis_outer_regions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
+<span class="na">use_bc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">nuts_sampler</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;numpyro&quot;</span>
+<span class="na">save_trace</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">min_error_options</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">{&quot;by_site&quot;: True}</span><span class="w">  </span><span class="c1">; options to pass to function used to compute min error</span>
+<span class="na">pollution_events_from_obs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<span class="na">no_model_error</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
+<span class="na">reparameterise_log_normal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
+
+<span class="k">[MCMC.OUTPUT]</span>
+<span class="c1">; Format of output</span>
+<span class="c1">; See docs for openghg_inversions.hbmcmc.hbmcmc.fixedbasisMCMC</span>
+<span class="c1">; for full list of options</span>
+<span class="na">output_format</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;hbmcmc&quot;</span><span class="w">  </span><span class="c1">; default option, but &quot;paris&quot; tends to be used more</span>
+
+<span class="c1">; Details of where to write the output</span>
+<span class="c1">; outputpath (str) - directory to write output</span>
+<span class="c1">; outputname (str) - unique identifier for output/run name.</span>
+
+<span class="na">outputpath</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;/user/work/ab12345/my_inversions&#39;</span><span class="w">  </span><span class="c1">; (required)</span>
+<span class="na">outputname</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;ch4_TAC_test&#39;</span><span class="w">  </span><span class="c1">; (required)</span>
+</pre></div>
+</div>
+</section>
+<section id="description-of-hbmcmc-output-file">
+<h2>Description of HBMCMC output file<a class="headerlink" href="#description-of-hbmcmc-output-file" title="Link to this heading">#</a></h2>
+<p>The output of <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> (and <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code>) is an xarray
+Dataset with the following variables and attributes:</p>
+<p>HMCMC output data variables:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Y</span></code>: Measurements used in inversion</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Yerror</span></code>: Measurement error</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Ytime</span></code>: Measurement times</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Yapriori</span></code>: Modelled measurements using a priori emissions</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Ymod</span></code>: Posterior modelled mean measurements</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Ymod95</span></code>: Posterior modelled 95% measurement uncertainty (2.5% and
+97.5%)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Ymod68</span></code>: Posterior modelled 68% measurement uncertainty (16% and
+84%)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">YmodBC</span></code>: Posterior modelled mean boundary conditions</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">YaprioriBC</span></code>: Modelled BCs using a priori BCs</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">xtrace</span></code>: MCMC chain for basis functions</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bctrace</span></code>: MCMC chain for boundary conditions</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sigtrace</span></code>: MCMC chain for model error (currently iid)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">siteindicator</span></code>: numerical value corresponding to each site, same
+size as Y.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sitename</span></code>: name of site (in order or siteindicators)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">site_lon</span></code>: Measurement site longitude</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">site_lat</span></code>: Measurement site latitude</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">aprioriflux</span></code>: Mean a priori flux for whole domain at NAME
+resolution. E.g.., if emissions file is monthly, and you are running
+for April and May it will take the mean emissions weighted by number
+of days in each month.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">meanflux</span></code>: Mean posterior flux for whole domain at NAME resolution</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">meanscaling</span></code>: Mean posterior scaling for whole domain at NAME
+resolution</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">basis_functions</span></code>: Basis functions used at NAME resolution</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">countrytotals</span></code>: Mean posterior total emissions for every country in
+domain country file</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">country68</span></code>: 68% uncertainty for country totals (16% and 84%)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">country95</span></code>: 95% uncertainty for country totals (2.5% and 97.5%)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">countrysd</span></code>: standard deviation for country totals</p></li>
+</ul>
+<p>Attributes:</p>
+<ul class="simple">
+<li><p>Units for all variables that need them</p></li>
+<li><p>Start date of inversion period</p></li>
+<li><p>End date of inversion period</p></li>
+<li><p>Type(s) of MCMC sampler used</p></li>
+<li><p>Prior PDF for emissions scaling</p></li>
+<li><p>Prior PDF for BC scaling</p></li>
+<li><p>Prior PDF for model error</p></li>
+<li><p>Creator</p></li>
+<li><p>Date created</p></li>
+<li><p>Convergence: Passed/Failed based on multiple chains (min 2) having
+Gelman-Rubin diagnostic &lt; 1.05</p></li>
+</ul>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="installation.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Installation and Setup</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="../reference/modules.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">openghg_inversions</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#what-do-you-need-to-run-an-inversion">What do you need to run an inversion?</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#data-stored-in-openghg">Data stored in OpenGHG</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#data-not-stored-in-openghg">Data not stored in OpenGHG</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#how-do-you-run-an-inversion">How do you run an inversion?</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#method-1-python-script-or-notebook">Method 1: python script or notebook</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#method-2-ini-file">Method 2: ini file</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#method-3-as-a-job-on-blue-pebble">Method 3: as a job on Blue Pebble</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#getting-set-up-on-blue-pebble">Getting set up on Blue Pebble</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#virtual-environment">Virtual environment</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#example-batch-job-script">Example batch job script</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#work-vs-home-directory">Work vs. Home directory</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#sample-ini-file">Sample .ini file</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#description-of-hbmcmc-output-file">Description of HBMCMC output file</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/usage/getting_started.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, Eric Saboya and Brendan Murphy.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.16.1.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
