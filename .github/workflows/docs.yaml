@@ -56,12 +56,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: built-docs
-          path: docs/_build/html
+          path: docs/_build/
 
       - name: Fail if publish dir empty
         run: |
-          if [ ! -d docs/_build/html ] || [ -z "$(ls -A docs/_build/html 2>/dev/null)" ]; then
-            echo "ERROR: publish_dir docs/_build/html is empty or missing. Aborting deploy."
+          if [ ! -d docs/_build/ ] || [ -z "$(ls -A docs/_build/ 2>/dev/null)" ]; then
+            echo "ERROR: publish_dir docs/_build/ is empty or missing. Aborting deploy."
             exit 1
           fi
 
@@ -69,5 +69,5 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: docs/_build/html
+          publish_dir: docs/_build/
           publish_branch: gh-pages
