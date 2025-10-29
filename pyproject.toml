@@ -45,7 +45,8 @@ openghg_inversions = [
     "basis/algorithms/*.nc", 
     "postprocessing/*.cdl",
     "postprocessing/*.json",
-    "hbmcmc/config/*.ini"
+    "hbmcmc/config/*.ini",
+    "tutorial/*.ini",
 ]
 
 [tool.black]
