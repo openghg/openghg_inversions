@@ -216,6 +216,7 @@ def get_quadtree_basis(fps: np.ndarray, nbasis: int, seed: int | None = None) ->
         
         # Accept solution if it's within 20% of target or within 5 basis functions
         if relative_error < 0.2 or abs(actual_nbasis - nbasis) <= 5:
+            np.savetxt("/group/chem/acrg/InHALE_inversions/halon2402_haklim/quadtree_grid.txt", best_result)
             return best_result + 1
     
     # If no acceptable solution found, raise an informative error
