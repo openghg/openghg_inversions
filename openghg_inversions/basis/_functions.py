@@ -278,7 +278,9 @@ def bucketbasisfunction(
     emissions_name: list[str] | None = None,
     nbasis: int = 100,
     abs_flux: bool = False,
-    mask: xr.DataArray | None = None
+    mask: xr.DataArray | None = None,
+    use_defaults: bool = True,
+    country_dir: str = None
 ) -> xr.DataArray:
     """Basis functions calculated using a weighted region approach
     where each basis function / scaling region contains approximately
@@ -314,7 +316,7 @@ def bucketbasisfunction(
     fps = fps / fps.max()
 
     # use xr.apply_ufunc to keep xarray coords
-    func = partial(weighted_algorithm, nregion=nbasis, bucket=1, domain=domain)
+    func = partial(weighted_algorithm, nregion=nbasis, bucket=1, domain=domain, use_defaults=use_defaults, country_dir=country_dir)
     bucket_basis = xr.apply_ufunc(func, fps)
 
     bucket_basis = bucket_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)

@@ -23,26 +23,40 @@ class OptimizationError(Exception): ...
 
 
 @lru_cache
-def load_landsea_indices(domain: str) -> np.ndarray:
+def load_landsea_indices(domain: str, use_defaults: bool, country_dir: str) -> np.ndarray:
     """Load array with indices that separate land and sea regions in specified domain.
 
     Args:
-        domain (str): domain for which to load landsea indices. Currently only "EASTASIA", "CENTRALASIA" or "EUROPE".
+        domain (str): domain for which to load landsea indices. 
+        use_defaults (bool): Whether to use default land-sea files provided with openghg_inversions. 
+                             Currently only supports "EUROPE", "EASTASIA" and "CENTRALASIA".
+        country_dir (str): Directory containing land-sea files if not using defaults.
+        
 
     Returns:
         np.ndarray: Array containing 0 (where there is sea) and 1 (where there is land).
     """
-    if domain == "EASTASIA":
-        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_EASTASIA.nc")
-    elif domain == "EUROPE":
-        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
-    elif domain == "CENTRALASIA":
-        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_CENTRALASIA.nc")
-    else:
-        logger.warning(
-            f"No land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)"
+    default_files = {
+        "EASTASIA": "country-land-sea_EASTASIA.nc",
+        "EUROPE": "country-EUROPE-UKMO-landsea-2023.nc",
+        "CENTRALASIA": "country-land-sea_CENTRALASIA.nc",
+    }
+    
+    if use_defaults:
+        if domain in default_files.keys():
+            landsea_indices = xr.open_dataset(Path(__file__).parent / default_files[domain])
+        else:
+            logger.warning(
+            f"No default land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)"
         )
         landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
+
+    elif country_dir is not None:
+        landsea_file = Path(country_dir).joinpath(f"country-land-sea_{domain}.nc")
+        landsea_indices = xr.open_dataset(landsea_file)
+    else:
+        raise ValueError("Either use_defaults must be True or country_dir must be provided to load land-sea indices.")
+        
     return landsea_indices["country"].values
 
 
@@ -88,7 +102,7 @@ def bucket_value_split(
     )
 
 
-def get_nregions(bucket: float, grid: np.ndarray, domain: str) -> int:
+def get_nregions(bucket: float, grid: np.ndarray, domain: str, use_defaults: bool, country_dir: str) -> int:
     """Optimize bucket value to number of desired regions.
 
     Args:
@@ -105,10 +119,10 @@ def get_nregions(bucket: float, grid: np.ndarray, domain: str) -> int:
     Return :
         number of basis functions for bucket value
     """
-    return np.max(bucket_split_landsea_basis(grid, bucket, domain))
+    return np.max(bucket_split_landsea_basis(grid, bucket, domain, use_defaults, country_dir))
 
 
-def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, domain: str) -> float:
+def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, domain: str, use_defaults: bool, country_dir: str) -> float:
     """Optimize bucket value to obtain nregion basis functions
     within +/- tol.
 
@@ -138,7 +152,7 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
     for _ in range(10):
         # try 1000 iterations
         for j in range(1000):
-            current_nregion = get_nregions(current_bucket, grid, domain)
+            current_nregion = get_nregions(current_bucket, grid, domain, use_defaults, country_dir)
 
             if current_nregion <= nregion + current_tol and current_nregion >= nregion - current_tol:
                 print(
@@ -159,7 +173,7 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
     )
 
 
-def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str) -> np.ndarray:
+def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str, use_defaults: bool, country_dir: str) -> np.ndarray:
     """Same as bucket_split_basis but includes
     land-sea split. i.e. basis functions cannot overlap sea and land.
 
@@ -178,7 +192,7 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str) -> 
         2D array with basis function values
 
     """
-    landsea_indices = load_landsea_indices(domain)
+    landsea_indices = load_landsea_indices(domain, use_defaults=use_defaults, country_dir=country_dir)
     myregions = bucket_value_split(grid, bucket)
 
     mybasis_function = np.zeros(shape=grid.shape)
@@ -206,7 +220,7 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str) -> 
 
 
 def nregion_landsea_basis(
-    grid: np.ndarray, bucket: float = 1, nregion: int = 100, tol: int = 1, domain: str = "EUROPE"
+    grid: np.ndarray, bucket: float = 1, nregion: int = 100, tol: int = 1, domain: str = "EUROPE", use_defaults: bool = True, country_dir: str = None
 ) -> np.ndarray:
     """Obtain basis function with nregions (for land-sea split).
 
@@ -232,6 +246,6 @@ def nregion_landsea_basis(
     Returns:
         basis_function: 2D basis function array
     """
-    bucket_opt = optimize_nregions(bucket, grid, nregion, tol, domain)
-    basis_function = bucket_split_landsea_basis(grid, bucket_opt, domain)
+    bucket_opt = optimize_nregions(bucket, grid, nregion, tol, domain, use_defaults, country_dir)
+    basis_function = bucket_split_landsea_basis(grid, bucket_opt, domain, use_defaults, country_dir)
     return basis_function

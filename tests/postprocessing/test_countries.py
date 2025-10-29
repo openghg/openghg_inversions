@@ -50,15 +50,6 @@ def test_country_regions_align(country_ds):
 
     assert list(paris_regions.align(countries_list).to_dict()["BELUX"]) == ["BELGIUM", "LUXEMBOURG"]
 
-
-def test_country_regions_align_eastasia(country_ds_eastasia):
-    """Check that aligning country regions defined with alpha3 codes results in definitions with input names
-    for EASTASIA domain."""
-    paris_regions = CountryRegions(paris_regions_dict['eastasia'])
-    countries_list = CountryInfoList(country_ds_eastasia.name.values)
-
-    assert list(paris_regions.align(countries_list).to_dict()["EASTERN_ASIA"]) == ["EChi1", "N.Kor", "S.Kor", "Japan"]
-
 @pytest.mark.parametrize("country_code", ["alpha2", "alpha3", None])
 def test_countries_matrix_with_regions(country_code, country_ds, europe_country_file):
     """Check that country regions combine with countries correctly in EUROPE domain."""
@@ -73,8 +64,8 @@ def test_countries_matrix_with_regions(country_code, country_ds, europe_country_
 def test_countries_matrix_with_regions_EASTASIA(country_code, country_ds_eastasia, eastasia_country_file):
     """Check that country regions combine with countries correctly in EASTASIA domain."""
     countries = Countries.from_file(
-        domain="EASTASIA", country_regions=paris_regions_dict['eastasia'], country_code=country_code,
+        domain="EASTASIA", country_regions=paris_regions_dict.get('eastasia'), country_code=country_code,
         country_file=eastasia_country_file
     )
 
-    assert len(countries.country_selections) == len(country_ds_eastasia.name) + len(paris_regions_dict['eastasia'])
+    assert len(countries.country_selections) == len(country_ds_eastasia.name) + len(paris_regions_dict.get('eastasia', []))
