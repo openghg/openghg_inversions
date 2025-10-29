@@ -188,76 +188,40 @@ def data_processing_surface_notracer(
     use tracers.
 
     Args:
-        species:
-            Atmospheric trace gas species of interest
+        species: Atmospheric trace gas species of interest
             e.g. "co2"
-        sites:
-            List of strings containing measurement
+        sites: List of strings containing measurement
             station/site abbreviations
             e.g. ["MHD", "TAC"]
             NOTE: for satellite, pass as "satellitename-obs_region" eg "GOSAT-BRAZIL" and pass corresponding platform as "satellite"
-        domain:
-            Model domain region of interest
-            e.g. "EUROPE"
-        averaging_period:
-            List of averaging periods to apply to
-            mole fraction data. NB. len(averaging_period)==len(sites)
-            e.g. ["1H", "1H"]
-        start_date:
-            Date from which to gather data
-            e.g. "2020-01-01"
-        end_date:
-            Date until which to gather data
-            e.g. "2020-02-01"
-        obs_data_level:
-            ICOS observations data level. For non-ICOS sites
-            use "None"
-        inlet:
-            Specific inlet height for the site observations
-            (length must match number of sites)
-        instrument:
-            Specific instrument for the site
-            (length must match number of sites)
-      max_level:
-        Maximum atmospheric level to extract. Only needed if using 
-        satellite data. Must be an int 
-        calibration_scale:
-            Convert measurements to defined calibration scale
-        met_model:
-            Meteorological model used in the LPDM. List must be same length as number of sites.
-        fp_model:
-            LPDM used for generating footprints.
-        fp_height:
-            Inlet height used in footprints for corresponding sites.
-        fp_species:
-            Species name associated with footprints in the object store
-        emissions_name:
-            List of keywords args associated with emissions files
-            in the object store.
-        use_bc:
-            Option to include boundary conditions in model
-        bc_input:
-            Variable for calling BC data from 'bc_store' - equivalent of
-            'emissions_name' for fluxes
-        bc_store:
-            Name of object store to retrieve boundary conditions data from
-        obs_store:
-            Name of object store to retrieve observations data from
-        footprint_store:
-            Name of object store to retrieve footprints data from
-        emissions_store:
-            Name of object store to retrieve emissions data from
-        averagingerror:
-            Adds the variability in the averaging period to the measurement
+        domain: Model domain region of interest; e.g. "EUROPE"
+        averaging_period: List of averaging periods to apply to mole fraction data.
+             NB. len(averaging_period)==len(sites) e.g. ["1H", "1H"]
+        start_date: Date from which to gather data; e.g. "2020-01-01"
+        end_date: Date until which to gather data; e.g. "2020-02-01"
+        obs_data_level: ICOS observations data level. For non-ICOS sites use "None"
+        inlet: Specific inlet height for the site observations (length must match number of sites)
+        instrument: Specific instrument for the site (length must match number of sites)
+        max_level: Maximum atmospheric level to extract. Only needed if using satellite data.
+        calibration_scale: Convert measurements to defined calibration scale
+        met_model: Meteorological model used in the LPDM. List must be same length as number of sites.
+        fp_model: LPDM used for generating footprints.
+        fp_height: Inlet height used in footprints for corresponding sites.
+        fp_species: Species name associated with footprints in the object store
+        emissions_name: List of keywords args associated with emissions files in the object store.
+            Corresponds to `source` in OpenGHG.
+        use_bc: Option to include boundary conditions in model
+        bc_input: Variable for calling BC data from 'bc_store' - equivalent of 'emissions_name' for fluxes.
+        bc_store: Name of object store to retrieve boundary conditions data from.
+        obs_store: Name of object store to retrieve observations data from.
+        footprint_store: Name of object store to retrieve footprints data from.
+        emissions_store: Name of object store to retrieve emissions data from.
+        averagingerror: Adds the variability in the averaging period to the measurement
             error if set to True.
-        save_merged_data:
-            Save forward simulations data and observations
-        merged_data_name:
-            Filename for saved forward simulations data and observations
-        merged_data_dir:
-            Directory path for for saved forward simulations data and observations
-        output_name:
-            Optional name used to create merged data name.
+        save_merged_data: Save forward simulations data and observations.
+        merged_data_name: Filename for saved forward simulations data and observations.
+        merged_data_dir: Directory path for for saved forward simulations data and observations.
+        output_name: Optional name used to create merged data name.
 
     Returns:
         tuple: containing
@@ -336,7 +300,11 @@ def data_processing_surface_notracer(
     warnings.warn(f"Dropping all variables besides {keep_variables}")
     for i, site in enumerate(sites):
         # Get observations data
-        # TODO: update this to get column data if platform is satellite
+        if isinstance(platform[i], str) and platform[i].lower() == "flask":
+            avg_period = None
+        else:
+            avg_period = averaging_period[i]
+
         site_data = get_obs_data(
             site=site,
             species=species,
@@ -346,7 +314,7 @@ def data_processing_surface_notracer(
             platform=platform[i],
             end_date=end_date,
             data_level=obs_data_level[i],
-            average=averaging_period[i],
+            average=avg_period,
             instrument=instrument[i],
             calibration_scale=calibration_scale,
             max_level=max_level,
@@ -379,12 +347,15 @@ def data_processing_surface_notracer(
                 f"Check these values.\nContinuing model run without {site}.\n",
             )
             continue  # skip this site
-        scenario_combined = merged_scenario_data(obs_data=site_data, footprint_data=footprint_data, flux_dict=flux_dict, bc_data=bc_data, platform=platform[i], max_level=max_level)
+
+        scenario_combined = merged_scenario_data(
+            site_data, footprint_data, flux_dict, bc_data, platform=platform[i], max_level=max_level
+        )
         fp_all[site] = scenario_combined
 
         units[site] = scenario_combined.mf.attrs.get("units")
 
-        if not "satellite" in platform:
+        if "satellite" not in platform:
             scales[site] = scenario_combined.scale
             check_scales.add(scenario_combined.scale)
 
@@ -401,7 +372,7 @@ def data_processing_surface_notracer(
         averaging_period = [averaging_period[s] for s in site_indices_to_keep]
 
     # if "satellite" not in footprint_data.metadata:
-        # check for consistency of calibration scales
+    # check for consistency of calibration scales
     if len(check_scales) > 1:
         msg = f"Not all sites using the same calibration scale: {len(check_scales)} scales found."
         logger.warning(msg)
@@ -421,7 +392,6 @@ def data_processing_surface_notracer(
         if isinstance(unit, str):
             unit = extract_float(unit)
         fp_all[".units"] = unit
-
 
     # create `mf_error`
     add_obs_error(sites, fp_all, add_averaging_error=averagingerror)
