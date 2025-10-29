@@ -4,7 +4,7 @@ After cloning OpenGHG inversions, say to `Documents`, create a folder called `in
 
 Assuming `openghg_inversions` is in the same folder (e.g. `Documents`), activate your environment and use the following command to create an object store with some data used to test inversions:
 ```
-python openghg_inversions/scripts/make_test_store "inversions_tutorial_store"
+python openghg_inversions/scripts/make_test_store.py "inversions_tutorial_store"
 ```
 This will make a folder called `inversions_tutorial_store` in the current directory (e.g. `Documents`), which is an OpenGHG object store with a small amount of data for running inversions.
 
