@@ -27,7 +27,7 @@ def monthly_bcs(start_date: str, end_date: str, site: str, fp_data: dict) -> np.
     nmonth = len(allmonth)
     curtime = pd.to_datetime(fp_data[site].time.values).to_period("M")
     pmonth = pd.to_datetime(fp_data[site].resample(time="MS").mean().time.values)
-    nregions = fp_data[site].sizes["region_bc"]
+    nregions = fp_data[site].sizes["bc_region"]
     hmbc = np.zeros((nregions * nmonth, len(fp_data[site].time.values)))
     count = 0
     for cord in range(nregions):
