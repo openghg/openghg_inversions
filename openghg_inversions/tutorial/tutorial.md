@@ -12,7 +12,7 @@ In `openghg_inversions/tutorials` there is a sample `ini` file called `mhd_tac_c
 
 To run the inversion, move to your `inversions_tutorial` directory and use the following command:
 ```
-python ../openghg_inversions/openghg_inversions/hbmcmc/run_hbmcmc.py 2019-01-01 2019-02-01 --output-path $(pwd)
+python ../openghg_inversions/openghg_inversions/hbmcmc/run_hbmcmc.py 2019-01-01 2019-02-01 --output-path $(pwd) -c ../openghg_inversions/openghg_inversions/tutorials/mhd_tac_ch4.ini
 ```
 If `openghg_inversions` is not one level up from `inversions_tutorial`, you might need to change the path.
 
