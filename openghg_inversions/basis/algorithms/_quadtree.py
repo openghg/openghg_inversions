@@ -146,91 +146,19 @@ def get_quadtree_basis(fps: np.ndarray, nbasis: int, seed: int | None = None) ->
         basisQuad = quadTreeGrid(fps, x)
         return (nbasis - np.max(basisQuad) - 1) ** 2
 
-    # Calculate search range based on data characteristics
-    non_zero_vals = fps[fps > 0]
-    if len(non_zero_vals) == 0:
-        raise ValueError("Input array contains no non-zero values")
-    
-    # For quadtree, the effective limit values are typically larger than individual data values
-    # They represent aggregate sums over regions. Use percentiles to estimate good ranges.
-    percentiles = np.percentile(non_zero_vals, [95, 99.9])
-    max_val = np.max(non_zero_vals)
-    
-    # Set search range to cover the spectrum from high percentiles to well above max value
-    # This captures the range where meaningful subdivision control occurs
-    search_min = percentiles[0]  # 95th percentile
-    search_max = max_val * 1000  # Well above maximum value
-    
-    best_result = None
-    best_cost = float('inf')
-    best_x = None
-    
-    max_iterations = 25
-    tolerance = max(3.0, np.sqrt(nbasis) * 0.5)  # Scale tolerance with target size
-    
-    for pwr in range(max_iterations):
-        # Use both exponential and logarithmic spacing to cover the range effectively
-        if pwr < 15:
-            # Exponential scaling - divide search range
-            current_max = search_max / (1.5**pwr)
-            current_min = search_min / (1.5**pwr)
-        else:
-            # Switch to logarithmic spacing for finer control
-            log_min = np.log10(search_min)
-            log_max = np.log10(search_max)
-            log_current = log_min + (log_max - log_min) * (pwr - 15) / 10
-            current_min = 10**log_current
-            current_max = current_min * 10
-        
-        # Ensure minimum bound
-        current_min = max(current_min, search_min / 1000)
-        
-        if current_min >= current_max or current_max <= 0:
-            continue
-        
-        try:
-            optim = scipy.optimize.dual_annealing(
-                qtoptim, np.expand_dims([current_min, current_max], axis=0), 
-                seed=seed, maxiter=1000
-            )
-            cost = np.sqrt(optim.fun)
-            
-            # Keep track of the best solution found so far
-            if cost < best_cost:
-                best_cost = cost
-                best_result = quadTreeGrid(fps, optim.x[0])
-                best_x = optim.x[0]
-                
-            # Early termination if we found a good solution
-            if cost <= tolerance:
-                break
-                
-        except Exception:
-            # If optimization fails, continue with next iteration
-            continue
-    
-    # Accept solution if it's reasonably close to target
-    if best_result is not None:
-        actual_nbasis = np.max(best_result) + 1
-        relative_error = abs(actual_nbasis - nbasis) / nbasis
-        
-        # Accept solution if it's within 20% of target or within 5 basis functions
-        if relative_error < 0.2 or abs(actual_nbasis - nbasis) <= 5:
-            np.savetxt("/group/chem/acrg/InHALE_inversions/halon2402_haklim/quadtree_grid.txt", best_result)
-            return best_result + 1
-    
-    # If no acceptable solution found, raise an informative error
-    if best_result is not None:
-        actual_nbasis = np.max(best_result) + 1
-        raise RuntimeError(
-            f"Quadtree could not find a solution close enough to target. "
-            f"Target: {nbasis}, closest found: {actual_nbasis}, "
-            f"relative error: {abs(actual_nbasis - nbasis) / nbasis:.1%}. "
-            f"Try a different target number of basis functions."
+    cost = 1e6
+    pwr = 0
+
+    fps = fps/np.sum(fps) # normalize to improve optimization stability
+
+    search_max = 10 * np.sum(fps)
+    while cost > 3.0:
+        optim = scipy.optimize.dual_annealing(
+            qtoptim, np.expand_dims([0, search_max / 2**pwr], axis=0), seed=seed
         )
-    else:
-        raise RuntimeError(
-            f"Quadtree optimization failed completely. "
-            f"The data may be too sparse or the target number of basis functions ({nbasis}) "
-            f"may be incompatible with the data structure."
-        )
+        cost = np.sqrt(optim.fun)
+        pwr += 1
+        if pwr > 10:
+            raise RuntimeError("Quadtree did not converge after max iterations.")
+
+    return quadTreeGrid(fps, optim.x[0]) + 1
