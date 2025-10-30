@@ -311,6 +311,7 @@ def bucketbasisfunction(
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
+    fps = fps / fps.max()
 
     # use xr.apply_ufunc to keep xarray coords
     func = partial(weighted_algorithm, nregion=nbasis, bucket=1, domain=domain)

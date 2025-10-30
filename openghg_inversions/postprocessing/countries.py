@@ -271,7 +271,7 @@ class Countries:
                 )
                 self.matrix = xr.concat([self.matrix, region_matrix], dim="country")
 
-        self.area_grid = get_area_grid(countries.lat, countries.lon)
+        self.area_grid = get_area_grid(countries.lat, countries.lon).astype("float32")
 
         # restrict matrix to selected countries
         if country_selections is not None:
@@ -348,7 +348,7 @@ class Countries:
 
         # compute matrix/tensor product: country_mat.T @ (area_grid * flux * basis_mat)
         # transpose doesn't need to be taken explicitly because alignment is done by dimension name
-        result = self.matrix @ (self.area_grid * flux_x_basis)
+        result = sparse_xr_dot(self.matrix, (self.area_grid * flux_x_basis))
 
         if sparse:
             return result

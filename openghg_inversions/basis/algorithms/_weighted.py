@@ -24,15 +24,13 @@ class OptimizationError(Exception): ...
 
 @lru_cache
 def load_landsea_indices(domain: str) -> np.ndarray:
-    """Load array with indices that separate
-    land and sea regions in specified domain.
+    """Load array with indices that separate land and sea regions in specified domain.
 
     Args:
-        domain (str): domain for which to load landsea indices. Currently only "EASTASIA" or "EUROPE".
+        domain: Domain for which to load landsea indices. Currently only "EASTASIA" or "EUROPE".
 
-    Returns :
-        Array containing 0 (where there is sea)
-        and 1 (where there is land).
+    Returns:
+        np.ndarray: Array containing 0 (where there is sea) and 1 (where there is land).
     """
     if domain == "EASTASIA":
         landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_EASTASIA.nc")
@@ -52,31 +50,24 @@ def bucket_value_split(
     offset_x: int = 0,
     offset_y: int = 0,
 ) -> list[tuple]:
-    """Algorithm that will split the input grid (e.g. fp * flux)
-    such that the sum of each basis function region will
-    equal the bucket value or by a single array element.
+    """Algorithm that will split the input grid (e.g. fp * flux).
+    
+    Split such that the sum of each basis function region will equal the bucket value 
+    or by a single array element.
 
-    The number of regions will be determined by the bucket value
-    i.e. smaller bucket value ==> more regions
-         larger bucket value ==> fewer regions
+    The number of regions will be determined by the bucket value:
+    i.e. smaller bucket value ==> more regions, larger bucket value ==> fewer regions.
 
     Args:
-        grid:
-            2D grid of footprints * flux, or whatever
-            grid you want to split. Could be: population
-            data, spatial distribution of bakeries, you chose!
-        bucket:
-            Maximum value for each basis function region
-        offset_x:
-            Start index of the region on first axis of the grid
-            Default 0
-        offset_y:
-            Start index of the region on second axis of the grid
-            Default 0
+        grid: 2D grid of footprints * flux, or whatever grid you want to split. 
+            Could be: population data, spatial distribution of bakeries, you chose!
+        bucket: Maximum value for each basis function region.
+        offset_x: Start index of the region on first axis of the grid. Default 0.
+        offset_y: Start index of the region on second axis of the grid. Default 0.
 
     Returns:
-        list of tuples that define the indices for each basis function region
-        [(ymin0, ymax0, xmin0, xmax0), ..., (yminN, ymaxN, xminN, xmaxN)]
+        list: List of tuples that define the indices for each basis function region
+            [(ymin0, ymax0, xmin0, xmax0), ..., (yminN, ymaxN, xminN, xmaxN)]
     """
     if np.sum(grid) <= bucket or grid.shape == (1, 1):
         return [(offset_y, offset_y + grid.shape[0], offset_x, offset_x + grid.shape[1])]
@@ -201,13 +192,13 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str) -> 
 
         if len(inds_y0) != 0:
             count += 1
-            for i in range(len(inds_y0)):
-                mybasis_function[inds_y0[i] + ymin, inds_x0[i] + xmin] = count
+            for j in range(len(inds_y0)):
+                mybasis_function[inds_y0[j] + ymin, inds_x0[j] + xmin] = count
 
         if len(inds_y1) != 0:
             count += 1
-            for i in range(len(inds_y1)):
-                mybasis_function[inds_y1[i] + ymin, inds_x1[i] + xmin] = count
+            for j in range(len(inds_y1)):
+                mybasis_function[inds_y1[j] + ymin, inds_x1[j] + xmin] = count
 
     return mybasis_function
 

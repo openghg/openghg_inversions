@@ -2,6 +2,19 @@
 
 # Unreleased
 
+# Version 0.5.0
+
+## Model updates
+- Passing `platform="flask"` for obs data (same format as e.g. inlet or averaging period) will 1) prevent the data from being resampled, and 2) tell ModelScenario to align the footprints to the obs without resampling. If you want to resample flask data, use `platform=None`. [#PR 322](https://github.com/openghg/openghg_inversions/pull/322)
+
+## Code changes
+
+- Optimisations for speeding up data processing (also some improvements to memory usage during MCMC and postprocessing). [#PR 311](https://github.com/openghg/openghg_inversions/pull/311)
+- Removed duplicate code for computing "fp x flux" and "bc sensitivity" matrices. This is done using `ModelScenario` now. This also means that units are aligned using `pint`. [#PR 305](https://github.com/openghg/openghg_inversions/pull/305)
+- Removed threshold for filling missing obs. error. [#PR 306](https://github.com/openghg/openghg_inversions/pull/306)
+
+# Version 0.4.0
+
 ## Model updates
 
 - Offsets can be applied to all but one site (ini option `offset_args = {"drop_first": True}`) or to all sites, which is the default option (ini option `offset_args = {"drop_first": False}`). [#PR 285](https://github.com/openghg/openghg_inversions/pull/285)
@@ -15,12 +28,13 @@
 - Added offset to PARIS concentration outputs. [#PR 282](https://github.com/openghg/openghg_inversions/pull/282)
 - Compression added for output PARIS netcdf files. Standard RHIME output now shuffles to save space.
 - Fixed warning messages for zeros/NaNs in `mf_error`. [#PR 292](https://github.com/openghg/openghg_inversions/pull/292)
+- `get_flux_data` tries to infer the "time period" of the flux, which is used to set the time offset for PARIS flux outputs. [#PR 302](https://github.com/openghg/openghg_inversions/pull/302)
 
 # Version 0.3.0
 
 - Fixed bug due to wrong BC units. [#PR 249](https://github.com/openghg/openghg_inversions/pull/249)
 
-- Merged functionality of `min_error` and `calculate_min_error` into a single variable (`min_error`). [#PR 240](https://github.com/openghg/openghg_inversions/pull/240)
+- Merged funactionality of `min_error` and `calculate_min_error` into a single variable (`min_error`). [#PR 240](https://github.com/openghg/openghg_inversions/pull/240)
 
 - Tidied `get_data.py`, splitting it into several files. [#PR 237](https://github.com/openghg/openghg_inversions/pull/237)
 

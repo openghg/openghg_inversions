@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Created on Fri Aug 21 11:21:27 2020.
+"""Version management utilities.
 
+This file contains methods for obtaining the version of the code used to generate output.
+
+Created on Fri Aug 21 11:21:27 2020.
 @author: al18242
-
-This file contains a method of obtaining the version
-of the code used to generate output.
----------------------------------------
 Updated by Eric Saboya (Dec. 2022)
-
 """
 
 import subprocess
@@ -18,14 +16,10 @@ openghginv_path = Paths.openghginv
 
 
 def code_version():
-    """Use git describe to return the latest tag
-    (and git hash if applicable).
-    -----------------------------------
+    """Use git describe to return the latest tag (and git hash if applicable).
 
     Returns:
-      version : String defining the version of the code used,
-                or "Unknown" if git is unavailable
-    -----------------------------------
+        str: String defining the version of the code used, or "Unknown" if git is unavailable.
     """
 
     try:
