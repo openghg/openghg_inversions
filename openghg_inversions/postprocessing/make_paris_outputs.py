@@ -26,8 +26,10 @@ from openghg_inversions.utils import get_country_file_path
 paris_formatting_path = Path(__file__).parent
 
 # paths to template files
-conc_template_path = paris_formatting_path / "PARIS_Lagrangian_inversion_concentration_EUROPE_v03.cdl"
-flux_template_path = paris_formatting_path / "PARIS_Lagrangian_inversion_flux_EUROPE.cdl"
+# conc_template_path = paris_formatting_path / "PARIS_Lagrangian_inversion_concentration_EUROPE_v03.cdl"
+# flux_template_path = paris_formatting_path / "PARIS_Lagrangian_inversion_flux_EUROPE.cdl"
+conc_template_path = paris_formatting_path / "PAR-AVE-EYE_inversion_concentration_output.cdl"
+flux_template_path = paris_formatting_path / "PAR-AVE-EYE_inversion_flux_output.cdl"
 
 
 var_pat = re.compile(r"\s*[a-z]+ ([a-zA-Z_]+)\(.*\)")
@@ -60,7 +62,7 @@ def get_data_var_attrs(template_file: str | Path, species: str | None = None) ->
 def make_global_attrs(
     output_type: Literal["flux", "conc"],
     author: str | None = None,
-    species: str = "inert",
+    species: str = "inert", # TODO change that!
     domain: str = "EUROPE",
     apriori_description: str = "EDGAR 8.0",
     history: str | None = None,
@@ -83,7 +85,7 @@ def make_global_attrs(
         transport_model_version="NAME III (version 8.0)",
         met_model="UKV",
         domain=domain,
-        species=species,
+        species=species, # Change species here bcs usually species='inert'
         project="Process Attribution of Regional emISsions (PARIS)",
         references="Ganesan, et.al., 2014, doi: 10.5194/acp-14-3855-2014",
         acknowledgements="Please acknowledge ACRG, University of Bristol, in any publication that uses this data.",
@@ -138,7 +140,7 @@ def paris_concentration_outputs(
 ) -> xr.Dataset:
     """Create PARIS concentration outputs.
 
-    TODO: add offset
+    TODO: add offset # DONE???
     """
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
 
@@ -149,11 +151,11 @@ def paris_concentration_outputs(
         .unstack("nmeasure")
         .rename(
             {
-                "y_obs": "Yobs",
-                "y_obs_repeatability": "uYobs_repeatability",
-                "y_obs_variability": "uYobs_variability",
-                "model_error": "uYmod",
-                "total_error": "uYtotal",
+                "y_obs": "mf_observed",
+                "y_obs_repeatability": "stdev_mf_observed_repeatability",
+                "y_obs_variability": "stdev_mf_observed_variability",
+                "model_error": "stdev_mf_model",
+                "total_error": "stdev_mf_total",
             }
         )
         .drop_vars("y_obs_error")
@@ -163,30 +165,44 @@ def paris_concentration_outputs(
 
     # rename to match PARIS concentrations template
     def renamer(name: str) -> str:
-        when = "apost" if "posterior" in name else "apriori"
+        # when = "apost" if "posterior" in name else "apriori"
 
+        # if "bc" in name:
+        #     suffix = "BC"
+        # elif "offset" in name:
+        #     suffix = "_bias"
+        # else:
+        #     suffix = ""
+        
+        # prefix = "qY" if "quantile" in name else "Y"
+
+        prefix = "percentile_mf_" if "quantile" in name else "mf_" 
         if "bc" in name:
-            suffix = "BC"
-        elif "offset" in name:
-            suffix = "_bias"
+            when = "bc_"
+        elif "bias" in name:
+            when = "bias_"
         else:
-            suffix = ""
-
-        prefix = "qY" if "quantile" in name else "Y"
+            when = ""
+        suffix = "prior" if "prior" in name else "posterior"
         return prefix + when + suffix
 
-    rename_dict = {"quantile": "percentile"}
+    # rename_dict = {"quantile": "percentile"}
+    rename_dict = {}
     for dv in conc_outputs.data_vars:
         rename_dict[str(dv)] = renamer(str(dv))
 
     conc_outputs = conc_outputs.rename(rename_dict)
 
     # We produce these, but they aren't in the template
-    if "qYapostBC" in conc_outputs.data_vars:
-        conc_outputs = conc_outputs.drop_vars(["qYapostBC", "qYaprioriBC"])
+    if "percentile_mf_bc_prior" in conc_outputs.data_vars:
+        conc_outputs = conc_outputs.drop_vars(["percentile_mf_bc_prior", "percentile_mf_bc_posterior"])
+    # if "qYapostBC" in conc_outputs.data_vars:
+    #     conc_outputs = conc_outputs.drop_vars(["qYapostBC", "qYaprioriBC"])
 
-    if "qYapost_bias" in conc_outputs.data_vars:
-        conc_outputs = conc_outputs.drop_vars(["qYapost_bias", "qYapriori_bias"])
+    if "percentile_mf_bias_prior" in conc_outputs.data_vars:
+        conc_outputs = conc_outputs.drop_vars(["percentile_mf_bias_prior", "percentile_mf_bias_posterior"])
+    # if "qYapost_bias" in conc_outputs.data_vars:
+    #     conc_outputs = conc_outputs.drop_vars(["qYapost_bias", "qYapriori_bias"])
 
     conc_attrs = get_data_var_attrs(conc_template_path)
 
