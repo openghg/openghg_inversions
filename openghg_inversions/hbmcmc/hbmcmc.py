@@ -403,6 +403,9 @@ def fixedbasisMCMC(
         to_compute_site = [dv for dv in to_compute if dv in fp_data[site].data_vars]
         fp_data[site][to_compute_site] = fp_data[site][to_compute_site].compute()
 
+        if "id" in fp_data[site].dims:
+            fp_data[site] = fp_data[site].isel(id=0)
+
     # Get inputs ready
     error = np.zeros(0)
     obs_repeatability = np.zeros(0)
