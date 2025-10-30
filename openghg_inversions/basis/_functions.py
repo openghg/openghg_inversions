@@ -279,7 +279,6 @@ def bucketbasisfunction(
     nbasis: int = 100,
     abs_flux: bool = False,
     mask: xr.DataArray | None = None,
-    use_defaults: bool = True,
     country_dir: str = None
 ) -> xr.DataArray:
     """Basis functions calculated using a weighted region approach
@@ -306,6 +305,8 @@ def bucketbasisfunction(
       mask (xarray.DataArray):
         Boolean mask on lat/lon coordinates. Used to find basis on sub-region
         Default None
+      country_dir (str):
+        Directory containing land-sea files. If None, will use default files.
 
     Returns:
       bucket_basis (xarray.DataArray):
@@ -316,7 +317,7 @@ def bucketbasisfunction(
     fps = fps / fps.max()
 
     # use xr.apply_ufunc to keep xarray coords
-    func = partial(weighted_algorithm, nregion=nbasis, bucket=1, domain=domain, use_defaults=use_defaults, country_dir=country_dir)
+    func = partial(weighted_algorithm, nregion=nbasis, bucket=1, domain=domain, country_dir=country_dir)
     bucket_basis = xr.apply_ufunc(func, fps)
 
     bucket_basis = bucket_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
