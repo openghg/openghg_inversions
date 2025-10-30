@@ -2,6 +2,11 @@
 
 # Unreleased
 
+- More flexibility for new inversion domains. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+- Allow offset between sites to be solved for on a monthly basis. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+- More flexibility for types of boundary condition basis functions. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+- Bug fix for quadtree algorithm. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+
 # Version 0.5.0
 
 ## Model updates
