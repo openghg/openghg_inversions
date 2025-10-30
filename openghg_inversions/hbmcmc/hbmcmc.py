@@ -73,6 +73,7 @@ def fixedbasisMCMC(
     basis_directory: str | None = None,
     bc_basis_case: str = "NESW",
     bc_basis_directory: str | None = None,
+    country_directory: str | None = None,
     country_file: str | None = None,
     bc_input: str | None = None,
     basis_algorithm: str = "weighted",
@@ -176,6 +177,9 @@ def fixedbasisMCMC(
       bc_basis_directory:
         Directory containing the boundary condition basis functions
         (e.g. files starting with "NESW")
+      country_directory:
+        Directory containing land-sea and InTEM outer region files for deriving
+        basis functions. If None, will use default files.
       country_file:
         Path to the country definition file
       bc_input:
@@ -411,6 +415,7 @@ def fixedbasisMCMC(
         bc_basis_case=bc_basis_case,
         basis_directory=basis_directory,
         bc_basis_directory=bc_basis_directory,
+        country_directory=country_directory,
         fp_all=fp_all,
         use_bc=use_bc,
         species=species,
