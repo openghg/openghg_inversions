@@ -49,7 +49,7 @@ def load_landsea_indices(domain: str, country_directory: str) -> np.ndarray:
             logger.warning(
             f"No default land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)"
         )
-        landsea_indices = xr.open_dataset(Path(__file__).parent / default_files["EUROPE"])
+            landsea_indices = xr.open_dataset(Path(__file__).parent / default_files["EUROPE"])
 
     elif country_directory is not None:
         logger.warning(f"Loading land-sea file for domain {domain} from {country_directory}.")
