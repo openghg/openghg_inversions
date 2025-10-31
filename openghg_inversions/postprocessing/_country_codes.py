@@ -161,6 +161,10 @@ def get_country_code(
 
     if preprocess(x) in ("ocean", "sea", "land"):
         return x
+    
+    # hard-code a few exceptions for the EASTASIA names in UKMO files
+    if x in ['NE', 'NW', 'SE', 'SW']:
+        return x
 
     # first try to match long names, ignoring "The " at the beginning of a name
     for v in iso3166.values():  # type: ignore

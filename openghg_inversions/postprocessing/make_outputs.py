@@ -245,7 +245,7 @@ def make_country_outputs(
 
     """
     if country_regions == "paris":
-        country_regions = paris_regions_dict[inv_out.domain.lower()]
+        country_regions = paris_regions_dict.get(inv_out.domain.lower())
     elif isinstance(country_regions, str):
         country_regions = Path(country_regions)
 

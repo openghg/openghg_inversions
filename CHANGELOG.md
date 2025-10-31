@@ -2,6 +2,11 @@
 
 # Unreleased
 
+- More flexibility for new inversion domains. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+- Allow offset between sites to be solved for on a monthly basis. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+- More flexibility for types of boundary condition basis functions. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+- Bug fix for quadtree algorithm. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+
 # Version 0.5.0
 
 ## Model updates
@@ -16,6 +21,8 @@
 # Version 0.4.0
 
 ## Model updates
+
+- Offsets can be applied and solved for on a monthly basis, as well as for the entire inversion period (ini option `offset_args = {"offset_freq": "M"}` for monthly, although other frequencies can be passed). 
 
 - Offsets can be applied to all but one site (ini option `offset_args = {"drop_first": True}`) or to all sites, which is the default option (ini option `offset_args = {"drop_first": False}`). [#PR 285](https://github.com/openghg/openghg_inversions/pull/285)
 
