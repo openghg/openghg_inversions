@@ -438,7 +438,7 @@ def fixedbasisMCMC(
 
         Y = np.concatenate((Y, fp_data[site].mf.values))
 
-        if inlet[si]=="column" or platform=="satellite" or platform=="site-column":
+        if platform=="satellite" or platform=="site-column":
             obs_prior_factor = np.concatenate((obs_prior_factor, fp_data[site].mf_prior_factor.values))
             obs_prior_upper_level_factor = np.concatenate((obs_prior_upper_level_factor, fp_data[site].mf_prior_upper_level_factor.values))
         else:
