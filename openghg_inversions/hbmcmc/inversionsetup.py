@@ -27,9 +27,10 @@ def monthly_bcs(start_date: str, end_date: str, site: str, fp_data: dict) -> np.
     nmonth = len(allmonth)
     curtime = pd.to_datetime(fp_data[site].time.values).to_period("M")
     pmonth = pd.to_datetime(fp_data[site].resample(time="MS").mean().time.values)
-    hmbc = np.zeros((4 * nmonth, len(fp_data[site].time.values)))
+    nregions = fp_data[site].sizes["bc_region"]
+    hmbc = np.zeros((nregions * nmonth, len(fp_data[site].time.values)))
     count = 0
-    for cord in range(4):
+    for cord in range(nregions):
         for m in range(0, nmonth):
             if allmonth[m] not in pmonth:
                 count += 1
@@ -75,9 +76,10 @@ def create_bc_sensitivity(start_date: str, end_date: str, site: str, fp_data: di
     )
     ndates = np.sum(alldates < pd.to_datetime(end_date))
     curdates = fp_data[site].time.values
-    hmbc = np.zeros((4 * ndates, len(fp_data[site].time.values)))
+    nregions = fp_data[site].sizes["region_bc"]
+    hmbc = np.zeros((nregions * ndates, len(fp_data[site].time.values)))
     count = 0
-    for cord in range(4):
+    for cord in range(nregions):
         for m in range(0, ndates):
             dateloc = np.where(
                 np.logical_and(

@@ -23,6 +23,7 @@ def basis_functions_wrapper(
     bc_basis_case: str | None = None,
     basis_directory: str | None = None,
     bc_basis_directory: str | None = None,
+    country_directory: str | None = None,
     outputname: str | None = None,
     output_path: str | None = None,
 ):
@@ -98,9 +99,10 @@ def basis_functions_wrapper(
         raise ValueError("One of `fp_basis_case` or `basis_algorithm` must be specified.")
 
     elif fix_outer_regions is True:
+        print("Using fixed outer regions for basis functions.")
         try:
             basis_data_array = fixed_outer_regions_basis(
-                fp_all, start_date, basis_algorithm, domain, emissions_name, nbasis
+                fp_all, start_date, basis_algorithm, domain, emissions_name, nbasis, country_directory
             )
         except KeyError as e:
             raise ValueError(
@@ -116,7 +118,7 @@ def basis_functions_wrapper(
                 "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
             ) from e
         print(f"Using {basis_function.description} to derive basis functions.")
-        basis_data_array = basis_function.algorithm(fp_all, start_date, domain, emissions_name, nbasis)
+        basis_data_array = basis_function.algorithm(fp_all, start_date, domain, emissions_name, nbasis, country_directory=country_directory)
 
     print(f"Computing basis took {time() - basis_start}s.")
 
