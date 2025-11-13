@@ -189,8 +189,6 @@ class InversionOutput:
     obs_err: xr.DataArray
     obs_repeatability: xr.DataArray
     obs_variability: xr.DataArray
-    obs_prior_factor: xr.DataArray
-    obs_prior_upper_level_factor: xr.DataArray
     flux: xr.DataArray
     basis: xr.DataArray
     trace: az.InferenceData
@@ -201,7 +199,9 @@ class InversionOutput:
     species: str
     domain: str
     site_names: xr.DataArray | None = None
-    model: pm.Model | None = None
+    model: pm.Model | None = None,
+    obs_prior_factor: xr.DataArray | None = None,
+    obs_prior_upper_level_factor: xr.DataArray | None = None,
 
     def __post_init__(self) -> None:
         """Check that trace has posterior traces, and fix flux time values."""
