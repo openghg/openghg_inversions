@@ -469,6 +469,8 @@ def inferpymc_postprocessouts(
     Hbc: np.ndarray | None = None,
     obs_repeatability: np.ndarray | None = None,
     obs_variability: np.ndarray | None = None,
+    obs_prior_factor: np.ndarray | None = None,
+    obs_prior_upper_level_factor: np.ndarray | None = None,
     fp_data: dict | None = None,
     country_file: str | None = None,
     add_offset: bool = False,
