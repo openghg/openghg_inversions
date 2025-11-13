@@ -777,6 +777,8 @@ def inferpymc_postprocessouts(
         "Yerror": (["nmeasure"], error),
         "Yerror_repeatability": (["nmeasure"], obs_repeatability),
         "Yerror_variability": (["nmeasure"], obs_variability),
+        "obs_prior_factor": (["nmeasure"], obs_prior_factor),
+        "obs_prior_upper_level_factor": (["nmeasure"], obs_prior_upper_level_factor),
         "min_model_error": (["nmeasure"], min_error),
         "Ytime": (["nmeasure"], Ytime),
         "Yapriori": (["nmeasure"], Yapriori),
