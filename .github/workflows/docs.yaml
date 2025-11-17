@@ -1,24 +1,73 @@
-name: Build & Deploy Docs
+name: Build & Deploy Docs (devel)
 
 on:
   push:
-    branches: [main]
+    branches:
+      - devel
+    paths:
+      - 'docs/**'
+      - 'tox.ini'
+      - 'pyproject.toml'
+      - 'setup.cfg'
+      - 'setup.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
 
 jobs:
   docs:
     runs-on: ubuntu-latest
+    concurrency:
+      group: docs-deploy
+      cancel-in-progress: true
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v3
         with:
           python-version: '3.11'
-      - name: Install tox
-        run: pip install tox
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip tox
+
       - name: Build docs using tox
         run: tox -e docs
+        
+      - name: Show built docs (debug)
+        run: |
+          echo "Listing docs/_build/ (if present):"
+          if [ -d docs/_build/ ]; then
+            find docs/_build/ -maxdepth 3 -type f -print || true
+            echo "Total files:"
+            find docs/_build/ -type f | wc -l
+          else
+            echo "Directory docs/_build/ does not exist"
+          fi
+
+      - name: Upload built docs artifact (for inspection)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-docs
+          path: docs/_build/
+
+      - name: Fail if publish dir empty
+        run: |
+          if [ ! -d docs/_build/ ] || [ -z "$(ls -A docs/_build/ 2>/dev/null)" ]; then
+            echo "ERROR: publish_dir docs/_build/ is empty or missing. Aborting deploy."
+            exit 1
+          fi
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: docs/_build/html
+          publish_dir: docs/_build/
+          publish_branch: gh-pages
