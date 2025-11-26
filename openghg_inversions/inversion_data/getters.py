@@ -193,6 +193,18 @@ def get_obs_data(
                     end_date=end_date,
                     store=store,
                 )
+
+            elif platform == "site-column":
+                    obs_data = get_obs_column(
+                        site=site,
+                        species=species,
+                        max_level=max_level,
+                        platform = "site-column", 
+                        domain=domain,
+                        start_date=start_date,
+                        end_date=end_date,
+                        store=store,
+                    )
             else:
                 obs_data = get_obs_surface(
                     site=site,
