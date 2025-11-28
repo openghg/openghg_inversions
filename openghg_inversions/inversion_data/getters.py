@@ -275,7 +275,6 @@ def get_footprint_to_match(
     end_date = end_date or obs._end_date
 
     # get available footprint heights
-    met_model = met_model or "not_set"  # replace None with 'not_set'
     fp_kwargs = {
         "site": site,
         "species": species,
