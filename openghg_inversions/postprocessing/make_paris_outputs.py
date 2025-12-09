@@ -150,7 +150,7 @@ def paris_concentration_outputs(
         .rename(
             {
                 "y_obs": "Yobs",
-                "y_obs_prior_factor": "Yobss_prior_factor",
+                "y_obs_prior_factor": "Yobs_prior_factor",
                 "y_obs_prior_upper_level_factor": "Yobs_prior_upper_level_factor",
                 "y_obs_repeatability": "uYobs_repeatability",
                 "y_obs_variability": "uYobs_variability",
@@ -205,6 +205,18 @@ def paris_concentration_outputs(
         .transpose("time", "percentile", "nsite")
         .rename_vars(nsite="sitenames")
     )
+
+    import numpy as np
+    with xr.set_options(keep_attrs="default"):
+        factor = (result["Yobs_prior_factor"].where(np.nan,0) + result["Yobs_prior_upper_level_factor"].where(np.nan,0))
+    result["Yobs"] += factor
+    result["Yapost"] += factor
+    result["Yapriori"] += factor
+    result["qYapost"] += factor
+    result["qYapriori"] += factor
+    if "YapostBC" in result.data_vars:
+        result["YapostBC"] += factor
+        result["YaprioriBC"] += factor
 
     result.sitenames.attrs["long_name"] = "identifier of site"
 
