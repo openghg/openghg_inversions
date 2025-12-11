@@ -7,7 +7,7 @@ conditions, and their sensitivities.
 Many functions in this submodule originated in the ACRG code base (in `acrg.name`).
 
 """
-
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal
@@ -124,6 +124,27 @@ def read_netcdfs(
     combined = xr.concat(datasets, dim)
 
     return combined
+
+
+def ncdf_encoding(ds_in: xr.Dataset) -> dict:
+    """Define encoding for netCDF4 files.
+
+    Args:
+        ds_in: Xarray dataset to define encoding for.
+
+    Returns:
+        dict: Dictionary with encoding parameters for netCDF4 files.
+    """
+    # variables with variable length data types shouldn't be compressed
+    # e.g. object ("O") or unicode ("U") type
+    do_not_compress = []
+    dtype_pat = re.compile(r"[<>=]?[UO]")  # regex for Unicode and Object dtypes
+    for dv in ds_in.data_vars:
+        if dtype_pat.match(ds_in[dv].data.dtype.str):
+            do_not_compress.append(dv)
+    encoding = {var: {"zlib": True, "complevel": 5, "shuffle": True} for var in ds_in.data_vars if var not in do_not_compress}
+
+    return encoding
 
 
 def get_country_file_path(country_file: str | Path | None = None, domain: str | None = None):

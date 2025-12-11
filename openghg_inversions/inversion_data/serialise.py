@@ -11,15 +11,29 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, cast, Literal
 
+from numcodecs import Blosc
 import numpy as np
 import xarray as xr
 
 from openghg.dataobjects import BoundaryConditionsData, FluxData
 from openghg.util import timestamp_now
+from openghg_inversions.utils import ncdf_encoding
+
+
+OutputFormat = Literal["pickle", "netcdf", "zarr", "zarr.zip"]  # for internal type hints
 
 
 def _make_merged_data_name(species: str, start_date: str, output_name: str) -> str:
     return f"{species}_{start_date}_{output_name}_merged-data"
+
+
+def _split_suffix(merged_data_name: str) -> tuple[str, OutputFormat | None]:
+    for suffix in ("pickle", "nc", "zarr", "zarr.zip"):
+        if merged_data_name.endswith("." + suffix):
+            if suffix == "nc":
+                return merged_data_name.removesuffix("." + suffix), "netcdf"
+            return merged_data_name.removesuffix("." + suffix), suffix
+    return merged_data_name, None
 
 
 def _save_merged_data(
@@ -38,8 +52,13 @@ def _save_merged_data(
 
     If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
 
-    The default output format is a zarr store. If zarr is not installed, then netCDF is used.
-    Alternatively, "pickle" can be specified.
+    If `merged_data_name` ends with one of "pickle", "nc", "zarr", or "zarr.zip", the output format
+    will be set accordingly. Otherwise, the output format defaults to zipped zarr store. If zarr is
+    not installed, then netCDF is used.
+
+    The output can be saved to a pickle file, but this isn't
+    recommended because data can only be unpickled reliably with the exact same environment that created
+    the pickle.
 
     Args:
         fp_all: dictionary of merged data to save
@@ -61,8 +80,15 @@ def _save_merged_data(
             )
         merged_data_name = _make_merged_data_name(species, start_date, output_name)  # type: ignore
 
-    if isinstance(merged_data_dir, str):
-        merged_data_dir = Path(merged_data_dir)
+    # if suffix corresponds to an output format, strip the suffix and set the output
+    # format accordingly
+    merged_data_name, suffix = _split_suffix(merged_data_name)
+    output_format = suffix or output_format
+
+    merged_data_dir = Path(merged_data_dir)
+
+    if not merged_data_dir.exists():
+        merged_data_dir.mkdir(parents=True)
 
     # write to specified output
     if output_format == "pickle":
@@ -70,21 +96,29 @@ def _save_merged_data(
             pickle.dump(fp_all, f)
     elif output_format in {"netcdf", "zarr", "zarr.zip"}:
         ds = make_combined_scenario(fp_all)
-
         if "zarr" in output_format:
             try:
                 import zarr
             except ModuleNotFoundError:
                 # zarr not found
-                ds.to_netcdf(merged_data_dir / (merged_data_name + ".nc"))
+                ds.to_netcdf(merged_data_dir / (merged_data_name + ".nc"), encoding=ncdf_encoding(ds))
             else:
+                # make sure chunks are reasonable and uniform
+                ds = ds.chunk({"time": 600})
+                ds = xr.unify_chunks(ds)[0]  # unify_chunks returns a tuple, select first item
+
+                # update encoding
+                comp = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
+                enc = {"compressor": comp, "compressors": [comp]}
+                encoding = {dv: enc for dv in ds.data_vars}
+
                 if output_format == "zarr":
-                    ds.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w")
+                    ds.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w", encoding=encoding)
                 else:
                     with zarr.ZipStore(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as store:
-                        ds.to_zarr(store, mode="w")
+                        ds.to_zarr(store, mode="w", encoding=encoding)
         else:
-            ds.to_netcdf(merged_data_dir / (merged_data_name + ".nc"))
+            ds.to_netcdf(merged_data_dir / (merged_data_name + ".nc"), encoding=ncdf_encoding(ds))
     else:
         raise ValueError(
             f"Output format should be 'pickle', 'netcdf', 'zarr', or 'zarr.zip'. Given '{output_format}'."
@@ -120,8 +154,7 @@ def load_merged_data(
     Returns:
         `fp_all` dictionary
     """
-    if isinstance(merged_data_dir, str):
-        merged_data_dir = Path(merged_data_dir)
+    merged_data_dir = Path(merged_data_dir)
 
     if merged_data_name is not None:
         err_msg = (
@@ -139,8 +172,13 @@ def load_merged_data(
             f"output name {output_name} found in merged data directory {merged_data_dir}"
         )
 
+    # if suffix corresponds to an output format, strip the suffix and set the output
+    # format accordingly
+    merged_data_name, suffix = _split_suffix(merged_data_name)
+    output_format = suffix or output_format
+
     if output_format is not None:
-        ext = output_format
+        ext = "nc" if output_format == "netcdf" else output_format
         merged_data_file = merged_data_dir / (merged_data_name + "." + ext)
         if not merged_data_file.exists():
             raise ValueError(f"No merged data found at {merged_data_file}.")
