@@ -100,6 +100,7 @@ def _save_merged_data(
     elif output_format in {"netcdf", "zarr", "zarr.zip"}:
         dt = fp_all_to_datatree(fp_all, netcdf_safe_attrs=(output_format == "netcdf"))
         dt = clear_datatree_encoding(dt)
+        print(dt)  # TODO: remove, for debugging
         if "zarr" in output_format:
             # make sure chunks are reasonable and uniform
             dt = dt.chunk({"time": 600})
