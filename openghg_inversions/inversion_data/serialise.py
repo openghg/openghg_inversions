@@ -521,10 +521,10 @@ def clear_datatree_encoding(dt: xr.DataTree) -> xr.DataTree:
     result = dt.copy()
 
     for g in result.groups:
-        for dv in result[g].data:
-            result[g][dv].encoding = {}
+        for v in result[g].data_vars.values():
+            v.encoding = {}
 
-        for c in result[g].coords:
-            result[g].coords[c].encoding = {}
+        for c in result[g].coords.values():
+            c.encoding = {}
 
     return result
