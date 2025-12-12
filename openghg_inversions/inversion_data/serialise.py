@@ -104,6 +104,8 @@ def _save_merged_data(
         for g in dt.groups:
             for k, v in dt[g].items():
                 print(g, k, list(v.attrs.keys()), list(v.encoding.keys()))
+            for k, v in dt[g].coords.items():
+                print(g, k, list(v.attrs.keys()), list(v.encoding.keys()))
 
         if "zarr" in output_format:
             # make sure chunks are reasonable and uniform
