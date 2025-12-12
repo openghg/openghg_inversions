@@ -100,12 +100,7 @@ def _save_merged_data(
     elif output_format in {"netcdf", "zarr", "zarr.zip"}:
         dt = fp_all_to_datatree(fp_all, netcdf_safe_attrs=(output_format == "netcdf"))
         dt = clear_datatree_encoding(dt)
-        print(dt)  # TODO: remove, for debugging
-        for g in dt.groups:
-            for k, v in dt[g].items():
-                print(g, k, list(v.attrs.keys()), list(v.encoding.keys()))
-            for k, v in dt[g].coords.items():
-                print(g, k, list(v.attrs.keys()), list(v.encoding.keys()))
+        dt = clear_datatree_time_attrs(dt)
 
         if "zarr" in output_format:
             # make sure chunks are reasonable and uniform
@@ -533,5 +528,15 @@ def clear_datatree_encoding(dt: xr.DataTree) -> xr.DataTree:
 
         for c in result[g].coords.values():
             c.encoding = {}
+
+    return result
+
+
+def clear_datatree_time_attrs(dt: xr.DataTree) -> xr.DataTree:
+    result = dt.copy()
+
+    for g in result.groups:
+        if "time" in result[g].coords:
+            result[g].coords["time"].attrs.pop("units")
 
     return result
