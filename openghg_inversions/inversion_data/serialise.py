@@ -423,9 +423,9 @@ def openghg_data_to_dataset(openghg_data: _BaseData, netcdf_safe_attrs: bool = F
     ds = openghg_data.data
 
     if netcdf_safe_attrs:
-        ds.attrs["_openghg_metadata"] = json.dumps(openghg_data.metadata)
+        ds.attrs["openghg_metadata"] = json.dumps(openghg_data.metadata)
     else:
-        ds.attrs["_openghg_metadata"] = openghg_data.metadata
+        ds.attrs["openghg_metadata"] = openghg_data.metadata
     return ds
 
 
@@ -433,7 +433,7 @@ def dataset_to_flux_data(ds: xr.Dataset) -> FluxData:
     if "flux" not in ds.data_vars:
         raise ValueError("Dataset must have `flux` data variable to convert to FluxData.")
     ds = ds.copy()
-    metadata = ds.attrs.pop("_openghg_metadata")
+    metadata = ds.attrs.pop("openghg_metadata")
 
     if isinstance(metadata, str):
         metadata = json.loads(metadata)
@@ -448,7 +448,7 @@ def dataset_to_bc_data(ds: xr.Dataset) -> BoundaryConditionsData:
             "variables to convert to BoundaryConditionsData."
         )
     ds = ds.copy()
-    metadata = ds.attrs.pop("_openghg_metadata")
+    metadata = ds.attrs.pop("openghg_metadata")
 
     if isinstance(metadata, str):
         metadata = json.loads(metadata)
