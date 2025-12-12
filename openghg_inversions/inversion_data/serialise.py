@@ -99,6 +99,7 @@ def _save_merged_data(
             pickle.dump(fp_all, f)
     elif output_format in {"netcdf", "zarr", "zarr.zip"}:
         dt = fp_all_to_datatree(fp_all, netcdf_safe_attrs=(output_format == "netcdf"))
+        dt = clear_datatree_encoding(dt)
         if "zarr" in output_format:
             # make sure chunks are reasonable and uniform
             dt = dt.chunk({"time": 600})
@@ -513,3 +514,17 @@ def datatree_compression_encoding(dt: xr.DataTree, compressor: Blosc) -> dict:
             encoding[g][dv] = {"compressor": compressor, "compressors": (compressor,)}
 
     return encoding
+
+
+def clear_datatree_encoding(dt: xr.DataTree) -> xr.DataTree:
+    """Clean encoding attribute of variables to avoid issues when writing."""
+    result = dt.copy()
+
+    for g in result.groups:
+        for dv in result[g].data:
+            result[g][dv].encoding = {}
+
+        for c in result[g].coords:
+            result[g].coords[c].encoding = {}
+
+    return result
