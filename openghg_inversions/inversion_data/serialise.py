@@ -537,6 +537,6 @@ def clear_datatree_time_attrs(dt: xr.DataTree) -> xr.DataTree:
 
     for g in result.groups:
         if "time" in result[g].coords:
-            result[g].coords["time"].attrs.pop("units")
+            result[g].coords["time"].attrs.pop("units", None)
 
     return result
