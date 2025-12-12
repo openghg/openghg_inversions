@@ -101,6 +101,10 @@ def _save_merged_data(
         dt = fp_all_to_datatree(fp_all, netcdf_safe_attrs=(output_format == "netcdf"))
         dt = clear_datatree_encoding(dt)
         print(dt)  # TODO: remove, for debugging
+        for g in dt.groups:
+            for k, v in dt[g].items():
+                print(g, k, list(v.attrs.keys()), list(v.encoding.keys()))
+
         if "zarr" in output_format:
             # make sure chunks are reasonable and uniform
             dt = dt.chunk({"time": 600})
