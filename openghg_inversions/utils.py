@@ -126,6 +126,14 @@ def read_netcdfs(
     return combined
 
 
+def datatree_ncdf_encoding(dt: xr.DataTree) -> dict:
+    encoding = {}
+    for g in dt.groups:
+        if dt[g].is_leaf:
+             encoding[g] = ncdf_encoding(dt[g].to_dataset())
+    return encoding
+
+
 def ncdf_encoding(ds_in: xr.Dataset) -> dict:
     """Define encoding for netCDF4 files.
 
