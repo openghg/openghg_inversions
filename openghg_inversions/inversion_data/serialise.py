@@ -116,10 +116,10 @@ def _save_merged_data(
             encoding = datatree_compression_encoding(dt, comp)
 
             if output_format == "zarr":
-                dt.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w", encoding=encoding)
+                dt.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w-", encoding=encoding)
             else:
                 with zarr.ZipStore(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as store:
-                    dt.to_zarr(store, mode="w", encoding=encoding)
+                    dt.to_zarr(store, mode="w-", encoding=encoding)
         else:
             dt.to_netcdf(merged_data_dir / (merged_data_name + ".nc"), encoding=datatree_ncdf_encoding(dt))
     else:
