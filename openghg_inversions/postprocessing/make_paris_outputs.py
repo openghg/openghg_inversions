@@ -208,7 +208,7 @@ def paris_concentration_outputs(
 
     import numpy as np
     with xr.set_options(keep_attrs="default"):
-        factor = (result["Yobs_prior_factor"].where(np.nan,0) + result["Yobs_prior_upper_level_factor"].where(np.nan,0))
+        factor = result["Yobs_prior_factor"] + result["Yobs_prior_upper_level_factor"]
     result["Yobs"] += factor
     result["Yapost"] += factor
     result["Yapriori"] += factor

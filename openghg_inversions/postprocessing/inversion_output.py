@@ -660,8 +660,11 @@ def make_inv_out_for_fixed_basis_mcmc(
     y_error.attrs = scenario.mf_error.attrs
     y_error_variability.attrs = scenario.mf_variability.attrs
     y_error_repeatability.attrs = scenario.mf_repeatability.attrs
-    y_obs_prior_factor.attrs = scenario.mf_prior_factor.attrs if "mf_prior_factor" in scenario else {}
-    y_obs_prior_upper_level_factor.attrs = scenario.mf_prior_upper_level_factor.attrs if "mf_prior_upper_level_factor" in scenario else {}
+    for scenario in scenarios:
+        if not ("mf_prior_factor" in scenario and "mf_prior_upper_level_factor" in scenario):
+            continue
+        y_obs_prior_factor.attrs = scenario.mf_prior_factor.attrs
+        y_obs_prior_upper_level_factor.attrs = scenario.mf_prior_upper_level_factor.attrs
 
     return InversionOutput(
         obs=y_obs,

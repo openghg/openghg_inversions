@@ -399,7 +399,7 @@ def fixedbasisMCMC(
 
     # Trigger dask computations
     # we only compute the variables we need below
-    to_compute = ["H", "H_bc", "mf", "mf_error", "mf_repeatability", "mf_variability", "bc_mod", "mf_mod"]
+    to_compute = ["H", "H_bc", "mf", "mf_error", "mf_repeatability", "mf_variability", "mf_prior_factor", "mf_prior_upper_level_factor", "bc_mod", "mf_mod"]
     for site in sites:
         to_compute_site = [dv for dv in to_compute if dv in fp_data[site].data_vars]
         fp_data[site][to_compute_site] = fp_data[site][to_compute_site].compute()
@@ -437,7 +437,7 @@ def fixedbasisMCMC(
         obs_variability = np.concatenate((obs_variability, fp_data[site].mf_variability.values))
 
         Y = np.concatenate((Y, fp_data[site].mf.values))
-        if inlet[si]=="column" or platform=="satellite":
+        if fp_data[site].attrs.get("inlet")=="column" or fp_data[site].attrs.get("platform")=="satellite":
             obs_prior_factor = np.concatenate((obs_prior_factor, fp_data[site].mf_prior_factor.values))
             obs_prior_upper_level_factor = np.concatenate((obs_prior_upper_level_factor, fp_data[site].mf_prior_upper_level_factor.values))
         else:
