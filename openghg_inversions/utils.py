@@ -130,7 +130,7 @@ def datatree_ncdf_encoding(dt: xr.DataTree) -> dict:
     encoding = {}
     for g in dt.groups:
         if dt[g].is_leaf:
-             encoding[g] = ncdf_encoding(dt[g].to_dataset())
+            encoding[g] = ncdf_encoding(dt[g].to_dataset())
     return encoding
 
 
