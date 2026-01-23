@@ -9,6 +9,49 @@ Currently, OpenGHG Inversions includes the following regional inversion models:
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10650595.svg)](https://doi.org/10.5281/zenodo.10650595)
 
+## Installation
+
+### Using pip (recommended for most users)
+
+```bash
+pip install openghg-inversions
+```
+
+### Using uv (faster alternative)
+
+```bash
+uv pip install openghg-inversions
+```
+
+Or with uv's project management:
+
+```bash
+# Add to your project
+uv add openghg-inversions
+
+# Or install in a virtual environment
+uv venv
+uv pip install openghg-inversions
+```
+
+### Development Installation
+
+If you want to contribute or modify the package:
+
+**With uv (recommended):**
+```bash
+git clone https://github.com/openghg/openghg_inversions.git
+cd openghg_inversions
+uv sync --dev
+```
+
+**With pip:**
+```bash
+git clone https://github.com/openghg/openghg_inversions.git
+cd openghg_inversions
+pip install -e ".[dev]"
+```
+
 ## Installation and Setup
 As OpenGHG Inversions is dependent on OpenGHG, please ensure that when running locally you are using Python 3.10 or later on Linux or MacOS. Please see the [OpenGHG project](https://github.com/openghg/openghg/) for further installation instructions of OpenGHG and setting up an object store.
 

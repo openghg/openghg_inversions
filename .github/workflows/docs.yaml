@@ -10,6 +10,8 @@ on:
       - 'pyproject.toml'
       - 'setup.cfg'
       - 'setup.py'
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
