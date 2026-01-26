@@ -144,7 +144,10 @@ def load_merged_data(
     If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
 
     This function tries to automatically find a compatible format of merged data, if a format is not specified.
-    First, it checks for data in "zarr" format, then in netCDF, and finally in pickle.
+    First, it checks for data in "zarr" (or zipped zarr) format, then in netCDF, and finally in pickle.
+
+    Note: if data is stored in a zarr ZipStore, then the data is eagerly loaded, since the data needs to
+    loaded before the zip file is closed.
 
     Args:
         merged_data_dir: path to directory where merged data will be saved
@@ -459,6 +462,14 @@ def flux_dict_to_datatree(flux_dict: dict[str, FluxData], netcdf_safe_attrs: boo
 
 
 def datatree_to_flux_dict(dt: xr.DataTree) -> dict[str, FluxData]:
+    """Convert an xarray DataTree to a dict of FluxData objects.
+
+    Args:
+        dt: DataTree whose child nodes are converted to datasets and then to FluxData.
+
+    Returns:
+        Mapping from node keys (as strings) to FluxData instances.
+    """
     return {str(k): dataset_to_flux_data(v.to_dataset()) for k, v in dt.items()}
 
 
@@ -489,6 +500,9 @@ def fp_all_to_datatree(fp_all: dict, netcdf_safe_attrs: bool = False) -> xr.Data
 
 
 def datatree_to_fp_all(dt: xr.DataTree) -> dict:
+    if "scenarios" not in dt:
+        raise ValueError("Can only convert DataTree to fp_all if 'scenarios' group is present.")
+
     fp_all = {}
 
     if "fluxes" in dt:
