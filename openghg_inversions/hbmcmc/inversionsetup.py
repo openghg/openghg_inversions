@@ -76,7 +76,7 @@ def create_bc_sensitivity(start_date: str, end_date: str, site: str, fp_data: di
     )
     ndates = np.sum(alldates < pd.to_datetime(end_date))
     curdates = fp_data[site].time.values
-    nregions = fp_data[site].sizes["region_bc"]
+    nregions = fp_data[site].sizes["bc_region"]
     hmbc = np.zeros((nregions * ndates, len(fp_data[site].time.values)))
     count = 0
     for cord in range(nregions):
