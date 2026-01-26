@@ -51,12 +51,10 @@ def load_landsea_indices(domain: str, country_directory: str) -> np.ndarray:
         )
             landsea_indices = xr.open_dataset(Path(__file__).parent / default_files["EUROPE"])
 
-    elif country_directory is not None:
+    else:
         logger.warning(f"Loading land-sea file for domain {domain} from {country_directory}.")
         landsea_file = Path(country_directory).joinpath(f"country-land-sea_{domain}.nc")
         landsea_indices = xr.open_dataset(landsea_file)
-    else:
-        raise ValueError(f"land-sea file could not be found in {country_directory} for domain {domain}.")
         
     return landsea_indices["country"].values
 
