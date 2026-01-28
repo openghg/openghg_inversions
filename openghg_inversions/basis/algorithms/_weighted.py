@@ -34,6 +34,10 @@ def load_landsea_indices(domain: str) -> np.ndarray:
     """
     if domain == "EASTASIA":
         landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_EASTASIA.nc")
+    elif domain == "WESTUSA":
+        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_WESTUSA.nc")
+    elif domain == "SAUSSIE":
+        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_SAUSSIE.nc")
     elif domain == "EUROPE":
         landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
     else:
@@ -51,15 +55,15 @@ def bucket_value_split(
     offset_y: int = 0,
 ) -> list[tuple]:
     """Algorithm that will split the input grid (e.g. fp * flux).
-    
-    Split such that the sum of each basis function region will equal the bucket value 
+
+    Split such that the sum of each basis function region will equal the bucket value
     or by a single array element.
 
     The number of regions will be determined by the bucket value:
     i.e. smaller bucket value ==> more regions, larger bucket value ==> fewer regions.
 
     Args:
-        grid: 2D grid of footprints * flux, or whatever grid you want to split. 
+        grid: 2D grid of footprints * flux, or whatever grid you want to split.
             Could be: population data, spatial distribution of bakeries, you chose!
         bucket: Maximum value for each basis function region.
         offset_x: Start index of the region on first axis of the grid. Default 0.
