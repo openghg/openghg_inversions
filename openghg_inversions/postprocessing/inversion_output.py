@@ -187,8 +187,6 @@ class InversionOutput:
 
     obs: xr.DataArray
     obs_err: xr.DataArray
-    obs_prior_factor: xr.DataArray
-    obs_prior_upper_level_factor: xr.DataArray
     obs_repeatability: xr.DataArray
     obs_variability: xr.DataArray
     flux: xr.DataArray
@@ -202,6 +200,8 @@ class InversionOutput:
     domain: str
     site_names: xr.DataArray | None = None
     model: pm.Model | None = None
+    obs_prior_factor: xr.DataArray | None = None
+    obs_prior_upper_level_factor: xr.DataArray | None = None
 
     def __post_init__(self) -> None:
         """Check that trace has posterior traces, and fix flux time values."""
@@ -242,8 +242,9 @@ class InversionOutput:
         # format obs data and errors
         self.obs = self.nmeasure_to_site_time(self.obs.rename("y_obs"))
         self.obs_err = self.nmeasure_to_site_time(self.obs_err.rename("y_obs_error"))
-        self.obs_prior_factor= self.nmeasure_to_site_time(self.obs_prior_factor.rename("y_obs_prior_factor"))
-        self.obs_prior_upper_level_factor= self.nmeasure_to_site_time(self.obs_prior_upper_level_factor.rename("y_obs_prior_upper_level_factor"))
+        if self.obs_prior_factor is not None and self.obs_prior_upper_level_factor is not None:
+            self.obs_prior_factor= self.nmeasure_to_site_time(self.obs_prior_factor.rename("y_obs_prior_factor"))
+            self.obs_prior_upper_level_factor= self.nmeasure_to_site_time(self.obs_prior_upper_level_factor.rename("y_obs_prior_upper_level_factor"))
         self.obs_repeatability = self.nmeasure_to_site_time(
             self.obs_repeatability.rename("y_obs_repeatability")
         )
@@ -439,13 +440,15 @@ class InversionOutput:
         to_merge = [
             self.obs,
             self.obs_err,
-            self.obs_prior_factor,
+            self.obs_prior_factor ,
             self.obs_prior_upper_level_factor,
             self.obs_repeatability,
             self.obs_variability,
             self.get_model_err(),
             self.get_total_err(),
         ]
+
+        to_merge = [x for x in to_merge if x is not None]
         result = xr.merge(to_merge)
         result.attrs = {}
 
@@ -489,10 +492,19 @@ class InversionOutput:
               attributes.
 
         """
+        to_merge = [
+            self.obs,
+            self.obs_err,
+            self.obs_prior_factor ,
+            self.obs_prior_upper_level_factor,
+            self.obs_repeatability,
+            self.obs_variability,
+        ]
+        to_merge = [x for x in to_merge if x is not None]
         dt_dict = {
             "trace": xr.DataTree.from_dict({group: ds for group, ds in self.trace.items()}),
             "obs_and_errors": xr.merge(
-                [self.obs, self.obs_err, self.obs_prior_factor, self.obs_prior_upper_level_factor, self.obs_repeatability, self.obs_variability]
+                to_merge
             ).reset_index("nmeasure"),
             "basis": self.get_flat_basis().to_dataset(),
             "flux": self.flux.rename(flux_time="time").rename("flux").to_dataset(),
@@ -556,7 +568,8 @@ class InversionOutput:
 
         """
         obs_and_errs_ds = dt.obs_and_errors.to_dataset().drop_vars(["site", "time"])
-        obs_and_errs = tuple(obs_and_errs_ds.values())
+        obs_and_errs = dict(obs_and_errs_ds)
+        obs_and_errs = {k.replace("y_", "").replace("obs_error","obs_err"): v for k, v in obs_and_errs.items()}
         inv_info = {
             "start_date": dt.attrs.get("start_date"),
             "end_date": dt.attrs.get("end_date"),
@@ -566,7 +579,7 @@ class InversionOutput:
         basis = get_xr_dummies(dt.basis.basis, cat_dim="nx", categories=dt.trace.posterior.nx)
         trace = az.InferenceData(**{group: val.to_dataset() for group, val in dt.trace.items()})
         return cls(
-            *obs_and_errs,
+            **obs_and_errs,
             flux=dt.flux.flux,
             basis=basis,
             trace=trace,
