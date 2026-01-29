@@ -59,7 +59,7 @@ def satellite_mcmc_args(tmp_path,satellite_ch4_data_args, southamerica_country_f
             "no_model_error" :False,
             "reparameterise_log_normal" :False,
             "bc_basis_directory" : raw_data_path/"satellite"/"bc_basis_directory",
-            "output_format":"hbmcmc",
+            "output_format":"paris",
             "country_file": southamerica_country_file
         }
     )
