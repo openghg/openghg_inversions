@@ -69,8 +69,8 @@ def test_full_satellite_inversion(satellite_mcmc_args):
     satellite_mcmc_args["reload_merged_data"] = False
     out = fixedbasisMCMC(**satellite_mcmc_args)
 
-    assert "Yerror_repeatability" in out
-    assert "Yerror_variability" in out
+    assert "Yobs" in out
+    assert "Yobs_prior_factor" in out
 
     # sanity check for modelled values to make sure baseline has correct order of magnitude
     assert np.mean(np.abs(out.Yobs.values - out.Yapriori.values)) < 0.5 * np.mean(out.Yobs.values)
