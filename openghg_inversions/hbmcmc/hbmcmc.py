@@ -259,7 +259,16 @@ def fixedbasisMCMC(
     elif output_format == "mcmc_results":
         skip_postprocessing = True
     # otherwise (i.e. output_format == "hbmcmc"), mcmc.inferpymc_postprocessouts is used
+        
+    if inlet is not None:
+        is_sat_column = any([i == "column" for i in inlet])
+    else:
+        is_sat_column = False
 
+    if output_format == "hbmcmc":
+        if is_sat_column:
+            raise ValueError("Cannot use output_format 'hbmcmc' when satellite column measurements are included. Please choose another output_format.")
+        
     rerun_merge = True
 
     if merged_data_only:
@@ -441,6 +450,8 @@ def fixedbasisMCMC(
             obs_prior_factor = np.concatenate((obs_prior_factor, fp_data[site].mf_prior_factor.values))
             obs_prior_upper_level_factor = np.concatenate((obs_prior_upper_level_factor, fp_data[site].mf_prior_upper_level_factor.values))
         else:
+            # If not a column/satellite measurement, set prior factors to zero
+            # This is required if there is mix of insitu and column measurements
             obs_prior_factor = np.concatenate((obs_prior_factor, np.zeros(fp_data[site].mf.size)))
             obs_prior_upper_level_factor = np.concatenate((obs_prior_upper_level_factor, np.zeros(fp_data[site].mf.size)))  
         siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
@@ -560,8 +571,6 @@ def fixedbasisMCMC(
         "fp_data": fp_data,
         "emissions_name": emissions_name,
         "country_file": country_file,
-        "obs_prior_factor": obs_prior_factor,
-        "obs_prior_upper_level_factor": obs_prior_upper_level_factor,
         "obs_repeatability": obs_repeatability,
         "obs_variability": obs_variability,
         "min_error": min_error,
@@ -649,8 +658,8 @@ def fixedbasisMCMC(
             Y=Y,
             Ytime=Ytime,
             error=error,
-            obs_prior_factor=obs_prior_factor,
-            obs_prior_upper_level_factor=obs_prior_upper_level_factor,
+            obs_prior_factor=obs_prior_factor if is_sat_column else None,
+            obs_prior_upper_level_factor=obs_prior_upper_level_factor if is_sat_column else None,
             obs_repeatability=obs_repeatability,
             obs_variability=obs_variability,
             site_indicator=siteindicator,
@@ -673,8 +682,8 @@ def fixedbasisMCMC(
             Y=Y,
             Ytime=Ytime,
             error=error,
-            obs_prior_factor=obs_prior_factor,
-            obs_prior_upper_level_factor=obs_prior_upper_level_factor,
+            obs_prior_factor=obs_prior_factor if is_sat_column else None,
+            obs_prior_upper_level_factor=obs_prior_upper_level_factor if is_sat_column else None,
             obs_repeatability=obs_repeatability,
             obs_variability=obs_variability,
             site_indicator=siteindicator,
@@ -702,8 +711,8 @@ def fixedbasisMCMC(
             Y=Y,
             Ytime=Ytime,
             error=error,
-            obs_prior_factor=obs_prior_factor,
-            obs_prior_upper_level_factor=obs_prior_upper_level_factor,
+            obs_prior_factor=obs_prior_factor if is_sat_column else None,
+            obs_prior_upper_level_factor=obs_prior_upper_level_factor if is_sat_column else None,
             obs_repeatability=obs_repeatability,
             obs_variability=obs_variability,
             site_indicator=siteindicator,
