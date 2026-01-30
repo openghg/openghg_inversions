@@ -18,6 +18,10 @@ description = "OpenGHG Inversions"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "numpy>=2.0",
+    # Explicit pin: prevents uv backtracking to numba 0.53 / llvmlite 0.36
+    # due to NumPy 2.x + sparse metadata lag
+    "numba>=0.59",
     "pymc",
     "numpyro[cpu]",
     "xarray>=2025.06.0",
