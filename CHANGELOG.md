@@ -2,6 +2,16 @@
 
 # Unreleased
 
+# Version 0.6.0
+
+## Model changes
+
+- Fixed issue due to `met_model` being converted from `None` to `not_set` [#PR 341](https://github.com/openghg/openghg_inversions/pull/341)
+
+## Code changes
+
+- Added new release process using `uv`.
+
 # Version 0.5.0
 
 ## Model updates
