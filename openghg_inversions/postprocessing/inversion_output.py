@@ -733,8 +733,6 @@ def _clean_rhime_output(ds: xr.Dataset) -> xr.Dataset:
     data_vars = [
         "Yobs",
         "Yerror",
-        "Yobs_prior_factor",
-        "Yobs_prior_upper_level_factor",
         "Yerror_repeatability",
         "Yerror_variability",
         "Ytime",
@@ -748,6 +746,8 @@ def _clean_rhime_output(ds: xr.Dataset) -> xr.Dataset:
         "xsensitivity",
     ]
 
+    if  "Yobs_prior_factor" in ds.data_vars or "Yobs_prior_upper_level_factor" in ds.data_vars:
+        data_vars.append(["Yobs_prior_factor", "Yobs_prior_upper_level_factor"])
     if use_bc:
         data_vars.extend(["bc", "bcsensitivity"])
 
@@ -790,8 +790,8 @@ def make_inv_out_from_rhime_outputs(
     return InversionOutput(
         obs=ds_clean.Yobs,
         obs_err=ds_clean.Yerror,
-        obs_prior_factor=ds_clean.Yobs_prior_factor,
-        obs_prior_upper_level_factor=ds_clean.Yobs_prior_upper_level_factor,
+        obs_prior_factor=getattr(ds_clean, "Yobs_prior_factor", None),
+        obs_prior_upper_level_factor=getattr(ds_clean, "Yobs_prior_upper_level_factor", None),
         obs_repeatability=ds_clean.Yerror_repeatability,
         obs_variability=ds_clean.Yerror_variability,
         flux=flux,
