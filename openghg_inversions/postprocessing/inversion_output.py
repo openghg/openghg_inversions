@@ -275,8 +275,6 @@ class InversionOutput:
         checks = [
             (self.obs == other.obs).all(),
             (self.obs_err == other.obs_err).all(),
-            (self.obs_prior_factor == other.obs_prior_factor).all(),
-            (self.obs_prior_upper_level_factor == other.obs_prior_upper_level_factor).all(),
             (self.obs_repeatability == other.obs_repeatability).all(),
             (self.obs_variability == other.obs_variability).all(),
             (self.flux == other.flux).all(),
