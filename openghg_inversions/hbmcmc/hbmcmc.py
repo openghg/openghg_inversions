@@ -35,7 +35,7 @@ import xarray as xr
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
-from openghg_inversions.hbmcmc.hbmcmc_output import ncdf_encoding
+from openghg_inversions.utils import ncdf_encoding
 from openghg_inversions.basis import basis_functions_wrapper
 from openghg_inversions.inversion_data import data_processing_surface_notracer, load_merged_data
 from openghg_inversions.filters import filtering
