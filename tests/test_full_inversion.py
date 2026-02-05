@@ -36,7 +36,7 @@ def satellite_mcmc_args(tmp_path,satellite_ch4_data_args, southamerica_country_f
             "basis_algorithm": "quadtree",
             "basis_output_path": str(tmp_path),
             "nbasis": 4,
-            "nit": 1,
+            "nit": 2,
             "burn": 0,
             "tune": 0,
             "nchain": 1,
@@ -67,15 +67,13 @@ def satellite_mcmc_args(tmp_path,satellite_ch4_data_args, southamerica_country_f
 
 def test_full_satellite_inversion(satellite_mcmc_args):
     satellite_mcmc_args["reload_merged_data"] = False
+
     out = fixedbasisMCMC(**satellite_mcmc_args)
 
     assert "Yobs" in out
     assert "Yobs_prior_factor" in out
 
     # sanity check for modelled values to make sure baseline has correct order of magnitude
-    print(np.mean(np.abs(out.Yobs.values - out.Yapriori.values)))
-    print(0.5 * np.mean(out.Yobs.values))
-    assert False
     assert np.mean(np.abs(out.Yobs.values - out.Yapriori.values)) < 0.5 * np.mean(out.Yobs.values)
 
 def test_full_inversion(mcmc_args):
