@@ -36,7 +36,7 @@ def satellite_mcmc_args(tmp_path,satellite_ch4_data_args, southamerica_country_f
             "basis_algorithm": "quadtree",
             "basis_output_path": str(tmp_path),
             "nbasis": 4,
-            "nit": 2,
+            "nit": 100,
             "burn": 0,
             "tune": 0,
             "nchain": 1,
