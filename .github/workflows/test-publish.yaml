@@ -1,0 +1,32 @@
+name: Test Publish to TestPyPI
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+jobs:
+  test-publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/openghg-inversions
+    permissions:
+      id-token: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Build package
+        run: uv build
+      
+      - name: Publish to TestPyPI
+        run: uv publish --publish-url https://test.pypi.org/legacy/ --trusted-publishing always

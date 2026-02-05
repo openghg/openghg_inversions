@@ -6,20 +6,37 @@
 - `make_combined_scenario` converts the `fp_all` dict into a xr.Dataset
 """
 
+import json
 import pickle
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, cast, Literal
 
+from numcodecs import Blosc
 import numpy as np
 import xarray as xr
+import zarr
 
 from openghg.dataobjects import BoundaryConditionsData, FluxData
+from openghg.dataobjects._basedata import _BaseData
 from openghg.util import timestamp_now
+from openghg_inversions.utils import datatree_ncdf_encoding
+
+
+OutputFormat = Literal["pickle", "netcdf", "zarr", "zarr.zip"]  # for internal type hints
 
 
 def _make_merged_data_name(species: str, start_date: str, output_name: str) -> str:
     return f"{species}_{start_date}_{output_name}_merged-data"
+
+
+def _split_suffix(merged_data_name: str) -> tuple[str, OutputFormat | None]:
+    for suffix in ("pickle", "nc", "zarr", "zarr.zip"):
+        if merged_data_name.endswith("." + suffix):
+            if suffix == "nc":
+                return merged_data_name.removesuffix("." + suffix), "netcdf"
+            return merged_data_name.removesuffix("." + suffix), suffix
+    return merged_data_name, None
 
 
 def _save_merged_data(
@@ -38,8 +55,13 @@ def _save_merged_data(
 
     If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
 
-    The default output format is a zarr store. If zarr is not installed, then netCDF is used.
-    Alternatively, "pickle" can be specified.
+    If `merged_data_name` ends with one of "pickle", "nc", "zarr", or "zarr.zip", the output format
+    will be set accordingly. Otherwise, the output format defaults to zipped zarr store. If zarr is
+    not installed, then netCDF is used.
+
+    The output can be saved to a pickle file, but this isn't
+    recommended because data can only be unpickled reliably with the exact same environment that created
+    the pickle.
 
     Args:
         fp_all: dictionary of merged data to save
@@ -61,30 +83,45 @@ def _save_merged_data(
             )
         merged_data_name = _make_merged_data_name(species, start_date, output_name)  # type: ignore
 
-    if isinstance(merged_data_dir, str):
-        merged_data_dir = Path(merged_data_dir)
+    # if suffix corresponds to an output format, strip the suffix and set the output
+    # format accordingly
+    merged_data_name, suffix = _split_suffix(merged_data_name)
+    output_format = suffix or output_format
+
+    merged_data_dir = Path(merged_data_dir)
+
+    if not merged_data_dir.exists():
+        merged_data_dir.mkdir(parents=True)
 
     # write to specified output
     if output_format == "pickle":
         with open(merged_data_dir / (merged_data_name + ".pickle"), "wb") as f:
             pickle.dump(fp_all, f)
     elif output_format in {"netcdf", "zarr", "zarr.zip"}:
-        ds = make_combined_scenario(fp_all)
+        dt = fp_all_to_datatree(fp_all, netcdf_safe_attrs=(output_format == "netcdf"))
+        dt = clear_datatree_encoding(dt)
+        dt = clear_datatree_time_attrs(dt)
 
         if "zarr" in output_format:
-            try:
-                import zarr
-            except ModuleNotFoundError:
-                # zarr not found
-                ds.to_netcdf(merged_data_dir / (merged_data_name + ".nc"))
+            # make sure chunks are reasonable and uniform
+            dt = dt.chunk({"time": 600})
+            dt = dt.map_over_datasets(
+                lambda x: xr.unify_chunks(x)[0]
+            )  # unify_chunks returns a tuple, select first item
+
+            assert isinstance(dt, xr.DataTree)  # narrow type since the previous operation could return tuple
+
+            # update encoding
+            comp = Blosc(cname="zstd", clevel=5, shuffle=Blosc.SHUFFLE)
+            encoding = datatree_compression_encoding(dt, comp)
+
+            if output_format == "zarr":
+                dt.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w-", encoding=encoding)
             else:
-                if output_format == "zarr":
-                    ds.to_zarr(merged_data_dir / (merged_data_name + ".zarr"), mode="w")
-                else:
-                    with zarr.ZipStore(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as store:
-                        ds.to_zarr(store, mode="w")
+                with zarr.ZipStore(merged_data_dir / (merged_data_name + ".zarr.zip"), mode="w") as store:
+                    dt.to_zarr(store, mode="w-", encoding=encoding)
         else:
-            ds.to_netcdf(merged_data_dir / (merged_data_name + ".nc"))
+            dt.to_netcdf(merged_data_dir / (merged_data_name + ".nc"), encoding=datatree_ncdf_encoding(dt))
     else:
         raise ValueError(
             f"Output format should be 'pickle', 'netcdf', 'zarr', or 'zarr.zip'. Given '{output_format}'."
@@ -107,7 +144,10 @@ def load_merged_data(
     If `merged_data_name` is not given, then `species`, `start_date`, and `output_name` must be provided.
 
     This function tries to automatically find a compatible format of merged data, if a format is not specified.
-    First, it checks for data in "zarr" format, then in netCDF, and finally in pickle.
+    First, it checks for data in "zarr" (or zipped zarr) format, then in netCDF, and finally in pickle.
+
+    Note: if data is stored in a zarr ZipStore, then the data is eagerly loaded, since the data needs to
+    loaded before the zip file is closed.
 
     Args:
         merged_data_dir: path to directory where merged data will be saved
@@ -120,8 +160,7 @@ def load_merged_data(
     Returns:
         `fp_all` dictionary
     """
-    if isinstance(merged_data_dir, str):
-        merged_data_dir = Path(merged_data_dir)
+    merged_data_dir = Path(merged_data_dir)
 
     if merged_data_name is not None:
         err_msg = (
@@ -139,20 +178,18 @@ def load_merged_data(
             f"output name {output_name} found in merged data directory {merged_data_dir}"
         )
 
+    # if suffix corresponds to an output format, strip the suffix and set the output
+    # format accordingly
+    merged_data_name, suffix = _split_suffix(merged_data_name)
+    output_format = suffix or output_format
+
     if output_format is not None:
-        ext = output_format
+        ext = "nc" if output_format == "netcdf" else output_format
         merged_data_file = merged_data_dir / (merged_data_name + "." + ext)
         if not merged_data_file.exists():
             raise ValueError(f"No merged data found at {merged_data_file}.")
     else:
         for ext in ["zarr.zip", "zarr", "nc", "pickle"]:
-            # skip "zarr" if zarr not installed...
-            if "zarr" in ext:
-                try:
-                    import zarr
-                except ModuleNotFoundError:
-                    continue
-
             merged_data_file = merged_data_dir / (merged_data_name + "." + ext)
             if merged_data_file.exists():
                 break
@@ -161,25 +198,27 @@ def load_merged_data(
             raise ValueError(err_msg)
 
     # load merged data
-    if merged_data_file.suffix == "pickle":
+    if merged_data_file.suffix == ".pickle":
         with open(merged_data_file, "rb") as f:
-            fp_all = pickle.load(f)
+            return pickle.load(f)
+    elif merged_data_file.suffixes == [".zarr", ".zip"]:
+        with zarr.ZipStore(merged_data_file, mode="r") as store:
+            with xr.open_datatree(store, engine="zarr") as dt:  # type: ignore[arg-type, unused-ignore]
+                if dt.is_leaf:
+                    return fp_all_from_dataset(dt.to_dataset().load())
+                return datatree_to_fp_all(dt.load())
+    elif merged_data_file.suffix == ".zarr":
+        with xr.open_datatree(merged_data_file, engine="zarr") as dt:
+            if dt.is_leaf:
+                return fp_all_from_dataset(dt.to_dataset())
+            return datatree_to_fp_all(dt)
     else:
-        if merged_data_file.suffixes == [".zarr", ".zip"]:
-            import zarr
-
-            with zarr.ZipStore(merged_data_file, mode="r") as store:
-                ds = xr.open_zarr(store).load()
-        elif merged_data_file.suffix == ".zarr":
-            ds = xr.open_zarr(merged_data_file)
-        else:
-            # suffix is probably ".nc", but could be something else if name passed directly
-            # try `open_dataset`
-            ds = xr.open_dataset(merged_data_file)
-
-        fp_all = fp_all_from_dataset(ds)
-
-    return fp_all
+        # suffix is probably ".nc", but could be something else if name passed directly
+        # try `open_dataset`
+        with xr.open_datatree(merged_data_file) as dt:
+            if dt.is_leaf:
+                return fp_all_from_dataset(dt.to_dataset())
+            return datatree_to_fp_all(dt)
 
 
 list_keys = [
@@ -373,3 +412,145 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
         fp_all[".units"] = 1.0
 
     return fp_all
+
+
+# ----------------------------------------
+# DataTree conversions
+# ----------------------------------------
+
+
+def openghg_data_to_dataset(openghg_data: _BaseData, netcdf_safe_attrs: bool = False) -> xr.Dataset:
+    ds = openghg_data.data
+
+    if netcdf_safe_attrs:
+        ds.attrs["openghg_metadata"] = json.dumps(openghg_data.metadata)
+    else:
+        ds.attrs["openghg_metadata"] = openghg_data.metadata
+    return ds
+
+
+def dataset_to_flux_data(ds: xr.Dataset) -> FluxData:
+    if "flux" not in ds.data_vars:
+        raise ValueError("Dataset must have `flux` data variable to convert to FluxData.")
+    ds = ds.copy()
+    metadata = ds.attrs.pop("openghg_metadata")
+
+    if isinstance(metadata, str):
+        metadata = json.loads(metadata)
+
+    return FluxData(metadata=metadata, data=ds)
+
+
+def dataset_to_bc_data(ds: xr.Dataset) -> BoundaryConditionsData:
+    if any(f"vmr_{d}" not in ds.data_vars for d in "nesw"):
+        raise ValueError(
+            "Dataset must have `vmr_n`, `vmr_e`, `vmr_s`, `vmr_w` data "
+            "variables to convert to BoundaryConditionsData."
+        )
+    ds = ds.copy()
+    metadata = ds.attrs.pop("openghg_metadata")
+
+    if isinstance(metadata, str):
+        metadata = json.loads(metadata)
+
+    return BoundaryConditionsData(metadata=metadata, data=ds)
+
+
+def flux_dict_to_datatree(flux_dict: dict[str, FluxData], netcdf_safe_attrs: bool = False) -> xr.DataTree:
+    dt_dict = {k: openghg_data_to_dataset(v, netcdf_safe_attrs) for k, v in flux_dict.items()}
+    return xr.DataTree.from_dict(dt_dict)
+
+
+def datatree_to_flux_dict(dt: xr.DataTree) -> dict[str, FluxData]:
+    """Convert an xarray DataTree to a dict of FluxData objects.
+
+    Args:
+        dt: DataTree whose child nodes are converted to datasets and then to FluxData.
+
+    Returns:
+        Mapping from node keys (as strings) to FluxData instances.
+    """
+    return {str(k): dataset_to_flux_data(v.to_dataset()) for k, v in dt.items()}
+
+
+def fp_all_to_datatree(fp_all: dict, netcdf_safe_attrs: bool = False) -> xr.DataTree:
+    dt_dict: dict[str, xr.Dataset | xr.DataTree] = {}
+    scenario_dict = {}
+    dt_attrs = {}
+
+    if ".flux" in fp_all:
+        dt_dict["fluxes"] = flux_dict_to_datatree(fp_all[".flux"], netcdf_safe_attrs)
+
+    for k, v in fp_all.items():
+        if k == ".flux":
+            continue
+        if isinstance(v, BoundaryConditionsData):
+            dt_dict[k.removeprefix(".")] = openghg_data_to_dataset(v, netcdf_safe_attrs)
+        elif not k.startswith(".") and isinstance(v, xr.Dataset):
+            scenario_dict[k] = v
+        else:
+            dt_attrs[k] = v
+
+    dt_dict["scenarios"] = xr.DataTree.from_dict(scenario_dict)
+
+    dt = xr.DataTree.from_dict(dt_dict)
+    dt.attrs = dt_attrs
+
+    return dt
+
+
+def datatree_to_fp_all(dt: xr.DataTree) -> dict:
+    if "scenarios" not in dt:
+        raise ValueError("Can only convert DataTree to fp_all if 'scenarios' group is present.")
+
+    fp_all = {}
+
+    if "fluxes" in dt:
+        fp_all[".flux"] = datatree_to_flux_dict(dt.fluxes)
+
+    if "bc" in dt:
+        fp_all[".bc"] = dataset_to_bc_data(dt.bc.to_dataset())
+
+    for k, v in dt.scenarios.items():
+        fp_all[str(k)] = v.to_dataset()
+
+    fp_all.update({str(k): v for k, v in dt.attrs.items()})
+
+    return fp_all
+
+
+def datatree_compression_encoding(dt: xr.DataTree, compressor: Blosc) -> dict:
+    """Creating encoding dictionary for saving DataTree to zarr."""
+    encoding = defaultdict(dict)
+
+    for g in dt.groups:
+        if not dt[g].data_vars:
+            continue
+        for dv in dt[g].data_vars:
+            encoding[g][dv] = {"compressor": compressor, "compressors": (compressor,)}
+
+    return encoding
+
+
+def clear_datatree_encoding(dt: xr.DataTree) -> xr.DataTree:
+    """Clean encoding attribute of variables to avoid issues when writing."""
+    result = dt.copy()
+
+    for g in result.groups:
+        for v in result[g].data_vars.values():
+            v.encoding = {}
+
+        for c in result[g].coords.values():
+            c.encoding = {}
+
+    return result
+
+
+def clear_datatree_time_attrs(dt: xr.DataTree) -> xr.DataTree:
+    result = dt.copy()
+
+    for g in result.groups:
+        if "time" in result[g].coords:
+            result[g].coords["time"].attrs.pop("units", None)
+
+    return result
