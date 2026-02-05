@@ -73,6 +73,9 @@ def test_full_satellite_inversion(satellite_mcmc_args):
     assert "Yobs_prior_factor" in out
 
     # sanity check for modelled values to make sure baseline has correct order of magnitude
+    print(np.mean(np.abs(out.Yobs.values - out.Yapriori.values)))
+    print(0.5 * np.mean(out.Yobs.values))
+    assert False
     assert np.mean(np.abs(out.Yobs.values - out.Yapriori.values)) < 0.5 * np.mean(out.Yobs.values)
 
 def test_full_inversion(mcmc_args):
