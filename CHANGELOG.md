@@ -5,6 +5,15 @@
 ## Code changes
 
 - Fixed minor bugs in code for storing merged data. Added option to change merged data format by including an extension in `merged_data_name`, e.g. `merged_data_name="my_merged_data.nc"` will save to netCDF, while `merged_data_name="my_merged_data"` will save to zipped Zarr. [#PR 345](https://github.com/openghg/openghg_inversions/pull/345) 
+# Version 0.6.0
+
+## Model changes
+
+- Fixed issue due to `met_model` being converted from `None` to `not_set` [#PR 341](https://github.com/openghg/openghg_inversions/pull/341)
+
+## Code changes
+
+- Added new release process using `uv`.
 
 # Version 0.5.0
 
