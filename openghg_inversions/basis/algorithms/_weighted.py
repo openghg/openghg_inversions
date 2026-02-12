@@ -27,8 +27,8 @@ def load_landsea_indices(domain: str, country_directory: str) -> np.ndarray:
     """Load array with indices that separate land and sea regions in specified domain.
 
     Args:
-        domain (str): domain for which to load landsea indices. 
-        country_directory (str): Directory containing land-sea files. If None, will use default files.
+        domain: domain for which to load landsea indices. 
+        country_directory: Directory containing land-sea files. If None, will use default files.
         
 
     Returns:
@@ -42,7 +42,7 @@ def load_landsea_indices(domain: str, country_directory: str) -> np.ndarray:
     }
 
     if country_directory is None:
-        if domain in default_files.keys():
+        if domain in default_files:
             logger.warning(f"Loading default land-sea file for domain {domain}.")
             landsea_indices = xr.open_dataset(Path(__file__).parent / default_files[domain])
         else:

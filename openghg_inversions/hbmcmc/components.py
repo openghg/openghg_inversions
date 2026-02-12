@@ -12,7 +12,7 @@ def make_offset(site_indicator: np.ndarray,
                 output_dim: str = "nmeasure", 
                 drop_first: bool = False,
                 offset_freq: str | None = None,
-                offset_freq_indicator: str = None ) -> TensorVariable:
+                offset_freq_indicator: str | None = None ) -> TensorVariable:
     """Create an offset inside a PyMC model.
 
     Note: this *must* be called from inside a PyMC `model` context.
@@ -24,7 +24,7 @@ def make_offset(site_indicator: np.ndarray,
         name: name for offset in PyMC model
         output_dim: name of dimension for output
         drop_first: if True, set first site's offset to zero
-        time: array of datetimes for each measurement
+
         offset_freq: frequency for which to solve for the offset (e.g. "M"). Not used.
         offset_freq_indicator: array of period indicators for each measurement
 
