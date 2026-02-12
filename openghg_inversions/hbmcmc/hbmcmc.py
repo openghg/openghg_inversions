@@ -36,7 +36,7 @@ import pandas as pd
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
-from openghg_inversions.hbmcmc.hbmcmc_output import ncdf_encoding
+from openghg_inversions.utils import ncdf_encoding
 from openghg_inversions.basis import basis_functions_wrapper
 from openghg_inversions.inversion_data import data_processing_surface_notracer, load_merged_data
 from openghg_inversions.filters import filtering
@@ -275,6 +275,11 @@ def fixedbasisMCMC(
     else:
         is_sat_column = False
 
+    if inlet is not None:
+        is_sat_column = any([i == "column" for i in inlet])
+    else:
+        is_sat_column = False
+
     if output_format == "hbmcmc":
         if is_sat_column:
             raise ValueError(
@@ -307,6 +312,7 @@ def fixedbasisMCMC(
                 inlet = [s for i, s in enumerate(inlet) if i in keep_i]
                 fp_height = [s for i, s in enumerate(fp_height) if i in keep_i]
                 instrument = [s for i, s in enumerate(instrument) if i in keep_i]
+                max_level = [s for i, s in enumerate(max_level) if i in keep_i]
                 averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
 
                 print(
@@ -437,6 +443,8 @@ def fixedbasisMCMC(
 
     # Get inputs ready
     error = np.zeros(0)
+    obs_prior_factor = np.zeros(0)
+    obs_prior_upper_level_factor = np.zeros(0)
     obs_repeatability = np.zeros(0)
     obs_variability = np.zeros(0)
     Hx = np.zeros(0)
@@ -514,8 +522,7 @@ def fixedbasisMCMC(
         pass
     else:
         raise ValueError(
-            "`min_error` must have values: 'residual', 'percentile', or `float`;"
-            f" {min_error} not recognised."
+            f"`min_error` must have values: 'residual', 'percentile', or `float`; {min_error} not recognised."
         )
 
     sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
@@ -629,7 +636,7 @@ def fixedbasisMCMC(
 
     end_data = time.time()
 
-    print(f"Data extraction and preparation complete. Time taken = {end_data-start_data:.2f} seconds")
+    print(f"Data extraction and preparation complete. Time taken = {end_data - start_data:.2f} seconds")
 
     # for debugging
     if return_mcmc_args:
@@ -642,7 +649,7 @@ def fixedbasisMCMC(
 
     end_inversion = time.time()
 
-    print(f"MCMC Inversion complete. Time taken = {end_inversion-start_inversion:.2f} seconds")
+    print(f"MCMC Inversion complete. Time taken = {end_inversion - start_inversion:.2f} seconds")
 
     # get trace and model: for future updates
     trace = mcmc_results["trace"]
@@ -669,6 +676,8 @@ def fixedbasisMCMC(
             Y=Y,
             Ytime=Ytime,
             error=error,
+            obs_prior_factor=obs_prior_factor,
+            obs_prior_upper_level_factor=obs_prior_upper_level_factor,
             obs_repeatability=obs_repeatability,
             obs_variability=obs_variability,
             site_indicator=siteindicator,
@@ -690,6 +699,8 @@ def fixedbasisMCMC(
             Y=Y,
             Ytime=Ytime,
             error=error,
+            obs_prior_factor=obs_prior_factor if is_sat_column else None,
+            obs_prior_upper_level_factor=obs_prior_upper_level_factor if is_sat_column else None,
             obs_repeatability=obs_repeatability,
             obs_variability=obs_variability,
             site_indicator=siteindicator,
@@ -712,6 +723,8 @@ def fixedbasisMCMC(
             Y=Y,
             Ytime=Ytime,
             error=error,
+            obs_prior_factor=obs_prior_factor if is_sat_column else None,
+            obs_prior_upper_level_factor=obs_prior_upper_level_factor if is_sat_column else None,
             obs_repeatability=obs_repeatability,
             obs_variability=obs_variability,
             site_indicator=siteindicator,
@@ -725,7 +738,7 @@ def fixedbasisMCMC(
 
         outputs = basic_output(inv_out, country_file=country_file)
         end_post = time.time()
-        print(f"Post processing Complete. Time taken = {end_post-start_post:.2f} seconds")
+        print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
 
         return outputs
 
@@ -740,6 +753,8 @@ def fixedbasisMCMC(
             Y=Y,
             Ytime=Ytime,
             error=error,
+            obs_prior_factor=obs_prior_factor if is_sat_column else None,
+            obs_prior_upper_level_factor=obs_prior_upper_level_factor if is_sat_column else None,
             obs_repeatability=obs_repeatability,
             obs_variability=obs_variability,
             site_indicator=siteindicator,
@@ -782,7 +797,7 @@ def fixedbasisMCMC(
         logging.info("PARIS flux outputs saved to", flux_output_filename)
 
         end_post = time.time()
-        print(f"Post processing Complete. Time taken = {end_post-start_post:.2f} seconds")
+        print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
 
         return xr.merge([conc_outs, flux_outs.rename(time="flux_time")])
 
@@ -794,7 +809,7 @@ def fixedbasisMCMC(
 
     end_post = time.time()
 
-    print(f"Post processing Complete. Time taken = {end_post-start_post:.2f} seconds")
+    print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
 
     print("---- Inversion completed ----")
 

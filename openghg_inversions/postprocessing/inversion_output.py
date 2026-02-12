@@ -200,6 +200,8 @@ class InversionOutput:
     domain: str
     site_names: xr.DataArray | None = None
     model: pm.Model | None = None
+    obs_prior_factor: xr.DataArray | None = None
+    obs_prior_upper_level_factor: xr.DataArray | None = None
 
     def __post_init__(self) -> None:
         """Check that trace has posterior traces, and fix flux time values."""
@@ -240,6 +242,13 @@ class InversionOutput:
         # format obs data and errors
         self.obs = self.nmeasure_to_site_time(self.obs.rename("y_obs"))
         self.obs_err = self.nmeasure_to_site_time(self.obs_err.rename("y_obs_error"))
+        if self.obs_prior_factor is not None and self.obs_prior_upper_level_factor is not None:
+            self.obs_prior_factor = self.nmeasure_to_site_time(
+                self.obs_prior_factor.rename("y_obs_prior_factor")
+            )
+            self.obs_prior_upper_level_factor = self.nmeasure_to_site_time(
+                self.obs_prior_upper_level_factor.rename("y_obs_prior_upper_level_factor")
+            )
         self.obs_repeatability = self.nmeasure_to_site_time(
             self.obs_repeatability.rename("y_obs_repeatability")
         )
@@ -433,11 +442,15 @@ class InversionOutput:
         to_merge = [
             self.obs,
             self.obs_err,
+            self.obs_prior_factor,
+            self.obs_prior_upper_level_factor,
             self.obs_repeatability,
             self.obs_variability,
             self.get_model_err(),
             self.get_total_err(),
         ]
+
+        to_merge = [x for x in to_merge if x is not None]
         result = xr.merge(to_merge)
         result.attrs = {}
 
@@ -481,11 +494,18 @@ class InversionOutput:
               attributes.
 
         """
+        to_merge = [
+            self.obs,
+            self.obs_err,
+            self.obs_prior_factor,
+            self.obs_prior_upper_level_factor,
+            self.obs_repeatability,
+            self.obs_variability,
+        ]
+        to_merge = [x for x in to_merge if x is not None]
         dt_dict = {
             "trace": xr.DataTree.from_dict({group: ds for group, ds in self.trace.items()}),
-            "obs_and_errors": xr.merge(
-                [self.obs, self.obs_err, self.obs_repeatability, self.obs_variability]
-            ).reset_index("nmeasure"),
+            "obs_and_errors": xr.merge(to_merge).reset_index("nmeasure"),
             "basis": self.get_flat_basis().to_dataset(),
             "flux": self.flux.rename(flux_time="time").rename("flux").to_dataset(),
         }
@@ -548,7 +568,10 @@ class InversionOutput:
 
         """
         obs_and_errs_ds = dt.obs_and_errors.to_dataset().drop_vars(["site", "time"])
-        obs_and_errs = tuple(obs_and_errs_ds.values())
+        obs_and_errs = dict(obs_and_errs_ds)
+        obs_and_errs = {
+            k.replace("y_", "").replace("obs_error", "obs_err"): v for k, v in obs_and_errs.items()
+        }
         inv_info = {
             "start_date": dt.attrs.get("start_date"),
             "end_date": dt.attrs.get("end_date"),
@@ -558,7 +581,7 @@ class InversionOutput:
         basis = get_xr_dummies(dt.basis.basis, cat_dim="nx", categories=dt.trace.posterior.nx)
         trace = az.InferenceData(**{group: val.to_dataset() for group, val in dt.trace.items()})
         return cls(
-            *obs_and_errs,
+            **obs_and_errs,
             flux=dt.flux.flux,
             basis=basis,
             trace=trace,
@@ -590,6 +613,8 @@ def make_inv_out_for_fixed_basis_mcmc(
     Y: np.ndarray,
     Ytime: np.ndarray,
     error: np.ndarray,
+    obs_prior_factor: np.ndarray,
+    obs_prior_upper_level_factor: np.ndarray,
     obs_repeatability: np.ndarray,
     obs_variability: np.ndarray,
     site_indicator: np.ndarray,
@@ -605,6 +630,15 @@ def make_inv_out_for_fixed_basis_mcmc(
     y_obs = xr.DataArray(Y, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs")
     times = xr.DataArray(Ytime, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="times")
     y_error = xr.DataArray(error, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror")
+    y_obs_prior_factor = xr.DataArray(
+        obs_prior_factor, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs_prior_factor"
+    )
+    y_obs_prior_upper_level_factor = xr.DataArray(
+        obs_prior_upper_level_factor,
+        dims=["nmeasure"],
+        coords={"nmeasure": nmeasure},
+        name="Yobs_prior_upper_level_factor",
+    )
     y_error_repeatability = xr.DataArray(
         obs_repeatability, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror_repeatability"
     )
@@ -644,10 +678,17 @@ def make_inv_out_for_fixed_basis_mcmc(
     y_error.attrs = scenario.mf_error.attrs
     y_error_variability.attrs = scenario.mf_variability.attrs
     y_error_repeatability.attrs = scenario.mf_repeatability.attrs
+    for scenario in scenarios:
+        if not ("mf_prior_factor" in scenario and "mf_prior_upper_level_factor" in scenario):
+            continue
+        y_obs_prior_factor.attrs = scenario.mf_prior_factor.attrs
+        y_obs_prior_upper_level_factor.attrs = scenario.mf_prior_upper_level_factor.attrs
 
     return InversionOutput(
         obs=y_obs,
         obs_err=y_error,
+        obs_prior_factor=y_obs_prior_factor,
+        obs_prior_upper_level_factor=y_obs_prior_upper_level_factor,
         obs_repeatability=y_error_repeatability,
         obs_variability=y_error_variability,
         site_indicators=site_indicator_da,
@@ -712,6 +753,8 @@ def _clean_rhime_output(ds: xr.Dataset) -> xr.Dataset:
         "xsensitivity",
     ]
 
+    if "Yobs_prior_factor" in ds.data_vars or "Yobs_prior_upper_level_factor" in ds.data_vars:
+        data_vars.append(["Yobs_prior_factor", "Yobs_prior_upper_level_factor"])
     if use_bc:
         data_vars.extend(["bc", "bcsensitivity"])
 
@@ -754,6 +797,8 @@ def make_inv_out_from_rhime_outputs(
     return InversionOutput(
         obs=ds_clean.Yobs,
         obs_err=ds_clean.Yerror,
+        obs_prior_factor=getattr(ds_clean, "Yobs_prior_factor", None),
+        obs_prior_upper_level_factor=getattr(ds_clean, "Yobs_prior_upper_level_factor", None),
         obs_repeatability=ds_clean.Yerror_repeatability,
         obs_variability=ds_clean.Yerror_variability,
         flux=flux,

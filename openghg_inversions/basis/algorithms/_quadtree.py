@@ -149,7 +149,7 @@ def get_quadtree_basis(fps: np.ndarray, nbasis: int, seed: int | None = None) ->
     cost = 1e6
     pwr = 0
 
-    fps = fps/np.sum(fps) # normalize to improve optimization stability
+    fps = fps / np.sum(fps)  # normalize to improve optimization stability
 
     search_max = 10.0
     while cost > 3.0:

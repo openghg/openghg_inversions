@@ -251,7 +251,7 @@ def test_looking_older_flux_files(tac_ch4_data_args, capsys):
 
 
 @pytest.mark.parametrize("end_date, time_period", [("2019-02-01", "monthly"), ("2020-01-01", "1 year"), ("2019-01-02", "1 year")])
-def test_flux_time_period_infernece(end_date, time_period, tac_ch4_data_args):
+def test_flux_time_period_inference(end_date, time_period, tac_ch4_data_args):
     kwargs = {"sources": tac_ch4_data_args["emissions_name"],
               "species": tac_ch4_data_args["species"],
               "domain": tac_ch4_data_args["domain"],

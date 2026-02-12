@@ -2,9 +2,22 @@
 
 # Unreleased
 
+## Code changes
+
 - More flexibility for new inversion domains. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
 - More flexibility for types of boundary condition basis functions. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
 - Bug fix for quadtree algorithm. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+- Fixed minor bugs in code for storing merged data. Added option to change merged data format by including an extension in `merged_data_name`, e.g. `merged_data_name="my_merged_data.nc"` will save to netCDF, while `merged_data_name="my_merged_data"` will save to zipped Zarr. [#PR 345](https://github.com/openghg/openghg_inversions/pull/345) 
+- Added the ability to process TCCON data, along with additional output variables `obs_prior_factor` and `obs_prior_upper_level_factor`. [PR #327](https://github.com/openghg/openghg_inversions/pull/327)
+# Version 0.6.0
+
+## Model changes
+
+- Fixed issue due to `met_model` being converted from `None` to `not_set` [#PR 341](https://github.com/openghg/openghg_inversions/pull/341)
+
+## Code changes
+
+- Added new release process using `uv`.
 
 # Version 0.5.0
 
