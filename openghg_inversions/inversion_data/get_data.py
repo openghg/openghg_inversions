@@ -143,7 +143,7 @@ def convert_to_list(
         length.
 
     """
-    if x is None or isinstance(x, str) or isinstance(x, int):
+    if x is None or isinstance(x, str | int):
         return [x] * length
 
     if len(x) != length:
