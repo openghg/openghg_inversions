@@ -296,7 +296,7 @@ def paris_flux_output(
             return ds
 
     result = (
-        xr.merge([flux_outs, country_outs, country_fraction], join='override')
+        xr.merge([flux_outs, country_outs, country_fraction.reindex_like(flux_outs)], join='outer')
         .rename(dim_rename_dict)
         .pipe(time_func)
         .pipe(convert_time_to_unix_epoch, "1d")
