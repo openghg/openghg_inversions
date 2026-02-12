@@ -144,18 +144,21 @@ def paris_concentration_outputs(
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
 
+    obs_and_errs_raw = inv_out.get_obs_and_errors().unstack("nmeasure")
+    existing_vars = set(obs_and_errs_raw.data_vars)
+    rename_map = {
+        "y_obs": "Yobs",
+        "y_obs_prior_factor": "Yobs_prior_factor",
+        "y_obs_prior_upper_level_factor": "Yobs_prior_upper_level_factor",
+        "y_obs_repeatability": "uYobs_repeatability",
+        "y_obs_variability": "uYobs_variability",
+        "model_error": "uYmod",
+        "total_error": "uYtotal",
+    }
+    filtered_rename_map = {k: v for k, v in rename_map.items() if k in existing_vars}
     obs_and_errs = (
-        inv_out.get_obs_and_errors()
-        .unstack("nmeasure")
-        .rename(
-            {
-                "y_obs": "Yobs",
-                "y_obs_repeatability": "uYobs_repeatability",
-                "y_obs_variability": "uYobs_variability",
-                "model_error": "uYmod",
-                "total_error": "uYtotal",
-            }
-        )
+        obs_and_errs_raw
+        .rename(filtered_rename_map)
         .drop_vars("y_obs_error")
     )
 
@@ -203,6 +206,18 @@ def paris_concentration_outputs(
         .transpose("time", "percentile", "nsite")
         .rename_vars(nsite="sitenames")
     )
+
+    if "Yobs_prior_factor" in result.data_vars and "Yobs_prior_upper_level_factor" in result.data_vars:
+        with xr.set_options(keep_attrs="default"):
+            factor = result["Yobs_prior_factor"] + result["Yobs_prior_upper_level_factor"]
+        result["Yobs"] += factor
+        result["Yapost"] += factor
+        result["Yapriori"] += factor
+        result["qYapost"] += factor
+        result["qYapriori"] += factor
+        if "YapostBC" in result.data_vars:
+            result["YapostBC"] += factor
+            result["YaprioriBC"] += factor
 
     result.sitenames.attrs["long_name"] = "identifier of site"
 

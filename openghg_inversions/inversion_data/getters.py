@@ -186,11 +186,23 @@ def get_obs_data(
                     species=species,
                     max_level=max_level,
                     satellite=satellite,
-                    platform = "satellite", 
+                    platform = platform, 
                     domain=domain,
                     selection=selection,
                     start_date=start_date,
                     end_date=end_date,
+                    store=store,
+                )
+            elif inlet=="column":
+                obs_data = get_obs_column(
+                    site=site,
+                    species=species.lower(),
+                    inlet=inlet,
+                    start_date=start_date,
+                    end_date=end_date,
+                    max_level=max_level,
+                    average=average,
+                    instrument=instrument,
                     store=store,
                 )
             else:
