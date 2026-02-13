@@ -10,11 +10,14 @@ from typing import cast
 
 import pandas as pd
 import xarray as xr
+import logging
 
 from .algorithms import quadtree_algorithm, weighted_algorithm
 
 from openghg_inversions.config.paths import Paths
 from openghg_inversions.utils import read_netcdfs
+
+logger = logging.getLogger(__name__)
 
 
 openghginv_path = Paths.openghginv
@@ -212,6 +215,7 @@ def quadtreebasisfunction(
     domain : str,
     emissions_name: list[str] | None = None,
     nbasis: int = 100,
+    country_directory: str | None = None,
     abs_flux: bool = False,
     seed: int | None = None,
     mask: xr.DataArray | None = None,
@@ -277,6 +281,7 @@ def bucketbasisfunction(
     domain : str,
     emissions_name: list[str] | None = None,
     nbasis: int = 100,
+    country_directory: str | None = None,
     abs_flux: bool = False,
     mask: xr.DataArray | None = None
 ) -> xr.DataArray:
@@ -304,6 +309,8 @@ def bucketbasisfunction(
       mask (xarray.DataArray):
         Boolean mask on lat/lon coordinates. Used to find basis on sub-region
         Default None
+      country_directory (str):
+        Directory containing land-sea files. If None, will use default files.
 
     Returns:
       bucket_basis (xarray.DataArray):
@@ -314,7 +321,7 @@ def bucketbasisfunction(
     fps = fps / fps.max()
 
     # use xr.apply_ufunc to keep xarray coords
-    func = partial(weighted_algorithm, nregion=nbasis, bucket=1, domain=domain)
+    func = partial(weighted_algorithm, nregion=nbasis, bucket=1, domain=domain, country_directory=country_directory)
     bucket_basis = xr.apply_ufunc(func, fps)
 
     bucket_basis = bucket_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
@@ -342,6 +349,7 @@ def fixed_outer_regions_basis(
     domain: str,
     emissions_name: list[str] | None = None,
     nbasis: int = 100,
+    country_directory: str | None = None,
     abs_flux: bool = False,
 ) -> xr.DataArray:
     """Fix outer region of basis functions to InTEM regions, and fit the inner regions using `basis_algorithm`.
@@ -361,6 +369,9 @@ def fixed_outer_regions_basis(
       nbasis (int):
         Desired number of basis function regions
         Default 100
+      country_directory (str):
+        Directory containing land-sea files and InTEM outer region files. 
+        If None, will use default files.
       abs_flux:
         When set to True uses absolute values of a flux array
         Default False
@@ -369,7 +380,12 @@ def fixed_outer_regions_basis(
         basis (xarray.DataArray) :
           Array with lat/lon dimensions and basis regions encoded by integers.
     """
-    intem_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
+    if country_directory is None:
+        logger.warning(f"Loading default land-sea file for domain {domain}.")
+        intem_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
+    else:
+        logger.warning(f"Loading InTEM outer region file for domain {domain} from {country_directory}.")
+        intem_regions_path = Path(country_directory) / f"outer_region_definition_{domain}.nc"
     intem_regions = xr.open_dataset(intem_regions_path).region
 
     # force intem_regions to use flux coordinates
@@ -381,7 +397,7 @@ def fixed_outer_regions_basis(
     mask = intem_regions == inner_index
 
     basis_function = basis_functions[basis_algorithm].algorithm
-    inner_region = basis_function(fp_all, start_date, domain, emissions_name, nbasis, abs_flux, mask=mask)
+    inner_region = basis_function(fp_all, start_date, domain, emissions_name, nbasis, country_directory, abs_flux, mask=mask)
 
     basis = intem_regions.rename("basis") 
 

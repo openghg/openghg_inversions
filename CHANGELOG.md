@@ -4,6 +4,9 @@
 
 ## Code changes
 
+- More flexibility for new inversion domains. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+- More flexibility for types of boundary condition basis functions. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
+- Bug fix for quadtree algorithm. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
 - Fixed minor bugs in code for storing merged data. Added option to change merged data format by including an extension in `merged_data_name`, e.g. `merged_data_name="my_merged_data.nc"` will save to netCDF, while `merged_data_name="my_merged_data"` will save to zipped Zarr. [#PR 345](https://github.com/openghg/openghg_inversions/pull/345) 
 - Added the ability to process TCCON data, along with additional output variables `obs_prior_factor` and `obs_prior_upper_level_factor`. [PR #327](https://github.com/openghg/openghg_inversions/pull/327)
 - Fixed bug introduced by PR 327, which caused "prior factor" variables filled with None values to be passed to post-processing. [PR #353](https://github.com/openghg/openghg_inversions/pull/353)
@@ -32,6 +35,8 @@
 # Version 0.4.0
 
 ## Model updates
+
+- Offsets can be applied and solved for on a monthly basis, as well as for the entire inversion period (ini option `offset_args = {"offset_freq": "M"}` for monthly, although other frequencies can be passed). 
 
 - Offsets can be applied to all but one site (ini option `offset_args = {"drop_first": True}`) or to all sites, which is the default option (ini option `offset_args = {"drop_first": False}`). [#PR 285](https://github.com/openghg/openghg_inversions/pull/285)
 
