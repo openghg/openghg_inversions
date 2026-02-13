@@ -242,6 +242,7 @@ class InversionOutput:
         # format obs data and errors
         self.obs = self.nmeasure_to_site_time(self.obs.rename("y_obs"))
         self.obs_err = self.nmeasure_to_site_time(self.obs_err.rename("y_obs_error"))
+
         if self.obs_prior_factor is not None and self.obs_prior_upper_level_factor is not None:
             self.obs_prior_factor = self.nmeasure_to_site_time(
                 self.obs_prior_factor.rename("y_obs_prior_factor")
@@ -613,8 +614,6 @@ def make_inv_out_for_fixed_basis_mcmc(
     Y: np.ndarray,
     Ytime: np.ndarray,
     error: np.ndarray,
-    obs_prior_factor: np.ndarray,
-    obs_prior_upper_level_factor: np.ndarray,
     obs_repeatability: np.ndarray,
     obs_variability: np.ndarray,
     site_indicator: np.ndarray,
@@ -624,20 +623,30 @@ def make_inv_out_for_fixed_basis_mcmc(
     end_date: str,
     species: str,
     domain: str,
+    obs_prior_factor: np.ndarray | None = None,
+    obs_prior_upper_level_factor: np.ndarray | None = None,
 ) -> InversionOutput:
     """Create InversionOutput in `fixedbasisMCMC`."""
     nmeasure = np.arange(len(Y))
     y_obs = xr.DataArray(Y, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs")
     times = xr.DataArray(Ytime, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="times")
     y_error = xr.DataArray(error, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror")
-    y_obs_prior_factor = xr.DataArray(
-        obs_prior_factor, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs_prior_factor"
+    y_obs_prior_factor = (
+        xr.DataArray(
+            obs_prior_factor, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs_prior_factor"
+        )
+        if obs_prior_factor is not None
+        else None
     )
-    y_obs_prior_upper_level_factor = xr.DataArray(
-        obs_prior_upper_level_factor,
-        dims=["nmeasure"],
-        coords={"nmeasure": nmeasure},
-        name="Yobs_prior_upper_level_factor",
+    y_obs_prior_upper_level_factor = (
+        xr.DataArray(
+            obs_prior_upper_level_factor,
+            dims=["nmeasure"],
+            coords={"nmeasure": nmeasure},
+            name="Yobs_prior_upper_level_factor",
+        )
+        if obs_prior_upper_level_factor is not None
+        else None
     )
     y_error_repeatability = xr.DataArray(
         obs_repeatability, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror_repeatability"
