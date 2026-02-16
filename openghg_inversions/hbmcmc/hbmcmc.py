@@ -88,6 +88,10 @@ def make_inv_inputs(
     offset_args,
     power,
 ):
+    """Create inputs for PyMC.
+
+    This combines the data for each site into total sensitivity, obs, etc. arrays.
+    """
     # Trigger dask computations
     # we only compute the variables we need below
     to_compute = [
