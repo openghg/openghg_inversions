@@ -34,6 +34,8 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 
+from openghg.util import split_function_inputs
+
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 import openghg_inversions.hbmcmc.inversionsetup as setup
 from openghg_inversions.utils import ncdf_encoding
@@ -42,6 +44,209 @@ from openghg_inversions.inversion_data import data_processing_surface_notracer, 
 from openghg_inversions.filters import filtering
 from openghg_inversions.model_error import residual_error_method, percentile_error_method, setup_min_error
 from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
+
+
+def update_log_normal_prior(prior):
+    """Convert `mean` and `stdev` to parameters for PyMC lognormal."""
+    if prior["pdf"].lower() == "lognormal" and "stdev" in prior:
+        stdev = float(prior["stdev"])
+        mean = float(prior.get("mean", 1.0))
+
+        mu, sigma = mcmc.lognormal_mu_sigma(mean, stdev)
+        prior["mu"] = mu
+        prior["sigma"] = sigma
+
+        del prior["stdev"]
+        if "mean" in prior:
+            del prior["mean"]
+
+
+def make_inv_inputs(
+    *,
+    fp_data,
+    sites,
+    dropped_sites,
+    start_date,
+    end_date,
+    use_bc,
+    bc_freq,
+    sigma_freq,
+    xprior,
+    bcprior,
+    sigprior,
+    nit,
+    burn,
+    tune,
+    nchain,
+    sigma_per_site,
+    offsetprior,
+    add_offset,
+    verbose,
+    min_error,
+    calculate_min_error,
+    min_error_options,
+    offset_args,
+    power,
+):
+    # Trigger dask computations
+    # we only compute the variables we need below
+    to_compute = [
+        "H",
+        "H_bc",
+        "mf",
+        "mf_error",
+        "mf_repeatability",
+        "mf_variability",
+        "mf_prior_factor",
+        "mf_prior_upper_level_factor",
+        "bc_mod",
+        "mf_mod",
+    ]
+    for site in sites:
+        to_compute_site = [dv for dv in to_compute if dv in fp_data[site].data_vars]
+        fp_data[site][to_compute_site] = fp_data[site][to_compute_site].compute()
+
+    # Get inputs ready
+    error = np.zeros(0)
+    obs_prior_factor = np.zeros(0)
+    obs_prior_upper_level_factor = np.zeros(0)
+    obs_repeatability = np.zeros(0)
+    obs_variability = np.zeros(0)
+    Hx = np.zeros(0)
+    Y = np.zeros(0)
+    siteindicator = np.zeros(0)
+
+    for si, site in enumerate(sites):
+        # if site was dropped, skip; this makes the site indicator numbers consistent
+        # even if a site is dropped
+        if site in dropped_sites:
+            continue
+
+        # select variables to drop NaNs from
+        drop_vars = []
+        for var in ["H", "H_bc", "mf", "mf_error"]:
+            if var in fp_data[site].data_vars:
+                drop_vars.append(var)
+
+        # pymc doesn't like NaNs, so drop them for the variables used below
+        fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
+
+        # repeatability/variability chosen/combined into mf_error in `get_data.py`
+        error = np.concatenate((error, fp_data[site].mf_error.values))
+
+        # make repeatability and variability for outputs (not used directly in inversions)
+        obs_repeatability = np.concatenate((obs_repeatability, fp_data[site].mf_repeatability.values))
+        obs_variability = np.concatenate((obs_variability, fp_data[site].mf_variability.values))
+
+        Y = np.concatenate((Y, fp_data[site].mf.values))
+        if fp_data[site].attrs.get("inlet") == "column" or fp_data[site].attrs.get("platform") == "satellite":
+            obs_prior_factor = np.concatenate((obs_prior_factor, fp_data[site].mf_prior_factor.values))
+            obs_prior_upper_level_factor = np.concatenate(
+                (obs_prior_upper_level_factor, fp_data[site].mf_prior_upper_level_factor.values)
+            )
+        else:
+            # If not a column/satellite measurement, set prior factors to zero
+            # This is required if there is mix of insitu and column measurements
+            obs_prior_factor = np.concatenate((obs_prior_factor, np.zeros(fp_data[site].mf.size)))
+            obs_prior_upper_level_factor = np.concatenate(
+                (obs_prior_upper_level_factor, np.zeros(fp_data[site].mf.size))
+            )
+        siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
+        if si == 0:
+            Ytime = fp_data[site].time.values
+        else:
+            Ytime = np.concatenate((Ytime, fp_data[site].time.values))
+
+        Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
+
+    if np.isnan(Hx).any():
+        warnings.warn(f"Hx matrix contains {np.isnan(Hx).flatten().sum()} NaN values")
+
+    # Calculate min error
+    if calculate_min_error is not None:
+        warnings.warn(
+            f"`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead."
+        )
+        min_error = calculate_min_error
+
+    if min_error == "residual":
+        if min_error_options is not None:
+            min_error = residual_error_method(fp_data, **min_error_options)
+        else:
+            min_error = residual_error_method(fp_data)
+
+        # if "by_site" is True, align min_error via siteindicator
+        if min_error_options and min_error_options.get("by_site", False):
+            min_error = setup_min_error(min_error, siteindicator)
+
+    elif min_error == "percentile":
+        min_error = percentile_error_method(fp_data)
+        min_error = setup_min_error(min_error, siteindicator)
+
+    elif isinstance(min_error, float | int) and min_error >= 0:
+        pass
+    else:
+        raise ValueError(
+            f"`min_error` must have values: 'residual', 'percentile', or `float`; {min_error} not recognised."
+        )
+
+    sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
+
+    mcmc_args = {
+        "Hx": Hx,
+        "Y": Y,
+        "error": error,
+        "siteindicator": siteindicator,
+        "sigma_freq_index": sigma_freq_index,
+        "xprior": xprior,
+        "sigprior": sigprior,
+        "nit": nit,
+        "burn": burn,
+        "tune": tune,
+        "nchain": nchain,
+        "sigma_per_site": sigma_per_site,
+        "offsetprior": offsetprior,
+        "add_offset": add_offset,
+        "verbose": verbose,
+        "min_error": min_error,
+        "offset_args": offset_args,
+        "power": power,
+    }
+
+    if use_bc is True:
+        Hbc = np.zeros(0)
+
+        for si, site in enumerate(sites):
+            if bc_freq == "monthly":
+                Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
+            elif bc_freq is None:
+                Hmbc = fp_data[site].H_bc.values
+            else:
+                Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
+
+            if si == 0:
+                Hbc = np.copy(Hmbc)  # fp_data[site].H_bc.values
+            else:
+                Hbc = np.hstack((Hbc, Hmbc))
+
+        if np.isnan(Hbc).any():
+            warnings.warn(f"Hbc matrix contains {np.isnan(Hbc).flatten().sum()} NaN values")
+
+        mcmc_args["Hbc"] = Hbc
+        mcmc_args["bcprior"] = bcprior
+        mcmc_args["use_bc"] = True
+    else:
+        mcmc_args["use_bc"] = False
+
+    post_process_args = {
+        "Ytime": Ytime,
+        "obs_repeatability": obs_repeatability,
+        "obs_variability": obs_variability,
+        "obs_prior_factor": obs_prior_factor,
+        "obs_prior_upper_level_factor": obs_prior_upper_level_factor,
+    }
+
+    return mcmc_args, post_process_args
 
 
 def fixedbasisMCMC(
@@ -275,11 +480,6 @@ def fixedbasisMCMC(
     else:
         is_sat_column = False
 
-    if inlet is not None:
-        is_sat_column = any([i == "column" for i in inlet])
-    else:
-        is_sat_column = False
-
     if output_format == "hbmcmc":
         if is_sat_column:
             raise ValueError(
@@ -423,199 +623,53 @@ def fixedbasisMCMC(
     if use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
 
-    # Trigger dask computations
-    # we only compute the variables we need below
-    to_compute = [
-        "H",
-        "H_bc",
-        "mf",
-        "mf_error",
-        "mf_repeatability",
-        "mf_variability",
-        "mf_prior_factor",
-        "mf_prior_upper_level_factor",
-        "bc_mod",
-        "mf_mod",
-    ]
-    for site in sites:
-        to_compute_site = [dv for dv in to_compute if dv in fp_data[site].data_vars]
-        fp_data[site][to_compute_site] = fp_data[site][to_compute_site].compute()
+    mcmc_args, post_process_args = make_inv_inputs(
+        fp_data=fp_data,
+        sites=sites,
+        dropped_sites=dropped_sites,
+        start_date=start_date,
+        end_date=end_date,
+        use_bc=use_bc,
+        bc_freq=bc_freq,
+        sigma_freq=sigma_freq,
+        xprior=xprior,
+        bcprior=bcprior,
+        sigprior=sigprior,
+        nit=nit,
+        burn=burn,
+        tune=tune,
+        nchain=nchain,
+        sigma_per_site=sigma_per_site,
+        offsetprior=offsetprior,
+        add_offset=add_offset,
+        verbose=verbose,
+        min_error=min_error,
+        calculate_min_error=calculate_min_error,
+        min_error_options=min_error_options,
+        offset_args=offset_args,
+        power=power,
+    )
 
-    # Get inputs ready
-    error = np.zeros(0)
-    obs_prior_factor = np.zeros(0)
-    obs_prior_upper_level_factor = np.zeros(0)
-    obs_repeatability = np.zeros(0)
-    obs_variability = np.zeros(0)
-    Hx = np.zeros(0)
-    Y = np.zeros(0)
-    siteindicator = np.zeros(0)
+    # update lognormal priors
+    update_log_normal_prior(mcmc_args["xprior"])
+    if "bcprior" in mcmc_args:
+        update_log_normal_prior(mcmc_args["bcprior"])
 
-    for si, site in enumerate(sites):
-        # if site was dropped, skip; this makes the site indicator numbers consistent
-        # even if a site is dropped
-        if site in dropped_sites:
-            continue
-
-        # select variables to drop NaNs from
-        drop_vars = []
-        for var in ["H", "H_bc", "mf", "mf_error"]:
-            if var in fp_data[site].data_vars:
-                drop_vars.append(var)
-
-        # pymc doesn't like NaNs, so drop them for the variables used below
-        fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
-
-        # repeatability/variability chosen/combined into mf_error in `get_data.py`
-        error = np.concatenate((error, fp_data[site].mf_error.values))
-
-        # make repeatability and variability for outputs (not used directly in inversions)
-        obs_repeatability = np.concatenate((obs_repeatability, fp_data[site].mf_repeatability.values))
-        obs_variability = np.concatenate((obs_variability, fp_data[site].mf_variability.values))
-
-        Y = np.concatenate((Y, fp_data[site].mf.values))
-        if fp_data[site].attrs.get("inlet") == "column" or fp_data[site].attrs.get("platform") == "satellite":
-            obs_prior_factor = np.concatenate((obs_prior_factor, fp_data[site].mf_prior_factor.values))
-            obs_prior_upper_level_factor = np.concatenate(
-                (obs_prior_upper_level_factor, fp_data[site].mf_prior_upper_level_factor.values)
-            )
-        else:
-            # If not a column/satellite measurement, set prior factors to zero
-            # This is required if there is mix of insitu and column measurements
-            obs_prior_factor = np.concatenate((obs_prior_factor, np.zeros(fp_data[site].mf.size)))
-            obs_prior_upper_level_factor = np.concatenate(
-                (obs_prior_upper_level_factor, np.zeros(fp_data[site].mf.size))
-            )
-        siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
-        if si == 0:
-            Ytime = fp_data[site].time.values
-        else:
-            Ytime = np.concatenate((Ytime, fp_data[site].time.values))
-
-        Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
-
-    if np.isnan(Hx).any():
-        warnings.warn(f"Hx matrix contains {np.isnan(Hx).flatten().sum()} NaN values")
-
-    # Calculate min error
-    if calculate_min_error is not None:
-        warnings.warn(
-            f"`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead."
-        )
-        min_error = calculate_min_error
-
-    if min_error == "residual":
-        if min_error_options is not None:
-            min_error = residual_error_method(fp_data, **min_error_options)
-        else:
-            min_error = residual_error_method(fp_data)
-
-        # if "by_site" is True, align min_error via siteindicator
-        if min_error_options and min_error_options.get("by_site", False):
-            min_error = setup_min_error(min_error, siteindicator)
-
-    elif min_error == "percentile":
-        min_error = percentile_error_method(fp_data)
-        min_error = setup_min_error(min_error, siteindicator)
-
-    elif isinstance(min_error, float | int) and min_error >= 0:
-        pass
-    else:
-        raise ValueError(
-            f"`min_error` must have values: 'residual', 'percentile', or `float`; {min_error} not recognised."
-        )
-
-    sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
-
-    # check if lognormal mu and sigma need to be calculated
-    def update_log_normal_prior(prior):
-        if prior["pdf"].lower() == "lognormal" and "stdev" in prior:
-            stdev = float(prior["stdev"])
-            mean = float(prior.get("mean", 1.0))
-
-            mu, sigma = mcmc.lognormal_mu_sigma(mean, stdev)
-            prior["mu"] = mu
-            prior["sigma"] = sigma
-
-            del prior["stdev"]
-            if "mean" in prior:
-                del prior["mean"]
-
-    update_log_normal_prior(xprior)
-    update_log_normal_prior(bcprior)
-
-    # check if offset args needs to contain an offset_freq_indicator
-
-    if offset_args:
-        if "offset_freq" in offset_args:
-            offset_freq = offset_args["offset_freq"]
-            time_index = pd.to_datetime(Ytime)
-            offset_freq_indicator = time_index.to_period(offset_freq).astype(str)
-            offset_args["offset_freq_indicator"] = offset_freq_indicator.values
-
-    mcmc_args = {
-        "Hx": Hx,
-        "Y": Y,
-        "error": error,
-        "siteindicator": siteindicator,
-        "sigma_freq_index": sigma_freq_index,
-        "xprior": xprior,
-        "sigprior": sigprior,
-        "nit": nit,
-        "burn": burn,
-        "tune": tune,
-        "nchain": nchain,
-        "sigma_per_site": sigma_per_site,
-        "offsetprior": offsetprior,
-        "add_offset": add_offset,
-        "verbose": verbose,
-        "min_error": min_error,
-        "offset_args": offset_args,
-        "power": power,
-    }
-
-    if use_bc is True:
-        Hbc = np.zeros(0)
-
-        for si, site in enumerate(sites):
-            if bc_freq == "monthly":
-                Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
-            elif bc_freq is None:
-                Hmbc = fp_data[site].H_bc.values
-            else:
-                Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
-
-            if si == 0:
-                Hbc = np.copy(Hmbc)  # fp_data[site].H_bc.values
-            else:
-                Hbc = np.hstack((Hbc, Hmbc))
-
-        if np.isnan(Hbc).any():
-            warnings.warn(f"Hbc matrix contains {np.isnan(Hbc).flatten().sum()} NaN values")
-
-        mcmc_args["Hbc"] = Hbc
-        mcmc_args["bcprior"] = bcprior
-        mcmc_args["use_bc"] = True
-    else:
-        mcmc_args["use_bc"] = False
-
-    post_process_args = {
-        "Ytime": Ytime,
-        "domain": domain,
-        "species": species,
-        "sites": sites,
-        "start_date": start_date,
-        "end_date": end_date,
-        "outputname": outputname,
-        "outputpath": outputpath,
-        "country_unit_prefix": country_unit_prefix,
-        "fp_data": fp_data,
-        "emissions_name": emissions_name,
-        "country_file": country_file,
-        "obs_repeatability": obs_repeatability,
-        "obs_variability": obs_variability,
-        "min_error": min_error,
-    }
+    post_process_args.update(
+        {
+            "domain": domain,
+            "species": species,
+            "sites": sites,
+            "start_date": start_date,
+            "end_date": end_date,
+            "outputname": outputname,
+            "outputpath": outputpath,
+            "country_unit_prefix": country_unit_prefix,
+            "fp_data": fp_data,
+            "emissions_name": emissions_name,
+            "country_file": country_file,
+        }
+    )
 
     # cast float64 to float32
     for k in list(post_process_args.keys()):  # use list to get keys before modifying dict
@@ -664,6 +718,16 @@ def fixedbasisMCMC(
 
             trace.to_netcdf(str(trace_path), engine="netcdf4", compress=True)
 
+    # Get args needed for make_inv_out_for_fixed_basis_mcmc
+    inv_out_args, _ = split_function_inputs(post_process_args, make_inv_out_for_fixed_basis_mcmc)
+    inv_out_args["site_names"] = sites
+    inv_out_args["site_indicator"] = post_process_args["siteindicator"]
+    inv_out_args["mcmc_results"] = mcmc_results
+
+    if not is_sat_column:
+        inv_out_args["obs_prior_factor"] = None
+        inv_out_args["obs_prior_upper_level_factor"] = None
+
     # Path to save trace
     if save_inversion_output:
         if isinstance(save_inversion_output, str | Path):
@@ -671,70 +735,21 @@ def fixedbasisMCMC(
         else:
             inversion_output_path = Path(outputpath) / (outputname + f"{start_date}_inversion_output.nc")
 
-        inversion_output = make_inv_out_for_fixed_basis_mcmc(
-            fp_data=fp_data,
-            Y=Y,
-            Ytime=Ytime,
-            error=error,
-            obs_prior_factor=obs_prior_factor,
-            obs_prior_upper_level_factor=obs_prior_upper_level_factor,
-            obs_repeatability=obs_repeatability,
-            obs_variability=obs_variability,
-            site_indicator=siteindicator,
-            site_names=sites,
-            mcmc_results=mcmc_results,
-            start_date=start_date,
-            end_date=end_date,
-            species=species,
-            domain=domain,
-        )
+        inversion_output = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
         inversion_output.save(inversion_output_path)
 
     if skip_postprocessing:
         return mcmc_results
 
     if return_inv_out:
-        return make_inv_out_for_fixed_basis_mcmc(
-            fp_data=fp_data,
-            Y=Y,
-            Ytime=Ytime,
-            error=error,
-            obs_prior_factor=obs_prior_factor if is_sat_column else None,
-            obs_prior_upper_level_factor=obs_prior_upper_level_factor if is_sat_column else None,
-            obs_repeatability=obs_repeatability,
-            obs_variability=obs_variability,
-            site_indicator=siteindicator,
-            site_names=sites,
-            mcmc_results=mcmc_results,
-            start_date=start_date,
-            end_date=end_date,
-            species=species,
-            domain=domain,
-        )
+        return make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
 
     start_post = time.time()
 
     if new_postprocessing:
-        # from ..postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
         from ..postprocessing.make_outputs import basic_output
 
-        inv_out = make_inv_out_for_fixed_basis_mcmc(
-            fp_data=fp_data,
-            Y=Y,
-            Ytime=Ytime,
-            error=error,
-            obs_prior_factor=obs_prior_factor if is_sat_column else None,
-            obs_prior_upper_level_factor=obs_prior_upper_level_factor if is_sat_column else None,
-            obs_repeatability=obs_repeatability,
-            obs_variability=obs_variability,
-            site_indicator=siteindicator,
-            site_names=sites,
-            mcmc_results=mcmc_results,
-            start_date=start_date,
-            end_date=end_date,
-            species=species,
-            domain=domain,
-        )
+        inv_out = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
 
         outputs = basic_output(inv_out, country_file=country_file)
         end_post = time.time()
@@ -745,26 +760,9 @@ def fixedbasisMCMC(
     if paris_postprocessing:
         from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 
-        # from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
         from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
-        inv_out = make_inv_out_for_fixed_basis_mcmc(
-            fp_data=fp_data,
-            Y=Y,
-            Ytime=Ytime,
-            error=error,
-            obs_prior_factor=obs_prior_factor if is_sat_column else None,
-            obs_prior_upper_level_factor=obs_prior_upper_level_factor if is_sat_column else None,
-            obs_repeatability=obs_repeatability,
-            obs_variability=obs_variability,
-            site_indicator=siteindicator,
-            site_names=sites,
-            mcmc_results=mcmc_results,
-            start_date=start_date,
-            end_date=end_date,
-            species=species,
-            domain=domain,
-        )
+        inv_out = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
 
         obs_avg_period = averaging_period[0] or "0h"
         if not averaging_period[0]:
@@ -805,7 +803,8 @@ def fixedbasisMCMC(
     del mcmc_results["trace"]
     del mcmc_results["model"]
     post_process_args.update(mcmc_results)
-    out = mcmc.inferpymc_postprocessouts(**post_process_args)
+    post_process_args_selection, _ = split_function_inputs(post_process_args, mcmc.inferpymc_postprocessouts)
+    out = mcmc.inferpymc_postprocessouts(**post_process_args_selection)
 
     end_post = time.time()
 
