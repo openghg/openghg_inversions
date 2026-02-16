@@ -19,7 +19,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=2.0",
-    # Explicit pin: prevents uv backtracking to numba 0.53 / llvmlite 0.36
+    # Explicit lower bound: prevents uv backtracking to numba 0.53 / llvmlite 0.36
     # due to NumPy 2.x + sparse metadata lag
     "numba>=0.59",
     "pymc",
@@ -28,12 +28,25 @@ dependencies = [
     "pandas<3.0",
     "matplotlib",
     "scipy", 
-    "numpy",
     "openghg",
     "sparse",
     "flox",
     "opt_einsum",
 ]
+
+[project.optional-dependencies]
+jupyter = [
+  "ipykernel",
+  "jupyterlab",
+]
+dev = [
+  "pytest",
+  "ruff",
+]
+
+[dependency-groups]
+# UV only depedency groups; just mirror some extras
+uv_dev = ["openghg_inversions[jupyter,dev]"]
 
 [project.urls]
 "Home" = "https://github.com/openghg/openghg_inversions"
@@ -51,6 +64,9 @@ openghg_inversions = [
     "postprocessing/*.json",
     "hbmcmc/config/*.ini"
 ]
+
+[tool.uv]
+default-groups = ["uv_dev"]
 
 [tool.black]
 line-length = 110
