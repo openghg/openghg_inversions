@@ -25,7 +25,7 @@ dependencies = [
     "pymc",
     "numpyro[cpu]",
     "xarray>=2025.06.0",
-    "pandas",
+    "pandas<3.0",
     "matplotlib",
     "scipy", 
     "numpy",
