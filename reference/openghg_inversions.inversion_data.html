@@ -385,7 +385,7 @@ NB. len(averaging_period)==len(sites) e.g. [“1H”, “1H”]</p></li>
 <li><p><strong>obs_data_level</strong> – ICOS observations data level. For non-ICOS sites use “None”</p></li>
 <li><p><strong>inlet</strong> – Specific inlet height for the site observations (length must match number of sites)</p></li>
 <li><p><strong>instrument</strong> – Specific instrument for the site (length must match number of sites)</p></li>
-<li><p><strong>max_level</strong> – Maximum atmospheric level to extract. Only needed if using satellite data.</p></li>
+<li><p><strong>max_level</strong> – Maximum atmospheric level to extract. Only needed if using satellite/site-column data.</p></li>
 <li><p><strong>calibration_scale</strong> – Convert measurements to defined calibration scale</p></li>
 <li><p><strong>met_model</strong> – Meteorological model used in the LPDM. List must be same length as number of sites.</p></li>
 <li><p><strong>fp_model</strong> – LPDM used for generating footprints.</p></li>
@@ -437,7 +437,9 @@ correctly for any sites, drop these from the rest of the inversion.</p></li>
 a standard name will be created given <cite>species</cite>, <cite>start_date</cite>, and <cite>output_name</cite>.</p>
 <p>If <cite>merged_data_name</cite> is not given, then <cite>species</cite>, <cite>start_date</cite>, and <cite>output_name</cite> must be provided.</p>
 <p>This function tries to automatically find a compatible format of merged data, if a format is not specified.
-First, it checks for data in “zarr” format, then in netCDF, and finally in pickle.</p>
+First, it checks for data in “zarr” (or zipped zarr) format, then in netCDF, and finally in pickle.</p>
+<p>Note: if data is stored in a zarr ZipStore, then the data is eagerly loaded, since the data needs to
+loaded before the zip file is closed.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -477,10 +479,20 @@ First, it checks for data in “zarr” format, then in netCDF, and finally in p
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.clear_datatree_encoding"><code class="docutils literal notranslate"><span class="pre">clear_datatree_encoding()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.clear_datatree_time_attrs"><code class="docutils literal notranslate"><span class="pre">clear_datatree_time_attrs()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.combine_scenario_attrs"><code class="docutils literal notranslate"><span class="pre">combine_scenario_attrs()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.dataset_to_bc_data"><code class="docutils literal notranslate"><span class="pre">dataset_to_bc_data()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.dataset_to_flux_data"><code class="docutils literal notranslate"><span class="pre">dataset_to_flux_data()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.datatree_compression_encoding"><code class="docutils literal notranslate"><span class="pre">datatree_compression_encoding()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.datatree_to_flux_dict"><code class="docutils literal notranslate"><span class="pre">datatree_to_flux_dict()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.datatree_to_fp_all"><code class="docutils literal notranslate"><span class="pre">datatree_to_fp_all()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.flux_dict_to_datatree"><code class="docutils literal notranslate"><span class="pre">flux_dict_to_datatree()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.fp_all_from_dataset"><code class="docutils literal notranslate"><span class="pre">fp_all_from_dataset()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.fp_all_to_datatree"><code class="docutils literal notranslate"><span class="pre">fp_all_to_datatree()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.load_merged_data"><code class="docutils literal notranslate"><span class="pre">load_merged_data()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.make_combined_scenario"><code class="docutils literal notranslate"><span class="pre">make_combined_scenario()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.openghg_data_to_dataset"><code class="docutils literal notranslate"><span class="pre">openghg_data_to_dataset()</span></code></a></li>
 </ul>
 </li>
 </ul>

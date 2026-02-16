@@ -409,14 +409,15 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc.html">openghg_inversions.hbmcmc.hbmcmc</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc.html#openghg_inversions.hbmcmc.hbmcmc.fixedbasisMCMC"><code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc.html#openghg_inversions.hbmcmc.hbmcmc.make_inv_inputs"><code class="docutils literal notranslate"><span class="pre">make_inv_inputs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc.html#openghg_inversions.hbmcmc.hbmcmc.rerun_output"><code class="docutils literal notranslate"><span class="pre">rerun_output()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc.html#openghg_inversions.hbmcmc.hbmcmc.update_log_normal_prior"><code class="docutils literal notranslate"><span class="pre">update_log_normal_prior()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_output.html">openghg_inversions.hbmcmc.hbmcmc_output</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_output.html#openghg_inversions.hbmcmc.hbmcmc_output.check_and_create_folder"><code class="docutils literal notranslate"><span class="pre">check_and_create_folder()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_output.html#openghg_inversions.hbmcmc.hbmcmc_output.copy_config_file"><code class="docutils literal notranslate"><span class="pre">copy_config_file()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_output.html#openghg_inversions.hbmcmc.hbmcmc_output.define_output_filename"><code class="docutils literal notranslate"><span class="pre">define_output_filename()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_output.html#openghg_inversions.hbmcmc.hbmcmc_output.ncdf_encoding"><code class="docutils literal notranslate"><span class="pre">ncdf_encoding()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.hbmcmc.hbmcmc_post_process.html">openghg_inversions.hbmcmc.hbmcmc_post_process</a><ul>
@@ -488,10 +489,20 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html">openghg_inversions.inversion_data.serialise</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.clear_datatree_encoding"><code class="docutils literal notranslate"><span class="pre">clear_datatree_encoding()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.clear_datatree_time_attrs"><code class="docutils literal notranslate"><span class="pre">clear_datatree_time_attrs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.combine_scenario_attrs"><code class="docutils literal notranslate"><span class="pre">combine_scenario_attrs()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.dataset_to_bc_data"><code class="docutils literal notranslate"><span class="pre">dataset_to_bc_data()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.dataset_to_flux_data"><code class="docutils literal notranslate"><span class="pre">dataset_to_flux_data()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.datatree_compression_encoding"><code class="docutils literal notranslate"><span class="pre">datatree_compression_encoding()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.datatree_to_flux_dict"><code class="docutils literal notranslate"><span class="pre">datatree_to_flux_dict()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.datatree_to_fp_all"><code class="docutils literal notranslate"><span class="pre">datatree_to_fp_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.flux_dict_to_datatree"><code class="docutils literal notranslate"><span class="pre">flux_dict_to_datatree()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.fp_all_from_dataset"><code class="docutils literal notranslate"><span class="pre">fp_all_from_dataset()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.fp_all_to_datatree"><code class="docutils literal notranslate"><span class="pre">fp_all_to_datatree()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.load_merged_data"><code class="docutils literal notranslate"><span class="pre">load_merged_data()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.make_combined_scenario"><code class="docutils literal notranslate"><span class="pre">make_combined_scenario()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.inversion_data.serialise.html#openghg_inversions.inversion_data.serialise.openghg_data_to_dataset"><code class="docutils literal notranslate"><span class="pre">openghg_data_to_dataset()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -548,6 +559,8 @@
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput.nmeasure_to_site_time"><code class="docutils literal notranslate"><span class="pre">InversionOutput.nmeasure_to_site_time()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput.obs"><code class="docutils literal notranslate"><span class="pre">InversionOutput.obs</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput.obs_err"><code class="docutils literal notranslate"><span class="pre">InversionOutput.obs_err</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput.obs_prior_factor"><code class="docutils literal notranslate"><span class="pre">InversionOutput.obs_prior_factor</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput.obs_prior_upper_level_factor"><code class="docutils literal notranslate"><span class="pre">InversionOutput.obs_prior_upper_level_factor</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput.obs_repeatability"><code class="docutils literal notranslate"><span class="pre">InversionOutput.obs_repeatability</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput.obs_variability"><code class="docutils literal notranslate"><span class="pre">InversionOutput.obs_variability</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.postprocessing.inversion_output.html#openghg_inversions.postprocessing.inversion_output.InversionOutput.period_midpoint"><code class="docutils literal notranslate"><span class="pre">InversionOutput.period_midpoint</span></code></a></li>
@@ -663,8 +676,10 @@
 <li class="toctree-l1"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html#openghg_inversions.utils.areagrid"><code class="docutils literal notranslate"><span class="pre">areagrid()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html#openghg_inversions.utils.combine_datasets"><code class="docutils literal notranslate"><span class="pre">combine_datasets()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html#openghg_inversions.utils.datatree_ncdf_encoding"><code class="docutils literal notranslate"><span class="pre">datatree_ncdf_encoding()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html#openghg_inversions.utils.get_country"><code class="docutils literal notranslate"><span class="pre">get_country()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html#openghg_inversions.utils.get_country_file_path"><code class="docutils literal notranslate"><span class="pre">get_country_file_path()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html#openghg_inversions.utils.ncdf_encoding"><code class="docutils literal notranslate"><span class="pre">ncdf_encoding()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html#openghg_inversions.utils.open_ds"><code class="docutils literal notranslate"><span class="pre">open_ds()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html#openghg_inversions.utils.read_netcdfs"><code class="docutils literal notranslate"><span class="pre">read_netcdfs()</span></code></a></li>
 </ul>
