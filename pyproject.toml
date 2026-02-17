@@ -42,6 +42,10 @@ jupyter = [
 dev = [
   "pytest",
   "ruff",
+  "black>=26.1.0",
+  "pyright",
+  "mypy",
+  "flake8",
 ]
 
 [dependency-groups]
