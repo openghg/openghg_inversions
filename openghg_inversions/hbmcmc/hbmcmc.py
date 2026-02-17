@@ -59,6 +59,7 @@ def update_log_normal_prior(prior):
         del prior["stdev"]
         if "mean" in prior:
             del prior["mean"]
+    return prior
 
 
 def make_inv_inputs(
@@ -71,22 +72,9 @@ def make_inv_inputs(
     use_bc,
     bc_freq,
     sigma_freq,
-    xprior,
-    bcprior,
-    sigprior,
-    nit,
-    burn,
-    tune,
-    nchain,
-    sigma_per_site,
-    offsetprior,
-    add_offset,
-    verbose,
     min_error,
     calculate_min_error,
     min_error_options,
-    offset_args,
-    power,
 ):
     """Create inputs for PyMC.
 
@@ -202,19 +190,7 @@ def make_inv_inputs(
         "error": error,
         "siteindicator": siteindicator,
         "sigma_freq_index": sigma_freq_index,
-        "xprior": xprior,
-        "sigprior": sigprior,
-        "nit": nit,
-        "burn": burn,
-        "tune": tune,
-        "nchain": nchain,
-        "sigma_per_site": sigma_per_site,
-        "offsetprior": offsetprior,
-        "add_offset": add_offset,
-        "verbose": verbose,
         "min_error": min_error,
-        "offset_args": offset_args,
-        "power": power,
     }
 
     if use_bc is True:
@@ -237,10 +213,6 @@ def make_inv_inputs(
             warnings.warn(f"Hbc matrix contains {np.isnan(Hbc).flatten().sum()} NaN values")
 
         mcmc_args["Hbc"] = Hbc
-        mcmc_args["bcprior"] = bcprior
-        mcmc_args["use_bc"] = True
-    else:
-        mcmc_args["use_bc"] = False
 
     post_process_args = {
         "Ytime": Ytime,
@@ -627,6 +599,25 @@ def fixedbasisMCMC(
     if use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
 
+    # TODO keep this config separate from mcmc_args in the future
+    mcmc_config = {
+        "xprior": update_log_normal_prior(xprior),
+        "sigprior": sigprior,
+        "nit": nit,
+        "burn": burn,
+        "tune": tune,
+        "nchain": nchain,
+        "sigma_per_site": sigma_per_site,
+        "offsetprior": offsetprior,
+        "add_offset": add_offset,
+        "offset_args": offset_args,
+        "power": power,
+        "use_bc": use_bc,
+        "verbose": verbose,
+    }
+    if use_bc:
+        mcmc_config["bcprior"] = update_log_normal_prior(bcprior)
+
     mcmc_args, post_process_args = make_inv_inputs(
         fp_data=fp_data,
         sites=sites,
@@ -636,28 +627,12 @@ def fixedbasisMCMC(
         use_bc=use_bc,
         bc_freq=bc_freq,
         sigma_freq=sigma_freq,
-        xprior=xprior,
-        bcprior=bcprior,
-        sigprior=sigprior,
-        nit=nit,
-        burn=burn,
-        tune=tune,
-        nchain=nchain,
-        sigma_per_site=sigma_per_site,
-        offsetprior=offsetprior,
-        add_offset=add_offset,
-        verbose=verbose,
         min_error=min_error,
         calculate_min_error=calculate_min_error,
         min_error_options=min_error_options,
-        offset_args=offset_args,
-        power=power,
     )
 
-    # update lognormal priors
-    update_log_normal_prior(mcmc_args["xprior"])
-    if "bcprior" in mcmc_args:
-        update_log_normal_prior(mcmc_args["bcprior"])
+    mcmc_args.update(mcmc_config)
 
     post_process_args.update(
         {
