@@ -129,3 +129,8 @@ def setup_min_error(min_error: np.ndarray, siteindicator: np.ndarray) -> np.ndar
     assert np.max(siteindicator) == len(min_error) - 1
 
     return min_error[siteindicator.astype(int)]
+
+
+def xr_setup_min_error(min_error: np.ndarray, siteindicator: xr.DataArray) -> xr.DataArray:
+    """Align min error vector with obs vector."""
+    return xr.apply_ufunc(lambda x: setup_min_error(min_error, x), siteindicator)
