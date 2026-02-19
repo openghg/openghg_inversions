@@ -83,11 +83,12 @@ def _assert_allclose_or_equal(a, b, rtol=0, atol=0):
     np.testing.assert_allclose(a_arr, b_arr, rtol=rtol, atol=atol)
 
 
-def compare_with_frozen(result: dict, frozen: dict):
+def _compare_with_frozen(result: dict, frozen: dict):
     # compare keys to help with debugging
     assert set(result.keys()) == set(frozen.keys())
 
     for k, v in result.items():
+        print(k)
         result_v = _freeze_dict({k: v})[k]
         frozen_v = frozen[k]
         _assert_allclose_or_equal(result_v, frozen_v, rtol=0, atol=0)
@@ -99,9 +100,7 @@ def inv_inputs_args(fp_data):
     return dict(
         fp_data=fp_data,
         sites=["MHD", "TAC"],
-        dropped_sites=[],
         start_date="2019-01-01",
-        end_date="2019-01-02",
         use_bc=True,
         bc_freq="3h",
         sigma_freq="3h",
@@ -128,5 +127,5 @@ def test_inversion_input_hbmcmc_matches_frozen(raw_data_path, inv_inputs_args):
 
     mcmc_args, post_args = make_inv_inputs(**inv_inputs_args)
 
-    compare_with_frozen(mcmc_args, frozen_mcmc)
-    compare_with_frozen(post_args, frozen_post)
+    _compare_with_frozen(mcmc_args, frozen_mcmc)
+    _compare_with_frozen(post_args, frozen_post)
