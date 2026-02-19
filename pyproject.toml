@@ -79,3 +79,8 @@ target-version = ["py310"]
 [tool.pytest.ini_options]
 minversion = "6.0"
 testpaths = ["tests"]
+markers = [
+  "create_frozen: tests that generate/update frozen regression outputs (not run by default)",
+  "slow: tests that take a long time",
+]
+addopts = "-m 'not create_frozen and not slow'"
