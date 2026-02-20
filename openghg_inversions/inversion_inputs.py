@@ -86,6 +86,14 @@ def concat_gather_datasets(
     """
     dvs = next(iter(ds_dict.values())).data_vars
 
+    # check that all data vars are present
+    for k, v in ds_dict.items():
+        if any(dv not in v.data_vars for dv in dvs):
+            missing_dvs = [dv for dv in dvs if dv not in v.data_vars]
+            raise ValueError(
+                f"Datasets do not all have the same data variables: Dataset for key {k} missing {missing_dvs}"
+            )
+
     gathered_dvs = {}
 
     for dv in dvs:
@@ -133,7 +141,21 @@ def xr_unique_inv(da: xr.DataArray, sort: bool = True) -> xr.DataArray:
 def xr_factorize(
     da: xr.DataArray, indicator_name: str, label_name: str, label_dim: str, sort: bool = False
 ) -> xr.Dataset:
-    """Use create Dataset with integer indicators for DataArray plus labels."""
+    """Create Dataset with integer indicators and labels for DataArray.
+
+    Args:
+        da: DataArray to find indicator for.
+        indicator_name: name for indicator data variable
+        label_name: name for label data variable
+        label_dim: dimension for labels
+        sort: if True, the labels will be sorted and the indicator shuffled
+        accordingly
+
+    Returns:
+        Dataset with indicator and label data variables.
+
+    """
+
     indicator_arr, label_arr = pd.factorize(da.values, sort=sort)
     indicator = xr.DataArray(indicator_arr, coords=da.coords, dims=da.dims)
     labels = xr.DataArray(label_arr, dims=(label_dim,))
@@ -225,7 +247,7 @@ def add_site_indicator(ds: xr.Dataset, sort: bool = False) -> xr.Dataset:
 
 # TRANSFORM FUNCTIONS
 def _transform_bc_freq(
-    H_bc: xr.DataArray, freq=None, anchor_time: DatetimeLike | None = None
+    H_bc: xr.DataArray, freq: Literal["monthly"] | str | None = None, anchor_time: DatetimeLike | None = None
 ) -> xr.DataArray:
     freq_arr = (
         make_freq_indicator(H_bc.time, freq, anchor_time=anchor_time)
@@ -236,7 +258,9 @@ def _transform_bc_freq(
     return (H_bc.rename(bc_region="bc_curtain") * dums).stack(bc_region=("bc_curtain", "bc_period"))
 
 
-def transform_bc(ds: xr.Dataset, freq=None, anchor_time: DatetimeLike | None = None) -> xr.Dataset:
+def transform_bc(
+    ds: xr.Dataset, freq: Literal["monthly"] | str | None = None, anchor_time: DatetimeLike | None = None
+) -> xr.Dataset:
     """Convert ds so that ds.H_bc is converted to (curtain, period) coordinates."""
     if "H_bc" not in ds:
         raise ValueError("Cannot setup boundary conditions sensitivity; H_bc not in dataset.")
@@ -264,8 +288,8 @@ def transform_bc(ds: xr.Dataset, freq=None, anchor_time: DatetimeLike | None = N
 def make_inv_inputs(
     fp_data: dict[str, Any],
     sites: list[str] | None = None,
-    bc_freq: str | None = None,
-    sigma_freq: str | None = None,
+    bc_freq: Literal["monthly"] | str | None = None,
+    sigma_freq: Literal["monthly"] | str | None = None,
     min_error: str | dict[str, float] | float = 0.0,
     min_error_per_site: bool = True,
     start_date: DatetimeLike | None = None,

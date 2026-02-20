@@ -558,10 +558,9 @@ def fixedbasisMCMC(
     if use_bc:
         mcmc_config["bcprior"] = update_log_normal_prior(bcprior)
 
-    keep_sites = [s for s in sites if s not in dropped_sites]
     mcmc_args, post_process_args = make_inv_inputs(
         fp_data=fp_data,
-        sites=keep_sites,
+        sites=sites,
         start_date=start_date,
         use_bc=use_bc,
         bc_freq=bc_freq,
