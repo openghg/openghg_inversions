@@ -155,8 +155,12 @@ def make_inv_inputs(
         "Ytime": y_time,
         "obs_repeatability": obs_repeatability,
         "obs_variability": obs_variability,
-        "obs_prior_factor": obs_prior_factor or np.zeros_like(y),  # use zeros instead of None
-        "obs_prior_upper_level_factor": obs_prior_upper_level_factor or np.zeros_like(y),  # same
+        "obs_prior_factor": (
+            obs_prior_factor if obs_prior_factor is not None else np.zeros_like(y)
+        ),  # use zeros instead of None
+        "obs_prior_upper_level_factor": (
+            obs_prior_upper_level_factor if obs_prior_upper_level_factor is not None else np.zeros_like(y)
+        ),  # same
     }
 
     return mcmc_args, post_process_args
