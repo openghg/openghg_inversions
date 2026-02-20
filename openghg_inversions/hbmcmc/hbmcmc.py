@@ -128,7 +128,6 @@ def make_inv_inputs(
     h_x = ds.H.values
     h_bc = ds.H_bc.values if "H_bc" in ds else None
     sigma_freq_index = ds.sigma_freq_index.values
-    print(sigma_freq_index)
     min_error_arr = ds.min_error.values
 
     if np.isnan(h_x).any():
@@ -530,10 +529,10 @@ def fixedbasisMCMC(
             del fp_data[site]
 
     if len(dropped_sites) != 0:
-        sites = [s for i, s in enumerate(sites) if s not in dropped_sites]
+        sites = [s for s in sites if s not in dropped_sites]
         print(f"\nDropping {dropped_sites} sites as no data passed the filtering.\n")
 
-    for si, site in enumerate(sites):
+    for site in sites:
         fp_data[site].attrs["Domain"] = domain
 
     # Inverse models

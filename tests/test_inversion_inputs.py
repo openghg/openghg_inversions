@@ -3,35 +3,12 @@
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
+from numpy.testing import assert_almost_equal
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_inputs import _transform_bc_freq
-
-from openghg_inversions.basis import basis_functions_wrapper
-from openghg_inversions.inversion_data.get_data import data_processing_surface_notracer
 from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs
-
-
-@pytest.fixture
-def fp_data(mhd_and_tac_ch4_data_args):
-    fp_all, *_ = data_processing_surface_notracer(**mhd_and_tac_ch4_data_args)
-
-    basis_args = {
-        "species": "ch4",
-        "domain": "EUROPE",
-        "start_date": "2019-01-01",
-        "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 20,
-        "use_bc": True,
-        "basis_algorithm": "weighted",
-        "bc_basis_case": "NESW",
-    }
-
-    fp_data = basis_functions_wrapper(fp_all, **basis_args)
-
-    return fp_data
+from openghg_inversions.inversion_inputs import add_site_indicator, concat_gather_datasets
 
 
 # Helpers for saving result of make_inv_inputs
@@ -88,17 +65,19 @@ def _compare_with_frozen(result: dict, frozen: dict):
     assert set(result.keys()) == set(frozen.keys())
 
     for k, v in result.items():
-        print(k)
         result_v = _freeze_dict({k: v})[k]
         frozen_v = frozen[k]
-        _assert_allclose_or_equal(result_v, frozen_v, rtol=0, atol=0)
+        try:
+            _assert_allclose_or_equal(result_v, frozen_v, rtol=0, atol=0)
+        except AssertionError as exc:
+            raise AssertionError(f"Mismatch for key {k!r}") from exc
 
 
 # Regression tests against frozen data
 @pytest.fixture
-def inv_inputs_args(fp_data):
+def inv_inputs_args(mhd_and_tac_fp_data):
     return dict(
-        fp_data=fp_data,
+        fp_data=mhd_and_tac_fp_data,
         sites=["MHD", "TAC"],
         start_date="2019-01-01",
         use_bc=True,
@@ -129,3 +108,21 @@ def test_inversion_input_hbmcmc_matches_frozen(raw_data_path, inv_inputs_args):
 
     _compare_with_frozen(mcmc_args, frozen_mcmc)
     _compare_with_frozen(post_args, frozen_post)
+
+
+# ----------------------------------------
+# Tests for helper functions
+# ----------------------------------------
+@pytest.fixture
+def gathered_ds(mhd_and_tac_fp_data) -> xr.Dataset:
+    to_concat = {k: v for k, v in mhd_and_tac_fp_data.items() if not k.startswith(".")}
+    return concat_gather_datasets(to_concat, key_dim="site", ragged_dim="time", stack_dim="nmeasure")
+
+
+def test_add_site_indicator(gathered_ds):
+    """Test adding site_indicator and site_names."""
+    ds = add_site_indicator(gathered_ds, sort=False)
+
+    assert list(ds.site_names.values) == ["MHD", "TAC"]
+
+    assert np.all(ds.site_names.values[ds.site_indicator.values] == ds.site.values)

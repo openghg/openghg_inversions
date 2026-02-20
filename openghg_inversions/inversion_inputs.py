@@ -22,6 +22,22 @@ def concat_gather_data_arrays(
     stack_dim: str | None = None,
     **concat_kwargs,
 ) -> xr.DataArray:
+    """Concatenate DataArrays by gathering along ragged coordinate.
+
+    For example, if the keys are site codes and the ragged dimension is time,
+    then the "stacked dimension" will be the usual `nmeasure` coordinate.
+
+    Args:
+        da_dict: dictionary of DataArrays
+        key_dim: dimension name for the keys of the dictionary
+        ragged_dim: name of the ragged dimension
+        stack_dim: name for the "stacked" multi-index dimension
+        **concat_kwargs: arguments to pass to xr.concat
+
+    Returns:
+        Combined DataArray with new stacked dimension.
+
+    """
     stack_dim = stack_dim or (key_dim + "_" + ragged_dim)
 
     pieces: list[xr.DataArray] = []
@@ -39,14 +55,14 @@ def concat_gather_data_arrays(
         key_vals.append(key_val)
 
         # record times
-        ragged_vals.append(v[ragged_dim])
+        ragged_vals.append(v[ragged_dim].values)
 
     # concat pieces
     da = xr.concat(pieces, dim=stack_dim, **concat_kwargs)
 
     # now create and assign multi-index
-    key_indicator = np.concat(key_vals)
-    concat_ragged = np.concat(ragged_vals)
+    key_indicator = np.concatenate(key_vals)
+    concat_ragged = np.concatenate(ragged_vals)
     multiindex = pd.MultiIndex.from_arrays([key_indicator, concat_ragged], names=[key_dim, ragged_dim])
     xr_multiindex = xr.Coordinates.from_pandas_multiindex(multiindex, stack_dim)
 
@@ -98,17 +114,46 @@ def concat_gather_datatree(
     return xr.Dataset(gathered_dvs)
 
 
-def xr_unique_inv(da: xr.DataArray) -> xr.DataArray:
-    def np_unique_inv(arr: np.ndarray) -> np.ndarray:
-        _, inv = np.unique(arr, return_inverse=True)
-        return inv
+def xr_unique_inv(da: xr.DataArray, sort: bool = True) -> xr.DataArray:
+    if sort:
 
-    return xr.apply_ufunc(np_unique_inv, da)
+        def unique_inv(arr: np.ndarray) -> np.ndarray:
+            _, inv = np.unique(arr, return_inverse=True)
+            return inv
+
+    else:
+
+        def unique_inv(arr: np.ndarray) -> np.ndarray:
+            inv, _ = pd.factorize(arr, sort=False)
+            return inv
+
+    return xr.apply_ufunc(unique_inv, da)
+
+
+def xr_factorize(
+    da: xr.DataArray, indicator_name: str, label_name: str, label_dim: str, sort: bool = False
+) -> xr.Dataset:
+    """Use create Dataset with integer indicators for DataArray plus labels."""
+    indicator_arr, label_arr = pd.factorize(da.values, sort=sort)
+    indicator = xr.DataArray(indicator_arr, coords=da.coords, dims=da.dims)
+    labels = xr.DataArray(label_arr, dims=(label_dim,))
+    return xr.Dataset({indicator_name: indicator, label_name: labels})
 
 
 # MAKE FUNCTIONS
 def make_site_indicator(site_coord: xr.DataArray) -> xr.DataArray:
-    return xr_unique_inv(site_coord).rename("site_indicator")
+    """Make site_indicator from DataArray of site names.
+
+    For instance, the values ["TAC", "TAC", "MHD"] would be converted to
+    [0, 0, 1].
+    """
+    return xr_unique_inv(site_coord, sort=False).rename("site_indicator")
+
+
+def make_site_names(site_coord: xr.DataArray) -> xr.DataArray:
+    """Make site names DataArray corresponding to site indicator."""
+    _, site_names = pd.factorize(site_coord.values, sort=False)
+    return xr.DataArray(site_names, dims=("nsite",), name="site_names")
 
 
 def make_freq_indicator(
@@ -121,9 +166,6 @@ def make_freq_indicator(
         return time.dt.month - time.min().dt.month + 12 * (time.dt.year - time.min().dt.year)
 
     # fixed-duration freq strings (e.g. "8d", "12h", "3h")
-
-    # NOTE: you could also use `return xr_unique_inv((time - anchor).dt.floor(freq))`
-    # here, but this way is more explicit.
     anchor = np.datetime64(anchor_time) if anchor_time is not None else time.min().values
     dt = np.timedelta64(pd.to_timedelta(freq).value, "ns")  # robust to xarray dtype
     idx = ((time.values.astype("datetime64[ns]") - anchor) // dt).astype(int)
@@ -171,6 +213,14 @@ def add_min_error(
         raise ValueError(f"Option '{min_error}' is not valid.")
 
     return ds
+
+
+def add_site_indicator(ds: xr.Dataset, sort: bool = False) -> xr.Dataset:
+    """Adds site_indicator and site_names data variables."""
+    to_add = xr_factorize(
+        ds.site, indicator_name="site_indicator", label_name="site_names", label_dim="nsite", sort=sort
+    )
+    return xr.merge([ds, to_add])
 
 
 # TRANSFORM FUNCTIONS
@@ -232,7 +282,7 @@ def make_inv_inputs(
     if "H_bc" in ds:
         ds = transform_bc(ds, freq=bc_freq, anchor_time=start_date)
 
-    ds["site_indicator"] = make_site_indicator(ds.site)
+    ds = add_site_indicator(ds)
     ds["sigma_freq_index"] = make_sigma_freq(ds.time, freq=sigma_freq, anchor_time=start_date)
 
     ds = add_min_error(ds, fp_data=fp_data, min_error=min_error, min_error_per_site=min_error_per_site)
