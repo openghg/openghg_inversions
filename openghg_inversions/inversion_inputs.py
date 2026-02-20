@@ -136,7 +136,11 @@ def make_sigma_freq(
     freq: Literal["monthly"] | str | None = None,
     anchor_time: DatetimeLike | None = None,
 ) -> xr.DataArray:
-    res = xr.zeros_like(time) if freq is None else make_freq_indicator(time, freq, anchor_time=anchor_time)
+    res = (
+        xr.zeros_like(time).astype(int)
+        if freq is None
+        else make_freq_indicator(time, freq, anchor_time=anchor_time)
+    )
     return res.rename("sigma_freq_index")
 
 
@@ -148,7 +152,7 @@ def add_min_error(
     min_error_per_site: bool = True,
 ) -> xr.Dataset:
     """Add min_error to combined Dataset."""
-    if isinstance(min_error, float):
+    if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
         ds["min_error"] = min_error * xr.ones_like(ds.mf)
     elif isinstance(min_error, dict):
         sites = [k for k in fp_data if not k.startswith(".")]
@@ -217,10 +221,9 @@ def make_inv_inputs(
     start_date: DatetimeLike | None = None,
 ) -> xr.Dataset:
     sites = sites or [k for k in fp_data if not k.startswith(".")]
-    to_compute = ["H", "H_bc", "mf", "mf_error", "mf_repeatability", "mf_variability", "bc_mod", "mf_mod"]
 
     ds = concat_gather_datasets(
-        {k: v[to_compute] for k, v in fp_data.items() if k in sites},
+        {k: v for k, v in fp_data.items() if k in sites},
         key_dim="site",
         ragged_dim="time",
         stack_dim="nmeasure",

@@ -94,7 +94,9 @@ def make_inv_inputs(
         start_date=start_date,
     )
 
-    ds = ds.dropna(dim="nmeasure", how="any", subset=["H", "H_bc", "mf", "mf_error"])
+    drop_subset = ["H", "H_bc", "mf", "mf_error"]
+    drop_subset = [dv for dv in drop_subset if dv in ds]
+    ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
 
     # Trigger dask computations
     # we only compute the variables we need below
@@ -125,8 +127,9 @@ def make_inv_inputs(
     )
     h_x = ds.H.values
     h_bc = ds.H_bc.values if "H_bc" in ds else None
-    sigma_freq_index = ds.sigma_freq_index
-    min_error_arr = ds.min_error
+    sigma_freq_index = ds.sigma_freq_index.values
+    print(sigma_freq_index)
+    min_error_arr = ds.min_error.values
 
     if np.isnan(h_x).any():
         warnings.warn(f"Hx matrix contains {np.isnan(h_x).flatten().sum()} NaN values")
