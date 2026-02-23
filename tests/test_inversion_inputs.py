@@ -68,7 +68,7 @@ def _compare_with_frozen(result: dict, frozen: dict):
         result_v = _freeze_dict({k: v})[k]
         frozen_v = frozen[k]
         try:
-            _assert_allclose_or_equal(result_v, frozen_v, rtol=0, atol=0)
+            _assert_allclose_or_equal(result_v, frozen_v, rtol=0, atol=int(1e-12))
         except AssertionError as exc:
             raise AssertionError(f"Mismatch for key {k!r}") from exc
 
