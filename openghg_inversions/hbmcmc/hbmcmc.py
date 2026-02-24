@@ -314,7 +314,7 @@ def fixedbasisMCMC(
     min_error_options: dict | None = None,
     output_format: Literal[
         "hbmcmc", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"
-    ] = "hbmcmc",
+    ] = "paris",
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
     power: dict | float = 1.99,
