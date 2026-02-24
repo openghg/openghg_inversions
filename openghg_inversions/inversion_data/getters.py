@@ -30,7 +30,7 @@ def adjust_flux_start_date(
     start_date: str, species: str, source: str, domain: str, store: str | None = None
 ) -> pd.Timestamp:
     """Adjusts the flux start_date to align with the flux data's temporal resolution."""
-    flux_search = search_flux(species=species, source=source, domain=domain, store=store)
+    flux_search = search_flux(species=species, source=source, domain=f"{domain}-6km", store=store)
     if flux_search.results.empty:
         raise SearchError(
             f"No flux found with species={species}, source={source}, domain={domain}, store={store}."
@@ -85,7 +85,7 @@ def get_flux_data(
             try:
                 flux_data = get_flux(
                     species=species,
-                    domain=domain,
+                    domain=f"{domain}-6km",
                     source=source,
                     start_date=None,
                     end_date=end_date,
@@ -422,7 +422,7 @@ def get_footprint_data(
             def get_func(store):
                 return get_footprint_to_match(
                     obs_data,
-                    domain=domain,
+                    domain=f"{domain}-6km",
                     start_date=start_date,
                     end_date=end_date,
                     model=model,
@@ -458,7 +458,7 @@ def get_footprint_data(
                 return get_footprint(
                     site=site,
                     height=fp_height,
-                    domain=domain,
+                    domain=f"{domain}-6km",
                     model=model,
                     met_model=met_model,
                     start_date=start_date,
