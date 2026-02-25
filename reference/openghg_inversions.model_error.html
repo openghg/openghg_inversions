@@ -45,7 +45,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="openghg_inversions.utils" href="openghg_inversions.utils.html" />
-    <link rel="prev" title="openghg_inversions.filters" href="openghg_inversions.filters.html" />
+    <link rel="prev" title="openghg_inversions.inversion_inputs" href="openghg_inversions.inversion_inputs.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -293,6 +293,7 @@
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html">openghg_inversions.array_ops</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.convert.html">openghg_inversions.convert</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.filters.html">openghg_inversions.filters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">openghg_inversions.model_error</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.utils.html">openghg_inversions.utils</a></li>
 </ul>
@@ -429,8 +430,15 @@ is more robust to outliers.</p></li>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.model_error.setup_min_error">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.model_error.</span></span><span class="sig-name descname"><span class="pre">setup_min_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">siteindicator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></span><a class="headerlink" href="#openghg_inversions.model_error.setup_min_error" title="Link to this definition">#</a></dt>
-<dd><p>Given min_error vector with same length as number of sites, create a vector
+<dd><p>Align min error vector with obs vector.</p>
+<p>Given min_error vector with same length as number of sites, create a vector
 aligned with obs stacked by site.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.model_error.xr_setup_min_error">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.model_error.</span></span><span class="sig-name descname"><span class="pre">xr_setup_min_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">siteindicator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.2.0)"><span class="pre">DataArray</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.2.0)"><span class="pre">DataArray</span></a></span></span><a class="headerlink" href="#openghg_inversions.model_error.xr_setup_min_error" title="Link to this definition">#</a></dt>
+<dd><p>Align min error vector with obs vector.</p>
 </dd></dl>
 
 </section>
@@ -446,12 +454,12 @@ aligned with obs stacked by site.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.filters.html"
+       href="openghg_inversions.inversion_inputs.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.filters</p>
+        <p class="prev-next-title">openghg_inversions.inversion_inputs</p>
       </div>
     </a>
     <a class="right-next"
@@ -485,6 +493,7 @@ aligned with obs stacked by site.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.percentile_error_method"><code class="docutils literal notranslate"><span class="pre">percentile_error_method()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.residual_error_method"><code class="docutils literal notranslate"><span class="pre">residual_error_method()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.setup_min_error"><code class="docutils literal notranslate"><span class="pre">setup_min_error()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.model_error.xr_setup_min_error"><code class="docutils literal notranslate"><span class="pre">xr_setup_min_error()</span></code></a></li>
 </ul>
   </nav></div>
 

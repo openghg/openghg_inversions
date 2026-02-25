@@ -24,5 +24,6 @@ openghg\_inversions
    openghg_inversions.array_ops
    openghg_inversions.convert
    openghg_inversions.filters
+   openghg_inversions.inversion_inputs
    openghg_inversions.model_error
    openghg_inversions.utils
