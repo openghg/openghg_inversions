@@ -10,6 +10,7 @@
 - Fixed minor bugs in code for storing merged data. Added option to change merged data format by including an extension in `merged_data_name`, e.g. `merged_data_name="my_merged_data.nc"` will save to netCDF, while `merged_data_name="my_merged_data"` will save to zipped Zarr. [#PR 345](https://github.com/openghg/openghg_inversions/pull/345) 
 - Added the ability to process TCCON data, along with additional output variables `obs_prior_factor` and `obs_prior_upper_level_factor`. [PR #327](https://github.com/openghg/openghg_inversions/pull/327)
 - Fixed bug introduced by PR 327, which caused "prior factor" variables filled with None values to be passed to post-processing. [PR #353](https://github.com/openghg/openghg_inversions/pull/353)
+- Added new `inversion_inputs.py` with helper functions for creating the inputs to the PyMC code. Tests added to check compatibility with older `inversionsetup.py` helpers. [PR #356](https://github.com/openghg/openghg_inversions/pull/356)
 
 # Version 0.6.0
 

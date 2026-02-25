@@ -26,24 +26,22 @@ the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 
 import logging
 from pathlib import Path
+import time
 from typing import Literal
 import warnings
-import time
 
 import numpy as np
 import xarray as xr
-import pandas as pd
 
 from openghg.util import split_function_inputs
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
-import openghg_inversions.hbmcmc.inversionsetup as setup
 from openghg_inversions.utils import ncdf_encoding
 from openghg_inversions.basis import basis_functions_wrapper
 from openghg_inversions.inversion_data import data_processing_surface_notracer, load_merged_data
 from openghg_inversions.filters import filtering
-from openghg_inversions.model_error import residual_error_method, percentile_error_method, setup_min_error
 from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
+from openghg_inversions.inversion_inputs import make_inv_inputs as _make_inv_inputs
 
 
 def update_log_normal_prior(prior):
@@ -59,35 +57,47 @@ def update_log_normal_prior(prior):
         del prior["stdev"]
         if "mean" in prior:
             del prior["mean"]
+    return prior
 
 
 def make_inv_inputs(
     *,
     fp_data,
     sites,
-    dropped_sites,
     start_date,
-    end_date,
     use_bc,
     bc_freq,
     sigma_freq,
-    xprior,
-    bcprior,
-    sigprior,
-    nit,
-    burn,
-    tune,
-    nchain,
-    sigma_per_site,
-    offsetprior,
-    add_offset,
-    verbose,
     min_error,
     calculate_min_error,
     min_error_options,
-    offset_args,
-    power,
-):
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    """Create inputs for PyMC.
+
+    This combines the data for each site into total sensitivity, obs, etc. arrays.
+    """
+    if calculate_min_error is not None:
+        warnings.warn(
+            "`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead."
+        )
+        min_error = calculate_min_error
+
+    min_error_options = min_error_options or {}
+
+    ds = _make_inv_inputs(
+        fp_data,
+        sites=sites,
+        bc_freq=bc_freq,
+        sigma_freq=sigma_freq,
+        min_error=min_error,
+        min_error_per_site=min_error_options.get("by_site", False),
+        start_date=start_date,
+    )
+
+    drop_subset = ["H", "H_bc", "mf", "mf_error"]
+    drop_subset = [dv for dv in drop_subset if dv in ds]
+    ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
+
     # Trigger dask computations
     # we only compute the variables we need below
     to_compute = [
@@ -102,148 +112,54 @@ def make_inv_inputs(
         "bc_mod",
         "mf_mod",
     ]
-    for site in sites:
-        to_compute_site = [dv for dv in to_compute if dv in fp_data[site].data_vars]
-        fp_data[site][to_compute_site] = fp_data[site][to_compute_site].compute()
+    to_compute = [dv for dv in to_compute if dv in ds]
+    ds[to_compute] = ds[to_compute].compute()
 
-    # Get inputs ready
-    error = np.zeros(0)
-    obs_prior_factor = np.zeros(0)
-    obs_prior_upper_level_factor = np.zeros(0)
-    obs_repeatability = np.zeros(0)
-    obs_variability = np.zeros(0)
-    Hx = np.zeros(0)
-    Y = np.zeros(0)
-    siteindicator = np.zeros(0)
+    y = ds.mf.values
+    y_time = ds.time.values
+    siteindicator = ds.site_indicator.values
+    error = ds.mf_error.values
+    obs_repeatability = ds.mf_repeatability.values
+    obs_variability = ds.mf_variability.values
+    obs_prior_factor = ds.mf_prior_factor.values if "mf_prior_factor" in ds else None
+    obs_prior_upper_level_factor = (
+        ds.mf_prior_upper_level_factor.values if "mf_prior_upper_level_factor" in ds else None
+    )
+    h_x = ds.H.values
+    h_bc = ds.H_bc.values if "H_bc" in ds else None
+    sigma_freq_index = ds.sigma_freq_index.values
+    min_error_arr = ds.min_error.values
 
-    for si, site in enumerate(sites):
-        # if site was dropped, skip; this makes the site indicator numbers consistent
-        # even if a site is dropped
-        if site in dropped_sites:
-            continue
-
-        # select variables to drop NaNs from
-        drop_vars = []
-        for var in ["H", "H_bc", "mf", "mf_error"]:
-            if var in fp_data[site].data_vars:
-                drop_vars.append(var)
-
-        # pymc doesn't like NaNs, so drop them for the variables used below
-        fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
-
-        # repeatability/variability chosen/combined into mf_error in `get_data.py`
-        error = np.concatenate((error, fp_data[site].mf_error.values))
-
-        # make repeatability and variability for outputs (not used directly in inversions)
-        obs_repeatability = np.concatenate((obs_repeatability, fp_data[site].mf_repeatability.values))
-        obs_variability = np.concatenate((obs_variability, fp_data[site].mf_variability.values))
-
-        Y = np.concatenate((Y, fp_data[site].mf.values))
-        if fp_data[site].attrs.get("inlet") == "column" or fp_data[site].attrs.get("platform") == "satellite":
-            obs_prior_factor = np.concatenate((obs_prior_factor, fp_data[site].mf_prior_factor.values))
-            obs_prior_upper_level_factor = np.concatenate(
-                (obs_prior_upper_level_factor, fp_data[site].mf_prior_upper_level_factor.values)
-            )
-        else:
-            # If not a column/satellite measurement, set prior factors to zero
-            # This is required if there is mix of insitu and column measurements
-            obs_prior_factor = np.concatenate((obs_prior_factor, np.zeros(fp_data[site].mf.size)))
-            obs_prior_upper_level_factor = np.concatenate(
-                (obs_prior_upper_level_factor, np.zeros(fp_data[site].mf.size))
-            )
-        siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
-        if si == 0:
-            Ytime = fp_data[site].time.values
-        else:
-            Ytime = np.concatenate((Ytime, fp_data[site].time.values))
-
-        Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
-
-    if np.isnan(Hx).any():
-        warnings.warn(f"Hx matrix contains {np.isnan(Hx).flatten().sum()} NaN values")
-
-    # Calculate min error
-    if calculate_min_error is not None:
-        warnings.warn(
-            f"`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead."
-        )
-        min_error = calculate_min_error
-
-    if min_error == "residual":
-        if min_error_options is not None:
-            min_error = residual_error_method(fp_data, **min_error_options)
-        else:
-            min_error = residual_error_method(fp_data)
-
-        # if "by_site" is True, align min_error via siteindicator
-        if min_error_options and min_error_options.get("by_site", False):
-            min_error = setup_min_error(min_error, siteindicator)
-
-    elif min_error == "percentile":
-        min_error = percentile_error_method(fp_data)
-        min_error = setup_min_error(min_error, siteindicator)
-
-    elif isinstance(min_error, float | int) and min_error >= 0:
-        pass
-    else:
-        raise ValueError(
-            f"`min_error` must have values: 'residual', 'percentile', or `float`; {min_error} not recognised."
-        )
-
-    sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
+    if np.isnan(h_x).any():
+        warnings.warn(f"Hx matrix contains {np.isnan(h_x).flatten().sum()} NaN values")
 
     mcmc_args = {
-        "Hx": Hx,
-        "Y": Y,
+        "Hx": h_x,
+        "Y": y,
         "error": error,
         "siteindicator": siteindicator,
         "sigma_freq_index": sigma_freq_index,
-        "xprior": xprior,
-        "sigprior": sigprior,
-        "nit": nit,
-        "burn": burn,
-        "tune": tune,
-        "nchain": nchain,
-        "sigma_per_site": sigma_per_site,
-        "offsetprior": offsetprior,
-        "add_offset": add_offset,
-        "verbose": verbose,
-        "min_error": min_error,
-        "offset_args": offset_args,
-        "power": power,
+        "min_error": min_error_arr,
     }
 
     if use_bc is True:
-        Hbc = np.zeros(0)
+        assert h_bc is not None  # for mypy
 
-        for si, site in enumerate(sites):
-            if bc_freq == "monthly":
-                Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
-            elif bc_freq is None:
-                Hmbc = fp_data[site].H_bc.values
-            else:
-                Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
+        if np.isnan(h_bc).any():
+            warnings.warn(f"Hbc matrix contains {np.isnan(h_bc).flatten().sum()} NaN values")
 
-            if si == 0:
-                Hbc = np.copy(Hmbc)  # fp_data[site].H_bc.values
-            else:
-                Hbc = np.hstack((Hbc, Hmbc))
-
-        if np.isnan(Hbc).any():
-            warnings.warn(f"Hbc matrix contains {np.isnan(Hbc).flatten().sum()} NaN values")
-
-        mcmc_args["Hbc"] = Hbc
-        mcmc_args["bcprior"] = bcprior
-        mcmc_args["use_bc"] = True
-    else:
-        mcmc_args["use_bc"] = False
+        mcmc_args["Hbc"] = h_bc
 
     post_process_args = {
-        "Ytime": Ytime,
+        "Ytime": y_time,
         "obs_repeatability": obs_repeatability,
         "obs_variability": obs_variability,
-        "obs_prior_factor": obs_prior_factor,
-        "obs_prior_upper_level_factor": obs_prior_upper_level_factor,
+        "obs_prior_factor": (
+            obs_prior_factor if obs_prior_factor is not None else np.zeros_like(y)
+        ),  # use zeros instead of None
+        "obs_prior_upper_level_factor": (
+            obs_prior_upper_level_factor if obs_prior_upper_level_factor is not None else np.zeros_like(y)
+        ),  # same
     }
 
     return mcmc_args, post_process_args
@@ -613,47 +529,48 @@ def fixedbasisMCMC(
             del fp_data[site]
 
     if len(dropped_sites) != 0:
-        sites = [s for i, s in enumerate(sites) if s not in dropped_sites]
+        sites = [s for s in sites if s not in dropped_sites]
         print(f"\nDropping {dropped_sites} sites as no data passed the filtering.\n")
 
-    for si, site in enumerate(sites):
+    for site in sites:
         fp_data[site].attrs["Domain"] = domain
 
     # Inverse models
     if use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
 
+    # TODO keep this config separate from mcmc_args in the future
+    mcmc_config = {
+        "xprior": update_log_normal_prior(xprior),
+        "sigprior": sigprior,
+        "nit": nit,
+        "burn": burn,
+        "tune": tune,
+        "nchain": nchain,
+        "sigma_per_site": sigma_per_site,
+        "offsetprior": offsetprior,
+        "add_offset": add_offset,
+        "offset_args": offset_args,
+        "power": power,
+        "use_bc": use_bc,
+        "verbose": verbose,
+    }
+    if use_bc:
+        mcmc_config["bcprior"] = update_log_normal_prior(bcprior)
+
     mcmc_args, post_process_args = make_inv_inputs(
         fp_data=fp_data,
         sites=sites,
-        dropped_sites=dropped_sites,
         start_date=start_date,
-        end_date=end_date,
         use_bc=use_bc,
         bc_freq=bc_freq,
         sigma_freq=sigma_freq,
-        xprior=xprior,
-        bcprior=bcprior,
-        sigprior=sigprior,
-        nit=nit,
-        burn=burn,
-        tune=tune,
-        nchain=nchain,
-        sigma_per_site=sigma_per_site,
-        offsetprior=offsetprior,
-        add_offset=add_offset,
-        verbose=verbose,
         min_error=min_error,
         calculate_min_error=calculate_min_error,
         min_error_options=min_error_options,
-        offset_args=offset_args,
-        power=power,
     )
 
-    # update lognormal priors
-    update_log_normal_prior(mcmc_args["xprior"])
-    if "bcprior" in mcmc_args:
-        update_log_normal_prior(mcmc_args["bcprior"])
+    mcmc_args.update(mcmc_config)
 
     post_process_args.update(
         {
