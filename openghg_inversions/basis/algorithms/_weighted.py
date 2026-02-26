@@ -23,29 +23,29 @@ class OptimizationError(Exception): ...
 
 
 @lru_cache
-def load_landsea_indices(domain: str) -> np.ndarray:
+def load_landsea_indices(domain: str, country_directory: str | None = None) -> np.ndarray:
     """Load array with indices that separate land and sea regions in specified domain.
 
     Args:
-        domain: Domain for which to load landsea indices. Currently only "EASTASIA" or "EUROPE".
+        domain: Domain for which to load landsea indices.
+        country_directory: Directory containing land-sea files. If None, will use default files.
 
     Returns:
         np.ndarray: Array containing 0 (where there is sea) and 1 (where there is land).
     """
-    if domain == "EASTASIA":
-        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_EASTASIA.nc")
-    elif domain == "WESTUSA":
-        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_WESTUSA.nc")
-    elif domain == "SAUSSIE":
-        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-land-sea_SAUSSIE.nc")
+    default_dir = Path(__file__).parent
+    if country_directory is not None:
+        landsea_path = Path(country_directory) / f"country-land-sea_{domain}.nc"
     elif domain == "EUROPE":
-        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
+        landsea_path = default_dir / "country-EUROPE-UKMO-landsea-2023.nc"
     else:
-        logger.warning(
-            f"No land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)"
-        )
-        landsea_indices = xr.open_dataset(Path(__file__).parent / "country-EUROPE-UKMO-landsea-2023.nc")
-    return landsea_indices["country"].values
+        landsea_path = default_dir / f"country-land-sea_{domain}.nc"
+        if not landsea_path.exists():
+            logger.warning(
+                f"No land-sea file found for domain {domain}. Defaulting to EUROPE (country-EUROPE-UKMO-landsea-2023.nc)"
+            )
+            landsea_path = default_dir / "country-EUROPE-UKMO-landsea-2023.nc"
+    return xr.open_dataset(landsea_path)["country"].values
 
 
 def bucket_value_split(
@@ -90,7 +90,7 @@ def bucket_value_split(
     )
 
 
-def get_nregions(bucket: float, grid: np.ndarray, domain: str) -> int:
+def get_nregions(bucket: float, grid: np.ndarray, domain: str, country_directory: str | None = None) -> int:
     """Optimize bucket value to number of desired regions.
 
     Args:
@@ -102,15 +102,16 @@ def get_nregions(bucket: float, grid: np.ndarray, domain: str) -> int:
             data, spatial distribution of bakeries, you choose!
         domain:
             Domain across which to calculate basis functions.
-            Currently limited to "EUROPE" or "EASTASIA"
+        country_directory:
+            Directory containing land-sea files. If None, will use default files.
 
     Return :
         number of basis functions for bucket value
     """
-    return np.max(bucket_split_landsea_basis(grid, bucket, domain))
+    return np.max(bucket_split_landsea_basis(grid, bucket, domain, country_directory))
 
 
-def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, domain: str) -> float:
+def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, domain: str, country_directory: str | None = None) -> float:
     """Optimize bucket value to obtain nregion basis functions
     within +/- tol.
 
@@ -128,7 +129,8 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
             i.e. optimizes nregions to +/- tol
         domain:
             Domain across which to calculate basis functions.
-            Currently limited to "EUROPE" or "EASTASIA"
+        country_directory:
+            Directory containing land-sea files. If None, will use default files.
 
     Return :
         Optimized bucket value
@@ -140,7 +142,7 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
     for _ in range(10):
         # try 1000 iterations
         for j in range(1000):
-            current_nregion = get_nregions(current_bucket, grid, domain)
+            current_nregion = get_nregions(current_bucket, grid, domain, country_directory)
 
             if current_nregion <= nregion + current_tol and current_nregion >= nregion - current_tol:
                 print(
@@ -161,7 +163,7 @@ def optimize_nregions(bucket: float, grid: np.ndarray, nregion: int, tol: int, d
     )
 
 
-def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str) -> np.ndarray:
+def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str, country_directory: str | None = None) -> np.ndarray:
     """Same as bucket_split_basis but includes
     land-sea split. i.e. basis functions cannot overlap sea and land.
 
@@ -174,13 +176,14 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str) -> 
             Maximum value for each basis function region
         domain:
             Domain across which to calculate basis functions.
-            Currently limited to "EUROPE" or "EASTASIA"
+        country_directory:
+            Directory containing land-sea files. If None, will use default files.
 
     Returns:
         2D array with basis function values
 
     """
-    landsea_indices = load_landsea_indices(domain)
+    landsea_indices = load_landsea_indices(domain, country_directory)
     myregions = bucket_value_split(grid, bucket)
 
     mybasis_function = np.zeros(shape=grid.shape)
@@ -208,7 +211,8 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str) -> 
 
 
 def nregion_landsea_basis(
-    grid: np.ndarray, bucket: float = 1, nregion: int = 100, tol: int = 1, domain: str = "EUROPE"
+    grid: np.ndarray, bucket: float = 1, nregion: int = 100, tol: int = 1, domain: str = "EUROPE",
+    country_directory: str | None = None,
 ) -> np.ndarray:
     """Obtain basis function with nregions (for land-sea split).
 
@@ -229,11 +233,12 @@ def nregion_landsea_basis(
             Defaults to 1
         domain:
             Domain across which to calculate basis functions.
-            Currently limited to "EUROPE" or "EASTASIA"
+        country_directory:
+            Directory containing land-sea files. If None, will use default files.
 
     Returns:
         basis_function: 2D basis function array
     """
-    bucket_opt = optimize_nregions(bucket, grid, nregion, tol, domain)
-    basis_function = bucket_split_landsea_basis(grid, bucket_opt, domain)
+    bucket_opt = optimize_nregions(bucket, grid, nregion, tol, domain, country_directory)
+    basis_function = bucket_split_landsea_basis(grid, bucket_opt, domain, country_directory)
     return basis_function
