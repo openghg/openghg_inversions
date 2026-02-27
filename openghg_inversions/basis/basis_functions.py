@@ -179,7 +179,6 @@ class BasisFunctions:
         Returns:
             BasisFunction object corresponding to combined matching basis functions
         """
-
         if basis_directory is None:
             basis_path = openghginv_path / "basis_functions"
             if not basis_path.exists():
@@ -196,7 +195,7 @@ class BasisFunctions:
 
         if len(files) == 0:
             raise FileNotFoundError(
-                f"Can't find basis function files for domain '{domain}'" f"and basis_case '{basis_case}' "
+                f"Can't find basis function files for domain '{domain}'and basis_case '{basis_case}' "
             )
 
         basis_ds = read_netcdfs(files)
@@ -234,7 +233,7 @@ class MultiSectorBasisFunctions(BasisFunctions):
         region_dim: str = "region",
         chunks: dict | None = None,
     ):
-        assert all(k in flux for k in basis_flat.keys()), "basis flat and flux must have same keys"
+        assert all(k in flux for k in basis_flat), "basis flat and flux must have same keys"
 
         self.basis_flat = {
             k: v.isel(time=0, drop=True) if "time" in v.dims else v for k, v in basis_flat.items()

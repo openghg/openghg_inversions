@@ -1,9 +1,113 @@
+import numpy as np
 import pandas as pd
+import pytest
 import sparse
 import xarray as xr
 
+from openghg_inversions.array_ops import align_to_multi_index_level_values
+
+
 def test_transpose():
-    dums = pd.get_dummies([0]*3 + [1]*4 + [2]*5, dtype=int, sparse=True)
+    dums = pd.get_dummies([0] * 3 + [1] * 4 + [2] * 5, dtype=int, sparse=True)
     sparse_dums = sparse.COO.from_scipy_sparse(dums.sparse.to_coo())
     da = xr.DataArray(sparse_dums)
     da.transpose()
+
+
+def test_align_to_multi_index_level_values_broadcasts_source_to_state():
+    """Test aligning coordinate to multi-index level coordinate broadcasts correctly."""
+    # da(source, time)
+    source = xr.DataArray(["A", "B"], dims="source", name="source")
+    time = xr.DataArray(pd.date_range("2020-01-01", periods=3, freq="1h"), dims="time", name="time")
+
+    da = xr.DataArray(
+        np.array([[10.0, 11.0, 12.0], [20.0, 21.0, 22.0]]),
+        dims=("source", "time"),
+        coords={"source": source, "time": time},
+        name="da",
+    )
+
+    # MultiIndex for state: (source, region_in_source) with repetition of source labels
+    mi = pd.MultiIndex.from_arrays(
+        [["B", "A", "B", "A"], [0, 0, 1, 2]],
+        names=["source", "region_in_source"],
+    )
+
+    # align to multi index
+    state_index = xr.Coordinates.from_pandas_multiindex(mi, "state")["state"]
+
+    res = align_to_multi_index_level_values(
+        da,
+        multi_index=state_index,
+        multi_dim="state",
+        level="source",
+        other_dim="source",
+    )
+
+    # Dims: state, time (source dim is replaced)
+    assert res.dims == ("state", "time")
+
+    # The state coordinate should be exactly the MultiIndex we provided
+    xr.testing.assert_identical(res["state"], state_index)
+
+    # The original "source" coordinate variable should be dropped to avoid alignment conflicts
+    # (it's still available as a level on the MultiIndex)
+    # assert "source" not in res.coords
+
+    # Values: each row picks from da at the corresponding state.source
+    expected = np.vstack(
+        [
+            da.sel(source="B").values,
+            da.sel(source="A").values,
+            da.sel(source="B").values,
+            da.sel(source="A").values,
+        ]
+    )
+    np.testing.assert_allclose(res.values, expected)
+
+    expected_da = xr.DataArray(
+        expected,
+        dims=("state", "time"),
+        coords={**xr.Coordinates.from_pandas_multiindex(mi, "state"), **{"time": time}},
+        name="da",
+    )
+    xr.testing.assert_identical(res, expected_da)
+
+    # This multiplication (or any operation that causes alignment) can fail if
+    # the coordinate for `other_dim` is not dropped before assigning the MultiIndex.
+    # The test here is just that this doesn't cause an error.
+    _ = res * expected_da
+
+
+def test_align_to_multi_index_level_values_with_other_level_as_coord_raises():
+    """Test that an error is raised if aligning to a MultiIndex would cause coord conflict."""
+    da = xr.DataArray(
+        np.arange(12).reshape(3, 4), dims=("a", "b"), coords={"a": np.arange(3), "b": np.arange(4)}
+    )
+
+    da_stack = da.stack(c=("a", "b"))
+    mi = da_stack.coords["c"]
+
+    with pytest.raises(ValueError):
+        _ = align_to_multi_index_level_values(da, multi_index=mi, multi_dim="c", level="a", other_dim="a")
+
+
+def test_align_to_multi_index_level_values_with_other_level_as_dim_warns():
+    """Test that we can align a dataset to one level of multiindex even if it has both levels as dims.
+
+    This should emit a warning that this is potentially confusing.
+    """
+    da = xr.DataArray(np.arange(12).reshape(3, 4), dims=("a", "b"))
+
+    da_stack = da.stack(c=("a", "b"))
+    mi = da_stack.coords["c"]
+
+    with pytest.warns(
+        UserWarning,
+        match=r"Aligning to MultiIndex level.*\'b\'.*semantically ambiguous",
+    ):
+        da_aligned = align_to_multi_index_level_values(
+            da, multi_index=mi, multi_dim="c", level="a", other_dim="a"
+        )
+
+    xr.testing.assert_equal(da_stack.a, da_aligned.a)

@@ -43,6 +43,7 @@ from __future__ import annotations
 
 from collections.abc import Hashable, Iterable, Mapping, Sequence
 from typing import Any, overload, TypeVar
+import warnings
 
 from dask.array.core import Array as DaskArray
 import numpy as np
@@ -243,7 +244,6 @@ def force_align(
         ValueError: If a dimension is missing, sizes differ, or coordinates
             differ beyond tolerance.
     """
-
     dims = tuple(dims)
 
     for dim in dims:
@@ -253,7 +253,7 @@ def force_align(
             raise ValueError(f"Dimension {dim!r} not present in reference.")
 
         if obj.sizes[dim] != reference.sizes[dim]:
-            raise ValueError(f"Size mismatch along {dim!r}: " f"{obj.sizes[dim]} != {reference.sizes[dim]}")
+            raise ValueError(f"Size mismatch along {dim!r}: {obj.sizes[dim]} != {reference.sizes[dim]}")
 
         if not np.allclose(
             obj.coords[dim].values,
@@ -262,7 +262,7 @@ def force_align(
             atol=atol,
         ):
             raise ValueError(
-                f"Coordinate mismatch along {dim!r} beyond tolerance " f"(rtol={rtol}, atol={atol})."
+                f"Coordinate mismatch along {dim!r} beyond tolerance (rtol={rtol}, atol={atol})."
             )
 
     coord_updates = {dim: reference.coords[dim] for dim in dims}
@@ -277,7 +277,7 @@ def force_align(
 
 
 def concat_gather_data_arrays(
-    da_dict: Mapping[Hashable, xr.DataArray],
+    da_dict: Mapping[str, xr.DataArray],
     key_dim: str,
     ragged_dim: str,
     stack_dim: str | None = None,
@@ -333,7 +333,7 @@ def concat_gather_data_arrays(
 
 
 def concat_gather_datasets(
-    ds_dict: Mapping[Hashable, xr.Dataset],
+    ds_dict: Mapping[str, xr.Dataset],
     key_dim: str,
     ragged_dim: str,
     stack_dim: str | None = None,
@@ -381,3 +381,98 @@ def concat_gather_datatree(
         gathered_dvs[dv] = concat_gather_data_arrays(da_dict, key_dim, ragged_dim, stack_dim, **concat_kwargs)
 
     return xr.Dataset(gathered_dvs)
+
+
+# ----------------------------------------
+# Align to multi-index
+# ----------------------------------------
+
+
+def align_to_multi_index_level_values(
+    da: xr.DataArray,
+    *,
+    multi_index: xr.DataArray,
+    multi_dim: str,
+    level: str,
+    other_dim: str,
+) -> xr.DataArray:
+    """Broadcast `da(other_dim, ...)` onto `multi_dim` using a MultiIndex level.
+
+    Raises a ValueError if any other MultiIndex level names are already present
+    as coordinate variables on `da`, because this creates ambiguous/conflicting
+    index ownership when the MultiIndex is assigned.
+
+    Args:
+        da: DataArray to align, e.g. `fp_x_flux` with dimension `other_dim="source"`.
+        multi_index: Coordinate for the MultiIndex dimension (e.g. `basis_matrix["state"]`).
+            Must be a MultiIndex coordinate that includes the level named by `level`.
+        multi_dim: Name of the MultiIndex dimension to align onto (e.g. `"state"`).
+        level: Name of the MultiIndex level within `multi_index` to use for alignment
+            (e.g. `"source"`).
+        other_dim: Dimension on `da` that corresponds to `level` (e.g. `"source"`).
+
+    Returns:
+        A DataArray aligned to `multi_dim`, with a canonical MultiIndex coordinate
+        installed on `multi_dim`.
+
+    Raises:
+        ValueError: If `level` is not a level of `multi_index`, or if other level
+            names are already present as coordinates on `da`.
+    """
+    if other_dim not in da.dims:
+        return da
+
+    # Check if da has dims or coords with the same name as the levels of multi_index, besides
+    # the level/other_dim that we want to broadcast over.
+
+    # Determine MultiIndex level names
+    try:
+        mi = multi_index.to_index()  # pandas.MultiIndex
+    except Exception as e:  # pragma: no cover
+        raise ValueError("multi_index must be a MultiIndex coordinate DataArray.") from e
+
+    if getattr(mi, "names", None) is None:
+        raise ValueError("multi_index must be backed by a pandas.MultiIndex.")
+
+    level_names = list(mi.names)
+    if level not in level_names:
+        raise ValueError(f"Requested level {level!r} not found in multi_index levels {level_names!r}.")
+
+    # If other MultiIndex levels already exist as coordinate variables on `da`,
+    # assigning the MultiIndex will conflict (xarray will try to merge coords with same names).
+    other_levels = [n for n in level_names if n != level]
+    present_as_coords = [n for n in other_levels if n in da.coords]
+    if present_as_coords:
+        raise ValueError(
+            "Cannot align to MultiIndex level because the following MultiIndex level "
+            f"name(s) already exist as coordinate variables on the input DataArray: "
+            f"{present_as_coords!r}. "
+            "This causes coordinate/index conflicts when installing the MultiIndex. "
+            "Drop or rename these coordinate(s) first, or avoid this alignment path."
+        )
+
+    # Optionally warn if other levels appear as *dimensions* (but not coords).
+    # This can still be surprising semantically, even if it does not immediately conflict.
+    present_as_dims_only = [n for n in other_levels if (n in da.dims and n not in da.coords)]
+    if present_as_dims_only:
+        warnings.warn(
+            "Aligning to MultiIndex level while other level name(s) are present "
+            f"as dimensions without coordinates: {present_as_dims_only!r}. "
+            "This may be semantically ambiguous; consider stacking instead.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    # Vectorized selection in the order of the level values (dim becomes multi_dim)
+    level_values = multi_index[level]
+    da_sel = da.sel({other_dim: level_values})
+
+    # Drop the old coordinate variable for the selected dimension to avoid the
+    # subtle xarray MultiIndex registry/ownership bug.
+    if other_dim in da_sel.coords:
+        da_sel = da_sel.reset_coords(other_dim, drop=True)
+
+    # Install canonical MultiIndex on multi_dim (brings back level coords cleanly)
+    da_sel = da_sel.assign_coords({multi_dim: multi_index})
+
+    return da_sel

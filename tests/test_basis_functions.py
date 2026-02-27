@@ -251,6 +251,11 @@ def test_basisfunctions_sensitivity_regression_matches_legacy_like():
 
 
 def test_synthetic_no_all_zero_state_rows_when_fp_positive_everywhere():
+    """Check that no columns are zero when fp x flux is positive.
+
+    This is more of an issue when using a dictionary of basis functions
+    to create multisector sensitivities.
+    """
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     fp_x_flux = make_fp_x_flux(nlat=2, nlon=2, ntime=3, values=np.ones((2, 2, 3)))
 
