@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openghg_inversions"
-version = "0.4.0"
+version = "0.6.0"
 
 authors = [{name = "Eric Saboya", email = "eric.saboya@bristol.ac.uk"}]
 maintainers = [{name = "Brendan Murphy", email = "brendan.murphy@bristol.ac.uk"}]
@@ -18,18 +18,39 @@ description = "OpenGHG Inversions"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "numpy>=2.0",
+    # Explicit lower bound: prevents uv backtracking to numba 0.53 / llvmlite 0.36
+    # due to NumPy 2.x + sparse metadata lag
+    "numba>=0.59",
     "pymc",
     "numpyro[cpu]",
     "xarray>=2025.06.0",
-    "pandas",
+    "pandas<3.0",
     "matplotlib",
     "scipy", 
-    "numpy",
     "openghg",
     "sparse",
     "flox",
     "opt_einsum",
 ]
+
+[project.optional-dependencies]
+jupyter = [
+  "ipykernel",
+  "jupyterlab",
+]
+dev = [
+  "pytest",
+  "ruff",
+  "black>=26.1.0",
+  "pyright",
+  "mypy",
+  "flake8",
+]
+
+[dependency-groups]
+# UV only depedency groups; just mirror some extras
+uv_dev = ["openghg_inversions[jupyter,dev]"]
 
 [project.urls]
 "Home" = "https://github.com/openghg/openghg_inversions"
@@ -48,6 +69,9 @@ openghg_inversions = [
     "hbmcmc/config/*.ini"
 ]
 
+[tool.uv]
+default-groups = ["uv_dev"]
+
 [tool.black]
 line-length = 110
 target-version = ["py310"]
@@ -55,3 +79,8 @@ target-version = ["py310"]
 [tool.pytest.ini_options]
 minversion = "6.0"
 testpaths = ["tests"]
+markers = [
+  "create_frozen: tests that generate/update frozen regression outputs (not run by default)",
+  "slow: tests that take a long time",
+]
+addopts = "-m 'not create_frozen and not slow'"

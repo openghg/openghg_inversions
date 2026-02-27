@@ -1,6 +1,6 @@
 """Contains functions for running all steps of the MCMC inversion using PyMC.
 
-This module handles getting data, filtering, applying basis functions, sampling, 
+This module handles getting data, filtering, applying basis functions, sampling,
 and processing the outputs.
 
 Notes
@@ -26,21 +26,144 @@ the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 
 import logging
 from pathlib import Path
+import time
 from typing import Literal
 import warnings
-import time
 
 import numpy as np
 import xarray as xr
 
+from openghg.util import split_function_inputs
+
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
-import openghg_inversions.hbmcmc.inversionsetup as setup
-from openghg_inversions.hbmcmc.hbmcmc_output import ncdf_encoding
+from openghg_inversions.utils import ncdf_encoding
 from openghg_inversions.basis import basis_functions_wrapper
 from openghg_inversions.inversion_data import data_processing_surface_notracer, load_merged_data
 from openghg_inversions.filters import filtering
-from openghg_inversions.model_error import residual_error_method, percentile_error_method, setup_min_error
 from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
+from openghg_inversions.inversion_inputs import make_inv_inputs as _make_inv_inputs
+
+
+def update_log_normal_prior(prior):
+    """Convert `mean` and `stdev` to parameters for PyMC lognormal."""
+    if prior["pdf"].lower() == "lognormal" and "stdev" in prior:
+        stdev = float(prior["stdev"])
+        mean = float(prior.get("mean", 1.0))
+
+        mu, sigma = mcmc.lognormal_mu_sigma(mean, stdev)
+        prior["mu"] = mu
+        prior["sigma"] = sigma
+
+        del prior["stdev"]
+        if "mean" in prior:
+            del prior["mean"]
+    return prior
+
+
+def make_inv_inputs(
+    *,
+    fp_data,
+    sites,
+    start_date,
+    use_bc,
+    bc_freq,
+    sigma_freq,
+    min_error,
+    calculate_min_error,
+    min_error_options,
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    """Create inputs for PyMC.
+
+    This combines the data for each site into total sensitivity, obs, etc. arrays.
+    """
+    if calculate_min_error is not None:
+        warnings.warn(
+            "`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead."
+        )
+        min_error = calculate_min_error
+
+    min_error_options = min_error_options or {}
+
+    ds = _make_inv_inputs(
+        fp_data,
+        sites=sites,
+        bc_freq=bc_freq,
+        sigma_freq=sigma_freq,
+        min_error=min_error,
+        min_error_per_site=min_error_options.get("by_site", False),
+        start_date=start_date,
+    )
+
+    drop_subset = ["H", "H_bc", "mf", "mf_error"]
+    drop_subset = [dv for dv in drop_subset if dv in ds]
+    ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
+
+    # Trigger dask computations
+    # we only compute the variables we need below
+    to_compute = [
+        "H",
+        "H_bc",
+        "mf",
+        "mf_error",
+        "mf_repeatability",
+        "mf_variability",
+        "mf_prior_factor",
+        "mf_prior_upper_level_factor",
+        "bc_mod",
+        "mf_mod",
+    ]
+    to_compute = [dv for dv in to_compute if dv in ds]
+    ds[to_compute] = ds[to_compute].compute()
+
+    y = ds.mf.values
+    y_time = ds.time.values
+    siteindicator = ds.site_indicator.values
+    error = ds.mf_error.values
+    obs_repeatability = ds.mf_repeatability.values
+    obs_variability = ds.mf_variability.values
+    obs_prior_factor = ds.mf_prior_factor.values if "mf_prior_factor" in ds else None
+    obs_prior_upper_level_factor = (
+        ds.mf_prior_upper_level_factor.values if "mf_prior_upper_level_factor" in ds else None
+    )
+    h_x = ds.H.values
+    h_bc = ds.H_bc.values if "H_bc" in ds else None
+    sigma_freq_index = ds.sigma_freq_index.values
+    min_error_arr = ds.min_error.values
+
+    if np.isnan(h_x).any():
+        warnings.warn(f"Hx matrix contains {np.isnan(h_x).flatten().sum()} NaN values")
+
+    mcmc_args = {
+        "Hx": h_x,
+        "Y": y,
+        "error": error,
+        "siteindicator": siteindicator,
+        "sigma_freq_index": sigma_freq_index,
+        "min_error": min_error_arr,
+    }
+
+    if use_bc is True:
+        assert h_bc is not None  # for mypy
+
+        if np.isnan(h_bc).any():
+            warnings.warn(f"Hbc matrix contains {np.isnan(h_bc).flatten().sum()} NaN values")
+
+        mcmc_args["Hbc"] = h_bc
+
+    post_process_args = {
+        "Ytime": y_time,
+        "obs_repeatability": obs_repeatability,
+        "obs_variability": obs_variability,
+        "obs_prior_factor": (
+            obs_prior_factor if obs_prior_factor is not None else np.zeros_like(y)
+        ),  # use zeros instead of None
+        "obs_prior_upper_level_factor": (
+            obs_prior_upper_level_factor if obs_prior_upper_level_factor is not None else np.zeros_like(y)
+        ),  # same
+    }
+
+    return mcmc_args, post_process_args
+
 
 def fixedbasisMCMC(
     species: str,
@@ -72,6 +195,7 @@ def fixedbasisMCMC(
     basis_directory: str | None = None,
     bc_basis_case: str = "NESW",
     bc_basis_directory: str | None = None,
+    country_directory: str | None = None,
     country_file: str | None = None,
     bc_input: str | None = None,
     basis_algorithm: str = "weighted",
@@ -104,7 +228,9 @@ def fixedbasisMCMC(
     min_error: Literal["percentile", "residual"] | None | float = 0.0,
     calculate_min_error: Literal["percentile", "residual"] | None = None,
     min_error_options: dict | None = None,
-    output_format: Literal["hbmcmc", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"] = "hbmcmc",
+    output_format: Literal[
+        "hbmcmc", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"
+    ] = "hbmcmc",
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
     power: dict | float = 1.99,
@@ -118,7 +244,7 @@ def fixedbasisMCMC(
     Args:
         species: Atmospheric trace gas species of interest (e.g. 'co2').
         sites: List of measurement site names.
-        domain: Model domain. (NB. Does not necessarily correspond to the inversion domain).
+        domain: Model domain. (NB. Does not necessarily correspond to the inversion domain)
         averaging_period: Averaging period of observations (must match number of sites).
         start_date: Start time of inversion: "YYYY-mm-dd".
         end_date: End time of inversion: "YYYY-mm-dd".
@@ -132,13 +258,12 @@ def fixedbasisMCMC(
         fp_model: LPDM used for generating footprints (e.g. 'NAME').
         fp_height: Inlet height modelled for sites in LPDM (must match number of sites).
         fp_species: Species name associated with footprints in the object store.
-        emissions_name: List of keyword "source" args used for retrieving emissions files 
+        emissions_name: List of keyword "source" args used for retrieving emissions files
             from 'emissions_store'.
         inlet: Specific inlet height for the site (must match number of sites).
         instrument: Specific instrument for the site (must match number of sites).
-        max_level: Maximum atmospheric level to extract. Only needed if using satellite data.
         calibration_scale: Calibration scale to use for measurements data.
-        obs_data_level: Data quality level for measurements data. (must match number of sites).
+        obs_data_level: Data quality level for measurements data. (must match number of sites)
         use_tracer: Option to use inverse model that uses tracers of species
             (e.g. d13C, CO, C2H4).
         use_bc: When True, use and infer boundary conditions.
@@ -146,9 +271,11 @@ def fixedbasisMCMC(
         basis_directory: Directory containing the basis function.
         bc_basis_case: Name of basis case type for boundary conditions (NOTE, I don't
             think that currently you can do anything apart from scaling NSEW
-            boundary conditions if you want to scale these monthly).
+            boundary conditions if you want to scale these monthly.)
         bc_basis_directory: Directory containing the boundary condition basis functions
             (e.g. files starting with "NESW").
+        country_directory: Directory containing land-sea and InTEM outer region files for deriving
+            basis functions. If None, will use default files.
         country_file: Path to the country definition file.
         bc_input: Variable for calling BC data from 'bc_store' - equivalent of
             'emissions_name' for fluxes.
@@ -172,7 +299,8 @@ def fixedbasisMCMC(
         offsetprior: Same as xprior but for bias offset. Only used is addoffset=True.
         offset_args: Dictionary of args to pass to `make_offset`. For instance
             `{"drop_first": False}` will put an offset on all site (rather than using 0
-            offset for the first site).
+            offset for the first site). If "offset_freq" is passed, then the
+            offset will be applied at the specified frequency (e.g. monthly).
         nit: Number of iterations for MCMC.
         burn: Number of iterations to burn/discard in MCMC.
         tune: Number of iterations to use to tune step size.
@@ -180,22 +308,24 @@ def fixedbasisMCMC(
             knowing whether your distribution has converged by running only
             one chain).
         filters: List of filters to apply to all sites, or dictionary with sites as keys
-            and a list of filters for each site, e.g. filters = {"MHD": ["pblh_inlet_diff", "pblh_min"], "JFJ": None}.
+            and a list of filters for each site, e.g. filters = {"MHD": ["pblh_inlet_diff",
+            "pblh_min"], "JFJ": None}.
         fix_basis_outer_regions: When set to True uses InTEM regions to derive basis functions for inner region.
             Default False.
         averaging_error: Adds the variability in the averaging period to the measurement
             error if set to True.
-        bc_freq: The period over which the baseline is estimated. Set to "monthly"
+        bc_freq: The perdiod over which the baseline is estimated. Set to "monthly"
             to estimate per calendar month; set to a number of days,
             as e.g. "30D" for 30 days; or set to None to estimate to have one
             scaling for the whole inversion period.
         sigma_freq: As bc_freq, but for model sigma.
         sigma_per_site: Whether a model sigma value will be calculated for each site
-            independently (True) or all sites together (False). Default: True.
+            independantly (True) or all sites together (False).
+            Default: True.
         country_unit_prefix: A prefix for scaling the country emissions. Current options are:
             'T' will scale to Tg, 'G' to Gg, 'M' to Mg, 'P' to Pg.
             To add additional options add to convert.prefix.
-            Default is None and no scaling will be applied (output in g).
+            Default is none and no scaling will be applied (output in g).
         add_offset: Add an offset (intercept) to all sites but the first in the site list.
             Default False.
         verbose: When True, prints progress bar of mcmc.inferpymc.
@@ -207,15 +337,15 @@ def fixedbasisMCMC(
         save_trace: If True, save arviz `InferenceData` trace to `outputpath`. Alternatively,
             a file path (including file name and extension) can be passed, and the trace will be
             saved there.
-        min_error: If float, the value represents the minimum error. Otherwise, compute min model error
+        merged_data_only: If True, save merged data, and do nothing else.
+        min_error: If float, the value represents the minimun error. Otherwise, compute min model error
             using the "residual" method or the "percentile" method. (See `openghg_inversions.model_error.py` for
             details.) Combines the functionality of the previous min_error and calculate_min_error parameters.
-            None only an option to accommodate old ini files.
+            None only an option to accomodate old ini files.
         calculate_min_error: Is deprecated and will be removed in a future update.
-        min_error_options: Dictionary of additional arguments to pass the function used to calculate min. model
+        min_error_options: Dictionary of additional arguments to pass the the function used to calculate min. model
             error (as specified by `min_error`).
-        output_format: Select what is returned/saved by inversion:
-
+        output_format: Select what is returned/saved by inversion.
             - "hbmcmc": (default) return the results of `inferpymc_postprocessouts`, and save result as netCDF
             - "merged_data": return `fp_all` dictionary, no further processing and inversion *not* run
             - "inv_out": return `InversionOutput` object
@@ -224,12 +354,11 @@ def fixedbasisMCMC(
               as netCDF files in the directory `outputpath`
             - "mcmc_args": return the arguments passed to `fixedbasisMCMC`, but do not run the inversion
             - "mcmc_results": return the results of `fixedbasisMCMC` with no further processing
-
         paris_postprocessing_kwargs: Dict of kwargs to pass to `make_paris_outputs`.
         power: Power to raise pollution event size to if using pollution events from obs. Default is 1.99.
 
     Returns:
-        xr.Dataset | dict: Results from the inversion in a Dataset if skip_post_processing==False, 
+        xr.Dataset | dict: Results from the inversion in a Dataset if skip_post_processing==False,
             in a dictionary if True.
     """
     # select output format
@@ -242,7 +371,9 @@ def fixedbasisMCMC(
 
     if paris_postprocessing is True:
         output_format = "paris"
-        warnings.warn("The `paris_postprocessing` argument will be deprecated. Use `output_format = 'paris'` instead.")
+        warnings.warn(
+            "The `paris_postprocessing` argument will be deprecated. Use `output_format = 'paris'` instead."
+        )
 
     output_format = output_format.lower()  # type: ignore
 
@@ -260,6 +391,17 @@ def fixedbasisMCMC(
         skip_postprocessing = True
     # otherwise (i.e. output_format == "hbmcmc"), mcmc.inferpymc_postprocessouts is used
 
+    if inlet is not None:
+        is_sat_column = any([i == "column" for i in inlet])
+    else:
+        is_sat_column = False
+
+    if output_format == "hbmcmc":
+        if is_sat_column:
+            raise ValueError(
+                "Cannot use output_format 'hbmcmc' when satellite column measurements are included. Please choose another output_format."
+            )
+
     rerun_merge = True
 
     if merged_data_only:
@@ -267,9 +409,7 @@ def fixedbasisMCMC(
 
     if reload_merged_data is True and merged_data_dir is not None:
         try:
-            fp_all = load_merged_data(
-                merged_data_dir, species, start_date, outputname, merged_data_name
-            )
+            fp_all = load_merged_data(merged_data_dir, species, start_date, outputname, merged_data_name)
         except ValueError as e:
             # couldn't find merged data
             print(f"{e}, re-running data merge.")
@@ -288,9 +428,12 @@ def fixedbasisMCMC(
                 inlet = [s for i, s in enumerate(inlet) if i in keep_i]
                 fp_height = [s for i, s in enumerate(fp_height) if i in keep_i]
                 instrument = [s for i, s in enumerate(instrument) if i in keep_i]
+                max_level = [s for i, s in enumerate(max_level) if i in keep_i]
                 averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
 
-                print(f"\nDropping {dropped_sites} sites as they are not included in the merged data object.\n")
+                print(
+                    f"\nDropping {dropped_sites} sites as they are not included in the merged data object.\n"
+                )
 
     if reload_merged_data is True and merged_data_dir is None:
         print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
@@ -313,7 +456,7 @@ def fixedbasisMCMC(
                 domain=domain,
                 averaging_period=averaging_period,
                 start_date=start_date,
-                end_date= end_date,
+                end_date=end_date,
                 obs_data_level=obs_data_level,
                 platform=platform,
                 met_model=met_model,
@@ -342,7 +485,7 @@ def fixedbasisMCMC(
             raise ValueError("Model does not currently include tracer model. Watch this space")
 
         if merged_data_only:
-            return fp_all # type: ignore
+            return fp_all  # type: ignore
 
     # Basis function regions and sensitivity matrices
     fp_data = basis_functions_wrapper(
@@ -352,6 +495,7 @@ def fixedbasisMCMC(
         bc_basis_case=bc_basis_case,
         basis_directory=basis_directory,
         bc_basis_directory=bc_basis_directory,
+        country_directory=country_directory,
         fp_all=fp_all,
         use_bc=use_bc,
         species=species,
@@ -362,7 +506,6 @@ def fixedbasisMCMC(
         outputname=outputname,
         output_path=basis_output_path,
     )
-
 
     # Apply named filters to the data
     if filters is not None:
@@ -386,119 +529,19 @@ def fixedbasisMCMC(
             del fp_data[site]
 
     if len(dropped_sites) != 0:
-        sites = [s for i, s in enumerate(sites) if s not in dropped_sites]
+        sites = [s for s in sites if s not in dropped_sites]
         print(f"\nDropping {dropped_sites} sites as no data passed the filtering.\n")
 
-    for si, site in enumerate(sites):
+    for site in sites:
         fp_data[site].attrs["Domain"] = domain
 
     # Inverse models
     if use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
 
-    # Trigger dask computations
-    # we only compute the variables we need below
-    to_compute = ["H", "H_bc", "mf", "mf_error", "mf_repeatability", "mf_variability", "bc_mod", "mf_mod"]
-    for site in sites:
-        to_compute_site = [dv for dv in to_compute if dv in fp_data[site].data_vars]
-        fp_data[site][to_compute_site] = fp_data[site][to_compute_site].compute()
-
-    # Get inputs ready
-    error = np.zeros(0)
-    obs_repeatability = np.zeros(0)
-    obs_variability = np.zeros(0)
-    Hx = np.zeros(0)
-    Y = np.zeros(0)
-    siteindicator = np.zeros(0)
-
-    for si, site in enumerate(sites):
-        # if site was dropped, skip; this makes the site indicator numbers consistent
-        # even if a site is dropped
-        if site in dropped_sites:
-            continue
-
-        # select variables to drop NaNs from
-        drop_vars = []
-        for var in ["H", "H_bc", "mf", "mf_error"]:
-            if var in fp_data[site].data_vars:
-                drop_vars.append(var)
-
-        # pymc doesn't like NaNs, so drop them for the variables used below
-        fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
-
-        # repeatability/variability chosen/combined into mf_error in `get_data.py`
-        error = np.concatenate((error, fp_data[site].mf_error.values))
-
-        # make repeatability and variability for outputs (not used directly in inversions)
-        obs_repeatability = np.concatenate((obs_repeatability, fp_data[site].mf_repeatability.values))
-        obs_variability = np.concatenate((obs_variability, fp_data[site].mf_variability.values))
-
-        Y = np.concatenate((Y, fp_data[site].mf.values))
-        siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
-        if si == 0:
-            Ytime = fp_data[site].time.values
-        else:
-            Ytime = np.concatenate((Ytime, fp_data[site].time.values))
-
-        Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
-
-    if np.isnan(Hx).any():
-        warnings.warn(f"Hx matrix contains {np.isnan(Hx).flatten().sum()} NaN values")
-
-    # Calculate min error
-    if calculate_min_error is not None:
-        warnings.warn(f"`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead.")
-        min_error = calculate_min_error
-
-    if min_error == "residual":
-        if min_error_options is not None:
-            min_error = residual_error_method(fp_data, **min_error_options)
-        else:
-            min_error = residual_error_method(fp_data)
-
-        # if "by_site" is True, align min_error via siteindicator
-        if min_error_options and min_error_options.get("by_site", False):
-            min_error = setup_min_error(min_error, siteindicator)
-
-    elif min_error == "percentile":
-        min_error = percentile_error_method(fp_data)
-        min_error = setup_min_error(min_error, siteindicator)
-
-    elif isinstance(min_error, float | int) and min_error >= 0:
-        pass
-    else:
-        raise ValueError(
-            "`min_error` must have values: 'residual', 'percentile', or `float`;"
-            f" {min_error} not recognised."
-        )
-
-    sigma_freq_index = setup.sigma_freq_indicies(Ytime, sigma_freq)
-
-
-    # check if lognormal mu and sigma need to be calculated
-    def update_log_normal_prior(prior):
-        if prior["pdf"].lower() == "lognormal" and "stdev" in prior:
-            stdev = float(prior["stdev"])
-            mean = float(prior.get("mean", 1.0))
-
-            mu, sigma = mcmc.lognormal_mu_sigma(mean, stdev)
-            prior["mu"] = mu
-            prior["sigma"] = sigma
-
-            del prior["stdev"]
-            if "mean" in prior:
-                del prior["mean"]
-
-    update_log_normal_prior(xprior)
-    update_log_normal_prior(bcprior)
-
-    mcmc_args = {
-        "Hx": Hx,
-        "Y": Y,
-        "error": error,
-        "siteindicator": siteindicator,
-        "sigma_freq_index": sigma_freq_index,
-        "xprior": xprior,
+    # TODO keep this config separate from mcmc_args in the future
+    mcmc_config = {
+        "xprior": update_log_normal_prior(xprior),
         "sigprior": sigprior,
         "nit": nit,
         "burn": burn,
@@ -507,54 +550,43 @@ def fixedbasisMCMC(
         "sigma_per_site": sigma_per_site,
         "offsetprior": offsetprior,
         "add_offset": add_offset,
-        "verbose": verbose,
-        "min_error": min_error,
         "offset_args": offset_args,
         "power": power,
+        "use_bc": use_bc,
+        "verbose": verbose,
     }
+    if use_bc:
+        mcmc_config["bcprior"] = update_log_normal_prior(bcprior)
 
-    if use_bc is True:
-        Hbc = np.zeros(0)
+    mcmc_args, post_process_args = make_inv_inputs(
+        fp_data=fp_data,
+        sites=sites,
+        start_date=start_date,
+        use_bc=use_bc,
+        bc_freq=bc_freq,
+        sigma_freq=sigma_freq,
+        min_error=min_error,
+        calculate_min_error=calculate_min_error,
+        min_error_options=min_error_options,
+    )
 
-        for si, site in enumerate(sites):
-            if bc_freq == "monthly":
-                Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
-            elif bc_freq is None:
-                Hmbc = fp_data[site].H_bc.values
-            else:
-                Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
+    mcmc_args.update(mcmc_config)
 
-            if si == 0:
-                Hbc = np.copy(Hmbc)  # fp_data[site].H_bc.values
-            else:
-                Hbc = np.hstack((Hbc, Hmbc))
-
-        if np.isnan(Hbc).any():
-            warnings.warn(f"Hbc matrix contains {np.isnan(Hbc).flatten().sum()} NaN values")
-
-        mcmc_args["Hbc"] = Hbc
-        mcmc_args["bcprior"] = bcprior
-        mcmc_args["use_bc"] = True
-    else:
-        mcmc_args["use_bc"] = False
-
-    post_process_args = {
-        "Ytime": Ytime,
-        "domain": domain,
-        "species": species,
-        "sites": sites,
-        "start_date": start_date,
-        "end_date": end_date,
-        "outputname": outputname,
-        "outputpath": outputpath,
-        "country_unit_prefix": country_unit_prefix,
-        "fp_data": fp_data,
-        "emissions_name": emissions_name,
-        "country_file": country_file,
-        "obs_repeatability": obs_repeatability,
-        "obs_variability": obs_variability,
-        "min_error": min_error,
-    }
+    post_process_args.update(
+        {
+            "domain": domain,
+            "species": species,
+            "sites": sites,
+            "start_date": start_date,
+            "end_date": end_date,
+            "outputname": outputname,
+            "outputpath": outputpath,
+            "country_unit_prefix": country_unit_prefix,
+            "fp_data": fp_data,
+            "emissions_name": emissions_name,
+            "country_file": country_file,
+        }
+    )
 
     # cast float64 to float32
     for k in list(post_process_args.keys()):  # use list to get keys before modifying dict
@@ -575,7 +607,7 @@ def fixedbasisMCMC(
 
     end_data = time.time()
 
-    print(f"Data extraction and preparation complete. Time taken = {end_data-start_data:.2f} seconds")
+    print(f"Data extraction and preparation complete. Time taken = {end_data - start_data:.2f} seconds")
 
     # for debugging
     if return_mcmc_args:
@@ -588,7 +620,7 @@ def fixedbasisMCMC(
 
     end_inversion = time.time()
 
-    print(f"MCMC Inversion complete. Time taken = {end_inversion-start_inversion:.2f} seconds")
+    print(f"MCMC Inversion complete. Time taken = {end_inversion - start_inversion:.2f} seconds")
 
     # get trace and model: for future updates
     trace = mcmc_results["trace"]
@@ -601,7 +633,17 @@ def fixedbasisMCMC(
         else:
             trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
 
-        trace.to_netcdf(str(trace_path), engine="netcdf4", compress=True)
+            trace.to_netcdf(str(trace_path), engine="netcdf4", compress=True)
+
+    # Get args needed for make_inv_out_for_fixed_basis_mcmc
+    inv_out_args, _ = split_function_inputs(post_process_args, make_inv_out_for_fixed_basis_mcmc)
+    inv_out_args["site_names"] = sites
+    inv_out_args["site_indicator"] = post_process_args["siteindicator"]
+    inv_out_args["mcmc_results"] = mcmc_results
+
+    if not is_sat_column:
+        inv_out_args["obs_prior_factor"] = None
+        inv_out_args["obs_prior_upper_level_factor"] = None
 
     # Path to save trace
     if save_inversion_output:
@@ -610,123 +652,80 @@ def fixedbasisMCMC(
         else:
             inversion_output_path = Path(outputpath) / (outputname + f"{start_date}_inversion_output.nc")
 
-        inversion_output = make_inv_out_for_fixed_basis_mcmc(
-            fp_data=fp_data,
-            Y=Y,
-            Ytime=Ytime,
-            error=error,
-            obs_repeatability=obs_repeatability,
-            obs_variability=obs_variability,
-            site_indicator=siteindicator,
-            site_names=sites,
-            mcmc_results=mcmc_results,
-            start_date=start_date,
-            end_date=end_date,
-            species=species,
-            domain=domain,
-        )
+        inversion_output = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
         inversion_output.save(inversion_output_path)
 
     if skip_postprocessing:
         return mcmc_results
 
     if return_inv_out:
-        return make_inv_out_for_fixed_basis_mcmc(
-            fp_data=fp_data,
-            Y=Y,
-            Ytime=Ytime,
-            error=error,
-            obs_repeatability=obs_repeatability,
-            obs_variability=obs_variability,
-            site_indicator=siteindicator,
-            site_names=sites,
-            mcmc_results=mcmc_results,
-            start_date=start_date,
-            end_date=end_date,
-            species=species,
-            domain=domain,
-        )
+        return make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
 
     start_post = time.time()
 
     if new_postprocessing:
-        #from ..postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
         from ..postprocessing.make_outputs import basic_output
 
-        inv_out = make_inv_out_for_fixed_basis_mcmc(
-            fp_data=fp_data,
-            Y=Y,
-            Ytime=Ytime,
-            error=error,
-            obs_repeatability=obs_repeatability,
-            obs_variability=obs_variability,
-            site_indicator=siteindicator,
-            site_names=sites,
-            mcmc_results=mcmc_results,
-            start_date=start_date,
-            end_date=end_date,
-            species=species,
-            domain=domain,
-        )
+        inv_out = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
 
         outputs = basic_output(inv_out, country_file=country_file)
         end_post = time.time()
-        print(f"Post processing Complete. Time taken = {end_post-start_post:.2f} seconds")
+        print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
 
         return outputs
 
     if paris_postprocessing:
         from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-        #from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
+
         from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
-        inv_out = make_inv_out_for_fixed_basis_mcmc(
-            fp_data=fp_data,
-            Y=Y,
-            Ytime=Ytime,
-            error=error,
-            obs_repeatability=obs_repeatability,
-            obs_variability=obs_variability,
-            site_indicator=siteindicator,
-            site_names=sites,
-            mcmc_results=mcmc_results,
-            start_date=start_date,
-            end_date=end_date,
-            species=species,
-            domain=domain,
-        )
+        inv_out = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
 
         obs_avg_period = averaging_period[0] or "0h"
-        if not averaging_period[0]: logging.info("Default obs averaging period %s used in PARIS post-processing.", obs_avg_period)
+        if not averaging_period[0]:
+            logging.info("Default obs averaging period %s used in PARIS post-processing.", obs_avg_period)
         paris_postprocessing_kwargs = paris_postprocessing_kwargs or {}
-        flux_outs, conc_outs = make_paris_outputs(inv_out, country_file=country_file, domain=domain, obs_avg_period=obs_avg_period, **paris_postprocessing_kwargs)
+        flux_outs, conc_outs = make_paris_outputs(
+            inv_out,
+            country_file=country_file,
+            domain=domain,
+            obs_avg_period=obs_avg_period,
+            **paris_postprocessing_kwargs,
+        )
 
-        conc_output_filename = define_output_filename(outputpath, species, domain, outputname + "_conc", start_date, ext=".nc")
-        flux_output_filename = define_output_filename(outputpath, species, domain, outputname + "_flux", start_date, ext=".nc")
+        conc_output_filename = define_output_filename(
+            outputpath, species, domain, outputname + "_conc", start_date, ext=".nc"
+        )
+        flux_output_filename = define_output_filename(
+            outputpath, species, domain, outputname + "_flux", start_date, ext=".nc"
+        )
         Path(outputpath).mkdir(parents=True, exist_ok=True)
 
-        conc_outs.to_netcdf(conc_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(conc_outs))
-        flux_outs.to_netcdf(flux_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(flux_outs))
+        conc_outs.to_netcdf(
+            conc_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(conc_outs)
+        )
+        flux_outs.to_netcdf(
+            flux_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(flux_outs)
+        )
 
         logging.info("PARIS concentration outputs saved to", conc_output_filename)
         logging.info("PARIS flux outputs saved to", flux_output_filename)
 
         end_post = time.time()
-        print(f"Post processing Complete. Time taken = {end_post-start_post:.2f} seconds")
+        print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
 
         return xr.merge([conc_outs, flux_outs.rename(time="flux_time")])
-
 
     # Process and save inversion output
     del mcmc_results["trace"]
     del mcmc_results["model"]
     post_process_args.update(mcmc_results)
-    out = mcmc.inferpymc_postprocessouts(**post_process_args)
+    post_process_args_selection, _ = split_function_inputs(post_process_args, mcmc.inferpymc_postprocessouts)
+    out = mcmc.inferpymc_postprocessouts(**post_process_args_selection)
 
     end_post = time.time()
 
-    print(f"Post processing Complete. Time taken = {end_post-start_post:.2f} seconds")
-
+    print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
 
     print("---- Inversion completed ----")
 
@@ -735,7 +734,7 @@ def fixedbasisMCMC(
 
 def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: bool = False) -> None:
     """Rerun the MCMC code using inputs from a previous output.
-    
+
     This allows reproducibility of results without the need to transfer all raw input files.
 
     Args:

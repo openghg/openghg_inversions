@@ -183,7 +183,7 @@ def bucket_split_landsea_basis(grid: np.ndarray, bucket: float, domain: str, cou
         2D array with basis function values
 
     """
-    landsea_indices = load_landsea_indices(domain, country_directory)
+    landsea_indices = load_landsea_indices(domain, country_directory=country_directory)
     myregions = bucket_value_split(grid, bucket)
 
     mybasis_function = np.zeros(shape=grid.shape)

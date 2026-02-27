@@ -311,6 +311,8 @@ def bucketbasisfunction(
       mask (xarray.DataArray):
         Boolean mask on lat/lon coordinates. Used to find basis on sub-region
         Default None
+      country_directory (str):
+        Directory containing land-sea files. If None, will use default files.
 
     Returns:
       bucket_basis (xarray.DataArray):

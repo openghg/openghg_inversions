@@ -122,10 +122,21 @@ def percentile_error_method(ds_dict: dict[str, xr.Dataset]) -> np.ndarray:
 
 
 def setup_min_error(min_error: np.ndarray, siteindicator: np.ndarray) -> np.ndarray:
-    """Given min_error vector with same length as number of sites, create a vector
+    """Align min error vector with obs vector.
+
+    Given min_error vector with same length as number of sites, create a vector
     aligned with obs stacked by site.
     """
+    # catch zero dimensional case (e.g. one site)
+    if min_error.ndim == 0:
+        return min_error * np.ones_like(siteindicator, dtype=float)
+
     # need the same number of min_error values as distinct values in siteindicator
     assert np.max(siteindicator) == len(min_error) - 1
 
     return min_error[siteindicator.astype(int)]
+
+
+def xr_setup_min_error(min_error: np.ndarray, siteindicator: xr.DataArray) -> xr.DataArray:
+    """Align min error vector with obs vector."""
+    return xr.apply_ufunc(lambda x: setup_min_error(min_error, x), siteindicator)
