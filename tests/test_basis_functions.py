@@ -15,7 +15,12 @@ from openghg_inversions.basis import (
     quadtreebasisfunction,
     fixed_outer_regions_basis,
 )
-from openghg_inversions.basis.basis_functions import BasisFunctions, MultiSectorBasisFunctions
+from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.basis.operators import (
+    BucketBasisOperator,
+    MultiSourceBucketBasisOperator,
+    BasisOperator,
+)
 from openghg_inversions.basis._helpers import apply_fp_basis_functions, fp_sensitivity
 from openghg_inversions.inversion_data import data_processing_surface_notracer
 
@@ -202,7 +207,7 @@ def test_basisfunctions_sensitivity_synthetic_matches_explicit_sum():
     # but BasisFunctions requires flux; use ones
     flux = xr.ones_like(basis, dtype=float)
 
-    bf = BasisFunctions(basis_flat=basis, flux=flux)
+    bf = BasisFunctions.from_basis_flat(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
 
     H_new = bf.sensitivity(fp_x_flux)
 
@@ -218,7 +223,8 @@ def test_basisfunctions_sensitivity_synthetic_multisector_shared_basis():
     fp_x_flux_sectoral = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
 
     flux = xr.ones_like(basis, dtype=float)
-    bf = BasisFunctions(basis_flat=basis, flux=flux)
+
+    bf = BasisFunctions.from_basis_flat(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
 
     H = bf.sensitivity(fp_x_flux_sectoral)
 
@@ -242,7 +248,7 @@ def test_basisfunctions_sensitivity_regression_matches_legacy_like():
     fp_x_flux = make_fp_x_flux(nlat=2, nlon=2, ntime=4)
 
     flux = xr.ones_like(basis, dtype=float)
-    bf = BasisFunctions(basis_flat=basis, flux=flux)
+    bf = BasisFunctions.from_basis_flat(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
 
     H_new = bf.sensitivity(fp_x_flux)  # (region, time)
     H_old = old_apply_fp_basis_functions_like(fp_x_flux, basis)  # (region, time)
@@ -260,7 +266,7 @@ def test_synthetic_no_all_zero_state_rows_when_fp_positive_everywhere():
     fp_x_flux = make_fp_x_flux(nlat=2, nlon=2, ntime=3, values=np.ones((2, 2, 3)))
 
     flux = xr.ones_like(basis, dtype=float)
-    bf = BasisFunctions(basis_flat=basis, flux=flux)
+    bf = BasisFunctions.from_basis_flat(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
 
     H = bf.sensitivity(fp_x_flux)  # (region, time)
 
@@ -314,7 +320,10 @@ def test_basisfunctions_sensitivity_matches_apply_fp_basis_functions_real_data()
     flux_source = next(iter(fp_all_with_basis[".flux"].keys()))
     flux = fp_all_with_basis[".flux"][flux_source].data.flux
 
-    bf = BasisFunctions(basis_flat=fp_all_with_basis[".basis"], flux=flux)
+    # bf = BasisFunctions(basis_flat=fp_all_with_basis[".basis"], flux=flux)
+    bf = BasisFunctions.from_basis_flat(
+        basis_flat=fp_all_with_basis[".basis"], flux=flux, operator_kwargs={"state_dim": "region"}
+    )
     H_new = bf.sensitivity(ds.fp_x_flux)
 
     # Ensure same dim order for comparison
@@ -398,7 +407,209 @@ def test_multisector_ragged_new_matches_old_after_conversion():
 
     # --- New behaviour
     flux_dict = {k: v.data.flux for k, v in fp_all_sectoral[".flux"].items()}
-    multisector_bf = MultiSectorBasisFunctions(basis_flat=basis_dict, flux=flux_dict)
+
+    multisector_bf = BasisFunctions.from_multi_source_basis_flat(
+        basis_flat=basis_dict, flux=flux_dict, operator_kwargs={"state_dim": "region"}
+    )
 
     H_new_gathered = multisector_bf.sensitivity(fp_all_sectoral[site].fp_x_flux_sectoral)
     xr.testing.assert_allclose(H_new_gathered, H_old_gathered)
+
+
+def _make_simple_state_trace(
+    *,
+    region_dim: str = "region",
+    draw_dim: str = "draw",
+    chain_dim: str | None = None,
+    region_values: list[float] = [10.0, 100.0],
+    draw_values: list[int] = [0, 1, 2],
+) -> xr.DataArray:
+    """Make a tiny deterministic PyMC-like trace array for interpolate tests."""
+    state = xr.DataArray(
+        np.asarray(region_values, dtype=float),
+        dims=(region_dim,),
+        coords={region_dim: np.arange(len(region_values))},
+        name="state",
+    )
+
+    draws = xr.DataArray(np.asarray(draw_values, dtype=int), dims=(draw_dim,), name=draw_dim)
+    state = state.expand_dims({draw_dim: draws})
+
+    # Make draws vary slightly so we catch broadcasting issues.
+    # region r has values region_values[r] + draw
+    state = state + xr.DataArray(np.asarray(draw_values, dtype=float), dims=(draw_dim,))
+
+    if chain_dim is not None:
+        chain = xr.DataArray(np.asarray([0, 1], dtype=int), dims=(chain_dim,), name=chain_dim)
+        state = state.expand_dims({chain_dim: chain})
+        # Make chain 1 different to catch chain propagation.
+        state = state + xr.DataArray(np.asarray([0.0, 1000.0]), dims=(chain_dim,))
+
+    return state
+
+
+# --------------------------------------------------------------------------------------
+# DataTree roundtrip tests for FluxWeightedBasis/BasisFunctions wrapper
+# --------------------------------------------------------------------------------------
+def test_basisfunctions_roundtrip_datatree_single_source():
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    flux = xr.ones_like(basis, dtype=float).rename("flux")
+
+    bf = BasisFunctions.from_basis_flat(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
+
+    dt = bf.to_datatree()
+    bf2 = BasisFunctions.from_datatree(dt)
+
+    assert isinstance(bf2.operator, BucketBasisOperator)
+    xr.testing.assert_identical(bf2.flux, bf.flux)
+    xr.testing.assert_identical(bf2.operator.basis_flat, bf.operator.basis_flat)
+    xr.testing.assert_identical(bf2.operator.basis_matrix, bf.operator.basis_matrix)
+
+
+def test_basisfunctions_roundtrip_datatree_multisource_flux_mapping():
+    basis_a = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_b = make_basis_flat_from_blocks([[1, 2], [1, 2]])
+    basis = {"A": basis_a, "B": basis_b}
+
+    # Exercise the mapping->concat codepath
+    flux_a = xr.ones_like(basis_a, dtype=float) * 1.0
+    flux_b = xr.ones_like(basis_b, dtype=float) * 2.0
+    flux = {"A": flux_a.rename("flux"), "B": flux_b.rename("flux")}
+
+    bf = BasisFunctions.from_multi_source_basis_flat(
+        basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"}
+    )
+    assert "source" in bf.flux.dims
+    xr.testing.assert_allclose(bf.flux.sel(source="A", drop=True), flux_a)
+    xr.testing.assert_allclose(bf.flux.sel(source="B", drop=True), flux_b)
+
+    dt = bf.to_datatree()
+    bf2 = BasisFunctions.from_datatree(dt)
+
+    assert isinstance(bf2.operator, MultiSourceBucketBasisOperator)
+    assert set(bf2.operator.basis_flat.keys()) == {"A", "B"}
+    xr.testing.assert_identical(bf2.flux, bf.flux)
+    xr.testing.assert_identical(bf2.operator.basis_matrix, bf.operator.basis_matrix)
+    for k in bf.operator.basis_flat:
+        xr.testing.assert_identical(bf2.operator.basis_flat[k], bf.operator.basis_flat[k])
+
+
+# --------------------------------------------------------------------------------------
+# Interpolate tests (wrapper-level): intended PyMC-like state traces
+# --------------------------------------------------------------------------------------
+def test_basisfunctions_interpolate_no_flux_weights_trace_dims_propagate():
+    # Basis: top row region 0, bottom row region 1 (labels 1/2 -> regions 0/1)
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    flux = xr.ones_like(basis, dtype=float)
+
+    bf = BasisFunctions.from_basis_flat(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
+
+    state = _make_simple_state_trace(region_dim="region", draw_dim="draw", chain_dim=None)
+
+    out = bf.interpolate(state, flux=False)
+    assert set(out.dims) == {"lat", "lon", "draw"}
+
+    # Expected: top row gets region 0 value, bottom row gets region 1 value
+    # region 0 base=10, region 1 base=100, plus draw offset
+    expected_top = xr.DataArray(np.asarray([10.0, 11.0, 12.0]), dims=("draw",), coords={"draw": state.draw})
+    expected_bottom = xr.DataArray(
+        np.asarray([100.0, 101.0, 102.0]), dims=("draw",), coords={"draw": state.draw}
+    )
+
+    xr.testing.assert_allclose(out.sel(lat=0, lon=0, drop=True), expected_top)
+    xr.testing.assert_allclose(out.sel(lat=0, lon=1, drop=True), expected_top)
+    xr.testing.assert_allclose(out.sel(lat=1, lon=0, drop=True), expected_bottom)
+    xr.testing.assert_allclose(out.sel(lat=1, lon=1, drop=True), expected_bottom)
+
+
+def test_basisfunctions_interpolate_with_flux_weights_trace_dims_propagate():
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+
+    # Make flux non-uniform on the grid so we verify weighting actually occurs
+    flux_values = np.asarray([[1.0, 2.0], [3.0, 4.0]])
+    flux = xr.DataArray(flux_values, coords=basis.coords, dims=basis.dims, name="flux")
+
+    bf = BasisFunctions.from_basis_flat(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
+
+    state = _make_simple_state_trace(region_dim="region", draw_dim="draw", chain_dim=None)
+
+    out = bf.interpolate(state, flux=True)
+    assert set(out.dims) == {"lat", "lon", "draw"}
+
+    # Expected: out(lat,lon,draw) = state(region,draw) * flux(lat,lon) for the region covering that cell
+    # Top row uses region 0, bottom row uses region 1.
+    region0 = xr.DataArray(np.asarray([10.0, 11.0, 12.0]), dims=("draw",), coords={"draw": state.draw})
+    region1 = xr.DataArray(np.asarray([100.0, 101.0, 102.0]), dims=("draw",), coords={"draw": state.draw})
+
+    xr.testing.assert_allclose(out.sel(lat=0, lon=0, drop=True), region0 * 1.0)
+    xr.testing.assert_allclose(out.sel(lat=0, lon=1, drop=True), region0 * 2.0)
+    xr.testing.assert_allclose(out.sel(lat=1, lon=0, drop=True), region1 * 3.0)
+    xr.testing.assert_allclose(out.sel(lat=1, lon=1, drop=True), region1 * 4.0)
+
+
+def test_basisfunctions_interpolate_trace_with_chain_dim():
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    flux = xr.ones_like(basis, dtype=float)
+
+    bf = BasisFunctions.from_basis_flat(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
+
+    state = _make_simple_state_trace(region_dim="region", draw_dim="draw", chain_dim="chain")
+
+    out = bf.interpolate(state, flux=False)
+    assert set(out.dims) == {"lat", "lon", "draw", "chain"}
+
+    # Spot-check one cell per region, both chains.
+    # chain=0: region0=10+draw, region1=100+draw
+    # chain=1: +1000
+    expected_region0_chain0 = xr.DataArray(
+        np.asarray([10.0, 11.0, 12.0]), dims=("draw",), coords={"draw": state.draw}
+    )
+    expected_region0_chain1 = expected_region0_chain0 + 1000.0
+
+    xr.testing.assert_allclose(out.sel(lat=0, lon=0, chain=0, drop=True), expected_region0_chain0)
+    xr.testing.assert_allclose(out.sel(lat=0, lon=0, chain=1, drop=True), expected_region0_chain1)
+
+
+# --------------------------------------------------------------------------------------
+# Multi-source equivalence: gathered MultiIndex vs legacy padded H conversion
+# --------------------------------------------------------------------------------------
+def test_multisource_sensitivity_matches_legacy_padded_conversion_smoke():
+    # Use small deterministic basis and footprints; simplest: same basis per source but different scaling.
+    sources = ["A", "B"]
+    basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_by_source = {s: basis for s in sources}
+
+    fp_x_flux_sectoral = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
+    flux = xr.ones_like(basis, dtype=float)
+
+    # New gathered H: MultiSourceBucketBasisOperator under the wrapper
+    bf = BasisFunctions.from_multi_source_basis_flat(
+        basis_flat=basis_by_source, flux=flux, operator_kwargs={"state_dim": "region"}
+    )
+    H_new = bf.sensitivity(fp_x_flux_sectoral)
+
+    # Construct a legacy-like padded H_old(region=max_regions, time, source) by computing each source separately
+    # with the single-source basis and then padding to the maximum region count (here identical counts).
+    H_pieces = []
+    for s in sources:
+        Hs = expected_H_from_basis_sum(
+            fp_x_flux_sectoral.sel(source=s), basis, region_dim="region"
+        )  # (region,time)
+        H_pieces.append(Hs.expand_dims(source=[s]))
+    H_old = xr.concat(H_pieces, dim="source").transpose("region", "time", "source")
+
+    # Convert legacy padded -> gathered MultiIndex and compare (up to ordering)
+    H_old_gathered = convert_old_multisector_H_to_gathered(
+        H_old,
+        source_dim="source",
+        region_dim="region",
+        gathered_dim="region",
+        source_region_dim="region_in_source",
+    )
+
+    # The new operator returns region as a MultiIndex; order should match source-major stacking.
+    # Ensure both are in a comparable order.
+    H_new = H_new.transpose("region", "time")
+    H_old_gathered = H_old_gathered.transpose("region", "time")
+
+    xr.testing.assert_allclose(H_new, H_old_gathered)

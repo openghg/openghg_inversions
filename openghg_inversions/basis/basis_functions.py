@@ -5,299 +5,282 @@ Example usage:
 >> def apply_basis_functions(ds: xr.Dataset, bf: BasisFunctions) -> xr.Dataset:
 >>     if "fp_x_flux" not in ds:
 >>         return ds
->>     return bf.sensitivities(ds.fp_x_flux).rename("H").to_dataset()
+>>     return bf.sensitivity(ds.fp_x_flux).rename("H").to_dataset()
 
 """
 
-from pathlib import Path
-from typing import Self, cast
-import warnings
+from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any
+
+import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.array_ops import force_align, concat_gather_data_arrays, get_xr_dummies
+from openghg_inversions.array_ops import (
+    concat_data_arrays,
+)
+from openghg_inversions.basis.operators import (
+    BasisOperator,
+    BucketBasisOperator,
+    MultiSourceBucketBasisOperator,
+)
 from openghg_inversions.config.paths import Paths
-from openghg_inversions.utils import read_netcdfs
 
 openghginv_path = Paths.openghginv
 
 
-class BasisFunctions:
-    """Basis functions for flux sensitivities.
+@dataclass(frozen=True, slots=True)
+class FluxWeightedBasis:
+    """A thin wrapper pairing a BasisOperator with a flux field.
 
-    This class provides methods for using aggregation or "bucket" basis functions.
-    This means that the basis functions can be represented as a 2D lat/lon array, with
-    integer labels for each basis region.
+    This class is intentionally lightweight: it stores the operator and the flux, and provides
+    constructors that build the appropriate operator from a basis representation.
 
-    We do not allow time varying basis functions with this class.
-    TODO: revisit this?
-
-    Though basis functions are usually applied to the combined footprint x flux array,
-    to use the basis functions in post-processing, we also need the flux used in the inversion.
-
-    If the flux varies with time, then we need to align this with other time coordinates.
-    Currently, this is not supported.
-    TODO: add support for time varying flux?
-
-    TODO: construct from matrix with "regions" already by default, and add "from_flat" as class method?
-    Or make the base class do that, and make a subclass for bucket basis functions?
+    Notes:
+        - A flux with a `source` dimension can still be paired with a `BucketBasisOperator`; in that case
+          the same basis is applied to each source when broadcasting occurs in downstream operations.
+        - Alignment/broadcasting details are currently delegated to the operator implementations.
     """
 
-    def __init__(
-        self,
+    operator: BasisOperator
+    flux: xr.DataArray
+
+    @classmethod
+    def from_basis_flat(
+        cls,
         basis_flat: xr.DataArray,
         flux: xr.DataArray,
-        region_dim: str = "region",
-        chunks: dict | None = None,
-    ):
-        self.basis_flat = basis_flat.isel(time=0, drop=True) if "time" in basis_flat.dims else basis_flat
-        self.flux = flux.reindex_like(self.basis_flat, method="nearest")  # align lat/lon
-
-        self.region_dim = region_dim
-        self.basis_matrix = get_xr_dummies(basis_flat, cat_dim=self.region_dim)
-
-        if chunks is not None:
-            self.basis_matrix = self.basis_matrix.chunk(**chunks)
-        else:
-            self.basis_matrix = self.basis_matrix.chunk()
-
-        self.labels = np.unique(basis_flat)
-        self.labels_shuffled = np.unique(basis_flat)
-        np.random.shuffle(self.labels_shuffled)  # TODO make method so this can be re-shuffled
-
-        self.interpolation_matrix = self.basis_matrix * self.flux
-
-        # Currently no support for flux times
-        if self.interpolation_matrix.sizes.get("time", 0) > 1:
-            warnings.warn("Dropping time from interpolation matrix.")
-            self.interpolation_matrix = self.interpolation_matrix.isel(time=0, drop=True)
-        elif "time" in self.interpolation_matrix.dims:
-            self.interpolation_matrix = self.interpolation_matrix.squeeze("time", drop=True)
-
-    # TODO: make generic over DataArray and Dataset
-    # TODO: add alignment option
-    def interpolate(self, data: xr.DataArray, flux: bool = False) -> xr.DataArray:
-        """Map from regions to lat/lon."""
-        if self.region_dim not in data.dims:
-            raise ValueError(
-                f"Region dim {self.region_dim} missing (data dims {data.dims}); cannot interpolate."
-            )
-        if flux:
-            return xr.dot(self.interpolation_matrix, data, dim=self.region_dim)
-        return xr.dot(self.basis_matrix, data, dim=self.region_dim)
-
-    def sensitivity(self, fp_x_flux: xr.DataArray) -> xr.DataArray:
-        """Create sensitivity ("H") matrix from footprint x flux array."""
-        # TODO: check this still works if we have a stacked source/region dimension in the basis function
-        interp = self.basis_matrix.reindex_like(fp_x_flux, method="nearest")  # should align lat/lon
-        interp = interp.transpose("lat", "lon", ...)
-        return (
-            xr.dot(fp_x_flux, interp, dim=["lat", "lon"]).as_numpy().transpose(self.region_dim, "time", ...)
-        )
-
-    def save(self, path: str | Path) -> None:
-        to_save = xr.Dataset({"basis": self.basis_flat, "flux": self.flux})
-        to_save.to_netcdf(path, mode="w")
-
-    @classmethod
-    def load(cls, path: str | Path) -> Self:
-        ds = xr.open_dataset(path)
-        return cls(basis_flat=ds.basis, flux=ds.flux)
-
-    def save_acrg(
-        self,
-        basis_algorithm: str,
-        output_dir: str,
-        domain: str,
-        species: str,
-        output_name: str | None = None,
-    ) -> None:
-        """Save basis functions to netCDF.
+        *,
+        region_labels: xr.DataArray | None = None,
+        operator_kwargs: Mapping[str, Any] | None = None,
+    ) -> FluxWeightedBasis:
+        """Construct from a single-source (standard) flattened basis array.
 
         Args:
-          basis_algorithm (str):
-            name of basis algorithm (e.g. "quadtree" or "weighted")
-          output_dir (str):
-            root directory to save basis functions
-          domain (str):
-            domain of inversion; basis is saved in a "domain" directory inside `output_dir`
-          species (str):
-            species of inversion
-          output_name (str,optional):
-            File output name
-            Default None
+            basis_flat: Flattened basis labels on the inversion grid, e.g. dims like (lat, lon)
+                (or whatever grid dims the operator expects). Values should label regions.
+            flux: Flux on the same grid dims as `basis_flat`. May optionally contain extra dims such
+                as `time` or `source`; these will be carried along by downstream operations.
+            region_labels: Optional labels corresponding to region IDs. If not provided, the operator
+                will infer labels (typically from unique values of `basis_flat`).
+            operator_kwargs: Optional kwargs forwarded to `BucketBasisOperator`.
 
         Returns:
-            None. Saves basis dataset to netCDF.
+            A FluxWeightedBasis pairing a BucketBasisOperator with the provided flux.
         """
-        basis_out_path = Path(output_dir, domain.upper())
+        kwargs: dict[str, Any] = dict(operator_kwargs or {})
+        if region_labels is not None:
+            kwargs["region_labels"] = region_labels
 
-        if not basis_out_path.exists():
-            basis_out_path.mkdir(parents=True)
-
-        start_date = str(self.basis_flat.time.min().values)[:7]  # year and month
-
-        if output_name is None:
-            output_name = f"{basis_algorithm}_{species}_{domain}_{start_date}.nc"
-        else:
-            output_name = f"{basis_algorithm}_{species}-{output_name}_{domain}_{start_date}.nc"
-
-        self.save(basis_out_path / output_name)
+        operator = BucketBasisOperator(basis_flat=basis_flat, **kwargs)
+        return cls(operator=operator, flux=flux)
 
     @classmethod
-    def load_acrg(
+    def from_multi_source_basis_flat(
         cls,
-        domain: str,
-        basis_case: str,
-        basis_directory: str | None = None,
-        flux: xr.DataArray | None = None,
-    ) -> Self:
-        """Read in basis function(s) from file given basis case and domain, and return as an
-        xarray Dataset.
-
-        The basis function files should be stored as on paths of the form:
-            <basis_directory>/<domain>/<basis_case>_<domain>*.nc
-
-        For instance: domain = EUROPE, basis_directory = /group/chem/acrg/LPDM/basis_functions,
-        and basis_case = sub_transd would find files such as:
-
-            /group/chem/acrg/LPDM/basis_functions/EUROPE/sub_transd_EUROPE_2014.nc
-
-        Basis functions created by algorithms in OpenGHG inversions will be stored using
-        this path format.
+        basis_flat: Mapping[str, xr.DataArray],
+        flux: xr.DataArray | Mapping[str, xr.DataArray],
+        *,
+        region_labels: Mapping[str, xr.DataArray] | None = None,
+        operator_kwargs: Mapping[str, Any] | None = None,
+    ) -> FluxWeightedBasis:
+        """Construct from a multi-source flattened basis mapping.
 
         Args:
-            domain: domain name. The basis files should be sub-categorised by the domain.
-            basis_case: basis case to read in. Examples of basis cases are "voronoi", "sub-transd",
-                "sub-country_mask", "INTEM".
-            basis_directory: basis_directory can be specified if files are not in the default
-                directory (i.e. `openghg_inversions/basis_functions`). Must point to a directory that
-                contains subfolders organized by domain.
-            flux: needs to be provided if not found in stored files.
+            basis_flat: Mapping from source name to that source's flattened basis labels on the grid.
+                Each value should be a DataArray on the inversion grid (e.g. dims like (lat, lon)).
+            flux: Flux on the inversion grid. Commonly has a `source` dimension coordinate matching
+                the keys of `basis_flat`, but this is not required at construction time.
+            region_labels: Optional mapping from source name to region labels for that source's basis.
+                If not provided, the operator will infer labels per source.
+            operator_kwargs: Optional kwargs forwarded to `MultiSourceBucketBasisOperator`.
 
         Returns:
-            BasisFunction object corresponding to combined matching basis functions
+            A FluxWeightedBasis pairing a MultiSourceBucketBasisOperator with the provided flux.
         """
-        if basis_directory is None:
-            basis_path = openghginv_path / "basis_functions"
-            if not basis_path.exists():
-                basis_path.mkdir()
-                raise ValueError(
-                    f"Default basis directory {basis_path} was empty. "
-                    "Add basis files or specify `basis_path`."
-                )
-        else:
-            basis_path = Path(basis_directory)
+        kwargs: dict[str, Any] = dict(operator_kwargs or {})
+        if region_labels is not None:
+            kwargs["region_labels"] = dict(region_labels)
 
-        file_path = (basis_path / domain).glob(f"{basis_case}_{domain}*.nc")
-        files = sorted(list(file_path))
+        operator = MultiSourceBucketBasisOperator(basis_flat=dict(basis_flat), **kwargs)
 
-        if len(files) == 0:
-            raise FileNotFoundError(
-                f"Can't find basis function files for domain '{domain}'and basis_case '{basis_case}' "
-            )
+        if not isinstance(flux, xr.DataArray):
+            flux = concat_data_arrays(flux, key_dim="source")
 
-        basis_ds = read_netcdfs(files)
+        return cls(operator=operator, flux=flux)
 
-        if "flux" not in basis_ds and flux is None:
-            raise ValueError("Flux not stored with basis functions; please provide flux.")
+    def to_datatree(self) -> xr.DataTree:
+        """Serialise to a DataTree with `basis` and `flux` groups.
 
-        flux = cast(xr.DataArray, basis_ds.get("flux") or flux)
+        Returns:
+            A DataTree with:
+              - `basis`: BasisOperator DataTree (via operator.to_datatree()).
+              - `flux`: a Dataset containing the flux DataArray as variable `flux`.
 
-        return cls(basis_ds.basis, flux=flux)
-
-    # @classmethod
-    # def from_algorithm(cls) -> Self:
-    #     """Compute basis from algorithm."""
-    #     pass
-
-    def plot(self, shuffle=False, **kwargs) -> None:
-        """Plot basis.
-
-        Shuffle labels to make regions easier to see.
+        Raises:
+            KeyError: If serialisation would overwrite an existing group name.
         """
-        if not shuffle:
-            self.basis_flat.plot(**kwargs)
-        else:
-            bf_shuf = self.basis_flat.copy()
-            bf_shuf.values = self.labels_shuffled[self.basis_flat.values.astype(int) - 1]
-            bf_shuf.plot(**kwargs)
-
-
-class MultiSectorBasisFunctions(BasisFunctions):
-    def __init__(
-        self,
-        basis_flat: dict[str, xr.DataArray],
-        flux: dict[str, xr.DataArray],
-        region_dim: str = "region",
-        chunks: dict | None = None,
-    ):
-        assert all(k in flux for k in basis_flat), "basis flat and flux must have same keys"
-
-        self.basis_flat = {
-            k: v.isel(time=0, drop=True) if "time" in v.dims else v for k, v in basis_flat.items()
-        }
-
-        flux_aligned = {
-            k: v.reindex_like(self.basis_flat[k], method="nearest") for k, v in flux.items()
-        }  # align lat/lon
-        flux_to_concat = [v.expand_dims({"source": [k]}) for k, v in flux_aligned.items()]
-        self.flux = xr.concat(flux_to_concat, dim="source")
-
-        self.region_dim = region_dim
-        self.sectoral_basis_matrices = {
-            k: get_xr_dummies(v, cat_dim="sector_region") for k, v in self.basis_flat.items()
-        }
-        self.basis_matrix = concat_gather_data_arrays(
-            self.sectoral_basis_matrices,
-            key_dim="source",
-            ragged_dim="sector_region",
-            stack_dim=self.region_dim,
+        dt = xr.DataTree()
+        dt.attrs.update(
+            {
+                "schema": "openghg_inversions.flux_weighted_basis",
+                "schema_version": 1,
+            }
         )
 
-        if chunks is not None:
-            self.basis_matrix = self.basis_matrix.chunk(**chunks)
-        else:
-            self.basis_matrix = self.basis_matrix.chunk()
+        dt_basis = self.operator.to_datatree()
 
-        # TODO: decide what to do about labels and plotting
-        # self.labels = np.unique(basis_flat)
-        # self.labels_shuffled = np.unique(basis_flat)
-        # np.random.shuffle(self.labels_shuffled)  # TODO make method so this can be re-shuffled
+        # Store flux as a dataset to preserve name/attrs cleanly.
+        flux = self.flux.rename("flux")
 
-        # need to explicitly broadcast flux source to match "source" level
-        # of region multi-index
-        self.interpolation_matrix = self.basis_matrix * self._align_source(self.flux)
+        dt_flux = xr.DataTree(xr.Dataset({"flux": flux}))
 
-        # Currently no support for flux times
-        if self.interpolation_matrix.sizes.get("time", 0) > 1:
-            warnings.warn("Dropping time from interpolation matrix.")
-            self.interpolation_matrix = self.interpolation_matrix.isel(time=0, drop=True)
-        elif "time" in self.interpolation_matrix.dims:
-            self.interpolation_matrix = self.interpolation_matrix.squeeze("time", drop=True)
+        dt["basis"] = dt_basis
+        dt["flux"] = dt_flux
+        return dt
 
-    def _align_source(self, other: xr.DataArray) -> xr.DataArray:
-        if "source" not in other.dims:
-            # nothing to align
-            return other
-        region_index = self.basis_matrix[self.region_dim]
-        other_on_region = other.sel(source=region_index.source)
+    @classmethod
+    def from_datatree(cls, dt: xr.DataTree) -> FluxWeightedBasis:
+        """Deserialise from a DataTree produced by `to_datatree`.
 
-        # Force region coordinate to be identical
-        other_on_region = other_on_region.assign_coords({self.region_dim: region_index})
+        Args:
+            dt: DataTree with `basis` and `flux` groups.
 
-        # Drop source coordinate to prevent alignment conflict
-        other_on_region = other_on_region.drop_vars("source")
+        Returns:
+            A FluxWeightedBasis instance.
 
-        return other_on_region
+        Raises:
+            KeyError: If required groups are missing.
+            ValueError: If schema/version mismatch or flux variable missing.
+        """
+        schema = dt.attrs.get("schema", None)
+        version = dt.attrs.get("schema_version", None)
+        if schema is not None and schema != "openghg_inversions.flux_weighted_basis":
+            raise ValueError(f"Unexpected schema: {schema!r}")
+        if version is not None and int(version) != 1:
+            raise ValueError(f"Unexpected schema_version: {version!r}")
+
+        if "basis" not in dt:
+            raise KeyError("Missing 'basis' group in DataTree.")
+        if "flux" not in dt:
+            raise KeyError("Missing 'flux' group in DataTree.")
+
+        operator = BasisOperator.decode_datatree(dt["basis"])
+
+        ds_flux = dt["flux"].to_dataset()
+        if "flux" not in ds_flux:
+            raise ValueError("Missing variable 'flux' in dt['flux'] dataset.")
+        flux = ds_flux["flux"]
+
+        return cls(operator=operator, flux=flux)
 
     def sensitivity(self, fp_x_flux: xr.DataArray) -> xr.DataArray:
-        """Create sensitivity ("H") matrix from footprint x flux array."""
-        # TODO: check this still works if we have a stacked source/region dimension in the basis function
-        interp = force_align(self.basis_matrix, fp_x_flux, dims=["lat", "lon"])
-        interp = interp.transpose("lat", "lon", ...)
-        return xr.dot(self._align_source(fp_x_flux), interp, dim=["lat", "lon"]).as_numpy()
+        """Compute sensitivity (grid -> state) via the underlying operator.
 
-    def plot(self, shuffle=False, **kwargs) -> None:
-        raise NotImplementedError()
+        This is typically used to form the reduced Jacobian:
+            H = operator.sensitivity(fp_x_flux)
+
+        Args:
+            fp_x_flux: Footprints multiplied by flux, on the inversion grid dims.
+                May contain extra dims (e.g. time, site, source).
+
+        Returns:
+            Sensitivity with a `state`-like dimension as defined by the operator.
+        """
+        return self.operator.sensitivity(fp_x_flux)
+
+    def interpolate(self, state: xr.DataArray, *, flux: bool = False) -> xr.DataArray:
+        """Interpolate from state vector to the grid.
+
+        Args:
+            state: State vector values with dim matching the operator's state dim (usually `state`).
+            flux: If True, apply flux-weighting using `self.flux` as weights. If False, returns the
+                unweighted basis interpolation.
+
+        Returns:
+            Interpolated gridded array on the operator grid dims, with any non-dot dims preserved.
+        """
+        if not flux:
+            return self.operator.interpolate(state)
+
+        # TODO: test if _align_source_like_state is needed here
+        return self.operator.interpolate(state, weights=self.flux)
+
+    def plot(self, *, shuffle: bool = False, **plot_kwargs: Any) -> Any:
+        """Plot basis labels.
+
+        - For single-source basis, returns the result of xarray's plot call.
+        - For multi-source basis, creates one subplot per source and returns (fig, axes).
+
+        Args:
+            shuffle: If True, randomly permute region labels for visual separation.
+            **plot_kwargs: Forwarded to xarray's `.plot()`.
+
+        Returns:
+            Plotting object(s). For multi-source, returns (fig, axes).
+        """
+        basis_flat = getattr(self.operator, "basis_flat", None)
+        if basis_flat is None:
+            raise AttributeError("Operator does not expose `basis_flat`; cannot plot.")
+
+        if isinstance(basis_flat, xr.DataArray):
+            data = basis_flat
+            if shuffle:
+                data = _shuffle_region_labels(data)
+            return data.plot(**plot_kwargs)
+
+        if isinstance(basis_flat, dict):
+            sources = list(basis_flat.keys())
+            n = len(sources)
+            if n == 0:
+                raise ValueError("Empty multi-source basis_flat; nothing to plot.")
+
+            # Simple layout: one row per source.
+            fig, axes = plt.subplots(nrows=n, ncols=1, figsize=(7, 3.0 * n), squeeze=False)
+            axes_flat = axes[:, 0]
+
+            for ax, source in zip(axes_flat, sources, strict=True):
+                data = basis_flat[source]
+                if shuffle:
+                    data = _shuffle_region_labels(data)
+                data.plot(ax=ax, **plot_kwargs)
+                ax.set_title(str(source))
+
+            fig.tight_layout()
+            return fig, axes_flat
+
+        raise TypeError(f"Unexpected type for operator.basis_flat: {type(basis_flat)!r}")
+
+
+def _shuffle_region_labels(basis_flat: xr.DataArray) -> xr.DataArray:
+    """Shuffle integer-like region labels for plotting clarity.
+
+    This preserves NaNs/masked values and only permutes the set of unique finite labels.
+    """
+    values = basis_flat.values
+    finite = np.isfinite(values)
+    if not np.any(finite):
+        return basis_flat
+
+    labels = np.unique(values[finite])
+    # Only shuffle if we have at least 2 labels.
+    if labels.size < 2:
+        return basis_flat
+
+    perm = labels.copy()
+    rng = np.random.default_rng()
+    rng.shuffle(perm)
+    mapping = dict(zip(labels.tolist(), perm.tolist(), strict=True))
+
+    shuffled = values.copy()
+    for old, new in mapping.items():
+        shuffled[values == old] = new
+
+    return basis_flat.copy(data=shuffled)
+
+
+# Friendly alias
+BasisFunctions = FluxWeightedBasis

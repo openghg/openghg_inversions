@@ -53,7 +53,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import ClassVar, Literal, Self
+from typing import ClassVar, Literal
+from typing_extensions import Self
 
 import numpy as np
 import xarray as xr

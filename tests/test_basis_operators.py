@@ -47,3 +47,16 @@ def test_multisource_basis_operator_roundtrip_datatree(basis_func, basis_func2):
 
     for k in op.basis_flat:
         xr.testing.assert_identical(op2.basis_flat[k], op.basis_flat[k])
+
+
+# --------------------------------------------------------------------------------------
+# Canonical dim name test: do not bake in "region"
+# --------------------------------------------------------------------------------------
+def test_bucket_basis_operator_roundtrip_preserves_default_state_dim():
+    basis = basis_function(6, 5, 3)
+    op = BucketBasisOperator(basis, state_dim="state")
+    dt = op.to_datatree()
+    op2 = BasisOperator.decode_datatree(dt)
+
+    assert op2.meta.state_dim == "state"
+    assert "state" in op2.basis_matrix.dims

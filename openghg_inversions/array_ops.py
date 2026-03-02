@@ -272,6 +272,20 @@ def force_align(
 
 
 # -----------------------------------------------
+#  Concat for dictionary of DataArrays
+# -----------------------------------------------
+
+
+def concat_data_arrays(
+    da_dict: Mapping[str, xr.DataArray],
+    key_dim: str,
+    **concat_kwargs,
+) -> xr.DataArray:
+    to_concat = [v.expand_dims({key_dim: [k]}) for k, v in da_dict.items()]
+    return xr.concat(to_concat, dim=key_dim, **concat_kwargs)
+
+
+# -----------------------------------------------
 # Gather concat for concatenating ragged arrays
 # -----------------------------------------------
 

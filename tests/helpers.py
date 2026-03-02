@@ -179,7 +179,7 @@ def convert_old_multisector_H_to_gathered(
     source_dim: str = "source",
     region_dim: str = "region",
     gathered_dim: str = "region",
-    sector_region_dim: str = "sector_region",
+    source_region_dim: str = "region_in_source",
     drop_zero_rows: bool = True,
 ) -> xr.DataArray:
     """Convert legacy padded multisector sensitivity to gathered MultiIndex region.
@@ -194,12 +194,12 @@ def convert_old_multisector_H_to_gathered(
     if region_dim not in H_old.dims:
         raise ValueError(f"Expected region dim {region_dim!r} in H_old.dims={H_old.dims}")
 
-    H = H_old.rename({region_dim: sector_region_dim})
+    H = H_old.rename({region_dim: source_region_dim})
 
     # Make sure sector_region is an integer coordinate; legacy region sometimes starts at 0
     # but for your padded H it looks like region starts at 0 in some places; keep as-is.
     # If you want to enforce 0/1-based, do it upstream.
-    H = H.stack({gathered_dim: (source_dim, sector_region_dim)})
+    H = H.stack({gathered_dim: (source_dim, source_region_dim)})
 
     if drop_zero_rows:
         # drop rows where the entire "row" across non-region dims is 0
