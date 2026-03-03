@@ -26,6 +26,7 @@ from openghg_inversions.basis.operators import (
     BasisOperator,
     BucketBasisOperator,
     MultiSourceBucketBasisOperator,
+    RegionLabels,
 )
 from openghg_inversions.config.paths import Paths
 
@@ -54,7 +55,7 @@ class FluxWeightedBasis:
         basis_flat: xr.DataArray,
         flux: xr.DataArray,
         *,
-        region_labels: xr.DataArray | None = None,
+        region_labels: RegionLabels = "range0",
         operator_kwargs: Mapping[str, Any] | None = None,
     ) -> FluxWeightedBasis:
         """Construct from a single-source (standard) flattened basis array.
@@ -64,8 +65,10 @@ class FluxWeightedBasis:
                 (or whatever grid dims the operator expects). Values should label regions.
             flux: Flux on the same grid dims as `basis_flat`. May optionally contain extra dims such
                 as `time` or `source`; these will be carried along by downstream operations.
-            region_labels: Optional labels corresponding to region IDs. If not provided, the operator
-                will infer labels (typically from unique values of `basis_flat`).
+            region_labels: Policy for the output state coordinate labels:
+                - `"range0"`: `0..N-1` (legacy-friendly)
+                - `"range1"`: `1..N`
+                - `"basis_values"`: use the unique positive labels found in `basis_flat`.
             operator_kwargs: Optional kwargs forwarded to `BucketBasisOperator`.
 
         Returns:
@@ -84,7 +87,6 @@ class FluxWeightedBasis:
         basis_flat: Mapping[str, xr.DataArray],
         flux: xr.DataArray | Mapping[str, xr.DataArray],
         *,
-        region_labels: Mapping[str, xr.DataArray] | None = None,
         operator_kwargs: Mapping[str, Any] | None = None,
     ) -> FluxWeightedBasis:
         """Construct from a multi-source flattened basis mapping.
@@ -94,16 +96,12 @@ class FluxWeightedBasis:
                 Each value should be a DataArray on the inversion grid (e.g. dims like (lat, lon)).
             flux: Flux on the inversion grid. Commonly has a `source` dimension coordinate matching
                 the keys of `basis_flat`, but this is not required at construction time.
-            region_labels: Optional mapping from source name to region labels for that source's basis.
-                If not provided, the operator will infer labels per source.
             operator_kwargs: Optional kwargs forwarded to `MultiSourceBucketBasisOperator`.
 
         Returns:
             A FluxWeightedBasis pairing a MultiSourceBucketBasisOperator with the provided flux.
         """
         kwargs: dict[str, Any] = dict(operator_kwargs or {})
-        if region_labels is not None:
-            kwargs["region_labels"] = dict(region_labels)
 
         operator = MultiSourceBucketBasisOperator(basis_flat=dict(basis_flat), **kwargs)
 
@@ -123,23 +121,21 @@ class FluxWeightedBasis:
         Raises:
             KeyError: If serialisation would overwrite an existing group name.
         """
-        dt = xr.DataTree()
+        dt_basis = self.operator.to_datatree()
+
+        # Store flux as a dataset to preserve name/attrs cleanly.
+        flux = self.flux.rename("flux")
+        dt_flux = xr.DataTree(xr.Dataset({"flux": flux}))
+
+        dt_dict = {"basis": dt_basis, "flux": dt_flux}
+
+        dt = xr.DataTree.from_dict(dt_dict)
         dt.attrs.update(
             {
                 "schema": "openghg_inversions.flux_weighted_basis",
                 "schema_version": 1,
             }
         )
-
-        dt_basis = self.operator.to_datatree()
-
-        # Store flux as a dataset to preserve name/attrs cleanly.
-        flux = self.flux.rename("flux")
-
-        dt_flux = xr.DataTree(xr.Dataset({"flux": flux}))
-
-        dt["basis"] = dt_basis
-        dt["flux"] = dt_flux
         return dt
 
     @classmethod
@@ -177,7 +173,7 @@ class FluxWeightedBasis:
 
         return cls(operator=operator, flux=flux)
 
-    def sensitivity(self, fp_x_flux: xr.DataArray) -> xr.DataArray:
+    def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
         """Compute sensitivity (grid -> state) via the underlying operator.
 
         This is typically used to form the reduced Jacobian:
@@ -186,11 +182,12 @@ class FluxWeightedBasis:
         Args:
             fp_x_flux: Footprints multiplied by flux, on the inversion grid dims.
                 May contain extra dims (e.g. time, site, source).
+            fillna: if True, fill NaNs in fp_x_flux with 0.0.
 
         Returns:
             Sensitivity with a `state`-like dimension as defined by the operator.
         """
-        return self.operator.sensitivity(fp_x_flux)
+        return self.operator.sensitivity(fp_x_flux, fillna=fillna)
 
     def interpolate(self, state: xr.DataArray, *, flux: bool = False) -> xr.DataArray:
         """Interpolate from state vector to the grid.
@@ -233,7 +230,7 @@ class FluxWeightedBasis:
             return data.plot(**plot_kwargs)
 
         if isinstance(basis_flat, dict):
-            sources = list(basis_flat.keys())
+            sources = sorted(list(basis_flat.keys()))  # sort for stable plotting order
             n = len(sources)
             if n == 0:
                 raise ValueError("Empty multi-source basis_flat; nothing to plot.")

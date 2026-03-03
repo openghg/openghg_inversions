@@ -19,7 +19,6 @@ from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import (
     BucketBasisOperator,
     MultiSourceBucketBasisOperator,
-    BasisOperator,
 )
 from openghg_inversions.basis._helpers import apply_fp_basis_functions, fp_sensitivity
 from openghg_inversions.inversion_data import data_processing_surface_notracer
@@ -36,6 +35,12 @@ from helpers import (
 
 
 def test_fp_x_flux(tac_ch4_data_args):
+    """Test that mean(fp) * mean(flux) is invariant to duplicating sites and shifting time coords.
+
+    This is a regression test for legacy preprocessing helpers `_flux_fp_from_fp_all` and
+    `_mean_fp_times_mean_flux`: changing site membership or time coordinates (without changing
+    values) should not change the mean footprint×flux product.
+    """
     fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
     emissions_name = [next(iter(fp_all[".flux"].keys()))]
 
@@ -198,6 +203,18 @@ def test_fp_sensitivity_two_flux_sectors_two_basis_funcs():
 
 
 def test_basisfunctions_sensitivity_synthetic_matches_explicit_sum():
+    """Sensitivity on a tiny synthetic example matches explicit region-wise summation.
+
+    This is the most important unit-level correctness test for the new BasisOperator/BasisFunctions
+    pathway: it checks that the sensitivity (grid -> state) produced by the new code matches a
+    hand-computed result for a 2x2 grid with two regions.
+
+    Notes:
+        - The flux field is set to ones because sensitivity should depend only on the basis partition
+          (i.e. the operator / basis_matrix), not on flux weighting.
+        - Expected result is produced by `expected_H_from_basis_sum`, which explicitly sums fp_x_flux
+          over grid cells belonging to each region.
+    """
     # 2x2 grid, 3 times, basis has 2 regions: top row region 1, bottom row region 2
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
 
@@ -217,6 +234,18 @@ def test_basisfunctions_sensitivity_synthetic_matches_explicit_sum():
 
 
 def test_basisfunctions_sensitivity_synthetic_multisector_shared_basis():
+    """A single basis partition can be applied independently across multiple sources.
+
+    This reflects the common use case where footprints/flux are sectoral (have a `source` dimension),
+    but the spatial basis partition is shared across sectors.
+
+    The new `BasisFunctions.sensitivity` should:
+        - carry through the non-grid dimension `source`, and
+        - produce the same per-source sensitivity you would get by running the single-source
+          calculation separately for each source.
+
+    This is a regression guard for xarray broadcasting / dot behaviour.
+    """
     sources = ["A", "B"]
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
 
@@ -244,6 +273,14 @@ def test_basisfunctions_sensitivity_synthetic_multisector_shared_basis():
 
 
 def test_basisfunctions_sensitivity_regression_matches_legacy_like():
+    """Regression test: new sensitivity matches a simplified legacy implementation.
+
+    We compare:
+        - `BasisFunctions.sensitivity(fp_x_flux)` (new pathway using BasisOperator), vs
+        - `old_apply_fp_basis_functions_like(fp_x_flux, basis)` (a direct/legacy-style computation).
+
+    This test is intentionally small and synthetic to make failures easy to debug.
+    """
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     fp_x_flux = make_fp_x_flux(nlat=2, nlon=2, ntime=4)
 
@@ -257,10 +294,14 @@ def test_basisfunctions_sensitivity_regression_matches_legacy_like():
 
 
 def test_synthetic_no_all_zero_state_rows_when_fp_positive_everywhere():
-    """Check that no columns are zero when fp x flux is positive.
+    """No all-zero state rows should appear when fp_x_flux is strictly positive.
 
-    This is more of an issue when using a dictionary of basis functions
-    to create multisector sensitivities.
+    This guards against a class of bugs that historically occurred when:
+        - using a dictionary of basis functions (sectoral / multi-source), and
+        - padding region dimensions to a common maximum region index.
+
+    In the new gathered/MultiIndex formulation, we should not introduce missing-region rows that are
+    entirely zero when the underlying footprint×flux field is strictly positive everywhere.
     """
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     fp_x_flux = make_fp_x_flux(nlat=2, nlon=2, ntime=3, values=np.ones((2, 2, 3)))
@@ -276,6 +317,16 @@ def test_synthetic_no_all_zero_state_rows_when_fp_positive_everywhere():
 
 # @pytest.mark.slow
 def test_basisfunctions_sensitivity_matches_apply_fp_basis_functions_real_data():
+    """New sensitivity matches legacy `apply_fp_basis_functions` for real test-suite data.
+
+    This is a higher-level integration test:
+        - It uses `basis_functions_wrapper` to construct the legacy basis and compute H.
+        - It then reconstructs a `BasisFunctions` instance using the same basis and a representative
+          flux field, and verifies `BasisFunctions.sensitivity(ds.fp_x_flux)` matches the legacy H.
+
+    This guards against coordinate alignment, dimension ordering, and subtle differences in the
+    region-labelling conventions on real-world data.
+    """
     data_args = {
         "species": "ch4",
         "sites": ["MHD", "TAC"],
@@ -343,6 +394,23 @@ def test_basisfunctions_sensitivity_matches_apply_fp_basis_functions_real_data()
 
 # @pytest.mark.slow
 def test_multisector_ragged_new_matches_old_after_conversion():
+    """Ragged multi-source: new gathered H matches legacy padded H after conversion.
+
+    Historically, multi-sector sensitivities were represented as a padded array:
+        H_old(region=max_regions, time, source)
+    where missing regions for a given source were represented by all-zero rows.
+
+    The new MultiSourceBucketBasisOperator produces a gathered representation with a MultiIndex:
+        H_new(region=(source, region_in_source), time)
+
+    This test:
+        1) Computes the old padded H via `fp_sensitivity` with two different bases (ragged region counts).
+        2) Converts H_old -> gathered MultiIndex using `convert_old_multisector_H_to_gathered`.
+        3) Computes H_new with `BasisFunctions.from_multi_source_basis_flat(...).sensitivity(...)`.
+        4) Asserts equality.
+
+    This is the key equivalence test justifying the new MultiIndex-based operator.
+    """
     # --- Load test-suite data (same as notebook) ---
     data_args = {
         "species": "ch4",
@@ -452,6 +520,16 @@ def _make_simple_state_trace(
 # DataTree roundtrip tests for FluxWeightedBasis/BasisFunctions wrapper
 # --------------------------------------------------------------------------------------
 def test_basisfunctions_roundtrip_datatree_single_source():
+    """FluxWeightedBasis/BasisFunctions DataTree roundtrip for a single-source basis.
+
+    Ensures wrapper-level serialization is stable:
+        - `BasisFunctions.to_datatree()` stores operator metadata under group "basis"
+          (via `operator.to_datatree()`),
+        - stores flux under group "flux" with variable name "flux",
+        - and `BasisFunctions.from_datatree()` reconstructs an equivalent object.
+
+    We assert both flux and operator internals (basis_flat and basis_matrix) are identical.
+    """
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     flux = xr.ones_like(basis, dtype=float).rename("flux")
 
@@ -467,6 +545,17 @@ def test_basisfunctions_roundtrip_datatree_single_source():
 
 
 def test_basisfunctions_roundtrip_datatree_multisource_flux_mapping():
+    """DataTree roundtrip for multi-source basis and flux supplied as a mapping.
+
+    This specifically exercises the constructor path where flux is provided as:
+        {"A": flux_A(lat, lon), "B": flux_B(lat, lon)}
+    which is concatenated into a single DataArray with a `source` dimension.
+
+    We then roundtrip through DataTree and check:
+        - operator type is MultiSourceBucketBasisOperator,
+        - basis_flat dict keys are preserved,
+        - basis_matrix and flux are identical.
+    """
     basis_a = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     basis_b = make_basis_flat_from_blocks([[1, 2], [1, 2]])
     basis = {"A": basis_a, "B": basis_b}
@@ -498,6 +587,14 @@ def test_basisfunctions_roundtrip_datatree_multisource_flux_mapping():
 # Interpolate tests (wrapper-level): intended PyMC-like state traces
 # --------------------------------------------------------------------------------------
 def test_basisfunctions_interpolate_no_flux_weights_trace_dims_propagate():
+    """Interpolate a PyMC-like state trace to the grid (no flux weighting).
+
+    We construct a tiny state vector with dims (region, draw) to mimic posterior samples and verify:
+        - output dims are (lat, lon, draw),
+        - grid cells in a region take the corresponding region value for each draw.
+
+    This is a regression guard for dimension propagation and dot/broadcast behaviour.
+    """
     # Basis: top row region 0, bottom row region 1 (labels 1/2 -> regions 0/1)
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     flux = xr.ones_like(basis, dtype=float)
@@ -523,6 +620,14 @@ def test_basisfunctions_interpolate_no_flux_weights_trace_dims_propagate():
 
 
 def test_basisfunctions_interpolate_with_flux_weights_trace_dims_propagate():
+    """Interpolate a PyMC-like state trace with flux-weighting.
+
+    This tests the common "state -> flux field" step:
+        flux_field(lat, lon, draw) = interpolate(state(region, draw), weights=flux(lat, lon))
+
+    Using a non-uniform flux field on a 2x2 grid makes it easy to verify that weighting is applied
+    correctly, not just that shapes line up.
+    """
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
 
     # Make flux non-uniform on the grid so we verify weighting actually occurs
@@ -548,6 +653,15 @@ def test_basisfunctions_interpolate_with_flux_weights_trace_dims_propagate():
 
 
 def test_basisfunctions_interpolate_trace_with_chain_dim():
+    """Interpolate a state trace that includes a `chain` dimension.
+
+    Many workflows keep posterior draws as (region, chain, draw). Even if in practice users often
+    select a single chain, we ensure that:
+        - chain is preserved as a non-dot dimension,
+        - results differ between chains when the input differs.
+
+    This guards against accidentally squeezing/dropping the chain dimension.
+    """
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     flux = xr.ones_like(basis, dtype=float)
 
@@ -574,6 +688,18 @@ def test_basisfunctions_interpolate_trace_with_chain_dim():
 # Multi-source equivalence: gathered MultiIndex vs legacy padded H conversion
 # --------------------------------------------------------------------------------------
 def test_multisource_sensitivity_matches_legacy_padded_conversion_smoke():
+    """Smoke test: gathered multi-source sensitivity matches legacy padded->gathered conversion.
+
+    This test is intentionally simple (same basis for each source, small synthetic fp_x_flux) and
+    checks that:
+
+        H_new(region=(source, region_in_source), time)
+        ==
+        convert_old_multisector_H_to_gathered(H_old(region, time, source))
+
+    It provides quick feedback that the gathered/MultiIndex representation remains consistent with
+    older expectations, without requiring the heavier "ragged basis + real data" test.
+    """
     # Use small deterministic basis and footprints; simplest: same basis per source but different scaling.
     sources = ["A", "B"]
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])

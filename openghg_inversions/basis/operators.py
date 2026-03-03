@@ -185,7 +185,7 @@ class BasisOperator(ABC):
         """
         raise NotImplementedError
 
-    def sensitivity(self, fp_x_flux: xr.DataArray) -> xr.DataArray:
+    def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
         """Computes the sensitivity matrix ("H") by dotting over the grid.
 
         This implements the common bucket-basis reduction:
@@ -201,6 +201,7 @@ class BasisOperator(ABC):
         Args:
             fp_x_flux: Footprint x flux array to reduce. Must contain all
                 `meta.grid_dims`.
+            fillna: if True, fill NaNs in fp_x_flux with 0.0.
 
         Returns:
             Sensitivity matrix with dimension `meta.state_dim` and any remaining
@@ -210,7 +211,10 @@ class BasisOperator(ABC):
         mat_aligned = mat_aligned.transpose(*self.meta.grid_dims, ...)
 
         # xr.dot keeps non-dot dims from both arguments
-        h = xr.dot(fp_x_flux, mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
+        if fillna:
+            h = xr.dot(fp_x_flux.fillna(0.0), mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
+        else:
+            h = xr.dot(fp_x_flux, mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
 
         # canonical ordering (state_dim first if present)
         if self.meta.state_dim in h.dims:
@@ -565,7 +569,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             other_dim=self.source_dim,
         )
 
-    def sensitivity(self, fp_x_flux: xr.DataArray) -> xr.DataArray:
+    def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
         """Compute sensitivity for multisource fp_x_flux.
 
         Overrides base method to broadcast the fp_x_flux `source` dim onto the gathered `state` dim.
@@ -575,7 +579,10 @@ class MultiSourceBucketBasisOperator(BasisOperator):
 
         fp_on_state = self._align_source_like_state(fp_x_flux)
 
-        h = xr.dot(fp_on_state, mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
+        if fillna:
+            h = xr.dot(fp_on_state.fillna(0.0), mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
+        else:
+            h = xr.dot(fp_on_state, mat_aligned, dim=list(self.meta.grid_dims)).as_numpy()
 
         if self.meta.state_dim in h.dims:
             if "time" in h.dims:
@@ -583,6 +590,44 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             else:
                 h = h.transpose(self.meta.state_dim, ...)
         return h
+
+    def interpolate(self, state: xr.DataArray, weights: xr.DataArray | None = None) -> xr.DataArray:
+        """Interpolate/reconstruct a gridded field from a state vector.
+
+        For MultiSourceBucketBasisOperator, `weights` may include a `source_dim` that is also a
+        level name in the gathered MultiIndex on `meta.state_dim`. In that case we broadcast
+        weights along the gathered state axis (repeating per-source weights across all regions
+        within that source) by replacing `source_dim` with `meta.state_dim`.
+
+        The state vector itself is expected to be defined on `meta.state_dim` and should not
+        include a separate coordinate named like a MultiIndex level (e.g. `source_dim`).
+
+        Args:
+            state_array: State vector defined on `meta.state_dim`.
+            weights: Optional gridded weights (e.g. prior fluxes) on `meta.grid_dims`. May
+                optionally include `source_dim` for per-source weights.
+
+        Returns:
+            Gridded reconstructed field on `meta.grid_dims`.
+        """
+        if self.meta.state_dim not in state.dims:
+            raise ValueError(
+                f"Expected state_array to have dim '{self.meta.state_dim}', got dims {state.dims}"
+            )
+
+        mat = self.basis_matrix
+
+        if weights is not None:
+            weights_aligned = force_align(weights, mat, dims=list(self.meta.grid_dims))
+
+            # broadcast source if necessary
+            weights_aligned = self._align_source_like_state(weights_aligned)
+
+            mat = mat * weights_aligned
+
+        out = xr.dot(mat, state, dim=self.meta.state_dim).as_numpy()
+        out = out.transpose(*self.meta.grid_dims, ...)
+        return out
 
     # ---- DataTree IO ----
 
