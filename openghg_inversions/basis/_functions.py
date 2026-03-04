@@ -303,6 +303,8 @@ def bucketbasisfunction(
       nbasis (int):
         Desired number of basis function regions
         Default 100
+      country_directory (str):
+        Directory containing land-sea files. If None, will use default files.
       abs_flux (bool):
         When set to True uses absolute values of a flux array
         Default False
@@ -370,7 +372,7 @@ def fixed_outer_regions_basis(
         Desired number of basis function regions
         Default 100
       country_directory (str):
-        Directory containing land-sea files and InTEM outer region files. 
+        Directory containing land-sea files and InTEM outer region files.
         If None, will use default files.
       abs_flux:
         When set to True uses absolute values of a flux array
@@ -381,10 +383,10 @@ def fixed_outer_regions_basis(
           Array with lat/lon dimensions and basis regions encoded by integers.
     """
     if country_directory is None:
-        logger.warning(f"Loading default land-sea file for domain {domain}.")
+        logger.info(f"Loading default InTEM outer region file for domain {domain}.")
         intem_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
     else:
-        logger.warning(f"Loading InTEM outer region file for domain {domain} from {country_directory}.")
+        logger.info(f"Loading InTEM outer region file for domain {domain} from {country_directory}.")
         intem_regions_path = Path(country_directory) / f"outer_region_definition_{domain}.nc"
     intem_regions = xr.open_dataset(intem_regions_path).region
 
@@ -397,7 +399,7 @@ def fixed_outer_regions_basis(
     mask = intem_regions == inner_index
 
     basis_function = basis_functions[basis_algorithm].algorithm
-    inner_region = basis_function(fp_all, start_date, domain, emissions_name, nbasis, country_directory, abs_flux, mask=mask)
+    inner_region = basis_function(fp_all, start_date, domain, emissions_name, nbasis, country_directory=country_directory, abs_flux=abs_flux, mask=mask)
 
     basis = intem_regions.rename("basis") 
 
