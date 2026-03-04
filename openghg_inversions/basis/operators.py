@@ -119,7 +119,7 @@ def get_basis_operator_class(kind: str) -> type[BasisOperator]:
         return _BASIS_OPERATOR_REGISTRY[kind]
     except KeyError as e:
         raise KeyError(
-            f"Unknown BasisOperator kind '{kind}'. " f"Known kinds: {sorted(_BASIS_OPERATOR_REGISTRY)}"
+            f"Unknown BasisOperator kind '{kind}'. Known kinds: {sorted(_BASIS_OPERATOR_REGISTRY)}"
         ) from e
 
 
@@ -316,6 +316,7 @@ class BasisOperator(ABC):
 # ----------------------------
 # Helper functions
 # ----------------------------
+
 
 def drop_singleton_time(da: xr.DataArray, *, name: str = "basis_flat") -> xr.DataArray:
     """Drop a singleton ``time`` dimension if present; otherwise raise.
@@ -548,7 +549,9 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         self.region_in_source_dim = region_in_source_dim
 
         # Canonicalise: 2D, consistent lat/lon assumed for now.
-        self.basis_flat = {k: drop_singleton_time(v, name=f"basis_flat[{k!r}]") for k, v in basis_flat.items()}
+        self.basis_flat = {
+            k: drop_singleton_time(v, name=f"basis_flat[{k!r}]") for k, v in basis_flat.items()
+        }
         self.basis_flat = {k: v.rename("basis_flat") for k, v in self.basis_flat.items()}
 
         # Build per-source dummy matrices with ragged region_in_source dim
@@ -638,7 +641,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         include a separate coordinate named like a MultiIndex level (e.g. `source_dim`).
 
         Args:
-            state_array: State vector defined on `meta.state_dim`.
+            state: State vector defined on `meta.state_dim`.
             weights: Optional gridded weights (e.g. prior fluxes) on `meta.grid_dims`. May
                 optionally include `source_dim` for per-source weights.
 

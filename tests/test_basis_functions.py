@@ -115,8 +115,8 @@ def test_bucket_basis_function(tac_ch4_data_args, raw_data_path):
 
 
 def test_fixed_outer_region_basis_function(tac_ch4_data_args, raw_data_path):
-    """Check if fixed outer region basis created wtih seed 42 and TAC CH4 args matches
-    a basis created with the same argumenst and saved to file.
+    """Check if fixed outer region basis created with seed 42 and TAC CH4 args matches
+    a basis created with the same arguments and saved to file.
 
     This is to check against changes in the code from when this test was made
     (2 Sep 2024)

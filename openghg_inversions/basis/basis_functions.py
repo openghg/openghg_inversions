@@ -28,9 +28,6 @@ from openghg_inversions.basis.operators import (
     MultiSourceBucketBasisOperator,
     RegionLabels,
 )
-from openghg_inversions.config.paths import Paths
-
-openghginv_path = Paths.openghginv
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,7 +161,10 @@ class FluxWeightedBasis:
         if "flux" not in dt:
             raise KeyError("Missing 'flux' group in DataTree.")
 
-        operator = BasisOperator.decode_datatree(dt["basis"])
+        if not isinstance(dt["basis"], xr.DataTree):
+            raise ValueError("'basis' is not an xr.DataTree.")
+
+        operator = BasisOperator.decode_datatree(dt["basis"])  # type: ignore [arg-type]
 
         ds_flux = dt["flux"].to_dataset()
         if "flux" not in ds_flux:
