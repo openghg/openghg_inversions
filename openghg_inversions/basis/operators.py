@@ -1,4 +1,4 @@
-"""Basis operator classes (new API; does not yet replace legacy basis_functions.py).
+"""Basis operator classes
 
 Design goals
 ------------
@@ -42,11 +42,10 @@ How to use
     dt = op.to_datatree()
     op2 = BasisOperator.decode_datatree(dt)
 
-Notes:
+Notes
 -----
-- This module is an initial step in refactoring. It is intended to coexist with the legacy
-  basis_functions.py until the old APIs are reimplemented using these operators and tests are migrated.
-
+- Currently, basis operators cannot have a time dimension. If the input flat array has
+  a time dimension with more than one coordinate value, an error is raised.
 """
 
 from __future__ import annotations
