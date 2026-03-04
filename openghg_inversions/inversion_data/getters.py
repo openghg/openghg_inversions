@@ -85,7 +85,7 @@ def get_flux_data(
             try:
                 flux_data = get_flux(
                     species=species,
-                    domain=f"{domain}-6km",
+                    domain=domain,
                     source=source,
                     start_date=None,
                     end_date=end_date,
@@ -422,7 +422,7 @@ def get_footprint_data(
             def get_func(store):
                 return get_footprint_to_match(
                     obs_data,
-                    domain=f"{domain}-6km",
+                    domain=domain,
                     start_date=start_date,
                     end_date=end_date,
                     model=model,
@@ -458,7 +458,7 @@ def get_footprint_data(
                 return get_footprint(
                     site=site,
                     height=fp_height,
-                    domain=f"{domain}-6km",
+                    domain=domain,
                     model=model,
                     met_model=met_model,
                     start_date=start_date,
