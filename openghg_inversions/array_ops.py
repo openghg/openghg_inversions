@@ -9,12 +9,41 @@ Functions
 get_xr_dummies
     Applies pandas ``get_dummies`` to xarray DataArrays.
 sparse_xr_dot
-    Multiplies a Dataset or DataArray by a DataArray with sparse 
+    Multiplies a Dataset or DataArray by a DataArray with sparse
     underlying array. The built-in xarray functionality doesn't work correctly.
+
+
+Coordinate Alignment Policy
+---------------------------
+
+Spatial coordinates (e.g. ``lat`` and ``lon``) are treated as structural
+invariants of the inversion workflow. Although grids are expected to be
+identical, small floating-point differences can arise from I/O, reprojection,
+or sparse/dask operations.
+
+Because xarray uses strict, label-based alignment, even negligible coordinate
+differences can trigger unintended reindexing, interpolation, or alignment
+errors.
+
+To avoid this, we:
+
+1. Validate numerical equivalence within tolerance.
+2. Force coordinate identity via ``assign_coords`` when validation passes.
+
+This ensures deterministic arithmetic, prevents silent interpolation, and
+keeps grid equivalence an explicit, testable invariant.
+
+The main function that does this is ``force_align``; there is a legacy
+function ``align_sparse_lat_lon`` that was introduced as a work-around to
+an xarray issue, which now is written in terms of ``force_align``.
+
 """
 
+from __future__ import annotations
+
+from collections.abc import Hashable, Iterable, Mapping, Sequence
 from typing import Any, overload, TypeVar
-from collections.abc import Sequence
+import warnings
 
 from dask.array.core import Array as DaskArray
 import numpy as np
@@ -22,7 +51,6 @@ import pandas as pd
 import xarray as xr
 from sparse import COO, SparseArray
 from xarray.core.common import DataWithCoords, is_chunked_array  # type: ignore
-
 
 # type for xr.Dataset *or* xr.DataArray
 DataSetOrArray = TypeVar("DataSetOrArray", bound=DataWithCoords)
@@ -81,7 +109,9 @@ def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray, dim: list[str] | None = 
 def sparse_xr_dot(da1: xr.DataArray, da2: xr.Dataset, dim: list[str] | None = None) -> xr.Dataset: ...
 
 
-def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray | xr.Dataset, dim: list[str] | None = None) -> xr.DataArray | xr.Dataset:
+def sparse_xr_dot(
+    da1: xr.DataArray, da2: xr.DataArray | xr.Dataset, dim: list[str] | None = None
+) -> xr.DataArray | xr.Dataset:
     """Compute the matrix "dot" of a tuple of DataArrays with sparse.COO values.
 
     This multiplies and sums over all common dimensions of the input DataArrays, and
@@ -116,27 +146,40 @@ def sparse_xr_dot(da1: xr.DataArray, da2: xr.DataArray | xr.Dataset, dim: list[s
     return da2.map(lambda x: xr.dot(da1, x, dim=dim))
 
 
-def align_sparse_lat_lon(sparse_da: xr.DataArray, other_array: DataWithCoords) -> xr.DataArray:
-    """Align lat/lon coordinates of sparse_da with lat/lon coordinates from other_array.
+def align_sparse_lat_lon(
+    sparse_da: xr.DataArray,
+    other_array: xr.DataArray | xr.Dataset,
+    *,
+    rtol: float = 1e-05,
+    atol: float = 1e-08,
+) -> xr.DataArray:
+    """Align lat/lon coordinates of sparse_da with those from other_array.
 
-    NOTE: This is a work-around for an xarray Issue: https://github.com/pydata/xarray/issues/3445
+    NOTE: Workaround for xarray issue #3445:
+    https://github.com/pydata/xarray/issues/3445
+
+    Validates numerical closeness of coordinates before forcing coordinate
+    identity. No interpolation or reindexing is performed.
 
     Args:
-        sparse_da: xarray DataArray with sparse underlying array
-        other_array: xarray Dataset or DataArray whose lat/lon coordinates should be used
-            to replace the lat/lon coordinates in sparse_da
+        sparse_da: DataArray with sparse backend.
+        other_array: Dataset or DataArray providing canonical lat/lon coords.
+        rtol: Relative tolerance for coordinate comparison.
+        atol: Absolute tolerance for coordinate comparison.
 
     Returns:
-        xr.DataArray: copy of sparse_da with lat/lon coords from other_array
-    """
-    if len(sparse_da.lon) != len(other_array.lon):
-        raise ValueError("Both arrays must have the same number lon "
-                         f"coordinates: {len(sparse_da.lon)} != {len(other_array.lon)}")
-    if len(sparse_da.lat) != len(other_array.lat):
-        raise ValueError("Both arrays must have the same number lat "
-                         f"coordinates: {len(sparse_da.lat)} != {len(other_array.lat)}")
+        Copy of sparse_da with lat/lon coords replaced by those from other_array.
 
-    return sparse_da.assign_coords(lat=other_array.lat, lon=other_array.lon)
+    Raises:
+        ValueError: If sizes differ or coordinates differ beyond tolerance.
+    """
+    return force_align(
+        sparse_da,
+        other_array,
+        dims=("lat", "lon"),
+        rtol=rtol,
+        atol=atol,
+    )
 
 
 def _sparse_dask_to_dense(da: DaskArray) -> DaskArray:
@@ -159,3 +202,291 @@ def to_dense(da: xr.DataArray) -> xr.DataArray:
         return xr.apply_ufunc(_sparse_dask_to_dense, da, dask="allowed")
 
     return da
+
+
+T = TypeVar("T", xr.DataArray, xr.Dataset)
+
+
+def force_align(
+    obj: T,
+    reference: xr.DataArray | xr.Dataset,
+    *,
+    dims: Iterable[Hashable],
+    rtol: float = 1e-05,
+    atol: float = 1e-08,
+) -> T:
+    """Force coordinate identity with a reference object along given dimensions.
+
+    This function verifies that `obj` and `reference` share numerically
+    equivalent coordinates (within tolerance) along the specified dimensions.
+    If validation succeeds, the coordinates of `obj` are reassigned to be
+    identical (object identity) to those of `reference`.
+
+    No interpolation or reindexing is performed. If coordinates differ beyond
+    tolerance, a ValueError is raised.
+
+    Args:
+        obj: The xarray DataArray or Dataset whose coordinates will be
+            validated and reassigned.
+        reference: The object providing canonical coordinates. Must contain
+            the specified dimensions.
+        dims: Dimensions along which to validate and enforce coordinate
+            identity (e.g., ["lat", "lon"]).
+        rtol: Relative tolerance for coordinate comparison. Defaults to
+            NumPy's default (1e-5).
+        atol: Absolute tolerance for coordinate comparison. Defaults to
+            NumPy's default (1e-8).
+
+    Returns:
+        The same type as `obj`, with validated coordinates reassigned.
+
+    Raises:
+        ValueError: If a dimension is missing, sizes differ, or coordinates
+            differ beyond tolerance.
+    """
+    dims = tuple(dims)
+
+    for dim in dims:
+        if dim not in obj.dims:
+            raise ValueError(f"Dimension {dim!r} not present in object.")
+        if dim not in reference.dims:
+            raise ValueError(f"Dimension {dim!r} not present in reference.")
+
+        if obj.sizes[dim] != reference.sizes[dim]:
+            raise ValueError(f"Size mismatch along {dim!r}: {obj.sizes[dim]} != {reference.sizes[dim]}")
+
+        if not np.allclose(
+            obj.coords[dim].values,
+            reference.coords[dim].values,
+            rtol=rtol,
+            atol=atol,
+        ):
+            raise ValueError(
+                f"Coordinate mismatch along {dim!r} beyond tolerance (rtol={rtol}, atol={atol})."
+            )
+
+    coord_updates = {dim: reference.coords[dim] for dim in dims}
+
+    # assign_coords is non-mutating and preserves type
+    return obj.assign_coords(coord_updates)
+
+
+# -----------------------------------------------
+#  Concat for dictionary of DataArrays
+# -----------------------------------------------
+
+
+def concat_data_arrays(
+    da_dict: Mapping[str, xr.DataArray],
+    key_dim: str,
+    **concat_kwargs,
+) -> xr.DataArray:
+    to_concat = [v.expand_dims({key_dim: [k]}) for k, v in da_dict.items()]
+    return xr.concat(to_concat, dim=key_dim, **concat_kwargs)
+
+
+# -----------------------------------------------
+# Gather concat for concatenating ragged arrays
+# -----------------------------------------------
+
+
+def concat_gather_data_arrays(
+    da_dict: Mapping[str, xr.DataArray],
+    key_dim: str,
+    ragged_dim: str,
+    stack_dim: str | None = None,
+    **concat_kwargs,
+) -> xr.DataArray:
+    """Concatenate DataArrays by gathering along ragged coordinate.
+
+    For example, if the keys are site codes and the ragged dimension is time,
+    then the "stacked dimension" will be the usual `nmeasure` coordinate.
+
+    Args:
+        da_dict: dictionary of DataArrays
+        key_dim: dimension name for the keys of the dictionary
+        ragged_dim: name of the ragged dimension
+        stack_dim: name for the "stacked" multi-index dimension
+        **concat_kwargs: arguments to pass to xr.concat
+
+    Returns:
+        Combined DataArray with new stacked dimension.
+
+    """
+    stack_dim = stack_dim or (key_dim + "_" + ragged_dim)
+
+    pieces: list[xr.DataArray] = []
+    key_vals: list[np.ndarray] = []
+    ragged_vals: list[np.ndarray] = []
+
+    for k, v in da_dict.items():
+        piece = v.rename({ragged_dim: stack_dim})
+        pieces.append(piece)
+
+        n = piece.sizes[stack_dim]
+
+        # make site indicator
+        key_val = np.full(n, k)
+        key_vals.append(key_val)
+
+        # record times
+        ragged_vals.append(v[ragged_dim].values)
+
+    # concat pieces
+    da = xr.concat(pieces, dim=stack_dim, **concat_kwargs)
+
+    # now create and assign multi-index
+    key_indicator = np.concatenate(key_vals)
+    concat_ragged = np.concatenate(ragged_vals)
+    multiindex = pd.MultiIndex.from_arrays([key_indicator, concat_ragged], names=[key_dim, ragged_dim])
+    xr_multiindex = xr.Coordinates.from_pandas_multiindex(multiindex, stack_dim)
+
+    da = da.assign_coords(xr_multiindex)
+
+    return da
+
+
+def concat_gather_datasets(
+    ds_dict: Mapping[str, xr.Dataset],
+    key_dim: str,
+    ragged_dim: str,
+    stack_dim: str | None = None,
+    **concat_kwargs,
+) -> xr.Dataset:
+    """Concatenate dictionary of xr.Datasets by gathering ragged coordinates.
+
+    This assumes that all datasets have the same data variables.
+
+    TODO: need to handle missing data variables.
+    """
+    dvs = next(iter(ds_dict.values())).data_vars
+
+    # check that all data vars are present
+    for k, v in ds_dict.items():
+        if any(dv not in v.data_vars for dv in dvs):
+            missing_dvs = [dv for dv in dvs if dv not in v.data_vars]
+            raise ValueError(
+                f"Datasets do not all have the same data variables: Dataset for key {k} missing {missing_dvs}"
+            )
+
+    gathered_dvs = {}
+
+    for dv in dvs:
+        da_dict = {k: v[dv] for k, v in ds_dict.items()}
+        gathered_dvs[dv] = concat_gather_data_arrays(da_dict, key_dim, ragged_dim, stack_dim, **concat_kwargs)
+
+    return xr.Dataset(gathered_dvs)
+
+
+def concat_gather_datatree(
+    dt: xr.DataTree, key_dim: str, ragged_dim: str, stack_dim: str | None = None, **concat_kwargs
+) -> xr.Dataset:
+    """Concatenate xr.DataTree children by gathering ragged coordinates.
+
+    This assumes that all children have the same data variables.
+    """
+    ds_dict = {str(k): v.to_dataset() for k, v in dt.items()}
+    dvs = next(iter(ds_dict.values())).data_vars
+
+    gathered_dvs = {}
+
+    for dv in dvs:
+        da_dict = {k: v[dv] for k, v in ds_dict.items()}
+        gathered_dvs[dv] = concat_gather_data_arrays(da_dict, key_dim, ragged_dim, stack_dim, **concat_kwargs)
+
+    return xr.Dataset(gathered_dvs)
+
+
+# ----------------------------------------
+# Align to multi-index
+# ----------------------------------------
+
+
+def align_to_multi_index_level_values(
+    da: xr.DataArray,
+    *,
+    multi_index: xr.DataArray,
+    multi_dim: str,
+    level: str,
+    other_dim: str,
+) -> xr.DataArray:
+    """Broadcast `da(other_dim, ...)` onto `multi_dim` using a MultiIndex level.
+
+    Raises a ValueError if any other MultiIndex level names are already present
+    as coordinate variables on `da`, because this creates ambiguous/conflicting
+    index ownership when the MultiIndex is assigned.
+
+    Args:
+        da: DataArray to align, e.g. `fp_x_flux` with dimension `other_dim="source"`.
+        multi_index: Coordinate for the MultiIndex dimension (e.g. `basis_matrix["state"]`).
+            Must be a MultiIndex coordinate that includes the level named by `level`.
+        multi_dim: Name of the MultiIndex dimension to align onto (e.g. `"state"`).
+        level: Name of the MultiIndex level within `multi_index` to use for alignment
+            (e.g. `"source"`).
+        other_dim: Dimension on `da` that corresponds to `level` (e.g. `"source"`).
+
+    Returns:
+        A DataArray aligned to `multi_dim`, with a canonical MultiIndex coordinate
+        installed on `multi_dim`.
+
+    Raises:
+        ValueError: If `level` is not a level of `multi_index`, or if other level
+            names are already present as coordinates on `da`.
+    """
+    if other_dim not in da.dims:
+        return da
+
+    # Check if da has dims or coords with the same name as the levels of multi_index, besides
+    # the level/other_dim that we want to broadcast over.
+
+    # Determine MultiIndex level names
+    try:
+        mi = multi_index.to_index()  # pandas.MultiIndex
+    except Exception as e:  # pragma: no cover
+        raise ValueError("multi_index must be a MultiIndex coordinate DataArray.") from e
+
+    if getattr(mi, "names", None) is None:
+        raise ValueError("multi_index must be backed by a pandas.MultiIndex.")
+
+    level_names = list(mi.names)
+    if level not in level_names:
+        raise ValueError(f"Requested level {level!r} not found in multi_index levels {level_names!r}.")
+
+    # If other MultiIndex levels already exist as coordinate variables on `da`,
+    # assigning the MultiIndex will conflict (xarray will try to merge coords with same names).
+    other_levels = [n for n in level_names if n != level]
+    present_as_coords = [n for n in other_levels if n in da.coords]
+    if present_as_coords:
+        raise ValueError(
+            "Cannot align to MultiIndex level because the following MultiIndex level "
+            f"name(s) already exist as coordinate variables on the input DataArray: "
+            f"{present_as_coords!r}. "
+            "This causes coordinate/index conflicts when installing the MultiIndex. "
+            "Drop or rename these coordinate(s) first, or avoid this alignment path."
+        )
+
+    # Optionally warn if other levels appear as *dimensions* (but not coords).
+    # This can still be surprising semantically, even if it does not immediately conflict.
+    present_as_dims_only = [n for n in other_levels if (n in da.dims and n not in da.coords)]
+    if present_as_dims_only:
+        warnings.warn(
+            "Aligning to MultiIndex level while other level name(s) are present "
+            f"as dimensions without coordinates: {present_as_dims_only!r}. "
+            "This may be semantically ambiguous; consider stacking instead.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    # Vectorized selection in the order of the level values (dim becomes multi_dim)
+    level_values = multi_index[level]
+    da_sel = da.sel({other_dim: level_values})
+
+    # Drop the old coordinate variable for the selected dimension to avoid the
+    # subtle xarray MultiIndex registry/ownership bug.
+    if other_dim in da_sel.coords:
+        da_sel = da_sel.reset_coords(other_dim, drop=True)
+
+    # Install canonical MultiIndex on multi_dim (brings back level coords cleanly)
+    da_sel = da_sel.assign_coords({multi_dim: multi_index})
+
+    return da_sel

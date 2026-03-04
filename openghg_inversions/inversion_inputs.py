@@ -1,6 +1,5 @@
 """Functions for creating the inputs needed by PyMC."""
 
-from collections.abc import Hashable, Mapping
 import datetime as dt
 from typing import Any, Literal
 
@@ -8,118 +7,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.array_ops import get_xr_dummies
+from openghg_inversions.array_ops import get_xr_dummies, concat_gather_datasets
 from openghg_inversions.model_error import percentile_error_method, residual_error_method, xr_setup_min_error
 
 DatetimeLike = str | dt.datetime | np.datetime64 | pd.Timestamp
-
-
-# HELPERS
-def concat_gather_data_arrays(
-    da_dict: Mapping[Hashable, xr.DataArray],
-    key_dim: str,
-    ragged_dim: str,
-    stack_dim: str | None = None,
-    **concat_kwargs,
-) -> xr.DataArray:
-    """Concatenate DataArrays by gathering along ragged coordinate.
-
-    For example, if the keys are site codes and the ragged dimension is time,
-    then the "stacked dimension" will be the usual `nmeasure` coordinate.
-
-    Args:
-        da_dict: dictionary of DataArrays
-        key_dim: dimension name for the keys of the dictionary
-        ragged_dim: name of the ragged dimension
-        stack_dim: name for the "stacked" multi-index dimension
-        **concat_kwargs: arguments to pass to xr.concat
-
-    Returns:
-        Combined DataArray with new stacked dimension.
-
-    """
-    stack_dim = stack_dim or (key_dim + "_" + ragged_dim)
-
-    pieces: list[xr.DataArray] = []
-    key_vals: list[np.ndarray] = []
-    ragged_vals: list[np.ndarray] = []
-
-    for k, v in da_dict.items():
-        piece = v.rename({ragged_dim: stack_dim})
-        pieces.append(piece)
-
-        n = piece.sizes[stack_dim]
-
-        # make site indicator
-        key_val = np.full(n, k)
-        key_vals.append(key_val)
-
-        # record times
-        ragged_vals.append(v[ragged_dim].values)
-
-    # concat pieces
-    da = xr.concat(pieces, dim=stack_dim, **concat_kwargs)
-
-    # now create and assign multi-index
-    key_indicator = np.concatenate(key_vals)
-    concat_ragged = np.concatenate(ragged_vals)
-    multiindex = pd.MultiIndex.from_arrays([key_indicator, concat_ragged], names=[key_dim, ragged_dim])
-    xr_multiindex = xr.Coordinates.from_pandas_multiindex(multiindex, stack_dim)
-
-    da = da.assign_coords(xr_multiindex)
-
-    return da
-
-
-def concat_gather_datasets(
-    ds_dict: Mapping[Hashable, xr.Dataset],
-    key_dim: str,
-    ragged_dim: str,
-    stack_dim: str | None = None,
-    **concat_kwargs,
-) -> xr.Dataset:
-    """Concatenate dictionary of xr.Datasets by gathering ragged coordinates.
-
-    This assumes that all datasets have the same data variables.
-
-    TODO: need to handle missing data variables.
-    """
-    dvs = next(iter(ds_dict.values())).data_vars
-
-    # check that all data vars are present
-    for k, v in ds_dict.items():
-        if any(dv not in v.data_vars for dv in dvs):
-            missing_dvs = [dv for dv in dvs if dv not in v.data_vars]
-            raise ValueError(
-                f"Datasets do not all have the same data variables: Dataset for key {k} missing {missing_dvs}"
-            )
-
-    gathered_dvs = {}
-
-    for dv in dvs:
-        da_dict = {k: v[dv] for k, v in ds_dict.items()}
-        gathered_dvs[dv] = concat_gather_data_arrays(da_dict, key_dim, ragged_dim, stack_dim, **concat_kwargs)
-
-    return xr.Dataset(gathered_dvs)
-
-
-def concat_gather_datatree(
-    dt: xr.DataTree, key_dim: str, ragged_dim: str, stack_dim: str | None = None, **concat_kwargs
-) -> xr.Dataset:
-    """Concatenate xr.DataTree children by gathering ragged coordinates.
-
-    This assumes that all children have the same data variables.
-    """
-    ds_dict = {str(k): v.to_dataset() for k, v in dt.items()}
-    dvs = next(iter(ds_dict.values())).data_vars
-
-    gathered_dvs = {}
-
-    for dv in dvs:
-        da_dict = {k: v[dv] for k, v in ds_dict.items()}
-        gathered_dvs[dv] = concat_gather_data_arrays(da_dict, key_dim, ragged_dim, stack_dim, **concat_kwargs)
-
-    return xr.Dataset(gathered_dvs)
 
 
 def xr_unique_inv(da: xr.DataArray, sort: bool = True) -> xr.DataArray:
