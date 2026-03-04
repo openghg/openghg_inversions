@@ -181,6 +181,8 @@ def data_processing_surface_notracer(
     merged_data_name: str | None = None,
     merged_data_dir: str | None = None,
     output_name: str | None = None,
+    inner_domain: str | None = None,
+    inner_footprint_store: str | list[str] | None = None,
 ) -> tuple[dict, list, list, list, list, list]:
     """Retrieve and prepare fixed-surface datasets from specified OpenGHG object stores.
 
@@ -328,7 +330,8 @@ def data_processing_surface_notracer(
             continue
 
         # Get footprints data
-        footprint_data = get_footprint_data(
+
+        standard_footprint_data = get_footprint_data(
             site=site,
             domain=domain,
             platform=platform[i],
@@ -342,15 +345,39 @@ def data_processing_surface_notracer(
             obs_data=site_data,
             stores=footprint_store,
         )
-        if footprint_data is None:
+        if standard_footprint_data is None:
             print(
                 f"\nNo footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}.",
                 f"Check these values.\nContinuing model run without {site}.\n",
             )
             continue  # skip this site
+        inner_footprint_data = None
+        if inner_domain is not None:
+            print(f"Inner domain {inner_domain} specified; attempting to retrieve inner footprint data for {site} ...")
+            inner_footprint_data = get_footprint_data(
+                site=site,
+                domain=f"{domain}-{inner_domain}",
+                platform=platform[i],
+                fp_height=fp_height[i],
+                start_date=start_date,
+                end_date=end_date,
+                model=fp_model,
+                met_model=met_model[i],
+                fp_species=fp_species,
+                averaging_period=averaging_period[i],
+                obs_data=site_data,
+                stores=inner_footprint_store if inner_footprint_store is not None else footprint_store,
+            )
+            if inner_footprint_data is None:
+                print(
+                    f"\nNo Inner footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}-{inner_domain}.",
+                    f"Check these values.\nContinuing model run without {site}.Jai\n",
+                )
+                continue  # skip this site
 
         scenario_combined = merged_scenario_data(
-            site_data, footprint_data, flux_dict, bc_data, platform=platform[i], max_level=max_level
+            obs_data=site_data, footprint_data=standard_footprint_data,
+            flux_dict= flux_dict, bc_data=bc_data, inner_footprint_data=inner_footprint_data, platform=platform[i], max_level=max_level
         )
         fp_all[site] = scenario_combined
 
