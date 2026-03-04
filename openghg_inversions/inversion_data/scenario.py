@@ -9,6 +9,7 @@ def merged_scenario_data(
     footprint_data: FootprintData,
     flux_dict: dict[str, FluxData],
     bc_data: BoundaryConditionsData | None = None,
+    inner_footprint_data: FootprintData | None = None,
     platform: str | None = None,
     max_level: int | None = None
 ) -> xr.Dataset:
@@ -42,4 +43,18 @@ def merged_scenario_data(
         cache=False,
     )
 
-    return scenario_combined
+    if inner_footprint_data is not None:
+        inner_scenario = ModelScenario(obs=obs_data, footprint=inner_footprint_data, flux=flux_dict, bc=None)
+        inner_domain_merged = inner_scenario.footprints_data_merge(
+            calc_fp_x_flux=True,
+            calc_bc_sensitivity=False,
+            cache=False,
+        )
+        scenario_combined = scenario_combined.copy()
+
+        # 6km fp_x_flux is added as a separate variable to the combined dataset, and can be merged with the EUROPE fp_x_flux.
+        scenario_combined["fp_x_flux_inner"] = inner_domain_merged["fp_x_flux"]
+
+        return scenario_combined
+    else:
+        return scenario_combined
