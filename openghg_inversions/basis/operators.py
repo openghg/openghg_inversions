@@ -314,6 +314,42 @@ class BasisOperator(ABC):
 
 
 # ----------------------------
+# Helper functions
+# ----------------------------
+
+def drop_singleton_time(da: xr.DataArray, *, name: str = "basis_flat") -> xr.DataArray:
+    """Drop a singleton ``time`` dimension if present; otherwise raise.
+
+    This is a strict helper intended for basis operators that assume a 2D basis over
+    the grid dims. It avoids silently discarding time-varying basis information.
+
+    Args:
+        da: Input DataArray which may or may not have a ``time`` dimension.
+        name: Label used in error messages to identify what is being checked.
+
+    Returns:
+        ``da`` with ``time`` removed if it exists and has length 1, otherwise ``da``
+        unchanged.
+
+    Raises:
+        ValueError: If ``time`` exists and has length not equal to 1.
+    """
+    if "time" not in da.dims:
+        return da
+
+    time_size = da.sizes.get("time")
+    if time_size != 1:
+        raise ValueError(
+            f"{name} has a non-singleton 'time' dimension (size={time_size}); "
+            "cannot drop time without losing time-varying basis information. "
+            "Please pass a 2D basis without 'time'."
+        )
+
+    # Use squeeze to remove the dim (and drop the coordinate variable if it becomes scalar).
+    return da.squeeze("time", drop=True)
+
+
+# ----------------------------
 # Concrete operators
 # ----------------------------
 
@@ -359,8 +395,9 @@ class BucketBasisOperator(BasisOperator):
         self._meta = meta
 
         # store canonical 2D basis
-        self.basis_flat = basis_flat.isel(time=0, drop=True) if "time" in basis_flat.dims else basis_flat
+        self.basis_flat = drop_singleton_time(basis_flat, name="basis_flat")
         self.basis_flat = self.basis_flat.rename("basis_flat")
+
         self.region_labels = region_labels
 
         # create dummy matrix (grid -> state)
@@ -511,9 +548,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         self.region_in_source_dim = region_in_source_dim
 
         # Canonicalise: 2D, consistent lat/lon assumed for now.
-        self.basis_flat = {
-            k: (v.isel(time=0, drop=True) if "time" in v.dims else v) for k, v in basis_flat.items()
-        }
+        self.basis_flat = {k: drop_singleton_time(v, name=f"basis_flat[{k!r}]") for k, v in basis_flat.items()}
         self.basis_flat = {k: v.rename("basis_flat") for k, v in self.basis_flat.items()}
 
         # Build per-source dummy matrices with ragged region_in_source dim
