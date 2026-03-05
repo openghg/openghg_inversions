@@ -158,6 +158,8 @@ def test_hbmcmc_postprocessing_output_matches_legacy_core_fields(raw_data_path, 
     assert (compat["YaprioriBC"].values == legacy["YaprioriBC"].values).all()
     assert (compat["Yobs"].values == legacy["Yobs"].values).all()
 
+    xr.testing.assert_allclose(compat["fluxapriori"], legacy["fluxapriori"], rtol=1e-6, atol=1e-9)
+
     assert compat["Yapriori"].dims == legacy["Yapriori"].dims == ("nmeasure",)
     assert compat["YaprioriBC"].dims == legacy["YaprioriBC"].dims == ("nmeasure",)
     assert compat["Yobs"].dims == legacy["Yobs"].dims == ("nmeasure",)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import xarray as xr
 
 from openghg_inversions import utils
@@ -15,8 +17,47 @@ from openghg_inversions.postprocessing.make_outputs import (
 )
 
 
+def _compute_apriori_flux(flux: xr.DataArray, start_date: str, end_date: str) -> xr.DataArray:
+    """Compute the legacy-style prior flux map from a flux timeseries.
+
+    Args:
+        flux: Prior flux with dimensions ``lat``, ``lon``, and optionally ``flux_time``.
+        start_date: Inversion start date (YYYY-mm-dd).
+        end_date: Inversion end date (YYYY-mm-dd).
+
+    Returns:
+        Two-dimensional prior flux map over ``lat`` and ``lon``.
+
+    """
+    if "flux_time" not in flux.dims or flux.sizes.get("flux_time", 1) == 1:
+        return flux.isel(flux_time=0, drop=True) if "flux_time" in flux.dims else flux
+
+    allmonths = pd.date_range(start_date, end_date).month[:-1].values - 1
+    if len(allmonths) == 0:
+        return flux.isel(flux_time=0, drop=True)
+
+    apriori_flux = xr.zeros_like(flux.isel(flux_time=0, drop=True))
+    for month_idx in np.unique(allmonths):
+        apriori_flux = apriori_flux + flux.isel(flux_time=int(month_idx), drop=True) * (
+            np.sum(allmonths == month_idx) / len(allmonths)
+        )
+
+    return apriori_flux
+
+
 def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, use_bc: bool) -> None:
-    """Set variable attrs to match legacy hbmcmc output style."""
+    """Set variable attributes to match legacy hbmcmc output style.
+
+    Args:
+        ds: Dataset to mutate.
+        obs_units: Observation scaling prefix used in legacy units (e.g. ``1e-09``).
+        country_units: Units used for country totals.
+        use_bc: Whether boundary-condition variables are present.
+
+    Returns:
+        None. Attributes are set in-place.
+
+    """
     units = {
         "fluxmode": "mol/m2/s",
         "fluxapriori": "mol/m2/s",
@@ -123,13 +164,32 @@ def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, us
 def make_legacy_hbmcmc_output(
     inv_out: InversionOutput,
     mcmc_results: dict,
-    sigma_freq_index,
-    Hx,
-    Hbc=None,
+    sigma_freq_index: np.ndarray | xr.DataArray,
+    Hx: np.ndarray | xr.DataArray,
+    Hbc: np.ndarray | xr.DataArray | None = None,
     country_file: str | Path | None = None,
     use_bc: bool = False,
 ) -> xr.Dataset:
-    """Create a legacy-style hbmcmc dataset using postprocessing helpers."""
+    """Create a legacy-format hbmcmc output dataset from postprocessing products.
+
+    Args:
+        inv_out: Inversion outputs container.
+        mcmc_results: Raw dictionary returned by ``inferpymc``.
+        sigma_freq_index: Sigma frequency index per measurement.
+        Hx: Emissions sensitivity matrix with shape ``(nparam, nmeasure)``.
+        Hbc: Boundary-condition sensitivity matrix with shape ``(nBC, nmeasure)``.
+        country_file: Optional path to country definition file.
+        use_bc: Whether BC variables should be included.
+
+    Returns:
+        Legacy-style ``xr.Dataset`` matching key variable names/attrs from
+        ``inferpymc_postprocessouts``.
+
+    """
+    Hx_arr = np.asarray(Hx)
+    Hbc_arr = np.asarray(Hbc) if Hbc is not None else None
+    sigma_freq = np.asarray(sigma_freq_index)
+
     conc = make_concentration_outputs(
         inv_out,
         stats=["mean", "median", "mode_kde", "hdi"],
@@ -153,12 +213,13 @@ def make_legacy_hbmcmc_output(
 
     country_obj = utils.get_country(inv_out.domain, country_file=country_file)
     country_idx = country_obj.country
+    apriori_flux = _compute_apriori_flux(inv_out.flux, str(inv_out.start_date), str(inv_out.end_date))
 
-    yapriori = Hx.sum(axis=0)
-    if use_bc and Hbc is not None:
-        yapriori = yapriori + Hbc.sum(axis=0)
+    yapriori = Hx_arr.sum(axis=0)
+    if use_bc and Hbc_arr is not None:
+        yapriori = yapriori + Hbc_arr.sum(axis=0)
 
-    data_vars = {
+    data_vars: dict[str, xr.DataArray | tuple[tuple[str, ...], np.ndarray]] = {
         "Yobs": inv_out.obs,
         "Yerror": inv_out.obs_err,
         "Yerror_repeatability": inv_out.obs_repeatability,
@@ -178,9 +239,9 @@ def make_legacy_hbmcmc_output(
         "xtrace": (("steps", "nparam"), mcmc_results["xouts"].values),
         "sigtrace": (("steps", "nsigma_site", "nsigma_time"), mcmc_results["sigouts"].values),
         "siteindicator": inv_out.site_indicators,
-        "sigmafreqindex": ("nmeasure", sigma_freq_index),
+        "sigmafreqindex": ("nmeasure", sigma_freq),
         "sitenames": inv_out.site_names,
-        "fluxapriori": flux["flux_prior_mode"],
+        "fluxapriori": apriori_flux,
         "fluxmode": flux["flux_posterior_mode"],
         "scalingmean": flux["scaling_posterior_mean"],
         "scalingmode": flux["scaling_posterior_mode"],
@@ -193,20 +254,20 @@ def make_legacy_hbmcmc_output(
         "country95": country["country_posterior_hdi_95"],
         "countryapriori": country["country_prior_mean"],
         "countrydefinition": (("lat", "lon"), country_idx),
-        "xsensitivity": (("nmeasure", "nparam"), Hx.T),
+        "xsensitivity": (("nmeasure", "nparam"), Hx_arr.T),
     }
 
-    if use_bc and Hbc is not None:
+    if use_bc and Hbc_arr is not None:
         data_vars.update(
             {
-                "YaprioriBC": ("nmeasure", Hbc.sum(axis=0)),
+                "YaprioriBC": ("nmeasure", Hbc_arr.sum(axis=0)),
                 "YmodmeanBC": conc["mu_bc_posterior_mean"],
                 "YmodmedianBC": conc["mu_bc_posterior_median"],
                 "YmodmodeBC": conc["mu_bc_posterior_mode"],
                 "Ymod95BC": conc["mu_bc_posterior_hdi_95"],
                 "Ymod68BC": conc["mu_bc_posterior_hdi_68"],
                 "bctrace": (("steps", "nBC"), mcmc_results["bcouts"].values),
-                "bcsensitivity": (("nmeasure", "nBC"), Hbc.T),
+                "bcsensitivity": (("nmeasure", "nBC"), Hbc_arr.T),
             }
         )
 
@@ -219,17 +280,13 @@ def make_legacy_hbmcmc_output(
         obs_units = f"{float(obs_units):.0e}"
     except (TypeError, ValueError):
         pass
+
     country_units = country["country_posterior_mean"].attrs.get("units", "g")
     _set_legacy_var_attrs(out, obs_units=obs_units, country_units=country_units, use_bc=use_bc)
 
     out.attrs["Start date"] = str(inv_out.start_date)
     out.attrs["End date"] = str(inv_out.end_date)
-
     if "convergence" in mcmc_results:
         out.attrs["Convergence"] = mcmc_results["convergence"]
 
     return out
-
-
-# backward-compatible alias
-make_legacy_hbmcmc_output_from_postprocessing = make_legacy_hbmcmc_output
