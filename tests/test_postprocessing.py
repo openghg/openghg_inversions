@@ -3,7 +3,8 @@ import xarray as xr
 
 from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.postprocessing.make_outputs import basic_output, make_legacy_hbmcmc_output_from_postprocessing
+from openghg_inversions.postprocessing.legacy_outputs import make_legacy_hbmcmc_output
+from openghg_inversions.postprocessing.make_outputs import basic_output
 from openghg_inversions.postprocessing.make_paris_outputs import (
     make_paris_flux_outputs_from_rhime,
     make_paris_outputs,
@@ -139,7 +140,7 @@ def test_hbmcmc_postprocessing_output_matches_legacy_core_fields(raw_data_path, 
     """Regression test for deterministic prior concentration terms in legacy-compatible output."""
     legacy = xr.open_dataset(raw_data_path / "standard_rhime_outs.nc")
     inv_out = InversionOutput.load(raw_data_path / "inversion_output.nc")
-    compat = make_legacy_hbmcmc_output_from_postprocessing(
+    compat = make_legacy_hbmcmc_output(
         inv_out=inv_out,
         mcmc_results={
             "xouts": legacy["xtrace"],
@@ -162,3 +163,9 @@ def test_hbmcmc_postprocessing_output_matches_legacy_core_fields(raw_data_path, 
     assert compat["Yobs"].dims == legacy["Yobs"].dims == ("nmeasure",)
     assert compat.sizes["nmeasure"] == legacy.sizes["nmeasure"]
     assert compat["Yobs"].sizes["nmeasure"] == compat["Yapriori"].sizes["nmeasure"]
+    assert compat["Yapriori"].attrs["units"] == legacy["Yapriori"].attrs["units"]
+    assert compat["YaprioriBC"].attrs["units"] == legacy["YaprioriBC"].attrs["units"]
+    assert compat["Yobs"].attrs["units"] == legacy["Yobs"].attrs["units"]
+
+    for dv in compat.data_vars:
+        assert "longname" in compat[dv].attrs

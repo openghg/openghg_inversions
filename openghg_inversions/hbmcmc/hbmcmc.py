@@ -680,10 +680,10 @@ def fixedbasisMCMC(
         return outputs
 
     if hbmcmc_postprocessing:
-        from ..postprocessing.make_outputs import make_legacy_hbmcmc_output_from_postprocessing
+        from ..postprocessing.legacy_outputs import make_legacy_hbmcmc_output
 
         inv_out = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
-        outputs = make_legacy_hbmcmc_output_from_postprocessing(
+        outputs = make_legacy_hbmcmc_output(
             inv_out=inv_out,
             mcmc_results=mcmc_results,
             sigma_freq_index=post_process_args["sigma_freq_index"],
