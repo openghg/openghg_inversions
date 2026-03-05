@@ -12,6 +12,7 @@
 - Fixed bug introduced by PR 327, which caused "prior factor" variables filled with None values to be passed to post-processing. [PR #353](https://github.com/openghg/openghg_inversions/pull/353)
 - Added new `inversion_inputs.py` with helper functions for creating the inputs to the PyMC code. Tests added to check compatibility with older `inversionsetup.py` helpers. [PR #356](https://github.com/openghg/openghg_inversions/pull/356)
 - Added `BasisFunctions` object (backed by `BasisOperator` objects) and tests to confirm that these preserve existing behaviour when computing H matrices. These classes will be used to refactor the basis functions wrapper in a future PR. [PR #358](https://github.com/openghg/openghg_inversions/pull/358)
+- Added opt-in `basis_functions_wrapper` support for returning `BasisFunctions` objects and saving basis artifacts in DataTree format while keeping legacy flat-basis output as the default. [#362](https://github.com/openghg/openghg_inversions/issues/362)
 
 # Version 0.6.0
 

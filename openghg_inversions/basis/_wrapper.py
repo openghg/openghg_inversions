@@ -2,9 +2,11 @@
 
 from pathlib import Path
 from time import time
+from typing import Literal
 
 import xarray as xr
 
+from .basis_functions import BasisFunctions
 from ._functions import basis_functions, fixed_outer_regions_basis, basis
 from ._helpers import fp_sensitivity, bc_sensitivity
 
@@ -26,6 +28,8 @@ def basis_functions_wrapper(
     country_directory: str | None = None,
     outputname: str | None = None,
     output_path: str | None = None,
+    return_basis_objects: bool = False,
+    basis_output_format: Literal["legacy", "datatree"] = "legacy",
 ):
     """Wrapper function for selecting basis function
     algorithm.
@@ -75,11 +79,25 @@ def basis_functions_wrapper(
       output_path (str, optional):
         Passed to `outputdir` argument of `quadtreebasisfunction`. Used for testing.
         Default None
+      return_basis_objects (bool, optional):
+        If True, return a tuple ``(fp_data, basis_objects)`` where
+        ``basis_objects["emissions"]`` is a ``BasisFunctions`` object constructed
+        from the basis used in this wrapper.
+        Default False
+      basis_output_format (str, optional):
+        Format to use when saving basis output with ``output_path``:
+        - ``"legacy"``: save legacy flat basis netCDF (default)
+        - ``"datatree"``: save BasisFunctions DataTree netCDF
+        Default "legacy"
 
     Returns:
-      fp_data (dict):
-        Dictionary object similar to fp_all but with information
-        on basis functions and sensitivities
+      fp_data (dict) or tuple[dict, dict]:
+        By default, returns a dictionary object similar to fp_all but with information
+        on basis functions and sensitivities.
+
+        If ``return_basis_objects=True``, returns ``(fp_data, basis_objects)`` where
+        ``basis_objects`` contains an ``"emissions"`` key with a ``BasisFunctions``
+        object that wraps the basis operator and representative flux.
     """
     if use_bc is True and bc_basis_case is None:
         raise ValueError("If `use_bc` is True, you must specify `bc_basis_case`.")
@@ -126,6 +144,15 @@ def basis_functions_wrapper(
     fp_data = fp_sensitivity(fp_all, basis_func=basis_data_array)
     print(f"Computing fp sensitivity took {time() - fp_sens_start}s.")
 
+    basis_objects: dict[str, BasisFunctions] = {}
+    needs_basis_object = return_basis_objects or (output_path is not None and basis_output_format == "datatree")
+
+    if needs_basis_object:
+        basis_objects["emissions"] = _make_basis_functions_object(
+            fp_all=fp_all,
+            basis=basis_data_array,
+        )
+
     if use_bc is True:
         bc_sens_start = time()
         fp_data = bc_sensitivity(
@@ -137,16 +164,67 @@ def basis_functions_wrapper(
         print(f"Computing bc sensitivity took {time() - bc_sens_start}s.")
 
     if output_path is not None and basis_algorithm is not None and fp_basis_case is None:
-        _save_basis(
-            basis=basis_data_array,
-            basis_algorithm=basis_algorithm,
-            output_dir=output_path,
-            domain=domain,
-            species=species,
-            output_name=outputname,
-        )
+        if basis_output_format == "legacy":
+            _save_basis(
+                basis=basis_data_array,
+                basis_algorithm=basis_algorithm,
+                output_dir=output_path,
+                domain=domain,
+                species=species,
+                output_name=outputname,
+            )
+        elif basis_output_format == "datatree":
+            _save_basis_datatree(
+                basis_functions=basis_objects["emissions"],
+                basis=basis_data_array,
+                basis_algorithm=basis_algorithm,
+                output_dir=output_path,
+                domain=domain,
+                species=species,
+                output_name=outputname,
+            )
+        else:
+            raise ValueError(
+                f"Unknown basis_output_format '{basis_output_format}'. "
+                "Expected one of: 'legacy', 'datatree'."
+            )
+
+    if return_basis_objects:
+        return fp_data, basis_objects
 
     return fp_data
+
+
+def _make_basis_functions_object(fp_all: dict, basis: xr.DataArray) -> BasisFunctions:
+    """Construct a BasisFunctions object from wrapper inputs.
+
+    The current wrapper only computes a single emissions basis array, so this helper
+    builds a single-source ``BasisFunctions`` with ``state_dim='region'`` for
+    compatibility with legacy naming conventions.
+    """
+    if ".flux" not in fp_all or not fp_all[".flux"]:
+        raise ValueError("Cannot construct BasisFunctions object: fp_all['.flux'] is missing or empty.")
+
+    first_flux = next(iter(fp_all[".flux"].values()))
+
+    flux: xr.DataArray
+    if hasattr(first_flux, "data") and isinstance(first_flux.data, xr.Dataset) and "flux" in first_flux.data:
+        flux = first_flux.data["flux"]
+    elif isinstance(first_flux, xr.Dataset) and "flux" in first_flux:
+        flux = first_flux["flux"]
+    elif isinstance(first_flux, xr.DataArray):
+        flux = first_flux
+    else:
+        raise TypeError(
+            "Could not extract a flux DataArray from fp_all['.flux']. "
+            f"Got type {type(first_flux)!r} for first flux entry."
+        )
+
+    return BasisFunctions.from_basis_flat(
+        basis_flat=basis,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+    )
 
 
 def _save_basis(
@@ -190,3 +268,33 @@ def _save_basis(
         output_name = f"{basis_algorithm}_{species}-{output_name}_{domain}_{start_date}.nc"
 
     basis.to_netcdf(basis_out_path / output_name, mode="w")
+
+
+def _save_basis_datatree(
+    basis_functions: BasisFunctions,
+    basis: xr.DataArray,
+    basis_algorithm: str,
+    output_dir: str,
+    domain: str,
+    species: str,
+    output_name: str | None = None,
+) -> None:
+    """Save BasisFunctions object to netCDF DataTree.
+
+    This is an opt-in serialization path. The legacy flat basis writer remains the
+    default to preserve backwards compatibility.
+    """
+    basis_out_path = Path(output_dir, domain.upper())
+
+    if not basis_out_path.exists():
+        basis_out_path.mkdir(parents=True)
+
+    start_date = str(basis.time.min().values)[:7]  # year and month
+
+    if output_name is None:
+        output_name = f"{basis_algorithm}_{species}_{domain}_{start_date}_basis_datatree.nc"
+    else:
+        output_name = f"{basis_algorithm}_{species}-{output_name}_{domain}_{start_date}_basis_datatree.nc"
+
+    dt = basis_functions.to_datatree()
+    dt.to_netcdf(basis_out_path / output_name)
