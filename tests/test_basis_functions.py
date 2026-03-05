@@ -15,6 +15,11 @@ from openghg_inversions.basis import (
     quadtreebasisfunction,
     fixed_outer_regions_basis,
 )
+from openghg_inversions.basis._wrapper import (
+    _make_basis_functions_object,
+    _save_basis,
+    _save_basis_datatree,
+)
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.basis.operators import (
     BucketBasisOperator,
@@ -739,3 +744,103 @@ def test_multisource_sensitivity_matches_legacy_padded_conversion_smoke():
     H_old_gathered = H_old_gathered.transpose("region", "time")
 
     xr.testing.assert_allclose(H_new, H_old_gathered)
+
+
+def test_make_basis_functions_object_from_fp_all(tac_ch4_data_args):
+    """Construct BasisFunctions object from fp_all side-channel flux data."""
+    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+    basis_name = next(iter(fp_all[".flux"].keys()))
+
+    flux = fp_all[".flux"][basis_name].data["flux"]
+    basis_flat = xr.ones_like(flux, dtype=int).rename("basis")
+
+    bf = _make_basis_functions_object(fp_all=fp_all, basis=basis_flat)
+
+    assert isinstance(bf, BasisFunctions)
+    assert bf.operator.meta.state_dim == "region"
+    assert bf.flux.dims == flux.dims
+
+
+def test_basis_functions_wrapper_return_basis_objects(tac_ch4_data_args):
+    """Wrapper can optionally return BasisFunctions payload without changing default path."""
+    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+
+    basis_args = {
+        "species": "ch4",
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "emissions_name": ["total-ukghg-edgar7"],
+        "nbasis": 8,
+        "use_bc": False,
+        "basis_algorithm": "weighted",
+        "return_basis_objects": True,
+    }
+
+    fp_data, basis_objects = basis_functions_wrapper(fp_all, **basis_args)
+
+    site_keys = [k for k in fp_data if not str(k).startswith(".")]
+    assert len(site_keys) >= 1
+    assert "emissions" in basis_objects
+    assert isinstance(basis_objects["emissions"], BasisFunctions)
+
+
+def test_save_basis_datatree_roundtrip(tmp_path):
+    """Saving DataTree basis output is readable via BasisFunctions.from_datatree."""
+    basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
+    flux = xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float).rename("flux")
+    bf = BasisFunctions.from_basis_flat(
+        basis_flat=basis_flat,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+    )
+
+    _save_basis_datatree(
+        basis_functions=bf,
+        basis=basis_flat,
+        basis_algorithm="weighted",
+        output_dir=str(tmp_path),
+        domain="EUROPE",
+        species="ch4",
+    )
+
+    saved = list((tmp_path / "EUROPE").glob("*_basis_datatree.nc"))
+    assert len(saved) == 1
+
+    dt = xr.open_datatree(saved[0])
+    bf2 = BasisFunctions.from_datatree(dt)
+
+    xr.testing.assert_identical(bf.operator.basis_matrix, bf2.operator.basis_matrix)
+    xr.testing.assert_identical(bf.flux, bf2.flux)
+
+
+def test_save_basis_legacy_and_datatree_filenames(tmp_path):
+    """Legacy and DataTree writers both produce expected output files."""
+    basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
+    flux = xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float).rename("flux")
+    bf = BasisFunctions.from_basis_flat(
+        basis_flat=basis_flat,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+    )
+
+    _save_basis(
+        basis=basis_flat,
+        basis_algorithm="weighted",
+        output_dir=str(tmp_path),
+        domain="EUROPE",
+        species="ch4",
+        output_name="legacy-check",
+    )
+    _save_basis_datatree(
+        basis_functions=bf,
+        basis=basis_flat,
+        basis_algorithm="weighted",
+        output_dir=str(tmp_path),
+        domain="EUROPE",
+        species="ch4",
+        output_name="datatree-check",
+    )
+
+    files = [p.name for p in (tmp_path / "EUROPE").iterdir()]
+    assert any("legacy-check" in name and name.endswith(".nc") for name in files)
+    assert any("datatree-check" in name and name.endswith("_basis_datatree.nc") for name in files)
