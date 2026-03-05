@@ -134,6 +134,21 @@ def _make_coords(
     return result
 
 
+def _contiguous_sigma_time_index(sigma_freq_index: np.ndarray) -> np.ndarray:
+    """Remap sigma period indices to contiguous 0..N-1 values.
+
+    Monthly period indices can legitimately have gaps when entire periods have no
+    data (e.g. Jan and Mar only => [0, 2]). PyMC array indexing is positional, so
+    these values must be compacted before using `sigma[..., sigma_freq_index]`.
+    """
+    sigma_freq_index = np.asarray(sigma_freq_index, dtype=int)
+    if sigma_freq_index.size == 0:
+        return sigma_freq_index
+
+    uniq = np.unique(sigma_freq_index)
+    return np.searchsorted(uniq, sigma_freq_index).astype(int)
+
+
 def inferpymc(
     Hx: np.ndarray,
     Y: np.ndarray,
@@ -286,8 +301,12 @@ def inferpymc(
     # convert siteindicator into a site indexer
     sites = siteindicator.astype(int) if sigma_per_site else np.zeros_like(siteindicator).astype(int)
 
+    # sigma_freq_index may be non-contiguous (e.g. missing calendar month).
+    # Compact to positional indices for safe tensor indexing.
+    sigma_freq_index_model = _contiguous_sigma_time_index(sigma_freq_index)
+
     coords = _make_coords(
-        Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None
+        Y, Hx, siteindicator, sigma_freq_index_model, Hbc, sigma_per_site=sigma_per_site, sites=None
     )
 
     if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
@@ -340,7 +359,7 @@ def inferpymc(
         else:
             pollution_event = pt.abs(pt.dot(hx, x))
 
-        pollution_event_scaled_error = pollution_event * sigma[sites, sigma_freq_index]
+        pollution_event_scaled_error = pollution_event * sigma[sites, sigma_freq_index_model]
 
         if no_model_error is True:
             # need some small non-zero value to avoid sampling problems

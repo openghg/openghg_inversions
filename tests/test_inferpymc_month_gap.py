@@ -1,10 +1,7 @@
 """Synthetic regression scaffolding for monthly sigma/bc with missing month."""
 
-import re
-
 import numpy as np
 import pandas as pd
-import pytest
 import xarray as xr
 
 from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs
@@ -67,7 +64,7 @@ def test_make_inv_inputs_month_gap_monthly_indices_are_non_contiguous():
     np.testing.assert_array_equal(uniq, np.array([0, 2]))
 
 
-def test_inferpymc_reproduces_index_error_for_month_gap():
+def test_inferpymc_smoke_runs_for_month_gap():
     fp_data = _synthetic_fp_data_one_site_with_missing_month()
 
     mcmc_args, _ = make_inv_inputs(
@@ -82,19 +79,21 @@ def test_inferpymc_reproduces_index_error_for_month_gap():
         min_error_options={},
     )
 
-    with pytest.raises(IndexError, match=re.escape("out of bounds for axis 1")):
-        inferpymc(
-            **mcmc_args,
-            xprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-            bcprior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
-            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 0.4},
-            nuts_sampler="pymc",
-            nit=1,
-            burn=0,
-            tune=0,
-            nchain=1,
-            sigma_per_site=True,
-            verbose=False,
-            use_bc=True,
-            sampler_kwargs={"compute_convergence_checks": False},
-        )
+    result = inferpymc(
+        **mcmc_args,
+        xprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+        bcprior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+        sigprior={"pdf": "uniform", "lower": 0.1, "upper": 0.4},
+        nuts_sampler="pymc",
+        nit=1,
+        burn=0,
+        tune=0,
+        nchain=1,
+        sigma_per_site=True,
+        verbose=False,
+        use_bc=True,
+        sampler_kwargs={"compute_convergence_checks": False},
+    )
+
+    assert "sigouts" in result
+    assert "trace" in result
