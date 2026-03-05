@@ -3,6 +3,7 @@ from typing import Literal
 
 import xarray as xr
 
+from openghg_inversions import utils
 from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -316,3 +317,87 @@ def basic_output(
     result.attrs["description"] = "RHIME inversion outputs."
 
     return result
+
+
+def make_legacy_hbmcmc_output_from_postprocessing(
+    inv_out: InversionOutput,
+    mcmc_results: dict,
+    sigma_freq_index,
+    Hx,
+    Hbc=None,
+    country_file: str | Path | None = None,
+    use_bc: bool = False,
+) -> xr.Dataset:
+    """Create a legacy-style hbmcmc dataset using postprocessing helpers.
+
+    This is intended as a compatibility bridge while moving away from
+    ``inferpymc_postprocessouts``.
+    """
+    conc = make_concentration_outputs(
+        inv_out,
+        stats=["mean", "median", "mode_kde", "hdi"],
+        stats_args={"hdi__hdi_prob": [0.68, 0.95], "mode_kde__chunk_dim": "nmeasure", "mode_kde__chunk_size": 1},
+    )
+    flux = make_flux_outputs(inv_out, stats=["mean", "mode_kde"], stats_args={"mode_kde__chunk_dim": "nx", "mode_kde__chunk_size": 1})
+    country = make_country_outputs(
+        inv_out,
+        country_file=country_file,
+        stats=["mean", "median", "mode_kde", "stdev", "hdi"],
+        stats_args={"hdi__hdi_prob": [0.68, 0.95], "mode_kde__chunk_dim": "country", "mode_kde__chunk_size": 1},
+    )
+
+    country_idx = utils.get_country(inv_out.domain, country_file=country_file).country
+
+    data_vars = {
+        "Yobs": inv_out.obs,
+        "Yerror": inv_out.obs_err,
+        "Yerror_repeatability": inv_out.obs_repeatability,
+        "Yerror_variability": inv_out.obs_variability,
+        "Ytime": inv_out.times,
+        "Yapriori": ("nmeasure", Hx.sum(axis=0)),
+        "Ymodmean": conc["y_posterior_predictive_mean"],
+        "Ymodmedian": conc["y_posterior_predictive_median"],
+        "Ymodmode": conc["y_posterior_predictive_mode"],
+        "Ymod68": conc["y_posterior_predictive_hdi_68"],
+        "Ymod95": conc["y_posterior_predictive_hdi_95"],
+        "Yoffmean": conc.get("offset_posterior_mean", xr.zeros_like(inv_out.obs)),
+        "Yoffmedian": conc.get("offset_posterior_median", xr.zeros_like(inv_out.obs)),
+        "Yoffmode": conc.get("offset_posterior_mode", xr.zeros_like(inv_out.obs)),
+        "Yoff68": conc.get("offset_posterior_hdi_68", xr.zeros_like(conc["y_posterior_predictive_hdi_68"])),
+        "Yoff95": conc.get("offset_posterior_hdi_95", xr.zeros_like(conc["y_posterior_predictive_hdi_95"])),
+        "xtrace": (("steps", "nparam"), mcmc_results["xouts"].values),
+        "sigtrace": (("steps", "nsigma_site", "nsigma_time"), mcmc_results["sigouts"].values),
+        "siteindicator": inv_out.site_indicators,
+        "sigmafreqindex": ("nmeasure", sigma_freq_index),
+        "sitenames": inv_out.site_names,
+        "fluxapriori": flux["flux_prior_mode"],
+        "fluxmode": flux["flux_posterior_mode"],
+        "scalingmean": flux["scaling_posterior_mean"],
+        "scalingmode": flux["scaling_posterior_mode"],
+        "basisfunctions": inv_out.get_flat_basis(),
+        "countrymean": country["country_posterior_mean"],
+        "countrymedian": country["country_posterior_median"],
+        "countrymode": country["country_posterior_mode"],
+        "countrysd": country["country_posterior_stdev"],
+        "country68": country["country_posterior_hdi_68"],
+        "country95": country["country_posterior_hdi_95"],
+        "countryapriori": country["country_prior_mean"],
+        "countrydefinition": (("lat", "lon"), country_idx),
+        "xsensitivity": (("nmeasure", "nparam"), Hx.T),
+    }
+
+    if use_bc and Hbc is not None:
+        data_vars.update(
+            {
+                "YaprioriBC": ("nmeasure", Hbc.sum(axis=0)),
+                "YmodmeanBC": conc["mu_bc_posterior_mean"],
+                "YmodmedianBC": conc["mu_bc_posterior_median"],
+                "YmodmodeBC": conc["mu_bc_posterior_mode"],
+                "Ymod95BC": conc["mu_bc_posterior_hdi_95"],
+                "Ymod68BC": conc["mu_bc_posterior_hdi_68"],
+                "bctrace": (("steps", "nBC"), mcmc_results["bcouts"].values),
+                "bcsensitivity": (("nmeasure", "nBC"), Hbc.T),
+            }
+        )
+
+    return xr.Dataset(data_vars)

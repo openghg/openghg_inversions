@@ -3,7 +3,7 @@ import xarray as xr
 
 from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.postprocessing.make_outputs import basic_output
+from openghg_inversions.postprocessing.make_outputs import basic_output, make_legacy_hbmcmc_output_from_postprocessing
 from openghg_inversions.postprocessing.make_paris_outputs import (
     make_paris_flux_outputs_from_rhime,
     make_paris_outputs,
@@ -133,3 +133,25 @@ def test_save_inversion_output(mcmc_args, tmpdir):
     inv_out_reloaded = InversionOutput.load(tmpdir / "inv_out.nc")
 
     assert inv_out == inv_out_reloaded
+
+
+def test_hbmcmc_postprocessing_output_matches_legacy_core_fields(raw_data_path, europe_country_file):
+    """Regression test for deterministic prior concentration terms in legacy-compatible output."""
+    legacy = xr.open_dataset(raw_data_path / "standard_rhime_outs.nc")
+    inv_out = InversionOutput.load(raw_data_path / "inversion_output.nc")
+    compat = make_legacy_hbmcmc_output_from_postprocessing(
+        inv_out=inv_out,
+        mcmc_results={
+            "xouts": legacy["xtrace"],
+            "sigouts": legacy["sigtrace"],
+            "bcouts": legacy["bctrace"],
+        },
+        sigma_freq_index=legacy["sigmafreqindex"].values,
+        Hx=legacy["xsensitivity"].values.T,
+        Hbc=legacy["bcsensitivity"].values.T,
+        country_file=europe_country_file,
+        use_bc=True,
+    )
+
+    assert ((compat["Yapriori"].values - legacy["xsensitivity"].sum("nparam").values) == 0).all()
+    assert ((compat["YaprioriBC"].values - legacy["bcsensitivity"].sum("nBC").values) == 0).all()

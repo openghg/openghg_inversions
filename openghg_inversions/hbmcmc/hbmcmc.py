@@ -229,7 +229,7 @@ def fixedbasisMCMC(
     calculate_min_error: Literal["percentile", "residual"] | None = None,
     min_error_options: dict | None = None,
     output_format: Literal[
-        "hbmcmc", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"
+        "hbmcmc", "hbmcmc_postprocessing", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"
     ] = "hbmcmc",
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
@@ -347,6 +347,8 @@ def fixedbasisMCMC(
             error (as specified by `min_error`).
         output_format: Select what is returned/saved by inversion.
             - "hbmcmc": (default) return the results of `inferpymc_postprocessouts`, and save result as netCDF
+            - "hbmcmc_postprocessing": return legacy-style output format, computed using functions from the
+              `postprocessing` submodule
             - "merged_data": return `fp_all` dictionary, no further processing and inversion *not* run
             - "inv_out": return `InversionOutput` object
             - "basic": return basic output created by new `postprocessing` submodule
@@ -365,6 +367,7 @@ def fixedbasisMCMC(
     merged_data_only = False
     return_inv_out = False
     new_postprocessing = False
+    hbmcmc_postprocessing = False
     paris_postprocessing = False
     return_mcmc_args = False
     skip_postprocessing = False
@@ -383,6 +386,8 @@ def fixedbasisMCMC(
         return_inv_out = True
     elif output_format == "basic":
         new_postprocessing = True
+    elif output_format == "hbmcmc_postprocessing":
+        hbmcmc_postprocessing = True
     elif output_format == "paris":
         paris_postprocessing = True
     elif output_format == "mcmc_args":
@@ -669,6 +674,24 @@ def fixedbasisMCMC(
         inv_out = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
 
         outputs = basic_output(inv_out, country_file=country_file)
+        end_post = time.time()
+        print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
+
+        return outputs
+
+    if hbmcmc_postprocessing:
+        from ..postprocessing.make_outputs import make_legacy_hbmcmc_output_from_postprocessing
+
+        inv_out = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
+        outputs = make_legacy_hbmcmc_output_from_postprocessing(
+            inv_out=inv_out,
+            mcmc_results=mcmc_results,
+            sigma_freq_index=post_process_args["sigma_freq_index"],
+            Hx=post_process_args["Hx"],
+            Hbc=post_process_args.get("Hbc"),
+            country_file=country_file,
+            use_bc=use_bc,
+        )
         end_post = time.time()
         print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
 
