@@ -9,6 +9,8 @@ on:
     branches: [main, devel]
     paths-ignore:
       - 'CHANGELOG.md'
+  # Allow manual runs from the Actions UI with the same matrix as automatic runs
+  workflow_dispatch:
 
 jobs:
   openghg-version:
@@ -71,3 +73,20 @@ jobs:
         run: pip install pytest
       - name: Run tests
         run: pytest tests/
+
+  # Stable job name for branch-protection required-check rules.
+  # Use "CI Gate" as the required check name instead of brittle matrix-expanded names.
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: ${{ always() }}
+    permissions: {}
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "Test matrix job(s) failed, were cancelled, or were skipped (result: ${{ needs.test.result }})."
+            exit 1
+          fi
+          echo "All tests passed."
