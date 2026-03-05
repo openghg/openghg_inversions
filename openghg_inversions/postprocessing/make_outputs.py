@@ -348,13 +348,17 @@ def make_legacy_hbmcmc_output_from_postprocessing(
 
     country_idx = utils.get_country(inv_out.domain, country_file=country_file).country
 
+    yapriori = Hx.sum(axis=0)
+    if use_bc and Hbc is not None:
+        yapriori = yapriori + Hbc.sum(axis=0)
+
     data_vars = {
         "Yobs": inv_out.obs,
         "Yerror": inv_out.obs_err,
         "Yerror_repeatability": inv_out.obs_repeatability,
         "Yerror_variability": inv_out.obs_variability,
         "Ytime": inv_out.times,
-        "Yapriori": ("nmeasure", Hx.sum(axis=0)),
+        "Yapriori": ("nmeasure", yapriori),
         "Ymodmean": conc["y_posterior_predictive_mean"],
         "Ymodmedian": conc["y_posterior_predictive_median"],
         "Ymodmode": conc["y_posterior_predictive_mode"],
