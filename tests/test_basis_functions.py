@@ -469,6 +469,8 @@ def test_multisector_ragged_new_matches_old_after_conversion():
         ]
         v["fp_x_flux_sectoral"] = xr.concat(to_concat, dim="source")
 
+    fp_all_sectoral[".split_by_sectors"] = True
+
     # --- Build two different basis partitions (ragged region counts) ---
     weighted_basis_args_1 = {
         "domain": "EUROPE",
