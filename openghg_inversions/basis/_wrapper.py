@@ -91,7 +91,7 @@ def basis_functions_wrapper(
         Default "legacy"
 
     Returns:
-      fp_data (dict) or tuple[dict, dict]:
+      fp_data (dict) or tuple[dict, dict[str, BasisFunctions]]:
         By default, returns a dictionary object similar to fp_all but with information
         on basis functions and sensitivities.
 
@@ -205,25 +205,52 @@ def _make_basis_functions_object(fp_all: dict, basis: xr.DataArray) -> BasisFunc
     if ".flux" not in fp_all or not fp_all[".flux"]:
         raise ValueError("Cannot construct BasisFunctions object: fp_all['.flux'] is missing or empty.")
 
-    first_flux = next(iter(fp_all[".flux"].values()))
+    flux_entries = fp_all[".flux"]
+    flux_arrays = {key: _extract_flux_dataarray(value, flux_key=key) for key, value in flux_entries.items()}
 
-    flux: xr.DataArray
-    if hasattr(first_flux, "data") and isinstance(first_flux.data, xr.Dataset) and "flux" in first_flux.data:
-        flux = first_flux.data["flux"]
-    elif isinstance(first_flux, xr.Dataset) and "flux" in first_flux:
-        flux = first_flux["flux"]
-    elif isinstance(first_flux, xr.DataArray):
-        flux = first_flux
-    else:
-        raise TypeError(
-            "Could not extract a flux DataArray from fp_all['.flux']. "
-            f"Got type {type(first_flux)!r} for first flux entry."
+    # Follow existing ModelScenario behavior:
+    # - single-source workflows combine fluxes by summing over flux entries
+    # - multi-source/sector workflows keep per-source fluxes keyed by source
+    if _is_multi_source_workflow(fp_all):
+        flux = xr.concat(
+            [arr.expand_dims({"source": [key]}) for key, arr in flux_arrays.items()],
+            dim="source",
+            join="outer",
         )
+    else:
+        flux = xr.concat(
+            [arr.expand_dims({"_flux_source": [key]}) for key, arr in flux_arrays.items()],
+            dim="_flux_source",
+            join="outer",
+        ).sum(dim="_flux_source", skipna=True)
 
     return BasisFunctions.from_basis_flat(
         basis_flat=basis,
         flux=flux,
         operator_kwargs={"state_dim": "region"},
+    )
+
+
+def _is_multi_source_workflow(fp_all: dict) -> bool:
+    """Infer whether this fp_all payload represents a multi-source/sector workflow."""
+    site_keys = [key for key in fp_all if not str(key).startswith(".")]
+    return any(
+        isinstance(fp_all[site], xr.Dataset) and "fp_x_flux_sectoral" in fp_all[site].data_vars for site in site_keys
+    )
+
+
+def _extract_flux_dataarray(flux_entry: object, flux_key: str) -> xr.DataArray:
+    """Extract a DataArray named ``flux`` from supported flux entry containers."""
+    if hasattr(flux_entry, "data") and isinstance(flux_entry.data, xr.Dataset) and "flux" in flux_entry.data:
+        return flux_entry.data["flux"]
+    if isinstance(flux_entry, xr.Dataset) and "flux" in flux_entry:
+        return flux_entry["flux"]
+    if isinstance(flux_entry, xr.DataArray):
+        return flux_entry
+
+    raise TypeError(
+        "Could not extract a flux DataArray from fp_all['.flux']. "
+        f"Got type {type(flux_entry)!r} for flux entry {flux_key!r}."
     )
 
 

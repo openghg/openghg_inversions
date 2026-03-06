@@ -761,6 +761,68 @@ def test_make_basis_functions_object_from_fp_all(tac_ch4_data_args):
     assert bf.flux.dims == flux.dims
 
 
+def test_make_basis_functions_object_sums_fluxes_non_sectoral():
+    """Non-sectoral workflows should sum flux entries into one representative flux."""
+    basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    flux_a = xr.DataArray(
+        np.array([[1.0, 1.0], [1.0, 1.0]]),
+        dims=("lat", "lon"),
+        coords={"lat": basis_flat.lat, "lon": basis_flat.lon},
+        name="flux",
+    )
+    flux_b = xr.DataArray(
+        np.array([[2.0, 2.0], [2.0, 2.0]]),
+        dims=("lat", "lon"),
+        coords={"lat": basis_flat.lat, "lon": basis_flat.lon},
+        name="flux",
+    )
+    fp_x_flux = make_fp_x_flux(nlat=2, nlon=2, ntime=2)
+    fp_all = {
+        "TAC": xr.Dataset({"fp_x_flux": fp_x_flux}),
+        ".flux": {"a": flux_a, "b": flux_b},
+    }
+
+    bf = _make_basis_functions_object(fp_all=fp_all, basis=basis_flat)
+
+    assert isinstance(bf, BasisFunctions)
+    assert "source" not in bf.flux.dims
+    xr.testing.assert_allclose(bf.flux, flux_a + flux_b)
+
+
+def test_make_basis_functions_object_stacks_fluxes_sectoral():
+    """Sectoral workflows should preserve source-resolved fluxes along `source`."""
+    basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    flux_a = xr.DataArray(
+        np.array([[1.0, 1.0], [1.0, 1.0]]),
+        dims=("lat", "lon"),
+        coords={"lat": basis_flat.lat, "lon": basis_flat.lon},
+        name="flux",
+    )
+    flux_b = xr.DataArray(
+        np.array([[2.0, 2.0], [2.0, 2.0]]),
+        dims=("lat", "lon"),
+        coords={"lat": basis_flat.lat, "lon": basis_flat.lon},
+        name="flux",
+    )
+    fp_x_flux_sectoral = make_fp_x_flux_sectoral(sources=["a", "b"], nlat=2, nlon=2, ntime=2)
+    fp_all = {
+        "TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux_sectoral}),
+        ".flux": {"a": flux_a, "b": flux_b},
+    }
+
+    bf = _make_basis_functions_object(fp_all=fp_all, basis=basis_flat)
+
+    assert isinstance(bf, BasisFunctions)
+    assert "source" in bf.flux.dims
+    assert list(bf.flux.source.values) == ["a", "b"]
+
+    expected = xr.concat(
+        [flux_a.expand_dims({"source": ["a"]}), flux_b.expand_dims({"source": ["b"]})],
+        dim="source",
+    )
+    xr.testing.assert_allclose(bf.flux, expected)
+
+
 def test_basis_functions_wrapper_return_basis_objects(tac_ch4_data_args):
     """Wrapper can optionally return BasisFunctions payload without changing default path."""
     fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
@@ -782,6 +844,29 @@ def test_basis_functions_wrapper_return_basis_objects(tac_ch4_data_args):
     assert len(site_keys) >= 1
     assert "emissions" in basis_objects
     assert isinstance(basis_objects["emissions"], BasisFunctions)
+
+
+def test_basis_functions_wrapper_invalid_basis_output_format(tac_ch4_data_args, tmp_path):
+    """Invalid basis_output_format should raise a clear ValueError."""
+    fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
+
+    basis_args = {
+        "species": "ch4",
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "emissions_name": ["total-ukghg-edgar7"],
+        "nbasis": 8,
+        "use_bc": False,
+        "basis_algorithm": "weighted",
+        "output_path": str(tmp_path),
+        "basis_output_format": "invalid",
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="Unknown basis_output_format 'invalid'. Expected one of: 'legacy', 'datatree'.",
+    ):
+        basis_functions_wrapper(fp_all, **basis_args)
 
 
 def test_save_basis_datatree_roundtrip(tmp_path):
