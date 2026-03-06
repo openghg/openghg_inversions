@@ -5,7 +5,9 @@ from time import time
 from typing import Literal
 
 import xarray as xr
+from openghg.analyse._utils import match_dataset_dims, stack_datasets
 
+from openghg_inversions.array_ops import force_align
 from .basis_functions import BasisFunctions
 from ._functions import basis_functions, fixed_outer_regions_basis, basis
 from ._helpers import fp_sensitivity, bc_sensitivity
@@ -198,9 +200,10 @@ def basis_functions_wrapper(
 def _make_basis_functions_object(fp_all: dict, basis: xr.DataArray) -> BasisFunctions:
     """Construct a BasisFunctions object from wrapper inputs.
 
-    The current wrapper only computes a single emissions basis array, so this helper
-    builds a single-source ``BasisFunctions`` with ``state_dim='region'`` for
-    compatibility with legacy naming conventions.
+    The current wrapper computes a single emissions basis array. For non-sector
+    workflows, this helper combines all flux sources into one representative flux
+    using the same alignment/summing behavior as ``ModelScenario.combine_flux_sources``.
+    For sector-split workflows, fluxes are preserved along a ``source`` dimension.
     """
     if ".flux" not in fp_all or not fp_all[".flux"]:
         raise ValueError("Cannot construct BasisFunctions object: fp_all['.flux'] is missing or empty.")
@@ -212,17 +215,9 @@ def _make_basis_functions_object(fp_all: dict, basis: xr.DataArray) -> BasisFunc
     # - single-source workflows combine fluxes by summing over flux entries
     # - multi-source/sector workflows keep per-source fluxes keyed by source
     if _is_multi_source_workflow(fp_all):
-        flux = xr.concat(
-            [arr.expand_dims({"source": [key]}) for key, arr in flux_arrays.items()],
-            dim="source",
-            join="outer",
-        )
+        flux = _stack_flux_sources_with_alignment(flux_arrays)
     else:
-        flux = xr.concat(
-            [arr.expand_dims({"_flux_source": [key]}) for key, arr in flux_arrays.items()],
-            dim="_flux_source",
-            join="outer",
-        ).sum(dim="_flux_source", skipna=True)
+        flux = _combine_flux_sources_like_modelscenario(flux_arrays)
 
     return BasisFunctions.from_basis_flat(
         basis_flat=basis,
@@ -232,11 +227,11 @@ def _make_basis_functions_object(fp_all: dict, basis: xr.DataArray) -> BasisFunc
 
 
 def _is_multi_source_workflow(fp_all: dict) -> bool:
-    """Infer whether this fp_all payload represents a multi-source/sector workflow."""
-    site_keys = [key for key in fp_all if not str(key).startswith(".")]
-    return any(
-        isinstance(fp_all[site], xr.Dataset) and "fp_x_flux_sectoral" in fp_all[site].data_vars for site in site_keys
-    )
+    """Determine multi-source/sector mode from explicit fp_all metadata."""
+    split_by_sectors = fp_all.get(".split_by_sectors")
+    if split_by_sectors is None:
+        return False
+    return bool(split_by_sectors)
 
 
 def _extract_flux_dataarray(flux_entry: object, flux_key: str) -> xr.DataArray:
@@ -251,6 +246,43 @@ def _extract_flux_dataarray(flux_entry: object, flux_key: str) -> xr.DataArray:
     raise TypeError(
         "Could not extract a flux DataArray from fp_all['.flux']. "
         f"Got type {type(flux_entry)!r} for flux entry {flux_key!r}."
+    )
+
+
+def _combine_flux_sources_like_modelscenario(flux_arrays: dict[str, xr.DataArray]) -> xr.DataArray:
+    """Combine fluxes as in ModelScenario.combine_flux_sources."""
+    flux_datasets = [
+        arr.rename("flux").to_dataset() if arr.name != "flux" else arr.to_dataset()
+        for arr in flux_arrays.values()
+    ]
+
+    if len(flux_datasets) == 1:
+        return flux_datasets[0]["flux"]
+
+    dims = [dim for dim in flux_datasets[0].dims if dim != "time"]
+    flux_datasets = match_dataset_dims(flux_datasets, dims=dims)
+    if "time" in flux_datasets[0].dims:
+        flux_stacked = stack_datasets(flux_datasets, dim="time", method="ffill")
+    else:
+        flux_stacked = sum(flux_datasets)
+
+    return flux_stacked["flux"]
+
+
+def _stack_flux_sources_with_alignment(flux_arrays: dict[str, xr.DataArray]) -> xr.DataArray:
+    """Stack fluxes along `source`, validating structural coordinate alignment."""
+    first_key = next(iter(flux_arrays))
+    reference = flux_arrays[first_key]
+    dims_to_align = [dim for dim in reference.dims if dim != "time"]
+
+    aligned_flux = {}
+    for key, arr in flux_arrays.items():
+        aligned_flux[key] = force_align(arr, reference=reference, dims=dims_to_align)
+
+    return xr.concat(
+        [arr.expand_dims({"source": [key]}) for key, arr in aligned_flux.items()],
+        dim="source",
+        join="outer",
     )
 
 

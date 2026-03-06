@@ -327,6 +327,8 @@ def make_combined_scenario(fp_all: dict) -> xr.Dataset:
         bc = bc.reindex_like(combined_scenario, method="nearest")
         combined_scenario = combined_scenario.merge(bc)
 
+    combined_scenario.attrs["split_by_sectors"] = bool(fp_all.get(".split_by_sectors", False))
+
     return combined_scenario
 
 
@@ -410,6 +412,8 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
     except ValueError:
         # conversion to float failed
         fp_all[".units"] = 1.0
+
+    fp_all[".split_by_sectors"] = bool(ds.attrs.get("split_by_sectors", False))
 
     return fp_all
 

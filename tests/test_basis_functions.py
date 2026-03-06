@@ -184,6 +184,24 @@ def test_fp_sensitivity_two_flux_sectors():
         np.testing.assert_allclose(2 * h.isel(time=0), h.isel(time=1))
 
 
+def test_fp_sensitivity_two_flux_sources_combined_mode():
+    """If split_by_sectors is False, use combined `fp_x_flux` even with multiple flux entries."""
+    nlat, nlon = 10, 12
+    nbasis = 3
+    basis_func = basis_function(nlat, nlon, nbasis)
+    fp = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
+
+    fp_and_data = {
+        "TAC": xr.Dataset({"fp_x_flux": fp}),
+        ".flux": {"a": 1, "b": 2},
+        ".split_by_sectors": False,
+    }
+
+    fp_and_data = fp_sensitivity(fp_and_data, basis_func)
+    h = fp_and_data["TAC"].H
+    np.testing.assert_allclose(2 * h.isel(time=0), h.isel(time=1))
+
+
 def test_fp_sensitivity_two_flux_sectors_two_basis_funcs():
     """Check that we can apply separate basis functions to separate sources."""
     nlat, nlon = 10, 12
@@ -776,10 +794,12 @@ def test_make_basis_functions_object_sums_fluxes_non_sectoral():
         coords={"lat": basis_flat.lat, "lon": basis_flat.lon},
         name="flux",
     )
-    fp_x_flux = make_fp_x_flux(nlat=2, nlon=2, ntime=2)
+    fp_x_flux_sectoral = make_fp_x_flux_sectoral(sources=["a", "b"], nlat=2, nlon=2, ntime=2)
     fp_all = {
-        "TAC": xr.Dataset({"fp_x_flux": fp_x_flux}),
+        # Even if sectoral variables are present, explicit mode flag should control behavior.
+        "TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux_sectoral}),
         ".flux": {"a": flux_a, "b": flux_b},
+        ".split_by_sectors": False,
     }
 
     bf = _make_basis_functions_object(fp_all=fp_all, basis=basis_flat)
@@ -808,6 +828,7 @@ def test_make_basis_functions_object_stacks_fluxes_sectoral():
     fp_all = {
         "TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux_sectoral}),
         ".flux": {"a": flux_a, "b": flux_b},
+        ".split_by_sectors": True,
     }
 
     bf = _make_basis_functions_object(fp_all=fp_all, basis=basis_flat)

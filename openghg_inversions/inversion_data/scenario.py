@@ -10,7 +10,8 @@ def merged_scenario_data(
     flux_dict: dict[str, FluxData],
     bc_data: BoundaryConditionsData | None = None,
     platform: str | None = None,
-    max_level: int | None = None
+    max_level: int | None = None,
+    split_by_sectors: bool = False,
 ) -> xr.Dataset:
     """Create ModelScenario and get result of `footprint_data_merge`."""
     # Create ModelScenario object for all emissions_sectors
@@ -32,8 +33,6 @@ def merged_scenario_data(
             bc=bc_data,
         )
 
-    # TODO: should we make this option explicit? Multiple fluxes can be stacked and used as a single flux
-    split_by_sectors = len(flux_dict) > 1
     scenario_combined = model_scenario.footprints_data_merge(
         platform=platform,
         calc_fp_x_flux=True,
