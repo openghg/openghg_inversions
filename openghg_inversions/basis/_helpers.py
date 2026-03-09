@@ -34,8 +34,9 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
 
     flux_sources = list(fp_and_data[".flux"].keys())
+    split_by_sectors = bool(fp_and_data.get(".split_by_sectors", len(flux_sources) > 1))
 
-    if len(flux_sources) == 1:
+    if not split_by_sectors:
         if not isinstance(basis_func, xr.DataArray):
             basis_func = next(iter(basis_func.values()))
 
