@@ -176,6 +176,7 @@ def data_processing_surface_notracer(
     obs_store: str | list[str] | None = None,
     footprint_store: str | list[str] | None = None,
     emissions_store: str | None = None,
+    split_by_sectors: bool = False,
     averagingerror: bool = True,
     save_merged_data: bool = False,
     merged_data_name: str | None = None,
@@ -216,6 +217,8 @@ def data_processing_surface_notracer(
         obs_store: Name of object store to retrieve observations data from.
         footprint_store: Name of object store to retrieve footprints data from.
         emissions_store: Name of object store to retrieve emissions data from.
+        split_by_sectors: If True, calculate sector-resolved ``fp_x_flux_sectoral`` in ModelScenario.
+            If False (default), combine all flux sources into a single ``fp_x_flux`` pathway.
         averagingerror: Adds the variability in the averaging period to the measurement
             error if set to True.
         save_merged_data: Save forward simulations data and observations.
@@ -265,6 +268,7 @@ def data_processing_surface_notracer(
         store=emissions_store,
     )
     fp_all[".flux"] = flux_dict
+    fp_all[".split_by_sectors"] = split_by_sectors
 
     # Get BC data
     if use_bc is True:
@@ -350,7 +354,13 @@ def data_processing_surface_notracer(
             continue  # skip this site
 
         scenario_combined = merged_scenario_data(
-            site_data, footprint_data, flux_dict, bc_data, platform=platform[i], max_level=max_level
+            site_data,
+            footprint_data,
+            flux_dict,
+            bc_data,
+            platform=platform[i],
+            max_level=max_level[i],
+            split_by_sectors=split_by_sectors,
         )
         fp_all[site] = scenario_combined
 
