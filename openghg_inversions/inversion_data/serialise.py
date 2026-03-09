@@ -11,6 +11,7 @@ import pickle
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, cast, Literal
+import warnings
 
 from numcodecs import Blosc
 import numpy as np
@@ -413,7 +414,13 @@ def fp_all_from_dataset(ds: xr.Dataset) -> dict:
         # conversion to float failed
         fp_all[".units"] = 1.0
 
-    fp_all[".split_by_sectors"] = bool(ds.attrs.get("split_by_sectors", False))
+    if bool(ds.attrs.get("split_by_sectors", False)):
+        warnings.warn(
+            "Legacy `fp_all_from_dataset` drops scenario `source` dimensions, so sector-resolved "
+            "state cannot be reconstructed. Setting `fp_all['.split_by_sectors'] = False` on load.",
+            UserWarning,
+        )
+    fp_all[".split_by_sectors"] = False
 
     return fp_all
 

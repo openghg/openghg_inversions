@@ -359,7 +359,7 @@ def data_processing_surface_notracer(
             flux_dict,
             bc_data,
             platform=platform[i],
-            max_level=max_level,
+            max_level=max_level[i],
             split_by_sectors=split_by_sectors,
         )
         fp_all[site] = scenario_combined

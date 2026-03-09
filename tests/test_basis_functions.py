@@ -17,6 +17,7 @@ from openghg_inversions.basis import (
 )
 from openghg_inversions.basis._wrapper import (
     _make_basis_functions_object,
+    _is_multi_source_workflow,
     _save_basis,
     _save_basis_datatree,
 )
@@ -844,6 +845,14 @@ def test_make_basis_functions_object_stacks_fluxes_sectoral():
         dim="source",
     )
     xr.testing.assert_allclose(bf.flux, expected)
+
+
+def test_is_multi_source_workflow_legacy_fallback():
+    """If .split_by_sectors is missing, fallback inference uses number of flux entries."""
+    fp_all = {
+        ".flux": {"a": xr.DataArray([1.0], dims=("x",)), "b": xr.DataArray([2.0], dims=("x",))},
+    }
+    assert _is_multi_source_workflow(fp_all)
 
 
 def test_basis_functions_wrapper_return_basis_objects(tac_ch4_data_args):

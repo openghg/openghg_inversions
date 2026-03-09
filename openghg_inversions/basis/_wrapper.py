@@ -227,11 +227,18 @@ def _make_basis_functions_object(fp_all: dict, basis: xr.DataArray) -> BasisFunc
 
 
 def _is_multi_source_workflow(fp_all: dict) -> bool:
-    """Determine multi-source/sector mode from explicit fp_all metadata."""
+    """Determine multi-source/sector mode from fp_all metadata.
+
+    Prefer explicit ``.split_by_sectors`` when present. For legacy/hand-constructed
+    ``fp_all`` without this flag, fall back to inferring sectoral behavior when
+    multiple flux entries are present.
+    """
     split_by_sectors = fp_all.get(".split_by_sectors")
-    if split_by_sectors is None:
-        return False
-    return bool(split_by_sectors)
+    if split_by_sectors is not None:
+        return bool(split_by_sectors)
+
+    flux_entries = fp_all.get(".flux")
+    return isinstance(flux_entries, dict) and len(flux_entries) > 1
 
 
 def _extract_flux_dataarray(flux_entry: object, flux_key: str) -> xr.DataArray:
