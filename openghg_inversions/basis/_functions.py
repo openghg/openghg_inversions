@@ -157,7 +157,26 @@ def _flux_fp_from_fp_all(
 
     flux = cast(xr.DataArray, flux)
 
-    footprints: list[xr.DataArray] = [v.fp for k, v in fp_all.items() if not k.startswith(".")]
+    footprints = []
+    for k, v in fp_all.items():
+        if k.startswith("."):
+            continue
+
+         # Need to discuss this further
+        # fp_x_flux is guaranteed to be on the
+        # EUROPE grid (it comes from the standard scenario). Raw .fp may be
+        # on the 6km grid if OpenGHG snapped it to the footprint resolution.
+        if "fp_x_flux" in v:
+            fp = v["fp_x_flux"]
+        else:
+            fp = v.fp
+
+        # if grid still doesn't match flux, regrid to flux grid
+        if fp.sizes.get("lat") != flux.sizes.get("lat") or fp.sizes.get("lon") != flux.sizes.get("lon"):
+            fp = fp.interp(lat=flux.lat, lon=flux.lon, method="nearest").fillna(0.0)
+            fp = fp.assign_coords(lat=flux.lat, lon=flux.lon)
+
+        footprints.append(fp)
 
     return flux, footprints
 

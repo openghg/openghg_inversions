@@ -30,7 +30,7 @@ def adjust_flux_start_date(
     start_date: str, species: str, source: str, domain: str, store: str | None = None
 ) -> pd.Timestamp:
     """Adjusts the flux start_date to align with the flux data's temporal resolution."""
-    flux_search = search_flux(species=species, source=source, domain=domain, store=store)
+    flux_search = search_flux(species=species, source=source, domain=f"{domain}-6km", store=store)
     if flux_search.results.empty:
         raise SearchError(
             f"No flux found with species={species}, source={source}, domain={domain}, store={store}."

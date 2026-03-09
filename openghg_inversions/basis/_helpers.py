@@ -66,6 +66,14 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
     fp_and_data[".basis"] = basis_func
 
     for site in sites:
+        fp_x_flux = fp_and_data[site]["fp_x_flux"]  
+        # if inner domain fp_x_flux exists, blend it in
+        if "fp_x_flux_inner" in fp_and_data[site]:
+            fp_x_flux = combine_inner_outer_fp_x_flux(
+                inner_fp_x_flux=fp_and_data[site]["fp_x_flux_inner"],
+                outer_fp_x_flux=fp_x_flux,                             
+            )
+
         sensitivity = apply_fp_basis_functions(
             fp_x_flux=fp_and_data[site][fp_x_flux_name],
             basis_func=basis_func,
@@ -73,6 +81,29 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
         fp_and_data[site]["H"] = sensitivity
 
     return fp_and_data
+
+
+def combine_inner_outer_fp_x_flux(
+    inner_fp_x_flux: xr.DataArray,
+    outer_fp_x_flux: xr.DataArray,
+) -> xr.DataArray:
+    """Merge inner (6km) and outer (EUROPE) fp_x_flux."""
+    # Regrid inner fp_x_flux to the same grid as outer fp_x_flux, and then patch it in where the inner domain mask is True.
+    # regrid inner to EUROPE lat/lon coords
+    inner_regridded = inner_fp_x_flux.interp(lat=outer_fp_x_flux.lat, lon=outer_fp_x_flux.lon, method="nearest")
+
+    # force coordinates to exactly match outer (avoids float precision
+    # mismatches that prevent xr.align / xr.where from working correctly)
+    inner_regridded = inner_regridded.assign_coords(lat=outer_fp_x_flux.lat, lon=outer_fp_x_flux.lon)
+
+    # fill NaN (points outside the inner domain extent) with 0
+    inner_regridded = inner_regridded.fillna(0.0)
+
+    # True where the inner domain contributed non-zero values at any timestep
+    inner_has_coverage = (inner_regridded != 0).any("time")
+
+    # Both arrays are now on the EUROPE grid so xr.where is safe
+    return xr.where(inner_has_coverage, inner_regridded, outer_fp_x_flux)
 
 
 def apply_fp_basis_functions(
