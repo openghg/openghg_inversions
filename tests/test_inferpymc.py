@@ -1,8 +1,9 @@
 import numpy as np
+import pymc as pm
 import pytest
 
 from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs
-from openghg_inversions.hbmcmc.inversion_pymc import inferpymc
+from openghg_inversions.hbmcmc.inversion_pymc import InferPyMCModelSetup, build_inferpymc_model, inferpymc
 
 
 @pytest.fixture
@@ -26,11 +27,88 @@ def inferpymc_args(mhd_and_tac_fp_data) -> dict:
             "burn": 0,
             "tune": 0,
             "nchain": 1,
+            "xprior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+            "bcprior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+            "sigprior": {"pdf": "uniform", "lower": 0.1, "upper": 10.0},
+            "sigma_per_site": True,
+            "offsetprior": {"pdf": "normal", "mu": 0, "sigma": 1},
+            "add_offset": False,
+            "min_error": 0.0,
+            "use_bc": True,
+            "reparameterise_log_normal": False,
+            "pollution_events_from_obs": True,
+            "no_model_error": False,
+            "offset_args": {"drop_first": False, "offset_freq": "D"},
+            "power": 1.99,
             "verbose": False,
             "sampler_kwargs": {"random_seed": 123},
         }
     )
     return mcmc_args
+
+
+def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict) -> None:
+    """Check extracted model builder returns PyMC step methods for the pymc sampler."""
+    setup = build_inferpymc_model(
+        Hx=inferpymc_args["Hx"],
+        Y=inferpymc_args["Y"],
+        error=inferpymc_args["error"],
+        siteindicator=inferpymc_args["siteindicator"],
+        sigma_freq_index=inferpymc_args["sigma_freq_index"],
+        Hbc=inferpymc_args["Hbc"],
+        xprior=inferpymc_args["xprior"],
+        bcprior=inferpymc_args["bcprior"],
+        sigprior=inferpymc_args["sigprior"],
+        sigma_per_site=inferpymc_args["sigma_per_site"],
+        offsetprior=inferpymc_args["offsetprior"],
+        add_offset=inferpymc_args["add_offset"],
+        min_error=inferpymc_args["min_error"],
+        use_bc=inferpymc_args["use_bc"],
+        reparameterise_log_normal=inferpymc_args["reparameterise_log_normal"],
+        pollution_events_from_obs=inferpymc_args["pollution_events_from_obs"],
+        no_model_error=inferpymc_args["no_model_error"],
+        offset_args=inferpymc_args["offset_args"],
+        power=inferpymc_args["power"],
+        nuts_sampler="pymc",
+    )
+
+    assert isinstance(setup, InferPyMCModelSetup)
+    assert isinstance(setup.model, pm.Model)
+    assert isinstance(setup.step1, pm.NUTS)
+    assert isinstance(setup.step2, pm.Slice)
+    assert setup.sample_kwargs["step"] == [setup.step1, setup.step2]
+
+
+def test_build_inferpymc_model_returns_no_steps_for_numpyro(inferpymc_args: dict) -> None:
+    """Check extracted model builder omits explicit steps for the numpyro sampler."""
+    setup = build_inferpymc_model(
+        Hx=inferpymc_args["Hx"],
+        Y=inferpymc_args["Y"],
+        error=inferpymc_args["error"],
+        siteindicator=inferpymc_args["siteindicator"],
+        sigma_freq_index=inferpymc_args["sigma_freq_index"],
+        Hbc=inferpymc_args["Hbc"],
+        xprior=inferpymc_args["xprior"],
+        bcprior=inferpymc_args["bcprior"],
+        sigprior=inferpymc_args["sigprior"],
+        sigma_per_site=inferpymc_args["sigma_per_site"],
+        offsetprior=inferpymc_args["offsetprior"],
+        add_offset=inferpymc_args["add_offset"],
+        min_error=inferpymc_args["min_error"],
+        use_bc=inferpymc_args["use_bc"],
+        reparameterise_log_normal=inferpymc_args["reparameterise_log_normal"],
+        pollution_events_from_obs=inferpymc_args["pollution_events_from_obs"],
+        no_model_error=inferpymc_args["no_model_error"],
+        offset_args=inferpymc_args["offset_args"],
+        power=inferpymc_args["power"],
+        nuts_sampler="numpyro",
+    )
+
+    assert isinstance(setup, InferPyMCModelSetup)
+    assert isinstance(setup.model, pm.Model)
+    assert isinstance(setup.step1, pm.NUTS)
+    assert isinstance(setup.step2, pm.Slice)
+    assert setup.sample_kwargs["step"] is None
 
 
 def test_inferpymc_runs_on_inversion_inputs(inferpymc_args: dict) -> None:
