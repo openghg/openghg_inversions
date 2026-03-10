@@ -588,14 +588,14 @@ def fixedbasisMCMC(
         use_bc=use_bc,
         species=species,
         domain=domain,
-        inner_domain=inner_domain,
+        # inner_domain=inner_domain,
         start_date=start_date,
         fix_outer_regions=fix_basis_outer_regions,
         emissions_name=emissions_name,
         outputname=outputname,
         output_path=basis_output_path,
     )
-
+    print(f"Basis functions applied to data {domain}.\n ")
     # Apply named filters to the data
     if filters is not None:
         try:

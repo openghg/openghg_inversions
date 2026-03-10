@@ -78,6 +78,7 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
             fp_x_flux=fp_and_data[site][fp_x_flux_name],
             basis_func=basis_func,
         )
+        # TODO: store houter hinner here
         fp_and_data[site]["H"] = sensitivity
 
     return fp_and_data
