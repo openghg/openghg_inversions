@@ -161,6 +161,17 @@ def _contiguous_sigma_time_index(sigma_freq_index: np.ndarray) -> np.ndarray:
     return np.searchsorted(uniq, sigma_freq_index).astype(int)
 
 
+#----------------------------------------
+# Model building code
+#----------------------------------------
+
+# Defaults to avoid mutable default arguments in model building functions.
+DEFAULT_XPRIOR: PriorArgs = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
+DEFAULT_BCPRIOR: PriorArgs = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
+DEFAULT_SIGPRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
+DEFAULT_OFFSETPRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
+
+
 def build_inferpymc_model(
     Hx: np.ndarray,
     Y: np.ndarray,
@@ -168,11 +179,11 @@ def build_inferpymc_model(
     siteindicator: np.ndarray,
     sigma_freq_index: np.ndarray,
     Hbc: np.ndarray | None = None,
-    xprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-    bcprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-    sigprior: dict = {"pdf": "uniform", "lower": 0.1, "upper": 3.0},
+    xprior: dict | None = None,
+    bcprior: dict | None = None,
+    sigprior: dict | None= None,
     sigma_per_site: bool = True,
-    offsetprior: dict = {"pdf": "normal", "mu": 0, "sigma": 1},
+    offsetprior: dict | None = None,
     add_offset: bool = False,
     min_error: np.ndarray | float | None = 0.0,
     use_bc: bool = True,
@@ -186,6 +197,12 @@ def build_inferpymc_model(
     """Build the PyMC model and sampler configuration used by inferpymc."""
     if use_bc and Hbc is None:
         raise ValueError("If `use_bc` is True, then `Hbc` must be provided.")
+
+    # Assign defaults here to avoid sharing the same dict across calls.
+    xprior = DEFAULT_XPRIOR.copy() if xprior is None else xprior
+    bcprior = DEFAULT_BCPRIOR.copy() if bcprior is None else bcprior
+    sigprior = DEFAULT_SIGPRIOR.copy() if sigprior is None else sigprior
+    offsetprior = DEFAULT_OFFSETPRIOR.copy() if offsetprior is None else offsetprior
 
     hx = Hx.T
     hbc = Hbc.T if use_bc and Hbc is not None else None
@@ -269,6 +286,11 @@ def build_inferpymc_model(
         step2=step2,
         sample_kwargs={"step": [step1, step2] if nuts_sampler == "pymc" else None},
     )
+
+
+#----------------------------------------
+# Build/run model
+#----------------------------------------
 
 
 def inferpymc(
