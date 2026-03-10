@@ -161,9 +161,9 @@ def _contiguous_sigma_time_index(sigma_freq_index: np.ndarray) -> np.ndarray:
     return np.searchsorted(uniq, sigma_freq_index).astype(int)
 
 
-#----------------------------------------
+# ----------------------------------------
 # Model building code
-#----------------------------------------
+# ----------------------------------------
 
 # Defaults to avoid mutable default arguments in model building functions.
 DEFAULT_XPRIOR: PriorArgs = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
@@ -181,7 +181,7 @@ def build_inferpymc_model(
     Hbc: np.ndarray | None = None,
     xprior: dict | None = None,
     bcprior: dict | None = None,
-    sigprior: dict | None= None,
+    sigprior: dict | None = None,
     sigma_per_site: bool = True,
     offsetprior: dict | None = None,
     add_offset: bool = False,
