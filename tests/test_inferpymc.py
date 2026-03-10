@@ -209,7 +209,7 @@ def test_inferpymc_model_contains_expected_variables(inferpymc_args: dict, infer
 
 def test_inferpymc_runs_without_boundary_conditions(inferpymc_args: dict) -> None:
     """Check inferpymc direct call when boundary conditions are disabled."""
-    inferpymc_args = dict(inferpymc_args.copy())
+    inferpymc_args = dict(inferpymc_args)
     inferpymc_args["use_bc"] = False
     inferpymc_args["Hbc"] = None
 
