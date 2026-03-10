@@ -1,3 +1,5 @@
+from types import MappingProxyType
+
 import numpy as np
 import pymc as pm
 import pytest
@@ -6,9 +8,16 @@ from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs
 from openghg_inversions.hbmcmc.inversion_pymc import InferPyMCModelSetup, build_inferpymc_model, inferpymc
 
 
-@pytest.fixture
-def inferpymc_args(mhd_and_tac_fp_data) -> dict:
-    """Create direct inputs for inferpymc using existing inversion input machinery."""
+@pytest.fixture(scope="module")
+def inferpymc_args(mhd_and_tac_fp_data) -> MappingProxyType:
+    """Create direct inputs for inferpymc using existing inversion input machinery.
+
+    NOTE: the module level scope allows us to define other module scoped fixtures
+    using this fixture, but it means we need to be careful about not mutating the
+    return of the fixture.
+
+    The result is wrapped in a MappingProxyType as a precaution.
+    """
     mcmc_args, _ = make_inv_inputs(
         fp_data=mhd_and_tac_fp_data,
         sites=["MHD", "TAC"],
@@ -41,10 +50,10 @@ def inferpymc_args(mhd_and_tac_fp_data) -> dict:
             "offset_args": {"drop_first": False, "offset_freq": "D"},
             "power": 1.99,
             "verbose": False,
-            "sampler_kwargs": {"random_seed": 123},
+            "sampler_kwargs": {"random_seed": 123, "compute_convergence_checks": False},
         }
     )
-    return mcmc_args
+    return MappingProxyType(mcmc_args)
 
 
 def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict) -> None:
@@ -80,7 +89,11 @@ def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict) -> N
 
 
 def test_build_inferpymc_model_returns_no_steps_for_numpyro(inferpymc_args: dict) -> None:
-    """Check extracted model builder omits explicit steps for the numpyro sampler."""
+    """Check model setup does not pass steps them via sample_kwargs['step'] for the numpyro sampler.
+
+    The steps are still created by build_inferpymc_model and stored in the dataclass. This matches
+    the pre-existing behaviour, but perhaps should be changed.
+    """
     setup = build_inferpymc_model(
         Hx=inferpymc_args["Hx"],
         Y=inferpymc_args["Y"],
@@ -111,9 +124,19 @@ def test_build_inferpymc_model_returns_no_steps_for_numpyro(inferpymc_args: dict
     assert setup.sample_kwargs["step"] is None
 
 
-def test_inferpymc_runs_on_inversion_inputs(inferpymc_args: dict) -> None:
+@pytest.fixture(scope="module")
+def inferpymc_with_bc_result(inferpymc_args: dict):
+    """Run inferpymc with inferpymc_args, including use_bc=True.
+
+    The results from `inferpymc(**inferpymc_args)` are used at least
+    twice in the tests, so this fixture saves some computation.
+    """
+    return inferpymc(**inferpymc_args)
+
+
+def test_inferpymc_runs_on_inversion_inputs(inferpymc_args: dict, inferpymc_with_bc_result) -> None:
     """Smoke test inferpymc directly on prepared inversion inputs."""
-    result = inferpymc(**inferpymc_args)
+    result = inferpymc_with_bc_result
 
     expected_keys = {
         "xouts",
@@ -148,9 +171,9 @@ def test_inferpymc_runs_on_inversion_inputs(inferpymc_args: dict) -> None:
     assert np.isfinite(result["YBCtrace"]).all()
 
 
-def test_inferpymc_model_contains_expected_variables(inferpymc_args: dict) -> None:
+def test_inferpymc_model_contains_expected_variables(inferpymc_args: dict, inferpymc_with_bc_result) -> None:
     """Check that inferpymc builds the expected PyMC model structure."""
-    result = inferpymc(**inferpymc_args)
+    result = inferpymc_with_bc_result
     model = result["model"]
 
     expected_named_vars = {
@@ -186,7 +209,7 @@ def test_inferpymc_model_contains_expected_variables(inferpymc_args: dict) -> No
 
 def test_inferpymc_runs_without_boundary_conditions(inferpymc_args: dict) -> None:
     """Check inferpymc direct call when boundary conditions are disabled."""
-    inferpymc_args = inferpymc_args.copy()
+    inferpymc_args = dict(inferpymc_args.copy())
     inferpymc_args["use_bc"] = False
     inferpymc_args["Hbc"] = None
 
