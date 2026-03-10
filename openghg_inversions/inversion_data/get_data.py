@@ -370,7 +370,7 @@ def data_processing_surface_notracer(
             )
             if inner_footprint_data is None:
                 print(
-                    f"\nNo Inner footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}-{inner_domain}.",
+                    f"\nNo Inner footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}-{inner_domain}, starting from {start_date} to {end_date}, fp_species {fp_species} and met_model {met_model[i]}, obs_data {site_data} and averaging_period {averaging_period[i]}.",
                     f"Check these values.\nContinuing model run without {site}.Jai\n",
                 )
                 continue  # skip this site
