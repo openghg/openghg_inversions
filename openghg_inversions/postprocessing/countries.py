@@ -167,16 +167,26 @@ class CountryRegions:
 
         return missing
 
-    def align(self, country_list: CountryInfoList) -> Self:
+    def align(self, country_list: CountryInfoList, drop_missing: bool = False) -> Self:
         """Return CountryRegions with values aligned to a given list of countries.
 
         This is used to make sure that the region definitions have the same "input names"
         as the given country list, which is necessary if country codes are not being used.
+
+        Args:
+            country_list: list to align countries against.
+            drop_missing: if True, skip any region for which one or more countries are
+              missing from `country_list`.
         """
-        aligned_country_regions = {
-            region: country_list.select_by_country_info(region_countries)
-            for region, region_countries in self._regions.items()
-        }
+        aligned_country_regions = {}
+
+        for region, region_countries in self._regions.items():
+            try:
+                aligned_country_regions[region] = country_list.select_by_country_info(region_countries)
+            except ValueError:
+                if not drop_missing:
+                    raise
+
         return type(self)(aligned_country_regions)
 
     def all_region_countries_present_in(self, country_list: CountryInfoList) -> bool:
@@ -225,7 +235,7 @@ class Countries:
         else:
             self.country_regions = CountryRegions(country_regions)
 
-        self.country_regions = self.country_regions.align(self.country_labels)
+        self.country_regions = self.country_regions.align(self.country_labels, drop_missing=True)
 
         # check that country regions are specified in correct country code
         missing_countries = self.country_regions.region_countries_missing_from(self.country_labels)

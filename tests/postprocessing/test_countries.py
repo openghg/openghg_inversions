@@ -69,3 +69,20 @@ def test_countries_matrix_with_regions_EASTASIA(country_code, country_ds_eastasi
     )
 
     assert len(countries.country_selections) == len(country_ds_eastasia.name) + len(paris_regions_dict.get('eastasia', []))
+
+
+@pytest.mark.parametrize("country_code", ["alpha2", "alpha3", None])
+def test_countries_matrix_skips_regions_with_missing_country_codes(country_code, eastasia_country_file):
+    """Check that regions with missing country names/codes are skipped instead of raising."""
+    country_regions = {
+        "EASTERN_ASIA": ["NOT_A_COUNTRY", "PRK", "KOR", "JPN"],
+    }
+
+    countries = Countries.from_file(
+        domain="EASTASIA",
+        country_regions=country_regions,
+        country_code=country_code,
+        country_file=eastasia_country_file,
+    )
+
+    assert "EASTERN_ASIA" not in countries.country_selections
