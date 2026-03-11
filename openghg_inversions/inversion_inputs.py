@@ -191,7 +191,7 @@ def _drop_nan_and_compute(ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "
             will be used.
 
     Returns:
-        xarray.Dataset with NaNs dropped along `nmeasure` basied on selected variables,
+        xarray.Dataset with NaNs dropped along `nmeasure` based on selected variables,
             and with certain variables computed.
     """
     # Variables that must not contain NaNs along the nmeasure dim
