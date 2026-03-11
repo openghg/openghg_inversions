@@ -7,8 +7,8 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs
-from openghg_inversions.inversion_inputs import make_inv_inputs as make_inv_inputs_ds
+from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs_legacy
+from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.hbmcmc.inversion_pymc import (
     InferPyMCModelSetup,
     _prepare_inferpymc_inputs,
@@ -28,7 +28,7 @@ def inferpymc_args(mhd_and_tac_fp_data) -> MappingProxyType:
 
     The result is wrapped in a MappingProxyType as a precaution.
     """
-    mcmc_args, _ = make_inv_inputs(
+    mcmc_args, _ = make_inv_inputs_legacy(
         fp_data=mhd_and_tac_fp_data,
         sites=["MHD", "TAC"],
         start_date="2019-01-01",
@@ -69,7 +69,7 @@ def inferpymc_args(mhd_and_tac_fp_data) -> MappingProxyType:
 @pytest.fixture(scope="module")
 def inferpymc_inputs_dataset(mhd_and_tac_fp_data) -> xr.Dataset:
     """Create xarray inversion inputs for the Stage B dataset path."""
-    ds = make_inv_inputs_ds(
+    ds = make_inv_inputs(
         mhd_and_tac_fp_data,
         sites=["MHD", "TAC"],
         bc_freq="3h",
@@ -78,28 +78,6 @@ def inferpymc_inputs_dataset(mhd_and_tac_fp_data) -> xr.Dataset:
         min_error_per_site=False,
         start_date="2019-01-01",
     )
-
-    drop_subset = ["H", "H_bc", "mf", "mf_error"]
-    drop_subset = [dv for dv in drop_subset if dv in ds]
-    ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
-
-    to_compute = [
-        "H",
-        "H_bc",
-        "mf",
-        "mf_error",
-        "mf_repeatability",
-        "mf_variability",
-        "mf_prior_factor",
-        "mf_prior_upper_level_factor",
-        "bc_mod",
-        "mf_mod",
-        "site_indicator",
-        "sigma_freq_index",
-        "min_error",
-    ]
-    to_compute = [dv for dv in to_compute if dv in ds]
-    ds[to_compute] = ds[to_compute].compute()
     return ds
 
 

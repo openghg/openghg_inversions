@@ -1,7 +1,7 @@
 """Functions for creating the inputs needed by PyMC."""
 
 import datetime as dt
-from typing import Any, Literal
+from typing import Any, Iterable, Literal
 
 import numpy as np
 import pandas as pd
@@ -176,6 +176,49 @@ def transform_bc(
 
 
 # INVERSION INPUTS PIPELINE
+def _drop_nan_and_compute(ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")) -> xr.Dataset:
+    """Drop NaNs in required inversion variables and materialize core variables.
+
+    This centralizes the dataset cleanup that was previously duplicated in
+    hbmcmc.make_inv_inputs. It:
+      - drops nmeasure rows with NaNs in required variables (H, H_bc, mf, mf_error)
+      - triggers computation for a selected set of variables so returned dataset
+        is ready for immediate consumption (avoids repeated dask computations)
+
+    Args:
+        ds: Input xarray.Dataset produced by make_inv_inputs logic.
+        drop_nan_from: data variables to drop NaNs from; only data variables present in `ds`
+            will be used.
+
+    Returns:
+        xarray.Dataset with NaNs dropped along `nmeasure` basied on selected variables,
+            and with certain variables computed.
+    """
+    # Variables that must not contain NaNs along the nmeasure dim
+    drop_subset: list[str] = [v for v in drop_nan_from if v in ds]
+    if drop_subset:
+        ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
+
+    # Variables we want to ensure are materialized (compute() only these)
+    to_compute: list[str] = [
+        "H",
+        "H_bc",
+        "mf",
+        "mf_error",
+        "mf_repeatability",
+        "mf_variability",
+        "mf_prior_factor",
+        "mf_prior_upper_level_factor",
+        "bc_mod",
+        "mf_mod",
+    ]
+    to_compute = [v for v in to_compute if v in ds]
+    if to_compute:
+        ds[to_compute] = ds[to_compute].compute()
+
+    return ds
+
+
 def make_inv_inputs(
     fp_data: dict[str, Any],
     sites: list[str] | None = None,
@@ -201,5 +244,7 @@ def make_inv_inputs(
     ds["sigma_freq_index"] = make_sigma_freq(ds.time, freq=sigma_freq, anchor_time=start_date)
 
     ds = add_min_error(ds, fp_data=fp_data, min_error=min_error, min_error_per_site=min_error_per_site)
+
+    ds = _drop_nan_and_compute(ds)
 
     return ds

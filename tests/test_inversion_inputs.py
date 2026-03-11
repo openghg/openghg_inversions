@@ -7,7 +7,7 @@ from numpy.testing import assert_almost_equal
 import pytest
 import xarray as xr
 
-from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs
+from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs_legacy
 from openghg_inversions.inversion_inputs import add_site_indicator, concat_gather_datasets
 
 
@@ -92,7 +92,7 @@ def inv_inputs_args(mhd_and_tac_fp_data):
 @pytest.mark.create_frozen
 def test_inversion_input_create_frozen(raw_data_path, inv_inputs_args):
     """This 'test' just regenerates frozen data for use in other tests."""
-    mcmc_args, post_args = make_inv_inputs(**inv_inputs_args)
+    mcmc_args, post_args = make_inv_inputs_legacy(**inv_inputs_args)
 
     out_name = raw_data_path / "frozen_mhd_tac_make_inv_inputs_hbmcmc.npz"
     save_frozen_npz(out_name, mcmc_args=mcmc_args, post_process_args=post_args)
@@ -104,7 +104,7 @@ def test_inversion_input_hbmcmc_matches_frozen(raw_data_path, inv_inputs_args):
 
     frozen_mcmc, frozen_post = load_frozen_npz(frozen_path)
 
-    mcmc_args, post_args = make_inv_inputs(**inv_inputs_args)
+    mcmc_args, post_args = make_inv_inputs_legacy(**inv_inputs_args)
 
     _compare_with_frozen(mcmc_args, frozen_mcmc)
     _compare_with_frozen(post_args, frozen_post)
