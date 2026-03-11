@@ -19,6 +19,7 @@ import numpy as np
 
 # import pytensor before pymc so we can set config values
 import pytensor
+
 pytensor.config.floatX = "float32"
 pytensor.config.warn_float64 = "warn"
 
@@ -220,8 +221,7 @@ def _validate_inferpymc_input_mode(
     if inv_inputs is not None:
         if provided_legacy:
             raise ValueError(
-                "`inv_inputs` cannot be combined with legacy array arguments: "
-                + ", ".join(provided_legacy)
+                "`inv_inputs` cannot be combined with legacy array arguments: " + ", ".join(provided_legacy)
             )
         return "dataset"
 
@@ -229,8 +229,7 @@ def _validate_inferpymc_input_mode(
     missing = [name for name in required_legacy if legacy_args[name] is None]
     if missing:
         raise ValueError(
-            "Either provide `inv_inputs` or all required legacy arguments. Missing: "
-            + ", ".join(missing)
+            "Either provide `inv_inputs` or all required legacy arguments. Missing: " + ", ".join(missing)
         )
     return "legacy"
 
@@ -400,7 +399,9 @@ def _prepare_inferpymc_inputs(
     )
 
 
-def _restore_inferencedata_coords(idata: az.InferenceData, original_coords: dict[str, Any]) -> az.InferenceData:
+def _restore_inferencedata_coords(
+    idata: az.InferenceData, original_coords: dict[str, Any]
+) -> az.InferenceData:
     """Restore saved coordinates onto matching InferenceData groups.
 
     Temporary Stage B helper for issue #372. This is intentionally not yet wired
@@ -565,7 +566,9 @@ def build_inferpymc_model(
             eps = pt.maximum(pt.abs(error_data), small_amount)
         else:
             power0 = parse_prior("power", power) if isinstance(power, dict) else power
-            eps = pt.maximum(pt.sqrt(error_data**2 + pt.pow(pollution_event_scaled_error, power0)), min_error_data)
+            eps = pt.maximum(
+                pt.sqrt(error_data**2 + pt.pow(pollution_event_scaled_error, power0)), min_error_data
+            )
 
         pm.Deterministic("epsilon", eps, dims="nmeasure")
         pm.Normal("y", mu=mu, sigma=eps, observed=y_data, dims="nmeasure")
@@ -581,9 +584,9 @@ def build_inferpymc_model(
     )
 
 
-#----------------------------------------
+# ----------------------------------------
 # Build/run model
-#----------------------------------------
+# ----------------------------------------
 
 
 def inferpymc(
@@ -617,110 +620,70 @@ def inferpymc(
     state: str = "region",
     bc_state: str = "bc_region",
 ) -> dict:
-    """Uses PyMC module for Bayesian inference for emissions field, boundary
-    conditions and (currently) a single model error value.
-    This uses a Normal likelihood but the (hyper)prior PDFs can be selected by user.
+    """Perform Bayesian inference with PyMC for emissions, boundary conditions, and model error.
+
+    This routine constructs and runs a PyMC model (by default using a Normal
+    likelihood) to infer emissions, boundary conditions, and a single model-
+    error parameter (or per-site model-error if requested). The function can
+    accept either numpy-based inputs (Hx, Y, etc.) or an xarray.Dataset produced
+    by `make_inv_inputs`, which preserves dims and coordinates for cleaner model
+    construction.
 
     Args:
-      Hx:
-        Transpose of the sensitivity matrix to map emissions to measurement.
-        This is the same as what is given from fp_data[site].H.values, where
-        fp_data is the output from e.g. footprint_data_merge, but where it
-        has been stacked for all sites.
-      Y:
-        Measurement vector containing all measurements
-      error:
-        Measurement error vector, containg a value for each element of Y.
-      siteindicator:
-        Array of indexing integers that relate each measurement to a site
-      sigma_freq_index:
-        Array of integer indexes that converts time into periods
-      Hbc:
-        Same as Hx but for boundary conditions. Only used if use_bc=True.
-      xprior:
-        Dictionary containing information about the prior PDF for emissions.
-        The entry "pdf" is the name of the analytical PDF used, see
-        https://docs.pymc.io/api/distributions/continuous.html for PDFs
-        built into pymc3, although they may have to be coded into the script.
-        The other entries in the dictionary should correspond to the shape
-        parameters describing that PDF as the online documentation,
-        e.g. N(1,1**2) would be: `xprior={pdf: "normal", "mu": 1.0, "sigma": 1.0}`.
-        Note that the standard deviation should be used rather than the
-        precision. Currently all variables are considered iid.
-      bcprior:
-        Same as xprior but for boundary conditions. Only used if use_bc=True.
-      sigprior:
-        Same as xprior but for model error.
-      nuts_sampler:
-        nuts_sampler use by pymc.sample. Options are "pymc" and "numpyro"?
-      nit:
-        number of samples to generate (per chain)
-      burn:
-        number of samples to discard (or "burn") from the beginning of each chain
-      tune:
-        number of tuning steps used by sampler
-      nchain:
-        number of chains use by sampler. You should use at least 2 chains for the convergence checks
-        to work; four chains is better. Chains run in parallel, so the number of chains doesn't affect
-        running time, provided the number of threads available is at least the number of chains.
-      sigma_per_site (bool):
-        Whether a model sigma value will be calculated for each site independantly (True) or all sites together (False).
-        Default: True
-      offsetprior (dict):
-        Same as above but for bias offset. Only used is addoffset=True.
-      add_offset (bool):
-        Add an offset (intercept) to all sites but the first in the site list. Default False.
-      verbose:
-        When True, prints progress bar
-      min_error:
-        Minimum error to use during inversion. Only used if no_model_error is False.
-      save_trace:
-        Path where to save the trace. If None, the trace is not saved.
-        Default None.
-      use_bc:
-        When True, use and infer boundary conditions.
-      reparameterise_log_normal:
-        If there are many divergences when using a log normal prior, setting this to True might help. It samples from a normal prior, then puts the normal samples through a function that converts them to log normal samples; this changes the space the sampler needs to explore.
-      pollution_events_from_obs:
-        When True, calculate the pollution events from obs; when false pollution events are set
-        to the modeled concentration.
-      no_model_error:
-        When True, only use observation error in likelihood function (omitting min. model error
-        and model error from scaling pollution events.)
-      offset_args: optional arguments to pass to `make_offset`.
-      power: power to raise pollution events to when using pollution events from obs. Default is 1.99.
-        Any value (strictly) between 1 and 2 will work. If a dictionary is passed, this is used to create
-        a prior for the power, making the power a hyper-parameter.
+        Hx: Transpose of the sensitivity matrix mapping emissions to measurements.
+            This is typically fp_data[site].H.values stacked for all sites.
+        Y: Measurement vector containing all observations.
+        error: Measurement error vector, containing a value for each element of Y.
+        siteindicator: Array of indexing integers that relate each measurement to a site.
+        sigma_freq_index: Array of integer indexes that converts time into periods.
+        Hbc: Transpose of the sensitivity matrix for boundary conditions. Only used if use_bc is True.
+        xprior: Dictionary describing the prior PDF for emissions. The entry "pdf"
+            is the name of the analytical PDF used; other entries are shape
+            parameters (e.g., {'pdf': 'lognormal', 'stdev': 1.0}).
+        bcprior: Prior specification for boundary conditions. Only used if use_bc is True.
+            A common choice is {'pdf': 'truncatednormal', 'lower': 0.0, 'mu': 1.0, 'sigma': 0.1}.
+        sigprior: Prior specification for the model-error parameter(s).
+        nuts_sampler: Name of the NUTS sampler used by pymc.sample (e.g., "pymc" or "numpyro").
+        nit: Total number of iterations (samples + tuning) to draw per chain.
+        burn: Number of samples to discard as burn-in.
+        tune: Number of tuning steps passed to the sampler.
+        nchain: Number of MCMC chains to run.
+        sigma_per_site: If True, estimate a separate sigma (model error) for each site.
+        offsetprior: Prior specification for offsets applied to sites or observations.
+        add_offset: If True, include an offset term in the model.
+        verbose: If True, print additional diagnostic information.
+        min_error: Minimum allowed measurement error. Can be a scalar or an array matching Y.
+        use_bc: If True, include boundary condition terms in the model.
+        reparameterise_log_normal: If True, reparameterise log-normal priors for numerical stability.
+        pollution_events_from_obs: If True, derive pollution event terms from observations.
+        no_model_error: If True, do not include an explicit model-error term.
+        offset_args: Additional arguments used when constructing offsets.
+        power: Exponent used in certain weighting or prior schemes; may be a dict or float.
+        sampler_kwargs: Extra keyword arguments passed to the sampler.
+        inv_inputs: xarray.Dataset produced by `make_inv_inputs`, providing xarray-native
+            inputs (e.g., sensitivity matrices, coordinates, and dims) so the function
+            can accept inversion inputs without reconstructing dims and coords.
+        state: Dimension name of the state variable for flux sensitivities ("H") in inv_inputs.
+            Defaults to "region".
+        bc_state: Dimension name of the state variable for BC sensitivities ("H_bc") in inv_inputs.
+            Defaults to "bc_region".
 
     Returns:
-      Dictionary containing:
-        xouts (array):
-          MCMC chain for emissions scaling factors for each basis function.
-        sigouts (array):
-          MCMC chain for model error.
-        Ytrace (array):
-          MCMC chain for modelled obs..
-        OFFSETtrace (array):
-          MCMC chain for the offset.
-        convergence (str):
-          Passed/Failed convergence test as to whether mutliple chains
-          have a Gelman-Rubin diagnostic value <1.05
-        step1 (str):
-          Type of MCMC sampler for emissions and boundary condition updates.
-          Currently it's hardwired to NUTS (probably wouldn't change this
-          unless you're doing something obscure).
-        step2 (str):
-          Type of MCMC sampler for model error updates.
-          Currently it's hardwired to a slice sampler. This parameter is low
-          dimensional and quite simple with a slice sampler, although could
-          easily be changed.
-        bcouts (array):
-          MCMC chain for boundary condition scaling factors. Only if use_bc is True.
-        YBCtrace (array):
-          MCMC chain for modelled boundary condition Only if use_bc is True.
+        dict: Dictionary containing inference results, samples, and diagnostics.
 
-    TO DO:
-       - Allow non-iid variables
+            Keys typically include:
+            - 'trace': Raw MCMC trace/samples produced by the sampler.
+            - 'posterior': Processed posterior summaries and diagnostics.
+            - 'model': The constructed PyMC model object (if returned).
+            - 'inputs': Processed inputs used for the run (Hx, Y, etc.), with coords/dims
+              preserved when inv_inputs was provided.
+            - 'metadata': Run metadata such as nit, burn, tune, nchain, sampler settings,
+              and any warnings about reparameterisation or dropped samples.
+
+            The returned dict is intended to contain enough information for
+            postprocessing and diagnostic checks (convergence, effective sample
+            size, R-hat, and so on). Exact key names and contents may vary with
+            sampler and options used.
     """
     burn = int(burn)
     nit = int(nit)
@@ -803,14 +766,11 @@ def inferpymc(
     else:
         Ytrace = posterior_burned.mu + OFFtrace
 
-
     # truncate trace and sample prior and predictive distributions
     trace = trace.isel(draw=slice(burn, None))
     ndraw = nit - burn
     trace.extend(pm.sample_prior_predictive(ndraw, model))
     trace.extend(pm.sample_posterior_predictive(trace, model=model, var_names=["y"]))
-
-
 
     result = {
         "xouts": xouts,
@@ -875,7 +835,7 @@ def inferpymc_postprocessouts(
     min_error: float | np.ndarray = 0.0,
 ) -> xr.Dataset:
     r"""Take the output from inferpymc function along with other input information.
-    
+
     Calculates statistics on them and places it all in a dataset.
     Also calculates statistics on posterior emissions for the countries in
     the inversion domain and saves all in netcdf.
