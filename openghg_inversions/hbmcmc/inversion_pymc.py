@@ -203,6 +203,7 @@ def _validate_inferpymc_input_mode(
     siteindicator: np.ndarray | None,
     sigma_freq_index: np.ndarray | None,
     Hbc: np.ndarray | None,
+    min_error: np.ndarray | float | None,
 ) -> str:
     """Validate whether dataset or legacy ndarray inputs are being used.
 
@@ -215,6 +216,7 @@ def _validate_inferpymc_input_mode(
         "siteindicator": siteindicator,
         "sigma_freq_index": sigma_freq_index,
         "Hbc": Hbc,
+        "min_error": min_error,
     }
     provided_legacy = [name for name, value in legacy_args.items() if value is not None]
 
@@ -375,6 +377,7 @@ def _prepare_inferpymc_inputs(
         siteindicator=siteindicator,
         sigma_freq_index=sigma_freq_index,
         Hbc=Hbc,
+        min_error=min_error,
     )
 
     if mode == "dataset":
@@ -470,7 +473,7 @@ def build_inferpymc_model(
     sigma_per_site: bool = True,
     offsetprior: dict | None = None,
     add_offset: bool = False,
-    min_error: np.ndarray | float | None = 0.0,
+    min_error: np.ndarray | float | None = None,
     use_bc: bool = True,
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
@@ -614,7 +617,7 @@ def inferpymc(
     offsetprior: dict | None = None,
     add_offset: bool = False,
     verbose: bool = False,
-    min_error: np.ndarray | float | None = 0.0,
+    min_error: np.ndarray | float | None = None,
     use_bc: bool = True,
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
