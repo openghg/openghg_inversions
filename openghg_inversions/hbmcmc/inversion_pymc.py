@@ -312,6 +312,12 @@ def _prepare_inferpymc_inputs_from_legacy(
 
     Temporary Stage B compatibility helper for issue #372.
     """
+    if use_bc and Hbc is None:
+        raise ValueError(
+            "In legacy-array mode, `Hbc` must be provided when `use_bc` is True. "
+            "Either supply a non-None boundary-condition influence matrix `Hbc` "
+            "or disable BCs by setting `use_bc=False`."
+        )
     hx = Hx.T
     hbc = Hbc.T if use_bc and Hbc is not None else None
     site_indicator = siteindicator.astype(int)
@@ -671,19 +677,27 @@ def inferpymc(
     Returns:
         dict: Dictionary containing inference results, samples, and diagnostics.
 
-            Keys typically include:
-            - 'trace': Raw MCMC trace/samples produced by the sampler.
-            - 'posterior': Processed posterior summaries and diagnostics.
-            - 'model': The constructed PyMC model object (if returned).
-            - 'inputs': Processed inputs used for the run (Hx, Y, etc.), with coords/dims
-              preserved when inv_inputs was provided.
-            - 'metadata': Run metadata such as nit, burn, tune, nchain, sampler settings,
-              and any warnings about reparameterisation or dropped samples.
+            The returned dictionary uses the legacy key structure. Depending on
+            the options used (e.g. whether BCs or offsets are included, and which
+            priors are active), keys typically include:
+
+            - ``'xouts'``: Posterior samples or summaries for the state vector
+              (emissions / fluxes).
+            - ``'sigouts'``: Posterior samples or summaries for model–data
+              mismatch (sigma) parameters.
+            - ``'Ytrace'``: Trace of the modelled observations corresponding to
+              the data vector ``Y``.
+            - ``'bcouts'``: Posterior samples or summaries for boundary condition
+              state variables (if boundary conditions are used).
+            - ``'offset_trace'`` or similar keys: Traces for site- or
+              observation-specific offset terms when ``add_offset`` is enabled.
+            - Additional diagnostic arrays and traces needed for convergence
+              checking and postprocessing.
 
             The returned dict is intended to contain enough information for
             postprocessing and diagnostic checks (convergence, effective sample
             size, R-hat, and so on). Exact key names and contents may vary with
-            sampler and options used.
+            sampler settings and options used.
     """
     burn = int(burn)
     nit = int(nit)
