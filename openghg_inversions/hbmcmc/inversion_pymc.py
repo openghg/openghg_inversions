@@ -633,10 +633,10 @@ def inferpymc(
 
     This routine constructs and runs a PyMC model (by default using a Normal
     likelihood) to infer emissions, boundary conditions, and a single model-
-    error parameter (or per-site model-error if requested). The function can
-    accept either numpy-based inputs (Hx, Y, etc.) or an xarray.Dataset produced
-    by `make_inv_inputs`, which preserves dims and coordinates for cleaner model
-    construction.
+    error parameter (or may vary by site and/or over a given period, if requested).
+    The function can accept either numpy-based inputs (Hx, Y, etc.) or an xarray.Dataset
+    produced by `inversion_inputs.make_inv_inputs`, which preserves dims and coordinates for
+    cleaner model construction.
 
     Args:
         Hx: Transpose of the sensitivity matrix mapping emissions to measurements.
