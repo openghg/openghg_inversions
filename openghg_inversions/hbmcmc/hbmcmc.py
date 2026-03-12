@@ -41,7 +41,7 @@ from openghg_inversions.basis import basis_functions_wrapper
 from openghg_inversions.inversion_data import data_processing_surface_notracer, load_merged_data
 from openghg_inversions.filters import filtering
 from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
-from openghg_inversions.inversion_inputs import make_inv_inputs as _make_inv_inputs
+from openghg_inversions.inversion_inputs import make_inv_inputs
 
 
 def update_log_normal_prior(prior):
@@ -60,7 +60,12 @@ def update_log_normal_prior(prior):
     return prior
 
 
-def make_inv_inputs(
+# ----------------------------------------
+# Preparing inputs
+# ----------------------------------------
+
+
+def make_inv_inputs_legacy(
     *,
     fp_data,
     sites,
@@ -84,7 +89,7 @@ def make_inv_inputs(
 
     min_error_options = min_error_options or {}
 
-    ds = _make_inv_inputs(
+    ds = make_inv_inputs(
         fp_data,
         sites=sites,
         bc_freq=bc_freq,
@@ -93,27 +98,6 @@ def make_inv_inputs(
         min_error_per_site=min_error_options.get("by_site", False),
         start_date=start_date,
     )
-
-    drop_subset = ["H", "H_bc", "mf", "mf_error"]
-    drop_subset = [dv for dv in drop_subset if dv in ds]
-    ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
-
-    # Trigger dask computations
-    # we only compute the variables we need below
-    to_compute = [
-        "H",
-        "H_bc",
-        "mf",
-        "mf_error",
-        "mf_repeatability",
-        "mf_variability",
-        "mf_prior_factor",
-        "mf_prior_upper_level_factor",
-        "bc_mod",
-        "mf_mod",
-    ]
-    to_compute = [dv for dv in to_compute if dv in ds]
-    ds[to_compute] = ds[to_compute].compute()
 
     y = ds.mf.values
     y_time = ds.time.values
@@ -563,7 +547,7 @@ def fixedbasisMCMC(
     if use_bc:
         mcmc_config["bcprior"] = update_log_normal_prior(bcprior)
 
-    mcmc_args, post_process_args = make_inv_inputs(
+    mcmc_args, post_process_args = make_inv_inputs_legacy(
         fp_data=fp_data,
         sites=sites,
         start_date=start_date,

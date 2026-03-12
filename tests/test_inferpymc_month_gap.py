@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs
+from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs_legacy
 from openghg_inversions.hbmcmc.inversion_pymc import inferpymc
 
 
@@ -48,7 +48,7 @@ def _synthetic_fp_data_one_site_with_missing_month() -> dict[str, xr.Dataset]:
 def test_make_inv_inputs_month_gap_monthly_indices_are_non_contiguous():
     fp_data = _synthetic_fp_data_one_site_with_missing_month()
 
-    mcmc_args, _ = make_inv_inputs(
+    mcmc_args, _ = make_inv_inputs_legacy(
         fp_data=fp_data,
         sites=["AAA"],
         start_date="2019-01-01",
@@ -67,7 +67,7 @@ def test_make_inv_inputs_month_gap_monthly_indices_are_non_contiguous():
 def test_inferpymc_smoke_runs_for_month_gap():
     fp_data = _synthetic_fp_data_one_site_with_missing_month()
 
-    mcmc_args, _ = make_inv_inputs(
+    mcmc_args, _ = make_inv_inputs_legacy(
         fp_data=fp_data,
         sites=["AAA"],
         start_date="2019-01-01",
