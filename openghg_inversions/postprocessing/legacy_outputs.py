@@ -161,6 +161,22 @@ def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, us
             ds[dv].attrs["longname"] = str(dv).replace("_", " ")
 
 
+def _flatten_nmeasure_for_legacy(data: xr.DataArray) -> xr.DataArray:
+    """Convert any stacked `nmeasure` coordinate back to the legacy flat form."""
+    if "nmeasure" not in data.dims:
+        return data
+
+    result = data
+    if "nmeasure" in result.indexes:
+        result = result.reset_index("nmeasure", drop=True)
+
+    drop_coords = [coord for coord in ("site", "time") if coord in result.coords and "nmeasure" in result[coord].dims]
+    if drop_coords:
+        result = result.drop_vars(drop_coords)
+
+    return result.assign_coords(nmeasure=np.arange(result.sizes["nmeasure"]))
+
+
 def make_legacy_hbmcmc_output(
     inv_out: InversionOutput,
     mcmc_results: dict,
@@ -270,6 +286,10 @@ def make_legacy_hbmcmc_output(
                 "bcsensitivity": (("nmeasure", "nBC"), Hbc_arr.T),
             }
         )
+
+    for name, value in list(data_vars.items()):
+        if isinstance(value, xr.DataArray):
+            data_vars[name] = _flatten_nmeasure_for_legacy(value)
 
     out = xr.Dataset(data_vars)
 
