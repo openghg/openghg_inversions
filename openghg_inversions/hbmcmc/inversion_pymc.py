@@ -486,7 +486,7 @@ def build_inferpymc_model(
     bc_state: str = "bc_region",
 ) -> InferPyMCModelSetup:
     """Build the PyMC model and sampler configuration used by inferpymc."""
-    prepared_inferpymc_inputs = _prepare_inferpymc_inputs(
+    prepared_inputs = _prepare_inferpymc_inputs(
         inv_inputs=inv_inputs,
         Hx=Hx,
         Y=Y,
@@ -508,19 +508,19 @@ def build_inferpymc_model(
     offsetprior = DEFAULT_OFFSETPRIOR.copy() if offsetprior is None else offsetprior
 
     sites = (
-        prepared.site_indicator.astype(int)
+        prepared_inputs.site_indicator.astype(int)
         if sigma_per_site
-        else np.zeros_like(prepared.site_indicator).astype(int)
+        else np.zeros_like(prepared_inputs.site_indicator).astype(int)
     )
 
-    if isinstance(prepared.min_error, float) or (
-        isinstance(prepared.min_error, np.ndarray) and prepared.min_error.ndim == 0
+    if isinstance(prepared_inputs.min_error, float) or (
+        isinstance(prepared_inputs.min_error, np.ndarray) and prepared_inputs.min_error.ndim == 0
     ):
-        min_error_data = prepared.min_error * np.ones_like(prepared.y)
+        min_error_data = prepared_inputs.min_error * np.ones_like(prepared_inputs.y)
     else:
-        min_error_data = prepared.min_error
+        min_error_data = prepared_inputs.min_error
 
-    with pm.Model(coords=prepared.coords) as model:
+    with pm.Model(coords=prepared_inputs.coords) as model:
         step1_vars = []
 
         if reparameterise_log_normal and xprior["pdf"] == "lognormal":
@@ -542,35 +542,35 @@ def build_inferpymc_model(
 
         sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
 
-        hx_data = pm.Data("hx", prepared.hx, dims=("nmeasure", "nx"))
+        hx_data = pm.Data("hx", prepared_inputs.hx, dims=("nmeasure", "nx"))
         mu = pm.Deterministic("mu", pt.dot(hx_data, x), dims="nmeasure")
 
-        if use_bc and prepared.hbc is not None:
-            hbc_data = pm.Data("hbc", prepared.hbc, dims=("nmeasure", "nbc"))
+        if use_bc and prepared_inputs.hbc is not None:
+            hbc_data = pm.Data("hbc", prepared_inputs.hbc, dims=("nmeasure", "nbc"))
             mu_bc = pm.Deterministic("mu_bc", pt.dot(hbc_data, bc), dims="nmeasure")
             mu += mu_bc
 
         if add_offset:
             offset_args = offset_args or {}
-            offset = make_offset(prepared.site_indicator, offsetprior, **offset_args)
+            offset = make_offset(prepared_inputs.site_indicator, offsetprior, **offset_args)
             mu += offset
 
-        y_data = pm.Data("Y", prepared.y, dims="nmeasure")  # type: ignore[arg-type]
-        error_data = pm.Data("error", prepared.error, dims="nmeasure")  # type: ignore[arg-type]
+        y_data = pm.Data("Y", prepared_inputs.y, dims="nmeasure")  # type: ignore[arg-type]
+        error_data = pm.Data("error", prepared_inputs.error, dims="nmeasure")  # type: ignore[arg-type]
         min_error_data = pm.Data("min_error", min_error_data, dims="nmeasure")  # type: ignore[arg-type]
 
         if pollution_events_from_obs is True:
-            if use_bc is True and prepared.hbc is not None:
+            if use_bc is True and prepared_inputs.hbc is not None:
                 pollution_event = pt.abs(y_data - mu_bc)
             else:
                 pollution_event = pt.abs(y_data) + 1e-6 * pt.mean(y_data)
         else:
             pollution_event = pt.abs(pt.dot(hx_data, x))
 
-        pollution_event_scaled_error = pollution_event * sigma[sites, prepared.sigma_freq_index]
+        pollution_event_scaled_error = pollution_event * sigma[sites, prepared_inputs.sigma_freq_index]
 
         if no_model_error is True:
-            mean_obs = np.nanmean(prepared.y)
+            mean_obs = np.nanmean(prepared_inputs.y)
             small_amount = 1e-12 * mean_obs
             eps = pt.maximum(pt.abs(error_data), small_amount)
         else:
