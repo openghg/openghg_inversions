@@ -486,7 +486,7 @@ def build_inferpymc_model(
     bc_state: str = "bc_region",
 ) -> InferPyMCModelSetup:
     """Build the PyMC model and sampler configuration used by inferpymc."""
-    prepared = _prepare_inferpymc_inputs(
+    prepared_inferpymc_inputs = _prepare_inferpymc_inputs(
         inv_inputs=inv_inputs,
         Hx=Hx,
         Y=Y,
