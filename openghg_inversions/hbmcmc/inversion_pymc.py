@@ -4,7 +4,9 @@ PyMC library used for Bayesian modelling.
 
 import re
 import getpass
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -31,6 +33,16 @@ from openghg_inversions.config.version import code_version
 
 # type alias for prior args
 PriorArgs = dict[str, str | float]
+
+
+@dataclass
+class InferPyMCModelSetup:
+    """Container for the PyMC model and sampler configuration used by inferpymc."""
+
+    model: pm.Model
+    step1: pm.NUTS
+    step2: pm.Slice
+    sample_kwargs: dict[str, Any]
 
 
 def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
@@ -147,6 +159,138 @@ def _contiguous_sigma_time_index(sigma_freq_index: np.ndarray) -> np.ndarray:
 
     uniq = np.unique(sigma_freq_index)
     return np.searchsorted(uniq, sigma_freq_index).astype(int)
+
+
+# ----------------------------------------
+# Model building code
+# ----------------------------------------
+
+# Defaults to avoid mutable default arguments in model building functions.
+DEFAULT_XPRIOR: PriorArgs = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
+DEFAULT_BCPRIOR: PriorArgs = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
+DEFAULT_SIGPRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
+DEFAULT_OFFSETPRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
+
+
+def build_inferpymc_model(
+    Hx: np.ndarray,
+    Y: np.ndarray,
+    error: np.ndarray,
+    siteindicator: np.ndarray,
+    sigma_freq_index: np.ndarray,
+    Hbc: np.ndarray | None = None,
+    xprior: dict | None = None,
+    bcprior: dict | None = None,
+    sigprior: dict | None = None,
+    sigma_per_site: bool = True,
+    offsetprior: dict | None = None,
+    add_offset: bool = False,
+    min_error: np.ndarray | float | None = 0.0,
+    use_bc: bool = True,
+    reparameterise_log_normal: bool = False,
+    pollution_events_from_obs: bool = False,
+    no_model_error: bool = False,
+    offset_args: dict | None = None,
+    power: dict | float = 1.99,
+    nuts_sampler: str = "pymc",
+) -> InferPyMCModelSetup:
+    """Build the PyMC model and sampler configuration used by inferpymc."""
+    if use_bc and Hbc is None:
+        raise ValueError("If `use_bc` is True, then `Hbc` must be provided.")
+
+    # Assign defaults here to avoid sharing the same dict across calls.
+    xprior = DEFAULT_XPRIOR.copy() if xprior is None else xprior
+    bcprior = DEFAULT_BCPRIOR.copy() if bcprior is None else bcprior
+    sigprior = DEFAULT_SIGPRIOR.copy() if sigprior is None else sigprior
+    offsetprior = DEFAULT_OFFSETPRIOR.copy() if offsetprior is None else offsetprior
+
+    hx = Hx.T
+    hbc = Hbc.T if use_bc and Hbc is not None else None
+
+    sites = siteindicator.astype(int) if sigma_per_site else np.zeros_like(siteindicator).astype(int)
+    sigma_freq_index_model = _contiguous_sigma_time_index(sigma_freq_index)
+
+    coords = _make_coords(
+        Y, Hx, siteindicator, sigma_freq_index_model, Hbc, sigma_per_site=sigma_per_site, sites=None
+    )
+
+    if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
+        min_error = min_error * np.ones_like(Y)
+
+    with pm.Model(coords=coords) as model:
+        step1_vars = []
+
+        if reparameterise_log_normal and xprior["pdf"] == "lognormal":
+            x0 = pm.Normal("x0", 0, 1, dims="nx")
+            x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0), dims="nx")
+            step1_vars.append(x0)
+        else:
+            x = parse_prior("x", xprior, dims="nx")
+            step1_vars.append(x)
+
+        if use_bc:
+            if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
+                bc0 = pm.Normal("bc0", 0, 1, dims="nbc")
+                bc = pm.Deterministic("bc", pt.exp(bcprior["mu"] + bcprior["sigma"] * bc0), dims="nbc")
+                step1_vars.append(bc0)
+            else:
+                bc = parse_prior("bc", bcprior, dims="nbc")
+                step1_vars.append(bc)
+
+        sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
+
+        hx_data = pm.Data("hx", hx, dims=("nmeasure", "nx"))
+        mu = pm.Deterministic("mu", pt.dot(hx_data, x), dims="nmeasure")
+
+        if use_bc and hbc is not None:
+            hbc_data = pm.Data("hbc", hbc, dims=("nmeasure", "nbc"))
+            mu_bc = pm.Deterministic("mu_bc", pt.dot(hbc_data, bc), dims="nmeasure")
+            mu += mu_bc
+
+        if add_offset:
+            offset_args = offset_args or {}
+            offset = make_offset(siteindicator, offsetprior, **offset_args)
+            mu += offset
+
+        y_data = pm.Data("Y", Y, dims="nmeasure")  # type: ignore[arg-type]
+        error_data = pm.Data("error", error, dims="nmeasure")  # type: ignore[arg-type]
+        min_error_data = pm.Data("min_error", min_error, dims="nmeasure")  # type: ignore[arg-type]
+
+        if pollution_events_from_obs is True:
+            if use_bc is True:
+                pollution_event = pt.abs(y_data - mu_bc)
+            else:
+                pollution_event = pt.abs(y_data) + 1e-6 * pt.mean(y_data)
+        else:
+            pollution_event = pt.abs(pt.dot(hx_data, x))
+
+        pollution_event_scaled_error = pollution_event * sigma[sites, sigma_freq_index_model]
+
+        if no_model_error is True:
+            mean_obs = np.nanmean(Y)
+            small_amount = 1e-12 * mean_obs
+            eps = pt.maximum(pt.abs(error_data), small_amount)
+        else:
+            power0 = parse_prior("power", power) if isinstance(power, dict) else power
+            eps = pt.maximum(pt.sqrt(error_data**2 + pt.pow(pollution_event_scaled_error, power0)), min_error_data)
+
+        pm.Deterministic("epsilon", eps, dims="nmeasure")
+        pm.Normal("y", mu=mu, sigma=eps, observed=y_data, dims="nmeasure")
+
+        step1 = pm.NUTS(vars=step1_vars)
+        step2 = pm.Slice(vars=[sigma])
+
+    return InferPyMCModelSetup(
+        model=model,
+        step1=step1,
+        step2=step2,
+        sample_kwargs={"step": [step1, step2] if nuts_sampler == "pymc" else None},
+    )
+
+
+#----------------------------------------
+# Build/run model
+#----------------------------------------
 
 
 def inferpymc(
@@ -282,107 +426,39 @@ def inferpymc(
     TO DO:
        - Allow non-iid variables
     """
-    if use_bc and Hbc is None:
-        raise ValueError("If `use_bc` is True, then `Hbc` must be provided.")
-
     burn = int(burn)
-
-    hx = Hx.T
-    nx = hx.shape[1]
-
-    if use_bc:
-        hbc = Hbc.T
-        nbc = hbc.shape[1]
-
-    ny = len(Y)
-
     nit = int(nit)
 
-    # convert siteindicator into a site indexer
-    sites = siteindicator.astype(int) if sigma_per_site else np.zeros_like(siteindicator).astype(int)
-
-    # sigma_freq_index may be non-contiguous (e.g. missing calendar month).
-    # Compact to positional indices for safe tensor indexing.
-    sigma_freq_index_model = _contiguous_sigma_time_index(sigma_freq_index)
-
-    coords = _make_coords(
-        Y, Hx, siteindicator, sigma_freq_index_model, Hbc, sigma_per_site=sigma_per_site, sites=None
+    setup = build_inferpymc_model(
+        Hx=Hx,
+        Y=Y,
+        error=error,
+        siteindicator=siteindicator,
+        sigma_freq_index=sigma_freq_index,
+        Hbc=Hbc,
+        xprior=xprior,
+        bcprior=bcprior,
+        sigprior=sigprior,
+        sigma_per_site=sigma_per_site,
+        offsetprior=offsetprior,
+        add_offset=add_offset,
+        min_error=min_error,
+        use_bc=use_bc,
+        reparameterise_log_normal=reparameterise_log_normal,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+        offset_args=offset_args,
+        power=power,
+        nuts_sampler=nuts_sampler,
     )
 
-    if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
-        min_error = min_error * np.ones_like(Y)
-
-    with pm.Model(coords=coords) as model:
-        step1_vars = []
-
-        if reparameterise_log_normal and xprior["pdf"] == "lognormal":
-            x0 = pm.Normal("x0", 0, 1, dims="nx")
-            x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0), dims="nx")
-            step1_vars.append(x0)
-        else:
-            x = parse_prior("x", xprior, dims="nx")
-            step1_vars.append(x)
-
-        if use_bc:
-            if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
-                bc0 = pm.Normal("bc0", 0, 1, dims="nbc")
-                bc = pm.Deterministic("bc", pt.exp(bcprior["mu"] + bcprior["sigma"] * bc0), dims="nbc")
-                step1_vars.append(bc0)
-            else:
-                bc = parse_prior("bc", bcprior, dims="nbc")
-                step1_vars.append(bc)
-
-        sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
-
-        hx = pm.Data("hx", hx, dims=("nmeasure", "nx"))
-        mu = pm.Deterministic("mu", pt.dot(hx, x), dims="nmeasure")
-
-        if use_bc:
-            hbc = pm.Data("hbc", hbc, dims=("nmeasure", "nbc"))
-            mu_bc = pm.Deterministic("mu_bc", pt.dot(hbc, bc), dims="nmeasure")
-            mu += mu_bc
-
-        if add_offset:
-            offset_args = offset_args or {}
-            offset = make_offset(siteindicator, offsetprior, **offset_args)
-            mu += offset
-
-        Y = pm.Data("Y", Y, dims="nmeasure")  # type: ignore
-        error = pm.Data("error", error, dims="nmeasure")  # type: ignore
-        min_error = pm.Data("min_error", min_error, dims="nmeasure")  # type: ignore
-
-        if pollution_events_from_obs is True:
-            if use_bc is True:
-                pollution_event = pt.abs(Y - mu_bc)
-            else:
-                pollution_event = pt.abs(Y) + 1e-6 * pt.mean(Y)  # small non-zero term to prevent NaNs
-        else:
-            pollution_event = pt.abs(pt.dot(hx, x))
-
-        pollution_event_scaled_error = pollution_event * sigma[sites, sigma_freq_index_model]
-
-        if no_model_error is True:
-            # need some small non-zero value to avoid sampling problems
-            mean_obs = np.nanmean(Y)
-            small_amount = 1e-12 * mean_obs
-            eps = pt.maximum(pt.abs(error), small_amount)  # type: ignore
-        else:
-            power0 = parse_prior("power", power) if isinstance(power, dict) else power
-            eps = pt.maximum(pt.sqrt(error**2 + pt.pow(pollution_event_scaled_error, power0)), min_error)  # type: ignore
-
-        epsilon = pm.Deterministic("epsilon", eps, dims="nmeasure")
-
-        pm.Normal("y", mu=mu, sigma=epsilon, observed=Y, dims="nmeasure")
-
-        step1 = pm.NUTS(vars=step1_vars)
-        step2 = pm.Slice(vars=[sigma])
-        step = [step1, step2] if nuts_sampler == "pymc" else None
-        sampler_kwargs = sampler_kwargs or {}
+    sampler_kwargs = sampler_kwargs or {}
+    with setup.model:
         trace = pm.sample(
             nit,
             tune=int(tune),
             chains=nchain,
-            step=step,
+            step=setup.sample_kwargs["step"],
             # progressbar=verbose,
             progressbar=False,
             cores=nchain,
@@ -390,6 +466,10 @@ def inferpymc(
             idata_kwargs={"log_likelihood": True},
             **sampler_kwargs,
         )
+
+    model = setup.model
+    step1 = setup.step1
+    step2 = setup.step2
 
     posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit)).drop_vars("chain")
 
