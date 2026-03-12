@@ -35,7 +35,7 @@ def test_data_processing_surface_notracer(
     assert len(result) == 6
 
     # check keys of "fp_all"
-    assert list(result[0].keys()) == [".species", ".flux", ".bc", "TAC", ".scales", ".units"]
+    assert list(result[0].keys()) == [".species", ".flux", ".split_by_sectors", ".bc", "TAC", ".scales", ".units"]
 
     # variables to check (to avoid surprises from new variables added to data)
     check_vars = ["mf", "fp", "mf_mod", "bc_mod", "fp_x_flux", "bc_n"]
