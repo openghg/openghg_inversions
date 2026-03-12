@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from collections import defaultdict
 from pathlib import Path
 from typing import cast, Literal, TypeVar
@@ -167,7 +168,12 @@ class CountryRegions:
 
         return missing
 
-    def align(self, country_list: CountryInfoList, drop_missing: bool = False) -> Self:
+    def align(
+        self,
+        country_list: CountryInfoList,
+        drop_missing: bool = False,
+        warn_on_drop: bool = True,
+    ) -> Self:
         """Return CountryRegions with values aligned to a given list of countries.
 
         This is used to make sure that the region definitions have the same "input names"
@@ -177,15 +183,37 @@ class CountryRegions:
             country_list: list to align countries against.
             drop_missing: if True, skip any region for which one or more countries are
               missing from `country_list`.
+            warn_on_drop: if True and `drop_missing` is True, emit a warning listing
+              dropped regions and missing countries.
         """
+        missing_by_region = self.region_countries_missing_from(country_list)
+
+        if missing_by_region and not drop_missing:
+            msg = "\n".join(
+                f"{region}: {list(missing_countries)}"
+                for region, missing_countries in missing_by_region.items()
+                if missing_countries
+            )
+            raise ValueError(f"Could not find the following countries needed for regions:\n{msg}")
+
+        if missing_by_region and drop_missing and warn_on_drop:
+            msg = "; ".join(
+                f"{region} (missing: {list(missing_countries)})"
+                for region, missing_countries in missing_by_region.items()
+                if missing_countries
+            )
+            warnings.warn(
+                "Dropping country regions with unmatched countries in `country_regions`: " + msg,
+                UserWarning,
+            )
+
         aligned_country_regions = {}
 
         for region, region_countries in self._regions.items():
-            try:
-                aligned_country_regions[region] = country_list.select_by_country_info(region_countries)
-            except ValueError:
-                if not drop_missing:
-                    raise
+            if region in missing_by_region:
+                continue
+
+            aligned_country_regions[region] = country_list.select_by_country_info(region_countries)
 
         return type(self)(aligned_country_regions)
 
@@ -212,6 +240,7 @@ class Countries:
         country_selections: list[str] | None = None,
         country_code: Literal["alpha2", "alpha3"] | None = None,
         country_regions: dict[str, list[str]] | str | Path | None = None,
+        drop_missing_regions: bool = False,
     ) -> None:
         """Create Countries object given country map Dataset and optional list of countries to select.
 
@@ -224,6 +253,9 @@ class Countries:
               list of (country codes) of the countries comprising that regions (e.g.
               `["BEL", "NLD", "LUX"]`). Alternatively, a path (or string representing a path)
               to a JSON file with a similar specification can be passed.
+            drop_missing_regions: if True, region definitions containing countries not
+                found in the country file are dropped with a warning. If False, missing
+                countries in region definitions raise a ValueError.
 
         """
         self.country_code = country_code
@@ -235,7 +267,9 @@ class Countries:
         else:
             self.country_regions = CountryRegions(country_regions)
 
-        self.country_regions = self.country_regions.align(self.country_labels, drop_missing=True)
+        self.country_regions = self.country_regions.align(
+            self.country_labels, drop_missing=drop_missing_regions
+        )
 
         # check that country regions are specified in correct country code
         missing_countries = self.country_regions.region_countries_missing_from(self.country_labels)
@@ -302,6 +336,7 @@ class Countries:
         country_selections: list[str] | None = None,
         country_code: Literal["alpha2", "alpha3"] | None = None,
         country_regions: dict[str, list[str]] | str | Path | None = None,
+        drop_missing_regions: bool = False,
     ) -> Self:
         """Create Countries object given country map Dataset and optional list of countries to select.
 
@@ -315,6 +350,9 @@ class Countries:
               list of (country codes) of the countries comprising that regions (e.g.
               `["BEL", "NLD", "LUX"]`). Alternatively, a path (or string representing a path)
               to a JSON file with a similar specification can be passed.
+            drop_missing_regions: if True, region definitions containing countries not
+                found in the country file are dropped with a warning. If False, missing
+                countries in region definitions raise a ValueError.
 
         """
         country_file_path = get_country_file_path(country_file=country_file, domain=domain)
@@ -323,6 +361,7 @@ class Countries:
             country_code=country_code,
             country_selections=country_selections,
             country_regions=country_regions,
+            drop_missing_regions=drop_missing_regions,
         )
 
     def get_x_to_country_mat(
