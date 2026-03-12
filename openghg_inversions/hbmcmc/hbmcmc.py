@@ -680,6 +680,8 @@ def fixedbasisMCMC(
         return outputs
 
     if hbmcmc_postprocessing:
+        from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
+
         from ..postprocessing.legacy_outputs import make_legacy_hbmcmc_output
 
         inv_out = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
@@ -692,6 +694,9 @@ def fixedbasisMCMC(
             country_file=country_file,
             use_bc=use_bc,
         )
+        output_filename = define_output_filename(outputpath, species, domain, outputname, start_date, ext=".nc")
+        Path(outputpath).mkdir(parents=True, exist_ok=True)
+        outputs.to_netcdf(output_filename, encoding=ncdf_encoding(outputs), mode="w")
         end_post = time.time()
         print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
 

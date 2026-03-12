@@ -1,7 +1,9 @@
 import pytest
 import xarray as xr
+from pathlib import Path
 
 from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
+from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.legacy_outputs import make_legacy_hbmcmc_output
 from openghg_inversions.postprocessing.make_outputs import basic_output
@@ -34,11 +36,11 @@ def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_nam
     return mcmc_args
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def inv_out(raw_data_path):
     return InversionOutput.load(raw_data_path / "inversion_output.nc")
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def inv_out_eastasia(raw_data_path):
     return InversionOutput.load(raw_data_path / "inversion_output_EASTASIA.nc")
 
@@ -134,6 +136,25 @@ def test_save_inversion_output(mcmc_args, tmpdir):
     inv_out_reloaded = InversionOutput.load(tmpdir / "inv_out.nc")
 
     assert inv_out == inv_out_reloaded
+
+
+def test_hbmcmc_postprocessing_saves_legacy_output(mcmc_args, tmpdir):
+    mcmc_args["output_format"] = "hbmcmc_postprocessing"
+    mcmc_args["outputpath"] = str(tmpdir)
+
+    outputs = fixedbasisMCMC(**mcmc_args)
+    output_file = define_output_filename(
+        outputpath=str(tmpdir),
+        species=mcmc_args["species"],
+        domain=mcmc_args["domain"],
+        outputname=mcmc_args["outputname"],
+        start_date=mcmc_args["start_date"],
+        ext=".nc",
+    )
+
+    assert Path(output_file).exists()
+    reloaded = xr.open_dataset(output_file)
+    assert reloaded.sizes["nmeasure"] == outputs.sizes["nmeasure"]
 
 
 def test_hbmcmc_postprocessing_output_matches_legacy_core_fields(raw_data_path, europe_country_file):
