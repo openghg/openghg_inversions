@@ -434,6 +434,16 @@ def _restore_inferencedata_coords(
     return idata
 
 
+def _contiguous_index(index: np.ndarray) -> np.ndarray:
+    """Remap integer period indices to contiguous 0..N-1 values."""
+    index = np.asarray(index, dtype=int)
+    if index.size == 0:
+        return index
+
+    uniq = np.unique(index)
+    return np.searchsorted(uniq, index).astype(int)
+
+
 def _contiguous_sigma_time_index(sigma_freq_index: np.ndarray) -> np.ndarray:
     """Remap sigma period indices to contiguous 0..N-1 values.
 
@@ -441,12 +451,18 @@ def _contiguous_sigma_time_index(sigma_freq_index: np.ndarray) -> np.ndarray:
     data (e.g. Jan and Mar only => [0, 2]). PyMC array indexing is positional, so
     these values must be compacted before using `sigma[..., sigma_freq_index]`.
     """
-    sigma_freq_index = np.asarray(sigma_freq_index, dtype=int)
-    if sigma_freq_index.size == 0:
-        return sigma_freq_index
+    return _contiguous_index(sigma_freq_index)
 
-    uniq = np.unique(sigma_freq_index)
-    return np.searchsorted(uniq, sigma_freq_index).astype(int)
+
+def _weighted_apriori_flux_for_months(flux_array_all: np.ndarray, month_index: np.ndarray) -> np.ndarray:
+    """Compute a weighted prior flux average using compacted month positions."""
+    month_index = _contiguous_index(month_index)
+    apriori_flux = np.zeros_like(flux_array_all[:, :, 0])
+
+    for month_pos in np.unique(month_index):
+        apriori_flux += flux_array_all[:, :, month_pos] * np.sum(month_index == month_pos) / len(month_index)
+
+    return apriori_flux
 
 
 # ----------------------------------------
@@ -1065,14 +1081,8 @@ def inferpymc_postprocessouts(
     else:
         print("\nAssuming flux prior is monthly.")
         print(f"Extracting weighted average flux prior from {start_date} to {end_date}")
-        allmonths = pd.date_range(start_date, end_date).month[:-1].values
-        allmonths -= 1  # to align with zero indexed array
-
-        apriori_flux = np.zeros_like(flux_array_all[:, :, 0])
-
-        # calculate the weighted average flux across the whole inversion period
-        for m in np.unique(allmonths):
-            apriori_flux += flux_array_all[:, :, m] * np.sum(allmonths == m) / len(allmonths)
+        month_index = pd.to_datetime(Ytime).month.values - 1
+        apriori_flux = _weighted_apriori_flux_for_months(flux_array_all, month_index)
 
     flux = scalemap_mode * apriori_flux
 

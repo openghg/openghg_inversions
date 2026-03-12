@@ -17,13 +17,16 @@ from openghg_inversions.postprocessing.make_outputs import (
 )
 
 
-def _compute_apriori_flux(flux: xr.DataArray, start_date: str, end_date: str) -> xr.DataArray:
+def _compute_apriori_flux(
+    flux: xr.DataArray, start_date: str, end_date: str, times: xr.DataArray | np.ndarray | None = None
+) -> xr.DataArray:
     """Compute the legacy-style prior flux map from a flux timeseries.
 
     Args:
         flux: Prior flux with dimensions ``lat``, ``lon``, and optionally ``flux_time``.
         start_date: Inversion start date (YYYY-mm-dd).
         end_date: Inversion end date (YYYY-mm-dd).
+        times: Optional measurement times used to weight monthly periods.
 
     Returns:
         Two-dimensional prior flux map over ``lat`` and ``lon``.
@@ -32,7 +35,12 @@ def _compute_apriori_flux(flux: xr.DataArray, start_date: str, end_date: str) ->
     if "flux_time" not in flux.dims or flux.sizes.get("flux_time", 1) == 1:
         return flux.isel(flux_time=0, drop=True) if "flux_time" in flux.dims else flux
 
-    allmonths = pd.date_range(start_date, end_date).month[:-1].values - 1
+    if times is None:
+        month_source = flux.flux_time.values
+    else:
+        month_source = times.values if isinstance(times, xr.DataArray) else times
+
+    allmonths = _contiguous_month_index(pd.to_datetime(month_source).month.values - 1)
     if len(allmonths) == 0:
         return flux.isel(flux_time=0, drop=True)
 
@@ -43,6 +51,16 @@ def _compute_apriori_flux(flux: xr.DataArray, start_date: str, end_date: str) ->
         )
 
     return apriori_flux
+
+
+def _contiguous_month_index(month_index: np.ndarray) -> np.ndarray:
+    """Remap month indices to contiguous 0..N-1 values for positional indexing."""
+    month_index = np.asarray(month_index, dtype=int)
+    if month_index.size == 0:
+        return month_index
+
+    uniq = np.unique(month_index)
+    return np.searchsorted(uniq, month_index).astype(int)
 
 
 def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, use_bc: bool) -> None:
@@ -229,7 +247,7 @@ def make_legacy_hbmcmc_output(
 
     country_obj = utils.get_country(inv_out.domain, country_file=country_file)
     country_idx = country_obj.country
-    apriori_flux = _compute_apriori_flux(inv_out.flux, str(inv_out.start_date), str(inv_out.end_date))
+    apriori_flux = _compute_apriori_flux(inv_out.flux, str(inv_out.start_date), str(inv_out.end_date), inv_out.times)
 
     yapriori = Hx_arr.sum(axis=0)
     if use_bc and Hbc_arr is not None:

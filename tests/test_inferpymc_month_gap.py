@@ -5,7 +5,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs_legacy
-from openghg_inversions.hbmcmc.inversion_pymc import inferpymc
+from openghg_inversions.hbmcmc.inversion_pymc import _weighted_apriori_flux_for_months, inferpymc
 
 
 def _synthetic_fp_data_one_site_with_missing_month() -> dict[str, xr.Dataset]:
@@ -97,3 +97,12 @@ def test_inferpymc_smoke_runs_for_month_gap():
 
     assert "sigouts" in result
     assert "trace" in result
+
+
+def test_weighted_apriori_flux_handles_missing_month():
+    flux_array_all = np.array([[[1.0, 3.0]]], dtype=np.float32)
+    month_index = np.array([0, 0, 2, 2], dtype=int)
+
+    apriori_flux = _weighted_apriori_flux_for_months(flux_array_all, month_index)
+
+    np.testing.assert_allclose(apriori_flux, np.array([[2.0]], dtype=np.float32))

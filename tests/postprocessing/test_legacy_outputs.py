@@ -1,8 +1,9 @@
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.postprocessing.legacy_outputs import make_legacy_hbmcmc_output
+from openghg_inversions.postprocessing.legacy_outputs import _compute_apriori_flux, make_legacy_hbmcmc_output
 
 
 def test_make_legacy_hbmcmc_output_handles_mixed_nmeasure_indexes(raw_data_path, europe_country_file):
@@ -39,3 +40,23 @@ def test_make_legacy_hbmcmc_output_handles_mixed_nmeasure_indexes(raw_data_path,
     assert "site" not in compat["Ytime"].coords
     assert "time" not in compat["Ytime"].coords
     assert compat["Ymod68"].dims[0] == "nmeasure"
+
+
+def test_compute_apriori_flux_handles_missing_month():
+    flux = xr.DataArray(
+        np.array([[[1.0, 3.0]]]),
+        dims=["lat", "lon", "flux_time"],
+        coords={
+            "lat": [0.0],
+            "lon": [0.0],
+            "flux_time": pd.to_datetime(["2019-01-01", "2019-03-01"]),
+        },
+    )
+    times = xr.DataArray(
+        pd.to_datetime(["2019-01-15", "2019-01-20", "2019-03-10", "2019-03-20"]),
+        dims=["nmeasure"],
+    )
+
+    apriori_flux = _compute_apriori_flux(flux, "2019-01-01", "2019-04-01", times)
+
+    xr.testing.assert_allclose(apriori_flux, xr.DataArray([[2.0]], dims=["lat", "lon"], coords={"lat": [0.0], "lon": [0.0]}))
