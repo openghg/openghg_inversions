@@ -2,10 +2,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from openghg_inversions import utils
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.legacy_outputs import (
     _compute_apriori_flux,
-    _map_times_to_available_month_positions,
     make_legacy_hbmcmc_output,
 )
 
@@ -66,11 +66,11 @@ def test_compute_apriori_flux_handles_missing_month():
     xr.testing.assert_allclose(apriori_flux, xr.DataArray([[2.0]], dims=["lat", "lon"], coords={"lat": [0.0], "lon": [0.0]}))
 
 
-def test_map_times_to_available_month_positions_handles_gappy_flux_months():
+def test_map_times_to_available_period_positions_handles_gappy_flux_months():
     times = pd.to_datetime(["2019-01-15", "2019-01-20", "2019-03-10", "2019-04-20"])
     flux_times = pd.to_datetime(["2019-01-01", "2019-03-01", "2019-04-01"])
 
-    positions = _map_times_to_available_month_positions(times, flux_times)
+    positions = utils._map_times_to_available_period_positions(times, flux_times, "monthly")
 
     np.testing.assert_array_equal(positions, np.array([0, 0, 1, 2]))
 
@@ -92,4 +92,7 @@ def test_compute_apriori_flux_handles_multi_year_flux_time():
 
     apriori_flux = _compute_apriori_flux(flux, "2023-01-01", "2025-05-01", times)
 
-    xr.testing.assert_allclose(apriori_flux, xr.DataArray([[2.0]], dims=["lat", "lon"], coords={"lat": [0.0], "lon": [0.0]}))
+    xr.testing.assert_allclose(
+        apriori_flux,
+        xr.DataArray([[1.75]], dims=["lat", "lon"], coords={"lat": [0.0], "lon": [0.0]}),
+    )

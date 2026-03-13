@@ -465,22 +465,6 @@ def _weighted_apriori_flux_for_months(flux_array_all: np.ndarray, month_index: n
     return apriori_flux
 
 
-def _map_times_to_available_month_positions(times: np.ndarray, available_times: np.ndarray) -> np.ndarray:
-    """Map timestamps onto contiguous month positions defined by available flux periods."""
-    time_periods = pd.to_datetime(times).to_period("M")
-    available_periods = pd.Index(pd.to_datetime(available_times).to_period("M").unique())
-
-    if len(time_periods) == 0:
-        return np.array([], dtype=int)
-
-    missing = pd.Index(time_periods).difference(available_periods)
-    if len(missing) > 0:
-        raise ValueError(f"Observation months {list(missing.astype(str))} are missing from available flux periods.")
-
-    period_positions = {period: idx for idx, period in enumerate(available_periods)}
-    return np.array([period_positions[period] for period in time_periods], dtype=int)
-
-
 # ----------------------------------------
 # Model building code
 # ----------------------------------------
@@ -1102,11 +1086,15 @@ def inferpymc_postprocessouts(
         print("\nAssuming flux prior is annual and extracting first index of flux array.")
         apriori_flux = flux_array_all[:, :, 0]
     else:
-        print("\nAssuming flux prior is monthly.")
-        print(f"Extracting weighted average flux prior from {start_date} to {end_date}")
         if flux_time_values is None:
-            raise ValueError("Monthly flux prior requires time coordinates on the flux data.")
-        month_index = _map_times_to_available_month_positions(Ytime, flux_time_values)
+            raise ValueError("Time-varying flux prior requires time coordinates on the flux data.")
+        flux_period = utils._infer_flux_period(
+            flux_time_values,
+            getattr(emds.data.flux, "attrs", {}).get("time_period") if rerun_file is None else None,
+        )
+        print(f"\nAssuming flux prior is {flux_period}.")
+        print(f"Extracting weighted average flux prior from {start_date} to {end_date}")
+        month_index = utils._map_times_to_available_period_positions(Ytime, flux_time_values, flux_period)
         apriori_flux = _weighted_apriori_flux_for_months(flux_array_all, month_index)
 
     flux = scalemap_mode * apriori_flux

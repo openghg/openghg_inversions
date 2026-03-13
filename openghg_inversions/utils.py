@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from typing import Literal
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from openghg.analyse import combine_datasets as openghg_combine_datasets
@@ -262,3 +263,48 @@ def areagrid(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
             area[latI, :] = (rad_earth**2) * (np.cos(lat1) - np.cos(lat2)) * dlon
 
     return area
+
+
+# ---------------------------------------------------------------------
+# Flux period helpers used by legacy and PyMC post-processing code paths.
+# These stay private because they are implementation details for mapping
+# observation times onto available time-varying flux slices.
+# ---------------------------------------------------------------------
+def _infer_flux_period(times: xr.DataArray | np.ndarray, time_period: str | None = None) -> str:
+    """Infer whether flux slices are yearly or monthly."""
+    if time_period is not None:
+        time_period = str(time_period).lower()
+        if "year" in time_period:
+            return "yearly"
+        if "month" in time_period:
+            return "monthly"
+
+    time_values = pd.to_datetime(times)
+    if len(time_values) <= 1:
+        return "yearly"
+
+    deltas = pd.Series(time_values).sort_values().diff().dropna()
+    if deltas.empty:
+        return "yearly"
+
+    delta = deltas.mode().iloc[0]
+    return "yearly" if delta >= pd.Timedelta(days=330) else "monthly"
+
+
+def _map_times_to_available_period_positions(
+    times: xr.DataArray | np.ndarray, available_times: xr.DataArray | np.ndarray, period: str
+) -> np.ndarray:
+    """Map timestamps onto contiguous period positions defined by available flux periods."""
+    period_code = "Y" if period == "yearly" else "M"
+    time_periods = pd.to_datetime(times).to_period(period_code)
+    available_periods = pd.Index(pd.to_datetime(available_times).to_period(period_code).unique())
+
+    if len(time_periods) == 0:
+        return np.array([], dtype=int)
+
+    missing = pd.Index(time_periods).difference(available_periods)
+    if len(missing) > 0:
+        raise ValueError(f"Observation months {list(missing.astype(str))} are missing from available flux periods.")
+
+    period_positions = {period_value: idx for idx, period_value in enumerate(available_periods)}
+    return np.array([period_positions[period_value] for period_value in time_periods], dtype=int)

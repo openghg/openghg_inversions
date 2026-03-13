@@ -4,9 +4,9 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from openghg_inversions import utils
 from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs_legacy
 from openghg_inversions.hbmcmc.inversion_pymc import (
-    _map_times_to_available_month_positions,
     _weighted_apriori_flux_for_months,
     inferpymc,
 )
@@ -112,19 +112,19 @@ def test_weighted_apriori_flux_handles_missing_month():
     np.testing.assert_allclose(apriori_flux, np.array([[2.0]], dtype=np.float32))
 
 
-def test_map_times_to_available_month_positions_handles_gappy_flux_months():
+def test_map_times_to_available_period_positions_handles_gappy_flux_months():
     times = pd.to_datetime(["2019-01-15", "2019-01-20", "2019-03-10", "2019-04-20"])
     flux_times = pd.to_datetime(["2019-01-01", "2019-03-01", "2019-04-01"])
 
-    positions = _map_times_to_available_month_positions(times, flux_times)
+    positions = utils._map_times_to_available_period_positions(times, flux_times, "monthly")
 
     np.testing.assert_array_equal(positions, np.array([0, 0, 1, 2]))
 
 
-def test_map_times_to_available_month_positions_handles_multi_year_flux_time():
+def test_map_times_to_available_period_positions_handles_multi_year_flux_time():
     times = pd.to_datetime(["2023-03-15", "2023-11-20", "2024-07-10", "2025-04-20"])
     flux_times = pd.to_datetime(["2023-01-01", "2024-01-01", "2025-01-01"])
 
-    positions = _map_times_to_available_month_positions(times, flux_times)
+    positions = utils._map_times_to_available_period_positions(times, flux_times, "yearly")
 
     np.testing.assert_array_equal(positions, np.array([0, 0, 1, 2]))

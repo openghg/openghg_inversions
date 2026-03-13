@@ -40,7 +40,8 @@ def _compute_apriori_flux(
     else:
         time_source = times.values if isinstance(times, xr.DataArray) else times
 
-    allmonths = _map_times_to_available_month_positions(time_source, flux.flux_time.values)
+    flux_period = utils._infer_flux_period(flux.flux_time.values, flux.attrs.get("time_period"))
+    allmonths = utils._map_times_to_available_period_positions(time_source, flux.flux_time.values, flux_period)
     if len(allmonths) == 0:
         return flux.isel(flux_time=0, drop=True)
 
@@ -51,25 +52,6 @@ def _compute_apriori_flux(
         )
 
     return apriori_flux
-
-
-def _map_times_to_available_month_positions(
-    times: xr.DataArray | np.ndarray, available_times: xr.DataArray | np.ndarray
-) -> np.ndarray:
-    """Map timestamps onto contiguous month positions defined by available flux periods."""
-    time_periods = pd.to_datetime(times).to_period("M")
-    available_periods = pd.Index(pd.to_datetime(available_times).to_period("M").unique())
-
-    if len(time_periods) == 0:
-        return np.array([], dtype=int)
-
-    missing = pd.Index(time_periods).difference(available_periods)
-    if len(missing) > 0:
-        raise ValueError(f"Observation months {list(missing.astype(str))} are missing from available flux periods.")
-
-    period_positions = {period: idx for idx, period in enumerate(available_periods)}
-    return np.array([period_positions[period] for period in time_periods], dtype=int)
-
 
 def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, use_bc: bool) -> None:
     """Set variable attributes to match legacy hbmcmc output style.
