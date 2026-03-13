@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import xarray as xr
 
 from openghg_inversions import utils
@@ -24,9 +23,9 @@ def _compute_apriori_flux(
 
     Args:
         flux: Prior flux with dimensions ``lat``, ``lon``, and optionally ``flux_time``.
-        start_date: Inversion start date (YYYY-mm-dd).
-        end_date: Inversion end date (YYYY-mm-dd).
-        times: Optional measurement times used to weight monthly periods.
+        start_date: Inversion start date (YYYY-mm-dd). Retained for call-site compatibility.
+        end_date: Inversion end date (YYYY-mm-dd). Retained for call-site compatibility.
+        times: Optional measurement times used to weight available flux periods.
 
     Returns:
         Two-dimensional prior flux map over ``lat`` and ``lon``.
@@ -52,6 +51,7 @@ def _compute_apriori_flux(
         )
 
     return apriori_flux
+
 
 def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, use_bc: bool) -> None:
     """Set variable attributes to match legacy hbmcmc output style.
@@ -113,7 +113,7 @@ def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, us
         "xtrace": "trace of unitless scaling factors for emissions parameters",
         "sigtrace": "trace of model error parameters",
         "siteindicator": "index of site of measurement corresponding to sitenames",
-        "sigmafreqindex": "perdiod over which the model error is estimated",
+        "sigmafreqindex": "period over which the model error is estimated",
         "sitenames": "site names",
         "fluxapriori": "mean a priori flux over period",
         "fluxmode": "mode posterior flux over period",
@@ -167,6 +167,52 @@ def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, us
     for dv in ds.data_vars:
         if "longname" not in ds[dv].attrs:
             ds[dv].attrs["longname"] = str(dv).replace("_", " ")
+
+
+def _rename_hdi_for_legacy(ds: xr.Dataset) -> xr.Dataset:
+    """Rename postprocessing HDI metadata to legacy names."""
+    if "hdi" not in ds.dims and "hdi" not in ds.coords:
+        return ds
+
+    result = ds.rename(hdi="nUI")
+
+    # Legacy files carry a separate `UInum` coordinate rather than string labels on `nUI`.
+    if "nUI" in result.dims:
+        if "nUI" in result.coords:
+            result = result.drop_vars("nUI")
+        result = result.assign_coords(UInum=("nUI", np.arange(result.sizes["nUI"])))
+
+    return result
+
+
+def _rename_country_for_legacy(ds: xr.Dataset) -> xr.Dataset:
+    """Rename country metadata to legacy names."""
+    if "country" not in ds.dims and "country" not in ds.coords:
+        return ds
+
+    result = ds.rename(country="countrynames")
+    return result
+
+
+def _collapse_flux_time_for_legacy(
+    ds: xr.Dataset, times: xr.DataArray | np.ndarray, flux_time: xr.DataArray | np.ndarray, time_period: str | None = None
+) -> xr.Dataset:
+    """Collapse `flux_time` to a single legacy period using observation-weighted averaging."""
+    if "flux_time" not in ds.dims:
+        return ds
+
+    flux_period = utils._infer_flux_period(flux_time, time_period)
+    period_index = utils._map_times_to_available_period_positions(times, flux_time, flux_period)
+
+    if period_index.size == 0:
+        return ds.isel(flux_time=0, drop=True)
+
+    weights = np.zeros(len(flux_time), dtype=float)
+    for period_pos in np.unique(period_index):
+        weights[int(period_pos)] = np.sum(period_index == period_pos) / len(period_index)
+
+    weights_da = xr.DataArray(weights, dims=("flux_time",), coords={"flux_time": ds["flux_time"]})
+    return (ds * weights_da).sum("flux_time")
 
 
 def _flatten_nmeasure_for_legacy(data: xr.DataArray) -> xr.DataArray:
@@ -234,6 +280,14 @@ def make_legacy_hbmcmc_output(
         stats=["mean", "median", "mode_kde", "stdev", "hdi"],
         stats_args={"hdi__hdi_prob": [0.68, 0.95], "mode_kde__chunk_dim": "country", "mode_kde__chunk_size": 1},
     )
+    conc = _rename_hdi_for_legacy(conc)
+    country = _collapse_flux_time_for_legacy(
+        country,
+        inv_out.times,
+        inv_out.flux["flux_time"],
+        inv_out.flux.attrs.get("time_period"),
+    )
+    country = _rename_hdi_for_legacy(_rename_country_for_legacy(country))
 
     country_obj = utils.get_country(inv_out.domain, country_file=country_file)
     country_idx = country_obj.country
@@ -299,7 +353,24 @@ def make_legacy_hbmcmc_output(
         if isinstance(value, xr.DataArray):
             data_vars[name] = _flatten_nmeasure_for_legacy(value)
 
-    out = xr.Dataset(data_vars)
+    xouts_arr = np.asarray(mcmc_results["xouts"])
+    sigouts_arr = np.asarray(mcmc_results["sigouts"])
+    coords: dict[str, xr.DataArray | tuple[tuple[str, ...], np.ndarray]] = {
+        "stepnum": ("steps", np.arange(xouts_arr.shape[0])),
+        "paramnum": ("nparam", np.arange(Hx_arr.shape[0])),
+        "measurenum": ("nmeasure", np.arange(Hx_arr.shape[1])),
+        "nsigma_site": ("nsigma_site", np.arange(sigouts_arr.shape[1])),
+        "nsigma_time": ("nsigma_time", np.arange(sigouts_arr.shape[2])),
+        "countrynames": country["countrynames"],
+    }
+    if "nUI" in conc.dims or "nUI" in country.dims:
+        n_ui = conc.sizes.get("nUI", country.sizes.get("nUI"))
+        if n_ui is not None:
+            coords["UInum"] = ("nUI", np.arange(n_ui))
+    if use_bc and Hbc_arr is not None:
+        coords["numBC"] = ("nBC", np.arange(Hbc_arr.shape[0]))
+
+    out = xr.Dataset(data_vars, coords=coords)
 
     obs_units = inv_out.obs.attrs.get("units", "")
     if obs_units.endswith("mol/mol"):

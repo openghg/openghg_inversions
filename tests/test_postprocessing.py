@@ -159,36 +159,41 @@ def test_hbmcmc_postprocessing_saves_legacy_output(mcmc_args, tmpdir):
 
 def test_hbmcmc_postprocessing_output_matches_legacy_core_fields(raw_data_path, europe_country_file):
     """Regression test for deterministic prior concentration terms in legacy-compatible output."""
-    legacy = xr.open_dataset(raw_data_path / "standard_rhime_outs.nc")
-    inv_out = InversionOutput.load(raw_data_path / "inversion_output.nc")
-    compat = make_legacy_hbmcmc_output(
-        inv_out=inv_out,
-        mcmc_results={
-            "xouts": legacy["xtrace"],
-            "sigouts": legacy["sigtrace"],
-            "bcouts": legacy["bctrace"],
-        },
-        sigma_freq_index=legacy["sigmafreqindex"].values,
-        Hx=legacy["xsensitivity"].values.T,
-        Hbc=legacy["bcsensitivity"].values.T,
-        country_file=europe_country_file,
-        use_bc=True,
-    )
+    with xr.open_dataset(raw_data_path / "standard_rhime_outs.nc") as legacy:
+        inv_out = InversionOutput.load(raw_data_path / "inversion_output.nc")
+        compat = make_legacy_hbmcmc_output(
+            inv_out=inv_out,
+            mcmc_results={
+                "xouts": legacy["xtrace"],
+                "sigouts": legacy["sigtrace"],
+                "bcouts": legacy["bctrace"],
+            },
+            sigma_freq_index=legacy["sigmafreqindex"].values,
+            Hx=legacy["xsensitivity"].values.T,
+            Hbc=legacy["bcsensitivity"].values.T,
+            country_file=europe_country_file,
+            use_bc=True,
+        )
 
-    assert (compat["Yapriori"].values == legacy["Yapriori"].values).all()
-    assert (compat["YaprioriBC"].values == legacy["YaprioriBC"].values).all()
-    assert (compat["Yobs"].values == legacy["Yobs"].values).all()
+        assert (compat["Yapriori"].values == legacy["Yapriori"].values).all()
+        assert (compat["YaprioriBC"].values == legacy["YaprioriBC"].values).all()
+        assert (compat["Yobs"].values == legacy["Yobs"].values).all()
 
-    xr.testing.assert_allclose(compat["fluxapriori"], legacy["fluxapriori"], rtol=1e-6, atol=1e-9)
+        xr.testing.assert_allclose(compat["fluxapriori"], legacy["fluxapriori"], rtol=1e-6, atol=1e-9)
 
-    assert compat["Yapriori"].dims == legacy["Yapriori"].dims == ("nmeasure",)
-    assert compat["YaprioriBC"].dims == legacy["YaprioriBC"].dims == ("nmeasure",)
-    assert compat["Yobs"].dims == legacy["Yobs"].dims == ("nmeasure",)
-    assert compat.sizes["nmeasure"] == legacy.sizes["nmeasure"]
-    assert compat["Yobs"].sizes["nmeasure"] == compat["Yapriori"].sizes["nmeasure"]
-    assert compat["Yapriori"].attrs["units"] == legacy["Yapriori"].attrs["units"]
-    assert compat["YaprioriBC"].attrs["units"] == legacy["YaprioriBC"].attrs["units"]
-    assert compat["Yobs"].attrs["units"] == legacy["Yobs"].attrs["units"]
+        assert compat["Yapriori"].dims == legacy["Yapriori"].dims == ("nmeasure",)
+        assert compat["YaprioriBC"].dims == legacy["YaprioriBC"].dims == ("nmeasure",)
+        assert compat["Yobs"].dims == legacy["Yobs"].dims == ("nmeasure",)
+        assert compat["Ymod68"].dims == legacy["Ymod68"].dims == ("nmeasure", "nUI")
+        assert compat["country68"].dims == legacy["country68"].dims == ("countrynames", "nUI")
+        assert compat["countrymean"].dims == legacy["countrymean"].dims == ("countrynames",)
+        assert compat.sizes["nmeasure"] == legacy.sizes["nmeasure"]
+        assert compat["Yobs"].sizes["nmeasure"] == compat["Yapriori"].sizes["nmeasure"]
+        assert compat["Yapriori"].attrs["units"] == legacy["Yapriori"].attrs["units"]
+        assert compat["YaprioriBC"].attrs["units"] == legacy["YaprioriBC"].attrs["units"]
+        assert compat["Yobs"].attrs["units"] == legacy["Yobs"].attrs["units"]
+        assert "UInum" in compat.coords
+        assert "countrynames" in compat.coords
 
-    for dv in compat.data_vars:
-        assert "longname" in compat[dv].attrs
+        for dv in compat.data_vars:
+            assert "longname" in compat[dv].attrs

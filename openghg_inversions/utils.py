@@ -304,7 +304,8 @@ def _map_times_to_available_period_positions(
 
     missing = pd.Index(time_periods).difference(available_periods)
     if len(missing) > 0:
-        raise ValueError(f"Observation months {list(missing.astype(str))} are missing from available flux periods.")
+        period_label = "years" if period == "yearly" else "months"
+        raise ValueError(f"Observation {period_label} {list(missing.astype(str))} are missing from available flux periods.")
 
     period_positions = {period_value: idx for idx, period_value in enumerate(available_periods)}
     return np.array([period_positions[period_value] for period_value in time_periods], dtype=int)

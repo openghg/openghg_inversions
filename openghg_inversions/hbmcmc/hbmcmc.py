@@ -352,7 +352,7 @@ def fixedbasisMCMC(
     return_inv_out = False
     new_postprocessing = False
     hbmcmc_postprocessing = False
-    paris_postprocessing = False
+    do_paris_postprocessing = False
     return_mcmc_args = False
     skip_postprocessing = False
 
@@ -373,7 +373,7 @@ def fixedbasisMCMC(
     elif output_format == "hbmcmc_postprocessing":
         hbmcmc_postprocessing = True
     elif output_format == "paris":
-        paris_postprocessing = True
+        do_paris_postprocessing = True
     elif output_format == "mcmc_args":
         return_mcmc_args = True
     elif output_format == "mcmc_results":
@@ -686,7 +686,7 @@ def fixedbasisMCMC(
 
         return outputs
 
-    if paris_postprocessing:
+    if do_paris_postprocessing:
         from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 
         from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
