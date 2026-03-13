@@ -465,6 +465,22 @@ def _weighted_apriori_flux_for_months(flux_array_all: np.ndarray, month_index: n
     return apriori_flux
 
 
+def _map_times_to_available_month_positions(times: np.ndarray, available_times: np.ndarray) -> np.ndarray:
+    """Map timestamps onto contiguous month positions defined by available flux periods."""
+    time_periods = pd.to_datetime(times).to_period("M")
+    available_periods = pd.Index(pd.to_datetime(available_times).to_period("M").unique())
+
+    if len(time_periods) == 0:
+        return np.array([], dtype=int)
+
+    missing = pd.Index(time_periods).difference(available_periods)
+    if len(missing) > 0:
+        raise ValueError(f"Observation months {list(missing.astype(str))} are missing from available flux periods.")
+
+    period_positions = {period: idx for idx, period in enumerate(available_periods)}
+    return np.array([period_positions[period] for period in time_periods], dtype=int)
+
+
 # ----------------------------------------
 # Model building code
 # ----------------------------------------
@@ -1060,11 +1076,18 @@ def inferpymc_postprocessouts(
 
     if rerun_file is not None:
         flux_array_all = np.expand_dims(rerun_file.fluxapriori.values, 2)
+        flux_time_values = None
     elif emissions_name is None:
         raise ValueError("Emissions name not provided.")
     else:
         emds = fp_data[".flux"][emissions_name[0]]
         flux_array_all = emds.data.flux.values
+        if "time" in emds.data.flux.coords:
+            flux_time_values = emds.data.flux["time"].values
+        elif "flux_time" in emds.data.flux.coords:
+            flux_time_values = emds.data.flux["flux_time"].values
+        else:
+            flux_time_values = None
 
     # HACK: assume that smallest flux dim is time, then re-order flux so that
     # time is the last coordinate
@@ -1081,7 +1104,9 @@ def inferpymc_postprocessouts(
     else:
         print("\nAssuming flux prior is monthly.")
         print(f"Extracting weighted average flux prior from {start_date} to {end_date}")
-        month_index = pd.to_datetime(Ytime).month.values - 1
+        if flux_time_values is None:
+            raise ValueError("Monthly flux prior requires time coordinates on the flux data.")
+        month_index = _map_times_to_available_month_positions(Ytime, flux_time_values)
         apriori_flux = _weighted_apriori_flux_for_months(flux_array_all, month_index)
 
     flux = scalemap_mode * apriori_flux

@@ -36,11 +36,11 @@ def _compute_apriori_flux(
         return flux.isel(flux_time=0, drop=True) if "flux_time" in flux.dims else flux
 
     if times is None:
-        month_source = flux.flux_time.values
+        time_source = flux.flux_time.values
     else:
-        month_source = times.values if isinstance(times, xr.DataArray) else times
+        time_source = times.values if isinstance(times, xr.DataArray) else times
 
-    allmonths = _contiguous_month_index(pd.to_datetime(month_source).month.values - 1)
+    allmonths = _map_times_to_available_month_positions(time_source, flux.flux_time.values)
     if len(allmonths) == 0:
         return flux.isel(flux_time=0, drop=True)
 
@@ -53,14 +53,22 @@ def _compute_apriori_flux(
     return apriori_flux
 
 
-def _contiguous_month_index(month_index: np.ndarray) -> np.ndarray:
-    """Remap month indices to contiguous 0..N-1 values for positional indexing."""
-    month_index = np.asarray(month_index, dtype=int)
-    if month_index.size == 0:
-        return month_index
+def _map_times_to_available_month_positions(
+    times: xr.DataArray | np.ndarray, available_times: xr.DataArray | np.ndarray
+) -> np.ndarray:
+    """Map timestamps onto contiguous month positions defined by available flux periods."""
+    time_periods = pd.to_datetime(times).to_period("M")
+    available_periods = pd.Index(pd.to_datetime(available_times).to_period("M").unique())
 
-    uniq = np.unique(month_index)
-    return np.searchsorted(uniq, month_index).astype(int)
+    if len(time_periods) == 0:
+        return np.array([], dtype=int)
+
+    missing = pd.Index(time_periods).difference(available_periods)
+    if len(missing) > 0:
+        raise ValueError(f"Observation months {list(missing.astype(str))} are missing from available flux periods.")
+
+    period_positions = {period: idx for idx, period in enumerate(available_periods)}
+    return np.array([period_positions[period] for period in time_periods], dtype=int)
 
 
 def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, use_bc: bool) -> None:

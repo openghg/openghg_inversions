@@ -5,7 +5,11 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs_legacy
-from openghg_inversions.hbmcmc.inversion_pymc import _weighted_apriori_flux_for_months, inferpymc
+from openghg_inversions.hbmcmc.inversion_pymc import (
+    _map_times_to_available_month_positions,
+    _weighted_apriori_flux_for_months,
+    inferpymc,
+)
 
 
 def _synthetic_fp_data_one_site_with_missing_month() -> dict[str, xr.Dataset]:
@@ -106,3 +110,12 @@ def test_weighted_apriori_flux_handles_missing_month():
     apriori_flux = _weighted_apriori_flux_for_months(flux_array_all, month_index)
 
     np.testing.assert_allclose(apriori_flux, np.array([[2.0]], dtype=np.float32))
+
+
+def test_map_times_to_available_month_positions_handles_gappy_flux_months():
+    times = pd.to_datetime(["2019-01-15", "2019-01-20", "2019-03-10", "2019-04-20"])
+    flux_times = pd.to_datetime(["2019-01-01", "2019-03-01", "2019-04-01"])
+
+    positions = _map_times_to_available_month_positions(times, flux_times)
+
+    np.testing.assert_array_equal(positions, np.array([0, 0, 1, 2]))
