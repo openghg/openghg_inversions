@@ -4,6 +4,7 @@
 
 ## Code changes
 
+- Fix small bug where postprocessing was failing if country codes in file didn't match exactly those in `paris_regions_dict`. [#PR 377](https://github.com/openghg/openghg_inversions/pull/377)
 - More flexibility for new inversion domains. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
 - More flexibility for types of boundary condition basis functions. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
 - Bug fix for quadtree algorithm. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)

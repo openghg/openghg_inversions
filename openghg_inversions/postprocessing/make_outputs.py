@@ -244,13 +244,20 @@ def make_country_outputs(
         xr.Dataset containing statistics for the specified countries and regions.
 
     """
+    drop_missing_regions = False
+
     if country_regions == "paris":
         country_regions = paris_regions_dict.get(inv_out.domain.lower())
+        drop_missing_regions = True
     elif isinstance(country_regions, str):
         country_regions = Path(country_regions)
 
     countries = Countries.from_file(
-        country_file=country_file, country_code=country_code, country_regions=country_regions, domain=inv_out.domain
+        country_file=country_file,
+        country_code=country_code,
+        country_regions=country_regions,
+        domain=inv_out.domain,
+        drop_missing_regions=drop_missing_regions,
     )
     country_traces = countries.get_country_trace(inv_out=inv_out)
 
