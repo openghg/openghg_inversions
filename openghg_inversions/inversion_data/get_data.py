@@ -259,14 +259,29 @@ def data_processing_surface_notracer(
         raise ValueError("`emissions_name` must be specified")
 
     flux_dict = get_flux_data(
-        sources=emissions_name,
-        species=species,
-        domain=domain,
-        start_date=start_date,
-        end_date=end_date,
-        store=emissions_store,
-    )
+            sources=emissions_name,
+            species=species,
+            domain=f"{domain}-{inner_domain}" if inner_domain is not None else domain,
+            start_date=start_date,
+            end_date=end_date,
+            store=emissions_store,
+        )
+    
     fp_all[".flux"] = flux_dict
+
+    if inner_domain is not None:
+        print(f"Inner domain {inner_domain} specified; attempting to retrieve flux data for both domains ...")
+        
+        flux_dict = get_flux_data(
+            sources=emissions_name,
+            species=species,
+            domain=f"{domain}-{inner_domain}",
+            start_date=start_date,
+            end_date=end_date,
+            store=emissions_store,
+        )
+    
+    fp_all[".flux_inner"] = flux_dict
 
     # Get BC data
     if use_bc is True:
