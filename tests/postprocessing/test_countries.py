@@ -69,3 +69,56 @@ def test_countries_matrix_with_regions_EASTASIA(country_code, country_ds_eastasi
     )
 
     assert len(countries.country_selections) == len(country_ds_eastasia.name) + len(paris_regions_dict.get('eastasia', []))
+
+
+@pytest.mark.parametrize("country_code", ["alpha2", "alpha3", None])
+def test_countries_matrix_skips_regions_with_missing_country_codes(country_code, eastasia_country_file):
+    """Check that regions with missing country names/codes are skipped instead of raising."""
+    country_regions = {
+        "EASTERN_ASIA": ["NOT_A_COUNTRY", "PRK", "KOR", "JPN"],
+    }
+
+    countries = Countries.from_file(
+        domain="EASTASIA",
+        country_regions=country_regions,
+        country_code=country_code,
+        country_file=eastasia_country_file,
+        drop_missing_regions=True,
+    )
+
+    assert "EASTERN_ASIA" not in countries.country_selections
+
+
+@pytest.mark.parametrize("country_code", ["alpha2", "alpha3", None])
+def test_countries_matrix_warns_when_regions_dropped(country_code, eastasia_country_file):
+    """Check that dropping regions due to missing country names/codes emits a warning."""
+    country_regions = {
+        "EASTERN_ASIA": ["NOT_A_COUNTRY", "PRK", "KOR", "JPN"],
+    }
+
+    with pytest.warns(UserWarning, match="Dropping country regions with unmatched countries"):
+        countries = Countries.from_file(
+            domain="EASTASIA",
+            country_regions=country_regions,
+            country_code=country_code,
+            country_file=eastasia_country_file,
+            drop_missing_regions=True,
+        )
+
+    assert "EASTERN_ASIA" not in countries.country_selections
+
+
+@pytest.mark.parametrize("country_code", ["alpha2", "alpha3", None])
+def test_countries_matrix_raises_on_missing_regions_by_default(country_code, eastasia_country_file):
+    """Check that missing countries in region definitions raise by default."""
+    country_regions = {
+        "EASTERN_ASIA": ["NOT_A_COUNTRY", "PRK", "KOR", "JPN"],
+    }
+
+    with pytest.raises(ValueError, match="Could not find the following countries needed for regions"):
+        Countries.from_file(
+            domain="EASTASIA",
+            country_regions=country_regions,
+            country_code=country_code,
+            country_file=eastasia_country_file,
+        )
