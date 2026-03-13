@@ -605,8 +605,16 @@ class InversionOutput:
             InversionOutput loaded from saved file
 
         """
-        dt = xr.open_datatree(file_path)
-        return cls.from_datatree(dt)
+        open_errors: list[Exception] = []
+        for engine in ("h5netcdf", None):
+            try:
+                dt = xr.open_datatree(file_path, engine=engine) if engine is not None else xr.open_datatree(file_path)
+            except (OSError, RuntimeError, ValueError) as exc:
+                open_errors.append(exc)
+            else:
+                return cls.from_datatree(dt)
+
+        raise open_errors[-1]
 
 
 def make_inv_out_for_fixed_basis_mcmc(
