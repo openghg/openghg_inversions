@@ -16,6 +16,7 @@
 - Fixed issue that raised `IndexError` in `inferpymc` when a monthly of data was missing an `sigam_freq` is "monthly". (Code accidentally merged into devel instea of PR, so this is a placeholder PR)[PR #365](https://github.com/openghg/openghg_inversions/pull/365)
 - Added opt-in `basis_functions_wrapper` support for returning `BasisFunctions` objects and saving basis artifacts in DataTree format while keeping legacy flat-basis output as the default. [PR #367](https://github.com/openghg/openghg_inversions/pull/367)
 - Stage A of PyMC model refactor. Added regression tests for `inferpymc` and extracted function to build the PyMC model. [PR #378](https://github.com/openghg/openghg_inversions/pull/378)
+- Stage B of PyMC model refactor. Updated `inferpymc` to accept current/legacy inputs as well as xarray `Dataset`. [PR #380](https://github.com/openghg/openghg_inversions/pull/380)
 
 # Version 0.6.0
 
