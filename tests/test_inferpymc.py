@@ -11,6 +11,7 @@ from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs_legacy
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.hbmcmc.inversion_pymc import (
     InferPyMCModelSetup,
+    _canonicalise_inferpymc_dataset,
     _prepare_inferpymc_inputs,
     _restore_inferencedata_coords,
     build_inferpymc_model,
@@ -291,6 +292,46 @@ def test_build_inferpymc_model_accepts_dataset(
     assert isinstance(setup.model, pm.Model)
     assert len(setup.model.coords["nmeasure"]) == inferpymc_inputs_dataset.sizes["nmeasure"]
     assert len(setup.model.coords["nx"]) == inferpymc_inputs_dataset.sizes["region"]
+
+
+def test_canonicalise_inferpymc_dataset_preserves_dataset_observation_coords(
+    inferpymc_inputs_dataset: xr.Dataset,
+) -> None:
+    prepared = _prepare_inferpymc_inputs(
+        inv_inputs=inferpymc_inputs_dataset,
+        sigma_per_site=True,
+        use_bc=True,
+        state="region",
+        bc_state="bc_region",
+    )
+
+    canonical = _canonicalise_inferpymc_dataset(prepared, sigma_per_site=True, use_bc=True)
+
+    assert set(["H", "H_bc", "mf", "mf_error", "site_indicator", "sigma_freq_index", "min_error"]).issubset(
+        canonical.data_vars
+    )
+    assert canonical["H"].dims == ("nmeasure", "nx")
+    assert canonical["H_bc"].dims == ("nmeasure", "nbc")
+    assert "time" in canonical.coords
+    assert canonical.indexes["nmeasure"].equals(inferpymc_inputs_dataset.indexes["nmeasure"])
+
+
+def test_canonicalise_inferpymc_dataset_expands_scalar_min_error(inferpymc_args: dict) -> None:
+    prepared = _prepare_inferpymc_inputs(
+        Hx=inferpymc_args["Hx"],
+        Y=inferpymc_args["Y"],
+        error=inferpymc_args["error"],
+        siteindicator=inferpymc_args["siteindicator"],
+        sigma_freq_index=inferpymc_args["sigma_freq_index"],
+        Hbc=inferpymc_args["Hbc"],
+        min_error=0.0,
+        sigma_per_site=True,
+        use_bc=True,
+    )
+
+    canonical = _canonicalise_inferpymc_dataset(prepared, sigma_per_site=True, use_bc=True)
+    assert canonical["min_error"].sizes["nmeasure"] == canonical.sizes["nmeasure"]
+    np.testing.assert_array_equal(canonical["min_error"].values, np.zeros(canonical.sizes["nmeasure"]))
 
 
 def test_build_inferpymc_model_rejects_mixed_input_modes(

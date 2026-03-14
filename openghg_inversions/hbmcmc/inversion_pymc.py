@@ -29,18 +29,22 @@ import xarray as xr
 import pytensor.tensor as pt
 import arviz as az
 from scipy import stats
-from pymc.distributions import continuous
-from pytensor.tensor import TensorVariable
 
 from openghg_inversions import convert
 from openghg_inversions import utils
-from openghg_inversions.hbmcmc.components import make_offset
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.config.version import code_version
-
-
-# type alias for prior args
-PriorArgs = dict[str, str | float]
+from openghg_inversions.models.components import (
+    add_inferpymc_likelihood_component,
+    add_linear_component,
+    add_offset_component,
+)
+from openghg_inversions.models.coords import (
+    CoordRegistry,
+    attach_coord_registry,
+    restore_inferencedata_coords,
+)
+from openghg_inversions.models.priors import PriorArgs, lognormal_mu_sigma, parse_prior
 
 
 @dataclass
@@ -72,85 +76,6 @@ class InferPyMCInputs:
     original_coords: dict[str, Any]
     source: xr.Dataset | None
 
-
-def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
-    """Return the pymc `mu` and `sigma` parameters that give a log normal distribution
-    with the given mean and stdev.
-
-    Args:
-        mean: desired mean of log normal
-        stdev: desired standard deviation of log normal
-
-    Returns:
-        tuple (mu, sigma), where `pymc.LogNormal(mu, sigma)` has the given mean and stdev.
-
-    Formulas for log normal mean and variance:
-
-    mean = exp(mu + 0.5 * sigma ** 2)
-    stdev ** 2 = var = exp(2*mu + sigma ** 2) * (exp(sigma ** 2) - 1)
-
-    This gives linear equations for `mu` and `sigma ** 2`:
-
-    mu + 0.5 * sigma ** 2 = log(mean)
-    sigma ** 2 = log(1 + (stdev / mean)**2)
-
-    So
-
-    mu = log(mean) - 0.5 * log(1 + (stdev/mean)**2)
-    sigma = sqrt(log(1 + (stdev / mean)**2))
-    """
-    var = np.log(1 + (stdev / mean) ** 2)
-    mu = np.log(mean) - 0.5 * var
-    sigma = np.sqrt(var)
-    return mu, sigma
-
-
-def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
-    """Parses all PyMC continuous distributions:
-    https://docs.pymc.io/api/distributions/continuous.html.
-
-    Args:
-        name:
-          name of variable in the pymc model
-        prior_params:
-          dict of parameters for the distribution, including 'pdf' for the distribution to use.
-          The value of `prior_params["pdf"]` must match the name of a PyMC continuous
-          distribution: https://docs.pymc.io/api/distributions/continuous.html
-        **kwargs: for instance, `shape` or `dims`
-    Returns:
-        continuous PyMC distribution
-
-    For example:
-    ```
-    params = {"pdf": "uniform", "lower": 0.0, "upper": 1.0}
-    parse_prior("x", params, shape=(20, 20))
-    ```
-    will create a 20 x 20 array of uniform random variables.
-    Alternatively,
-    ```
-    params = {"pdf": "uniform", "lower": 0.0, "upper": 1.0}
-    parse_prior("x", params, dims="nmeasure"))
-    ```
-    will create an array of uniform random variables with the same shape
-    as the dimension coordinate `nmeasure`. This can be used if `pm.Model`
-    is provided with coordinates.
-
-    Note: `parse_prior` must be called inside a `pm.Model` context (i.e. after `with pm.Model()`)
-    has an important side-effect of registering the random variable with the model.
-    """
-    # create dict to lookup continuous PyMC distributions by name, ignoring case
-    pdf_dict = {cd.lower(): cd for cd in continuous.__all__}
-
-    params = prior_params.copy()
-    pdf = str(params.pop("pdf")).lower()  # str is just for typing...
-    try:
-        dist = getattr(continuous, pdf_dict[pdf])
-    except AttributeError:
-        raise ValueError(
-            f"The distribution '{pdf}' doesn't appear to be a continuous distribution defined by PyMC."
-        )
-
-    return dist(name, **params, **kwargs)
 
 
 def _make_range_coords(
@@ -411,27 +336,8 @@ def _prepare_inferpymc_inputs(
 def _restore_inferencedata_coords(
     idata: az.InferenceData, original_coords: dict[str, Any]
 ) -> az.InferenceData:
-    """Restore saved coordinates onto matching InferenceData groups.
-
-    Temporary Stage B helper for issue #372. This is intentionally not yet wired
-    into inferpymc because downstream post-processing still expects the current
-    outputs.
-    """
-    for group_name in idata.groups():
-        group = getattr(idata, group_name)
-        if not isinstance(group, xr.Dataset):
-            continue
-
-        for dim, coord in original_coords.items():
-            if dim not in group.dims:
-                continue
-            if len(coord) != group.sizes[dim]:
-                continue
-            group = group.assign_coords({dim: coord})
-
-        setattr(idata, group_name, group)
-
-    return idata
+    """Restore saved coordinates onto matching InferenceData groups."""
+    return restore_inferencedata_coords(idata, original_coords)
 
 
 def _contiguous_sigma_time_index(sigma_freq_index: np.ndarray) -> np.ndarray:
@@ -458,6 +364,78 @@ DEFAULT_XPRIOR: PriorArgs = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
 DEFAULT_BCPRIOR: PriorArgs = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
 DEFAULT_SIGPRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
 DEFAULT_OFFSETPRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
+
+
+def _canonicalise_inferpymc_dataset(
+    prepared: InferPyMCInputs,
+    /,
+    sigma_per_site: bool,
+    use_bc: bool,
+    obs_dim: str = "nmeasure",
+    state_dim: str = "nx",
+    bc_state_dim: str = "nbc",
+) -> xr.Dataset:
+    """Convert normalized Stage B inputs into canonical xarray model inputs."""
+    nmeasure = prepared.hx.shape[0]
+    obs_coord = (
+        prepared.source.indexes[obs_dim]
+        if prepared.source is not None and obs_dim in prepared.source.indexes
+        else np.arange(nmeasure)
+    )
+    coords: dict[str, Any] = {obs_dim: obs_coord, state_dim: np.arange(prepared.hx.shape[1])}
+
+    if use_bc and prepared.hbc is not None:
+        coords[bc_state_dim] = np.arange(prepared.hbc.shape[1])
+
+    min_error = prepared.min_error
+    if np.isscalar(min_error) or (isinstance(min_error, np.ndarray) and np.ndim(min_error) == 0):
+        min_error_values = np.full(nmeasure, min_error)
+    else:
+        min_error_values = np.asarray(min_error)
+
+    data_vars: dict[str, xr.DataArray] = {
+        "H": xr.DataArray(
+            prepared.hx,
+            dims=(obs_dim, state_dim),
+            coords={obs_dim: obs_coord, state_dim: coords[state_dim]},
+            name="H",
+        ),
+        "mf": xr.DataArray(prepared.y, dims=(obs_dim,), coords={obs_dim: coords[obs_dim]}, name="mf"),
+        "mf_error": xr.DataArray(
+            prepared.error,
+            dims=(obs_dim,),
+            coords={obs_dim: coords[obs_dim]},
+            name="mf_error",
+        ),
+        "site_indicator": xr.DataArray(
+            prepared.site_indicator,
+            dims=(obs_dim,),
+            coords={obs_dim: coords[obs_dim]},
+            name="site_indicator",
+        ),
+        "sigma_freq_index": xr.DataArray(
+            prepared.sigma_freq_index,
+            dims=(obs_dim,),
+            coords={obs_dim: coords[obs_dim]},
+            name="sigma_freq_index",
+        ),
+        "min_error": xr.DataArray(
+            min_error_values,
+            dims=(obs_dim,),
+            coords={obs_dim: coords[obs_dim]},
+            name="min_error",
+        ),
+    }
+
+    if use_bc and prepared.hbc is not None:
+        data_vars["H_bc"] = xr.DataArray(
+            prepared.hbc,
+            dims=(obs_dim, bc_state_dim),
+            coords={obs_dim: coords[obs_dim], bc_state_dim: coords[bc_state_dim]},
+            name="H_bc",
+        )
+
+    return xr.Dataset(data_vars=data_vars, coords=coords)
 
 
 def build_inferpymc_model(
@@ -500,88 +478,83 @@ def build_inferpymc_model(
         state=state,
         bc_state=bc_state,
     )
-
-    # Assign defaults here to avoid sharing the same dict across calls.
-    xprior = DEFAULT_XPRIOR.copy() if xprior is None else xprior
-    bcprior = DEFAULT_BCPRIOR.copy() if bcprior is None else bcprior
-    sigprior = DEFAULT_SIGPRIOR.copy() if sigprior is None else sigprior
-    offsetprior = DEFAULT_OFFSETPRIOR.copy() if offsetprior is None else offsetprior
-
-    sites = (
-        prepared_inputs.site_indicator.astype(int)
-        if sigma_per_site
-        else np.zeros_like(prepared_inputs.site_indicator).astype(int)
+    canonical_ds = _canonicalise_inferpymc_dataset(
+        prepared_inputs,
+        sigma_per_site=sigma_per_site,
+        use_bc=use_bc,
     )
 
-    if isinstance(prepared_inputs.min_error, float) or (
-        isinstance(prepared_inputs.min_error, np.ndarray) and prepared_inputs.min_error.ndim == 0
-    ):
-        min_error_data = prepared_inputs.min_error * np.ones_like(prepared_inputs.y)
-    else:
-        min_error_data = prepared_inputs.min_error
+    # Assign defaults here to avoid sharing the same dict across calls.
+    xprior = DEFAULT_XPRIOR.copy() if xprior is None else xprior.copy()
+    bcprior = DEFAULT_BCPRIOR.copy() if bcprior is None else bcprior.copy()
+    sigprior = DEFAULT_SIGPRIOR.copy() if sigprior is None else sigprior.copy()
+    offsetprior = DEFAULT_OFFSETPRIOR.copy() if offsetprior is None else offsetprior.copy()
+
+    if reparameterise_log_normal:
+        # TODO: later prefer prior-native `reparameterise=True` over this separate public flag.
+        if str(xprior.get("pdf", "")).lower() == "lognormal":
+            xprior["reparameterise"] = True
+        if str(bcprior.get("pdf", "")).lower() == "lognormal":
+            bcprior["reparameterise"] = True
 
     with pm.Model(coords=prepared_inputs.coords) as model:
+        attach_coord_registry(model, CoordRegistry())
         step1_vars = []
 
-        if reparameterise_log_normal and xprior["pdf"] == "lognormal":
-            x0 = pm.Normal("x0", 0, 1, dims="nx")
-            x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0), dims="nx")
-            step1_vars.append(x0)
-        else:
-            x = parse_prior("x", xprior, dims="nx")
-            step1_vars.append(x)
+        mu = add_linear_component(
+            canonical_ds["H"],
+            data_name="hx",
+            prior_args=xprior,
+            var_name="x",
+            output_name="mu",
+            output_dim="nmeasure",
+            compute_deterministic=True,
+        )
+        step1_vars.append(model.named_vars["x_latent"] if "x_latent" in model.named_vars else model.named_vars["x"])
 
+        mu_bc = None
         if use_bc:
-            if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
-                bc0 = pm.Normal("bc0", 0, 1, dims="nbc")
-                bc = pm.Deterministic("bc", pt.exp(bcprior["mu"] + bcprior["sigma"] * bc0), dims="nbc")
-                step1_vars.append(bc0)
-            else:
-                bc = parse_prior("bc", bcprior, dims="nbc")
-                step1_vars.append(bc)
-
-        sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
-
-        hx_data = pm.Data("hx", prepared_inputs.hx, dims=("nmeasure", "nx"))
-        mu = pm.Deterministic("mu", pt.dot(hx_data, x), dims="nmeasure")
-
-        if use_bc and prepared_inputs.hbc is not None:
-            hbc_data = pm.Data("hbc", prepared_inputs.hbc, dims=("nmeasure", "nbc"))
-            mu_bc = pm.Deterministic("mu_bc", pt.dot(hbc_data, bc), dims="nmeasure")
-            mu += mu_bc
-
-        if add_offset:
-            offset_args = offset_args or {}
-            offset = make_offset(prepared_inputs.site_indicator, offsetprior, **offset_args)
-            mu += offset
-
-        y_data = pm.Data("Y", prepared_inputs.y, dims="nmeasure")  # type: ignore[arg-type]
-        error_data = pm.Data("error", prepared_inputs.error, dims="nmeasure")  # type: ignore[arg-type]
-        min_error_data = pm.Data("min_error", min_error_data, dims="nmeasure")  # type: ignore[arg-type]
-
-        if pollution_events_from_obs is True:
-            if use_bc is True and prepared_inputs.hbc is not None:
-                pollution_event = pt.abs(y_data - mu_bc)
-            else:
-                pollution_event = pt.abs(y_data) + 1e-6 * pt.mean(y_data)
-        else:
-            pollution_event = pt.abs(pt.dot(hx_data, x))
-
-        pollution_event_scaled_error = pollution_event * sigma[sites, prepared_inputs.sigma_freq_index]
-
-        if no_model_error is True:
-            mean_obs = np.nanmean(prepared_inputs.y)
-            small_amount = 1e-12 * mean_obs
-            eps = pt.maximum(pt.abs(error_data), small_amount)
-        else:
-            power0 = parse_prior("power", power) if isinstance(power, dict) else power
-            eps = pt.maximum(
-                pt.sqrt(error_data**2 + pt.pow(pollution_event_scaled_error, power0)), min_error_data
+            assert prepared_inputs.hbc is not None
+            mu_bc = add_linear_component(
+                canonical_ds["H_bc"],
+                data_name="hbc",
+                prior_args=bcprior,
+                var_name="bc",
+                output_name="mu_bc",
+                output_dim="nmeasure",
+                compute_deterministic=True,
+            )
+            step1_vars.append(
+                model.named_vars["bc_latent"] if "bc_latent" in model.named_vars else model.named_vars["bc"]
             )
 
-        pm.Deterministic("epsilon", eps, dims="nmeasure")
-        pm.Normal("y", mu=mu, sigma=eps, observed=y_data, dims="nmeasure")
+        offset = None
+        if add_offset:
+            offset_args = offset_args or {}
+            # TODO: once component-side derivation is used consistently, some
+            # explicit frequency-indicator plumbing in make_inv_inputs(...) may be removable.
+            offset = add_offset_component(
+                canonical_ds["site_indicator"],
+                prior_args=offsetprior,
+                output_name="offset",
+                output_dim="nmeasure",
+                **offset_args,
+            )
 
+        add_inferpymc_likelihood_component(
+            canonical_ds,
+            mu=mu,
+            mu_bc=mu_bc,
+            offset=offset,
+            sigprior=sigprior,
+            power=power,
+            pollution_events_from_obs=pollution_events_from_obs,
+            no_model_error=no_model_error,
+            sigma_per_site=sigma_per_site,
+            output_dim="nmeasure",
+        )
+
+        sigma = model.named_vars["sigma"]
         step1 = pm.NUTS(vars=step1_vars)
         step2 = pm.Slice(vars=[sigma])
 
