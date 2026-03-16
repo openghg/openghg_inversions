@@ -468,13 +468,6 @@ def _canonicalise_inferpymc_dataset(
     return xr.Dataset(data_vars=data_vars, coords=coords)
 
 
-# Defaults to avoid mutable default arguments in model building functions.
-DEFAULT_XPRIOR: PriorArgs = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
-DEFAULT_BCPRIOR: PriorArgs = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
-DEFAULT_SIGPRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
-DEFAULT_OFFSETPRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
-
-
 def build_inferpymc_model_legacy(
     Hx: np.ndarray | None = None,
     Y: np.ndarray | None = None,
