@@ -69,18 +69,25 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
         fp_x_flux = fp_and_data[site]["fp_x_flux"]  
         # if inner domain fp_x_flux exists, blend it in
         if "fp_x_flux_inner" in fp_and_data[site]:
-            fp_x_flux = combine_inner_outer_fp_x_flux(
-                inner_fp_x_flux=fp_and_data[site]["fp_x_flux_inner"],
-                outer_fp_x_flux=fp_x_flux,                             
-            )
+            # fp_x_flux = combine_inner_outer_fp_x_flux(
+            #     inner_fp_x_flux=fp_and_data[site]["fp_x_flux_inner"],
+            #     outer_fp_x_flux=fp_x_flux,                             
+            # )
+
+            sensitivity_inner = apply_fp_basis_functions(
+            fp_x_flux=fp_and_data[site]["fp_x_flux_inner"],
+            basis_func=basis_func,
+        )
+            fp_and_data[site]["H_inner"] = sensitivity_inner
 
         sensitivity = apply_fp_basis_functions(
             fp_x_flux=fp_and_data[site][fp_x_flux_name],
             basis_func=basis_func,
         )
+        
         # TODO: store houter hinner here
         fp_and_data[site]["H"] = sensitivity
-
+        print(fp_and_data[site])
     return fp_and_data
 
 
