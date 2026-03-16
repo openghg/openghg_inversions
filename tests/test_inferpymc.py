@@ -82,7 +82,8 @@ def inferpymc_inputs_dataset(mhd_and_tac_fp_data) -> xr.Dataset:
     return ds
 
 
-def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict) -> None:
+@pytest.mark.parametrize("model_builder", ["legacy", "components"])
+def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict, model_builder: str) -> None:
     """Check extracted model builder returns PyMC step methods for the pymc sampler."""
     setup = build_inferpymc_model(
         Hx=inferpymc_args["Hx"],
@@ -105,6 +106,7 @@ def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict) -> N
         offset_args=inferpymc_args["offset_args"],
         power=inferpymc_args["power"],
         nuts_sampler="pymc",
+        model_builder=model_builder,
     )
 
     assert isinstance(setup, InferPyMCModelSetup)
@@ -114,7 +116,8 @@ def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict) -> N
     assert setup.sample_kwargs["step"] == [setup.step1, setup.step2]
 
 
-def test_build_inferpymc_model_returns_no_steps_for_numpyro(inferpymc_args: dict) -> None:
+@pytest.mark.parametrize("model_builder", ["legacy", "components"])
+def test_build_inferpymc_model_returns_no_steps_for_numpyro(inferpymc_args: dict, model_builder: str) -> None:
     """Check model setup does not pass steps them via sample_kwargs['step'] for the numpyro sampler.
 
     The steps are still created by build_inferpymc_model and stored in the dataclass. This matches
@@ -141,6 +144,7 @@ def test_build_inferpymc_model_returns_no_steps_for_numpyro(inferpymc_args: dict
         offset_args=inferpymc_args["offset_args"],
         power=inferpymc_args["power"],
         nuts_sampler="numpyro",
+        model_builder=model_builder,
     )
 
     assert isinstance(setup, InferPyMCModelSetup)
@@ -267,8 +271,9 @@ def test_prepare_inferpymc_inputs_dataset_matches_legacy(
     assert prepared_dataset.original_coords
 
 
+@pytest.mark.parametrize("model_builder", ["legacy", "components"])
 def test_build_inferpymc_model_accepts_dataset(
-    inferpymc_args: dict, inferpymc_inputs_dataset: xr.Dataset
+    inferpymc_args: dict, inferpymc_inputs_dataset: xr.Dataset, model_builder: str
 ) -> None:
     """Check model builder accepts direct xarray inversion inputs."""
     setup = build_inferpymc_model(
@@ -286,6 +291,7 @@ def test_build_inferpymc_model_accepts_dataset(
         offset_args=inferpymc_args["offset_args"],
         power=inferpymc_args["power"],
         nuts_sampler="pymc",
+        model_builder=model_builder,
     )
 
     assert isinstance(setup, InferPyMCModelSetup)
@@ -349,6 +355,19 @@ def test_build_inferpymc_model_rejects_mixed_input_modes(
         )
 
 
+def test_build_inferpymc_model_rejects_unknown_builder(inferpymc_args: dict) -> None:
+    with pytest.raises(ValueError, match="Unsupported model_builder"):
+        build_inferpymc_model(
+            Hx=inferpymc_args["Hx"],
+            Y=inferpymc_args["Y"],
+            error=inferpymc_args["error"],
+            siteindicator=inferpymc_args["siteindicator"],
+            sigma_freq_index=inferpymc_args["sigma_freq_index"],
+            Hbc=inferpymc_args["Hbc"],
+            model_builder="definitely-not-real",
+        )
+
+
 def test_restore_inferencedata_coords_helper_restores_multiindex() -> None:
     """Check restoration helper can re-attach a MultiIndex coordinate."""
     multi_index = pd.MultiIndex.from_arrays(
@@ -382,3 +401,13 @@ def test_inferpymc_runs_without_boundary_conditions(inferpymc_args: dict) -> Non
     assert "bc" not in model.named_vars
     assert "hbc" not in model.named_vars
     assert "mu_bc" not in model.named_vars
+
+
+def test_inferpymc_accepts_components_builder(inferpymc_args: dict) -> None:
+    args = dict(inferpymc_args)
+    args["model_builder"] = "components"
+
+    result = inferpymc(**args)
+
+    assert "xouts" in result
+    assert "sigouts" in result

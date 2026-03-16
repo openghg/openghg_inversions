@@ -83,6 +83,29 @@ def test_add_linear_component_creates_expected_named_vars() -> None:
     assert result.output is model.named_vars["mu"]
 
 
+def test_add_linear_component_returns_effective_reparameterised_latent() -> None:
+    data = xr.DataArray(
+        np.ones((4, 2)),
+        dims=("nmeasure", "nx"),
+        coords={"nmeasure": np.arange(4), "nx": np.arange(2)},
+        name="H",
+    )
+
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        result = add_linear_component(
+            data,
+            data_name="hx",
+            prior_args={"pdf": "lognormal", "mean": 1.5, "stdev": 0.2, "reparameterise": True},
+            var_name="x",
+            output_name="mu",
+        )
+
+    assert "x_latent" in model.named_vars
+    assert "x" in model.named_vars
+    assert result.latent is model.named_vars["x_latent"]
+
+
 def test_add_sigma_component_supports_explicit_and_derived_freq() -> None:
     site_indicator = _site_indicator()
     sigma_freq_index = xr.DataArray([0, 0, 1, 1], dims=("nmeasure",), coords=site_indicator.coords)

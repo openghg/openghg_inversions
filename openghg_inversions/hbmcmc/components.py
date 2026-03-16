@@ -24,6 +24,12 @@ def make_offset(
     to the new shared component implementation.
     """
     site_indicator_da = xr.DataArray(site_indicator, dims=(output_dim,), name="site_indicator")
+
+    # Previously `offset_freq` was ignored, and without adding another argument to this function,
+    # we cannot make use of it
+    if offset_freq_indicator is None:
+        offset_freq = None
+
     return add_offset_component(
         site_indicator_da,
         prior_args=prior_args,

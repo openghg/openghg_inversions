@@ -36,7 +36,11 @@ def _update_log_normal_prior(prior_params: PriorArgs) -> None:
 
 
 def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
-    """Create a PyMC continuous prior from a prior parameter dictionary."""
+    """Create a PyMC continuous prior from a prior parameter dictionary.
+
+    This helper must be called inside an active ``pm.Model`` context because it
+    registers the created variable with the current model.
+    """
     pdf_dict = {cd.lower(): cd for cd in continuous.__all__}
 
     params = prior_params.copy()

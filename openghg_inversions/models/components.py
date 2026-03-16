@@ -5,6 +5,8 @@ xarray-first. They return PyTensor/PyMC tensors and should not implement their
 own coordinate sanitization policy; coordinate handling lives in
 ``openghg_inversions.models.coords``.
 
+All component helpers operate inside an active PyMC model context.
+
 Naming conventions:
 - ``data_name``: name for registered ``pm.Data``
 - ``var_name``: name for the latent random variable
@@ -40,6 +42,19 @@ class LinearComponentResult:
     data: TensorVariable
     latent: TensorVariable
     output: TensorVariable
+
+
+def get_model_latent(variable: TensorVariable, base_name: str) -> TensorVariable:
+    """Return the effective latent variable for a named model component.
+
+    If a reparameterized latent variable named ``{base_name}_latent`` exists in
+    the active model, return it. Otherwise return the supplied variable.
+    """
+    model = pm.modelcontext(None)
+    latent_name = f"{base_name}_latent"
+    if latent_name in model.named_vars:
+        return model.named_vars[latent_name]
+    return variable
 
 
 def _extract_time_coord(data: xr.DataArray, output_dim: str) -> xr.DataArray | None:
@@ -119,8 +134,9 @@ def add_linear_component(
     data = data.transpose(output_dim, ...)
     h = add_model_data(data, data_name)
     input_dims = tuple(dim for dim in data.dims if dim != output_dim)
-    latent = parse_prior(var_name, prior_args, dims=input_dims)
-    output = pt.dot(h, latent)
+    user_facing = parse_prior(var_name, prior_args, dims=input_dims)
+    latent = get_model_latent(user_facing, var_name)
+    output = pt.dot(h, user_facing)
     if compute_deterministic:
         output = pm.Deterministic(output_name, output, dims=output_dim)
     return LinearComponentResult(data=h, latent=latent, output=output)
