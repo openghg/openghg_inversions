@@ -341,6 +341,16 @@ def _restore_inferencedata_coords(
     return restore_inferencedata_coords(idata, original_coords)
 
 
+def _contiguous_index(index: np.ndarray) -> np.ndarray:
+    """Remap integer period indices to contiguous 0..N-1 values."""
+    index = np.asarray(index, dtype=int)
+    if index.size == 0:
+        return index
+
+    uniq = np.unique(index)
+    return np.searchsorted(uniq, index).astype(int)
+
+
 def _contiguous_sigma_time_index(sigma_freq_index: np.ndarray) -> np.ndarray:
     """Remap sigma period indices to contiguous 0..N-1 values.
 
@@ -348,12 +358,18 @@ def _contiguous_sigma_time_index(sigma_freq_index: np.ndarray) -> np.ndarray:
     data (e.g. Jan and Mar only => [0, 2]). PyMC array indexing is positional, so
     these values must be compacted before using `sigma[..., sigma_freq_index]`.
     """
-    sigma_freq_index = np.asarray(sigma_freq_index, dtype=int)
-    if sigma_freq_index.size == 0:
-        return sigma_freq_index
+    return _contiguous_index(sigma_freq_index)
 
-    uniq = np.unique(sigma_freq_index)
-    return np.searchsorted(uniq, sigma_freq_index).astype(int)
+
+def _weighted_apriori_flux_for_months(flux_array_all: np.ndarray, month_index: np.ndarray) -> np.ndarray:
+    """Compute a weighted prior flux average using compacted month positions."""
+    month_index = _contiguous_index(month_index)
+    apriori_flux = np.zeros_like(flux_array_all[:, :, 0])
+
+    for month_pos in np.unique(month_index):
+        apriori_flux += flux_array_all[:, :, month_pos] * np.sum(month_index == month_pos) / len(month_index)
+
+    return apriori_flux
 
 
 # ----------------------------------------
@@ -1243,11 +1259,18 @@ def inferpymc_postprocessouts(
 
     if rerun_file is not None:
         flux_array_all = np.expand_dims(rerun_file.fluxapriori.values, 2)
+        flux_time_values = None
     elif emissions_name is None:
         raise ValueError("Emissions name not provided.")
     else:
         emds = fp_data[".flux"][emissions_name[0]]
         flux_array_all = emds.data.flux.values
+        if "time" in emds.data.flux.coords:
+            flux_time_values = emds.data.flux["time"].values
+        elif "flux_time" in emds.data.flux.coords:
+            flux_time_values = emds.data.flux["flux_time"].values
+        else:
+            flux_time_values = None
 
     # HACK: assume that smallest flux dim is time, then re-order flux so that
     # time is the last coordinate
@@ -1262,16 +1285,16 @@ def inferpymc_postprocessouts(
         print("\nAssuming flux prior is annual and extracting first index of flux array.")
         apriori_flux = flux_array_all[:, :, 0]
     else:
-        print("\nAssuming flux prior is monthly.")
+        if flux_time_values is None:
+            raise ValueError("Time-varying flux prior requires time coordinates on the flux data.")
+        flux_period = utils._infer_flux_period(
+            flux_time_values,
+            getattr(emds.data.flux, "attrs", {}).get("time_period") if rerun_file is None else None,
+        )
+        print(f"\nAssuming flux prior is {flux_period}.")
         print(f"Extracting weighted average flux prior from {start_date} to {end_date}")
-        allmonths = pd.date_range(start_date, end_date).month[:-1].values
-        allmonths -= 1  # to align with zero indexed array
-
-        apriori_flux = np.zeros_like(flux_array_all[:, :, 0])
-
-        # calculate the weighted average flux across the whole inversion period
-        for m in np.unique(allmonths):
-            apriori_flux += flux_array_all[:, :, m] * np.sum(allmonths == m) / len(allmonths)
+        month_index = utils._map_times_to_available_period_positions(Ytime, flux_time_values, flux_period)
+        apriori_flux = _weighted_apriori_flux_for_months(flux_array_all, month_index)
 
     flux = scalemap_mode * apriori_flux
 
