@@ -261,7 +261,7 @@ def data_processing_surface_notracer(
     flux_dict = get_flux_data(
             sources=emissions_name,
             species=species,
-            domain=f"{domain}-{inner_domain}" if inner_domain is not None else domain,
+            domain=domain,
             start_date=start_date,
             end_date=end_date,
             store=emissions_store,
@@ -269,19 +269,6 @@ def data_processing_surface_notracer(
     
     fp_all[".flux"] = flux_dict
 
-    if inner_domain is not None:
-        print(f"Inner domain {inner_domain} specified; attempting to retrieve flux data for both domains ...")
-        
-    inner_flux_dict = get_flux_data(
-            sources=emissions_name,
-            species=species,
-            domain=f"{domain}-{inner_domain}",
-            start_date=start_date,
-            end_date=end_date,
-            store=emissions_store,
-        ) if inner_domain is not None else None
-    
-    fp_all[".inner_flux"] = inner_flux_dict if inner_flux_dict is not None else {}
     # Get BC data
     if use_bc is True:
         try:
@@ -391,7 +378,7 @@ def data_processing_surface_notracer(
 
         scenario_combined = merged_scenario_data(
             obs_data=site_data, footprint_data=standard_footprint_data,
-            flux_dict= flux_dict, bc_data=bc_data, inner_footprint_data=inner_footprint_data, inner_flux_dict=inner_flux_dict,
+            flux_dict= flux_dict, bc_data=bc_data, inner_footprint_data=inner_footprint_data,
             platform=platform[i], max_level=max_level
         )
         fp_all[site] = scenario_combined
