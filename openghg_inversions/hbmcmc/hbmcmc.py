@@ -213,7 +213,7 @@ def fixedbasisMCMC(
     calculate_min_error: Literal["percentile", "residual"] | None = None,
     min_error_options: dict | None = None,
     output_format: Literal[
-        "hbmcmc", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"
+        "hbmcmc", "hbmcmc_postprocessing", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"
     ] = "hbmcmc",
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
@@ -331,6 +331,8 @@ def fixedbasisMCMC(
             error (as specified by `min_error`).
         output_format: Select what is returned/saved by inversion.
             - "hbmcmc": (default) return the results of `inferpymc_postprocessouts`, and save result as netCDF
+            - "hbmcmc_postprocessing": return legacy-style output format, computed using functions from the
+              `postprocessing` submodule
             - "merged_data": return `fp_all` dictionary, no further processing and inversion *not* run
             - "inv_out": return `InversionOutput` object
             - "basic": return basic output created by new `postprocessing` submodule
@@ -349,7 +351,8 @@ def fixedbasisMCMC(
     merged_data_only = False
     return_inv_out = False
     new_postprocessing = False
-    paris_postprocessing = False
+    hbmcmc_postprocessing = False
+    do_paris_postprocessing = False
     return_mcmc_args = False
     skip_postprocessing = False
 
@@ -367,8 +370,10 @@ def fixedbasisMCMC(
         return_inv_out = True
     elif output_format == "basic":
         new_postprocessing = True
+    elif output_format == "hbmcmc_postprocessing":
+        hbmcmc_postprocessing = True
     elif output_format == "paris":
-        paris_postprocessing = True
+        do_paris_postprocessing = True
     elif output_format == "mcmc_args":
         return_mcmc_args = True
     elif output_format == "mcmc_results":
@@ -658,7 +663,30 @@ def fixedbasisMCMC(
 
         return outputs
 
-    if paris_postprocessing:
+    if hbmcmc_postprocessing:
+        from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
+
+        from ..postprocessing.legacy_outputs import make_legacy_hbmcmc_output
+
+        inv_out = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
+        outputs = make_legacy_hbmcmc_output(
+            inv_out=inv_out,
+            mcmc_results=mcmc_results,
+            sigma_freq_index=post_process_args["sigma_freq_index"],
+            Hx=post_process_args["Hx"],
+            Hbc=post_process_args.get("Hbc"),
+            country_file=country_file,
+            use_bc=use_bc,
+        )
+        output_filename = define_output_filename(outputpath, species, domain, outputname, start_date, ext=".nc")
+        Path(outputpath).mkdir(parents=True, exist_ok=True)
+        outputs.to_netcdf(output_filename, encoding=ncdf_encoding(outputs), mode="w")
+        end_post = time.time()
+        print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
+
+        return outputs
+
+    if do_paris_postprocessing:
         from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 
         from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
