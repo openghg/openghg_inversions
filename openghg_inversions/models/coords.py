@@ -22,8 +22,8 @@ import pymc as pm
 import xarray as xr
 
 
-def _coords_to_mapping(coords: dict[str, Any] | xr.core.coordinates.Coordinates) -> dict[str, Any]:
-    if isinstance(coords, xr.core.coordinates.Coordinates):
+def _coords_to_mapping(coords: dict[str, Any] | xr.Coordinates) -> dict[str, Any]:
+    if isinstance(coords, xr.Coordinates):
         return {name: coords[name] for name in coords}
     return dict(coords)
 
@@ -58,12 +58,12 @@ def _coords_equal(left: Any, right: Any) -> bool:
 
 
 def sanitize_coords_for_pymc(
-    coords: dict[str, Any] | xr.core.coordinates.Coordinates | object,
+    coords: dict[str, Any] | xr.Coordinates | object,
     *,
     model_dims: tuple[str, ...] | list[str] | set[str] | None = None,
 ) -> dict[str, np.ndarray]:
     """Return PyMC-safe coordinates for the provided dimensions."""
-    if not isinstance(coords, (dict, xr.core.coordinates.Coordinates)):
+    if not isinstance(coords, (dict, xr.Coordinates)):
         return {}
 
     dims_to_register = set(model_dims) if model_dims is not None else None
@@ -111,7 +111,7 @@ class CoordRegistry:
 
     def add(
         self,
-        coords: dict[str, Any] | xr.core.coordinates.Coordinates,
+        coords: dict[str, Any] | xr.Coordinates,
         *,
         model_dims: tuple[str, ...] | list[str] | set[str] | None = None,
     ) -> None:
@@ -175,15 +175,16 @@ def get_coord_registry(model: pm.Model) -> CoordRegistry | None:
 
 
 def add_coords(
-    coords: dict[str, np.ndarray] | xr.core.coordinates.Coordinates,
+    coords: dict[str, np.ndarray] | xr.Coordinates,
     *,
     model_dims: tuple[str, ...] | list[str] | set[str] | None = None,
 ) -> None:
     """Register coords on the active model and store originals when possible."""
     pymc_coords = sanitize_coords_for_pymc(coords, model_dims=model_dims)
+    pymc_coords_list = {name: coord.tolist() for name, coord in pymc_coords.items()}
 
     with pm.modelcontext(None) as model:
-        model.add_coords(pymc_coords)
+        model.add_coords(pymc_coords_list)
 
         registry = get_coord_registry(model)
         if registry is not None:

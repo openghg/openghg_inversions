@@ -39,15 +39,13 @@ from openghg_inversions.models.components import (
     add_inferpymc_likelihood_component,
     add_linear_component,
     add_offset_component,
-    get_model_latent,
 )
 from openghg_inversions.models.coords import (
     CoordRegistry,
-    add_coords,
     attach_coord_registry,
     restore_inferencedata_coords,
 )
-from openghg_inversions.models.priors import PriorArgs, lognormal_mu_sigma, parse_prior
+from openghg_inversions.models.priors import PriorArgs, parse_prior
 
 
 @dataclass
@@ -55,8 +53,8 @@ class InferPyMCModelSetup:
     """Container for the PyMC model and sampler configuration used by inferpymc."""
 
     model: pm.Model
-    step1: pm.NUTS
-    step2: pm.Slice
+    step1: Any
+    step2: Any
     sample_kwargs: dict[str, Any]
 
 
@@ -402,7 +400,6 @@ def _validate_model_builder(model_builder: str) -> str:
 def _canonicalise_inferpymc_dataset(
     prepared: InferPyMCInputs,
     /,
-    sigma_per_site: bool,
     use_bc: bool,
     obs_dim: str = "nmeasure",
     state_dim: str = "nx",
@@ -660,7 +657,6 @@ def build_inferpymc_model_components(
     )
     canonical_ds = _canonicalise_inferpymc_dataset(
         prepared_inputs,
-        sigma_per_site=sigma_per_site,
         use_bc=use_bc,
     )
     xprior, bcprior, sigprior, offsetprior = _prepare_builder_priors(

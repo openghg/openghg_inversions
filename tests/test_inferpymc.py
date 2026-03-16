@@ -311,7 +311,7 @@ def test_canonicalise_inferpymc_dataset_preserves_dataset_observation_coords(
         bc_state="bc_region",
     )
 
-    canonical = _canonicalise_inferpymc_dataset(prepared, sigma_per_site=True, use_bc=True)
+    canonical = _canonicalise_inferpymc_dataset(prepared, use_bc=True)
 
     assert set(["H", "H_bc", "mf", "mf_error", "site_indicator", "sigma_freq_index", "min_error"]).issubset(
         canonical.data_vars
@@ -335,7 +335,7 @@ def test_canonicalise_inferpymc_dataset_expands_scalar_min_error(inferpymc_args:
         use_bc=True,
     )
 
-    canonical = _canonicalise_inferpymc_dataset(prepared, sigma_per_site=True, use_bc=True)
+    canonical = _canonicalise_inferpymc_dataset(prepared, use_bc=True)
     assert canonical["min_error"].sizes["nmeasure"] == canonical.sizes["nmeasure"]
     np.testing.assert_array_equal(canonical["min_error"].values, np.zeros(canonical.sizes["nmeasure"]))
 

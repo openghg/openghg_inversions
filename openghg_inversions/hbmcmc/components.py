@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import xarray as xr
-from pytensor.tensor import TensorVariable
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.models.components import add_offset_component
 

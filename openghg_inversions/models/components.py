@@ -22,13 +22,14 @@ coordinates using shared helper logic based on
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
-from pytensor.tensor import TensorVariable
+from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.inversion_inputs import make_freq_indicator
 from openghg_inversions.models.coords import add_coords
@@ -108,7 +109,7 @@ def _resolve_freq_indicator(
 
 def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariable:
     """Add labelled xarray data to the active PyMC model."""
-    name = name or data.name
+    name = name or (str(data.name) if data.name is not None else None)
     if name is None:
         raise ValueError("Data must have a name if a name is not provided.")
 
@@ -116,8 +117,9 @@ def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariabl
     if name in model:
         return model[name]
 
-    add_coords(data.coords, model_dims=data.dims)
-    return pm.Data(name, data.values, dims=data.dims)
+    dims = tuple(str(dim) for dim in data.dims)
+    add_coords(data.coords, model_dims=dims)
+    return cast(TensorVariable, pm.Data(name, data.values, dims=dims))
 
 
 def add_linear_component(
@@ -131,9 +133,10 @@ def add_linear_component(
     compute_deterministic: bool = True,
 ) -> LinearComponentResult:
     """Add a linear latent component and its aligned forward-model contribution."""
+    output_dim = str(output_dim)
     data = data.transpose(output_dim, ...)
     h = add_model_data(data, data_name)
-    input_dims = tuple(dim for dim in data.dims if dim != output_dim)
+    input_dims = tuple(str(dim) for dim in data.dims if dim != output_dim)
     user_facing = parse_prior(var_name, prior_args, dims=input_dims)
     latent = get_model_latent(user_facing, var_name)
     output = pt.dot(h, user_facing)
@@ -155,6 +158,7 @@ def add_sigma_component(
     compute_deterministic: bool = False,
 ) -> TensorVariable:
     """Add inferpymc-compatible sigma terms and align them to observations."""
+    output_dim = str(output_dim)
     site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
     freq_index = _resolve_freq_indicator(
         explicit_indicator=sigma_freq_index,
@@ -168,7 +172,7 @@ def add_sigma_component(
 
     site_data = site_indicator if per_site else xr.zeros_like(site_indicator)
     site_data_var = add_model_data(site_data, "site_indicator")
-    freq_data = add_model_data(freq_index.transpose(output_dim), freq_index.name)
+    freq_data = add_model_data(freq_index.transpose(output_dim), str(freq_index.name))
 
     nsigma_site = int(site_data.max().item()) + 1 if per_site else 1
     nsigma_time = int(freq_index.max().item()) + 1 if freq_index.size else 0
@@ -199,6 +203,7 @@ def add_offset_component(
     drop_first: bool = False,
 ) -> TensorVariable:
     """Add a site-only or site-by-period offset component."""
+    output_dim = str(output_dim)
     site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
     add_model_data(site_indicator, "site_indicator")
     indicator = _resolve_freq_indicator(
@@ -209,7 +214,7 @@ def add_offset_component(
         fallback_name="offset_freq_indicator",
     )
     if indicator is not None:
-        add_model_data(indicator.transpose(output_dim), indicator.name)
+        add_model_data(indicator.transpose(output_dim), str(indicator.name))
 
     site_codes = np.asarray(site_indicator.values, dtype=int)
     site_matrix = pd.get_dummies(site_codes, drop_first=drop_first, dtype=int).values
