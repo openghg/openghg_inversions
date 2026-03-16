@@ -36,6 +36,7 @@ import xarray as xr
 from openghg.util import split_function_inputs
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
+from openghg_inversions.models.priors import lognormal_mu_sigma
 from openghg_inversions.utils import ncdf_encoding
 from openghg_inversions.basis import basis_functions_wrapper
 from openghg_inversions.inversion_data import data_processing_surface_notracer, load_merged_data
@@ -50,7 +51,7 @@ def update_log_normal_prior(prior):
         stdev = float(prior["stdev"])
         mean = float(prior.get("mean", 1.0))
 
-        mu, sigma = mcmc.lognormal_mu_sigma(mean, stdev)
+        mu, sigma = lognormal_mu_sigma(mean, stdev)
         prior["mu"] = mu
         prior["sigma"] = sigma
 
