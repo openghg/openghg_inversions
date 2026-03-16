@@ -10,7 +10,6 @@ def merged_scenario_data(
     flux_dict: dict[str, FluxData],
     bc_data: BoundaryConditionsData | None = None,
     inner_footprint_data: FootprintData | None = None,
-    inner_flux_dict: dict[str, FluxData] | None = None,
     platform: str | None = None,
     max_level: int | None = None
 ) -> xr.Dataset:
@@ -45,7 +44,7 @@ def merged_scenario_data(
     )
 
     if inner_footprint_data is not None:
-        inner_scenario = ModelScenario(obs=obs_data, footprint=inner_footprint_data, flux=inner_flux_dict, bc=None)
+        inner_scenario = ModelScenario(obs=obs_data, footprint=inner_footprint_data, flux=flux_dict, bc=None)
         inner_domain_merged = inner_scenario.footprints_data_merge(
             calc_fp_x_flux=True,
             calc_bc_sensitivity=False,
