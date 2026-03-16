@@ -4,6 +4,7 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions.models.components import (
+    LinearComponentResult,
     add_inferpymc_likelihood_component,
     add_linear_component,
     add_model_data,
@@ -65,9 +66,9 @@ def test_add_linear_component_creates_expected_named_vars() -> None:
         name="H",
     )
 
-    with pm.Model(coords={"nmeasure": np.arange(4), "nx": np.arange(2)}) as model:
+    with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
-        add_linear_component(
+        result = add_linear_component(
             data,
             data_name="hx",
             prior_args={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
@@ -75,7 +76,11 @@ def test_add_linear_component_creates_expected_named_vars() -> None:
             output_name="mu",
         )
 
+    assert isinstance(result, LinearComponentResult)
     assert {"hx", "x", "mu"}.issubset(model.named_vars)
+    assert result.data is model.named_vars["hx"]
+    assert result.latent is model.named_vars["x"]
+    assert result.output is model.named_vars["mu"]
 
 
 def test_add_sigma_component_supports_explicit_and_derived_freq() -> None:
@@ -86,6 +91,7 @@ def test_add_sigma_component_supports_explicit_and_derived_freq() -> None:
         attach_coord_registry(model, CoordRegistry())
         add_sigma_component(site_indicator, prior_args={"pdf": "uniform", "lower": 0.1, "upper": 1.0}, sigma_freq_index=sigma_freq_index)
         assert "sigma" in model.named_vars
+        assert "sigma_freq_index" in model.named_vars
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
@@ -96,6 +102,7 @@ def test_add_sigma_component_supports_explicit_and_derived_freq() -> None:
             per_site=False,
         )
         assert model.named_vars["sigma"].eval().shape[0] == 1
+        assert "sigma_freq_index" in model.named_vars
 
 
 def test_add_offset_component_supports_manual_and_derived_freq() -> None:
@@ -111,6 +118,7 @@ def test_add_offset_component_supports_manual_and_derived_freq() -> None:
             output_name="offset",
         )
         assert "offset" in model.named_vars
+        assert "offset_freq_indicator" in model.named_vars
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
@@ -121,6 +129,7 @@ def test_add_offset_component_supports_manual_and_derived_freq() -> None:
             output_name="offset",
         )
         assert "offset" in model.named_vars
+        assert "offset_freq_indicator" in model.named_vars
 
 
 def test_add_inferpymc_likelihood_component_adds_epsilon_and_y() -> None:

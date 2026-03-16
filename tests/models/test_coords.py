@@ -33,7 +33,7 @@ def test_coord_registry_stores_original_and_sanitized_multiindex() -> None:
 
     assert registry.original_coords["nmeasure"].equals(multi_index)
     np.testing.assert_array_equal(registry.pymc_coords["nmeasure"], np.arange(3))
-    assert "nmeasure_time" in registry.auxiliary_coords
+    assert "time" in registry.auxiliary_coords
 
 
 def test_coord_registry_repeated_registration_and_conflict() -> None:
@@ -59,6 +59,23 @@ def test_add_coords_works_with_and_without_registry() -> None:
         attach_coord_registry(model, registry)
         add_coords(coords)
         assert "nmeasure" in registry.original_coords
+
+
+def test_add_coords_preserves_auxiliary_coords_for_model_dims() -> None:
+    multi_index = pd.MultiIndex.from_arrays(
+        [["MHD", "TAC"], pd.to_datetime(["2019-01-01", "2019-01-02"])],
+        names=["site", "time"],
+    )
+    coords = xr.Coordinates.from_pandas_multiindex(multi_index, "nmeasure")
+
+    with pm.Model() as model:
+        registry = CoordRegistry()
+        attach_coord_registry(model, registry)
+        add_coords(coords, model_dims=("nmeasure",))
+
+    assert "nmeasure" in registry.original_coords
+    assert "site" in registry.auxiliary_coords
+    assert "time" in registry.auxiliary_coords
 
 
 def test_restore_inferencedata_coords_supports_registry_and_legacy_dict() -> None:

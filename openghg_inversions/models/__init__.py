@@ -1,6 +1,7 @@
 """Reusable model-building helpers for OpenGHG inversions."""
 
 from openghg_inversions.models.components import (
+    LinearComponentResult,
     add_inferpymc_likelihood_component,
     add_linear_component,
     add_model_data,
@@ -23,6 +24,7 @@ __all__ = [
     "get_coord_registry",
     "restore_inferencedata_coords",
     "parse_prior",
+    "LinearComponentResult",
     "add_model_data",
     "add_linear_component",
     "add_sigma_component",

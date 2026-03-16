@@ -497,11 +497,11 @@ def build_inferpymc_model(
         if str(bcprior.get("pdf", "")).lower() == "lognormal":
             bcprior["reparameterise"] = True
 
-    with pm.Model(coords=prepared_inputs.coords) as model:
+    with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         step1_vars = []
 
-        mu = add_linear_component(
+        flux_component = add_linear_component(
             canonical_ds["H"],
             data_name="hx",
             prior_args=xprior,
@@ -510,12 +510,11 @@ def build_inferpymc_model(
             output_dim="nmeasure",
             compute_deterministic=True,
         )
-        step1_vars.append(model.named_vars["x_latent"] if "x_latent" in model.named_vars else model.named_vars["x"])
+        step1_vars.append(flux_component.latent)
 
         mu_bc = None
-        if use_bc:
-            assert prepared_inputs.hbc is not None
-            mu_bc = add_linear_component(
+        if use_bc and "H_bc" in canonical_ds:
+            bc_component = add_linear_component(
                 canonical_ds["H_bc"],
                 data_name="hbc",
                 prior_args=bcprior,
@@ -524,9 +523,8 @@ def build_inferpymc_model(
                 output_dim="nmeasure",
                 compute_deterministic=True,
             )
-            step1_vars.append(
-                model.named_vars["bc_latent"] if "bc_latent" in model.named_vars else model.named_vars["bc"]
-            )
+            mu_bc = bc_component.output
+            step1_vars.append(bc_component.latent)
 
         offset = None
         if add_offset:
@@ -543,7 +541,7 @@ def build_inferpymc_model(
 
         add_inferpymc_likelihood_component(
             canonical_ds,
-            mu=mu,
+            mu=flux_component.output,
             mu_bc=mu_bc,
             offset=offset,
             sigprior=sigprior,

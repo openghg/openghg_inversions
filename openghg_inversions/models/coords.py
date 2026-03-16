@@ -59,13 +59,18 @@ def _coords_equal(left: Any, right: Any) -> bool:
 
 def sanitize_coords_for_pymc(
     coords: dict[str, Any] | xr.core.coordinates.Coordinates | object,
+    *,
+    model_dims: tuple[str, ...] | list[str] | set[str] | None = None,
 ) -> dict[str, np.ndarray]:
     """Return PyMC-safe coordinates for the provided dimensions."""
     if not isinstance(coords, (dict, xr.core.coordinates.Coordinates)):
         return {}
 
+    dims_to_register = set(model_dims) if model_dims is not None else None
     result: dict[str, np.ndarray] = {}
     for name, coord in _coords_to_mapping(coords).items():
+        if dims_to_register is not None and name not in dims_to_register:
+            continue
         try:
             size = _coord_length(coord)
         except Exception:
@@ -82,40 +87,81 @@ class CoordRegistry:
     original_coords: dict[str, Any] = field(default_factory=dict)
     auxiliary_coords: dict[str, xr.DataArray] = field(default_factory=dict)
 
-    def add(self, coords: dict[str, Any] | xr.core.coordinates.Coordinates) -> None:
+    def _store_original_coord(self, name: str, coord: Any) -> None:
+        if name in self.original_coords:
+            existing = self.original_coords[name]
+            if len(existing) != len(coord):
+                raise ValueError(f"Conflicting coord registration for {name!r}: length mismatch.")
+            if not _coords_equal(existing, coord):
+                raise ValueError(f"Conflicting coord registration for {name!r}: values differ.")
+            return
+
+        self.original_coords[name] = coord
+
+    def _store_auxiliary_coord(self, name: str, coord: xr.DataArray) -> None:
+        if name in self.auxiliary_coords:
+            existing = self.auxiliary_coords[name]
+            if existing.dims != coord.dims or existing.shape != coord.shape:
+                raise ValueError(f"Conflicting coord registration for {name!r}: shape mismatch.")
+            if not _coords_equal(existing.values, coord.values):
+                raise ValueError(f"Conflicting coord registration for {name!r}: values differ.")
+            return
+
+        self.auxiliary_coords[name] = coord
+
+    def add(
+        self,
+        coords: dict[str, Any] | xr.core.coordinates.Coordinates,
+        *,
+        model_dims: tuple[str, ...] | list[str] | set[str] | None = None,
+    ) -> None:
         """Register coordinates, storing scientific coords and PyMC-safe coords."""
         mapping = _coords_to_mapping(coords)
-        pymc_coords = sanitize_coords_for_pymc(coords)
+        dims_to_register = tuple(model_dims) if model_dims is not None else tuple(mapping)
+        dim_set = set(dims_to_register)
+        pymc_coords = sanitize_coords_for_pymc(coords, model_dims=dims_to_register)
 
         for dim, safe_coord in pymc_coords.items():
             if dim in self.pymc_coords and len(self.pymc_coords[dim]) != len(safe_coord):
                 raise ValueError(f"Conflicting coord registration for {dim!r}: length mismatch.")
             self.pymc_coords[dim] = safe_coord
 
-        for dim, coord in mapping.items():
-            original = _coord_values(coord)
-            if dim in self.original_coords:
-                existing = self.original_coords[dim]
-                if len(existing) != len(original):
-                    raise ValueError(f"Conflicting coord registration for {dim!r}: length mismatch.")
-                if not _coords_equal(existing, original):
-                    raise ValueError(f"Conflicting coord registration for {dim!r}: values differ.")
+        for dim in dims_to_register:
+            if dim not in mapping:
                 continue
-
-            self.original_coords[dim] = original
+            coord = mapping[dim]
+            original = _coord_values(coord)
+            self._store_original_coord(dim, original)
 
             if isinstance(original, pd.MultiIndex):
-                dim_name = dim
                 for level_name in original.names:
                     if level_name is None:
                         continue
                     level_values = original.get_level_values(level_name)
-                    self.auxiliary_coords[f"{dim_name}_{level_name}"] = xr.DataArray(
-                        level_values.to_numpy(),
-                        dims=(dim_name,),
-                        coords={dim_name: np.arange(len(original))},
-                        name=f"{dim_name}_{level_name}",
+                    self._store_auxiliary_coord(
+                        level_name,
+                        xr.DataArray(
+                            level_values.to_numpy(),
+                            dims=(dim,),
+                            coords={dim: np.arange(len(original))},
+                            name=level_name,
+                        ),
                     )
+
+        for name, coord in mapping.items():
+            if name in dim_set or not isinstance(coord, xr.DataArray):
+                continue
+            if not set(coord.dims).issubset(dim_set):
+                continue
+            self._store_auxiliary_coord(
+                name,
+                xr.DataArray(
+                    coord.values,
+                    dims=coord.dims,
+                    coords={dim: np.arange(coord.sizes[dim]) for dim in coord.dims},
+                    name=name,
+                ),
+            )
 
 
 def attach_coord_registry(model: pm.Model, registry: CoordRegistry) -> None:
@@ -128,16 +174,20 @@ def get_coord_registry(model: pm.Model) -> CoordRegistry | None:
     return getattr(model, "_openghg_coord_registry", None)
 
 
-def add_coords(coords: dict[str, np.ndarray] | xr.core.coordinates.Coordinates) -> None:
+def add_coords(
+    coords: dict[str, np.ndarray] | xr.core.coordinates.Coordinates,
+    *,
+    model_dims: tuple[str, ...] | list[str] | set[str] | None = None,
+) -> None:
     """Register coords on the active model and store originals when possible."""
-    pymc_coords = sanitize_coords_for_pymc(coords)
+    pymc_coords = sanitize_coords_for_pymc(coords, model_dims=model_dims)
 
     with pm.modelcontext(None) as model:
         model.add_coords(pymc_coords)
 
         registry = get_coord_registry(model)
         if registry is not None:
-            registry.add(coords)
+            registry.add(coords, model_dims=model_dims)
 
 
 def restore_inferencedata_coords(
@@ -156,12 +206,27 @@ def restore_inferencedata_coords(
         if not isinstance(group, xr.Dataset):
             continue
 
+        restored_multiindex_dims: set[str] = set()
         for dim, coord in original_coords.items():
             if dim not in group.dims:
                 continue
             if len(coord) != group.sizes[dim]:
                 continue
-            group = group.assign_coords({dim: coord})
+            if isinstance(coord, pd.MultiIndex):
+                group = group.assign_coords(xr.Coordinates.from_pandas_multiindex(coord, dim))
+                restored_multiindex_dims.add(dim)
+            else:
+                group = group.assign_coords({dim: coord})
+
+        if isinstance(coords_or_registry, CoordRegistry):
+            for name, coord in coords_or_registry.auxiliary_coords.items():
+                if not set(coord.dims).issubset(set(group.dims)):
+                    continue
+                if any(group.sizes[dim] != coord.sizes[dim] for dim in coord.dims):
+                    continue
+                if any(dim in restored_multiindex_dims for dim in coord.dims):
+                    continue
+                group = group.assign_coords({name: coord})
 
         setattr(idata, group_name, group)
 

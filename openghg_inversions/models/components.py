@@ -19,7 +19,7 @@ coordinates using shared helper logic based on
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -31,6 +31,15 @@ from pytensor.tensor import TensorVariable
 from openghg_inversions.inversion_inputs import make_freq_indicator
 from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
+
+
+@dataclass
+class LinearComponentResult:
+    """Objects created by ``add_linear_component``."""
+
+    data: TensorVariable
+    latent: TensorVariable
+    output: TensorVariable
 
 
 def _extract_time_coord(data: xr.DataArray, output_dim: str) -> xr.DataArray | None:
@@ -92,8 +101,7 @@ def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariabl
     if name in model:
         return model[name]
 
-    dim_coords = {dim: data.coords[dim] for dim in data.dims if dim in data.coords}
-    add_coords(dim_coords)
+    add_coords(data.coords, model_dims=data.dims)
     return pm.Data(name, data.values, dims=data.dims)
 
 
@@ -106,7 +114,7 @@ def add_linear_component(
     output_name: str,
     output_dim: str = "nmeasure",
     compute_deterministic: bool = True,
-) -> TensorVariable:
+) -> LinearComponentResult:
     """Add a linear latent component and its aligned forward-model contribution."""
     data = data.transpose(output_dim, ...)
     h = add_model_data(data, data_name)
@@ -114,8 +122,8 @@ def add_linear_component(
     latent = parse_prior(var_name, prior_args, dims=input_dims)
     output = pt.dot(h, latent)
     if compute_deterministic:
-        return pm.Deterministic(output_name, output, dims=output_dim)
-    return output
+        output = pm.Deterministic(output_name, output, dims=output_dim)
+    return LinearComponentResult(data=h, latent=latent, output=output)
 
 
 def add_sigma_component(
@@ -143,7 +151,7 @@ def add_sigma_component(
         raise ValueError("Sigma frequency information must be provided via `sigma_freq_index` or `sigma_freq`.")
 
     site_data = site_indicator if per_site else xr.zeros_like(site_indicator)
-    add_model_data(site_data, "site_indicator")
+    site_data_var = add_model_data(site_data, "site_indicator")
     freq_data = add_model_data(freq_index.transpose(output_dim), freq_index.name)
 
     nsigma_site = int(site_data.max().item()) + 1 if per_site else 1
@@ -156,7 +164,7 @@ def add_sigma_component(
     )
 
     sigma = parse_prior(var_name, prior_args, dims=("nsigma_site", "nsigma_time"))
-    aligned = sigma[site_data.values.astype(int), freq_data]
+    aligned = sigma[site_data_var, freq_data]
     if compute_deterministic:
         deterministic_name = output_name or f"{var_name}_aligned"
         return pm.Deterministic(deterministic_name, aligned, dims=output_dim)
@@ -176,6 +184,7 @@ def add_offset_component(
 ) -> TensorVariable:
     """Add a site-only or site-by-period offset component."""
     site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
+    add_model_data(site_indicator, "site_indicator")
     indicator = _resolve_freq_indicator(
         explicit_indicator=offset_freq_indicator,
         freq=offset_freq,
@@ -183,6 +192,8 @@ def add_offset_component(
         output_dim=output_dim,
         fallback_name="offset_freq_indicator",
     )
+    if indicator is not None:
+        add_model_data(indicator.transpose(output_dim), indicator.name)
 
     site_codes = np.asarray(site_indicator.values, dtype=int)
     site_matrix = pd.get_dummies(site_codes, drop_first=drop_first, dtype=int).values
@@ -196,8 +207,18 @@ def add_offset_component(
     else:
         design_matrix = site_matrix
 
+    design_name = f"{output_name}_design"
+    design_data = add_model_data(
+        xr.DataArray(
+            design_matrix,
+            dims=(output_dim, "noffset_term"),
+            coords={output_dim: site_indicator.coords[output_dim], "noffset_term": np.arange(design_matrix.shape[1])},
+            name=design_name,
+        ),
+        design_name,
+    )
     latent = parse_prior(var_name, prior_args, shape=design_matrix.shape[1])
-    return pm.Deterministic(output_name, pt.dot(np.asarray(design_matrix), latent), dims=output_dim)
+    return pm.Deterministic(output_name, pt.dot(design_data, latent), dims=output_dim)
 
 
 def add_inferpymc_likelihood_component(
@@ -252,6 +273,8 @@ def add_inferpymc_likelihood_component(
             min_error_data,
         )
 
+    # TODO: this calculation should probably happen separately
+    # e.g. using a add_linear_component_sum function.
     total_mu = mu
     if mu_bc is not None:
         total_mu = total_mu + mu_bc
