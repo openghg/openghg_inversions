@@ -303,7 +303,13 @@ def test_build_inferpymc_model_accepts_dataset(
 def test_canonicalise_inferpymc_dataset_preserves_dataset_observation_coords(
     inferpymc_inputs_dataset: xr.Dataset,
 ) -> None:
-    prepared = _prepare_inferpymc_inputs(
+    """Check canonicalisation keeps dataset observation coordinates intact.
+
+    This is a temporary refactor-support test. It guards the Stage B to Stage C
+    adapter so the new component builder can be introduced without changing the
+    scientific observation coordinates carried by dataset inputs.
+    """
+    prepared_inputs = _prepare_inferpymc_inputs(
         inv_inputs=inferpymc_inputs_dataset,
         sigma_per_site=True,
         use_bc=True,
@@ -311,7 +317,7 @@ def test_canonicalise_inferpymc_dataset_preserves_dataset_observation_coords(
         bc_state="bc_region",
     )
 
-    canonical = _canonicalise_inferpymc_dataset(prepared, use_bc=True)
+    canonical = _canonicalise_inferpymc_dataset(prepared_inputs, use_bc=True)
 
     assert set(["H", "H_bc", "mf", "mf_error", "site_indicator", "sigma_freq_index", "min_error"]).issubset(
         canonical.data_vars
@@ -323,7 +329,12 @@ def test_canonicalise_inferpymc_dataset_preserves_dataset_observation_coords(
 
 
 def test_canonicalise_inferpymc_dataset_expands_scalar_min_error(inferpymc_args: dict) -> None:
-    prepared = _prepare_inferpymc_inputs(
+    """Check canonicalisation expands scalar min_error to the observation dimension.
+
+    This is a temporary refactor-support test for the Stage B to Stage C
+    adapter, which is expected to disappear once the legacy plumbing is removed.
+    """
+    prepared_inputs = _prepare_inferpymc_inputs(
         Hx=inferpymc_args["Hx"],
         Y=inferpymc_args["Y"],
         error=inferpymc_args["error"],
@@ -335,7 +346,7 @@ def test_canonicalise_inferpymc_dataset_expands_scalar_min_error(inferpymc_args:
         use_bc=True,
     )
 
-    canonical = _canonicalise_inferpymc_dataset(prepared, use_bc=True)
+    canonical = _canonicalise_inferpymc_dataset(prepared_inputs, use_bc=True)
     assert canonical["min_error"].sizes["nmeasure"] == canonical.sizes["nmeasure"]
     np.testing.assert_array_equal(canonical["min_error"].values, np.zeros(canonical.sizes["nmeasure"]))
 
@@ -356,6 +367,7 @@ def test_build_inferpymc_model_rejects_mixed_input_modes(
 
 
 def test_build_inferpymc_model_rejects_unknown_builder(inferpymc_args: dict) -> None:
+    """Check the public builder selector rejects unsupported values."""
     with pytest.raises(ValueError, match="Unsupported model_builder"):
         build_inferpymc_model(
             Hx=inferpymc_args["Hx"],
@@ -404,6 +416,12 @@ def test_inferpymc_runs_without_boundary_conditions(inferpymc_args: dict) -> Non
 
 
 def test_inferpymc_accepts_components_builder(inferpymc_args: dict) -> None:
+    """Check inferpymc forwards the temporary component-builder selector.
+
+    This is a temporary refactor-support test for the Stage C legacy/components
+    split and can be simplified or removed once Stage D makes the component
+    builder the default runtime path.
+    """
     args = dict(inferpymc_args)
     args["model_builder"] = "components"
 

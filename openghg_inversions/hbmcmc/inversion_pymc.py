@@ -391,7 +391,20 @@ def _prepare_builder_priors(
     offsetprior: dict | None,
     reparameterise_log_normal: bool,
 ) -> tuple[dict, dict, dict, dict]:
-    """Copy builder priors and apply temporary compatibility flags."""
+    """Copy builder priors and apply temporary compatibility flags.
+
+    Args:
+        xprior: Optional emissions prior overrides.
+        bcprior: Optional boundary-condition prior overrides.
+        sigprior: Optional sigma prior overrides.
+        offsetprior: Optional offset prior overrides.
+        reparameterise_log_normal: Temporary public compatibility flag used to
+            request lognormal reparameterisation.
+
+    Returns:
+        Copies of the prior dictionaries with defaults filled in and temporary
+        compatibility flags applied.
+    """
     prepared_xprior = DEFAULT_XPRIOR.copy() if xprior is None else xprior.copy()
     prepared_bcprior = DEFAULT_BCPRIOR.copy() if bcprior is None else bcprior.copy()
     prepared_sigprior = DEFAULT_SIGPRIOR.copy() if sigprior is None else sigprior.copy()
@@ -408,32 +421,51 @@ def _prepare_builder_priors(
 
 
 def _validate_model_builder(model_builder: str) -> str:
+    """Validate the temporary Stage C model-builder selector."""
     if model_builder not in {"legacy", "components"}:
         raise ValueError(f"Unsupported model_builder {model_builder!r}. Expected 'legacy' or 'components'.")
     return model_builder
 
 
 def _canonicalise_inferpymc_dataset(
-    prepared: InferPyMCInputs,
+    prepared_inputs: InferPyMCInputs,
     /,
     use_bc: bool,
     obs_dim: str = "nmeasure",
     state_dim: str = "nx",
     bc_state_dim: str = "nbc",
 ) -> xr.Dataset:
-    """Convert normalized Stage B inputs into canonical xarray model inputs."""
-    nmeasure = prepared.hx.shape[0]
+    """Convert normalized Stage B inputs into canonical xarray model inputs.
+
+    Args:
+        prepared_inputs: Temporary Stage B compatibility container holding the
+            normalized inversion inputs.
+        use_bc: Whether the canonical dataset should include boundary-condition
+            sensitivities.
+        obs_dim: Observation dimension name used by the model components.
+        state_dim: State dimension name used for emissions sensitivities.
+        bc_state_dim: State dimension name used for boundary-condition
+            sensitivities.
+
+    Returns:
+        An xarray dataset containing the canonical Stage C model inputs.
+
+    This helper is temporary transition code. It exists to keep the Stage B
+    input-normalization path separate from the Stage C component builder until
+    the legacy path is removed in Stage D.
+    """
+    nmeasure = prepared_inputs.hx.shape[0]
     obs_coord = (
-        prepared.source.indexes[obs_dim]
-        if prepared.source is not None and obs_dim in prepared.source.indexes
+        prepared_inputs.source.indexes[obs_dim]
+        if prepared_inputs.source is not None and obs_dim in prepared_inputs.source.indexes
         else np.arange(nmeasure)
     )
-    coords: dict[str, Any] = {obs_dim: obs_coord, state_dim: np.arange(prepared.hx.shape[1])}
+    coords: dict[str, Any] = {obs_dim: obs_coord, state_dim: np.arange(prepared_inputs.hx.shape[1])}
 
-    if use_bc and prepared.hbc is not None:
-        coords[bc_state_dim] = np.arange(prepared.hbc.shape[1])
+    if use_bc and prepared_inputs.hbc is not None:
+        coords[bc_state_dim] = np.arange(prepared_inputs.hbc.shape[1])
 
-    min_error = prepared.min_error
+    min_error = prepared_inputs.min_error
     if np.isscalar(min_error) or (isinstance(min_error, np.ndarray) and np.ndim(min_error) == 0):
         min_error_values = np.full(nmeasure, min_error)
     else:
@@ -441,26 +473,26 @@ def _canonicalise_inferpymc_dataset(
 
     data_vars: dict[str, xr.DataArray] = {
         "H": xr.DataArray(
-            prepared.hx,
+            prepared_inputs.hx,
             dims=(obs_dim, state_dim),
             coords={obs_dim: obs_coord, state_dim: coords[state_dim]},
             name="H",
         ),
-        "mf": xr.DataArray(prepared.y, dims=(obs_dim,), coords={obs_dim: coords[obs_dim]}, name="mf"),
+        "mf": xr.DataArray(prepared_inputs.y, dims=(obs_dim,), coords={obs_dim: coords[obs_dim]}, name="mf"),
         "mf_error": xr.DataArray(
-            prepared.error,
+            prepared_inputs.error,
             dims=(obs_dim,),
             coords={obs_dim: coords[obs_dim]},
             name="mf_error",
         ),
         "site_indicator": xr.DataArray(
-            prepared.site_indicator,
+            prepared_inputs.site_indicator,
             dims=(obs_dim,),
             coords={obs_dim: coords[obs_dim]},
             name="site_indicator",
         ),
         "sigma_freq_index": xr.DataArray(
-            prepared.sigma_freq_index,
+            prepared_inputs.sigma_freq_index,
             dims=(obs_dim,),
             coords={obs_dim: coords[obs_dim]},
             name="sigma_freq_index",
@@ -473,9 +505,9 @@ def _canonicalise_inferpymc_dataset(
         ),
     }
 
-    if use_bc and prepared.hbc is not None:
+    if use_bc and prepared_inputs.hbc is not None:
         data_vars["H_bc"] = xr.DataArray(
-            prepared.hbc,
+            prepared_inputs.hbc,
             dims=(obs_dim, bc_state_dim),
             coords={obs_dim: coords[obs_dim], bc_state_dim: coords[bc_state_dim]},
             name="H_bc",
@@ -509,13 +541,11 @@ def build_inferpymc_model_legacy(
     state: str = "region",
     bc_state: str = "bc_region",
 ) -> InferPyMCModelSetup:
-    """Build the PyMC model and sampler configuration used by inferpymc.
+    """Build the temporary legacy inferpymc model path kept for Stage C parity.
 
-    This is the "legacy" version introduced in PR #380. It was tested to
-    ensure the existing behaviour of `inferpymc` was preserved.
-
-    It is used here to make sure the new model component based model builder
-    is still doing what `inferpymc` used to do.
+    This transitional builder preserves the pre-Stage-C runtime behavior so the
+    new component-based builder can be compared against it during the Stage C
+    to Stage D migration.
     """
     prepared_inputs = _prepare_inferpymc_inputs(
         inv_inputs=inv_inputs,
@@ -649,7 +679,12 @@ def build_inferpymc_model_components(
     state: str = "region",
     bc_state: str = "bc_region",
 ) -> InferPyMCModelSetup:
-    """Build the Stage C component-based model path intended to become the Stage D default."""
+    """Build the Stage C component-based model path.
+
+    This builder represents the intended future architecture introduced in
+    Stage C. It is expected to become the default inferpymc runtime path in
+    Stage D after parity with the temporary legacy builder is established.
+    """
     prepared_inputs = _prepare_inferpymc_inputs(
         inv_inputs=inv_inputs,
         Hx=Hx,

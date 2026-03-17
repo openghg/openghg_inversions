@@ -15,6 +15,7 @@ from openghg_inversions.models.coords import CoordRegistry, attach_coord_registr
 
 
 def _obs_index() -> pd.MultiIndex:
+    """Create a stacked observation index used by component tests."""
     return pd.MultiIndex.from_arrays(
         [["MHD", "MHD", "TAC", "TAC"], pd.to_datetime(["2019-01-01", "2019-01-02", "2019-02-01", "2019-02-02"])],
         names=["site", "time"],
@@ -22,6 +23,7 @@ def _obs_index() -> pd.MultiIndex:
 
 
 def _site_indicator() -> xr.DataArray:
+    """Create a simple site-indicator DataArray aligned to the test index."""
     index = _obs_index()
     return xr.DataArray(
         np.array([0, 0, 1, 1]),
@@ -32,6 +34,7 @@ def _site_indicator() -> xr.DataArray:
 
 
 def _likelihood_dataset() -> xr.Dataset:
+    """Create a minimal canonical-style dataset for likelihood tests."""
     index = _obs_index()
     return xr.Dataset(
         data_vars={
@@ -48,6 +51,7 @@ def _likelihood_dataset() -> xr.Dataset:
 
 
 def test_add_model_data_uses_add_coords() -> None:
+    """Check add_model_data registers model coords through the shared coord helper."""
     data = xr.DataArray([1.0, 2.0], dims=("nmeasure",), coords={"nmeasure": [10, 11]}, name="Y")
 
     with pm.Model() as model:
@@ -59,6 +63,7 @@ def test_add_model_data_uses_add_coords() -> None:
 
 
 def test_add_linear_component_creates_expected_named_vars() -> None:
+    """Check add_linear_component returns the created PyMC objects explicitly."""
     data = xr.DataArray(
         np.ones((4, 2)),
         dims=("nmeasure", "nx"),
@@ -84,6 +89,12 @@ def test_add_linear_component_creates_expected_named_vars() -> None:
 
 
 def test_add_linear_component_returns_effective_reparameterised_latent() -> None:
+    """Check the component result exposes the true reparameterized latent variable.
+
+    This is a temporary refactor-support test. It protects the Stage C
+    component API while the legacy and component builders coexist and ensures
+    the builder does not need to inspect model internals to find ``x_latent``.
+    """
     data = xr.DataArray(
         np.ones((4, 2)),
         dims=("nmeasure", "nx"),
@@ -107,6 +118,7 @@ def test_add_linear_component_returns_effective_reparameterised_latent() -> None
 
 
 def test_add_sigma_component_supports_explicit_and_derived_freq() -> None:
+    """Check sigma accepts explicit or internally derived frequency indicators."""
     site_indicator = _site_indicator()
     sigma_freq_index = xr.DataArray([0, 0, 1, 1], dims=("nmeasure",), coords=site_indicator.coords)
 
@@ -129,6 +141,7 @@ def test_add_sigma_component_supports_explicit_and_derived_freq() -> None:
 
 
 def test_add_offset_component_supports_manual_and_derived_freq() -> None:
+    """Check offsets accept explicit or internally derived frequency indicators."""
     site_indicator = _site_indicator()
     manual_freq = xr.DataArray([0, 0, 1, 1], dims=("nmeasure",), coords=site_indicator.coords)
 
@@ -156,6 +169,7 @@ def test_add_offset_component_supports_manual_and_derived_freq() -> None:
 
 
 def test_add_inferpymc_likelihood_component_adds_epsilon_and_y() -> None:
+    """Check the likelihood helper adds epsilon, y, and sigma variables."""
     ds = _likelihood_dataset()
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:

@@ -14,7 +14,15 @@ PriorArgs: TypeAlias = dict[str, str | float | bool]
 
 
 def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
-    """Return lognormal ``mu`` and ``sigma`` for the requested mean and stdev."""
+    """Convert lognormal mean and stdev into PyMC's ``mu`` and ``sigma``.
+
+    Args:
+        mean: Requested mean of the lognormal distribution.
+        stdev: Requested standard deviation of the lognormal distribution.
+
+    Returns:
+        A ``(mu, sigma)`` tuple suitable for ``pm.Lognormal``.
+    """
     var = np.log(1 + (stdev / mean) ** 2)
     mu = np.log(mean) - 0.5 * var
     sigma = np.sqrt(var)
@@ -22,6 +30,7 @@ def lognormal_mu_sigma(mean: float, stdev: float) -> tuple[float, float]:
 
 
 def _update_log_normal_prior(prior_params: PriorArgs) -> None:
+    """Rewrite lognormal prior arguments in-place to use ``mu`` and ``sigma``."""
     if "stdev" not in prior_params:
         return
 
@@ -36,7 +45,21 @@ def _update_log_normal_prior(prior_params: PriorArgs) -> None:
 
 
 def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
-    """Create a PyMC continuous prior from a prior parameter dictionary.
+    """Create a continuous PyMC prior from a prior-parameter dictionary.
+
+    Args:
+        name: Name of the user-facing PyMC variable to create.
+        prior_params: Prior specification including ``pdf`` and any distribution
+            parameters accepted by the chosen PyMC distribution.
+        **kwargs: Additional keyword arguments forwarded to the created PyMC
+            variable, such as ``dims``.
+
+    Returns:
+        The created PyMC random variable or deterministic transform.
+
+    Raises:
+        ValueError: If ``prior_params["pdf"]`` does not name a supported PyMC
+            continuous distribution.
 
     This helper must be called inside an active ``pm.Model`` context because it
     registers the created variable with the current model.

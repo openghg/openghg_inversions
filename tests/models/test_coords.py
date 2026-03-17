@@ -16,12 +16,14 @@ from openghg_inversions.models.coords import (
 
 
 def test_sanitize_coords_for_pymc_returns_range_coords() -> None:
+    """Check coordinate sanitization produces range-based PyMC coords."""
     coords = {"nmeasure": xr.DataArray([10, 20, 30], dims=("nmeasure",))}
     result = sanitize_coords_for_pymc(coords)
     np.testing.assert_array_equal(result["nmeasure"], np.arange(3))
 
 
 def test_coord_registry_stores_original_and_sanitized_multiindex() -> None:
+    """Check the coord registry preserves MultiIndex coords and derived auxiliaries."""
     multi_index = pd.MultiIndex.from_arrays(
         [["MHD", "MHD", "TAC"], pd.to_datetime(["2019-01-01", "2019-01-02", "2019-01-03"])],
         names=["site", "time"],
@@ -37,6 +39,7 @@ def test_coord_registry_stores_original_and_sanitized_multiindex() -> None:
 
 
 def test_coord_registry_repeated_registration_and_conflict() -> None:
+    """Check repeated coordinate registration is idempotent but rejects conflicts."""
     coords = {"nx": np.array([0, 1, 2])}
     registry = CoordRegistry()
     registry.add(coords)
@@ -47,6 +50,7 @@ def test_coord_registry_repeated_registration_and_conflict() -> None:
 
 
 def test_add_coords_works_with_and_without_registry() -> None:
+    """Check add_coords works whether or not a coord registry is attached."""
     coords = {"nmeasure": xr.DataArray([1, 2], dims=("nmeasure",))}
 
     with pm.Model() as model:
@@ -62,6 +66,7 @@ def test_add_coords_works_with_and_without_registry() -> None:
 
 
 def test_add_coords_preserves_auxiliary_coords_for_model_dims() -> None:
+    """Check add_coords stores auxiliary coords attached to model dimensions."""
     multi_index = pd.MultiIndex.from_arrays(
         [["MHD", "TAC"], pd.to_datetime(["2019-01-01", "2019-01-02"])],
         names=["site", "time"],
@@ -79,6 +84,7 @@ def test_add_coords_preserves_auxiliary_coords_for_model_dims() -> None:
 
 
 def test_restore_inferencedata_coords_supports_registry_and_legacy_dict() -> None:
+    """Check coordinate restoration works with both registry and legacy mappings."""
     multi_index = pd.MultiIndex.from_arrays(
         [["MHD", "TAC"], pd.to_datetime(["2019-01-01", "2019-01-02"])],
         names=["site", "time"],

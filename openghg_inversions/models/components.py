@@ -48,8 +48,14 @@ class LinearComponentResult:
 def get_model_latent(variable: TensorVariable, base_name: str) -> TensorVariable:
     """Return the effective latent variable for a named model component.
 
-    If a reparameterized latent variable named ``{base_name}_latent`` exists in
-    the active model, return it. Otherwise return the supplied variable.
+    Args:
+        variable: User-facing variable returned by ``parse_prior``.
+        base_name: Base model variable name used to look up a reparameterized
+            latent variable.
+
+    Returns:
+        The reparameterized latent variable ``{base_name}_latent`` when it is
+        present on the active model, otherwise ``variable``.
     """
     model = pm.modelcontext(None)
     latent_name = f"{base_name}_latent"
@@ -59,6 +65,7 @@ def get_model_latent(variable: TensorVariable, base_name: str) -> TensorVariable
 
 
 def _extract_time_coord(data: xr.DataArray, output_dim: str) -> xr.DataArray | None:
+    """Extract a time coordinate aligned to the observation dimension."""
     if "time" in data.coords:
         coord = data.coords["time"]
         if output_dim in coord.dims:
@@ -85,6 +92,7 @@ def _resolve_freq_indicator(
     output_dim: str,
     fallback_name: str,
 ) -> xr.DataArray | None:
+    """Return an explicit or derived observation-aligned frequency indicator."""
     if explicit_indicator is not None:
         if isinstance(explicit_indicator, xr.DataArray):
             return explicit_indicator.rename(explicit_indicator.name or fallback_name)
@@ -108,7 +116,18 @@ def _resolve_freq_indicator(
 
 
 def add_model_data(data: xr.DataArray, name: str | None = None) -> TensorVariable:
-    """Add labelled xarray data to the active PyMC model."""
+    """Add labelled xarray data to the active PyMC model.
+
+    Args:
+        data: Xarray data to register as ``pm.Data``.
+        name: Optional PyMC variable name. If omitted, ``data.name`` is used.
+
+    Returns:
+        The registered ``pm.Data`` tensor for ``data``.
+
+    Raises:
+        ValueError: If no name can be determined for the data variable.
+    """
     name = name or (str(data.name) if data.name is not None else None)
     if name is None:
         raise ValueError("Data must have a name if a name is not provided.")
@@ -132,7 +151,22 @@ def add_linear_component(
     output_dim: str = "nmeasure",
     compute_deterministic: bool = True,
 ) -> LinearComponentResult:
-    """Add a linear latent component and its aligned forward-model contribution."""
+    """Add a linear latent component and its aligned forward-model contribution.
+
+    Args:
+        data: Sensitivity matrix or other linear data term.
+        data_name: Name used when registering the data as ``pm.Data``.
+        prior_args: Prior specification for the latent random variable.
+        var_name: Name for the latent random variable.
+        output_name: Name for the aligned deterministic output.
+        output_dim: Observation/output dimension name.
+        compute_deterministic: Whether to wrap the aligned output in
+            ``pm.Deterministic``.
+
+    Returns:
+        A ``LinearComponentResult`` containing the registered data tensor, the
+        effective latent variable, and the aligned output tensor.
+    """
     output_dim = str(output_dim)
     data = data.transpose(output_dim, ...)
     h = add_model_data(data, data_name)
@@ -157,7 +191,29 @@ def add_sigma_component(
     output_dim: str = "nmeasure",
     compute_deterministic: bool = False,
 ) -> TensorVariable:
-    """Add inferpymc-compatible sigma terms and align them to observations."""
+    """Add inferpymc-compatible sigma terms and align them to observations.
+
+    Args:
+        site_indicator: Observation-aligned site indicator.
+        prior_args: Prior specification for the sigma random variable.
+        sigma_freq_index: Optional explicit observation-aligned frequency
+            indicator.
+        sigma_freq: Optional frequency string used to derive an indicator when
+            ``sigma_freq_index`` is not provided.
+        var_name: Name for the latent sigma random variable.
+        output_name: Optional name for an observation-aligned deterministic
+            output.
+        per_site: Whether sigma varies by site.
+        output_dim: Observation/output dimension name.
+        compute_deterministic: Whether to register the aligned sigma term as a
+            deterministic variable.
+
+    Returns:
+        The observation-aligned sigma tensor or deterministic variable.
+
+    Raises:
+        ValueError: If no frequency information is available.
+    """
     output_dim = str(output_dim)
     site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
     freq_index = _resolve_freq_indicator(
@@ -202,7 +258,23 @@ def add_offset_component(
     output_dim: str = "nmeasure",
     drop_first: bool = False,
 ) -> TensorVariable:
-    """Add a site-only or site-by-period offset component."""
+    """Add a site-only or site-by-period offset component.
+
+    Args:
+        site_indicator: Observation-aligned site indicator.
+        prior_args: Prior specification for the offset latent variable.
+        offset_freq_indicator: Optional explicit observation-aligned offset
+            frequency indicator.
+        offset_freq: Optional frequency string used to derive an indicator when
+            ``offset_freq_indicator`` is not provided.
+        var_name: Name for the latent offset variable.
+        output_name: Name for the aligned deterministic offset output.
+        output_dim: Observation/output dimension name.
+        drop_first: Whether to omit the first site indicator column.
+
+    Returns:
+        The aligned offset deterministic variable.
+    """
     output_dim = str(output_dim)
     site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
     add_model_data(site_indicator, "site_indicator")
@@ -259,6 +331,23 @@ def add_inferpymc_likelihood_component(
 
     ``mu`` is the non-baseline forward-model contribution. ``mu_bc`` is the
     baseline contribution, usually ``H_bc @ bc``, plus offset if applicable.
+
+    Args:
+        data: Canonical inferpymc input dataset.
+        mu: Non-baseline forward-model contribution.
+        mu_bc: Baseline contribution, if present.
+        sigprior: Prior specification for sigma.
+        offset: Optional aligned offset term.
+        power: Scalar or prior specification controlling pollution-event
+            scaling.
+        pollution_events_from_obs: Whether to derive pollution events from the
+            observations instead of ``mu``.
+        no_model_error: Whether to bypass the model-error term.
+        sigma_per_site: Whether sigma varies by site.
+        output_dim: Observation/output dimension name.
+
+    Returns:
+        The ``epsilon`` deterministic variable used by the observation model.
     """
     y_data = add_model_data(data["mf"].transpose(output_dim), "Y")
     error_data = add_model_data(data["mf_error"].transpose(output_dim), "error")

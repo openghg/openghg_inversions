@@ -188,12 +188,14 @@ def test_full_inversion_min_error_no_bc(mcmc_args):
 
 
 def test_full_inversion_pollution_events_from_obs_no_bc(mcmc_args):
+    """Test inversion with pollution-event scaling and no boundary conditions."""
     mcmc_args["pollution_events_from_obs"] = True
     mcmc_args["use_bc"] = False
     fixedbasisMCMC(**mcmc_args)
 
 
 def test_full_inversion_two_sites(mcmc_args, mhd_and_tac_ch4_data_args):
+    """Test inversion with two sites and an offset term."""
     mcmc_args.update(mhd_and_tac_ch4_data_args)
     mcmc_args["reload_merged_data"] = False
     mcmc_args["add_offset"] = True
@@ -202,11 +204,13 @@ def test_full_inversion_two_sites(mcmc_args, mhd_and_tac_ch4_data_args):
 
 
 def test_full_inversion_components_builder(mcmc_args):
+    """Test full inversion can opt into the temporary components builder."""
     mcmc_args["model_builder"] = "components"
     fixedbasisMCMC(**mcmc_args)
 
 
 def test_full_inversion_offset_args(mcmc_args):
+    """Test full inversion accepts explicit offset arguments through runtime plumbing."""
     mcmc_args["add_offset"] = True
     mcmc_args["offset_args"] = {"drop_first": False,
                                 "offset_freq": "D"}
