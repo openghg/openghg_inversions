@@ -383,7 +383,8 @@ def data_processing_surface_notracer(
         )
         fp_all[site] = scenario_combined
 
-        units[site] = scenario_combined.mf.attrs.get("units")
+        root_ds = scenario_combined.ds
+        units[site] = root_ds.mf.attrs.get("units")
 
         if "satellite" not in platform:
             scales[site] = scenario_combined.scale
