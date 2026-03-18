@@ -383,12 +383,14 @@ def data_processing_surface_notracer(
         )
         fp_all[site] = scenario_combined
 
+        # scenario_combined returns a datatree. The standard_domain scenario is stored at the root, and any inner domain scenario is stored at "/{inner_domain}". Here we take the root scenario to store the calibration scale and units, since these should be the same for the inner domain scenario. If inner domain scenario is None the root scenario is the only scenario, so this will still work.
+
         root_ds = scenario_combined.ds
         units[site] = root_ds.mf.attrs.get("units")
 
         if "satellite" not in platform:
-            scales[site] = scenario_combined.scale
-            check_scales.add(scenario_combined.scale)
+            scales[site] = root_ds.scale
+            check_scales.add(root_ds.scale)
 
         site_indices_to_keep.append(i)
     if len(site_indices_to_keep) == 0:
