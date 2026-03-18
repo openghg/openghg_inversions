@@ -60,7 +60,7 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
     """
     # TODO: do we want to fill missing values in repeatability or variability?
     for site in sites:
-        ds = fp_all[site]
+        ds = fp_all[site].ds
 
         variability_missing = False
         if "mf_variability" not in ds:
