@@ -101,6 +101,7 @@ def merged_scenario_data(
         cache=False,
     )
 
+    dt_dict: dict[str, xr.Dataset] = {"/": scenario_combined}
     if inner_footprint_data is not None:
         # Mask the EUROPE flux to the inner domain extent (zero outside),
         # regridded to the inner footprint lat/lon grid.
@@ -114,11 +115,15 @@ def merged_scenario_data(
             cache=False,
             
         )
-        scenario_combined = scenario_combined.copy()
 
-        # 6km fp_x_flux is added as a separate variable to the combined dataset, and can be merged with the EUROPE fp_x_flux.
-        scenario_combined["fp_x_flux_inner"] = inner_domain_merged["fp_x_flux"]
+        # Align inner to outer time axis.
+        # If inner footprint is missing any timestamps that exist in the outer
+        # scenario (e.g. sparse inner store coverage), fill those with 0 so
+        # both nodes share exactly the same time dimension in the DataTree.
+        inner_domain_merged = inner_domain_merged.reindex(
+            time=scenario_combined.time, fill_value=0.0
+        )
 
-        return scenario_combined
-    else:
-        return scenario_combined
+        dt_dict["inner_domain_merged"] = inner_domain_merged
+
+    return xr.DataTree.from_dict(dt_dict)
