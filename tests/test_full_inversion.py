@@ -157,6 +157,24 @@ def test_full_inversion_lognormal_reparam(mcmc_args):
     fixedbasisMCMC(**mcmc_args)
 
 
+def test_full_inversion_paris_outputs_lognormal_reparam_conflict(mcmc_args):
+    """Check PARIS outputs ignore reparameterized latent-only traces.
+
+    This regression test covers the Stage C components builder path, where
+    reparameterized lognormal priors add ``x_latent`` traces that should not be
+    treated as public emissions traces by post-processing.
+    """
+    mcmc_args["reload_merged_data"] = False
+    mcmc_args["output_format"] = "paris"
+    mcmc_args["model_builder"] = "components"
+    mcmc_args["reparameterise_log_normal"] = True
+    mcmc_args["xprior"] = {"pdf": "lognormal", "mu": 1.0, "sigma": 1.0}
+
+    out = fixedbasisMCMC(**mcmc_args)
+
+    assert "Yapost" in out
+
+
 def test_full_inversion_min_error(mcmc_args):
     mcmc_args["min_error"] = 20.0
     fixedbasisMCMC(**mcmc_args)

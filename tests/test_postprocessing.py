@@ -6,7 +6,7 @@ from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.legacy_outputs import make_legacy_hbmcmc_output
-from openghg_inversions.postprocessing.make_outputs import basic_output
+from openghg_inversions.postprocessing.make_outputs import basic_output, make_country_outputs
 from openghg_inversions.postprocessing.make_paris_outputs import (
     make_paris_flux_outputs_from_rhime,
     make_paris_outputs,
@@ -136,6 +136,31 @@ def test_save_inversion_output(mcmc_args, tmpdir):
     inv_out_reloaded = InversionOutput.load(tmpdir / "inv_out.nc")
 
     assert inv_out == inv_out_reloaded
+
+
+def test_country_outputs_lognormal_reparam_conflict(mcmc_args, europe_country_file):
+    """Check country outputs ignore reparameterized latent-only traces.
+
+    This is a smaller regression test for the Stage C components builder path.
+    It stops at the ``InversionOutput`` stage and checks that country
+    post-processing uses the public ``x`` trace rather than the internal
+    ``x_latent`` trace introduced by lognormal reparameterisation.
+    """
+    mcmc_args["output_format"] = "inv_out"
+    mcmc_args["model_builder"] = "components"
+    mcmc_args["reparameterise_log_normal"] = True
+    mcmc_args["xprior"] = {"pdf": "lognormal", "mu": 1.0, "sigma": 1.0}
+
+    inv_out = fixedbasisMCMC(**mcmc_args)
+    trace_ds = inv_out.get_trace_dataset(var_names="x")
+    assert "x_prior" in trace_ds
+    assert "x_posterior" in trace_ds
+    assert "x_latent_prior" not in trace_ds
+    assert "x_latent_posterior" not in trace_ds
+
+    country_outs = make_country_outputs(inv_out, country_file=europe_country_file, country_regions="paris")
+    assert "country_prior_mean" in country_outs
+    assert "country_posterior_mean" in country_outs
 
 
 def test_hbmcmc_postprocessing_saves_legacy_output(mcmc_args, tmpdir):

@@ -2,7 +2,7 @@ from pathlib import Path
 from typing_extensions import Self
 import warnings
 from dataclasses import dataclass
-from typing import Any, Literal, TypeVar
+from typing import Any, Hashable, Literal, TypeVar
 
 import arviz as az
 import numpy as np
@@ -42,6 +42,37 @@ def filter_data_vars_by_prefix(
                 data_vars.append(dv)
 
     return ds[data_vars]
+
+
+def _filter_trace_data_vars_by_name(ds: xr.Dataset, var_names: str | list[str]) -> xr.Dataset:
+    """Select trace variables by exact base variable name.
+
+    Trace datasets use names like ``x_prior`` or ``mu_bc_posterior``. This
+    helper matches the full base variable name before the trace-group suffix so
+    ``var_names="x"`` does not also select ``x_latent_prior``.
+    """
+    if isinstance(var_names, str):
+        var_names = [var_names]
+
+    group_suffixes = (
+        "_prior_predictive",
+        "_posterior_predictive",
+        "_prior",
+        "_posterior",
+    )
+    selected: list[Hashable] = []
+    wanted = set(var_names)
+
+    for dv in ds.data_vars:
+        name = str(dv)
+        for suffix in group_suffixes:
+            if name.endswith(suffix):
+                base_name = name.removesuffix(suffix)
+                if base_name in wanted:
+                    selected.append(dv)
+                break
+
+    return ds[selected]
 
 
 def convert_idata_to_dataset(
@@ -341,7 +372,7 @@ class InversionOutput:
         result = self.trace_ds
 
         if var_names is not None:
-            result = filter_data_vars_by_prefix(result, var_names)
+            result = _filter_trace_data_vars_by_name(result, var_names)
 
         return result
 
