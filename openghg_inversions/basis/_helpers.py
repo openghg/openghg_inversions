@@ -66,28 +66,20 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
     fp_and_data[".basis"] = basis_func
 
     for site in sites:
-        fp_x_flux = fp_and_data[site]["fp_x_flux"]  
-        # if inner domain fp_x_flux exists, blend it in
-        if "fp_x_flux_inner" in fp_and_data[site]:
-            # fp_x_flux = combine_inner_outer_fp_x_flux(
-            #     inner_fp_x_flux=fp_and_data[site]["fp_x_flux_inner"],
-            #     outer_fp_x_flux=fp_x_flux,                             
-            # )
-
+        # if inner domain DataTree child is present, compute H_inner from its fp_x_flux
+        if isinstance(fp_and_data[site], xr.DataTree) and "inner" in fp_and_data[site].children:
+            inner_fp_x_flux = fp_and_data[site]["inner"]["fp_x_flux"]
             sensitivity_inner = apply_fp_basis_functions(
-            fp_x_flux=fp_and_data[site]["fp_x_flux_inner"],
-            basis_func=basis_func,
-        )
+                fp_x_flux=inner_fp_x_flux,
+                basis_func=basis_func,
+            )
             fp_and_data[site]["H_inner"] = sensitivity_inner
 
         sensitivity = apply_fp_basis_functions(
             fp_x_flux=fp_and_data[site][fp_x_flux_name],
             basis_func=basis_func,
         )
-        
-        # TODO: store houter hinner here
         fp_and_data[site]["H"] = sensitivity
-        print(fp_and_data[site])
     return fp_and_data
 
 
@@ -170,7 +162,7 @@ def bc_sensitivity(
     if basis_case.lower() == "nesw":
         for site in sites:
             ds = fp_and_data[site]
-            bc_ds = ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
+            bc_ds = ds.ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
             sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region")
             fp_and_data[site]["H_bc"] = sensitivity
 
@@ -191,7 +183,7 @@ def bc_sensitivity(
 
     for site in sites:
         ds = fp_and_data[site]
-        bc_ds = ds[[f"bc_{d}" for d in "nesw"]]
+        bc_ds = ds.ds[[f"bc_{d}" for d in "nesw"]]
         sensitivity = (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
         sensitivity = sensitivity.rename(region="bc_region")
         fp_and_data[site]["H_bc"] = sensitivity

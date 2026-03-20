@@ -124,6 +124,6 @@ def merged_scenario_data(
             time=scenario_combined.time, fill_value=0.0
         )
 
-        dt_dict["inner_domain_merged"] = inner_domain_merged
+        dt_dict["inner"] = inner_domain_merged
 
     return xr.DataTree.from_dict(dt_dict)

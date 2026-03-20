@@ -344,3 +344,29 @@ def mhd_and_tac_ch4_data_args():
         "averaging_period": ["1h", "1h"],
     }
     return data_args
+
+
+@pytest.fixture(scope="module")
+def mhd_with_inner_domain_ch4_data_args():
+    """Data args for MHD with an inner domain (europe-6km) footprint."""
+    data_args = {
+        "species": "ch4",
+        "sites": ["MHD"],
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-07",
+        "bc_store": "inversions_tests",
+        "obs_store": "inversions_tests",
+        "footprint_store": "inversions_tests",
+        "emissions_store": "inversions_tests",
+        "inner_footprint_store": "inversions_tests",
+        "inlet": ["10m"],
+        "instrument": ["gcmd"],
+        "domain": "EUROPE",
+        "inner_domain": "6km",
+        "fp_height": ["10m"],
+        "fp_model": "NAME",
+        "emissions_name": ["total-ukghg-edgar7"],
+        "averaging_period": ["1h"],
+        "bc_input": "cams",
+    }
+    return data_args
