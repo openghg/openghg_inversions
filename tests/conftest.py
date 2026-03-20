@@ -344,3 +344,30 @@ def mhd_and_tac_ch4_data_args():
         "averaging_period": ["1h", "1h"],
     }
     return data_args
+
+@pytest.fixture(scope="module")
+def mhd_with_inner_domain_ch4_data_args():
+    """Data args for MHD with an inner domain (europe-6km) footprint."""
+    data_args = {
+        "species": "ch4",
+        "sites": ["MHD"],
+        "use_tracer" : False,
+        "start_date": "2023-01-01",
+        "end_date": "2023-10-01",
+        "bc_store": "/group/chem/acrg/object_stores/shared_store_zarr",
+        "obs_store": "/group/chem/acrg/object_stores/paris/obs_icos_2025_08_store",
+        "footprint_store": "/group/chem/acrg/object_stores/shared_store_zarr",
+        "emissions_store": "/group/chem/acrg/object_stores/shared_store_zarr",
+        "inner_footprint_store": "/group/chem/acrg/object_stores/shared_store_zarr",
+        "inlet": ["9m"],
+        "instrument": None,
+        "domain": "EUROPE",
+        "inner_domain": "6km",
+        "fp_height": ["10m"],
+        "fp_species": "inert",
+        "fp_model": "NAME",
+        "emissions_name": ["edgarv80_wetchartsv131"],
+        "averaging_period": ["4h"],
+        "bc_input": "camsv22r2_daily",
+    }
+    return data_args

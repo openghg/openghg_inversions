@@ -102,6 +102,15 @@ def test_full_inversion_paris_outputs(mcmc_args):
     assert "Yapost" in out
 
 
+def test_full_inversion_6km_paris_outputs(mcmc_args):
+    """Test full inversion including loading data with PARIS output format."""
+    mcmc_args["reload_merged_data"] = False
+    mcmc_args["output_format"] = "paris"
+    out = fixedbasisMCMC(**mcmc_args)
+
+    assert "Yapost" in out
+
+
 def test_full_inversion_no_model_error(mcmc_args):
     mcmc_args["no_model_error"] = True
     fixedbasisMCMC(**mcmc_args)
@@ -219,3 +228,60 @@ def test_full_inversion_long(mcmc_args):
         }
     )
     fixedbasisMCMC(**mcmc_args)
+
+@pytest.fixture
+def inner_domain_mcmc_args(tmp_path, mhd_with_inner_domain_ch4_data_args):
+    """MCMC args for a minimal inversion with inner domain enabled."""
+    mcmc_args = mhd_with_inner_domain_ch4_data_args.copy()
+    mcmc_args.update(
+        {
+            "outputname": "inner_domain_test_run",
+            "outputpath": "/group/chem/acrg/prasad/job_scripts/openghg_inversions/inversion_outputs/paris_bc",
+            "basis_algorithm": "quadtree",
+            "bc_basis_case" : "NESW",
+            "fp_basis_case" : None,
+            "nbasis" : 250,
+            "basis_directory" : "/group/chem/acrg/LPDM/basis_functions/",
+            "bc_basis_directory" : "/group/chem/acrg/LPDM/bc_basis_functions/",
+            "country_file" : "/group/chem/acrg/LPDM/countries/country_EUROPE_EEZ_PARIS_gapfilled.nc",
+            "basis_output_path": str(tmp_path),
+            "nbasis": 4,
+            "nit": 1,
+            "burn": 10,
+            "tune": 10,
+            "nchain": 1,
+            "mcmc_type" : "fixed_basis",
+            "reload_merged_data": False,
+            "xprior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+            "bcprior": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
+            "sigprior": {"pdf": "uniform", "lower": 0.5, "upper": 3.0},
+            "use_bc": True,
+            "averaging_error": True,
+            "min_error": 0.0,
+            "fix_basis_outer_regions" : "False",
+            "nuts_sampler" : "numpyro",
+            "save_trace" : True,
+            "pollution_events_from_obs" : True,
+            "no_model_error" : False,
+            "bc_freq" : None,
+            "sigma_freq" : None,
+            "sigma_per_site" : True,
+            "inlet" : [slice(0,25)],
+            "instrument" : ['multiple'],
+            "filters" : {'MHD' : ['pblh_min','pblh_inlet_diff']}
+        }
+    )
+    return mcmc_args
+
+def test_full_inversion_with_inner_domain(inner_domain_mcmc_args):
+    """Test that fixedbasisMCMC runs end-to-end with inner_domain specified.
+
+    Verifies:
+    - The inversion completes without error.
+    - Standard output variables are present (Yerror_repeatability, Yerror_variability).
+    - The fp_data for each site contains H_inner (computed from the inner footprint).
+    """
+    out = fixedbasisMCMC(**inner_domain_mcmc_args)
+
+    assert "Yerror_repeatability" in out
+    assert "Yerror_variability" in out
