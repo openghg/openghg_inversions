@@ -66,22 +66,26 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
     fp_and_data[".basis"] = basis_func
 
     for site in sites:
-        fp_x_flux = fp_and_data[site]["fp_x_flux"]  
-        # if inner domain fp_x_flux exists, blend it in
-        if "fp_x_flux_inner" in fp_and_data[site]:
+        root_ds = fp_and_data[site].ds
+        fp_x_flux = root_ds[fp_x_flux_name]
+        inner_domain_ds = fp_and_data[site].get("inner_domain_merged")
+
+        # Verify the node exists AND the variable is inside it
+        if inner_domain_ds is not None and "fp_x_flux_inner" in inner_domain_ds:
+            # if inner domain fp_x_flux exists, blend it in
             # fp_x_flux = combine_inner_outer_fp_x_flux(
             #     inner_fp_x_flux=fp_and_data[site]["fp_x_flux_inner"],
             #     outer_fp_x_flux=fp_x_flux,                             
             # )
-
+            fp_x_flux_inner =  inner_domain_ds["fp_x_flux_inner"]
             sensitivity_inner = apply_fp_basis_functions(
-            fp_x_flux=fp_and_data[site]["fp_x_flux_inner"],
+            fp_x_flux=fp_x_flux_inner,
             basis_func=basis_func,
         )
-            fp_and_data[site]["H_inner"] = sensitivity_inner
+            inner_domain_ds["H_inner"] = sensitivity_inner
 
         sensitivity = apply_fp_basis_functions(
-            fp_x_flux=fp_and_data[site][fp_x_flux_name],
+            fp_x_flux=fp_x_flux,
             basis_func=basis_func,
         )
         
