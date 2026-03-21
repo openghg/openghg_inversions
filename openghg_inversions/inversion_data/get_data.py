@@ -84,6 +84,7 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
 
         elif add_averaging_error:
             # Fill with zeros so that if one of repeatability and variability is not NaN, then mf_error will not be NaN.
+            ds = ds.copy()  
             ds["mf_error"] = np.sqrt(
                 ds["mf_repeatability"].fillna(0) ** 2 + ds["mf_variability"].fillna(0) ** 2
             )
