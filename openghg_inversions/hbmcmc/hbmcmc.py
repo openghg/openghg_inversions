@@ -104,7 +104,8 @@ def make_inv_inputs(
     ]
     for site in sites:
         to_compute_site = [dv for dv in to_compute if dv in fp_data[site].data_vars]
-        fp_data[site][to_compute_site] = fp_data[site][to_compute_site].compute()
+        for var in to_compute_site:
+            fp_data[site][var] = fp_data[site][var].compute()
 
     # Get inputs ready
     error = np.zeros(0)
@@ -129,7 +130,12 @@ def make_inv_inputs(
                 drop_vars.append(var)
 
         # pymc doesn't like NaNs, so drop them for the variables used below
-        fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
+        # DataTree doesn't support dropna; use sel with valid time indices instead
+        if isinstance(fp_data[site], xr.DataTree):
+            valid_times = fp_data[site].ds.dropna("time", subset=drop_vars).time
+            fp_data[site] = fp_data[site].sel(time=valid_times)
+        else:
+            fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
 
         # repeatability/variability chosen/combined into mf_error in `get_data.py`
         error = np.concatenate((error, fp_data[site].mf_error.values))
