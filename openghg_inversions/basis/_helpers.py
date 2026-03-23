@@ -67,7 +67,7 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
 
     for site in sites:
         # if inner domain DataTree child is present, compute H_inner from its fp_x_flux
-        root_ds = fp_and_data[site].ds
+        root_ds = fp_and_data[site].ds.copy()  # avoid modifying original dataset in-place
         if isinstance(fp_and_data[site], xr.DataTree) and "inner" in fp_and_data[site].children:
             inner_domain_ds = fp_and_data[site]["inner"]
             inner_fp_x_flux = inner_domain_ds["fp_x_flux"]
@@ -88,7 +88,7 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
         )
         
         # TODO: store houter hinner here
-        root_ds["H"] = sensitivity
+        root_ds["H"] = (sensitivity.dims, sensitivity.data, {"long_name": "sensitivity"})
     return fp_and_data
 
 
@@ -171,7 +171,7 @@ def bc_sensitivity(
     if basis_case.lower() == "nesw":
         for site in sites:
             ds = fp_and_data[site]
-            bc_ds = ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
+            bc_ds = ds.ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
             sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region")
             fp_and_data[site]["H_bc"] = sensitivity
 
@@ -192,7 +192,7 @@ def bc_sensitivity(
 
     for site in sites:
         ds = fp_and_data[site]
-        bc_ds = ds[[f"bc_{d}" for d in "nesw"]]
+        bc_ds = ds.ds[[f"bc_{d}" for d in "nesw"]]
         sensitivity = (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
         sensitivity = sensitivity.rename(region="bc_region")
         fp_and_data[site]["H_bc"] = sensitivity
