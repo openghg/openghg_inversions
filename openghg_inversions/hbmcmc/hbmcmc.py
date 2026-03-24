@@ -93,6 +93,7 @@ def make_inv_inputs(
     to_compute = [
         "H",
         "H_bc",
+        "H_inner",
         "mf",
         "mf_error",
         "mf_repeatability",
@@ -138,7 +139,7 @@ def make_inv_inputs(
             fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
 
         # repeatability/variability chosen/combined into mf_error in `get_data.py`
-        error = np.concatenate((error, fp_data[site].mf_error.values))
+        error = np.concatenate((error, fp_data[site].ds.mf_error.values))
 
         # make repeatability and variability for outputs (not used directly in inversions)
         obs_repeatability = np.concatenate((obs_repeatability, fp_data[site].mf_repeatability.values))
@@ -163,7 +164,7 @@ def make_inv_inputs(
         else:
             Ytime = np.concatenate((Ytime, fp_data[site].time.values))
 
-        Hx = fp_data[site].H.values if si == 0 else np.hstack((Hx, fp_data[site].H.values))
+        Hx = fp_data[site].ds.H.values if si == 0 else np.hstack((Hx, fp_data[site].ds.H.values))
 
     if np.isnan(Hx).any():
         warnings.warn(f"Hx matrix contains {np.isnan(Hx).flatten().sum()} NaN values")
@@ -619,7 +620,7 @@ def fixedbasisMCMC(
     dropped_sites = []
     for site in sites:
         # check if some datasets are empty due to filtering
-        if fp_data[site].time.values.shape[0] == 0:
+        if fp_data[site].ds.time.values.shape[0] == 0:
             dropped_sites.append(site)
             del fp_data[site]
 
