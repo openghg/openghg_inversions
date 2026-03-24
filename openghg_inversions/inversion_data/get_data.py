@@ -60,8 +60,7 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
     """
     # TODO: do we want to fill missing values in repeatability or variability?
     for site in sites:
-        ds = fp_all[site].ds
-
+        ds = fp_all[site].ds.copy()
         variability_missing = False
         if "mf_variability" not in ds:
             ds["mf_variability"] = xr.zeros_like(ds.mf)
@@ -84,7 +83,6 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
 
         elif add_averaging_error:
             # Fill with zeros so that if one of repeatability and variability is not NaN, then mf_error will not be NaN.
-            ds = ds.copy()  
             ds["mf_error"] = np.sqrt(
                 ds["mf_repeatability"].fillna(0) ** 2 + ds["mf_variability"].fillna(0) ** 2
             )
@@ -124,6 +122,7 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
             )
             logger.info(info_msg)
 
+        fp_all[site].ds = ds
 
 def convert_to_list(
     x: list[str | None] | str | None, length: int, name: str | None = None
