@@ -613,9 +613,16 @@ def fixedbasisMCMC(
             #
             # Apply compute before filtering to avoid dask issue
             for site in sites:
-                fp_data[site] = fp_data[site].compute()
+                entry = fp_data[site]
+                if isinstance(entry, xr.DataTree):
+                    # compute dask arrays in both root and inner child
+                    dt_dict = {"/": entry.ds.compute()}
+                    if "inner" in entry.children:
+                        dt_dict["inner"] = entry["inner"].ds.compute()
+                    fp_data[site] = xr.DataTree.from_dict(dt_dict)
+                else:
+                    fp_data[site] = entry.compute()
             fp_data = filtering(fp_data, filters)
-
     # check for sites dropped by filtering
     dropped_sites = []
     for site in sites:
@@ -698,6 +705,8 @@ def fixedbasisMCMC(
     del post_process_args["power"]
 
     # add any additional kwargs to mcmc_args (these aren't needed for post processing)
+    kwargs.pop("mcmc_type", None)
+
     mcmc_args.update(kwargs)
 
     end_data = time.time()

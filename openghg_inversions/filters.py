@@ -134,15 +134,45 @@ def filtering(
     for site in filters:
         if filters[site] is not None and site in sites:
             for filt in filters[site]:
-                n_nofilter = datasets[site].time.values.shape[0]
+                
+                site_entry = datasets[site]
 
-                datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
+                # --- DataTree handling ---
+                if isinstance(site_entry, xr.DataTree):
+                    outer_ds = site_entry.ds
+                    n_nofilter = outer_ds.time.values.shape[0]
 
-                n_filter = datasets[site].time.values.shape[0]
-                n_dropped = n_nofilter - n_filter
-                perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
-                print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
-                if n_filter == 0: break # no values left, so we won't apply remaining filters
+                    filtered_outer = filtering_functions[filt](outer_ds, keep_missing=keep_missing)
+
+                    n_filter = filtered_outer.time.values.shape[0]
+                    n_dropped = n_nofilter - n_filter
+                    perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
+                    print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
+
+                    # Rebuild DataTree: root = filtered outer, inner child reindexed to new time
+                    dt_dict = {"/": filtered_outer}
+                    if "inner" in site_entry.children:
+                        inner_ds = site_entry["inner"].ds
+                        # Keep inner time axis aligned with the (now filtered) outer time axis
+                        dt_dict["inner"] = inner_ds.reindex(
+                            time=filtered_outer.time, fill_value=0.0
+                        )
+                    datasets[site] = xr.DataTree.from_dict(dt_dict)
+
+                    if n_filter == 0:
+                        break
+
+                # --- original flat Dataset handling (unchanged) ---
+                else:
+                    n_nofilter = datasets[site].time.values.shape[0]
+
+                    datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
+
+                    n_filter = datasets[site].time.values.shape[0]
+                    n_dropped = n_nofilter - n_filter
+                    perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
+                    print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
+                    if n_filter == 0: break # no values left, so we won't apply remaining filters
 
     return datasets
 
