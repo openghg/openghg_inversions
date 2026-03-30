@@ -80,7 +80,7 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
             fp_x_flux=inner_node["fp_x_flux"],
             basis_func=basis_func,
         )
-        
+         # store houter hinner here
         fp_and_data[site]["inner/H_inner"] = sensitivity_inner
             
         sensitivity = apply_fp_basis_functions(
@@ -88,9 +88,10 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
             basis_func=basis_func,
         )
         
-        # TODO: store houter hinner here
-        root_ds["H"] = (sensitivity.dims, sensitivity.data, {"long_name": "sensitivity"})
-        fp_and_data[site].ds = root_ds
+        fp_and_data[site]["H"] = xr.DataArray(
+    sensitivity.data, dims=sensitivity.dims, attrs={"long_name": "sensitivity"}
+)
+        # fp_and_data[site].ds = root_ds
     return fp_and_data
 
 
