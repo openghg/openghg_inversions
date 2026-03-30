@@ -69,19 +69,20 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
         # if inner domain DataTree child is present, compute H_inner from its fp_x_flux
         root_ds = fp_and_data[site].ds.copy()  # avoid modifying original dataset in-place
         if isinstance(fp_and_data[site], xr.DataTree) and "inner" in fp_and_data[site].children:
-            inner_domain_ds = fp_and_data[site]["inner"]
-            inner_fp_x_flux = inner_domain_ds["fp_x_flux"]
+            inner_node = fp_and_data[site]["inner"]
+
             # if inner domain fp_x_flux exists, blend it in
             # fp_x_flux = combine_inner_outer_fp_x_flux(
             #     inner_fp_x_flux=fp_and_data[site]["fp_x_flux_inner"],
             #     outer_fp_x_flux=fp_x_flux,                             
             # )
             sensitivity_inner = apply_fp_basis_functions(
-            fp_x_flux=inner_fp_x_flux,
+            fp_x_flux=inner_node["fp_x_flux"],
             basis_func=basis_func,
         )
-            inner_domain_ds["H_inner"] = sensitivity_inner
-
+        
+        fp_and_data[site]["inner/H_inner"] = sensitivity_inner
+            
         sensitivity = apply_fp_basis_functions(
             fp_x_flux=root_ds[fp_x_flux_name],
             basis_func=basis_func,
