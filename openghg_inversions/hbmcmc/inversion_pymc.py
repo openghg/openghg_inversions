@@ -121,6 +121,7 @@ def _make_coords(
     Hbc: np.ndarray | None = None,
     sites: list[str] | None = None,
     sigma_per_site: bool = False,
+    Hx_inner: np.ndarray | None = None,
 ) -> dict:
     result = {
         "nmeasure": np.arange(len(Y)),
@@ -129,6 +130,8 @@ def _make_coords(
         "nsigma_time": np.unique(sigma_freq_indices),
         "nsigma_site": np.unique(site_indicator) if sigma_per_site else [0],
     }
+    if Hx_inner is not None:
+        result["nx_inner"] = np.arange(Hx_inner.shape[0])
     if Hbc is not None:
         result["nbc"] = np.arange(Hbc.shape[0])
     return result
@@ -141,6 +144,7 @@ def inferpymc(
     siteindicator: np.ndarray,
     sigma_freq_index: np.ndarray,
     Hbc: np.ndarray | None = None,
+    Hx_inner: np.ndarray | None = None,
     xprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     bcprior: dict = {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
     sigprior: dict = {"pdf": "uniform", "lower": 0.1, "upper": 3.0},
@@ -318,6 +322,27 @@ def inferpymc(
         hx = pm.Data("hx", hx, dims=("nmeasure", "nx"))
         mu = pm.Deterministic("mu", pt.dot(hx, x), dims="nmeasure")
 
+        if Hx_inner is not None:
+            # Split outer contribution: H_outer - H_inner (everything outside inner domain)
+            # + H_inner · x_inner (inner domain resolved separately)
+            hx_outer_contrib = pm.Data(
+                "hx_outer_contrib", (Hx.T - Hx_inner.T), dims=("nmeasure", "nx")
+            )
+            hx_inner = pm.Data("hx_inner", Hx_inner.T, dims=("nmeasure", "nx"))
+            x = parse_prior("x", xprior, dims="nx")
+            x_inner = parse_prior("x_inner", xprior, dims="nx")   # same prior, separate RV
+            step1_vars += [x, x_inner]
+            mu = pm.Deterministic(
+                "mu",
+                pt.dot(hx_outer_contrib, x) + pt.dot(hx_inner, x_inner),
+                dims="nmeasure",
+            )
+        else:
+            hx_data = pm.Data("hx", hx, dims=("nmeasure", "nx"))
+            x = parse_prior("x", xprior, dims="nx")
+            step1_vars.append(x)
+            mu = pm.Deterministic("mu", pt.dot(hx_data, x), dims="nmeasure")
+    
         if use_bc:
             hbc = pm.Data("hbc", hbc, dims=("nmeasure", "nbc"))
             mu_bc = pm.Deterministic("mu_bc", pt.dot(hbc, bc), dims="nmeasure")
@@ -425,7 +450,9 @@ def inferpymc(
         "model": model,
         "trace": trace,
     }
-
+    if Hx_inner is not None:
+        result["xouts_inner"] = posterior_burned.x_inner
+        
     if use_bc:
         result["bcouts"] = bcouts
         result["YBCtrace"] = YBCtrace.values.T
