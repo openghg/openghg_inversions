@@ -118,6 +118,12 @@ def make_inv_inputs(
     Y = np.zeros(0)
     siteindicator = np.zeros(0)
 
+    Hx_inner = None
+    has_inner = any(
+        isinstance(fp_data[s], xr.DataTree) and "H_inner" in fp_data[s]["inner"].ds.data_vars
+        for s in sites if s in fp_data
+    )
+
     for si, site in enumerate(sites):
         # if site was dropped, skip; this makes the site indicator numbers consistent
         # even if a site is dropped
@@ -166,6 +172,10 @@ def make_inv_inputs(
 
         Hx = fp_data[site].ds.H.values if si == 0 else np.hstack((Hx, fp_data[site].ds.H.values))
 
+        if has_inner and isinstance(fp_data[site], xr.DataTree) and "inner" in fp_data[site].children:
+            h_inner_site = fp_data[site]["inner"].ds["H_inner"].values
+            Hx_inner = h_inner_site if si == 0 else np.hstack((Hx_inner, h_inner_site))
+
     if np.isnan(Hx).any():
         warnings.warn(f"Hx matrix contains {np.isnan(Hx).flatten().sum()} NaN values")
 
@@ -201,6 +211,7 @@ def make_inv_inputs(
 
     mcmc_args = {
         "Hx": Hx,
+        "Hx_inner": Hx_inner if Hx_inner is not None else None,
         "Y": Y,
         "error": error,
         "siteindicator": siteindicator,
