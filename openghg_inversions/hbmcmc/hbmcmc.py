@@ -146,35 +146,31 @@ def make_inv_inputs(
 
         # repeatability/variability chosen/combined into mf_error in `get_data.py`
         error = np.concatenate((error, fp_data[site].ds.mf_error.values))
+        ds = fp_data[site].ds if isinstance(fp_data[site], xr.DataTree) else fp_data[site]
 
-        # make repeatability and variability for outputs (not used directly in inversions)
-        obs_repeatability = np.concatenate((obs_repeatability, fp_data[site].mf_repeatability.values))
-        obs_variability = np.concatenate((obs_variability, fp_data[site].mf_variability.values))
+        error             = np.concatenate((error,             ds["mf_error"].values))
+        obs_repeatability = np.concatenate((obs_repeatability, ds["mf_repeatability"].values))
+        obs_variability   = np.concatenate((obs_variability,   ds["mf_variability"].values))
+        Y                 = np.concatenate((Y,                 ds["mf"].values))
 
-        Y = np.concatenate((Y, fp_data[site].mf.values))
-        if fp_data[site].attrs.get("inlet") == "column" or fp_data[site].attrs.get("platform") == "satellite":
-            obs_prior_factor = np.concatenate((obs_prior_factor, fp_data[site].mf_prior_factor.values))
+        if ds.attrs.get("inlet") == "column" or ds.attrs.get("platform") == "satellite":
+            obs_prior_factor = np.concatenate((obs_prior_factor, ds["mf_prior_factor"].values))
             obs_prior_upper_level_factor = np.concatenate(
-                (obs_prior_upper_level_factor, fp_data[site].mf_prior_upper_level_factor.values)
+                (obs_prior_upper_level_factor, ds["mf_prior_upper_level_factor"].values)
             )
         else:
-            # If not a column/satellite measurement, set prior factors to zero
-            # This is required if there is mix of insitu and column measurements
-            obs_prior_factor = np.concatenate((obs_prior_factor, np.zeros(fp_data[site].mf.size)))
+            obs_prior_factor = np.concatenate((obs_prior_factor, np.zeros(ds["mf"].size)))
             obs_prior_upper_level_factor = np.concatenate(
-                (obs_prior_upper_level_factor, np.zeros(fp_data[site].mf.size))
+                (obs_prior_upper_level_factor, np.zeros(ds["mf"].size))
             )
-        siteindicator = np.concatenate((siteindicator, np.ones_like(fp_data[site].mf.values) * si))
-        if si == 0:
-            Ytime = fp_data[site].time.values
-        else:
-            Ytime = np.concatenate((Ytime, fp_data[site].time.values))
 
-        Hx = fp_data[site].ds.H.values if si == 0 else np.hstack((Hx, fp_data[site].ds.H.values))
+        siteindicator = np.concatenate((siteindicator, np.ones_like(ds["mf"].values) * si))
+        Ytime = ds["time"].values if si == 0 else np.concatenate((Ytime, ds["time"].values))
+        Hx = ds["H"].values if si == 0 else np.hstack((Hx, ds["H"].values))
 
         if has_inner and isinstance(fp_data[site], xr.DataTree) and "inner" in fp_data[site].children:
-            h_inner_site = fp_data[site]["inner"].ds["H_inner"].values
-            Hx_inner = h_inner_site if si == 0 else np.hstack((Hx_inner, h_inner_site))
+            h_inner = fp_data[site]["inner"].ds["H_inner"].values
+            Hx_inner = h_inner if Hx_inner is None else np.hstack((Hx_inner, h_inner))
 
     if np.isnan(Hx).any():
         warnings.warn(f"Hx matrix contains {np.isnan(Hx).flatten().sum()} NaN values")
