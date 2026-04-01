@@ -104,9 +104,24 @@ def make_inv_inputs(
         "mf_mod",
     ]
     for site in sites:
-        to_compute_site = [dv for dv in to_compute if dv in fp_data[site].data_vars]
-        for var in to_compute_site:
-            fp_data[site][var] = fp_data[site][var].compute()
+        site_entry = fp_data[site]
+        # Use root node's data_vars only to avoid picking up inner child variables
+        if isinstance(site_entry, xr.DataTree):
+            root_data_vars = site_entry.ds.data_vars
+        else:
+            root_data_vars = site_entry.data_vars
+
+        to_compute_site = [dv for dv in to_compute if dv in root_data_vars]
+        if to_compute_site:
+            if isinstance(site_entry, xr.DataTree):
+                # Compute the needed variables in the root dataset and rebuild the DataTree
+                computed_root = site_entry.ds.assign(
+                    {var: site_entry.ds[var].compute() for var in to_compute_site}
+                )
+                fp_data[site] = xr.DataTree(dataset=computed_root, children=dict(site_entry.children))
+            else:
+                for var in to_compute_site:
+                    fp_data[site][var] = fp_data[site][var].compute()
 
     # Get inputs ready
     error = np.zeros(0)
@@ -145,7 +160,6 @@ def make_inv_inputs(
             fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
 
         # repeatability/variability chosen/combined into mf_error in `get_data.py`
-        error = np.concatenate((error, fp_data[site].ds.mf_error.values))
         ds = fp_data[site].ds if isinstance(fp_data[site], xr.DataTree) else fp_data[site]
 
         error             = np.concatenate((error,             ds["mf_error"].values))
