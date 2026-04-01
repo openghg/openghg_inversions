@@ -66,32 +66,54 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
     fp_and_data[".basis"] = basis_func
 
     for site in sites:
-        # if inner domain DataTree child is present, compute H_inner from its fp_x_flux
-        root_ds = fp_and_data[site].ds.copy()  # avoid modifying original dataset in-place
-        if isinstance(fp_and_data[site], xr.DataTree) and "inner" in fp_and_data[site].children:
-            inner_node = fp_and_data[site]["inner"]
+        entry = fp_and_data[site]
 
-            # if inner domain fp_x_flux exists, blend it in
-            # fp_x_flux = combine_inner_outer_fp_x_flux(
-            #     inner_fp_x_flux=fp_and_data[site]["fp_x_flux_inner"],
-            #     outer_fp_x_flux=fp_x_flux,                             
-            # )
-            sensitivity_inner = apply_fp_basis_functions(
-            fp_x_flux=inner_node["fp_x_flux"],
-            basis_func=basis_func,
-        )
-         # store houter hinner here
-        fp_and_data[site]["inner/H_inner"] = sensitivity_inner
-            
+        # Get root dataset (works for both DataTree and plain Dataset)
+        if isinstance(entry, xr.DataTree):
+            root_ds = entry.ds
+        else:
+            root_ds = entry
+
+        # Compute H for the root (outer) node using root's fp_x_flux
         sensitivity = apply_fp_basis_functions(
             fp_x_flux=root_ds[fp_x_flux_name],
             basis_func=basis_func,
         )
-        
-        fp_and_data[site]["H"] = xr.DataArray(
-    sensitivity.data, dims=sensitivity.dims, attrs={"long_name": "sensitivity"}
-)
-        # fp_and_data[site].ds = root_ds
+        new_root_ds = root_ds.assign(
+            H=xr.DataArray(
+                sensitivity.data,
+                dims=sensitivity.dims,
+                attrs={"long_name": "sensitivity"},
+            )
+        )
+
+        # Compute H_inner for the inner child node if present
+        new_inner = None
+        if isinstance(entry, xr.DataTree) and "inner" in entry.children:
+            inner_ds = entry["inner"].ds
+            sensitivity_inner = apply_fp_basis_functions(
+                fp_x_flux=inner_ds["fp_x_flux"],
+                basis_func=basis_func,
+            )
+            new_inner_ds = inner_ds.assign(
+                H_inner=xr.DataArray(
+                    sensitivity_inner.data,
+                    dims=sensitivity_inner.dims,
+                    attrs={"long_name": "inner_sensitivity"},
+                )
+            )
+            # Rebuild inner child DataTree preserving its own children
+            new_inner = xr.DataTree(dataset=new_inner_ds, children=dict(entry["inner"].children))
+
+        # Rebuild the site DataTree/Dataset with the updated root and children
+        if isinstance(entry, xr.DataTree):
+            children = {k: v for k, v in entry.children.items() if k != "inner"}
+            if new_inner is not None:
+                children["inner"] = new_inner
+            fp_and_data[site] = xr.DataTree(dataset=new_root_ds, children=children)
+        else:
+            fp_and_data[site] = new_root_ds
+
     return fp_and_data
 
 
