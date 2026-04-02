@@ -304,7 +304,7 @@ def paris_flux_output(
             offset = pd.to_timedelta(flux_frequency) / 2
 
         def time_func(ds):
-            return ds.assign_coords(time=(pd.to_datetime(ds.time.values) + offset))
+            return ds.assign_coords(time=[inv_out.period_midpoint])
     else:
 
         def time_func(ds):
