@@ -181,6 +181,55 @@ def test_hbmcmc_postprocessing_saves_legacy_output(mcmc_args, tmpdir):
     assert reloaded.sizes["nmeasure"] == outputs.sizes["nmeasure"]
 
 
+def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(mcmc_args, tmpdir):
+    mcmc_args["output_format"] = "hbmcmc_postprocessing"
+    mcmc_args["outputpath"] = str(tmpdir)
+
+    outputs = fixedbasisMCMC(**mcmc_args)
+
+    expected_vars = [
+        "Yobs",
+        "Yerror",
+        "Yerror_repeatability",
+        "Yerror_variability",
+        "Yapriori",
+        "Ymod68",
+        "country68",
+        "fluxapriori",
+        "basisfunctions",
+    ]
+    for var_name in expected_vars:
+        assert var_name in outputs
+        assert "longname" in outputs[var_name].attrs
+
+    assert outputs["Yobs"].dims == ("nmeasure",)
+    assert outputs["Ymod68"].dims == ("nmeasure", "nUI")
+    assert outputs["country68"].dims == ("countrynames", "nUI")
+    assert "UInum" in outputs.coords
+    assert "countrynames" in outputs.coords
+
+
+def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(mcmc_args, tmpdir):
+    trace_path = Path(tmpdir) / "custom_trace.nc"
+    inv_out_path = Path(tmpdir) / "custom_inv_out.nc"
+    mcmc_args["output_format"] = "inv_out"
+    mcmc_args["save_trace"] = str(trace_path)
+    mcmc_args["save_inversion_output"] = str(inv_out_path)
+
+    inv_out = fixedbasisMCMC(**mcmc_args)
+
+    assert trace_path.exists()
+    assert inv_out_path.exists()
+    assert inv_out.obs.dims == ("nmeasure",)
+    assert inv_out.obs_err.dims == ("nmeasure",)
+    assert inv_out.trace_ds["x_posterior"].dims == ("draw", "nx")
+    assert "site" in inv_out.obs.coords
+    assert "time" in inv_out.obs.coords
+    assert "time" not in inv_out.flux.dims
+    if "flux_time" in inv_out.flux.coords:
+        assert "flux_time" in inv_out.flux.dims
+
+
 def test_hbmcmc_postprocessing_output_matches_legacy_core_fields(raw_data_path, europe_country_file):
     """Regression test for deterministic prior concentration terms in legacy-compatible output."""
     with xr.open_dataset(raw_data_path / "standard_rhime_outs.nc") as legacy:
