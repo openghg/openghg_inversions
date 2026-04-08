@@ -2,7 +2,7 @@ import pytest
 import xarray as xr
 from pathlib import Path
 
-from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
+from openghg_inversions.hbmcmc.hbmcmc import _resolve_output_format, fixedbasisMCMC
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.legacy_outputs import make_legacy_hbmcmc_output
@@ -179,6 +179,31 @@ def test_hbmcmc_postprocessing_saves_legacy_output(mcmc_args, tmpdir):
     assert Path(output_file).exists()
     reloaded = xr.open_dataset(output_file)
     assert reloaded.sizes["nmeasure"] == outputs.sizes["nmeasure"]
+
+
+def test_resolve_output_format_canonicalizes_paris_compatibility():
+    with pytest.warns(UserWarning, match="Use `output_format = 'paris'` instead"):
+        resolved = _resolve_output_format("hbmcmc", paris_postprocessing=True, is_sat_column=False)
+
+    assert resolved == "paris"
+
+
+def test_paris_postprocessing_compatibility_matches_paris_output_format(mcmc_args):
+    explicit_args = mcmc_args.copy()
+    explicit_args["output_format"] = "paris"
+
+    compat_args = mcmc_args.copy()
+    compat_args["output_format"] = "hbmcmc"
+    compat_args["paris_postprocessing"] = True
+
+    explicit = fixedbasisMCMC(**explicit_args)
+    with pytest.warns(UserWarning, match="Use `output_format = 'paris'` instead"):
+        compat = fixedbasisMCMC(**compat_args)
+
+    assert set(explicit.data_vars) == set(compat.data_vars)
+    assert explicit.sizes == compat.sizes
+    assert explicit["Yobs"].dims == compat["Yobs"].dims
+    assert explicit["Yapost"].dims == compat["Yapost"].dims
 
 
 def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(mcmc_args, tmpdir):
