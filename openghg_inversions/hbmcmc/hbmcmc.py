@@ -542,7 +542,7 @@ def fixedbasisMCMC(
     paris_postprocessing_kwargs: dict | None = None,
     power: dict | float = 1.99,
     **kwargs,
-) -> xr.Dataset | dict:
+) -> xr.Dataset | dict | InversionOutput:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference of emissions.
 
     Uses PyMC to solve the inverse problem. Saves an output from the inversion code
