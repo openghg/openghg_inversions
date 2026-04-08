@@ -910,10 +910,6 @@ def fixedbasisMCMC(
     end_inversion = time.time()
 
     print(f"MCMC Inversion complete. Time taken = {end_inversion - start_inversion:.2f} seconds")
-
-    # get trace: for future updates
-    trace = mcmc_results["trace"]
-
     # Get args needed for make_inv_out_for_fixed_basis_mcmc
     inv_out_args, _ = split_function_inputs(post_process_args, make_inv_out_for_fixed_basis_mcmc)
     inv_out_args["site_names"] = sites
