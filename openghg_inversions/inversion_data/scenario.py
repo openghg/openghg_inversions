@@ -125,6 +125,8 @@ def merged_scenario_data(
         )
         inner_domain_merged = inner_domain_merged.rename({"lat": "lat_inner", "lon": "lon_inner"})
         inner_domain_merged = inner_domain_merged.reset_index(["lat_inner", "lon_inner"])
+        inner_domain_merged = inner_domain_merged.rename({"fp_x_flux": "fp_x_flux_inner"})
+
         dt_dict["inner"] = inner_domain_merged
 
     return xr.DataTree.from_dict(dt_dict)
