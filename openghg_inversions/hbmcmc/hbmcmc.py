@@ -922,6 +922,7 @@ def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: boo
     step1 = mcmc_results["step1"]
     step2 = mcmc_results["step2"]
     Ytrace = mcmc_results["Ytrace"]
+    OFFSETtrace = mcmc_results["OFFSETtrace"]
     bcouts = mcmc_results.get("bcouts")
     YBCtrace = mcmc_results.get("YBCtrace")
 
@@ -935,6 +936,7 @@ def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: boo
         Y=Y,
         error=error,
         Ytrace=Ytrace,
+        OFFSETtrace=OFFSETtrace,
         YBCtrace=YBCtrace,
         step1=step1,
         step2=step2,
