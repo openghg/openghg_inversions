@@ -63,14 +63,14 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
     if "time" in basis_func.dims and basis_func.sizes["time"] <= 1:
         basis_func = basis_func.squeeze("time")
 
-        fp_and_data[".basis"] = basis_func
+    fp_and_data[".basis"] = basis_func
 
     for site in sites:
         entry = fp_and_data[site]
 
         # extract root fp_x_flux and mask inner-domain cells to zero if inner domain exists. This ensures that the outer sensitivity H only reflects the outer domain fluxes.
         if isinstance(entry, xr.DataTree):
-            root_ds = entry.ds
+            root_ds = entry["standard"].ds
             fp_x_flux_outer = root_ds[fp_x_flux_name]
 
             if "inner" in entry.children:
@@ -172,7 +172,9 @@ def apply_fp_basis_functions(
 
     _, basis_aligned = xr.align(fp_x_flux.isel(time=0), basis_func, join="override")
     basis_mat = get_xr_dummies(basis_aligned, cat_dim="region")
-    sensitivity = sparse_xr_dot(basis_mat, fp_x_flux.fillna(0.0), dim=["lat", "lon"])
+    spatial_dims = ["lat", "lon"]
+
+    sensitivity = sparse_xr_dot(basis_mat, fp_x_flux.fillna(0.0), dim=spatial_dims)
 
     if sensitivity.dims[:2] != ("region", "time"):
         sensitivity = sensitivity.transpose("region", "time", ...)

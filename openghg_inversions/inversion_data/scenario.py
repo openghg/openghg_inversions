@@ -101,7 +101,7 @@ def merged_scenario_data(
         cache=False,
     )
 
-    dt_dict: dict[str, xr.Dataset] = {"/": scenario_combined}
+    dt_dict: dict[str, xr.Dataset] = {"/standard": scenario_combined}
     if inner_footprint_data is not None:
         # Mask the EUROPE flux to the inner domain extent (zero outside),
         # regridded to the inner footprint lat/lon grid.
@@ -123,10 +123,7 @@ def merged_scenario_data(
         inner_domain_merged = inner_domain_merged.reindex(
             time=scenario_combined.time, fill_value=0.0
         )
-        inner_domain_merged = inner_domain_merged.rename({"lat": "lat_inner", "lon": "lon_inner"})
-        inner_domain_merged = inner_domain_merged.reset_index(["lat_inner", "lon_inner"])
-        inner_domain_merged = inner_domain_merged.rename({"fp_x_flux": "fp_x_flux_inner"})
 
-        dt_dict["inner"] = inner_domain_merged
+        dt_dict["/inner"] = inner_domain_merged = inner_domain_merged
 
     return xr.DataTree.from_dict(dt_dict)
