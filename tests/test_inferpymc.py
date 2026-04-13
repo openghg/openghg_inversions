@@ -11,6 +11,7 @@ from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs_legacy
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.hbmcmc.inversion_pymc import (
     InferPyMCModelSetup,
+    _canonicalise_inferpymc_dataset,
     _prepare_inferpymc_inputs,
     _restore_inferencedata_coords,
     build_inferpymc_model,
@@ -81,7 +82,8 @@ def inferpymc_inputs_dataset(mhd_and_tac_fp_data) -> xr.Dataset:
     return ds
 
 
-def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict) -> None:
+@pytest.mark.parametrize("model_builder", ["legacy", "components"])
+def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict, model_builder: str) -> None:
     """Check extracted model builder returns PyMC step methods for the pymc sampler."""
     setup = build_inferpymc_model(
         Hx=inferpymc_args["Hx"],
@@ -104,6 +106,7 @@ def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict) -> N
         offset_args=inferpymc_args["offset_args"],
         power=inferpymc_args["power"],
         nuts_sampler="pymc",
+        model_builder=model_builder,
     )
 
     assert isinstance(setup, InferPyMCModelSetup)
@@ -113,7 +116,8 @@ def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict) -> N
     assert setup.sample_kwargs["step"] == [setup.step1, setup.step2]
 
 
-def test_build_inferpymc_model_returns_no_steps_for_numpyro(inferpymc_args: dict) -> None:
+@pytest.mark.parametrize("model_builder", ["legacy", "components"])
+def test_build_inferpymc_model_returns_no_steps_for_numpyro(inferpymc_args: dict, model_builder: str) -> None:
     """Check model setup does not pass steps them via sample_kwargs['step'] for the numpyro sampler.
 
     The steps are still created by build_inferpymc_model and stored in the dataclass. This matches
@@ -140,6 +144,7 @@ def test_build_inferpymc_model_returns_no_steps_for_numpyro(inferpymc_args: dict
         offset_args=inferpymc_args["offset_args"],
         power=inferpymc_args["power"],
         nuts_sampler="numpyro",
+        model_builder=model_builder,
     )
 
     assert isinstance(setup, InferPyMCModelSetup)
@@ -266,8 +271,9 @@ def test_prepare_inferpymc_inputs_dataset_matches_legacy(
     assert prepared_dataset.original_coords
 
 
+@pytest.mark.parametrize("model_builder", ["legacy", "components"])
 def test_build_inferpymc_model_accepts_dataset(
-    inferpymc_args: dict, inferpymc_inputs_dataset: xr.Dataset
+    inferpymc_args: dict, inferpymc_inputs_dataset: xr.Dataset, model_builder: str
 ) -> None:
     """Check model builder accepts direct xarray inversion inputs."""
     setup = build_inferpymc_model(
@@ -285,12 +291,64 @@ def test_build_inferpymc_model_accepts_dataset(
         offset_args=inferpymc_args["offset_args"],
         power=inferpymc_args["power"],
         nuts_sampler="pymc",
+        model_builder=model_builder,
     )
 
     assert isinstance(setup, InferPyMCModelSetup)
     assert isinstance(setup.model, pm.Model)
     assert len(setup.model.coords["nmeasure"]) == inferpymc_inputs_dataset.sizes["nmeasure"]
     assert len(setup.model.coords["nx"]) == inferpymc_inputs_dataset.sizes["region"]
+
+
+def test_canonicalise_inferpymc_dataset_preserves_dataset_observation_coords(
+    inferpymc_inputs_dataset: xr.Dataset,
+) -> None:
+    """Check canonicalisation keeps dataset observation coordinates intact.
+
+    This is a temporary refactor-support test. It guards the Stage B to Stage C
+    adapter so the new component builder can be introduced without changing the
+    scientific observation coordinates carried by dataset inputs.
+    """
+    prepared_inputs = _prepare_inferpymc_inputs(
+        inv_inputs=inferpymc_inputs_dataset,
+        sigma_per_site=True,
+        use_bc=True,
+        state="region",
+        bc_state="bc_region",
+    )
+
+    canonical = _canonicalise_inferpymc_dataset(prepared_inputs, use_bc=True)
+
+    assert set(["H", "H_bc", "mf", "mf_error", "site_indicator", "sigma_freq_index", "min_error"]).issubset(
+        canonical.data_vars
+    )
+    assert canonical["H"].dims == ("nmeasure", "nx")
+    assert canonical["H_bc"].dims == ("nmeasure", "nbc")
+    assert "time" in canonical.coords
+    assert canonical.indexes["nmeasure"].equals(inferpymc_inputs_dataset.indexes["nmeasure"])
+
+
+def test_canonicalise_inferpymc_dataset_expands_scalar_min_error(inferpymc_args: dict) -> None:
+    """Check canonicalisation expands scalar min_error to the observation dimension.
+
+    This is a temporary refactor-support test for the Stage B to Stage C
+    adapter, which is expected to disappear once the legacy plumbing is removed.
+    """
+    prepared_inputs = _prepare_inferpymc_inputs(
+        Hx=inferpymc_args["Hx"],
+        Y=inferpymc_args["Y"],
+        error=inferpymc_args["error"],
+        siteindicator=inferpymc_args["siteindicator"],
+        sigma_freq_index=inferpymc_args["sigma_freq_index"],
+        Hbc=inferpymc_args["Hbc"],
+        min_error=0.0,
+        sigma_per_site=True,
+        use_bc=True,
+    )
+
+    canonical = _canonicalise_inferpymc_dataset(prepared_inputs, use_bc=True)
+    assert canonical["min_error"].sizes["nmeasure"] == canonical.sizes["nmeasure"]
+    np.testing.assert_array_equal(canonical["min_error"].values, np.zeros(canonical.sizes["nmeasure"]))
 
 
 def test_build_inferpymc_model_rejects_mixed_input_modes(
@@ -305,6 +363,20 @@ def test_build_inferpymc_model_rejects_mixed_input_modes(
             error=inferpymc_args["error"],
             siteindicator=inferpymc_args["siteindicator"],
             sigma_freq_index=inferpymc_args["sigma_freq_index"],
+        )
+
+
+def test_build_inferpymc_model_rejects_unknown_builder(inferpymc_args: dict) -> None:
+    """Check the public builder selector rejects unsupported values."""
+    with pytest.raises(ValueError, match="Unsupported model_builder"):
+        build_inferpymc_model(
+            Hx=inferpymc_args["Hx"],
+            Y=inferpymc_args["Y"],
+            error=inferpymc_args["error"],
+            siteindicator=inferpymc_args["siteindicator"],
+            sigma_freq_index=inferpymc_args["sigma_freq_index"],
+            Hbc=inferpymc_args["Hbc"],
+            model_builder="definitely-not-real",
         )
 
 
@@ -341,3 +413,19 @@ def test_inferpymc_runs_without_boundary_conditions(inferpymc_args: dict) -> Non
     assert "bc" not in model.named_vars
     assert "hbc" not in model.named_vars
     assert "mu_bc" not in model.named_vars
+
+
+def test_inferpymc_accepts_components_builder(inferpymc_args: dict) -> None:
+    """Check inferpymc forwards the temporary component-builder selector.
+
+    This is a temporary refactor-support test for the Stage C legacy/components
+    split and can be simplified or removed once Stage D makes the component
+    builder the default runtime path.
+    """
+    args = dict(inferpymc_args)
+    args["model_builder"] = "components"
+
+    result = inferpymc(**args)
+
+    assert "xouts" in result
+    assert "sigouts" in result

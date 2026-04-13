@@ -17,6 +17,7 @@
 - Added opt-in `basis_functions_wrapper` support for returning `BasisFunctions` objects and saving basis artifacts in DataTree format while keeping legacy flat-basis output as the default. [PR #367](https://github.com/openghg/openghg_inversions/pull/367)
 - Stage A of PyMC model refactor. Added regression tests for `inferpymc` and extracted function to build the PyMC model. [PR #378](https://github.com/openghg/openghg_inversions/pull/378)
 - Stage B of PyMC model refactor. Updated `inferpymc` to accept current/legacy inputs as well as xarray `Dataset`. [PR #380](https://github.com/openghg/openghg_inversions/pull/380)
+- Stage C of PyMC model refactor. Added function for building PyMC "model components". The model building code from Stage B is still used by default, but the new code can be selected by adding `model_builder="components"` to the .ini file. [PR #382](https://github.com/openghg/openghg_inversions/pull/382)
 
 # Version 0.6.0
 
