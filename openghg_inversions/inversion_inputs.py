@@ -79,6 +79,8 @@ def make_freq_indicator(
         return time.dt.month - time.min().dt.month + 12 * (time.dt.year - time.min().dt.year)
 
     # fixed-duration freq strings (e.g. "8d", "12h", "3h")
+    if isinstance(freq, str) and freq.isalpha():
+        freq = f"1{freq}"
     anchor = np.datetime64(anchor_time) if anchor_time is not None else time.min().values
     dt = np.timedelta64(pd.to_timedelta(freq).value, "ns")  # robust to xarray dtype
     idx = ((time.values.astype("datetime64[ns]") - anchor) // dt).astype(int)

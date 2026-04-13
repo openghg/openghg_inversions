@@ -1,13 +1,4 @@
-"""Functions for performing MCMC inversion.
-PyMC library used for Bayesian modelling.
-
-Notes:
-    Some internal helpers in this module are temporary compatibility code for
-    the Stage B refactor in issue #372, part of the model-building work tracked
-    in issue #370. They support both legacy ndarray inputs and direct xarray
-    inputs from ``make_inv_inputs``. These helpers should be simplified or
-    removed once the legacy path is retired in a later stage.
-"""
+"""Functions for performing MCMC inversion with the xarray-first PyMC builder."""
 
 import re
 import getpass
@@ -23,322 +14,40 @@ import pytensor
 pytensor.config.floatX = "float32"
 pytensor.config.warn_float64 = "warn"
 
-import pymc as pm
-import pandas as pd
-import xarray as xr
-import pytensor.tensor as pt
-import arviz as az
-from scipy import stats
+import pymc as pm  # noqa: E402
+import pandas as pd  # noqa: E402
+import xarray as xr  # noqa: E402
+import arviz as az  # noqa: E402
+from scipy import stats  # noqa: E402
 
-from openghg_inversions import convert
-from openghg_inversions import utils
-from openghg_inversions.hbmcmc.components import make_offset
-from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-from openghg_inversions.config.version import code_version
-from openghg_inversions.models.components import (
+from openghg_inversions import convert  # noqa: E402
+from openghg_inversions import utils  # noqa: E402
+from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename  # noqa: E402
+from openghg_inversions.config.version import code_version  # noqa: E402
+from openghg_inversions.models.components import (  # noqa: E402
     add_inferpymc_likelihood_component,
     add_linear_component,
     add_offset_component,
 )
-from openghg_inversions.models.coords import (
-    CoordRegistry,
-    attach_coord_registry,
-    restore_inferencedata_coords,
-)
-from openghg_inversions.models.priors import PriorArgs, parse_prior
+from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry  # noqa: E402
+from openghg_inversions.models.priors import PriorArgs  # noqa: E402
 
 
 @dataclass
 class InferPyMCModelSetup:
-    """Container for the PyMC model and sampler configuration used by inferpymc."""
+    """Container for the PyMC model and sampler configuration used by inferpymc.
+
+    Attributes:
+        model: PyMC model built for the inversion.
+        step1: Step method used for emissions and boundary-condition variables.
+        step2: Step method used for sigma variables.
+        sample_kwargs: Extra keyword arguments forwarded to ``pm.sample``.
+    """
 
     model: pm.Model
     step1: Any
     step2: Any
     sample_kwargs: dict[str, Any]
-
-
-@dataclass
-class InferPyMCInputs:
-    """Normalised inputs for PyMC model construction.
-
-    Temporary Stage B compatibility container for issue #372. This should be
-    simplified once the legacy ndarray input path is removed in a later stage.
-    """
-
-    hx: np.ndarray
-    y: np.ndarray
-    error: np.ndarray
-    site_indicator: np.ndarray
-    sigma_freq_index: np.ndarray
-    hbc: np.ndarray | None
-    min_error: np.ndarray | float
-    coords: dict[str, np.ndarray]
-    original_coords: dict[str, Any]
-    source: xr.Dataset | None
-
-
-
-def _make_range_coords(
-    *,
-    nmeasure: int,
-    nx: int,
-    nbc: int | None,
-    nsigma_site: int | None,
-    nsigma_time: int,
-) -> dict[str, np.ndarray]:
-    """Create simple range coordinates for PyMC.
-
-    Temporary Stage B compatibility helper for issue #372. We intentionally use
-    only range coordinates in PyMC and preserve richer xarray coordinates
-    separately for potential restoration after sampling.
-    """
-    coords: dict[str, np.ndarray] = {
-        "nmeasure": np.arange(nmeasure),
-        "nx": np.arange(nx),
-        "nsigma_time": np.arange(nsigma_time),
-        "nsigma_site": np.arange(1 if nsigma_site is None else nsigma_site),
-    }
-    if nbc is not None:
-        coords["nbc"] = np.arange(nbc)
-    return coords
-
-
-def _extract_original_coords(ds: xr.Dataset) -> dict[str, Any]:
-    """Extract original dataset coordinates for possible later restoration.
-
-    Temporary Stage B compatibility helper for issue #372. This is not yet used
-    by inferpymc directly because post-processing still expects the current
-    outputs, but keeping it here lets us test coordinate restoration separately.
-    """
-    original_coords: dict[str, Any] = {}
-    for dim in ds.dims:
-        if dim in ds.indexes:
-            original_coords[dim] = ds.indexes[dim]
-        elif dim in ds.coords:
-            original_coords[dim] = ds.coords[dim].values
-    return original_coords
-
-
-def _validate_inferpymc_input_mode(
-    inv_inputs: xr.Dataset | None,
-    *,
-    Hx: np.ndarray | None,
-    Y: np.ndarray | None,
-    error: np.ndarray | None,
-    siteindicator: np.ndarray | None,
-    sigma_freq_index: np.ndarray | None,
-    Hbc: np.ndarray | None,
-    min_error: np.ndarray | float | None,
-) -> str:
-    """Validate whether dataset or legacy ndarray inputs are being used.
-
-    Temporary Stage B compatibility helper for issue #372.
-    """
-    legacy_args = {
-        "Hx": Hx,
-        "Y": Y,
-        "error": error,
-        "siteindicator": siteindicator,
-        "sigma_freq_index": sigma_freq_index,
-        "Hbc": Hbc,
-        "min_error": min_error,
-    }
-    provided_legacy = [name for name, value in legacy_args.items() if value is not None]
-
-    if inv_inputs is not None:
-        if provided_legacy:
-            raise ValueError(
-                "`inv_inputs` cannot be combined with legacy array arguments: " + ", ".join(provided_legacy)
-            )
-        return "dataset"
-
-    required_legacy = ["Hx", "Y", "error", "siteindicator", "sigma_freq_index"]
-    missing = [name for name in required_legacy if legacy_args[name] is None]
-    if missing:
-        raise ValueError(
-            "Either provide `inv_inputs` or all required legacy arguments. Missing: " + ", ".join(missing)
-        )
-    return "legacy"
-
-
-def _prepare_inferpymc_inputs_from_dataset(
-    ds: xr.Dataset,
-    *,
-    sigma_per_site: bool,
-    use_bc: bool,
-    state: str = "region",
-    bc_state: str = "bc_region",
-) -> InferPyMCInputs:
-    """Prepare normalised PyMC inputs from an xarray dataset.
-
-    Temporary Stage B compatibility helper for issue #372.
-
-    Args:
-        ds: xarray.Dataset containing inversion inputs created by make_inv_inputs.
-        sigma_per_site: whether sigma is per-site
-        use_bc: whether to use boundary conditions
-        state: name of the spatial state dimension in the dataset (e.g. "region").
-        bc_state: name of the BC state dimension in the dataset (e.g. "bc_region").
-    """
-    # Use the dataset-provided state dimension names when extracting H/H_bc.
-    hx = ds["H"].transpose("nmeasure", state).values
-    y = ds["mf"].values
-    error = ds["mf_error"].values
-    site_indicator = ds["site_indicator"].values.astype(int)
-    sigma_freq_index = ds["sigma_freq_index"].values.astype(int)
-
-    hbc: np.ndarray | None = None
-    if use_bc:
-        if "H_bc" not in ds:
-            raise ValueError("If `use_bc` is True, the dataset must contain `H_bc`.")
-        hbc = ds["H_bc"].transpose("nmeasure", bc_state).values
-
-    min_error: np.ndarray | float
-    min_error = ds["min_error"].values if "min_error" in ds else 0.0
-
-    sigma_freq_index_model = _contiguous_sigma_time_index(sigma_freq_index)
-
-    nmeasure, nx = hx.shape
-    nbc = None if hbc is None else hbc.shape[1]
-    nsigma_site = int(np.max(site_indicator)) + 1 if sigma_per_site else None
-    nsigma_time = int(np.max(sigma_freq_index_model)) + 1 if sigma_freq_index_model.size else 0
-
-    return InferPyMCInputs(
-        hx=hx,
-        y=y,
-        error=error,
-        site_indicator=site_indicator,
-        sigma_freq_index=sigma_freq_index_model,
-        hbc=hbc,
-        min_error=min_error,
-        coords=_make_range_coords(
-            nmeasure=nmeasure,
-            nx=nx,
-            nbc=nbc,
-            nsigma_site=nsigma_site,
-            nsigma_time=nsigma_time,
-        ),
-        original_coords=_extract_original_coords(ds),
-        source=ds,
-    )
-
-
-def _prepare_inferpymc_inputs_from_legacy(
-    *,
-    Hx: np.ndarray,
-    Y: np.ndarray,
-    error: np.ndarray,
-    siteindicator: np.ndarray,
-    sigma_freq_index: np.ndarray,
-    Hbc: np.ndarray | None,
-    min_error: np.ndarray | float | None,
-    sigma_per_site: bool,
-    use_bc: bool,
-) -> InferPyMCInputs:
-    """Prepare normalised PyMC inputs from legacy ndarray arguments.
-
-    Temporary Stage B compatibility helper for issue #372.
-    """
-    if use_bc and Hbc is None:
-        raise ValueError(
-            "In legacy-array mode, `Hbc` must be provided when `use_bc` is True. "
-            "Either supply a non-None boundary-condition influence matrix `Hbc` "
-            "or disable BCs by setting `use_bc=False`."
-        )
-    hx = Hx.T
-    hbc = Hbc.T if use_bc and Hbc is not None else None
-    site_indicator = siteindicator.astype(int)
-    sigma_freq_index_model = _contiguous_sigma_time_index(sigma_freq_index)
-
-    nmeasure, nx = hx.shape
-    nbc = None if hbc is None else hbc.shape[1]
-    nsigma_site = int(np.max(site_indicator)) + 1 if sigma_per_site else None
-    nsigma_time = int(np.max(sigma_freq_index_model)) + 1 if sigma_freq_index_model.size else 0
-
-    return InferPyMCInputs(
-        hx=hx,
-        y=Y,
-        error=error,
-        site_indicator=site_indicator,
-        sigma_freq_index=sigma_freq_index_model,
-        hbc=hbc,
-        min_error=0.0 if min_error is None else min_error,
-        coords=_make_range_coords(
-            nmeasure=nmeasure,
-            nx=nx,
-            nbc=nbc,
-            nsigma_site=nsigma_site,
-            nsigma_time=nsigma_time,
-        ),
-        original_coords={},
-        source=None,
-    )
-
-
-def _prepare_inferpymc_inputs(
-    inv_inputs: xr.Dataset | None = None,
-    *,
-    Hx: np.ndarray | None = None,
-    Y: np.ndarray | None = None,
-    error: np.ndarray | None = None,
-    siteindicator: np.ndarray | None = None,
-    sigma_freq_index: np.ndarray | None = None,
-    Hbc: np.ndarray | None = None,
-    min_error: np.ndarray | float | None = None,
-    sigma_per_site: bool = True,
-    use_bc: bool = True,
-    state: str = "region",
-    bc_state: str = "bc_region",
-) -> InferPyMCInputs:
-    """Normalise dataset or legacy inputs for PyMC model building.
-
-    Temporary Stage B compatibility helper for issue #372.
-    """
-    mode = _validate_inferpymc_input_mode(
-        inv_inputs,
-        Hx=Hx,
-        Y=Y,
-        error=error,
-        siteindicator=siteindicator,
-        sigma_freq_index=sigma_freq_index,
-        Hbc=Hbc,
-        min_error=min_error,
-    )
-
-    if mode == "dataset":
-        assert inv_inputs is not None
-        return _prepare_inferpymc_inputs_from_dataset(
-            inv_inputs,
-            sigma_per_site=sigma_per_site,
-            use_bc=use_bc,
-            state=state,
-            bc_state=bc_state,
-        )
-
-    assert Hx is not None
-    assert Y is not None
-    assert error is not None
-    assert siteindicator is not None
-    assert sigma_freq_index is not None
-    return _prepare_inferpymc_inputs_from_legacy(
-        Hx=Hx,
-        Y=Y,
-        error=error,
-        siteindicator=siteindicator,
-        sigma_freq_index=sigma_freq_index,
-        Hbc=Hbc,
-        min_error=min_error,
-        sigma_per_site=sigma_per_site,
-        use_bc=use_bc,
-    )
-
-
-def _restore_inferencedata_coords(
-    idata: az.InferenceData, original_coords: dict[str, Any]
-) -> az.InferenceData:
-    """Restore saved coordinates onto matching InferenceData groups."""
-    return restore_inferencedata_coords(idata, original_coords)
 
 
 def _contiguous_index(index: np.ndarray) -> np.ndarray:
@@ -391,19 +100,21 @@ def _prepare_builder_priors(
     offsetprior: dict | None,
     reparameterise_log_normal: bool,
 ) -> tuple[dict, dict, dict, dict]:
-    """Copy builder priors and apply temporary compatibility flags.
+    """Copy builder priors and apply builder-level prior options.
 
     Args:
         xprior: Optional emissions prior overrides.
         bcprior: Optional boundary-condition prior overrides.
         sigprior: Optional sigma prior overrides.
         offsetprior: Optional offset prior overrides.
-        reparameterise_log_normal: Temporary public compatibility flag used to
-            request lognormal reparameterisation.
+        reparameterise_log_normal: Public compatibility flag for requesting
+            lognormal reparameterisation. The preferred long-term interface is
+            to set ``"reparameterise": True`` directly in the relevant prior
+            argument dictionary.
 
     Returns:
-        Copies of the prior dictionaries with defaults filled in and temporary
-        compatibility flags applied.
+        Copies of the prior dictionaries with defaults filled in and any
+        builder-level reparameterisation settings applied.
     """
     prepared_xprior = DEFAULT_XPRIOR.copy() if xprior is None else xprior.copy()
     prepared_bcprior = DEFAULT_BCPRIOR.copy() if bcprior is None else bcprior.copy()
@@ -420,109 +131,113 @@ def _prepare_builder_priors(
     return prepared_xprior, prepared_bcprior, prepared_sigprior, prepared_offsetprior
 
 
-def _validate_model_builder(model_builder: str) -> str:
-    """Validate the temporary Stage C model-builder selector."""
-    if model_builder not in {"legacy", "components"}:
-        raise ValueError(f"Unsupported model_builder {model_builder!r}. Expected 'legacy' or 'components'.")
-    return model_builder
-
-
 def _canonicalise_inferpymc_dataset(
-    prepared_inputs: InferPyMCInputs,
+    inv_inputs: xr.Dataset,
     /,
     use_bc: bool,
     obs_dim: str = "nmeasure",
+    input_state_dim: str = "region",
+    input_bc_state_dim: str = "bc_region",
     state_dim: str = "nx",
     bc_state_dim: str = "nbc",
 ) -> xr.Dataset:
-    """Convert normalized Stage B inputs into canonical xarray model inputs.
+    """Convert inversion inputs into the canonical dataset used by the builder.
 
     Args:
-        prepared_inputs: Temporary Stage B compatibility container holding the
-            normalized inversion inputs.
+        inv_inputs: Dataset produced by ``make_inv_inputs``.
         use_bc: Whether the canonical dataset should include boundary-condition
             sensitivities.
         obs_dim: Observation dimension name used by the model components.
+        input_state_dim: State dimension name used by emissions sensitivities in
+            ``inv_inputs``.
+        input_bc_state_dim: State dimension name used by BC sensitivities in
+            ``inv_inputs``.
         state_dim: State dimension name used for emissions sensitivities.
         bc_state_dim: State dimension name used for boundary-condition
             sensitivities.
 
     Returns:
-        An xarray dataset containing the canonical Stage C model inputs.
+        An xarray dataset with observation-first sensitivities and compact sigma
+        period indices.
 
-    This helper is temporary transition code. It exists to keep the Stage B
-    input-normalization path separate from the Stage C component builder until
-    the legacy path is removed in Stage D.
+    Raises:
+        ValueError: If boundary conditions are requested but ``inv_inputs`` does
+            not contain ``H_bc``.
     """
-    nmeasure = prepared_inputs.hx.shape[0]
-    obs_coord = (
-        prepared_inputs.source.indexes[obs_dim]
-        if prepared_inputs.source is not None and obs_dim in prepared_inputs.source.indexes
-        else np.arange(nmeasure)
-    )
-    coords: dict[str, Any] = {obs_dim: obs_coord, state_dim: np.arange(prepared_inputs.hx.shape[1])}
-
-    if use_bc and prepared_inputs.hbc is not None:
-        coords[bc_state_dim] = np.arange(prepared_inputs.hbc.shape[1])
-
-    min_error = prepared_inputs.min_error
-    if np.isscalar(min_error) or (isinstance(min_error, np.ndarray) and np.ndim(min_error) == 0):
-        min_error_values = np.full(nmeasure, min_error)
-    else:
-        min_error_values = np.asarray(min_error)
-
+    obs_coord = inv_inputs.indexes[obs_dim] if obs_dim in inv_inputs.indexes else inv_inputs[obs_dim].values
+    state_coord = inv_inputs[input_state_dim].values
     data_vars: dict[str, xr.DataArray] = {
         "H": xr.DataArray(
-            prepared_inputs.hx,
+            inv_inputs["H"].transpose(obs_dim, input_state_dim).values,
             dims=(obs_dim, state_dim),
-            coords={obs_dim: obs_coord, state_dim: coords[state_dim]},
+            coords={obs_dim: obs_coord, state_dim: np.arange(state_coord.size)},
             name="H",
         ),
-        "mf": xr.DataArray(prepared_inputs.y, dims=(obs_dim,), coords={obs_dim: coords[obs_dim]}, name="mf"),
+        "mf": xr.DataArray(inv_inputs["mf"].values, dims=(obs_dim,), coords={obs_dim: obs_coord}, name="mf"),
         "mf_error": xr.DataArray(
-            prepared_inputs.error,
+            inv_inputs["mf_error"].values,
             dims=(obs_dim,),
-            coords={obs_dim: coords[obs_dim]},
+            coords={obs_dim: obs_coord},
             name="mf_error",
         ),
         "site_indicator": xr.DataArray(
-            prepared_inputs.site_indicator,
+            inv_inputs["site_indicator"].values.astype(int),
             dims=(obs_dim,),
-            coords={obs_dim: coords[obs_dim]},
+            coords={obs_dim: obs_coord},
             name="site_indicator",
         ),
         "sigma_freq_index": xr.DataArray(
-            prepared_inputs.sigma_freq_index,
+            _contiguous_sigma_time_index(inv_inputs["sigma_freq_index"].values),
             dims=(obs_dim,),
-            coords={obs_dim: coords[obs_dim]},
+            coords={obs_dim: obs_coord},
             name="sigma_freq_index",
         ),
-        "min_error": xr.DataArray(
-            min_error_values,
-            dims=(obs_dim,),
-            coords={obs_dim: coords[obs_dim]},
-            name="min_error",
-        ),
     }
+    min_error_values = inv_inputs["min_error"].values
+    if np.isscalar(min_error_values) or np.ndim(min_error_values) == 0:
+        min_error_values = np.full(inv_inputs.sizes[obs_dim], min_error_values)
+    data_vars["min_error"] = xr.DataArray(
+        min_error_values,
+        dims=(obs_dim,),
+        coords={obs_dim: obs_coord},
+        name="min_error",
+    )
+    coords: dict[str, Any] = {obs_dim: obs_coord, state_dim: np.arange(state_coord.size)}
 
-    if use_bc and prepared_inputs.hbc is not None:
+    if not isinstance(obs_coord, pd.MultiIndex):
+        if "time" in inv_inputs.coords:
+            coords["time"] = xr.DataArray(
+                inv_inputs["time"].values,
+                dims=(obs_dim,),
+                coords={obs_dim: obs_coord},
+                name="time",
+            )
+
+        for coord_name in ("site",):
+            if coord_name in inv_inputs.coords:
+                coords[coord_name] = xr.DataArray(
+                    inv_inputs[coord_name].values,
+                    dims=(obs_dim,),
+                    coords={obs_dim: obs_coord},
+                    name=coord_name,
+                )
+
+    if use_bc:
+        if "H_bc" not in inv_inputs:
+            raise ValueError("If `use_bc` is True, `inv_inputs` must contain `H_bc`.")
+        bc_coord = inv_inputs[input_bc_state_dim].values
+        coords[bc_state_dim] = np.arange(bc_coord.size)
         data_vars["H_bc"] = xr.DataArray(
-            prepared_inputs.hbc,
+            inv_inputs["H_bc"].transpose(obs_dim, input_bc_state_dim).values,
             dims=(obs_dim, bc_state_dim),
-            coords={obs_dim: coords[obs_dim], bc_state_dim: coords[bc_state_dim]},
+            coords={obs_dim: obs_coord, bc_state_dim: np.arange(bc_coord.size)},
             name="H_bc",
         )
 
     return xr.Dataset(data_vars=data_vars, coords=coords)
 
 
-def build_inferpymc_model_legacy(
-    Hx: np.ndarray | None = None,
-    Y: np.ndarray | None = None,
-    error: np.ndarray | None = None,
-    siteindicator: np.ndarray | None = None,
-    sigma_freq_index: np.ndarray | None = None,
-    Hbc: np.ndarray | None = None,
+def build_inferpymc_model(
     xprior: dict | None = None,
     bcprior: dict | None = None,
     sigprior: dict | None = None,
@@ -538,171 +253,42 @@ def build_inferpymc_model_legacy(
     power: dict | float = 1.99,
     nuts_sampler: str = "pymc",
     inv_inputs: xr.Dataset | None = None,
-    state: str = "region",
-    bc_state: str = "bc_region",
 ) -> InferPyMCModelSetup:
-    """Build the temporary legacy inferpymc model path kept for Stage C parity.
+    """Build the current component-based inferpymc model.
 
-    This transitional builder preserves the pre-Stage-C runtime behavior so the
-    new component-based builder can be compared against it during the Stage C
-    to Stage D migration.
+    Args:
+        xprior: Prior specification for emissions scaling factors.
+        bcprior: Prior specification for boundary-condition scaling factors.
+        sigprior: Prior specification for model-error terms.
+        sigma_per_site: Whether sigma should vary by site.
+        offsetprior: Prior specification for optional offsets.
+        add_offset: Whether to include an offset term in the model.
+        min_error: Retained for API compatibility. The active runtime path uses
+            ``inv_inputs["min_error"]``.
+        use_bc: Whether to include boundary-condition terms in the model.
+        reparameterise_log_normal: Whether to request lognormal
+            reparameterisation for supported priors.
+        pollution_events_from_obs: Whether to derive pollution-event scaling
+            from observations rather than modelled concentrations.
+        no_model_error: Whether to suppress the explicit model-error term.
+        offset_args: Extra keyword arguments forwarded to
+            ``add_offset_component``.
+        power: Exponent or prior specification used in the likelihood error
+            scaling.
+        nuts_sampler: Sampler backend name passed through to the model setup.
+        inv_inputs: Dataset produced by ``make_inv_inputs``.
+
+    Returns:
+        ``InferPyMCModelSetup`` containing the built model and sampler
+        configuration.
+
+    Raises:
+        ValueError: If ``inv_inputs`` is not provided.
     """
-    prepared_inputs = _prepare_inferpymc_inputs(
-        inv_inputs=inv_inputs,
-        Hx=Hx,
-        Y=Y,
-        error=error,
-        siteindicator=siteindicator,
-        sigma_freq_index=sigma_freq_index,
-        Hbc=Hbc,
-        min_error=min_error,
-        sigma_per_site=sigma_per_site,
-        use_bc=use_bc,
-        state=state,
-        bc_state=bc_state,
-    )
+    if inv_inputs is None:
+        raise ValueError("`inferpymc` now expects `inv_inputs` from `make_inv_inputs`.")
 
-    # Assign defaults here to avoid sharing the same dict across calls.
-    xprior = DEFAULT_XPRIOR.copy() if xprior is None else xprior
-    bcprior = DEFAULT_BCPRIOR.copy() if bcprior is None else bcprior
-    sigprior = DEFAULT_SIGPRIOR.copy() if sigprior is None else sigprior
-    offsetprior = DEFAULT_OFFSETPRIOR.copy() if offsetprior is None else offsetprior
-
-    sites = (
-        prepared_inputs.site_indicator.astype(int)
-        if sigma_per_site
-        else np.zeros_like(prepared_inputs.site_indicator).astype(int)
-    )
-
-    if isinstance(prepared_inputs.min_error, float) or (
-        isinstance(prepared_inputs.min_error, np.ndarray) and prepared_inputs.min_error.ndim == 0
-    ):
-        min_error_data = prepared_inputs.min_error * np.ones_like(prepared_inputs.y)
-    else:
-        min_error_data = prepared_inputs.min_error
-
-    with pm.Model(coords=prepared_inputs.coords) as model:
-        step1_vars = []
-
-        if reparameterise_log_normal and xprior["pdf"] == "lognormal":
-            x0 = pm.Normal("x0", 0, 1, dims="nx")
-            x = pm.Deterministic("x", pt.exp(xprior["mu"] + xprior["sigma"] * x0), dims="nx")
-            step1_vars.append(x0)
-        else:
-            x = parse_prior("x", xprior, dims="nx")
-            step1_vars.append(x)
-
-        if use_bc:
-            if reparameterise_log_normal and bcprior["pdf"] == "lognormal":
-                bc0 = pm.Normal("bc0", 0, 1, dims="nbc")
-                bc = pm.Deterministic("bc", pt.exp(bcprior["mu"] + bcprior["sigma"] * bc0), dims="nbc")
-                step1_vars.append(bc0)
-            else:
-                bc = parse_prior("bc", bcprior, dims="nbc")
-                step1_vars.append(bc)
-
-        sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
-
-        hx_data = pm.Data("hx", prepared_inputs.hx, dims=("nmeasure", "nx"))
-        mu = pm.Deterministic("mu", pt.dot(hx_data, x), dims="nmeasure")
-
-        if use_bc and prepared_inputs.hbc is not None:
-            hbc_data = pm.Data("hbc", prepared_inputs.hbc, dims=("nmeasure", "nbc"))
-            mu_bc = pm.Deterministic("mu_bc", pt.dot(hbc_data, bc), dims="nmeasure")
-            mu += mu_bc
-
-        if add_offset:
-            offset_args = offset_args or {}
-            offset = make_offset(prepared_inputs.site_indicator, offsetprior, **offset_args)
-            mu += offset
-
-        y_data = pm.Data("Y", prepared_inputs.y, dims="nmeasure")  # type: ignore[arg-type]
-        error_data = pm.Data("error", prepared_inputs.error, dims="nmeasure")  # type: ignore[arg-type]
-        min_error_data = pm.Data("min_error", min_error_data, dims="nmeasure")  # type: ignore[arg-type]
-
-        if pollution_events_from_obs is True:
-            if use_bc is True and prepared_inputs.hbc is not None:
-                pollution_event = pt.abs(y_data - mu_bc)
-            else:
-                pollution_event = pt.abs(y_data) + 1e-6 * pt.mean(y_data)
-        else:
-            pollution_event = pt.abs(pt.dot(hx_data, x))
-
-        pollution_event_scaled_error = pollution_event * sigma[sites, prepared_inputs.sigma_freq_index]
-
-        if no_model_error is True:
-            mean_obs = np.nanmean(prepared_inputs.y)
-            small_amount = 1e-12 * mean_obs
-            eps = pt.maximum(pt.abs(error_data), small_amount)
-        else:
-            power0 = parse_prior("power", power) if isinstance(power, dict) else power
-            eps = pt.maximum(
-                pt.sqrt(error_data**2 + pt.pow(pollution_event_scaled_error, power0)), min_error_data
-            )
-
-        pm.Deterministic("epsilon", eps, dims="nmeasure")
-        pm.Normal("y", mu=mu, sigma=eps, observed=y_data, dims="nmeasure")
-
-        step1 = pm.NUTS(vars=step1_vars)
-        step2 = pm.Slice(vars=[sigma])
-
-    return InferPyMCModelSetup(
-        model=model,
-        step1=step1,
-        step2=step2,
-        sample_kwargs={"step": [step1, step2] if nuts_sampler == "pymc" else None},
-    )
-
-
-def build_inferpymc_model_components(
-    Hx: np.ndarray | None = None,
-    Y: np.ndarray | None = None,
-    error: np.ndarray | None = None,
-    siteindicator: np.ndarray | None = None,
-    sigma_freq_index: np.ndarray | None = None,
-    Hbc: np.ndarray | None = None,
-    xprior: dict | None = None,
-    bcprior: dict | None = None,
-    sigprior: dict | None = None,
-    sigma_per_site: bool = True,
-    offsetprior: dict | None = None,
-    add_offset: bool = False,
-    min_error: np.ndarray | float | None = None,
-    use_bc: bool = True,
-    reparameterise_log_normal: bool = False,
-    pollution_events_from_obs: bool = False,
-    no_model_error: bool = False,
-    offset_args: dict | None = None,
-    power: dict | float = 1.99,
-    nuts_sampler: str = "pymc",
-    inv_inputs: xr.Dataset | None = None,
-    state: str = "region",
-    bc_state: str = "bc_region",
-) -> InferPyMCModelSetup:
-    """Build the Stage C component-based model path.
-
-    This builder represents the intended future architecture introduced in
-    Stage C. It is expected to become the default inferpymc runtime path in
-    Stage D after parity with the temporary legacy builder is established.
-    """
-    prepared_inputs = _prepare_inferpymc_inputs(
-        inv_inputs=inv_inputs,
-        Hx=Hx,
-        Y=Y,
-        error=error,
-        siteindicator=siteindicator,
-        sigma_freq_index=sigma_freq_index,
-        Hbc=Hbc,
-        min_error=min_error,
-        sigma_per_site=sigma_per_site,
-        use_bc=use_bc,
-        state=state,
-        bc_state=bc_state,
-    )
-    canonical_ds = _canonicalise_inferpymc_dataset(
-        prepared_inputs,
-        use_bc=use_bc,
-    )
+    canonical_ds = _canonicalise_inferpymc_dataset(inv_inputs, use_bc=use_bc)
     xprior, bcprior, sigprior, offsetprior = _prepare_builder_priors(
         xprior=xprior,
         bcprior=bcprior,
@@ -776,81 +362,13 @@ def build_inferpymc_model_components(
     )
 
 
-def build_inferpymc_model(
-    Hx: np.ndarray | None = None,
-    Y: np.ndarray | None = None,
-    error: np.ndarray | None = None,
-    siteindicator: np.ndarray | None = None,
-    sigma_freq_index: np.ndarray | None = None,
-    Hbc: np.ndarray | None = None,
-    xprior: dict | None = None,
-    bcprior: dict | None = None,
-    sigprior: dict | None = None,
-    sigma_per_site: bool = True,
-    offsetprior: dict | None = None,
-    add_offset: bool = False,
-    min_error: np.ndarray | float | None = None,
-    use_bc: bool = True,
-    reparameterise_log_normal: bool = False,
-    pollution_events_from_obs: bool = False,
-    no_model_error: bool = False,
-    offset_args: dict | None = None,
-    power: dict | float = 1.99,
-    nuts_sampler: str = "pymc",
-    inv_inputs: xr.Dataset | None = None,
-    state: str = "region",
-    bc_state: str = "bc_region",
-    model_builder: str = "legacy",
-) -> InferPyMCModelSetup:
-    """Dispatch temporarily between the Stage C legacy and component builders.
-
-    Stage C keeps the legacy runtime path as the default while exposing the new
-    component-based builder for parity testing. Stage D is expected to switch
-    the default to the component builder once parity is established.
-    """
-    model_builder = _validate_model_builder(model_builder)
-    builder = (
-        build_inferpymc_model_legacy if model_builder == "legacy" else build_inferpymc_model_components
-    )
-    return builder(
-        Hx=Hx,
-        Y=Y,
-        error=error,
-        siteindicator=siteindicator,
-        sigma_freq_index=sigma_freq_index,
-        Hbc=Hbc,
-        xprior=xprior,
-        bcprior=bcprior,
-        sigprior=sigprior,
-        sigma_per_site=sigma_per_site,
-        offsetprior=offsetprior,
-        add_offset=add_offset,
-        min_error=min_error,
-        use_bc=use_bc,
-        reparameterise_log_normal=reparameterise_log_normal,
-        pollution_events_from_obs=pollution_events_from_obs,
-        no_model_error=no_model_error,
-        offset_args=offset_args,
-        power=power,
-        nuts_sampler=nuts_sampler,
-        inv_inputs=inv_inputs,
-        state=state,
-        bc_state=bc_state,
-    )
-
-
 # ----------------------------------------
 # Build/run model
 # ----------------------------------------
 
 
 def inferpymc(
-    Hx: np.ndarray | None = None,
-    Y: np.ndarray | None = None,
-    error: np.ndarray | None = None,
-    siteindicator: np.ndarray | None = None,
-    sigma_freq_index: np.ndarray | None = None,
-    Hbc: np.ndarray | None = None,
+    inv_inputs: xr.Dataset | None = None,
     xprior: dict | None = None,
     bcprior: dict | None = None,
     sigprior: dict | None = None,
@@ -863,7 +381,6 @@ def inferpymc(
     offsetprior: dict | None = None,
     add_offset: bool = False,
     verbose: bool = False,
-    min_error: np.ndarray | float | None = None,
     use_bc: bool = True,
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
@@ -871,28 +388,15 @@ def inferpymc(
     offset_args: dict | None = None,
     power: dict | float = 1.99,
     sampler_kwargs: dict | None = None,
-    inv_inputs: xr.Dataset | None = None,
-    state: str = "region",
-    bc_state: str = "bc_region",
-    model_builder: str = "legacy",
 ) -> dict:
-    """Perform Bayesian inference with PyMC for emissions, boundary conditions, and model error.
+    """Perform Bayesian inference with PyMC for emissions, BCs, and model error.
 
-    This routine constructs and runs a PyMC model (by default using a Normal
-    likelihood) to infer emissions, boundary conditions, and a single model-
-    error parameter (or may vary by site and/or over a given period, if requested).
-    The function can accept either numpy-based inputs (Hx, Y, etc.) or an xarray.Dataset
-    produced by `inversion_inputs.make_inv_inputs`, which preserves dims and coordinates for
-    cleaner model construction.
+    This routine builds the current component-based PyMC model from
+    ``make_inv_inputs`` output, runs sampling, and returns legacy-compatible
+    result keys used by downstream postprocessing.
 
     Args:
-        Hx: Transpose of the sensitivity matrix mapping emissions to measurements.
-            This is typically fp_data[site].H.values stacked for all sites.
-        Y: Measurement vector containing all observations.
-        error: Measurement error vector, containing a value for each element of Y.
-        siteindicator: Array of indexing integers that relate each measurement to a site.
-        sigma_freq_index: Array of integer indexes that converts time into periods.
-        Hbc: Transpose of the sensitivity matrix for boundary conditions. Only used if use_bc is True.
+        inv_inputs: xarray.Dataset produced by ``make_inv_inputs``.
         xprior: Dictionary describing the prior PDF for emissions. The entry "pdf"
             is the name of the analytical PDF used; other entries are shape
             parameters (e.g., {'pdf': 'lognormal', 'stdev': 1.0}).
@@ -908,7 +412,6 @@ def inferpymc(
         offsetprior: Prior specification for offsets applied to sites or observations.
         add_offset: If True, include an offset term in the model.
         verbose: If True, print additional diagnostic information.
-        min_error: Minimum allowed measurement error. Can be a scalar or an array matching Y.
         use_bc: If True, include boundary condition terms in the model.
         reparameterise_log_normal: If True, reparameterise log-normal priors for numerical stability.
         pollution_events_from_obs: If True, derive pollution event terms from observations.
@@ -916,58 +419,34 @@ def inferpymc(
         offset_args: Additional arguments used when constructing offsets.
         power: Exponent used in certain weighting or prior schemes; may be a dict or float.
         sampler_kwargs: Extra keyword arguments passed to the sampler.
-        inv_inputs: xarray.Dataset produced by `make_inv_inputs`, providing xarray-native
-            inputs (e.g., sensitivity matrices, coordinates, and dims) so the function
-            can accept inversion inputs without reconstructing dims and coords.
-        state: Dimension name of the state variable for flux sensitivities ("H") in inv_inputs.
-            Defaults to "region".
-        bc_state: Dimension name of the state variable for BC sensitivities ("H_bc") in inv_inputs.
-            Defaults to "bc_region".
-        model_builder: Temporary builder selector used during the Stage C to Stage D
-            transition. Accepted values are ``"legacy"`` and ``"components"``.
 
     Returns:
-        dict: Dictionary containing inference results, samples, and diagnostics.
+        Dictionary containing inference results, samples, and diagnostics.
 
-            The returned dictionary uses the legacy key structure. Depending on
-            the options used (e.g. whether BCs or offsets are included, and which
-            priors are active), keys typically include:
+        The returned dictionary uses the legacy key structure. Depending on the
+        selected options, keys typically include:
 
-            - ``'xouts'``: Posterior samples or summaries for the state vector
-              (emissions / fluxes).
-            - ``'sigouts'``: Posterior samples or summaries for model–data
-              mismatch (sigma) parameters.
-            - ``'Ytrace'``: Trace of the modelled observations corresponding to
-              the data vector ``Y``.
-            - ``'bcouts'``: Posterior samples or summaries for boundary condition
-              state variables (if boundary conditions are used).
-            - ``'offset_trace'`` or similar keys: Traces for site- or
-              observation-specific offset terms when ``add_offset`` is enabled.
-            - Additional diagnostic arrays and traces needed for convergence
-              checking and postprocessing.
+        - ``"xouts"``: posterior samples for emissions / fluxes
+        - ``"sigouts"``: posterior samples for sigma terms
+        - ``"Ytrace"``: modelled concentrations
+        - ``"bcouts"`` and ``"YBCtrace"`` when boundary conditions are used
+        - ``"OFFSETtrace"`` when offsets are enabled
+        - ``"trace"``, ``"model"``, and convergence metadata
 
-            The returned dict is intended to contain enough information for
-            postprocessing and diagnostic checks (convergence, effective sample
-            size, R-hat, and so on). Exact key names and contents may vary with
-            sampler settings and options used.
+        Raises:
+            ValueError: If the model cannot be built from the supplied
+                ``inv_inputs`` and configuration.
     """
     burn = int(burn)
     nit = int(nit)
 
     setup = build_inferpymc_model(
-        Hx=Hx,
-        Y=Y,
-        error=error,
-        siteindicator=siteindicator,
-        sigma_freq_index=sigma_freq_index,
-        Hbc=Hbc,
         xprior=xprior,
         bcprior=bcprior,
         sigprior=sigprior,
         sigma_per_site=sigma_per_site,
         offsetprior=offsetprior,
         add_offset=add_offset,
-        min_error=min_error,
         use_bc=use_bc,
         reparameterise_log_normal=reparameterise_log_normal,
         pollution_events_from_obs=pollution_events_from_obs,
@@ -976,9 +455,6 @@ def inferpymc(
         power=power,
         nuts_sampler=nuts_sampler,
         inv_inputs=inv_inputs,
-        state=state,
-        bc_state=bc_state,
-        model_builder=model_builder,
     )
 
     sampler_kwargs = sampler_kwargs or {}

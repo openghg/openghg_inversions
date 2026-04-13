@@ -89,12 +89,7 @@ def test_add_linear_component_creates_expected_named_vars() -> None:
 
 
 def test_add_linear_component_returns_effective_reparameterised_latent() -> None:
-    """Check the component result exposes the true reparameterized latent variable.
-
-    This is a temporary refactor-support test. It protects the Stage C
-    component API while the legacy and component builders coexist and ensures
-    the builder does not need to inspect model internals to find ``x_latent``.
-    """
+    """Check the component result exposes the true reparameterized latent variable."""
     data = xr.DataArray(
         np.ones((4, 2)),
         dims=("nmeasure", "nx"),

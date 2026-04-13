@@ -1,4 +1,16 @@
-"""Test functions for creating inputs for PyMC."""
+"""Regression tests for inversion-input preparation.
+
+This module is intentionally transitional.
+
+The committed ``.npz`` fixture stores a legacy-shaped projection of
+``make_inv_inputs(...)`` output so that changes to the new inversion-input
+pipeline can still be checked conservatively against a frozen reference used
+during the refactor.
+
+The marked ``create_frozen`` test is developer-only. Running it rewrites the
+committed frozen data file and should only be done when the reference fixture is
+being intentionally refreshed.
+"""
 
 from pathlib import Path
 
@@ -7,8 +19,7 @@ from numpy.testing import assert_almost_equal
 import pytest
 import xarray as xr
 
-from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs_legacy
-from openghg_inversions.inversion_inputs import add_site_indicator, concat_gather_datasets
+from openghg_inversions.inversion_inputs import add_site_indicator, concat_gather_datasets, make_inv_inputs
 
 
 # Helpers for saving result of make_inv_inputs
@@ -91,23 +102,98 @@ def inv_inputs_args(mhd_and_tac_fp_data):
 
 @pytest.mark.create_frozen
 def test_inversion_input_create_frozen(raw_data_path, inv_inputs_args):
-    """This 'test' just regenerates frozen data for use in other tests."""
-    mcmc_args, post_args = make_inv_inputs_legacy(**inv_inputs_args)
+    """Regenerate the committed frozen compatibility fixture.
 
+    This test is not intended for routine runs. It exists only so developers can
+    intentionally refresh the committed ``.npz`` file when the frozen reference
+    for this transitional regression check needs to change.
+    """
     out_name = raw_data_path / "frozen_mhd_tac_make_inv_inputs_hbmcmc.npz"
-    save_frozen_npz(out_name, mcmc_args=mcmc_args, post_process_args=post_args)
+    inv_inputs = make_inv_inputs(
+        **{
+            k: v
+            for k, v in inv_inputs_args.items()
+            if k != "calculate_min_error" and k != "use_bc" and k != "min_error_options"
+        },
+        min_error_per_site=inv_inputs_args["min_error_options"].get("by_site", False),
+    )
+    obs_prior_factor = (
+        inv_inputs.mf_prior_factor.values
+        if "mf_prior_factor" in inv_inputs
+        else np.zeros_like(inv_inputs.mf.values)
+    )
+    obs_prior_upper_level_factor = (
+        inv_inputs.mf_prior_upper_level_factor.values
+        if "mf_prior_upper_level_factor" in inv_inputs
+        else np.zeros_like(inv_inputs.mf.values)
+    )
+
+    save_frozen_npz(
+        out_name,
+        mcmc_args={
+            "Hx": inv_inputs.H.values,
+            "Y": inv_inputs.mf.values,
+            "error": inv_inputs.mf_error.values,
+            "siteindicator": inv_inputs.site_indicator.values,
+            "sigma_freq_index": inv_inputs.sigma_freq_index.values,
+            "min_error": inv_inputs.min_error.values,
+            "Hbc": inv_inputs.H_bc.values,
+        },
+        post_process_args={
+            "Ytime": inv_inputs.time.values,
+            "obs_repeatability": inv_inputs.mf_repeatability.values,
+            "obs_variability": inv_inputs.mf_variability.values,
+            "obs_prior_factor": obs_prior_factor,
+            "obs_prior_upper_level_factor": obs_prior_upper_level_factor,
+        },
+    )
 
 
 def test_inversion_input_hbmcmc_matches_frozen(raw_data_path, inv_inputs_args):
-    """Test that result of make_inv_inputs from hbmcmc.py matches frozen data."""
+    """Check the current compatibility projection matches the frozen fixture."""
     frozen_path = raw_data_path / "frozen_mhd_tac_make_inv_inputs_hbmcmc.npz"
 
     frozen_mcmc, frozen_post = load_frozen_npz(frozen_path)
 
-    mcmc_args, post_args = make_inv_inputs_legacy(**inv_inputs_args)
+    inv_inputs = make_inv_inputs(
+        fp_data=inv_inputs_args["fp_data"],
+        sites=inv_inputs_args["sites"],
+        start_date=inv_inputs_args["start_date"],
+        bc_freq=inv_inputs_args["bc_freq"],
+        sigma_freq=inv_inputs_args["sigma_freq"],
+        min_error=inv_inputs_args["min_error"],
+        min_error_per_site=inv_inputs_args["min_error_options"].get("by_site", False),
+    )
 
-    _compare_with_frozen(mcmc_args, frozen_mcmc)
-    _compare_with_frozen(post_args, frozen_post)
+    result_mcmc = {
+        "Hx": inv_inputs.H.values,
+        "Y": inv_inputs.mf.values,
+        "error": inv_inputs.mf_error.values,
+        "siteindicator": inv_inputs.site_indicator.values,
+        "sigma_freq_index": inv_inputs.sigma_freq_index.values,
+        "min_error": inv_inputs.min_error.values,
+        "Hbc": inv_inputs.H_bc.values,
+    }
+    obs_prior_factor = (
+        inv_inputs.mf_prior_factor.values
+        if "mf_prior_factor" in inv_inputs
+        else np.zeros_like(inv_inputs.mf.values)
+    )
+    obs_prior_upper_level_factor = (
+        inv_inputs.mf_prior_upper_level_factor.values
+        if "mf_prior_upper_level_factor" in inv_inputs
+        else np.zeros_like(inv_inputs.mf.values)
+    )
+    result_post = {
+        "Ytime": inv_inputs.time.values,
+        "obs_repeatability": inv_inputs.mf_repeatability.values,
+        "obs_variability": inv_inputs.mf_variability.values,
+        "obs_prior_factor": obs_prior_factor,
+        "obs_prior_upper_level_factor": obs_prior_upper_level_factor,
+    }
+
+    _compare_with_frozen(result_mcmc, frozen_mcmc)
+    _compare_with_frozen(result_post, frozen_post)
 
 
 # ----------------------------------------
