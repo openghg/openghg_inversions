@@ -111,7 +111,9 @@ def inferpymc_with_bc_result(inferpymc_args: dict):
     return inferpymc(**inferpymc_args)
 
 
-def test_inferpymc_runs_on_inversion_inputs(inferpymc_inputs_dataset: xr.Dataset, inferpymc_with_bc_result) -> None:
+def test_inferpymc_runs_on_inversion_inputs(
+    inferpymc_inputs_dataset: xr.Dataset, inferpymc_with_bc_result
+) -> None:
     result = inferpymc_with_bc_result
 
     expected_keys = {
@@ -130,8 +132,12 @@ def test_inferpymc_runs_on_inversion_inputs(inferpymc_inputs_dataset: xr.Dataset
     assert expected_keys.issubset(result.keys())
 
     assert result["xouts"].sizes["nx"] == inferpymc_inputs_dataset.sizes["region"]
-    assert result["sigouts"].sizes["nsigma_time"] == len(np.unique(inferpymc_inputs_dataset["sigma_freq_index"].values))
-    assert result["sigouts"].sizes["nsigma_site"] == len(np.unique(inferpymc_inputs_dataset["site_indicator"].values))
+    assert result["sigouts"].sizes["nsigma_time"] == len(
+        np.unique(inferpymc_inputs_dataset["sigma_freq_index"].values)
+    )
+    assert result["sigouts"].sizes["nsigma_site"] == len(
+        np.unique(inferpymc_inputs_dataset["site_indicator"].values)
+    )
 
     y = inferpymc_inputs_dataset["mf"].values
     assert y.size in result["Ytrace"].shape
@@ -167,8 +173,12 @@ def test_inferpymc_model_contains_expected_variables(
     assert len(model.coords["nmeasure"]) == inferpymc_inputs_dataset.sizes["nmeasure"]
     assert len(model.coords["nx"]) == inferpymc_inputs_dataset.sizes["region"]
     assert len(model.coords["nbc"]) == inferpymc_inputs_dataset.sizes["bc_region"]
-    assert len(model.coords["nsigma_site"]) == len(np.unique(inferpymc_inputs_dataset["site_indicator"].values))
-    assert len(model.coords["nsigma_time"]) == len(np.unique(inferpymc_inputs_dataset["sigma_freq_index"].values))
+    assert len(model.coords["nsigma_site"]) == len(
+        np.unique(inferpymc_inputs_dataset["site_indicator"].values)
+    )
+    assert len(model.coords["nsigma_time"]) == len(
+        np.unique(inferpymc_inputs_dataset["sigma_freq_index"].values)
+    )
 
 
 def test_build_inferpymc_model_accepts_dataset(

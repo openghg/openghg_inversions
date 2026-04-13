@@ -29,7 +29,9 @@ def _synthetic_fp_data_one_site_with_missing_month() -> dict[str, xr.Dataset]:
             np.linspace(0.1, 0.4, ntime),
         ]
     ).astype(np.float32)
-    h_bc = (np.arange(1, len(bc_regions) + 1)[:, None] * np.linspace(0.01, 0.1, ntime)[None, :]).astype(np.float32)
+    h_bc = (np.arange(1, len(bc_regions) + 1)[:, None] * np.linspace(0.01, 0.1, ntime)[None, :]).astype(
+        np.float32
+    )
 
     ds = xr.Dataset(
         data_vars={

@@ -178,7 +178,9 @@ def transform_bc(
 
 
 # INVERSION INPUTS PIPELINE
-def _drop_nan_and_compute(ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")) -> xr.Dataset:
+def _drop_nan_and_compute(
+    ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")
+) -> xr.Dataset:
     """Drop NaNs in required inversion variables and materialize core variables.
 
     This centralizes the dataset cleanup that was previously duplicated in

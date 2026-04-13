@@ -272,7 +272,14 @@ def fixedbasisMCMC(
     calculate_min_error: Literal["percentile", "residual"] | None = None,
     min_error_options: dict | None = None,
     output_format: Literal[
-        "hbmcmc", "hbmcmc_postprocessing", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"
+        "hbmcmc",
+        "hbmcmc_postprocessing",
+        "paris",
+        "basic",
+        "merged_data",
+        "inv_out",
+        "mcmc_args",
+        "mcmc_results",
     ] = "hbmcmc",
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
@@ -746,7 +753,9 @@ def fixedbasisMCMC(
             country_file=country_file,
             use_bc=use_bc,
         )
-        output_filename = define_output_filename(outputpath, species, domain, outputname, start_date, ext=".nc")
+        output_filename = define_output_filename(
+            outputpath, species, domain, outputname, start_date, ext=".nc"
+        )
         Path(outputpath).mkdir(parents=True, exist_ok=True)
         outputs.to_netcdf(output_filename, encoding=ncdf_encoding(outputs), mode="w")
         end_post = time.time()

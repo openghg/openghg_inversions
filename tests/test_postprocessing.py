@@ -56,6 +56,7 @@ def test_rhime_flux_reprocessing(europe_country_file, raw_data_path):
     assert "flux_total_prior" in paris_outs
     assert "flux_total_posterior" in paris_outs
 
+
 def test_rhime_flux_reprocessing_eastasia(eastasia_country_file, raw_data_path):
     """Check that we can re-run PARIS flux outputs on standard RHIME outputs from EASTASIA."""
     rhime_outs = xr.open_dataset(raw_data_path / "standard_rhime_outs_EASTASIA.nc")
@@ -104,7 +105,7 @@ def test_basic_outputs_eastasia(inv_out_eastasia, eastasia_country_file):
 
     for cv in conc_vars:
         for stat in stats:
-            assert cv + "_" + stat in outs    
+            assert cv + "_" + stat in outs
 
 
 @pytest.mark.parametrize("offset", [False, True])
@@ -120,7 +121,9 @@ def test_make_paris_outputs(inv_out, europe_country_file, tmpdir, offset):
 
     print(inv_out.trace.posterior)
 
-    flux_outs, conc_outs = make_paris_outputs(inv_out, country_file=europe_country_file, obs_avg_period="1h", domain="europe")
+    flux_outs, conc_outs = make_paris_outputs(
+        inv_out, country_file=europe_country_file, obs_avg_period="1h", domain="europe"
+    )
 
     if offset:
         assert "Yapriori_bias" in conc_outs

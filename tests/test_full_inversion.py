@@ -217,8 +217,7 @@ def test_full_inversion_two_sites(mcmc_args, mhd_and_tac_ch4_data_args):
 def test_full_inversion_offset_args(mcmc_args):
     """Test full inversion accepts explicit offset arguments through runtime plumbing."""
     mcmc_args["add_offset"] = True
-    mcmc_args["offset_args"] = {"drop_first": False,
-                                "offset_freq": "D"}
+    mcmc_args["offset_args"] = {"drop_first": False, "offset_freq": "D"}
     fixedbasisMCMC(**mcmc_args)
 
 
