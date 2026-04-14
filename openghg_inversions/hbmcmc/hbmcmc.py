@@ -45,7 +45,10 @@ from openghg_inversions.inversion_data import (
     load_merged_data,
 )
 from openghg_inversions.filters import filtering
-from openghg_inversions.postprocessing.inversion_output import InversionOutput, make_inv_out_for_fixed_basis_mcmc
+from openghg_inversions.postprocessing.inversion_output import (
+    InversionOutput,
+    make_inv_out_for_fixed_basis_mcmc,
+)
 from openghg_inversions.inversion_inputs import make_inv_inputs
 
 
@@ -152,6 +155,7 @@ def _extract_post_process_args(inv_inputs: xr.Dataset) -> dict[str, np.ndarray]:
         "min_error": inv_inputs.min_error.values,
     }
 
+
 def _inv_inputs_from_rerun_arrays(
     *,
     Hx: np.ndarray,
@@ -210,6 +214,7 @@ def _inv_inputs_from_rerun_arrays(
 # Output format handling
 # ------------------------------------------------------------
 
+
 @dataclass
 class _OutputContext:
     """Resolved output settings and runtime objects for final output handling."""
@@ -255,7 +260,9 @@ def _resolve_output_format(
     return resolved_output_format
 
 
-def _resolve_trace_path(save_trace: str | Path | bool, outputpath: str, outputname: str, start_date: str) -> Path | None:
+def _resolve_trace_path(
+    save_trace: str | Path | bool, outputpath: str, outputname: str, start_date: str
+) -> Path | None:
     """Resolve the output path for a saved trace file."""
     if not save_trace:
         return None
@@ -466,7 +473,12 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
             use_bc=context.use_bc,
         )
         output_filename = define_output_filename(
-            context.outputpath, context.species, context.domain, context.outputname, context.start_date, ext=".nc"
+            context.outputpath,
+            context.species,
+            context.domain,
+            context.outputname,
+            context.start_date,
+            ext=".nc",
         )
         Path(context.outputpath).mkdir(parents=True, exist_ok=True)
         outputs.to_netcdf(output_filename, encoding=ncdf_encoding(outputs), mode="w")
@@ -492,10 +504,20 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
         )
 
         conc_output_filename = define_output_filename(
-            context.outputpath, context.species, context.domain, context.outputname + "_conc", context.start_date, ext=".nc"
+            context.outputpath,
+            context.species,
+            context.domain,
+            context.outputname + "_conc",
+            context.start_date,
+            ext=".nc",
         )
         flux_output_filename = define_output_filename(
-            context.outputpath, context.species, context.domain, context.outputname + "_flux", context.start_date, ext=".nc"
+            context.outputpath,
+            context.species,
+            context.domain,
+            context.outputname + "_flux",
+            context.start_date,
+            ext=".nc",
         )
         Path(context.outputpath).mkdir(parents=True, exist_ok=True)
 
@@ -519,7 +541,9 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
     del mcmc_results["model"]
     legacy_postprocess_args = _prepare_legacy_hbmcmc_postprocess_args(context)
     legacy_postprocess_args.update(mcmc_results)
-    post_process_args_selection, _ = split_function_inputs(legacy_postprocess_args, mcmc.inferpymc_postprocessouts)
+    post_process_args_selection, _ = split_function_inputs(
+        legacy_postprocess_args, mcmc.inferpymc_postprocessouts
+    )
     out = mcmc.inferpymc_postprocessouts(**post_process_args_selection)
 
     end_post = time.time()
