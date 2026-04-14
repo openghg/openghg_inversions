@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
-from conftest import raw_data_path
 
 
 @pytest.fixture
@@ -158,15 +157,9 @@ def test_full_inversion_lognormal_reparam(mcmc_args):
 
 
 def test_full_inversion_paris_outputs_lognormal_reparam_conflict(mcmc_args):
-    """Check PARIS outputs ignore reparameterized latent-only traces.
-
-    This regression test covers the Stage C components builder path, where
-    reparameterized lognormal priors add ``x_latent`` traces that should not be
-    treated as public emissions traces by post-processing.
-    """
+    """Check PARIS outputs ignore reparameterized latent-only traces."""
     mcmc_args["reload_merged_data"] = False
     mcmc_args["output_format"] = "paris"
-    mcmc_args["model_builder"] = "components"
     mcmc_args["reparameterise_log_normal"] = True
     mcmc_args["xprior"] = {"pdf": "lognormal", "mu": 1.0, "sigma": 1.0}
 
@@ -221,17 +214,10 @@ def test_full_inversion_two_sites(mcmc_args, mhd_and_tac_ch4_data_args):
     fixedbasisMCMC(**mcmc_args)
 
 
-def test_full_inversion_components_builder(mcmc_args):
-    """Test full inversion can opt into the temporary components builder."""
-    mcmc_args["model_builder"] = "components"
-    fixedbasisMCMC(**mcmc_args)
-
-
 def test_full_inversion_offset_args(mcmc_args):
     """Test full inversion accepts explicit offset arguments through runtime plumbing."""
     mcmc_args["add_offset"] = True
-    mcmc_args["offset_args"] = {"drop_first": False,
-                                "offset_freq": "D"}
+    mcmc_args["offset_args"] = {"drop_first": False, "offset_freq": "D"}
     fixedbasisMCMC(**mcmc_args)
 
 

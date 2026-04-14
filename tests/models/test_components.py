@@ -17,7 +17,10 @@ from openghg_inversions.models.coords import CoordRegistry, attach_coord_registr
 def _obs_index() -> pd.MultiIndex:
     """Create a stacked observation index used by component tests."""
     return pd.MultiIndex.from_arrays(
-        [["MHD", "MHD", "TAC", "TAC"], pd.to_datetime(["2019-01-01", "2019-01-02", "2019-02-01", "2019-02-02"])],
+        [
+            ["MHD", "MHD", "TAC", "TAC"],
+            pd.to_datetime(["2019-01-01", "2019-01-02", "2019-02-01", "2019-02-02"]),
+        ],
         names=["site", "time"],
     )
 
@@ -89,12 +92,7 @@ def test_add_linear_component_creates_expected_named_vars() -> None:
 
 
 def test_add_linear_component_returns_effective_reparameterised_latent() -> None:
-    """Check the component result exposes the true reparameterized latent variable.
-
-    This is a temporary refactor-support test. It protects the Stage C
-    component API while the legacy and component builders coexist and ensures
-    the builder does not need to inspect model internals to find ``x_latent``.
-    """
+    """Check the component result exposes the true reparameterized latent variable."""
     data = xr.DataArray(
         np.ones((4, 2)),
         dims=("nmeasure", "nx"),
@@ -124,7 +122,11 @@ def test_add_sigma_component_supports_explicit_and_derived_freq() -> None:
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
-        add_sigma_component(site_indicator, prior_args={"pdf": "uniform", "lower": 0.1, "upper": 1.0}, sigma_freq_index=sigma_freq_index)
+        add_sigma_component(
+            site_indicator,
+            prior_args={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            sigma_freq_index=sigma_freq_index,
+        )
         assert "sigma" in model.named_vars
         assert "sigma_freq_index" in model.named_vars
 

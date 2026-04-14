@@ -39,9 +39,14 @@ import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 from openghg_inversions.models.priors import lognormal_mu_sigma
 from openghg_inversions.utils import ncdf_encoding
 from openghg_inversions.basis import basis_functions_wrapper
-from openghg_inversions.inversion_data import data_processing_surface_notracer, load_merged_data
+from openghg_inversions.inversion_data import (
+    data_processing_surface_notracer,
+    load_merged_data,
+)
 from openghg_inversions.filters import filtering
-from openghg_inversions.postprocessing.inversion_output import make_inv_out_for_fixed_basis_mcmc
+from openghg_inversions.postprocessing.inversion_output import (
+    make_inv_out_for_fixed_basis_mcmc,
+)
 from openghg_inversions.inversion_inputs import make_inv_inputs
 
 
@@ -66,21 +71,35 @@ def update_log_normal_prior(prior):
 # ----------------------------------------
 
 
-def make_inv_inputs_legacy(
+def _prepare_runtime_inv_inputs(
     *,
     fp_data,
     sites,
     start_date,
-    use_bc,
     bc_freq,
     sigma_freq,
     min_error,
     calculate_min_error,
     min_error_options,
-) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
-    """Create inputs for PyMC.
+) -> xr.Dataset:
+    """Create the dataset consumed by the current inferpymc runtime path.
 
-    This combines the data for each site into total sensitivity, obs, etc. arrays.
+    Args:
+        fp_data: Forward-model datasets keyed by site name.
+        sites: Sites to include in the inversion inputs.
+        start_date: Inversion start date used when anchoring time-derived
+            indices.
+        bc_freq: Frequency used for BC grouping.
+        sigma_freq: Frequency used for sigma grouping.
+        min_error: Minimum-error configuration passed through to
+            ``make_inv_inputs``.
+        calculate_min_error: Deprecated compatibility argument. When provided,
+            its value overrides ``min_error``.
+        min_error_options: Extra options controlling minimum-error
+            construction.
+
+    Returns:
+        Dataset produced by ``make_inv_inputs`` for the active runtime path.
     """
     if calculate_min_error is not None:
         warnings.warn(
@@ -90,7 +109,7 @@ def make_inv_inputs_legacy(
 
     min_error_options = min_error_options or {}
 
-    ds = make_inv_inputs(
+    return make_inv_inputs(
         fp_data,
         sites=sites,
         bc_freq=bc_freq,
@@ -100,54 +119,93 @@ def make_inv_inputs_legacy(
         start_date=start_date,
     )
 
-    y = ds.mf.values
-    y_time = ds.time.values
-    siteindicator = ds.site_indicator.values
-    error = ds.mf_error.values
-    obs_repeatability = ds.mf_repeatability.values
-    obs_variability = ds.mf_variability.values
-    obs_prior_factor = ds.mf_prior_factor.values if "mf_prior_factor" in ds else None
+
+def _extract_post_process_args(inv_inputs: xr.Dataset) -> dict[str, np.ndarray]:
+    """Extract legacy-shaped postprocessing arrays from inversion inputs.
+
+    NOTE: This is for compatibility at Stage D of #370. This should be removed in Stage E.
+
+    Args:
+        inv_inputs: Dataset produced by ``make_inv_inputs``.
+
+    Returns:
+        Dictionary of legacy-shaped arrays still expected by postprocessing
+        functions.
+    """
+    y = inv_inputs.mf.values
+    obs_prior_factor = inv_inputs.mf_prior_factor.values if "mf_prior_factor" in inv_inputs else None
     obs_prior_upper_level_factor = (
-        ds.mf_prior_upper_level_factor.values if "mf_prior_upper_level_factor" in ds else None
+        inv_inputs.mf_prior_upper_level_factor.values if "mf_prior_upper_level_factor" in inv_inputs else None
     )
-    h_x = ds.H.values
-    h_bc = ds.H_bc.values if "H_bc" in ds else None
-    sigma_freq_index = ds.sigma_freq_index.values
-    min_error_arr = ds.min_error.values
-
-    if np.isnan(h_x).any():
-        warnings.warn(f"Hx matrix contains {np.isnan(h_x).flatten().sum()} NaN values")
-
-    mcmc_args = {
-        "Hx": h_x,
-        "Y": y,
-        "error": error,
-        "siteindicator": siteindicator,
-        "sigma_freq_index": sigma_freq_index,
-        "min_error": min_error_arr,
-    }
-
-    if use_bc is True:
-        assert h_bc is not None  # for mypy
-
-        if np.isnan(h_bc).any():
-            warnings.warn(f"Hbc matrix contains {np.isnan(h_bc).flatten().sum()} NaN values")
-
-        mcmc_args["Hbc"] = h_bc
-
-    post_process_args = {
-        "Ytime": y_time,
-        "obs_repeatability": obs_repeatability,
-        "obs_variability": obs_variability,
-        "obs_prior_factor": (
-            obs_prior_factor if obs_prior_factor is not None else np.zeros_like(y)
-        ),  # use zeros instead of None
+    return {
+        "Ytime": inv_inputs.time.values,
+        "obs_repeatability": inv_inputs.mf_repeatability.values,
+        "obs_variability": inv_inputs.mf_variability.values,
+        "obs_prior_factor": obs_prior_factor if obs_prior_factor is not None else np.zeros_like(y),
         "obs_prior_upper_level_factor": (
             obs_prior_upper_level_factor if obs_prior_upper_level_factor is not None else np.zeros_like(y)
-        ),  # same
+        ),
+        "Hx": inv_inputs.H.values,
+        "Y": inv_inputs.mf.values,
+        "error": inv_inputs.mf_error.values,
+        "siteindicator": inv_inputs.site_indicator.values,
+        "sigma_freq_index": inv_inputs.sigma_freq_index.values,
+        "min_error": inv_inputs.min_error.values,
     }
 
-    return mcmc_args, post_process_args
+
+def _inv_inputs_from_rerun_arrays(
+    *,
+    Hx: np.ndarray,
+    Y: np.ndarray,
+    error: np.ndarray,
+    siteindicator: np.ndarray,
+    sigma_freq_index: np.ndarray,
+    Ytime: np.ndarray,
+    Hbc: np.ndarray | None = None,
+    min_error: float | np.ndarray = 0.0,
+) -> xr.Dataset:
+    """Build a minimal inferpymc-compatible dataset from saved output arrays.
+
+    NOTE: this is a temporary fix for `rerun_output` while `inferpymc` is being refactored.
+    This should be removed once `rerun_output` is updated.
+
+    Args:
+        Hx: Emissions sensitivity array with shape ``(region, nmeasure)``.
+        Y: Observation vector.
+        error: Observation error vector.
+        siteindicator: Site indicator for each observation.
+        sigma_freq_index: Sigma-period indicator for each observation.
+        Ytime: Observation timestamps.
+        Hbc: Optional BC sensitivity array with shape ``(bc_region, nmeasure)``.
+        min_error: Minimum error values to attach to the dataset.
+
+    Returns:
+        Minimal dataset compatible with the dataset-first ``inferpymc`` path.
+    """
+    nmeasure = len(Y)
+    coords: dict[str, object] = {
+        "nmeasure": np.arange(nmeasure),
+        "time": ("nmeasure", Ytime),
+    }
+    data_vars: dict[str, tuple[tuple[str, ...], np.ndarray]] = {
+        "H": (("region", "nmeasure"), Hx),
+        "mf": (("nmeasure",), Y),
+        "mf_error": (("nmeasure",), error),
+        "site_indicator": (("nmeasure",), siteindicator.astype(int)),
+        "sigma_freq_index": (("nmeasure",), sigma_freq_index.astype(int)),
+        "min_error": (
+            ("nmeasure",),
+            np.broadcast_to(np.asarray(min_error), (nmeasure,)),
+        ),
+    }
+    coords["region"] = np.arange(Hx.shape[0])
+
+    if Hbc is not None:
+        data_vars["H_bc"] = (("bc_region", "nmeasure"), Hbc)
+        coords["bc_region"] = np.arange(Hbc.shape[0])
+
+    return xr.Dataset(data_vars=data_vars, coords=coords)
 
 
 def fixedbasisMCMC(
@@ -214,7 +272,14 @@ def fixedbasisMCMC(
     calculate_min_error: Literal["percentile", "residual"] | None = None,
     min_error_options: dict | None = None,
     output_format: Literal[
-        "hbmcmc", "hbmcmc_postprocessing", "paris", "basic", "merged_data", "inv_out", "mcmc_args", "mcmc_results"
+        "hbmcmc",
+        "hbmcmc_postprocessing",
+        "paris",
+        "basic",
+        "merged_data",
+        "inv_out",
+        "mcmc_args",
+        "mcmc_results",
     ] = "hbmcmc",
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
@@ -529,8 +594,25 @@ def fixedbasisMCMC(
     if use_tracer:
         raise ValueError("Model does not currently include tracer model. Watch this space")
 
+    inv_inputs = _prepare_runtime_inv_inputs(
+        fp_data=fp_data,
+        sites=sites,
+        start_date=start_date,
+        bc_freq=bc_freq,
+        sigma_freq=sigma_freq,
+        min_error=min_error,
+        calculate_min_error=calculate_min_error,
+        min_error_options=min_error_options,
+    )
+
+    if np.isnan(inv_inputs.H.values).any():
+        warnings.warn(f"Hx matrix contains {np.isnan(inv_inputs.H.values).flatten().sum()} NaN values")
+    if use_bc and "H_bc" in inv_inputs and np.isnan(inv_inputs.H_bc.values).any():
+        warnings.warn(f"Hbc matrix contains {np.isnan(inv_inputs.H_bc.values).flatten().sum()} NaN values")
+
     # TODO keep this config separate from mcmc_args in the future
     mcmc_config = {
+        "inv_inputs": inv_inputs,
         "xprior": update_log_normal_prior(xprior),
         "sigprior": sigprior,
         "nit": nit,
@@ -548,19 +630,8 @@ def fixedbasisMCMC(
     if use_bc:
         mcmc_config["bcprior"] = update_log_normal_prior(bcprior)
 
-    mcmc_args, post_process_args = make_inv_inputs_legacy(
-        fp_data=fp_data,
-        sites=sites,
-        start_date=start_date,
-        use_bc=use_bc,
-        bc_freq=bc_freq,
-        sigma_freq=sigma_freq,
-        min_error=min_error,
-        calculate_min_error=calculate_min_error,
-        min_error_options=min_error_options,
-    )
-
-    mcmc_args.update(mcmc_config)
+    mcmc_args = mcmc_config.copy()
+    post_process_args = _extract_post_process_args(inv_inputs)
 
     post_process_args.update(
         {
@@ -578,6 +649,9 @@ def fixedbasisMCMC(
         }
     )
 
+    if use_bc and "H_bc" in inv_inputs:
+        post_process_args["Hbc"] = inv_inputs.H_bc.values
+
     # cast float64 to float32
     for k in list(post_process_args.keys()):  # use list to get keys before modifying dict
         v = post_process_args[k]
@@ -587,6 +661,7 @@ def fixedbasisMCMC(
     # add mcmc_args to post_process_args
     # and delete a few we don't need
     post_process_args.update(mcmc_args)
+    del post_process_args["inv_inputs"]
     del post_process_args["nit"]
     del post_process_args["verbose"]
     del post_process_args["offset_args"]
@@ -612,9 +687,8 @@ def fixedbasisMCMC(
 
     print(f"MCMC Inversion complete. Time taken = {end_inversion - start_inversion:.2f} seconds")
 
-    # get trace and model: for future updates
+    # get trace: for future updates
     trace = mcmc_results["trace"]
-    model = mcmc_results["model"]
 
     # Path to save trace
     if save_trace:
@@ -679,7 +753,9 @@ def fixedbasisMCMC(
             country_file=country_file,
             use_bc=use_bc,
         )
-        output_filename = define_output_filename(outputpath, species, domain, outputname, start_date, ext=".nc")
+        output_filename = define_output_filename(
+            outputpath, species, domain, outputname, start_date, ext=".nc"
+        )
         Path(outputpath).mkdir(parents=True, exist_ok=True)
         outputs.to_netcdf(output_filename, encoding=ncdf_encoding(outputs), mode="w")
         end_post = time.time()
@@ -760,6 +836,9 @@ def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: boo
         At the moment fluxapriori in the output is the mean apriori flux
         over the inversion period and so will not be identical to the
         original a priori flux, if it varies over the inversion period.
+
+    TODO: update this function to use `InversionOutput` (and possibly an ini file) as its inputs.
+    This may require updating `InversionOutput` to hold more model metadata.
     """
 
     def isFloat(string):
@@ -812,22 +891,18 @@ def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: boo
     else:
         country_unit_prefix = None
 
-    (
-        xouts,
-        bcouts,
-        sigouts,
-        Ytrace,
-        YBCtrace,
-        convergence,
-        step1,
-        step2,
-    ) = mcmc.inferpymc(
+    inv_inputs = _inv_inputs_from_rerun_arrays(
         Hx=Hx,
         Hbc=Hbc,
         Y=Y,
         error=error,
         siteindicator=siteindicator,
         sigma_freq_index=sigma_freq_index,
+        Ytime=Ytime,
+    )
+
+    mcmc_results = mcmc.inferpymc(
+        inv_inputs=inv_inputs,
         xprior=xprior,
         bcprior=bcprior,
         sigprior=sigprior,
@@ -841,6 +916,16 @@ def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: boo
         verbose=verbose,
     )
 
+    xouts = mcmc_results["xouts"]
+    sigouts = mcmc_results["sigouts"]
+    convergence = mcmc_results["convergence"]
+    step1 = mcmc_results["step1"]
+    step2 = mcmc_results["step2"]
+    Ytrace = mcmc_results["Ytrace"]
+    OFFSETtrace = mcmc_results["OFFSETtrace"]
+    bcouts = mcmc_results.get("bcouts")
+    YBCtrace = mcmc_results.get("YBCtrace")
+
     mcmc.inferpymc_postprocessouts(
         xouts=xouts,
         bcouts=bcouts,
@@ -851,6 +936,7 @@ def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: boo
         Y=Y,
         error=error,
         Ytrace=Ytrace,
+        OFFSETtrace=OFFSETtrace,
         YBCtrace=YBCtrace,
         step1=step1,
         step2=step2,

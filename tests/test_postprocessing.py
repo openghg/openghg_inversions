@@ -40,6 +40,7 @@ def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_nam
 def inv_out(raw_data_path):
     return InversionOutput.load(raw_data_path / "inversion_output.nc")
 
+
 @pytest.fixture(scope="module")
 def inv_out_eastasia(raw_data_path):
     return InversionOutput.load(raw_data_path / "inversion_output_EASTASIA.nc")
@@ -54,6 +55,7 @@ def test_rhime_flux_reprocessing(europe_country_file, raw_data_path):
 
     assert "flux_total_prior" in paris_outs
     assert "flux_total_posterior" in paris_outs
+
 
 def test_rhime_flux_reprocessing_eastasia(eastasia_country_file, raw_data_path):
     """Check that we can re-run PARIS flux outputs on standard RHIME outputs from EASTASIA."""
@@ -85,6 +87,7 @@ def test_basic_outputs(inv_out, europe_country_file):
         for stat in stats:
             assert cv + "_" + stat in outs
 
+
 def test_basic_outputs_eastasia(inv_out_eastasia, eastasia_country_file):
     """Test creation of basic output for EASTASIA domain.
 
@@ -102,7 +105,7 @@ def test_basic_outputs_eastasia(inv_out_eastasia, eastasia_country_file):
 
     for cv in conc_vars:
         for stat in stats:
-            assert cv + "_" + stat in outs    
+            assert cv + "_" + stat in outs
 
 
 @pytest.mark.parametrize("offset", [False, True])
@@ -118,7 +121,9 @@ def test_make_paris_outputs(inv_out, europe_country_file, tmpdir, offset):
 
     print(inv_out.trace.posterior)
 
-    flux_outs, conc_outs = make_paris_outputs(inv_out, country_file=europe_country_file, obs_avg_period="1h", domain="europe")
+    flux_outs, conc_outs = make_paris_outputs(
+        inv_out, country_file=europe_country_file, obs_avg_period="1h", domain="europe"
+    )
 
     if offset:
         assert "Yapriori_bias" in conc_outs
@@ -126,6 +131,7 @@ def test_make_paris_outputs(inv_out, europe_country_file, tmpdir, offset):
     # check we can write to netCDF
     flux_outs.to_netcdf(tmpdir / "flux.nc")
     conc_outs.to_netcdf(tmpdir / "conc.nc")
+
 
 def test_save_inversion_output(mcmc_args, tmpdir):
     """Check that we can save and reload inversion outputs"""
@@ -139,15 +145,8 @@ def test_save_inversion_output(mcmc_args, tmpdir):
 
 
 def test_country_outputs_lognormal_reparam_conflict(mcmc_args, europe_country_file):
-    """Check country outputs ignore reparameterized latent-only traces.
-
-    This is a smaller regression test for the Stage C components builder path.
-    It stops at the ``InversionOutput`` stage and checks that country
-    post-processing uses the public ``x`` trace rather than the internal
-    ``x_latent`` trace introduced by lognormal reparameterisation.
-    """
+    """Check country outputs ignore reparameterized latent-only traces."""
     mcmc_args["output_format"] = "inv_out"
-    mcmc_args["model_builder"] = "components"
     mcmc_args["reparameterise_log_normal"] = True
     mcmc_args["xprior"] = {"pdf": "lognormal", "mu": 1.0, "sigma": 1.0}
 

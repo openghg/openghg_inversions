@@ -5,7 +5,7 @@ from stacked or ragged dimensions such as ``nmeasure`` representing stacked
 ``(site, time)`` observations. PyMC does not reliably accept all such objects as
 model coordinates, so model construction should use sanitized, PyMC-safe coords.
 
-For Stage C, the sanitization policy is intentionally simple: convert each known
+The current sanitization policy is intentionally simple: convert each known
 dimension coordinate to a range index. The original scientific coordinates are
 stored separately so they can later be restored onto ArviZ ``InferenceData``.
 """

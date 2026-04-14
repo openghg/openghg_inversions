@@ -5,8 +5,9 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions import utils
-from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs_legacy
+from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.hbmcmc.inversion_pymc import (
+    _canonicalise_inferpymc_dataset,
     _weighted_apriori_flux_for_months,
     inferpymc,
 )
@@ -28,7 +29,9 @@ def _synthetic_fp_data_one_site_with_missing_month() -> dict[str, xr.Dataset]:
             np.linspace(0.1, 0.4, ntime),
         ]
     ).astype(np.float32)
-    h_bc = (np.arange(1, len(bc_regions) + 1)[:, None] * np.linspace(0.01, 0.1, ntime)[None, :]).astype(np.float32)
+    h_bc = (np.arange(1, len(bc_regions) + 1)[:, None] * np.linspace(0.01, 0.1, ntime)[None, :]).astype(
+        np.float32
+    )
 
     ds = xr.Dataset(
         data_vars={
@@ -52,39 +55,38 @@ def _synthetic_fp_data_one_site_with_missing_month() -> dict[str, xr.Dataset]:
 def test_make_inv_inputs_month_gap_monthly_indices_are_non_contiguous():
     fp_data = _synthetic_fp_data_one_site_with_missing_month()
 
-    mcmc_args, _ = make_inv_inputs_legacy(
-        fp_data=fp_data,
+    inv_inputs = make_inv_inputs(
+        fp_data,
         sites=["AAA"],
-        start_date="2019-01-01",
-        use_bc=True,
         bc_freq="monthly",
         sigma_freq="monthly",
         min_error=0.0,
-        calculate_min_error=None,
-        min_error_options={},
+        min_error_per_site=False,
+        start_date="2019-01-01",
     )
 
-    uniq = np.unique(mcmc_args["sigma_freq_index"])
+    uniq = np.unique(inv_inputs["sigma_freq_index"].values)
     np.testing.assert_array_equal(uniq, np.array([0, 2]))
+
+    canonical = _canonicalise_inferpymc_dataset(inv_inputs, use_bc=True)
+    np.testing.assert_array_equal(np.unique(canonical["sigma_freq_index"].values), np.array([0, 1]))
 
 
 def test_inferpymc_smoke_runs_for_month_gap():
     fp_data = _synthetic_fp_data_one_site_with_missing_month()
 
-    mcmc_args, _ = make_inv_inputs_legacy(
-        fp_data=fp_data,
+    inv_inputs = make_inv_inputs(
+        fp_data,
         sites=["AAA"],
-        start_date="2019-01-01",
-        use_bc=True,
         bc_freq="monthly",
         sigma_freq="monthly",
         min_error=0.0,
-        calculate_min_error=None,
-        min_error_options={},
+        min_error_per_site=False,
+        start_date="2019-01-01",
     )
 
     result = inferpymc(
-        **mcmc_args,
+        inv_inputs=inv_inputs,
         xprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
         bcprior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
         sigprior={"pdf": "uniform", "lower": 0.1, "upper": 0.4},
