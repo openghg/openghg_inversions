@@ -152,7 +152,6 @@ def _extract_post_process_args(inv_inputs: xr.Dataset) -> dict[str, np.ndarray]:
         "min_error": inv_inputs.min_error.values,
     }
 
-
 def _inv_inputs_from_rerun_arrays(
     *,
     Hx: np.ndarray,
@@ -225,7 +224,8 @@ class _OutputContext:
     use_bc: bool
     country_file: str | None
     paris_postprocessing_kwargs: dict | None
-    post_process_args: dict
+    legacy_postprocess_args: dict
+    mcmc_args: dict
     mcmc_results: dict
     inv_out_args: dict
     inv_out: InversionOutput | None = None
@@ -289,7 +289,8 @@ def _build_output_context(
     paris_postprocessing_kwargs: dict | None,
     save_trace: str | Path | bool,
     save_inversion_output: str | Path | bool,
-    post_process_args: dict,
+    legacy_postprocess_args: dict,
+    mcmc_args: dict,
     mcmc_results: dict,
     inv_out_args: dict,
 ) -> _OutputContext:
@@ -308,7 +309,8 @@ def _build_output_context(
         paris_postprocessing_kwargs: Optional keyword arguments for PARIS output creation.
         save_trace: Trace save setting passed to ``fixedbasisMCMC``.
         save_inversion_output: InversionOutput save setting passed to ``fixedbasisMCMC``.
-        post_process_args: Postprocessing argument dictionary built during inversion setup.
+        legacy_postprocess_args: Legacy postprocessing argument dictionary built during inversion setup.
+        mcmc_args: Arguments passed to ``mcmc.inferpymc``.
         mcmc_results: Raw sampler results from ``mcmc.inferpymc``.
         inv_out_args: Arguments needed to build ``InversionOutput``.
 
@@ -338,11 +340,65 @@ def _build_output_context(
         use_bc=use_bc,
         country_file=country_file,
         paris_postprocessing_kwargs=paris_postprocessing_kwargs,
-        post_process_args=post_process_args,
+        legacy_postprocess_args=legacy_postprocess_args,
+        mcmc_args=mcmc_args,
         mcmc_results=mcmc_results,
         inv_out_args=inv_out_args,
         paths=paths,
     )
+
+
+def _build_inv_out_args(
+    *,
+    fp_data: dict,
+    legacy_postprocess_args: dict,
+    mcmc_results: dict,
+    sites: list[str],
+    start_date: str,
+    end_date: str,
+    species: str,
+    domain: str,
+    is_sat_column: bool,
+) -> dict:
+    """Build explicit arguments for ``make_inv_out_for_fixed_basis_mcmc``.
+
+    Args:
+        fp_data: Basis-applied inversion input datasets.
+        legacy_postprocess_args: Legacy postprocessing values computed alongside inversion inputs.
+        mcmc_results: Raw inversion outputs from ``mcmc.inferpymc``.
+        sites: Site names used in the inversion.
+        start_date: Inversion start date.
+        end_date: Inversion end date.
+        species: Species name for output metadata.
+        domain: Domain name for output metadata.
+        is_sat_column: Whether satellite-column inputs are present.
+
+    Returns:
+        dict: Explicit keyword arguments for ``make_inv_out_for_fixed_basis_mcmc``.
+    """
+    inv_out_args = {
+        "fp_data": fp_data,
+        "Y": legacy_postprocess_args["Y"],
+        "Ytime": legacy_postprocess_args["Ytime"],
+        "error": legacy_postprocess_args["error"],
+        "obs_repeatability": legacy_postprocess_args["obs_repeatability"],
+        "obs_variability": legacy_postprocess_args["obs_variability"],
+        "site_indicator": legacy_postprocess_args["siteindicator"],
+        "site_names": sites,
+        "mcmc_results": mcmc_results,
+        "start_date": start_date,
+        "end_date": end_date,
+        "species": species,
+        "domain": domain,
+        "obs_prior_factor": legacy_postprocess_args["obs_prior_factor"],
+        "obs_prior_upper_level_factor": legacy_postprocess_args["obs_prior_upper_level_factor"],
+    }
+
+    if not is_sat_column:
+        inv_out_args["obs_prior_factor"] = None
+        inv_out_args["obs_prior_upper_level_factor"] = None
+
+    return inv_out_args
 
 
 def _get_inversion_output(context: _OutputContext) -> InversionOutput:
@@ -350,6 +406,18 @@ def _get_inversion_output(context: _OutputContext) -> InversionOutput:
     if context.inv_out is None:
         context.inv_out = make_inv_out_for_fixed_basis_mcmc(**context.inv_out_args)
     return context.inv_out
+
+
+def _prepare_legacy_hbmcmc_postprocess_args(context: _OutputContext) -> dict:
+    """Prepare the legacy argument bag for ``inferpymc_postprocessouts``."""
+    legacy_postprocess_args = context.legacy_postprocess_args.copy()
+    legacy_postprocess_args.update(context.mcmc_args)
+    del legacy_postprocess_args["inv_inputs"]
+    del legacy_postprocess_args["nit"]
+    del legacy_postprocess_args["verbose"]
+    del legacy_postprocess_args["offset_args"]
+    del legacy_postprocess_args["power"]
+    return legacy_postprocess_args
 
 
 def _handle_core_output_artifacts(context: _OutputContext) -> None:
@@ -389,9 +457,11 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
         outputs = make_legacy_hbmcmc_output(
             inv_out=_get_inversion_output(context),
             mcmc_results=context.mcmc_results,
-            sigma_freq_index=context.post_process_args["sigma_freq_index"],
-            Hx=context.post_process_args["Hx"],
-            Hbc=context.post_process_args.get("Hbc"),
+            # TODO: Stop threading sigma_freq_index explicitly once the legacy model-building
+            # path is removed and sigma_freq_index always comes from model data.
+            sigma_freq_index=context.legacy_postprocess_args["sigma_freq_index"],
+            Hx=context.legacy_postprocess_args["Hx"],
+            Hbc=context.legacy_postprocess_args.get("Hbc"),
             country_file=context.country_file,
             use_bc=context.use_bc,
         )
@@ -447,9 +517,9 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
     mcmc_results = context.mcmc_results.copy()
     del mcmc_results["trace"]
     del mcmc_results["model"]
-    post_process_args = context.post_process_args.copy()
-    post_process_args.update(mcmc_results)
-    post_process_args_selection, _ = split_function_inputs(post_process_args, mcmc.inferpymc_postprocessouts)
+    legacy_postprocess_args = _prepare_legacy_hbmcmc_postprocess_args(context)
+    legacy_postprocess_args.update(mcmc_results)
+    post_process_args_selection, _ = split_function_inputs(legacy_postprocess_args, mcmc.inferpymc_postprocessouts)
     out = mcmc.inferpymc_postprocessouts(**post_process_args_selection)
 
     end_post = time.time()
@@ -855,9 +925,9 @@ def fixedbasisMCMC(
         mcmc_config["bcprior"] = update_log_normal_prior(bcprior)
 
     mcmc_args = mcmc_config.copy()
-    post_process_args = _extract_post_process_args(inv_inputs)
+    legacy_postprocess_args = _extract_post_process_args(inv_inputs)
 
-    post_process_args.update(
+    legacy_postprocess_args.update(
         {
             "domain": domain,
             "species": species,
@@ -874,22 +944,13 @@ def fixedbasisMCMC(
     )
 
     if use_bc and "H_bc" in inv_inputs:
-        post_process_args["Hbc"] = inv_inputs.H_bc.values
+        legacy_postprocess_args["Hbc"] = inv_inputs.H_bc.values
 
     # cast float64 to float32
-    for k in list(post_process_args.keys()):  # use list to get keys before modifying dict
-        v = post_process_args[k]
+    for k in list(legacy_postprocess_args.keys()):  # use list to get keys before modifying dict
+        v = legacy_postprocess_args[k]
         if isinstance(v, np.ndarray) and v.dtype == "float64":
-            post_process_args[k] = v.astype("float32")
-
-    # add mcmc_args to post_process_args
-    # and delete a few we don't need
-    post_process_args.update(mcmc_args)
-    del post_process_args["inv_inputs"]
-    del post_process_args["nit"]
-    del post_process_args["verbose"]
-    del post_process_args["offset_args"]
-    del post_process_args["power"]
+            legacy_postprocess_args[k] = v.astype("float32")
 
     # add any additional kwargs to mcmc_args (these aren't needed for post processing)
     mcmc_args.update(kwargs)
@@ -910,15 +971,18 @@ def fixedbasisMCMC(
     end_inversion = time.time()
 
     print(f"MCMC Inversion complete. Time taken = {end_inversion - start_inversion:.2f} seconds")
-    # Get args needed for make_inv_out_for_fixed_basis_mcmc
-    inv_out_args, _ = split_function_inputs(post_process_args, make_inv_out_for_fixed_basis_mcmc)
-    inv_out_args["site_names"] = sites
-    inv_out_args["site_indicator"] = post_process_args["siteindicator"]
-    inv_out_args["mcmc_results"] = mcmc_results
 
-    if not is_sat_column:
-        inv_out_args["obs_prior_factor"] = None
-        inv_out_args["obs_prior_upper_level_factor"] = None
+    inv_out_args = _build_inv_out_args(
+        fp_data=fp_data,
+        legacy_postprocess_args=legacy_postprocess_args,
+        mcmc_results=mcmc_results,
+        sites=sites,
+        start_date=start_date,
+        end_date=end_date,
+        species=species,
+        domain=domain,
+        is_sat_column=is_sat_column,
+    )
 
     output_context = _build_output_context(
         output_format=output_format,
@@ -933,7 +997,8 @@ def fixedbasisMCMC(
         paris_postprocessing_kwargs=paris_postprocessing_kwargs,
         save_trace=save_trace,
         save_inversion_output=save_inversion_output,
-        post_process_args=post_process_args,
+        legacy_postprocess_args=legacy_postprocess_args,
+        mcmc_args=mcmc_args,
         mcmc_results=mcmc_results,
         inv_out_args=inv_out_args,
     )
