@@ -183,7 +183,7 @@ def test_hbmcmc_postprocessing_saves_legacy_output(mcmc_args, tmpdir):
 
 def test_resolve_output_format_canonicalizes_paris_compatibility():
     with pytest.warns(UserWarning, match="Use `output_format = 'paris'` instead"):
-        resolved = _resolve_output_format("hbmcmc", paris_postprocessing=True, is_sat_column=False)
+        resolved = _resolve_output_format("hbmcmc", paris_postprocessing=True, is_column=False)
 
     assert resolved == "paris"
 

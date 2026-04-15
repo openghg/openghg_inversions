@@ -241,7 +241,7 @@ def _resolve_output_format(
     output_format: str,
     *,
     paris_postprocessing: bool,
-    is_sat_column: bool,
+    is_column: bool,
 ) -> str:
     """Resolve deprecated aliases and validate the canonical output format."""
     if paris_postprocessing is True:
@@ -252,9 +252,9 @@ def _resolve_output_format(
 
     resolved_output_format = output_format.lower()
 
-    if resolved_output_format == "hbmcmc" and is_sat_column:
+    if resolved_output_format == "hbmcmc" and is_column:
         raise ValueError(
-            "Cannot use output_format 'hbmcmc' when satellite column measurements are included. Please choose another output_format."
+            "Cannot use output_format 'hbmcmc' when column-based measurements are included. Please choose another output_format."
         )
 
     return resolved_output_format
@@ -365,7 +365,7 @@ def _build_inv_out_args(
     end_date: str,
     species: str,
     domain: str,
-    is_sat_column: bool,
+    is_column: bool,
 ) -> dict:
     """Build explicit arguments for ``make_inv_out_for_fixed_basis_mcmc``.
 
@@ -378,7 +378,7 @@ def _build_inv_out_args(
         end_date: Inversion end date.
         species: Species name for output metadata.
         domain: Domain name for output metadata.
-        is_sat_column: Whether satellite-column inputs are present.
+        is_column: Whether column-based inputs are present.
 
     Returns:
         dict: Explicit keyword arguments for ``make_inv_out_for_fixed_basis_mcmc``.
@@ -401,7 +401,7 @@ def _build_inv_out_args(
         "obs_prior_upper_level_factor": legacy_postprocess_args["obs_prior_upper_level_factor"],
     }
 
-    if not is_sat_column:
+    if not is_column:
         inv_out_args["obs_prior_factor"] = None
         inv_out_args["obs_prior_upper_level_factor"] = None
 
@@ -764,15 +764,16 @@ def fixedbasisMCMC(
         xr.Dataset | dict: Results from the inversion in a Dataset if skip_post_processing==False,
             in a dictionary if True.
     """
+    # Check if any observations are column based.
     if inlet is not None:
-        is_sat_column = any([i == "column" for i in inlet])
+        is_column = any(i == "column" for i in inlet)
     else:
-        is_sat_column = False
+        is_column = False
 
     output_format = _resolve_output_format(
         output_format,
         paris_postprocessing=paris_postprocessing,
-        is_sat_column=is_sat_column,
+        is_column=is_column,
     )
 
     rerun_merge = True
@@ -1005,7 +1006,7 @@ def fixedbasisMCMC(
         end_date=end_date,
         species=species,
         domain=domain,
-        is_sat_column=is_sat_column,
+        is_column=is_column,
     )
 
     output_context = _build_output_context(
