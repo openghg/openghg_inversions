@@ -464,8 +464,8 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
         outputs = make_legacy_hbmcmc_output(
             inv_out=_get_inversion_output(context),
             mcmc_results=context.mcmc_results,
-            # TODO: Stop threading sigma_freq_index explicitly once the legacy model-building
-            # path is removed and sigma_freq_index always comes from model data.
+            # TODO: Stop threading these explicitly once make_legacy_hbmcmc_output
+            # can consume the needed arrays directly from the modern model/input data path.
             sigma_freq_index=context.legacy_postprocess_args["sigma_freq_index"],
             Hx=context.legacy_postprocess_args["Hx"],
             Hbc=context.legacy_postprocess_args.get("Hbc"),

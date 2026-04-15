@@ -19,6 +19,7 @@
 - Stage B of PyMC model refactor. Updated `inferpymc` to accept current/legacy inputs as well as xarray `Dataset`. [PR #380](https://github.com/openghg/openghg_inversions/pull/380)
 - Stage C of PyMC model refactor. Added function for building PyMC "model components". The model building code from Stage B is still used by default, but the new code can be selected by adding `model_builder="components"` to the .ini file. [PR #382](https://github.com/openghg/openghg_inversions/pull/382)
 - Stage D of PyMC model refactor. Removed temporary scaffolding to preserve legacy model building code. `inferpymc` now only accepts inversion inputs as `xr.Dataset`, and `fixedbasisMCMC` has been updated to reflect this. [PR #389](https://github.com/openghg/openghg_inversions/pull/389)
+- Clean up of `fixedbasisMCMC` output handling. [PR #390](https://github.com/openghg/openghg_inversions/pull/390)
 
 # Version 0.6.0
 
