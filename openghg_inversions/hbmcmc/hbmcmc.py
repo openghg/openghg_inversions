@@ -25,6 +25,7 @@ the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 """
 
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 import time
 from typing import Literal
@@ -45,6 +46,7 @@ from openghg_inversions.inversion_data import (
 )
 from openghg_inversions.filters import filtering
 from openghg_inversions.postprocessing.inversion_output import (
+    InversionOutput,
     make_inv_out_for_fixed_basis_mcmc,
 )
 from openghg_inversions.inversion_inputs import make_inv_inputs
@@ -208,6 +210,355 @@ def _inv_inputs_from_rerun_arrays(
     return xr.Dataset(data_vars=data_vars, coords=coords)
 
 
+# ------------------------------------------------------------
+# Output format handling
+# ------------------------------------------------------------
+
+
+@dataclass
+class _OutputContext:
+    """Resolved output settings and runtime objects for final output handling."""
+
+    output_format: str
+    outputpath: str
+    outputname: str
+    species: str
+    domain: str
+    start_date: str
+    averaging_period: list[str]
+    use_bc: bool
+    country_file: str | None
+    paris_postprocessing_kwargs: dict | None
+    legacy_postprocess_args: dict
+    mcmc_args: dict
+    mcmc_results: dict
+    inv_out_args: dict
+    inv_out: InversionOutput | None = None
+    paths: dict[str, Path] = field(default_factory=dict)
+
+
+def _resolve_output_format(
+    output_format: str,
+    *,
+    paris_postprocessing: bool,
+    is_column: bool,
+) -> str:
+    """Resolve deprecated aliases and validate the canonical output format."""
+    if paris_postprocessing is True:
+        output_format = "paris"
+        warnings.warn(
+            "The `paris_postprocessing` argument will be deprecated. Use `output_format = 'paris'` instead."
+        )
+
+    resolved_output_format = output_format.lower()
+
+    if resolved_output_format == "hbmcmc" and is_column:
+        raise ValueError(
+            "Cannot use output_format 'hbmcmc' when column-based measurements are included. Please choose another output_format."
+        )
+
+    return resolved_output_format
+
+
+def _resolve_trace_path(
+    save_trace: str | Path | bool, outputpath: str, outputname: str, start_date: str
+) -> Path | None:
+    """Resolve the output path for a saved trace file."""
+    if not save_trace:
+        return None
+    if isinstance(save_trace, str | Path):
+        return Path(save_trace)
+    return Path(outputpath) / (outputname + f"{start_date}_trace.nc")
+
+
+def _resolve_inversion_output_path(
+    save_inversion_output: str | Path | bool, outputpath: str, outputname: str, start_date: str
+) -> Path | None:
+    """Resolve the output path for a saved inversion-output file."""
+    if not save_inversion_output:
+        return None
+    if isinstance(save_inversion_output, str | Path):
+        return Path(save_inversion_output)
+    return Path(outputpath) / (outputname + f"{start_date}_inversion_output.nc")
+
+
+def _build_output_context(
+    *,
+    output_format: str,
+    outputpath: str,
+    outputname: str,
+    species: str,
+    domain: str,
+    start_date: str,
+    averaging_period: list[str],
+    use_bc: bool,
+    country_file: str | None,
+    paris_postprocessing_kwargs: dict | None,
+    save_trace: str | Path | bool,
+    save_inversion_output: str | Path | bool,
+    legacy_postprocess_args: dict,
+    mcmc_args: dict,
+    mcmc_results: dict,
+    inv_out_args: dict,
+) -> _OutputContext:
+    """Build the output context used by later output-handling stages.
+
+    Args:
+        output_format: Canonical output mode string after normalization.
+        outputpath: Directory for saved outputs.
+        outputname: Base output name for saved files.
+        species: Species identifier for output naming.
+        domain: Domain identifier for output naming.
+        start_date: Inversion start date used in output naming.
+        averaging_period: Observation averaging period list for PARIS outputs.
+        use_bc: Whether boundary-condition outputs are enabled.
+        country_file: Optional country definition file passed to postprocessing.
+        paris_postprocessing_kwargs: Optional keyword arguments for PARIS output creation.
+        save_trace: Trace save setting passed to ``fixedbasisMCMC``.
+        save_inversion_output: InversionOutput save setting passed to ``fixedbasisMCMC``.
+        legacy_postprocess_args: Legacy postprocessing argument dictionary built during inversion setup.
+        mcmc_args: Arguments passed to ``mcmc.inferpymc``.
+        mcmc_results: Raw sampler results from ``mcmc.inferpymc``.
+        inv_out_args: Arguments needed to build ``InversionOutput``.
+
+    Returns:
+        _OutputContext: Context object for final output handling.
+    """
+    paths: dict[str, Path] = {}
+
+    trace_path = _resolve_trace_path(save_trace, outputpath, outputname, start_date)
+    if trace_path is not None:
+        paths["trace"] = trace_path
+
+    inversion_output_path = _resolve_inversion_output_path(
+        save_inversion_output, outputpath, outputname, start_date
+    )
+    if inversion_output_path is not None:
+        paths["inversion_output"] = inversion_output_path
+
+    return _OutputContext(
+        output_format=output_format,
+        outputpath=outputpath,
+        outputname=outputname,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        averaging_period=averaging_period,
+        use_bc=use_bc,
+        country_file=country_file,
+        paris_postprocessing_kwargs=paris_postprocessing_kwargs,
+        legacy_postprocess_args=legacy_postprocess_args,
+        mcmc_args=mcmc_args,
+        mcmc_results=mcmc_results,
+        inv_out_args=inv_out_args,
+        paths=paths,
+    )
+
+
+def _build_inv_out_args(
+    *,
+    fp_data: dict,
+    legacy_postprocess_args: dict,
+    mcmc_results: dict,
+    sites: list[str],
+    start_date: str,
+    end_date: str,
+    species: str,
+    domain: str,
+    is_column: bool,
+) -> dict:
+    """Build explicit arguments for ``make_inv_out_for_fixed_basis_mcmc``.
+
+    Args:
+        fp_data: Basis-applied inversion input datasets.
+        legacy_postprocess_args: Legacy postprocessing values computed alongside inversion inputs.
+        mcmc_results: Raw inversion outputs from ``mcmc.inferpymc``.
+        sites: Site names used in the inversion.
+        start_date: Inversion start date.
+        end_date: Inversion end date.
+        species: Species name for output metadata.
+        domain: Domain name for output metadata.
+        is_column: Whether column-based inputs are present.
+
+    Returns:
+        dict: Explicit keyword arguments for ``make_inv_out_for_fixed_basis_mcmc``.
+    """
+    inv_out_args = {
+        "fp_data": fp_data,
+        "Y": legacy_postprocess_args["Y"],
+        "Ytime": legacy_postprocess_args["Ytime"],
+        "error": legacy_postprocess_args["error"],
+        "obs_repeatability": legacy_postprocess_args["obs_repeatability"],
+        "obs_variability": legacy_postprocess_args["obs_variability"],
+        "site_indicator": legacy_postprocess_args["siteindicator"],
+        "site_names": sites,
+        "mcmc_results": mcmc_results,
+        "start_date": start_date,
+        "end_date": end_date,
+        "species": species,
+        "domain": domain,
+        "obs_prior_factor": legacy_postprocess_args["obs_prior_factor"],
+        "obs_prior_upper_level_factor": legacy_postprocess_args["obs_prior_upper_level_factor"],
+    }
+
+    if not is_column:
+        inv_out_args["obs_prior_factor"] = None
+        inv_out_args["obs_prior_upper_level_factor"] = None
+
+    return inv_out_args
+
+
+def _get_inversion_output(context: _OutputContext) -> InversionOutput:
+    """Build and cache the InversionOutput object for output handling."""
+    if context.inv_out is None:
+        context.inv_out = make_inv_out_for_fixed_basis_mcmc(**context.inv_out_args)
+    return context.inv_out
+
+
+def _prepare_legacy_hbmcmc_postprocess_args(context: _OutputContext) -> dict:
+    """Prepare the legacy argument bag for ``inferpymc_postprocessouts``."""
+    legacy_postprocess_args = context.legacy_postprocess_args.copy()
+    legacy_postprocess_args.update(context.mcmc_args)
+    del legacy_postprocess_args["inv_inputs"]
+    del legacy_postprocess_args["nit"]
+    del legacy_postprocess_args["verbose"]
+    del legacy_postprocess_args["offset_args"]
+    del legacy_postprocess_args["power"]
+    return legacy_postprocess_args
+
+
+def _handle_core_output_artifacts(context: _OutputContext) -> None:
+    """Write core inversion artifacts needed before final output dispatch."""
+    trace_path = context.paths.get("trace")
+    if trace_path is not None:
+        context.mcmc_results["trace"].to_netcdf(str(trace_path), engine="netcdf4", compress=True)
+
+    inversion_output_path = context.paths.get("inversion_output")
+    if inversion_output_path is not None:
+        _get_inversion_output(context).save(inversion_output_path)
+
+
+def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOutput:
+    """Dispatch the final output path for a completed inversion run."""
+    if context.output_format == "mcmc_results":
+        return context.mcmc_results
+
+    if context.output_format == "inv_out":
+        return _get_inversion_output(context)
+
+    start_post = time.time()
+
+    if context.output_format == "basic":
+        from ..postprocessing.make_outputs import basic_output
+
+        outputs = basic_output(_get_inversion_output(context), country_file=context.country_file)
+        end_post = time.time()
+        print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
+        return outputs
+
+    if context.output_format == "hbmcmc_postprocessing":
+        from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
+
+        from ..postprocessing.legacy_outputs import make_legacy_hbmcmc_output
+
+        outputs = make_legacy_hbmcmc_output(
+            inv_out=_get_inversion_output(context),
+            mcmc_results=context.mcmc_results,
+            # TODO: Stop threading these explicitly once make_legacy_hbmcmc_output
+            # can consume the needed arrays directly from the modern model/input data path.
+            sigma_freq_index=context.legacy_postprocess_args["sigma_freq_index"],
+            Hx=context.legacy_postprocess_args["Hx"],
+            Hbc=context.legacy_postprocess_args.get("Hbc"),
+            country_file=context.country_file,
+            use_bc=context.use_bc,
+        )
+        output_filename = define_output_filename(
+            context.outputpath,
+            context.species,
+            context.domain,
+            context.outputname,
+            context.start_date,
+            ext=".nc",
+        )
+        Path(context.outputpath).mkdir(parents=True, exist_ok=True)
+        outputs.to_netcdf(output_filename, encoding=ncdf_encoding(outputs), mode="w")
+        end_post = time.time()
+        print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
+        return outputs
+
+    if context.output_format == "paris":
+        from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
+
+        from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
+
+        obs_avg_period = context.averaging_period[0] or "0h"
+        if not context.averaging_period[0]:
+            logging.info("Default obs averaging period %s used in PARIS post-processing.", obs_avg_period)
+        paris_postprocessing_kwargs = context.paris_postprocessing_kwargs or {}
+        flux_outs, conc_outs = make_paris_outputs(
+            _get_inversion_output(context),
+            country_file=context.country_file,
+            domain=context.domain,
+            obs_avg_period=obs_avg_period,
+            **paris_postprocessing_kwargs,
+        )
+
+        conc_output_filename = define_output_filename(
+            context.outputpath,
+            context.species,
+            context.domain,
+            context.outputname + "_conc",
+            context.start_date,
+            ext=".nc",
+        )
+        flux_output_filename = define_output_filename(
+            context.outputpath,
+            context.species,
+            context.domain,
+            context.outputname + "_flux",
+            context.start_date,
+            ext=".nc",
+        )
+        Path(context.outputpath).mkdir(parents=True, exist_ok=True)
+
+        conc_outs.to_netcdf(
+            conc_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(conc_outs)
+        )
+        flux_outs.to_netcdf(
+            flux_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(flux_outs)
+        )
+
+        logging.info("PARIS concentration outputs saved to %s", conc_output_filename)
+        logging.info("PARIS flux outputs saved to %s", flux_output_filename)
+
+        end_post = time.time()
+        print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
+        return xr.merge([conc_outs, flux_outs.rename(time="flux_time")])
+
+    # Legacy default hbmcmc output path.
+    mcmc_results = context.mcmc_results.copy()
+    del mcmc_results["trace"]
+    del mcmc_results["model"]
+    legacy_postprocess_args = _prepare_legacy_hbmcmc_postprocess_args(context)
+    legacy_postprocess_args.update(mcmc_results)
+    post_process_args_selection, _ = split_function_inputs(
+        legacy_postprocess_args, mcmc.inferpymc_postprocessouts
+    )
+    out = mcmc.inferpymc_postprocessouts(**post_process_args_selection)
+
+    end_post = time.time()
+
+    print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
+    print("---- Inversion completed ----")
+
+    return out
+
+
+# ------------------------------------------------------------
+# Main MCMC script
+# ------------------------------------------------------------
+
+
 def fixedbasisMCMC(
     species: str,
     sites: list[str],
@@ -285,7 +636,7 @@ def fixedbasisMCMC(
     paris_postprocessing_kwargs: dict | None = None,
     power: dict | float = 1.99,
     **kwargs,
-) -> xr.Dataset | dict:
+) -> xr.Dataset | dict | InversionOutput:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference of emissions.
 
     Uses PyMC to solve the inverse problem. Saves an output from the inversion code
@@ -413,53 +764,21 @@ def fixedbasisMCMC(
         xr.Dataset | dict: Results from the inversion in a Dataset if skip_post_processing==False,
             in a dictionary if True.
     """
-    # select output format
-    merged_data_only = False
-    return_inv_out = False
-    new_postprocessing = False
-    hbmcmc_postprocessing = False
-    do_paris_postprocessing = False
-    return_mcmc_args = False
-    skip_postprocessing = False
-
-    if paris_postprocessing is True:
-        output_format = "paris"
-        warnings.warn(
-            "The `paris_postprocessing` argument will be deprecated. Use `output_format = 'paris'` instead."
-        )
-
-    output_format = output_format.lower()  # type: ignore
-
-    if output_format == "merged_data":
-        merged_data_only = True
-    elif output_format == "inv_out":
-        return_inv_out = True
-    elif output_format == "basic":
-        new_postprocessing = True
-    elif output_format == "hbmcmc_postprocessing":
-        hbmcmc_postprocessing = True
-    elif output_format == "paris":
-        do_paris_postprocessing = True
-    elif output_format == "mcmc_args":
-        return_mcmc_args = True
-    elif output_format == "mcmc_results":
-        skip_postprocessing = True
-    # otherwise (i.e. output_format == "hbmcmc"), mcmc.inferpymc_postprocessouts is used
-
+    # Check if any observations are column based.
     if inlet is not None:
-        is_sat_column = any([i == "column" for i in inlet])
+        is_column = any(i == "column" for i in inlet)
     else:
-        is_sat_column = False
+        is_column = False
 
-    if output_format == "hbmcmc":
-        if is_sat_column:
-            raise ValueError(
-                "Cannot use output_format 'hbmcmc' when satellite column measurements are included. Please choose another output_format."
-            )
+    output_format = _resolve_output_format(
+        output_format,
+        paris_postprocessing=paris_postprocessing,
+        is_column=is_column,
+    )
 
     rerun_merge = True
 
-    if merged_data_only:
+    if output_format == "merged_data":
         reload_merged_data = False
 
     if reload_merged_data is True and merged_data_dir is not None:
@@ -539,7 +858,7 @@ def fixedbasisMCMC(
         elif use_tracer:
             raise ValueError("Model does not currently include tracer model. Watch this space")
 
-        if merged_data_only:
+        if output_format == "merged_data":
             return fp_all  # type: ignore
 
     # Basis function regions and sensitivity matrices
@@ -631,9 +950,9 @@ def fixedbasisMCMC(
         mcmc_config["bcprior"] = update_log_normal_prior(bcprior)
 
     mcmc_args = mcmc_config.copy()
-    post_process_args = _extract_post_process_args(inv_inputs)
+    legacy_postprocess_args = _extract_post_process_args(inv_inputs)
 
-    post_process_args.update(
+    legacy_postprocess_args.update(
         {
             "domain": domain,
             "species": species,
@@ -650,22 +969,13 @@ def fixedbasisMCMC(
     )
 
     if use_bc and "H_bc" in inv_inputs:
-        post_process_args["Hbc"] = inv_inputs.H_bc.values
+        legacy_postprocess_args["Hbc"] = inv_inputs.H_bc.values
 
     # cast float64 to float32
-    for k in list(post_process_args.keys()):  # use list to get keys before modifying dict
-        v = post_process_args[k]
+    for k in list(legacy_postprocess_args.keys()):  # use list to get keys before modifying dict
+        v = legacy_postprocess_args[k]
         if isinstance(v, np.ndarray) and v.dtype == "float64":
-            post_process_args[k] = v.astype("float32")
-
-    # add mcmc_args to post_process_args
-    # and delete a few we don't need
-    post_process_args.update(mcmc_args)
-    del post_process_args["inv_inputs"]
-    del post_process_args["nit"]
-    del post_process_args["verbose"]
-    del post_process_args["offset_args"]
-    del post_process_args["power"]
+            legacy_postprocess_args[k] = v.astype("float32")
 
     # add any additional kwargs to mcmc_args (these aren't needed for post processing)
     mcmc_args.update(kwargs)
@@ -675,7 +985,7 @@ def fixedbasisMCMC(
     print(f"Data extraction and preparation complete. Time taken = {end_data - start_data:.2f} seconds")
 
     # for debugging
-    if return_mcmc_args:
+    if output_format == "mcmc_args":
         return mcmc_args
 
     start_inversion = time.time()
@@ -687,138 +997,39 @@ def fixedbasisMCMC(
 
     print(f"MCMC Inversion complete. Time taken = {end_inversion - start_inversion:.2f} seconds")
 
-    # get trace: for future updates
-    trace = mcmc_results["trace"]
+    inv_out_args = _build_inv_out_args(
+        fp_data=fp_data,
+        legacy_postprocess_args=legacy_postprocess_args,
+        mcmc_results=mcmc_results,
+        sites=sites,
+        start_date=start_date,
+        end_date=end_date,
+        species=species,
+        domain=domain,
+        is_column=is_column,
+    )
 
-    # Path to save trace
-    if save_trace:
-        if isinstance(save_trace, str | Path):
-            trace_path = save_trace
-        else:
-            trace_path = Path(outputpath) / (outputname + f"{start_date}_trace.nc")
+    output_context = _build_output_context(
+        output_format=output_format,
+        outputpath=outputpath,
+        outputname=outputname,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        averaging_period=averaging_period,
+        use_bc=use_bc,
+        country_file=country_file,
+        paris_postprocessing_kwargs=paris_postprocessing_kwargs,
+        save_trace=save_trace,
+        save_inversion_output=save_inversion_output,
+        legacy_postprocess_args=legacy_postprocess_args,
+        mcmc_args=mcmc_args,
+        mcmc_results=mcmc_results,
+        inv_out_args=inv_out_args,
+    )
+    _handle_core_output_artifacts(output_context)
 
-            trace.to_netcdf(str(trace_path), engine="netcdf4", compress=True)
-
-    # Get args needed for make_inv_out_for_fixed_basis_mcmc
-    inv_out_args, _ = split_function_inputs(post_process_args, make_inv_out_for_fixed_basis_mcmc)
-    inv_out_args["site_names"] = sites
-    inv_out_args["site_indicator"] = post_process_args["siteindicator"]
-    inv_out_args["mcmc_results"] = mcmc_results
-
-    if not is_sat_column:
-        inv_out_args["obs_prior_factor"] = None
-        inv_out_args["obs_prior_upper_level_factor"] = None
-
-    # Path to save trace
-    if save_inversion_output:
-        if isinstance(save_inversion_output, str | Path):
-            inversion_output_path = save_inversion_output
-        else:
-            inversion_output_path = Path(outputpath) / (outputname + f"{start_date}_inversion_output.nc")
-
-        inversion_output = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
-        inversion_output.save(inversion_output_path)
-
-    if skip_postprocessing:
-        return mcmc_results
-
-    if return_inv_out:
-        return make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
-
-    start_post = time.time()
-
-    if new_postprocessing:
-        from ..postprocessing.make_outputs import basic_output
-
-        inv_out = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
-
-        outputs = basic_output(inv_out, country_file=country_file)
-        end_post = time.time()
-        print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
-
-        return outputs
-
-    if hbmcmc_postprocessing:
-        from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-
-        from ..postprocessing.legacy_outputs import make_legacy_hbmcmc_output
-
-        inv_out = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
-        outputs = make_legacy_hbmcmc_output(
-            inv_out=inv_out,
-            mcmc_results=mcmc_results,
-            sigma_freq_index=post_process_args["sigma_freq_index"],
-            Hx=post_process_args["Hx"],
-            Hbc=post_process_args.get("Hbc"),
-            country_file=country_file,
-            use_bc=use_bc,
-        )
-        output_filename = define_output_filename(
-            outputpath, species, domain, outputname, start_date, ext=".nc"
-        )
-        Path(outputpath).mkdir(parents=True, exist_ok=True)
-        outputs.to_netcdf(output_filename, encoding=ncdf_encoding(outputs), mode="w")
-        end_post = time.time()
-        print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
-
-        return outputs
-
-    if do_paris_postprocessing:
-        from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-
-        from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
-
-        inv_out = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
-
-        obs_avg_period = averaging_period[0] or "0h"
-        if not averaging_period[0]:
-            logging.info("Default obs averaging period %s used in PARIS post-processing.", obs_avg_period)
-        paris_postprocessing_kwargs = paris_postprocessing_kwargs or {}
-        flux_outs, conc_outs = make_paris_outputs(
-            inv_out,
-            country_file=country_file,
-            domain=domain,
-            obs_avg_period=obs_avg_period,
-            **paris_postprocessing_kwargs,
-        )
-
-        conc_output_filename = define_output_filename(
-            outputpath, species, domain, outputname + "_conc", start_date, ext=".nc"
-        )
-        flux_output_filename = define_output_filename(
-            outputpath, species, domain, outputname + "_flux", start_date, ext=".nc"
-        )
-        Path(outputpath).mkdir(parents=True, exist_ok=True)
-
-        conc_outs.to_netcdf(
-            conc_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(conc_outs)
-        )
-        flux_outs.to_netcdf(
-            flux_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(flux_outs)
-        )
-
-        logging.info("PARIS concentration outputs saved to", conc_output_filename)
-        logging.info("PARIS flux outputs saved to", flux_output_filename)
-
-        end_post = time.time()
-        print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
-
-        return xr.merge([conc_outs, flux_outs.rename(time="flux_time")])
-
-    # Process and save inversion output
-    del mcmc_results["trace"]
-    del mcmc_results["model"]
-    post_process_args.update(mcmc_results)
-    post_process_args_selection, _ = split_function_inputs(post_process_args, mcmc.inferpymc_postprocessouts)
-    out = mcmc.inferpymc_postprocessouts(**post_process_args_selection)
-
-    end_post = time.time()
-
-    print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
-
-    print("---- Inversion completed ----")
-
-    return out
+    return _finalize_output(output_context)
 
 
 def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: bool = False) -> None:

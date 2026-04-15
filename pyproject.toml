@@ -27,7 +27,7 @@ dependencies = [
     "xarray>=2025.06.0",
     "pandas<3.0",
     "matplotlib",
-    "scipy", 
+    "scipy",
     "openghg",
     "sparse",
     "flox",
