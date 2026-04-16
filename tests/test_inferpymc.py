@@ -9,10 +9,10 @@ import xarray as xr
 
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.hbmcmc.inversion_pymc import (
-    InferPyMCModelSetup,
-    _canonicalise_inferpymc_dataset,
+    _adapt_legacy_inferpymc_results,
     build_inferpymc_model,
     inferpymc,
+    sample,
 )
 from openghg_inversions.models.coords import restore_inferencedata_coords
 
@@ -56,9 +56,9 @@ def inferpymc_args(inferpymc_inputs_dataset: xr.Dataset) -> MappingProxyType:
     return MappingProxyType(args)
 
 
-def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict) -> None:
-    setup = build_inferpymc_model(
-        inv_inputs=inferpymc_args["inv_inputs"],
+def test_build_inferpymc_model_returns_model(inferpymc_args: dict) -> None:
+    model = build_inferpymc_model(
+        inferpymc_args["inv_inputs"],
         xprior=inferpymc_args["xprior"],
         bcprior=inferpymc_args["bcprior"],
         sigprior=inferpymc_args["sigprior"],
@@ -71,19 +71,38 @@ def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict) -> N
         no_model_error=inferpymc_args["no_model_error"],
         offset_args=inferpymc_args["offset_args"],
         power=inferpymc_args["power"],
-        nuts_sampler="pymc",
     )
 
-    assert isinstance(setup, InferPyMCModelSetup)
-    assert isinstance(setup.model, pm.Model)
-    assert isinstance(setup.step1, pm.NUTS)
-    assert isinstance(setup.step2, pm.Slice)
-    assert setup.sample_kwargs["step"] == [setup.step1, setup.step2]
+    assert isinstance(model, pm.Model)
 
 
-def test_build_inferpymc_model_returns_no_steps_for_numpyro(inferpymc_args: dict) -> None:
-    setup = build_inferpymc_model(
-        inv_inputs=inferpymc_args["inv_inputs"],
+def test_build_inferpymc_model_warns_for_deprecated_reparameterise_flag(inferpymc_args: dict) -> None:
+    with pytest.warns(DeprecationWarning, match="reparameterise=True"):
+        build_inferpymc_model(
+            inferpymc_args["inv_inputs"],
+            xprior={"pdf": "lognormal", "mu": 1.0, "sigma": 1.0},
+            bcprior=inferpymc_args["bcprior"],
+            sigprior=inferpymc_args["sigprior"],
+            sigma_per_site=inferpymc_args["sigma_per_site"],
+            offsetprior=inferpymc_args["offsetprior"],
+            add_offset=inferpymc_args["add_offset"],
+            use_bc=inferpymc_args["use_bc"],
+            reparameterise_log_normal=True,
+            pollution_events_from_obs=inferpymc_args["pollution_events_from_obs"],
+            no_model_error=inferpymc_args["no_model_error"],
+            offset_args=inferpymc_args["offset_args"],
+            power=inferpymc_args["power"],
+        )
+
+
+def test_build_inferpymc_model_requires_inv_inputs() -> None:
+    with pytest.raises(TypeError):
+        build_inferpymc_model()  # type: ignore[call-arg]
+
+
+def test_sample_returns_burned_modern_result(inferpymc_args: dict) -> None:
+    model = build_inferpymc_model(
+        inferpymc_args["inv_inputs"],
         xprior=inferpymc_args["xprior"],
         bcprior=inferpymc_args["bcprior"],
         sigprior=inferpymc_args["sigprior"],
@@ -96,14 +115,196 @@ def test_build_inferpymc_model_returns_no_steps_for_numpyro(inferpymc_args: dict
         no_model_error=inferpymc_args["no_model_error"],
         offset_args=inferpymc_args["offset_args"],
         power=inferpymc_args["power"],
-        nuts_sampler="numpyro",
     )
 
-    assert isinstance(setup, InferPyMCModelSetup)
-    assert isinstance(setup.model, pm.Model)
-    assert isinstance(setup.step1, pm.NUTS)
-    assert isinstance(setup.step2, pm.Slice)
-    assert setup.sample_kwargs["step"] is None
+    modern_result = sample(
+        model,
+        draws=2,
+        burn=1,
+        tune=0,
+        chains=1,
+        random_seed=123,
+        compute_convergence_checks=False,
+    )
+
+    assert isinstance(modern_result, az.InferenceData)
+    assert modern_result.posterior.sizes["draw"] == 1
+    assert "region" in modern_result.posterior["x"].dims
+    assert "bc_region" in modern_result.posterior["bc"].dims
+
+
+def test_sample_does_not_add_predictive_groups_by_default(inferpymc_args: dict) -> None:
+    model = build_inferpymc_model(
+        inferpymc_args["inv_inputs"],
+        xprior=inferpymc_args["xprior"],
+        bcprior=inferpymc_args["bcprior"],
+        sigprior=inferpymc_args["sigprior"],
+        sigma_per_site=inferpymc_args["sigma_per_site"],
+        offsetprior=inferpymc_args["offsetprior"],
+        add_offset=inferpymc_args["add_offset"],
+        use_bc=inferpymc_args["use_bc"],
+        reparameterise_log_normal=inferpymc_args["reparameterise_log_normal"],
+        pollution_events_from_obs=inferpymc_args["pollution_events_from_obs"],
+        no_model_error=inferpymc_args["no_model_error"],
+        offset_args=inferpymc_args["offset_args"],
+        power=inferpymc_args["power"],
+    )
+
+    modern_result = sample(
+        model,
+        draws=1,
+        tune=0,
+        chains=1,
+        random_seed=123,
+        compute_convergence_checks=False,
+    )
+
+    assert "prior" not in modern_result
+    assert "prior_predictive" not in modern_result
+    assert "posterior_predictive" not in modern_result
+
+
+def test_sample_accepts_plain_model_and_predictive_options(inferpymc_args: dict) -> None:
+    model = build_inferpymc_model(
+        inferpymc_args["inv_inputs"],
+        xprior=inferpymc_args["xprior"],
+        bcprior=inferpymc_args["bcprior"],
+        sigprior=inferpymc_args["sigprior"],
+        sigma_per_site=inferpymc_args["sigma_per_site"],
+        offsetprior=inferpymc_args["offsetprior"],
+        add_offset=inferpymc_args["add_offset"],
+        use_bc=inferpymc_args["use_bc"],
+        reparameterise_log_normal=inferpymc_args["reparameterise_log_normal"],
+        pollution_events_from_obs=inferpymc_args["pollution_events_from_obs"],
+        no_model_error=inferpymc_args["no_model_error"],
+        offset_args=inferpymc_args["offset_args"],
+        power=inferpymc_args["power"],
+    )
+
+    modern_result = sample(
+        model,
+        draws=1,
+        tune=0,
+        chains=1,
+        random_seed=123,
+        compute_convergence_checks=False,
+        sample_prior_predictive=True,
+        sample_posterior_predictive=["y"],
+    )
+
+    assert "prior" in modern_result
+    assert "prior_predictive" in modern_result
+    assert "posterior_predictive" in modern_result
+
+
+def test_sample_always_returns_inferencedata(inferpymc_args: dict) -> None:
+    model = build_inferpymc_model(
+        inferpymc_args["inv_inputs"],
+        xprior=inferpymc_args["xprior"],
+        bcprior=inferpymc_args["bcprior"],
+        sigprior=inferpymc_args["sigprior"],
+        sigma_per_site=inferpymc_args["sigma_per_site"],
+        offsetprior=inferpymc_args["offsetprior"],
+        add_offset=inferpymc_args["add_offset"],
+        use_bc=inferpymc_args["use_bc"],
+        reparameterise_log_normal=inferpymc_args["reparameterise_log_normal"],
+        pollution_events_from_obs=inferpymc_args["pollution_events_from_obs"],
+        no_model_error=inferpymc_args["no_model_error"],
+        offset_args=inferpymc_args["offset_args"],
+        power=inferpymc_args["power"],
+    )
+
+    modern_result = sample(
+        model,
+        draws=1,
+        tune=0,
+        chains=1,
+        random_seed=123,
+        compute_convergence_checks=False,
+        return_inferencedata=False,
+    )
+
+    assert isinstance(modern_result, az.InferenceData)
+
+
+def test_sample_preserves_log_likelihood(inferpymc_args: dict) -> None:
+    model = build_inferpymc_model(
+        inferpymc_args["inv_inputs"],
+        xprior=inferpymc_args["xprior"],
+        bcprior=inferpymc_args["bcprior"],
+        sigprior=inferpymc_args["sigprior"],
+        sigma_per_site=inferpymc_args["sigma_per_site"],
+        offsetprior=inferpymc_args["offsetprior"],
+        add_offset=inferpymc_args["add_offset"],
+        use_bc=inferpymc_args["use_bc"],
+        reparameterise_log_normal=inferpymc_args["reparameterise_log_normal"],
+        pollution_events_from_obs=inferpymc_args["pollution_events_from_obs"],
+        no_model_error=inferpymc_args["no_model_error"],
+        offset_args=inferpymc_args["offset_args"],
+        power=inferpymc_args["power"],
+    )
+
+    modern_result = sample(
+        model,
+        draws=1,
+        tune=0,
+        chains=1,
+        random_seed=123,
+        compute_convergence_checks=False,
+    )
+
+    assert "log_likelihood" in modern_result
+
+
+def test_legacy_inferpymc_adapter_preserves_compatibility_keys(inferpymc_args: dict) -> None:
+    model = build_inferpymc_model(
+        inferpymc_args["inv_inputs"],
+        xprior=inferpymc_args["xprior"],
+        bcprior=inferpymc_args["bcprior"],
+        sigprior=inferpymc_args["sigprior"],
+        sigma_per_site=inferpymc_args["sigma_per_site"],
+        offsetprior=inferpymc_args["offsetprior"],
+        add_offset=inferpymc_args["add_offset"],
+        use_bc=inferpymc_args["use_bc"],
+        reparameterise_log_normal=inferpymc_args["reparameterise_log_normal"],
+        pollution_events_from_obs=inferpymc_args["pollution_events_from_obs"],
+        no_model_error=inferpymc_args["no_model_error"],
+        offset_args=inferpymc_args["offset_args"],
+        power=inferpymc_args["power"],
+    )
+    modern_result = sample(
+        model,
+        draws=1,
+        burn=0,
+        tune=0,
+        chains=1,
+        random_seed=123,
+        compute_convergence_checks=False,
+        sample_prior_predictive=True,
+        sample_posterior_predictive=["y"],
+    )
+
+    legacy_result = _adapt_legacy_inferpymc_results(
+        trace=modern_result,
+        model=model,
+        use_bc=True,
+        add_offset=False,
+        sample_kwargs={"step": pm.Slice(vars=[model.named_vars["sigma"]], model=model)},
+    )
+
+    assert {"xouts", "sigouts", "Ytrace", "OFFSETtrace", "trace", "model", "step1", "step2", "convergence"}.issubset(
+        legacy_result
+    )
+    assert "bcouts" in legacy_result
+    assert "YBCtrace" in legacy_result
+    assert "prior_predictive" in legacy_result["trace"]
+    assert "posterior_predictive" in legacy_result["trace"]
+    assert "nx" in legacy_result["trace"].posterior["x"].dims
+    assert "nbc" in legacy_result["trace"].posterior["bc"].dims
+    assert "region" not in legacy_result["trace"].posterior["x"].dims
+    assert "bc_region" not in legacy_result["trace"].posterior["bc"].dims
+    assert legacy_result["step1"] is None
+    assert isinstance(legacy_result["step2"], pm.Slice)
 
 
 @pytest.fixture(scope="module")
@@ -171,8 +372,8 @@ def test_inferpymc_model_contains_expected_variables(
     assert expected_named_vars.issubset(model.named_vars)
 
     assert len(model.coords["nmeasure"]) == inferpymc_inputs_dataset.sizes["nmeasure"]
-    assert len(model.coords["nx"]) == inferpymc_inputs_dataset.sizes["region"]
-    assert len(model.coords["nbc"]) == inferpymc_inputs_dataset.sizes["bc_region"]
+    assert len(model.coords["region"]) == inferpymc_inputs_dataset.sizes["region"]
+    assert len(model.coords["bc_region"]) == inferpymc_inputs_dataset.sizes["bc_region"]
     assert len(model.coords["nsigma_site"]) == len(
         np.unique(inferpymc_inputs_dataset["site_indicator"].values)
     )
@@ -184,8 +385,8 @@ def test_inferpymc_model_contains_expected_variables(
 def test_build_inferpymc_model_accepts_dataset(
     inferpymc_args: dict, inferpymc_inputs_dataset: xr.Dataset
 ) -> None:
-    setup = build_inferpymc_model(
-        inv_inputs=inferpymc_inputs_dataset,
+    model = build_inferpymc_model(
+        inferpymc_inputs_dataset,
         xprior=inferpymc_args["xprior"],
         bcprior=inferpymc_args["bcprior"],
         sigprior=inferpymc_args["sigprior"],
@@ -198,27 +399,11 @@ def test_build_inferpymc_model_accepts_dataset(
         no_model_error=inferpymc_args["no_model_error"],
         offset_args=inferpymc_args["offset_args"],
         power=inferpymc_args["power"],
-        nuts_sampler="pymc",
     )
 
-    assert isinstance(setup, InferPyMCModelSetup)
-    assert isinstance(setup.model, pm.Model)
-    assert len(setup.model.coords["nmeasure"]) == inferpymc_inputs_dataset.sizes["nmeasure"]
-    assert len(setup.model.coords["nx"]) == inferpymc_inputs_dataset.sizes["region"]
-
-
-def test_canonicalise_inferpymc_dataset_preserves_dataset_observation_coords(
-    inferpymc_inputs_dataset: xr.Dataset,
-) -> None:
-    canonical = _canonicalise_inferpymc_dataset(inferpymc_inputs_dataset, use_bc=True)
-
-    assert {"H", "H_bc", "mf", "mf_error", "site_indicator", "sigma_freq_index", "min_error"}.issubset(
-        canonical.data_vars
-    )
-    assert canonical["H"].dims == ("nmeasure", "nx")
-    assert canonical["H_bc"].dims == ("nmeasure", "nbc")
-    assert "time" in canonical.coords
-    assert canonical.indexes["nmeasure"].equals(inferpymc_inputs_dataset.indexes["nmeasure"])
+    assert isinstance(model, pm.Model)
+    assert len(model.coords["nmeasure"]) == inferpymc_inputs_dataset.sizes["nmeasure"]
+    assert len(model.coords["region"]) == inferpymc_inputs_dataset.sizes["region"]
 
 
 def test_restore_inferencedata_coords_helper_restores_multiindex() -> None:

@@ -96,3 +96,24 @@ def test_compute_apriori_flux_handles_multi_year_flux_time():
         apriori_flux,
         xr.DataArray([[1.75]], dims=["lat", "lon"], coords={"lat": [0.0], "lon": [0.0]}),
     )
+
+
+def test_make_legacy_hbmcmc_output_only_sets_convergence_when_present(raw_data_path, europe_country_file):
+    legacy = xr.open_dataset(raw_data_path / "standard_rhime_outs.nc")
+    inv_out = InversionOutput.load(raw_data_path / "inversion_output.nc")
+
+    compat = make_legacy_hbmcmc_output(
+        inv_out=inv_out,
+        mcmc_results={
+            "xouts": legacy["xtrace"],
+            "sigouts": legacy["sigtrace"],
+            "bcouts": legacy["bctrace"],
+        },
+        sigma_freq_index=legacy["sigmafreqindex"].values,
+        Hx=legacy["xsensitivity"].values.T,
+        Hbc=legacy["bcsensitivity"].values.T,
+        country_file=europe_country_file,
+        use_bc=True,
+    )
+
+    assert "Convergence" not in compat.attrs

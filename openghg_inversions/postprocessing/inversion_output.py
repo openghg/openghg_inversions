@@ -7,7 +7,6 @@ from typing import Any, Hashable, Literal, TypeVar
 import arviz as az
 import numpy as np
 import pandas as pd
-import pymc as pm
 import xarray as xr
 
 from openghg_inversions.array_ops import get_xr_dummies, align_sparse_lat_lon
@@ -230,7 +229,6 @@ class InversionOutput:
     species: str
     domain: str
     site_names: xr.DataArray | None = None
-    model: pm.Model | None = None
     obs_prior_factor: xr.DataArray | None = None
     obs_prior_upper_level_factor: xr.DataArray | None = None
 
@@ -238,9 +236,6 @@ class InversionOutput:
         """Check that trace has posterior traces, and fix flux time values."""
         if not hasattr(self.trace, "posterior"):
             raise ValueError("`trace` InferenceData must have `posterior` traces.")
-
-        if self.model is not None:
-            self.sample_predictive_distributions()
 
         # check if flux has time coordinate, and add one if necessary
         if "time" not in self.flux.dims:
@@ -259,7 +254,10 @@ class InversionOutput:
             # time not in dims, so just delete the coord
             self.basis = self.basis.drop_vars("time")
 
-        # create trace dataset
+        self._refresh_derived_datasets()
+
+    def _refresh_derived_datasets(self) -> None:
+        """Refresh derived datasets cached from trace and observation inputs."""
         trace_ds = convert_idata_to_dataset(self.trace)
 
         if "longname" in self.obs.attrs:
@@ -285,6 +283,15 @@ class InversionOutput:
             self.obs_repeatability.rename("y_obs_repeatability")
         )
         self.obs_variability = self.nmeasure_to_site_time(self.obs_variability.rename("y_obs_variability"))
+        obs_inputs = [
+            self.obs,
+            self.obs_err,
+            self.obs_prior_factor,
+            self.obs_prior_upper_level_factor,
+            self.obs_repeatability,
+            self.obs_variability,
+        ]
+        self.obs_inputs = xr.merge([x for x in obs_inputs if x is not None])
 
     def __eq__(self, other: Any) -> bool:
         """Check equality between InversionOutput objects.
@@ -324,28 +331,25 @@ class InversionOutput:
         return all(checks)
 
     def sample_predictive_distributions(self, ndraw: int | None = None) -> None:
-        """Sample prior and posterior predictive distributions.
+        """Refresh derived state without mutating the stored trace.
 
-        This creates prior samples as a side-effect.
-
-        Args:
-            ndraw: optional number of prior samples to draw; defaults to the number of
-              posterior samples.
-
+        Predictive groups must be requested in the sampling layer before
+        constructing ``InversionOutput``.
         """
-        if self.model is None:
-            warnings.warn("Cannot sample predictive distributions without PyMC model.")
+        if not all(group in self.trace for group in ("posterior_predictive", "prior", "prior_predictive")):
+            warnings.warn(
+                "InversionOutput no longer samples predictive distributions. Request predictive groups before construction.",
+                UserWarning,
+            )
             return None
 
-        # don't recompute if prior and predictive samples already present
-        if all(group in self.trace for group in ("posterior_predictive", "prior", "prior_predictive")):
-            return None
+        if ndraw is not None and ndraw != self.trace.posterior.sizes["draw"]:
+            warnings.warn(
+                "`ndraw` is ignored because InversionOutput does not resample predictive groups.",
+                UserWarning,
+            )
 
-        if ndraw is None:
-            ndraw = self.trace.posterior.sizes["draw"]
-
-        self.trace.extend(pm.sample_prior_predictive(ndraw, self.model))
-        self.trace.extend(pm.sample_posterior_predictive(self.trace, model=self.model, var_names=["y"]))
+        self._refresh_derived_datasets()
 
     def nmeasure_to_site_time(self, data: XrDataArrayOrSet) -> XrDataArrayOrSet:
         """Convert `nmeasure` coordinate of dataset to stacked (site, time) coordinate.
@@ -469,21 +473,7 @@ class InversionOutput:
             xr.Dataset containing obs and error data
 
         """
-        # TODO: some of these variables could just be stored in a dataset in InversionOutput,
-        # rather than in separate data arrays
-        to_merge = [
-            self.obs,
-            self.obs_err,
-            self.obs_prior_factor,
-            self.obs_prior_upper_level_factor,
-            self.obs_repeatability,
-            self.obs_variability,
-            self.get_model_err(),
-            self.get_total_err(),
-        ]
-
-        to_merge = [x for x in to_merge if x is not None]
-        result = xr.merge(to_merge)
+        result = xr.merge([self.obs_inputs, self.get_model_err(), self.get_total_err()])
         result.attrs = {}
 
         return result
@@ -700,8 +690,13 @@ def make_inv_out_for_fixed_basis_mcmc(
         site_names, dims=["nsite"], coords={"nsite": np.arange(len(site_names))}, name="site_names"
     )
 
-    _, nx = mcmc_results["xouts"].shape
-    nx = np.arange(nx)
+    if "trace" in mcmc_results and hasattr(mcmc_results["trace"], "posterior") and "x" in mcmc_results["trace"].posterior:
+        x_posterior = mcmc_results["trace"].posterior["x"]
+        nx_dim = "nx" if "nx" in x_posterior.coords else "region"
+        nx = np.asarray(x_posterior.coords[nx_dim].values)
+    else:
+        _, nx_size = mcmc_results["xouts"].shape
+        nx = np.arange(nx_size)
 
     basis = get_xr_dummies(fp_data[".basis"], cat_dim="nx", categories=nx)
 
@@ -742,7 +737,6 @@ def make_inv_out_for_fixed_basis_mcmc(
         site_indicators=site_indicator_da,
         flux=flux,
         basis=basis,
-        model=mcmc_results["model"],
         trace=mcmc_results["trace"],
         site_names=site_names_da,
         times=times,

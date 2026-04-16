@@ -1,6 +1,7 @@
 import pytest
 import xarray as xr
 from pathlib import Path
+import arviz as az
 
 from openghg_inversions.hbmcmc.hbmcmc import _resolve_output_format, fixedbasisMCMC
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
@@ -253,6 +254,61 @@ def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(mcm
     assert "time" not in inv_out.flux.dims
     if "flux_time" in inv_out.flux.coords:
         assert "flux_time" in inv_out.flux.dims
+
+
+def test_inversion_output_construction_and_explicit_predictive_sampling(mcmc_args):
+    mcmc_args["output_format"] = "inv_out"
+    base_inv_out = fixedbasisMCMC(**mcmc_args)
+
+    posterior_only_trace = az.InferenceData(
+        **{
+            group: getattr(base_inv_out.trace, group)
+            for group in ("posterior", "sample_stats", "observed_data", "constant_data")
+            if group in base_inv_out.trace
+        }
+    )
+    inv_out = InversionOutput(
+        obs=base_inv_out.obs.reset_index("nmeasure", drop=True),
+        obs_err=base_inv_out.obs_err.reset_index("nmeasure", drop=True),
+        obs_prior_factor=(
+            base_inv_out.obs_prior_factor.reset_index("nmeasure", drop=True)
+            if base_inv_out.obs_prior_factor is not None
+            else None
+        ),
+        obs_prior_upper_level_factor=(
+            base_inv_out.obs_prior_upper_level_factor.reset_index("nmeasure", drop=True)
+            if base_inv_out.obs_prior_upper_level_factor is not None
+            else None
+        ),
+        obs_repeatability=base_inv_out.obs_repeatability.reset_index("nmeasure", drop=True),
+        obs_variability=base_inv_out.obs_variability.reset_index("nmeasure", drop=True),
+        flux=base_inv_out.flux.squeeze(drop=True),
+        basis=base_inv_out.basis,
+        trace=posterior_only_trace,
+        site_indicators=base_inv_out.site_indicators.reset_index("nmeasure", drop=True),
+        times=base_inv_out.times.reset_index("nmeasure", drop=True),
+        start_date=base_inv_out.start_date,
+        end_date=base_inv_out.end_date,
+        species=base_inv_out.species,
+        domain=base_inv_out.domain,
+        site_names=base_inv_out.site_names,
+    )
+
+    assert "prior" not in inv_out.trace
+    assert "posterior_predictive" not in inv_out.trace
+    assert {
+        "y_obs",
+        "y_obs_error",
+        "y_obs_repeatability",
+        "y_obs_variability",
+    }.issubset(inv_out.obs_inputs.data_vars)
+
+    with pytest.warns(UserWarning, match="no longer samples predictive distributions"):
+        inv_out.sample_predictive_distributions()
+
+    assert "prior" not in inv_out.trace
+    assert "prior_predictive" not in inv_out.trace
+    assert "posterior_predictive" not in inv_out.trace
 
 
 def test_hbmcmc_postprocessing_output_matches_legacy_core_fields(raw_data_path, europe_country_file):

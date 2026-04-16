@@ -58,10 +58,20 @@ def get_model_latent(variable: TensorVariable, base_name: str) -> TensorVariable
         present on the active model, otherwise ``variable``.
     """
     model = pm.modelcontext(None)
+    resolved = resolve_model_variable(model, base_name)
+    if resolved is not None:
+        return resolved
+    return variable
+
+
+def resolve_model_variable(model: pm.Model, base_name: str) -> TensorVariable | None:
+    """Return a named model variable, preferring the reparameterised latent form."""
     latent_name = f"{base_name}_latent"
     if latent_name in model.named_vars:
-        return model.named_vars[latent_name]
-    return variable
+        return cast(TensorVariable, model.named_vars[latent_name])
+    if base_name in model.named_vars:
+        return cast(TensorVariable, model.named_vars[base_name])
+    return None
 
 
 def _extract_time_coord(data: xr.DataArray, output_dim: str) -> xr.DataArray | None:
@@ -110,8 +120,9 @@ def _resolve_freq_indicator(
     if time_coord is None:
         raise ValueError(f"Cannot derive frequency indicator for {fallback_name!r}: no time coordinate found.")
 
-    # TODO: once component-side derivation is relied on consistently, some
-    # explicit frequency-indicator plumbing in make_inv_inputs(...) may be removable.
+    # TODO: thread sigma_freq/sigma_per_site explicitly through inferpymc model
+    # building so sigma components can derive their own indicator, then remove
+    # sigma_freq_index from make_inv_inputs(...).
     return make_freq_indicator(time_coord, freq).rename(fallback_name)
 
 
@@ -353,6 +364,9 @@ def add_inferpymc_likelihood_component(
     error_data = add_model_data(data["mf_error"].transpose(output_dim), "error")
     min_error_data = add_model_data(data["min_error"].transpose(output_dim), "min_error")
 
+    # TODO: once inferpymc threads sigma configuration explicitly, let
+    # add_sigma_component(...) derive sigma_freq_index locally and remove this
+    # canonical input dependency from make_inv_inputs(...).
     sigma = add_sigma_component(
         data["site_indicator"].transpose(output_dim),
         prior_args=sigprior,
