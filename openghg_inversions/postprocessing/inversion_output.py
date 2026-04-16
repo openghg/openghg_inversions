@@ -272,10 +272,11 @@ class InversionOutput:
         self.obs = self.nmeasure_to_site_time(self.obs.rename("y_obs"))
         self.obs_err = self.nmeasure_to_site_time(self.obs_err.rename("y_obs_error"))
 
-        if self.obs_prior_factor is not None and self.obs_prior_upper_level_factor is not None:
+        if self.obs_prior_factor is not None:
             self.obs_prior_factor = self.nmeasure_to_site_time(
                 self.obs_prior_factor.rename("y_obs_prior_factor")
             )
+        if self.obs_prior_upper_level_factor is not None:
             self.obs_prior_upper_level_factor = self.nmeasure_to_site_time(
                 self.obs_prior_upper_level_factor.rename("y_obs_prior_upper_level_factor")
             )
@@ -341,7 +342,6 @@ class InversionOutput:
                 "InversionOutput no longer samples predictive distributions. Request predictive groups before construction.",
                 UserWarning,
             )
-            return None
 
         if ndraw is not None and ndraw != self.trace.posterior.sizes["draw"]:
             warnings.warn(

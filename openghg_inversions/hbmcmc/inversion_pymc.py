@@ -571,6 +571,8 @@ def inferpymc(
     configured_sample_kwargs = _make_legacy_inferpymc_step_kwargs(model, nuts_sampler=nuts_sampler)
     if sampler_kwargs is not None:
         configured_sample_kwargs.update(sampler_kwargs)
+    configured_sample_kwargs.setdefault("progressbar", False)
+    configured_sample_kwargs.setdefault("cores", nchain)
 
     trace = sample(
         model,
