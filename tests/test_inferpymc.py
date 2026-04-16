@@ -292,9 +292,17 @@ def test_legacy_inferpymc_adapter_preserves_compatibility_keys(inferpymc_args: d
         sample_kwargs={"step": pm.Slice(vars=[model.named_vars["sigma"]], model=model)},
     )
 
-    assert {"xouts", "sigouts", "Ytrace", "OFFSETtrace", "trace", "model", "step1", "step2", "convergence"}.issubset(
-        legacy_result
-    )
+    assert {
+        "xouts",
+        "sigouts",
+        "Ytrace",
+        "OFFSETtrace",
+        "trace",
+        "model",
+        "step1",
+        "step2",
+        "convergence",
+    }.issubset(legacy_result)
     assert "bcouts" in legacy_result
     assert "YBCtrace" in legacy_result
     assert "prior_predictive" in legacy_result["trace"]

@@ -34,7 +34,6 @@ from openghg_inversions.models.coords import CoordRegistry, attach_coord_registr
 from openghg_inversions.models.priors import PriorArgs  # noqa: E402
 from openghg_inversions.inversion_inputs import _compact_integer_index  # noqa: E402
 
-
 # ----------------------------------------
 # Model building code
 # ----------------------------------------
@@ -202,18 +201,38 @@ def extend_inferencedata_predictive(
     sample_prior_predictive: bool | int = False,
     sample_posterior_predictive: bool | list[str] = False,
 ) -> az.InferenceData:
-    """Extend an InferenceData trace with optional predictive groups."""
+    """Extend an InferenceData trace with optional predictive groups.
+
+    Args:
+        trace: Posterior trace to extend with predictive groups.
+        model: Built PyMC model used for predictive sampling.
+        sample_prior_predictive: If truthy, sample prior predictive draws and
+            append ``prior`` and ``prior_predictive`` groups. If an integer,
+            use that many draws; if ``True``, reuse the posterior draw count.
+        sample_posterior_predictive: If truthy, sample posterior predictive
+            draws and append ``posterior_predictive``. If a list, restrict
+            posterior predictive sampling to those variable names.
+
+    Returns:
+        A copy of ``trace`` extended with the requested predictive groups.
+    """
     extended = trace.copy()
 
     if sample_prior_predictive:
-        prior_draws = trace.posterior.sizes["draw"] if sample_prior_predictive is True else int(sample_prior_predictive)
+        prior_draws = (
+            trace.posterior.sizes["draw"] if sample_prior_predictive is True else int(sample_prior_predictive)
+        )
         with model:
             extended.extend(pm.sample_prior_predictive(prior_draws, model))
 
     if sample_posterior_predictive:
-        posterior_var_names = None if sample_posterior_predictive is True else list(sample_posterior_predictive)
+        posterior_var_names = (
+            None if sample_posterior_predictive is True else list(sample_posterior_predictive)
+        )
         with model:
-            extended.extend(pm.sample_posterior_predictive(extended, model=model, var_names=posterior_var_names))
+            extended.extend(
+                pm.sample_posterior_predictive(extended, model=model, var_names=posterior_var_names)
+            )
 
     return extended
 
@@ -229,7 +248,28 @@ def sample(
     sample_posterior_predictive: bool | list[str] = False,
     **kwargs: Any,
 ) -> az.InferenceData:
-    """Sample from an inferpymc model and return a burn-sliced InferenceData trace."""
+    """Sample from a built inferpymc model.
+
+    Args:
+        model: Built PyMC model to sample from.
+        draws: Number of posterior draws to keep per chain.
+        tune: Number of tuning draws passed to ``pm.sample``.
+        chains: Number of MCMC chains to run.
+        burn: Number of posterior draws to discard from the returned
+            ``InferenceData``.
+        sample_prior_predictive: Optional prior predictive sampling request.
+            If an integer, use that many draws; if ``True``, reuse the
+            posterior draw count.
+        sample_posterior_predictive: Optional posterior predictive sampling
+            request. If a list, restrict sampling to those variable names.
+        **kwargs: Additional keyword arguments forwarded to ``pm.sample``.
+            ``return_inferencedata`` is always forced to ``True`` and
+            ``idata_kwargs["log_likelihood"]`` is always enabled.
+
+    Returns:
+        Burn-sliced ``InferenceData`` for the requested model, optionally
+        extended with predictive groups.
+    """
     sample_kwargs = dict(kwargs)
     sample_kwargs.pop("return_inferencedata", None)
     idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
@@ -271,8 +311,22 @@ def sample(
 # Legacy compatibility helpers
 # ------------------------------------------------------------
 
+
 def _make_legacy_inferpymc_step_kwargs(model: pm.Model, *, nuts_sampler: str) -> dict[str, Any]:
-    """Return inferpymc compatibility step kwargs for the current model."""
+    """Return inferpymc compatibility step kwargs for the current model.
+
+    Note:
+        Legacy adapter code. This helper preserves the current legacy inferpymc
+        step policy and should not shape the modern sampling API.
+
+    Args:
+        model: Built PyMC model used by ``inferpymc``.
+        nuts_sampler: Sampler backend selected for the compatibility path.
+
+    Returns:
+        Sampling keyword arguments containing any legacy-only explicit step
+        configuration required for the current inferpymc path.
+    """
     if nuts_sampler != "pymc":
         return {}
 
@@ -283,7 +337,21 @@ def _make_legacy_inferpymc_step_kwargs(model: pm.Model, *, nuts_sampler: str) ->
 
 
 def _rename_trace_for_legacy_inferpymc(trace: az.InferenceData) -> az.InferenceData:
-    """Return a legacy-compatible trace view with inferpymc dim names."""
+    """Return a legacy-compatible trace view with inferpymc dim names.
+
+    Note:
+        Legacy adapter code. This helper converts canonical modern trace
+        dimension names into the legacy inferpymc naming expected by
+        downstream compatibility code.
+
+    Args:
+        trace: Canonical ``InferenceData`` returned by the modern sampling
+            path.
+
+    Returns:
+        A copied ``InferenceData`` whose groups use the legacy inferpymc
+        dimension names where required.
+    """
     rename_map = {"region": "nx", "bc_region": "nbc"}
     renamed_groups: dict[str, xr.Dataset] = {}
 
@@ -295,8 +363,25 @@ def _rename_trace_for_legacy_inferpymc(trace: az.InferenceData) -> az.InferenceD
     return az.InferenceData(**renamed_groups)
 
 
-def _resolve_legacy_step_metadata(model: pm.Model, *, sample_kwargs: dict[str, Any]) -> tuple[Any | None, Any | None]:
-    """Return compatibility sampler metadata derived from actual sampling kwargs."""
+def _resolve_legacy_step_metadata(
+    model: pm.Model, *, sample_kwargs: dict[str, Any]
+) -> tuple[Any | None, Any | None]:
+    """Return compatibility sampler metadata derived from actual sampling kwargs.
+
+    Note:
+        Legacy adapter code. This helper reconstructs the legacy ``step1`` and
+        ``step2`` metadata from the actual sampling configuration used by
+        ``inferpymc``.
+
+    Args:
+        model: Built PyMC model used for the compatibility sampling run.
+        sample_kwargs: Sampling keyword arguments actually passed to
+            ``pm.sample`` by the compatibility path.
+
+    Returns:
+        A ``(step1, step2)`` tuple matching the legacy inferpymc metadata
+        convention.
+    """
     step = sample_kwargs.get("step")
     if step is None:
         return None, None
@@ -309,7 +394,9 @@ def _resolve_legacy_step_metadata(model: pm.Model, *, sample_kwargs: dict[str, A
 
     if isinstance(step, list):
         slice_step = next((current_step for current_step in step if isinstance(current_step, pm.Slice)), None)
-        latent_step = next((current_step for current_step in step if not isinstance(current_step, pm.Slice)), None)
+        latent_step = next(
+            (current_step for current_step in step if not isinstance(current_step, pm.Slice)), None
+        )
         return latent_step, slice_step
 
     step_var_names = tuple(getattr(variable, "name", None) for variable in getattr(step, "vars", []))
@@ -326,7 +413,25 @@ def _adapt_legacy_inferpymc_results(
     add_offset: bool,
     sample_kwargs: dict[str, Any],
 ) -> dict:
-    """Adapt a modern sampling result into the legacy inferpymc return structure."""
+    """Adapt modern sampling outputs into the legacy inferpymc return structure.
+
+    Note:
+        Legacy adapter code. This helper is the compatibility boundary between
+        the modern ``InferenceData``-first sampling path and the legacy
+        inferpymc dict-of-arrays return contract.
+
+    Args:
+        trace: Canonical ``InferenceData`` returned by the modern sampling
+            path.
+        model: Built PyMC model used for sampling.
+        use_bc: Whether boundary-condition terms are enabled.
+        add_offset: Whether offset terms are enabled.
+        sample_kwargs: Sampling keyword arguments actually used by the legacy
+            compatibility run.
+
+    Returns:
+        Dictionary matching the legacy inferpymc return contract.
+    """
     legacy_trace = _rename_trace_for_legacy_inferpymc(trace)
     posterior = legacy_trace.posterior.isel(chain=0, drop=True)
 
@@ -491,6 +596,7 @@ def inferpymc(
 # ------------------------------------------------------------
 # Legacy post-processing
 # ------------------------------------------------------------
+
 
 def _weighted_apriori_flux_for_months(flux_array_all: np.ndarray, month_index: np.ndarray) -> np.ndarray:
     """Compute a weighted prior flux average using compacted month positions."""

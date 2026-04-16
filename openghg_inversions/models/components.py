@@ -65,7 +65,17 @@ def get_model_latent(variable: TensorVariable, base_name: str) -> TensorVariable
 
 
 def resolve_model_variable(model: pm.Model, base_name: str) -> TensorVariable | None:
-    """Return a named model variable, preferring the reparameterised latent form."""
+    """Return a named model variable, preferring the reparameterised latent form.
+
+    Args:
+        model: PyMC model to inspect.
+        base_name: Base variable name to resolve.
+
+    Returns:
+        The reparameterised latent variable ``{base_name}_latent`` when it is
+        present on ``model``, otherwise the user-facing variable named
+        ``base_name``. Returns ``None`` if neither variable exists.
+    """
     latent_name = f"{base_name}_latent"
     if latent_name in model.named_vars:
         return cast(TensorVariable, model.named_vars[latent_name])
@@ -118,7 +128,9 @@ def _resolve_freq_indicator(
 
     time_coord = _extract_time_coord(data, output_dim=output_dim)
     if time_coord is None:
-        raise ValueError(f"Cannot derive frequency indicator for {fallback_name!r}: no time coordinate found.")
+        raise ValueError(
+            f"Cannot derive frequency indicator for {fallback_name!r}: no time coordinate found."
+        )
 
     # TODO: thread sigma_freq/sigma_per_site explicitly through inferpymc model
     # building so sigma components can derive their own indicator, then remove
@@ -235,7 +247,9 @@ def add_sigma_component(
         fallback_name="sigma_freq_index" if var_name == "sigma" else f"{var_name}_freq_indicator",
     )
     if freq_index is None:
-        raise ValueError("Sigma frequency information must be provided via `sigma_freq_index` or `sigma_freq`.")
+        raise ValueError(
+            "Sigma frequency information must be provided via `sigma_freq_index` or `sigma_freq`."
+        )
 
     site_data = site_indicator if per_site else xr.zeros_like(site_indicator)
     site_data_var = add_model_data(site_data, "site_indicator")
@@ -305,9 +319,9 @@ def add_offset_component(
     if indicator is not None:
         period_codes = np.asarray(indicator.values, dtype=int)
         period_matrix = pd.get_dummies(period_codes, dtype=int).values
-        design_matrix = (
-            site_matrix[:, :, None] * period_matrix[:, None, :]
-        ).reshape(site_matrix.shape[0], -1)
+        design_matrix = (site_matrix[:, :, None] * period_matrix[:, None, :]).reshape(
+            site_matrix.shape[0], -1
+        )
     else:
         design_matrix = site_matrix
 
@@ -316,7 +330,10 @@ def add_offset_component(
         xr.DataArray(
             design_matrix,
             dims=(output_dim, "noffset_term"),
-            coords={output_dim: site_indicator.coords[output_dim], "noffset_term": np.arange(design_matrix.shape[1])},
+            coords={
+                output_dim: site_indicator.coords[output_dim],
+                "noffset_term": np.arange(design_matrix.shape[1]),
+            },
             name=design_name,
         ),
         design_name,
