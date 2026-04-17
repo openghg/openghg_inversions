@@ -107,6 +107,12 @@ def build_inferpymc_model(
     """Build the current component-based inferpymc model.
 
     Args:
+        inv_inputs: Canonical inversion-input dataset, usually produced by
+            ``make_inv_inputs(...)``. This dataset must contain the observation
+            and model variables required by the current component-based model,
+            including at minimum ``H``, ``mf``, ``mf_error``,
+            ``site_indicator``, ``sigma_freq_index``, and ``min_error``. When
+            ``use_bc`` is ``True``, it must also contain ``H_bc``.
         xprior: Prior specification for emissions scaling factors.
         bcprior: Prior specification for boundary-condition scaling factors.
         sigprior: Prior specification for model-error terms.
@@ -518,7 +524,8 @@ def inferpymc(
             A common choice is {'pdf': 'truncatednormal', 'lower': 0.0, 'mu': 1.0, 'sigma': 0.1}.
         sigprior: Prior specification for the model-error parameter(s).
         nuts_sampler: Name of the NUTS sampler used by pymc.sample (e.g., "pymc" or "numpyro").
-        nit: Total number of iterations (samples + tuning) to draw per chain.
+        nit: Number of posterior draws to keep per chain. Tuning draws are
+            controlled separately via ``tune``.
         burn: Number of samples to discard as burn-in.
         tune: Number of tuning steps passed to the sampler.
         nchain: Number of MCMC chains to run.
