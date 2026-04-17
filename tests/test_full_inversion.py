@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
-from conftest import raw_data_path
 
 
 @pytest.fixture
@@ -157,6 +156,18 @@ def test_full_inversion_lognormal_reparam(mcmc_args):
     fixedbasisMCMC(**mcmc_args)
 
 
+def test_full_inversion_paris_outputs_lognormal_reparam_conflict(mcmc_args):
+    """Check PARIS outputs ignore reparameterized latent-only traces."""
+    mcmc_args["reload_merged_data"] = False
+    mcmc_args["output_format"] = "paris"
+    mcmc_args["reparameterise_log_normal"] = True
+    mcmc_args["xprior"] = {"pdf": "lognormal", "mu": 1.0, "sigma": 1.0}
+
+    out = fixedbasisMCMC(**mcmc_args)
+
+    assert "Yapost" in out
+
+
 def test_full_inversion_min_error(mcmc_args):
     mcmc_args["min_error"] = 20.0
     fixedbasisMCMC(**mcmc_args)
@@ -188,22 +199,25 @@ def test_full_inversion_min_error_no_bc(mcmc_args):
 
 
 def test_full_inversion_pollution_events_from_obs_no_bc(mcmc_args):
+    """Test inversion with pollution-event scaling and no boundary conditions."""
     mcmc_args["pollution_events_from_obs"] = True
     mcmc_args["use_bc"] = False
     fixedbasisMCMC(**mcmc_args)
 
 
 def test_full_inversion_two_sites(mcmc_args, mhd_and_tac_ch4_data_args):
+    """Test inversion with two sites and an offset term."""
     mcmc_args.update(mhd_and_tac_ch4_data_args)
     mcmc_args["reload_merged_data"] = False
     mcmc_args["add_offset"] = True
     mcmc_args["offset_args"] = {"drop_first": True}
     fixedbasisMCMC(**mcmc_args)
 
+
 def test_full_inversion_offset_args(mcmc_args):
+    """Test full inversion accepts explicit offset arguments through runtime plumbing."""
     mcmc_args["add_offset"] = True
-    mcmc_args["offset_args"] = {"drop_first": False,
-                                "offset_freq": "D"}
+    mcmc_args["offset_args"] = {"drop_first": False, "offset_freq": "D"}
     fixedbasisMCMC(**mcmc_args)
 
 

@@ -13,6 +13,16 @@ from openghg_inversions.model_error import percentile_error_method, residual_err
 DatetimeLike = str | dt.datetime | np.datetime64 | pd.Timestamp
 
 
+def _compact_integer_index(values: np.ndarray) -> np.ndarray:
+    """Remap integer indicator values to contiguous 0..N-1 positions."""
+    values = np.asarray(values, dtype=int)
+    if values.size == 0:
+        return values
+
+    unique_values = np.unique(values)
+    return np.searchsorted(unique_values, values).astype(int)
+
+
 def xr_unique_inv(da: xr.DataArray, sort: bool = True) -> xr.DataArray:
     if sort:
 
@@ -79,6 +89,8 @@ def make_freq_indicator(
         return time.dt.month - time.min().dt.month + 12 * (time.dt.year - time.min().dt.year)
 
     # fixed-duration freq strings (e.g. "8d", "12h", "3h")
+    if isinstance(freq, str) and freq.isalpha():
+        freq = f"1{freq}"
     anchor = np.datetime64(anchor_time) if anchor_time is not None else time.min().values
     dt = np.timedelta64(pd.to_timedelta(freq).value, "ns")  # robust to xarray dtype
     idx = ((time.values.astype("datetime64[ns]") - anchor) // dt).astype(int)
@@ -91,12 +103,13 @@ def make_sigma_freq(
     freq: Literal["monthly"] | str | None = None,
     anchor_time: DatetimeLike | None = None,
 ) -> xr.DataArray:
-    res = (
+    result = (
         xr.zeros_like(time).astype(int)
         if freq is None
         else make_freq_indicator(time, freq, anchor_time=anchor_time)
     )
-    return res.rename("sigma_freq_index")
+    result = xr.apply_ufunc(_compact_integer_index, result.astype(int))
+    return result.rename("sigma_freq_index")
 
 
 # ADD FUNCTIONS
@@ -107,24 +120,33 @@ def add_min_error(
     min_error_per_site: bool = True,
 ) -> xr.Dataset:
     """Add min_error to combined Dataset."""
+    min_error_data: xr.DataArray | float | np.ndarray
     if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
-        ds["min_error"] = min_error * xr.ones_like(ds.mf)
+        min_error_data = min_error * xr.ones_like(ds.mf)
     elif isinstance(min_error, dict):
         sites = [k for k in fp_data if not k.startswith(".")]
         err_per_site = np.array([min_error[site] for site in sites])
-        ds["min_error"] = xr_setup_min_error(err_per_site, ds.site_indicator)
+        min_error_data = xr_setup_min_error(err_per_site, ds.site_indicator)
     elif min_error == "residual":
         res_err = residual_error_method(fp_data)
         if min_error_per_site:
-            ds["min_error"] = xr_setup_min_error(res_err, ds.site_indicator)
+            min_error_data = xr_setup_min_error(res_err, ds.site_indicator)
         else:
-            ds["min_error"] = res_err
+            min_error_data = res_err
     elif min_error == "percentile":
         perc_err = percentile_error_method(fp_data)
-        ds["min_error"] = xr_setup_min_error(perc_err, ds.site_indicator)
+        min_error_data = xr_setup_min_error(perc_err, ds.site_indicator)
     else:
         raise ValueError(f"Option '{min_error}' is not valid.")
 
+    if not isinstance(min_error_data, xr.DataArray):
+        min_error_data = xr.full_like(ds.mf, min_error_data).rename("min_error")
+    elif "nmeasure" not in min_error_data.dims:
+        min_error_data = xr.full_like(ds.mf, min_error_data.values).rename("min_error")
+    else:
+        min_error_data = min_error_data.rename("min_error")
+
+    ds["min_error"] = min_error_data
     return ds
 
 
@@ -176,7 +198,9 @@ def transform_bc(
 
 
 # INVERSION INPUTS PIPELINE
-def _drop_nan_and_compute(ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")) -> xr.Dataset:
+def _drop_nan_and_compute(
+    ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")
+) -> xr.Dataset:
     """Drop NaNs in required inversion variables and materialize core variables.
 
     This centralizes the dataset cleanup that was previously duplicated in
