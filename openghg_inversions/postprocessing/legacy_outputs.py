@@ -231,19 +231,6 @@ def _flatten_nmeasure_for_legacy(data: xr.DataArray) -> xr.DataArray:
     return result.assign_coords(nmeasure=np.arange(result.sizes["nmeasure"]))
 
 
-def _normalise_legacy_sampling_outputs(mcmc_results: dict) -> dict[str, xr.DataArray | str]:
-    """Extract the compatibility fields needed by legacy hbmcmc outputs."""
-    outputs: dict[str, xr.DataArray | str] = {
-        "xouts": mcmc_results["xouts"],
-        "sigouts": mcmc_results["sigouts"],
-    }
-    if "bcouts" in mcmc_results:
-        outputs["bcouts"] = mcmc_results["bcouts"]
-    if "convergence" in mcmc_results:
-        outputs["convergence"] = mcmc_results["convergence"]
-    return outputs
-
-
 def make_legacy_hbmcmc_output(
     inv_out: InversionOutput,
     mcmc_results: dict,
@@ -254,6 +241,8 @@ def make_legacy_hbmcmc_output(
     use_bc: bool = False,
 ) -> xr.Dataset:
     """Create a legacy-format hbmcmc output dataset from compatibility inputs.
+
+    TODO: needs to handle offsets
 
     Args:
         inv_out: Inversion outputs container.
@@ -269,7 +258,6 @@ def make_legacy_hbmcmc_output(
         ``inferpymc_postprocessouts``.
 
     """
-    legacy_sampling = _normalise_legacy_sampling_outputs(mcmc_results)
     Hx_arr = np.asarray(Hx)
     Hbc_arr = np.asarray(Hbc) if Hbc is not None else None
     sigma_freq = np.asarray(sigma_freq_index)
@@ -328,8 +316,8 @@ def make_legacy_hbmcmc_output(
         "Yoffmode": conc.get("offset_posterior_mode", xr.zeros_like(inv_out.obs)),
         "Yoff68": conc.get("offset_posterior_hdi_68", xr.zeros_like(conc["y_posterior_predictive_hdi_68"])),
         "Yoff95": conc.get("offset_posterior_hdi_95", xr.zeros_like(conc["y_posterior_predictive_hdi_95"])),
-        "xtrace": (("steps", "nparam"), legacy_sampling["xouts"].values),
-        "sigtrace": (("steps", "nsigma_site", "nsigma_time"), legacy_sampling["sigouts"].values),
+        "xtrace": (("steps", "nparam"), mcmc_results["xouts"].values),
+        "sigtrace": (("steps", "nsigma_site", "nsigma_time"), mcmc_results["sigouts"].values),
         "siteindicator": inv_out.site_indicators,
         "sigmafreqindex": ("nmeasure", sigma_freq),
         "sitenames": inv_out.site_names,
@@ -358,7 +346,7 @@ def make_legacy_hbmcmc_output(
                 "YmodmodeBC": conc["mu_bc_posterior_mode"],
                 "Ymod95BC": conc["mu_bc_posterior_hdi_95"],
                 "Ymod68BC": conc["mu_bc_posterior_hdi_68"],
-                "bctrace": (("steps", "nBC"), legacy_sampling["bcouts"].values),
+                "bctrace": (("steps", "nBC"), mcmc_results["bcouts"].values),
                 "bcsensitivity": (("nmeasure", "nBC"), Hbc_arr.T),
             }
         )
@@ -367,8 +355,8 @@ def make_legacy_hbmcmc_output(
         if isinstance(value, xr.DataArray):
             data_vars[name] = _flatten_nmeasure_for_legacy(value)
 
-    xouts_arr = np.asarray(legacy_sampling["xouts"])
-    sigouts_arr = np.asarray(legacy_sampling["sigouts"])
+    xouts_arr = np.asarray(mcmc_results["xouts"])
+    sigouts_arr = np.asarray(mcmc_results["sigouts"])
     coords: dict[str, xr.DataArray | tuple[tuple[str, ...], np.ndarray]] = {
         "stepnum": ("steps", np.arange(xouts_arr.shape[0])),
         "paramnum": ("nparam", np.arange(Hx_arr.shape[0])),
@@ -399,7 +387,7 @@ def make_legacy_hbmcmc_output(
 
     out.attrs["Start date"] = str(inv_out.start_date)
     out.attrs["End date"] = str(inv_out.end_date)
-    if "convergence" in legacy_sampling:
-        out.attrs["Convergence"] = legacy_sampling["convergence"]
+    if "convergence" in mcmc_results:
+        out.attrs["Convergence"] = mcmc_results["convergence"]
 
     return out
