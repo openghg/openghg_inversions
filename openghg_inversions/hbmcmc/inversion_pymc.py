@@ -39,8 +39,8 @@ from openghg_inversions.inversion_inputs import _compact_integer_index  # noqa: 
 # ----------------------------------------
 
 # Defaults to avoid mutable default arguments in model building functions.
-DEFAULT_XPRIOR: PriorArgs = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
-DEFAULT_BCPRIOR: PriorArgs = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
+DEFAULT_XPRIOR: PriorArgs = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0, "reparameterise": True}
+DEFAULT_BCPRIOR: PriorArgs = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.05, "lower": 0.0}
 DEFAULT_SIGPRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
 DEFAULT_OFFSETPRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
 
@@ -209,6 +209,9 @@ def extend_inferencedata_predictive(
 ) -> az.InferenceData:
     """Extend an InferenceData trace with optional predictive groups.
 
+    Updates InferenceData in-place with requested groups and returns the
+    result for convenience.
+
     Args:
         trace: Posterior trace to extend with predictive groups.
         model: Built PyMC model used for predictive sampling.
@@ -220,27 +223,25 @@ def extend_inferencedata_predictive(
             posterior predictive sampling to those variable names.
 
     Returns:
-        A copy of ``trace`` extended with the requested predictive groups.
+        Input ``trace`` extended with the requested predictive groups.
     """
-    extended = trace.copy()
-
     if sample_prior_predictive:
         prior_draws = (
             trace.posterior.sizes["draw"] if sample_prior_predictive is True else int(sample_prior_predictive)
         )
         with model:
-            extended.extend(pm.sample_prior_predictive(prior_draws, model))
+            trace.extend(pm.sample_prior_predictive(prior_draws, model))
 
     if sample_posterior_predictive:
         posterior_var_names = (
             None if sample_posterior_predictive is True else list(sample_posterior_predictive)
         )
         with model:
-            extended.extend(
-                pm.sample_posterior_predictive(extended, model=model, var_names=posterior_var_names)
+            trace.extend(
+                pm.sample_posterior_predictive(trace, model=model, var_names=posterior_var_names)
             )
 
-    return extended
+    return trace
 
 
 def sample(
