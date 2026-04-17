@@ -1,7 +1,6 @@
 import pytest
 import xarray as xr
 from pathlib import Path
-import arviz as az
 
 from openghg_inversions.hbmcmc.hbmcmc import _resolve_output_format, fixedbasisMCMC
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename

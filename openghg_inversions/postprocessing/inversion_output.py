@@ -1,6 +1,5 @@
 from pathlib import Path
 from typing_extensions import Self
-import warnings
 from dataclasses import dataclass
 from typing import Any, Hashable, Literal, TypeVar
 

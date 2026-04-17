@@ -237,9 +237,7 @@ def extend_inferencedata_predictive(
             None if sample_posterior_predictive is True else list(sample_posterior_predictive)
         )
         with model:
-            trace.extend(
-                pm.sample_posterior_predictive(trace, model=model, var_names=posterior_var_names)
-            )
+            trace.extend(pm.sample_posterior_predictive(trace, model=model, var_names=posterior_var_names))
 
     return trace
 
