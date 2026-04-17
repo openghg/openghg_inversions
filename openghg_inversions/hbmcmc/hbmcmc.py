@@ -125,7 +125,8 @@ def _prepare_runtime_inv_inputs(
 def _extract_post_process_args(inv_inputs: xr.Dataset) -> dict[str, np.ndarray]:
     """Extract legacy-shaped postprocessing arrays from inversion inputs.
 
-    NOTE: This is for compatibility at Stage D of #370. This should be removed in Stage E.
+    NOTE: Transitional compatibility bridge. This extracts legacy-shaped arrays
+    from already-prepared inversion inputs; it is not a core data-preparation step.
 
     Args:
         inv_inputs: Dataset produced by ``make_inv_inputs``.

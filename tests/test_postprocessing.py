@@ -163,6 +163,7 @@ def test_country_outputs_lognormal_reparam_conflict(mcmc_args, europe_country_fi
 
 
 def test_hbmcmc_postprocessing_saves_legacy_output(mcmc_args, tmpdir):
+    """Legacy postprocessing output can still be saved and reloaded."""
     mcmc_args["output_format"] = "hbmcmc_postprocessing"
     mcmc_args["outputpath"] = str(tmpdir)
 
@@ -182,6 +183,7 @@ def test_hbmcmc_postprocessing_saves_legacy_output(mcmc_args, tmpdir):
 
 
 def test_resolve_output_format_canonicalizes_paris_compatibility():
+    """The old PARIS compatibility switch resolves to the canonical output format."""
     with pytest.warns(UserWarning, match="Use `output_format = 'paris'` instead"):
         resolved = _resolve_output_format("hbmcmc", paris_postprocessing=True, is_column=False)
 
@@ -189,6 +191,7 @@ def test_resolve_output_format_canonicalizes_paris_compatibility():
 
 
 def test_paris_postprocessing_compatibility_matches_paris_output_format(mcmc_args):
+    """Compatibility PARIS output matches the explicit canonical format."""
     explicit_args = mcmc_args.copy()
     explicit_args["output_format"] = "paris"
 
@@ -207,6 +210,7 @@ def test_paris_postprocessing_compatibility_matches_paris_output_format(mcmc_arg
 
 
 def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(mcmc_args, tmpdir):
+    """Legacy-style postprocessing keeps its core vars, attrs, and coords."""
     mcmc_args["output_format"] = "hbmcmc_postprocessing"
     mcmc_args["outputpath"] = str(tmpdir)
 
@@ -235,6 +239,7 @@ def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(mcmc_arg
 
 
 def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(mcmc_args, tmpdir):
+    """Saved trace and inversion output files preserve downstream-facing dims."""
     trace_path = Path(tmpdir) / "custom_trace.nc"
     inv_out_path = Path(tmpdir) / "custom_inv_out.nc"
     mcmc_args["output_format"] = "inv_out"

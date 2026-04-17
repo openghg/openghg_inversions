@@ -2,7 +2,7 @@
 
 import re
 import getpass
-from dataclasses import dataclass
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -28,66 +28,19 @@ from openghg_inversions.models.components import (  # noqa: E402
     add_inferpymc_likelihood_component,
     add_linear_component,
     add_offset_component,
+    resolve_model_variable,
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry  # noqa: E402
 from openghg_inversions.models.priors import PriorArgs  # noqa: E402
-
-
-@dataclass
-class InferPyMCModelSetup:
-    """Container for the PyMC model and sampler configuration used by inferpymc.
-
-    Attributes:
-        model: PyMC model built for the inversion.
-        step1: Step method used for emissions and boundary-condition variables.
-        step2: Step method used for sigma variables.
-        sample_kwargs: Extra keyword arguments forwarded to ``pm.sample``.
-    """
-
-    model: pm.Model
-    step1: Any
-    step2: Any
-    sample_kwargs: dict[str, Any]
-
-
-def _contiguous_index(index: np.ndarray) -> np.ndarray:
-    """Remap integer period indices to contiguous 0..N-1 values."""
-    index = np.asarray(index, dtype=int)
-    if index.size == 0:
-        return index
-
-    uniq = np.unique(index)
-    return np.searchsorted(uniq, index).astype(int)
-
-
-def _contiguous_sigma_time_index(sigma_freq_index: np.ndarray) -> np.ndarray:
-    """Remap sigma period indices to contiguous 0..N-1 values.
-
-    Monthly period indices can legitimately have gaps when entire periods have no
-    data (e.g. Jan and Mar only => [0, 2]). PyMC array indexing is positional, so
-    these values must be compacted before using `sigma[..., sigma_freq_index]`.
-    """
-    return _contiguous_index(sigma_freq_index)
-
-
-def _weighted_apriori_flux_for_months(flux_array_all: np.ndarray, month_index: np.ndarray) -> np.ndarray:
-    """Compute a weighted prior flux average using compacted month positions."""
-    month_index = _contiguous_index(month_index)
-    apriori_flux = np.zeros_like(flux_array_all[:, :, 0])
-
-    for month_pos in np.unique(month_index):
-        apriori_flux += flux_array_all[:, :, month_pos] * np.sum(month_index == month_pos) / len(month_index)
-
-    return apriori_flux
-
+from openghg_inversions.inversion_inputs import _compact_integer_index  # noqa: E402
 
 # ----------------------------------------
 # Model building code
 # ----------------------------------------
 
 # Defaults to avoid mutable default arguments in model building functions.
-DEFAULT_XPRIOR: PriorArgs = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
-DEFAULT_BCPRIOR: PriorArgs = {"pdf": "normal", "mu": 1.0, "sigma": 1.0}
+DEFAULT_XPRIOR: PriorArgs = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0, "reparameterise": True}
+DEFAULT_BCPRIOR: PriorArgs = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.05, "lower": 0.0}
 DEFAULT_SIGPRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
 DEFAULT_OFFSETPRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
 
@@ -122,7 +75,11 @@ def _prepare_builder_priors(
     prepared_offsetprior = DEFAULT_OFFSETPRIOR.copy() if offsetprior is None else offsetprior.copy()
 
     if reparameterise_log_normal:
-        # TODO: later prefer prior-native `reparameterise=True` over this separate public flag.
+        warnings.warn(
+            "`reparameterise_log_normal` is deprecated. Set `reparameterise=True` in the relevant prior args instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if str(prepared_xprior.get("pdf", "")).lower() == "lognormal":
             prepared_xprior["reparameterise"] = True
         if str(prepared_bcprior.get("pdf", "")).lower() == "lognormal":
@@ -131,140 +88,37 @@ def _prepare_builder_priors(
     return prepared_xprior, prepared_bcprior, prepared_sigprior, prepared_offsetprior
 
 
-def _canonicalise_inferpymc_dataset(
-    inv_inputs: xr.Dataset,
-    /,
-    use_bc: bool,
-    obs_dim: str = "nmeasure",
-    input_state_dim: str = "region",
-    input_bc_state_dim: str = "bc_region",
-    state_dim: str = "nx",
-    bc_state_dim: str = "nbc",
-) -> xr.Dataset:
-    """Convert inversion inputs into the canonical dataset used by the builder.
-
-    Args:
-        inv_inputs: Dataset produced by ``make_inv_inputs``.
-        use_bc: Whether the canonical dataset should include boundary-condition
-            sensitivities.
-        obs_dim: Observation dimension name used by the model components.
-        input_state_dim: State dimension name used by emissions sensitivities in
-            ``inv_inputs``.
-        input_bc_state_dim: State dimension name used by BC sensitivities in
-            ``inv_inputs``.
-        state_dim: State dimension name used for emissions sensitivities.
-        bc_state_dim: State dimension name used for boundary-condition
-            sensitivities.
-
-    Returns:
-        An xarray dataset with observation-first sensitivities and compact sigma
-        period indices.
-
-    Raises:
-        ValueError: If boundary conditions are requested but ``inv_inputs`` does
-            not contain ``H_bc``.
-    """
-    obs_coord = inv_inputs.indexes[obs_dim] if obs_dim in inv_inputs.indexes else inv_inputs[obs_dim].values
-    state_coord = inv_inputs[input_state_dim].values
-    data_vars: dict[str, xr.DataArray] = {
-        "H": xr.DataArray(
-            inv_inputs["H"].transpose(obs_dim, input_state_dim).values,
-            dims=(obs_dim, state_dim),
-            coords={obs_dim: obs_coord, state_dim: np.arange(state_coord.size)},
-            name="H",
-        ),
-        "mf": xr.DataArray(inv_inputs["mf"].values, dims=(obs_dim,), coords={obs_dim: obs_coord}, name="mf"),
-        "mf_error": xr.DataArray(
-            inv_inputs["mf_error"].values,
-            dims=(obs_dim,),
-            coords={obs_dim: obs_coord},
-            name="mf_error",
-        ),
-        "site_indicator": xr.DataArray(
-            inv_inputs["site_indicator"].values.astype(int),
-            dims=(obs_dim,),
-            coords={obs_dim: obs_coord},
-            name="site_indicator",
-        ),
-        "sigma_freq_index": xr.DataArray(
-            _contiguous_sigma_time_index(inv_inputs["sigma_freq_index"].values),
-            dims=(obs_dim,),
-            coords={obs_dim: obs_coord},
-            name="sigma_freq_index",
-        ),
-    }
-    min_error_values = inv_inputs["min_error"].values
-    if np.isscalar(min_error_values) or np.ndim(min_error_values) == 0:
-        min_error_values = np.full(inv_inputs.sizes[obs_dim], min_error_values)
-    data_vars["min_error"] = xr.DataArray(
-        min_error_values,
-        dims=(obs_dim,),
-        coords={obs_dim: obs_coord},
-        name="min_error",
-    )
-    coords: dict[str, Any] = {obs_dim: obs_coord, state_dim: np.arange(state_coord.size)}
-
-    if not isinstance(obs_coord, pd.MultiIndex):
-        if "time" in inv_inputs.coords:
-            coords["time"] = xr.DataArray(
-                inv_inputs["time"].values,
-                dims=(obs_dim,),
-                coords={obs_dim: obs_coord},
-                name="time",
-            )
-
-        for coord_name in ("site",):
-            if coord_name in inv_inputs.coords:
-                coords[coord_name] = xr.DataArray(
-                    inv_inputs[coord_name].values,
-                    dims=(obs_dim,),
-                    coords={obs_dim: obs_coord},
-                    name=coord_name,
-                )
-
-    if use_bc:
-        if "H_bc" not in inv_inputs:
-            raise ValueError("If `use_bc` is True, `inv_inputs` must contain `H_bc`.")
-        bc_coord = inv_inputs[input_bc_state_dim].values
-        coords[bc_state_dim] = np.arange(bc_coord.size)
-        data_vars["H_bc"] = xr.DataArray(
-            inv_inputs["H_bc"].transpose(obs_dim, input_bc_state_dim).values,
-            dims=(obs_dim, bc_state_dim),
-            coords={obs_dim: obs_coord, bc_state_dim: np.arange(bc_coord.size)},
-            name="H_bc",
-        )
-
-    return xr.Dataset(data_vars=data_vars, coords=coords)
-
-
 def build_inferpymc_model(
+    inv_inputs: xr.Dataset,
+    *,
     xprior: dict | None = None,
     bcprior: dict | None = None,
     sigprior: dict | None = None,
     sigma_per_site: bool = True,
     offsetprior: dict | None = None,
     add_offset: bool = False,
-    min_error: np.ndarray | float | None = None,
     use_bc: bool = True,
     reparameterise_log_normal: bool = False,
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
-    nuts_sampler: str = "pymc",
-    inv_inputs: xr.Dataset | None = None,
-) -> InferPyMCModelSetup:
+) -> pm.Model:
     """Build the current component-based inferpymc model.
 
     Args:
+        inv_inputs: Canonical inversion-input dataset, usually produced by
+            ``make_inv_inputs(...)``. This dataset must contain the observation
+            and model variables required by the current component-based model,
+            including at minimum ``H``, ``mf``, ``mf_error``,
+            ``site_indicator``, ``sigma_freq_index``, and ``min_error``. When
+            ``use_bc`` is ``True``, it must also contain ``H_bc``.
         xprior: Prior specification for emissions scaling factors.
         bcprior: Prior specification for boundary-condition scaling factors.
         sigprior: Prior specification for model-error terms.
         sigma_per_site: Whether sigma should vary by site.
         offsetprior: Prior specification for optional offsets.
         add_offset: Whether to include an offset term in the model.
-        min_error: Retained for API compatibility. The active runtime path uses
-            ``inv_inputs["min_error"]``.
         use_bc: Whether to include boundary-condition terms in the model.
         reparameterise_log_normal: Whether to request lognormal
             reparameterisation for supported priors.
@@ -275,20 +129,10 @@ def build_inferpymc_model(
             ``add_offset_component``.
         power: Exponent or prior specification used in the likelihood error
             scaling.
-        nuts_sampler: Sampler backend name passed through to the model setup.
-        inv_inputs: Dataset produced by ``make_inv_inputs``.
 
     Returns:
-        ``InferPyMCModelSetup`` containing the built model and sampler
-        configuration.
-
-    Raises:
-        ValueError: If ``inv_inputs`` is not provided.
+        Built PyMC model for the current inferpymc path.
     """
-    if inv_inputs is None:
-        raise ValueError("`inferpymc` now expects `inv_inputs` from `make_inv_inputs`.")
-
-    canonical_ds = _canonicalise_inferpymc_dataset(inv_inputs, use_bc=use_bc)
     xprior, bcprior, sigprior, offsetprior = _prepare_builder_priors(
         xprior=xprior,
         bcprior=bcprior,
@@ -299,10 +143,8 @@ def build_inferpymc_model(
 
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
-        step1_vars = []
-
         flux_component = add_linear_component(
-            canonical_ds["H"],
+            inv_inputs["H"],
             data_name="hx",
             prior_args=xprior,
             var_name="x",
@@ -310,12 +152,13 @@ def build_inferpymc_model(
             output_dim="nmeasure",
             compute_deterministic=True,
         )
-        step1_vars.append(flux_component.latent)
 
         mu_bc = None
-        if use_bc and "H_bc" in canonical_ds:
+        if use_bc:
+            if "H_bc" not in inv_inputs:
+                raise ValueError("If `use_bc` is True, `inv_inputs` must contain `H_bc`.")
             bc_component = add_linear_component(
-                canonical_ds["H_bc"],
+                inv_inputs["H_bc"],
                 data_name="hbc",
                 prior_args=bcprior,
                 var_name="bc",
@@ -324,13 +167,12 @@ def build_inferpymc_model(
                 compute_deterministic=True,
             )
             mu_bc = bc_component.output
-            step1_vars.append(bc_component.latent)
 
         offset = None
         if add_offset:
             offset_args = offset_args or {}
             offset = add_offset_component(
-                canonical_ds["site_indicator"],
+                inv_inputs["site_indicator"],
                 prior_args=offsetprior,
                 output_name="offset",
                 output_dim="nmeasure",
@@ -338,7 +180,7 @@ def build_inferpymc_model(
             )
 
         add_inferpymc_likelihood_component(
-            canonical_ds,
+            inv_inputs,
             mu=flux_component.output,
             mu_bc=mu_bc,
             offset=offset,
@@ -350,16 +192,7 @@ def build_inferpymc_model(
             output_dim="nmeasure",
         )
 
-        sigma = model.named_vars["sigma"]
-        step1 = pm.NUTS(vars=step1_vars)
-        step2 = pm.Slice(vars=[sigma])
-
-    return InferPyMCModelSetup(
-        model=model,
-        step1=step1,
-        step2=step2,
-        sample_kwargs={"step": [step1, step2] if nuts_sampler == "pymc" else None},
-    )
+    return model
 
 
 # ----------------------------------------
@@ -367,8 +200,227 @@ def build_inferpymc_model(
 # ----------------------------------------
 
 
+def extend_inferencedata_predictive(
+    trace: az.InferenceData,
+    *,
+    model: pm.Model,
+    sample_prior_predictive: bool | int = False,
+    sample_posterior_predictive: bool | list[str] = False,
+) -> az.InferenceData:
+    """Extend an InferenceData trace with optional predictive groups.
+
+    Updates InferenceData in-place with requested groups and returns the
+    result for convenience.
+
+    Args:
+        trace: Posterior trace to extend with predictive groups.
+        model: Built PyMC model used for predictive sampling.
+        sample_prior_predictive: If truthy, sample prior predictive draws and
+            append ``prior`` and ``prior_predictive`` groups. If an integer,
+            use that many draws; if ``True``, reuse the posterior draw count.
+        sample_posterior_predictive: If truthy, sample posterior predictive
+            draws and append ``posterior_predictive``. If a list, restrict
+            posterior predictive sampling to those variable names.
+
+    Returns:
+        Input ``trace`` extended with the requested predictive groups.
+    """
+    if sample_prior_predictive:
+        prior_draws = (
+            trace.posterior.sizes["draw"] if sample_prior_predictive is True else int(sample_prior_predictive)
+        )
+        with model:
+            trace.extend(pm.sample_prior_predictive(prior_draws, model))
+
+    if sample_posterior_predictive:
+        posterior_var_names = (
+            None if sample_posterior_predictive is True else list(sample_posterior_predictive)
+        )
+        with model:
+            trace.extend(pm.sample_posterior_predictive(trace, model=model, var_names=posterior_var_names))
+
+    return trace
+
+
+def sample(
+    model: pm.Model,
+    *,
+    draws: int = 1000,
+    tune: int = 1000,
+    chains: int = 4,
+    burn: int = 0,  # TODO: add sensible defaults
+    sample_prior_predictive: bool | int = False,
+    sample_posterior_predictive: bool | list[str] = False,
+    **kwargs: Any,
+) -> az.InferenceData:
+    """Sample from a built inferpymc model.
+
+    Args:
+        model: Built PyMC model to sample from.
+        draws: Number of posterior draws to keep per chain.
+        tune: Number of tuning draws passed to ``pm.sample``.
+        chains: Number of MCMC chains to run.
+        burn: Number of posterior draws to discard from the returned
+            ``InferenceData``.
+        sample_prior_predictive: Optional prior predictive sampling request.
+            If an integer, use that many draws; if ``True``, reuse the
+            posterior draw count.
+        sample_posterior_predictive: Optional posterior predictive sampling
+            request. If a list, restrict sampling to those variable names.
+        **kwargs: Additional keyword arguments forwarded to ``pm.sample``.
+            ``return_inferencedata`` is always forced to ``True`` and
+            ``idata_kwargs["log_likelihood"]`` is always enabled.
+
+    Returns:
+        Burn-sliced ``InferenceData`` for the requested model, optionally
+        extended with predictive groups.
+    """
+    sample_kwargs = dict(kwargs)
+    sample_kwargs.pop("return_inferencedata", None)
+    idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
+    idata_kwargs["log_likelihood"] = True
+
+    with model:
+        raw_trace = pm.sample(
+            draws=draws,
+            tune=tune,
+            chains=chains,
+            return_inferencedata=True,
+            idata_kwargs=idata_kwargs,
+            **sample_kwargs,
+        )
+
+    burned_trace = raw_trace.isel(draw=slice(burn, None))
+    burned_trace = extend_inferencedata_predictive(
+        burned_trace,
+        model=model,
+        sample_prior_predictive=sample_prior_predictive,
+        sample_posterior_predictive=sample_posterior_predictive,
+    )
+
+    nuts_sampler = sample_kwargs.get("nuts_sampler", "pymc")
+    if nuts_sampler != "pymc" and sample_kwargs.get("compute_convergence_checks", True):
+        if "sample_stats" in burned_trace and "diverging" in burned_trace.sample_stats:
+            divergences = np.sum(burned_trace.sample_stats.diverging).values
+            if divergences > 0:
+                warnings.warn(
+                    f"There were {divergences} divergences. Try increasing target accept or reparameterise.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+    return burned_trace
+
+
+# ------------------------------------------------------------
+# Legacy compatibility helpers
+# ------------------------------------------------------------
+
+
+def _rename_trace_for_legacy_inferpymc(trace: az.InferenceData) -> az.InferenceData:
+    """Return a legacy-compatible trace view with inferpymc dim names.
+
+    Note:
+        Legacy adapter code. This helper converts canonical modern trace
+        dimension names into the legacy inferpymc naming expected by
+        downstream compatibility code.
+
+    Args:
+        trace: Canonical ``InferenceData`` returned by the modern sampling
+            path.
+
+    Returns:
+        A copied ``InferenceData`` whose groups use the legacy inferpymc
+        dimension names where required.
+    """
+    rename_map = {"region": "nx", "bc_region": "nbc"}
+    renamed_groups: dict[str, xr.Dataset] = {}
+
+    for group in trace.groups():
+        ds = trace[group]
+        applicable = {old: new for old, new in rename_map.items() if old in ds.dims or old in ds.coords}
+        renamed_groups[group] = ds.rename(applicable) if applicable else ds.copy()
+
+    return az.InferenceData(**renamed_groups)
+
+
+def _adapt_legacy_inferpymc_results(
+    *,
+    trace: az.InferenceData,
+    model: pm.Model,
+    use_bc: bool,
+    add_offset: bool,
+    sample_kwargs: dict[str, Any],
+) -> dict:
+    """Adapt modern sampling outputs into the legacy inferpymc return structure.
+
+    Note:
+        Legacy adapter code. This helper is the compatibility boundary between
+        the modern ``InferenceData``-first sampling path and the legacy
+        inferpymc dict-of-arrays return contract.
+
+    Args:
+        trace: Canonical ``InferenceData`` returned by the modern sampling
+            path.
+        model: Built PyMC model used for sampling.
+        use_bc: Whether boundary-condition terms are enabled.
+        add_offset: Whether offset terms are enabled.
+        sample_kwargs: Sampling keyword arguments actually used by the legacy
+            compatibility run.
+
+    Returns:
+        Dictionary matching the legacy inferpymc return contract.
+    """
+    legacy_trace = _rename_trace_for_legacy_inferpymc(trace)
+    posterior = legacy_trace.posterior.isel(chain=0, drop=True)
+
+    xouts = posterior.x
+    sigouts = posterior.sigma
+
+    if use_bc:
+        bcouts = posterior.bc
+
+    gelrub = pm.rhat(legacy_trace)["x"].max()
+    if gelrub > 1.05:
+        print("Failed Gelman-Rubin at 1.05")
+        convergence = "Failed"
+    else:
+        convergence = "Passed"
+
+    if add_offset:
+        offset_trace = posterior.offset
+    else:
+        offset_trace = xr.zeros_like(posterior.mu)
+
+    if use_bc:
+        ybc_trace = posterior.mu_bc + offset_trace
+        y_trace = posterior.mu + ybc_trace
+    else:
+        y_trace = posterior.mu + offset_trace
+
+    step1, step2 = sample_kwargs.get("step", (None, None))
+
+    result = {
+        "xouts": xouts,
+        "sigouts": sigouts,
+        "Ytrace": y_trace.values.T,
+        "OFFSETtrace": offset_trace.values.T,
+        "convergence": convergence,
+        "step1": step1,
+        "step2": step2,
+        "model": model,
+        "trace": legacy_trace,
+    }
+
+    if use_bc:
+        result["bcouts"] = bcouts
+        result["YBCtrace"] = ybc_trace.values.T
+
+    return result
+
+
 def inferpymc(
-    inv_inputs: xr.Dataset | None = None,
+    inv_inputs: xr.Dataset,
     xprior: dict | None = None,
     bcprior: dict | None = None,
     sigprior: dict | None = None,
@@ -391,9 +443,10 @@ def inferpymc(
 ) -> dict:
     """Perform Bayesian inference with PyMC for emissions, BCs, and model error.
 
-    This routine builds the current component-based PyMC model from
-    ``make_inv_inputs`` output, runs sampling, and returns legacy-compatible
-    result keys used by downstream postprocessing.
+    This routine is the compatibility entrypoint for the current PyMC path.
+    It builds the component-based model from ``make_inv_inputs`` output, runs
+    sampling, and adapts the result into the legacy return structure used by
+    downstream postprocessing.
 
     Args:
         inv_inputs: xarray.Dataset produced by ``make_inv_inputs``.
@@ -404,7 +457,8 @@ def inferpymc(
             A common choice is {'pdf': 'truncatednormal', 'lower': 0.0, 'mu': 1.0, 'sigma': 0.1}.
         sigprior: Prior specification for the model-error parameter(s).
         nuts_sampler: Name of the NUTS sampler used by pymc.sample (e.g., "pymc" or "numpyro").
-        nit: Total number of iterations (samples + tuning) to draw per chain.
+        nit: Number of posterior draws to keep per chain. Tuning draws are
+            controlled separately via ``tune``.
         burn: Number of samples to discard as burn-in.
         tune: Number of tuning steps passed to the sampler.
         nchain: Number of MCMC chains to run.
@@ -421,10 +475,9 @@ def inferpymc(
         sampler_kwargs: Extra keyword arguments passed to the sampler.
 
     Returns:
-        Dictionary containing inference results, samples, and diagnostics.
-
-        The returned dictionary uses the legacy key structure. Depending on the
-        selected options, keys typically include:
+        Dictionary containing inference results, samples, and diagnostics in
+        the legacy ``inferpymc`` key structure. Depending on the selected
+        options, keys typically include:
 
         - ``"xouts"``: posterior samples for emissions / fluxes
         - ``"sigouts"``: posterior samples for sigma terms
@@ -440,7 +493,8 @@ def inferpymc(
     burn = int(burn)
     nit = int(nit)
 
-    setup = build_inferpymc_model(
+    model = build_inferpymc_model(
+        inv_inputs,
         xprior=xprior,
         bcprior=bcprior,
         sigprior=sigprior,
@@ -453,85 +507,61 @@ def inferpymc(
         no_model_error=no_model_error,
         offset_args=offset_args,
         power=power,
-        nuts_sampler=nuts_sampler,
-        inv_inputs=inv_inputs,
     )
 
     sampler_kwargs = sampler_kwargs or {}
-    with setup.model:
-        trace = pm.sample(
-            nit,
-            tune=int(tune),
-            chains=nchain,
-            step=setup.sample_kwargs["step"],
-            # progressbar=verbose,
-            progressbar=False,
-            cores=nchain,
-            nuts_sampler=nuts_sampler,
-            idata_kwargs={"log_likelihood": True},
-            **sampler_kwargs,
-        )
 
-    model = setup.model
-    step1 = setup.step1
-    step2 = setup.step2
+    # add steps for pymc sampler
+    if nuts_sampler == "pymc":
+        with model:
+            latent_vars = tuple(
+                variable
+                for variable in (resolve_model_variable(model, "x"), resolve_model_variable(model, "bc"))
+                if variable is not None
+            )
+            sampler_kwargs["step"] = [
+                pm.NUTS(latent_vars),
+                pm.Slice([resolve_model_variable(model, "sigma")]),
+            ]
 
-    posterior_burned = trace.posterior.isel(chain=0, draw=slice(burn, nit)).drop_vars("chain")
+    sampler_kwargs.setdefault("progressbar", False)
+    sampler_kwargs.setdefault("cores", nchain)
 
-    xouts = posterior_burned.x
+    trace = sample(
+        model,
+        draws=nit,
+        burn=burn,
+        tune=int(tune),
+        chains=nchain,
+        sample_prior_predictive=True,
+        sample_posterior_predictive=["y"],
+        nuts_sampler=nuts_sampler,
+        **sampler_kwargs,
+    )
 
-    if use_bc:
-        bcouts = posterior_burned.bc
+    return _adapt_legacy_inferpymc_results(
+        trace=trace,
+        model=model,
+        use_bc=use_bc,
+        add_offset=add_offset,
+        sample_kwargs=sampler_kwargs,
+    )
 
-    sigouts = posterior_burned.sigma
 
-    # Check for convergence
-    gelrub = pm.rhat(trace)["x"].max()
-    if gelrub > 1.05:
-        print("Failed Gelman-Rubin at 1.05")
-        convergence = "Failed"
-    else:
-        convergence = "Passed"
+# ------------------------------------------------------------
+# Legacy post-processing
+# ------------------------------------------------------------
 
-    if nuts_sampler != "pymc":
-        divergences = np.sum(trace.sample_stats.diverging).values
-        if divergences > 0:
-            print(f"There were {divergences} divergences. Try increasing target accept or reparameterise.")
 
-    if add_offset:
-        OFFtrace = posterior_burned.offset
-    else:
-        OFFtrace = xr.zeros_like(posterior_burned.mu)
+def _weighted_apriori_flux_for_months(flux_array_all: np.ndarray, month_index: np.ndarray) -> np.ndarray:
+    """Compute a weighted prior flux average using compacted month positions."""
+    month_index = _compact_integer_index(month_index)
+    apriori_flux = np.zeros_like(flux_array_all[:, :, 0])
 
-    if use_bc:
-        YBCtrace = posterior_burned.mu_bc + OFFtrace
-        Ytrace = posterior_burned.mu + YBCtrace
-    else:
-        Ytrace = posterior_burned.mu + OFFtrace
+    for month_pos in np.unique(month_index):
+        apriori_flux += flux_array_all[:, :, month_pos] * np.sum(month_index == month_pos) / len(month_index)
 
-    # truncate trace and sample prior and predictive distributions
-    trace = trace.isel(draw=slice(burn, None))
-    ndraw = nit - burn
-    trace.extend(pm.sample_prior_predictive(ndraw, model))
-    trace.extend(pm.sample_posterior_predictive(trace, model=model, var_names=["y"]))
-
-    result = {
-        "xouts": xouts,
-        "sigouts": sigouts,
-        "Ytrace": Ytrace.values.T,
-        "OFFSETtrace": OFFtrace.values.T,
-        "convergence": convergence,
-        "step1": step1,
-        "step2": step2,
-        "model": model,
-        "trace": trace,
-    }
-
-    if use_bc:
-        result["bcouts"] = bcouts
-        result["YBCtrace"] = YBCtrace.values.T
-
-    return result
+    return apriori_flux
 
 
 def inferpymc_postprocessouts(

@@ -240,11 +240,13 @@ def make_legacy_hbmcmc_output(
     country_file: str | Path | None = None,
     use_bc: bool = False,
 ) -> xr.Dataset:
-    """Create a legacy-format hbmcmc output dataset from postprocessing products.
+    """Create a legacy-format hbmcmc output dataset from compatibility inputs.
+
+    TODO: needs to handle offsets
 
     Args:
         inv_out: Inversion outputs container.
-        mcmc_results: Raw dictionary returned by ``inferpymc``.
+        mcmc_results: Compatibility sampling outputs returned by ``inferpymc``.
         sigma_freq_index: Sigma frequency index per measurement.
         Hx: Emissions sensitivity matrix with shape ``(nparam, nmeasure)``.
         Hbc: Boundary-condition sensitivity matrix with shape ``(nBC, nmeasure)``.

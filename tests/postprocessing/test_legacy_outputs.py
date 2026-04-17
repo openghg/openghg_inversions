@@ -11,6 +11,7 @@ from openghg_inversions.postprocessing.legacy_outputs import (
 
 
 def test_make_legacy_hbmcmc_output_handles_mixed_nmeasure_indexes(raw_data_path, europe_country_file):
+    """Legacy output generation tolerates flattened nmeasure-only indexes."""
     legacy = xr.open_dataset(raw_data_path / "standard_rhime_outs.nc")
     inv_out = InversionOutput.load(raw_data_path / "inversion_output.nc")
     inv_out.times = xr.DataArray(
@@ -47,6 +48,7 @@ def test_make_legacy_hbmcmc_output_handles_mixed_nmeasure_indexes(raw_data_path,
 
 
 def test_compute_apriori_flux_handles_missing_month():
+    """Apriori flux weighting handles skipped monthly flux periods."""
     flux = xr.DataArray(
         np.array([[[1.0, 3.0]]]),
         dims=["lat", "lon", "flux_time"],
@@ -63,10 +65,13 @@ def test_compute_apriori_flux_handles_missing_month():
 
     apriori_flux = _compute_apriori_flux(flux, "2019-01-01", "2019-04-01", times)
 
-    xr.testing.assert_allclose(apriori_flux, xr.DataArray([[2.0]], dims=["lat", "lon"], coords={"lat": [0.0], "lon": [0.0]}))
+    xr.testing.assert_allclose(
+        apriori_flux, xr.DataArray([[2.0]], dims=["lat", "lon"], coords={"lat": [0.0], "lon": [0.0]})
+    )
 
 
 def test_map_times_to_available_period_positions_handles_gappy_flux_months():
+    """Period mapping uses the nearest available monthly flux positions."""
     times = pd.to_datetime(["2019-01-15", "2019-01-20", "2019-03-10", "2019-04-20"])
     flux_times = pd.to_datetime(["2019-01-01", "2019-03-01", "2019-04-01"])
 
@@ -76,6 +81,7 @@ def test_map_times_to_available_period_positions_handles_gappy_flux_months():
 
 
 def test_compute_apriori_flux_handles_multi_year_flux_time():
+    """Apriori flux weighting handles yearly flux periods across multiple years."""
     flux = xr.DataArray(
         np.array([[[1.0, 2.0, 3.0]]]),
         dims=["lat", "lon", "flux_time"],
@@ -96,3 +102,25 @@ def test_compute_apriori_flux_handles_multi_year_flux_time():
         apriori_flux,
         xr.DataArray([[1.75]], dims=["lat", "lon"], coords={"lat": [0.0], "lon": [0.0]}),
     )
+
+
+def test_make_legacy_hbmcmc_output_only_sets_convergence_when_present(raw_data_path, europe_country_file):
+    """Legacy outputs omit convergence metadata when it is not supplied."""
+    with xr.open_dataset(raw_data_path / "standard_rhime_outs.nc") as legacy:
+        inv_out = InversionOutput.load(raw_data_path / "inversion_output.nc")
+
+        compat = make_legacy_hbmcmc_output(
+            inv_out=inv_out,
+            mcmc_results={
+                "xouts": legacy["xtrace"],
+                "sigouts": legacy["sigtrace"],
+                "bcouts": legacy["bctrace"],
+            },
+            sigma_freq_index=legacy["sigmafreqindex"].values,
+            Hx=legacy["xsensitivity"].values.T,
+            Hbc=legacy["bcsensitivity"].values.T,
+            country_file=europe_country_file,
+            use_bc=True,
+        )
+
+        assert "Convergence" not in compat.attrs

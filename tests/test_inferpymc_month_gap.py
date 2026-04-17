@@ -7,7 +7,6 @@ import xarray as xr
 from openghg_inversions import utils
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.hbmcmc.inversion_pymc import (
-    _canonicalise_inferpymc_dataset,
     _weighted_apriori_flux_for_months,
     inferpymc,
 )
@@ -52,7 +51,8 @@ def _synthetic_fp_data_one_site_with_missing_month() -> dict[str, xr.Dataset]:
     return {"AAA": ds}
 
 
-def test_make_inv_inputs_month_gap_monthly_indices_are_non_contiguous():
+def test_make_inv_inputs_month_gap_monthly_indices_are_contiguous():
+    """Monthly sigma indices stay contiguous when a month is missing entirely."""
     fp_data = _synthetic_fp_data_one_site_with_missing_month()
 
     inv_inputs = make_inv_inputs(
@@ -66,13 +66,11 @@ def test_make_inv_inputs_month_gap_monthly_indices_are_non_contiguous():
     )
 
     uniq = np.unique(inv_inputs["sigma_freq_index"].values)
-    np.testing.assert_array_equal(uniq, np.array([0, 2]))
-
-    canonical = _canonicalise_inferpymc_dataset(inv_inputs, use_bc=True)
-    np.testing.assert_array_equal(np.unique(canonical["sigma_freq_index"].values), np.array([0, 1]))
+    np.testing.assert_array_equal(uniq, np.array([0, 1]))
 
 
 def test_inferpymc_smoke_runs_for_month_gap():
+    """The legacy inferpymc wrapper still runs on gappy monthly inputs."""
     fp_data = _synthetic_fp_data_one_site_with_missing_month()
 
     inv_inputs = make_inv_inputs(
@@ -106,6 +104,7 @@ def test_inferpymc_smoke_runs_for_month_gap():
 
 
 def test_weighted_apriori_flux_handles_missing_month():
+    """Weighted prior fluxes use compacted month positions for missing months."""
     flux_array_all = np.array([[[1.0, 3.0]]], dtype=np.float32)
     month_index = np.array([0, 0, 2, 2], dtype=int)
 
@@ -115,6 +114,7 @@ def test_weighted_apriori_flux_handles_missing_month():
 
 
 def test_map_times_to_available_period_positions_handles_gappy_flux_months():
+    """Monthly period mapping uses available periods even when months are skipped."""
     times = pd.to_datetime(["2019-01-15", "2019-01-20", "2019-03-10", "2019-04-20"])
     flux_times = pd.to_datetime(["2019-01-01", "2019-03-01", "2019-04-01"])
 
@@ -124,6 +124,7 @@ def test_map_times_to_available_period_positions_handles_gappy_flux_months():
 
 
 def test_map_times_to_available_period_positions_handles_multi_year_flux_time():
+    """Yearly period mapping stays stable across multiple available years."""
     times = pd.to_datetime(["2023-03-15", "2023-11-20", "2024-07-10", "2025-04-20"])
     flux_times = pd.to_datetime(["2023-01-01", "2024-01-01", "2025-01-01"])
 
