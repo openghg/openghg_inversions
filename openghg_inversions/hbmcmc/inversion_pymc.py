@@ -400,7 +400,7 @@ def _adapt_legacy_inferpymc_results(
     else:
         y_trace = posterior.mu + offset_trace
 
-    step1, step2 = sample_kwargs.get("steps", (None, None))
+    step1, step2 = sample_kwargs.get("step", (None, None))
 
     result = {
         "xouts": xouts,
@@ -521,7 +521,7 @@ def inferpymc(
                 for variable in (resolve_model_variable(model, "x"), resolve_model_variable(model, "bc"))
                 if variable is not None
             )
-            sampler_kwargs["steps"] = [
+            sampler_kwargs["step"] = [
                 pm.NUTS(latent_vars),
                 pm.Slice([resolve_model_variable(model, "sigma")]),
             ]
