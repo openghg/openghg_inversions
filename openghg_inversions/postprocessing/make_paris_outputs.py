@@ -226,6 +226,16 @@ def paris_concentration_outputs(
     return result
 
 
+def _flux_frequency_to_offset(flux_frequency: str) -> pd.DateOffset | pd.Timedelta:
+    """Convert a flux frequency string to a calendar-aware pandas offset."""
+    if flux_frequency == "monthly":
+        return pd.DateOffset(months=1)
+    elif flux_frequency == "yearly":
+        return pd.DateOffset(years=1)
+    else:
+        return pd.to_timedelta(flux_frequency)
+
+
 def paris_flux_output(
     inv_out: InversionOutput,
     country_file: str | Path | None = None,
@@ -296,15 +306,17 @@ def paris_flux_output(
         dim_rename_dict["lon"] = "longitude"
 
     if time_point == "midpoint":
-        if flux_frequency == "monthly":
-            offset = pd.DateOffset(weeks=2)
-        elif flux_frequency == "yearly":
-            offset = pd.DateOffset(months=6)
-        else:
-            offset = pd.to_timedelta(flux_frequency) / 2
+        flux_period = _flux_frequency_to_offset(flux_frequency)
+        inv_start = inv_out.start_time
+        inv_end = inv_out.end_time
 
         def time_func(ds):
-            return ds.assign_coords(time=[inv_out.period_midpoint])
+            flux_times = pd.to_datetime(ds.time.values)
+            midpoints = [
+                max(ft, inv_start) + (min(ft + flux_period, inv_end) - max(ft, inv_start)) / 2
+                for ft in flux_times
+            ]
+            return ds.assign_coords(time=midpoints)
     else:
 
         def time_func(ds):
