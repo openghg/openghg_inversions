@@ -318,30 +318,6 @@ def sample(
 # ------------------------------------------------------------
 
 
-def _make_legacy_inferpymc_step_kwargs(model: pm.Model, *, nuts_sampler: str) -> dict[str, Any]:
-    """Return inferpymc compatibility step kwargs for the current model.
-
-    Note:
-        Legacy adapter code. This helper preserves the current legacy inferpymc
-        step policy and should not shape the modern sampling API.
-
-    Args:
-        model: Built PyMC model used by ``inferpymc``.
-        nuts_sampler: Sampler backend selected for the compatibility path.
-
-    Returns:
-        Sampling keyword arguments containing any legacy-only explicit step
-        configuration required for the current inferpymc path.
-    """
-    if nuts_sampler != "pymc":
-        return {}
-
-    if "sigma" not in model.named_vars:
-        return {}
-
-    return {"step": pm.Slice(vars=[model.named_vars["sigma"]], model=model)}
-
-
 def _rename_trace_for_legacy_inferpymc(trace: az.InferenceData) -> az.InferenceData:
     """Return a legacy-compatible trace view with inferpymc dim names.
 
@@ -367,48 +343,6 @@ def _rename_trace_for_legacy_inferpymc(trace: az.InferenceData) -> az.InferenceD
         renamed_groups[group] = ds.rename(applicable) if applicable else ds.copy()
 
     return az.InferenceData(**renamed_groups)
-
-
-def _resolve_legacy_step_metadata(
-    model: pm.Model, *, sample_kwargs: dict[str, Any]
-) -> tuple[Any | None, Any | None]:
-    """Return compatibility sampler metadata derived from actual sampling kwargs.
-
-    Note:
-        Legacy adapter code. This helper reconstructs the legacy ``step1`` and
-        ``step2`` metadata from the actual sampling configuration used by
-        ``inferpymc``.
-
-    Args:
-        model: Built PyMC model used for the compatibility sampling run.
-        sample_kwargs: Sampling keyword arguments actually passed to
-            ``pm.sample`` by the compatibility path.
-
-    Returns:
-        A ``(step1, step2)`` tuple matching the legacy inferpymc metadata
-        convention.
-    """
-    step = sample_kwargs.get("step")
-    if step is None:
-        return None, None
-
-    latent_var_names = tuple(
-        variable.name
-        for variable in (resolve_model_variable(model, "x"), resolve_model_variable(model, "bc"))
-        if variable is not None
-    )
-
-    if isinstance(step, list):
-        slice_step = next((current_step for current_step in step if isinstance(current_step, pm.Slice)), None)
-        latent_step = next(
-            (current_step for current_step in step if not isinstance(current_step, pm.Slice)), None
-        )
-        return latent_step, slice_step
-
-    step_var_names = tuple(getattr(variable, "name", None) for variable in getattr(step, "vars", []))
-    if latent_var_names and any(name in latent_var_names for name in step_var_names):
-        return step, None
-    return None, step
 
 
 def _adapt_legacy_inferpymc_results(
@@ -465,7 +399,7 @@ def _adapt_legacy_inferpymc_results(
     else:
         y_trace = posterior.mu + offset_trace
 
-    step1, step2 = _resolve_legacy_step_metadata(model, sample_kwargs=sample_kwargs)
+    step1, step2 = sample_kwargs.get("steps", (None, None))
 
     result = {
         "xouts": xouts,
@@ -575,11 +509,24 @@ def inferpymc(
         offset_args=offset_args,
         power=power,
     )
-    configured_sample_kwargs = _make_legacy_inferpymc_step_kwargs(model, nuts_sampler=nuts_sampler)
-    if sampler_kwargs is not None:
-        configured_sample_kwargs.update(sampler_kwargs)
-    configured_sample_kwargs.setdefault("progressbar", False)
-    configured_sample_kwargs.setdefault("cores", nchain)
+
+    sampler_kwargs = sampler_kwargs or {}
+
+    # add steps for pymc sampler
+    if nuts_sampler == "pymc":
+        with model:
+            latent_vars = tuple(
+                variable
+                for variable in (resolve_model_variable(model, "x"), resolve_model_variable(model, "bc"))
+                if variable is not None
+            )
+            sampler_kwargs["steps"] = [
+                pm.NUTS(latent_vars),
+                pm.Slice([resolve_model_variable(model, "sigma")]),
+            ]
+
+    sampler_kwargs.setdefault("progressbar", False)
+    sampler_kwargs.setdefault("cores", nchain)
 
     trace = sample(
         model,
@@ -590,7 +537,7 @@ def inferpymc(
         sample_prior_predictive=True,
         sample_posterior_predictive=["y"],
         nuts_sampler=nuts_sampler,
-        **configured_sample_kwargs,
+        **sampler_kwargs,
     )
 
     return _adapt_legacy_inferpymc_results(
@@ -598,7 +545,7 @@ def inferpymc(
         model=model,
         use_bc=use_bc,
         add_offset=add_offset,
-        sample_kwargs=configured_sample_kwargs,
+        sample_kwargs=sampler_kwargs,
     )
 
 
