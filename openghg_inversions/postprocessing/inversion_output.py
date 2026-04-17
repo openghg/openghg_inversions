@@ -331,26 +331,6 @@ class InversionOutput:
         ]
         return all(checks)
 
-    def sample_predictive_distributions(self, ndraw: int | None = None) -> None:
-        """Refresh derived state without mutating the stored trace.
-
-        Predictive groups must be requested in the sampling layer before
-        constructing ``InversionOutput``.
-        """
-        if not all(group in self.trace for group in ("posterior_predictive", "prior", "prior_predictive")):
-            warnings.warn(
-                "InversionOutput no longer samples predictive distributions. Request predictive groups before construction.",
-                UserWarning,
-            )
-
-        if ndraw is not None and ndraw != self.trace.posterior.sizes["draw"]:
-            warnings.warn(
-                "`ndraw` is ignored because InversionOutput does not resample predictive groups.",
-                UserWarning,
-            )
-
-        self._refresh_derived_datasets()
-
     def nmeasure_to_site_time(self, data: XrDataArrayOrSet) -> XrDataArrayOrSet:
         """Convert `nmeasure` coordinate of dataset to stacked (site, time) coordinate.
 
