@@ -1,3 +1,4 @@
+import pandas as pd
 import pytest
 import xarray as xr
 from pathlib import Path
@@ -7,9 +8,11 @@ from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.legacy_outputs import make_legacy_hbmcmc_output
 from openghg_inversions.postprocessing.make_outputs import basic_output, make_country_outputs
+
 from openghg_inversions.postprocessing.make_paris_outputs import (
     make_paris_flux_outputs_from_rhime,
     make_paris_outputs,
+    paris_flux_output,
 )
 
 
@@ -44,6 +47,23 @@ def inv_out(raw_data_path):
 @pytest.fixture(scope="module")
 def inv_out_eastasia(raw_data_path):
     return InversionOutput.load(raw_data_path / "inversion_output_EASTASIA.nc")
+
+
+def test_paris_flux_output_timestamp(inv_out, europe_country_file):
+    """Check that the flux output time coordinate is the midpoint of the inversion period.
+
+    The flux file has a yearly period but the inversion is shorter; the output
+    timestamp should be the midpoint of the overlap between the flux interval
+    and the inversion period (i.e. the midpoint of the inversion period itself),
+    not 6 months into the flux's own year.
+    """
+    flux_outs = paris_flux_output(inv_out, country_file=europe_country_file, flux_frequency="yearly")
+
+    # time is stored as days since Unix epoch; convert back for comparison
+    actual = pd.Timestamp("1970-01-01") + pd.Timedelta(days=float(flux_outs.time.values[0]))
+    expected = inv_out.start_time + (inv_out.end_time - inv_out.start_time) / 2
+
+    assert actual == expected
 
 
 def test_rhime_flux_reprocessing(europe_country_file, raw_data_path):
