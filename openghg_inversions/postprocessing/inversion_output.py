@@ -674,17 +674,8 @@ def make_inv_out_for_fixed_basis_mcmc(
         site_names, dims=["nsite"], coords={"nsite": np.arange(len(site_names))}, name="site_names"
     )
 
-    if (
-        "trace" in mcmc_results
-        and hasattr(mcmc_results["trace"], "posterior")
-        and "x" in mcmc_results["trace"].posterior
-    ):
-        x_posterior = mcmc_results["trace"].posterior["x"]
-        nx_dim = "nx" if "nx" in x_posterior.coords else "region"
-        nx = np.asarray(x_posterior.coords[nx_dim].values)
-    else:
-        _, nx_size = mcmc_results["xouts"].shape
-        nx = np.arange(nx_size)
+    _, nx = mcmc_results["xouts"].shape
+    nx = np.arange(nx)
 
     basis = get_xr_dummies(fp_data[".basis"], cat_dim="nx", categories=nx)
 
