@@ -70,6 +70,30 @@ def inv_out_eastasia(raw_data_path):
             pd.Timestamp("2019-04-01"),
             [pd.Timestamp("2019-01-01") + (pd.Timestamp("2019-04-01") - pd.Timestamp("2019-01-01")) / 2],
         ),
+        # 3-monthly inversion, yearly flux, flux starts before inversion: the flux
+        # time (Jan) differs from the inversion start (Feb), as in the original bug.
+        # The overlap is clipped to Feb-May, so the midpoint is still mid-March,
+        # not mid-year (Jul) and not mid-January.
+        (
+            [pd.Timestamp("2019-01-01")],
+            pd.DateOffset(years=1),
+            pd.Timestamp("2019-02-01"),
+            pd.Timestamp("2019-05-01"),
+            [pd.Timestamp("2019-02-01") + (pd.Timestamp("2019-05-01") - pd.Timestamp("2019-02-01")) / 2],
+        ),
+        # 3-monthly inversion, monthly flux: three flux steps each fully within
+        # the inversion period, so each midpoint is the middle of its own month
+        (
+            [pd.Timestamp("2019-01-01"), pd.Timestamp("2019-02-01"), pd.Timestamp("2019-03-01")],
+            pd.DateOffset(months=1),
+            pd.Timestamp("2019-01-01"),
+            pd.Timestamp("2019-04-01"),
+            [
+                pd.Timestamp("2019-01-01") + (pd.Timestamp("2019-02-01") - pd.Timestamp("2019-01-01")) / 2,
+                pd.Timestamp("2019-02-01") + (pd.Timestamp("2019-03-01") - pd.Timestamp("2019-02-01")) / 2,
+                pd.Timestamp("2019-03-01") + (pd.Timestamp("2019-04-01") - pd.Timestamp("2019-03-01")) / 2,
+            ],
+        ),
         # 2-yearly inversion, yearly flux: two flux steps, each fully within
         # inversion period, so midpoints are mid-2019 and mid-2020
         (
