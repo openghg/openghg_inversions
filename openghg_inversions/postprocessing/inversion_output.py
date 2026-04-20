@@ -396,7 +396,7 @@ class InversionOutput:
     @property
     def period_midpoint(self) -> pd.Timestamp:
         """Midpoint of inversion period."""
-        return self.start_time + (self.start_time - self.end_time) / 2
+        return self.start_time + (self.end_time - self.start_time) / 2
 
     def get_total_err(self, take_mean: bool = True) -> xr.DataArray:
         """Return the posterior model-data mismatch error.

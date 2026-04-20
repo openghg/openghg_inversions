@@ -226,6 +226,48 @@ def paris_concentration_outputs(
     return result
 
 
+def _flux_frequency_to_offset(flux_frequency: str) -> pd.DateOffset | pd.Timedelta:
+    """Convert a flux frequency string to a calendar-aware pandas offset."""
+    if flux_frequency == "monthly":
+        return pd.DateOffset(months=1)
+    elif flux_frequency == "yearly":
+        return pd.DateOffset(years=1)
+    else:
+        return pd.to_timedelta(flux_frequency)
+
+
+def _flux_interval_midpoints(
+    flux_times: list[pd.Timestamp],
+    flux_period: pd.DateOffset | pd.Timedelta,
+    inv_start: pd.Timestamp,
+    inv_end: pd.Timestamp,
+) -> list[pd.Timestamp]:
+    """Compute output timestamps as midpoints of each flux interval clipped to the inversion period.
+
+    For each flux interval [ft, ft + flux_period], the output timestamp is the
+    midpoint of the overlap with [inv_start, inv_end]. This correctly handles
+    cases where the flux period and inversion period differ in length, e.g.:
+
+    - 3-monthly inversion on yearly fluxes: the yearly flux interval is clipped
+      to the inversion period, so the midpoint is within the inversion period.
+    - 2-yearly inversion on yearly fluxes: each yearly flux interval lies fully
+      within the inversion period, so the midpoint is mid-year as expected.
+
+    Args:
+        flux_times: Start timestamps of each flux interval.
+        flux_period: Duration of a single flux interval.
+        inv_start: Start of the inversion period.
+        inv_end: End of the inversion period.
+
+    Returns:
+        List of midpoint timestamps, one per flux interval.
+    """
+    return [
+        max(ft, inv_start) + (min(ft + flux_period, inv_end) - max(ft, inv_start)) / 2
+        for ft in flux_times
+    ]
+
+
 def paris_flux_output(
     inv_out: InversionOutput,
     country_file: str | Path | None = None,
@@ -296,15 +338,14 @@ def paris_flux_output(
         dim_rename_dict["lon"] = "longitude"
 
     if time_point == "midpoint":
-        if flux_frequency == "monthly":
-            offset = pd.DateOffset(weeks=2)
-        elif flux_frequency == "yearly":
-            offset = pd.DateOffset(months=6)
-        else:
-            offset = pd.to_timedelta(flux_frequency) / 2
+        flux_period = _flux_frequency_to_offset(flux_frequency)
+        inv_start = inv_out.start_time
+        inv_end = inv_out.end_time
 
         def time_func(ds):
-            return ds.assign_coords(time=(pd.to_datetime(ds.time.values) + offset))
+            flux_times = pd.to_datetime(ds.time.values)
+            midpoints = _flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end)
+            return ds.assign_coords(time=midpoints)
     else:
 
         def time_func(ds):

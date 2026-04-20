@@ -1,3 +1,4 @@
+import pandas as pd
 import pytest
 import xarray as xr
 from pathlib import Path
@@ -7,9 +8,12 @@ from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.legacy_outputs import make_legacy_hbmcmc_output
 from openghg_inversions.postprocessing.make_outputs import basic_output, make_country_outputs
+
 from openghg_inversions.postprocessing.make_paris_outputs import (
+    _flux_interval_midpoints,
     make_paris_flux_outputs_from_rhime,
     make_paris_outputs,
+    paris_flux_output,
 )
 
 
@@ -44,6 +48,87 @@ def inv_out(raw_data_path):
 @pytest.fixture(scope="module")
 def inv_out_eastasia(raw_data_path):
     return InversionOutput.load(raw_data_path / "inversion_output_EASTASIA.nc")
+
+
+@pytest.mark.parametrize(
+    "flux_times, flux_period, inv_start, inv_end, expected",
+    [
+        # Monthly inversion, monthly flux: overlap = full month, midpoint = mid-month
+        (
+            [pd.Timestamp("2019-02-01")],
+            pd.DateOffset(months=1),
+            pd.Timestamp("2019-02-01"),
+            pd.Timestamp("2019-03-01"),
+            [pd.Timestamp("2019-02-01") + (pd.Timestamp("2019-03-01") - pd.Timestamp("2019-02-01")) / 2],
+        ),
+        # 3-monthly inversion, yearly flux: yearly interval clipped to Jan-Apr,
+        # so midpoint is mid-Feb, not mid-year (Jul)
+        (
+            [pd.Timestamp("2019-01-01")],
+            pd.DateOffset(years=1),
+            pd.Timestamp("2019-01-01"),
+            pd.Timestamp("2019-04-01"),
+            [pd.Timestamp("2019-01-01") + (pd.Timestamp("2019-04-01") - pd.Timestamp("2019-01-01")) / 2],
+        ),
+        # 3-monthly inversion, yearly flux, flux starts before inversion: the flux
+        # time (Jan) differs from the inversion start (Feb), as in the original bug.
+        # The overlap is clipped to Feb-May, so the midpoint is still mid-March,
+        # not mid-year (Jul) and not mid-January.
+        (
+            [pd.Timestamp("2019-01-01")],
+            pd.DateOffset(years=1),
+            pd.Timestamp("2019-02-01"),
+            pd.Timestamp("2019-05-01"),
+            [pd.Timestamp("2019-02-01") + (pd.Timestamp("2019-05-01") - pd.Timestamp("2019-02-01")) / 2],
+        ),
+        # 3-monthly inversion, monthly flux: three flux steps each fully within
+        # the inversion period, so each midpoint is the middle of its own month
+        (
+            [pd.Timestamp("2019-01-01"), pd.Timestamp("2019-02-01"), pd.Timestamp("2019-03-01")],
+            pd.DateOffset(months=1),
+            pd.Timestamp("2019-01-01"),
+            pd.Timestamp("2019-04-01"),
+            [
+                pd.Timestamp("2019-01-01") + (pd.Timestamp("2019-02-01") - pd.Timestamp("2019-01-01")) / 2,
+                pd.Timestamp("2019-02-01") + (pd.Timestamp("2019-03-01") - pd.Timestamp("2019-02-01")) / 2,
+                pd.Timestamp("2019-03-01") + (pd.Timestamp("2019-04-01") - pd.Timestamp("2019-03-01")) / 2,
+            ],
+        ),
+        # 2-yearly inversion, yearly flux: two flux steps, each fully within
+        # inversion period, so midpoints are mid-2019 and mid-2020
+        (
+            [pd.Timestamp("2019-01-01"), pd.Timestamp("2020-01-01")],
+            pd.DateOffset(years=1),
+            pd.Timestamp("2019-01-01"),
+            pd.Timestamp("2021-01-01"),
+            [
+                pd.Timestamp("2019-01-01") + (pd.Timestamp("2020-01-01") - pd.Timestamp("2019-01-01")) / 2,
+                pd.Timestamp("2020-01-01") + (pd.Timestamp("2021-01-01") - pd.Timestamp("2020-01-01")) / 2,
+            ],
+        ),
+    ],
+)
+def test_flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end, expected):
+    """Check midpoint timestamps are computed from the flux/inversion period overlap."""
+    result = _flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end)
+    assert result == expected
+
+
+def test_paris_flux_output_timestamp(inv_out, europe_country_file):
+    """Check that the flux output time coordinate is the midpoint of the inversion period.
+
+    The flux file has a yearly period but the inversion is shorter; the output
+    timestamp should be the midpoint of the overlap between the flux interval
+    and the inversion period (i.e. the midpoint of the inversion period itself),
+    not 6 months into the flux's own year.
+    """
+    flux_outs = paris_flux_output(inv_out, country_file=europe_country_file, flux_frequency="yearly")
+
+    # time is stored as days since Unix epoch; convert back for comparison
+    actual = pd.Timestamp("1970-01-01") + pd.Timedelta(days=float(flux_outs.time.values[0]))
+    expected = inv_out.start_time + (inv_out.end_time - inv_out.start_time) / 2
+
+    assert actual == expected
 
 
 def test_rhime_flux_reprocessing(europe_country_file, raw_data_path):
