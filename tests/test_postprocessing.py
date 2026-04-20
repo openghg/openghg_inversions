@@ -10,6 +10,7 @@ from openghg_inversions.postprocessing.legacy_outputs import make_legacy_hbmcmc_
 from openghg_inversions.postprocessing.make_outputs import basic_output, make_country_outputs
 
 from openghg_inversions.postprocessing.make_paris_outputs import (
+    _flux_interval_midpoints,
     make_paris_flux_outputs_from_rhime,
     make_paris_outputs,
     paris_flux_output,
@@ -47,6 +48,46 @@ def inv_out(raw_data_path):
 @pytest.fixture(scope="module")
 def inv_out_eastasia(raw_data_path):
     return InversionOutput.load(raw_data_path / "inversion_output_EASTASIA.nc")
+
+
+@pytest.mark.parametrize(
+    "flux_times, flux_period, inv_start, inv_end, expected",
+    [
+        # Monthly inversion, monthly flux: overlap = full month, midpoint = mid-month
+        (
+            [pd.Timestamp("2019-02-01")],
+            pd.DateOffset(months=1),
+            pd.Timestamp("2019-02-01"),
+            pd.Timestamp("2019-03-01"),
+            [pd.Timestamp("2019-02-01") + (pd.Timestamp("2019-03-01") - pd.Timestamp("2019-02-01")) / 2],
+        ),
+        # 3-monthly inversion, yearly flux: yearly interval clipped to Jan-Apr,
+        # so midpoint is mid-Feb, not mid-year (Jul)
+        (
+            [pd.Timestamp("2019-01-01")],
+            pd.DateOffset(years=1),
+            pd.Timestamp("2019-01-01"),
+            pd.Timestamp("2019-04-01"),
+            [pd.Timestamp("2019-01-01") + (pd.Timestamp("2019-04-01") - pd.Timestamp("2019-01-01")) / 2],
+        ),
+        # 2-yearly inversion, yearly flux: two flux steps, each fully within
+        # inversion period, so midpoints are mid-2019 and mid-2020
+        (
+            [pd.Timestamp("2019-01-01"), pd.Timestamp("2020-01-01")],
+            pd.DateOffset(years=1),
+            pd.Timestamp("2019-01-01"),
+            pd.Timestamp("2021-01-01"),
+            [
+                pd.Timestamp("2019-01-01") + (pd.Timestamp("2020-01-01") - pd.Timestamp("2019-01-01")) / 2,
+                pd.Timestamp("2020-01-01") + (pd.Timestamp("2021-01-01") - pd.Timestamp("2020-01-01")) / 2,
+            ],
+        ),
+    ],
+)
+def test_flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end, expected):
+    """Check midpoint timestamps are computed from the flux/inversion period overlap."""
+    result = _flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end)
+    assert result == expected
 
 
 def test_paris_flux_output_timestamp(inv_out, europe_country_file):
