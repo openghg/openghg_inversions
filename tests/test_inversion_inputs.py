@@ -202,7 +202,13 @@ def test_inversion_input_hbmcmc_matches_frozen(raw_data_path, inv_inputs_args):
 @pytest.fixture
 def gathered_ds(mhd_and_tac_fp_data) -> xr.Dataset:
     to_concat = {k: v for k, v in mhd_and_tac_fp_data.items() if not k.startswith(".")}
-    return concat_gather_datasets(to_concat, key_dim="site", ragged_dim="time", stack_dim="nmeasure")
+    return concat_gather_datasets(
+        to_concat,
+        key_dim="site",
+        ragged_dim="time",
+        stack_dim="nmeasure",
+        missing_data_vars="drop",
+    )
 
 
 def test_add_site_indicator(gathered_ds):
@@ -221,6 +227,8 @@ def _make_minimal_fp_site(*, mf_base: float, include_inlet_height: bool) -> xr.D
     data_vars = {
         "mf": xr.DataArray(np.array([mf_base, mf_base + 1.0]), dims="time", coords={"time": time}),
         "mf_error": xr.DataArray(np.array([0.1, 0.2]), dims="time", coords={"time": time}),
+        "mf_repeatability": xr.DataArray(np.array([0.05, 0.05]), dims="time", coords={"time": time}),
+        "mf_variability": xr.DataArray(np.array([0.05, 0.15]), dims="time", coords={"time": time}),
         "H": xr.DataArray(
             np.array([[1.0, 2.0], [3.0, 4.0]]),
             dims=("region", "time"),
@@ -247,3 +255,14 @@ def test_make_inv_inputs_drops_non_shared_data_vars():
     assert {"H", "mf", "mf_error", "site_indicator", "site_names", "sigma_freq_index", "min_error"} <= set(
         result.data_vars
     )
+
+
+def test_make_inv_inputs_raises_if_required_var_would_be_dropped():
+    """`make_inv_inputs` should still fail clearly if a required var is not shared."""
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False).drop_vars("mf_error"),
+    }
+
+    with pytest.raises(ValueError, match="Required inversion data variables.*mf_error"):
+        make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)

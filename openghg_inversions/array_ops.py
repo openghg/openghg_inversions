@@ -458,7 +458,8 @@ def _resolve_shared_data_vars(
                 details.append(f"missing {missing}")
             if extra:
                 details.append(f"extra {extra}")
-            differences.append(f"{key}: " + ", ".join(details))
+            if details:
+                differences.append(f"{key}: " + ", ".join(details))
 
         raise ValueError("Datasets do not all have the same data variables: " + "; ".join(differences))
 
