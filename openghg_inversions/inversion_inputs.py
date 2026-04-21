@@ -259,6 +259,7 @@ def make_inv_inputs(
         key_dim="site",
         ragged_dim="time",
         stack_dim="nmeasure",
+        missing_data_vars="drop",
     )
 
     if "H_bc" in ds:
