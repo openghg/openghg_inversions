@@ -471,6 +471,7 @@ def _resolve_shared_data_vars(
             stacklevel=2,
         )
 
+    # Keep only shared vars, but preserve the first dataset's variable order.
     first_dataset = next(iter(ds_dict.values()))
     return [dv for dv in first_dataset.data_vars if dv in intersection]
 

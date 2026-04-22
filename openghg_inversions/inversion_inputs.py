@@ -287,6 +287,10 @@ def make_inv_inputs(
         stack_dim="nmeasure",
         missing_data_vars="drop",
     )
+
+    # Check that we have variables for standard RHIME inversion (`inferpymc`).
+    # Note that mf_prior_factor and mf_prior_upper_level_factor are only needed
+    # for post-processing (and only if column data is used).
     _check_required_inv_input_vars(
         ds,
         fp_data=fp_data,
