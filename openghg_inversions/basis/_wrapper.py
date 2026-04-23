@@ -26,6 +26,7 @@ def basis_functions_wrapper(
     country_directory: str | None = None,
     outputname: str | None = None,
     output_path: str | None = None,
+    inner_domain: str | None = None,
 ):
     """Wrapper function for selecting basis function
     algorithm.
