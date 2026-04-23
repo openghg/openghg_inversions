@@ -243,6 +243,32 @@ def _drop_nan_and_compute(
     return ds
 
 
+def _check_required_inv_input_vars(
+    ds: xr.Dataset, fp_data: dict[str, Any], sites: list[str], required_vars: Iterable[str] = ()
+) -> None:
+    """Raise if concat-drop mode removed variables required by the inversion pipeline.
+
+    Args:
+        ds: Gathered inversion-input dataset after concatenation.
+        fp_data: Original per-site input datasets.
+        sites: Site names included in the inversion input assembly.
+        required_vars: Variables that must always be present after concatenation.
+
+    Raises:
+        ValueError: If a required variable is missing from the gathered dataset.
+    """
+    missing_required = [var for var in required_vars if var not in ds]
+
+    if any("H_bc" in fp_data[site] for site in sites) and "H_bc" not in ds:
+        missing_required.append("H_bc")
+
+    if missing_required:
+        raise ValueError(
+            "Required inversion data variables were dropped during dataset gathering: "
+            f"{sorted(set(missing_required))}"
+        )
+
+
 def make_inv_inputs(
     fp_data: dict[str, Any],
     sites: list[str] | None = None,
@@ -259,6 +285,17 @@ def make_inv_inputs(
         key_dim="site",
         ragged_dim="time",
         stack_dim="nmeasure",
+        missing_data_vars="drop",
+    )
+
+    # Check that we have variables for standard RHIME inversion (`inferpymc`).
+    # Note that mf_prior_factor and mf_prior_upper_level_factor are only needed
+    # for post-processing (and only if column data is used).
+    _check_required_inv_input_vars(
+        ds,
+        fp_data=fp_data,
+        sites=sites,
+        required_vars=("H", "mf", "mf_error", "mf_repeatability", "mf_variability"),
     )
 
     if "H_bc" in ds:

@@ -42,7 +42,7 @@ an xarray issue, which now is written in terms of ``force_align``.
 from __future__ import annotations
 
 from collections.abc import Hashable, Iterable, Mapping, Sequence
-from typing import Any, overload, TypeVar
+from typing import Any, Literal, overload, TypeVar
 import warnings
 
 from dask.array.core import Array as DaskArray
@@ -351,23 +351,32 @@ def concat_gather_datasets(
     key_dim: str,
     ragged_dim: str,
     stack_dim: str | None = None,
+    missing_data_vars: Literal["error", "drop"] = "error",
     **concat_kwargs,
 ) -> xr.Dataset:
     """Concatenate dictionary of xr.Datasets by gathering ragged coordinates.
 
-    This assumes that all datasets have the same data variables.
+    Args:
+        ds_dict: Mapping from key values to datasets to concatenate.
+        key_dim: Name for the key dimension level in the output MultiIndex.
+        ragged_dim: Ragged coordinate dimension to gather across datasets.
+        stack_dim: Optional name for the gathered dimension in the output.
+        missing_data_vars: Policy for handling data variables that are not shared
+            by every dataset. Use ``"error"`` to raise a ``ValueError`` listing
+            the per-dataset differences, or ``"drop"`` to keep only the
+            intersection of shared data variables and emit a warning when any are
+            dropped.
+        **concat_kwargs: Additional keyword arguments passed to ``xr.concat``.
 
-    TODO: need to handle missing data variables.
+    Returns:
+        Dataset containing gathered versions of the selected data variables.
+
+    Raises:
+        ValueError: If ``missing_data_vars="error"`` and the datasets do not
+            all have identical data-variable sets, or if ``missing_data_vars`` is
+            not recognised.
     """
-    dvs = next(iter(ds_dict.values())).data_vars
-
-    # check that all data vars are present
-    for k, v in ds_dict.items():
-        if any(dv not in v.data_vars for dv in dvs):
-            missing_dvs = [dv for dv in dvs if dv not in v.data_vars]
-            raise ValueError(
-                f"Datasets do not all have the same data variables: Dataset for key {k} missing {missing_dvs}"
-            )
+    dvs = _resolve_shared_data_vars(ds_dict, missing_data_vars=missing_data_vars)
 
     gathered_dvs = {}
 
@@ -379,14 +388,29 @@ def concat_gather_datasets(
 
 
 def concat_gather_datatree(
-    dt: xr.DataTree, key_dim: str, ragged_dim: str, stack_dim: str | None = None, **concat_kwargs
+    dt: xr.DataTree,
+    key_dim: str,
+    ragged_dim: str,
+    stack_dim: str | None = None,
+    missing_data_vars: Literal["error", "drop"] = "error",
+    **concat_kwargs,
 ) -> xr.Dataset:
     """Concatenate xr.DataTree children by gathering ragged coordinates.
 
-    This assumes that all children have the same data variables.
+    Args:
+        dt: DataTree whose children will be converted to datasets and gathered.
+        key_dim: Name for the key dimension level in the output MultiIndex.
+        ragged_dim: Ragged coordinate dimension to gather across children.
+        stack_dim: Optional name for the gathered dimension in the output.
+        missing_data_vars: Policy for handling child data variables that are not
+            shared by every dataset. See ``concat_gather_datasets``.
+        **concat_kwargs: Additional keyword arguments passed to ``xr.concat``.
+
+    Returns:
+        Dataset containing gathered versions of the selected data variables.
     """
     ds_dict = {str(k): v.to_dataset() for k, v in dt.items()}
-    dvs = next(iter(ds_dict.values())).data_vars
+    dvs = _resolve_shared_data_vars(ds_dict, missing_data_vars=missing_data_vars)
 
     gathered_dvs = {}
 
@@ -395,6 +419,61 @@ def concat_gather_datatree(
         gathered_dvs[dv] = concat_gather_data_arrays(da_dict, key_dim, ragged_dim, stack_dim, **concat_kwargs)
 
     return xr.Dataset(gathered_dvs)
+
+
+def _resolve_shared_data_vars(
+    ds_dict: Mapping[str, xr.Dataset], *, missing_data_vars: Literal["error", "drop"]
+) -> list[Hashable]:
+    """Resolve data variables to gather under the requested missing-data policy.
+
+    Args:
+        ds_dict: Mapping from dataset key to dataset.
+        missing_data_vars: Policy controlling how non-shared data variables are
+            handled.
+
+    Returns:
+        Ordered list of data variable names to gather.
+
+    Raises:
+        ValueError: If datasets have non-identical data-variable sets and
+            ``missing_data_vars="error"``, or if the policy is unrecognised.
+    """
+    if missing_data_vars not in {"error", "drop"}:
+        raise ValueError(f"Unknown missing_data_vars policy: {missing_data_vars!r}")
+
+    data_var_sets = {k: set(v.data_vars) for k, v in ds_dict.items()}
+    union = set().union(*data_var_sets.values())
+    intersection = set.intersection(*data_var_sets.values())
+
+    if missing_data_vars == "error" and any(
+        data_vars != intersection for data_vars in data_var_sets.values()
+    ):
+        differences = []
+        for key, dataset in ds_dict.items():
+            dataset_vars = set(dataset.data_vars)
+            missing = sorted(union - dataset_vars)
+            extra = sorted(dataset_vars - intersection)
+            details = []
+            if missing:
+                details.append(f"missing {missing}")
+            if extra:
+                details.append(f"extra {extra}")
+            if details:
+                differences.append(f"{key}: " + ", ".join(details))
+
+        raise ValueError("Datasets do not all have the same data variables: " + "; ".join(differences))
+
+    dropped = sorted(union - intersection)
+    if missing_data_vars == "drop" and dropped:
+        warnings.warn(
+            f"Dropping data variables not shared by all datasets: {dropped}",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    # Keep only shared vars, but preserve the first dataset's variable order.
+    first_dataset = next(iter(ds_dict.values()))
+    return [dv for dv in first_dataset.data_vars if dv in intersection]
 
 
 # ----------------------------------------
