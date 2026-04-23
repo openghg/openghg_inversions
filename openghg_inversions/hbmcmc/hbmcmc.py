@@ -616,7 +616,7 @@ def fixedbasisMCMC(
         use_bc=use_bc,
         species=species,
         domain=domain,
-        # inner_domain=inner_domain,
+        inner_domain=inner_domain,
         start_date=start_date,
         fix_outer_regions=fix_basis_outer_regions,
         emissions_name=emissions_name,
