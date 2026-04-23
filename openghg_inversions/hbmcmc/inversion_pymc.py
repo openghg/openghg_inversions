@@ -320,28 +320,23 @@ def inferpymc(
         sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
 
         hx = pm.Data("hx", hx, dims=("nmeasure", "nx"))
-        mu = pm.Deterministic("mu", pt.dot(hx, x), dims="nmeasure")
 
         if Hx_inner is not None:
-            # Split outer contribution: H_outer - H_inner (everything outside inner domain)
-            # + H_inner · x_inner (inner domain resolved separately)
-            hx_outer_contrib = pm.Data(
-                "hx_outer_contrib", (Hx.T - Hx_inner.T), dims=("nmeasure", "nx")
-            )
-            hx_inner = pm.Data("hx_inner", Hx_inner.T, dims=("nmeasure", "nx"))
+            # Hx_inner has shape (nx_inner, nmeasure); Hx has shape (nx, nmeasure)
+            # They have different leading dims so cannot be subtracted — keep separate
+            hx_inner = pm.Data("hx_inner", Hx_inner.T, dims=("nmeasure", "nx_inner"))
             x = parse_prior("x", xprior, dims="nx")
-            x_inner = parse_prior("x_inner", xprior, dims="nx")   # same prior, separate RV
+            x_inner = parse_prior("x_inner", xprior, dims="nx_inner")
             step1_vars += [x, x_inner]
             mu = pm.Deterministic(
                 "mu",
-                pt.dot(hx_outer_contrib, x) + pt.dot(hx_inner, x_inner),
+                pt.dot(hx, x) + pt.dot(hx_inner, x_inner),
                 dims="nmeasure",
             )
         else:
-            hx_data = pm.Data("hx", hx, dims=("nmeasure", "nx"))
             x = parse_prior("x", xprior, dims="nx")
             step1_vars.append(x)
-            mu = pm.Deterministic("mu", pt.dot(hx_data, x), dims="nmeasure")
+            mu = pm.Deterministic("mu", pt.dot(hx, x), dims="nmeasure")
     
         if use_bc:
             hbc = pm.Data("hbc", hbc, dims=("nmeasure", "nbc"))
