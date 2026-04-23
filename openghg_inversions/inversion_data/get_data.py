@@ -60,69 +60,69 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
     """
     # TODO: do we want to fill missing values in repeatability or variability?
     for site in sites:
-        ds = fp_all[site].ds.copy()
-        variability_missing = False
-        if "mf_variability" not in ds:
-            ds["mf_variability"] = xr.zeros_like(ds.mf)
-            ds["mf_variability"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_variability"
-            variability_missing = True
+        for node_name in ["standard", "inner"]:
+            if node_name not in fp_all[site]:
+                continue
+            ds = fp_all[site][node_name].ds.copy()
+            variability_missing = False
+            if "mf_variability" not in ds:
+                ds["mf_variability"] = xr.zeros_like(ds.mf)
+                ds["mf_variability"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_variability"
+                variability_missing = True
 
-        if "mf_repeatability" not in ds:
-            if variability_missing:
-                raise ValueError(f"Obs data for site {site} is missing both repeatability and variability.")
+            if "mf_repeatability" not in ds:
+                if variability_missing:
+                    raise ValueError(f"Obs data for site {site} ({node_name}) is missing both repeatability and variability.")
 
-            ds["mf_repeatability"] = xr.zeros_like(ds.mf_variability)
-            ds["mf_repeatability"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_repeatability"
+                ds["mf_repeatability"] = xr.zeros_like(ds.mf_variability)
+                ds["mf_repeatability"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_repeatability"
 
-            ds["mf_error"] = ds["mf_variability"]
+                ds["mf_error"] = ds["mf_variability"]
 
-            if add_averaging_error:
-                logger.info(
-                    "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site %s", site
+                if add_averaging_error:
+                    logger.info(
+                        "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site %s (%s)", site, node_name
+                    )
+
+            elif add_averaging_error:
+                ds["mf_error"] = np.sqrt(
+                    ds["mf_repeatability"].fillna(0) ** 2 + ds["mf_variability"].fillna(0) ** 2
+                )
+            else:
+                ds["mf_error"] = ds["mf_repeatability"]
+
+            ds["mf_error"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_error"
+            ds["mf_error"].attrs["units"] = ds.mf.attrs.get("units", None)
+
+            err0 = (ds["mf_error"] == 0) | (ds["mf_error"].isnull())
+
+            if err0.any():
+                percent0 = 100 * err0.mean()
+                logger.warning(
+                    (
+                        "`mf_error` is zero/nan for %.2f percent of times at site %s (%s);"
+                        "filling with max(median(mf_error), std(mf))."
+                    ),
+                    percent0,
+                    site,
+                    node_name,
                 )
 
-        elif add_averaging_error:
-            # Fill with zeros so that if one of repeatability and variability is not NaN, then mf_error will not be NaN.
-            ds["mf_error"] = np.sqrt(
-                ds["mf_repeatability"].fillna(0) ** 2 + ds["mf_variability"].fillna(0) ** 2
-            )
-        else:
-            ds["mf_error"] = ds["mf_repeatability"]
+                mf_err_da = ds["mf_error"].as_numpy()
+                fill_value = np.nanmax(
+                    [
+                        mf_err_da.where(mf_err_da != 0).dropna(dim="time").median(),
+                        ds["mf"].std(dim="time"),
+                    ]
+                )
+                ds["mf_error"] = mf_err_da.where(mf_err_da != 0, fill_value)
+                info_msg = (
+                    "If `averaging_period` matches the frequency of the obs data, then `mf_variability` "
+                    "will be zero. Try setting `averaging_period = None`."
+                )
+                logger.info(info_msg)
 
-        ds["mf_error"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_error"
-        ds["mf_error"].attrs["units"] = ds.mf.attrs.get("units", None)
-
-        # warnings/info for debugging
-        err0 = (ds["mf_error"] == 0) | (
-            ds["mf_error"].isnull()
-        )  # might have NaN if add_averaging_error is False
-
-        if err0.any():
-            percent0 = 100 * err0.mean()
-            logger.warning(
-                (
-                    "`mf_error` is zero/nan for %.2f percent of times at site %s;"
-                    "filling with max(median(mf_error), std(mf))."
-                ),
-                percent0,
-                site,
-            )
-
-            mf_err_da = ds["mf_error"].as_numpy()  # load into memory to avoid Dask issues
-            fill_value = np.nanmax(
-                [
-                    mf_err_da.where(mf_err_da != 0).dropna(dim="time").median(),
-                    ds["mf"].std(dim="time"),
-                ]
-            )
-            ds["mf_error"] = mf_err_da.where(mf_err_da != 0, fill_value)
-            info_msg = (
-                "If `averaging_period` matches the frequency of the obs data, then `mf_variability` "
-                "will be zero. Try setting `averaging_period = None`."
-            )
-            logger.info(info_msg)
-
-        fp_all[site].ds = ds
+            fp_all[site][node_name].ds = ds
 
 def convert_to_list(
     x: list[str | None] | str | None, length: int, name: str | None = None
