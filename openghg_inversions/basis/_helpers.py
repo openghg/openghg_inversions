@@ -73,22 +73,7 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
             root_ds = entry["standard"].ds
             fp_x_flux_outer = root_ds[fp_x_flux_name]
 
-            if "inner" in entry.children:
-                inner_ds = entry["inner"].ds
-                # Build a boolean mask: True where lat/lon is inside inner domain bounds
-                inner_lat_min = float(inner_ds.lat.min())
-                inner_lat_max = float(inner_ds.lat.max())
-                inner_lon_min = float(inner_ds.lon.min())
-                inner_lon_max = float(inner_ds.lon.max())
-
-                lat_mask = (fp_x_flux_outer.lat >= inner_lat_min) & (fp_x_flux_outer.lat <= inner_lat_max)
-                lon_mask = (fp_x_flux_outer.lon >= inner_lon_min) & (fp_x_flux_outer.lon <= inner_lon_max)
-                inner_region_mask = lat_mask & lon_mask  # broadcasts over (lat, lon)
-
-                # Zero out those cells in the outer fp_x_flux
-                fp_x_flux_for_H = fp_x_flux_outer.where(~inner_region_mask, other=0.0)
-            else:
-                fp_x_flux_for_H = fp_x_flux_outer
+            fp_x_flux_for_H = fp_x_flux_outer
 
             # Compute outer H from the masked fp_x_flux
             sensitivity = apply_fp_basis_functions(
@@ -107,8 +92,8 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
                 new_root = root_ds.assign({"H": sensitivity})
                 new_inner = entry["inner"].ds.assign({"H_inner": H_inner})
                 fp_and_data[site] = xr.DataTree.from_dict({
-                    "/": new_root,
-                    "inner": new_inner,
+                    "/standard": new_root,
+                    "/inner": new_inner,
                 })
             else:
                 fp_and_data[site] = xr.DataTree(dataset=root_ds.assign({"H": sensitivity}))
