@@ -152,6 +152,37 @@ def convert_to_list(
     return x
 
 
+def _apply_inner_mask_on_standard_domain(standard_footprint_data: xr.DataArray, inner_footprint_data: xr.DataArray)):
+    """Apply inner domain mask to standard domain fp_x_flux to ensure that the standard domain sensitivity H only reflects the outer domain fluxes.
+    
+    Args:
+    standard_footprint_data: xr.DataArray containing the standard domain footprint data, with lat/lon coordinates.
+    inner_footprint_data: xr.DataArray containing the inner domain footprint data, with lat/lon coordinates.
+
+    Returns:
+        fp: xr.DataArray of the same shape as standard_footprint_data, but with values set to zero in the region covered by inner_footprint_data.
+    """
+
+    fp_standard = standard_footprint_data 
+
+    if inner_footprint_data is not None:
+        inner_ds = inner_footprint_data
+        # Build a boolean mask: True where lat/lon is inside inner domain bounds
+        inner_lat_min = float(inner_ds.lat.min())
+        inner_lat_max = float(inner_ds.lat.max())
+        inner_lon_min = float(inner_ds.lon.min())
+        inner_lon_max = float(inner_ds.lon.max())
+
+        lat_mask = (fp_standard.lat >= inner_lat_min) & (fp_standard.lat <= inner_lat_max)
+        lon_mask = (fp_standard.lon >= inner_lon_min) & (fp_standard.lon <= inner_lon_max)
+        inner_region_mask = lat_mask & lon_mask  # broadcasts over (lat, lon)
+
+        # Zero out those cells in the outer fp
+        fp = fp_standard.where(~inner_region_mask, other=0.0)
+
+        return fp
+    
+
 def data_processing_surface_notracer(
     species: str,
     sites: list | str,
@@ -369,6 +400,9 @@ def data_processing_surface_notracer(
                 obs_data=site_data,
                 stores=inner_footprint_store if inner_footprint_store is not None else footprint_store,
             )
+
+            standard_footprint_data = _apply_inner_mask_on_standard_domain(standard_footprint_data= standard_footprint_data, inner_footprint_data= inner_footprint_data)
+            
             if inner_footprint_data is None:
                 print(
                     f"\nNo Inner footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}-{inner_domain}, starting from {start_date} to {end_date}, fp_species {fp_species} and met_model {met_model[i]}, obs_data {site_data} and averaging_period {averaging_period[i]}.",
@@ -444,3 +478,4 @@ def data_processing_surface_notracer(
             print(f"\nfp_all saved in {merged_data_dir}\n")
 
     return fp_all, sites, inlet, fp_height, instrument, averaging_period
+
