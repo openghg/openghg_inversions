@@ -152,7 +152,7 @@ def convert_to_list(
     return x
 
 
-def _apply_inner_mask_on_standard_domain(standard_footprint_data: xr.DataArray, inner_footprint_data: xr.DataArray)):
+def _apply_inner_mask_on_standard_domain(standard_footprint_data: xr.Dataset, inner_footprint_data: xr.Dataset):
     """Apply inner domain mask to standard domain fp_x_flux to ensure that the standard domain sensitivity H only reflects the outer domain fluxes.
     
     Args:
@@ -163,10 +163,10 @@ def _apply_inner_mask_on_standard_domain(standard_footprint_data: xr.DataArray, 
         fp: xr.DataArray of the same shape as standard_footprint_data, but with values set to zero in the region covered by inner_footprint_data.
     """
 
-    fp_standard = standard_footprint_data 
+    fp_standard = standard_footprint_data.copy()
 
     if inner_footprint_data is not None:
-        inner_ds = inner_footprint_data
+        inner_ds = inner_footprint_data.copy()
         # Build a boolean mask: True where lat/lon is inside inner domain bounds
         inner_lat_min = float(inner_ds.lat.min())
         inner_lat_max = float(inner_ds.lat.max())
@@ -401,7 +401,7 @@ def data_processing_surface_notracer(
                 stores=inner_footprint_store if inner_footprint_store is not None else footprint_store,
             )
 
-            standard_footprint_data = _apply_inner_mask_on_standard_domain(standard_footprint_data= standard_footprint_data, inner_footprint_data= inner_footprint_data)
+            standard_footprint_data.data = _apply_inner_mask_on_standard_domain(standard_footprint_data= standard_footprint_data.data, inner_footprint_data= inner_footprint_data.data)
             
             if inner_footprint_data is None:
                 print(
