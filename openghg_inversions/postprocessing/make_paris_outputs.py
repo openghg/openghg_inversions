@@ -260,12 +260,17 @@ def _flux_interval_midpoints(
         inv_end: End of the inversion period.
 
     Returns:
-        List of midpoint timestamps, one per flux interval.
+        List of midpoint timestamps, one per flux interval (only for periods overlapping the inversion period).
     """
-    return [
-        max(ft, inv_start) + (min(ft + flux_period, inv_end) - max(ft, inv_start)) / 2
-        for ft in flux_times
-    ]
+    midpoints = []
+    for ft in flux_times:
+        overlap_start = max(ft, inv_start)
+        overlap_end = min(ft + flux_period, inv_end)
+        # Only include midpoint if there is valid overlap
+        if overlap_end > overlap_start:
+            midpoint = overlap_start + (overlap_end - overlap_start) / 2
+            midpoints.append(midpoint)
+    return midpoints
 
 
 def paris_flux_output(
@@ -345,7 +350,15 @@ def paris_flux_output(
         def time_func(ds):
             flux_times = pd.to_datetime(ds.time.values)
             midpoints = _flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end)
-            return ds.assign_coords(time=midpoints)
+            # Find which time indices have valid overlap (those included in midpoints)
+            valid_indices = []
+            for i, ft in enumerate(flux_times):
+                overlap_start = max(ft, inv_start)
+                overlap_end = min(ft + flux_period, inv_end)
+                if overlap_end > overlap_start:
+                    valid_indices.append(i)
+            # Select only the valid time indices and assign the midpoints
+            return ds.isel(time=valid_indices).assign_coords(time=midpoints)
     else:
 
         def time_func(ds):
