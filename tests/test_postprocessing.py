@@ -110,8 +110,36 @@ def inv_out_eastasia(raw_data_path):
 )
 def test_flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end, expected):
     """Check midpoint timestamps are computed from the flux/inversion period overlap."""
-    result = _flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end)
-    assert result == expected
+    midpoints, valid_indices = _flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end)
+    assert midpoints == expected
+    # Also verify that valid_indices are correct (0-indexed positions in flux_times
+    # of the flux periods that overlap the inversion period)
+    assert len(valid_indices) == len(expected)
+    assert valid_indices == list(range(len(expected)))  # For these test cases, all flux times have overlap
+
+
+def test_flux_interval_midpoints_with_non_overlapping_times():
+    """Test that non-overlapping flux times are correctly filtered out.
+    
+    This test verifies the fix for the bug where all 13 flux times (2012-2024)
+    were being written to output even when the inversion period was only 2023-2024.
+    """
+    # Flux times spanning 2012-2024 (yearly intervals)
+    flux_times = [pd.Timestamp(f"{year}-01-01") for year in range(2012, 2025)]  # 13 times
+    flux_period = pd.DateOffset(years=1)
+    inv_start = pd.Timestamp("2023-01-01")
+    inv_end = pd.Timestamp("2024-01-01")
+    
+    midpoints, valid_indices = _flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end)
+    
+    # Only the 2023 flux interval (index 11) overlaps with the inversion period
+    assert len(midpoints) == 1
+    assert len(valid_indices) == 1
+    assert valid_indices[0] == 11  # 2023 is at index 11 (year 2012 = 0, ..., 2023 = 11)
+    
+    # The midpoint should be the midpoint of 2023-01-01 to 2024-01-01
+    expected_midpoint = pd.Timestamp("2023-01-01") + (pd.Timestamp("2024-01-01") - pd.Timestamp("2023-01-01")) / 2
+    assert midpoints[0] == expected_midpoint
 
 
 def test_paris_flux_output_timestamp(inv_out, europe_country_file):
