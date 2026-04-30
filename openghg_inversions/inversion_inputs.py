@@ -1,6 +1,7 @@
 """Functions for creating the inputs needed by PyMC."""
 
 import datetime as dt
+import numbers
 from typing import Any, Iterable, Literal
 
 import numpy as np
@@ -116,12 +117,14 @@ def make_sigma_freq(
 def add_min_error(
     ds: xr.Dataset,
     fp_data: dict[str, Any],
-    min_error: str | dict[str, float] | float = 0.0,
+    min_error: str | dict[str, float] | int | float = 0.0,
     min_error_per_site: bool = True,
 ) -> xr.Dataset:
     """Add min_error to combined Dataset."""
     min_error_data: xr.DataArray | float | np.ndarray
-    if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
+    if isinstance(min_error, numbers.Real) and not isinstance(min_error, bool):
+        min_error_data = float(min_error) * xr.ones_like(ds.mf)
+    elif isinstance(min_error, np.ndarray) and min_error.ndim == 0:
         min_error_data = min_error * xr.ones_like(ds.mf)
     elif isinstance(min_error, dict):
         sites = [k for k in fp_data if not k.startswith(".")]
@@ -274,7 +277,7 @@ def make_inv_inputs(
     sites: list[str] | None = None,
     bc_freq: Literal["monthly"] | str | None = None,
     sigma_freq: Literal["monthly"] | str | None = None,
-    min_error: str | dict[str, float] | float = 0.0,
+    min_error: str | dict[str, float] | int | float = 0.0,
     min_error_per_site: bool = True,
     start_date: DatetimeLike | None = None,
 ) -> xr.Dataset:

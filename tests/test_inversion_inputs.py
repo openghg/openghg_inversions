@@ -266,3 +266,15 @@ def test_make_inv_inputs_raises_if_required_var_would_be_dropped():
 
     with pytest.raises(ValueError, match="Required inversion data variables.*mf_error"):
         make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=0.0)
+
+
+def test_make_inv_inputs_accepts_integer_min_error():
+    """Integer min_error values should be treated as numeric scalar errors."""
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+    }
+
+    result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=40)
+
+    assert np.all(result.min_error.values == 40.0)

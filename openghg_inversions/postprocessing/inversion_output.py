@@ -579,7 +579,12 @@ class InversionOutput:
             "species": dt.attrs.get("species"),
             "domain": dt.attrs.get("domain"),
         }
-        basis = get_xr_dummies(dt.basis.basis, cat_dim="nx", categories=dt.trace.posterior.nx)
+        basis_dim = "nx" if "nx" in dt.trace.posterior.coords else "region"
+        basis = get_xr_dummies(
+            dt.basis.basis,
+            cat_dim=basis_dim,
+            categories=dt.trace.posterior[basis_dim],
+        )
         trace = az.InferenceData(**{group: val.to_dataset() for group, val in dt.trace.items()})
         return cls(
             **obs_and_errs,
