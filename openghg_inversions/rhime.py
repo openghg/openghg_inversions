@@ -289,15 +289,27 @@ def _required_run_params() -> set[str]:
         "domain",
         "start_date",
         "end_date",
-        "output_path",
         "output_name",
     }
+
+
+def _is_missing_required_value(value: Any) -> bool:
+    """Return true when a required RHIME parameter has no usable value."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes) and len(value) == 0:
+        return True
+    return False
 
 
 def _validate_required_params(params: Mapping[str, Any]) -> None:
     """Raise if normalized run parameters are missing required values."""
     missing = [
-        name for name in sorted(_required_run_params()) if name not in params or params[name] in (None, " ")
+        name
+        for name in sorted(_required_run_params())
+        if name not in params or _is_missing_required_value(params[name])
     ]
     if missing:
         raise ValueError(f"Required RHIME parameter(s) missing: {missing!r}")
@@ -323,6 +335,7 @@ def _validate_supported_params(params: Mapping[str, Any]) -> None:
         "verbose",
         "sampler_kwargs",
         "output_format",
+        "output_path",
         "save_trace",
         "save_inversion_output",
         "paris_postprocessing_kwargs",
@@ -345,6 +358,25 @@ def _validate_output_format(output_format: str) -> None:
         raise ValueError(
             f"Unsupported RHIME output_format {output_format!r}; expected one of {sorted(valid_formats)!r}."
         )
+
+
+def _validate_output_path_settings(
+    *,
+    output_format: str,
+    output_path: str | None,
+    save_trace: str | Path | bool,
+    save_inversion_output: str | Path | bool,
+    multisector: bool,
+) -> None:
+    """Raise if output settings imply a default save path but none is supplied."""
+    if output_format == "none":
+        return
+    if output_path is not None:
+        return
+    if save_trace is True:
+        raise ValueError("`output_path` is required when `save_trace=True`.")
+    if not multisector and save_inversion_output is True:
+        raise ValueError("`output_path` is required when saving the standard RHIME InversionOutput.")
 
 
 def _resolve_output_path(
@@ -778,7 +810,7 @@ def _write_standard_outputs(
     )
     if trace_path is not None:
         trace_path.parent.mkdir(parents=True, exist_ok=True)
-        result.idata.to_netcdf(str(trace_path), engine="netcdf4", compress=True)
+        result.idata.to_netcdf(str(trace_path), compress=True)
         result.output_metadata["trace_path"] = str(trace_path)
 
     inv_out_path = _resolve_output_path(
@@ -956,6 +988,13 @@ def _run_common(
     _validate_output_format(output_format)
     save_trace = params.pop("save_trace", False)
     save_inversion_output = params.pop("save_inversion_output", True)
+    _validate_output_path_settings(
+        output_format=output_format,
+        output_path=output_path,
+        save_trace=save_trace,
+        save_inversion_output=save_inversion_output,
+        multisector=multisector,
+    )
     country_file = params.get("country_file")
     paris_postprocessing_kwargs = params.pop("paris_postprocessing_kwargs", None)
 

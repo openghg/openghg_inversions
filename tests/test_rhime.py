@@ -242,6 +242,65 @@ def test_run_rhime_rejects_unsupported_output_format(tmp_path: Path) -> None:
         run_rhime(**args)
 
 
+def test_required_parameter_validation_allows_missing_output_path_for_in_memory_runs() -> None:
+    args = {
+        "species": "ch4",
+        "sites": ["TAC"],
+        "averaging_period": ["1h"],
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-02",
+        "output_name": "test",
+    }
+
+    rhime_module._validate_required_params(args)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("species", ""),
+        ("sites", []),
+        ("domain", "  "),
+    ],
+)
+def test_required_parameter_validation_rejects_empty_values(name: str, value) -> None:
+    args = {
+        "species": "ch4",
+        "sites": ["TAC"],
+        "averaging_period": ["1h"],
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-02",
+        "output_name": "test",
+    }
+    args[name] = value
+
+    with pytest.raises(ValueError, match=name):
+        rhime_module._validate_required_params(args)
+
+
+def test_output_path_validation_allows_output_none_without_path() -> None:
+    rhime_module._validate_output_path_settings(
+        output_format="none",
+        output_path=None,
+        save_trace=False,
+        save_inversion_output=True,
+        multisector=False,
+    )
+
+
+def test_output_path_validation_rejects_default_standard_save_without_path() -> None:
+    with pytest.raises(ValueError, match="output_path"):
+        rhime_module._validate_output_path_settings(
+            output_format="inv_out",
+            output_path=None,
+            save_trace=False,
+            save_inversion_output=True,
+            multisector=False,
+        )
+
+
 def test_supported_parameter_validation_accepts_sigma_per_site(tmp_path: Path) -> None:
     args = {
         "species": "ch4",
