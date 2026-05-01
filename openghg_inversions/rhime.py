@@ -405,6 +405,27 @@ def _define_output_filename(
     return Path(output_path) / f"{output_name}_{species}_{domain}_{start_date}{ext}"
 
 
+def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
+    """Save InferenceData, preferring the h5netcdf backend with fallbacks."""
+    failures = []
+    for engine in ("h5netcdf", None, "netcdf4"):
+        try:
+            if engine is None:
+                idata.to_netcdf(str(path), compress=True)
+            else:
+                idata.to_netcdf(str(path), engine=engine, compress=True)
+        except Exception as exc:
+            engine_name = "arviz-default" if engine is None else engine
+            failures.append(f"{engine_name}: {exc}")
+        else:
+            return
+
+    joined_failures = "\n".join(failures)
+    raise RuntimeError(
+        f"Could not save RHIME trace to {path}. Tried h5netcdf, ArviZ default, and netcdf4:\n{joined_failures}"
+    )
+
+
 def _prepare_data(
     *,
     species: str,
@@ -810,7 +831,7 @@ def _write_standard_outputs(
     )
     if trace_path is not None:
         trace_path.parent.mkdir(parents=True, exist_ok=True)
-        result.idata.to_netcdf(str(trace_path), compress=True)
+        _save_inferencedata(result.idata, trace_path)
         result.output_metadata["trace_path"] = str(trace_path)
 
     inv_out_path = _resolve_output_path(
@@ -960,7 +981,7 @@ def _run_common(
     averaging_period = _as_list(params.pop("averaging_period")) or []
     start_date = params.pop("start_date")
     end_date = params.pop("end_date")
-    output_path = params.pop("output_path")
+    output_path = params.pop("output_path", None)
     output_name = params.pop("output_name")
 
     x_prior = params.pop("x_prior", None)

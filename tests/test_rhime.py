@@ -242,6 +242,23 @@ def test_run_rhime_rejects_unsupported_output_format(tmp_path: Path) -> None:
         run_rhime(**args)
 
 
+def test_run_rhime_can_validate_output_format_without_output_path() -> None:
+    args = {
+        "species": "ch4",
+        "sites": ["TAC"],
+        "averaging_period": ["1h"],
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-02",
+        "flux_sources": ["total-ukghg-edgar7"],
+        "output_name": "test",
+        "output_format": "legacy",
+    }
+
+    with pytest.raises(ValueError, match="Unsupported RHIME output_format"):
+        run_rhime(**args)
+
+
 def test_required_parameter_validation_allows_missing_output_path_for_in_memory_runs() -> None:
     args = {
         "species": "ch4",
@@ -299,6 +316,43 @@ def test_output_path_validation_rejects_default_standard_save_without_path() -> 
             save_inversion_output=True,
             multisector=False,
         )
+
+
+def test_save_inferencedata_prefers_h5netcdf(tmp_path: Path) -> None:
+    class FakeInferenceData:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def to_netcdf(self, path, **kwargs):
+            self.calls.append((path, kwargs))
+
+    idata = FakeInferenceData()
+    path = tmp_path / "trace.nc"
+
+    rhime_module._save_inferencedata(idata, path)
+
+    assert idata.calls == [(str(path), {"engine": "h5netcdf", "compress": True})]
+
+
+def test_save_inferencedata_falls_back_after_h5netcdf_failure(tmp_path: Path) -> None:
+    class FakeInferenceData:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def to_netcdf(self, path, **kwargs):
+            self.calls.append((path, kwargs))
+            if kwargs.get("engine") == "h5netcdf":
+                raise ValueError("h5netcdf unavailable")
+
+    idata = FakeInferenceData()
+    path = tmp_path / "trace.nc"
+
+    rhime_module._save_inferencedata(idata, path)
+
+    assert idata.calls == [
+        (str(path), {"engine": "h5netcdf", "compress": True}),
+        (str(path), {"compress": True}),
+    ]
 
 
 def test_supported_parameter_validation_accepts_sigma_per_site(tmp_path: Path) -> None:
