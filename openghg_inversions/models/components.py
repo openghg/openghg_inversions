@@ -252,7 +252,8 @@ def add_sigma_component(
         )
 
     site_data = site_indicator if per_site else xr.zeros_like(site_indicator)
-    site_data_var = add_model_data(site_data, "site_indicator")
+    site_data_name = "site_indicator" if per_site else f"{var_name}_site_indicator"
+    site_data_var = add_model_data(site_data.rename(site_data_name), site_data_name)
     freq_data = add_model_data(freq_index.transpose(output_dim), str(freq_index.name))
 
     nsigma_site = int(site_data.max().item()) + 1 if per_site else 1
