@@ -211,3 +211,29 @@ def test_add_inferpymc_likelihood_component_adds_epsilon_and_y() -> None:
         )
 
     assert {"epsilon", "y", "sigma"}.issubset(model.named_vars)
+
+
+def test_likelihood_samples_prior_predictive_with_shared_sigma_and_registered_site_indicator() -> None:
+    """Check shared sigma indexing still works after offsets register site data."""
+    ds = _likelihood_dataset()
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
+        mu_bc = pm.Data("mu_bc_input", np.zeros(4), dims="nmeasure")
+        offset = add_offset_component(
+            ds["site_indicator"],
+            prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+            output_name="offset",
+        )
+        add_inferpymc_likelihood_component(
+            ds,
+            mu=mu,
+            mu_bc=mu_bc,
+            offset=offset,
+            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            sigma_per_site=False,
+        )
+
+        assert model.named_vars["sigma"].eval().shape[0] == 1
+        pm.sample_prior_predictive(draws=1, model=model, random_seed=123)
