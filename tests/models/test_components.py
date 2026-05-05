@@ -163,6 +163,8 @@ def test_add_sigma_component_supports_explicit_and_derived_freq() -> None:
             per_site=False,
         )
         assert model.named_vars["sigma"].eval().shape[0] == 1
+        assert "site_indicator" not in model.named_vars
+        assert np.array_equal(model.named_vars["sigma_site_indicator"].eval(), np.zeros(4))
         assert "sigma_freq_index" in model.named_vars
 
 
