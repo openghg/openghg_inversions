@@ -214,6 +214,7 @@ def data_processing_surface_notracer(
     output_name: str | None = None,
     inner_domain: str | None = None,
     inner_footprint_store: str | list[str] | None = None,
+    inner_emissions_store: str | None = None,
 ) -> tuple[dict, list, list, list, list, list]:
     """Retrieve and prepare fixed-surface datasets from specified OpenGHG object stores.
 
@@ -299,6 +300,17 @@ def data_processing_surface_notracer(
         )
     
     fp_all[".flux"] = flux_dict
+
+    if inner_emissions_store is not None:
+        inner_flux_dict = get_flux_data(
+            sources=emissions_name,
+            species=species,
+            domain=f"{domain}-{inner_domain}",
+            start_date=start_date,
+            end_date=end_date,  
+            store=inner_emissions_store,
+        )
+        fp_all[".inner_flux"] = inner_flux_dict
 
     # Get BC data
     if use_bc is True:
@@ -413,6 +425,7 @@ def data_processing_surface_notracer(
         scenario_combined = merged_scenario_data(
             obs_data=site_data, footprint_data=standard_footprint_data,
             flux_dict= flux_dict, bc_data=bc_data, inner_footprint_data=inner_footprint_data,
+            inner_flux_dict= inner_flux_dict if inner_emissions_store is not None else None, 
             platform=platform[i], max_level=max_level
         )
         fp_all[site] = scenario_combined
