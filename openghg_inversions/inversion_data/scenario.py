@@ -66,6 +66,7 @@ def merged_scenario_data(
     obs_data: ObsData,
     footprint_data: FootprintData,
     flux_dict: dict[str, FluxData],
+    inner_flux_dict: dict[str, FluxData] | None,
     bc_data: BoundaryConditionsData | None = None,
     inner_footprint_data: FootprintData | None = None,
     platform: str | None = None,
@@ -106,7 +107,8 @@ def merged_scenario_data(
         # Mask the EUROPE flux to the inner domain extent (zero outside),
         # regridded to the inner footprint lat/lon grid.
         # ModelScenario then computes fp_x_flux on the inner grid correctly.
-        flux_dict_inner = _mask_flux_to_inner_domain(flux_dict, inner_footprint_data)
+        # flux_dict_inner = _mask_flux_to_inner_domain(flux_dict, inner_footprint_data)
+        flux_dict_inner = inner_flux_dict
 
         inner_scenario = ModelScenario(obs=obs_data, footprint=inner_footprint_data, flux=flux_dict_inner, bc=None)
         inner_domain_merged = inner_scenario.footprints_data_merge(
