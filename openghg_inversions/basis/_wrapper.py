@@ -82,6 +82,7 @@ def basis_functions_wrapper(
         Dictionary object similar to fp_all but with information
         on basis functions and sensitivities
     """
+    inner_basis_data_array = None
     if use_bc is True and bc_basis_case is None:
         raise ValueError("If `use_bc` is True, you must specify `bc_basis_case`.")
 
@@ -119,13 +120,39 @@ def basis_functions_wrapper(
                 "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
             ) from e
         print(f"Using {basis_function.description} to derive basis functions.")
-        basis_data_array = basis_function.algorithm(fp_all, start_date, domain, emissions_name, nbasis, country_directory=country_directory)
+
+        if inner_domain is not None:
+            inner_basis_data_array = basis_function.algorithm(
+                fp_all=fp_all,
+                start_date=start_date,
+                domain=f"{domain}-{inner_domain}",
+                emissions_name=emissions_name,
+                nbasis=nbasis,
+                country_directory=country_directory,
+                scenario="inner",
+            )
+
+            print(f"Computing inner basis took {time() - basis_start}s.")
+
+        basis_data_array = basis_function.algorithm(
+            fp_all=fp_all,
+            start_date=start_date,
+            domain=domain,
+            emissions_name=emissions_name,
+            nbasis=nbasis,
+            country_directory=country_directory,
+        )
 
     print(f"Computing basis took {time() - basis_start}s.")
 
     fp_sens_start = time()
-    fp_data = fp_sensitivity(fp_all, basis_func=basis_data_array)
-    print(f"Computing fp sensitivity took {time() - fp_sens_start}s.")
+    if basis_data_array is not None:
+        fp_data = fp_sensitivity(
+            fp_all,
+            basis_func=basis_data_array,
+            inner_basis_func=inner_basis_data_array,
+        )
+        print(f"Computing fp sensitivity took {time() - fp_sens_start}s.")
 
     if use_bc is True:
         bc_sens_start = time()
