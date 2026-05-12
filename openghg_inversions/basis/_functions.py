@@ -132,7 +132,7 @@ def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: 
 
 
 def _flux_fp_from_fp_all(
-    fp_all: dict, emissions_name: list[str] | None = None
+    fp_all: dict, emissions_name: list[str] | None = None, scenario = "standard"
 ) -> tuple[xr.DataArray, list[xr.DataArray]]:
     """Get flux and list of footprints from `fp_all` dictionary and optional list of emissions names.
 
@@ -149,10 +149,12 @@ def _flux_fp_from_fp_all(
       footprints (list):
         List of xarray DataArray containing the footprints of each sites.
     """
+    flux_key = ".inner_flux" if scenario == "inner" and ".inner_flux" in fp_all else ".flux"
+
     if emissions_name is not None:
-        flux = fp_all[".flux"][emissions_name[0]].data.flux
+        flux = fp_all[flux_key][emissions_name[0]].data.flux
     else:
-        first_flux = next(iter(fp_all[".flux"].values()))
+        first_flux = next(iter(fp_all[flux_key].values()))
         flux = first_flux.data.flux
 
     flux = cast(xr.DataArray, flux)
@@ -162,14 +164,16 @@ def _flux_fp_from_fp_all(
         if k.startswith("."):
             continue
 
-         # Need to discuss this further
+        # Need to discuss this further
         # fp_x_flux is guaranteed to be on the
         # EUROPE grid (it comes from the standard scenario). Raw .fp may be
         # on the 6km grid if OpenGHG snapped it to the footprint resolution.
-        if "fp_x_flux" in v:
+        if scenario == "inner" and isinstance(v, xr.DataTree) and "inner" in v.children:
+            fp = v["inner"].ds["fp_x_flux"]
+        elif "fp_x_flux" in v:
             fp = v["fp_x_flux"]
         else:
-            fp = v.fp
+            fp = v[scenario].ds.fp
 
         # if grid still doesn't match flux, regrid to flux grid
         if fp.sizes.get("lat") != flux.sizes.get("lat") or fp.sizes.get("lon") != flux.sizes.get("lon"):
@@ -232,6 +236,7 @@ def quadtreebasisfunction(
     fp_all: dict,
     start_date: str,
     domain : str,
+    scenario: str = "standard",
     emissions_name: list[str] | None = None,
     nbasis: int = 100,
     country_directory: str | None = None,
@@ -277,7 +282,7 @@ def quadtreebasisfunction(
       quad_basis (xarray.DataArray):
         Array with lat/lon dimensions and basis regions encoded by integers.
     """
-    flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
+    flux, footprints = _flux_fp_from_fp_all(fp_all=fp_all, emissions_name=emissions_name, scenario=scenario)
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
 
     # use xr.apply_ufunc to keep xarray coords
@@ -302,7 +307,8 @@ def bucketbasisfunction(
     nbasis: int = 100,
     country_directory: str | None = None,
     abs_flux: bool = False,
-    mask: xr.DataArray | None = None
+    mask: xr.DataArray | None = None,
+    scenario: str = "standard",
 ) -> xr.DataArray:
     """Basis functions calculated using a weighted region approach
     where each basis function / scaling region contains approximately
@@ -330,12 +336,15 @@ def bucketbasisfunction(
         Default None
       country_directory (str):
         Directory containing land-sea files. If None, will use default files.
+      scenario (str):
+        Scenario for retrieving emissions files.
+        Default "standard"
 
     Returns:
       bucket_basis (xarray.DataArray):
         Array with lat/lon dimensions and basis regions encoded by integers.
     """
-    flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
+    flux, footprints = _flux_fp_from_fp_all(fp_all=fp_all, emissions_name=emissions_name, scenario=scenario)
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
     fps = fps / fps.max()
 
@@ -370,6 +379,7 @@ def fixed_outer_regions_basis(
     nbasis: int = 100,
     country_directory: str | None = None,
     abs_flux: bool = False,
+    scenario: str = "standard"
 ) -> xr.DataArray:
     """Fix outer region of basis functions to InTEM regions, and fit the inner regions using `basis_algorithm`.
 
@@ -408,7 +418,7 @@ def fixed_outer_regions_basis(
     intem_regions = xr.open_dataset(intem_regions_path).region
 
     # force intem_regions to use flux coordinates
-    flux, _ = _flux_fp_from_fp_all(fp_all, emissions_name)
+    flux, _ = _flux_fp_from_fp_all(fp_all=fp_all, emissions_name=emissions_name, scenario=scenario)
     _, intem_regions = xr.align(flux, intem_regions, join="override")
 
     inner_index = intem_regions.values.max()
@@ -416,7 +426,7 @@ def fixed_outer_regions_basis(
     mask = intem_regions == inner_index
 
     basis_function = basis_functions[basis_algorithm].algorithm
-    inner_region = basis_function(fp_all, start_date, domain, emissions_name, nbasis, country_directory, abs_flux, mask=mask)
+    inner_region = basis_function(fp_all=fp_all, start_date=start_date, domain=domain, emissions_name=emissions_name, nbasis=nbasis, country_directory=country_directory, abs_flux=abs_flux, mask=mask)
 
     basis = intem_regions.rename("basis") 
 
