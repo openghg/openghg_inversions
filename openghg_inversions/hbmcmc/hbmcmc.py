@@ -291,6 +291,7 @@ def fixedbasisMCMC(
     footprint_store: str = "user",
     emissions_store: str = "user",
     inner_footprint_store: str = "user",
+    inner_emissions_store: str = "user",
     met_model: list | None = None,
     fp_model: str | None = None,  # Changed to none. When "NAME" specified FPs are not found
     fp_height: list[str] | None = None,
@@ -590,6 +591,7 @@ def fixedbasisMCMC(
                 footprint_store=footprint_store,
                 emissions_store=emissions_store,
                 inner_footprint_store=inner_footprint_store,
+                inner_emissions_store=inner_emissions_store,
                 averagingerror=averaging_error,
                 save_merged_data=save_merged_data,
                 merged_data_name=merged_data_name,
