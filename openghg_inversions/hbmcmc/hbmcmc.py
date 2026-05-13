@@ -88,6 +88,13 @@ def make_inv_inputs(
     offset_args,
     power,
 ):
+    def _main_ds(entry: xr.Dataset | xr.DataTree) -> xr.Dataset:
+        if isinstance(entry, xr.DataTree):
+            if "standard" in entry.children:
+                return entry["standard"].ds
+            return entry.ds
+        return entry
+
     # Trigger dask computations
     # we only compute the variables we need below
     to_compute = [
@@ -105,23 +112,34 @@ def make_inv_inputs(
     ]
     for site in sites:
         site_entry = fp_data[site]
-        # Use root node's data_vars only to avoid picking up inner child variables
         if isinstance(site_entry, xr.DataTree):
-            root_data_vars = site_entry.ds.data_vars
-        else:
-            root_data_vars = site_entry.data_vars
+            has_standard = "standard" in site_entry.children
+            standard_ds = site_entry["standard"].ds if has_standard else site_entry.ds
 
-        to_compute_site = [dv for dv in to_compute if dv in root_data_vars]
-        if to_compute_site:
-            if isinstance(site_entry, xr.DataTree):
-                # Compute the needed variables in the root dataset and rebuild the DataTree
-                computed_root = site_entry.ds.assign(
-                    {var: site_entry.ds[var].compute() for var in to_compute_site}
-                )
-                fp_data[site] = xr.DataTree(dataset=computed_root, children=dict(site_entry.children))
-            else:
-                for var in to_compute_site:
-                    fp_data[site][var] = fp_data[site][var].compute()
+            to_compute_site = [dv for dv in to_compute if dv in standard_ds.data_vars]
+            updated_standard = (
+                standard_ds.assign({var: standard_ds[var].compute() for var in to_compute_site})
+                if to_compute_site
+                else standard_ds
+            )
+
+            updated_inner = None
+            if "inner" in site_entry.children:
+                inner_ds = site_entry["inner"].ds
+                if "H_inner" in inner_ds.data_vars:
+                    updated_inner = inner_ds.assign({"H_inner": inner_ds["H_inner"].compute()})
+                else:
+                    updated_inner = inner_ds
+
+            standard_key = "/standard" if has_standard else "/"
+            dt_dict = {standard_key: updated_standard}
+            if updated_inner is not None:
+                dt_dict["/inner"] = updated_inner
+            fp_data[site] = xr.DataTree.from_dict(dt_dict)
+        else:
+            to_compute_site = [dv for dv in to_compute if dv in site_entry.data_vars]
+            if to_compute_site:
+                fp_data[site] = site_entry.assign({var: site_entry[var].compute() for var in to_compute_site})
 
     # Get inputs ready
     error = np.zeros(0)
@@ -145,22 +163,24 @@ def make_inv_inputs(
         if site in dropped_sites:
             continue
 
+        site_ds = _main_ds(fp_data[site])
+
         # select variables to drop NaNs from
         drop_vars = []
         for var in ["H", "H_bc", "mf", "mf_error"]:
-            if var in fp_data[site].data_vars:
+            if var in site_ds.data_vars:
                 drop_vars.append(var)
 
         # pymc doesn't like NaNs, so drop them for the variables used below
         # DataTree doesn't support dropna; use sel with valid time indices instead
         if isinstance(fp_data[site], xr.DataTree):
-            valid_times = fp_data[site].ds.dropna("time", subset=drop_vars).time
+            valid_times = site_ds.dropna("time", subset=drop_vars).time
             fp_data[site] = fp_data[site].sel(time=valid_times)
         else:
-            fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
+            fp_data[site] = site_ds.dropna("time", subset=drop_vars)
 
         # repeatability/variability chosen/combined into mf_error in `get_data.py`
-        ds = fp_data[site].ds if isinstance(fp_data[site], xr.DataTree) else fp_data[site]
+        ds = _main_ds(fp_data[site])
 
         error             = np.concatenate((error,             ds["mf_error"].values))
         obs_repeatability = np.concatenate((obs_repeatability, ds["mf_repeatability"].values))
@@ -248,7 +268,7 @@ def make_inv_inputs(
             if bc_freq == "monthly":
                 Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
             elif bc_freq is None:
-                Hmbc = fp_data[site].H_bc.values
+                Hmbc = _main_ds(fp_data[site])["H_bc"].values
             else:
                 Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
 
@@ -638,10 +658,12 @@ def fixedbasisMCMC(
             for site in sites:
                 entry = fp_data[site]
                 if isinstance(entry, xr.DataTree):
-                    # compute dask arrays in both root and inner child
-                    dt_dict = {"/": entry.ds.compute()}
+                    # compute dask arrays while preserving standard/inner node layout
+                    standard_ds = entry["standard"].ds if "standard" in entry.children else entry.ds
+                    standard_key = "/standard" if "standard" in entry.children else "/"
+                    dt_dict = {standard_key: standard_ds.compute()}
                     if "inner" in entry.children:
-                        dt_dict["inner"] = entry["inner"].ds.compute()
+                        dt_dict["/inner"] = entry["inner"].ds.compute()
                     fp_data[site] = xr.DataTree.from_dict(dt_dict)
                 else:
                     fp_data[site] = entry.compute()
@@ -650,7 +672,9 @@ def fixedbasisMCMC(
     dropped_sites = []
     for site in sites:
         # check if some datasets are empty due to filtering
-        if fp_data[site].ds.time.values.shape[0] == 0:
+        site_entry = fp_data[site]
+        site_ds = site_entry["standard"].ds if isinstance(site_entry, xr.DataTree) and "standard" in site_entry.children else (site_entry.ds if isinstance(site_entry, xr.DataTree) else site_entry)
+        if site_ds.time.values.shape[0] == 0:
             dropped_sites.append(site)
             del fp_data[site]
 

@@ -203,10 +203,25 @@ def bc_sensitivity(
 
     if basis_case.lower() == "nesw":
         for site in sites:
-            ds = fp_and_data[site]
-            bc_ds = ds['standard'].ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
-            sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region")
-            fp_and_data[site]["H_bc"] = sensitivity
+            site_entry = fp_and_data[site]
+            if isinstance(site_entry, xr.DataTree):
+                standard_node = site_entry["standard"] if "standard" in site_entry.children else site_entry
+                standard_ds = standard_node.ds
+                bc_ds = standard_ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
+                sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region")
+                updated_standard = standard_ds.assign({"H_bc": sensitivity})
+
+                if "standard" in site_entry.children:
+                    dt_dict = {"/standard": updated_standard}
+                    if "inner" in site_entry.children:
+                        dt_dict["/inner"] = site_entry["inner"].ds
+                    fp_and_data[site] = xr.DataTree.from_dict(dt_dict)
+                else:
+                    fp_and_data[site] = xr.DataTree(dataset=updated_standard)
+            else:
+                bc_ds = site_entry[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
+                sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region")
+                site_entry["H_bc"] = sensitivity
 
         return fp_and_data
 
@@ -224,10 +239,27 @@ def bc_sensitivity(
     bc_basis = basis_func.rename({dv: str(dv).replace("basis_", "") for dv in basis_func.data_vars})
 
     for site in sites:
-        ds = fp_and_data[site]
-        bc_ds = ds.ds[[f"bc_{d}" for d in "nesw"]]
-        sensitivity = (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
-        sensitivity = sensitivity.rename(region="bc_region")
-        fp_and_data[site]["H_bc"] = sensitivity
+        site_entry = fp_and_data[site]
+        if isinstance(site_entry, xr.DataTree):
+            standard_node = site_entry["standard"] if "standard" in site_entry.children else site_entry
+            standard_ds = standard_node.ds
+            bc_ds = standard_ds[[f"bc_{d}" for d in "nesw"]]
+            sensitivity = (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
+            sensitivity = sensitivity.rename(region="bc_region")
+            updated_standard = standard_ds.assign({"H_bc": sensitivity})
+
+            if "standard" in site_entry.children:
+                dt_dict = {"/standard": updated_standard}
+                if "inner" in site_entry.children:
+                    dt_dict["/inner"] = site_entry["inner"].ds
+                fp_and_data[site] = xr.DataTree.from_dict(dt_dict)
+            else:
+                fp_and_data[site] = xr.DataTree(dataset=updated_standard)
+        else:
+            site_ds = site_entry
+            bc_ds = site_ds[[f"bc_{d}" for d in "nesw"]]
+            sensitivity = (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
+            sensitivity = sensitivity.rename(region="bc_region")
+            site_ds["H_bc"] = sensitivity
 
     return fp_and_data

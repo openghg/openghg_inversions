@@ -383,7 +383,14 @@ class Countries:
               1.0, based on how it is used in hbmcmc
         """
         x_to_country_mat = self.get_x_to_country_mat(inv_out)
-        x_trace = inv_out.get_trace_dataset(var_names="x")
+        trace_all = inv_out.get_trace_dataset()
+        x_outer_vars = [
+            "x_prior",
+            "x_posterior",
+            "x_prior_predictive",
+            "x_posterior_predictive",
+        ]
+        x_trace = trace_all[[var for var in x_outer_vars if var in trace_all.data_vars]]
 
         species = inv_out.species
 

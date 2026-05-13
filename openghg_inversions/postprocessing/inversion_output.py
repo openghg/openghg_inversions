@@ -627,6 +627,24 @@ def make_inv_out_for_fixed_basis_mcmc(
     obs_prior_upper_level_factor: np.ndarray | None = None,
 ) -> InversionOutput:
     """Create InversionOutput in `fixedbasisMCMC`."""
+    def _scenario_datasets(entry: xr.Dataset | xr.DataTree) -> list[xr.Dataset]:
+        if isinstance(entry, xr.DataTree):
+            datasets: list[xr.Dataset] = []
+            if "inner" in entry.children:
+                datasets.append(entry["inner"].ds)
+            if "standard" in entry.children:
+                datasets.append(entry["standard"].ds)
+            if not datasets:
+                datasets.append(entry.ds)
+            return datasets
+        return [entry]
+
+    def _first_attrs(datasets: list[xr.Dataset], var_name: str) -> dict:
+        for ds in datasets:
+            if var_name in ds.data_vars:
+                return ds[var_name].attrs
+        return {}
+
     nmeasure = np.arange(len(Y))
     y_obs = xr.DataArray(Y, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs")
     times = xr.DataArray(Ytime, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="times")
@@ -666,11 +684,18 @@ def make_inv_out_for_fixed_basis_mcmc(
 
     basis = get_xr_dummies(fp_data[".basis"], cat_dim="nx", categories=nx)
 
-    scenarios = [v for k, v in fp_data.items() if not k.startswith(".")]
+    scenario_entries = [v for k, v in fp_data.items() if not k.startswith(".")]
+    scenario_datasets = [_scenario_datasets(entry) for entry in scenario_entries]
 
-    try:
-        flux = scenarios[0].flux_stacked
-    except AttributeError:
+    flux = None
+    for entry in scenario_entries:
+        try:
+            flux = entry.flux_stacked
+            break
+        except AttributeError:
+            continue
+
+    if flux is None:
         flux = next(iter(fp_data[".flux"].values())).data
 
     # TODO: this only works if there is one flux used (or if multiple, but ModelScenario stacks them)
@@ -680,18 +705,27 @@ def make_inv_out_for_fixed_basis_mcmc(
     if not isinstance(flux, xr.DataArray):
         raise ValueError("Flux from `fp_data` could not be converted to a xr.DataArray.")
 
-    # add attributes
-    scenario = scenarios[0]
-    y_obs.attrs = scenario.mf.attrs
-    times.attrs = scenario.time.attrs
-    y_error.attrs = scenario.mf_error.attrs
-    y_error_variability.attrs = scenario.mf_variability.attrs
-    y_error_repeatability.attrs = scenario.mf_repeatability.attrs
-    for scenario in scenarios:
-        if not ("mf_prior_factor" in scenario and "mf_prior_upper_level_factor" in scenario):
+    # add attributes (prefer inner metadata, then standard)
+    first_ds_group = scenario_datasets[0]
+    y_obs.attrs = _first_attrs(first_ds_group, "mf")
+    time_attrs = next((ds.time.attrs for ds in first_ds_group if "time" in ds.coords), {})
+    times.attrs = time_attrs
+    y_error.attrs = _first_attrs(first_ds_group, "mf_error")
+    y_error_variability.attrs = _first_attrs(first_ds_group, "mf_variability")
+    y_error_repeatability.attrs = _first_attrs(first_ds_group, "mf_repeatability")
+    for ds_group in scenario_datasets:
+        ds_with_priors = next(
+            (
+                ds
+                for ds in ds_group
+                if "mf_prior_factor" in ds.data_vars and "mf_prior_upper_level_factor" in ds.data_vars
+            ),
+            None,
+        )
+        if ds_with_priors is None:
             continue
-        y_obs_prior_factor.attrs = scenario.mf_prior_factor.attrs
-        y_obs_prior_upper_level_factor.attrs = scenario.mf_prior_upper_level_factor.attrs
+        y_obs_prior_factor.attrs = ds_with_priors.mf_prior_factor.attrs
+        y_obs_prior_upper_level_factor.attrs = ds_with_priors.mf_prior_upper_level_factor.attrs
 
     return InversionOutput(
         obs=y_obs,

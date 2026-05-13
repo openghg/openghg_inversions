@@ -4,6 +4,15 @@ import numpy as np
 import pandas as pd
 
 
+def _site_ds(fp_data: dict, site: str):
+  entry = fp_data[site]
+  if hasattr(entry, "children"):
+    if "standard" in entry.children:
+      return entry["standard"].ds
+    return entry.ds
+  return entry
+
+
 def monthly_bcs(start_date: str, end_date: str, site: str, fp_data: dict) -> np.ndarray:
     """Creates a sensitivity matrix (H-matrix) for the boundary
     conditions, which will map monthly boundary condition
@@ -23,12 +32,13 @@ def monthly_bcs(start_date: str, end_date: str, site: str, fp_data: dict) -> np.
       hmbc:
         Sensitivity matrix by month for observations
     """
+    site_ds = _site_ds(fp_data, site)
     allmonth = pd.date_range(start_date, end_date, freq="MS")[:-1]
     nmonth = len(allmonth)
-    curtime = pd.to_datetime(fp_data[site].time.values).to_period("M")
-    pmonth = pd.to_datetime(fp_data[site].resample(time="MS").mean().time.values)
-    nregions = fp_data[site].sizes["bc_region"]
-    hmbc = np.zeros((nregions * nmonth, len(fp_data[site].time.values)))
+    curtime = pd.to_datetime(site_ds.time.values).to_period("M")
+    pmonth = pd.to_datetime(site_ds.resample(time="MS").mean().time.values)
+    nregions = site_ds.sizes["bc_region"]
+    hmbc = np.zeros((nregions * nmonth, len(site_ds.time.values)))
     count = 0
     for cord in range(nregions):
         for m in range(0, nmonth):
@@ -38,7 +48,7 @@ def monthly_bcs(start_date: str, end_date: str, site: str, fp_data: dict) -> np.
             mnth = allmonth[m].month
             yr = allmonth[m].year
             mnthloc = np.where(np.logical_and(curtime.month == mnth, curtime.year == yr))[0]
-            hmbc[count, mnthloc] = fp_data[site].H_bc.values[cord, mnthloc]
+            hmbc[count, mnthloc] = site_ds["H_bc"].values[cord, mnthloc]
             count += 1
 
     return hmbc
@@ -70,14 +80,15 @@ def create_bc_sensitivity(start_date: str, end_date: str, site: str, fp_data: di
       hmbc:
         Sensitivity matrix by for observations to boundary conditions
     """
+    site_ds = _site_ds(fp_data, site)
     dys = int("".join([s for s in freq if s.isdigit()]))
     alldates = pd.date_range(
         pd.to_datetime(start_date), pd.to_datetime(end_date) + pd.DateOffset(days=dys), freq=freq
     )
     ndates = np.sum(alldates < pd.to_datetime(end_date))
-    curdates = fp_data[site].time.values
-    nregions = fp_data[site].sizes["bc_region"]
-    hmbc = np.zeros((nregions * ndates, len(fp_data[site].time.values)))
+    curdates = site_ds.time.values
+    nregions = site_ds.sizes["bc_region"]
+    hmbc = np.zeros((nregions * ndates, len(site_ds.time.values)))
     count = 0
     for cord in range(nregions):
         for m in range(0, ndates):
@@ -89,7 +100,7 @@ def create_bc_sensitivity(start_date: str, end_date: str, site: str, fp_data: di
             if len(dateloc) == 0:
                 count += 1
                 continue
-            hmbc[count, dateloc] = fp_data[site].H_bc.values[cord, dateloc]
+            hmbc[count, dateloc] = site_ds["H_bc"].values[cord, dateloc]
             count += 1
 
     return hmbc
