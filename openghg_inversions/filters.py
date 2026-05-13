@@ -26,7 +26,14 @@ logger = logging.Logger(__name__)
 # this dictionary will be populated by using the decorator `register_filter`
 filtering_functions = {}
 
-
+def _time_mask(mask: xr.DataArray, filter_name: str) -> xr.DataArray:
+    if "time" not in mask.dims:
+        raise ValueError(f"{filter_name} expects a 'time' dimension.")
+    extra_dims = [dim for dim in mask.dims if dim != "time"]
+    if extra_dims:
+        mask = mask.any(dim=extra_dims)
+    return mask
+    
 def register_filter(filt: Callable) -> Callable:
     """Decorator function to register filters.
 
@@ -139,7 +146,7 @@ def filtering(
 
                 # --- DataTree handling ---
                 if isinstance(site_entry, xr.DataTree):
-                    outer_ds = site_entry.ds
+                    outer_ds = site_entry["standard"].ds if "standard" in site_entry.children else site_entry.ds
                     n_nofilter = outer_ds.time.values.shape[0]
 
                     filtered_outer = filtering_functions[filt](outer_ds, keep_missing=keep_missing)
@@ -149,12 +156,13 @@ def filtering(
                     perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
                     print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
 
-                    # Rebuild DataTree: root = filtered outer, inner child reindexed to new time
-                    dt_dict = {"/": filtered_outer}
+                    # Rebuild DataTree preserving the standard/inner layout.
+                    standard_key = "/standard" if "standard" in site_entry.children else "/"
+                    dt_dict = {standard_key: filtered_outer}
                     if "inner" in site_entry.children:
                         inner_ds = site_entry["inner"].ds
                         # Keep inner time axis aligned with the (now filtered) outer time axis
-                        dt_dict["inner"] = inner_ds.reindex(
+                        dt_dict["/inner"] = inner_ds.reindex(
                             time=filtered_outer.time, fill_value=0.0
                         )
                     datasets[site] = xr.DataTree.from_dict(dt_dict)
@@ -402,22 +410,17 @@ def pblh_min(dataset: xr.Dataset, pblh_threshold: float = 200.0, keep_missing: b
     """
     pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
 
-    ti = [i for i, pblh in enumerate(pblh_da) if pblh > pblh_threshold]
+    filt = _time_mask(pblh_da > pblh_threshold, "pblh_min")
 
-    if keep_missing is True:
-        mf_data_array = dataset.mf
-        dataset_temp = dataset.drop("mf")
+    # Some inputs can include extra dimensions; collapse to a per-time mask.
+    if "time" not in filt.dims:
+        raise ValueError("PBLH filter expects a 'time' dimension.")
+    extra_dims = [dim for dim in filt.dims if dim != "time"]
+    if extra_dims:
+        filt = filt.any(dim=extra_dims)
 
-        dataarray_temp = mf_data_array[dict(time=ti)]
-
-        mf_ds = xr.Dataset(
-            {"mf": (["time"], dataarray_temp)}, coords={"time": (dataarray_temp.coords["time"])}
-        )
-
-        dataset_out = combine_datasets(dataset_temp, mf_ds, method=None)
-        return dataset_out
-    else:
-        return dataset[dict(time=ti)]
+    drop = not keep_missing
+    return dataset.where(filt.compute(), drop=drop)
 
 
 @register_filter
@@ -451,7 +454,7 @@ def pblh_inlet_diff(
 
     pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
 
-    filt = pblh_da > inlet_height + diff_threshold
+    filt = _time_mask(pblh_da > inlet_height + diff_threshold, "pblh_inlet_diff")
     drop = not keep_missing
 
     return dataset.where(filt.compute(), drop=drop)
