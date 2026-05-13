@@ -322,20 +322,15 @@ def inferpymc(
         hx = pm.Data("hx", hx, dims=("nmeasure", "nx"))
 
         if Hx_inner is not None:
-            # Hx_inner has shape (nx_inner, nmeasure); Hx has shape (nx, nmeasure)
-            # They have different leading dims so cannot be subtracted — keep separate
             hx_inner = pm.Data("hx_inner", Hx_inner.T, dims=("nmeasure", "nx_inner"))
-            x = parse_prior("x", xprior, dims="nx")
             x_inner = parse_prior("x_inner", xprior, dims="nx_inner")
-            step1_vars += [x, x_inner]
+            step1_vars.append(x_inner)
             mu = pm.Deterministic(
                 "mu",
                 pt.dot(hx, x) + pt.dot(hx_inner, x_inner),
                 dims="nmeasure",
             )
         else:
-            x = parse_prior("x", xprior, dims="nx")
-            step1_vars.append(x)
             mu = pm.Deterministic("mu", pt.dot(hx, x), dims="nmeasure")
     
         if use_bc:
@@ -497,6 +492,8 @@ def inferpymc_postprocessouts(
     rerun_file: xr.Dataset | None = None,
     use_bc: bool = False,
     min_error: float | np.ndarray = 0.0,
+    xouts_inner: np.ndarray | None = None,
+    Hx_inner: np.ndarray | None = None,
 ) -> xr.Dataset:
     r"""Take the output from inferpymc function along with other input information.
     
@@ -513,6 +510,7 @@ def inferpymc_postprocessouts(
 
     Args:
         xouts: MCMC chain for emissions scaling factors for each basis function.
+        xouts_inner: MCMC chain for emissions scaling factors for each inner-domain basis function.
         sigouts: MCMC chain for model error.
         convergence: Passed/Failed convergence test as to whether multiple chains
             have a Gelman-Rubin diagnostic value <1.05.
@@ -520,6 +518,7 @@ def inferpymc_postprocessouts(
             This is the same as what is given from fp_data[site].H.values, where
             fp_data is the output from e.g. footprint_data_merge, but where it
             has been stacked for all sites.
+        Hx_inner: Inner-domain sensitivity matrix with the same orientation as Hx.
         Y: Measurement vector containing all measurements.
         error: Measurement error vector, containing a value for each element of Y.
         Ytrace: Trace of modelled y values calculated from mcmc outputs and H matrices.
@@ -587,6 +586,12 @@ def inferpymc_postprocessouts(
     nit = xouts.shape[0]
     nx = Hx.shape[0]
     ny = len(Y)
+    if xouts_inner is not None:
+        nx_inner = xouts_inner.shape[1]
+    elif Hx_inner is not None:
+        nx_inner = Hx_inner.shape[0]
+    else:
+        nx_inner = 0
 
     if use_bc:
         nbc = Hbc.shape[0]
@@ -596,6 +601,8 @@ def inferpymc_postprocessouts(
     steps = np.arange(nit)
     nmeasure = np.arange(ny)
     nparam = np.arange(nx)
+    if nx_inner > 0:
+        nparam_inner = np.arange(nx_inner)
 
     # OFFSET HYPERPARAMETER
     YmodmuOFF = np.mean(OFFSETtrace, axis=1)  # mean
@@ -657,6 +664,9 @@ def inferpymc_postprocessouts(
         Yapriori = np.sum(Hx.T, axis=1) + np.sum(Hbc.T, axis=1)
     else:
         Yapriori = np.sum(Hx.T, axis=1)
+
+    if Hx_inner is not None:
+        Yapriori = Yapriori + np.sum(Hx_inner.T, axis=1)
 
     sitenum = np.arange(len(sites))
 
@@ -792,6 +802,26 @@ def inferpymc_postprocessouts(
         min_error = min_error * np.ones_like(Y)
 
     # Make output netcdf file
+    xouts_values = xouts.values if hasattr(xouts, "values") else xouts
+    sigouts_values = sigouts.values if hasattr(sigouts, "values") else sigouts
+    xouts_inner_values = xouts_inner.values if hasattr(xouts_inner, "values") else xouts_inner
+
+    if xouts_inner_values is not None:
+        xtrace_values = np.concatenate([xouts_inner_values, xouts_values], axis=1)
+        xsensitivity_values = np.concatenate([Hx_inner.T, Hx.T], axis=1) if Hx_inner is not None else Hx.T
+        nparam_values = np.arange(nx + nx_inner)
+        param_index = np.concatenate([np.arange(nx_inner), np.arange(nx)])
+        param_domain = np.concatenate([
+            np.full(nx_inner, "inner", dtype="U5"),
+            np.full(nx, "outer", dtype="U5"),
+        ])
+    else:
+        xtrace_values = xouts_values
+        xsensitivity_values = Hx.T
+        nparam_values = np.arange(nx)
+        param_index = np.arange(nx)
+        param_domain = np.full(nx, "outer", dtype="U5")
+
     data_vars = {
         "Yobs": (["nmeasure"], Y),
         "Yerror": (["nmeasure"], error),
@@ -810,8 +840,8 @@ def inferpymc_postprocessouts(
         "Yoffmode": (["nmeasure"], YmodmodeOFF),
         "Yoff68": (["nmeasure", "nUI"], Ymod68OFF),
         "Yoff95": (["nmeasure", "nUI"], Ymod95OFF),
-        "xtrace": (["steps", "nparam"], xouts.values),
-        "sigtrace": (["steps", "nsigma_site", "nsigma_time"], sigouts.values),
+        "xtrace": (["steps", "nparam"], xtrace_values),
+        "sigtrace": (["steps", "nsigma_site", "nsigma_time"], sigouts_values),
         "siteindicator": (["nmeasure"], siteindicator),
         "sigmafreqindex": (["nmeasure"], sigma_freq_index),
         "sitenames": (["nsite"], sites),
@@ -830,8 +860,11 @@ def inferpymc_postprocessouts(
         "country95": (["countrynames", "nUI"], cntry95),
         "countryapriori": (["countrynames"], cntryprior),
         "countrydefinition": (["lat", "lon"], cntrygrid),
-        "xsensitivity": (["nmeasure", "nparam"], Hx.T),
+        "xsensitivity": (["nmeasure", "nparam"], xsensitivity_values),
     }
+
+    if Hx_inner is not None:
+        data_vars["xsensitivity_inner"] = (["nmeasure", "nparam_inner"], Hx_inner.T)
 
     coords = {
         "stepnum": (["steps"], steps),
@@ -841,10 +874,16 @@ def inferpymc_postprocessouts(
         "nsites": (["nsite"], sitenum),
         "nsigma_time": (["nsigma_time"], np.unique(sigma_freq_index)),
         "nsigma_site": (["nsigma_site"], np.arange(sigouts.shape[1]).astype(int)),
+        "nparam": (["nparam"], nparam_values),
+        "param_index": (["nparam"], param_index),
+        "param_domain": (["nparam"], param_domain),
         "lat": (["lat"], lat),
         "lon": (["lon"], lon),
         "countrynames": (["countrynames"], cntrynames),
     }
+
+    if nx_inner > 0:
+        coords["nparam_inner"] = (["nparam_inner"], nparam_inner)
 
     if use_bc:
         data_vars.update(
@@ -890,6 +929,8 @@ def inferpymc_postprocessouts(
     outds.countryapriori.attrs["units"] = country_units
     outds.xsensitivity.attrs["units"] = obs_units + " " + "mol/mol"
     outds.sigtrace.attrs["units"] = obs_units + " " + "mol/mol"
+    if "xsensitivity_inner" in outds:
+        outds.xsensitivity_inner.attrs["units"] = obs_units + " " + "mol/mol"
 
     outds.Yobs.attrs["longname"] = "observations"
     outds.Yerror.attrs["longname"] = "measurement error"
@@ -910,7 +951,11 @@ def inferpymc_postprocessouts(
     outds.Yoff95.attrs["longname"] = (
         " 0.95 Bayesian credible interval of posterior simulated offset between measurements"
     )
-    outds.xtrace.attrs["longname"] = "trace of unitless scaling factors for emissions parameters"
+    outds.xtrace.attrs["longname"] = (
+        "trace of unitless scaling factors for combined outer+inner emissions parameters"
+    )
+    outds.param_index.attrs["longname"] = "parameter index within each domain for emissions trace"
+    outds.param_domain.attrs["longname"] = "domain label (outer or inner) for emissions parameters"
     outds.sigtrace.attrs["longname"] = "trace of model error parameters"
     outds.siteindicator.attrs["longname"] = "index of site of measurement corresponding to sitenames"
     outds.sigmafreqindex.attrs["longname"] = "perdiod over which the model error is estimated"
@@ -931,6 +976,8 @@ def inferpymc_postprocessouts(
     outds.countryapriori.attrs["longname"] = "prior mean of ocean and country totals"
     outds.countrydefinition.attrs["longname"] = "grid definition of countries"
     outds.xsensitivity.attrs["longname"] = "emissions sensitivity timeseries"
+    if "xsensitivity_inner" in outds:
+        outds.xsensitivity_inner.attrs["longname"] = "inner-domain emissions sensitivity timeseries"
 
     if use_bc:
         outds.YmodmeanBC.attrs["units"] = obs_units + " " + "mol/mol"

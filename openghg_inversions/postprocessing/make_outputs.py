@@ -42,7 +42,14 @@ def make_flux_outputs(
         xr.Dataset with computed flux stats.
 
     """
-    trace = inv_out.get_trace_dataset(var_names="x")
+    trace_all = inv_out.get_trace_dataset()
+    x_outer_vars = [
+        "x_prior",
+        "x_posterior",
+        "x_prior_predictive",
+        "x_posterior_predictive",
+    ]
+    trace = trace_all[[var for var in x_outer_vars if var in trace_all.data_vars]]
 
     if stats_args is None:
         stats_args = {}
