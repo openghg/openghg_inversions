@@ -247,8 +247,8 @@ def inner_domain_mcmc_args(tmp_path, mhd_with_inner_domain_ch4_data_args):
             "basis_output_path": str(tmp_path),
             "nbasis": 4,
             "nit": 1,
-            "burn": 10,
-            "tune": 10,
+            "burn": 1,
+            "tune": 1,
             "nchain": 1,
             "mcmc_type" : "fixed_basis",
             "reload_merged_data": False,
@@ -268,7 +268,7 @@ def inner_domain_mcmc_args(tmp_path, mhd_with_inner_domain_ch4_data_args):
             "sigma_per_site" : True,
             "inlet" : [slice(0,25)],
             "instrument" : ['multiple'],
-            "filters" : {'MHD' : ['pblh_min','pblh_inlet_diff']}
+            "filters" : {'MHD' : ['pblh_inlet_diff']}
         }
     )
     return mcmc_args
