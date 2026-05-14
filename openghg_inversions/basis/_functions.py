@@ -11,7 +11,7 @@ from typing import cast
 import pandas as pd
 import xarray as xr
 import logging
-
+import numpy as np
 from .algorithms import quadtree_algorithm, weighted_algorithm
 
 from openghg_inversions.config.paths import Paths
@@ -320,8 +320,14 @@ def bucketbasisfunction(
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
+    # 保存坐标
+    fps_coords = fps.coords
+    fps_dims = fps.dims
+    fps = fps.as_numpy()
+    fps = np.nan_to_num(fps, nan=0.0)
     fps = fps / fps.max()
-
+    # 包装回DataArray
+    fps = xr.DataArray(fps, coords=fps_coords, dims=fps_dims)
     # use xr.apply_ufunc to keep xarray coords
     func = partial(weighted_algorithm, nregion=nbasis, bucket=1, domain=domain, country_directory=country_directory)
     bucket_basis = xr.apply_ufunc(func, fps)
