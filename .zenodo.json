@@ -1,0 +1,83 @@
+{
+  "title": "RHIME / openghg_inversions: regional hierarchical inversion model software",
+  "upload_type": "software",
+  "description": "openghg_inversions is the Python package implementing RHIME, the Regional Hierarchical Inversion Modelling Environment, used for regional hierarchical atmospheric Bayesian inversions. The package is developed as part of the OpenGHG project and builds on inversion modelling approaches developed by the Atmospheric Chemistry Research Group at the University of Bristol.",
+  "creators": [
+    {
+      "name": "Murphy, Brendan",
+      "affiliation": "University of Bristol"
+    },
+    {
+      "name": "Saboya, Eric",
+      "affiliation": "University of Bristol"
+    },
+  ],
+  "contributors": [
+    {
+      "name": "Western, Luke",
+      "affiliation": "University of Bristol"
+    },
+    {
+      "name": "Danjou, Alexandre",
+      "type": "Other"
+    },
+    {
+      "name": "Adam, Ben",
+      "affiliation": "University of Bristol",
+      "type": "Other"
+    },
+    {
+      "name": "De Longueville, Helene",
+      "affiliation": "University of Bristol",
+      "type": "Other"
+    },
+    {
+      "name": "Jones, Gareth",
+      "type": "Other"
+    },
+    {
+      "name": "Pitt, Joe",
+      "affiliation": "University of Bristol",
+      "type": "Other"
+    },
+    {
+      "name": "Pearson, Stephen",
+      "affiliation": "University of Bristol",
+      "type": "Other"
+    },
+    {
+      "name": "Ramsden, Alice",
+      "affiliation": "UK Met Office",
+      "type": "Other"
+    },
+    {
+      "name": "Sutar, Prasad",
+      "affiliation": "University of Bristol",
+      "type": "Other"
+    },
+    {
+      "name": "Fillo, Elena",
+      "affiliation": "University of Bristol",
+      "type": "Other"
+    }
+  ],
+  "keywords": [
+    "RHIME",
+    "openghg_inversions",
+    "OpenGHG",
+    "atmospheric inversion",
+    "Bayesian inversion",
+    "greenhouse gases",
+    "regional inversion",
+    "PyMC"
+  ],
+  "license": "MIT",
+  "language": "eng",
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/openghg/openghg_inversions",
+      "relation": "isSupplementTo",
+      "resource_type": "software"
+    }
+  ]
+}
