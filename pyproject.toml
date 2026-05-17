@@ -63,6 +63,9 @@ uv_dev = ["openghg_inversions[jupyter,dev]"]
 "Bug Tracker" = "https://github.com/openghg/openghg_inversions/issues"
 "DOI" = "https://doi.org/10.5281/zenodo.10650595"
 
+[project.scripts]
+openghg-inversions = "openghg_inversions.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 
@@ -73,6 +76,7 @@ openghg_inversions = [
     "basis/algorithms/*.nc", 
     "postprocessing/*.cdl",
     "postprocessing/*.json",
+    "config/templates/*.ini",
     "hbmcmc/config/*.ini"
 ]
 

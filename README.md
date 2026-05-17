@@ -113,6 +113,37 @@ Solutions to this are:
 
 For an overview of OpenGHG inversions, see this [primer](docs/getting_started.md).
 
+### Modern RHIME entry points
+
+New RHIME runs can be launched without calling an internal source file path:
+
+```python
+from openghg_inversions.rhime import run_rhime, run_rhime_multisector
+
+result = run_rhime(
+    species="ch4",
+    sites=["TAC"],
+    averaging_period=["1h"],
+    domain="EUROPE",
+    start_date="2019-01-01",
+    end_date="2019-01-02",
+    output_path="outputs",
+    output_name="example",
+    flux_sources=["total-ukghg-edgar7"],
+)
+```
+
+For SLURM batch scripts and installed environments, use the console entry point:
+
+```bash
+openghg-inversions run-rhime 2019-01-01 2019-01-02 -c rhime.ini --output-path outputs
+openghg-inversions run-rhime-multisector 2019-01-01 2019-01-02 -c rhime_multisector.ini
+```
+
+The new RHIME config template is available at
+`openghg_inversions/config/templates/rhime_template.ini`. New configs should use
+`flux_sources`; legacy `emissions_name` is accepted when `flux_sources` is absent.
+
 ### Passing parameters to the inversion
 
 Keyword arguments are propagated as follows:

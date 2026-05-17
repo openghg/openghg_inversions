@@ -50,7 +50,7 @@ def make_flux_outputs(
     if stats is not None:
         stats_args["stats"] = stats
 
-    stats_args["chunk_dim"] = "nx"
+    stats_args["chunk_dim"] = "nx" if "nx" in trace.dims else "region"
     stats_ds = calculate_stats(trace, **stats_args)
 
     if report_flux_on_inversion_grid:
@@ -192,7 +192,10 @@ def make_concentration_outputs(
                 trace[dv] = trace[dv] + trace[offset_dv]
 
                 # update long name, creating if not present
-                trace[dv].attrs["long_name"] = trace[dv].attrs.get("long_name", str(dv).split("_")[-1] + "_baseline") + "_including_offset"
+                trace[dv].attrs["long_name"] = (
+                    trace[dv].attrs.get("long_name", str(dv).split("_")[-1] + "_baseline")
+                    + "_including_offset"
+                )
 
     if stats_args is None:
         stats_args = {}
@@ -214,7 +217,7 @@ def make_country_outputs(
     country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
-    country_code: Literal["alpha2", "alpha3"] | None = "alpha3"
+    country_code: Literal["alpha2", "alpha3"] | None = "alpha3",
 ) -> xr.Dataset:
     """Calculate country emission stats.
 
@@ -276,7 +279,7 @@ def basic_output(
     country_file: str | Path | None = None,
     country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
-    stats_args: dict | None = None
+    stats_args: dict | None = None,
 ) -> xr.Dataset:
     """Create basic output with concentrations, flux totals, and country totals.
 
@@ -305,7 +308,7 @@ def basic_output(
         country_file=country_file,
         country_regions=country_regions,
         stats=stats,
-        stats_args=stats_args
+        stats_args=stats_args,
     )
 
     model_data = inv_out.get_model_data(var_names=["hx", "hbc", "min_error"]).rename(

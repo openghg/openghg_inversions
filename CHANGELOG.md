@@ -5,6 +5,7 @@
 ## Code changes
 
 
+- Added modern `run_rhime` and shared-basis `run_rhime_multisector` pipelines, RHIME CLI entry points, RHIME config template, modern result/spec objects, and focused tests for the new public runners. [#398](https://github.com/openghg/openghg_inversions/issues/398)
 - Made concat-gather handling of mismatched site data variables order-independent, added an opt-in drop policy used by `make_inv_inputs`, and added lightweight regression tests for issue #394. [#394](https://github.com/openghg/openghg_inversions/issues/394)
 - Fix bug which was assigninig the wrong times to inversion flux outputs in non-standard cases, such as 3-monthly inversions. [#PR 387](https://github.com/openghg/openghg_inversions/pull/387)
 - Fix small bug where postprocessing was failing if country codes in file didn't match exactly those in `paris_regions_dict`. [#PR 377](https://github.com/openghg/openghg_inversions/pull/377)

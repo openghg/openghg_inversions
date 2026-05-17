@@ -61,19 +61,21 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
     # TODO: do we want to fill missing values in repeatability or variability?
     for site in sites:
         ds = fp_all[site]
+        mf_long_name = ds.mf.attrs.get("long_name", "")
+        mf_units = ds.mf.attrs.get("units", None)
 
         variability_missing = False
         if "mf_variability" not in ds:
             ds["mf_variability"] = xr.zeros_like(ds.mf)
-            ds["mf_variability"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_variability"
             variability_missing = True
+        ds["mf_variability"].attrs["long_name"] = mf_long_name + "_variability"
+        ds["mf_variability"].attrs["units"] = mf_units
 
         if "mf_repeatability" not in ds:
             if variability_missing:
                 raise ValueError(f"Obs data for site {site} is missing both repeatability and variability.")
 
             ds["mf_repeatability"] = xr.zeros_like(ds.mf_variability)
-            ds["mf_repeatability"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_repeatability"
 
             ds["mf_error"] = ds["mf_variability"]
 
@@ -90,8 +92,10 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
         else:
             ds["mf_error"] = ds["mf_repeatability"]
 
-        ds["mf_error"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_error"
-        ds["mf_error"].attrs["units"] = ds.mf.attrs.get("units", None)
+        ds["mf_repeatability"].attrs["long_name"] = mf_long_name + "_repeatability"
+        ds["mf_repeatability"].attrs["units"] = mf_units
+        ds["mf_error"].attrs["long_name"] = mf_long_name + "_error"
+        ds["mf_error"].attrs["units"] = mf_units
 
         # warnings/info for debugging
         err0 = (ds["mf_error"] == 0) | (
