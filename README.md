@@ -351,6 +351,20 @@ It's helpful to write a description of the changes made in your PR, as well as l
 Your code must past the tests and be reviewed before it can be merged.
 After this, you can merge your branch and close it (it can always be recovered later if necessary).
 
+## Citation and contributors
+
+If you use this software, please cite the version-specific Zenodo DOI for the
+release you used.
+
+The recommended prose description is:
+
+> We use RHIME, the Regional Hierarchical Inversion Modelling Environment,
+> implemented in the `openghg_inversions` Python package.
+
+The formal software citation lists the principal creators of the citable
+software artifact. Additional code, testing, documentation, scientific, and
+project contributions are recorded in the Zenodo metadata and GitHub history.
+
 ## References
 Ganesan et al. (2014),_ACP_;
 
