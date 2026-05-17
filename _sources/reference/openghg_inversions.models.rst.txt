@@ -14,3 +14,4 @@ openghg\_inversions.models
    openghg_inversions.models.components
    openghg_inversions.models.coords
    openghg_inversions.models.priors
+   openghg_inversions.models.rhime

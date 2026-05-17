@@ -23,8 +23,10 @@ openghg\_inversions
    :maxdepth: 4
 
    openghg_inversions.array_ops
+   openghg_inversions.cli
    openghg_inversions.convert
    openghg_inversions.filters
    openghg_inversions.inversion_inputs
    openghg_inversions.model_error
+   openghg_inversions.rhime
    openghg_inversions.utils

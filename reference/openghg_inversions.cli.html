@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>openghg_inversions.config &#8212; openghg_inversions  documentation</title>
+    <title>openghg_inversions.cli &#8212; openghg_inversions  documentation</title>
   
   
   
@@ -41,12 +41,12 @@
     <script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.config';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'reference/openghg_inversions.cli';</script>
     <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="openghg_inversions.config.config" href="openghg_inversions.config.config.html" />
-    <link rel="prev" title="openghg_inversions.basis.operators" href="openghg_inversions.basis.operators.html" />
+    <link rel="next" title="openghg_inversions.convert" href="openghg_inversions.convert.html" />
+    <link rel="prev" title="openghg_inversions.array_ops" href="openghg_inversions.array_ops.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -272,7 +272,7 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.operators.html">openghg_inversions.basis.operators</a></li>
 </ul>
 </details></li>
-<li class="toctree-l2 current active has-children"><a class="current reference internal" href="#">openghg_inversions.config</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="openghg_inversions.config.html">openghg_inversions.config</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.config.html">openghg_inversions.config.config</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.paths.html">openghg_inversions.config.paths</a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.version.html">openghg_inversions.config.version</a></li>
@@ -315,7 +315,7 @@
 </ul>
 </details></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.array_ops.html">openghg_inversions.array_ops</a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.cli.html">openghg_inversions.cli</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">openghg_inversions.cli</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.convert.html">openghg_inversions.convert</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.filters.html">openghg_inversions.filters</a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.inversion_inputs.html">openghg_inversions.inversion_inputs</a></li>
@@ -370,7 +370,7 @@
     
     <li class="breadcrumb-item"><a href="openghg_inversions.html" class="nav-link">openghg_inversions</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.config</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">openghg_inversions.cli</span></li>
   </ul>
 </nav>
 </div>
@@ -387,38 +387,31 @@
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="module-openghg_inversions.config">
-<span id="openghg-inversions-config"></span><h1>openghg_inversions.config<a class="headerlink" href="#module-openghg_inversions.config" title="Link to this heading">#</a></h1>
-<div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.config.config.html">openghg_inversions.config.config</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.all_param"><code class="docutils literal notranslate"><span class="pre">all_param()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.all_parameters_in_param_type"><code class="docutils literal notranslate"><span class="pre">all_parameters_in_param_type()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.convert"><code class="docutils literal notranslate"><span class="pre">convert()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.eval_check"><code class="docutils literal notranslate"><span class="pre">eval_check()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.extract_params"><code class="docutils literal notranslate"><span class="pre">extract_params()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.find_param_key"><code class="docutils literal notranslate"><span class="pre">find_param_key()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.generate_from_template"><code class="docutils literal notranslate"><span class="pre">generate_from_template()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.generate_param_dict"><code class="docutils literal notranslate"><span class="pre">generate_param_dict()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.get_value"><code class="docutils literal notranslate"><span class="pre">get_value()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.list_check"><code class="docutils literal notranslate"><span class="pre">list_check()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.open_config"><code class="docutils literal notranslate"><span class="pre">open_config()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.config.html#openghg_inversions.config.config.str_check"><code class="docutils literal notranslate"><span class="pre">str_check()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.config.paths.html">openghg_inversions.config.paths</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.paths.html#openghg_inversions.config.paths.Paths"><code class="docutils literal notranslate"><span class="pre">Paths</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.config.paths.html#openghg_inversions.config.paths.Paths.openghginv"><code class="docutils literal notranslate"><span class="pre">Paths.openghginv</span></code></a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="openghg_inversions.config.version.html">openghg_inversions.config.version</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.config.version.html#openghg_inversions.config.version.code_version"><code class="docutils literal notranslate"><span class="pre">code_version()</span></code></a></li>
-</ul>
-</li>
-</ul>
-</div>
+  <section id="module-openghg_inversions.cli">
+<span id="openghg-inversions-cli"></span><h1>openghg_inversions.cli<a class="headerlink" href="#module-openghg_inversions.cli" title="Link to this heading">#</a></h1>
+<p>Command line interface for OpenGHG inversions.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.cli.build_parser">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.cli.</span></span><span class="sig-name descname"><span class="pre">build_parser</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser" title="(in Python v3.14)"><span class="pre">ArgumentParser</span></a></span></span><a class="headerlink" href="#openghg_inversions.cli.build_parser" title="Link to this definition">#</a></dt>
+<dd><p>Build the OpenGHG inversions CLI argument parser.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Configured argument parser.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.cli.main">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.cli.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">argv</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.cli.main" title="Link to this definition">#</a></dt>
+<dd><p>Run the OpenGHG inversions CLI.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>argv</strong> – Optional argument vector. Defaults to <code class="docutils literal notranslate"><span class="pre">sys.argv</span></code> when omitted.</p>
+</dd>
+</dl>
+</dd></dl>
+
 </section>
 
 
@@ -432,20 +425,20 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="openghg_inversions.basis.operators.html"
+       href="openghg_inversions.array_ops.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">openghg_inversions.basis.operators</p>
+        <p class="prev-next-title">openghg_inversions.array_ops</p>
       </div>
     </a>
     <a class="right-next"
-       href="openghg_inversions.config.config.html"
+       href="openghg_inversions.convert.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">openghg_inversions.config.config</p>
+        <p class="prev-next-title">openghg_inversions.convert</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -461,9 +454,22 @@
 
 
   <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.cli.build_parser"><code class="docutils literal notranslate"><span class="pre">build_parser()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.cli.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
 
   <div class="tocsection sourcelink">
-    <a href="../_sources/reference/openghg_inversions.config.rst.txt">
+    <a href="../_sources/reference/openghg_inversions.cli.rst.txt">
       <i class="fa-solid fa-file-lines"></i> Show Source
     </a>
   </div>
