@@ -88,12 +88,24 @@ def make_inv_inputs(
     offset_args,
     power,
 ):
-    def _main_ds(entry: xr.Dataset | xr.DataTree) -> xr.Dataset:
-        if isinstance(entry, xr.DataTree):
-            if "standard" in entry.children:
-                return entry["standard"].ds
-            return entry.ds
-        return entry
+    def _outer_ds(site_entry):
+        if isinstance(site_entry, xr.DataTree):
+            if "standard" in site_entry.children:
+                return site_entry["standard"].ds
+            return site_entry.ds
+        return site_entry
+
+    def _with_updated_outer(site_entry, updated_outer_ds):
+        if not isinstance(site_entry, xr.DataTree):
+            return updated_outer_ds
+
+        # Preserve empty-root DataTree structure by writing data to /standard.
+        if "standard" in site_entry.children:
+            tree_dict = {f"/{name}": child.ds for name, child in site_entry.children.items() if child.ds is not None}
+            tree_dict["/standard"] = updated_outer_ds
+            return xr.DataTree.from_dict(tree_dict)
+
+        return xr.DataTree(dataset=updated_outer_ds, children=dict(site_entry.children))
 
     # Trigger dask computations
     # we only compute the variables we need below
@@ -112,34 +124,24 @@ def make_inv_inputs(
     ]
     for site in sites:
         site_entry = fp_data[site]
-        if isinstance(site_entry, xr.DataTree):
-            has_standard = "standard" in site_entry.children
-            standard_ds = site_entry["standard"].ds if has_standard else site_entry.ds
+        outer_ds = _outer_ds(site_entry)
 
-            to_compute_site = [dv for dv in to_compute if dv in standard_ds.data_vars]
-            updated_standard = (
-                standard_ds.assign({var: standard_ds[var].compute() for var in to_compute_site})
-                if to_compute_site
-                else standard_ds
-            )
+        to_compute_outer = [dv for dv in to_compute if dv in outer_ds.data_vars]
+        if to_compute_outer:
+            computed_outer = outer_ds.assign({var: outer_ds[var].compute() for var in to_compute_outer})
+            fp_data[site] = _with_updated_outer(site_entry, computed_outer)
 
-            updated_inner = None
-            if "inner" in site_entry.children:
-                inner_ds = site_entry["inner"].ds
-                if "H_inner" in inner_ds.data_vars:
-                    updated_inner = inner_ds.assign({"H_inner": inner_ds["H_inner"].compute()})
-                else:
-                    updated_inner = inner_ds
-
-            standard_key = "/standard" if has_standard else "/"
-            dt_dict = {standard_key: updated_standard}
-            if updated_inner is not None:
-                dt_dict["/inner"] = updated_inner
-            fp_data[site] = xr.DataTree.from_dict(dt_dict)
-        else:
-            to_compute_site = [dv for dv in to_compute if dv in site_entry.data_vars]
-            if to_compute_site:
-                fp_data[site] = site_entry.assign({var: site_entry[var].compute() for var in to_compute_site})
+        if isinstance(fp_data[site], xr.DataTree) and "inner" in fp_data[site].children:
+            inner_ds = fp_data[site]["inner"].ds
+            if "H_inner" in inner_ds.data_vars:
+                computed_inner = inner_ds.assign({"H_inner": inner_ds["H_inner"].compute()})
+                tree_dict = {
+                    f"/{name}": child.ds
+                    for name, child in fp_data[site].children.items()
+                    if child.ds is not None and name != "inner"
+                }
+                tree_dict["/inner"] = computed_inner
+                fp_data[site] = xr.DataTree.from_dict(tree_dict)
 
     # Get inputs ready
     error = np.zeros(0)
@@ -163,24 +165,22 @@ def make_inv_inputs(
         if site in dropped_sites:
             continue
 
-        site_ds = _main_ds(fp_data[site])
-
         # select variables to drop NaNs from
         drop_vars = []
         for var in ["H", "H_bc", "mf", "mf_error"]:
-            if var in site_ds.data_vars:
+            if var in _outer_ds(fp_data[site]).data_vars:
                 drop_vars.append(var)
 
         # pymc doesn't like NaNs, so drop them for the variables used below
         # DataTree doesn't support dropna; use sel with valid time indices instead
         if isinstance(fp_data[site], xr.DataTree):
-            valid_times = site_ds.dropna("time", subset=drop_vars).time
+            valid_times = _outer_ds(fp_data[site]).dropna("time", subset=drop_vars).time
             fp_data[site] = fp_data[site].sel(time=valid_times)
         else:
-            fp_data[site] = site_ds.dropna("time", subset=drop_vars)
+            fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
 
         # repeatability/variability chosen/combined into mf_error in `get_data.py`
-        ds = _main_ds(fp_data[site])
+        ds = _outer_ds(fp_data[site])
 
         error             = np.concatenate((error,             ds["mf_error"].values))
         obs_repeatability = np.concatenate((obs_repeatability, ds["mf_repeatability"].values))
@@ -268,7 +268,7 @@ def make_inv_inputs(
             if bc_freq == "monthly":
                 Hmbc = setup.monthly_bcs(start_date, end_date, site, fp_data)
             elif bc_freq is None:
-                Hmbc = _main_ds(fp_data[site])["H_bc"].values
+                Hmbc = _outer_ds(fp_data[site])["H_bc"].values
             else:
                 Hmbc = setup.create_bc_sensitivity(start_date, end_date, site, fp_data, bc_freq)
 
@@ -552,6 +552,20 @@ def fixedbasisMCMC(
             print("Successfully read in merged data.\n")
             rerun_merge = False
 
+            if inner_domain is not None:
+                invalid_inner_sites = [
+                    s
+                    for s, entry in fp_all.items()
+                    if not s.startswith(".")
+                    and not (isinstance(entry, xr.DataTree) and "inner" in entry.children)
+                ]
+                if invalid_inner_sites:
+                    rerun_merge = True
+                    print(
+                        "Loaded merged data does not contain inner-domain DataTree entries "
+                        f"for sites {invalid_inner_sites}; re-running data merge."
+                    )
+
             # check if sites were dropped when merged data was saved
             sites_merged = [s for s in fp_all if "." not in s]
 
@@ -658,10 +672,12 @@ def fixedbasisMCMC(
             for site in sites:
                 entry = fp_data[site]
                 if isinstance(entry, xr.DataTree):
-                    # compute dask arrays while preserving standard/inner node layout
-                    standard_ds = entry["standard"].ds if "standard" in entry.children else entry.ds
-                    standard_key = "/standard" if "standard" in entry.children else "/"
-                    dt_dict = {standard_key: standard_ds.compute()}
+                    # compute dask arrays in standard and inner children
+                    dt_dict = {}
+                    if "standard" in entry.children:
+                        dt_dict["/standard"] = entry["standard"].ds.compute()
+                    elif entry.ds is not None:
+                        dt_dict["/"] = entry.ds.compute()
                     if "inner" in entry.children:
                         dt_dict["/inner"] = entry["inner"].ds.compute()
                     fp_data[site] = xr.DataTree.from_dict(dt_dict)
@@ -672,8 +688,7 @@ def fixedbasisMCMC(
     dropped_sites = []
     for site in sites:
         # check if some datasets are empty due to filtering
-        site_entry = fp_data[site]
-        site_ds = site_entry["standard"].ds if isinstance(site_entry, xr.DataTree) and "standard" in site_entry.children else (site_entry.ds if isinstance(site_entry, xr.DataTree) else site_entry)
+        site_ds = fp_data[site]["standard"].ds if isinstance(fp_data[site], xr.DataTree) and "standard" in fp_data[site].children else fp_data[site].ds
         if site_ds.time.values.shape[0] == 0:
             dropped_sites.append(site)
             del fp_data[site]
@@ -684,6 +699,22 @@ def fixedbasisMCMC(
 
     for si, site in enumerate(sites):
         fp_data[site].attrs["Domain"] = domain
+
+    if inner_domain is not None:
+        invalid_inner_sites = [
+            site
+            for site in sites
+            if not (
+                isinstance(fp_data[site], xr.DataTree)
+                and "inner" in fp_data[site].children
+                and "H_inner" in fp_data[site]["inner"].ds.data_vars
+            )
+        ]
+        if invalid_inner_sites:
+            raise ValueError(
+                "Inner-domain inversion requires DataTree entries with computed H_inner for all sites. "
+                f"Missing or invalid inner structure for: {invalid_inner_sites}."
+            )
 
     # Inverse models
     if use_tracer:
