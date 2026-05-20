@@ -73,10 +73,25 @@ def fp_sensitivity(
     if inner_basis_func is not None:
         fp_and_data[".basis_inner"] = inner_basis_func
 
+    if inner_basis_func is not None:
+        invalid_inner_sites = [
+            site
+            for site in sites
+            if not (
+                isinstance(fp_and_data[site], xr.DataTree) and "inner" in fp_and_data[site].children
+            )
+        ]
+        if invalid_inner_sites:
+            raise ValueError(
+                "Inner basis supplied, but some sites are not DataTree entries with an inner child: "
+                f"{invalid_inner_sites}."
+            )
+
     for site in sites:
         entry = fp_and_data[site]
 
-        # extract root fp_x_flux and mask inner-domain cells to zero if inner domain exists. This ensures that the outer sensitivity H only reflects the outer domain fluxes.
+
+        # extract root fp_x_flux (already masked if inner domain exists)
         if isinstance(entry, xr.DataTree):
             if "standard" in entry.children:
                 root_ds = entry["standard"].ds
@@ -84,11 +99,9 @@ def fp_sensitivity(
                 root_ds = entry.ds
             fp_x_flux_outer = root_ds[fp_x_flux_name]
 
-            fp_x_flux_for_H = fp_x_flux_outer
-
-            # Compute outer H from the masked fp_x_flux
+            # Compute outer H from the (already masked) fp_x_flux
             sensitivity = apply_fp_basis_functions(
-                fp_x_flux=fp_x_flux_for_H,
+                fp_x_flux=fp_x_flux_outer,
                 basis_func=basis_func,
             )
 
@@ -110,9 +123,17 @@ def fp_sensitivity(
                     "/inner": new_inner,
                 })
             else:
-                fp_and_data[site] = xr.DataTree(dataset=root_ds.assign({"H": sensitivity}))
+                fp_and_data[site] = xr.DataTree.from_dict({
+                    "/standard": root_ds.assign({"H": sensitivity})
+                })
 
         else:
+            if inner_basis_func is not None:
+                raise ValueError(
+                    "Inner-domain inversion requires DataTree site entries with an inner child. "
+                    f"Site '{site}' is a plain Dataset."
+                )
+
             # Legacy: plain xr.Dataset path — unchanged
             sensitivity = apply_fp_basis_functions(
                 fp_x_flux=entry[fp_x_flux_name],
@@ -199,29 +220,33 @@ def bc_sensitivity(
         dict of xr.Datasets in same format as fp_and_data with `H_bc` sensitivity matrix added.
 
     """
+    def _outer_ds(entry):
+        if isinstance(entry, xr.DataTree):
+            if "standard" in entry.children:
+                return entry["standard"].ds
+            return entry.ds
+        return entry
+
+    def _with_updated_outer(entry, updated_outer_ds):
+        if not isinstance(entry, xr.DataTree):
+            return updated_outer_ds
+
+        if "standard" in entry.children:
+            tree_dict = {f"/{name}": child.ds for name, child in entry.children.items() if child.ds is not None}
+            tree_dict["/standard"] = updated_outer_ds
+            return xr.DataTree.from_dict(tree_dict)
+
+        return xr.DataTree(dataset=updated_outer_ds, children=dict(entry.children))
+
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
 
     if basis_case.lower() == "nesw":
         for site in sites:
-            site_entry = fp_and_data[site]
-            if isinstance(site_entry, xr.DataTree):
-                standard_node = site_entry["standard"] if "standard" in site_entry.children else site_entry
-                standard_ds = standard_node.ds
-                bc_ds = standard_ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
-                sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region")
-                updated_standard = standard_ds.assign({"H_bc": sensitivity})
-
-                if "standard" in site_entry.children:
-                    dt_dict = {"/standard": updated_standard}
-                    if "inner" in site_entry.children:
-                        dt_dict["/inner"] = site_entry["inner"].ds
-                    fp_and_data[site] = xr.DataTree.from_dict(dt_dict)
-                else:
-                    fp_and_data[site] = xr.DataTree(dataset=updated_standard)
-            else:
-                bc_ds = site_entry[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
-                sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region")
-                site_entry["H_bc"] = sensitivity
+            entry = fp_and_data[site]
+            outer_ds = _outer_ds(entry)
+            bc_ds = outer_ds[[f"bc_{d}" for d in "nesw"]].rename({f"bc_{d}": d for d in "nesw"})
+            sensitivity = bc_ds.sum(["lat", "lon", "height"]).to_dataarray(dim="bc_region")
+            fp_and_data[site] = _with_updated_outer(entry, outer_ds.assign({"H_bc": sensitivity}))
 
         return fp_and_data
 
@@ -239,27 +264,11 @@ def bc_sensitivity(
     bc_basis = basis_func.rename({dv: str(dv).replace("basis_", "") for dv in basis_func.data_vars})
 
     for site in sites:
-        site_entry = fp_and_data[site]
-        if isinstance(site_entry, xr.DataTree):
-            standard_node = site_entry["standard"] if "standard" in site_entry.children else site_entry
-            standard_ds = standard_node.ds
-            bc_ds = standard_ds[[f"bc_{d}" for d in "nesw"]]
-            sensitivity = (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
-            sensitivity = sensitivity.rename(region="bc_region")
-            updated_standard = standard_ds.assign({"H_bc": sensitivity})
-
-            if "standard" in site_entry.children:
-                dt_dict = {"/standard": updated_standard}
-                if "inner" in site_entry.children:
-                    dt_dict["/inner"] = site_entry["inner"].ds
-                fp_and_data[site] = xr.DataTree.from_dict(dt_dict)
-            else:
-                fp_and_data[site] = xr.DataTree(dataset=updated_standard)
-        else:
-            site_ds = site_entry
-            bc_ds = site_ds[[f"bc_{d}" for d in "nesw"]]
-            sensitivity = (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
-            sensitivity = sensitivity.rename(region="bc_region")
-            site_ds["H_bc"] = sensitivity
+        entry = fp_and_data[site]
+        outer_ds = _outer_ds(entry)
+        bc_ds = outer_ds[[f"bc_{d}" for d in "nesw"]]
+        sensitivity = (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
+        sensitivity = sensitivity.rename(region="bc_region")
+        fp_and_data[site] = _with_updated_outer(entry, outer_ds.assign({"H_bc": sensitivity}))
 
     return fp_and_data
