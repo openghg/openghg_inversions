@@ -152,35 +152,106 @@ def convert_to_list(
     return x
 
 
+def _interp_bool_mask_to_grid(mask: xr.DataArray, lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
+    """Interpolate a boolean mask to a target lat/lon grid.
+
+    xarray's interp requires numeric dtype, so convert to float, interpolate,
+    then threshold back to bool.
+    """
+    return (
+        mask.astype(float)
+        .interp(lat=lat, lon=lon, method="nearest")
+        .assign_coords(lat=lat, lon=lon)
+        .fillna(0.0)
+        >= 0.5
+    )
+
+
 def _apply_inner_mask_on_standard_domain(standard_footprint_data: xr.Dataset, inner_footprint_data: xr.Dataset):
-    """Apply inner domain mask to standard domain fp_x_flux to ensure that the standard domain sensitivity H only reflects the outer domain fluxes.
-    
+    """Mask standard-domain footprint values where inner-domain coverage exists.
+
     Args:
-    standard_footprint_data: xr.DataArray containing the standard domain footprint data, with lat/lon coordinates.
-    inner_footprint_data: xr.DataArray containing the inner domain footprint data, with lat/lon coordinates.
+        standard_footprint_data: Standard-domain footprint dataset.
+        inner_footprint_data: Inner-domain footprint dataset.
 
     Returns:
-        fp: xr.DataArray of the same shape as standard_footprint_data, but with values set to zero in the region covered by inner_footprint_data.
+        Copy of ``standard_footprint_data`` with ``fp`` zeroed in cells covered by the inner domain.
     """
-
     fp_standard = standard_footprint_data.copy()
 
-    if inner_footprint_data is not None:
-        inner_ds = inner_footprint_data.copy()
-        # Build a boolean mask: True where lat/lon is inside inner domain bounds
-        inner_lat_min = float(inner_ds.lat.min())
-        inner_lat_max = float(inner_ds.lat.max())
-        inner_lon_min = float(inner_ds.lon.min())
-        inner_lon_max = float(inner_ds.lon.max())
+    if inner_footprint_data is None:
+        return fp_standard
 
-        lat_mask = (fp_standard.lat >= inner_lat_min) & (fp_standard.lat <= inner_lat_max)
-        lon_mask = (fp_standard.lon >= inner_lon_min) & (fp_standard.lon <= inner_lon_max)
-        inner_region_mask = lat_mask & lon_mask  # broadcasts over (lat, lon)
+    if "fp" not in fp_standard or "fp" not in inner_footprint_data:
+        return fp_standard
 
-        # Zero out those cells in the outer fp
-        fp = fp_standard.where(~inner_region_mask, other=0.0)
+    inner_has_coverage = (inner_footprint_data["fp"] != 0).any("time")
+    inner_on_standard = _interp_bool_mask_to_grid(
+        mask=inner_has_coverage,
+        lat=fp_standard.lat,
+        lon=fp_standard.lon,
+    )
 
-        return fp
+    fp_standard["fp"] = fp_standard["fp"].where(~inner_on_standard, other=0.0)
+    return fp_standard
+
+
+def _apply_inner_mask_on_standard_flux(
+    standard_flux_dict: dict,
+    inner_footprint_data: xr.Dataset,
+) -> dict:
+    """Mask standard-domain flux values where inner-domain coverage exists.
+
+    Args:
+        standard_flux_dict: Dict of FluxData-like objects with ``data.flux`` DataArray.
+        inner_footprint_data: Inner-domain footprint dataset.
+
+    Returns:
+        New flux dict with ``flux`` zeroed in cells covered by the inner domain.
+    """
+    if inner_footprint_data is None or "fp" not in inner_footprint_data:
+        return standard_flux_dict
+
+    first_flux = next(iter(standard_flux_dict.values())).data.flux
+    inner_has_coverage = (inner_footprint_data["fp"] != 0).any("time")
+    inner_on_flux = _interp_bool_mask_to_grid(
+        mask=inner_has_coverage,
+        lat=first_flux.lat,
+        lon=first_flux.lon,
+    )
+
+    return _apply_boolean_mask_on_standard_flux(standard_flux_dict, inner_on_flux)
+
+
+def _apply_boolean_mask_on_standard_flux(
+    standard_flux_dict: dict,
+    mask_on_standard_grid: xr.DataArray,
+) -> dict:
+    """Apply a precomputed boolean mask to all standard-domain flux sources.
+
+    Args:
+        standard_flux_dict: Dict of FluxData-like objects with ``data.flux`` DataArray.
+        mask_on_standard_grid: Boolean mask on standard-domain lat/lon grid where True means "inner-domain coverage".
+
+    Returns:
+        New flux dict with masked ``flux`` fields.
+    """
+    masked_flux_dict = {}
+
+    for source, flux_data in standard_flux_dict.items():
+        flux_da = flux_data.data.flux
+        mask_for_flux = _interp_bool_mask_to_grid(
+            mask=mask_on_standard_grid,
+            lat=flux_da.lat,
+            lon=flux_da.lon,
+        )
+
+        masked_flux = flux_da.where(~mask_for_flux, other=0.0)
+        masked_ds = flux_data.data.copy()
+        masked_ds["flux"] = masked_flux
+        masked_flux_dict[source] = type(flux_data)(data=masked_ds, metadata=flux_data.metadata)
+
+    return masked_flux_dict
     
 
 def data_processing_surface_notracer(
@@ -335,6 +406,7 @@ def data_processing_surface_notracer(
     check_scales = set()
     units = {}
     site_indices_to_keep = []
+    standard_flux_inner_mask_union = None
 
     keep_variables = [
         f"{species}",
@@ -396,6 +468,7 @@ def data_processing_surface_notracer(
             )
             continue  # skip this site
         inner_footprint_data = None
+        standard_flux_for_site = flux_dict
         if inner_domain is not None:
             print(f"Inner domain {inner_domain} specified; attempting to retrieve inner footprint data for {site} ...")
             inner_footprint_data = get_footprint_data(
@@ -412,19 +485,37 @@ def data_processing_surface_notracer(
                 obs_data=site_data,
                 stores=inner_footprint_store if inner_footprint_store is not None else footprint_store,
             )
-
-            standard_footprint_data.data = _apply_inner_mask_on_standard_domain(standard_footprint_data= standard_footprint_data.data, inner_footprint_data= inner_footprint_data.data)
-            
             if inner_footprint_data is None:
                 print(
                     f"\nNo Inner footprint data found for {site} with inlet/height {fp_height[i]}, model {fp_model}, and domain {domain}-{inner_domain}, starting from {start_date} to {end_date}, fp_species {fp_species} and met_model {met_model[i]}, obs_data {site_data} and averaging_period {averaging_period[i]}.",
                     f"Check these values.\nContinuing model run without {site}.Jai\n",
                 )
                 continue  # skip this site
+            # Mask the standard domain fp_x_flux with the inner domain mask BEFORE storing in DataTree
+            standard_footprint_data.data = _apply_inner_mask_on_standard_domain(
+                standard_footprint_data=standard_footprint_data.data,
+                inner_footprint_data=inner_footprint_data.data,
+            )
+            standard_flux_for_site = _apply_inner_mask_on_standard_flux(
+                standard_flux_dict=flux_dict,
+                inner_footprint_data=inner_footprint_data.data,
+            )
+
+            first_flux = next(iter(flux_dict.values())).data.flux
+            inner_has_coverage = (inner_footprint_data.data["fp"] != 0).any("time")
+            inner_on_standard_flux = _interp_bool_mask_to_grid(
+                mask=inner_has_coverage,
+                lat=first_flux.lat,
+                lon=first_flux.lon,
+            )
+            if standard_flux_inner_mask_union is None:
+                standard_flux_inner_mask_union = inner_on_standard_flux
+            else:
+                standard_flux_inner_mask_union = standard_flux_inner_mask_union | inner_on_standard_flux
 
         scenario_combined = merged_scenario_data(
             obs_data=site_data, footprint_data=standard_footprint_data,
-            flux_dict= flux_dict, bc_data=bc_data, inner_footprint_data=inner_footprint_data,
+            flux_dict=standard_flux_for_site, bc_data=bc_data, inner_footprint_data=inner_footprint_data,
             inner_flux_dict= inner_flux_dict if inner_emissions_store is not None else None, 
             platform=platform[i], max_level=max_level
         )
@@ -440,6 +531,13 @@ def data_processing_surface_notracer(
             check_scales.add(root_ds.scale)
 
         site_indices_to_keep.append(i)
+
+    if standard_flux_inner_mask_union is not None:
+        fp_all[".flux"] = _apply_boolean_mask_on_standard_flux(
+            standard_flux_dict=flux_dict,
+            mask_on_standard_grid=standard_flux_inner_mask_union,
+        )
+
     if len(site_indices_to_keep) == 0:
         raise SearchError("No site data found. Exiting process.")
 
