@@ -475,7 +475,7 @@ def datatree_to_flux_dict(dt: xr.DataTree) -> dict[str, FluxData]:
 
 def fp_all_to_datatree(fp_all: dict, netcdf_safe_attrs: bool = False) -> xr.DataTree:
     dt_dict: dict[str, xr.Dataset | xr.DataTree] = {}
-    scenario_dict = {}
+    scenario_dict: dict[str, xr.Dataset] = {}
     dt_attrs = {}
 
     if ".flux" in fp_all:
@@ -487,7 +487,15 @@ def fp_all_to_datatree(fp_all: dict, netcdf_safe_attrs: bool = False) -> xr.Data
         if isinstance(v, BoundaryConditionsData):
             dt_dict[k.removeprefix(".")] = openghg_data_to_dataset(v, netcdf_safe_attrs)
         elif not k.startswith(".") and isinstance(v, xr.Dataset):
-            scenario_dict[k] = v
+            scenario_dict[f"/{k}"] = v
+        elif not k.startswith(".") and isinstance(v, xr.DataTree):
+            for group in v.groups:
+                node = v[group]
+                if node.ds is None:
+                    continue
+
+                rel_group = "" if group == "/" else group
+                scenario_dict[f"/{k}{rel_group}"] = node.ds
         else:
             dt_attrs[k] = v
 
@@ -512,7 +520,13 @@ def datatree_to_fp_all(dt: xr.DataTree) -> dict:
         fp_all[".bc"] = dataset_to_bc_data(dt.bc.to_dataset())
 
     for k, v in dt.scenarios.items():
-        fp_all[str(k)] = v.to_dataset()
+        if len(v.children) > 0:
+            scenario_children = {
+                f"/{child_name}": child.ds for child_name, child in v.children.items() if child.ds is not None
+            }
+            fp_all[str(k)] = xr.DataTree.from_dict(scenario_children)
+        else:
+            fp_all[str(k)] = v.to_dataset()
 
     fp_all.update({str(k): v for k, v in dt.attrs.items()})
 
