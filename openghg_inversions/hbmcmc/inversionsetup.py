@@ -2,15 +2,37 @@
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 
 def _site_ds(fp_data: dict, site: str):
   entry = fp_data[site]
-  if hasattr(entry, "children"):
-    if "standard" in entry.children:
+
+  if isinstance(entry, xr.DataTree):
+    if "standard" in entry.children and entry["standard"].ds is not None:
       return entry["standard"].ds
-    return entry.ds
+
+    if entry.ds is not None:
+      return entry.ds
+
+    # Fallback: use first non-empty child dataset if present.
+    for child in entry.children.values():
+      if child.ds is not None:
+        return child.ds
+
+    raise ValueError(f"Site '{site}' DataTree does not contain a dataset in root or child nodes.")
+
   return entry
+
+
+def _site_hbc(fp_data: dict, site: str) -> xr.DataArray:
+  site_ds = _site_ds(fp_data, site)
+  if "H_bc" not in site_ds.data_vars:
+    raise ValueError(
+      f"Boundary-condition sensitivity 'H_bc' is missing for site '{site}'. "
+      f"Available variables: {list(site_ds.data_vars)}"
+    )
+  return site_ds["H_bc"]
 
 
 def monthly_bcs(start_date: str, end_date: str, site: str, fp_data: dict) -> np.ndarray:
@@ -33,6 +55,7 @@ def monthly_bcs(start_date: str, end_date: str, site: str, fp_data: dict) -> np.
         Sensitivity matrix by month for observations
     """
     site_ds = _site_ds(fp_data, site)
+    h_bc = _site_hbc(fp_data, site).values
     allmonth = pd.date_range(start_date, end_date, freq="MS")[:-1]
     nmonth = len(allmonth)
     curtime = pd.to_datetime(site_ds.time.values).to_period("M")
@@ -48,7 +71,7 @@ def monthly_bcs(start_date: str, end_date: str, site: str, fp_data: dict) -> np.
             mnth = allmonth[m].month
             yr = allmonth[m].year
             mnthloc = np.where(np.logical_and(curtime.month == mnth, curtime.year == yr))[0]
-            hmbc[count, mnthloc] = site_ds["H_bc"].values[cord, mnthloc]
+            hmbc[count, mnthloc] = h_bc[cord, mnthloc]
             count += 1
 
     return hmbc
@@ -81,6 +104,7 @@ def create_bc_sensitivity(start_date: str, end_date: str, site: str, fp_data: di
         Sensitivity matrix by for observations to boundary conditions
     """
     site_ds = _site_ds(fp_data, site)
+    h_bc = _site_hbc(fp_data, site).values
     dys = int("".join([s for s in freq if s.isdigit()]))
     alldates = pd.date_range(
         pd.to_datetime(start_date), pd.to_datetime(end_date) + pd.DateOffset(days=dys), freq=freq
@@ -100,7 +124,7 @@ def create_bc_sensitivity(start_date: str, end_date: str, site: str, fp_data: di
             if len(dateloc) == 0:
                 count += 1
                 continue
-            hmbc[count, dateloc] = site_ds["H_bc"].values[cord, dateloc]
+            hmbc[count, dateloc] = h_bc[cord, dateloc]
             count += 1
 
     return hmbc
