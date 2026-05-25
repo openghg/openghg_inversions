@@ -24,13 +24,8 @@ from openghg_inversions import convert  # noqa: E402
 from openghg_inversions import utils  # noqa: E402
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename  # noqa: E402
 from openghg_inversions.config.version import code_version  # noqa: E402
-from openghg_inversions.models.components import (  # noqa: E402
-    add_inferpymc_likelihood_component,
-    add_linear_component,
-    add_offset_component,
-    resolve_model_variable,
-)
-from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry  # noqa: E402
+from openghg_inversions.models import build_rhime_model  # noqa: E402
+from openghg_inversions.models.components import resolve_model_variable  # noqa: E402
 from openghg_inversions.models.priors import PriorArgs  # noqa: E402
 from openghg_inversions.inversion_inputs import _compact_integer_index  # noqa: E402
 
@@ -104,7 +99,7 @@ def build_inferpymc_model(
     offset_args: dict | None = None,
     power: dict | float = 1.99,
 ) -> pm.Model:
-    """Build the current component-based inferpymc model.
+    """Compatibility adapter for the standard RHIME model builder.
 
     Args:
         inv_inputs: Canonical inversion-input dataset, usually produced by
@@ -131,7 +126,7 @@ def build_inferpymc_model(
             scaling.
 
     Returns:
-        Built PyMC model for the current inferpymc path.
+        Built PyMC model for the current inferpymc compatibility path.
     """
     xprior, bcprior, sigprior, offsetprior = _prepare_builder_priors(
         xprior=xprior,
@@ -141,58 +136,20 @@ def build_inferpymc_model(
         reparameterise_log_normal=reparameterise_log_normal,
     )
 
-    with pm.Model() as model:
-        attach_coord_registry(model, CoordRegistry())
-        flux_component = add_linear_component(
-            inv_inputs["H"],
-            data_name="hx",
-            prior_args=xprior,
-            var_name="x",
-            output_name="mu",
-            output_dim="nmeasure",
-            compute_deterministic=True,
-        )
-
-        mu_bc = None
-        if use_bc:
-            if "H_bc" not in inv_inputs:
-                raise ValueError("If `use_bc` is True, `inv_inputs` must contain `H_bc`.")
-            bc_component = add_linear_component(
-                inv_inputs["H_bc"],
-                data_name="hbc",
-                prior_args=bcprior,
-                var_name="bc",
-                output_name="mu_bc",
-                output_dim="nmeasure",
-                compute_deterministic=True,
-            )
-            mu_bc = bc_component.output
-
-        offset = None
-        if add_offset:
-            offset_args = offset_args or {}
-            offset = add_offset_component(
-                inv_inputs["site_indicator"],
-                prior_args=offsetprior,
-                output_name="offset",
-                output_dim="nmeasure",
-                **offset_args,
-            )
-
-        add_inferpymc_likelihood_component(
-            inv_inputs,
-            mu=flux_component.output,
-            mu_bc=mu_bc,
-            offset=offset,
-            sigprior=sigprior,
-            power=power,
-            pollution_events_from_obs=pollution_events_from_obs,
-            no_model_error=no_model_error,
-            sigma_per_site=sigma_per_site,
-            output_dim="nmeasure",
-        )
-
-    return model
+    return build_rhime_model(
+        inv_inputs,
+        x_prior=xprior,
+        bc_prior=bcprior,
+        sigma_prior=sigprior,
+        sigma_per_site=sigma_per_site,
+        offset_prior=offsetprior,
+        add_offset=add_offset,
+        use_bc=use_bc,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+        offset_args=offset_args,
+        power=power,
+    )
 
 
 # ----------------------------------------
@@ -593,7 +550,7 @@ def inferpymc_postprocessouts(
     tune: int,
     nchain: int,
     sigma_per_site: bool,
-    emissions_name: str,
+    emissions_name: list[str] | None,
     bcprior: dict | None = None,
     YBCtrace: np.ndarray | None = None,
     bcouts: np.ndarray | None = None,
