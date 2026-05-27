@@ -3,6 +3,7 @@
 import xarray as xr
 
 from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot, to_dense
+from openghg_inversions.basis.basis_functions import BasisFunctions
 from ._functions import basis_boundary_conditions
 
 
@@ -74,6 +75,28 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
         fp_and_data[site]["H"] = sensitivity
 
     return fp_and_data
+
+
+def fp_sensitivity_from_basis_functions(fp_and_data: dict, basis_functions: BasisFunctions) -> dict:
+    """Apply legacy ``fp_sensitivity`` using a ``BasisFunctions`` flat-basis view."""
+    fp_data = fp_sensitivity(fp_and_data, basis_func=basis_functions.flat_basis())
+    _validate_legacy_basis_state(fp_data, basis_functions)
+    return fp_data
+
+
+def _validate_legacy_basis_state(fp_data: dict, basis_functions: BasisFunctions) -> None:
+    """Ensure legacy H construction and retained basis describe the same state vector."""
+    site = next(key for key in fp_data if not str(key).startswith("."))
+    h_region = fp_data[site]["H"].coords.get("region")
+    basis_region = basis_functions.basis_matrix(state_dim="region").coords.get("region")
+    if h_region is None or basis_region is None or h_region.identical(basis_region):
+        return
+
+    raise ValueError(
+        "Retained BasisFunctions state coordinates do not match the legacy fp_sensitivity H region "
+        "coordinate. Until BasisFunctions.sensitivity replaces fp_sensitivity, retained basis artifacts "
+        "must use legacy-compatible region labels."
+    )
 
 
 def apply_fp_basis_functions(
@@ -154,7 +177,9 @@ def bc_sensitivity(
     for site in sites:
         ds = fp_and_data[site]
         bc_ds = ds[[f"bc_{d}" for d in "nesw"]]
-        sensitivity = (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
+        sensitivity = (
+            (bc_ds * bc_basis).sum(["lat", "lon", "height"]).to_dataarray(dim="__newdim__").sum("__newdim__")
+        )
         sensitivity = sensitivity.rename(region="bc_region")
         fp_and_data[site]["H_bc"] = sensitivity
 

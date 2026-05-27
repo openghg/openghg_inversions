@@ -12,15 +12,17 @@ Example usage:
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
+from openghg.analyse._utils import match_dataset_dims, stack_datasets
 
 from openghg_inversions.array_ops import (
     concat_data_arrays,
+    force_align,
 )
 from openghg_inversions.basis.operators import (
     BasisOperator,
@@ -28,6 +30,9 @@ from openghg_inversions.basis.operators import (
     MultiSourceBucketBasisOperator,
     RegionLabels,
 )
+
+BASIS_METADATA_ATTR_PREFIX = "openghg_inversions:"
+BASIS_ARTIFACT_SOURCE_ATTR = f"{BASIS_METADATA_ATTR_PREFIX}basis_artifact_source"
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +50,7 @@ class FluxWeightedBasis:
 
     operator: BasisOperator
     flux: xr.DataArray
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_basis_flat(
@@ -54,6 +60,7 @@ class FluxWeightedBasis:
         *,
         region_labels: RegionLabels = "range0",
         operator_kwargs: Mapping[str, Any] | None = None,
+        metadata: Mapping[str, Any] | None = None,
     ) -> FluxWeightedBasis:
         """Construct from a single-source (standard) flattened basis array.
 
@@ -75,8 +82,28 @@ class FluxWeightedBasis:
         if region_labels is not None:
             kwargs["region_labels"] = region_labels
 
-        operator = BucketBasisOperator(basis_flat=basis_flat, **kwargs)
-        return cls(operator=operator, flux=flux)
+        operator_cls = cast(Any, BucketBasisOperator)
+        operator = operator_cls(basis_flat=basis_flat, **kwargs)
+        return cls(operator=operator, flux=flux, metadata=dict(metadata or {}))
+
+    @classmethod
+    def from_flat_basis(
+        cls,
+        basis_flat: xr.DataArray,
+        flux: xr.DataArray,
+        *,
+        region_labels: RegionLabels = "range0",
+        operator_kwargs: Mapping[str, Any] | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> FluxWeightedBasis:
+        """Construct from a legacy flat basis array."""
+        return cls.from_basis_flat(
+            basis_flat=basis_flat,
+            flux=flux,
+            region_labels=region_labels,
+            operator_kwargs=operator_kwargs,
+            metadata=metadata,
+        )
 
     @classmethod
     def from_multi_source_basis_flat(
@@ -85,6 +112,7 @@ class FluxWeightedBasis:
         flux: xr.DataArray | Mapping[str, xr.DataArray],
         *,
         operator_kwargs: Mapping[str, Any] | None = None,
+        metadata: Mapping[str, Any] | None = None,
     ) -> FluxWeightedBasis:
         """Construct from a multi-source flattened basis mapping.
 
@@ -100,12 +128,101 @@ class FluxWeightedBasis:
         """
         kwargs: dict[str, Any] = dict(operator_kwargs or {})
 
-        operator = MultiSourceBucketBasisOperator(basis_flat=dict(basis_flat), **kwargs)
+        operator_cls = cast(Any, MultiSourceBucketBasisOperator)
+        operator = operator_cls(basis_flat=dict(basis_flat), **kwargs)
 
         if not isinstance(flux, xr.DataArray):
             flux = concat_data_arrays(flux, key_dim="source")
 
-        return cls(operator=operator, flux=flux)
+        return cls(operator=operator, flux=flux, metadata=dict(metadata or {}))
+
+    @classmethod
+    def from_fp_all_flat_basis(
+        cls,
+        *,
+        fp_all: dict,
+        basis_flat: xr.DataArray | Mapping[str, xr.DataArray],
+        metadata: Mapping[str, Any] | None = None,
+    ) -> FluxWeightedBasis:
+        """Construct a basis object from legacy wrapper inputs."""
+        flux = cls.flux_from_fp_all(fp_all)
+        if isinstance(basis_flat, Mapping):
+            return cls.from_multi_source_basis_flat(
+                basis_flat=basis_flat,
+                flux=flux,
+                operator_kwargs={"state_dim": "region"},
+                metadata=metadata,
+            )
+
+        return cls.from_basis_flat(
+            basis_flat=basis_flat,
+            flux=flux,
+            operator_kwargs={"state_dim": "region"},
+            metadata=metadata,
+        )
+
+    @classmethod
+    def flux_from_fp_all(cls, fp_all: dict) -> xr.DataArray:
+        """Build the representative flux field from a legacy ``fp_all`` object."""
+        if ".flux" not in fp_all or not fp_all[".flux"]:
+            raise ValueError("Cannot construct BasisFunctions object: fp_all['.flux'] is missing or empty.")
+
+        flux_entries = fp_all[".flux"]
+        flux_arrays = {
+            key: _extract_flux_dataarray(value, flux_key=key) for key, value in flux_entries.items()
+        }
+
+        if _is_multi_source_workflow(fp_all):
+            flux = _stack_flux_sources_with_alignment(flux_arrays)
+        else:
+            flux = _combine_flux_sources_like_modelscenario(flux_arrays)
+
+        return flux
+
+    def with_flux(self, flux: xr.DataArray) -> FluxWeightedBasis:
+        """Return a copy with the same operator and metadata but a different flux."""
+        return type(self)(operator=self.operator, flux=flux, metadata=dict(self.metadata))
+
+    def with_metadata(self, metadata: Mapping[str, Any]) -> FluxWeightedBasis:
+        """Return a copy with additional metadata."""
+        return type(self)(
+            operator=self.operator,
+            flux=self.flux,
+            metadata={**self.metadata, **dict(metadata)},
+        )
+
+    @property
+    def basis_artifact_source(self) -> str | None:
+        """Return the source used to create/load this basis, when recorded."""
+        source = self.metadata.get(BASIS_ARTIFACT_SOURCE_ATTR)
+        return str(source) if source is not None else None
+
+    def flat_basis(self) -> xr.DataArray | dict[str, xr.DataArray]:
+        """Return the flattened basis representation used by legacy H construction."""
+        basis_flat = getattr(self.operator, "basis_flat", None)
+        if isinstance(basis_flat, xr.DataArray):
+            return basis_flat.rename("basis")
+        if isinstance(basis_flat, dict):
+            return {key: value.rename("basis") for key, value in basis_flat.items()}
+        raise AttributeError("Operator does not expose `basis_flat`.")
+
+    def basis_matrix(
+        self,
+        *,
+        state_dim: str | None = None,
+        state_coord: xr.DataArray | None = None,
+    ) -> xr.DataArray:
+        """Return the basis matrix, optionally translated to a requested state dimension."""
+        basis = self.operator.basis_matrix
+        current_state_dim = self.operator.meta.state_dim
+        if state_dim is not None and state_dim != current_state_dim:
+            basis = basis.rename({current_state_dim: state_dim})
+            current_state_dim = state_dim
+        if state_coord is not None:
+            if state_coord.name is None:
+                raise ValueError("state_coord must be named so it can be used for reindexing.")
+            basis = basis.reindex({state_coord.name: state_coord})
+        return basis
 
     def to_datatree(self) -> xr.DataTree:
         """Serialise to a DataTree with `basis` and `flux` groups.
@@ -133,6 +250,7 @@ class FluxWeightedBasis:
                 "schema_version": 1,
             }
         )
+        dt.attrs.update(_serialisable_basis_metadata(self.metadata))
         return dt
 
     @classmethod
@@ -171,7 +289,13 @@ class FluxWeightedBasis:
             raise ValueError("Missing variable 'flux' in dt['flux'] dataset.")
         flux = ds_flux["flux"]
 
-        return cls(operator=operator, flux=flux)
+        metadata: dict[str, Any] = {}
+        for key, value in dt.attrs.items():
+            key = str(key)
+            if key.startswith(BASIS_METADATA_ATTR_PREFIX):
+                metadata[key] = value
+
+        return cls(operator=operator, flux=flux, metadata=metadata)
 
     def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
         """Compute sensitivity (grid -> state) via the underlying operator.
@@ -250,6 +374,76 @@ class FluxWeightedBasis:
             return fig, axes_flat
 
         raise TypeError(f"Unexpected type for operator.basis_flat: {type(basis_flat)!r}")
+
+
+def _serialisable_basis_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep only namespaced metadata that can be stored as DataTree root attributes."""
+    return {key: value for key, value in metadata.items() if str(key).startswith(BASIS_METADATA_ATTR_PREFIX)}
+
+
+def _is_multi_source_workflow(fp_all: dict) -> bool:
+    """Determine multi-source/sector mode from fp_all metadata."""
+    split_by_sectors = fp_all.get(".split_by_sectors")
+    if split_by_sectors is not None:
+        return bool(split_by_sectors)
+
+    flux_entries = fp_all.get(".flux")
+    return isinstance(flux_entries, dict) and len(flux_entries) > 1
+
+
+def _extract_flux_dataarray(flux_entry: object, flux_key: str) -> xr.DataArray:
+    """Extract a DataArray named ``flux`` from supported flux entry containers."""
+    flux_entry_data = getattr(flux_entry, "data", None)
+    if isinstance(flux_entry_data, xr.Dataset) and "flux" in flux_entry_data:
+        return flux_entry_data["flux"]
+    if isinstance(flux_entry, xr.Dataset) and "flux" in flux_entry:
+        return flux_entry["flux"]
+    if isinstance(flux_entry, xr.DataArray):
+        return flux_entry
+
+    raise TypeError(
+        "Could not extract a flux DataArray from fp_all['.flux']. "
+        f"Got type {type(flux_entry)!r} for flux entry {flux_key!r}."
+    )
+
+
+def _combine_flux_sources_like_modelscenario(flux_arrays: dict[str, xr.DataArray]) -> xr.DataArray:
+    """Combine fluxes as in ModelScenario.combine_flux_sources."""
+    flux_datasets = [
+        arr.rename("flux").to_dataset() if arr.name != "flux" else arr.to_dataset()
+        for arr in flux_arrays.values()
+    ]
+
+    if len(flux_datasets) == 1:
+        return flux_datasets[0]["flux"]
+
+    dims = [dim for dim in flux_datasets[0].dims if dim != "time"]
+    flux_datasets = match_dataset_dims(flux_datasets, dims=dims)
+    if "time" in flux_datasets[0].dims:
+        flux_stacked = stack_datasets(flux_datasets, dim="time", method="ffill")
+    else:
+        flux_stacked = flux_datasets[0]
+        for flux_dataset in flux_datasets[1:]:
+            flux_stacked = flux_stacked + flux_dataset
+
+    return flux_stacked["flux"]
+
+
+def _stack_flux_sources_with_alignment(flux_arrays: dict[str, xr.DataArray]) -> xr.DataArray:
+    """Stack fluxes along `source`, validating structural coordinate alignment."""
+    first_key = next(iter(flux_arrays))
+    reference = flux_arrays[first_key]
+    dims_to_align = [dim for dim in reference.dims if dim != "time"]
+
+    aligned_flux = {}
+    for key, arr in flux_arrays.items():
+        aligned_flux[key] = force_align(arr, reference=reference, dims=dims_to_align)
+
+    return xr.concat(
+        [arr.expand_dims({"source": [key]}) for key, arr in aligned_flux.items()],
+        dim="source",
+        join="outer",
+    )
 
 
 def _shuffle_region_labels(basis_flat: xr.DataArray) -> xr.DataArray:

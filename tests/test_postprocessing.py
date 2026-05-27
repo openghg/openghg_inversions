@@ -3,6 +3,7 @@ import pytest
 import xarray as xr
 from pathlib import Path
 
+from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.hbmcmc.hbmcmc import _resolve_output_format, fixedbasisMCMC
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -48,6 +49,17 @@ def inv_out(raw_data_path):
 @pytest.fixture(scope="module")
 def inv_out_eastasia(raw_data_path):
     return InversionOutput.load(raw_data_path / "inversion_output_EASTASIA.nc")
+
+
+def test_fixedbasisMCMC_can_return_basis_objects_in_mcmc_args(mcmc_args):
+    """Retained basis objects are opt-in debug output, not inferpymc inputs."""
+    mcmc_args["output_format"] = "mcmc_args"
+    mcmc_args["return_basis_objects"] = True
+
+    result = fixedbasisMCMC(**mcmc_args)
+
+    assert isinstance(result["basis_objects"]["emissions"], BasisFunctions)
+    assert "basis_objects" not in result["inv_inputs"]
 
 
 @pytest.mark.parametrize(
@@ -120,7 +132,7 @@ def test_flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end, ex
 
 def test_flux_interval_midpoints_with_non_overlapping_times():
     """Test that non-overlapping flux times are correctly filtered out.
-    
+
     This test verifies the fix for the bug where all 13 flux times (2012-2024)
     were being written to output even when the inversion period was only 2023-2024.
     """
@@ -129,16 +141,18 @@ def test_flux_interval_midpoints_with_non_overlapping_times():
     flux_period = pd.DateOffset(years=1)
     inv_start = pd.Timestamp("2023-01-01")
     inv_end = pd.Timestamp("2024-01-01")
-    
+
     midpoints, valid_indices = _flux_interval_midpoints(flux_times, flux_period, inv_start, inv_end)
-    
+
     # Only the 2023 flux interval (index 11) overlaps with the inversion period
     assert len(midpoints) == 1
     assert len(valid_indices) == 1
     assert valid_indices[0] == 11  # 2023 is at index 11 (year 2012 = 0, ..., 2023 = 11)
-    
+
     # The midpoint should be the midpoint of 2023-01-01 to 2024-01-01
-    expected_midpoint = pd.Timestamp("2023-01-01") + (pd.Timestamp("2024-01-01") - pd.Timestamp("2023-01-01")) / 2
+    expected_midpoint = (
+        pd.Timestamp("2023-01-01") + (pd.Timestamp("2024-01-01") - pd.Timestamp("2023-01-01")) / 2
+    )
     assert midpoints[0] == expected_midpoint
 
 

@@ -563,6 +563,7 @@ def fixedbasisMCMC(
     min_error: Literal["percentile", "residual"] | dict[str, float] | None | float = 0.0,
     calculate_min_error: Literal["percentile", "residual"] | None = None,
     min_error_options: dict | None = None,
+    return_basis_objects: bool = False,
     output_format: Literal[
         "hbmcmc",
         "hbmcmc_postprocessing",
@@ -687,6 +688,8 @@ def fixedbasisMCMC(
         calculate_min_error: Is deprecated and will be removed in a future update.
         min_error_options: Dictionary of additional arguments to pass the the function used to calculate min. model
             error (as specified by `min_error`).
+        return_basis_objects: If True, retain basis objects during shared preparation and include them in
+            ``output_format="mcmc_args"`` debug output. They are not passed to ``inferpymc``.
         output_format: Select what is returned/saved by inversion.
             - "hbmcmc": (default) return the results of `inferpymc_postprocessouts`, and save result as netCDF
             - "hbmcmc_postprocessing": return legacy-style output format, computed using functions from the
@@ -777,6 +780,7 @@ def fixedbasisMCMC(
         min_error=min_error,
         calculate_min_error=calculate_min_error,
         min_error_options=min_error_options,
+        return_basis_objects=return_basis_objects,
         merged_data_only=output_format == "merged_data",
     )
 
@@ -841,6 +845,9 @@ def fixedbasisMCMC(
 
     # add any additional kwargs to mcmc_args (these aren't needed for post processing)
     mcmc_args.update(kwargs)
+    return_mcmc_args = mcmc_args.copy()
+    if return_basis_objects:
+        return_mcmc_args["basis_objects"] = prepared.basis_objects
 
     end_data = time.time()
 
@@ -848,7 +855,7 @@ def fixedbasisMCMC(
 
     # for debugging
     if output_format == "mcmc_args":
-        return mcmc_args
+        return return_mcmc_args
 
     start_inversion = time.time()
 

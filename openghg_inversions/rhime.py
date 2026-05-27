@@ -17,6 +17,7 @@ import xarray as xr
 from openghg.util import split_function_inputs
 
 from openghg_inversions.array_ops import sparse_xr_dot
+from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.config import config
 from openghg_inversions.inversion_data import prepare_inversion_data
 from openghg_inversions.models import (
@@ -143,6 +144,7 @@ class RhimeResult:
         outputs: In-memory derived outputs keyed by output kind.
         model: Built PyMC model.
         inv_out: Modern inversion output object when created.
+        basis_objects: Retained basis objects from shared preparation.
     """
 
     run_spec: RhimeRunSpec
@@ -152,6 +154,7 @@ class RhimeResult:
     idata: az.InferenceData
     output_metadata: dict[str, Any] = field(default_factory=dict)
     outputs: dict[str, Any] = field(default_factory=dict)
+    basis_objects: dict[str, BasisFunctions] = field(default_factory=dict)
     model: pm.Model | None = None
     inv_out: InversionOutput | None = None
 
@@ -163,6 +166,7 @@ class _PreparedRhimeData:
     inv_inputs: xr.Dataset
     basis: xr.DataArray
     flux: xr.DataArray
+    basis_objects: dict[str, BasisFunctions]
     sites: list[str]
     averaging_period: list[str | None]
 
@@ -527,13 +531,21 @@ def _prepare_data(
         return_basis_objects=True,
     )
 
-    if prepared.inv_inputs is None or prepared.basis is None or prepared.flux is None:
-        raise RuntimeError("RHIME data preparation did not produce model inputs, basis, and flux.")
+    if (
+        prepared.inv_inputs is None
+        or prepared.basis is None
+        or prepared.flux is None
+        or "emissions" not in prepared.basis_objects
+    ):
+        raise RuntimeError(
+            "RHIME data preparation did not produce model inputs, basis, flux, and basis objects."
+        )
 
     return _PreparedRhimeData(
         inv_inputs=prepared.inv_inputs,
         basis=prepared.basis,
         flux=prepared.flux,
+        basis_objects=prepared.basis_objects,
         sites=prepared.sites,
         averaging_period=prepared.averaging_period,
     )
@@ -1053,6 +1065,7 @@ def _run_common(
         inv_inputs=prepared.inv_inputs,
         idata=idata,
         model=model,
+        basis_objects=prepared.basis_objects,
         output_metadata={"build_and_sample_seconds": time.time() - start_build},
     )
 

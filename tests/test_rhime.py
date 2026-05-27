@@ -8,6 +8,7 @@ import xarray as xr
 
 import openghg_inversions.models as models
 import openghg_inversions.rhime as rhime_module
+from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.cli import main
 from openghg_inversions.inversion_data import PreparedInversionData, prepare_inversion_data
 from openghg_inversions.inversion_data.preparation import (
@@ -68,6 +69,23 @@ def builder_args() -> dict:
         "pollution_events_from_obs": True,
         "no_model_error": False,
         "power": 1.99,
+    }
+
+
+def _fake_emissions_basis_objects() -> dict[str, BasisFunctions]:
+    basis = xr.DataArray(
+        [[1]],
+        dims=("lat", "lon"),
+        coords={"lat": [0.0], "lon": [0.0]},
+        name="basis",
+    )
+    flux = xr.ones_like(basis, dtype=float).rename("flux")
+    return {
+        "emissions": BasisFunctions.from_flat_basis(
+            basis_flat=basis,
+            flux=flux,
+            operator_kwargs={"state_dim": "region"},
+        )
     }
 
 
@@ -189,6 +207,9 @@ def test_prepare_inversion_data_single_sector_reloads_merged_data(
     assert prepared.inv_inputs is not None
     assert prepared.basis is not None
     assert prepared.flux is not None
+    assert prepared.basis_artifact_source == "generated"
+    assert isinstance(prepared.basis_objects["emissions"], BasisFunctions)
+    xr.testing.assert_identical(prepared.flux, prepared.basis_objects["emissions"].flux)
     assert prepared.sites == ["TAC"]
     assert "source" not in prepared.inv_inputs["H"].dims
 
@@ -202,9 +223,24 @@ def test_prepare_inversion_data_multisector_keeps_source_dimension(tac_ch4_data_
 
     assert prepared.inv_inputs is not None
     assert prepared.flux is not None
+    assert prepared.basis_artifact_source == "generated"
+    assert "emissions" in prepared.basis_objects
     assert "source" in prepared.inv_inputs["H"].dims
     assert set(prepared.inv_inputs["H"].coords["source"].values) == set(flux_sources)
     assert set(prepared.flux.coords["source"].values) == set(flux_sources)
+
+
+def test_prepare_inversion_data_default_does_not_retain_basis_objects(tac_ch4_data_args) -> None:
+    args = _shared_preparation_args(tac_ch4_data_args, tac_ch4_data_args["emissions_name"])
+    args["return_basis_objects"] = False
+
+    prepared = prepare_inversion_data(**args)
+
+    assert prepared.inv_inputs is not None
+    assert prepared.basis is None
+    assert prepared.flux is None
+    assert prepared.basis_objects == {}
+    assert prepared.basis_artifact_source == "generated"
 
 
 def test_loaded_merged_data_alignment_checks_site_membership() -> None:
@@ -252,12 +288,12 @@ def test_prepare_inversion_data_prunes_reloaded_merged_data_to_requested_sites(
             ".species": "CH4",
         }
 
-    def fake_basis_functions_wrapper(**kwargs: object) -> dict:
+    def fake_basis_functions_wrapper(**kwargs: object) -> tuple[dict, dict[str, BasisFunctions]]:
         nonlocal captured_fp_all_keys
         fp_all = kwargs["fp_all"]
         assert isinstance(fp_all, dict)
         captured_fp_all_keys = set(fp_all)
-        return {"TAC": xr.Dataset(coords={"time": [0]})}
+        return {"TAC": xr.Dataset(coords={"time": [0]})}, _fake_emissions_basis_objects()
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
         assert sites == ["TAC"]
@@ -325,11 +361,14 @@ def test_prepare_inversion_data_normalises_averaging_period_to_site_count(
             captured_averaging_period,
         )
 
-    def fake_basis_functions_wrapper(**kwargs: object) -> dict:
-        return {
-            "TAC": xr.Dataset(coords={"time": [0]}),
-            "MHD": xr.Dataset(coords={"time": [0]}),
-        }
+    def fake_basis_functions_wrapper(**kwargs: object) -> tuple[dict, dict[str, BasisFunctions]]:
+        return (
+            {
+                "TAC": xr.Dataset(coords={"time": [0]}),
+                "MHD": xr.Dataset(coords={"time": [0]}),
+            },
+            _fake_emissions_basis_objects(),
+        )
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
         assert sites == ["TAC", "MHD"]
@@ -441,8 +480,8 @@ def test_prepare_inversion_data_treats_min_error_none_as_default(
             ["1H"],
         )
 
-    def fake_basis_functions_wrapper(**kwargs: object) -> dict:
-        return {"TAC": xr.Dataset(coords={"time": [0]})}
+    def fake_basis_functions_wrapper(**kwargs: object) -> tuple[dict, dict[str, BasisFunctions]]:
+        return {"TAC": xr.Dataset(coords={"time": [0]})}, _fake_emissions_basis_objects()
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
         nonlocal captured_min_error
@@ -529,11 +568,14 @@ def test_prepare_inversion_data_aligns_averaging_period_after_empty_site_drop(
             ["1H", "2H"],
         )
 
-    def fake_basis_functions_wrapper(**kwargs: object) -> dict:
-        return {
-            "TAC": xr.Dataset(coords={"time": [0]}),
-            "MHD": xr.Dataset(coords={"time": []}),
-        }
+    def fake_basis_functions_wrapper(**kwargs: object) -> tuple[dict, dict[str, BasisFunctions]]:
+        return (
+            {
+                "TAC": xr.Dataset(coords={"time": [0]}),
+                "MHD": xr.Dataset(coords={"time": []}),
+            },
+            _fake_emissions_basis_objects(),
+        )
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
         assert sites == ["TAC"]
@@ -580,11 +622,14 @@ def test_prepare_inversion_data_rejects_all_sites_dropped_by_filtering(
             ["1H", "2H"],
         )
 
-    def fake_basis_functions_wrapper(**kwargs: object) -> dict:
-        return {
-            "TAC": xr.Dataset(coords={"time": []}),
-            "MHD": xr.Dataset(coords={"time": []}),
-        }
+    def fake_basis_functions_wrapper(**kwargs: object) -> tuple[dict, dict[str, BasisFunctions]]:
+        return (
+            {
+                "TAC": xr.Dataset(coords={"time": []}),
+                "MHD": xr.Dataset(coords={"time": []}),
+            },
+            _fake_emissions_basis_objects(),
+        )
 
     monkeypatch.setattr(
         "openghg_inversions.inversion_data.preparation.data_processing_surface_notracer",
@@ -897,6 +942,7 @@ def test_run_rhime_api_smoke(tac_ch4_data_args, tmp_path: Path) -> None:
     result = run_rhime(**args)
 
     assert isinstance(result, RhimeResult)
+    assert isinstance(result.basis_objects["emissions"], BasisFunctions)
     assert "x" in result.idata.posterior
     assert "mu" in result.idata.posterior
     assert result.run_spec.split_by_sectors is False
@@ -948,6 +994,7 @@ def test_run_rhime_multisector_api_smoke(tac_ch4_data_args, tmp_path: Path) -> N
     result = run_rhime_multisector(**args)
 
     assert isinstance(result, RhimeResult)
+    assert isinstance(result.basis_objects["emissions"], BasisFunctions)
     assert result.run_spec.split_by_sectors is True
     assert "x_total_ukghg_edgar7" in result.idata.posterior
     assert "x_total_ukghg_edgar7_shuffled" in result.idata.posterior

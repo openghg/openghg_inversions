@@ -11,7 +11,6 @@ import warnings
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.array_ops import get_xr_dummies
 from openghg_inversions.basis import basis_functions_wrapper
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.filters import filtering
@@ -36,6 +35,7 @@ class PreparedInversionData:
         flux: Prior flux field from the retained emissions basis object, when
             basis objects were requested.
         basis_objects: Basis objects returned by ``basis_functions_wrapper``.
+        basis_artifact_source: Source of the emissions basis artifact.
     """
 
     fp_all: dict
@@ -46,6 +46,7 @@ class PreparedInversionData:
     basis: xr.DataArray | None = None
     flux: xr.DataArray | None = None
     basis_objects: dict[str, BasisFunctions] = field(default_factory=dict)
+    basis_artifact_source: str = "generated"
 
 
 def _filter_site_aligned_value(value: object, keep_indices: list[int]) -> object:
@@ -327,13 +328,11 @@ def prepare_inversion_data(
         emissions_name=flux_sources,
         outputname=output_name,
         output_path=basis_output_path,
-        return_basis_objects=return_basis_objects,
+        return_basis_objects=True,
     )
-    if return_basis_objects:
-        fp_data, basis_objects = cast(tuple[dict, dict[str, BasisFunctions]], basis_result)
-    else:
-        fp_data = cast(dict, basis_result)
-        basis_objects = {}
+    fp_data, prepared_basis_objects = cast(tuple[dict, dict[str, BasisFunctions]], basis_result)
+    basis_source = prepared_basis_objects["emissions"].basis_artifact_source or "generated"
+    basis_objects = prepared_basis_objects if return_basis_objects else {}
 
     if filters is not None:
         try:
@@ -375,8 +374,9 @@ def prepare_inversion_data(
     basis = None
     flux = None
     if return_basis_objects:
-        basis = get_xr_dummies(fp_data[".basis"], cat_dim="region", categories=inv_inputs.region)
-        flux = basis_objects["emissions"].flux
+        emissions_basis = basis_objects["emissions"]
+        basis = emissions_basis.basis_matrix(state_dim="region", state_coord=inv_inputs.region)
+        flux = emissions_basis.flux
 
     return PreparedInversionData(
         fp_all=fp_all,
@@ -385,6 +385,7 @@ def prepare_inversion_data(
         basis=basis,
         flux=flux,
         basis_objects=basis_objects,
+        basis_artifact_source=basis_source,
         sites=sites,
         averaging_period=cast(list[str | None], averaging_period),
     )
