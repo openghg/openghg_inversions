@@ -9,6 +9,7 @@ from typing import cast, Literal, TypeVar
 from collections.abc import Iterable, Mapping, Sequence
 from typing_extensions import Self
 
+import numpy as np
 import xarray as xr
 from openghg_inversions import convert, utils
 
@@ -233,7 +234,23 @@ class Countries:
             raise ValueError(f"Could not find the following countries needed for regions:\n{msg}")
 
         # create matrix with dimensions: lat, lon, country
-        self.matrix = get_xr_dummies(countries.country, cat_dim="country", categories=self.country_labels)
+        # `countries.country` stores numeric country IDs (indices into `countries.name`).
+        # Map IDs to the same aligned labels used in `self.country_labels` before one-hot encoding.
+        country_lookup = np.asarray(self.country_labels)
+        country_ids = countries.country.fillna(0).astype(int)
+        country_ids = country_ids.clip(min=0, max=len(country_lookup) - 1)
+        country_labels_on_grid = xr.apply_ufunc(
+            lambda x: country_lookup[x],
+            country_ids,
+            vectorize=True,
+            dask="allowed",
+            output_dtypes=[country_lookup.dtype],
+        )
+        self.matrix = get_xr_dummies(
+            country_labels_on_grid,
+            cat_dim="country",
+            categories=self.country_labels,
+        )
 
         # add regions to matrix
         if self.country_regions:
