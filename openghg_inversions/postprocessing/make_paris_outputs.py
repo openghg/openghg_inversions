@@ -3,6 +3,7 @@ import getpass
 import re
 from typing import Any, Literal
 
+import numpy as np
 import pandas as pd
 import xarray as xr
 
@@ -415,6 +416,29 @@ def make_paris_outputs(
     obs_avg_period: str = "4h",
     domain: str | None = None
 ) -> tuple[xr.Dataset, xr.Dataset]:
+    def _pick_mean(ds: xr.Dataset, candidates: list[str]) -> tuple[str | None, float | None]:
+        for var in candidates:
+            if var in ds.data_vars:
+                return var, float(ds[var].mean().values)
+        return None, None
+
+    def _find_coord_label(coord: xr.DataArray, candidates: list[str]) -> str | None:
+        coord_vals = [str(v) for v in coord.values]
+        for candidate in candidates:
+            if candidate in coord_vals:
+                return candidate
+        return None
+
+    def _format_time_values(time_coord: xr.DataArray) -> str:
+        timestamps = [
+            str((pd.Timestamp("1970-01-01") + pd.to_timedelta(float(t), unit="D")).date())
+            for t in np.asarray(time_coord.values)
+        ]
+        return "[" + ", ".join(timestamps) + "]"
+
+    def _format_values(da: xr.DataArray) -> str:
+        return "[" + ", ".join(f"{float(v):.3f}" for v in np.asarray(da.values)) + "]"
+
     # infer flux frequency
     flux_frequency = infer_flux_frequency(inv_out.flux)
     conc_outs = paris_concentration_outputs(inv_out, report_mode=report_mode, obs_avg_period=obs_avg_period)
@@ -426,6 +450,82 @@ def make_paris_outputs(
         time_point=time_point,
         flux_frequency=flux_frequency
     )
+
+    conc_prior_var, conc_prior_mean = _pick_mean(
+        conc_outs,
+        ["Yapriori", "qYapriori", "Yapriori_modeled", "qYapriori_modeled"],
+    )
+    conc_post_var, conc_post_mean = _pick_mean(
+        conc_outs,
+        ["Yapost", "qYapost", "Yapost_modeled", "qYapost_modeled"],
+    )
+    flux_prior_var, flux_prior_mean = _pick_mean(
+        flux_outs,
+        ["flux_total_prior", "flux_total_apriori", "percentile_flux_total_prior", "percentile_flux_total_apriori"],
+    )
+    flux_post_var, flux_post_mean = _pick_mean(
+        flux_outs,
+        ["flux_total_posterior", "flux_total_apost", "percentile_flux_total_posterior", "percentile_flux_total_apost"],
+    )
+
+    if None not in [conc_prior_mean, conc_post_mean, flux_prior_mean, flux_post_mean]:
+        conc_delta = conc_post_mean - conc_prior_mean
+        flux_delta = flux_post_mean - flux_prior_mean
+        conc_ratio = np.nan if abs(conc_prior_mean) < 1e-30 else conc_post_mean / conc_prior_mean
+        flux_ratio = np.nan if abs(flux_prior_mean) < 1e-30 else flux_post_mean / flux_prior_mean
+
+        print(
+            "DEBUGOUT: PARIS consistency | "
+            f"conc({conc_post_var}-{conc_prior_var})={conc_delta:.6e}, ratio={conc_ratio:.6f} | "
+            f"flux({flux_post_var}-{flux_prior_var})={flux_delta:.6e}, ratio={flux_ratio:.6f}",
+            flush=True,
+        )
+    else:
+        print(
+            "DEBUGOUT: PARIS consistency | unable to compute side-by-side prior/posterior check "
+            f"(conc vars: {conc_prior_var}, {conc_post_var}; flux vars: {flux_prior_var}, {flux_post_var})",
+            flush=True,
+        )
+
+    flux_region_candidates = {
+        "NW EUROPE": ["NW_EU", "NW_EU2"],
+        "GERMANY": ["DEU", "GERMANY"],
+        "UK": ["GBR", "UK"],
+        "BENELUX": ["BENELUX", "BELUX"],
+        "FRANCE": ["FRA", "FRANCE"],
+        "IRELAND": ["IRL", "IRELAND"],
+    }
+    flux_prior_name = next((v for v in ["country_flux_total_prior", "country_flux_total_apriori"] if v in flux_outs), None)
+    flux_post_name = next((v for v in ["country_flux_total_posterior", "country_flux_total_apost"] if v in flux_outs), None)
+
+    if flux_prior_name and flux_post_name and "country" in flux_outs.coords and "time" in flux_outs.coords:
+        flux_time_str = _format_time_values(flux_outs.time)
+        for display_name, candidates in flux_region_candidates.items():
+            region_label = _find_coord_label(flux_outs.country, candidates)
+            if region_label is None:
+                continue
+            prior_series = flux_outs[flux_prior_name].sel(country=region_label).compute()
+            post_series = flux_outs[flux_post_name].sel(country=region_label).compute()
+            print(
+                f"DEBUGOUT: PARIS flux values {display_name} ({region_label}) | time={flux_time_str} | "
+                f"prior={_format_values(prior_series)} | posterior={_format_values(post_series)}",
+                flush=True,
+            )
+
+    conc_prior_name = next((v for v in ["Yapriori", "qYapriori"] if v in conc_outs), None)
+    conc_post_name = next((v for v in ["Yapost", "qYapost"] if v in conc_outs), None)
+    site_coord_name = "sitenames" if "sitenames" in conc_outs.coords else ("nsite" if "nsite" in conc_outs.coords else None)
+    if conc_prior_name and conc_post_name and site_coord_name is not None and "time" in conc_outs.coords:
+        mhd_label = _find_coord_label(conc_outs[site_coord_name], ["MHD"])
+        if mhd_label is not None:
+            conc_time_str = _format_time_values(conc_outs.time)
+            prior_series = conc_outs[conc_prior_name].sel({site_coord_name: mhd_label}).compute()
+            post_series = conc_outs[conc_post_name].sel({site_coord_name: mhd_label}).compute()
+            print(
+                f"DEBUGOUT: PARIS conc values MHD | time={conc_time_str} | "
+                f"prior={_format_values(prior_series)} | posterior={_format_values(post_series)}",
+                flush=True,
+            )
 
     return flux_outs, conc_outs
 
