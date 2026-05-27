@@ -679,28 +679,120 @@ def make_inv_out_for_fixed_basis_mcmc(
         site_names, dims=["nsite"], coords={"nsite": np.arange(len(site_names))}, name="site_names"
     )
 
-    _, nx = mcmc_results["xouts"].shape
-    nx = np.arange(nx)
+    def _to_flux_array(flux_entry: xr.DataArray | xr.Dataset) -> xr.DataArray:
+        if isinstance(flux_entry, xr.Dataset):
+            return flux_entry.flux if "flux" in flux_entry else flux_entry[flux_entry.data_vars[0]]
+        return flux_entry
 
-    basis = get_xr_dummies(fp_data[".basis"], cat_dim="nx", categories=nx)
+    def _interp_bool_mask_to_grid(mask: xr.DataArray, lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
+        # Keep this aligned with get_data._interp_bool_mask_to_grid so post-processing
+        # follows the exact same masking convention used at data-fetch time.
+        return (
+            mask.astype(float)
+            .interp(lat=lat, lon=lon, method="nearest")
+            .assign_coords(lat=lat, lon=lon)
+            .fillna(0.0)
+            >= 0.5
+        )
+
+    def _combine_x_and_x_inner(trace: az.InferenceData, total_nx: int) -> az.InferenceData:
+        trace_groups = {}
+        # Basis IDs in RHIME are typically 1-indexed. Align nx to 1..total_nx.
+        nx_coords = np.arange(1, total_nx + 1)
+
+        for group in trace.groups():
+            ds = trace[group].copy()
+            if "x" in ds.data_vars and "x_inner" in ds.data_vars:
+                x_inner = ds["x_inner"].rename({"nx_inner": "nx"})
+                combined_x = xr.concat([x_inner, ds["x"]], dim="nx").assign_coords(nx=nx_coords)
+                ds = ds.drop_vars("x_inner").assign({"x": combined_x})
+            elif "x" in ds.data_vars:
+                # If only x is present, shift it to be 1-indexed to match basis
+                ds = ds.assign_coords(nx=nx_coords)
+            trace_groups[group] = ds
+
+        return az.InferenceData(**trace_groups)
 
     scenario_entries = [v for k, v in fp_data.items() if not k.startswith(".")]
     scenario_datasets = [_scenario_datasets(entry) for entry in scenario_entries]
 
-    flux = None
-    for entry in scenario_entries:
-        try:
-            flux = entry.flux_stacked
-            break
-        except AttributeError:
-            continue
+    outer_basis = fp_data[".basis"]
+    outer_flux = _to_flux_array(next(iter(fp_data[".flux"].values())).data)
+    trace_for_output = mcmc_results["trace"]
 
-    if flux is None:
-        flux = next(iter(fp_data[".flux"].values())).data
+    has_inner = (
+        "xouts_inner" in mcmc_results
+        and ".basis_inner" in fp_data
+        and ".inner_flux" in fp_data
+    )
 
-    # TODO: this only works if there is one flux used (or if multiple, but ModelScenario stacks them)
-    if isinstance(flux, xr.Dataset):
-        flux = flux.flux if "flux" in flux else flux[flux.data_vars[0]]
+    if has_inner:
+        inner_basis = fp_data[".basis_inner"]
+        inner_flux = _to_flux_array(next(iter(fp_data[".inner_flux"].values())).data)
+
+        n_inner = int(mcmc_results["xouts_inner"].shape[1])
+        n_outer = int(mcmc_results["xouts"].shape[1])
+
+        inner_coverage_masks = []
+        for site in site_names:
+            dt_site = fp_data.get(site)
+            if isinstance(dt_site, xr.DataTree) and "inner" in dt_site.children:
+                inner_ds = dt_site["inner"].ds
+                if "fp" in inner_ds:
+                    inner_coverage_masks.append((inner_ds["fp"] != 0).any("time"))
+
+        if inner_coverage_masks:
+            inner_coverage_union = xr.concat(inner_coverage_masks, dim="site").any("site")
+            inner_valid_mask = _interp_bool_mask_to_grid(
+                mask=inner_coverage_union,
+                lat=outer_basis.lat,
+                lon=outer_basis.lon,
+            )
+        else:
+            target_lat = outer_basis["lat"].values
+            target_lon = outer_basis["lon"].values
+            inner_basis_on_outer = inner_basis.interp(lat=target_lat, lon=target_lon, method="nearest")
+            inner_basis_on_outer = inner_basis_on_outer.assign_coords(lat=target_lat, lon=target_lon)
+            inner_valid_mask = inner_basis_on_outer.fillna(0) > 0
+
+        target_lat = outer_basis["lat"].values
+        target_lon = outer_basis["lon"].values
+        inner_basis_on_outer = inner_basis.interp(lat=target_lat, lon=target_lon, method="nearest")
+        inner_basis_on_outer = inner_basis_on_outer.assign_coords(lat=target_lat, lon=target_lon)
+        outer_basis_shifted = xr.where(outer_basis > 0, outer_basis + n_inner, 0)
+        combined_basis_ids = xr.where(inner_valid_mask, inner_basis_on_outer, outer_basis_shifted)
+
+        target_flux_lat = outer_flux["lat"].values
+        target_flux_lon = outer_flux["lon"].values
+        inner_flux_on_outer = inner_flux.interp(lat=target_flux_lat, lon=target_flux_lon, method="nearest").fillna(0)
+        inner_flux_on_outer = inner_flux_on_outer.assign_coords(lat=target_flux_lat, lon=target_flux_lon)
+        flux = xr.where(inner_valid_mask, inner_flux_on_outer, outer_flux)
+
+        basis = get_xr_dummies(
+            combined_basis_ids,
+            cat_dim="nx",
+            categories=np.arange(1, n_inner + n_outer + 1),
+        )
+        trace_for_output = _combine_x_and_x_inner(trace_for_output, total_nx=n_inner + n_outer)
+
+        print(
+            f"DEBUGOUT: PARIS nested merge active; nx_inner={n_inner}, nx_outer={n_outer}, nx_total={n_inner + n_outer}",
+            flush=True,
+        )
+        print(
+            f"DEBUGOUT: PARIS inner coverage cells on outer grid={int(np.asarray(inner_valid_mask.sum().compute().values))}",
+            flush=True,
+        )
+    else:
+        n_outer = int(mcmc_results["xouts"].shape[1])
+        # Ensure nx coordinate labels match 1-indexed basis IDs
+        trace_for_output = _combine_x_and_x_inner(trace_for_output, total_nx=n_outer)
+        basis = get_xr_dummies(
+            fp_data[".basis"], 
+            cat_dim="nx", 
+            categories=np.arange(1, n_outer + 1)
+        )
+        flux = outer_flux
 
     if not isinstance(flux, xr.DataArray):
         raise ValueError("Flux from `fp_data` could not be converted to a xr.DataArray.")
@@ -738,7 +830,7 @@ def make_inv_out_for_fixed_basis_mcmc(
         flux=flux,
         basis=basis,
         model=mcmc_results["model"],
-        trace=mcmc_results["trace"],
+        trace=trace_for_output,
         site_names=site_names_da,
         times=times,
         start_date=start_date,
