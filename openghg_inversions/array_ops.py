@@ -60,7 +60,14 @@ def get_xr_dummies(
         stack_dim = "".join([str(dim) for dim in da.dims])
         da = da.stack({stack_dim: da.dims})
 
-    dummies = pd.get_dummies(da.values, dtype="float32", sparse=return_sparse)
+    if categories is None:
+        dummies = pd.get_dummies(da.values, dtype="float32", sparse=return_sparse)
+    else:
+        # Force pandas to keep all requested categories, even if some are absent in `da`.
+        # This is required for cases where model trace uses full nx but some basis regions
+        # are not present on the grid after masking/merging.
+        cat_values = pd.Categorical(da.values, categories=np.asarray(categories))
+        dummies = pd.get_dummies(cat_values, dtype="float32", sparse=return_sparse)
 
     # put dummies into DataArray with the right coords and dims
     values = COO.from_scipy_sparse(dummies.sparse.to_coo()) if return_sparse else dummies.values
