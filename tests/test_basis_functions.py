@@ -20,7 +20,11 @@ from openghg_inversions.basis._wrapper import (
     _save_basis_datatree,
     load_basis_functions,
 )
-from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
+from openghg_inversions.basis.basis_functions import (
+    BASIS_ARTIFACT_SOURCE_ATTR,
+    BasisFunctions,
+    basis_functions_from_fp_all_flat_basis,
+)
 from openghg_inversions.basis.operators import (
     BucketBasisOperator,
     MultiSourceBucketBasisOperator,
@@ -247,7 +251,7 @@ def test_basisfunctions_sensitivity_synthetic_matches_explicit_sum():
     # but BasisFunctions requires flux; use ones
     flux = xr.ones_like(basis, dtype=float)
 
-    bf = BasisFunctions.from_basis_flat(
+    bf = BasisFunctions.from_flat_basis(
         basis_flat=basis,
         flux=flux,
         operator_kwargs={"state_dim": "region"},
@@ -280,7 +284,7 @@ def test_basisfunctions_sensitivity_synthetic_multisector_shared_basis():
 
     flux = xr.ones_like(basis, dtype=float)
 
-    bf = BasisFunctions.from_basis_flat(
+    bf = BasisFunctions.from_flat_basis(
         basis_flat=basis,
         flux=flux,
         operator_kwargs={"state_dim": "region"},
@@ -316,7 +320,7 @@ def test_basisfunctions_sensitivity_regression_matches_legacy_like():
     fp_x_flux = make_fp_x_flux(nlat=2, nlon=2, ntime=4)
 
     flux = xr.ones_like(basis, dtype=float)
-    bf = BasisFunctions.from_basis_flat(
+    bf = BasisFunctions.from_flat_basis(
         basis_flat=basis,
         flux=flux,
         operator_kwargs={"state_dim": "region"},
@@ -342,7 +346,7 @@ def test_synthetic_no_all_zero_state_rows_when_fp_positive_everywhere():
     fp_x_flux = make_fp_x_flux(nlat=2, nlon=2, ntime=3, values=np.ones((2, 2, 3)))
 
     flux = xr.ones_like(basis, dtype=float)
-    bf = BasisFunctions.from_basis_flat(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
+    bf = BasisFunctions.from_flat_basis(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
 
     H = bf.sensitivity(fp_x_flux)  # (region, time)
 
@@ -407,7 +411,7 @@ def test_basisfunctions_sensitivity_matches_apply_fp_basis_functions_real_data()
     flux = fp_all_with_basis[".flux"][flux_source].data.flux
 
     # bf = BasisFunctions(basis_flat=fp_all_with_basis[".basis"], flux=flux)
-    bf = BasisFunctions.from_basis_flat(
+    bf = BasisFunctions.from_flat_basis(
         basis_flat=fp_all_with_basis[".basis"], flux=flux, operator_kwargs={"state_dim": "region"}
     )
     H_new = bf.sensitivity(ds.fp_x_flux)
@@ -441,7 +445,7 @@ def test_multisector_ragged_new_matches_old_after_conversion():
     This test:
         1) Computes the old padded H via `fp_sensitivity` with two different bases (ragged region counts).
         2) Converts H_old -> gathered MultiIndex using `convert_old_multisector_H_to_gathered`.
-        3) Computes H_new with `BasisFunctions.from_multi_source_basis_flat(...).sensitivity(...)`.
+        3) Computes H_new with `BasisFunctions.from_multi_source_flat_basis(...).sensitivity(...)`.
         4) Asserts equality.
 
     This is the key equivalence test justifying the new MultiIndex-based operator.
@@ -513,7 +517,7 @@ def test_multisector_ragged_new_matches_old_after_conversion():
     # --- New behaviour
     flux_dict = {k: v.data.flux for k, v in fp_all_sectoral[".flux"].items()}
 
-    multisector_bf = BasisFunctions.from_multi_source_basis_flat(
+    multisector_bf = BasisFunctions.from_multi_source_flat_basis(
         basis_flat=basis_dict, flux=flux_dict, operator_kwargs={"state_dim": "region"}
     )
 
@@ -570,7 +574,7 @@ def test_basisfunctions_roundtrip_datatree_single_source():
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     flux = xr.ones_like(basis, dtype=float).rename("flux")
 
-    bf = BasisFunctions.from_basis_flat(
+    bf = BasisFunctions.from_flat_basis(
         basis_flat=basis,
         flux=flux,
         operator_kwargs={"state_dim": "region"},
@@ -608,7 +612,7 @@ def test_basisfunctions_roundtrip_datatree_multisource_flux_mapping():
     flux_b = xr.ones_like(basis_b, dtype=float) * 2.0
     flux = {"A": flux_a.rename("flux"), "B": flux_b.rename("flux")}
 
-    bf = BasisFunctions.from_multi_source_basis_flat(
+    bf = BasisFunctions.from_multi_source_flat_basis(
         basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"}
     )
     assert "source" in bf.flux.dims
@@ -642,7 +646,7 @@ def test_basisfunctions_interpolate_no_flux_weights_trace_dims_propagate():
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     flux = xr.ones_like(basis, dtype=float)
 
-    bf = BasisFunctions.from_basis_flat(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
+    bf = BasisFunctions.from_flat_basis(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
 
     state = _make_simple_state_trace(region_dim="region", draw_dim="draw", chain_dim=None)
 
@@ -677,7 +681,7 @@ def test_basisfunctions_interpolate_with_flux_weights_trace_dims_propagate():
     flux_values = np.asarray([[1.0, 2.0], [3.0, 4.0]])
     flux = xr.DataArray(flux_values, coords=basis.coords, dims=basis.dims, name="flux")
 
-    bf = BasisFunctions.from_basis_flat(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
+    bf = BasisFunctions.from_flat_basis(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
 
     state = _make_simple_state_trace(region_dim="region", draw_dim="draw", chain_dim=None)
 
@@ -708,7 +712,7 @@ def test_basisfunctions_interpolate_trace_with_chain_dim():
     basis = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     flux = xr.ones_like(basis, dtype=float)
 
-    bf = BasisFunctions.from_basis_flat(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
+    bf = BasisFunctions.from_flat_basis(basis_flat=basis, flux=flux, operator_kwargs={"state_dim": "region"})
 
     state = _make_simple_state_trace(region_dim="region", draw_dim="draw", chain_dim="chain")
 
@@ -752,7 +756,7 @@ def test_multisource_sensitivity_matches_legacy_padded_conversion_smoke():
     flux = xr.ones_like(basis, dtype=float)
 
     # New gathered H: MultiSourceBucketBasisOperator under the wrapper
-    bf = BasisFunctions.from_multi_source_basis_flat(
+    bf = BasisFunctions.from_multi_source_flat_basis(
         basis_flat=basis_by_source, flux=flux, operator_kwargs={"state_dim": "region"}
     )
     H_new = bf.sensitivity(fp_x_flux_sectoral)
@@ -792,7 +796,7 @@ def test_basis_functions_from_fp_all_flat_basis(tac_ch4_data_args):
     flux = fp_all[".flux"][basis_name].data["flux"]
     basis_flat = xr.ones_like(flux, dtype=int).rename("basis")
 
-    bf = BasisFunctions.from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
+    bf = basis_functions_from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
 
     assert isinstance(bf, BasisFunctions)
     assert bf.operator.meta.state_dim == "region"
@@ -822,7 +826,7 @@ def test_basis_functions_from_fp_all_sums_fluxes_non_sectoral():
         ".split_by_sectors": False,
     }
 
-    bf = BasisFunctions.from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
+    bf = basis_functions_from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
 
     assert isinstance(bf, BasisFunctions)
     assert "source" not in bf.flux.dims
@@ -851,7 +855,7 @@ def test_basis_functions_from_fp_all_stacks_fluxes_sectoral():
         ".split_by_sectors": True,
     }
 
-    bf = BasisFunctions.from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
+    bf = basis_functions_from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
 
     assert isinstance(bf, BasisFunctions)
     assert "source" in bf.flux.dims
@@ -873,7 +877,7 @@ def test_basis_functions_from_fp_all_uses_legacy_multisource_fallback():
             "b": (2.0 * xr.ones_like(basis_flat, dtype=float)).rename("flux"),
         },
     }
-    bf = BasisFunctions.from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
+    bf = basis_functions_from_fp_all_flat_basis(fp_all=fp_all, basis_flat=basis_flat)
 
     assert "source" in bf.flux.dims
     assert list(bf.flux.source.values) == ["a", "b"]
@@ -929,7 +933,7 @@ def test_save_basis_datatree_roundtrip(tmp_path):
     """Saving DataTree basis output is readable via BasisFunctions.from_datatree."""
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
     flux = xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float).rename("flux")
-    bf = BasisFunctions.from_basis_flat(
+    bf = BasisFunctions.from_flat_basis(
         basis_flat=basis_flat,
         flux=flux,
         operator_kwargs={"state_dim": "region"},
@@ -958,7 +962,7 @@ def test_save_basis_legacy_and_datatree_filenames(tmp_path):
     """Legacy and DataTree writers both produce expected output files."""
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
     flux = xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float).rename("flux")
-    bf = BasisFunctions.from_basis_flat(
+    bf = BasisFunctions.from_flat_basis(
         basis_flat=basis_flat,
         flux=flux,
         operator_kwargs={"state_dim": "region"},
@@ -992,7 +996,7 @@ def test_load_basis_functions_prefers_datatree_schema(tmp_path):
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
     serialized_flux = xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float).rename("flux")
     current_flux = (2.0 * xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float)).rename("flux")
-    bf = BasisFunctions.from_basis_flat(
+    bf = BasisFunctions.from_flat_basis(
         basis_flat=basis_flat,
         flux=serialized_flux,
         operator_kwargs={"state_dim": "region"},
@@ -1028,7 +1032,7 @@ def test_datatree_basis_artifact_requires_legacy_state_labels_until_fp_sensitivi
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
     basis_for_operator = basis_flat.isel(time=0, drop=True)
     flux = xr.ones_like(basis_for_operator, dtype=float).rename("flux")
-    bf = BasisFunctions.from_basis_flat(
+    bf = BasisFunctions.from_flat_basis(
         basis_flat=basis_flat,
         flux=flux,
         region_labels="range1",
@@ -1089,7 +1093,7 @@ def test_load_basis_functions_falls_back_to_legacy_flat(tmp_path):
         basis_directory=tmp_path,
     )
 
-    expected = BasisFunctions.from_basis_flat(
+    expected = BasisFunctions.from_flat_basis(
         basis_flat=loaded.flat_basis(),
         flux=flux,
         operator_kwargs={"state_dim": "region"},

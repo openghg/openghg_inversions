@@ -375,7 +375,7 @@ def prepare_inversion_data(
     flux = None
     if return_basis_objects:
         emissions_basis = basis_objects["emissions"]
-        basis = emissions_basis.basis_matrix(state_dim="region", state_coord=inv_inputs.region)
+        basis = emissions_basis.legacy_basis_matrix(state_dim="region", state_coord=inv_inputs.region)
         flux = emissions_basis.flux
 
     return PreparedInversionData(

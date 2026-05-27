@@ -6,7 +6,12 @@ from typing import Literal
 
 import xarray as xr
 
-from .basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
+from .basis_functions import (
+    BASIS_ARTIFACT_SOURCE_ATTR,
+    BasisFunctions,
+    basis_functions_from_fp_all_flat_basis,
+    flux_from_fp_all,
+)
 from ._functions import basis_functions, fixed_outer_regions_basis, basis, openghginv_path
 from ._helpers import fp_sensitivity_from_basis_functions, bc_sensitivity
 
@@ -134,7 +139,7 @@ def basis_functions_wrapper(
             ) from e
         print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
         print("Using generated in-memory basis artifact.")
-        basis_functions_object = BasisFunctions.from_fp_all_flat_basis(
+        basis_functions_object = basis_functions_from_fp_all_flat_basis(
             fp_all=fp_all,
             basis_flat=basis_data_array,
             metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
@@ -152,7 +157,7 @@ def basis_functions_wrapper(
             fp_all, start_date, domain, emissions_name, nbasis, country_directory=country_directory
         )
         print("Using generated in-memory basis artifact.")
-        basis_functions_object = BasisFunctions.from_fp_all_flat_basis(
+        basis_functions_object = basis_functions_from_fp_all_flat_basis(
             fp_all=fp_all,
             basis_flat=basis_data_array,
             metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
@@ -240,7 +245,7 @@ def load_basis_functions(
             )
         basis_functions = _load_basis_datatree(datatree_files[0])
         print(f"Loaded DataTree basis artifact: {datatree_files[0]}")
-        current_flux = BasisFunctions.flux_from_fp_all(fp_all)
+        current_flux = flux_from_fp_all(fp_all)
         return basis_functions.with_flux(current_flux).with_metadata({BASIS_ARTIFACT_SOURCE_ATTR: "datatree"})
 
     basis_data_array = basis(
@@ -249,7 +254,7 @@ def load_basis_functions(
         basis_directory=str(basis_directory) if isinstance(basis_directory, Path) else basis_directory,
     ).basis
     print(f"Loaded legacy flat basis artifact for basis_case={basis_case!r}, domain={domain!r}.")
-    return BasisFunctions.from_fp_all_flat_basis(
+    return basis_functions_from_fp_all_flat_basis(
         fp_all=fp_all,
         basis_flat=basis_data_array,
         metadata={BASIS_ARTIFACT_SOURCE_ATTR: "legacy_flat"},

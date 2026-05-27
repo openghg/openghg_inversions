@@ -88,7 +88,7 @@ def _validate_legacy_basis_state(fp_data: dict, basis_functions: BasisFunctions)
     """Ensure legacy H construction and retained basis describe the same state vector."""
     site = next(key for key in fp_data if not str(key).startswith("."))
     h_region = fp_data[site]["H"].coords.get("region")
-    basis_region = basis_functions.basis_matrix(state_dim="region").coords.get("region")
+    basis_region = basis_functions.legacy_basis_matrix(state_dim="region").coords.get("region")
     if h_region is None or basis_region is None or h_region.identical(basis_region):
         return
 

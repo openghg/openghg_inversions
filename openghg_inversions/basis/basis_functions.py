@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 from openghg.analyse._utils import match_dataset_dims, stack_datasets
+from typing_extensions import Self
 
 from openghg_inversions.array_ops import (
     concat_data_arrays,
@@ -53,7 +54,7 @@ class FluxWeightedBasis:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_basis_flat(
+    def from_flat_basis(
         cls,
         basis_flat: xr.DataArray,
         flux: xr.DataArray,
@@ -87,26 +88,7 @@ class FluxWeightedBasis:
         return cls(operator=operator, flux=flux, metadata=dict(metadata or {}))
 
     @classmethod
-    def from_flat_basis(
-        cls,
-        basis_flat: xr.DataArray,
-        flux: xr.DataArray,
-        *,
-        region_labels: RegionLabels = "range0",
-        operator_kwargs: Mapping[str, Any] | None = None,
-        metadata: Mapping[str, Any] | None = None,
-    ) -> FluxWeightedBasis:
-        """Construct from a legacy flat basis array."""
-        return cls.from_basis_flat(
-            basis_flat=basis_flat,
-            flux=flux,
-            region_labels=region_labels,
-            operator_kwargs=operator_kwargs,
-            metadata=metadata,
-        )
-
-    @classmethod
-    def from_multi_source_basis_flat(
+    def from_multi_source_flat_basis(
         cls,
         basis_flat: Mapping[str, xr.DataArray],
         flux: xr.DataArray | Mapping[str, xr.DataArray],
@@ -136,54 +118,11 @@ class FluxWeightedBasis:
 
         return cls(operator=operator, flux=flux, metadata=dict(metadata or {}))
 
-    @classmethod
-    def from_fp_all_flat_basis(
-        cls,
-        *,
-        fp_all: dict,
-        basis_flat: xr.DataArray | Mapping[str, xr.DataArray],
-        metadata: Mapping[str, Any] | None = None,
-    ) -> FluxWeightedBasis:
-        """Construct a basis object from legacy wrapper inputs."""
-        flux = cls.flux_from_fp_all(fp_all)
-        if isinstance(basis_flat, Mapping):
-            return cls.from_multi_source_basis_flat(
-                basis_flat=basis_flat,
-                flux=flux,
-                operator_kwargs={"state_dim": "region"},
-                metadata=metadata,
-            )
-
-        return cls.from_basis_flat(
-            basis_flat=basis_flat,
-            flux=flux,
-            operator_kwargs={"state_dim": "region"},
-            metadata=metadata,
-        )
-
-    @classmethod
-    def flux_from_fp_all(cls, fp_all: dict) -> xr.DataArray:
-        """Build the representative flux field from a legacy ``fp_all`` object."""
-        if ".flux" not in fp_all or not fp_all[".flux"]:
-            raise ValueError("Cannot construct BasisFunctions object: fp_all['.flux'] is missing or empty.")
-
-        flux_entries = fp_all[".flux"]
-        flux_arrays = {
-            key: _extract_flux_dataarray(value, flux_key=key) for key, value in flux_entries.items()
-        }
-
-        if _is_multi_source_workflow(fp_all):
-            flux = _stack_flux_sources_with_alignment(flux_arrays)
-        else:
-            flux = _combine_flux_sources_like_modelscenario(flux_arrays)
-
-        return flux
-
-    def with_flux(self, flux: xr.DataArray) -> FluxWeightedBasis:
+    def with_flux(self, flux: xr.DataArray) -> Self:
         """Return a copy with the same operator and metadata but a different flux."""
         return type(self)(operator=self.operator, flux=flux, metadata=dict(self.metadata))
 
-    def with_metadata(self, metadata: Mapping[str, Any]) -> FluxWeightedBasis:
+    def with_metadata(self, metadata: Mapping[str, Any]) -> Self:
         """Return a copy with additional metadata."""
         return type(self)(
             operator=self.operator,
@@ -198,7 +137,7 @@ class FluxWeightedBasis:
         return str(source) if source is not None else None
 
     def flat_basis(self) -> xr.DataArray | dict[str, xr.DataArray]:
-        """Return the flattened basis representation used by legacy H construction."""
+        """Return the flattened basis representation used by legacy ``fp_sensitivity``."""
         basis_flat = getattr(self.operator, "basis_flat", None)
         if isinstance(basis_flat, xr.DataArray):
             return basis_flat.rename("basis")
@@ -206,13 +145,19 @@ class FluxWeightedBasis:
             return {key: value.rename("basis") for key, value in basis_flat.items()}
         raise AttributeError("Operator does not expose `basis_flat`.")
 
-    def basis_matrix(
+    def legacy_basis_matrix(
         self,
         *,
         state_dim: str | None = None,
         state_coord: xr.DataArray | None = None,
     ) -> xr.DataArray:
-        """Return the basis matrix, optionally translated to a requested state dimension."""
+        """Return a basis matrix adapted to legacy region-coordinate callers.
+
+        This is a compatibility adapter for current preparation/postprocessing
+        code that still expects an explicit ``basis(region, lat, lon)`` view.
+        Remove it once issue #429 replaces ``fp_sensitivity`` with
+        ``BasisFunctions.sensitivity`` throughout the preparation path.
+        """
         basis = self.operator.basis_matrix
         current_state_dim = self.operator.meta.state_dim
         if state_dim is not None and state_dim != current_state_dim:
@@ -374,6 +319,56 @@ class FluxWeightedBasis:
             return fig, axes_flat
 
         raise TypeError(f"Unexpected type for operator.basis_flat: {type(basis_flat)!r}")
+
+
+def basis_functions_from_fp_all_flat_basis(
+    *,
+    fp_all: dict,
+    basis_flat: xr.DataArray | Mapping[str, xr.DataArray],
+    metadata: Mapping[str, Any] | None = None,
+) -> FluxWeightedBasis:
+    """Construct a basis object from legacy wrapper inputs.
+
+    This is a temporary compatibility helper for the current ``fp_sensitivity``
+    path. Remove it when issue #429 makes ``BasisFunctions.sensitivity`` the
+    source of prepared sensitivities.
+    """
+    flux = flux_from_fp_all(fp_all)
+    if isinstance(basis_flat, Mapping):
+        return FluxWeightedBasis.from_multi_source_flat_basis(
+            basis_flat=basis_flat,
+            flux=flux,
+            operator_kwargs={"state_dim": "region"},
+            metadata=metadata,
+        )
+
+    return FluxWeightedBasis.from_flat_basis(
+        basis_flat=basis_flat,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+        metadata=metadata,
+    )
+
+
+def flux_from_fp_all(fp_all: dict) -> xr.DataArray:
+    """Build representative flux from legacy ``fp_all`` side-channel data.
+
+    This is a temporary compatibility helper for the current ``fp_sensitivity``
+    path. Remove it when issue #429 makes ``BasisFunctions.sensitivity`` the
+    source of prepared sensitivities.
+    """
+    if ".flux" not in fp_all or not fp_all[".flux"]:
+        raise ValueError("Cannot construct BasisFunctions object: fp_all['.flux'] is missing or empty.")
+
+    flux_entries = fp_all[".flux"]
+    flux_arrays = {key: _extract_flux_dataarray(value, flux_key=key) for key, value in flux_entries.items()}
+
+    if _is_multi_source_workflow(fp_all):
+        flux = _stack_flux_sources_with_alignment(flux_arrays)
+    else:
+        flux = _combine_flux_sources_like_modelscenario(flux_arrays)
+
+    return flux
 
 
 def _serialisable_basis_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
