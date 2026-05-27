@@ -120,6 +120,15 @@ def test_make_paris_outputs(inv_out, europe_country_file, tmpdir, offset):
     if offset:
         assert "Yapriori_bias" in conc_outs
 
+    assert conc_outs.attrs["prior_factor_adjustment_applied"] in {"true", "false"}
+
+    if "Yobs_prior_factor" in conc_outs and "Yobs_prior_upper_level_factor" in conc_outs:
+        for name in ["Yobs", "Yapost", "Yapriori", "qYapost", "qYapriori"]:
+            assert f"{name}_modeled" in conc_outs
+
+        factor = conc_outs["Yobs_prior_factor"] + conc_outs["Yobs_prior_upper_level_factor"]
+        xr.testing.assert_allclose(conc_outs["Yapriori"] - conc_outs["Yapriori_modeled"], factor)
+
     # check we can write to netCDF
     flux_outs.to_netcdf(tmpdir / "flux.nc")
     conc_outs.to_netcdf(tmpdir / "conc.nc")

@@ -3,6 +3,7 @@ import logging
 from unittest import mock
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 from openghg.dataobjects import ObsData
@@ -14,6 +15,8 @@ from openghg_inversions.inversion_data.serialise import (
     fp_all_from_dataset,
     make_combined_scenario,
     load_merged_data,
+    fp_all_to_datatree,
+    datatree_to_fp_all,
 )
 from openghg_inversions.inversion_data.get_data import (
     data_processing_surface_notracer,
@@ -79,6 +82,46 @@ def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir):
     fp_all_reloaded = load_merged_data(merged_data_dir=merged_data_dir, merged_data_name=merged_data_name)
 
     xr.testing.assert_allclose(fp_all["TAC"].load(), fp_all_reloaded["TAC"])
+
+
+def test_datatree_scenarios_preserved_in_serialisation_roundtrip():
+    time = xr.DataArray(pd.date_range("2019-01-01", periods=2), dims=["time"], name="time")
+    lat = xr.DataArray([0.0, 1.0], dims=["lat"], name="lat")
+    lon = xr.DataArray([0.0, 1.0], dims=["lon"], name="lon")
+
+    standard = xr.Dataset(
+        {
+            "fp": xr.DataArray(np.ones((2, 2, 2)), coords=[lat, lon, time], dims=["lat", "lon", "time"]),
+            "mf": xr.DataArray(np.ones(2), coords=[time], dims=["time"]),
+        }
+    )
+    inner = xr.Dataset(
+        {
+            "fp": xr.DataArray(np.ones((2, 2, 2)) * 2, coords=[lat, lon, time], dims=["lat", "lon", "time"]),
+            "mf": xr.DataArray(np.ones(2) * 2, coords=[time], dims=["time"]),
+        }
+    )
+
+    scenario_dt = xr.DataTree.from_dict({"/standard": standard, "/inner": inner})
+    fp_all = {".species": "ch4", "TAC": scenario_dt}
+
+    dt_first = fp_all_to_datatree(fp_all)
+    fp_all_reloaded = datatree_to_fp_all(dt_first)
+
+    assert isinstance(fp_all_reloaded["TAC"], xr.DataTree)
+    assert "standard" in fp_all_reloaded["TAC"].children
+    assert "inner" in fp_all_reloaded["TAC"].children
+
+    dt_second = fp_all_to_datatree(fp_all_reloaded)
+
+    xr.testing.assert_identical(
+        dt_first["/scenarios/TAC/standard"].to_dataset(),
+        dt_second["/scenarios/TAC/standard"].to_dataset(),
+    )
+    xr.testing.assert_identical(
+        dt_first["/scenarios/TAC/inner"].to_dataset(),
+        dt_second["/scenarios/TAC/inner"].to_dataset(),
+    )
 
 
 def test_missing_data_at_one_site(tac_ch4_data_args):

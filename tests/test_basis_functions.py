@@ -4,7 +4,7 @@ import xarray as xr
 
 from openghg_inversions.basis._functions import basis, _flux_fp_from_fp_all, _mean_fp_times_mean_flux
 from openghg_inversions.basis import bucketbasisfunction, quadtreebasisfunction, fixed_outer_regions_basis
-from openghg_inversions.basis._helpers import fp_sensitivity
+from openghg_inversions.basis._helpers import fp_sensitivity, bc_sensitivity
 from openghg_inversions.inversion_data import data_processing_surface_notracer
 
 from helpers import basis_function, footprint
@@ -172,3 +172,94 @@ def test_fp_sensitivity_two_flux_sectors_two_basis_funcs():
 
         # the footprint values at time 0 are 1, and at time 1 are 2
         np.testing.assert_allclose(2 * h.isel(time=0), h.isel(time=1))
+
+
+def test_fp_sensitivity_inner_requires_datatree_entry():
+    nlat, nlon = 4, 4
+    basis_func = basis_function(nlat, nlon, 2)
+    inner_basis_func = basis_function(nlat, nlon, 2)
+    fp = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
+
+    fp_and_data = {"TAC": xr.Dataset({"fp_x_flux": fp}), ".flux": {"a": 1}}
+
+    with np.testing.assert_raises(ValueError):
+        fp_sensitivity(fp_and_data, basis_func, inner_basis_func=inner_basis_func)
+
+
+def test_fp_sensitivity_masks_outer_where_inner_has_coverage():
+    time = pd.date_range("2019-01-01", periods=2)
+    lat = np.array([0.0, 1.0])
+    lon = np.array([0.0, 1.0])
+
+    outer_vals = np.ones((2, 2, 2), dtype=float)
+    inner_vals = np.zeros((2, 2, 2), dtype=float)
+    inner_vals[0, 0, :] = 2.0
+
+    outer_fp = xr.DataArray(outer_vals, coords=[lat, lon, time], dims=["lat", "lon", "time"])
+    inner_fp = xr.DataArray(inner_vals, coords=[lat, lon, time], dims=["lat", "lon", "time"])
+
+    basis = xr.DataArray(np.ones((2, 2), dtype=int), coords=[lat, lon], dims=["lat", "lon"])
+    inner_basis = xr.DataArray(np.ones((2, 2), dtype=int), coords=[lat, lon], dims=["lat", "lon"])
+
+    fp_and_data = {
+        "TAC": xr.DataTree.from_dict(
+            {
+                "/standard": xr.Dataset({"fp_x_flux": outer_fp}),
+                "/inner": xr.Dataset({"fp_x_flux": inner_fp}),
+            }
+        ),
+        ".flux": {"a": 1},
+    }
+
+    result = fp_sensitivity(fp_and_data, basis, inner_basis_func=inner_basis)
+
+    h_outer = result["TAC"]["standard"].ds["H"].squeeze("region")
+
+    # Total outer contribution is 4 cells before masking. One cell overlaps
+    # with inner and is forced to zero, so the expected outer sum is 3.
+    np.testing.assert_allclose(h_outer.values, np.array([3.0, 3.0]))
+
+
+def test_fp_sensitivity_preserves_empty_root_standard_child():
+    nlat, nlon = 4, 4
+    basis_func = basis_function(nlat, nlon, 2)
+    fp = footprint(nlat, nlon, "2019-01-01", "2019-01-02", 2)
+
+    fp_and_data = {
+        "TAC": xr.DataTree.from_dict({"/standard": xr.Dataset({"fp_x_flux": fp})}),
+        ".flux": {"a": 1},
+    }
+
+    result = fp_sensitivity(fp_and_data, basis_func)
+
+    assert isinstance(result["TAC"], xr.DataTree)
+    assert "standard" in result["TAC"].children
+    assert len(result["TAC"].ds.data_vars) == 0
+    assert "H" in result["TAC"]["standard"].ds
+
+
+def test_bc_sensitivity_writes_hbc_to_standard_child():
+    time = pd.date_range("2019-01-01", periods=2)
+    lat = np.array([0.0, 1.0])
+    lon = np.array([0.0, 1.0])
+    height = np.array([100.0])
+
+    base = xr.Dataset(
+        {
+            "bc_n": xr.DataArray(np.ones((2, 2, 1, 2)), coords=[lat, lon, height, time], dims=["lat", "lon", "height", "time"]),
+            "bc_e": xr.DataArray(np.ones((2, 2, 1, 2)), coords=[lat, lon, height, time], dims=["lat", "lon", "height", "time"]),
+            "bc_s": xr.DataArray(np.ones((2, 2, 1, 2)), coords=[lat, lon, height, time], dims=["lat", "lon", "height", "time"]),
+            "bc_w": xr.DataArray(np.ones((2, 2, 1, 2)), coords=[lat, lon, height, time], dims=["lat", "lon", "height", "time"]),
+        }
+    )
+
+    fp_and_data = {
+        "TAC": xr.DataTree.from_dict({"/standard": base}),
+        ".flux": {"a": 1},
+    }
+
+    result = bc_sensitivity(fp_and_data, domain="EUROPE", basis_case="NESW")
+
+    assert isinstance(result["TAC"], xr.DataTree)
+    assert "H_bc" in result["TAC"]["standard"].ds
+    assert "H_bc" not in result["TAC"].ds
