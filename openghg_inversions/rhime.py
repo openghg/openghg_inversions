@@ -16,13 +16,10 @@ import pymc as pm
 import xarray as xr
 from openghg.util import split_function_inputs
 
-from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
-from openghg_inversions.basis import basis_functions_wrapper
+from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.config import config
-from openghg_inversions.filters import filtering
-from openghg_inversions.inversion_data import data_processing_surface_notracer, load_merged_data
-from openghg_inversions.inversion_inputs import make_inv_inputs
-from openghg_inversions.models.rhime import (
+from openghg_inversions.inversion_data import prepare_inversion_data
+from openghg_inversions.models import (
     DEFAULT_X_PRIOR,
     build_rhime_model,
     build_rhime_multisector_model,
@@ -32,6 +29,7 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.utils import ncdf_encoding
 
 OutputFormat = Literal["none", "inv_out", "basic", "paris"]
+MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | int | float
 
 
 @dataclass(frozen=True)
@@ -431,7 +429,7 @@ def _prepare_data(
     species: str,
     sites: list[str],
     domain: str,
-    averaging_period: list[str | None],
+    averaging_period: list[str | None] | str | None,
     start_date: str,
     end_date: str,
     output_name: str,
@@ -471,137 +469,73 @@ def _prepare_data(
     merged_data_dir: str | None = None,
     merged_data_name: str | None = None,
     basis_output_path: str | None = None,
-    min_error: Literal["percentile", "residual"] | None | int | float = 0.0,
+    min_error: MinErrorConfig = 0.0,
     min_error_options: dict | None = None,
 ) -> _PreparedRhimeData:
     """Gather data, apply basis functions, filter observations, and make canonical inputs.
 
-    This is the only RHIME runner stage that should know about the legacy
-    ``fp_all``/``fp_data`` containers. It returns explicit modern objects needed
-    downstream.
+    This delegates the legacy ``fp_all``/``fp_data`` preparation to the shared
+    inversion-data helper and returns the explicit modern objects needed
+    downstream by RHIME.
     """
-    if use_tracer:
-        raise ValueError("RHIME public runners do not support tracer inversions in issue #398.")
-
-    rerun_merge = True
-    if reload_merged_data and merged_data_dir is not None:
-        try:
-            fp_all = load_merged_data(merged_data_dir, species, start_date, output_name, merged_data_name)
-        except ValueError as exc:
-            print(f"{exc}, re-running data merge.")
-        else:
-            fp_all[".split_by_sectors"] = split_by_sectors
-            rerun_merge = False
-    elif reload_merged_data:
-        print("Cannot reload merged data without `merged_data_dir`; re-running data merge.")
-
-    if rerun_merge:
-        (
-            fp_all,
-            sites,
-            inlet,
-            fp_height,
-            instrument,
-            averaging_period,
-        ) = data_processing_surface_notracer(
-            species=species,
-            sites=sites,
-            domain=domain,
-            averaging_period=averaging_period,
-            start_date=start_date,
-            end_date=end_date,
-            obs_data_level=obs_data_level,
-            platform=platform,
-            met_model=met_model,
-            fp_model=fp_model,
-            fp_height=fp_height,
-            fp_species=fp_species,
-            emissions_name=flux_sources,
-            inlet=inlet,
-            instrument=instrument,
-            max_level=max_level,
-            calibration_scale=calibration_scale,
-            use_bc=use_bc,
-            bc_input=bc_input,
-            bc_store=bc_store,
-            obs_store=obs_store,
-            footprint_store=footprint_store,
-            emissions_store=emissions_store,
-            split_by_sectors=split_by_sectors,
-            averagingerror=averaging_error,
-            save_merged_data=save_merged_data,
-            merged_data_name=merged_data_name,
-            merged_data_dir=merged_data_dir,
-            output_name=output_name,
-        )
-
-    fp_data, basis_objects = basis_functions_wrapper(
-        basis_algorithm=basis_algorithm,
-        nbasis=nbasis,
+    prepared = prepare_inversion_data(
+        species=species,
+        sites=sites,
+        domain=domain,
+        averaging_period=averaging_period,
+        start_date=start_date,
+        end_date=end_date,
+        output_name=output_name,
+        flux_sources=flux_sources,
+        split_by_sectors=split_by_sectors,
+        bc_store=bc_store,
+        obs_store=obs_store,
+        footprint_store=footprint_store,
+        emissions_store=emissions_store,
+        met_model=met_model,
+        fp_model=fp_model,
+        fp_height=fp_height,
+        fp_species=fp_species,
+        inlet=inlet,
+        instrument=instrument,
+        max_level=max_level,
+        calibration_scale=calibration_scale,
+        obs_data_level=obs_data_level,
+        platform=platform,
+        use_tracer=use_tracer,
+        use_bc=use_bc,
         fp_basis_case=fp_basis_case,
-        bc_basis_case=bc_basis_case,
         basis_directory=basis_directory,
+        bc_basis_case=bc_basis_case,
         bc_basis_directory=bc_basis_directory,
         country_directory=country_directory,
-        fp_all=fp_all,
-        use_bc=use_bc,
-        species=species,
-        domain=domain,
-        start_date=start_date,
-        fix_outer_regions=fix_basis_outer_regions,
-        emissions_name=flux_sources,
-        outputname=output_name,
-        output_path=basis_output_path,
+        bc_input=bc_input,
+        basis_algorithm=basis_algorithm,
+        nbasis=nbasis,
+        filters=filters,
+        fix_basis_outer_regions=fix_basis_outer_regions,
+        averaging_error=averaging_error,
+        bc_freq=bc_freq,
+        sigma_freq=sigma_freq,
+        reload_merged_data=reload_merged_data,
+        save_merged_data=save_merged_data,
+        merged_data_dir=merged_data_dir,
+        merged_data_name=merged_data_name,
+        basis_output_path=basis_output_path,
+        min_error=min_error,
+        min_error_options=min_error_options,
         return_basis_objects=True,
     )
 
-    if filters is not None:
-        try:
-            fp_data = filtering(fp_data, filters)
-        except ValueError:
-            for site in sites:
-                fp_data[site] = fp_data[site].compute()
-            fp_data = filtering(fp_data, filters)
-
-    dropped_sites = []
-    for site in sites:
-        if fp_data[site].time.values.shape[0] == 0:
-            dropped_sites.append(site)
-            del fp_data[site]
-    if dropped_sites:
-        sites = [site for site in sites if site not in dropped_sites]
-        print(f"\nDropping {dropped_sites} sites as no data passed the filtering.\n")
-
-    for site in sites:
-        fp_data[site].attrs["Domain"] = domain
-
-    min_error_options = min_error_options or {}
-    if isinstance(min_error, int):
-        min_error = float(min_error)
-    inv_inputs = make_inv_inputs(
-        fp_data,
-        sites=sites,
-        bc_freq=bc_freq,
-        sigma_freq=sigma_freq,
-        min_error=min_error,
-        min_error_per_site=min_error_options.get("by_site", False),
-        start_date=start_date,
-    )
-
-    if np.isnan(inv_inputs.H.values).any():
-        warnings.warn(f"H matrix contains {np.isnan(inv_inputs.H.values).flatten().sum()} NaN values")
-    if use_bc and "H_bc" in inv_inputs and np.isnan(inv_inputs.H_bc.values).any():
-        warnings.warn(f"H_bc matrix contains {np.isnan(inv_inputs.H_bc.values).flatten().sum()} NaN values")
-
-    basis = get_xr_dummies(fp_data[".basis"], cat_dim="region", categories=inv_inputs.region)
-    flux = basis_objects["emissions"].flux
+    if prepared.inv_inputs is None or prepared.basis is None or prepared.flux is None:
+        raise RuntimeError("RHIME data preparation did not produce model inputs, basis, and flux.")
 
     return _PreparedRhimeData(
-        inv_inputs=inv_inputs,
-        basis=basis,
-        flux=flux,
-        sites=sites,
-        averaging_period=averaging_period,
+        inv_inputs=prepared.inv_inputs,
+        basis=prepared.basis,
+        flux=prepared.flux,
+        sites=prepared.sites,
+        averaging_period=prepared.averaging_period,
     )
 
 
@@ -978,7 +912,7 @@ def _run_common(
     species = params.pop("species")
     sites = _as_list(params.pop("sites")) or []
     domain = params.pop("domain")
-    averaging_period = _as_list(params.pop("averaging_period")) or []
+    averaging_period = params.pop("averaging_period")
     start_date = params.pop("start_date")
     end_date = params.pop("end_date")
     output_path = params.pop("output_path", None)

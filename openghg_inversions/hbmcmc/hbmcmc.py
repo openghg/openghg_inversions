@@ -28,7 +28,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 import time
-from typing import Literal
+from typing import Literal, cast
 import warnings
 
 import numpy as np
@@ -39,17 +39,11 @@ from openghg.util import split_function_inputs
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 from openghg_inversions.models.priors import lognormal_mu_sigma
 from openghg_inversions.utils import ncdf_encoding
-from openghg_inversions.basis import basis_functions_wrapper
-from openghg_inversions.inversion_data import (
-    data_processing_surface_notracer,
-    load_merged_data,
-)
-from openghg_inversions.filters import filtering
+from openghg_inversions.inversion_data import prepare_inversion_data
 from openghg_inversions.postprocessing.inversion_output import (
     InversionOutput,
     make_inv_out_for_fixed_basis_mcmc,
 )
-from openghg_inversions.inversion_inputs import make_inv_inputs
 
 
 def update_log_normal_prior(prior):
@@ -68,61 +62,7 @@ def update_log_normal_prior(prior):
     return prior
 
 
-# ----------------------------------------
-# Preparing inputs
-# ----------------------------------------
-
-
-def _prepare_runtime_inv_inputs(
-    *,
-    fp_data,
-    sites,
-    start_date,
-    bc_freq,
-    sigma_freq,
-    min_error,
-    calculate_min_error,
-    min_error_options,
-) -> xr.Dataset:
-    """Create the dataset consumed by the current inferpymc runtime path.
-
-    Args:
-        fp_data: Forward-model datasets keyed by site name.
-        sites: Sites to include in the inversion inputs.
-        start_date: Inversion start date used when anchoring time-derived
-            indices.
-        bc_freq: Frequency used for BC grouping.
-        sigma_freq: Frequency used for sigma grouping.
-        min_error: Minimum-error configuration passed through to
-            ``make_inv_inputs``.
-        calculate_min_error: Deprecated compatibility argument. When provided,
-            its value overrides ``min_error``.
-        min_error_options: Extra options controlling minimum-error
-            construction.
-
-    Returns:
-        Dataset produced by ``make_inv_inputs`` for the active runtime path.
-    """
-    if calculate_min_error is not None:
-        warnings.warn(
-            "`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead."
-        )
-        min_error = calculate_min_error
-
-    min_error_options = min_error_options or {}
-
-    return make_inv_inputs(
-        fp_data,
-        sites=sites,
-        bc_freq=bc_freq,
-        sigma_freq=sigma_freq,
-        min_error=min_error,
-        min_error_per_site=min_error_options.get("by_site", False),
-        start_date=start_date,
-    )
-
-
-def _extract_post_process_args(inv_inputs: xr.Dataset) -> dict[str, np.ndarray]:
+def _extract_post_process_args(inv_inputs: xr.Dataset) -> dict[str, object]:
     """Extract legacy-shaped postprocessing arrays from inversion inputs.
 
     NOTE: Transitional compatibility bridge. This extracts legacy-shaped arrays
@@ -226,7 +166,7 @@ class _OutputContext:
     species: str
     domain: str
     start_date: str
-    averaging_period: list[str]
+    averaging_period: list[str | None]
     use_bc: bool
     country_file: str | None
     paris_postprocessing_kwargs: dict | None
@@ -291,7 +231,7 @@ def _build_output_context(
     species: str,
     domain: str,
     start_date: str,
-    averaging_period: list[str],
+    averaging_period: list[str | None],
     use_bc: bool,
     country_file: str | None,
     paris_postprocessing_kwargs: dict | None,
@@ -564,7 +504,7 @@ def fixedbasisMCMC(
     species: str,
     sites: list[str],
     domain: str,
-    averaging_period: list[str],
+    averaging_period: list[str | None],
     start_date: str,
     end_date: str,
     outputpath: str,
@@ -620,7 +560,7 @@ def fixedbasisMCMC(
     basis_output_path: str | None = None,
     save_trace: str | Path | bool = False,
     save_inversion_output: str | Path | bool = False,
-    min_error: Literal["percentile", "residual"] | None | float = 0.0,
+    min_error: Literal["percentile", "residual"] | dict[str, float] | None | float = 0.0,
     calculate_min_error: Literal["percentile", "residual"] | None = None,
     min_error_options: dict | None = None,
     output_format: Literal[
@@ -771,164 +711,85 @@ def fixedbasisMCMC(
     else:
         is_column = False
 
-    output_format = _resolve_output_format(
-        output_format,
-        paris_postprocessing=paris_postprocessing,
-        is_column=is_column,
+    output_format = cast(
+        Literal[
+            "hbmcmc",
+            "hbmcmc_postprocessing",
+            "paris",
+            "basic",
+            "merged_data",
+            "inv_out",
+            "mcmc_args",
+            "mcmc_results",
+        ],
+        _resolve_output_format(
+            output_format,
+            paris_postprocessing=paris_postprocessing,
+            is_column=is_column,
+        ),
     )
-
-    rerun_merge = True
-
-    if output_format == "merged_data":
-        reload_merged_data = False
-
-    if reload_merged_data is True and merged_data_dir is not None:
-        try:
-            fp_all = load_merged_data(merged_data_dir, species, start_date, outputname, merged_data_name)
-        except ValueError as e:
-            # couldn't find merged data
-            print(f"{e}, re-running data merge.")
-        else:
-            print("Successfully read in merged data.\n")
-            rerun_merge = False
-
-            # check if sites were dropped when merged data was saved
-            sites_merged = [s for s in fp_all if "." not in s]
-
-            if len(sites) != len(sites_merged):
-                keep_i = [i for i, s in enumerate(sites) if s in sites_merged]
-                dropped_sites = [s for s in sites if s not in sites_merged]
-
-                sites = [s for i, s in enumerate(sites) if i in keep_i]
-                inlet = [s for i, s in enumerate(inlet) if i in keep_i]
-                fp_height = [s for i, s in enumerate(fp_height) if i in keep_i]
-                instrument = [s for i, s in enumerate(instrument) if i in keep_i]
-                max_level = [s for i, s in enumerate(max_level) if i in keep_i]
-                averaging_period = [s for i, s in enumerate(averaging_period) if i in keep_i]
-
-                print(
-                    f"\nDropping {dropped_sites} sites as they are not included in the merged data object.\n"
-                )
-
-    if reload_merged_data is True and merged_data_dir is None:
-        print("Cannot reload merged data without a value for `merged_data_dir`; re-running data merge.")
 
     start_data = time.time()
-
-    # Get datasets for forward simulations
-    if rerun_merge:
-        if not use_tracer:
-            (
-                fp_all,
-                sites,
-                inlet,
-                fp_height,
-                instrument,
-                averaging_period,
-            ) = data_processing_surface_notracer(
-                species=species,
-                sites=sites,
-                domain=domain,
-                averaging_period=averaging_period,
-                start_date=start_date,
-                end_date=end_date,
-                obs_data_level=obs_data_level,
-                platform=platform,
-                met_model=met_model,
-                fp_model=fp_model,
-                fp_height=fp_height,
-                fp_species=fp_species,
-                emissions_name=emissions_name,
-                inlet=inlet,
-                instrument=instrument,
-                max_level=max_level,
-                calibration_scale=calibration_scale,
-                use_bc=use_bc,
-                bc_input=bc_input,
-                bc_store=bc_store,
-                obs_store=obs_store,
-                footprint_store=footprint_store,
-                emissions_store=emissions_store,
-                averagingerror=averaging_error,
-                save_merged_data=save_merged_data,
-                merged_data_name=merged_data_name,
-                merged_data_dir=merged_data_dir,
-                output_name=outputname,
-            )
-
-        elif use_tracer:
-            raise ValueError("Model does not currently include tracer model. Watch this space")
-
-        if output_format == "merged_data":
-            return fp_all  # type: ignore
-
-    # Basis function regions and sensitivity matrices
-    fp_data = basis_functions_wrapper(
-        basis_algorithm=basis_algorithm,
-        nbasis=nbasis,
+    prepared = prepare_inversion_data(
+        species=species,
+        sites=sites,
+        domain=domain,
+        averaging_period=averaging_period,
+        start_date=start_date,
+        end_date=end_date,
+        output_name=outputname,
+        flux_sources=emissions_name,
+        split_by_sectors=False,
+        bc_store=bc_store,
+        obs_store=obs_store,
+        footprint_store=footprint_store,
+        emissions_store=emissions_store,
+        met_model=met_model,
+        fp_model=fp_model,
+        fp_height=fp_height,
+        fp_species=fp_species,
+        inlet=inlet,
+        instrument=instrument,
+        max_level=max_level,
+        calibration_scale=calibration_scale,
+        obs_data_level=obs_data_level,
+        platform=platform,
+        use_tracer=use_tracer,
+        use_bc=use_bc,
         fp_basis_case=fp_basis_case,
-        bc_basis_case=bc_basis_case,
         basis_directory=basis_directory,
+        bc_basis_case=bc_basis_case,
         bc_basis_directory=bc_basis_directory,
         country_directory=country_directory,
-        fp_all=fp_all,
-        use_bc=use_bc,
-        species=species,
-        domain=domain,
-        start_date=start_date,
-        fix_outer_regions=fix_basis_outer_regions,
-        emissions_name=emissions_name,
-        outputname=outputname,
-        output_path=basis_output_path,
-    )
-
-    # Apply named filters to the data
-    if filters is not None:
-        try:
-            fp_data = filtering(fp_data, filters)
-        except ValueError:
-            # possible dask issue, but should be fixed
-            # https://github.com/openghg/openghg_inversions/issues/264
-            #
-            # Apply compute before filtering to avoid dask issue
-            for site in sites:
-                fp_data[site] = fp_data[site].compute()
-            fp_data = filtering(fp_data, filters)
-
-    # check for sites dropped by filtering
-    dropped_sites = []
-    for site in sites:
-        # check if some datasets are empty due to filtering
-        if fp_data[site].time.values.shape[0] == 0:
-            dropped_sites.append(site)
-            del fp_data[site]
-
-    if len(dropped_sites) != 0:
-        sites = [s for s in sites if s not in dropped_sites]
-        print(f"\nDropping {dropped_sites} sites as no data passed the filtering.\n")
-
-    for site in sites:
-        fp_data[site].attrs["Domain"] = domain
-
-    # Inverse models
-    if use_tracer:
-        raise ValueError("Model does not currently include tracer model. Watch this space")
-
-    inv_inputs = _prepare_runtime_inv_inputs(
-        fp_data=fp_data,
-        sites=sites,
-        start_date=start_date,
+        bc_input=bc_input,
+        basis_algorithm=basis_algorithm,
+        nbasis=nbasis,
+        filters=filters,
+        fix_basis_outer_regions=fix_basis_outer_regions,
+        averaging_error=averaging_error,
         bc_freq=bc_freq,
         sigma_freq=sigma_freq,
+        reload_merged_data=False if output_format == "merged_data" else reload_merged_data,
+        save_merged_data=save_merged_data,
+        merged_data_dir=merged_data_dir,
+        merged_data_name=merged_data_name,
+        basis_output_path=basis_output_path,
         min_error=min_error,
         calculate_min_error=calculate_min_error,
         min_error_options=min_error_options,
+        merged_data_only=output_format == "merged_data",
     )
 
-    if np.isnan(inv_inputs.H.values).any():
-        warnings.warn(f"Hx matrix contains {np.isnan(inv_inputs.H.values).flatten().sum()} NaN values")
-    if use_bc and "H_bc" in inv_inputs and np.isnan(inv_inputs.H_bc.values).any():
-        warnings.warn(f"Hbc matrix contains {np.isnan(inv_inputs.H_bc.values).flatten().sum()} NaN values")
+    if output_format == "merged_data":
+        return prepared.fp_all  # type: ignore
+
+    if prepared.fp_data is None or prepared.inv_inputs is None:
+        raise RuntimeError("Fixed-basis data preparation did not produce forward data and model inputs.")
+
+    fp_data = prepared.fp_data
+    inv_inputs = prepared.inv_inputs
+    sites = prepared.sites
+    averaging_period = prepared.averaging_period
 
     # TODO keep this config separate from mcmc_args in the future
     mcmc_config = {
@@ -1171,6 +1032,7 @@ def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: boo
         tune=tune,
         nchain=nchain,
         sigma_per_site=sigma_per_site,
+        emissions_name=None,
         add_offset=add_offset,
         rerun_file=ds_in,
     )

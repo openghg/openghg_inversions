@@ -6,10 +6,16 @@ import pymc as pm
 import pytest
 import xarray as xr
 
+import openghg_inversions.models as models
 import openghg_inversions.rhime as rhime_module
 from openghg_inversions.cli import main
+from openghg_inversions.inversion_data import PreparedInversionData, prepare_inversion_data
+from openghg_inversions.inversion_data.preparation import (
+    _drop_sites_missing_from_loaded_data,
+    _make_inv_inputs,
+)
 from openghg_inversions.inversion_inputs import make_inv_inputs
-from openghg_inversions.models.rhime import (
+from openghg_inversions.models import (
     build_rhime_model,
     build_rhime_multisector_model,
     safe_pymc_name,
@@ -108,6 +114,16 @@ def test_build_rhime_multisector_model_requires_multiple_sectors(
         )
 
 
+def test_models_exports_rhime_builders() -> None:
+    assert models.build_rhime_model is build_rhime_model
+    assert models.build_rhime_multisector_model is build_rhime_multisector_model
+    assert models.safe_pymc_name is safe_pymc_name
+    assert isinstance(models.DEFAULT_X_PRIOR, dict)
+    assert isinstance(models.DEFAULT_BC_PRIOR, dict)
+    assert isinstance(models.DEFAULT_SIGMA_PRIOR, dict)
+    assert isinstance(models.DEFAULT_OFFSET_PRIOR, dict)
+
+
 def test_resolve_flux_sources_prefers_new_name() -> None:
     assert resolve_flux_sources(flux_sources=["new"], emissions_name=["legacy"]) == ["new"]
     assert resolve_flux_sources(emissions_name=["legacy"]) == ["legacy"]
@@ -137,6 +153,460 @@ output_name = "test"
 
     params = params_from_config(config_file)
     assert params["flux_sources"] == ["legacy-source"]
+
+
+def _shared_preparation_args(data_args: dict, flux_sources: list[str]) -> dict:
+    args = data_args.copy()
+    args.pop("emissions_name", None)
+    args.update(
+        {
+            "output_name": "prep_test",
+            "flux_sources": flux_sources,
+            "basis_algorithm": "quadtree",
+            "nbasis": 4,
+            "use_bc": True,
+            "return_basis_objects": True,
+        }
+    )
+    return args
+
+
+def test_prepare_inversion_data_single_sector_reloads_merged_data(
+    tac_ch4_data_args, merged_data_dir, merged_data_file_name
+) -> None:
+    args = _shared_preparation_args(tac_ch4_data_args, tac_ch4_data_args["emissions_name"])
+    args.update(
+        {
+            "reload_merged_data": True,
+            "merged_data_dir": str(merged_data_dir),
+            "merged_data_name": merged_data_file_name,
+        }
+    )
+
+    prepared = prepare_inversion_data(**args)
+
+    assert isinstance(prepared, PreparedInversionData)
+    assert prepared.inv_inputs is not None
+    assert prepared.basis is not None
+    assert prepared.flux is not None
+    assert prepared.sites == ["TAC"]
+    assert "source" not in prepared.inv_inputs["H"].dims
+
+
+def test_prepare_inversion_data_multisector_keeps_source_dimension(tac_ch4_data_args) -> None:
+    flux_sources = ["total-ukghg-edgar7", "total-ukghg-edgar7-shuffled"]
+    args = _shared_preparation_args(tac_ch4_data_args, flux_sources)
+    args["split_by_sectors"] = True
+
+    prepared = prepare_inversion_data(**args)
+
+    assert prepared.inv_inputs is not None
+    assert prepared.flux is not None
+    assert "source" in prepared.inv_inputs["H"].dims
+    assert set(prepared.inv_inputs["H"].coords["source"].values) == set(flux_sources)
+    assert set(prepared.flux.coords["source"].values) == set(flux_sources)
+
+
+def test_loaded_merged_data_alignment_checks_site_membership() -> None:
+    sites, inlet, fp_height, instrument, max_level, averaging_period = _drop_sites_missing_from_loaded_data(
+        fp_all={"TAC": object(), "MHD": object(), ".flux": object()},
+        sites=["TAC", "RGL"],
+        inlet=["185m", "90m"],
+        fp_height=["185m", "90m"],
+        instrument=["inst-1", "inst-2"],
+        max_level=17,
+        averaging_period=["1H", "2H"],
+    )
+
+    assert sites == ["TAC"]
+    assert inlet == ["185m"]
+    assert fp_height == ["185m"]
+    assert instrument == ["inst-1"]
+    assert max_level == 17
+    assert averaging_period == ["1H"]
+
+
+def test_loaded_merged_data_alignment_rejects_no_matching_sites() -> None:
+    with pytest.raises(ValueError, match="does not include any requested sites"):
+        _drop_sites_missing_from_loaded_data(
+            fp_all={"TAC": object(), "MHD": object(), ".flux": object()},
+            sites=["RGL", "BSD"],
+            inlet=["90m", "248m"],
+            fp_height=["90m", "248m"],
+            instrument=["inst-1", "inst-2"],
+            max_level=17,
+            averaging_period=["1H", "2H"],
+        )
+
+
+def test_prepare_inversion_data_prunes_reloaded_merged_data_to_requested_sites(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured_fp_all_keys: set[str] = set()
+
+    def fake_load_merged_data(*args: object, **kwargs: object) -> dict:
+        return {
+            "TAC": object(),
+            "MHD": object(),
+            ".flux": object(),
+            ".species": "CH4",
+        }
+
+    def fake_basis_functions_wrapper(**kwargs: object) -> dict:
+        nonlocal captured_fp_all_keys
+        fp_all = kwargs["fp_all"]
+        assert isinstance(fp_all, dict)
+        captured_fp_all_keys = set(fp_all)
+        return {"TAC": xr.Dataset(coords={"time": [0]})}
+
+    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        assert sites == ["TAC"]
+        return xr.Dataset({"H": (("region", "nmeasure"), [[1.0]])})
+
+    monkeypatch.setattr(
+        "openghg_inversions.inversion_data.preparation.load_merged_data",
+        fake_load_merged_data,
+    )
+    monkeypatch.setattr(
+        "openghg_inversions.inversion_data.preparation.basis_functions_wrapper",
+        fake_basis_functions_wrapper,
+    )
+    monkeypatch.setattr("openghg_inversions.inversion_data.preparation.make_inv_inputs", fake_make_inv_inputs)
+
+    prepare_inversion_data(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="reload_prune",
+        flux_sources=["total-ukghg-edgar7"],
+        reload_merged_data=True,
+        merged_data_dir=str(tmp_path),
+        use_bc=False,
+    )
+
+    assert "TAC" in captured_fp_all_keys
+    assert "MHD" not in captured_fp_all_keys
+    assert {key for key in captured_fp_all_keys if key.startswith(".")} == {
+        ".flux",
+        ".species",
+        ".split_by_sectors",
+    }
+
+
+@pytest.mark.parametrize(
+    ("averaging_period", "expected"),
+    [
+        ("1H", ["1H", "1H"]),
+        (None, [None, None]),
+    ],
+)
+def test_prepare_inversion_data_normalises_averaging_period_to_site_count(
+    monkeypatch: pytest.MonkeyPatch,
+    averaging_period: str | None,
+    expected: list[str | None],
+) -> None:
+    captured_averaging_period: list[str | None] | None = None
+
+    def fake_data_processing_surface_notracer(
+        **kwargs: object,
+    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str | None]]:
+        nonlocal captured_averaging_period
+        captured_averaging_period = kwargs["averaging_period"]
+        assert isinstance(captured_averaging_period, list)
+        return (
+            {".species": "CH4"},
+            ["TAC", "MHD"],
+            ["185m", "10m"],
+            ["185m", "10m"],
+            ["instrument-1", "instrument-2"],
+            captured_averaging_period,
+        )
+
+    def fake_basis_functions_wrapper(**kwargs: object) -> dict:
+        return {
+            "TAC": xr.Dataset(coords={"time": [0]}),
+            "MHD": xr.Dataset(coords={"time": [0]}),
+        }
+
+    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        assert sites == ["TAC", "MHD"]
+        return xr.Dataset({"H": (("region", "nmeasure"), [[1.0, 1.0]])})
+
+    monkeypatch.setattr(
+        "openghg_inversions.inversion_data.preparation.data_processing_surface_notracer",
+        fake_data_processing_surface_notracer,
+    )
+    monkeypatch.setattr(
+        "openghg_inversions.inversion_data.preparation.basis_functions_wrapper",
+        fake_basis_functions_wrapper,
+    )
+    monkeypatch.setattr("openghg_inversions.inversion_data.preparation.make_inv_inputs", fake_make_inv_inputs)
+
+    prepared = prepare_inversion_data(
+        species="ch4",
+        sites=["TAC", "MHD"],
+        domain="EUROPE",
+        averaging_period=averaging_period,
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="normalise_avg",
+        flux_sources=["total-ukghg-edgar7"],
+        use_bc=False,
+    )
+
+    assert captured_averaging_period == expected
+    assert prepared.averaging_period == expected
+
+
+def test_prepare_inversion_data_rejects_misaligned_averaging_period_list() -> None:
+    with pytest.raises(ValueError, match="List averaging_period does not have specified length"):
+        prepare_inversion_data(
+            species="ch4",
+            sites=["TAC", "MHD"],
+            domain="EUROPE",
+            averaging_period=["1H"],
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="bad_avg",
+            flux_sources=["total-ukghg-edgar7"],
+            use_bc=False,
+        )
+
+
+@pytest.mark.parametrize("averaging_period", [1, ["1H", 2]])
+def test_prepare_inversion_data_rejects_non_string_averaging_period_values(
+    averaging_period: object,
+) -> None:
+    with pytest.raises(ValueError, match="averaging_period"):
+        prepare_inversion_data(
+            species="ch4",
+            sites=["TAC", "MHD"],
+            domain="EUROPE",
+            averaging_period=averaging_period,
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="bad_avg_type",
+            flux_sources=["total-ukghg-edgar7"],
+            use_bc=False,
+        )
+
+
+def test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_averaging_period: object = None
+    original_signature = rhime_module.inspect.signature(rhime_module._prepare_data)
+
+    def fake_prepare_data(**kwargs: object) -> None:
+        nonlocal captured_averaging_period
+        captured_averaging_period = kwargs["averaging_period"]
+        raise RuntimeError("stop after data argument capture")
+
+    fake_prepare_data.__signature__ = original_signature
+    monkeypatch.setattr(rhime_module, "_prepare_data", fake_prepare_data)
+
+    with pytest.raises(RuntimeError, match="stop after data argument capture"):
+        run_rhime(
+            species="ch4",
+            sites=["TAC", "MHD"],
+            domain="EUROPE",
+            averaging_period="1H",
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="avg_scalar",
+            flux_sources=["total-ukghg-edgar7"],
+            output_format="none",
+        )
+
+    assert captured_averaging_period == "1H"
+
+
+def test_prepare_inversion_data_treats_min_error_none_as_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_min_error: object = None
+
+    def fake_data_processing_surface_notracer(
+        **kwargs: object,
+    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
+        return (
+            {".species": "CH4"},
+            ["TAC"],
+            ["185m"],
+            ["185m"],
+            ["instrument-1"],
+            ["1H"],
+        )
+
+    def fake_basis_functions_wrapper(**kwargs: object) -> dict:
+        return {"TAC": xr.Dataset(coords={"time": [0]})}
+
+    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        nonlocal captured_min_error
+        captured_min_error = kwargs["min_error"]
+        return xr.Dataset({"H": (("region", "nmeasure"), [[1.0]])})
+
+    monkeypatch.setattr(
+        "openghg_inversions.inversion_data.preparation.data_processing_surface_notracer",
+        fake_data_processing_surface_notracer,
+    )
+    monkeypatch.setattr(
+        "openghg_inversions.inversion_data.preparation.basis_functions_wrapper",
+        fake_basis_functions_wrapper,
+    )
+    monkeypatch.setattr("openghg_inversions.inversion_data.preparation.make_inv_inputs", fake_make_inv_inputs)
+
+    prepare_inversion_data(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="min_error_none",
+        flux_sources=["total-ukghg-edgar7"],
+        use_bc=False,
+        min_error=None,
+    )
+
+    assert captured_min_error == 0.0
+
+
+def test_prepare_inversion_data_rejects_min_error_dict_missing_retained_site() -> None:
+    with pytest.raises(ValueError, match="MHD"):
+        _make_inv_inputs(
+            fp_data={},
+            sites=["TAC", "MHD"],
+            start_date="2019-01-01",
+            bc_freq=None,
+            sigma_freq=None,
+            min_error={"TAC": 1.0},
+            calculate_min_error=None,
+            min_error_options=None,
+        )
+
+
+def test_calculate_min_error_warning_is_user_visible(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_min_error: object = None
+
+    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        nonlocal captured_min_error
+        captured_min_error = kwargs["min_error"]
+        return xr.Dataset({"H": (("region", "nmeasure"), [[1.0]])})
+
+    monkeypatch.setattr("openghg_inversions.inversion_data.preparation.make_inv_inputs", fake_make_inv_inputs)
+
+    with pytest.warns(FutureWarning, match="calculate_min_error"):
+        _make_inv_inputs(
+            fp_data={"TAC": xr.Dataset(coords={"time": [0]})},
+            sites=["TAC"],
+            start_date="2019-01-01",
+            bc_freq=None,
+            sigma_freq=None,
+            min_error=0.0,
+            calculate_min_error="residual",
+            min_error_options=None,
+        )
+
+    assert captured_min_error == "residual"
+
+
+def test_prepare_inversion_data_aligns_averaging_period_after_empty_site_drop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_data_processing_surface_notracer(
+        **kwargs: object,
+    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
+        return (
+            {".species": "CH4"},
+            ["TAC", "MHD"],
+            ["185m", "10m"],
+            ["185m", "10m"],
+            ["instrument-1", "instrument-2"],
+            ["1H", "2H"],
+        )
+
+    def fake_basis_functions_wrapper(**kwargs: object) -> dict:
+        return {
+            "TAC": xr.Dataset(coords={"time": [0]}),
+            "MHD": xr.Dataset(coords={"time": []}),
+        }
+
+    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        assert sites == ["TAC"]
+        return xr.Dataset({"H": (("region", "nmeasure"), [[1.0]])})
+
+    monkeypatch.setattr(
+        "openghg_inversions.inversion_data.preparation.data_processing_surface_notracer",
+        fake_data_processing_surface_notracer,
+    )
+    monkeypatch.setattr(
+        "openghg_inversions.inversion_data.preparation.basis_functions_wrapper",
+        fake_basis_functions_wrapper,
+    )
+    monkeypatch.setattr("openghg_inversions.inversion_data.preparation.make_inv_inputs", fake_make_inv_inputs)
+
+    prepared = prepare_inversion_data(
+        species="ch4",
+        sites=["TAC", "MHD"],
+        domain="EUROPE",
+        averaging_period=["1H", "2H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="filter_drop",
+        flux_sources=["total-ukghg-edgar7"],
+        use_bc=False,
+    )
+
+    assert prepared.sites == ["TAC"]
+    assert prepared.averaging_period == ["1H"]
+
+
+def test_prepare_inversion_data_rejects_all_sites_dropped_by_filtering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_data_processing_surface_notracer(
+        **kwargs: object,
+    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
+        return (
+            {".species": "CH4"},
+            ["TAC", "MHD"],
+            ["185m", "10m"],
+            ["185m", "10m"],
+            ["instrument-1", "instrument-2"],
+            ["1H", "2H"],
+        )
+
+    def fake_basis_functions_wrapper(**kwargs: object) -> dict:
+        return {
+            "TAC": xr.Dataset(coords={"time": []}),
+            "MHD": xr.Dataset(coords={"time": []}),
+        }
+
+    monkeypatch.setattr(
+        "openghg_inversions.inversion_data.preparation.data_processing_surface_notracer",
+        fake_data_processing_surface_notracer,
+    )
+    monkeypatch.setattr(
+        "openghg_inversions.inversion_data.preparation.basis_functions_wrapper",
+        fake_basis_functions_wrapper,
+    )
+
+    with pytest.raises(ValueError, match="No sites remain after filtering"):
+        prepare_inversion_data(
+            species="ch4",
+            sites=["TAC", "MHD"],
+            domain="EUROPE",
+            averaging_period=["1H", "2H"],
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            output_name="filter_drop",
+            flux_sources=["total-ukghg-edgar7"],
+            use_bc=False,
+        )
 
 
 def test_params_from_config_rejects_unsupported_deprecated_option(tmp_path: Path) -> None:
