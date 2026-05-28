@@ -1,7 +1,9 @@
+import inspect
+from pathlib import Path
+
 import pandas as pd
 import pytest
 import xarray as xr
-from pathlib import Path
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.hbmcmc.hbmcmc import _resolve_output_format, fixedbasisMCMC
@@ -49,6 +51,15 @@ def inv_out(raw_data_path):
 @pytest.fixture(scope="module")
 def inv_out_eastasia(raw_data_path):
     return InversionOutput.load(raw_data_path / "inversion_output_EASTASIA.nc")
+
+
+def test_fixedbasisMCMC_return_basis_objects_preserves_positional_output_format():
+    """New retained-basis option should not shift existing positional API."""
+    params = list(inspect.signature(fixedbasisMCMC).parameters)
+
+    assert params.index("return_basis_objects") > params.index("power")
+    assert params.index("return_basis_objects") > params.index("output_format")
+    assert params.index("return_basis_objects") == params.index("kwargs") - 1
 
 
 def test_fixedbasisMCMC_can_return_basis_objects_in_mcmc_args(mcmc_args):

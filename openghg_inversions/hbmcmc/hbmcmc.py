@@ -563,7 +563,6 @@ def fixedbasisMCMC(
     min_error: Literal["percentile", "residual"] | dict[str, float] | None | float = 0.0,
     calculate_min_error: Literal["percentile", "residual"] | None = None,
     min_error_options: dict | None = None,
-    return_basis_objects: bool = False,
     output_format: Literal[
         "hbmcmc",
         "hbmcmc_postprocessing",
@@ -577,6 +576,7 @@ def fixedbasisMCMC(
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
     power: dict | float = 1.99,
+    return_basis_objects: bool = False,
     **kwargs,
 ) -> xr.Dataset | dict | InversionOutput:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference of emissions.
@@ -688,8 +688,6 @@ def fixedbasisMCMC(
         calculate_min_error: Is deprecated and will be removed in a future update.
         min_error_options: Dictionary of additional arguments to pass the the function used to calculate min. model
             error (as specified by `min_error`).
-        return_basis_objects: If True, retain basis objects during shared preparation and include them in
-            ``output_format="mcmc_args"`` debug output. They are not passed to ``inferpymc``.
         output_format: Select what is returned/saved by inversion.
             - "hbmcmc": (default) return the results of `inferpymc_postprocessouts`, and save result as netCDF
             - "hbmcmc_postprocessing": return legacy-style output format, computed using functions from the
@@ -703,6 +701,8 @@ def fixedbasisMCMC(
             - "mcmc_results": return the results of `fixedbasisMCMC` with no further processing
         paris_postprocessing_kwargs: Dict of kwargs to pass to `make_paris_outputs`.
         power: Power to raise pollution event size to if using pollution events from obs. Default is 1.99.
+        return_basis_objects: If True, retain basis objects during shared preparation and include them in
+            ``output_format="mcmc_args"`` debug output. They are not passed to ``inferpymc``.
 
     Returns:
         xr.Dataset | dict: Results from the inversion in a Dataset if skip_post_processing==False,
