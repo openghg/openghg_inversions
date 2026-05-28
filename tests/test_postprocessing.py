@@ -1,10 +1,12 @@
 import inspect
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
+import openghg_inversions.hbmcmc.hbmcmc as hbmcmc_module
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.hbmcmc.hbmcmc import _resolve_output_format, fixedbasisMCMC
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
@@ -18,6 +20,62 @@ from openghg_inversions.postprocessing.make_paris_outputs import (
     make_paris_outputs,
     paris_flux_output,
 )
+
+
+def _minimal_fixedbasis_inv_inputs() -> xr.Dataset:
+    """Build the smallest fixedbasis inv_inputs dataset used by contract tests."""
+    return xr.Dataset(
+        data_vars={
+            "H": (("region", "nmeasure"), np.array([[0.25]], dtype="float64")),
+            "mf": (("nmeasure",), np.array([1900.0], dtype="float64")),
+            "mf_error": (("nmeasure",), np.array([2.0], dtype="float64")),
+            "mf_repeatability": (("nmeasure",), np.array([1.0], dtype="float64")),
+            "mf_variability": (("nmeasure",), np.array([1.5], dtype="float64")),
+            "site_indicator": (("nmeasure",), np.array([0])),
+            "sigma_freq_index": (("nmeasure",), np.array([0])),
+            "min_error": (("nmeasure",), np.array([0.0], dtype="float64")),
+        },
+        coords={
+            "region": np.array([0]),
+            "nmeasure": np.array([0]),
+            "time": (("nmeasure",), np.array(["2019-01-01T00:00:00"], dtype="datetime64[ns]")),
+        },
+    )
+
+
+def _minimal_fixedbasis_fp_data() -> dict:
+    """Build fixedbasis fp_data with the legacy side-channel keys still required downstream."""
+    lat = np.array([52.0])
+    lon = np.array([1.0])
+    return {
+        ".basis": xr.DataArray(
+            np.array([[0]]),
+            dims=("lat", "lon"),
+            coords={"lat": lat, "lon": lon},
+            name="basis",
+        ),
+        ".flux": {
+            "total": xr.Dataset(
+                {"flux": (("lat", "lon"), np.array([[1.0]], dtype="float32"))},
+                coords={"lat": lat, "lon": lon},
+            )
+        },
+        "TAC": xr.Dataset(coords={"time": np.array(["2019-01-01T00:00:00"], dtype="datetime64[ns]")}),
+    }
+
+
+def _minimal_fixedbasis_prepared_data(**overrides):
+    """Build a prepared-data object using the fixedbasis preparation contract exported by hbmcmc."""
+    defaults = {
+        "fp_all": {"TAC": object(), ".flux": {"total": object()}},
+        "fp_data": _minimal_fixedbasis_fp_data(),
+        "inv_inputs": _minimal_fixedbasis_inv_inputs(),
+        "sites": ["TAC"],
+        "averaging_period": ["1H"],
+        "basis_objects": {"emissions": object()},
+    }
+    defaults.update(overrides)
+    return hbmcmc_module.FixedBasisPreparedData(**defaults)
 
 
 @pytest.fixture
@@ -71,6 +129,155 @@ def test_fixedbasisMCMC_can_return_basis_objects_in_mcmc_args(mcmc_args):
 
     assert isinstance(result["basis_objects"]["emissions"], BasisFunctions)
     assert "basis_objects" not in result["inv_inputs"]
+
+
+def test_fixedbasisMCMC_uses_fixedbasis_preparation_contract_for_mcmc_args(monkeypatch, tmp_path):
+    """The fixedbasis runner consumes the fixedbasis-specific preparation boundary."""
+    prepared = _minimal_fixedbasis_prepared_data()
+    captured_kwargs = {}
+
+    def fake_prepare_fixedbasis_inversion_data(**kwargs):
+        captured_kwargs.update(kwargs)
+        return prepared
+
+    monkeypatch.setattr(
+        hbmcmc_module,
+        "prepare_fixedbasis_inversion_data",
+        fake_prepare_fixedbasis_inversion_data,
+    )
+
+    result = fixedbasisMCMC(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        outputpath=str(tmp_path),
+        outputname="contract",
+        output_format="mcmc_args",
+        return_basis_objects=True,
+        use_bc=False,
+    )
+
+    assert captured_kwargs["output_name"] == "contract"
+    assert captured_kwargs["split_by_sectors"] is False
+    assert captured_kwargs["return_basis_objects"] is True
+    assert captured_kwargs["merged_data_only"] is False
+    assert result["inv_inputs"] is prepared.inv_inputs
+    assert result["basis_objects"] is prepared.basis_objects
+    assert "basis_objects" not in result["inv_inputs"]
+
+
+def test_fixedbasisMCMC_merged_data_returns_prepared_fp_all(monkeypatch, tmp_path):
+    """The merged-data output remains a preparation-only compatibility path."""
+    fp_all = {"TAC": object(), ".flux": {"total": object()}}
+    prepared = _minimal_fixedbasis_prepared_data(fp_all=fp_all, fp_data=None, inv_inputs=None)
+    captured_kwargs = {}
+
+    def fake_prepare_fixedbasis_inversion_data(**kwargs):
+        captured_kwargs.update(kwargs)
+        return prepared
+
+    monkeypatch.setattr(
+        hbmcmc_module,
+        "prepare_fixedbasis_inversion_data",
+        fake_prepare_fixedbasis_inversion_data,
+    )
+
+    result = fixedbasisMCMC(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        outputpath=str(tmp_path),
+        outputname="merged",
+        output_format="merged_data",
+        reload_merged_data=True,
+        use_bc=False,
+    )
+
+    assert result is fp_all
+    assert captured_kwargs["merged_data_only"] is True
+    assert captured_kwargs["reload_merged_data"] is False
+
+
+def test_fixedbasisMCMC_hbmcmc_output_uses_legacy_postprocess_path(monkeypatch, tmp_path):
+    """The default hbmcmc output path still consumes legacy postprocessing args."""
+    prepared = _minimal_fixedbasis_prepared_data()
+    captured_inferpymc_args = {}
+
+    def fake_prepare_fixedbasis_inversion_data(**kwargs):
+        return prepared
+
+    def fake_inferpymc(**kwargs):
+        captured_inferpymc_args.update(kwargs)
+        return {
+            "trace": object(),
+            "model": object(),
+            "xouts": np.array([[1.0], [1.1]], dtype="float64"),
+        }
+
+    def fake_inferpymc_postprocessouts(xouts):
+        return xr.Dataset({"xtrace_mean": (("nx",), xouts.mean(axis=0))})
+
+    monkeypatch.setattr(
+        hbmcmc_module,
+        "prepare_fixedbasis_inversion_data",
+        fake_prepare_fixedbasis_inversion_data,
+    )
+    monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc", fake_inferpymc)
+    monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc_postprocessouts", fake_inferpymc_postprocessouts)
+
+    result = fixedbasisMCMC(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        outputpath=str(tmp_path),
+        outputname="legacy",
+        output_format="hbmcmc",
+        use_bc=False,
+    )
+
+    assert captured_inferpymc_args["inv_inputs"] is prepared.inv_inputs
+    assert result["xtrace_mean"].dims == ("nx",)
+    assert result["xtrace_mean"].values.tolist() == [1.05]
+
+
+@pytest.mark.parametrize("missing_key", [".basis", ".flux"])
+def test_fixedbasisMCMC_requires_legacy_fixedbasis_fp_data(monkeypatch, tmp_path, missing_key):
+    """Non-merged fixedbasis outputs require the legacy fp_data side-channel keys."""
+    fp_data = _minimal_fixedbasis_fp_data()
+    del fp_data[missing_key]
+    prepared = _minimal_fixedbasis_prepared_data(fp_data=fp_data)
+
+    def fake_prepare_fixedbasis_inversion_data(**kwargs):
+        return prepared
+
+    monkeypatch.setattr(
+        hbmcmc_module,
+        "prepare_fixedbasis_inversion_data",
+        fake_prepare_fixedbasis_inversion_data,
+    )
+
+    with pytest.raises(RuntimeError, match="legacy fixed-basis data"):
+        fixedbasisMCMC(
+            species="ch4",
+            sites=["TAC"],
+            domain="EUROPE",
+            averaging_period=["1H"],
+            start_date="2019-01-01",
+            end_date="2019-02-01",
+            outputpath=str(tmp_path),
+            outputname="missing",
+            output_format="mcmc_args",
+            use_bc=False,
+        )
 
 
 @pytest.mark.parametrize(

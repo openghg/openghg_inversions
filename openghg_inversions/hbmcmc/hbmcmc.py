@@ -34,12 +34,12 @@ import warnings
 import numpy as np
 import xarray as xr
 
-from openghg.util import split_function_inputs
+from openghg.util._function_inputs import split_function_inputs
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 from openghg_inversions.models.priors import lognormal_mu_sigma
 from openghg_inversions.utils import ncdf_encoding
-from openghg_inversions.inversion_data import prepare_inversion_data
+from openghg_inversions.inversion_data import FixedBasisPreparedData, prepare_fixedbasis_inversion_data
 from openghg_inversions.postprocessing.inversion_output import (
     InversionOutput,
     make_inv_out_for_fixed_basis_mcmc,
@@ -95,6 +95,19 @@ def _extract_post_process_args(inv_inputs: xr.Dataset) -> dict[str, object]:
         "sigma_freq_index": inv_inputs.sigma_freq_index.values,
         "min_error": inv_inputs.min_error.values,
     }
+
+
+def _validate_fixedbasis_prepared_data(prepared: FixedBasisPreparedData) -> None:
+    """Validate the legacy fixedbasis preparation contract before sampling."""
+    if prepared.fp_data is None or prepared.inv_inputs is None:
+        raise RuntimeError("Fixed-basis data preparation did not produce forward data and model inputs.")
+
+    missing_legacy_keys = [key for key in (".basis", ".flux") if key not in prepared.fp_data]
+    if missing_legacy_keys:
+        raise RuntimeError(
+            "Fixed-basis data preparation did not produce legacy fixed-basis data. "
+            f"Missing key(s): {missing_legacy_keys!r}."
+        )
 
 
 def _inv_inputs_from_rerun_arrays(
@@ -733,7 +746,7 @@ def fixedbasisMCMC(
     )
 
     start_data = time.time()
-    prepared = prepare_inversion_data(
+    prepared = prepare_fixedbasis_inversion_data(
         species=species,
         sites=sites,
         domain=domain,
@@ -787,11 +800,9 @@ def fixedbasisMCMC(
     if output_format == "merged_data":
         return prepared.fp_all  # type: ignore
 
-    if prepared.fp_data is None or prepared.inv_inputs is None:
-        raise RuntimeError("Fixed-basis data preparation did not produce forward data and model inputs.")
-
-    fp_data = prepared.fp_data
-    inv_inputs = prepared.inv_inputs
+    _validate_fixedbasis_prepared_data(prepared)
+    fp_data = cast(dict, prepared.fp_data)
+    inv_inputs = cast(xr.Dataset, prepared.inv_inputs)
     sites = prepared.sites
     averaging_period = prepared.averaging_period
 
