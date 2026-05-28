@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, cast
 
 import matplotlib.pyplot as plt
@@ -42,6 +43,11 @@ class FluxWeightedBasis:
 
     This class is intentionally lightweight: it stores the operator and the flux, and provides
     constructors that build the appropriate operator from a basis representation.
+
+    Attributes:
+        operator: Basis operator that owns the state/grid mapping.
+        flux: Representative flux field associated with the basis.
+        metadata: Namespaced metadata carried through DataTree serialization.
 
     Notes:
         - A flux with a `source` dimension can still be paired with a `BucketBasisOperator`; in that case
@@ -75,6 +81,7 @@ class FluxWeightedBasis:
                 - `"range1"`: `1..N`
                 - `"basis_values"`: use the unique positive labels found in `basis_flat`.
             operator_kwargs: Optional kwargs forwarded to `BucketBasisOperator`.
+            metadata: Optional namespaced metadata to carry on the basis object.
 
         Returns:
             A FluxWeightedBasis pairing a BucketBasisOperator with the provided flux.
@@ -104,6 +111,7 @@ class FluxWeightedBasis:
             flux: Flux on the inversion grid. Commonly has a `source` dimension coordinate matching
                 the keys of `basis_flat`, but this is not required at construction time.
             operator_kwargs: Optional kwargs forwarded to `MultiSourceBucketBasisOperator`.
+            metadata: Optional namespaced metadata to carry on the basis object.
 
         Returns:
             A FluxWeightedBasis pairing a MultiSourceBucketBasisOperator with the provided flux.
@@ -137,7 +145,7 @@ class FluxWeightedBasis:
         return str(source) if source is not None else None
 
     def flat_basis(self) -> xr.DataArray | dict[str, xr.DataArray]:
-        """Return the flattened basis representation used by legacy ``fp_sensitivity``."""
+        """Return the legacy flattened basis view used by ``fp_sensitivity``."""
         basis_flat = getattr(self.operator, "basis_flat", None)
         if isinstance(basis_flat, xr.DataArray):
             return basis_flat.rename("basis")
@@ -258,6 +266,42 @@ class FluxWeightedBasis:
         """
         return self.operator.sensitivity(fp_x_flux, fillna=fillna)
 
+    def save(self, output_file: str | Path) -> None:
+        """Save the basis object as a DataTree artifact.
+
+        Args:
+            output_file: Path to a ``.nc`` or ``.zarr`` artifact. NetCDF is used
+                for ``.nc`` paths and Zarr is used for ``.zarr`` paths.
+
+        Raises:
+            ValueError: If ``output_file`` does not end with ``.nc`` or ``.zarr``.
+        """
+        output_file = Path(output_file)
+        suffix = output_file.suffix.lower()
+        if suffix == ".nc":
+            self.to_datatree().to_netcdf(output_file)
+        elif suffix == ".zarr":
+            self.to_datatree().to_zarr(output_file)
+        else:
+            raise ValueError(f"BasisFunctions artifact path {output_file} must end in '.nc' or '.zarr'.")
+
+    @classmethod
+    def load(cls: type[Self], file_path: str | Path) -> Self:
+        """Load a basis object saved with ``BasisFunctions.save``.
+
+        The DataTree is loaded while the xarray file context is open, so the
+        returned ``BasisFunctions`` object does not retain references to closed
+        file handles.
+
+        Args:
+            file_path: Path to a ``BasisFunctions`` DataTree artifact.
+
+        Returns:
+            The reconstructed basis object.
+        """
+        with xr.open_datatree(file_path) as dt:
+            return cast(Self, cls.from_datatree(dt.load()))
+
     def interpolate(self, state: xr.DataArray, *, flux: bool = False) -> xr.DataArray:
         """Interpolate from state vector to the grid.
 
@@ -327,11 +371,22 @@ def basis_functions_from_fp_all_flat_basis(
     basis_flat: xr.DataArray | Mapping[str, xr.DataArray],
     metadata: Mapping[str, Any] | None = None,
 ) -> FluxWeightedBasis:
-    """Construct a basis object from legacy wrapper inputs.
+    """Legacy adapter that constructs a basis object from wrapper inputs.
 
     This is a temporary compatibility helper for the current ``fp_sensitivity``
     path. Remove it when issue #429 makes ``BasisFunctions.sensitivity`` the
     source of prepared sensitivities.
+
+    Args:
+        fp_all: Legacy merged-data dictionary containing a ``".flux"`` side
+            channel and optional ``".split_by_sectors"`` flag.
+        basis_flat: Flat basis array, or source-keyed flat basis arrays, from
+            the legacy basis-generation/loading path.
+        metadata: Optional namespaced metadata to carry on the basis object.
+
+    Returns:
+        A retained ``BasisFunctions`` object with flux reconstructed from
+        ``fp_all``.
     """
     flux = flux_from_fp_all(fp_all)
     if isinstance(basis_flat, Mapping):
@@ -351,11 +406,23 @@ def basis_functions_from_fp_all_flat_basis(
 
 
 def flux_from_fp_all(fp_all: dict) -> xr.DataArray:
-    """Build representative flux from legacy ``fp_all`` side-channel data.
+    """Legacy adapter that builds representative flux from ``fp_all``.
 
     This is a temporary compatibility helper for the current ``fp_sensitivity``
     path. Remove it when issue #429 makes ``BasisFunctions.sensitivity`` the
     source of prepared sensitivities.
+
+    Args:
+        fp_all: Legacy merged-data dictionary containing ``fp_all[".flux"]`` and
+            optional ``fp_all[".split_by_sectors"]`` metadata.
+
+    Returns:
+        A combined flux array for non-sectoral workflows, or a source-stacked
+        flux array for sectoral workflows.
+
+    Raises:
+        ValueError: If ``fp_all[".flux"]`` is missing or empty.
+        TypeError: If a flux entry cannot be converted to a ``DataArray``.
     """
     if ".flux" not in fp_all or not fp_all[".flux"]:
         raise ValueError("Cannot construct BasisFunctions object: fp_all['.flux'] is missing or empty.")
@@ -377,7 +444,7 @@ def _serialisable_basis_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _is_multi_source_workflow(fp_all: dict) -> bool:
-    """Determine multi-source/sector mode from fp_all metadata."""
+    """Interpret legacy ``fp_all`` metadata to determine multi-source mode."""
     split_by_sectors = fp_all.get(".split_by_sectors")
     if split_by_sectors is not None:
         return bool(split_by_sectors)
@@ -387,7 +454,18 @@ def _is_multi_source_workflow(fp_all: dict) -> bool:
 
 
 def _extract_flux_dataarray(flux_entry: object, flux_key: str) -> xr.DataArray:
-    """Extract a DataArray named ``flux`` from supported flux entry containers."""
+    """Extract flux from legacy ``fp_all[".flux"]`` entry containers.
+
+    Args:
+        flux_entry: Legacy flux entry, xarray ``Dataset``, or ``DataArray``.
+        flux_key: Source key used only for error reporting.
+
+    Returns:
+        The ``flux`` DataArray.
+
+    Raises:
+        TypeError: If the entry does not expose a flux DataArray.
+    """
     flux_entry_data = getattr(flux_entry, "data", None)
     if isinstance(flux_entry_data, xr.Dataset) and "flux" in flux_entry_data:
         return flux_entry_data["flux"]
@@ -403,7 +481,15 @@ def _extract_flux_dataarray(flux_entry: object, flux_key: str) -> xr.DataArray:
 
 
 def _combine_flux_sources_like_modelscenario(flux_arrays: dict[str, xr.DataArray]) -> xr.DataArray:
-    """Combine fluxes as in ModelScenario.combine_flux_sources."""
+    """Legacy adapter that reproduces ``ModelScenario`` flux combination.
+
+    Args:
+        flux_arrays: Flux arrays keyed by legacy ``fp_all[".flux"]`` source name.
+
+    Returns:
+        A single flux array with non-time grid dimensions aligned and multiple
+        non-sectoral sources summed or time-stacked as ``ModelScenario`` did.
+    """
     flux_datasets = [
         arr.rename("flux").to_dataset() if arr.name != "flux" else arr.to_dataset()
         for arr in flux_arrays.values()
@@ -425,7 +511,7 @@ def _combine_flux_sources_like_modelscenario(flux_arrays: dict[str, xr.DataArray
 
 
 def _stack_flux_sources_with_alignment(flux_arrays: dict[str, xr.DataArray]) -> xr.DataArray:
-    """Stack fluxes along `source`, validating structural coordinate alignment."""
+    """Legacy adapter that stacks sector fluxes along ``source``."""
     first_key = next(iter(flux_arrays))
     reference = flux_arrays[first_key]
     dims_to_align = [dim for dim in reference.dims if dim != "time"]

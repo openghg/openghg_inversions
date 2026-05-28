@@ -951,8 +951,7 @@ def test_save_basis_datatree_roundtrip(tmp_path):
     saved = list((tmp_path / "EUROPE").glob("*_basis_datatree.nc"))
     assert len(saved) == 1
 
-    dt = xr.open_datatree(saved[0])
-    bf2 = BasisFunctions.from_datatree(dt)
+    bf2 = BasisFunctions.load(saved[0])
 
     xr.testing.assert_identical(bf.operator.basis_matrix, bf2.operator.basis_matrix)
     xr.testing.assert_identical(bf.flux, bf2.flux)
@@ -1097,7 +1096,7 @@ def test_multisource_datatree_basis_artifact_keeps_legacy_h_shape(tmp_path):
 
     basis_dir = tmp_path / "EUROPE"
     basis_dir.mkdir()
-    bf.to_datatree().to_netcdf(basis_dir / "weighted_ch4-loader_EUROPE_2019-01_basis_datatree.nc")
+    bf.save(basis_dir / "weighted_ch4-loader_EUROPE_2019-01_basis_datatree.nc")
 
     fp_data, basis_objects = basis_functions_wrapper(
         fp_all,
@@ -1133,7 +1132,7 @@ def test_load_basis_functions_reports_multiple_datatree_matches(tmp_path):
     basis_dir = tmp_path / "EUROPE"
     basis_dir.mkdir()
     for month in ["2019-01", "2019-02"]:
-        bf.to_datatree().to_netcdf(basis_dir / f"weighted_ch4-loader_EUROPE_{month}_basis_datatree.nc")
+        bf.save(basis_dir / f"weighted_ch4-loader_EUROPE_{month}_basis_datatree.nc")
 
     with pytest.raises(ValueError, match="Use a more specific basis_case"):
         load_basis_functions(

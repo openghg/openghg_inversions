@@ -227,12 +227,28 @@ def load_basis_functions(
     basis_case: str,
     basis_directory: str | Path | None = None,
 ) -> BasisFunctions:
-    """Load a saved basis artifact into ``BasisFunctions``.
+    """Load a saved basis artifact as retained ``BasisFunctions``.
 
     DataTree artifacts are preferred when the matching file carries the
-    ``openghg_inversions.flux_weighted_basis`` schema. Otherwise the existing
-    legacy flat loader is used and a retained basis object is built from the
-    runtime flux data in ``fp_all``.
+    ``openghg_inversions.flux_weighted_basis`` schema and are loaded through
+    ``BasisFunctions.load``. Otherwise the existing legacy flat artifact loader
+    is used and a retained basis object is built from runtime flux in
+    ``fp_all``.
+
+    Args:
+        fp_all: Legacy merged-data dictionary used to build runtime flux when
+            adapting legacy flat artifacts or replacing serialized DataTree flux.
+        domain: Inversion domain used in the artifact path convention.
+        basis_case: Basis case prefix used in the artifact path convention.
+        basis_directory: Optional root directory containing per-domain basis
+            artifact subdirectories.
+
+    Returns:
+        Loaded retained basis object with ``basis_artifact_source`` metadata.
+
+    Raises:
+        FileNotFoundError: If no matching artifact files are found.
+        ValueError: If more than one matching DataTree artifact is found.
     """
     files = _basis_artifact_files(domain=domain, basis_case=basis_case, basis_directory=basis_directory)
     datatree_files = [file for file in files if _is_basis_datatree_artifact(file)]
@@ -246,7 +262,7 @@ def load_basis_functions(
                 f"{files_text}\n"
                 "Use a more specific basis_case or remove/rename stale DataTree basis artifacts."
             )
-        basis_functions = _load_basis_datatree(datatree_files[0])
+        basis_functions = BasisFunctions.load(datatree_files[0])
         print(f"Loaded DataTree basis artifact: {datatree_files[0]}")
         current_flux = flux_from_fp_all(fp_all)
         return basis_functions.with_flux(current_flux).with_metadata({BASIS_ARTIFACT_SOURCE_ATTR: "datatree"})
@@ -287,12 +303,6 @@ def _is_basis_datatree_artifact(path: Path) -> bool:
             return dt.attrs.get("schema") == "openghg_inversions.flux_weighted_basis"
     except (OSError, ValueError, KeyError):
         return False
-
-
-def _load_basis_datatree(path: Path) -> BasisFunctions:
-    """Load a BasisFunctions DataTree artifact from disk."""
-    with xr.open_datatree(path) as dt:
-        return BasisFunctions.from_datatree(dt.load())
 
 
 def _save_basis(
@@ -347,10 +357,11 @@ def _save_basis_datatree(
     species: str,
     output_name: str | None = None,
 ) -> None:
-    """Save BasisFunctions object to netCDF DataTree.
+    """Save ``BasisFunctions`` using the wrapper's DataTree file convention.
 
-    This is an opt-in serialization path. The legacy flat basis writer remains the
-    default to preserve backwards compatibility.
+    This is an opt-in serialization path around ``BasisFunctions.save``. The
+    legacy flat basis writer remains the default to preserve backwards
+    compatibility.
     """
     basis_out_path = Path(output_dir, domain.upper())
 
@@ -364,5 +375,4 @@ def _save_basis_datatree(
     else:
         output_name = f"{basis_algorithm}_{species}-{output_name}_{domain}_{start_date}_basis_datatree.nc"
 
-    dt = basis_functions.to_datatree()
-    dt.to_netcdf(basis_out_path / output_name)
+    basis_functions.save(basis_out_path / output_name)

@@ -82,11 +82,20 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
 
 
 def apply_basis_functions_sensitivity(fp_and_data: dict, basis_functions: BasisFunctions) -> dict:
-    """Add sensitivity matrices using ``BasisFunctions.sensitivity``.
+    """Legacy adapter that writes wrapper sensitivities from ``BasisFunctions``.
 
-    This is the wrapper-internal replacement for ``fp_sensitivity``. It still
-    records the flat ``.basis`` side channel because legacy fixedbasisMCMC
-    postprocessing reads that field directly.
+    This mutating wrapper-boundary helper replaces the internal call to
+    ``fp_sensitivity`` while preserving the legacy ``fp_data`` contract. It
+    still records the flat ``.basis`` side channel because current
+    fixedbasisMCMC postprocessing reads that field directly.
+
+    Args:
+        fp_and_data: Legacy ``fp_all``/``fp_data`` dictionary containing site
+            datasets, ``".flux"``, and optional ``".split_by_sectors"``.
+        basis_functions: Retained basis object used to compute site ``H``.
+
+    Returns:
+        The input dictionary with ``".basis"`` and each site ``H`` updated.
     """
     sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
     flux_sources = list(fp_and_data[".flux"].keys())
@@ -122,7 +131,21 @@ def _legacy_flat_basis_for_fp_data(
     flux_sources: list[str],
     split_by_sectors: bool,
 ) -> xr.DataArray:
-    """Return the flat basis side channel expected by legacy postprocessing."""
+    """Legacy adapter returning the flat ``.basis`` side channel.
+
+    Args:
+        basis_functions: Retained basis object to expose as a flat basis.
+        flux_sources: Source names from legacy ``fp_all[".flux"]``.
+        split_by_sectors: Whether the current workflow expects source-resolved
+            sensitivities.
+
+    Returns:
+        Flat basis array in the shape expected by current postprocessing.
+
+    Raises:
+        ValueError: If a multi-source flat basis cannot be matched to the
+            current flux sources.
+    """
     basis_func = basis_functions.flat_basis()
 
     if not split_by_sectors:
@@ -154,12 +177,13 @@ def _legacy_multisource_h_if_needed(
     state_dim: str,
     flux_sources: list[str],
 ) -> xr.DataArray:
-    """Convert gathered multi-source H to legacy ``(region, time, source)`` shape.
+    """Legacy adapter for gathered multi-source H.
 
     ``MultiSourceBucketBasisOperator.sensitivity`` returns a gathered MultiIndex
     state dimension. Current multisector model builders and legacy output code
-    still expect separate ``region`` and ``source`` dimensions, so keep this
-    translation at the wrapper boundary until downstream code accepts gathered H.
+    still expect separate ``region`` and ``source`` dimensions, so this converts
+    to legacy ``(region, time, source)`` shape at the wrapper boundary until
+    downstream code accepts gathered H.
     """
     source_dim = "source"
     region_in_source_dim = "region_in_source"
