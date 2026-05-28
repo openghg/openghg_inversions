@@ -158,6 +158,43 @@ def _make_inv_inputs(
     )
 
 
+def _legacy_basis_matrix_for_prepared_data(
+    basis_functions: BasisFunctions,
+    *,
+    state_dim: str | None = None,
+    state_coord: xr.DataArray | None = None,
+) -> xr.DataArray:
+    """Legacy adapter returning an explicit basis matrix for prepared data.
+
+    ``PreparedInversionData.basis`` is retained for current RHIME and
+    postprocessing callers that still expect a materialised
+    ``basis(region, lat, lon)`` view. Remove this once issue #429 completes the
+    switch to ``BasisFunctions.sensitivity`` and issue #383 moves output
+    handling onto retained basis objects.
+
+    Args:
+        basis_functions: Retained basis object to expose as an explicit matrix.
+        state_dim: Optional state dimension name expected by the legacy caller.
+        state_coord: Optional state coordinate used to align the output matrix.
+
+    Returns:
+        Basis matrix adapted to the requested legacy state coordinate.
+
+    Raises:
+        ValueError: If ``state_coord`` is unnamed.
+    """
+    basis = basis_functions.operator.basis_matrix
+    current_state_dim = basis_functions.operator.meta.state_dim
+    if state_dim is not None and state_dim != current_state_dim:
+        basis = basis.rename({current_state_dim: state_dim})
+        current_state_dim = state_dim
+    if state_coord is not None:
+        if state_coord.name is None:
+            raise ValueError("state_coord must be named so it can be used for reindexing.")
+        basis = basis.reindex({state_coord.name: state_coord})
+    return basis
+
+
 def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
     """Warn when prepared sensitivity matrices contain NaN values."""
     if np.isnan(inv_inputs.H.values).any():
@@ -375,7 +412,11 @@ def prepare_inversion_data(
     flux = None
     if return_basis_objects:
         emissions_basis = basis_objects["emissions"]
-        basis = emissions_basis.legacy_basis_matrix(state_dim="region", state_coord=inv_inputs.region)
+        basis = _legacy_basis_matrix_for_prepared_data(
+            emissions_basis,
+            state_dim="region",
+            state_coord=inv_inputs.region,
+        )
         flux = emissions_basis.flux
 
     return PreparedInversionData(
