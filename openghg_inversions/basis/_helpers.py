@@ -102,9 +102,8 @@ def apply_basis_functions_sensitivity(fp_and_data: dict, basis_functions: BasisF
     split_by_sectors = bool(fp_and_data.get(".split_by_sectors", len(flux_sources) > 1))
     fp_x_flux_name = "fp_x_flux_sectoral" if split_by_sectors else "fp_x_flux"
 
-    fp_and_data[".basis"] = _legacy_flat_basis_for_fp_data(
-        basis_functions=basis_functions,
-        flux_sources=flux_sources,
+    fp_and_data[".basis"] = basis_functions.legacy_flat_basis(
+        source_order=flux_sources,
         split_by_sectors=split_by_sectors,
     )
 
@@ -123,52 +122,6 @@ def apply_basis_functions_sensitivity(fp_and_data: dict, basis_functions: BasisF
         fp_and_data[site]["H"] = sensitivity
 
     return fp_and_data
-
-
-def _legacy_flat_basis_for_fp_data(
-    *,
-    basis_functions: BasisFunctions,
-    flux_sources: list[str],
-    split_by_sectors: bool,
-) -> xr.DataArray:
-    """Legacy adapter returning the flat ``.basis`` side channel.
-
-    Args:
-        basis_functions: Retained basis object to expose as a flat basis.
-        flux_sources: Source names from legacy ``fp_all[".flux"]``.
-        split_by_sectors: Whether the current workflow expects source-resolved
-            sensitivities.
-
-    Returns:
-        Flat basis array in the shape expected by current postprocessing.
-
-    Raises:
-        ValueError: If a multi-source flat basis cannot be matched to the
-            current flux sources.
-    """
-    basis_func = basis_functions.flat_basis()
-
-    if not split_by_sectors:
-        if not isinstance(basis_func, xr.DataArray):
-            basis_func = next(iter(basis_func.values()))
-    elif isinstance(basis_func, dict):
-        if len(basis_func) == 1:
-            basis_func = next(iter(basis_func.values()))
-        elif all(fs in basis_func for fs in flux_sources):
-            basis_func = xr.concat(
-                [bf.expand_dims({"source": [key]}) for key, bf in basis_func.items()],
-                dim="source",
-                join="outer",
-            )
-        else:
-            raise ValueError(
-                "There should either only be one basis_func, or it should be a dictionary keyed by sources."
-            )
-
-    if "time" in basis_func.dims and basis_func.sizes["time"] <= 1:
-        basis_func = basis_func.squeeze("time")
-
-    return basis_func
 
 
 def _legacy_multisource_h_if_needed(

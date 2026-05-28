@@ -11,7 +11,7 @@ Example usage:
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -138,6 +138,54 @@ class FluxWeightedBasis:
             metadata={**self.metadata, **dict(metadata)},
         )
 
+    def select_sources(self, sources: Sequence[str]) -> Self:
+        """Return a copy restricted to source-specific basis functions.
+
+        This is used when a retained artifact contains more sources than the
+        current run requested. Single-source/shared-basis operators are kept as
+        is, with only flux restricted when it has a ``source`` dimension.
+
+        Args:
+            sources: Source names and order to keep.
+
+        Returns:
+            A basis object restricted to ``sources``.
+
+        Raises:
+            ValueError: If a source-specific basis is missing a requested
+                source.
+        """
+        source_order = list(sources)
+        basis_flat = self.flat_basis()
+        flux = self.flux
+        if "source" in flux.dims:
+            flux = flux.sel(source=source_order)
+
+        if not isinstance(basis_flat, dict):
+            return self.with_flux(flux)
+
+        missing = [source for source in source_order if source not in basis_flat]
+        if missing:
+            raise ValueError(f"BasisFunctions object is missing sources required by this run: {missing}")
+
+        operator_kwargs: dict[str, Any] = {"state_dim": self.operator.meta.state_dim}
+        source_dim = getattr(self.operator, "source_dim", None)
+        region_in_source_dim = getattr(self.operator, "region_in_source_dim", None)
+        if source_dim is not None:
+            operator_kwargs["source_dim"] = source_dim
+        if region_in_source_dim is not None:
+            operator_kwargs["region_in_source_dim"] = region_in_source_dim
+
+        return cast(
+            Self,
+            type(self).from_multi_source_flat_basis(
+                basis_flat={source: basis_flat[source] for source in source_order},
+                flux=flux,
+                operator_kwargs=operator_kwargs,
+                metadata=self.metadata,
+            ),
+        )
+
     @property
     def basis_artifact_source(self) -> str | None:
         """Return the source used to create/load this basis, when recorded."""
@@ -152,6 +200,65 @@ class FluxWeightedBasis:
         if isinstance(basis_flat, dict):
             return {key: value.rename("basis") for key, value in basis_flat.items()}
         raise AttributeError("Operator does not expose `basis_flat`.")
+
+    def legacy_flat_basis(
+        self,
+        *,
+        source_order: Sequence[str] | None = None,
+        split_by_sectors: bool = False,
+    ) -> xr.DataArray:
+        """Return the flat ``.basis`` side-channel used by legacy callers.
+
+        This compatibility adapter preserves the current ``fp_data[".basis"]``
+        contract for fixedbasisMCMC and postprocessing. In sectoral workflows,
+        source-specific flat bases are concatenated in ``source_order`` and
+        extra source keys are ignored.
+
+        Args:
+            source_order: Source names that define the output ``source``
+                coordinate order for multi-source flat basis mappings.
+            split_by_sectors: Whether the caller expects source-resolved basis
+                functions.
+
+        Returns:
+            Flat basis array in the current legacy side-channel format.
+
+        Raises:
+            ValueError: If a multi-source flat basis cannot be matched to the
+                requested sources.
+        """
+        basis_func = self.flat_basis()
+
+        if not split_by_sectors:
+            if not isinstance(basis_func, xr.DataArray):
+                if source_order is not None:
+                    for source in source_order:
+                        if source in basis_func:
+                            basis_func = basis_func[source]
+                            break
+                    else:
+                        basis_func = next(iter(basis_func.values()))
+                else:
+                    basis_func = next(iter(basis_func.values()))
+        elif isinstance(basis_func, dict):
+            if len(basis_func) == 1:
+                basis_func = next(iter(basis_func.values()))
+            elif source_order is not None and all(source in basis_func for source in source_order):
+                basis_func = xr.concat(
+                    [basis_func[source].expand_dims({"source": [source]}) for source in source_order],
+                    dim="source",
+                    join="outer",
+                )
+            else:
+                raise ValueError(
+                    "There should either only be one basis function, or it should be a dictionary "
+                    "keyed by the requested sources."
+                )
+
+        if "time" in basis_func.dims and basis_func.sizes["time"] <= 1:
+            basis_func = basis_func.squeeze("time")
+
+        return basis_func
 
     def legacy_basis_matrix(
         self,
@@ -390,12 +497,15 @@ def basis_functions_from_fp_all_flat_basis(
     """
     flux = flux_from_fp_all(fp_all)
     if isinstance(basis_flat, Mapping):
-        return FluxWeightedBasis.from_multi_source_flat_basis(
+        basis_functions = FluxWeightedBasis.from_multi_source_flat_basis(
             basis_flat=basis_flat,
             flux=flux,
             operator_kwargs={"state_dim": "region"},
             metadata=metadata,
         )
+        if "source" in flux.dims:
+            return basis_functions.select_sources([str(source) for source in flux.source.values])
+        return basis_functions
 
     return FluxWeightedBasis.from_flat_basis(
         basis_flat=basis_flat,

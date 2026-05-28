@@ -1078,9 +1078,11 @@ def test_multisource_datatree_basis_artifact_keeps_legacy_h_shape(tmp_path):
     sources = ["A", "B"]
     basis_a = make_basis_flat_from_blocks([[1, 1], [2, 2]])
     basis_b = make_basis_flat_from_blocks([[1, 2], [1, 2]])
-    basis_by_source = {"A": basis_a, "B": basis_b}
+    basis_by_source = {"extra": basis_a, "B": basis_b, "A": basis_a}
+    expected_basis_by_source = {"A": basis_a, "B": basis_b}
     flux_by_source = {
-        source: xr.ones_like(basis, dtype=float).rename("flux") for source, basis in basis_by_source.items()
+        source: xr.ones_like(basis, dtype=float).rename("flux")
+        for source, basis in expected_basis_by_source.items()
     }
     fp_x_flux_sectoral = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
     fp_all = {
@@ -1110,11 +1112,15 @@ def test_multisource_datatree_basis_artifact_keeps_legacy_h_shape(tmp_path):
         basis_directory=tmp_path,
         return_basis_objects=True,
     )
-    legacy_fp = fp_sensitivity(fp_all.copy(), basis_func=basis_by_source)
+    legacy_fp = fp_sensitivity(fp_all.copy(), basis_func=expected_basis_by_source)
 
     assert fp_data["TAC"].H.dims == ("region", "time", "source")
     assert list(fp_data["TAC"].H.source.values) == sources
+    assert list(fp_data[".basis"].source.values) == sources
+    assert list(basis_objects["emissions"].flat_basis()) == sources
     xr.testing.assert_allclose(fp_data["TAC"].H, legacy_fp["TAC"].H)
+    xr.testing.assert_identical(fp_data[".basis"].sel(source="A", drop=True), basis_a.rename("basis"))
+    xr.testing.assert_identical(fp_data[".basis"].sel(source="B", drop=True), basis_b.rename("basis"))
     assert basis_objects["emissions"].basis_artifact_source == "datatree"
 
 
