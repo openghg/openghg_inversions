@@ -1027,8 +1027,8 @@ def test_load_basis_functions_prefers_datatree_schema(tmp_path):
     xr.testing.assert_identical(loaded.flux, current_flux)
 
 
-def test_datatree_basis_artifact_requires_legacy_state_labels_until_fp_sensitivity_replaced(tmp_path):
-    """DataTree basis artifacts must match legacy H state labels while fp_sensitivity is still used."""
+def test_datatree_basis_artifact_can_use_basisfunctions_state_labels(tmp_path):
+    """Wrapper H construction uses BasisFunctions labels instead of legacy flat-basis labels."""
     basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
     basis_for_operator = basis_flat.isel(time=0, drop=True)
     flux = xr.ones_like(basis_for_operator, dtype=float).rename("flux")
@@ -1056,18 +1056,91 @@ def test_datatree_basis_artifact_requires_legacy_state_labels_until_fp_sensitivi
         output_name="range1",
     )
 
-    with pytest.raises(ValueError, match="legacy fp_sensitivity H region coordinate"):
-        basis_functions_wrapper(
-            fp_all,
-            species="ch4",
+    fp_data, basis_objects = basis_functions_wrapper(
+        fp_all,
+        species="ch4",
+        domain="EUROPE",
+        start_date="2019-01-01",
+        emissions_name=["emissions"],
+        nbasis=2,
+        use_bc=False,
+        fp_basis_case="weighted_ch4-range1",
+        basis_directory=tmp_path,
+        return_basis_objects=True,
+    )
+
+    xr.testing.assert_identical(fp_data["TAC"].H.region, bf.operator.basis_matrix.region)
+    xr.testing.assert_allclose(fp_data["TAC"].H, bf.sensitivity(fp_x_flux))
+    assert basis_objects["emissions"].basis_artifact_source == "datatree"
+
+
+def test_multisource_datatree_basis_artifact_keeps_legacy_h_shape(tmp_path):
+    """Multi-source DataTree artifacts use BasisFunctions.sensitivity but keep legacy H shape."""
+    sources = ["A", "B"]
+    basis_a = make_basis_flat_from_blocks([[1, 1], [2, 2]])
+    basis_b = make_basis_flat_from_blocks([[1, 2], [1, 2]])
+    basis_by_source = {"A": basis_a, "B": basis_b}
+    flux_by_source = {
+        source: xr.ones_like(basis, dtype=float).rename("flux") for source, basis in basis_by_source.items()
+    }
+    fp_x_flux_sectoral = make_fp_x_flux_sectoral(sources=sources, nlat=2, nlon=2, ntime=3)
+    fp_all = {
+        "TAC": xr.Dataset({"fp_x_flux_sectoral": fp_x_flux_sectoral}),
+        ".flux": flux_by_source,
+        ".split_by_sectors": True,
+    }
+    bf = BasisFunctions.from_multi_source_flat_basis(
+        basis_flat=basis_by_source,
+        flux=flux_by_source,
+        operator_kwargs={"state_dim": "region"},
+    )
+
+    basis_dir = tmp_path / "EUROPE"
+    basis_dir.mkdir()
+    bf.to_datatree().to_netcdf(basis_dir / "weighted_ch4-loader_EUROPE_2019-01_basis_datatree.nc")
+
+    fp_data, basis_objects = basis_functions_wrapper(
+        fp_all,
+        species="ch4",
+        domain="EUROPE",
+        start_date="2019-01-01",
+        emissions_name=sources,
+        nbasis=2,
+        use_bc=False,
+        fp_basis_case="weighted_ch4-loader",
+        basis_directory=tmp_path,
+        return_basis_objects=True,
+    )
+    legacy_fp = fp_sensitivity(fp_all.copy(), basis_func=basis_by_source)
+
+    assert fp_data["TAC"].H.dims == ("region", "time", "source")
+    assert list(fp_data["TAC"].H.source.values) == sources
+    xr.testing.assert_allclose(fp_data["TAC"].H, legacy_fp["TAC"].H)
+    assert basis_objects["emissions"].basis_artifact_source == "datatree"
+
+
+def test_load_basis_functions_reports_multiple_datatree_matches(tmp_path):
+    """Ambiguous DataTree artifacts should list paths and resolution steps."""
+    basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
+    flux = xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float).rename("flux")
+    bf = BasisFunctions.from_flat_basis(
+        basis_flat=basis_flat,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+    )
+    fp_all = {".flux": {"emissions": flux}, ".split_by_sectors": False}
+
+    basis_dir = tmp_path / "EUROPE"
+    basis_dir.mkdir()
+    for month in ["2019-01", "2019-02"]:
+        bf.to_datatree().to_netcdf(basis_dir / f"weighted_ch4-loader_EUROPE_{month}_basis_datatree.nc")
+
+    with pytest.raises(ValueError, match="Use a more specific basis_case"):
+        load_basis_functions(
+            fp_all=fp_all,
             domain="EUROPE",
-            start_date="2019-01-01",
-            emissions_name=["emissions"],
-            nbasis=2,
-            use_bc=False,
-            fp_basis_case="weighted_ch4-range1",
+            basis_case="weighted_ch4-loader",
             basis_directory=tmp_path,
-            return_basis_objects=True,
         )
 
 

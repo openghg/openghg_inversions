@@ -13,7 +13,7 @@ from .basis_functions import (
     flux_from_fp_all,
 )
 from ._functions import basis_functions, fixed_outer_regions_basis, basis, openghginv_path
-from ._helpers import fp_sensitivity_from_basis_functions, bc_sensitivity
+from ._helpers import apply_basis_functions_sensitivity, bc_sensitivity
 
 BasisArtifactSource = Literal["generated", "datatree", "legacy_flat"]
 
@@ -166,7 +166,7 @@ def basis_functions_wrapper(
     print(f"Computing basis took {time() - basis_start}s.")
 
     fp_sens_start = time()
-    fp_data = fp_sensitivity_from_basis_functions(fp_all, basis_functions_object)
+    fp_data = apply_basis_functions_sensitivity(fp_all, basis_functions_object)
     print(f"Computing fp sensitivity took {time() - fp_sens_start}s.")
 
     basis_objects: dict[str, BasisFunctions] = {}
@@ -239,9 +239,12 @@ def load_basis_functions(
 
     if datatree_files:
         if len(datatree_files) > 1:
+            files_text = "\n".join(f"  - {file}" for file in datatree_files)
             raise ValueError(
-                "DataTree basis artifact loading currently supports one matching file. "
-                f"Found {len(datatree_files)} files for basis_case={basis_case!r}, domain={domain!r}."
+                "DataTree basis artifact loading currently supports one matching file, but found "
+                f"{len(datatree_files)} for basis_case={basis_case!r}, domain={domain!r}:\n"
+                f"{files_text}\n"
+                "Use a more specific basis_case or remove/rename stale DataTree basis artifacts."
             )
         basis_functions = _load_basis_datatree(datatree_files[0])
         print(f"Loaded DataTree basis artifact: {datatree_files[0]}")

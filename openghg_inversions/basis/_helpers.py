@@ -10,6 +10,10 @@ from ._functions import basis_boundary_conditions
 def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.DataArray]) -> dict:
     """Add a sensitivity matrix, H, to each site xr.Dataset in fp_and_data.
 
+    Deprecated:
+        Prefer ``BasisFunctions.sensitivity`` for new code. This legacy helper
+        is retained for callers that still pass flat basis arrays directly.
+
     The sensitivity matrix H takes the footprint sensitivities (the `fp` variable),
     multiplies it by the flux files, then aggregates over the basis regions.
 
@@ -77,26 +81,106 @@ def fp_sensitivity(fp_and_data: dict, basis_func: xr.DataArray | dict[str, xr.Da
     return fp_and_data
 
 
-def fp_sensitivity_from_basis_functions(fp_and_data: dict, basis_functions: BasisFunctions) -> dict:
-    """Apply legacy ``fp_sensitivity`` using a ``BasisFunctions`` flat-basis view."""
-    fp_data = fp_sensitivity(fp_and_data, basis_func=basis_functions.flat_basis())
-    _validate_legacy_basis_state(fp_data, basis_functions)
-    return fp_data
+def apply_basis_functions_sensitivity(fp_and_data: dict, basis_functions: BasisFunctions) -> dict:
+    """Add sensitivity matrices using ``BasisFunctions.sensitivity``.
 
+    This is the wrapper-internal replacement for ``fp_sensitivity``. It still
+    records the flat ``.basis`` side channel because legacy fixedbasisMCMC
+    postprocessing reads that field directly.
+    """
+    sites = [key for key in list(fp_and_data.keys()) if key[0] != "."]
+    flux_sources = list(fp_and_data[".flux"].keys())
+    split_by_sectors = bool(fp_and_data.get(".split_by_sectors", len(flux_sources) > 1))
+    fp_x_flux_name = "fp_x_flux_sectoral" if split_by_sectors else "fp_x_flux"
 
-def _validate_legacy_basis_state(fp_data: dict, basis_functions: BasisFunctions) -> None:
-    """Ensure legacy H construction and retained basis describe the same state vector."""
-    site = next(key for key in fp_data if not str(key).startswith("."))
-    h_region = fp_data[site]["H"].coords.get("region")
-    basis_region = basis_functions.legacy_basis_matrix(state_dim="region").coords.get("region")
-    if h_region is None or basis_region is None or h_region.identical(basis_region):
-        return
-
-    raise ValueError(
-        "Retained BasisFunctions state coordinates do not match the legacy fp_sensitivity H region "
-        "coordinate. Until BasisFunctions.sensitivity replaces fp_sensitivity, retained basis artifacts "
-        "must use legacy-compatible region labels."
+    fp_and_data[".basis"] = _legacy_flat_basis_for_fp_data(
+        basis_functions=basis_functions,
+        flux_sources=flux_sources,
+        split_by_sectors=split_by_sectors,
     )
+
+    for site in sites:
+        sensitivity = basis_functions.sensitivity(fp_and_data[site][fp_x_flux_name])
+        state_dim = basis_functions.operator.meta.state_dim
+        if state_dim != "region" and state_dim in sensitivity.dims:
+            sensitivity = sensitivity.rename({state_dim: "region"})
+            state_dim = "region"
+        if split_by_sectors:
+            sensitivity = _legacy_multisource_h_if_needed(
+                sensitivity,
+                state_dim=state_dim,
+                flux_sources=flux_sources,
+            )
+        fp_and_data[site]["H"] = sensitivity
+
+    return fp_and_data
+
+
+def _legacy_flat_basis_for_fp_data(
+    *,
+    basis_functions: BasisFunctions,
+    flux_sources: list[str],
+    split_by_sectors: bool,
+) -> xr.DataArray:
+    """Return the flat basis side channel expected by legacy postprocessing."""
+    basis_func = basis_functions.flat_basis()
+
+    if not split_by_sectors:
+        if not isinstance(basis_func, xr.DataArray):
+            basis_func = next(iter(basis_func.values()))
+    elif isinstance(basis_func, dict):
+        if len(basis_func) == 1:
+            basis_func = next(iter(basis_func.values()))
+        elif all(fs in basis_func for fs in flux_sources):
+            basis_func = xr.concat(
+                [bf.expand_dims({"source": [key]}) for key, bf in basis_func.items()],
+                dim="source",
+                join="outer",
+            )
+        else:
+            raise ValueError(
+                "There should either only be one basis_func, or it should be a dictionary keyed by sources."
+            )
+
+    if "time" in basis_func.dims and basis_func.sizes["time"] <= 1:
+        basis_func = basis_func.squeeze("time")
+
+    return basis_func
+
+
+def _legacy_multisource_h_if_needed(
+    sensitivity: xr.DataArray,
+    *,
+    state_dim: str,
+    flux_sources: list[str],
+) -> xr.DataArray:
+    """Convert gathered multi-source H to legacy ``(region, time, source)`` shape.
+
+    ``MultiSourceBucketBasisOperator.sensitivity`` returns a gathered MultiIndex
+    state dimension. Current multisector model builders and legacy output code
+    still expect separate ``region`` and ``source`` dimensions, so keep this
+    translation at the wrapper boundary until downstream code accepts gathered H.
+    """
+    source_dim = "source"
+    region_in_source_dim = "region_in_source"
+    if source_dim in sensitivity.dims:
+        return sensitivity
+    if state_dim not in sensitivity.dims or source_dim not in sensitivity.coords:
+        return sensitivity
+
+    legacy_h = sensitivity.unstack(state_dim).fillna(0)
+    if region_in_source_dim in legacy_h.dims:
+        legacy_h = legacy_h.rename({region_in_source_dim: "region"})
+    if source_dim not in legacy_h.dims or "region" not in legacy_h.dims:
+        return sensitivity
+
+    legacy_h = legacy_h.reindex({source_dim: flux_sources}).fillna(0)
+    dim_order = ["region"]
+    if "time" in legacy_h.dims:
+        dim_order.append("time")
+    dim_order.append(source_dim)
+    dim_order.extend(str(dim) for dim in legacy_h.dims if str(dim) not in dim_order)
+    return legacy_h.transpose(*dim_order)
 
 
 def apply_fp_basis_functions(
