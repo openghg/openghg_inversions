@@ -576,6 +576,7 @@ def fixedbasisMCMC(
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
     power: dict | float = 1.99,
+    return_basis_objects: bool = False,
     **kwargs,
 ) -> xr.Dataset | dict | InversionOutput:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference of emissions.
@@ -700,6 +701,8 @@ def fixedbasisMCMC(
             - "mcmc_results": return the results of `fixedbasisMCMC` with no further processing
         paris_postprocessing_kwargs: Dict of kwargs to pass to `make_paris_outputs`.
         power: Power to raise pollution event size to if using pollution events from obs. Default is 1.99.
+        return_basis_objects: If True, retain basis objects during shared preparation and include them in
+            ``output_format="mcmc_args"`` debug output. They are not passed to ``inferpymc``.
 
     Returns:
         xr.Dataset | dict: Results from the inversion in a Dataset if skip_post_processing==False,
@@ -777,6 +780,7 @@ def fixedbasisMCMC(
         min_error=min_error,
         calculate_min_error=calculate_min_error,
         min_error_options=min_error_options,
+        return_basis_objects=return_basis_objects,
         merged_data_only=output_format == "merged_data",
     )
 
@@ -841,6 +845,9 @@ def fixedbasisMCMC(
 
     # add any additional kwargs to mcmc_args (these aren't needed for post processing)
     mcmc_args.update(kwargs)
+    return_mcmc_args = mcmc_args.copy()
+    if return_basis_objects:
+        return_mcmc_args["basis_objects"] = prepared.basis_objects
 
     end_data = time.time()
 
@@ -848,7 +855,7 @@ def fixedbasisMCMC(
 
     # for debugging
     if output_format == "mcmc_args":
-        return mcmc_args
+        return return_mcmc_args
 
     start_inversion = time.time()
 

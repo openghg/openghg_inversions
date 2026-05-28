@@ -5,12 +5,17 @@ from time import time
 from typing import Literal
 
 import xarray as xr
-from openghg.analyse._utils import match_dataset_dims, stack_datasets
 
-from openghg_inversions.array_ops import force_align
-from .basis_functions import BasisFunctions
-from ._functions import basis_functions, fixed_outer_regions_basis, basis
-from ._helpers import fp_sensitivity, bc_sensitivity
+from .basis_functions import (
+    BASIS_ARTIFACT_SOURCE_ATTR,
+    BasisFunctions,
+    basis_functions_from_fp_all_flat_basis,
+    flux_from_fp_all,
+)
+from ._functions import basis_functions, fixed_outer_regions_basis, basis, openghginv_path
+from ._helpers import apply_basis_functions_sensitivity, bc_sensitivity
+
+BasisArtifactSource = Literal["generated", "datatree", "legacy_flat"]
 
 
 def basis_functions_wrapper(
@@ -111,9 +116,13 @@ def basis_functions_wrapper(
             print(
                 f"Basis algorithm {basis_algorithm} and basis case {fp_basis_case} supplied; using {fp_basis_case}."
             )
-        basis_data_array = basis(
-            domain=domain, basis_case=fp_basis_case, basis_directory=basis_directory
-        ).basis
+        basis_functions_object = load_basis_functions(
+            fp_all=fp_all,
+            domain=domain,
+            basis_case=fp_basis_case,
+            basis_directory=basis_directory,
+        )
+        basis_data_array = basis_functions_object.flat_basis()
 
     elif basis_algorithm is None:
         raise ValueError("One of `fp_basis_case` or `basis_algorithm` must be specified.")
@@ -129,6 +138,12 @@ def basis_functions_wrapper(
                 "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
             ) from e
         print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
+        print("Using generated in-memory basis artifact.")
+        basis_functions_object = basis_functions_from_fp_all_flat_basis(
+            fp_all=fp_all,
+            basis_flat=basis_data_array,
+            metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
+        )
 
     else:
         try:
@@ -138,22 +153,29 @@ def basis_functions_wrapper(
                 "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
             ) from e
         print(f"Using {basis_function.description} to derive basis functions.")
-        basis_data_array = basis_function.algorithm(fp_all, start_date, domain, emissions_name, nbasis, country_directory=country_directory)
+        basis_data_array = basis_function.algorithm(
+            fp_all, start_date, domain, emissions_name, nbasis, country_directory=country_directory
+        )
+        print("Using generated in-memory basis artifact.")
+        basis_functions_object = basis_functions_from_fp_all_flat_basis(
+            fp_all=fp_all,
+            basis_flat=basis_data_array,
+            metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
+        )
 
     print(f"Computing basis took {time() - basis_start}s.")
 
     fp_sens_start = time()
-    fp_data = fp_sensitivity(fp_all, basis_func=basis_data_array)
+    fp_data = apply_basis_functions_sensitivity(fp_all, basis_functions_object)
     print(f"Computing fp sensitivity took {time() - fp_sens_start}s.")
 
     basis_objects: dict[str, BasisFunctions] = {}
-    needs_basis_object = return_basis_objects or (output_path is not None and basis_output_format == "datatree")
+    needs_basis_object = return_basis_objects or (
+        output_path is not None and basis_output_format == "datatree"
+    )
 
     if needs_basis_object:
-        basis_objects["emissions"] = _make_basis_functions_object(
-            fp_all=fp_all,
-            basis=basis_data_array,
-        )
+        basis_objects["emissions"] = basis_functions_object
 
     if use_bc is True:
         bc_sens_start = time()
@@ -166,6 +188,8 @@ def basis_functions_wrapper(
         print(f"Computing bc sensitivity took {time() - bc_sens_start}s.")
 
     if output_path is not None and basis_algorithm is not None and fp_basis_case is None:
+        if not isinstance(basis_data_array, xr.DataArray):
+            raise TypeError("Saving generated basis output currently requires a single flat basis DataArray.")
         if basis_output_format == "legacy":
             _save_basis(
                 basis=basis_data_array,
@@ -187,8 +211,7 @@ def basis_functions_wrapper(
             )
         else:
             raise ValueError(
-                f"Unknown basis_output_format '{basis_output_format}'. "
-                "Expected one of: 'legacy', 'datatree'."
+                f"Unknown basis_output_format '{basis_output_format}'. Expected one of: 'legacy', 'datatree'."
             )
 
     if return_basis_objects:
@@ -197,100 +220,96 @@ def basis_functions_wrapper(
     return fp_data
 
 
-def _make_basis_functions_object(fp_all: dict, basis: xr.DataArray) -> BasisFunctions:
-    """Construct a BasisFunctions object from wrapper inputs.
+def load_basis_functions(
+    *,
+    fp_all: dict,
+    domain: str,
+    basis_case: str,
+    basis_directory: str | Path | None = None,
+) -> BasisFunctions:
+    """Load a saved basis artifact as retained ``BasisFunctions``.
 
-    The current wrapper computes a single emissions basis array. For non-sector
-    workflows, this helper combines all flux sources into one representative flux
-    using the same alignment/summing behavior as ``ModelScenario.combine_flux_sources``.
-    For sector-split workflows, fluxes are preserved along a ``source`` dimension.
+    DataTree artifacts are preferred when the matching file carries the
+    ``openghg_inversions.flux_weighted_basis`` schema and are loaded through
+    ``BasisFunctions.load``. Otherwise the existing legacy flat artifact loader
+    is used and a retained basis object is built from runtime flux in
+    ``fp_all``.
+
+    Args:
+        fp_all: Legacy merged-data dictionary used to build runtime flux when
+            adapting legacy flat artifacts or replacing serialized DataTree flux.
+        domain: Inversion domain used in the artifact path convention.
+        basis_case: Basis case prefix used in the artifact path convention.
+        basis_directory: Optional root directory containing per-domain basis
+            artifact subdirectories.
+
+    Returns:
+        Loaded retained basis object with ``basis_artifact_source`` metadata.
+
+    Raises:
+        FileNotFoundError: If no matching artifact files are found.
+        ValueError: If more than one matching DataTree artifact is found.
     """
-    if ".flux" not in fp_all or not fp_all[".flux"]:
-        raise ValueError("Cannot construct BasisFunctions object: fp_all['.flux'] is missing or empty.")
+    files = _basis_artifact_files(domain=domain, basis_case=basis_case, basis_directory=basis_directory)
+    datatree_files = [file for file in files if _is_basis_datatree_artifact(file)]
 
-    flux_entries = fp_all[".flux"]
-    flux_arrays = {key: _extract_flux_dataarray(value, flux_key=key) for key, value in flux_entries.items()}
+    if datatree_files:
+        if len(datatree_files) > 1:
+            files_text = "\n".join(f"  - {file}" for file in datatree_files)
+            raise ValueError(
+                "DataTree basis artifact loading currently supports one matching file, but found "
+                f"{len(datatree_files)} for basis_case={basis_case!r}, domain={domain!r}:\n"
+                f"{files_text}\n"
+                "Use a more specific basis_case or remove/rename stale DataTree basis artifacts."
+            )
+        basis_functions = BasisFunctions.load(datatree_files[0])
+        print(f"Loaded DataTree basis artifact: {datatree_files[0]}")
+        current_flux = flux_from_fp_all(fp_all)
+        basis_functions = basis_functions.with_flux(current_flux).with_metadata(
+            {BASIS_ARTIFACT_SOURCE_ATTR: "datatree"}
+        )
+        if "source" in current_flux.dims:
+            basis_functions = basis_functions.select_sources(
+                [str(source) for source in current_flux.source.values]
+            )
+        return basis_functions
 
-    # Follow existing ModelScenario behavior:
-    # - single-source workflows combine fluxes by summing over flux entries
-    # - multi-source/sector workflows keep per-source fluxes keyed by source
-    if _is_multi_source_workflow(fp_all):
-        flux = _stack_flux_sources_with_alignment(flux_arrays)
-    else:
-        flux = _combine_flux_sources_like_modelscenario(flux_arrays)
-
-    return BasisFunctions.from_basis_flat(
-        basis_flat=basis,
-        flux=flux,
-        operator_kwargs={"state_dim": "region"},
+    basis_data_array = basis(
+        domain=domain,
+        basis_case=basis_case,
+        basis_directory=str(basis_directory) if isinstance(basis_directory, Path) else basis_directory,
+    ).basis
+    print(f"Loaded legacy flat basis artifact for basis_case={basis_case!r}, domain={domain!r}.")
+    return basis_functions_from_fp_all_flat_basis(
+        fp_all=fp_all,
+        basis_flat=basis_data_array,
+        metadata={BASIS_ARTIFACT_SOURCE_ATTR: "legacy_flat"},
     )
 
 
-def _is_multi_source_workflow(fp_all: dict) -> bool:
-    """Determine multi-source/sector mode from fp_all metadata.
-
-    Prefer explicit ``.split_by_sectors`` when present. For legacy/hand-constructed
-    ``fp_all`` without this flag, fall back to inferring sectoral behavior when
-    multiple flux entries are present.
-    """
-    split_by_sectors = fp_all.get(".split_by_sectors")
-    if split_by_sectors is not None:
-        return bool(split_by_sectors)
-
-    flux_entries = fp_all.get(".flux")
-    return isinstance(flux_entries, dict) and len(flux_entries) > 1
-
-
-def _extract_flux_dataarray(flux_entry: object, flux_key: str) -> xr.DataArray:
-    """Extract a DataArray named ``flux`` from supported flux entry containers."""
-    if hasattr(flux_entry, "data") and isinstance(flux_entry.data, xr.Dataset) and "flux" in flux_entry.data:
-        return flux_entry.data["flux"]
-    if isinstance(flux_entry, xr.Dataset) and "flux" in flux_entry:
-        return flux_entry["flux"]
-    if isinstance(flux_entry, xr.DataArray):
-        return flux_entry
-
-    raise TypeError(
-        "Could not extract a flux DataArray from fp_all['.flux']. "
-        f"Got type {type(flux_entry)!r} for flux entry {flux_key!r}."
-    )
+def _basis_artifact_files(
+    *,
+    domain: str,
+    basis_case: str,
+    basis_directory: str | Path | None = None,
+) -> list[Path]:
+    """Find basis artifact files using the legacy basis directory convention."""
+    basis_path = Path(basis_directory) if basis_directory is not None else openghginv_path / "basis_functions"
+    files = sorted((basis_path / domain).glob(f"{basis_case}_{domain}*.nc"))
+    if not files:
+        raise FileNotFoundError(
+            f"Can't find basis function files for domain '{domain}' and basis_case '{basis_case}' "
+        )
+    return files
 
 
-def _combine_flux_sources_like_modelscenario(flux_arrays: dict[str, xr.DataArray]) -> xr.DataArray:
-    """Combine fluxes as in ModelScenario.combine_flux_sources."""
-    flux_datasets = [
-        arr.rename("flux").to_dataset() if arr.name != "flux" else arr.to_dataset()
-        for arr in flux_arrays.values()
-    ]
-
-    if len(flux_datasets) == 1:
-        return flux_datasets[0]["flux"]
-
-    dims = [dim for dim in flux_datasets[0].dims if dim != "time"]
-    flux_datasets = match_dataset_dims(flux_datasets, dims=dims)
-    if "time" in flux_datasets[0].dims:
-        flux_stacked = stack_datasets(flux_datasets, dim="time", method="ffill")
-    else:
-        flux_stacked = sum(flux_datasets)
-
-    return flux_stacked["flux"]
-
-
-def _stack_flux_sources_with_alignment(flux_arrays: dict[str, xr.DataArray]) -> xr.DataArray:
-    """Stack fluxes along `source`, validating structural coordinate alignment."""
-    first_key = next(iter(flux_arrays))
-    reference = flux_arrays[first_key]
-    dims_to_align = [dim for dim in reference.dims if dim != "time"]
-
-    aligned_flux = {}
-    for key, arr in flux_arrays.items():
-        aligned_flux[key] = force_align(arr, reference=reference, dims=dims_to_align)
-
-    return xr.concat(
-        [arr.expand_dims({"source": [key]}) for key, arr in aligned_flux.items()],
-        dim="source",
-        join="outer",
-    )
+def _is_basis_datatree_artifact(path: Path) -> bool:
+    """Return true when a file contains the BasisFunctions DataTree schema."""
+    try:
+        with xr.open_datatree(path) as dt:
+            return dt.attrs.get("schema") == "openghg_inversions.flux_weighted_basis"
+    except (OSError, ValueError, KeyError):
+        return False
 
 
 def _save_basis(
@@ -345,10 +364,11 @@ def _save_basis_datatree(
     species: str,
     output_name: str | None = None,
 ) -> None:
-    """Save BasisFunctions object to netCDF DataTree.
+    """Save ``BasisFunctions`` using the wrapper's DataTree file convention.
 
-    This is an opt-in serialization path. The legacy flat basis writer remains the
-    default to preserve backwards compatibility.
+    This is an opt-in serialization path around ``BasisFunctions.save``. The
+    legacy flat basis writer remains the default to preserve backwards
+    compatibility.
     """
     basis_out_path = Path(output_dir, domain.upper())
 
@@ -362,5 +382,4 @@ def _save_basis_datatree(
     else:
         output_name = f"{basis_algorithm}_{species}-{output_name}_{domain}_{start_date}_basis_datatree.nc"
 
-    dt = basis_functions.to_datatree()
-    dt.to_netcdf(basis_out_path / output_name)
+    basis_functions.save(basis_out_path / output_name)

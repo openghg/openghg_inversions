@@ -11,7 +11,6 @@ import warnings
 import numpy as np
 import xarray as xr
 
-from openghg_inversions.array_ops import get_xr_dummies
 from openghg_inversions.basis import basis_functions_wrapper
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.filters import filtering
@@ -36,6 +35,7 @@ class PreparedInversionData:
         flux: Prior flux field from the retained emissions basis object, when
             basis objects were requested.
         basis_objects: Basis objects returned by ``basis_functions_wrapper``.
+        basis_artifact_source: Source of the emissions basis artifact.
     """
 
     fp_all: dict
@@ -46,6 +46,7 @@ class PreparedInversionData:
     basis: xr.DataArray | None = None
     flux: xr.DataArray | None = None
     basis_objects: dict[str, BasisFunctions] = field(default_factory=dict)
+    basis_artifact_source: str = "generated"
 
 
 def _filter_site_aligned_value(value: object, keep_indices: list[int]) -> object:
@@ -155,6 +156,43 @@ def _make_inv_inputs(
         min_error_per_site=min_error_options.get("by_site", False),
         start_date=start_date,
     )
+
+
+def _legacy_basis_matrix_for_prepared_data(
+    basis_functions: BasisFunctions,
+    *,
+    state_dim: str | None = None,
+    state_coord: xr.DataArray | None = None,
+) -> xr.DataArray:
+    """Legacy adapter returning an explicit basis matrix for prepared data.
+
+    ``PreparedInversionData.basis`` is retained for current RHIME and
+    postprocessing callers that still expect a materialised
+    ``basis(region, lat, lon)`` view. Remove this once issue #429 completes the
+    switch to ``BasisFunctions.sensitivity`` and issue #383 moves output
+    handling onto retained basis objects.
+
+    Args:
+        basis_functions: Retained basis object to expose as an explicit matrix.
+        state_dim: Optional state dimension name expected by the legacy caller.
+        state_coord: Optional state coordinate used to align the output matrix.
+
+    Returns:
+        Basis matrix adapted to the requested legacy state coordinate.
+
+    Raises:
+        ValueError: If ``state_coord`` is unnamed.
+    """
+    basis = basis_functions.operator.basis_matrix
+    current_state_dim = basis_functions.operator.meta.state_dim
+    if state_dim is not None and state_dim != current_state_dim:
+        basis = basis.rename({current_state_dim: state_dim})
+        current_state_dim = state_dim
+    if state_coord is not None:
+        if state_coord.name is None:
+            raise ValueError("state_coord must be named so it can be used for reindexing.")
+        basis = basis.reindex({state_coord.name: state_coord})
+    return basis
 
 
 def _warn_for_nan_inputs(inv_inputs: xr.Dataset, *, use_bc: bool) -> None:
@@ -327,13 +365,11 @@ def prepare_inversion_data(
         emissions_name=flux_sources,
         outputname=output_name,
         output_path=basis_output_path,
-        return_basis_objects=return_basis_objects,
+        return_basis_objects=True,
     )
-    if return_basis_objects:
-        fp_data, basis_objects = cast(tuple[dict, dict[str, BasisFunctions]], basis_result)
-    else:
-        fp_data = cast(dict, basis_result)
-        basis_objects = {}
+    fp_data, prepared_basis_objects = cast(tuple[dict, dict[str, BasisFunctions]], basis_result)
+    basis_source = prepared_basis_objects["emissions"].basis_artifact_source or "generated"
+    basis_objects = prepared_basis_objects if return_basis_objects else {}
 
     if filters is not None:
         try:
@@ -375,8 +411,13 @@ def prepare_inversion_data(
     basis = None
     flux = None
     if return_basis_objects:
-        basis = get_xr_dummies(fp_data[".basis"], cat_dim="region", categories=inv_inputs.region)
-        flux = basis_objects["emissions"].flux
+        emissions_basis = basis_objects["emissions"]
+        basis = _legacy_basis_matrix_for_prepared_data(
+            emissions_basis,
+            state_dim="region",
+            state_coord=inv_inputs.region,
+        )
+        flux = emissions_basis.flux
 
     return PreparedInversionData(
         fp_all=fp_all,
@@ -385,6 +426,7 @@ def prepare_inversion_data(
         basis=basis,
         flux=flux,
         basis_objects=basis_objects,
+        basis_artifact_source=basis_source,
         sites=sites,
         averaging_period=cast(list[str | None], averaging_period),
     )
