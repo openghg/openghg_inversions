@@ -1,8 +1,9 @@
 """Functions to calling basis function algorithms and applying basis functions to data."""
 
+from collections.abc import Mapping
 from pathlib import Path
 from time import time
-from typing import Literal
+from typing import Literal, cast
 
 import xarray as xr
 
@@ -14,8 +15,6 @@ from .basis_functions import (
 )
 from ._functions import basis_functions, fixed_outer_regions_basis, basis, openghginv_path
 from ._helpers import apply_basis_functions_sensitivity, bc_sensitivity
-
-BasisArtifactSource = Literal["generated", "datatree", "legacy_flat"]
 
 
 def make_basis_functions(
@@ -40,7 +39,7 @@ def make_basis_functions(
     This helper owns basis artifact generation/loading without applying the
     legacy fixedbasis ``fp_data`` side channels.
     """
-    basis_data_array: xr.DataArray | None = None
+    basis_data_array: xr.DataArray | Mapping[str, xr.DataArray] | None = None
     basis_start = time()
 
     if fp_basis_case is not None:
@@ -85,9 +84,15 @@ def make_basis_functions(
                 "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
             ) from e
         print(f"Using {basis_function.description} to derive basis functions.")
-        basis_data_array = basis_function.algorithm(
+        basis_candidate = basis_function.algorithm(
             fp_all, start_date, domain, emissions_name, nbasis, country_directory=country_directory
         )
+        if not isinstance(basis_candidate, (xr.DataArray, Mapping)):
+            raise TypeError(
+                f"Basis algorithm {basis_algorithm!r} returned unsupported basis data "
+                f"{type(basis_candidate)!r}."
+            )
+        basis_data_array = cast(xr.DataArray | Mapping[str, xr.DataArray], basis_candidate)
         print("Using generated in-memory basis artifact.")
         basis_functions_object = basis_functions_from_fp_all_flat_basis(
             fp_all=fp_all,
@@ -240,11 +245,7 @@ def basis_functions_wrapper(
     print(f"Computing fp sensitivity took {time() - fp_sens_start}s.")
 
     basis_objects: dict[str, BasisFunctions] = {}
-    needs_basis_object = return_basis_objects or (
-        output_path is not None and basis_output_format == "datatree"
-    )
-
-    if needs_basis_object:
+    if return_basis_objects:
         basis_objects["emissions"] = basis_functions_object
 
     if use_bc is True:

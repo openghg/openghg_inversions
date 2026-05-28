@@ -97,17 +97,24 @@ def _extract_post_process_args(inv_inputs: xr.Dataset) -> dict[str, object]:
     }
 
 
-def _validate_fixedbasis_prepared_data(prepared: FixedBasisPreparedData) -> None:
-    """Validate the legacy fixedbasis preparation contract before sampling."""
-    if prepared.fp_data is None or prepared.inv_inputs is None:
-        raise RuntimeError("Fixed-basis data preparation did not produce forward data and model inputs.")
+def _require_fixedbasis_inv_inputs(prepared: FixedBasisPreparedData) -> xr.Dataset:
+    """Return prepared model inputs or raise for an invalid fixedbasis contract."""
+    if prepared.inv_inputs is None:
+        raise RuntimeError("Fixed-basis data preparation did not produce model inputs.")
+    return prepared.inv_inputs
 
+
+def _require_fixedbasis_legacy_data(prepared: FixedBasisPreparedData) -> dict:
+    """Return legacy fixedbasis forward data required by postprocessing."""
+    if prepared.fp_data is None:
+        raise RuntimeError("Fixed-basis data preparation did not produce forward data.")
     missing_legacy_keys = [key for key in (".basis", ".flux") if key not in prepared.fp_data]
     if missing_legacy_keys:
         raise RuntimeError(
             "Fixed-basis data preparation did not produce legacy fixed-basis data. "
             f"Missing key(s): {missing_legacy_keys!r}."
         )
+    return prepared.fp_data
 
 
 def _inv_inputs_from_rerun_arrays(
@@ -800,9 +807,7 @@ def fixedbasisMCMC(
     if output_format == "merged_data":
         return prepared.fp_all  # type: ignore
 
-    _validate_fixedbasis_prepared_data(prepared)
-    fp_data = cast(dict, prepared.fp_data)
-    inv_inputs = cast(xr.Dataset, prepared.inv_inputs)
+    inv_inputs = _require_fixedbasis_inv_inputs(prepared)
     sites = prepared.sites
     averaging_period = prepared.averaging_period
 
@@ -827,6 +832,21 @@ def fixedbasisMCMC(
         mcmc_config["bcprior"] = update_log_normal_prior(bcprior)
 
     mcmc_args = mcmc_config.copy()
+    # add any additional kwargs to mcmc_args (these aren't needed for post processing)
+    mcmc_args.update(kwargs)
+    return_mcmc_args = mcmc_args.copy()
+    if return_basis_objects:
+        return_mcmc_args["basis_objects"] = prepared.basis_objects
+
+    end_data = time.time()
+
+    print(f"Data extraction and preparation complete. Time taken = {end_data - start_data:.2f} seconds")
+
+    # for debugging
+    if output_format == "mcmc_args":
+        return return_mcmc_args
+
+    fp_data = _require_fixedbasis_legacy_data(prepared)
     legacy_postprocess_args = _extract_post_process_args(inv_inputs)
 
     legacy_postprocess_args.update(
@@ -853,20 +873,6 @@ def fixedbasisMCMC(
         v = legacy_postprocess_args[k]
         if isinstance(v, np.ndarray) and v.dtype == "float64":
             legacy_postprocess_args[k] = v.astype("float32")
-
-    # add any additional kwargs to mcmc_args (these aren't needed for post processing)
-    mcmc_args.update(kwargs)
-    return_mcmc_args = mcmc_args.copy()
-    if return_basis_objects:
-        return_mcmc_args["basis_objects"] = prepared.basis_objects
-
-    end_data = time.time()
-
-    print(f"Data extraction and preparation complete. Time taken = {end_data - start_data:.2f} seconds")
-
-    # for debugging
-    if output_format == "mcmc_args":
-        return return_mcmc_args
 
     start_inversion = time.time()
 

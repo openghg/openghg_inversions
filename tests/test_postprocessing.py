@@ -133,7 +133,7 @@ def test_fixedbasisMCMC_can_return_basis_objects_in_mcmc_args(mcmc_args):
 
 def test_fixedbasisMCMC_uses_fixedbasis_preparation_contract_for_mcmc_args(monkeypatch, tmp_path):
     """The fixedbasis runner consumes the fixedbasis-specific preparation boundary."""
-    prepared = _minimal_fixedbasis_prepared_data()
+    prepared = _minimal_fixedbasis_prepared_data(fp_data={})
     captured_kwargs = {}
 
     def fake_prepare_fixedbasis_inversion_data(**kwargs):
@@ -251,7 +251,7 @@ def test_fixedbasisMCMC_hbmcmc_output_uses_legacy_postprocess_path(monkeypatch, 
 
 @pytest.mark.parametrize("missing_key", [".basis", ".flux"])
 def test_fixedbasisMCMC_requires_legacy_fixedbasis_fp_data(monkeypatch, tmp_path, missing_key):
-    """Non-merged fixedbasis outputs require the legacy fp_data side-channel keys."""
+    """Postprocessed fixedbasis outputs require the legacy fp_data side-channel keys."""
     fp_data = _minimal_fixedbasis_fp_data()
     del fp_data[missing_key]
     prepared = _minimal_fixedbasis_prepared_data(fp_data=fp_data)
@@ -275,7 +275,7 @@ def test_fixedbasisMCMC_requires_legacy_fixedbasis_fp_data(monkeypatch, tmp_path
             end_date="2019-02-01",
             outputpath=str(tmp_path),
             outputname="missing",
-            output_format="mcmc_args",
+            output_format="hbmcmc",
             use_bc=False,
         )
 

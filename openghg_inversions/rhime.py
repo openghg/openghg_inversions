@@ -307,7 +307,7 @@ def _validate_required_params(params: Mapping[str, Any]) -> None:
 
 def _validate_supported_params(params: Mapping[str, Any]) -> None:
     """Raise if normalized run parameters contain unsupported keys."""
-    data_params = set(inspect.signature(_prepare_data).parameters)
+    data_params = set(inspect.signature(prepare_rhime_inputs).parameters)
     runner_params = {
         "x_prior",
         "bc_prior",
@@ -413,108 +413,6 @@ def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
     joined_failures = "\n".join(failures)
     raise RuntimeError(
         f"Could not save RHIME trace to {path}. Tried h5netcdf, ArviZ default, and netcdf4:\n{joined_failures}"
-    )
-
-
-def _prepare_data(
-    *,
-    species: str,
-    sites: list[str],
-    domain: str,
-    averaging_period: list[str | None] | str | None,
-    start_date: str,
-    end_date: str,
-    output_name: str,
-    flux_sources: list[str],
-    split_by_sectors: bool,
-    bc_store: str = "user",
-    obs_store: str = "user",
-    footprint_store: str = "user",
-    emissions_store: str = "user",
-    met_model: list[str | None] | str | None = None,
-    fp_model: str | None = None,
-    fp_height: list[str | None] | str | None = None,
-    fp_species: str | None = None,
-    inlet: list[str | None] | str | None = None,
-    instrument: list[str | None] | str | None = None,
-    max_level: int | None = None,
-    calibration_scale: str | None = None,
-    obs_data_level: list[str | None] | str | None = None,
-    platform: list[str | None] | str | None = None,
-    use_tracer: bool = False,
-    use_bc: bool = True,
-    fp_basis_case: str | None = None,
-    basis_directory: str | None = None,
-    bc_basis_case: str = "NESW",
-    bc_basis_directory: str | None = None,
-    country_directory: str | None = None,
-    bc_input: str | None = None,
-    basis_algorithm: str = "weighted",
-    nbasis: int = 100,
-    filters: None | list | dict[str, list[str] | None] = None,
-    fix_basis_outer_regions: bool = False,
-    averaging_error: bool = True,
-    bc_freq: str | None = None,
-    sigma_freq: str | None = None,
-    reload_merged_data: bool = False,
-    save_merged_data: bool = False,
-    merged_data_dir: str | None = None,
-    merged_data_name: str | None = None,
-    basis_output_path: str | None = None,
-    min_error: MinErrorConfig = 0.0,
-    min_error_options: dict | None = None,
-) -> RhimePreparedInputs:
-    """Gather data, apply basis functions, filter observations, and make canonical inputs.
-
-    This returns the explicit modern objects needed downstream by RHIME without
-    exposing fixedbasis ``fp_all``/``fp_data`` containers.
-    """
-    return prepare_rhime_inputs(
-        species=species,
-        sites=sites,
-        domain=domain,
-        averaging_period=averaging_period,
-        start_date=start_date,
-        end_date=end_date,
-        output_name=output_name,
-        flux_sources=flux_sources,
-        split_by_sectors=split_by_sectors,
-        bc_store=bc_store,
-        obs_store=obs_store,
-        footprint_store=footprint_store,
-        emissions_store=emissions_store,
-        met_model=met_model,
-        fp_model=fp_model,
-        fp_height=fp_height,
-        fp_species=fp_species,
-        inlet=inlet,
-        instrument=instrument,
-        max_level=max_level,
-        calibration_scale=calibration_scale,
-        obs_data_level=obs_data_level,
-        platform=platform,
-        use_tracer=use_tracer,
-        use_bc=use_bc,
-        fp_basis_case=fp_basis_case,
-        basis_directory=basis_directory,
-        bc_basis_case=bc_basis_case,
-        bc_basis_directory=bc_basis_directory,
-        country_directory=country_directory,
-        bc_input=bc_input,
-        basis_algorithm=basis_algorithm,
-        nbasis=nbasis,
-        filters=filters,
-        fix_basis_outer_regions=fix_basis_outer_regions,
-        averaging_error=averaging_error,
-        bc_freq=bc_freq,
-        sigma_freq=sigma_freq,
-        reload_merged_data=reload_merged_data,
-        save_merged_data=save_merged_data,
-        merged_data_dir=merged_data_dir,
-        merged_data_name=merged_data_name,
-        basis_output_path=basis_output_path,
-        min_error=min_error,
-        min_error_options=min_error_options,
     )
 
 
@@ -978,9 +876,9 @@ def _run_common(
             "flux_sources": flux_sources,
             "split_by_sectors": multisector,
         },
-        _prepare_data,
+        prepare_rhime_inputs,
     )
-    prepared = _prepare_data(**data_args)
+    prepared = prepare_rhime_inputs(**data_args)
 
     model_spec = _make_model_spec(
         species=species,

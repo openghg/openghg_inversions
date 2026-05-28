@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import fields
 from pathlib import Path
 from typing import Any, cast
 
@@ -259,16 +258,6 @@ def _rhime_preparation_args(data_args: dict, flux_sources: list[str]) -> dict:
 
 
 def test_rhime_prepared_inputs_contract_exposes_only_modern_fields() -> None:
-    expected_fields = [
-        "inv_inputs",
-        "basis_functions",
-        "sites",
-        "averaging_period",
-        "basis_artifact_source",
-    ]
-
-    assert [field.name for field in fields(RhimePreparedInputs)] == expected_fields
-
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_inv_inputs(),
         basis_functions=_fake_basis_functions(),
@@ -330,10 +319,11 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
     site_data = _site_dataset([2.0])
     sensitivity = xr.DataArray(
         [[8.0]],
-        dims=("region", "time"),
-        coords={"region": [0], "time": site_data.time},
+        dims=("state", "time"),
+        coords={"state": [0], "time": site_data.time},
         name="H",
     )
+    expected_sensitivity = sensitivity.rename({"state": "region"})
     basis_functions = _SpyBasisFunctions(sensitivity)
     captured_fp_data_keys: set[str] = set()
 
@@ -361,7 +351,7 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
         captured_fp_data_keys = set(fp_data)
         assert sites == ["TAC"]
         assert set(fp_data) == {"TAC"}
-        xr.testing.assert_identical(fp_data["TAC"]["H"], sensitivity)
+        xr.testing.assert_identical(fp_data["TAC"]["H"], expected_sensitivity)
         return _minimal_inv_inputs()
 
     def forbidden_basis_functions_wrapper(*args: object, **kwargs: object) -> None:

@@ -209,19 +209,8 @@ def _prepare_merged_data(
     platform: Any = None,
     use_tracer: bool = False,
     use_bc: bool = True,
-    fp_basis_case: str | None = None,
-    basis_directory: str | None = None,
-    bc_basis_case: str = "NESW",
-    bc_basis_directory: str | Path | None = None,
-    country_directory: str | None = None,
     bc_input: str | None = None,
-    basis_algorithm: str = "weighted",
-    nbasis: int = 100,
-    filters: Any = None,
-    fix_basis_outer_regions: bool = False,
     averaging_error: bool = True,
-    bc_freq: str | None = None,
-    sigma_freq: str | None = None,
     reload_merged_data: bool = False,
     save_merged_data: bool = False,
     merged_data_dir: str | None = None,
@@ -375,8 +364,18 @@ def _rhime_site_data_from_basis_functions(
     for site in sites:
         if fp_data[site].sizes.get("time", 0) == 0:
             continue
-        sensitivity = basis_functions.sensitivity(fp_data[site][fp_x_flux_name])
-        state_dim = "region" if "region" in sensitivity.dims else basis_functions.operator.meta.state_dim
+        fp_x_flux = fp_data[site][fp_x_flux_name]
+        sensitivity = basis_functions.sensitivity(fp_x_flux)
+        state_dims = [dim for dim in sensitivity.dims if dim not in fp_x_flux.dims]
+        if "region" in sensitivity.dims:
+            state_dim = "region"
+        elif len(state_dims) == 1:
+            state_dim = cast(str, state_dims[0])
+        else:
+            raise ValueError(
+                "Could not identify the RHIME sensitivity state dimension from "
+                f"sensitivity dims {sensitivity.dims!r} and fp_x_flux dims {fp_x_flux.dims!r}."
+            )
         if state_dim != "region" and state_dim in sensitivity.dims:
             sensitivity = sensitivity.rename({state_dim: "region"})
             state_dim = "region"
