@@ -1,8 +1,9 @@
 """Functions to calling basis function algorithms and applying basis functions to data."""
 
+from collections.abc import Mapping
 from pathlib import Path
 from time import time
-from typing import Literal
+from typing import Literal, cast
 
 import xarray as xr
 
@@ -15,7 +16,119 @@ from .basis_functions import (
 from ._functions import basis_functions, fixed_outer_regions_basis, basis, openghginv_path
 from ._helpers import apply_basis_functions_sensitivity, bc_sensitivity
 
-BasisArtifactSource = Literal["generated", "datatree", "legacy_flat"]
+
+def make_basis_functions(
+    *,
+    fp_all: dict,
+    species: str,
+    domain: str,
+    start_date: str,
+    emissions_name: list[str] | None,
+    nbasis: int,
+    basis_algorithm: str | None = None,
+    fix_outer_regions: bool = False,
+    fp_basis_case: str | None = None,
+    basis_directory: str | None = None,
+    country_directory: str | None = None,
+    outputname: str | None = None,
+    output_path: str | None = None,
+    basis_output_format: Literal["legacy", "datatree"] = "legacy",
+) -> BasisFunctions:
+    """Create or load retained emissions basis functions.
+
+    This helper owns basis artifact generation/loading without applying the
+    legacy fixedbasis ``fp_data`` side channels.
+    """
+    basis_data_array: xr.DataArray | Mapping[str, xr.DataArray] | None = None
+    basis_start = time()
+
+    if fp_basis_case is not None:
+        if basis_algorithm:
+            print(
+                f"Basis algorithm {basis_algorithm} and basis case {fp_basis_case} supplied; using {fp_basis_case}."
+            )
+        basis_functions_object = load_basis_functions(
+            fp_all=fp_all,
+            domain=domain,
+            basis_case=fp_basis_case,
+            basis_directory=basis_directory,
+        )
+
+    elif basis_algorithm is None:
+        raise ValueError("One of `fp_basis_case` or `basis_algorithm` must be specified.")
+
+    elif fix_outer_regions is True:
+        print("Using fixed outer regions for basis functions.")
+        try:
+            basis_data_array = fixed_outer_regions_basis(
+                fp_all, start_date, basis_algorithm, domain, emissions_name, nbasis, country_directory
+            )
+        except KeyError as e:
+            raise ValueError(
+                "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
+            ) from e
+        print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
+        print("Using generated in-memory basis artifact.")
+        basis_functions_object = basis_functions_from_fp_all_flat_basis(
+            fp_all=fp_all,
+            basis_flat=basis_data_array,
+            metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
+        )
+
+    else:
+        try:
+            basis_function = basis_functions[basis_algorithm]
+        except KeyError as e:
+            raise ValueError(
+                "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
+            ) from e
+        print(f"Using {basis_function.description} to derive basis functions.")
+        basis_candidate = basis_function.algorithm(
+            fp_all, start_date, domain, emissions_name, nbasis, country_directory=country_directory
+        )
+        if not isinstance(basis_candidate, (xr.DataArray, Mapping)):
+            raise TypeError(
+                f"Basis algorithm {basis_algorithm!r} returned unsupported basis data "
+                f"{type(basis_candidate)!r}."
+            )
+        basis_data_array = cast(xr.DataArray | Mapping[str, xr.DataArray], basis_candidate)
+        print("Using generated in-memory basis artifact.")
+        basis_functions_object = basis_functions_from_fp_all_flat_basis(
+            fp_all=fp_all,
+            basis_flat=basis_data_array,
+            metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
+        )
+
+    print(f"Computing basis took {time() - basis_start}s.")
+
+    if output_path is not None and basis_algorithm is not None and fp_basis_case is None:
+        if not isinstance(basis_data_array, xr.DataArray):
+            raise TypeError("Saving generated basis output currently requires a single flat basis DataArray.")
+        if basis_output_format == "legacy":
+            _save_basis(
+                basis=basis_data_array,
+                basis_algorithm=basis_algorithm,
+                output_dir=output_path,
+                domain=domain,
+                species=species,
+                output_name=outputname,
+            )
+        elif basis_output_format == "datatree":
+            _save_basis_datatree(
+                basis_functions=basis_functions_object,
+                basis=basis_data_array,
+                basis_algorithm=basis_algorithm,
+                output_dir=output_path,
+                domain=domain,
+                species=species,
+                output_name=outputname,
+            )
+        else:
+            raise ValueError(
+                f"Unknown basis_output_format '{basis_output_format}'. Expected one of: 'legacy', 'datatree'."
+            )
+
+    return basis_functions_object
 
 
 def basis_functions_wrapper(
@@ -109,72 +222,29 @@ def basis_functions_wrapper(
     if use_bc is True and bc_basis_case is None:
         raise ValueError("If `use_bc` is True, you must specify `bc_basis_case`.")
 
-    basis_start = time()
-
-    if fp_basis_case is not None:
-        if basis_algorithm:
-            print(
-                f"Basis algorithm {basis_algorithm} and basis case {fp_basis_case} supplied; using {fp_basis_case}."
-            )
-        basis_functions_object = load_basis_functions(
-            fp_all=fp_all,
-            domain=domain,
-            basis_case=fp_basis_case,
-            basis_directory=basis_directory,
-        )
-        basis_data_array = basis_functions_object.flat_basis()
-
-    elif basis_algorithm is None:
-        raise ValueError("One of `fp_basis_case` or `basis_algorithm` must be specified.")
-
-    elif fix_outer_regions is True:
-        print("Using fixed outer regions for basis functions.")
-        try:
-            basis_data_array = fixed_outer_regions_basis(
-                fp_all, start_date, basis_algorithm, domain, emissions_name, nbasis, country_directory
-            )
-        except KeyError as e:
-            raise ValueError(
-                "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
-            ) from e
-        print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
-        print("Using generated in-memory basis artifact.")
-        basis_functions_object = basis_functions_from_fp_all_flat_basis(
-            fp_all=fp_all,
-            basis_flat=basis_data_array,
-            metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
-        )
-
-    else:
-        try:
-            basis_function = basis_functions[basis_algorithm]
-        except KeyError as e:
-            raise ValueError(
-                "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
-            ) from e
-        print(f"Using {basis_function.description} to derive basis functions.")
-        basis_data_array = basis_function.algorithm(
-            fp_all, start_date, domain, emissions_name, nbasis, country_directory=country_directory
-        )
-        print("Using generated in-memory basis artifact.")
-        basis_functions_object = basis_functions_from_fp_all_flat_basis(
-            fp_all=fp_all,
-            basis_flat=basis_data_array,
-            metadata={BASIS_ARTIFACT_SOURCE_ATTR: "generated"},
-        )
-
-    print(f"Computing basis took {time() - basis_start}s.")
+    basis_functions_object = make_basis_functions(
+        fp_all=fp_all,
+        species=species,
+        domain=domain,
+        start_date=start_date,
+        emissions_name=emissions_name,
+        nbasis=nbasis,
+        basis_algorithm=basis_algorithm,
+        fix_outer_regions=fix_outer_regions,
+        fp_basis_case=fp_basis_case,
+        basis_directory=basis_directory,
+        country_directory=country_directory,
+        outputname=outputname,
+        output_path=output_path,
+        basis_output_format=basis_output_format,
+    )
 
     fp_sens_start = time()
     fp_data = apply_basis_functions_sensitivity(fp_all, basis_functions_object)
     print(f"Computing fp sensitivity took {time() - fp_sens_start}s.")
 
     basis_objects: dict[str, BasisFunctions] = {}
-    needs_basis_object = return_basis_objects or (
-        output_path is not None and basis_output_format == "datatree"
-    )
-
-    if needs_basis_object:
+    if return_basis_objects:
         basis_objects["emissions"] = basis_functions_object
 
     if use_bc is True:
@@ -186,33 +256,6 @@ def basis_functions_wrapper(
             bc_basis_directory=bc_basis_directory,
         )
         print(f"Computing bc sensitivity took {time() - bc_sens_start}s.")
-
-    if output_path is not None and basis_algorithm is not None and fp_basis_case is None:
-        if not isinstance(basis_data_array, xr.DataArray):
-            raise TypeError("Saving generated basis output currently requires a single flat basis DataArray.")
-        if basis_output_format == "legacy":
-            _save_basis(
-                basis=basis_data_array,
-                basis_algorithm=basis_algorithm,
-                output_dir=output_path,
-                domain=domain,
-                species=species,
-                output_name=outputname,
-            )
-        elif basis_output_format == "datatree":
-            _save_basis_datatree(
-                basis_functions=basis_objects["emissions"],
-                basis=basis_data_array,
-                basis_algorithm=basis_algorithm,
-                output_dir=output_path,
-                domain=domain,
-                species=species,
-                output_name=outputname,
-            )
-        else:
-            raise ValueError(
-                f"Unknown basis_output_format '{basis_output_format}'. Expected one of: 'legacy', 'datatree'."
-            )
 
     if return_basis_objects:
         return fp_data, basis_objects

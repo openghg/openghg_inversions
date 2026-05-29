@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 import inspect
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 import time
 import warnings
 
@@ -14,12 +14,13 @@ import arviz as az
 import numpy as np
 import pymc as pm
 import xarray as xr
-from openghg.util import split_function_inputs
+
+from openghg.util import split_function_inputs  # pyright: ignore[reportPrivateImportUsage]
 
 from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.config import config
-from openghg_inversions.inversion_data import prepare_inversion_data
+from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.models import (
     DEFAULT_X_PRIOR,
     build_rhime_model,
@@ -144,7 +145,7 @@ class RhimeResult:
         outputs: In-memory derived outputs keyed by output kind.
         model: Built PyMC model.
         inv_out: Modern inversion output object when created.
-        basis_objects: Retained basis objects from shared preparation.
+        basis_functions: Retained emissions basis functions from preparation.
     """
 
     run_spec: RhimeRunSpec
@@ -154,21 +155,9 @@ class RhimeResult:
     idata: az.InferenceData
     output_metadata: dict[str, Any] = field(default_factory=dict)
     outputs: dict[str, Any] = field(default_factory=dict)
-    basis_objects: dict[str, BasisFunctions] = field(default_factory=dict)
+    basis_functions: BasisFunctions | None = None
     model: pm.Model | None = None
     inv_out: InversionOutput | None = None
-
-
-@dataclass
-class _PreparedRhimeData:
-    """Prepared data needed after data gathering, basis application, and filtering."""
-
-    inv_inputs: xr.Dataset
-    basis: xr.DataArray
-    flux: xr.DataArray
-    basis_objects: dict[str, BasisFunctions]
-    sites: list[str]
-    averaging_period: list[str | None]
 
 
 def _as_list(value: str | Sequence[str] | None) -> list[str] | None:
@@ -319,7 +308,7 @@ def _validate_required_params(params: Mapping[str, Any]) -> None:
 
 def _validate_supported_params(params: Mapping[str, Any]) -> None:
     """Raise if normalized run parameters contain unsupported keys."""
-    data_params = set(inspect.signature(_prepare_data).parameters)
+    data_params = set(inspect.signature(prepare_rhime_inputs).parameters)
     runner_params = {
         "x_prior",
         "bc_prior",
@@ -428,129 +417,6 @@ def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
     )
 
 
-def _prepare_data(
-    *,
-    species: str,
-    sites: list[str],
-    domain: str,
-    averaging_period: list[str | None] | str | None,
-    start_date: str,
-    end_date: str,
-    output_name: str,
-    flux_sources: list[str],
-    split_by_sectors: bool,
-    bc_store: str = "user",
-    obs_store: str = "user",
-    footprint_store: str = "user",
-    emissions_store: str = "user",
-    met_model: list[str | None] | str | None = None,
-    fp_model: str | None = None,
-    fp_height: list[str | None] | str | None = None,
-    fp_species: str | None = None,
-    inlet: list[str | None] | str | None = None,
-    instrument: list[str | None] | str | None = None,
-    max_level: int | None = None,
-    calibration_scale: str | None = None,
-    obs_data_level: list[str | None] | str | None = None,
-    platform: list[str | None] | str | None = None,
-    use_tracer: bool = False,
-    use_bc: bool = True,
-    fp_basis_case: str | None = None,
-    basis_directory: str | None = None,
-    bc_basis_case: str = "NESW",
-    bc_basis_directory: str | None = None,
-    country_directory: str | None = None,
-    bc_input: str | None = None,
-    basis_algorithm: str = "weighted",
-    nbasis: int = 100,
-    filters: None | list | dict[str, list[str] | None] = None,
-    fix_basis_outer_regions: bool = False,
-    averaging_error: bool = True,
-    bc_freq: str | None = None,
-    sigma_freq: str | None = None,
-    reload_merged_data: bool = False,
-    save_merged_data: bool = False,
-    merged_data_dir: str | None = None,
-    merged_data_name: str | None = None,
-    basis_output_path: str | None = None,
-    min_error: MinErrorConfig = 0.0,
-    min_error_options: dict | None = None,
-) -> _PreparedRhimeData:
-    """Gather data, apply basis functions, filter observations, and make canonical inputs.
-
-    This delegates the legacy ``fp_all``/``fp_data`` preparation to the shared
-    inversion-data helper and returns the explicit modern objects needed
-    downstream by RHIME.
-    """
-    prepared = prepare_inversion_data(
-        species=species,
-        sites=sites,
-        domain=domain,
-        averaging_period=averaging_period,
-        start_date=start_date,
-        end_date=end_date,
-        output_name=output_name,
-        flux_sources=flux_sources,
-        split_by_sectors=split_by_sectors,
-        bc_store=bc_store,
-        obs_store=obs_store,
-        footprint_store=footprint_store,
-        emissions_store=emissions_store,
-        met_model=met_model,
-        fp_model=fp_model,
-        fp_height=fp_height,
-        fp_species=fp_species,
-        inlet=inlet,
-        instrument=instrument,
-        max_level=max_level,
-        calibration_scale=calibration_scale,
-        obs_data_level=obs_data_level,
-        platform=platform,
-        use_tracer=use_tracer,
-        use_bc=use_bc,
-        fp_basis_case=fp_basis_case,
-        basis_directory=basis_directory,
-        bc_basis_case=bc_basis_case,
-        bc_basis_directory=bc_basis_directory,
-        country_directory=country_directory,
-        bc_input=bc_input,
-        basis_algorithm=basis_algorithm,
-        nbasis=nbasis,
-        filters=filters,
-        fix_basis_outer_regions=fix_basis_outer_regions,
-        averaging_error=averaging_error,
-        bc_freq=bc_freq,
-        sigma_freq=sigma_freq,
-        reload_merged_data=reload_merged_data,
-        save_merged_data=save_merged_data,
-        merged_data_dir=merged_data_dir,
-        merged_data_name=merged_data_name,
-        basis_output_path=basis_output_path,
-        min_error=min_error,
-        min_error_options=min_error_options,
-        return_basis_objects=True,
-    )
-
-    if (
-        prepared.inv_inputs is None
-        or prepared.basis is None
-        or prepared.flux is None
-        or "emissions" not in prepared.basis_objects
-    ):
-        raise RuntimeError(
-            "RHIME data preparation did not produce model inputs, basis, flux, and basis objects."
-        )
-
-    return _PreparedRhimeData(
-        inv_inputs=prepared.inv_inputs,
-        basis=prepared.basis,
-        flux=prepared.flux,
-        basis_objects=prepared.basis_objects,
-        sites=prepared.sites,
-        averaging_period=prepared.averaging_period,
-    )
-
-
 def _make_model_spec(
     *,
     species: str,
@@ -633,7 +499,9 @@ def _extend_inferencedata_predictive(
     """Extend an InferenceData object with requested predictive groups."""
     if sample_prior_predictive:
         prior_draws = (
-            trace.posterior.sizes["draw"] if sample_prior_predictive is True else int(sample_prior_predictive)
+            cast(Any, trace).posterior.sizes["draw"]
+            if sample_prior_predictive is True
+            else int(sample_prior_predictive)
         )
         with model:
             trace.extend(pm.sample_prior_predictive(prior_draws, model))
@@ -666,16 +534,19 @@ def _sample(
     idata_kwargs["log_likelihood"] = True
 
     with model:
-        raw_trace = pm.sample(
-            draws=draws,
-            tune=tune,
-            chains=chains,
-            return_inferencedata=True,
-            idata_kwargs=idata_kwargs,
-            **sample_kwargs,
+        raw_trace = cast(
+            az.InferenceData,
+            pm.sample(
+                draws=draws,
+                tune=tune,
+                chains=chains,
+                return_inferencedata=True,
+                idata_kwargs=idata_kwargs,
+                **sample_kwargs,
+            ),
         )
 
-    burned_trace = raw_trace.isel(draw=slice(burn, None))
+    burned_trace = cast(az.InferenceData, raw_trace.isel(draw=slice(burn, None)))
     return _extend_inferencedata_predictive(
         burned_trace,
         model=model,
@@ -684,9 +555,37 @@ def _sample(
     )
 
 
+def _basis_matrix_for_output(
+    basis_functions: BasisFunctions,
+    *,
+    state_dim: str = "region",
+    state_coord: xr.DataArray | None = None,
+) -> xr.DataArray:
+    """Materialise a basis matrix at the RHIME output boundary."""
+    basis = basis_functions.operator.basis_matrix
+    current_state_dim = basis_functions.operator.meta.state_dim
+    if state_dim != current_state_dim:
+        basis = basis.rename({current_state_dim: state_dim})
+    if state_coord is not None:
+        if state_coord.name is None:
+            raise ValueError("state_coord must be named so it can be used for reindexing.")
+        basis = basis.reindex({state_coord.name: state_coord})
+    return basis
+
+
+def _materialise_basis_and_flux_for_output(prepared: RhimePreparedInputs) -> tuple[xr.DataArray, xr.DataArray]:
+    """Return materialised basis/flux arrays for current output adapters."""
+    basis = _basis_matrix_for_output(
+        prepared.basis_functions,
+        state_dim="region",
+        state_coord=prepared.inv_inputs.region,
+    )
+    return basis, prepared.basis_functions.flux
+
+
 def _make_inversion_output(
     *,
-    prepared: _PreparedRhimeData,
+    prepared: RhimePreparedInputs,
     idata: az.InferenceData,
     start_date: str,
     end_date: str,
@@ -701,6 +600,7 @@ def _make_inversion_output(
     ``InversionOutput`` contract.
     """
     inv_inputs = prepared.inv_inputs
+    basis, flux = _materialise_basis_and_flux_for_output(prepared)
     nmeasure = np.arange(inv_inputs.sizes["nmeasure"])
     site_names = (
         inv_inputs["site_names"] if "site_names" in inv_inputs else xr.DataArray(prepared.sites, dims="nsite")
@@ -736,8 +636,8 @@ def _make_inversion_output(
             else None
         ),
         site_indicators=nmeasure_array("site_indicator", inv_inputs["site_indicator"]),
-        flux=prepared.flux,
-        basis=prepared.basis,
+        flux=flux,
+        basis=basis,
         trace=idata,
         site_names=site_names,
         times=nmeasure_array("times", inv_inputs["time"]),
@@ -751,7 +651,7 @@ def _make_inversion_output(
 def _write_standard_outputs(
     *,
     result: RhimeResult,
-    prepared: _PreparedRhimeData,
+    prepared: RhimePreparedInputs,
     country_file: str | None,
 ) -> None:
     """Create and optionally save standard RHIME outputs."""
@@ -840,28 +740,27 @@ def _write_standard_outputs(
 def make_multisector_flux_diagnostics(
     *,
     idata: az.InferenceData,
-    prepared: _PreparedRhimeData,
+    prepared: RhimePreparedInputs,
     model_spec: RhimeModelSpec,
 ) -> xr.Dataset:
     """Create sector-aware posterior flux diagnostics for shared-basis RHIME.
 
     Args:
         idata: InferenceData returned by RHIME sampling.
-        prepared: Prepared RHIME data object containing basis and flux arrays.
+        prepared: Prepared RHIME input object containing retained basis functions.
         model_spec: Model spec containing sector names and variable suffixes.
 
     Returns:
         Dataset containing posterior mean scaling factors, sector posterior flux
         means, and total posterior flux mean.
     """
-    basis = prepared.basis
-    flux = prepared.flux
+    basis, flux = _materialise_basis_and_flux_for_output(prepared)
     posterior_flux = []
     posterior_scaling = []
 
     for sector in model_spec.sectors:
         x_name = f"x_{sector.variable_suffix}"
-        x_mean = idata.posterior[x_name].mean(("chain", "draw"))
+        x_mean = cast(Any, idata).posterior[x_name].mean(("chain", "draw"))
         scale_grid = sparse_xr_dot(basis, x_mean)
         sector_flux = flux.sel(source=sector.flux_source) if "source" in flux.dims else flux
         posterior_scaling.append(scale_grid.expand_dims(sector=[sector.name]))
@@ -876,7 +775,7 @@ def make_multisector_flux_diagnostics(
 def _write_multisector_outputs(
     *,
     result: RhimeResult,
-    prepared: _PreparedRhimeData,
+    prepared: RhimePreparedInputs,
 ) -> None:
     """Create and optionally save shared-basis multi-sector RHIME outputs."""
     diagnostics = make_multisector_flux_diagnostics(
@@ -978,9 +877,9 @@ def _run_common(
             "flux_sources": flux_sources,
             "split_by_sectors": multisector,
         },
-        _prepare_data,
+        prepare_rhime_inputs,
     )
-    prepared = _prepare_data(**data_args)
+    prepared = prepare_rhime_inputs(**data_args)
 
     model_spec = _make_model_spec(
         species=species,
@@ -1065,7 +964,7 @@ def _run_common(
         inv_inputs=prepared.inv_inputs,
         idata=idata,
         model=model,
-        basis_objects=prepared.basis_objects,
+        basis_functions=prepared.basis_functions,
         output_metadata={"build_and_sample_seconds": time.time() - start_build},
     )
 
