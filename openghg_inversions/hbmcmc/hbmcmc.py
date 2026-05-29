@@ -26,7 +26,6 @@ the users OpenGHG config file (default location: ~/.openghg/openghg.conf).
 
 import logging
 from dataclasses import dataclass, field
-from importlib import import_module
 from pathlib import Path
 import time
 from typing import Literal, cast
@@ -35,10 +34,7 @@ import warnings
 import numpy as np
 import xarray as xr
 
-try:
-    split_function_inputs = import_module("openghg.util").split_function_inputs
-except (AttributeError, ImportError):  # pragma: no cover - compatibility with older OpenGHG releases.
-    split_function_inputs = import_module("openghg.util._function_inputs").split_function_inputs
+from openghg.util import split_function_inputs  # pyright: ignore[reportPrivateImportUsage]
 
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 from openghg_inversions.models.priors import lognormal_mu_sigma
