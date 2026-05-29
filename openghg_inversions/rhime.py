@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from importlib import import_module
 import inspect
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -14,7 +15,11 @@ import arviz as az
 import numpy as np
 import pymc as pm
 import xarray as xr
-from openghg.util._function_inputs import split_function_inputs
+
+try:
+    split_function_inputs = import_module("openghg.util").split_function_inputs
+except (AttributeError, ImportError):  # pragma: no cover - compatibility with older OpenGHG releases.
+    split_function_inputs = import_module("openghg.util._function_inputs").split_function_inputs
 
 from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.basis.basis_functions import BasisFunctions

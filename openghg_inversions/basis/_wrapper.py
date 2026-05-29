@@ -53,7 +53,6 @@ def make_basis_functions(
             basis_case=fp_basis_case,
             basis_directory=basis_directory,
         )
-        basis_data_array = basis_functions_object.flat_basis()
 
     elif basis_algorithm is None:
         raise ValueError("One of `fp_basis_case` or `basis_algorithm` must be specified.")
