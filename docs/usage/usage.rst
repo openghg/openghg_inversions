@@ -7,3 +7,4 @@ Using OpenGHG Inversions
 
    installation
    getting_started
+   rhime

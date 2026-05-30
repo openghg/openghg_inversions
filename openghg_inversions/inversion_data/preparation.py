@@ -1,4 +1,15 @@
-"""Shared runner-level inversion data preparation."""
+"""Shared runner-level inversion data preparation.
+
+This module separates legacy fixedbasis preparation from the modern RHIME
+prepared-input contract. New RHIME callers use ``flux_sources`` to name OpenGHG
+flux ``source`` metadata values, while lower-level compatibility helpers still
+pass those values through older ``emissions_name`` parameters internally.
+
+``species`` is the primary gas or tracer name used for object-store lookup and
+output naming. ``use_tracer`` is retained as an explicit unsupported option for
+the current RHIME preparation path because tracer inversions require linked
+forward models that are not represented here.
+"""
 
 from __future__ import annotations
 
@@ -33,7 +44,7 @@ class FixedBasisPreparedData:
         sites: Retained site names after data gathering and filtering.
         averaging_period: Averaging periods aligned to retained sites.
         basis_objects: Basis objects returned by ``basis_functions_wrapper``.
-        basis_artifact_source: Source of the emissions basis artifact.
+        basis_artifact_source: Source of the flux basis artifact.
     """
 
     fp_all: dict
@@ -47,7 +58,18 @@ class FixedBasisPreparedData:
 
 @dataclass(frozen=True)
 class RhimePreparedInputs:
-    """Modern RHIME preparation contract."""
+    """Modern RHIME preparation contract.
+
+    Args:
+        inv_inputs: Canonical inversion inputs consumed by RHIME model
+            builders.
+        basis_functions: Retained flux basis object used to derive
+            output-boundary basis and flux arrays.
+        sites: Retained site names after data gathering and filtering.
+        averaging_period: Averaging periods aligned to retained sites.
+        basis_artifact_source: Description of whether the basis was generated
+            or loaded from an artifact.
+    """
 
     inv_inputs: xr.Dataset
     basis_functions: BasisFunctions
@@ -216,7 +238,12 @@ def _prepare_merged_data(
     merged_data_dir: str | None = None,
     merged_data_name: str | None = None,
 ) -> _MergedInversionData:
-    """Gather or reload merged inversion data and align site metadata."""
+    """Gather or reload merged data and align site metadata.
+
+    ``flux_sources`` contains modern OpenGHG flux ``source`` values. This
+    helper passes them to lower-level data loading through the legacy
+    ``emissions_name`` argument.
+    """
     if use_tracer:
         raise ValueError("Tracer inversions are not supported by this preparation path.")
     if not sites:
@@ -595,7 +622,29 @@ def prepare_rhime_inputs(
     min_error: MinErrorConfig = 0.0,
     min_error_options: dict | None = None,
 ) -> RhimePreparedInputs:
-    """Prepare modern RHIME inputs without exposing legacy fixedbasis containers."""
+    """Prepare modern RHIME inputs without exposing legacy fixedbasis containers.
+
+    Args:
+        species: Primary gas or tracer name used for object-store lookup and
+            output naming.
+        sites: Requested observation site names.
+        domain: Model domain name.
+        averaging_period: Observation averaging period, either scalar or
+            site-aligned.
+        start_date: Inclusive inversion start date.
+        end_date: Exclusive inversion end date.
+        output_name: Base output name used for data and basis artifacts.
+        flux_sources: OpenGHG flux ``source`` values requested for the run.
+        split_by_sectors: Whether to keep sector-resolved sensitivity inputs
+            with a ``source`` coordinate.
+        use_tracer: Unsupported placeholder for tracer inversions, where an
+            additional species constrains the primary species through linked
+            forward models.
+
+    Returns:
+        Modern RHIME prepared inputs containing canonical ``inv_inputs`` and a
+        retained ``BasisFunctions`` object.
+    """
     merged = _prepare_merged_data(
         species=species,
         sites=sites,

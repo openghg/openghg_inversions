@@ -23,6 +23,8 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     RhimePreparedInputs,
     RhimeResult,
+    RhimeSamplingSpec,
+    SectorSpec,
     params_from_config,
     prepare_rhime_inputs,
     resolve_flux_sources,
@@ -216,6 +218,65 @@ def test_resolve_flux_sources_prefers_new_name() -> None:
     assert resolve_flux_sources(emissions_name=["legacy"]) == ["legacy"]
 
 
+def test_direct_sector_spec_records_source_backing() -> None:
+    """Direct Python specs distinguish model sectors from OpenGHG sources."""
+    sector = SectorSpec(
+        name="FF",
+        flux_source="ff-inventory",
+        x_prior={"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
+        variable_suffix="ff",
+    )
+
+    assert sector.name == "FF"
+    assert sector.flux_source == "ff-inventory"
+
+
+def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> None:
+    """Raw runner params normalize into model, output, and sampling specs."""
+    params = {
+        "species": "ch4",
+        "sites": "TAC",
+        "averaging_period": "1h",
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-02",
+        "flux_sources": ["FF", "GPP", "TER", "Ocean"],
+        "output_path": str(tmp_path),
+        "output_name": "test",
+        "output_format": "none",
+        "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
+        "sector_priors": {
+            "GPP": {"pdf": "normal", "mu": 0.7, "sigma": 0.2},
+            "TER": {"pdf": "normal", "mu": 1.3, "sigma": 0.3},
+        },
+        "nit": 7,
+        "burn": 1,
+        "tune": 2,
+        "nchain": 3,
+        "sampler_kwargs": {"random_seed": 42},
+    }
+
+    setup = rhime_module._make_rhime_runner_setup(params=params, multisector=True)
+
+    assert setup.data_args["flux_sources"] == ["FF", "GPP", "TER", "Ocean"]
+    assert setup.data_args["split_by_sectors"] is True
+    assert setup.run_spec.sites == ("TAC",)
+    assert setup.run_spec.averaging_period == ("1h",)
+    assert setup.run_spec.output.output_format == "none"
+    assert setup.run_spec.sampling == RhimeSamplingSpec(
+        nit=7,
+        burn=1,
+        tune=2,
+        nchain=3,
+        nuts_sampler="pymc",
+        verbose=False,
+        sampler_kwargs={"random_seed": 42},
+    )
+    assert [sector.name for sector in setup.run_spec.model.sectors] == ["FF", "GPP", "TER", "Ocean"]
+    assert setup.run_spec.model.sectors[0].x_prior == {"pdf": "normal", "mu": 1.0, "sigma": 0.5}
+    assert setup.run_spec.model.sectors[1].x_prior == {"pdf": "normal", "mu": 0.7, "sigma": 0.2}
+
+
 def test_params_from_config_maps_legacy_emissions_name(tmp_path: Path) -> None:
     config_file = tmp_path / "rhime.ini"
     config_file.write_text(
@@ -240,6 +301,99 @@ output_name = "test"
 
     params = params_from_config(config_file)
     assert params["flux_sources"] == ["legacy-source"]
+
+
+@pytest.mark.parametrize("prior_name", ["x_prior", "bc_prior", "sigma_prior", "offset_prior"])
+def test_params_from_config_rejects_malformed_prior_options(tmp_path: Path, prior_name: str) -> None:
+    """Malformed structured prior config values fail during RHIME normalization."""
+    config_file = tmp_path / "rhime.ini"
+    config_file.write_text(
+        f"""
+[RHIME.PDF]
+{prior_name} = {{"pdf": "normal"
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=prior_name):
+        params_from_config(config_file)
+
+
+def test_params_from_config_rejects_malformed_sector_priors(tmp_path: Path) -> None:
+    """Malformed sector prior config values name the bad option."""
+    config_file = tmp_path / "rhime.ini"
+    config_file.write_text(
+        """
+[RHIME.PDF]
+sector_priors = {"FF": {"pdf": "normal"}
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="sector_priors"):
+        params_from_config(config_file)
+
+
+def test_run_rhime_rejects_string_prior_before_data_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid prior types fail before RHIME data preparation is called."""
+
+    def fail_prepare(**kwargs):
+        raise AssertionError("prepare_rhime_inputs should not be called")
+
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+
+    with pytest.raises(ValueError, match="x_prior"):
+        run_rhime(
+            species="ch4",
+            sites=["TAC"],
+            averaging_period=["1h"],
+            domain="EUROPE",
+            start_date="2019-01-01",
+            end_date="2019-01-02",
+            output_name="test",
+            output_format="none",
+            flux_sources=["total-ukghg-edgar7"],
+            x_prior="bad",
+        )
+
+
+def test_run_rhime_multisector_rejects_non_mapping_sector_prior_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid sector prior values fail before RHIME data preparation is called."""
+
+    def fail_prepare(**kwargs):
+        raise AssertionError("prepare_rhime_inputs should not be called")
+
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+
+    with pytest.raises(ValueError, match="sector_priors"):
+        run_rhime_multisector(
+            species="ch4",
+            sites=["TAC"],
+            averaging_period=["1h"],
+            domain="EUROPE",
+            start_date="2019-01-01",
+            end_date="2019-01-02",
+            output_name="test",
+            output_format="none",
+            flux_sources=["FF", "GPP"],
+            sector_priors={"FF": "bad"},
+        )
+
+
+def test_new_rhime_docs_use_flux_sources_for_examples() -> None:
+    """New RHIME docs keep legacy names out of config/API examples."""
+    rhime_doc = Path("docs/usage/rhime.rst").read_text(encoding="utf-8")
+    template = Path("openghg_inversions/config/templates/rhime_template.ini").read_text(encoding="utf-8")
+
+    assert "flux_sources" in rhime_doc
+    assert "flux_sources" in template
+    assert "emissions_name =" not in rhime_doc
+    assert "emissions_name =" not in template
+    assert "Legacy compatibility spelling" in rhime_doc
 
 
 def _rhime_preparation_args(data_args: dict, flux_sources: list[str]) -> dict:

@@ -1,14 +1,19 @@
 """RHIME model builders.
 
-These builders are the modern public model-construction names.  They reuse the
+These builders are the modern public model-construction names. They reuse the
 component-based PyMC helpers, while keeping the legacy ``inferpymc`` adapter out
 of the RHIME runtime path.
+
+The standard builder optimizes one flux scaling component. The multi-sector
+builder optimizes one component per sector, where each sector is normally backed
+by one OpenGHG flux ``source`` coordinate in ``inv_inputs["H"]``.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from typing import Any, cast
 
 import pymc as pm
 import pytensor.tensor as pt
@@ -154,7 +159,11 @@ def build_rhime_model(
 
 
 def _resolve_sectors(inv_inputs: xr.Dataset, sectors: Sequence[str] | None) -> list[str]:
-    """Resolve requested sector names against the source coordinate."""
+    """Resolve model sectors against the flux ``source`` coordinate.
+
+    The input ``source`` coordinate records OpenGHG flux source metadata. The
+    returned sector names are the separately optimized model components.
+    """
     if "source" not in inv_inputs["H"].dims:
         raise ValueError("Multi-sector RHIME requires inv_inputs['H'] to include a 'source' dimension.")
 
@@ -178,7 +187,7 @@ def _sector_prior(
     sector_priors: Mapping[str, dict] | None,
     x_prior: dict | None,
 ) -> dict:
-    """Resolve the prior for a sector, falling back to the shared x prior."""
+    """Resolve a sector prior, falling back to the shared flux-scaling prior."""
     if sector_priors is not None and sector in sector_priors:
         return dict(sector_priors[sector])
     return dict(DEFAULT_X_PRIOR if x_prior is None else x_prior)
@@ -210,8 +219,9 @@ def build_rhime_multisector_model(
     Args:
         inv_inputs: Canonical inversion-input dataset with
             ``H(region, nmeasure, source)``.
-        sectors: Ordered sector/source names to optimise. Defaults to all
-            ``inv_inputs.H.source`` values.
+        sectors: Ordered model sectors to optimize. Defaults to all
+            ``inv_inputs.H.source`` values, where each source becomes one
+            separately optimized sector.
         sector_priors: Optional per-sector flux-scaling priors.
         x_prior: Shared fallback flux-scaling prior.
         bc_prior: Prior specification for boundary-condition scaling factors.
@@ -260,7 +270,11 @@ def build_rhime_multisector_model(
             )
             sector_outputs.append(component.output)
 
-        total_mu = pm.Deterministic("mu", pt.stack(sector_outputs, axis=0).sum(axis=0), dims="nmeasure")
+        total_mu = pm.Deterministic(
+            "mu",
+            cast(Any, pt.stack(sector_outputs, axis=0)).sum(axis=0),
+            dims="nmeasure",
+        )
 
         mu_bc = None
         if use_bc:
