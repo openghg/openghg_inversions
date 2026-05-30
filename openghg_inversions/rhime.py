@@ -14,6 +14,8 @@ Terminology used by the RHIME API:
   sensitivity data.
 - ``flux_sources`` is the RHIME config/API field containing requested OpenGHG
   flux ``source`` values.
+- ``sector_sources`` optionally maps model sector names to OpenGHG flux
+  ``source`` values when those labels differ.
 - ``sector`` is a model component optimized separately in a multi-sector RHIME
   run, usually backed by one flux ``source``.
 - ``tracer`` is an additional species used to constrain the primary species,
@@ -174,9 +176,9 @@ class RhimeRunSpec:
         averaging_period: Observation averaging period per retained site.
         model: Mathematical model specification.
         output: Output settings.
-        sampling: Sampling settings.
         split_by_sectors: Whether flux data were prepared in sector-resolved
             mode.
+        sampling: Sampling settings.
     """
 
     start_date: str
@@ -185,8 +187,8 @@ class RhimeRunSpec:
     averaging_period: tuple[str | None, ...]
     model: RhimeModelSpec
     output: RhimeOutputSpec
-    sampling: RhimeSamplingSpec = field(default_factory=RhimeSamplingSpec)
     split_by_sectors: bool = False
+    sampling: RhimeSamplingSpec = field(default_factory=RhimeSamplingSpec)
 
 
 @dataclass(frozen=True)
@@ -205,7 +207,6 @@ class RhimeResult:
         run_spec: Top-level run metadata.
         model_spec: Model specification used to build the PyMC model.
         output_spec: Output settings used by the run.
-        sampling_spec: Sampling settings used by the run.
         inv_inputs: Canonical xarray inversion inputs consumed by the model.
         idata: ArviZ ``InferenceData`` returned by sampling.
         output_metadata: Paths and notes for generated outputs.
@@ -213,6 +214,7 @@ class RhimeResult:
         model: Built PyMC model.
         inv_out: Modern inversion output object when created.
         basis_functions: Retained flux basis functions from preparation.
+        sampling_spec: Sampling settings used by the run.
     """
 
     run_spec: RhimeRunSpec
@@ -220,12 +222,12 @@ class RhimeResult:
     output_spec: RhimeOutputSpec
     inv_inputs: xr.Dataset
     idata: az.InferenceData
-    sampling_spec: RhimeSamplingSpec = field(default_factory=RhimeSamplingSpec)
     output_metadata: dict[str, Any] = field(default_factory=dict)
     outputs: dict[str, Any] = field(default_factory=dict)
     basis_functions: BasisFunctions | None = None
     model: pm.Model | None = None
     inv_out: InversionOutput | None = None
+    sampling_spec: RhimeSamplingSpec = field(default_factory=RhimeSamplingSpec)
 
 
 def _as_list(value: str | Sequence[str] | None) -> list[str] | None:
@@ -366,6 +368,8 @@ def _validate_rhime_param_types(params: Mapping[str, Any]) -> None:
     for prior_name in ("x_prior", "bc_prior", "sigma_prior", "offset_prior"):
         _validate_mapping_option(params, prior_name)
 
+    _validate_mapping_option(params, "sector_sources")
+
     if "sector_priors" in params and params["sector_priors"] is not None:
         sector_priors = params["sector_priors"]
         if not isinstance(sector_priors, Mapping):
@@ -380,8 +384,13 @@ def _validate_rhime_param_types(params: Mapping[str, Any]) -> None:
                     )
                 )
 
-    for mapping_name in ("sampler_kwargs", "paris_postprocessing_kwargs", "offset_args"):
+    for mapping_name in ("sampler_kwargs", "paris_postprocessing_kwargs", "offset_args", "min_error_options"):
         _validate_mapping_option(params, mapping_name)
+
+    if "power" in params and params["power"] is not None:
+        power = params["power"]
+        if not isinstance(power, Mapping | int | float):
+            raise ValueError(_invalid_config_type_message("power", "a mapping/dict or number", power))
 
 
 def _normalise_optional_mapping(value: Mapping[str, Any] | None) -> dict[str, Any] | None:
@@ -398,7 +407,17 @@ def _normalise_sector_priors(
     return {str(sector): dict(prior) for sector, prior in sector_priors.items()}
 
 
+def _normalise_sector_sources(
+    sector_sources: Mapping[str, Any] | None,
+) -> dict[str, str] | None:
+    """Copy optional sector-to-source mappings with string names."""
+    if sector_sources is None:
+        return None
+    return {str(sector): str(source) for sector, source in sector_sources.items()}
+
+
 def _required_run_params() -> set[str]:
+    """Return RHIME parameters required before data preparation."""
     return {
         "species",
         "sites",
@@ -441,6 +460,7 @@ def _validate_supported_params(params: Mapping[str, Any]) -> None:
         "sigma_prior",
         "offset_prior",
         "sector_priors",
+        "sector_sources",
         "pollution_events_from_obs",
         "no_model_error",
         "power",
@@ -550,6 +570,7 @@ def _make_model_spec(
     flux_sources: list[str],
     x_prior: dict[str, Any] | None,
     sector_priors: Mapping[str, dict[str, Any]] | None,
+    sector_sources: Mapping[str, str] | None,
     bc_prior: dict[str, Any] | None,
     sigma_prior: dict[str, Any] | None,
     offset_prior: dict[str, Any] | None,
@@ -565,22 +586,31 @@ def _make_model_spec(
     default_x_prior = DEFAULT_X_PRIOR.copy() if x_prior is None else x_prior.copy()
     sectors = []
     used_suffixes: set[str] = set()
-    for source in flux_sources:
-        suffix = safe_pymc_name(source)
+    if sector_sources is not None:
+        mapped_sources = list(dict.fromkeys(sector_sources.values()))
+        if set(mapped_sources) != set(flux_sources):
+            raise ValueError(
+                "`sector_sources` values must match `flux_sources` so RHIME can retrieve the "
+                "OpenGHG data used by each sector."
+            )
+        sector_items = list(sector_sources.items())
+    else:
+        sector_items = [(source, source) for source in flux_sources]
+
+    for name, source in sector_items:
+        suffix = safe_pymc_name(name)
         if suffix in used_suffixes:
             raise ValueError(
-                "Flux source names must be unique after PyMC name sanitisation; "
+                "Sector names must be unique after PyMC name sanitisation; "
                 f"duplicate sanitized name {suffix!r}."
             )
         used_suffixes.add(suffix)
         prior = (
-            sector_priors[source]
-            if sector_priors is not None and source in sector_priors
-            else default_x_prior
+            sector_priors[name] if sector_priors is not None and name in sector_priors else default_x_prior
         )
         sectors.append(
             SectorSpec(
-                name=source,
+                name=name,
                 flux_source=source,
                 x_prior=dict(prior),
                 variable_suffix=suffix,
@@ -1022,7 +1052,18 @@ def _make_rhime_runner_setup(
 
     remaining = dict(normalized)
     flux_sources = resolve_flux_sources(flux_sources=remaining.pop("flux_sources", None))
-    if multisector and len(flux_sources) < 2:
+    sector_sources = _normalise_sector_sources(remaining.pop("sector_sources", None))
+    if not multisector and sector_sources is not None:
+        raise ValueError("`sector_sources` is only supported by `run_rhime_multisector`.")
+    data_flux_sources = (
+        list(dict.fromkeys(sector_sources.values())) if sector_sources is not None else flux_sources
+    )
+    if sector_sources is not None and set(data_flux_sources) != set(flux_sources):
+        raise ValueError(
+            "`sector_sources` values must match `flux_sources` so RHIME can retrieve the "
+            "OpenGHG data used by each sector."
+        )
+    if multisector and len(data_flux_sources) < 2:
         raise ValueError("`run_rhime_multisector` requires at least two flux sources.")
     if not multisector and len(flux_sources) != 1:
         raise ValueError("`run_rhime` requires exactly one flux source.")
@@ -1077,6 +1118,7 @@ def _make_rhime_runner_setup(
         flux_sources=flux_sources,
         x_prior=x_prior,
         sector_priors=sector_priors,
+        sector_sources=sector_sources,
         bc_prior=bc_prior,
         sigma_prior=sigma_prior,
         offset_prior=offset_prior,
@@ -1109,7 +1151,7 @@ def _make_rhime_runner_setup(
             "start_date": start_date,
             "end_date": end_date,
             "output_name": output_name,
-            "flux_sources": flux_sources,
+            "flux_sources": data_flux_sources,
             "split_by_sectors": multisector,
         },
         prepare_rhime_inputs,
@@ -1148,8 +1190,12 @@ def _model_kwargs_from_spec(
         "power": model_spec.power,
     }
     if multisector:
-        kwargs["sectors"] = [sector.flux_source for sector in model_spec.sectors]
-        kwargs["sector_priors"] = {sector.flux_source: dict(sector.x_prior) for sector in model_spec.sectors}
+        kwargs["sectors"] = [sector.name for sector in model_spec.sectors]
+        kwargs["sector_sources"] = {sector.name: sector.flux_source for sector in model_spec.sectors}
+        kwargs["sector_variable_suffixes"] = {
+            sector.name: sector.variable_suffix for sector in model_spec.sectors
+        }
+        kwargs["sector_priors"] = {sector.name: dict(sector.x_prior) for sector in model_spec.sectors}
     else:
         kwargs["x_prior"] = dict(model_spec.sectors[0].x_prior)
     return kwargs
@@ -1253,11 +1299,11 @@ def run_rhime_multisector(
             override values read from this file.
         **kwargs: RHIME run parameters using snake-case names. Multi-sector
             runs require at least two ``flux_sources`` and may include
-            ``sector_priors`` keyed by sector name. In the current shared-basis
-            implementation, each sector is backed by one OpenGHG flux
-            ``source`` from ``flux_sources``. Legacy ``emissions_name`` is
-            accepted only as a compatibility alias when ``flux_sources`` is
-            absent.
+            ``sector_priors`` keyed by sector name. When model sector labels
+            differ from OpenGHG source values, pass ``sector_sources`` as a
+            mapping from sector name to one value in ``flux_sources``. Legacy
+            ``emissions_name`` is accepted only as a compatibility alias when
+            ``flux_sources`` is absent.
 
     Returns:
         Modern RHIME result containing canonical inputs, InferenceData, specs,

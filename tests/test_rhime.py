@@ -21,8 +21,11 @@ from openghg_inversions.models import (
 )
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
+    RhimeModelSpec,
+    RhimeOutputSpec,
     RhimePreparedInputs,
     RhimeResult,
+    RhimeRunSpec,
     RhimeSamplingSpec,
     SectorSpec,
     params_from_config,
@@ -75,6 +78,7 @@ def builder_args() -> dict:
 
 
 def _fake_basis_functions(*, artifact_source: str = "generated") -> BasisFunctions:
+    """Build a minimal one-cell basis artifact for RHIME tests."""
     basis = xr.DataArray(
         [[1]],
         dims=("lat", "lon"),
@@ -91,6 +95,7 @@ def _fake_basis_functions(*, artifact_source: str = "generated") -> BasisFunctio
 
 
 def _site_dataset(values: list[float] | None = None) -> xr.Dataset:
+    """Build a minimal site dataset with footprint-times-flux values."""
     values = values if values is not None else [2.0, 3.0]
     time = np.array(
         [f"2019-01-01T{hour:02d}:00:00" for hour in range(len(values))],
@@ -115,6 +120,7 @@ def _site_dataset(values: list[float] | None = None) -> xr.Dataset:
 
 
 def _minimal_inv_inputs() -> xr.Dataset:
+    """Build a minimal single-measurement RHIME inversion-input dataset."""
     return xr.Dataset(
         {"H": (("region", "nmeasure"), [[1.0]])},
         coords={"region": [0], "nmeasure": [0]},
@@ -122,6 +128,8 @@ def _minimal_inv_inputs() -> xr.Dataset:
 
 
 class _SpyBasisFunctions:
+    """BasisFunctions test double that records direct sensitivity calls."""
+
     basis_artifact_source = "datatree"
 
     def __init__(self, sensitivity: xr.DataArray) -> None:
@@ -145,6 +153,8 @@ class _SpyBasisFunctions:
 
 
 class _DynamicSpyBasisFunctions(_SpyBasisFunctions):
+    """BasisFunctions test double that derives sensitivity shape from input time."""
+
     def __init__(self) -> None:
         super().__init__(xr.DataArray())
 
@@ -192,6 +202,34 @@ def test_build_rhime_multisector_model_contains_expected_variables(
     assert len(region_coord) == multisector_inv_inputs.sizes["region"]
 
 
+def test_build_rhime_multisector_model_uses_sector_names_for_variables(
+    multisector_inv_inputs: xr.Dataset, builder_args: dict
+) -> None:
+    """Sector labels can differ from OpenGHG source values used for data selection."""
+    model = build_rhime_multisector_model(
+        multisector_inv_inputs,
+        sectors=["FF", "ocean"],
+        sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
+        sector_variable_suffixes={"FF": "ff", "ocean": "ocean"},
+        sector_priors={"FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}},
+        **builder_args,
+    )
+
+    expected = {
+        "x_ff",
+        "mu_ff",
+        "x_ocean",
+        "mu_ocean",
+        "mu",
+        "bc",
+        "mu_bc",
+        "sigma",
+        "epsilon",
+        "y",
+    }
+    assert expected.issubset(model.named_vars)
+
+
 def test_build_rhime_multisector_model_requires_multiple_sectors(
     multisector_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
@@ -231,6 +269,46 @@ def test_direct_sector_spec_records_source_backing() -> None:
     assert sector.flux_source == "ff-inventory"
 
 
+def test_public_rhime_dataclasses_keep_existing_positional_order() -> None:
+    """New default fields do not intercept existing positional construction."""
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=(
+            SectorSpec(
+                name="FF",
+                flux_source="ff-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ff",
+            ),
+        ),
+    )
+    output_spec = RhimeOutputSpec(output_format="none")
+    run_spec = RhimeRunSpec(
+        "2019-01-01",
+        "2019-01-02",
+        ("TAC",),
+        ("1h",),
+        model_spec,
+        output_spec,
+        True,
+    )
+    output_metadata = {"path": "trace.nc"}
+    result = RhimeResult(
+        run_spec,
+        model_spec,
+        output_spec,
+        _minimal_inv_inputs(),
+        cast(Any, object()),
+        output_metadata,
+    )
+
+    assert run_spec.split_by_sectors is True
+    assert run_spec.sampling == RhimeSamplingSpec()
+    assert result.output_metadata == output_metadata
+    assert result.sampling_spec == RhimeSamplingSpec()
+
+
 def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> None:
     """Raw runner params normalize into model, output, and sampling specs."""
     params = {
@@ -240,7 +318,13 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         "domain": "EUROPE",
         "start_date": "2019-01-01",
         "end_date": "2019-01-02",
-        "flux_sources": ["FF", "GPP", "TER", "Ocean"],
+        "flux_sources": ["ff-source", "gpp-source", "ter-source", "ocean-source"],
+        "sector_sources": {
+            "FF": "ff-source",
+            "GPP": "gpp-source",
+            "TER": "ter-source",
+            "ocean": "ocean-source",
+        },
         "output_path": str(tmp_path),
         "output_name": "test",
         "output_format": "none",
@@ -258,7 +342,7 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
 
     setup = rhime_module._make_rhime_runner_setup(params=params, multisector=True)
 
-    assert setup.data_args["flux_sources"] == ["FF", "GPP", "TER", "Ocean"]
+    assert setup.data_args["flux_sources"] == ["ff-source", "gpp-source", "ter-source", "ocean-source"]
     assert setup.data_args["split_by_sectors"] is True
     assert setup.run_spec.sites == ("TAC",)
     assert setup.run_spec.averaging_period == ("1h",)
@@ -272,9 +356,47 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         verbose=False,
         sampler_kwargs={"random_seed": 42},
     )
-    assert [sector.name for sector in setup.run_spec.model.sectors] == ["FF", "GPP", "TER", "Ocean"]
+    assert [sector.name for sector in setup.run_spec.model.sectors] == ["FF", "GPP", "TER", "ocean"]
+    assert [sector.flux_source for sector in setup.run_spec.model.sectors] == [
+        "ff-source",
+        "gpp-source",
+        "ter-source",
+        "ocean-source",
+    ]
     assert setup.run_spec.model.sectors[0].x_prior == {"pdf": "normal", "mu": 1.0, "sigma": 0.5}
     assert setup.run_spec.model.sectors[1].x_prior == {"pdf": "normal", "mu": 0.7, "sigma": 0.2}
+
+
+def test_model_kwargs_from_spec_preserves_sector_source_mapping() -> None:
+    """Builder kwargs keep sector labels separate from OpenGHG source values."""
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=(
+            SectorSpec(
+                name="FF",
+                flux_source="ff-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ff",
+            ),
+            SectorSpec(
+                name="ocean",
+                flux_source="ocean-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+                variable_suffix="ocean",
+            ),
+        ),
+    )
+
+    kwargs = rhime_module._model_kwargs_from_spec(model_spec, multisector=True)
+
+    assert kwargs["sectors"] == ["FF", "ocean"]
+    assert kwargs["sector_sources"] == {"FF": "ff-inventory", "ocean": "ocean-inventory"}
+    assert kwargs["sector_variable_suffixes"] == {"FF": "ff", "ocean": "ocean"}
+    assert kwargs["sector_priors"] == {
+        "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+        "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+    }
 
 
 def test_params_from_config_maps_legacy_emissions_name(tmp_path: Path) -> None:
@@ -359,6 +481,56 @@ def test_run_rhime_rejects_string_prior_before_data_preparation(
         )
 
 
+def test_run_rhime_rejects_malformed_min_error_options_before_data_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid min-error option mappings fail before RHIME data preparation."""
+
+    def fail_prepare(**kwargs):
+        raise AssertionError("prepare_rhime_inputs should not be called")
+
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+
+    with pytest.raises(ValueError, match="min_error_options"):
+        run_rhime(
+            species="ch4",
+            sites=["TAC"],
+            averaging_period=["1h"],
+            domain="EUROPE",
+            start_date="2019-01-01",
+            end_date="2019-01-02",
+            output_name="test",
+            output_format="none",
+            flux_sources=["total-ukghg-edgar7"],
+            min_error_options="bad",
+        )
+
+
+def test_run_rhime_rejects_malformed_power_before_data_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid likelihood power values fail before RHIME data preparation."""
+
+    def fail_prepare(**kwargs):
+        raise AssertionError("prepare_rhime_inputs should not be called")
+
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+
+    with pytest.raises(ValueError, match="power"):
+        run_rhime(
+            species="ch4",
+            sites=["TAC"],
+            averaging_period=["1h"],
+            domain="EUROPE",
+            start_date="2019-01-01",
+            end_date="2019-01-02",
+            output_name="test",
+            output_format="none",
+            flux_sources=["total-ukghg-edgar7"],
+            power="bad",
+        )
+
+
 def test_run_rhime_multisector_rejects_non_mapping_sector_prior_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -384,14 +556,44 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_prior_values(
         )
 
 
+def test_run_rhime_multisector_rejects_non_mapping_sector_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid sector-source mappings fail before RHIME data preparation."""
+
+    def fail_prepare(**kwargs):
+        raise AssertionError("prepare_rhime_inputs should not be called")
+
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+
+    with pytest.raises(ValueError, match="sector_sources"):
+        run_rhime_multisector(
+            species="ch4",
+            sites=["TAC"],
+            averaging_period=["1h"],
+            domain="EUROPE",
+            start_date="2019-01-01",
+            end_date="2019-01-02",
+            output_name="test",
+            output_format="none",
+            flux_sources=["ff-source", "gpp-source"],
+            sector_sources="bad",
+        )
+
+
 def test_new_rhime_docs_use_flux_sources_for_examples() -> None:
     """New RHIME docs keep legacy names out of config/API examples."""
     rhime_doc = Path("docs/usage/rhime.rst").read_text(encoding="utf-8")
+    readme = Path("README.md").read_text(encoding="utf-8")
     template = Path("openghg_inversions/config/templates/rhime_template.ini").read_text(encoding="utf-8")
 
     assert "flux_sources" in rhime_doc
+    assert "sector_sources" in rhime_doc
+    assert "flux_sources" in readme
     assert "flux_sources" in template
+    assert "sector_sources" in template
     assert "emissions_name =" not in rhime_doc
+    assert "emissions_name =" not in readme
     assert "emissions_name =" not in template
     assert "Legacy compatibility spelling" in rhime_doc
 
@@ -1237,6 +1439,10 @@ def test_run_rhime_multisector_api_smoke(tac_ch4_data_args, tmp_path: Path) -> N
     args.update(
         {
             "flux_sources": ["total-ukghg-edgar7", "total-ukghg-edgar7-shuffled"],
+            "sector_sources": {
+                "FF": "total-ukghg-edgar7",
+                "ocean": "total-ukghg-edgar7-shuffled",
+            },
             "output_name": "rhime_multisector_test",
             "output_path": str(tmp_path),
             "basis_algorithm": "quadtree",
@@ -1262,10 +1468,12 @@ def test_run_rhime_multisector_api_smoke(tac_ch4_data_args, tmp_path: Path) -> N
     assert isinstance(result.basis_functions, BasisFunctions)
     assert not hasattr(result, "basis_objects")
     assert result.run_spec.split_by_sectors is True
+    assert [sector.name for sector in result.model_spec.sectors] == ["FF", "ocean"]
     posterior = cast(Any, result.idata).posterior
-    assert "x_total_ukghg_edgar7" in posterior
-    assert "x_total_ukghg_edgar7_shuffled" in posterior
+    assert "x_ff" in posterior
+    assert "x_ocean" in posterior
     assert "sector_flux_diagnostics" in result.outputs
+    assert list(result.outputs["sector_flux_diagnostics"].coords["sector"].values) == ["FF", "ocean"]
 
 
 def test_cli_run_rhime_passes_config_and_overrides(monkeypatch, tmp_path: Path) -> None:

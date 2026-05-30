@@ -14,6 +14,7 @@ openghg\_inversions
    openghg_inversions.config
    openghg_inversions.hbmcmc
    openghg_inversions.inversion_data
+   openghg_inversions.models
    openghg_inversions.postprocessing
 
 
@@ -25,4 +26,5 @@ openghg\_inversions
    openghg_inversions.convert
    openghg_inversions.filters
    openghg_inversions.model_error
+   openghg_inversions.rhime
    openghg_inversions.utils

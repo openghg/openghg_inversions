@@ -151,11 +151,12 @@ RHIME terminology:
 - `species`: primary gas or tracer name used for object-store lookup and output naming.
 - `source`: OpenGHG metadata key used to retrieve flux data.
 - `flux_sources`: RHIME field containing requested OpenGHG flux `source` values.
+- `sector_sources`: optional mapping from RHIME sector names to OpenGHG flux `source` values.
 - `sector`: model component optimized separately, usually backed by one flux `source`.
 - `tracer`: additional species used to constrain the primary species through linked forward models.
 - `emissions_name`: legacy compatibility spelling only; use `flux_sources` in new RHIME configs.
 
-### Passing parameters to the inversion
+### Legacy HBMCMC Parameter Passing
 
 Keyword arguments are propagated as follows:
 1. any key-value pair in an `ini` file or passed via the `--kwargs` flag is passed to the MCMC function as a keyword argument. (Currently, `fixedbasisMCMC` is the only available MCMC function)

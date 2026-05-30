@@ -6,7 +6,9 @@ of the RHIME runtime path.
 
 The standard builder optimizes one flux scaling component. The multi-sector
 builder optimizes one component per sector, where each sector is normally backed
-by one OpenGHG flux ``source`` coordinate in ``inv_inputs["H"]``.
+by one OpenGHG flux ``source`` coordinate in ``inv_inputs["H"]``. When sector
+labels differ from OpenGHG source values, the builder selects data by source
+and names PyMC variables by sector.
 """
 
 from __future__ import annotations
@@ -158,27 +160,56 @@ def build_rhime_model(
     return model
 
 
-def _resolve_sectors(inv_inputs: xr.Dataset, sectors: Sequence[str] | None) -> list[str]:
+def _resolve_sector_definitions(
+    inv_inputs: xr.Dataset,
+    sectors: Sequence[str] | None,
+    *,
+    sector_sources: Mapping[str, str] | None,
+    sector_variable_suffixes: Mapping[str, str] | None,
+) -> list[tuple[str, str, str]]:
     """Resolve model sectors against the flux ``source`` coordinate.
 
     The input ``source`` coordinate records OpenGHG flux source metadata. The
-    returned sector names are the separately optimized model components.
+    returned sector definitions keep separately optimized sector labels,
+    OpenGHG source values, and PyMC variable suffixes together.
     """
     if "source" not in inv_inputs["H"].dims:
         raise ValueError("Multi-sector RHIME requires inv_inputs['H'] to include a 'source' dimension.")
 
     available = [str(value) for value in inv_inputs["H"].coords["source"].values]
     if sectors is None:
-        sectors = available
-    sectors = [str(sector) for sector in sectors]
+        sectors = list(sector_sources) if sector_sources is not None else available
+    sector_names = [str(sector) for sector in sectors]
 
-    missing = [sector for sector in sectors if sector not in available]
-    if missing:
-        raise ValueError(f"Sector(s) {missing!r} are not present in inv_inputs['H'].source.")
-    if len(sectors) < 2:
+    if len(sector_names) < 2:
         raise ValueError("Multi-sector RHIME requires at least two sectors.")
 
-    return sectors
+    source_by_sector = (
+        {str(sector): str(source) for sector, source in sector_sources.items()}
+        if sector_sources is not None
+        else {sector: sector for sector in sector_names}
+    )
+    suffix_by_sector = (
+        {str(sector): str(suffix) for sector, suffix in sector_variable_suffixes.items()}
+        if sector_variable_suffixes is not None
+        else {}
+    )
+
+    missing_mapping = [sector for sector in sector_names if sector not in source_by_sector]
+    if missing_mapping:
+        raise ValueError(f"Sector(s) {missing_mapping!r} are missing from `sector_sources`.")
+
+    missing = [
+        source_by_sector[sector] for sector in sector_names if source_by_sector[sector] not in available
+    ]
+    if missing:
+        raise ValueError(f"Source value(s) {missing!r} are not present in inv_inputs['H'].source.")
+
+    definitions = [
+        (sector, source_by_sector[sector], suffix_by_sector.get(sector, safe_pymc_name(sector)))
+        for sector in sector_names
+    ]
+    return definitions
 
 
 def _sector_prior(
@@ -197,6 +228,8 @@ def build_rhime_multisector_model(
     inv_inputs: xr.Dataset,
     *,
     sectors: Sequence[str] | None = None,
+    sector_sources: Mapping[str, str] | None = None,
+    sector_variable_suffixes: Mapping[str, str] | None = None,
     sector_priors: Mapping[str, dict] | None = None,
     x_prior: dict | None = None,
     bc_prior: dict | None = None,
@@ -219,9 +252,14 @@ def build_rhime_multisector_model(
     Args:
         inv_inputs: Canonical inversion-input dataset with
             ``H(region, nmeasure, source)``.
-        sectors: Ordered model sectors to optimize. Defaults to all
+        sectors: Ordered model sector labels to optimize. Defaults to
+            ``sector_sources`` keys when supplied, otherwise all
             ``inv_inputs.H.source`` values, where each source becomes one
             separately optimized sector.
+        sector_sources: Optional mapping from sector label to OpenGHG
+            ``source`` value in ``inv_inputs.H``.
+        sector_variable_suffixes: Optional mapping from sector label to
+            PyMC-safe suffix used in ``x_<suffix>`` and ``mu_<suffix>`` names.
         sector_priors: Optional per-sector flux-scaling priors.
         x_prior: Shared fallback flux-scaling prior.
         bc_prior: Prior specification for boundary-condition scaling factors.
@@ -239,7 +277,12 @@ def build_rhime_multisector_model(
     Returns:
         Built PyMC model.
     """
-    sectors = _resolve_sectors(inv_inputs, sectors)
+    sector_definitions = _resolve_sector_definitions(
+        inv_inputs,
+        sectors,
+        sector_sources=sector_sources,
+        sector_variable_suffixes=sector_variable_suffixes,
+    )
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
@@ -249,8 +292,7 @@ def build_rhime_multisector_model(
 
         sector_outputs = []
         used_names: set[str] = set()
-        for sector in sectors:
-            suffix = safe_pymc_name(sector)
+        for sector, source, suffix in sector_definitions:
             if suffix in used_names:
                 raise ValueError(
                     "Sector names must be unique after PyMC name sanitisation; "
@@ -258,7 +300,7 @@ def build_rhime_multisector_model(
                 )
             used_names.add(suffix)
 
-            h_sector = inv_inputs["H"].sel(source=sector).drop_vars("source", errors="ignore")
+            h_sector = inv_inputs["H"].sel(source=source).drop_vars("source", errors="ignore")
             component = add_linear_component(
                 h_sector,
                 data_name=f"hx_{suffix}",

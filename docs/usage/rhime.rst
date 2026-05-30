@@ -23,6 +23,11 @@ Terminology
    Model component optimized separately in a multi-sector RHIME run. A sector
    is usually backed by one flux ``source``.
 
+``sector_sources``
+   Optional mapping from sector names to OpenGHG ``source`` values. Use this
+   when sector labels such as ``FF`` or ``ocean`` differ from the source names
+   used to retrieve flux data.
+
 ``tracer``
    Additional species used to constrain the primary species, normally with
    linked forward models. The current RHIME preparation path does not support
@@ -59,12 +64,18 @@ Python API
        end_date="2019-01-02",
        output_path="outputs",
        output_name="example_multisector",
-       flux_sources=["FF", "GPP", "TER", "Ocean"],
+       flux_sources=["ff-inventory", "gpp-inventory", "ter-inventory", "ocean-inventory"],
+       sector_sources={
+           "FF": "ff-inventory",
+           "GPP": "gpp-inventory",
+           "TER": "ter-inventory",
+           "ocean": "ocean-inventory",
+       },
        sector_priors={
            "FF": {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
            "GPP": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
            "TER": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
-           "Ocean": {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
+           "ocean": {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
        },
    )
 
@@ -90,19 +101,25 @@ New RHIME config files should use ``flux_sources``:
    output_path = "outputs"
    output_name = "example"
 
-For multi-sector RHIME, each ``flux_sources`` entry becomes a separately
-optimized sector unless a future API adds an explicit sector-to-source mapping.
+For multi-sector RHIME, use ``sector_sources`` when the optimized sector names
+are not the same strings as the OpenGHG source values.
 
 .. code-block:: ini
 
    [INPUT.PRIORS]
    domain = "EUROPE"
-   flux_sources = ["FF", "GPP", "TER", "Ocean"]
+   flux_sources = ["ff-inventory", "gpp-inventory", "ter-inventory", "ocean-inventory"]
+   sector_sources = {
+       "FF": "ff-inventory",
+       "GPP": "gpp-inventory",
+       "TER": "ter-inventory",
+       "ocean": "ocean-inventory"
+   }
 
    [RHIME.PDF]
    sector_priors = {
        "FF": {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
        "GPP": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
        "TER": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
-       "Ocean": {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0}
+       "ocean": {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0}
    }
