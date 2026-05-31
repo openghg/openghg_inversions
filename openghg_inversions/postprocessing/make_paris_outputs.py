@@ -6,12 +6,13 @@ from typing import Any, Literal
 import pandas as pd
 import xarray as xr
 
-from openghg.util import timestamp_now
+from openghg.util._time import timestamp_now
 from openghg_inversions.config.version import code_version
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import (
-    LegacyInversionOutput,
+    PostprocessingInput,
     make_inv_out_from_rhime_outputs,
+    as_postprocessing_output,
 )
 from openghg_inversions.postprocessing.make_outputs import (
     make_concentration_outputs,
@@ -133,12 +134,13 @@ def shift_measurement_time_to_midpoint(ds: xr.Dataset, period: str = "4h") -> xr
 
 
 def paris_concentration_outputs(
-    inv_out: LegacyInversionOutput, report_mode: bool = False, obs_avg_period: str = "4h"
+    inv_out: PostprocessingInput, report_mode: bool = False, obs_avg_period: str = "4h"
 ) -> xr.Dataset:
     """Create PARIS concentration outputs.
 
     TODO: add offset
     """
+    inv_out = as_postprocessing_output(inv_out)
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
@@ -155,13 +157,11 @@ def paris_concentration_outputs(
         "total_error": "uYtotal",
     }
     filtered_rename_map = {k: v for k, v in rename_map.items() if k in existing_vars}
-    obs_and_errs = (
-        obs_and_errs_raw
-        .rename(filtered_rename_map)
-        .drop_vars("y_obs_error")
-    )
+    obs_and_errs = obs_and_errs_raw.rename(filtered_rename_map).drop_vars("y_obs_error")
 
-    conc_outputs = make_concentration_outputs(inv_out, stats, stats_args, combine_bc_and_offset=True).unstack("nmeasure")
+    conc_outputs = make_concentration_outputs(inv_out, stats, stats_args, combine_bc_and_offset=True).unstack(
+        "nmeasure"
+    )
 
     # rename to match PARIS concentrations template
     def renamer(name: str) -> str:
@@ -276,13 +276,14 @@ def _flux_interval_midpoints(
 
 
 def paris_flux_output(
-    inv_out: LegacyInversionOutput,
+    inv_out: PostprocessingInput,
     country_file: str | Path | None = None,
     time_point: Literal["start", "midpoint"] = "midpoint",
     report_mode: bool = False,
     inversion_grid: bool = True,
-    flux_frequency: Literal["monthly", "yearly"] | str = "yearly"
+    flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
 ) -> xr.Dataset:
+    inv_out = as_postprocessing_output(inv_out)
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
@@ -302,14 +303,12 @@ def paris_flux_output(
         country_regions="paris",
         stats=stats,
         stats_args=stats_args,
-        country_code="alpha3"
+        country_code="alpha3",
     )
     country_outs = country_outs * 1e-3  # convert g/yr to kg/yr
 
     # add country mask
-    countries = Countries.from_file(
-        country_file=country_file, country_code="alpha3", domain=inv_out.domain
-    )
+    countries = Countries.from_file(country_file=country_file, country_code="alpha3", domain=inv_out.domain)
 
     country_fraction = countries.matrix.as_numpy().rename("country_fraction")
 
@@ -359,7 +358,7 @@ def paris_flux_output(
             return ds
 
     result = (
-        xr.merge([flux_outs, country_outs, country_fraction.reindex_like(flux_outs)], join='outer')
+        xr.merge([flux_outs, country_outs, country_fraction.reindex_like(flux_outs)], join="outer")
         .rename(dim_rename_dict)
         .pipe(time_func)
         .pipe(convert_time_to_unix_epoch, "1d")
@@ -455,14 +454,15 @@ def infer_flux_frequency(flux: xr.DataArray) -> str:
 
 
 def make_paris_outputs(
-    inv_out: LegacyInversionOutput,
+    inv_out: PostprocessingInput,
     country_file: str | Path | None = None,
     time_point: Literal["start", "midpoint"] = "midpoint",
     report_mode: bool = False,
     inversion_grid: bool = True,
     obs_avg_period: str = "4h",
-    domain: str | None = None
+    domain: str | None = None,
 ) -> tuple[xr.Dataset, xr.Dataset]:
+    inv_out = as_postprocessing_output(inv_out)
     # infer flux frequency
     flux_frequency = infer_flux_frequency(inv_out.flux)
     conc_outs = paris_concentration_outputs(inv_out, report_mode=report_mode, obs_avg_period=obs_avg_period)
@@ -472,7 +472,7 @@ def make_paris_outputs(
         country_file=country_file,
         inversion_grid=inversion_grid,
         time_point=time_point,
-        flux_frequency=flux_frequency
+        flux_frequency=flux_frequency,
     )
 
     return flux_outs, conc_outs

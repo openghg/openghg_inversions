@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.postprocessing.inversion_output import LegacyInversionOutput
+from openghg_inversions.postprocessing.inversion_output import PostprocessingInput, as_postprocessing_output
 from openghg_inversions.postprocessing.utils import add_suffix, get_parameters
 
 Diagnostic = namedtuple("Diagnostic", ["func", "params"])
@@ -30,7 +30,7 @@ def register_diagnostic(diagnostic: Callable) -> Callable:
 
 @register_diagnostic
 @add_suffix("trace")
-def summary(inv_out: LegacyInversionOutput) -> xr.Dataset:
+def summary(inv_out: PostprocessingInput) -> xr.Dataset:
     """Return diagnostics summary computed by arviz.
 
     Diagnostics reported:
@@ -45,7 +45,7 @@ def summary(inv_out: LegacyInversionOutput) -> xr.Dataset:
           greater than 1. Ideally, all r_hat values should be below 1.01
 
     Args:
-        inv_out: LegacyInversionOutput to summarise.
+        inv_out: Inversion output to summarise.
 
     Returns:
         xr.Dataset: Dataset with diagnostic summary.
@@ -104,7 +104,7 @@ def _r2_by_site(ds: xr.Dataset, report_prior: bool = False) -> xr.Dataset:
 
 
 @register_diagnostic
-def bayes_r2_by_site(inv_out: LegacyInversionOutput, report_prior: bool = False) -> xr.Dataset:
+def bayes_r2_by_site(inv_out: PostprocessingInput, report_prior: bool = False) -> xr.Dataset:
     """Compute Bayesian R2 scores grouped by site.
 
     Scores are computed for posterior predictive traces (compared
@@ -115,7 +115,7 @@ def bayes_r2_by_site(inv_out: LegacyInversionOutput, report_prior: bool = False)
     normalised to always fall between 0 and 1.
 
     Args:
-        inv_out: LegacyInversionOutput object containing obs and trace
+        inv_out: Inversion output containing obs and trace
         report_prior: if True, return prior R2 in addition to posterior R2
 
     Returns:
@@ -123,6 +123,7 @@ def bayes_r2_by_site(inv_out: LegacyInversionOutput, report_prior: bool = False)
             with uncertainties.
 
     """
+    inv_out = as_postprocessing_output(inv_out)
     y_true = inv_out.obs.unstack("nmeasure")
     y_pred = inv_out.get_trace_dataset(var_names="y").unstack("nmeasure")
     ds = xr.merge([y_true, y_pred])
@@ -132,7 +133,7 @@ def bayes_r2_by_site(inv_out: LegacyInversionOutput, report_prior: bool = False)
 
 @register_diagnostic
 def bayes_r2_by_site_resample(
-    inv_out: LegacyInversionOutput, freq: str = "MS", report_prior: bool = False
+    inv_out: PostprocessingInput, freq: str = "MS", report_prior: bool = False
 ) -> xr.Dataset:
     """Compute Bayesian R2 scores grouped by site and time.
 
@@ -144,7 +145,7 @@ def bayes_r2_by_site_resample(
     normalised to always fall between 0 and 1.
 
     Args:
-        inv_out: LegacyInversionOutput object containing obs and trace
+        inv_out: Inversion output containing obs and trace
         freq: frequency to resample to (should be a pandas freq. str that
           can be passed to `xr.Dataset.resample`)
         report_prior: if True, return prior R2 in addition to posterior R2
@@ -154,6 +155,7 @@ def bayes_r2_by_site_resample(
             with uncertainties.
 
     """
+    inv_out = as_postprocessing_output(inv_out)
     y_true = inv_out.obs.unstack("nmeasure")
     y_pred = inv_out.get_trace_dataset(var_names="y").unstack("nmeasure")
     ds = xr.merge([y_true, y_pred])

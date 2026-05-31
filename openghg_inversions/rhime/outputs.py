@@ -12,7 +12,7 @@ import xarray as xr
 from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models import RhimeModelSpec
-from openghg_inversions.postprocessing.inversion_output import InversionOutput, LegacyInversionOutput
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime.specs import RhimeOutputSpec, RhimeRunSpec
 from openghg_inversions.utils import ncdf_encoding
 
@@ -176,18 +176,16 @@ def make_standard_output_bundle(
     if output_spec.output_format == "basic":
         from openghg_inversions.postprocessing.make_outputs import basic_output
 
-        legacy_inv_out = LegacyInversionOutput.from_modern_output(inv_out)
-        output_metadata["postprocessing_input_contract"] = "legacy_adapter"
-        outputs["basic"] = basic_output(legacy_inv_out, country_file=country_file)
+        output_metadata["postprocessing_input_contract"] = "modern_view"
+        outputs["basic"] = basic_output(inv_out, country_file=country_file)
     elif output_spec.output_format == "paris":
         from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
-        legacy_inv_out = LegacyInversionOutput.from_modern_output(inv_out)
-        output_metadata["postprocessing_input_contract"] = "legacy_adapter"
+        output_metadata["postprocessing_input_contract"] = "modern_view"
         obs_avg_period = prepared.averaging_period[0] or "0h"
         kwargs = output_spec.paris_postprocessing_kwargs or {}
         flux_outs, conc_outs = make_paris_outputs(
-            legacy_inv_out,
+            inv_out,
             country_file=country_file,
             domain=model_spec.domain,
             obs_avg_period=obs_avg_period,

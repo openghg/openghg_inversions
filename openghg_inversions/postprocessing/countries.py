@@ -16,7 +16,7 @@ from openghg_inversions import convert, utils
 from openghg_inversions.array_ops import align_sparse_lat_lon, get_xr_dummies, sparse_xr_dot
 from openghg_inversions.utils import get_country_file_path
 from ._country_codes import CountryInfoList
-from .inversion_output import LegacyInversionOutput
+from .inversion_output import PostprocessingInput, as_postprocessing_output
 
 # type for xr.Dataset *or* xr.DataArray
 DataSetOrArray = TypeVar("DataSetOrArray", xr.DataArray, xr.Dataset)
@@ -366,18 +366,20 @@ class Countries:
 
     def get_x_to_country_mat(
         self,
-        inv_out: LegacyInversionOutput,
+        inv_out: PostprocessingInput,
         sparse: bool = False,
     ) -> xr.DataArray:
         """Construct a sparse matrix mapping from x sensitivities to country totals.
 
         Args:
-            inv_out: LegacyInversionOutput object, used to get basis functions and flux.
+            inv_out: Inversion output, used to get basis functions and flux.
             sparse: if True, values of returned DataArray are `sparse.COO` array.
 
         Returns:
             xr.DataArray with coordinate dimensions ("country", "basis_region")
         """
+        inv_out = as_postprocessing_output(inv_out)
+
         # multiply flux and basis and align to country lat/lon
         basis = align_sparse_lat_lon(inv_out.basis, inv_out.flux)
         flux_x_basis = align_sparse_lat_lon(inv_out.flux * basis, self.area_grid)
@@ -420,13 +422,13 @@ class Countries:
 
     def get_country_trace(
         self,
-        inv_out: LegacyInversionOutput,
+        inv_out: PostprocessingInput,
     ) -> xr.Dataset:
         """Calculate trace(s) for total country emissions.
 
         Args:
             species: name of species, e.g. "co2", "ch4", "sf6", etc.
-            inv_out: LegacyInversionOutput
+            inv_out: Inversion output.
 
         Returns:
             xr.Dataset with coordinate dimensions ("country", "draw")
@@ -434,6 +436,7 @@ class Countries:
         TODO: there is a "country unit" conversion in the old code, but it seems to always product
               1.0, based on how it is used in hbmcmc
         """
+        inv_out = as_postprocessing_output(inv_out)
         x_to_country_mat = self.get_x_to_country_mat(inv_out)
         x_trace = inv_out.get_trace_dataset(var_names="x")
 

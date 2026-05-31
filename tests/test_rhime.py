@@ -157,9 +157,9 @@ def _minimal_output_inv_inputs() -> xr.Dataset:
     return inv_inputs
 
 
-def _minimal_output_specs(output_format: rhime_specs.OutputFormat = "inv_out") -> tuple[
-    RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
-]:
+def _minimal_output_specs(
+    output_format: rhime_specs.OutputFormat = "inv_out",
+) -> tuple[RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec]:
     """Build minimal RHIME specs for output helper tests."""
     model_spec = RhimeModelSpec(
         species="ch4",
@@ -1844,8 +1844,58 @@ def test_modern_inversion_output_ignores_malformed_multiindex_metadata(raw_multi
     assert not isinstance(reloaded.inv_inputs.indexes.get("nmeasure"), pd.MultiIndex)
 
 
-def test_standard_basic_output_uses_legacy_adapter_without_inferpymc(monkeypatch) -> None:
-    """RHIME basic postprocessing adapts modern output without using inferpymc legacy postprocess."""
+def test_modern_postprocessing_view_supports_flux_outputs() -> None:
+    """Modern InversionOutput can feed postprocessing without becoming LegacyInversionOutput."""
+    from openghg_inversions.postprocessing.inversion_output import (
+        ModernPostprocessingOutput,
+        as_postprocessing_output,
+    )
+    from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
+
+    model_spec, output_spec, run_spec = _minimal_output_specs()
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+    bundle = rhime_outputs.make_standard_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=az.from_dict(
+            posterior={"x": np.ones((1, 2, 1))},
+            prior={"x": np.ones((1, 2, 1))},
+            coords={"region": [0]},
+            dims={"x": ["region"]},
+        ),
+        prepared=prepared,
+        country_file=None,
+    )
+    assert bundle.inv_out is not None
+
+    modern_view = as_postprocessing_output(bundle.inv_out)
+    assert isinstance(modern_view, ModernPostprocessingOutput)
+    assert not isinstance(modern_view, LegacyInversionOutput)
+
+    modern_flux = make_flux_outputs(
+        bundle.inv_out,
+        include_scale_factors=False,
+        report_flux_on_inversion_grid=False,
+    )
+    legacy_flux = make_flux_outputs(
+        LegacyInversionOutput.from_modern_output(bundle.inv_out),
+        include_scale_factors=False,
+        report_flux_on_inversion_grid=False,
+    )
+
+    assert "flux_posterior_mean" in modern_flux
+    xr.testing.assert_allclose(modern_flux, legacy_flux)
+
+
+def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
+    """RHIME basic postprocessing consumes modern output without legacy adapters."""
     model_spec, output_spec, run_spec = _minimal_output_specs(output_format="basic")
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
@@ -1859,12 +1909,16 @@ def test_standard_basic_output_uses_legacy_adapter_without_inferpymc(monkeypatch
     def fail_inferpymc_postprocessouts(**kwargs: Any) -> None:
         raise AssertionError("run_rhime output helpers must not call inferpymc_postprocessouts")
 
-    def fake_basic_output(inv_out: LegacyInversionOutput, country_file: str | None = None) -> xr.Dataset:
+    def fail_from_modern_output(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("run_rhime basic output must not call LegacyInversionOutput.from_modern_output")
+
+    def fake_basic_output(inv_out: InversionOutput, country_file: str | None = None) -> xr.Dataset:
         captured["inv_out"] = inv_out
         captured["country_file"] = country_file
         return xr.Dataset({"ok": ((), 1)})
 
     monkeypatch.setattr(legacy_mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
+    monkeypatch.setattr(LegacyInversionOutput, "from_modern_output", fail_from_modern_output)
     monkeypatch.setattr("openghg_inversions.postprocessing.make_outputs.basic_output", fake_basic_output)
 
     bundle = rhime_outputs.make_standard_output_bundle(
@@ -1877,15 +1931,15 @@ def test_standard_basic_output_uses_legacy_adapter_without_inferpymc(monkeypatch
     )
 
     assert isinstance(bundle.inv_out, InversionOutput)
-    assert isinstance(captured["inv_out"], LegacyInversionOutput)
+    assert captured["inv_out"] is bundle.inv_out
     assert captured["country_file"] == "countries.json"
     assert bundle.output_metadata["inversion_output_contract"] == "modern"
-    assert bundle.output_metadata["postprocessing_input_contract"] == "legacy_adapter"
+    assert bundle.output_metadata["postprocessing_input_contract"] == "modern_view"
     assert "basic" in bundle.outputs
 
 
-def test_standard_paris_output_uses_legacy_adapter_without_inferpymc(monkeypatch) -> None:
-    """RHIME PARIS postprocessing adapts modern output without using inferpymc legacy postprocess."""
+def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
+    """RHIME PARIS postprocessing consumes modern output without legacy adapters."""
     model_spec, output_spec, run_spec = _minimal_output_specs(output_format="paris")
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
@@ -1899,8 +1953,11 @@ def test_standard_paris_output_uses_legacy_adapter_without_inferpymc(monkeypatch
     def fail_inferpymc_postprocessouts(**kwargs: Any) -> None:
         raise AssertionError("run_rhime output helpers must not call inferpymc_postprocessouts")
 
+    def fail_from_modern_output(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("run_rhime PARIS output must not call LegacyInversionOutput.from_modern_output")
+
     def fake_make_paris_outputs(
-        inv_out: LegacyInversionOutput,
+        inv_out: InversionOutput,
         country_file: str | None = None,
         domain: str | None = None,
         obs_avg_period: str = "4h",
@@ -1913,6 +1970,7 @@ def test_standard_paris_output_uses_legacy_adapter_without_inferpymc(monkeypatch
         return xr.Dataset({"flux": ((), 1)}), xr.Dataset({"conc": ((), 1)})
 
     monkeypatch.setattr(legacy_mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
+    monkeypatch.setattr(LegacyInversionOutput, "from_modern_output", fail_from_modern_output)
     monkeypatch.setattr(
         "openghg_inversions.postprocessing.make_paris_outputs.make_paris_outputs",
         fake_make_paris_outputs,
@@ -1928,12 +1986,12 @@ def test_standard_paris_output_uses_legacy_adapter_without_inferpymc(monkeypatch
     )
 
     assert isinstance(bundle.inv_out, InversionOutput)
-    assert isinstance(captured["inv_out"], LegacyInversionOutput)
+    assert captured["inv_out"] is bundle.inv_out
     assert captured["country_file"] == "countries.json"
     assert captured["domain"] == "EUROPE"
     assert captured["obs_avg_period"] == "1h"
     assert bundle.output_metadata["inversion_output_contract"] == "modern"
-    assert bundle.output_metadata["postprocessing_input_contract"] == "legacy_adapter"
+    assert bundle.output_metadata["postprocessing_input_contract"] == "modern_view"
     assert "paris_flux" in bundle.outputs
     assert "paris_concentration" in bundle.outputs
 
