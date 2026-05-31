@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import numpy as np
 import arviz as az
+import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
@@ -13,6 +14,7 @@ import xarray as xr
 import openghg_inversions.models as models
 import openghg_inversions.models.rhime as rhime_models_module
 import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
+import openghg_inversions.postprocessing.inversion_output as inversion_output_module
 import openghg_inversions.rhime as rhime_public
 import openghg_inversions.rhime.params as rhime_params
 import openghg_inversions.rhime.outputs as rhime_outputs
@@ -1763,6 +1765,83 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
         reloaded.basis_functions.operator.basis_matrix,
         prepared.basis_functions.operator.basis_matrix,
     )
+
+
+def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
+    """Modern output loading accepts bytes-encoded MultiIndex metadata."""
+    model_spec, output_spec, run_spec = _minimal_output_specs()
+    inv_inputs = _minimal_output_inv_inputs().assign_coords(site=("nmeasure", ["TAC"]))
+    inv_inputs = inv_inputs.set_index(nmeasure=["site", "time"])
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(artifact_source="unit-test"),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="unit-test",
+    )
+    bundle = rhime_outputs.make_standard_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=_minimal_output_idata(),
+        prepared=prepared,
+        country_file=None,
+    )
+    assert bundle.inv_out is not None
+
+    dt = bundle.inv_out.to_datatree()
+    inv_inputs_dt = dt["inv_inputs"]
+    inv_inputs_dt.attrs[inversion_output_module.MULTIINDEX_DIMS_ATTR] = inv_inputs_dt.attrs[
+        inversion_output_module.MULTIINDEX_DIMS_ATTR
+    ].encode()
+
+    reloaded = InversionOutput.from_datatree(dt)
+
+    assert isinstance(reloaded.inv_inputs.indexes["nmeasure"], pd.MultiIndex)
+    assert reloaded.inv_inputs.indexes["nmeasure"].names == ["site", "time"]
+    xr.testing.assert_identical(reloaded.inv_inputs, inv_inputs)
+
+
+@pytest.mark.parametrize(
+    "raw_multiindex_dims",
+    [
+        b"not-json",
+        '{"dims": "not-a-list"}',
+        '{"dims": [{"dim": "nmeasure", "levels": "site"}]}',
+        '{"dims": [{"dim": "nmeasure", "levels": ["missing"]}]}',
+    ],
+)
+def test_modern_inversion_output_ignores_malformed_multiindex_metadata(raw_multiindex_dims: object) -> None:
+    """Malformed MultiIndex metadata should not break modern output loading."""
+    model_spec, output_spec, run_spec = _minimal_output_specs()
+    inv_inputs = _minimal_output_inv_inputs().assign_coords(site=("nmeasure", ["TAC"]))
+    inv_inputs = inv_inputs.set_index(nmeasure=["site", "time"])
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(artifact_source="unit-test"),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="unit-test",
+    )
+    bundle = rhime_outputs.make_standard_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=_minimal_output_idata(),
+        prepared=prepared,
+        country_file=None,
+    )
+    assert bundle.inv_out is not None
+
+    dt = bundle.inv_out.to_datatree()
+    dt["inv_inputs"].attrs[inversion_output_module.MULTIINDEX_DIMS_ATTR] = raw_multiindex_dims
+
+    reloaded = InversionOutput.from_datatree(dt)
+
+    assert inversion_output_module.MULTIINDEX_DIMS_ATTR not in reloaded.inv_inputs.attrs
+    assert "site" in reloaded.inv_inputs
+    assert "time" in reloaded.inv_inputs
+    assert not isinstance(reloaded.inv_inputs.indexes.get("nmeasure"), pd.MultiIndex)
 
 
 def test_standard_basic_output_uses_legacy_adapter_without_inferpymc(monkeypatch) -> None:

@@ -118,10 +118,33 @@ def _restore_inv_inputs_indexes(ds: xr.Dataset) -> xr.Dataset:
     result = ds.copy()
     result.attrs = dict(result.attrs)
     del result.attrs[MULTIINDEX_DIMS_ATTR]
-    records = json.loads(raw_multiindex_dims)["dims"]
+
+    if isinstance(raw_multiindex_dims, bytes):
+        try:
+            raw_multiindex_dims = raw_multiindex_dims.decode()
+        except UnicodeDecodeError:
+            return result
+    if not isinstance(raw_multiindex_dims, str):
+        return result
+
+    try:
+        payload = json.loads(raw_multiindex_dims)
+    except json.JSONDecodeError:
+        return result
+
+    records = payload.get("dims") if isinstance(payload, dict) else None
+    if not isinstance(records, list):
+        return result
+
     for record in records:
-        dim = record["dim"]
-        levels = record["levels"]
+        if not isinstance(record, dict):
+            continue
+        dim = record.get("dim")
+        levels = record.get("levels")
+        if not isinstance(dim, str) or not isinstance(levels, list):
+            continue
+        if not all(isinstance(level, str) for level in levels):
+            continue
         if dim in result.dims and all(level in result and result[level].dims == (dim,) for level in levels):
             result = result.set_index({dim: levels})
     return result

@@ -21,6 +21,9 @@ version, which partially negates the benefit of keeping it as the main route.
 - #401: use to separate `LegacyInversionOutput` from modern `InversionOutput`.
 - #435: migrate postprocessing consumers from `LegacyInversionOutput` to the
   modern `InversionOutput`; opened as the follow-up from #401.
+- #405: complete sector-aware RHIME outputs and PARIS-compatible total outputs.
+  PR #436 makes multisector runs carry modern `InversionOutput`, but sector
+  diagnostics and PARIS totals are still transitional.
 - #429: keep as operator-backed output/postprocessing, but make it depend on
   the preparation split.
 - #416: should become active sooner; classify/deprecate `fixedbasisMCMC`,
@@ -128,8 +131,14 @@ model components that consume them.
   `inv_out` saves and returns modern `InversionOutput`, while `basic` and
   `paris` build a temporary `LegacyInversionOutput` adapter for the existing
   postprocessing functions.
+- 2026-05-31: #401 / PR #436 made non-`none` multisector RHIME output bundles
+  carry the same modern `InversionOutput` contract while leaving their
+  sector-flux diagnostics as a transitional output product.
 - 2026-05-31: #401 / PR #436 opened #435 to migrate postprocessing consumers to
   modern `InversionOutput`.
+- 2026-05-31: #401 / PR #436 hardened modern `InversionOutput` load handling
+  for serialized MultiIndex metadata by accepting bytes attrs and ignoring
+  malformed index metadata instead of failing load.
 
 ## Recorded decisions for PR #436 / Issue #401
 
@@ -143,6 +152,9 @@ model components that consume them.
   `inv_out` output.
 - `LegacyInversionOutput.from_modern_output(...)` is the only temporary bridge
   for standard RHIME `basic` and `paris` output modes in #401.
+- Multisector RHIME should also expose modern `InversionOutput` for `inv_out`.
+  The remaining multisector gap is not the durable run artifact but the
+  sector-aware postprocessing/PARIS output contract, which belongs to #405.
 - #401 does not migrate `postprocessing` consumers to modern `InversionOutput`.
   That is deferred to #435.
 
@@ -160,6 +172,23 @@ model components that consume them.
   `paris`. Remove that once #435 and #429 let postprocessing consume
   `BasisFunctions` directly.
 
+## Review findings for PR #436 / Issue #401
+
+- Architecture review found the standard #401 split sound: modern
+  `InversionOutput` owns `InferenceData`, `inv_inputs`, `BasisFunctions`, and
+  metadata; `LegacyInversionOutput` remains the temporary postprocessing
+  carrier; and `inferpymc_postprocessouts` stays fixedbasis-only.
+- Architecture review flagged multisector `inv_out` as the only boundary risk:
+  `run_rhime_multisector` originally returned sector diagnostics but did not
+  set `result.inv_out`. PR #436 now builds the modern `InversionOutput` for
+  non-`none` multisector bundles as well.
+- The multisector output product itself remains transitional. #405 should turn
+  the current `sector_flux_diagnostics` product into documented sector-aware
+  outputs and PARIS-compatible total outputs.
+- Copilot review found that serialized MultiIndex metadata could be bytes or
+  malformed. PR #436 now decodes bytes and skips malformed records safely
+  before applying `set_index`.
+
 ## Deferred Issue #435 postprocessing consumer migration
 
 #435 should move `make_outputs`, `make_paris_outputs`, `countries`,
@@ -170,6 +199,24 @@ model components that consume them.
 This work links #401, #383, #429, #416, and #381. It should remove the RHIME
 `basic`/`paris` dependency on `LegacyInversionOutput.from_modern_output(...)`
 rather than expanding that adapter.
+
+## Recommended next PR after #436
+
+Start with #435 before #383 if only one can be active. #435 should define the
+postprocessing consumer contract around modern `InversionOutput` and remove the
+standard RHIME `basic`/`paris` adapter dependency. That creates the right place
+for #383 to replace legacy flat-basis assumptions with retained
+`BasisFunctions` in flux/country computations.
+
+After #435, use #383 for the first operator-backed postprocessing slice:
+prefer retained `BasisFunctions.operator.basis_matrix` where available and keep
+legacy basis reconstruction as fallback. #429 should then make the
+operator-backed path primary and define the deprecation policy for legacy
+basis reconstruction.
+
+Track multisector output work under #405. It can proceed after the modern
+postprocessing input contract is clearer, or in parallel if it stays limited to
+sector diagnostics and PARIS-compatible total outputs.
 
 ## Deferred SemanticModel plan
 
