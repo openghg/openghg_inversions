@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import Any, cast
 
@@ -9,10 +10,12 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.models as models
+import openghg_inversions._rhime_params as rhime_params
 import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.rhime as rhime_module
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
 from openghg_inversions.cli import main
+from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import (
     build_rhime_model,
@@ -23,13 +26,11 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime import (
     RhimeModelSpec,
     RhimeOutputSpec,
-    RhimePreparedInputs,
     RhimeResult,
     RhimeRunSpec,
     RhimeSamplingSpec,
     SectorSpec,
     params_from_config,
-    prepare_rhime_inputs,
     resolve_flux_sources,
     run_rhime,
     run_rhime_multisector,
@@ -333,10 +334,10 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
             "GPP": {"pdf": "normal", "mu": 0.7, "sigma": 0.2},
             "TER": {"pdf": "normal", "mu": 1.3, "sigma": 0.3},
         },
-        "nit": 7,
-        "burn": 1,
-        "tune": 2,
-        "nchain": 3,
+        "nit": "7",
+        "burn": "1",
+        "tune": "2",
+        "nchain": "3",
         "sampler_kwargs": {"random_seed": 42},
     }
 
@@ -464,7 +465,7 @@ def test_run_rhime_rejects_string_prior_before_data_preparation(
     def fail_prepare(**kwargs):
         raise AssertionError("prepare_rhime_inputs should not be called")
 
-    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+    monkeypatch.setattr(rhime_module, "_prepare_rhime_inputs", fail_prepare)
 
     with pytest.raises(ValueError, match="x_prior"):
         run_rhime(
@@ -489,7 +490,7 @@ def test_run_rhime_rejects_malformed_min_error_options_before_data_preparation(
     def fail_prepare(**kwargs):
         raise AssertionError("prepare_rhime_inputs should not be called")
 
-    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+    monkeypatch.setattr(rhime_module, "_prepare_rhime_inputs", fail_prepare)
 
     with pytest.raises(ValueError, match="min_error_options"):
         run_rhime(
@@ -514,7 +515,7 @@ def test_run_rhime_rejects_malformed_power_before_data_preparation(
     def fail_prepare(**kwargs):
         raise AssertionError("prepare_rhime_inputs should not be called")
 
-    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+    monkeypatch.setattr(rhime_module, "_prepare_rhime_inputs", fail_prepare)
 
     with pytest.raises(ValueError, match="power"):
         run_rhime(
@@ -539,7 +540,7 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_prior_values(
     def fail_prepare(**kwargs):
         raise AssertionError("prepare_rhime_inputs should not be called")
 
-    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+    monkeypatch.setattr(rhime_module, "_prepare_rhime_inputs", fail_prepare)
 
     with pytest.raises(ValueError, match="sector_priors"):
         run_rhime_multisector(
@@ -564,7 +565,7 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_sources(
     def fail_prepare(**kwargs):
         raise AssertionError("prepare_rhime_inputs should not be called")
 
-    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+    monkeypatch.setattr(rhime_module, "_prepare_rhime_inputs", fail_prepare)
 
     with pytest.raises(ValueError, match="sector_sources"):
         run_rhime_multisector(
@@ -954,7 +955,7 @@ def test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured_averaging_period: object = None
-    original_signature = rhime_module.inspect.signature(rhime_module.prepare_rhime_inputs)
+    original_signature = inspect.signature(prepare_rhime_inputs)
 
     def fake_prepare_rhime_inputs(**kwargs: object) -> None:
         nonlocal captured_averaging_period
@@ -962,7 +963,7 @@ def test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation(
         raise RuntimeError("stop after data argument capture")
 
     setattr(fake_prepare_rhime_inputs, "__signature__", original_signature)
-    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fake_prepare_rhime_inputs)
+    monkeypatch.setattr(rhime_module, "_prepare_rhime_inputs", fake_prepare_rhime_inputs)
 
     with pytest.raises(RuntimeError, match="stop after data argument capture"):
         run_rhime(
@@ -1250,7 +1251,7 @@ def test_required_parameter_validation_allows_missing_output_path_for_in_memory_
         "output_name": "test",
     }
 
-    rhime_module._validate_required_params(args)
+    rhime_params.validate_required_params(args)
 
 
 @pytest.mark.parametrize(
@@ -1274,7 +1275,7 @@ def test_required_parameter_validation_rejects_empty_values(name: str, value) ->
     args[name] = value
 
     with pytest.raises(ValueError, match=name):
-        rhime_module._validate_required_params(args)
+        rhime_params.validate_required_params(args)
 
 
 def test_output_path_validation_allows_output_none_without_path() -> None:
@@ -1349,7 +1350,10 @@ def test_supported_parameter_validation_accepts_sigma_per_site(tmp_path: Path) -
         "sigma_per_site": False,
     }
 
-    rhime_module._validate_supported_params(args)
+    rhime_params.validate_supported_params(
+        args,
+        data_params=set(inspect.signature(prepare_rhime_inputs).parameters),
+    )
 
 
 def test_run_rhime_rejects_multiple_flux_sources(tac_ch4_data_args, tmp_path: Path) -> None:
