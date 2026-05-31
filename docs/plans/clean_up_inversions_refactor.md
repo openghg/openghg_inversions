@@ -112,26 +112,26 @@ functions, and inversion input construction. A future `RhimeDataSpec` or
 `sigma_freq`, `bc_freq`, and related model-input concerns moving closer to the
 model components that consume them.
 
-## Completed in PR #TBD / Issue #401
+## Completed in PR #436 / Issue #401
 
-- 2026-05-31: #401 / PR #TBD renamed the current postprocessing carrier to
+- 2026-05-31: #401 / PR #436 renamed the current postprocessing carrier to
   `LegacyInversionOutput` and reserved `InversionOutput` for the modern RHIME
   result contract.
-- 2026-05-31: #401 / PR #TBD added modern `InversionOutput` save/load support
+- 2026-05-31: #401 / PR #436 added modern `InversionOutput` save/load support
   for `InferenceData`, canonical `inv_inputs`, retained `BasisFunctions`, run
   metadata, model metadata, output metadata, and provenance.
-- 2026-05-31: #401 / PR #TBD routed fixedbasis output explicitly:
+- 2026-05-31: #401 / PR #436 routed fixedbasis output explicitly:
   `output_format="hbmcmc"` remains the only path that calls
   `inferpymc_postprocessouts`, while `hbmcmc_postprocessing`, `basic`, `paris`,
   and `inv_out` use `LegacyInversionOutput`.
-- 2026-05-31: #401 / PR #TBD routed standard `run_rhime` output explicitly:
+- 2026-05-31: #401 / PR #436 routed standard `run_rhime` output explicitly:
   `inv_out` saves and returns modern `InversionOutput`, while `basic` and
   `paris` build a temporary `LegacyInversionOutput` adapter for the existing
   postprocessing functions.
-- 2026-05-31: #401 / PR #TBD opened #435 to migrate postprocessing consumers to
+- 2026-05-31: #401 / PR #436 opened #435 to migrate postprocessing consumers to
   modern `InversionOutput`.
 
-## Recorded decisions for PR #TBD / Issue #401
+## Recorded decisions for PR #436 / Issue #401
 
 - The true legacy output remains `inferpymc_postprocessouts` in
   `hbmcmc.inversion_pymc`. It should stay legacy/fixedbasis-only and should not
@@ -146,7 +146,7 @@ model components that consume them.
 - #401 does not migrate `postprocessing` consumers to modern `InversionOutput`.
   That is deferred to #435.
 
-## Current PR #TBD / Issue #401 cleanup notes
+## Current PR #436 / Issue #401 cleanup notes
 
 - Keep `inferpymc_postprocessouts` isolated to
   `fixedbasisMCMC(output_format="hbmcmc")`.
