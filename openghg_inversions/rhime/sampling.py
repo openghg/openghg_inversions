@@ -26,6 +26,8 @@ class RhimeSampler:
         sample_prior_predictive: Whether to append prior predictive draws.
         sample_posterior_predictive: Whether to append posterior predictive
             draws, or variable names to sample.
+        posterior_predictive_kwargs: Extra keyword arguments forwarded to
+            ``pm.sample_posterior_predictive``.
     """
 
     __slots__ = (
@@ -38,6 +40,7 @@ class RhimeSampler:
         "sample_kwargs",
         "sample_prior_predictive",
         "sample_posterior_predictive",
+        "posterior_predictive_kwargs",
     )
 
     draws: int
@@ -49,6 +52,7 @@ class RhimeSampler:
     sample_kwargs: dict[str, Any] | None
     sample_prior_predictive: bool | int
     sample_posterior_predictive: bool | tuple[str, ...]
+    posterior_predictive_kwargs: dict[str, Any] | None
 
     def __init__(
         self,
@@ -62,6 +66,7 @@ class RhimeSampler:
         sample_kwargs: dict[str, Any] | None = None,
         sample_prior_predictive: bool | int = True,
         sample_posterior_predictive: bool | Sequence[str] = ("y",),
+        posterior_predictive_kwargs: dict[str, Any] | None = None,
         nit: int | None = None,
         nchain: int | None = None,
         verbose: bool | None = None,
@@ -105,6 +110,9 @@ class RhimeSampler:
         self.sample_kwargs = None if sample_kwargs is None else dict(sample_kwargs)
         self.sample_prior_predictive = sample_prior_predictive
         self.sample_posterior_predictive = self._normalise_posterior_predictive(sample_posterior_predictive)
+        self.posterior_predictive_kwargs = (
+            None if posterior_predictive_kwargs is None else dict(posterior_predictive_kwargs)
+        )
 
     @staticmethod
     def _normalise_nuts_sampler(value: NutsSampler | str) -> NutsSampler:
@@ -216,14 +224,12 @@ class RhimeSampler:
             posterior_var_names = (
                 None if self.sample_posterior_predictive is True else list(self.sample_posterior_predictive)
             )
+            posterior_predictive_kwargs = dict(self.posterior_predictive_kwargs or {})
+            posterior_predictive_kwargs.setdefault("model", model)
+            if posterior_var_names is not None:
+                posterior_predictive_kwargs.setdefault("var_names", posterior_var_names)
             with model:
-                trace.extend(
-                    pm.sample_posterior_predictive(
-                        trace,
-                        model=model,
-                        var_names=posterior_var_names,
-                    )
-                )
+                trace.extend(pm.sample_posterior_predictive(trace, **posterior_predictive_kwargs))
 
         return trace
 

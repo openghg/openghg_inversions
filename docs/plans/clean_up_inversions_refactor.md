@@ -44,9 +44,9 @@ contract.
   materialisation and multi-sector diagnostics as transitional output shims.
 - 2026-05-31: #400 / PR #434 moved RHIME orchestration into
   `openghg_inversions.rhime.runner`, kept the package `__init__` as the public
-  re-export surface, moved lightweight model specs to
-  `openghg_inversions.rhime.model_specs`, and kept `RhimeRunSpec` as metadata
-  while carrying the executable `RhimeSampler` on runner setup/results.
+  re-export surface, kept lightweight model specs with the RHIME builders in
+  `openghg_inversions.models.rhime`, and kept `RhimeRunSpec` as metadata while
+  carrying the executable `RhimeSampler` on runner setup/results.
 
 ## Recorded decisions for PR #434 / Issue #400
 
@@ -96,7 +96,9 @@ step methods without reintroducing runner-level sampling branches.
 
 PR #434 / Issue #400 keeps the production fast path on `RhimeModelSpec`,
 `SectorSpec`, and the current RHIME preparation/builders. That path should stay
-small and concrete for standard and multisector RHIME.
+small and concrete for standard and multisector RHIME. The near-term dependency
+direction is `openghg_inversions.rhime` -> `openghg_inversions.models`, so the
+RHIME-specific model specs live beside the concrete RHIME model builders.
 
 The deferred architecture is a separate `SemanticModel` IR:
 
@@ -111,6 +113,12 @@ RhimeModelSpec/config
 Future TOML/YAML configs and Python DSL frontends should normalize to the same
 IR. Compile-time choices such as multisector `loop_sum` versus `stacked_dot`
 belong in a future `CompilationPlan`, not in PR #434.
+
+Once that abstraction exists, the runner/pipeline can pass a concrete
+`SemanticModel` or backend-specific concrete spec to model builders through an
+abstract model-spec contract. That later dependency inversion is the right
+place for model builders to depend on abstract specs rather than RHIME-specific
+dataclasses.
 
 ## Deferred Issue #383 / Issue #429 output boundary
 

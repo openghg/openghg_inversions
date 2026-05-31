@@ -2,8 +2,8 @@
 
 This module contains lightweight immutable dataclasses used by the RHIME
 runner. Model-construction specs live with the RHIME model builders; these
-runner specs avoid importing PyMC, xarray, sampling, or output implementation
-details.
+runner specs keep sampling and output implementation details out of the run
+metadata boundary.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from .model_specs import RhimeModelSpec
+from openghg_inversions.models.rhime import RhimeModelSpec
 
 OutputFormat = Literal["none", "inv_out", "basic", "paris"]
 

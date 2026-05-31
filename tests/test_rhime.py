@@ -622,6 +622,7 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         nuts_sampler="numpyro",
         progressbar=True,
         sample_kwargs={"target_accept": 0.9},
+        posterior_predictive_kwargs={"random_seed": 42},
     )
 
     idata = sampler.sample(model)
@@ -642,6 +643,7 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         "trace": fake_idata,
         "model": model,
         "var_names": ["y"],
+        "random_seed": 42,
     }
     assert fake_idata.extensions == ["prior", "posterior"]
 
@@ -882,6 +884,8 @@ def test_cleanup_plan_records_issue_400_decisions() -> None:
     assert "SemanticModel" in plan_doc
     assert "RhimeSampler" in plan_doc
     assert "openghg_inversions.rhime.runner" in plan_doc
+    assert "openghg_inversions.rhime.model_specs" not in plan_doc
+    assert "openghg_inversions.models.rhime" in plan_doc
     assert "prior-predictive-only" in plan_doc
     assert "Deferred Issue #383 / Issue #429 output boundary" in plan_doc
 

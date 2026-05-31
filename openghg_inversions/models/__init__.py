@@ -16,12 +16,13 @@ from openghg_inversions.models.coords import (
     restore_inferencedata_coords,
 )
 from openghg_inversions.models.priors import parse_prior
-from openghg_inversions.rhime.model_specs import RhimeModelSpec, SectorSpec
 from openghg_inversions.models.rhime import (
     DEFAULT_BC_PRIOR,
     DEFAULT_OFFSET_PRIOR,
     DEFAULT_SIGMA_PRIOR,
     DEFAULT_X_PRIOR,
+    RhimeModelSpec,
+    SectorSpec,
     build_rhime_model,
     build_rhime_model_from_spec,
     build_rhime_multisector_model,
