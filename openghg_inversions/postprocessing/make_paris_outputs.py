@@ -6,7 +6,7 @@ from typing import Any, Literal
 import pandas as pd
 import xarray as xr
 
-from openghg.util._time import timestamp_now
+from openghg.util import timestamp_now  # pyright: ignore[reportPrivateImportUsage]
 from openghg_inversions.config.version import code_version
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import (
