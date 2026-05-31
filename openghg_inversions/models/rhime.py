@@ -1,14 +1,22 @@
 """RHIME model builders.
 
-These builders are the modern public model-construction names.  They reuse the
+These builders are the modern public model-construction names. They reuse the
 component-based PyMC helpers, while keeping the legacy ``inferpymc`` adapter out
 of the RHIME runtime path.
+
+The standard builder optimizes one flux scaling component. The multi-sector
+builder optimizes one component per sector, where each sector is normally backed
+by one OpenGHG flux ``source`` coordinate in ``inv_inputs["H"]``. When sector
+labels differ from OpenGHG source values, the builder selects data by source
+and names PyMC variables by sector.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 from collections.abc import Mapping, Sequence
+from typing import Any, cast
 
 import pymc as pm
 import pytensor.tensor as pt
@@ -26,6 +34,62 @@ DEFAULT_X_PRIOR: PriorArgs = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0, "re
 DEFAULT_BC_PRIOR: PriorArgs = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.05, "lower": 0.0}
 DEFAULT_SIGMA_PRIOR: PriorArgs = {"pdf": "uniform", "lower": 0.1, "upper": 3.0}
 DEFAULT_OFFSET_PRIOR: PriorArgs = {"pdf": "normal", "mu": 0, "sigma": 1}
+
+
+@dataclass(frozen=True)
+class SectorSpec:
+    """Configuration for one separately optimised flux sector.
+
+    Args:
+        name: User-facing sector name.
+        flux_source: OpenGHG flux ``source`` used to retrieve this sector.
+        x_prior: Prior specification for this sector's flux scaling factors.
+        variable_suffix: PyMC-safe suffix used in multi-sector model variable
+            names. Standard single-sector RHIME uses plain ``x``/``mu`` names.
+    """
+
+    name: str
+    flux_source: str
+    x_prior: dict[str, Any]
+    variable_suffix: str
+
+
+@dataclass(frozen=True)
+class RhimeModelSpec:
+    """Model options used to build a RHIME PyMC model.
+
+    Args:
+        species: Primary gas or tracer name used for object-store lookup and
+            output naming.
+        domain: Model domain name.
+        sectors: Flux sectors included in the model. Each sector is optimized
+            separately and is normally backed by one OpenGHG flux ``source``.
+        use_bc: Whether boundary-condition scaling is included.
+        sigma_per_site: Whether model-error terms vary by site.
+        add_offset: Whether model-data offsets are included.
+        pollution_events_from_obs: Whether model error scales with observed
+            enhancements instead of modelled enhancements.
+        no_model_error: Whether explicit model-error terms are disabled.
+        power: Exponent or prior specification used in likelihood error scaling.
+        bc_prior: Prior specification for boundary-condition scaling factors.
+        sigma_prior: Prior specification for model-error terms.
+        offset_prior: Prior specification for optional offsets.
+        offset_args: Extra keyword arguments forwarded to the offset component.
+    """
+
+    species: str
+    domain: str
+    sectors: tuple[SectorSpec, ...]
+    use_bc: bool = True
+    sigma_per_site: bool = True
+    add_offset: bool = False
+    pollution_events_from_obs: bool = False
+    no_model_error: bool = False
+    power: dict[str, Any] | float = 1.99
+    bc_prior: dict[str, Any] | None = None
+    sigma_prior: dict[str, Any] | None = None
+    offset_prior: dict[str, Any] | None = None
+    offset_args: dict[str, Any] | None = None
 
 
 def safe_pymc_name(value: str) -> str:
@@ -153,23 +217,90 @@ def build_rhime_model(
     return model
 
 
-def _resolve_sectors(inv_inputs: xr.Dataset, sectors: Sequence[str] | None) -> list[str]:
-    """Resolve requested sector names against the source coordinate."""
+def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSpec) -> pm.Model:
+    """Build the standard single-sector RHIME model from a model spec.
+
+    Args:
+        inv_inputs: Canonical inversion-input dataset produced by
+            ``make_inv_inputs``.
+        model_spec: Normalized RHIME model specification.
+
+    Returns:
+        Built PyMC model.
+
+    Raises:
+        ValueError: If the model spec does not describe exactly one sector.
+    """
+    if len(model_spec.sectors) != 1:
+        raise ValueError("Standard RHIME model specs must include exactly one sector.")
+
+    sector = model_spec.sectors[0]
+    return build_rhime_model(
+        inv_inputs,
+        x_prior=dict(sector.x_prior),
+        bc_prior=model_spec.bc_prior,
+        sigma_prior=model_spec.sigma_prior,
+        sigma_per_site=model_spec.sigma_per_site,
+        offset_prior=model_spec.offset_prior,
+        add_offset=model_spec.add_offset,
+        use_bc=model_spec.use_bc,
+        pollution_events_from_obs=model_spec.pollution_events_from_obs,
+        no_model_error=model_spec.no_model_error,
+        offset_args=model_spec.offset_args,
+        power=model_spec.power,
+    )
+
+
+def _resolve_sector_definitions(
+    inv_inputs: xr.Dataset,
+    sectors: Sequence[str] | None,
+    *,
+    sector_sources: Mapping[str, str] | None,
+    sector_variable_suffixes: Mapping[str, str] | None,
+) -> list[tuple[str, str, str]]:
+    """Resolve model sectors against the flux ``source`` coordinate.
+
+    The input ``source`` coordinate records OpenGHG flux source metadata. The
+    returned sector definitions keep separately optimized sector labels,
+    OpenGHG source values, and PyMC variable suffixes together.
+    """
     if "source" not in inv_inputs["H"].dims:
         raise ValueError("Multi-sector RHIME requires inv_inputs['H'] to include a 'source' dimension.")
 
     available = [str(value) for value in inv_inputs["H"].coords["source"].values]
     if sectors is None:
-        sectors = available
-    sectors = [str(sector) for sector in sectors]
+        sectors = list(sector_sources) if sector_sources is not None else available
+    sector_names = [str(sector) for sector in sectors]
 
-    missing = [sector for sector in sectors if sector not in available]
-    if missing:
-        raise ValueError(f"Sector(s) {missing!r} are not present in inv_inputs['H'].source.")
-    if len(sectors) < 2:
+    if len(sector_names) < 2:
         raise ValueError("Multi-sector RHIME requires at least two sectors.")
 
-    return sectors
+    source_by_sector = (
+        {str(sector): str(source) for sector, source in sector_sources.items()}
+        if sector_sources is not None
+        else {sector: sector for sector in sector_names}
+    )
+    suffix_by_sector = (
+        {str(sector): str(suffix) for sector, suffix in sector_variable_suffixes.items()}
+        if sector_variable_suffixes is not None
+        else {}
+    )
+
+    missing_mapping = [sector for sector in sector_names if sector not in source_by_sector]
+    if missing_mapping:
+        raise ValueError(f"Sector(s) {missing_mapping!r} are missing from `sector_sources`.")
+
+    missing = [
+        source_by_sector[sector] for sector in sector_names if source_by_sector[sector] not in available
+    ]
+    if missing:
+        raise ValueError(f"Source value(s) {missing!r} are not present in inv_inputs['H'].source.")
+
+    definitions = [
+        (sector, source_by_sector[sector], suffix_by_sector.get(sector, safe_pymc_name(sector)))
+        for sector in sector_names
+    ]
+    return definitions
 
 
 def _sector_prior(
@@ -178,7 +309,7 @@ def _sector_prior(
     sector_priors: Mapping[str, dict] | None,
     x_prior: dict | None,
 ) -> dict:
-    """Resolve the prior for a sector, falling back to the shared x prior."""
+    """Resolve a sector prior, falling back to the shared flux-scaling prior."""
     if sector_priors is not None and sector in sector_priors:
         return dict(sector_priors[sector])
     return dict(DEFAULT_X_PRIOR if x_prior is None else x_prior)
@@ -188,6 +319,8 @@ def build_rhime_multisector_model(
     inv_inputs: xr.Dataset,
     *,
     sectors: Sequence[str] | None = None,
+    sector_sources: Mapping[str, str] | None = None,
+    sector_variable_suffixes: Mapping[str, str] | None = None,
     sector_priors: Mapping[str, dict] | None = None,
     x_prior: dict | None = None,
     bc_prior: dict | None = None,
@@ -210,8 +343,14 @@ def build_rhime_multisector_model(
     Args:
         inv_inputs: Canonical inversion-input dataset with
             ``H(region, nmeasure, source)``.
-        sectors: Ordered sector/source names to optimise. Defaults to all
-            ``inv_inputs.H.source`` values.
+        sectors: Ordered model sector labels to optimize. Defaults to
+            ``sector_sources`` keys when supplied, otherwise all
+            ``inv_inputs.H.source`` values, where each source becomes one
+            separately optimized sector.
+        sector_sources: Optional mapping from sector label to OpenGHG
+            ``source`` value in ``inv_inputs.H``.
+        sector_variable_suffixes: Optional mapping from sector label to
+            PyMC-safe suffix used in ``x_<suffix>`` and ``mu_<suffix>`` names.
         sector_priors: Optional per-sector flux-scaling priors.
         x_prior: Shared fallback flux-scaling prior.
         bc_prior: Prior specification for boundary-condition scaling factors.
@@ -229,7 +368,12 @@ def build_rhime_multisector_model(
     Returns:
         Built PyMC model.
     """
-    sectors = _resolve_sectors(inv_inputs, sectors)
+    sector_definitions = _resolve_sector_definitions(
+        inv_inputs,
+        sectors,
+        sector_sources=sector_sources,
+        sector_variable_suffixes=sector_variable_suffixes,
+    )
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
@@ -239,8 +383,7 @@ def build_rhime_multisector_model(
 
         sector_outputs = []
         used_names: set[str] = set()
-        for sector in sectors:
-            suffix = safe_pymc_name(sector)
+        for sector, source, suffix in sector_definitions:
             if suffix in used_names:
                 raise ValueError(
                     "Sector names must be unique after PyMC name sanitisation; "
@@ -248,7 +391,7 @@ def build_rhime_multisector_model(
                 )
             used_names.add(suffix)
 
-            h_sector = inv_inputs["H"].sel(source=sector).drop_vars("source", errors="ignore")
+            h_sector = inv_inputs["H"].sel(source=source).drop_vars("source", errors="ignore")
             component = add_linear_component(
                 h_sector,
                 data_name=f"hx_{suffix}",
@@ -260,7 +403,11 @@ def build_rhime_multisector_model(
             )
             sector_outputs.append(component.output)
 
-        total_mu = pm.Deterministic("mu", pt.stack(sector_outputs, axis=0).sum(axis=0), dims="nmeasure")
+        total_mu = pm.Deterministic(
+            "mu",
+            cast(Any, pt.stack(sector_outputs, axis=0)).sum(axis=0),
+            dims="nmeasure",
+        )
 
         mu_bc = None
         if use_bc:
@@ -302,3 +449,36 @@ def build_rhime_multisector_model(
         )
 
     return model
+
+
+def build_rhime_multisector_model_from_spec(
+    inv_inputs: xr.Dataset,
+    model_spec: RhimeModelSpec,
+) -> pm.Model:
+    """Build the shared-basis multi-sector RHIME model from a model spec.
+
+    Args:
+        inv_inputs: Canonical inversion-input dataset with
+            ``H(region, nmeasure, source)``.
+        model_spec: Normalized RHIME model specification.
+
+    Returns:
+        Built PyMC model.
+    """
+    return build_rhime_multisector_model(
+        inv_inputs,
+        sectors=[sector.name for sector in model_spec.sectors],
+        sector_sources={sector.name: sector.flux_source for sector in model_spec.sectors},
+        sector_variable_suffixes={sector.name: sector.variable_suffix for sector in model_spec.sectors},
+        sector_priors={sector.name: dict(sector.x_prior) for sector in model_spec.sectors},
+        bc_prior=model_spec.bc_prior,
+        sigma_prior=model_spec.sigma_prior,
+        sigma_per_site=model_spec.sigma_per_site,
+        offset_prior=model_spec.offset_prior,
+        add_offset=model_spec.add_offset,
+        use_bc=model_spec.use_bc,
+        pollution_events_from_obs=model_spec.pollution_events_from_obs,
+        no_model_error=model_spec.no_model_error,
+        offset_args=model_spec.offset_args,
+        power=model_spec.power,
+    )

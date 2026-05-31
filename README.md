@@ -143,8 +143,20 @@ openghg-inversions run-rhime-multisector 2019-01-01 2019-01-02 -c rhime_multisec
 The new RHIME config template is available at
 `openghg_inversions/config/templates/rhime_template.ini`. New configs should use
 `flux_sources`; legacy `emissions_name` is accepted when `flux_sources` is absent.
+See the [RHIME terminology and quickstart](docs/usage/rhime.rst) page for the
+canonical config vocabulary.
 
-### Passing parameters to the inversion
+RHIME terminology:
+
+- `species`: primary gas or tracer name used for object-store lookup and output naming.
+- `source`: OpenGHG metadata key used to retrieve flux data.
+- `flux_sources`: RHIME field containing requested OpenGHG flux `source` values.
+- `sector_sources`: optional mapping from RHIME sector names to OpenGHG flux `source` values.
+- `sector`: model component optimized separately, usually backed by one flux `source`.
+- `tracer`: additional species used to constrain the primary species through linked forward models.
+- `emissions_name`: legacy compatibility spelling only; use `flux_sources` in new RHIME configs.
+
+### Legacy HBMCMC Parameter Passing
 
 Keyword arguments are propagated as follows:
 1. any key-value pair in an `ini` file or passed via the `--kwargs` flag is passed to the MCMC function as a keyword argument. (Currently, `fixedbasisMCMC` is the only available MCMC function)
