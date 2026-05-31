@@ -106,6 +106,25 @@ def _fake_basis_functions(*, artifact_source: str = "generated") -> BasisFunctio
     )
 
 
+def _fake_basis_functions_matching_country_grid(country_file: Path) -> BasisFunctions:
+    """Build a one-region basis artifact on the grid of a test country file."""
+    country_grid = xr.open_dataset(country_file)
+    basis = xr.DataArray(
+        np.ones((country_grid.sizes["lat"], country_grid.sizes["lon"]), dtype=int),
+        dims=("lat", "lon"),
+        coords={"lat": country_grid.lat, "lon": country_grid.lon},
+        name="basis",
+    )
+    flux = xr.ones_like(basis, dtype=float).rename("flux")
+    flux.attrs["units"] = "mol/m2/s"
+    return BasisFunctions.from_flat_basis(
+        basis_flat=basis,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+        metadata={BASIS_ARTIFACT_SOURCE_ATTR: "country-grid-test"},
+    )
+
+
 def _site_dataset(values: list[float] | None = None) -> xr.Dataset:
     """Build a minimal site dataset with footprint-times-flux values."""
     values = values if values is not None else [2.0, 3.0]
@@ -195,6 +214,59 @@ def _minimal_output_idata() -> az.InferenceData:
         posterior={"x": np.ones((1, 1, 1))},
         coords={"region": [0]},
         dims={"x": ["region"]},
+    )
+
+
+def _postprocessing_output_idata() -> az.InferenceData:
+    """Build a small complete trace for modern postprocessing smoke tests."""
+    coords = {"region": [0], "nmeasure": [0]}
+    return az.from_dict(
+        posterior={
+            "x": np.ones((1, 3, 1)),
+            "epsilon": np.full((1, 3, 1), 2.0),
+            "mu_bc": np.full((1, 3, 1), 0.1),
+        },
+        prior={
+            "x": np.full((1, 3, 1), 0.8),
+            "mu_bc": np.full((1, 3, 1), 0.05),
+        },
+        posterior_predictive={"y": np.full((1, 3, 1), 10.0)},
+        prior_predictive={"y": np.full((1, 3, 1), 9.0)},
+        constant_data={
+            "hx": np.ones(1),
+            "hbc": np.full(1, 0.1),
+            "min_error": np.zeros(1),
+        },
+        coords=coords,
+        dims={
+            "x": ["region"],
+            "epsilon": ["nmeasure"],
+            "mu_bc": ["nmeasure"],
+            "y": ["nmeasure"],
+            "hx": ["nmeasure"],
+            "hbc": ["nmeasure"],
+            "min_error": ["nmeasure"],
+        },
+    )
+
+
+def _modern_postprocessing_inv_out(country_file: Path) -> InversionOutput:
+    """Build a modern output with enough groups for real postprocessing helpers."""
+    inv_inputs = _minimal_output_inv_inputs()
+    for var_name in ("mf", "mf_error", "mf_repeatability", "mf_variability"):
+        inv_inputs[var_name].attrs["units"] = "1e-09 mol/mol"
+
+    return InversionOutput(
+        trace=_postprocessing_output_idata(),
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions_matching_country_grid(country_file),
+        run_metadata={
+            "start_date": "2019-01-01",
+            "end_date": "2019-01-02",
+            "sites": ["TAC"],
+            "split_by_sectors": False,
+        },
+        model_metadata={"species": "ch4", "domain": "EUROPE"},
     )
 
 
@@ -688,6 +760,65 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         "random_seed": 42,
     }
     assert fake_idata.extensions == ["prior", "posterior"]
+
+
+def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RhimeSampler restores model-managed coordinates after predictive groups are attached."""
+
+    class FakePosterior:
+        sizes = {"draw": 2}
+
+    class FakeInferenceData:
+        posterior = FakePosterior()
+
+        def __init__(self) -> None:
+            self.extensions: list[str] = []
+
+        def isel(self, **kwargs: Any) -> "FakeInferenceData":
+            return self
+
+        def extend(self, other: str) -> None:
+            self.extensions.append(other)
+
+    fake_idata = FakeInferenceData()
+    calls: list[tuple[FakeInferenceData, models.CoordRegistry, list[str]]] = []
+
+    def fake_sample(**kwargs: Any) -> FakeInferenceData:
+        return fake_idata
+
+    def fake_prior_predictive(draws: int, model: pm.Model) -> str:
+        return "prior"
+
+    def fake_posterior_predictive(trace: Any, **kwargs: Any) -> str:
+        return "posterior"
+
+    def fake_restore(trace: FakeInferenceData, registry: models.CoordRegistry) -> FakeInferenceData:
+        calls.append((trace, registry, list(trace.extensions)))
+        return trace
+
+    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.sampling.pm.sample_prior_predictive",
+        fake_prior_predictive,
+    )
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
+        fake_posterior_predictive,
+    )
+    monkeypatch.setattr("openghg_inversions.rhime.sampling.restore_inferencedata_coords", fake_restore)
+
+    model = pm.Model()
+    registry = models.CoordRegistry(
+        original_coords={"nmeasure": pd.MultiIndex.from_arrays([["TAC"], pd.to_datetime(["2019-01-01"])])}
+    )
+    models.attach_coord_registry(model, registry)
+
+    result = RhimeSampler(draws=2, chains=1, tune=0).sample(model)
+
+    assert result is fake_idata
+    assert calls == [(fake_idata, registry, ["prior", "posterior"])]
 
 
 def test_params_from_config_maps_legacy_emissions_name(tmp_path: Path) -> None:
@@ -1802,6 +1933,51 @@ def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
     xr.testing.assert_identical(reloaded.inv_inputs, inv_inputs)
 
 
+def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
+    """Modern output serialization preserves restored trace measurement coordinates."""
+    model_spec, output_spec, run_spec = _minimal_output_specs()
+    nmeasure_index = pd.MultiIndex.from_arrays(
+        [["TAC"], pd.to_datetime(["2019-01-01"])],
+        names=["site", "time"],
+    )
+    posterior = xr.Dataset(
+        {"x": (("chain", "draw", "region"), np.ones((1, 1, 1)))},
+        coords={"chain": [0], "draw": [0], "region": [0]},
+    )
+    posterior_predictive = xr.Dataset(
+        {"y": (("chain", "draw", "nmeasure"), np.ones((1, 1, 1)))},
+        coords={
+            "chain": [0],
+            "draw": [0],
+            **xr.Coordinates.from_pandas_multiindex(nmeasure_index, "nmeasure"),
+        },
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(artifact_source="unit-test"),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="unit-test",
+    )
+    bundle = rhime_outputs.make_standard_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=az.InferenceData(posterior=posterior, posterior_predictive=posterior_predictive),
+        prepared=prepared,
+        country_file=None,
+    )
+    assert bundle.inv_out is not None
+
+    reloaded = InversionOutput.from_datatree(bundle.inv_out.to_datatree())
+
+    reloaded_posterior_predictive = cast(Any, reloaded.trace).posterior_predictive
+    index = reloaded_posterior_predictive.indexes["nmeasure"]
+    assert isinstance(index, pd.MultiIndex)
+    assert index.names == ["site", "time"]
+    xr.testing.assert_identical(reloaded_posterior_predictive["y"], posterior_predictive["y"])
+
+
 @pytest.mark.parametrize(
     "raw_multiindex_dims",
     [
@@ -1894,6 +2070,121 @@ def test_modern_postprocessing_view_supports_flux_outputs() -> None:
     xr.testing.assert_allclose(modern_flux, legacy_flux)
 
 
+def test_modern_postprocessing_view_keeps_observations_as_dataset() -> None:
+    """Modern postprocessing avoids the split observation fields retained by the legacy carrier."""
+    from openghg_inversions.postprocessing.inversion_output import (
+        ModernPostprocessingOutput,
+        as_postprocessing_output,
+    )
+
+    model_spec, output_spec, run_spec = _minimal_output_specs()
+    inv_inputs = _minimal_output_inv_inputs()
+    inv_inputs["mf_prior_factor"] = ("nmeasure", [0.2])
+    inv_inputs["mf_prior_upper_level_factor"] = ("nmeasure", [0.3])
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+    bundle = rhime_outputs.make_standard_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=_minimal_output_idata(),
+        prepared=prepared,
+        country_file=None,
+    )
+    assert bundle.inv_out is not None
+
+    modern_view = as_postprocessing_output(bundle.inv_out)
+
+    assert isinstance(modern_view, ModernPostprocessingOutput)
+    assert not hasattr(modern_view, "obs")
+    assert not hasattr(modern_view, "obs_err")
+    assert set(modern_view.obs_inputs.data_vars) == {
+        "y_obs",
+        "y_obs_error",
+        "y_obs_prior_factor",
+        "y_obs_prior_upper_level_factor",
+        "y_obs_repeatability",
+        "y_obs_variability",
+    }
+    assert isinstance(modern_view.obs_inputs.indexes["nmeasure"], pd.MultiIndex)
+    assert modern_view.obs_inputs.indexes["nmeasure"].names == ["site", "time"]
+
+
+def test_standard_postprocessing_view_rejects_multisector_outputs() -> None:
+    """Standard postprocessing does not silently accept multisector modern outputs."""
+    from openghg_inversions.postprocessing.inversion_output import as_postprocessing_output
+
+    inv_out = InversionOutput(
+        trace=_minimal_output_idata(),
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        run_metadata={
+            "start_date": "2019-01-01",
+            "end_date": "2019-01-02",
+            "sites": ["TAC"],
+            "split_by_sectors": True,
+        },
+        model_metadata={"species": "ch4", "domain": "EUROPE"},
+    )
+
+    with pytest.raises(ValueError, match="single-sector"):
+        as_postprocessing_output(inv_out)
+
+
+def test_basic_output_processes_modern_output_without_legacy_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    europe_country_file: Path,
+) -> None:
+    """Real basic postprocessing accepts modern output without legacy conversion."""
+    from openghg_inversions.postprocessing.make_outputs import basic_output
+
+    def fail_from_modern_output(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("basic_output must not call LegacyInversionOutput.from_modern_output")
+
+    monkeypatch.setattr(LegacyInversionOutput, "from_modern_output", fail_from_modern_output)
+
+    outputs = basic_output(
+        _modern_postprocessing_inv_out(europe_country_file), country_file=europe_country_file
+    )
+
+    assert "y_obs" in outputs
+    assert "model_error" in outputs
+    assert "y_posterior_predictive_mean" in outputs
+    assert "flux_posterior_mean" in outputs
+    assert "country_posterior_mean" in outputs
+
+
+def test_paris_output_processes_modern_output_without_legacy_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    europe_country_file: Path,
+) -> None:
+    """Real PARIS postprocessing accepts modern output without legacy conversion."""
+    from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
+
+    def fail_from_modern_output(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("make_paris_outputs must not call LegacyInversionOutput.from_modern_output")
+
+    monkeypatch.setattr(LegacyInversionOutput, "from_modern_output", fail_from_modern_output)
+
+    flux_outputs, conc_outputs = make_paris_outputs(
+        _modern_postprocessing_inv_out(europe_country_file),
+        country_file=europe_country_file,
+        obs_avg_period="1h",
+        domain="europe",
+        inversion_grid=False,
+    )
+
+    assert "Yobs" in conc_outputs
+    assert "Yapost" in conc_outputs
+    assert "flux_total_posterior" in flux_outputs
+    assert "country_flux_total_posterior" in flux_outputs
+
+
 def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
     """RHIME basic postprocessing consumes modern output without legacy adapters."""
     model_spec, output_spec, run_spec = _minimal_output_specs(output_format="basic")
@@ -1934,7 +2225,7 @@ def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter
     assert captured["inv_out"] is bundle.inv_out
     assert captured["country_file"] == "countries.json"
     assert bundle.output_metadata["inversion_output_contract"] == "modern"
-    assert bundle.output_metadata["postprocessing_input_contract"] == "modern_view"
+    assert bundle.output_metadata["postprocessing_input_contract"] == "standard_single_sector_modern_view"
     assert "basic" in bundle.outputs
 
 
@@ -1991,7 +2282,7 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
     assert captured["domain"] == "EUROPE"
     assert captured["obs_avg_period"] == "1h"
     assert bundle.output_metadata["inversion_output_contract"] == "modern"
-    assert bundle.output_metadata["postprocessing_input_contract"] == "modern_view"
+    assert bundle.output_metadata["postprocessing_input_contract"] == "standard_single_sector_modern_view"
     assert "paris_flux" in bundle.outputs
     assert "paris_concentration" in bundle.outputs
 
@@ -2031,6 +2322,31 @@ def test_save_inferencedata_falls_back_after_h5netcdf_failure(tmp_path: Path) ->
         (str(path), {"engine": "h5netcdf", "compress": True}),
         (str(path), {"compress": True}),
     ]
+
+
+def test_save_inferencedata_resets_multiindex_coords(tmp_path: Path) -> None:
+    """Standalone trace saving handles restored scientific measurement coordinates."""
+    nmeasure_index = pd.MultiIndex.from_arrays(
+        [["TAC"], pd.to_datetime(["2019-01-01"])],
+        names=["site", "time"],
+    )
+    posterior_predictive = xr.Dataset(
+        {"y": (("chain", "draw", "nmeasure"), np.ones((1, 1, 1)))},
+        coords={
+            "chain": [0],
+            "draw": [0],
+            **xr.Coordinates.from_pandas_multiindex(nmeasure_index, "nmeasure"),
+        },
+    )
+    path = tmp_path / "trace.nc"
+
+    rhime_outputs._save_inferencedata(az.InferenceData(posterior_predictive=posterior_predictive), path)
+    reloaded = az.from_netcdf(path)
+
+    reloaded_posterior_predictive = cast(Any, reloaded).posterior_predictive
+    assert "site" in reloaded_posterior_predictive.coords
+    assert "time" in reloaded_posterior_predictive.coords
+    assert not isinstance(reloaded_posterior_predictive.indexes.get("nmeasure"), pd.MultiIndex)
 
 
 def test_supported_parameter_validation_accepts_sigma_per_site(tmp_path: Path) -> None:

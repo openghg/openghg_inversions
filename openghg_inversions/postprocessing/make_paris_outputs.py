@@ -192,7 +192,7 @@ def paris_concentration_outputs(
 
     conc_attrs = get_data_var_attrs(conc_template_path)
 
-    units = float(inv_out.obs.attrs["units"].split(" ")[0])  # e.g. get 1e-12 from "1e-12 mol/mol"
+    units = float(obs_and_errs_raw["y_obs"].attrs["units"].split(" ")[0])
 
     common_rename_dict = {"site": "nsite"}
 

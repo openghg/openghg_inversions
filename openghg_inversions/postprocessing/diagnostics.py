@@ -124,7 +124,7 @@ def bayes_r2_by_site(inv_out: PostprocessingInput, report_prior: bool = False) -
 
     """
     inv_out = as_postprocessing_output(inv_out)
-    y_true = inv_out.obs.unstack("nmeasure")
+    y_true = inv_out.obs_inputs["y_obs"].unstack("nmeasure")
     y_pred = inv_out.get_trace_dataset(var_names="y").unstack("nmeasure")
     ds = xr.merge([y_true, y_pred])
 
@@ -156,7 +156,7 @@ def bayes_r2_by_site_resample(
 
     """
     inv_out = as_postprocessing_output(inv_out)
-    y_true = inv_out.obs.unstack("nmeasure")
+    y_true = inv_out.obs_inputs["y_obs"].unstack("nmeasure")
     y_pred = inv_out.get_trace_dataset(var_names="y").unstack("nmeasure")
     ds = xr.merge([y_true, y_pred])
 

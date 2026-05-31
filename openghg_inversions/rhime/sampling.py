@@ -8,6 +8,8 @@ from typing import Any, Literal, cast
 import arviz as az
 import pymc as pm
 
+from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
+
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
 
 
@@ -133,7 +135,11 @@ class RhimeSampler:
             )
 
         trace = cast(az.InferenceData, raw_trace.isel(draw=slice(self.burn, None)))
-        return self._extend_predictive(trace, model=model)
+        trace = self._extend_predictive(trace, model=model)
+        registry = get_coord_registry(model)
+        if registry is not None:
+            trace = restore_inferencedata_coords(trace, registry)
+        return trace
 
     def _extend_predictive(self, trace: az.InferenceData, *, model: pm.Model) -> az.InferenceData:
         """Extend sampled trace with configured predictive groups."""
