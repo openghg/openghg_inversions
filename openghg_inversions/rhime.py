@@ -31,7 +31,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 import inspect
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 import time
 
 import arviz as az
@@ -45,20 +45,26 @@ from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions import _rhime_params as rhime_params
 from openghg_inversions._rhime_params import params_from_config, resolve_flux_sources
+from openghg_inversions._rhime_specs import (
+    OutputFormat,
+    RhimeModelSpec,
+    RhimeOutputSpec,
+    RhimeRunSpec,
+    RhimeSamplingSpec,
+    SectorSpec,
+)
 from openghg_inversions.inversion_data import (
     RhimePreparedInputs as _RhimePreparedInputs,
     prepare_rhime_inputs as _prepare_rhime_inputs,
 )
 from openghg_inversions.models import (
     DEFAULT_X_PRIOR,
-    build_rhime_model,
-    build_rhime_multisector_model,
+    build_rhime_model_from_spec,
+    build_rhime_multisector_model_from_spec,
     safe_pymc_name,
 )
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.utils import ncdf_encoding
-
-OutputFormat = Literal["none", "inv_out", "basic", "paris"]
 
 __all__ = [
     "SectorSpec",
@@ -72,138 +78,6 @@ __all__ = [
     "run_rhime",
     "run_rhime_multisector",
 ]
-
-
-@dataclass(frozen=True)
-class SectorSpec:
-    """Configuration for one separately optimised flux sector.
-
-    Args:
-        name: User-facing sector name.
-        flux_source: OpenGHG flux ``source`` used to retrieve this sector.
-        x_prior: Prior specification for this sector's flux scaling factors.
-        variable_suffix: PyMC-safe suffix used in model variable names.
-    """
-
-    name: str
-    flux_source: str
-    x_prior: dict[str, Any]
-    variable_suffix: str
-
-
-@dataclass(frozen=True)
-class RhimeModelSpec:
-    """Model options used to build a RHIME PyMC model.
-
-    Args:
-        species: Primary gas or tracer name used for object-store lookup and
-            output naming.
-        domain: Model domain name.
-        sectors: Flux sectors included in the model. Each sector is optimized
-            separately and is normally backed by one OpenGHG flux ``source``.
-        use_bc: Whether boundary-condition scaling is included.
-        sigma_per_site: Whether model-error terms vary by site.
-        add_offset: Whether model-data offsets are included.
-        pollution_events_from_obs: Whether model error scales with observed
-            enhancements instead of modelled enhancements.
-        no_model_error: Whether explicit model-error terms are disabled.
-        power: Exponent or prior specification used in likelihood error scaling.
-        bc_prior: Prior specification for boundary-condition scaling factors.
-        sigma_prior: Prior specification for model-error terms.
-        offset_prior: Prior specification for optional offsets.
-        offset_args: Extra keyword arguments forwarded to the offset component.
-    """
-
-    species: str
-    domain: str
-    sectors: tuple[SectorSpec, ...]
-    use_bc: bool = True
-    sigma_per_site: bool = True
-    add_offset: bool = False
-    pollution_events_from_obs: bool = False
-    no_model_error: bool = False
-    power: dict[str, Any] | float = 1.99
-    bc_prior: dict[str, Any] | None = None
-    sigma_prior: dict[str, Any] | None = None
-    offset_prior: dict[str, Any] | None = None
-    offset_args: dict[str, Any] | None = None
-
-
-@dataclass(frozen=True)
-class RhimeOutputSpec:
-    """Output settings for a RHIME run.
-
-    Args:
-        output_format: Output mode. ``"inv_out"`` saves/returns the modern
-            inversion output, ``"basic"`` and ``"paris"`` additionally create
-            derived outputs, and ``"none"`` skips output products.
-        output_path: Directory for saved outputs.
-        output_name: Base output name.
-        save_trace: Trace save setting. If true, save to ``output_path`` using
-            the default trace file name; if a path, save there.
-        save_inversion_output: Inversion-output save setting. Defaults to true
-            for CLI-friendly behaviour.
-        country_file: Optional country mask file used by derived outputs.
-        paris_postprocessing_kwargs: Extra keyword arguments for PARIS output
-            creation.
-    """
-
-    output_format: OutputFormat = "inv_out"
-    output_path: str | None = None
-    output_name: str = "rhime"
-    save_trace: str | Path | bool = False
-    save_inversion_output: str | Path | bool = True
-    country_file: str | None = None
-    paris_postprocessing_kwargs: dict[str, Any] | None = None
-
-
-@dataclass(frozen=True)
-class RhimeSamplingSpec:
-    """Sampling settings for a RHIME run.
-
-    Args:
-        nit: Number of post-tuning draws requested from PyMC.
-        burn: Number of draws to discard from each chain after sampling.
-        tune: Number of PyMC tuning draws.
-        nchain: Number of MCMC chains.
-        nuts_sampler: PyMC NUTS backend name.
-        verbose: Whether PyMC progress output should be shown.
-        sampler_kwargs: Extra keyword arguments forwarded to ``pm.sample``.
-    """
-
-    nit: int = 1000
-    burn: int = 0
-    tune: int = 1000
-    nchain: int = 4
-    nuts_sampler: str = "pymc"
-    verbose: bool = False
-    sampler_kwargs: dict[str, Any] | None = None
-
-
-@dataclass(frozen=True)
-class RhimeRunSpec:
-    """Top-level run metadata for a RHIME run.
-
-    Args:
-        start_date: Inclusive inversion start date.
-        end_date: Exclusive inversion end date.
-        sites: Sites included after data preparation and filtering.
-        averaging_period: Observation averaging period per retained site.
-        model: Mathematical model specification.
-        output: Output settings.
-        split_by_sectors: Whether flux data were prepared in sector-resolved
-            mode.
-        sampling: Sampling settings.
-    """
-
-    start_date: str
-    end_date: str
-    sites: tuple[str, ...]
-    averaging_period: tuple[str | None, ...]
-    model: RhimeModelSpec
-    output: RhimeOutputSpec
-    split_by_sectors: bool = False
-    sampling: RhimeSamplingSpec = field(default_factory=RhimeSamplingSpec)
 
 
 @dataclass(frozen=True)
@@ -392,28 +266,21 @@ def _make_model_spec(
 
 def _sample_model(
     model: pm.Model,
-    *,
-    nit: int,
-    burn: int,
-    tune: int,
-    nchain: int,
-    nuts_sampler: str,
-    verbose: bool,
-    sampler_kwargs: dict | None,
+    sampling_spec: RhimeSamplingSpec,
 ) -> az.InferenceData:
-    """Sample a built RHIME model and return InferenceData."""
-    sampler_kwargs = dict(sampler_kwargs or {})
-    sampler_kwargs.setdefault("progressbar", verbose)
-    sampler_kwargs.setdefault("cores", nchain)
+    """Sample a built RHIME model using normalized sampling settings."""
+    sampler_kwargs = dict(sampling_spec.sampler_kwargs or {})
+    sampler_kwargs.setdefault("progressbar", sampling_spec.verbose)
+    sampler_kwargs.setdefault("cores", sampling_spec.nchain)
     return _sample(
         model,
-        draws=int(nit),
-        burn=int(burn),
-        tune=int(tune),
-        chains=int(nchain),
+        draws=int(sampling_spec.nit),
+        burn=int(sampling_spec.burn),
+        tune=int(sampling_spec.tune),
+        chains=int(sampling_spec.nchain),
         sample_prior_predictive=True,
         sample_posterior_predictive=["y"],
-        nuts_sampler=nuts_sampler,
+        nuts_sampler=sampling_spec.nuts_sampler,
         **sampler_kwargs,
     )
 
@@ -484,24 +351,6 @@ def _sample(
     )
 
 
-def _basis_matrix_for_output(
-    basis_functions: BasisFunctions,
-    *,
-    state_dim: str = "region",
-    state_coord: xr.DataArray | None = None,
-) -> xr.DataArray:
-    """Materialise a basis matrix at the RHIME output boundary."""
-    basis = basis_functions.operator.basis_matrix
-    current_state_dim = basis_functions.operator.meta.state_dim
-    if state_dim != current_state_dim:
-        basis = basis.rename({current_state_dim: state_dim})
-    if state_coord is not None:
-        if state_coord.name is None:
-            raise ValueError("state_coord must be named so it can be used for reindexing.")
-        basis = basis.reindex({state_coord.name: state_coord})
-    return basis
-
-
 def _materialise_basis_and_flux_for_output(
     prepared: _RhimePreparedInputs,
 ) -> tuple[xr.DataArray, xr.DataArray]:
@@ -510,11 +359,14 @@ def _materialise_basis_and_flux_for_output(
     TODO(#383/#429): postprocessing should consume ``BasisFunctions`` directly
     rather than requiring the runner to materialise a flat basis and flux.
     """
-    basis = _basis_matrix_for_output(
-        prepared.basis_functions,
-        state_dim="region",
-        state_coord=prepared.inv_inputs.region,
-    )
+    basis = prepared.basis_functions.operator.basis_matrix
+    current_state_dim = prepared.basis_functions.operator.meta.state_dim
+    if current_state_dim != "region":
+        basis = basis.rename({current_state_dim: "region"})
+    region_coord = prepared.inv_inputs.region
+    if region_coord.name is None:
+        raise ValueError("prepared.inv_inputs.region must be named so it can be used for reindexing.")
+    basis = basis.reindex({region_coord.name: region_coord})
     return basis, prepared.basis_functions.flux
 
 
@@ -916,50 +768,6 @@ def _run_spec_with_prepared_inputs(
     )
 
 
-def _model_kwargs_from_spec(
-    model_spec: RhimeModelSpec,
-    *,
-    multisector: bool,
-) -> dict[str, Any]:
-    """Build PyMC model-builder kwargs from a normalized model spec."""
-    kwargs: dict[str, Any] = {
-        "bc_prior": model_spec.bc_prior,
-        "sigma_prior": model_spec.sigma_prior,
-        "sigma_per_site": model_spec.sigma_per_site,
-        "offset_prior": model_spec.offset_prior,
-        "add_offset": model_spec.add_offset,
-        "use_bc": model_spec.use_bc,
-        "pollution_events_from_obs": model_spec.pollution_events_from_obs,
-        "no_model_error": model_spec.no_model_error,
-        "offset_args": model_spec.offset_args,
-        "power": model_spec.power,
-    }
-    if multisector:
-        kwargs["sectors"] = [sector.name for sector in model_spec.sectors]
-        kwargs["sector_sources"] = {sector.name: sector.flux_source for sector in model_spec.sectors}
-        kwargs["sector_variable_suffixes"] = {
-            sector.name: sector.variable_suffix for sector in model_spec.sectors
-        }
-        kwargs["sector_priors"] = {sector.name: dict(sector.x_prior) for sector in model_spec.sectors}
-    else:
-        kwargs["x_prior"] = dict(model_spec.sectors[0].x_prior)
-    return kwargs
-
-
-def _sample_model_from_spec(model: pm.Model, sampling_spec: RhimeSamplingSpec) -> az.InferenceData:
-    """Sample a RHIME PyMC model using normalized sampling settings."""
-    return _sample_model(
-        model,
-        nit=sampling_spec.nit,
-        burn=sampling_spec.burn,
-        tune=sampling_spec.tune,
-        nchain=sampling_spec.nchain,
-        nuts_sampler=sampling_spec.nuts_sampler,
-        verbose=sampling_spec.verbose,
-        sampler_kwargs=sampling_spec.sampler_kwargs,
-    )
-
-
 def _run_common(
     *,
     multisector: bool,
@@ -971,13 +779,12 @@ def _run_common(
     run_spec = _run_spec_with_prepared_inputs(setup.run_spec, prepared)
 
     start_build = time.time()
-    model_kwargs = _model_kwargs_from_spec(run_spec.model, multisector=multisector)
     if multisector:
-        model = build_rhime_multisector_model(prepared.inv_inputs, **model_kwargs)
+        model = build_rhime_multisector_model_from_spec(prepared.inv_inputs, run_spec.model)
     else:
-        model = build_rhime_model(prepared.inv_inputs, **model_kwargs)
+        model = build_rhime_model_from_spec(prepared.inv_inputs, run_spec.model)
 
-    idata = _sample_model_from_spec(model, run_spec.sampling)
+    idata = _sample_model(model, run_spec.sampling)
     result = RhimeResult(
         run_spec=run_spec,
         model_spec=run_spec.model,

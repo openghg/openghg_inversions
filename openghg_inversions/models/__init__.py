@@ -22,7 +22,9 @@ from openghg_inversions.models.rhime import (
     DEFAULT_SIGMA_PRIOR,
     DEFAULT_X_PRIOR,
     build_rhime_model,
+    build_rhime_model_from_spec,
     build_rhime_multisector_model,
+    build_rhime_multisector_model_from_spec,
     safe_pymc_name,
 )
 
@@ -44,6 +46,8 @@ __all__ = [
     "add_offset_component",
     "add_inferpymc_likelihood_component",
     "build_rhime_model",
+    "build_rhime_model_from_spec",
     "build_rhime_multisector_model",
+    "build_rhime_multisector_model_from_spec",
     "safe_pymc_name",
 ]

@@ -10,6 +10,7 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.models as models
+import openghg_inversions.models.rhime as rhime_models_module
 import openghg_inversions._rhime_params as rhime_params
 import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.rhime as rhime_module
@@ -19,7 +20,9 @@ from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.models import (
     build_rhime_model,
+    build_rhime_model_from_spec,
     build_rhime_multisector_model,
+    build_rhime_multisector_model_from_spec,
     safe_pymc_name,
 )
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -244,7 +247,9 @@ def test_build_rhime_multisector_model_requires_multiple_sectors(
 
 def test_models_exports_rhime_builders() -> None:
     assert models.build_rhime_model is build_rhime_model
+    assert models.build_rhime_model_from_spec is build_rhime_model_from_spec
     assert models.build_rhime_multisector_model is build_rhime_multisector_model
+    assert models.build_rhime_multisector_model_from_spec is build_rhime_multisector_model_from_spec
     assert models.safe_pymc_name is safe_pymc_name
     assert isinstance(models.DEFAULT_X_PRIOR, dict)
     assert isinstance(models.DEFAULT_BC_PRIOR, dict)
@@ -368,8 +373,77 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
     assert setup.run_spec.model.sectors[1].x_prior == {"pdf": "normal", "mu": 0.7, "sigma": 0.2}
 
 
-def test_model_kwargs_from_spec_preserves_sector_source_mapping() -> None:
-    """Builder kwargs keep sector labels separate from OpenGHG source values."""
+def test_build_rhime_model_from_spec_forwards_single_sector_prior(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The standard spec wrapper forwards its sector prior as ``x_prior``."""
+    sentinel = cast(pm.Model, object())
+    seen: dict[str, Any] = {}
+
+    def fake_build_rhime_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
+        seen["inv_inputs"] = inv_inputs
+        seen["kwargs"] = kwargs
+        return sentinel
+
+    monkeypatch.setattr(rhime_models_module, "build_rhime_model", fake_build_rhime_model)
+    inv_inputs = _minimal_inv_inputs()
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=(
+            SectorSpec(
+                name="FF",
+                flux_source="ff-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ff",
+            ),
+        ),
+        bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+        sigma_per_site=False,
+    )
+
+    model = build_rhime_model_from_spec(inv_inputs, model_spec)
+
+    assert model is sentinel
+    assert seen["inv_inputs"] is inv_inputs
+    assert seen["kwargs"]["x_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.2}
+    assert seen["kwargs"]["bc_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.1}
+    assert seen["kwargs"]["sigma_per_site"] is False
+
+
+def test_build_rhime_model_from_spec_requires_one_sector() -> None:
+    """The standard spec wrapper rejects multi-sector specs."""
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=(
+            SectorSpec("FF", "ff-inventory", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}, "ff"),
+            SectorSpec("ocean", "ocean-inventory", {"pdf": "normal", "mu": 1.0, "sigma": 0.3}, "ocean"),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="exactly one sector"):
+        build_rhime_model_from_spec(_minimal_inv_inputs(), model_spec)
+
+
+def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Spec wrapper keeps sector labels separate from OpenGHG source values."""
+    sentinel = cast(pm.Model, object())
+    seen: dict[str, Any] = {}
+
+    def fake_build_rhime_multisector_model(inv_inputs: xr.Dataset, **kwargs: Any) -> pm.Model:
+        seen["inv_inputs"] = inv_inputs
+        seen["kwargs"] = kwargs
+        return sentinel
+
+    monkeypatch.setattr(
+        rhime_models_module,
+        "build_rhime_multisector_model",
+        fake_build_rhime_multisector_model,
+    )
+    inv_inputs = _minimal_inv_inputs()
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
@@ -389,15 +463,55 @@ def test_model_kwargs_from_spec_preserves_sector_source_mapping() -> None:
         ),
     )
 
-    kwargs = rhime_module._model_kwargs_from_spec(model_spec, multisector=True)
+    model = build_rhime_multisector_model_from_spec(inv_inputs, model_spec)
 
-    assert kwargs["sectors"] == ["FF", "ocean"]
-    assert kwargs["sector_sources"] == {"FF": "ff-inventory", "ocean": "ocean-inventory"}
-    assert kwargs["sector_variable_suffixes"] == {"FF": "ff", "ocean": "ocean"}
-    assert kwargs["sector_priors"] == {
+    assert model is sentinel
+    assert seen["inv_inputs"] is inv_inputs
+    assert seen["kwargs"]["sectors"] == ["FF", "ocean"]
+    assert seen["kwargs"]["sector_sources"] == {"FF": "ff-inventory", "ocean": "ocean-inventory"}
+    assert seen["kwargs"]["sector_variable_suffixes"] == {"FF": "ff", "ocean": "ocean"}
+    assert seen["kwargs"]["sector_priors"] == {
         "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
         "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
     }
+
+
+def test_sample_model_uses_sampling_spec(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sampling wrapper forwards normalized sampling settings to the low-level sampler."""
+    sentinel = cast(Any, object())
+    seen: dict[str, Any] = {}
+
+    def fake_sample(model: pm.Model, **kwargs: Any) -> Any:
+        seen["model"] = model
+        seen["kwargs"] = kwargs
+        return sentinel
+
+    monkeypatch.setattr(rhime_module, "_sample", fake_sample)
+    model = pm.Model()
+    sampling_spec = RhimeSamplingSpec(
+        nit=7,
+        burn=1,
+        tune=2,
+        nchain=3,
+        nuts_sampler="numpyro",
+        verbose=True,
+        sampler_kwargs={"target_accept": 0.9},
+    )
+
+    idata = rhime_module._sample_model(model, sampling_spec)
+
+    assert idata is sentinel
+    assert seen["model"] is model
+    assert seen["kwargs"]["draws"] == 7
+    assert seen["kwargs"]["burn"] == 1
+    assert seen["kwargs"]["tune"] == 2
+    assert seen["kwargs"]["chains"] == 3
+    assert seen["kwargs"]["nuts_sampler"] == "numpyro"
+    assert seen["kwargs"]["progressbar"] is True
+    assert seen["kwargs"]["cores"] == 3
+    assert seen["kwargs"]["target_accept"] == 0.9
+    assert seen["kwargs"]["sample_prior_predictive"] is True
+    assert seen["kwargs"]["sample_posterior_predictive"] == ["y"]
 
 
 def test_params_from_config_maps_legacy_emissions_name(tmp_path: Path) -> None:
@@ -582,6 +696,26 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_sources(
         )
 
 
+def test_run_rhime_multisector_rejects_duplicate_sanitized_sector_names() -> None:
+    """Duplicate PyMC suffixes fail during setup, before RHIME data preparation."""
+    with pytest.raises(ValueError, match="duplicate sanitized name"):
+        rhime_module._make_rhime_runner_setup(
+            params={
+                "species": "ch4",
+                "sites": ["TAC"],
+                "averaging_period": ["1h"],
+                "domain": "EUROPE",
+                "start_date": "2019-01-01",
+                "end_date": "2019-01-02",
+                "output_name": "test",
+                "output_format": "none",
+                "flux_sources": ["ff-source", "gpp-source"],
+                "sector_sources": {"Sector 2": "ff-source", "sector-2": "gpp-source"},
+            },
+            multisector=True,
+        )
+
+
 def test_new_rhime_docs_use_flux_sources_for_examples() -> None:
     """New RHIME docs keep legacy names out of config/API examples."""
     rhime_doc = Path("docs/usage/rhime.rst").read_text(encoding="utf-8")
@@ -597,6 +731,18 @@ def test_new_rhime_docs_use_flux_sources_for_examples() -> None:
     assert "emissions_name =" not in readme
     assert "emissions_name =" not in template
     assert "Legacy compatibility spelling" in rhime_doc
+
+
+def test_cleanup_plan_records_issue_400_decisions() -> None:
+    """The cleanup plan records current PR decisions without example completions."""
+    plan_doc = Path("docs/plans/clean_up_inversions_refactor.md").read_text(encoding="utf-8")
+
+    assert "PR #434 / Issue #400" in plan_doc
+    assert "#383 / PR #412 merged" not in plan_doc
+    assert "one public concrete `RhimeModelSpec`" in plan_doc
+    assert "Do not split the public API" in plan_doc
+    assert "SemanticModel" in plan_doc
+    assert "Deferred Issue #383 / Issue #429 output boundary" in plan_doc
 
 
 def _rhime_preparation_args(data_args: dict, flux_sources: list[str]) -> dict:

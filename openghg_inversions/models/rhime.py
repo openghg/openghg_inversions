@@ -21,6 +21,7 @@ import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 
+from openghg_inversions._rhime_specs import RhimeModelSpec
 from openghg_inversions.models.components import (
     add_inferpymc_likelihood_component,
     add_linear_component,
@@ -158,6 +159,40 @@ def build_rhime_model(
         )
 
     return model
+
+
+def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSpec) -> pm.Model:
+    """Build the standard single-sector RHIME model from a model spec.
+
+    Args:
+        inv_inputs: Canonical inversion-input dataset produced by
+            ``make_inv_inputs``.
+        model_spec: Normalized RHIME model specification.
+
+    Returns:
+        Built PyMC model.
+
+    Raises:
+        ValueError: If the model spec does not describe exactly one sector.
+    """
+    if len(model_spec.sectors) != 1:
+        raise ValueError("Standard RHIME model specs must include exactly one sector.")
+
+    sector = model_spec.sectors[0]
+    return build_rhime_model(
+        inv_inputs,
+        x_prior=dict(sector.x_prior),
+        bc_prior=model_spec.bc_prior,
+        sigma_prior=model_spec.sigma_prior,
+        sigma_per_site=model_spec.sigma_per_site,
+        offset_prior=model_spec.offset_prior,
+        add_offset=model_spec.add_offset,
+        use_bc=model_spec.use_bc,
+        pollution_events_from_obs=model_spec.pollution_events_from_obs,
+        no_model_error=model_spec.no_model_error,
+        offset_args=model_spec.offset_args,
+        power=model_spec.power,
+    )
 
 
 def _resolve_sector_definitions(
@@ -358,3 +393,36 @@ def build_rhime_multisector_model(
         )
 
     return model
+
+
+def build_rhime_multisector_model_from_spec(
+    inv_inputs: xr.Dataset,
+    model_spec: RhimeModelSpec,
+) -> pm.Model:
+    """Build the shared-basis multi-sector RHIME model from a model spec.
+
+    Args:
+        inv_inputs: Canonical inversion-input dataset with
+            ``H(region, nmeasure, source)``.
+        model_spec: Normalized RHIME model specification.
+
+    Returns:
+        Built PyMC model.
+    """
+    return build_rhime_multisector_model(
+        inv_inputs,
+        sectors=[sector.name for sector in model_spec.sectors],
+        sector_sources={sector.name: sector.flux_source for sector in model_spec.sectors},
+        sector_variable_suffixes={sector.name: sector.variable_suffix for sector in model_spec.sectors},
+        sector_priors={sector.name: dict(sector.x_prior) for sector in model_spec.sectors},
+        bc_prior=model_spec.bc_prior,
+        sigma_prior=model_spec.sigma_prior,
+        sigma_per_site=model_spec.sigma_per_site,
+        offset_prior=model_spec.offset_prior,
+        add_offset=model_spec.add_offset,
+        use_bc=model_spec.use_bc,
+        pollution_events_from_obs=model_spec.pollution_events_from_obs,
+        no_model_error=model_spec.no_model_error,
+        offset_args=model_spec.offset_args,
+        power=model_spec.power,
+    )
