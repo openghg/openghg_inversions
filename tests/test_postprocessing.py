@@ -1,6 +1,7 @@
 import inspect
 from pathlib import Path
 
+import arviz as az
 import numpy as np
 import pandas as pd
 import pytest
@@ -10,7 +11,7 @@ import openghg_inversions.hbmcmc.hbmcmc as hbmcmc_module
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.hbmcmc.hbmcmc import _resolve_output_format, fixedbasisMCMC
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.inversion_output import LegacyInversionOutput
 from openghg_inversions.postprocessing.legacy_outputs import make_legacy_hbmcmc_output
 from openghg_inversions.postprocessing.make_outputs import basic_output, make_country_outputs
 
@@ -60,7 +61,15 @@ def _minimal_fixedbasis_fp_data() -> dict:
                 coords={"lat": lat, "lon": lon},
             )
         },
-        "TAC": xr.Dataset(coords={"time": np.array(["2019-01-01T00:00:00"], dtype="datetime64[ns]")}),
+        "TAC": xr.Dataset(
+            {
+                "mf": ("time", np.array([1900.0], dtype="float64"), {"units": "1e-09 mol/mol"}),
+                "mf_error": ("time", np.array([2.0], dtype="float64"), {"units": "1e-09 mol/mol"}),
+                "mf_repeatability": ("time", np.array([1.0], dtype="float64"), {"units": "1e-09 mol/mol"}),
+                "mf_variability": ("time", np.array([1.5], dtype="float64"), {"units": "1e-09 mol/mol"}),
+            },
+            coords={"time": np.array(["2019-01-01T00:00:00"], dtype="datetime64[ns]")},
+        ),
     }
 
 
@@ -103,12 +112,12 @@ def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_nam
 
 @pytest.fixture(scope="module")
 def inv_out(raw_data_path):
-    return InversionOutput.load(raw_data_path / "inversion_output.nc")
+    return LegacyInversionOutput.load(raw_data_path / "inversion_output.nc")
 
 
 @pytest.fixture(scope="module")
 def inv_out_eastasia(raw_data_path):
-    return InversionOutput.load(raw_data_path / "inversion_output_EASTASIA.nc")
+    return LegacyInversionOutput.load(raw_data_path / "inversion_output_EASTASIA.nc")
 
 
 def test_fixedbasisMCMC_return_basis_objects_preserves_positional_output_format():
@@ -247,6 +256,51 @@ def test_fixedbasisMCMC_hbmcmc_output_uses_legacy_postprocess_path(monkeypatch, 
     assert captured_inferpymc_args["inv_inputs"] is prepared.inv_inputs
     assert result["xtrace_mean"].dims == ("nx",)
     assert result["xtrace_mean"].values.tolist() == [1.05]
+
+
+def test_fixedbasisMCMC_inv_out_returns_legacy_without_inferpymc_postprocess(monkeypatch, tmp_path):
+    """The fixedbasis inv_out path builds LegacyInversionOutput without legacy output postprocessing."""
+    prepared = _minimal_fixedbasis_prepared_data()
+
+    def fake_prepare_fixedbasis_inversion_data(**kwargs):
+        return prepared
+
+    def fake_inferpymc(**kwargs):
+        return {
+            "trace": az.from_dict(
+                posterior={"x": np.ones((1, 1, 1))},
+                coords={"nx": [0]},
+                dims={"x": ["nx"]},
+            ),
+            "model": object(),
+            "xouts": np.array([[1.0]], dtype="float64"),
+        }
+
+    def fail_inferpymc_postprocessouts(**kwargs):
+        raise AssertionError("output_format='inv_out' must not call inferpymc_postprocessouts")
+
+    monkeypatch.setattr(
+        hbmcmc_module,
+        "prepare_fixedbasis_inversion_data",
+        fake_prepare_fixedbasis_inversion_data,
+    )
+    monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc", fake_inferpymc)
+    monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
+
+    result = fixedbasisMCMC(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        outputpath=str(tmp_path),
+        outputname="inv-out",
+        output_format="inv_out",
+        use_bc=False,
+    )
+
+    assert isinstance(result, LegacyInversionOutput)
 
 
 @pytest.mark.parametrize("missing_key", [".basis", ".flux"])
@@ -484,7 +538,8 @@ def test_save_inversion_output(mcmc_args, tmpdir):
     mcmc_args["output_format"] = "inv_out"
     inv_out = fixedbasisMCMC(**mcmc_args)
 
-    inv_out_reloaded = InversionOutput.load(tmpdir / "inv_out.nc")
+    assert isinstance(inv_out, LegacyInversionOutput)
+    inv_out_reloaded = LegacyInversionOutput.load(tmpdir / "inv_out.nc")
 
     assert inv_out == inv_out_reloaded
 
@@ -608,7 +663,7 @@ def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(mcm
 def test_hbmcmc_postprocessing_output_matches_legacy_core_fields(raw_data_path, europe_country_file):
     """Regression test for deterministic prior concentration terms in legacy-compatible output."""
     with xr.open_dataset(raw_data_path / "standard_rhime_outs.nc") as legacy:
-        inv_out = InversionOutput.load(raw_data_path / "inversion_output.nc")
+        inv_out = LegacyInversionOutput.load(raw_data_path / "inversion_output.nc")
         compat = make_legacy_hbmcmc_output(
             inv_out=inv_out,
             mcmc_results={

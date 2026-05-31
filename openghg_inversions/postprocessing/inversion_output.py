@@ -1,7 +1,8 @@
 from pathlib import Path
 from typing_extensions import Self
-from dataclasses import dataclass
-from typing import Any, Hashable, Literal, TypeVar
+from dataclasses import dataclass, field
+from typing import Any, Hashable, Literal, TypeVar, cast
+import json
 
 import arviz as az
 import numpy as np
@@ -9,6 +10,121 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.array_ops import get_xr_dummies, align_sparse_lat_lon
+from openghg_inversions.basis.basis_functions import BasisFunctions
+
+
+MODERN_INVERSION_OUTPUT_SCHEMA = "openghg_inversions.inversion_output"
+LEGACY_INVERSION_OUTPUT_SCHEMA = "openghg_inversions.legacy_inversion_output"
+MULTIINDEX_DIMS_ATTR = "openghg_inversions:multiindex_dims"
+
+
+def _json_default(value: object) -> str:
+    """JSON fallback for metadata values stored on output artifacts."""
+    return str(value)
+
+
+def _json_attr(value: dict[str, Any]) -> str:
+    """Encode output metadata for xarray attrs."""
+    return json.dumps(value, default=_json_default)
+
+
+def _load_json_attr(attrs: dict[Any, Any], key: str) -> dict[str, Any]:
+    """Decode optional JSON metadata from xarray attrs."""
+    raw = attrs.get(key)
+    if raw is None:
+        return {}
+    if isinstance(raw, bytes):
+        raw = raw.decode()
+    if not isinstance(raw, str):
+        return {}
+    return json.loads(raw)
+
+
+def _save_datatree(dt: xr.DataTree, output_file: str | Path, output_format: Literal["netcdf", "zarr"] | None) -> None:
+    """Save a DataTree to NetCDF or Zarr, inferring format from the path when needed."""
+    output_file = Path(output_file)
+
+    if output_format is None:
+        try:
+            output_format = {".nc": "netcdf", ".zarr": "zarr"}[output_file.suffix]  # type: ignore
+        except KeyError:
+            raise ValueError(
+                f"Output file {output_file} does not end in '.nc' or '.zarr'; please specify `output_format`."
+            )
+
+    if output_format == "netcdf":
+        if output_file.suffix != ".nc":
+            output_file = output_file.with_suffix(".nc")
+        dt.to_netcdf(output_file)
+    elif output_format == "zarr":
+        if output_file.suffix != ".zarr":
+            output_file = output_file.with_suffix(".zarr")
+        dt.to_zarr(output_file)
+    else:
+        raise ValueError(f"Unsupported output_format: {output_format!r}")
+
+
+def _open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
+    """Open and load a DataTree artifact with the same engine fallback as legacy outputs."""
+    open_errors: list[Exception] = []
+    for engine in ("h5netcdf", None):
+        try:
+            dt = xr.open_datatree(file_path, engine=engine) if engine is not None else xr.open_datatree(file_path)
+        except (OSError, RuntimeError, ValueError) as exc:
+            open_errors.append(exc)
+        else:
+            with dt:
+                return dt.load()
+
+    raise open_errors[-1]
+
+
+def _inferencedata_to_datatree(idata: az.InferenceData) -> xr.DataTree:
+    """Convert an ArviZ InferenceData object to a DataTree."""
+    return xr.DataTree.from_dict({group: idata[group] for group in idata.groups()})
+
+
+def _inferencedata_from_datatree(dt: xr.DataTree) -> az.InferenceData:
+    """Convert a DataTree of InferenceData groups back to ArviZ InferenceData."""
+    return cast(Any, az.InferenceData)(
+        **{group: child.to_dataset() for group, child in dt.items()}
+    )
+
+
+def _reset_serialisation_multiindexes(ds: xr.Dataset) -> xr.Dataset:
+    """Expand xarray MultiIndexes before DataTree serialisation."""
+    result = ds
+    multiindex_dims: list[dict[str, object]] = []
+    for dim, index in ds.indexes.items():
+        if dim in result.dims and isinstance(index, pd.MultiIndex):
+            level_names = list(index.names)
+            if any(name is None for name in level_names):
+                raise ValueError(f"Cannot serialise unnamed MultiIndex levels for dimension {dim!r}.")
+            result = result.reset_index(dim)
+            multiindex_dims.append({"dim": str(dim), "levels": [str(name) for name in level_names]})
+    if multiindex_dims:
+        result = result.copy()
+        result.attrs = dict(result.attrs)
+        result.attrs[MULTIINDEX_DIMS_ATTR] = json.dumps({"dims": multiindex_dims})
+    return result
+
+
+def _restore_inv_inputs_indexes(ds: xr.Dataset) -> xr.Dataset:
+    """Restore RHIME inv_inputs MultiIndexes expanded for serialisation."""
+    raw_multiindex_dims = ds.attrs.get(MULTIINDEX_DIMS_ATTR)
+    if raw_multiindex_dims is None:
+        return ds
+
+    result = ds.copy()
+    result.attrs = dict(result.attrs)
+    del result.attrs[MULTIINDEX_DIMS_ATTR]
+    records = json.loads(raw_multiindex_dims)["dims"]
+    for record in records:
+        dim = record["dim"]
+        levels = record["levels"]
+        if dim in result.dims and all(level in result and result[level].dims == (dim,) for level in levels):
+            result = result.set_index({dim: levels})
+    return result
 
 
 def filter_data_vars_by_prefix(
@@ -212,7 +328,101 @@ def _nmeasure_to_site_time(
 
 @dataclass
 class InversionOutput:
-    """Outputs of inversion needed for post-processing."""
+    """Modern RHIME inversion output contract.
+
+    This object carries the runtime artifacts needed to reproduce and extend
+    RHIME outputs without exposing fixedbasis ``fp_data`` or legacy
+    ``inferpymc_postprocessouts`` dictionaries.
+    """
+
+    trace: az.InferenceData
+    inv_inputs: xr.Dataset
+    basis_functions: BasisFunctions
+    run_metadata: dict[str, Any] = field(default_factory=dict)
+    model_metadata: dict[str, Any] = field(default_factory=dict)
+    output_metadata: dict[str, Any] = field(default_factory=dict)
+    provenance: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def start_date(self) -> str | None:
+        """Inversion start date from run metadata."""
+        value = self.run_metadata.get("start_date")
+        return None if value is None else str(value)
+
+    @property
+    def end_date(self) -> str | None:
+        """Inversion end date from run metadata."""
+        value = self.run_metadata.get("end_date")
+        return None if value is None else str(value)
+
+    @property
+    def species(self) -> str | None:
+        """Species name from model metadata."""
+        value = self.model_metadata.get("species")
+        return None if value is None else str(value)
+
+    @property
+    def domain(self) -> str | None:
+        """Domain name from model metadata."""
+        value = self.model_metadata.get("domain")
+        return None if value is None else str(value)
+
+    def to_datatree(self) -> xr.DataTree:
+        """Convert the modern output to a serialisable DataTree."""
+        dt = xr.DataTree.from_dict(
+            {
+                "trace": _inferencedata_to_datatree(self.trace),
+                "inv_inputs": xr.DataTree(_reset_serialisation_multiindexes(self.inv_inputs)),
+                "basis_functions": self.basis_functions.to_datatree(),
+            }
+        )
+        dt.attrs = {
+            "schema": MODERN_INVERSION_OUTPUT_SCHEMA,
+            "schema_version": 1,
+            "run_metadata": _json_attr(self.run_metadata),
+            "model_metadata": _json_attr(self.model_metadata),
+            "output_metadata": _json_attr(self.output_metadata),
+            "provenance": _json_attr(self.provenance),
+        }
+        return dt
+
+    def save(self, output_file: str | Path, output_format: Literal["netcdf", "zarr"] | None = None) -> None:
+        """Save modern InversionOutput to NetCDF or Zarr."""
+        _save_datatree(self.to_datatree(), output_file, output_format)
+
+    @classmethod
+    def from_datatree(cls, dt: xr.DataTree) -> Self:
+        """Construct a modern InversionOutput from a serialised DataTree."""
+        schema = dt.attrs.get("schema")
+        if schema is not None and schema != MODERN_INVERSION_OUTPUT_SCHEMA:
+            raise ValueError(f"Unexpected InversionOutput schema: {schema!r}")
+
+        trace = _inferencedata_from_datatree(cast(xr.DataTree, dt["trace"]))
+        inv_inputs = _restore_inv_inputs_indexes(cast(xr.DataTree, dt["inv_inputs"]).to_dataset())
+        basis_functions = BasisFunctions.from_datatree(cast(xr.DataTree, dt["basis_functions"]))
+        return cls(
+            trace=trace,
+            inv_inputs=inv_inputs,
+            basis_functions=basis_functions,
+            run_metadata=_load_json_attr(dt.attrs, "run_metadata"),
+            model_metadata=_load_json_attr(dt.attrs, "model_metadata"),
+            output_metadata=_load_json_attr(dt.attrs, "output_metadata"),
+            provenance=_load_json_attr(dt.attrs, "provenance"),
+        )
+
+    @classmethod
+    def load(cls, file_path: str | Path) -> Self:
+        """Load a modern InversionOutput artifact."""
+        return cls.from_datatree(_open_datatree_loaded(file_path))
+
+
+@dataclass
+class LegacyInversionOutput:
+    """Legacy-shaped postprocessing carrier.
+
+    This is the object consumed by the current ``postprocessing`` submodule. It
+    is distinct from the true legacy ``inferpymc_postprocessouts`` dataset.
+    """
 
     obs: xr.DataArray
     obs_err: xr.DataArray
@@ -293,8 +503,79 @@ class InversionOutput:
         ]
         self.obs_inputs = xr.merge([x for x in obs_inputs if x is not None])
 
+    @classmethod
+    def from_modern_output(cls, inv_out: InversionOutput) -> Self:
+        """Build the current postprocessing carrier from a modern RHIME output.
+
+        This temporary adapter keeps existing ``basic`` and ``paris``
+        postprocessing available while issue #383/#429 move those consumers onto
+        retained ``BasisFunctions`` directly.
+        """
+        inv_inputs = inv_out.inv_inputs
+        basis = inv_out.basis_functions.operator.basis_matrix
+        current_state_dim = inv_out.basis_functions.operator.meta.state_dim
+        if current_state_dim != "region":
+            basis = basis.rename({current_state_dim: "region"})
+        if "region" in inv_inputs.coords:
+            basis = basis.reindex(region=inv_inputs.region)
+
+        nmeasure = np.arange(inv_inputs.sizes["nmeasure"])
+        sites = inv_out.run_metadata.get("sites", [])
+        site_names = (
+            inv_inputs["site_names"]
+            if "site_names" in inv_inputs
+            else xr.DataArray(list(sites), dims="nsite", coords={"nsite": np.arange(len(sites))})
+        )
+        obs_prior_factor = inv_inputs["mf_prior_factor"] if "mf_prior_factor" in inv_inputs else None
+        obs_prior_upper_level_factor = (
+            inv_inputs["mf_prior_upper_level_factor"] if "mf_prior_upper_level_factor" in inv_inputs else None
+        )
+
+        def nmeasure_array(name: str, source: xr.DataArray) -> xr.DataArray:
+            """Create a clean nmeasure DataArray without inherited indexes."""
+            result = xr.DataArray(
+                source.values,
+                dims=["nmeasure"],
+                coords={"nmeasure": nmeasure},
+                name=name,
+            )
+            result.attrs = source.attrs
+            return result
+
+        species = inv_out.species
+        domain = inv_out.domain
+        start_date = inv_out.start_date
+        end_date = inv_out.end_date
+        if species is None or domain is None or start_date is None or end_date is None:
+            raise ValueError("Modern InversionOutput metadata must include species, domain, start_date, and end_date.")
+
+        return cls(
+            obs=nmeasure_array("Yobs", inv_inputs["mf"]),
+            obs_err=nmeasure_array("Yerror", inv_inputs["mf_error"]),
+            obs_repeatability=nmeasure_array("Yerror_repeatability", inv_inputs["mf_repeatability"]),
+            obs_variability=nmeasure_array("Yerror_variability", inv_inputs["mf_variability"]),
+            obs_prior_factor=(
+                nmeasure_array("Yobs_prior_factor", obs_prior_factor) if obs_prior_factor is not None else None
+            ),
+            obs_prior_upper_level_factor=(
+                nmeasure_array("Yobs_prior_upper_level_factor", obs_prior_upper_level_factor)
+                if obs_prior_upper_level_factor is not None
+                else None
+            ),
+            site_indicators=nmeasure_array("site_indicator", inv_inputs["site_indicator"]),
+            flux=inv_out.basis_functions.flux,
+            basis=basis,
+            trace=inv_out.trace,
+            site_names=site_names,
+            times=nmeasure_array("times", inv_inputs["time"]),
+            start_date=start_date,
+            end_date=end_date,
+            species=species,
+            domain=domain,
+        )
+
     def __eq__(self, other: Any) -> bool:
-        """Check equality between InversionOutput objects.
+        """Check equality between LegacyInversionOutput objects.
 
         The `dataclass` default `__eq__` method doesn't work because the
         `.basis` attribute is a sparse matrix, which causes problems when
@@ -309,7 +590,7 @@ class InversionOutput:
 
         Raises:
             NotImplementedError: if equality is tested with an object that is
-              not InversionOutput.
+              not LegacyInversionOutput.
 
         """
         if not isinstance(other, self.__class__):
@@ -460,7 +741,7 @@ class InversionOutput:
     def get_flat_basis(self) -> xr.DataArray:
         """Return 2D DataArray encoding basis regions.
 
-        The `InversionOutput.basis` matrix is sparse, with three dimensions: latitude, longitude, and region
+        The `LegacyInversionOutput.basis` matrix is sparse, with three dimensions: latitude, longitude, and region
         (which corresponds to a basis function). A sparse matrix cannot be saved directly to disk, or compared
         with other matrices of this type, and converting directly to a dense matrix could use a very large
         amount of memory.
@@ -482,7 +763,7 @@ class InversionOutput:
         return (self.basis * self.basis[region_dim]).sum(region_dim).as_numpy().rename("basis")
 
     def to_datatree(self) -> xr.DataTree:
-        """Convert InversionOutput to xarray DataTree.
+        """Convert LegacyInversionOutput to xarray DataTree.
 
         The output of this method can be saved to netCDF or zarr.
 
@@ -505,13 +786,15 @@ class InversionOutput:
         ]
         to_merge = [x for x in to_merge if x is not None]
         dt_dict = {
-            "trace": xr.DataTree.from_dict({group: ds for group, ds in self.trace.items()}),
+            "trace": _inferencedata_to_datatree(self.trace),
             "obs_and_errors": xr.merge(to_merge).reset_index("nmeasure"),
             "basis": self.get_flat_basis().to_dataset(),
             "flux": self.flux.rename(flux_time="time").rename("flux").to_dataset(),
         }
         dt = xr.DataTree.from_dict(dt_dict)
         dt.attrs = {
+            "schema": LEGACY_INVERSION_OUTPUT_SCHEMA,
+            "schema_version": 1,
             "start_date": str(self.start_date),
             "end_date": str(self.end_date),
             "species": self.species,
@@ -520,13 +803,13 @@ class InversionOutput:
         return dt
 
     def save(self, output_file: str | Path, output_format: Literal["netcdf", "zarr"] | None = None) -> None:
-        """Save InversionOutput to netCDF or Zarr.
+        """Save LegacyInversionOutput to netCDF or Zarr.
 
-        There is a corresponding `load` method to recover the InversionOutput
+        There is a corresponding `load` method to recover the LegacyInversionOutput
         from a saved version.
 
         Args:
-            output_file: path to file where the InversionOutput should be saved
+            output_file: path to file where the LegacyInversionOutput should be saved
             output_format: format to save to; if `None`, this will be inferred by the
               extension of `output_file`
 
@@ -535,39 +818,25 @@ class InversionOutput:
               from the output file extension.
 
         """
-        output_file = Path(output_file)
-
-        if output_format is None:
-            try:
-                output_format = {".nc": "netcdf", ".zarr": "zarr"}[output_file.suffix]  # type: ignore
-            except KeyError:
-                raise ValueError(
-                    f"Output file {output_file} does not end in '.nc' or '.zarr'; please specify `output_format`."
-                )
-
-        if output_format == "netcdf":
-            if output_file.suffix != ".nc":
-                output_file = Path(output_file.stem + ".nc")
-            self.to_datatree().to_netcdf(output_file)
-
-        if output_format == "zarr":
-            if output_file.suffix != ".zarr":
-                output_file = Path(output_file.stem + ".zarr")
-            self.to_datatree().to_zarr(output_file)
+        _save_datatree(self.to_datatree(), output_file, output_format)
 
     @classmethod
     def from_datatree(cls: type[Self], dt: xr.DataTree) -> Self:
-        """Construct InversionOutput from serialised InversionOutput xr.DataTree.
+        """Construct LegacyInversionOutput from serialised DataTree.
 
         This method is the inverse of `to_datatree`.
 
         Args:
-            dt: xr.DataTree constructed using `InversionOutput.to_datatree`
+            dt: xr.DataTree constructed using `LegacyInversionOutput.to_datatree`
 
         Returns:
-            InversionOutput: reconstructed from datatree
+            LegacyInversionOutput: reconstructed from datatree
 
         """
+        schema = dt.attrs.get("schema")
+        if schema is not None and schema != LEGACY_INVERSION_OUTPUT_SCHEMA:
+            raise ValueError(f"Unexpected LegacyInversionOutput schema: {schema!r}")
+
         obs_and_errs_ds = dt.obs_and_errors.to_dataset().drop_vars(["site", "time"])
         obs_and_errs = dict(obs_and_errs_ds)
         obs_and_errs = {
@@ -579,51 +848,48 @@ class InversionOutput:
             "species": dt.attrs.get("species"),
             "domain": dt.attrs.get("domain"),
         }
+        if any(value is None for value in inv_info.values()):
+            raise ValueError("LegacyInversionOutput DataTree is missing required inversion metadata.")
         basis_dim = "nx" if "nx" in dt.trace.posterior.coords else "region"
         basis = get_xr_dummies(
             dt.basis.basis,
             cat_dim=basis_dim,
             categories=dt.trace.posterior[basis_dim],
         )
-        trace = az.InferenceData(**{group: val.to_dataset() for group, val in dt.trace.items()})
+        trace = _inferencedata_from_datatree(dt.trace)
         return cls(
-            **obs_and_errs,
+            obs=obs_and_errs["obs"],
+            obs_err=obs_and_errs["obs_err"],
+            obs_repeatability=obs_and_errs["obs_repeatability"],
+            obs_variability=obs_and_errs["obs_variability"],
+            obs_prior_factor=obs_and_errs.get("obs_prior_factor"),
+            obs_prior_upper_level_factor=obs_and_errs.get("obs_prior_upper_level_factor"),
             flux=dt.flux.flux,
             basis=basis,
             trace=trace,
             site_indicators=dt.obs_and_errors.site,
             times=dt.obs_and_errors.time,
-            **inv_info,
+            start_date=str(inv_info["start_date"]),
+            end_date=str(inv_info["end_date"]),
+            species=str(inv_info["species"]),
+            domain=str(inv_info["domain"]),
         )
 
     @classmethod
     def load(cls: type[Self], file_path: str | Path) -> Self:
-        """Load InversionOutput from file.
+        """Load LegacyInversionOutput from file.
 
-        Use this to load `InversionOutput` that was previously saved using
-        `InversionOutput.save`.
+        Use this to load `LegacyInversionOutput` that was previously saved using
+        `LegacyInversionOutput.save`.
 
         Args:
-            file_path: path to saved InversionOutput
+            file_path: path to saved LegacyInversionOutput
 
         Returns:
-            InversionOutput loaded from saved file
+            LegacyInversionOutput loaded from saved file
 
         """
-        open_errors: list[Exception] = []
-        for engine in ("h5netcdf", None):
-            try:
-                dt = (
-                    xr.open_datatree(file_path, engine=engine)
-                    if engine is not None
-                    else xr.open_datatree(file_path)
-                )
-            except (OSError, RuntimeError, ValueError) as exc:
-                open_errors.append(exc)
-            else:
-                return cls.from_datatree(dt)
-
-        raise open_errors[-1]
+        return cls.from_datatree(_open_datatree_loaded(file_path))
 
 
 def make_inv_out_for_fixed_basis_mcmc(
@@ -642,8 +908,8 @@ def make_inv_out_for_fixed_basis_mcmc(
     domain: str,
     obs_prior_factor: np.ndarray | None = None,
     obs_prior_upper_level_factor: np.ndarray | None = None,
-) -> InversionOutput:
-    """Create InversionOutput in `fixedbasisMCMC`."""
+) -> LegacyInversionOutput:
+    """Create LegacyInversionOutput in `fixedbasisMCMC`."""
     nmeasure = np.arange(len(Y))
     y_obs = xr.DataArray(Y, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs")
     times = xr.DataArray(Ytime, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="times")
@@ -688,7 +954,8 @@ def make_inv_out_for_fixed_basis_mcmc(
     try:
         flux = scenarios[0].flux_stacked
     except AttributeError:
-        flux = next(iter(fp_data[".flux"].values())).data
+        flux_source = next(iter(fp_data[".flux"].values()))
+        flux = getattr(flux_source, "data", flux_source)
 
     # TODO: this only works if there is one flux used (or if multiple, but ModelScenario stacks them)
     if isinstance(flux, xr.Dataset):
@@ -707,10 +974,12 @@ def make_inv_out_for_fixed_basis_mcmc(
     for scenario in scenarios:
         if not ("mf_prior_factor" in scenario and "mf_prior_upper_level_factor" in scenario):
             continue
-        y_obs_prior_factor.attrs = scenario.mf_prior_factor.attrs
-        y_obs_prior_upper_level_factor.attrs = scenario.mf_prior_upper_level_factor.attrs
+        if y_obs_prior_factor is not None:
+            y_obs_prior_factor.attrs = scenario.mf_prior_factor.attrs
+        if y_obs_prior_upper_level_factor is not None:
+            y_obs_prior_upper_level_factor.attrs = scenario.mf_prior_upper_level_factor.attrs
 
-    return InversionOutput(
+    return LegacyInversionOutput(
         obs=y_obs,
         obs_err=y_error,
         obs_prior_factor=y_obs_prior_factor,
@@ -779,7 +1048,7 @@ def _clean_rhime_output(ds: xr.Dataset) -> xr.Dataset:
     ]
 
     if "Yobs_prior_factor" in ds.data_vars or "Yobs_prior_upper_level_factor" in ds.data_vars:
-        data_vars.append(["Yobs_prior_factor", "Yobs_prior_upper_level_factor"])
+        data_vars.extend(["Yobs_prior_factor", "Yobs_prior_upper_level_factor"])
     if use_bc:
         data_vars.extend(["bc", "bcsensitivity"])
 
@@ -802,7 +1071,7 @@ def _make_idata_from_rhime_outs(rhime_out_ds: xr.Dataset) -> az.InferenceData:
 
 def make_inv_out_from_rhime_outputs(
     ds: xr.Dataset, species: str, domain: str, start_date: str | None = None, end_date: str | None = None
-) -> InversionOutput:
+) -> LegacyInversionOutput:
     """Create inversion output from RHIME outputs.
 
     This can be used to re-run flux and country total outputs using the PARIS postprocessing.
@@ -814,12 +1083,12 @@ def make_inv_out_from_rhime_outputs(
     site_indicators = ds_clean.siteindicator
     basis = get_xr_dummies(ds_clean.basisfunctions, cat_dim="nx", categories=ds_clean.nx.values)
 
-    start_date = start_date or ds_clean.Ytime.min().values
-    end_date = end_date or ds_clean.Ytime.max().values
+    start_date = str(start_date or ds_clean.Ytime.min().values)
+    end_date = str(end_date or ds_clean.Ytime.max().values)
 
     trace = _make_idata_from_rhime_outs(ds_clean)
 
-    return InversionOutput(
+    return LegacyInversionOutput(
         obs=ds_clean.Yobs,
         obs_err=ds_clean.Yerror,
         obs_prior_factor=getattr(ds_clean, "Yobs_prior_factor", None),

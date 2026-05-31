@@ -8,7 +8,7 @@ import numpy as np
 import xarray as xr
 
 from openghg_inversions import utils
-from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.inversion_output import LegacyInversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
     make_concentration_outputs,
     make_country_outputs,
@@ -232,7 +232,7 @@ def _flatten_nmeasure_for_legacy(data: xr.DataArray) -> xr.DataArray:
 
 
 def make_legacy_hbmcmc_output(
-    inv_out: InversionOutput,
+    inv_out: LegacyInversionOutput,
     mcmc_results: dict,
     sigma_freq_index: np.ndarray | xr.DataArray,
     Hx: np.ndarray | xr.DataArray,

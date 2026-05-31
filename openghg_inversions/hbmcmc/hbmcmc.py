@@ -41,7 +41,7 @@ from openghg_inversions.models.priors import lognormal_mu_sigma
 from openghg_inversions.utils import ncdf_encoding
 from openghg_inversions.inversion_data import FixedBasisPreparedData, prepare_fixedbasis_inversion_data
 from openghg_inversions.postprocessing.inversion_output import (
-    InversionOutput,
+    LegacyInversionOutput,
     make_inv_out_for_fixed_basis_mcmc,
 )
 
@@ -194,7 +194,7 @@ class _OutputContext:
     mcmc_args: dict
     mcmc_results: dict
     inv_out_args: dict
-    inv_out: InversionOutput | None = None
+    inv_out: LegacyInversionOutput | None = None
     paths: dict[str, Path] = field(default_factory=dict)
 
 
@@ -276,11 +276,11 @@ def _build_output_context(
         country_file: Optional country definition file passed to postprocessing.
         paris_postprocessing_kwargs: Optional keyword arguments for PARIS output creation.
         save_trace: Trace save setting passed to ``fixedbasisMCMC``.
-        save_inversion_output: InversionOutput save setting passed to ``fixedbasisMCMC``.
+        save_inversion_output: LegacyInversionOutput save setting passed to ``fixedbasisMCMC``.
         legacy_postprocess_args: Legacy postprocessing argument dictionary built during inversion setup.
         mcmc_args: Arguments passed to ``mcmc.inferpymc``.
         mcmc_results: Raw sampler results from ``mcmc.inferpymc``.
-        inv_out_args: Arguments needed to build ``InversionOutput``.
+        inv_out_args: Arguments needed to build ``LegacyInversionOutput``.
 
     Returns:
         _OutputContext: Context object for final output handling.
@@ -369,8 +369,8 @@ def _build_inv_out_args(
     return inv_out_args
 
 
-def _get_inversion_output(context: _OutputContext) -> InversionOutput:
-    """Build and cache the InversionOutput object for output handling."""
+def _get_inversion_output(context: _OutputContext) -> LegacyInversionOutput:
+    """Build and cache the LegacyInversionOutput object for output handling."""
     if context.inv_out is None:
         context.inv_out = make_inv_out_for_fixed_basis_mcmc(**context.inv_out_args)
     return context.inv_out
@@ -399,7 +399,7 @@ def _handle_core_output_artifacts(context: _OutputContext) -> None:
         _get_inversion_output(context).save(inversion_output_path)
 
 
-def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOutput:
+def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | LegacyInversionOutput:
     """Dispatch the final output path for a completed inversion run."""
     if context.output_format == "mcmc_results":
         return context.mcmc_results
@@ -598,7 +598,7 @@ def fixedbasisMCMC(
     power: dict | float = 1.99,
     return_basis_objects: bool = False,
     **kwargs,
-) -> xr.Dataset | dict | InversionOutput:
+) -> xr.Dataset | dict | LegacyInversionOutput:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference of emissions.
 
     Uses PyMC to solve the inverse problem. Saves an output from the inversion code
@@ -713,7 +713,7 @@ def fixedbasisMCMC(
             - "hbmcmc_postprocessing": return legacy-style output format, computed using functions from the
               `postprocessing` submodule
             - "merged_data": return `fp_all` dictionary, no further processing and inversion *not* run
-            - "inv_out": return `InversionOutput` object
+            - "inv_out": return `LegacyInversionOutput` object
             - "basic": return basic output created by new `postprocessing` submodule
             - "paris": return flux and concentration datasets with PARIS formatting; these are also saved
               as netCDF files in the directory `outputpath`
@@ -934,8 +934,8 @@ def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: boo
         over the inversion period and so will not be identical to the
         original a priori flux, if it varies over the inversion period.
 
-    TODO: update this function to use `InversionOutput` (and possibly an ini file) as its inputs.
-    This may require updating `InversionOutput` to hold more model metadata.
+    TODO: update this function to use `LegacyInversionOutput` (and possibly an ini file) as its inputs.
+    This may require updating `LegacyInversionOutput` to hold more model metadata.
     """
 
     def isFloat(string):

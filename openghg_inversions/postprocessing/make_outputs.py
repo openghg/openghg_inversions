@@ -5,13 +5,13 @@ import xarray as xr
 
 from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
-from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.inversion_output import LegacyInversionOutput
 from openghg_inversions.postprocessing.stats import calculate_stats
 from openghg_inversions.postprocessing.utils import rename_by_replacement
 
 
 def make_flux_outputs(
-    inv_out: InversionOutput,
+    inv_out: LegacyInversionOutput,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
     include_scale_factors: bool = True,
@@ -20,7 +20,7 @@ def make_flux_outputs(
     """Return dataset of stats for fluxes and scaling factors.
 
     Args:
-        inv_out: InversionOutput containing MCMC traces.
+        inv_out: LegacyInversionOutput containing MCMC traces.
         stats: List of stats to use. If None, the default for
             calculate_stats is used, which is "mean" and "quantiles". See the
             postprocessing.stats submodule for more options.
@@ -149,7 +149,7 @@ def sort_data_vars(ds: xr.Dataset) -> xr.Dataset:
 
 
 def make_concentration_outputs(
-    inv_out: InversionOutput,
+    inv_out: LegacyInversionOutput,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
     combine_bc_and_offset: bool = False,
@@ -157,7 +157,7 @@ def make_concentration_outputs(
     """Return dataset of stats for concentrations.
 
     Args:
-        inv_out: InversionOutput containing MCMC traces.
+        inv_out: LegacyInversionOutput containing MCMC traces.
         stats: List of stats to use. If None, the default for
             calculate_stats is used, which is "mean" and "quantiles". See the
             postprocessing.stats submodule for more options.
@@ -212,7 +212,7 @@ def make_concentration_outputs(
 
 
 def make_country_outputs(
-    inv_out: InversionOutput,
+    inv_out: LegacyInversionOutput,
     country_file: str | Path | None = None,
     country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
@@ -222,9 +222,9 @@ def make_country_outputs(
     """Calculate country emission stats.
 
     Args:
-        inv_out: InversionOutput containing MCMC traces.
+        inv_out: LegacyInversionOutput containing MCMC traces.
         country_file: Path to country definition file. If None, the default
-            country file location and the domain of the InversionOutput will be used
+            country file location and the domain of the LegacyInversionOutput will be used
             to try to find a suitable country file.
         country_regions: Dict mapping country region names (e.g. "BENELUX") to a
             list of (country codes) of the countries comprising that regions (e.g.
@@ -275,7 +275,7 @@ def make_country_outputs(
 
 
 def basic_output(
-    inv_out: InversionOutput,
+    inv_out: LegacyInversionOutput,
     country_file: str | Path | None = None,
     country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
@@ -287,7 +287,7 @@ def basic_output(
     to create the model, like "H matrices" and the flux used.
 
     Args:
-        inv_out: InversionOutput to process
+        inv_out: LegacyInversionOutput to process
         country_file: path to country file
         country_regions: optional country regions to use. If "paris" is passed,
         then the PARIS regions will be used.

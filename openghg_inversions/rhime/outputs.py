@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
 import arviz as az
-import numpy as np
 import xarray as xr
 
 from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models import RhimeModelSpec
-from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.inversion_output import InversionOutput, LegacyInversionOutput
 from openghg_inversions.rhime.specs import RhimeOutputSpec, RhimeRunSpec
 from openghg_inversions.utils import ncdf_encoding
 
@@ -97,66 +96,35 @@ def _make_inversion_output(
     *,
     prepared: RhimePreparedInputs,
     idata: az.InferenceData,
-    start_date: str,
-    end_date: str,
-    species: str,
-    domain: str,
+    run_spec: RhimeRunSpec,
+    model_spec: RhimeModelSpec,
+    output_spec: RhimeOutputSpec,
 ) -> InversionOutput:
-    """Create an InversionOutput directly from RHIME inputs and InferenceData.
-
-    This is a transitional direct constructor for the modern RHIME path. It is
-    deliberately not routed through the fixed-basis/inferpymc legacy adapter.
-    This should be refactored when issue #401 defines the modern
-    ``InversionOutput`` contract.
-    """
-    inv_inputs = prepared.inv_inputs
-    basis, flux = _materialise_basis_and_flux_for_output(prepared)
-    nmeasure = np.arange(inv_inputs.sizes["nmeasure"])
-    site_names = (
-        inv_inputs["site_names"]
-        if "site_names" in inv_inputs
-        else xr.DataArray(list(prepared.sites), dims="nsite")
-    )
-
-    obs_prior_factor = inv_inputs["mf_prior_factor"] if "mf_prior_factor" in inv_inputs else None
-    obs_prior_upper_level_factor = (
-        inv_inputs["mf_prior_upper_level_factor"] if "mf_prior_upper_level_factor" in inv_inputs else None
-    )
-
-    def nmeasure_array(name: str, source: xr.DataArray) -> xr.DataArray:
-        """Create a clean nmeasure DataArray without inherited MultiIndex coords."""
-        result = xr.DataArray(
-            source.values,
-            dims=["nmeasure"],
-            coords={"nmeasure": nmeasure},
-            name=name,
-        )
-        result.attrs = source.attrs
-        return result
-
+    """Create the modern RHIME InversionOutput without fixedbasis legacy adapters."""
     return InversionOutput(
-        obs=nmeasure_array("Yobs", inv_inputs["mf"]),
-        obs_err=nmeasure_array("Yerror", inv_inputs["mf_error"]),
-        obs_repeatability=nmeasure_array("Yerror_repeatability", inv_inputs["mf_repeatability"]),
-        obs_variability=nmeasure_array("Yerror_variability", inv_inputs["mf_variability"]),
-        obs_prior_factor=(
-            nmeasure_array("Yobs_prior_factor", obs_prior_factor) if obs_prior_factor is not None else None
-        ),
-        obs_prior_upper_level_factor=(
-            nmeasure_array("Yobs_prior_upper_level_factor", obs_prior_upper_level_factor)
-            if obs_prior_upper_level_factor is not None
-            else None
-        ),
-        site_indicators=nmeasure_array("site_indicator", inv_inputs["site_indicator"]),
-        flux=flux,
-        basis=basis,
+        inv_inputs=prepared.inv_inputs,
+        basis_functions=prepared.basis_functions,
         trace=idata,
-        site_names=site_names,
-        times=nmeasure_array("times", inv_inputs["time"]),
-        start_date=start_date,
-        end_date=end_date,
-        species=species,
-        domain=domain,
+        run_metadata={
+            "start_date": run_spec.start_date,
+            "end_date": run_spec.end_date,
+            "sites": list(run_spec.sites),
+            "averaging_period": list(run_spec.averaging_period),
+            "split_by_sectors": run_spec.split_by_sectors,
+            "basis_artifact_source": prepared.basis_artifact_source,
+        },
+        model_metadata=asdict(model_spec),
+        output_metadata={
+            "output_format": output_spec.output_format,
+            "output_path": output_spec.output_path,
+            "output_name": output_spec.output_name,
+            "save_trace": output_spec.save_trace,
+            "save_inversion_output": output_spec.save_inversion_output,
+        },
+        provenance={
+            "contract": "modern_rhime_inversion_output",
+            "compatibility_issue": "401",
+        },
     )
 
 
@@ -178,12 +146,12 @@ def make_standard_output_bundle(
     inv_out = _make_inversion_output(
         prepared=prepared,
         idata=idata,
-        start_date=run_spec.start_date,
-        end_date=run_spec.end_date,
-        species=model_spec.species,
-        domain=model_spec.domain,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        output_spec=output_spec,
     )
     outputs["inversion_output"] = inv_out
+    output_metadata["inversion_output_contract"] = "modern"
 
     trace_path = _resolve_output_path(
         output_spec.save_trace,
@@ -208,14 +176,18 @@ def make_standard_output_bundle(
     if output_spec.output_format == "basic":
         from openghg_inversions.postprocessing.make_outputs import basic_output
 
-        outputs["basic"] = basic_output(inv_out, country_file=country_file)
+        legacy_inv_out = LegacyInversionOutput.from_modern_output(inv_out)
+        output_metadata["postprocessing_input_contract"] = "legacy_adapter"
+        outputs["basic"] = basic_output(legacy_inv_out, country_file=country_file)
     elif output_spec.output_format == "paris":
         from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
+        legacy_inv_out = LegacyInversionOutput.from_modern_output(inv_out)
+        output_metadata["postprocessing_input_contract"] = "legacy_adapter"
         obs_avg_period = prepared.averaging_period[0] or "0h"
         kwargs = output_spec.paris_postprocessing_kwargs or {}
         flux_outs, conc_outs = make_paris_outputs(
-            inv_out,
+            legacy_inv_out,
             country_file=country_file,
             domain=model_spec.domain,
             obs_avg_period=obs_avg_period,

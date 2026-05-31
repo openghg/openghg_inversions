@@ -3,7 +3,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions import utils
-from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.inversion_output import LegacyInversionOutput
 from openghg_inversions.postprocessing.legacy_outputs import (
     _compute_apriori_flux,
     make_legacy_hbmcmc_output,
@@ -13,7 +13,7 @@ from openghg_inversions.postprocessing.legacy_outputs import (
 def test_make_legacy_hbmcmc_output_handles_mixed_nmeasure_indexes(raw_data_path, europe_country_file):
     """Legacy output generation tolerates flattened nmeasure-only indexes."""
     legacy = xr.open_dataset(raw_data_path / "standard_rhime_outs.nc")
-    inv_out = InversionOutput.load(raw_data_path / "inversion_output.nc")
+    inv_out = LegacyInversionOutput.load(raw_data_path / "inversion_output.nc")
     inv_out.times = xr.DataArray(
         inv_out.times.values,
         dims=["nmeasure"],
@@ -107,7 +107,7 @@ def test_compute_apriori_flux_handles_multi_year_flux_time():
 def test_make_legacy_hbmcmc_output_only_sets_convergence_when_present(raw_data_path, europe_country_file):
     """Legacy outputs omit convergence metadata when it is not supplied."""
     with xr.open_dataset(raw_data_path / "standard_rhime_outs.nc") as legacy:
-        inv_out = InversionOutput.load(raw_data_path / "inversion_output.nc")
+        inv_out = LegacyInversionOutput.load(raw_data_path / "inversion_output.nc")
 
         compat = make_legacy_hbmcmc_output(
             inv_out=inv_out,

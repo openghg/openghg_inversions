@@ -12,6 +12,7 @@ import xarray as xr
 
 import openghg_inversions.models as models
 import openghg_inversions.models.rhime as rhime_models_module
+import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
 import openghg_inversions.rhime as rhime_public
 import openghg_inversions.rhime.params as rhime_params
 import openghg_inversions.rhime.outputs as rhime_outputs
@@ -30,7 +31,7 @@ from openghg_inversions.models import (
     build_rhime_multisector_model_from_spec,
     safe_pymc_name,
 )
-from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.inversion_output import InversionOutput, LegacyInversionOutput
 from openghg_inversions.rhime import (
     RhimeModelSpec,
     RhimeOutputSpec,
@@ -152,6 +153,47 @@ def _minimal_output_inv_inputs() -> xr.Dataset:
     )
     inv_inputs["mf"].attrs["units"] = "ppm"
     return inv_inputs
+
+
+def _minimal_output_specs(output_format: rhime_specs.OutputFormat = "inv_out") -> tuple[
+    RhimeModelSpec, RhimeOutputSpec, RhimeRunSpec
+]:
+    """Build minimal RHIME specs for output helper tests."""
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=(
+            SectorSpec(
+                name="FF",
+                flux_source="ff-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ff",
+            ),
+        ),
+    )
+    output_spec = RhimeOutputSpec(
+        output_format=output_format,
+        output_name="test",
+        save_inversion_output=False,
+    )
+    run_spec = RhimeRunSpec(
+        "2019-01-01",
+        "2019-01-02",
+        ("TAC",),
+        ("1h",),
+        model_spec,
+        output_spec,
+    )
+    return model_spec, output_spec, run_spec
+
+
+def _minimal_output_idata() -> az.InferenceData:
+    """Build a minimal posterior trace with one region."""
+    return az.from_dict(
+        posterior={"x": np.ones((1, 1, 1))},
+        coords={"region": [0]},
+        dims={"x": ["region"]},
+    )
 
 
 class _SpyBasisFunctions:
@@ -1605,31 +1647,7 @@ def test_make_output_spec_validates_trace_save_path() -> None:
 
 
 def test_make_standard_output_bundle_returns_outputs_without_mutating_result() -> None:
-    model_spec = RhimeModelSpec(
-        species="ch4",
-        domain="EUROPE",
-        sectors=(
-            SectorSpec(
-                name="FF",
-                flux_source="ff-inventory",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                variable_suffix="ff",
-            ),
-        ),
-    )
-    output_spec = RhimeOutputSpec(
-        output_format="inv_out",
-        output_name="test",
-        save_inversion_output=False,
-    )
-    run_spec = RhimeRunSpec(
-        "2019-01-01",
-        "2019-01-02",
-        ("TAC",),
-        ("1h",),
-        model_spec,
-        output_spec,
-    )
+    model_spec, output_spec, run_spec = _minimal_output_specs()
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
         basis_functions=_fake_basis_functions(),
@@ -1642,14 +1660,145 @@ def test_make_standard_output_bundle_returns_outputs_without_mutating_result() -
         output_spec=output_spec,
         run_spec=run_spec,
         model_spec=model_spec,
-        idata=az.from_dict(posterior={"x": np.ones((1, 1))}),
+        idata=_minimal_output_idata(),
         prepared=prepared,
         country_file=None,
     )
 
     assert isinstance(bundle.inv_out, InversionOutput)
     assert bundle.outputs == {"inversion_output": bundle.inv_out}
-    assert bundle.output_metadata == {}
+    assert bundle.output_metadata == {"inversion_output_contract": "modern"}
+
+
+def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
+    """Modern RHIME InversionOutput preserves retained inputs, basis, and metadata."""
+    model_spec, output_spec, run_spec = _minimal_output_specs()
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(artifact_source="unit-test"),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="unit-test",
+    )
+    bundle = rhime_outputs.make_standard_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=_minimal_output_idata(),
+        prepared=prepared,
+        country_file=None,
+    )
+    assert bundle.inv_out is not None
+
+    output_file = tmp_path / "modern_inv_out.nc"
+    bundle.inv_out.save(output_file)
+    reloaded = InversionOutput.load(output_file)
+
+    assert reloaded.species == "ch4"
+    assert reloaded.domain == "EUROPE"
+    assert reloaded.start_date == "2019-01-01"
+    assert reloaded.run_metadata["basis_artifact_source"] == "unit-test"
+    assert reloaded.output_metadata["output_format"] == "inv_out"
+    xr.testing.assert_identical(reloaded.inv_inputs, prepared.inv_inputs)
+    xr.testing.assert_identical(reloaded.basis_functions.flux, prepared.basis_functions.flux)
+    xr.testing.assert_equal(
+        reloaded.basis_functions.operator.basis_matrix,
+        prepared.basis_functions.operator.basis_matrix,
+    )
+
+
+def test_standard_basic_output_uses_legacy_adapter_without_inferpymc(monkeypatch) -> None:
+    """RHIME basic postprocessing adapts modern output without using inferpymc legacy postprocess."""
+    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="basic")
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+    captured: dict[str, Any] = {}
+
+    def fail_inferpymc_postprocessouts(**kwargs: Any) -> None:
+        raise AssertionError("run_rhime output helpers must not call inferpymc_postprocessouts")
+
+    def fake_basic_output(inv_out: LegacyInversionOutput, country_file: str | None = None) -> xr.Dataset:
+        captured["inv_out"] = inv_out
+        captured["country_file"] = country_file
+        return xr.Dataset({"ok": ((), 1)})
+
+    monkeypatch.setattr(legacy_mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
+    monkeypatch.setattr("openghg_inversions.postprocessing.make_outputs.basic_output", fake_basic_output)
+
+    bundle = rhime_outputs.make_standard_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=_minimal_output_idata(),
+        prepared=prepared,
+        country_file="countries.json",
+    )
+
+    assert isinstance(bundle.inv_out, InversionOutput)
+    assert isinstance(captured["inv_out"], LegacyInversionOutput)
+    assert captured["country_file"] == "countries.json"
+    assert bundle.output_metadata["inversion_output_contract"] == "modern"
+    assert bundle.output_metadata["postprocessing_input_contract"] == "legacy_adapter"
+    assert "basic" in bundle.outputs
+
+
+def test_standard_paris_output_uses_legacy_adapter_without_inferpymc(monkeypatch) -> None:
+    """RHIME PARIS postprocessing adapts modern output without using inferpymc legacy postprocess."""
+    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="paris")
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+    captured: dict[str, Any] = {}
+
+    def fail_inferpymc_postprocessouts(**kwargs: Any) -> None:
+        raise AssertionError("run_rhime output helpers must not call inferpymc_postprocessouts")
+
+    def fake_make_paris_outputs(
+        inv_out: LegacyInversionOutput,
+        country_file: str | None = None,
+        domain: str | None = None,
+        obs_avg_period: str = "4h",
+        **kwargs: Any,
+    ) -> tuple[xr.Dataset, xr.Dataset]:
+        captured["inv_out"] = inv_out
+        captured["country_file"] = country_file
+        captured["domain"] = domain
+        captured["obs_avg_period"] = obs_avg_period
+        return xr.Dataset({"flux": ((), 1)}), xr.Dataset({"conc": ((), 1)})
+
+    monkeypatch.setattr(legacy_mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
+    monkeypatch.setattr(
+        "openghg_inversions.postprocessing.make_paris_outputs.make_paris_outputs",
+        fake_make_paris_outputs,
+    )
+
+    bundle = rhime_outputs.make_standard_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=_minimal_output_idata(),
+        prepared=prepared,
+        country_file="countries.json",
+    )
+
+    assert isinstance(bundle.inv_out, InversionOutput)
+    assert isinstance(captured["inv_out"], LegacyInversionOutput)
+    assert captured["country_file"] == "countries.json"
+    assert captured["domain"] == "EUROPE"
+    assert captured["obs_avg_period"] == "1h"
+    assert bundle.output_metadata["inversion_output_contract"] == "modern"
+    assert bundle.output_metadata["postprocessing_input_contract"] == "legacy_adapter"
+    assert "paris_flux" in bundle.outputs
+    assert "paris_concentration" in bundle.outputs
 
 
 def test_save_inferencedata_prefers_h5netcdf(tmp_path: Path) -> None:
@@ -1771,6 +1920,8 @@ def test_run_rhime_api_smoke(tac_ch4_data_args, tmp_path: Path) -> None:
     assert "mu" in posterior
     assert result.run_spec.split_by_sectors is False
     assert "inversion_output" in result.outputs
+    assert isinstance(result.inv_out, InversionOutput)
+    assert result.output_metadata["inversion_output_contract"] == "modern"
     inv_input_long_names = [
         result.inv_inputs.mf.attrs.get("long_name", ""),
         result.inv_inputs.mf_error.attrs.get("long_name", ""),
@@ -1782,11 +1933,14 @@ def test_run_rhime_api_smoke(tac_ch4_data_args, tmp_path: Path) -> None:
     assert output_file.exists()
     reloaded = InversionOutput.load(output_file)
     assert reloaded.species == "ch4"
+    assert reloaded.domain == args["domain"]
+    assert isinstance(reloaded.basis_functions, BasisFunctions)
+    xr.testing.assert_identical(reloaded.inv_inputs, result.inv_inputs)
     obs_long_names = [
-        reloaded.obs.attrs.get("long_name", ""),
-        reloaded.obs_err.attrs.get("long_name", ""),
-        reloaded.obs_repeatability.attrs.get("long_name", ""),
-        reloaded.obs_variability.attrs.get("long_name", ""),
+        reloaded.inv_inputs.mf.attrs.get("long_name", ""),
+        reloaded.inv_inputs.mf_error.attrs.get("long_name", ""),
+        reloaded.inv_inputs.mf_repeatability.attrs.get("long_name", ""),
+        reloaded.inv_inputs.mf_variability.attrs.get("long_name", ""),
     ]
     assert all("number_of_observations" not in long_name for long_name in obs_long_names)
 

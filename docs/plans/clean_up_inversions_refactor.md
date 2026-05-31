@@ -19,6 +19,8 @@ version, which partially negates the benefit of keeping it as the main route.
   in modern path." Legacy reconstruction from `fp_data[".basis"]` should remain
   only in compatibility adapters.
 - #401: use to separate `LegacyInversionOutput` from modern `InversionOutput`.
+- #435: migrate postprocessing consumers from `LegacyInversionOutput` to the
+  modern `InversionOutput`; opened as the follow-up from #401.
 - #429: keep as operator-backed output/postprocessing, but make it depend on
   the preparation split.
 - #416: should become active sooner; classify/deprecate `fixedbasisMCMC`,
@@ -26,10 +28,10 @@ version, which partially negates the benefit of keeping it as the main route.
 - #415: serializable RHIME bundle should serialize `RhimePreparedInputs`
   artifacts, not `fp_data`.
 
-Prep split note: #431 is the dependency that should make `RhimePreparedInputs`
-consume RHIME specs and keep `fp_data`, `fp_all`, flat `.basis`, materialised
-basis arrays, and optional basis-object side channels out of the modern
-contract.
+Prep split note: #431 was closed by #433. That dependency moved
+`RhimePreparedInputs` toward consuming RHIME specs and keeping `fp_data`,
+`fp_all`, flat `.basis`, materialised basis arrays, and optional basis-object
+side channels out of the modern contract.
 
 ## Completed in PR #434 / Issue #400
 
@@ -103,11 +105,71 @@ PR #434 / Issue #400 should not introduce `RhimeDataSpec`. The current
 function construction, and `make_inv_inputs` concerns, so a one-piece data spec
 would mostly mirror the INI template rather than clarify the architecture.
 
-Track the future split under #431. That work should break preparation into
-smaller contracts for data gathering, filtering, basis functions, and inversion
-input construction. A future `RhimeDataSpec` or `RequiredDataPlan` can then be
-introduced at the right boundary, with `sigma_freq`, `bc_freq`, and related
-model-input concerns moving closer to the model components that consume them.
+#431 was closed by #433. Any remaining preparation split should break
+preparation into smaller contracts for data gathering, filtering, basis
+functions, and inversion input construction. A future `RhimeDataSpec` or
+`RequiredDataPlan` can then be introduced at the right boundary, with
+`sigma_freq`, `bc_freq`, and related model-input concerns moving closer to the
+model components that consume them.
+
+## Completed in PR #TBD / Issue #401
+
+- 2026-05-31: #401 / PR #TBD renamed the current postprocessing carrier to
+  `LegacyInversionOutput` and reserved `InversionOutput` for the modern RHIME
+  result contract.
+- 2026-05-31: #401 / PR #TBD added modern `InversionOutput` save/load support
+  for `InferenceData`, canonical `inv_inputs`, retained `BasisFunctions`, run
+  metadata, model metadata, output metadata, and provenance.
+- 2026-05-31: #401 / PR #TBD routed fixedbasis output explicitly:
+  `output_format="hbmcmc"` remains the only path that calls
+  `inferpymc_postprocessouts`, while `hbmcmc_postprocessing`, `basic`, `paris`,
+  and `inv_out` use `LegacyInversionOutput`.
+- 2026-05-31: #401 / PR #TBD routed standard `run_rhime` output explicitly:
+  `inv_out` saves and returns modern `InversionOutput`, while `basic` and
+  `paris` build a temporary `LegacyInversionOutput` adapter for the existing
+  postprocessing functions.
+- 2026-05-31: #401 / PR #TBD opened #435 to migrate postprocessing consumers to
+  modern `InversionOutput`.
+
+## Recorded decisions for PR #TBD / Issue #401
+
+- The true legacy output remains `inferpymc_postprocessouts` in
+  `hbmcmc.inversion_pymc`. It should stay legacy/fixedbasis-only and should not
+  appear in modern RHIME output construction.
+- `LegacyInversionOutput` is the legacy-shaped postprocessing carrier, not the
+  true legacy `inferpymc_postprocessouts` output object.
+- Modern `InversionOutput` keeps retained `BasisFunctions` and canonical
+  `inv_inputs`; it does not materialise flat basis/flux arrays for RHIME
+  `inv_out` output.
+- `LegacyInversionOutput.from_modern_output(...)` is the only temporary bridge
+  for standard RHIME `basic` and `paris` output modes in #401.
+- #401 does not migrate `postprocessing` consumers to modern `InversionOutput`.
+  That is deferred to #435.
+
+## Current PR #TBD / Issue #401 cleanup notes
+
+- Keep `inferpymc_postprocessouts` isolated to
+  `fixedbasisMCMC(output_format="hbmcmc")`.
+- Keep current `postprocessing` functions typed against
+  `LegacyInversionOutput` until #435 changes their input contract.
+- Keep modern RHIME save/load serialization focused on durable artifacts:
+  `InferenceData`, `inv_inputs`, `BasisFunctions`, metadata, and provenance.
+  Do not add fixedbasis `fp_data` or materialised `.basis` side channels to the
+  modern object.
+- The current adapter still materialises basis/flux arrays for `basic` and
+  `paris`. Remove that once #435 and #429 let postprocessing consume
+  `BasisFunctions` directly.
+
+## Deferred Issue #435 postprocessing consumer migration
+
+#435 should move `make_outputs`, `make_paris_outputs`, `countries`,
+`diagnostics`, and `legacy_outputs` off `LegacyInversionOutput` where possible.
+`LegacyInversionOutput` should become an adapter over modern output, while
+`legacy_outputs` remains isolated to fixedbasis/HBMCMC compatibility output.
+
+This work links #401, #383, #429, #416, and #381. It should remove the RHIME
+`basic`/`paris` dependency on `LegacyInversionOutput.from_modern_output(...)`
+rather than expanding that adapter.
 
 ## Deferred SemanticModel plan
 
