@@ -26,6 +26,7 @@ from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR,
 from openghg_inversions.cli import main
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_inputs import make_inv_inputs
+from openghg_inversions.basis.operators import BasisMeta, BasisOperator, BucketBasisOperator
 from openghg_inversions.models import (
     build_rhime_model,
     build_rhime_model_from_spec,
@@ -125,6 +126,98 @@ def _fake_basis_functions_matching_country_grid(country_file: Path) -> BasisFunc
     )
 
 
+def _two_region_basis_functions_matching_country_grid(country_file: Path) -> BasisFunctions:
+    """Build a non-uniform two-region basis artifact on the grid of a test country file."""
+    country_grid = xr.open_dataset(country_file)
+    nlat = country_grid.sizes["lat"]
+    nlon = country_grid.sizes["lon"]
+    basis_values = np.ones((nlat, nlon), dtype=int)
+    basis_values[nlat // 2 :, :] = 2
+    basis = xr.DataArray(
+        basis_values,
+        dims=("lat", "lon"),
+        coords={"lat": country_grid.lat, "lon": country_grid.lon},
+        name="basis",
+    )
+    flux_values = np.linspace(1.0, 3.0, nlat * nlon, dtype=float).reshape(nlat, nlon)
+    flux = xr.DataArray(
+        flux_values,
+        dims=("lat", "lon"),
+        coords={"lat": country_grid.lat, "lon": country_grid.lon},
+        name="flux",
+    )
+    flux.attrs["units"] = "mol/m2/s"
+    return BasisFunctions.from_flat_basis(
+        basis_flat=basis,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+        metadata={BASIS_ARTIFACT_SOURCE_ATTR: "two-region-test"},
+    )
+
+
+class _RecordingBasisOperator(BasisOperator):
+    """Basis operator test double that records product reconstruction calls."""
+
+    kind = "recording-test"
+
+    def __init__(self, basis_flat: xr.DataArray) -> None:
+        operator_cls = cast(Any, BucketBasisOperator)
+        self._operator = operator_cls(
+            basis_flat=basis_flat,
+            meta=BasisMeta(state_dim="region"),
+            region_labels="range0",
+        )
+        self.interpolate_calls: list[tuple[xr.DataArray, xr.DataArray | None]] = []
+        self.basis_matrix_accesses = 0
+
+    @property
+    def meta(self) -> BasisMeta:
+        """Basis metadata from the wrapped operator."""
+        return self._operator.meta
+
+    @property
+    def basis_matrix(self) -> xr.DataArray:
+        """Basis matrix from the wrapped operator, recording direct use."""
+        self.basis_matrix_accesses += 1
+        return self._operator.basis_matrix
+
+    def interpolate(self, state: xr.DataArray, weights: xr.DataArray | None = None) -> xr.DataArray:
+        """Record interpolation before delegating to the wrapped operator."""
+        self.interpolate_calls.append((state, weights))
+        return self._operator.interpolate(state, weights=weights)
+
+    def to_datatree(self) -> xr.DataTree:
+        """Serialization is not needed for this test double."""
+        raise NotImplementedError
+
+    @classmethod
+    def from_datatree(cls, dt: xr.DataTree) -> _RecordingBasisOperator:
+        """Deserialization is not needed for this test double."""
+        raise NotImplementedError
+
+
+def _recording_basis_functions_matching_country_grid(
+    country_file: Path,
+) -> tuple[BasisFunctions, _RecordingBasisOperator]:
+    """Build a retained basis artifact with a recording operator."""
+    country_grid = xr.open_dataset(country_file)
+    basis = xr.DataArray(
+        np.ones((country_grid.sizes["lat"], country_grid.sizes["lon"]), dtype=int),
+        dims=("lat", "lon"),
+        coords={"lat": country_grid.lat, "lon": country_grid.lon},
+        name="basis",
+    )
+    flux = xr.ones_like(basis, dtype=float).rename("flux")
+    flux.attrs["units"] = "mol/m2/s"
+    operator = _RecordingBasisOperator(basis)
+    basis_functions = BasisFunctions(
+        operator=operator,
+        flux=flux,
+        metadata={BASIS_ARTIFACT_SOURCE_ATTR: "recording-test"},
+    )
+    return basis_functions, operator
+
+
 def _site_dataset(values: list[float] | None = None) -> xr.Dataset:
     """Build a minimal site dataset with footprint-times-flux values."""
     values = values if values is not None else [2.0, 3.0]
@@ -217,17 +310,26 @@ def _minimal_output_idata() -> az.InferenceData:
     )
 
 
-def _postprocessing_output_idata() -> az.InferenceData:
+def _postprocessing_output_idata(nregion: int = 1) -> az.InferenceData:
     """Build a small complete trace for modern postprocessing smoke tests."""
-    coords = {"region": [0], "nmeasure": [0]}
+    region = np.arange(nregion)
+    x_posterior = np.stack(
+        [np.linspace(1.0 + draw, 2.0 + draw, nregion) for draw in range(3)],
+        axis=0,
+    )
+    x_prior = np.stack(
+        [np.linspace(0.8 + draw, 1.8 + draw, nregion) for draw in range(3)],
+        axis=0,
+    )
+    coords = {"region": region, "nmeasure": [0]}
     return az.from_dict(
         posterior={
-            "x": np.ones((1, 3, 1)),
+            "x": x_posterior[np.newaxis, :, :],
             "epsilon": np.full((1, 3, 1), 2.0),
             "mu_bc": np.full((1, 3, 1), 0.1),
         },
         prior={
-            "x": np.full((1, 3, 1), 0.8),
+            "x": x_prior[np.newaxis, :, :],
             "mu_bc": np.full((1, 3, 1), 0.05),
         },
         posterior_predictive={"y": np.full((1, 3, 1), 10.0)},
@@ -250,16 +352,26 @@ def _postprocessing_output_idata() -> az.InferenceData:
     )
 
 
-def _modern_postprocessing_inv_out(country_file: Path) -> InversionOutput:
+def _modern_postprocessing_inv_out(
+    country_file: Path, basis_functions: BasisFunctions | None = None
+) -> InversionOutput:
     """Build a modern output with enough groups for real postprocessing helpers."""
+    basis_functions = basis_functions or _fake_basis_functions_matching_country_grid(country_file)
+    nregion = basis_functions.operator.basis_matrix.sizes[basis_functions.operator.meta.state_dim]
     inv_inputs = _minimal_output_inv_inputs()
+    inv_inputs = inv_inputs.drop_dims("region").assign_coords(region=np.arange(nregion))
+    inv_inputs["H"] = xr.DataArray(
+        np.ones((nregion, inv_inputs.sizes["nmeasure"])),
+        dims=("region", "nmeasure"),
+        coords={"region": inv_inputs.region, "nmeasure": inv_inputs.nmeasure},
+    )
     for var_name in ("mf", "mf_error", "mf_repeatability", "mf_variability"):
         inv_inputs[var_name].attrs["units"] = "1e-09 mol/mol"
 
     return InversionOutput(
-        trace=_postprocessing_output_idata(),
+        trace=_postprocessing_output_idata(nregion=nregion),
         inv_inputs=inv_inputs,
-        basis_functions=_fake_basis_functions_matching_country_grid(country_file),
+        basis_functions=basis_functions,
         run_metadata={
             "start_date": "2019-01-01",
             "end_date": "2019-01-02",
@@ -2068,6 +2180,82 @@ def test_modern_postprocessing_view_supports_flux_outputs() -> None:
 
     assert "flux_posterior_mean" in modern_flux
     xr.testing.assert_allclose(modern_flux, legacy_flux)
+
+
+def test_modern_flux_outputs_use_retained_basis_operator(
+    monkeypatch: pytest.MonkeyPatch,
+    europe_country_file: Path,
+) -> None:
+    """Modern flux products use retained basis operators instead of the flat view basis."""
+    from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
+
+    basis_functions, operator = _recording_basis_functions_matching_country_grid(europe_country_file)
+    inv_out = _modern_postprocessing_inv_out(europe_country_file, basis_functions=basis_functions)
+
+    def fail_flat_basis(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("modern flux outputs should not materialise the flat basis view")
+
+    monkeypatch.setattr(inversion_output_module, "_standard_basis_from_basis_functions", fail_flat_basis)
+
+    flux_outputs = make_flux_outputs(
+        inv_out,
+        include_scale_factors=True,
+        report_flux_on_inversion_grid=False,
+    )
+
+    assert "flux_posterior_mean" in flux_outputs
+    assert "scaling_posterior_mean" in flux_outputs
+    assert operator.interpolate_calls
+
+
+def test_modern_operator_flux_and_country_outputs_match_legacy_fallback(europe_country_file: Path) -> None:
+    """Operator-backed modern products match flat-basis fallback on a non-uniform fixture."""
+    from openghg_inversions.postprocessing.make_outputs import make_country_outputs, make_flux_outputs
+
+    inv_out = _modern_postprocessing_inv_out(
+        europe_country_file,
+        basis_functions=_two_region_basis_functions_matching_country_grid(europe_country_file),
+    )
+    legacy_inv_out = LegacyInversionOutput.from_modern_output(inv_out)
+
+    modern_flux = make_flux_outputs(inv_out, include_scale_factors=True)
+    legacy_flux = make_flux_outputs(legacy_inv_out, include_scale_factors=True)
+    modern_country = make_country_outputs(inv_out, country_file=europe_country_file, country_regions="paris")
+    legacy_country = make_country_outputs(
+        legacy_inv_out,
+        country_file=europe_country_file,
+        country_regions="paris",
+    )
+
+    xr.testing.assert_allclose(modern_flux, legacy_flux)
+    xr.testing.assert_allclose(modern_country, legacy_country)
+
+
+def test_modern_paris_flux_outputs_use_retained_basis_operator(
+    monkeypatch: pytest.MonkeyPatch,
+    europe_country_file: Path,
+) -> None:
+    """PARIS flux outputs use retained basis operators for modern flux and country products."""
+    from openghg_inversions.postprocessing.make_paris_outputs import paris_flux_output
+
+    basis_functions, operator = _recording_basis_functions_matching_country_grid(europe_country_file)
+    inv_out = _modern_postprocessing_inv_out(europe_country_file, basis_functions=basis_functions)
+
+    def fail_flat_basis(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("modern PARIS flux outputs should not materialise the flat basis view")
+
+    monkeypatch.setattr(inversion_output_module, "_standard_basis_from_basis_functions", fail_flat_basis)
+
+    flux_outputs = paris_flux_output(
+        inv_out,
+        country_file=europe_country_file,
+    )
+
+    assert "flux_total_posterior" in flux_outputs
+    assert "country_flux_total_posterior" in flux_outputs
+    assert "flux_total_posterior_inversion_grid" in flux_outputs
+    assert operator.interpolate_calls
+    assert operator.basis_matrix_accesses
 
 
 def test_modern_postprocessing_view_keeps_observations_as_dataset() -> None:

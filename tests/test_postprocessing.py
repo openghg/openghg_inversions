@@ -13,7 +13,11 @@ from openghg_inversions.hbmcmc.hbmcmc import _resolve_output_format, fixedbasisM
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.postprocessing.inversion_output import LegacyInversionOutput
 from openghg_inversions.postprocessing.legacy_outputs import make_legacy_hbmcmc_output
-from openghg_inversions.postprocessing.make_outputs import basic_output, make_country_outputs
+from openghg_inversions.postprocessing.make_outputs import (
+    basic_output,
+    make_country_outputs,
+    make_flux_outputs,
+)
 
 from openghg_inversions.postprocessing.make_paris_outputs import (
     _flux_interval_midpoints,
@@ -485,6 +489,19 @@ def test_basic_outputs(inv_out, europe_country_file):
     for cv in conc_vars:
         for stat in stats:
             assert cv + "_" + stat in outs
+
+
+def test_fixedbasis_flux_and_country_outputs_keep_flat_basis_fallback(inv_out, europe_country_file):
+    """Fixedbasis LegacyInversionOutput still reconstructs products from its flat basis."""
+    flux_outs = make_flux_outputs(
+        inv_out,
+        include_scale_factors=False,
+        report_flux_on_inversion_grid=False,
+    )
+    country_outs = make_country_outputs(inv_out, country_file=europe_country_file, country_regions="paris")
+
+    assert "flux_posterior_mean" in flux_outs
+    assert "country_posterior_mean" in country_outs
 
 
 def test_basic_outputs_eastasia(inv_out_eastasia, eastasia_country_file):

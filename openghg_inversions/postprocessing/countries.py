@@ -13,9 +13,10 @@ from typing_extensions import Self
 import xarray as xr
 from openghg_inversions import convert, utils
 
-from openghg_inversions.array_ops import align_sparse_lat_lon, get_xr_dummies, sparse_xr_dot
+from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 from openghg_inversions.utils import get_country_file_path
 from ._country_codes import CountryInfoList
+from ._basis_products import make_x_to_country_matrix
 from .inversion_output import PostprocessingInput, as_postprocessing_output
 
 # type for xr.Dataset *or* xr.DataArray
@@ -378,20 +379,15 @@ class Countries:
         Returns:
             xr.DataArray with coordinate dimensions ("country", "basis_region")
         """
+        original_inv_out = inv_out
         inv_out = as_postprocessing_output(inv_out)
-
-        # multiply flux and basis and align to country lat/lon
-        basis = align_sparse_lat_lon(inv_out.basis, inv_out.flux)
-        flux_x_basis = align_sparse_lat_lon(inv_out.flux * basis, self.area_grid)
-
-        # compute matrix/tensor product: country_mat.T @ (area_grid * flux * basis_mat)
-        # transpose doesn't need to be taken explicitly because alignment is done by dimension name
-        result = sparse_xr_dot(self.matrix, (self.area_grid * flux_x_basis))
-
-        if sparse:
-            return result
-
-        return result.as_numpy()
+        return make_x_to_country_matrix(
+            original_inv_out,
+            inv_out,
+            country_matrix=self.matrix,
+            area_grid=self.area_grid,
+            sparse=sparse,
+        )
 
     @staticmethod
     def _get_country_trace(

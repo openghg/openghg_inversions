@@ -264,6 +264,35 @@ legacy basis reconstruction as fallback. #429 should then make the
 operator-backed path primary and define the deprecation policy for legacy
 basis reconstruction.
 
+## Completed in Current PR / Issue #383
+
+- 2026-05-31: #383 / current PR added private operator-backed postprocessing
+  helpers for standard single-sector flux and country products.
+- 2026-05-31: #383 / current PR routed modern `make_flux_outputs`, country
+  totals, and PARIS flux outputs through retained `BasisFunctions` /
+  `BasisOperator` data when a modern `InversionOutput` is supplied.
+- 2026-05-31: #383 / current PR kept `LegacyInversionOutput` fixedbasis
+  behavior on the existing flat `.basis` fallback and did not reintroduce
+  `fp_data` to modern postprocessing.
+- 2026-05-31: #383 / current PR kept `StandardPostprocessingOutput` as the
+  narrow transitional single-sector contract rather than expanding it for
+  multisector or future PARIS products.
+
+## Recorded decisions for Current PR / Issue #383
+
+- Keep operator-backed flux/country reconstruction as an internal
+  postprocessing implementation detail for now. Do not add retained basis
+  fields or methods to `StandardPostprocessingOutput`.
+- Keep `LegacyInversionOutput.from_modern_output(...)` and flat-basis
+  materialisation available for explicit compatibility callers, but modern
+  RHIME `basic` and `paris` flux/country paths should prefer retained
+  `BasisFunctions`.
+- Keep `make_paris_flux_outputs_from_rhime(...)` as a legacy reprocessing
+  adapter because old standard RHIME output datasets do not retain
+  `BasisFunctions`.
+- Leave sector-aware PARIS totals and multisector diagnostics to #405, and
+  leave default/deprecation policy for operator-backed reconstruction to #429.
+
 Track multisector output work under #405. It can proceed after the modern
 postprocessing input contract is clearer, or in parallel if it stays limited to
 sector diagnostics and PARIS-compatible total outputs.
@@ -305,10 +334,9 @@ dataclasses.
 
 ## Deferred Issue #383 / Issue #429 output boundary
 
-- #383 remains the boundary for modern postprocessing consuming retained
-  `BasisFunctions` directly. Until that lands, runner-local basis/flux
-  materialisation is a temporary adapter for the current `InversionOutput`
-  boundary.
+- #383 landed the first modern postprocessing slice that consumes retained
+  `BasisFunctions` for standard flux/country products while preserving flat
+  legacy fallback.
 - #429 remains the boundary for operator-backed output and postprocessing.
-  PR #434 should only mark runner-local basis materialisation and multisector
-  output diagnostics as transitional, not move the output contract.
+  It should make the operator-backed path primary, add durable reconstruction
+  metadata, and define the deprecation policy for legacy basis reconstruction.

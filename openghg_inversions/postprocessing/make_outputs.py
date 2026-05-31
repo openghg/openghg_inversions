@@ -3,8 +3,11 @@ from typing import Any, Literal, cast
 
 import xarray as xr
 
-from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
+from openghg_inversions.postprocessing._basis_products import (
+    reconstruct_flux_stats,
+    reconstruct_scale_factor_stats,
+)
 from openghg_inversions.postprocessing.inversion_output import (
     PostprocessingInput,
     as_postprocessing_output,
@@ -45,6 +48,7 @@ def make_flux_outputs(
         xr.Dataset with computed flux stats.
 
     """
+    original_inv_out = inv_out
     inv_out = as_postprocessing_output(inv_out)
     trace = inv_out.get_trace_dataset(var_names="x")
 
@@ -57,13 +61,12 @@ def make_flux_outputs(
     stats_args["chunk_dim"] = "nx" if "nx" in trace.dims else "region"
     stats_ds = calculate_stats(trace, **stats_args)
 
-    if report_flux_on_inversion_grid:
-        agg_flux = (
-            (inv_out.basis * inv_out.flux).sum(["lat", "lon"]) / inv_out.basis.sum(["lat", "lon"])
-        ).fillna(0.0)
-        flux_stats = sparse_xr_dot(inv_out.basis, agg_flux * stats_ds)
-    else:
-        flux_stats = sparse_xr_dot((inv_out.flux * inv_out.basis), stats_ds)
+    flux_stats = reconstruct_flux_stats(
+        original_inv_out,
+        inv_out,
+        stats_ds,
+        report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+    )
 
     for dv in flux_stats.data_vars:
         if dv in stats_ds.data_vars:
@@ -76,7 +79,7 @@ def make_flux_outputs(
     flux_stats = rename_by_replacement(flux_stats, "x", "flux")
 
     if include_scale_factors:
-        scale_factor_stats = sparse_xr_dot(inv_out.basis, stats_ds)
+        scale_factor_stats = reconstruct_scale_factor_stats(original_inv_out, inv_out, stats_ds)
 
         for dv in scale_factor_stats.data_vars:
             if dv in stats_ds.data_vars:

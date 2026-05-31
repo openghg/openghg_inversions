@@ -465,13 +465,15 @@ class StandardPostprocessingOutput(Protocol):
     """
 
     flux: xr.DataArray
-    basis: xr.DataArray
     trace: az.InferenceData
     start_date: str
     end_date: str
     species: str
     domain: str
     obs_inputs: xr.Dataset
+
+    @property
+    def basis(self) -> xr.DataArray: ...
 
     @property
     def start_time(self) -> pd.Timestamp: ...
@@ -589,7 +591,6 @@ class _PostprocessingOutputMethods:
     """Shared derived helpers for postprocessing-compatible output views."""
 
     flux: xr.DataArray
-    basis: xr.DataArray
     trace: az.InferenceData
     start_date: str
     end_date: str
@@ -612,14 +613,18 @@ class _PostprocessingOutputMethods:
             self.flux = self.flux.expand_dims(time=[self.start_time])
 
         self.flux = self.flux.rename(time="flux_time")
+        self._normalise_basis_inputs()
+
+        self._refresh_derived_datasets()
+
+    def _normalise_basis_inputs(self) -> None:
+        """Normalise the flat basis view when a postprocessing carrier owns one."""
         self.basis = align_sparse_lat_lon(self.basis, self.flux)
 
         if "time" in self.basis.dims:
             self.basis = self.basis.rename(time="flux_time")
         elif "time" in self.basis.coords:
             self.basis = self.basis.drop_vars("time")
-
-        self._refresh_derived_datasets()
 
     def _refresh_derived_datasets(self) -> None:
         """Refresh derived trace and observation datasets."""
@@ -805,8 +810,28 @@ class ModernPostprocessingOutput(_PostprocessingOutputMethods):
             missing.
     """
 
+    @property
+    def basis(self) -> xr.DataArray:
+        """Flat compatibility basis view derived lazily from retained basis functions."""
+        if self._basis is None:
+            basis = _standard_basis_from_basis_functions(
+                self.modern_output.basis_functions, self.modern_output.inv_inputs
+            )
+            basis = align_sparse_lat_lon(basis, self.flux)
+            if "time" in basis.dims:
+                basis = basis.rename(time="flux_time")
+            elif "time" in basis.coords:
+                basis = basis.drop_vars("time")
+            self._basis = basis
+        return self._basis
+
+    @basis.setter
+    def basis(self, value: xr.DataArray) -> None:
+        self._basis = value
+
     def __init__(self, inv_out: InversionOutput) -> None:
         self.modern_output = inv_out
+        self._basis: xr.DataArray | None = None
         inv_inputs = inv_out.inv_inputs
         if inv_out.run_metadata.get("split_by_sectors"):
             raise ValueError("Standard postprocessing supports only single-sector RHIME outputs.")
@@ -830,13 +855,16 @@ class ModernPostprocessingOutput(_PostprocessingOutputMethods):
         self._times = inv_inputs["time"]
         self.obs_inputs = _modern_observation_inputs(inv_inputs)
         self.flux = inv_out.basis_functions.flux
-        self.basis = _standard_basis_from_basis_functions(inv_out.basis_functions, inv_inputs)
         self.trace = inv_out.trace
         self.start_date = start_date
         self.end_date = end_date
         self.species = species
         self.domain = domain
         self._normalise_postprocessing_inputs()
+
+    def _normalise_basis_inputs(self) -> None:
+        """Keep the modern flat basis view lazy for operator-backed products."""
+        return None
 
 
 def as_postprocessing_output(inv_out: PostprocessingInput) -> StandardPostprocessingOutput:
