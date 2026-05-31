@@ -1,9 +1,8 @@
-"""Modern public RHIME run functions and lightweight run specifications.
+"""Modern public RHIME runner implementation.
 
-This module is the public RHIME runner boundary. It accepts Python keyword
-arguments or RHIME ``.ini`` files, normalizes legacy spelling into the modern
-spec vocabulary, prepares inversion inputs, builds a PyMC model, samples it,
-and writes requested outputs.
+This module accepts Python keyword arguments or RHIME ``.ini`` files,
+normalizes legacy spelling into the modern spec vocabulary, prepares inversion
+inputs, builds a PyMC model, samples it, and writes requested outputs.
 
 Terminology used by the RHIME API:
 
@@ -33,6 +32,7 @@ import inspect
 from pathlib import Path
 from typing import Any, cast
 import time
+import warnings
 
 import arviz as az
 import numpy as np
@@ -43,22 +43,22 @@ from openghg.util import split_function_inputs  # pyright: ignore[reportPrivateI
 
 from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions import _rhime_params as rhime_params
-from openghg_inversions._rhime_params import params_from_config, resolve_flux_sources
-from openghg_inversions._rhime_specs import (
+from . import params as rhime_params
+from .params import params_from_config, resolve_flux_sources
+from .sampling import RhimeSampler
+from .specs import (
     OutputFormat,
-    RhimeModelSpec,
     RhimeOutputSpec,
     RhimeRunSpec,
-    RhimeSamplingSpec,
-    SectorSpec,
 )
 from openghg_inversions.inversion_data import (
-    RhimePreparedInputs as _RhimePreparedInputs,
-    prepare_rhime_inputs as _prepare_rhime_inputs,
+    RhimePreparedInputs,
+    prepare_rhime_inputs,
 )
 from openghg_inversions.models import (
     DEFAULT_X_PRIOR,
+    RhimeModelSpec,
+    SectorSpec,
     build_rhime_model_from_spec,
     build_rhime_multisector_model_from_spec,
     safe_pymc_name,
@@ -70,7 +70,7 @@ __all__ = [
     "SectorSpec",
     "RhimeModelSpec",
     "RhimeOutputSpec",
-    "RhimeSamplingSpec",
+    "RhimeSampler",
     "RhimeRunSpec",
     "RhimeResult",
     "params_from_config",
@@ -85,10 +85,11 @@ class _RhimeRunnerSetup:
     """Normalized RHIME setup derived from config or direct API parameters."""
 
     run_spec: RhimeRunSpec
+    sampler: RhimeSampler
     data_args: dict[str, Any]
 
 
-@dataclass
+@dataclass(init=False)
 class RhimeResult:
     """Modern RHIME run result.
 
@@ -103,7 +104,7 @@ class RhimeResult:
         model: Built PyMC model.
         inv_out: Modern inversion output object when created.
         basis_functions: Retained flux basis functions from preparation.
-        sampling_spec: Sampling settings used by the run.
+        sampler: Sampler settings used by the run.
     """
 
     run_spec: RhimeRunSpec
@@ -116,7 +117,52 @@ class RhimeResult:
     basis_functions: BasisFunctions | None = None
     model: pm.Model | None = None
     inv_out: InversionOutput | None = None
-    sampling_spec: RhimeSamplingSpec = field(default_factory=RhimeSamplingSpec)
+    sampler: RhimeSampler = field(default_factory=RhimeSampler)
+
+    def __init__(
+        self,
+        run_spec: RhimeRunSpec,
+        model_spec: RhimeModelSpec,
+        output_spec: RhimeOutputSpec,
+        inv_inputs: xr.Dataset,
+        idata: az.InferenceData,
+        output_metadata: dict[str, Any] | None = None,
+        outputs: dict[str, Any] | None = None,
+        basis_functions: BasisFunctions | None = None,
+        model: pm.Model | None = None,
+        inv_out: InversionOutput | None = None,
+        sampler: RhimeSampler | None = None,
+        sampling_spec: RhimeSampler | None = None,
+    ) -> None:
+        if sampling_spec is not None:
+            warnings.warn(
+                "`RhimeResult(..., sampling_spec=...)` is deprecated; use `sampler=...`.",
+                UserWarning,
+                stacklevel=2,
+            )
+            sampler = sampling_spec
+
+        self.run_spec = run_spec
+        self.model_spec = model_spec
+        self.output_spec = output_spec
+        self.inv_inputs = inv_inputs
+        self.idata = idata
+        self.output_metadata = output_metadata if output_metadata is not None else {}
+        self.outputs = outputs if outputs is not None else {}
+        self.basis_functions = basis_functions
+        self.model = model
+        self.inv_out = inv_out
+        self.sampler = sampler if sampler is not None else RhimeSampler()
+
+    @property
+    def sampling_spec(self) -> RhimeSampler:
+        """Deprecated compatibility alias for ``sampler``."""
+        warnings.warn(
+            "`RhimeResult.sampling_spec` is deprecated; use `RhimeResult.sampler`.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return self.sampler
 
 
 def _validate_output_format(output_format: str) -> None:
@@ -264,95 +310,8 @@ def _make_model_spec(
     )
 
 
-def _sample_model(
-    model: pm.Model,
-    sampling_spec: RhimeSamplingSpec,
-) -> az.InferenceData:
-    """Sample a built RHIME model using normalized sampling settings."""
-    sampler_kwargs = dict(sampling_spec.sampler_kwargs or {})
-    sampler_kwargs.setdefault("progressbar", sampling_spec.verbose)
-    sampler_kwargs.setdefault("cores", sampling_spec.nchain)
-    return _sample(
-        model,
-        draws=int(sampling_spec.nit),
-        burn=int(sampling_spec.burn),
-        tune=int(sampling_spec.tune),
-        chains=int(sampling_spec.nchain),
-        sample_prior_predictive=True,
-        sample_posterior_predictive=["y"],
-        nuts_sampler=sampling_spec.nuts_sampler,
-        **sampler_kwargs,
-    )
-
-
-def _extend_inferencedata_predictive(
-    trace: az.InferenceData,
-    *,
-    model: pm.Model,
-    sample_prior_predictive: bool | int = False,
-    sample_posterior_predictive: bool | list[str] = False,
-) -> az.InferenceData:
-    """Extend an InferenceData object with requested predictive groups."""
-    if sample_prior_predictive:
-        prior_draws = (
-            cast(Any, trace).posterior.sizes["draw"]
-            if sample_prior_predictive is True
-            else int(sample_prior_predictive)
-        )
-        with model:
-            trace.extend(pm.sample_prior_predictive(prior_draws, model))
-
-    if sample_posterior_predictive:
-        posterior_var_names = (
-            None if sample_posterior_predictive is True else list(sample_posterior_predictive)
-        )
-        with model:
-            trace.extend(pm.sample_posterior_predictive(trace, model=model, var_names=posterior_var_names))
-
-    return trace
-
-
-def _sample(
-    model: pm.Model,
-    *,
-    draws: int = 1000,
-    tune: int = 1000,
-    chains: int = 4,
-    burn: int = 0,
-    sample_prior_predictive: bool | int = False,
-    sample_posterior_predictive: bool | list[str] = False,
-    **kwargs: Any,
-) -> az.InferenceData:
-    """Sample from a built RHIME model and apply burn slicing/predictive requests."""
-    sample_kwargs = dict(kwargs)
-    sample_kwargs.pop("return_inferencedata", None)
-    idata_kwargs = dict(sample_kwargs.pop("idata_kwargs", {}))
-    idata_kwargs["log_likelihood"] = True
-
-    with model:
-        raw_trace = cast(
-            az.InferenceData,
-            pm.sample(
-                draws=draws,
-                tune=tune,
-                chains=chains,
-                return_inferencedata=True,
-                idata_kwargs=idata_kwargs,
-                **sample_kwargs,
-            ),
-        )
-
-    burned_trace = cast(az.InferenceData, raw_trace.isel(draw=slice(burn, None)))
-    return _extend_inferencedata_predictive(
-        burned_trace,
-        model=model,
-        sample_prior_predictive=sample_prior_predictive,
-        sample_posterior_predictive=sample_posterior_predictive,
-    )
-
-
 def _materialise_basis_and_flux_for_output(
-    prepared: _RhimePreparedInputs,
+    prepared: RhimePreparedInputs,
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """Return materialised arrays for transitional output adapters.
 
@@ -372,7 +331,7 @@ def _materialise_basis_and_flux_for_output(
 
 def _make_inversion_output(
     *,
-    prepared: _RhimePreparedInputs,
+    prepared: RhimePreparedInputs,
     idata: az.InferenceData,
     start_date: str,
     end_date: str,
@@ -438,7 +397,7 @@ def _make_inversion_output(
 def _write_standard_outputs(
     *,
     result: RhimeResult,
-    prepared: _RhimePreparedInputs,
+    prepared: RhimePreparedInputs,
     country_file: str | None,
 ) -> None:
     """Create and optionally save standard RHIME outputs."""
@@ -527,7 +486,7 @@ def _write_standard_outputs(
 def _make_multisector_flux_diagnostics(
     *,
     idata: az.InferenceData,
-    prepared: _RhimePreparedInputs,
+    prepared: RhimePreparedInputs,
     model_spec: RhimeModelSpec,
 ) -> xr.Dataset:
     """Create provisional sector-aware posterior flux diagnostics.
@@ -566,7 +525,7 @@ def _make_multisector_flux_diagnostics(
 def _write_multisector_outputs(
     *,
     result: RhimeResult,
-    prepared: _RhimePreparedInputs,
+    prepared: RhimePreparedInputs,
 ) -> None:
     """Create and optionally save transitional multi-sector RHIME outputs."""
     diagnostics = _make_multisector_flux_diagnostics(
@@ -644,7 +603,7 @@ def _make_rhime_runner_setup(
     rhime_params.validate_required_params(normalized)
     rhime_params.validate_supported_params(
         normalized,
-        data_params=set(inspect.signature(_prepare_rhime_inputs).parameters),
+        data_params=set(inspect.signature(prepare_rhime_inputs).parameters),
     )
 
     remaining = dict(normalized)
@@ -688,14 +647,14 @@ def _make_rhime_runner_setup(
     no_model_error = remaining.pop("no_model_error", False)
     power = remaining.pop("power", 1.99)
 
-    sampling_spec = RhimeSamplingSpec(
-        nit=remaining.pop("nit", 1000),
+    sampler = RhimeSampler(
+        draws=remaining.pop("draws", 1000),
         burn=remaining.pop("burn", 0),
         tune=remaining.pop("tune", 1000),
-        nchain=remaining.pop("nchain", 4),
+        chains=remaining.pop("chains", 4),
         nuts_sampler=remaining.pop("nuts_sampler", "pymc"),
-        verbose=remaining.pop("verbose", False),
-        sampler_kwargs=rhime_params.normalise_optional_mapping(remaining.pop("sampler_kwargs", None)),
+        progressbar=remaining.pop("progressbar", False),
+        sample_kwargs=rhime_params.normalise_optional_mapping(remaining.pop("sample_kwargs", None)),
     )
     output_spec = _make_output_spec(
         output_format=remaining.pop("output_format", "inv_out"),
@@ -734,8 +693,8 @@ def _make_rhime_runner_setup(
         averaging_period=_tuple_from_optional_sequence(averaging_period),
         model=model_spec,
         output=output_spec,
-        sampling=sampling_spec,
         split_by_sectors=multisector,
+        sampling=sampler,
     )
 
     data_args, _ = split_function_inputs(
@@ -751,14 +710,14 @@ def _make_rhime_runner_setup(
             "flux_sources": data_flux_sources,
             "split_by_sectors": multisector,
         },
-        _prepare_rhime_inputs,
+        prepare_rhime_inputs,
     )
-    return _RhimeRunnerSetup(run_spec=run_spec, data_args=data_args)
+    return _RhimeRunnerSetup(run_spec=run_spec, sampler=sampler, data_args=data_args)
 
 
 def _run_spec_with_prepared_inputs(
     run_spec: RhimeRunSpec,
-    prepared: _RhimePreparedInputs,
+    prepared: RhimePreparedInputs,
 ) -> RhimeRunSpec:
     """Update run metadata with retained sites from prepared RHIME inputs."""
     return replace(
@@ -775,7 +734,7 @@ def _run_common(
 ) -> RhimeResult:
     """Run the shared RHIME pipeline after public wrapper/config normalization."""
     setup = _make_rhime_runner_setup(params=params, multisector=multisector)
-    prepared = _prepare_rhime_inputs(**setup.data_args)
+    prepared = prepare_rhime_inputs(**setup.data_args)
     run_spec = _run_spec_with_prepared_inputs(setup.run_spec, prepared)
 
     start_build = time.time()
@@ -784,14 +743,14 @@ def _run_common(
     else:
         model = build_rhime_model_from_spec(prepared.inv_inputs, run_spec.model)
 
-    idata = _sample_model(model, run_spec.sampling)
+    idata = setup.sampler.sample(model)
     result = RhimeResult(
         run_spec=run_spec,
         model_spec=run_spec.model,
         output_spec=run_spec.output,
         inv_inputs=prepared.inv_inputs,
         idata=idata,
-        sampling_spec=run_spec.sampling,
+        sampler=setup.sampler,
         model=model,
         basis_functions=prepared.basis_functions,
         output_metadata={"build_and_sample_seconds": time.time() - start_build},

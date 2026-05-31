@@ -1,7 +1,7 @@
 """RHIME parameter loading, normalisation, and validation helpers.
 
-This private module keeps raw config/API parameter handling out of the public
-RHIME runner module. It is intentionally limited to INI compatibility, legacy
+This internal package module keeps raw config/API parameter handling out of the
+public RHIME runner. It is intentionally limited to INI compatibility, legacy
 alias handling, simple scalar coercion, and validation of raw dictionaries.
 Future YAML/schema frontends should target the same normalized parameter model
 before constructing RHIME specs.
@@ -24,11 +24,15 @@ _ALIASES = {
     "sigprior": "sigma_prior",
     "offsetprior": "offset_prior",
     "emissions_name": "flux_sources",
+    "nit": "draws",
+    "nchain": "chains",
+    "verbose": "progressbar",
+    "sampler_kwargs": "sample_kwargs",
 }
 
-_INT_OPTIONS = ("nit", "burn", "tune", "nchain")
+_INT_OPTIONS = ("draws", "burn", "tune", "chains")
 _MAPPING_OPTIONS = (
-    "sampler_kwargs",
+    "sample_kwargs",
     "paris_postprocessing_kwargs",
     "offset_args",
     "min_error_options",
@@ -285,13 +289,13 @@ def validate_supported_params(params: Mapping[str, Any], *, data_params: set[str
         "pollution_events_from_obs",
         "no_model_error",
         "power",
-        "nit",
+        "draws",
         "burn",
         "tune",
-        "nchain",
+        "chains",
         "nuts_sampler",
-        "verbose",
-        "sampler_kwargs",
+        "progressbar",
+        "sample_kwargs",
         "output_format",
         "output_path",
         "save_trace",

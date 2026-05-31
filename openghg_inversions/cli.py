@@ -14,7 +14,7 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--kwargs",
         type=json.loads,
-        help="Pass keyword arguments to the RHIME function, e.g. '{\"nit\": 10}'.",
+        help="Pass keyword arguments to the RHIME function, e.g. '{\"draws\": 10}'.",
     )
     parser.add_argument("--output-path", help="Path to write results to.")
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import fields
 import inspect
 from pathlib import Path
 from typing import Any, cast
@@ -11,9 +12,9 @@ import xarray as xr
 
 import openghg_inversions.models as models
 import openghg_inversions.models.rhime as rhime_models_module
-import openghg_inversions._rhime_params as rhime_params
+import openghg_inversions.rhime.params as rhime_params
 import openghg_inversions.inversion_data.preparation as prep_module
-import openghg_inversions.rhime as rhime_module
+import openghg_inversions.rhime.runner as rhime_module
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
 from openghg_inversions.cli import main
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
@@ -32,6 +33,7 @@ from openghg_inversions.rhime import (
     RhimeResult,
     RhimeRunSpec,
     RhimeSamplingSpec,
+    RhimeSampler,
     SectorSpec,
     params_from_config,
     resolve_flux_sources,
@@ -310,9 +312,77 @@ def test_public_rhime_dataclasses_keep_existing_positional_order() -> None:
     )
 
     assert run_spec.split_by_sectors is True
-    assert run_spec.sampling == RhimeSamplingSpec()
+    assert all(field.name != "sampler" for field in fields(run_spec))
+    assert run_spec.sampling is None
     assert result.output_metadata == output_metadata
-    assert result.sampling_spec == RhimeSamplingSpec()
+    assert result.sampler == RhimeSampler()
+    with pytest.warns(UserWarning, match="sampling_spec"):
+        assert result.sampling_spec == RhimeSampler()
+
+
+def test_rhime_sampling_spec_import_alias_remains_compatible() -> None:
+    """The old same-branch sampler name remains as a compatibility alias."""
+    assert RhimeSamplingSpec is RhimeSampler
+    with pytest.warns(UserWarning):
+        sampler = RhimeSamplingSpec(
+            nit=7,
+            nchain=3,
+            verbose=True,
+            sampler_kwargs={"random_seed": 42},
+        )
+
+    assert sampler == RhimeSampler(
+        draws=7,
+        chains=3,
+        progressbar=True,
+        sample_kwargs={"random_seed": 42},
+    )
+    with pytest.warns(UserWarning, match="nit"):
+        assert sampler.nit == 7
+    with pytest.warns(UserWarning, match="nchain"):
+        assert sampler.nchain == 3
+    with pytest.warns(UserWarning, match="verbose"):
+        assert sampler.verbose is True
+    with pytest.warns(UserWarning, match="sampler_kwargs"):
+        assert sampler.sampler_kwargs == {"random_seed": 42}
+
+
+def test_rhime_result_accepts_deprecated_sampling_spec_keyword() -> None:
+    """RhimeResult accepts the old sampling_spec keyword as a sampler alias."""
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=(
+            SectorSpec(
+                name="FF",
+                flux_source="ff-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ff",
+            ),
+        ),
+    )
+    output_spec = RhimeOutputSpec(output_format="none")
+    run_spec = RhimeRunSpec(
+        "2019-01-01",
+        "2019-01-02",
+        ("TAC",),
+        ("1h",),
+        model_spec,
+        output_spec,
+    )
+    sampler = RhimeSampler(draws=7, chains=1)
+
+    with pytest.warns(UserWarning, match="sampling_spec"):
+        result = RhimeResult(
+            run_spec,
+            model_spec,
+            output_spec,
+            _minimal_inv_inputs(),
+            cast(Any, object()),
+            sampling_spec=sampler,
+        )
+
+    assert result.sampler is sampler
 
 
 def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> None:
@@ -339,11 +409,11 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
             "GPP": {"pdf": "normal", "mu": 0.7, "sigma": 0.2},
             "TER": {"pdf": "normal", "mu": 1.3, "sigma": 0.3},
         },
-        "nit": "7",
+        "draws": "7",
         "burn": "1",
         "tune": "2",
-        "nchain": "3",
-        "sampler_kwargs": {"random_seed": 42},
+        "chains": "3",
+        "sample_kwargs": {"random_seed": 42},
     }
 
     setup = rhime_module._make_rhime_runner_setup(params=params, multisector=True)
@@ -353,15 +423,16 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
     assert setup.run_spec.sites == ("TAC",)
     assert setup.run_spec.averaging_period == ("1h",)
     assert setup.run_spec.output.output_format == "none"
-    assert setup.run_spec.sampling == RhimeSamplingSpec(
-        nit=7,
+    assert setup.sampler == RhimeSampler(
+        draws=7,
         burn=1,
         tune=2,
-        nchain=3,
+        chains=3,
         nuts_sampler="pymc",
-        verbose=False,
-        sampler_kwargs={"random_seed": 42},
+        progressbar=False,
+        sample_kwargs={"random_seed": 42},
     )
+    assert setup.run_spec.sampling == setup.sampler
     assert [sector.name for sector in setup.run_spec.model.sectors] == ["FF", "GPP", "TER", "ocean"]
     assert [sector.flux_source for sector in setup.run_spec.model.sectors] == [
         "ff-source",
@@ -371,6 +442,26 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
     ]
     assert setup.run_spec.model.sectors[0].x_prior == {"pdf": "normal", "mu": 1.0, "sigma": 0.5}
     assert setup.run_spec.model.sectors[1].x_prior == {"pdf": "normal", "mu": 0.7, "sigma": 0.2}
+
+
+def test_legacy_sampling_aliases_normalise_to_rhime_sampler_names() -> None:
+    """Legacy sampling names remain accepted only as compatibility aliases."""
+    with pytest.warns(UserWarning):
+        params = rhime_params.normalise_rhime_params(
+            {
+                "nit": "7",
+                "nchain": "3",
+                "verbose": True,
+                "sampler_kwargs": {"random_seed": 42},
+            }
+        )
+
+    assert params == {
+        "draws": 7,
+        "chains": 3,
+        "progressbar": True,
+        "sample_kwargs": {"random_seed": 42},
+    }
 
 
 def test_build_rhime_model_from_spec_forwards_single_sector_prior(
@@ -476,42 +567,83 @@ def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping
     }
 
 
-def test_sample_model_uses_sampling_spec(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Sampling wrapper forwards normalized sampling settings to the low-level sampler."""
-    sentinel = cast(Any, object())
+def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RhimeSampler owns PyMC sampling, burn slicing, and predictive groups."""
+
+    class FakePosterior:
+        sizes = {"draw": 6}
+
+    class FakeInferenceData:
+        posterior = FakePosterior()
+
+        def __init__(self) -> None:
+            self.isel_kwargs: dict[str, Any] | None = None
+            self.extensions: list[Any] = []
+
+        def isel(self, **kwargs: Any) -> "FakeInferenceData":
+            self.isel_kwargs = kwargs
+            return self
+
+        def extend(self, other: Any) -> None:
+            self.extensions.append(other)
+
+    fake_idata = FakeInferenceData()
     seen: dict[str, Any] = {}
 
-    def fake_sample(model: pm.Model, **kwargs: Any) -> Any:
-        seen["model"] = model
-        seen["kwargs"] = kwargs
-        return sentinel
+    def fake_sample(**kwargs: Any) -> Any:
+        seen["sample_kwargs"] = kwargs
+        return fake_idata
 
-    monkeypatch.setattr(rhime_module, "_sample", fake_sample)
+    def fake_prior_predictive(draws: int, model: pm.Model) -> str:
+        seen["prior_predictive"] = {"draws": draws, "model": model}
+        return "prior"
+
+    def fake_posterior_predictive(trace: Any, **kwargs: Any) -> str:
+        seen["posterior_predictive"] = {"trace": trace, **kwargs}
+        return "posterior"
+
+    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.sampling.pm.sample_prior_predictive",
+        fake_prior_predictive,
+    )
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
+        fake_posterior_predictive,
+    )
     model = pm.Model()
-    sampling_spec = RhimeSamplingSpec(
-        nit=7,
+    sampler = RhimeSampler(
+        draws=7,
         burn=1,
         tune=2,
-        nchain=3,
+        chains=3,
         nuts_sampler="numpyro",
-        verbose=True,
-        sampler_kwargs={"target_accept": 0.9},
+        progressbar=True,
+        sample_kwargs={"target_accept": 0.9},
     )
 
-    idata = rhime_module._sample_model(model, sampling_spec)
+    idata = sampler.sample(model)
 
-    assert idata is sentinel
-    assert seen["model"] is model
-    assert seen["kwargs"]["draws"] == 7
-    assert seen["kwargs"]["burn"] == 1
-    assert seen["kwargs"]["tune"] == 2
-    assert seen["kwargs"]["chains"] == 3
-    assert seen["kwargs"]["nuts_sampler"] == "numpyro"
-    assert seen["kwargs"]["progressbar"] is True
-    assert seen["kwargs"]["cores"] == 3
-    assert seen["kwargs"]["target_accept"] == 0.9
-    assert seen["kwargs"]["sample_prior_predictive"] is True
-    assert seen["kwargs"]["sample_posterior_predictive"] == ["y"]
+    assert idata is fake_idata
+    assert seen["sample_kwargs"]["draws"] == 7
+    assert seen["sample_kwargs"]["tune"] == 2
+    assert seen["sample_kwargs"]["chains"] == 3
+    assert seen["sample_kwargs"]["nuts_sampler"] == "numpyro"
+    assert seen["sample_kwargs"]["progressbar"] is True
+    assert seen["sample_kwargs"]["cores"] == 3
+    assert seen["sample_kwargs"]["target_accept"] == 0.9
+    assert seen["sample_kwargs"]["return_inferencedata"] is True
+    assert seen["sample_kwargs"]["idata_kwargs"] == {"log_likelihood": True}
+    assert fake_idata.isel_kwargs == {"draw": slice(1, None)}
+    assert seen["prior_predictive"] == {"draws": 6, "model": model}
+    assert seen["posterior_predictive"] == {
+        "trace": fake_idata,
+        "model": model,
+        "var_names": ["y"],
+    }
+    assert fake_idata.extensions == ["prior", "posterior"]
 
 
 def test_params_from_config_maps_legacy_emissions_name(tmp_path: Path) -> None:
@@ -579,7 +711,7 @@ def test_run_rhime_rejects_string_prior_before_data_preparation(
     def fail_prepare(**kwargs):
         raise AssertionError("prepare_rhime_inputs should not be called")
 
-    monkeypatch.setattr(rhime_module, "_prepare_rhime_inputs", fail_prepare)
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
 
     with pytest.raises(ValueError, match="x_prior"):
         run_rhime(
@@ -604,7 +736,7 @@ def test_run_rhime_rejects_malformed_min_error_options_before_data_preparation(
     def fail_prepare(**kwargs):
         raise AssertionError("prepare_rhime_inputs should not be called")
 
-    monkeypatch.setattr(rhime_module, "_prepare_rhime_inputs", fail_prepare)
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
 
     with pytest.raises(ValueError, match="min_error_options"):
         run_rhime(
@@ -629,7 +761,7 @@ def test_run_rhime_rejects_malformed_power_before_data_preparation(
     def fail_prepare(**kwargs):
         raise AssertionError("prepare_rhime_inputs should not be called")
 
-    monkeypatch.setattr(rhime_module, "_prepare_rhime_inputs", fail_prepare)
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
 
     with pytest.raises(ValueError, match="power"):
         run_rhime(
@@ -654,7 +786,7 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_prior_values(
     def fail_prepare(**kwargs):
         raise AssertionError("prepare_rhime_inputs should not be called")
 
-    monkeypatch.setattr(rhime_module, "_prepare_rhime_inputs", fail_prepare)
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
 
     with pytest.raises(ValueError, match="sector_priors"):
         run_rhime_multisector(
@@ -679,7 +811,7 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_sources(
     def fail_prepare(**kwargs):
         raise AssertionError("prepare_rhime_inputs should not be called")
 
-    monkeypatch.setattr(rhime_module, "_prepare_rhime_inputs", fail_prepare)
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
 
     with pytest.raises(ValueError, match="sector_sources"):
         run_rhime_multisector(
@@ -730,6 +862,12 @@ def test_new_rhime_docs_use_flux_sources_for_examples() -> None:
     assert "emissions_name =" not in rhime_doc
     assert "emissions_name =" not in readme
     assert "emissions_name =" not in template
+    assert "draws =" in template
+    assert "chains =" in template
+    assert "nit =" not in template
+    assert "nchain =" not in template
+    assert "sample_kwargs =" in template
+    assert "sampler_kwargs =" not in template
     assert "Legacy compatibility spelling" in rhime_doc
 
 
@@ -742,6 +880,9 @@ def test_cleanup_plan_records_issue_400_decisions() -> None:
     assert "one public concrete `RhimeModelSpec`" in plan_doc
     assert "Do not split the public API" in plan_doc
     assert "SemanticModel" in plan_doc
+    assert "RhimeSampler" in plan_doc
+    assert "openghg_inversions.rhime.runner" in plan_doc
+    assert "prior-predictive-only" in plan_doc
     assert "Deferred Issue #383 / Issue #429 output boundary" in plan_doc
 
 
@@ -1109,7 +1250,7 @@ def test_run_rhime_leaves_scalar_averaging_period_for_shared_preparation(
         raise RuntimeError("stop after data argument capture")
 
     setattr(fake_prepare_rhime_inputs, "__signature__", original_signature)
-    monkeypatch.setattr(rhime_module, "_prepare_rhime_inputs", fake_prepare_rhime_inputs)
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fake_prepare_rhime_inputs)
 
     with pytest.raises(RuntimeError, match="stop after data argument capture"):
         run_rhime(
@@ -1542,15 +1683,15 @@ def test_run_rhime_api_smoke(tac_ch4_data_args, tmp_path: Path) -> None:
             "basis_algorithm": "quadtree",
             "basis_output_path": str(tmp_path),
             "nbasis": 4,
-            "nit": 1,
+            "draws": 1,
             "burn": 0,
             "tune": 0,
-            "nchain": 1,
+            "chains": 1,
             "reload_merged_data": False,
             "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
             "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
             "sigma_prior": {"pdf": "uniform", "lower": 0.1, "upper": 10.0},
-            "sampler_kwargs": {"random_seed": 123, "compute_convergence_checks": False},
+            "sample_kwargs": {"random_seed": 123, "compute_convergence_checks": False},
         }
     )
 
@@ -1598,16 +1739,16 @@ def test_run_rhime_multisector_api_smoke(tac_ch4_data_args, tmp_path: Path) -> N
             "basis_algorithm": "quadtree",
             "basis_output_path": str(tmp_path),
             "nbasis": 4,
-            "nit": 1,
+            "draws": 1,
             "burn": 0,
             "tune": 0,
-            "nchain": 1,
+            "chains": 1,
             "reload_merged_data": False,
             "output_format": "none",
             "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
             "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
             "sigma_prior": {"pdf": "uniform", "lower": 0.1, "upper": 10.0},
-            "sampler_kwargs": {"random_seed": 123, "compute_convergence_checks": False},
+            "sample_kwargs": {"random_seed": 123, "compute_convergence_checks": False},
         }
     )
     args.pop("emissions_name")
@@ -1647,7 +1788,7 @@ def test_cli_run_rhime_passes_config_and_overrides(monkeypatch, tmp_path: Path) 
             "--output-path",
             str(tmp_path),
             "--kwargs",
-            '{"nit": 1}',
+            '{"draws": 1}',
         ]
     )
 
@@ -1655,7 +1796,7 @@ def test_cli_run_rhime_passes_config_and_overrides(monkeypatch, tmp_path: Path) 
     assert seen["kwargs"]["start_date"] == "2019-01-01"
     assert seen["kwargs"]["end_date"] == "2019-01-02"
     assert seen["kwargs"]["output_path"] == str(tmp_path)
-    assert seen["kwargs"]["nit"] == 1
+    assert seen["kwargs"]["draws"] == 1
 
 
 def test_cli_run_rhime_multisector_passes_config(monkeypatch, tmp_path: Path) -> None:

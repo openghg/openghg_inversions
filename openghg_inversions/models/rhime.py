@@ -21,7 +21,6 @@ import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 
-from openghg_inversions._rhime_specs import RhimeModelSpec
 from openghg_inversions.models.components import (
     add_inferpymc_likelihood_component,
     add_linear_component,
@@ -29,6 +28,7 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.rhime.model_specs import RhimeModelSpec, SectorSpec as SectorSpec
 
 DEFAULT_X_PRIOR: PriorArgs = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0, "reparameterise": True}
 DEFAULT_BC_PRIOR: PriorArgs = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.05, "lower": 0.0}

@@ -38,10 +38,15 @@ contract.
   compatibility alias, and added `sector_sources` so model sector labels can
   differ from OpenGHG flux `source` values. Follow-up: #431 should make
   `RhimePreparedInputs` consume specs directly.
-- 2026-05-31: #400 / PR #434 sequestered RHIME parameter/config parsing in a
-  private `_rhime_params` module, added simple integer coercion before spec
-  construction, and marked runner-local basis materialisation and multi-sector
-  diagnostics as transitional output shims.
+- 2026-05-31: #400 / PR #434 moved RHIME parameter/config parsing into the
+  `openghg_inversions.rhime.params` package module, added simple integer
+  coercion before spec construction, and marked runner-local basis
+  materialisation and multi-sector diagnostics as transitional output shims.
+- 2026-05-31: #400 / PR #434 moved RHIME orchestration into
+  `openghg_inversions.rhime.runner`, kept the package `__init__` as the public
+  re-export surface, moved lightweight model specs to
+  `openghg_inversions.rhime.model_specs`, and kept `RhimeRunSpec` as metadata
+  while carrying the executable `RhimeSampler` on runner setup/results.
 
 ## Recorded decisions for PR #434 / Issue #400
 
@@ -62,8 +67,9 @@ contract.
 
 ## Current PR #434 / Issue #400 cleanup notes
 
-- Keep the top-level `rhime.py` public-facing: specs, result objects, and
-  `run_rhime` / `run_rhime_multisector` orchestration should remain visible.
+- Keep the `openghg_inversions.rhime` package public-facing: specs, result
+  objects, and `run_rhime` / `run_rhime_multisector` orchestration should
+  remain visible.
 - Sequester RHIME config parsing, alias handling, simple type coercion, and
   validation into a RHIME-specific parser module rather than growing the
   top-level runner module.
@@ -77,6 +83,14 @@ contract.
 - Do not add Pydantic, attrs/cattrs, or YAML/schema dependencies in #400.
   Keep the public spec dataclasses as stdlib dataclasses, and reserve schema
   validation for the later YAML/semantic-IR work.
+
+## Deferred sampler extensions
+
+PR #434 / Issue #400 should keep `RhimeSampler` focused on the current PyMC
+MCMC path: `pm.sample`, post-sampling burn slicing, and optional prior/posterior
+predictive groups. Follow-up sampler variants can add quick MAP checks,
+prior-predictive-only validation runs, variational inference, and custom PyMC
+step methods without reintroducing runner-level sampling branches.
 
 ## Deferred SemanticModel plan
 
