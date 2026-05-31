@@ -1,12 +1,12 @@
 import pytest
 
 from openghg_inversions.postprocessing.diagnostics import summary
-from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.inversion_output import LegacyInversionOutput
 
 
 @pytest.fixture
 def inv_out(raw_data_path):
-    return InversionOutput.load(raw_data_path / "inversion_output.nc")
+    return LegacyInversionOutput.load(raw_data_path / "inversion_output.nc")
 
 
 def test_summary(inv_out):

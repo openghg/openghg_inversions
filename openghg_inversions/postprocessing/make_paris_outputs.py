@@ -10,7 +10,7 @@ from openghg.util import timestamp_now
 from openghg_inversions.config.version import code_version
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import (
-    InversionOutput,
+    LegacyInversionOutput,
     make_inv_out_from_rhime_outputs,
 )
 from openghg_inversions.postprocessing.make_outputs import (
@@ -19,7 +19,6 @@ from openghg_inversions.postprocessing.make_outputs import (
     make_country_outputs,
 )
 from openghg_inversions.postprocessing.stats import stats_functions
-from openghg_inversions.utils import get_country_file_path
 
 
 # path to `paris_formatting` submodule
@@ -134,7 +133,7 @@ def shift_measurement_time_to_midpoint(ds: xr.Dataset, period: str = "4h") -> xr
 
 
 def paris_concentration_outputs(
-    inv_out: InversionOutput, report_mode: bool = False, obs_avg_period: str = "4h"
+    inv_out: LegacyInversionOutput, report_mode: bool = False, obs_avg_period: str = "4h"
 ) -> xr.Dataset:
     """Create PARIS concentration outputs.
 
@@ -277,7 +276,7 @@ def _flux_interval_midpoints(
 
 
 def paris_flux_output(
-    inv_out: InversionOutput,
+    inv_out: LegacyInversionOutput,
     country_file: str | Path | None = None,
     time_point: Literal["start", "midpoint"] = "midpoint",
     report_mode: bool = False,
@@ -456,7 +455,7 @@ def infer_flux_frequency(flux: xr.DataArray) -> str:
 
 
 def make_paris_outputs(
-    inv_out: InversionOutput,
+    inv_out: LegacyInversionOutput,
     country_file: str | Path | None = None,
     time_point: Literal["start", "midpoint"] = "midpoint",
     report_mode: bool = False,
