@@ -274,6 +274,7 @@ def make_multisector_output_bundle(
     prepared: RhimePreparedInputs,
 ) -> RhimeOutputBundle:
     """Create and optionally save transitional multi-sector RHIME outputs."""
+    inv_out = None
     diagnostics = _make_multisector_flux_diagnostics(
         idata=idata,
         prepared=prepared,
@@ -281,6 +282,26 @@ def make_multisector_output_bundle(
     )
     outputs: dict[str, Any] = {"sector_flux_diagnostics": diagnostics}
     output_metadata: dict[str, Any] = {}
+    if output_spec.output_format != "none":
+        inv_out = _make_inversion_output(
+            prepared=prepared,
+            idata=idata,
+            run_spec=run_spec,
+            model_spec=model_spec,
+            output_spec=output_spec,
+        )
+        outputs["inversion_output"] = inv_out
+        output_metadata["inversion_output_contract"] = "modern"
+
+        inv_out_path = _resolve_output_path(
+            output_spec.save_inversion_output,
+            output_spec.output_path,
+            f"{output_spec.output_name}{run_spec.start_date}_inversion_output.nc",
+        )
+        if inv_out_path is not None:
+            inv_out_path.parent.mkdir(parents=True, exist_ok=True)
+            inv_out.save(inv_out_path)
+            output_metadata["inversion_output_path"] = str(inv_out_path)
 
     if output_spec.output_format == "paris":
         output_metadata["paris_note"] = (
@@ -296,4 +317,4 @@ def make_multisector_output_bundle(
         diagnostics.to_netcdf(diagnostics_path, mode="w", encoding=ncdf_encoding(diagnostics))
         output_metadata["sector_flux_diagnostics_path"] = str(diagnostics_path)
 
-    return RhimeOutputBundle(outputs=outputs, output_metadata=output_metadata)
+    return RhimeOutputBundle(inv_out=inv_out, outputs=outputs, output_metadata=output_metadata)

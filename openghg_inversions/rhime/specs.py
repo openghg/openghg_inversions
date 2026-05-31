@@ -94,8 +94,8 @@ def validate_output_path_settings(
         return
     if save_trace is True:
         raise ValueError("`output_path` is required when `save_trace=True`.")
-    if not multisector and save_inversion_output is True:
-        raise ValueError("`output_path` is required when saving the standard RHIME InversionOutput.")
+    if save_inversion_output is True:
+        raise ValueError("`output_path` is required when saving the RHIME InversionOutput.")
 
 
 def make_output_spec(

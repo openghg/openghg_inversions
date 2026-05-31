@@ -1670,6 +1670,64 @@ def test_make_standard_output_bundle_returns_outputs_without_mutating_result() -
     assert bundle.output_metadata == {"inversion_output_contract": "modern"}
 
 
+def test_make_multisector_output_bundle_returns_modern_inv_out() -> None:
+    """Multi-sector RHIME outputs retain the same modern inversion-output contract."""
+    sectors = (
+        SectorSpec(
+            name="FF",
+            flux_source="ff-inventory",
+            x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            variable_suffix="ff",
+        ),
+        SectorSpec(
+            name="Ocean",
+            flux_source="ocean-inventory",
+            x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            variable_suffix="ocean",
+        ),
+    )
+    model_spec = RhimeModelSpec(species="ch4", domain="EUROPE", sectors=sectors)
+    output_spec = RhimeOutputSpec(output_format="inv_out", output_name="test", save_inversion_output=False)
+    run_spec = RhimeRunSpec(
+        "2019-01-01",
+        "2019-01-02",
+        ("TAC",),
+        ("1h",),
+        model_spec,
+        output_spec,
+        split_by_sectors=True,
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+    idata = az.from_dict(
+        posterior={
+            "x_ff": np.ones((1, 1, 1)),
+            "x_ocean": np.ones((1, 1, 1)),
+        },
+        coords={"region": [0]},
+        dims={"x_ff": ["region"], "x_ocean": ["region"]},
+    )
+
+    bundle = rhime_outputs.make_multisector_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=idata,
+        prepared=prepared,
+    )
+
+    assert isinstance(bundle.inv_out, InversionOutput)
+    assert bundle.inv_out.run_metadata["split_by_sectors"] is True
+    assert bundle.output_metadata["inversion_output_contract"] == "modern"
+    assert "sector_flux_diagnostics" in bundle.outputs
+    assert bundle.outputs["inversion_output"] is bundle.inv_out
+
+
 def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     """Modern RHIME InversionOutput preserves retained inputs, basis, and metadata."""
     model_spec, output_spec, run_spec = _minimal_output_specs()
