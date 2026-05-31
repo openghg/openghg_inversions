@@ -35,7 +35,7 @@ Overview
   conditions.
 
 What do you need to run an inversion?
----------------------------
+-------------------------------------
 
 For an inversion, you need to decide the:
 
@@ -278,15 +278,16 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
 
 
    [INPUT.PRIORS]
-   ; Input values for extracting footprints, emissions and boundary conditions files (also uses values from INPUT.MEASUREMENTS)
+   ; Legacy fixedbasis input values for extracting footprints, fluxes and boundary conditions files (also uses values from INPUT.MEASUREMENTS)
+   ; New RHIME configs use flux_sources for OpenGHG flux source values.
    ; domain (str) - Name of inversion spatial domain
    ; fp_height (list) - Release height for footprints (must match number of sites).
-   ; emissions_name (list/None) - Name for specific emissions source.
+   ; emissions_name (list/None) - Legacy key for a specific flux source.
 
    domain = 'EUROPE'  ; (required)
    fp_height = ["185m"]  ; typically the same as inlet, but may differ slightly (e.g. if instrument moved to 180m, for instance)
    fp_model = "NAME"  ; LPDM model, usually NAME
-   emissions_name = ["total-ukghg-edgar7"]  ; total = all emissions sources; agric-ukghg-edgar7 would be agricultural sources only
+   emissions_name = ["total-ukghg-edgar7"]  ; legacy fixedbasis key; new RHIME configs use flux_sources
    met_model = 'UKV'  ; or None if not specified, check the metadata for your footprint
 
    [INPUT.BASIS_CASE]

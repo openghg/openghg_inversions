@@ -16,6 +16,7 @@ openghg\_inversions
    openghg_inversions.inversion_data
    openghg_inversions.models
    openghg_inversions.postprocessing
+   openghg_inversions.rhime
 
 
 
@@ -28,5 +29,4 @@ openghg\_inversions
    openghg_inversions.filters
    openghg_inversions.inversion_inputs
    openghg_inversions.model_error
-   openghg_inversions.rhime
    openghg_inversions.utils

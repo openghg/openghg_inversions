@@ -5,3 +5,14 @@ openghg\_inversions.rhime
    :members:
    :show-inheritance:
    :undoc-members:
+
+
+
+.. toctree::
+   :maxdepth: 4
+
+   openghg_inversions.rhime.outputs
+   openghg_inversions.rhime.params
+   openghg_inversions.rhime.runner
+   openghg_inversions.rhime.sampling
+   openghg_inversions.rhime.specs
