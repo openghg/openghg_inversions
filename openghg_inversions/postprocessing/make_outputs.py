@@ -1,17 +1,20 @@
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, cast
 
 import xarray as xr
 
 from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
-from openghg_inversions.postprocessing.inversion_output import LegacyInversionOutput
+from openghg_inversions.postprocessing.inversion_output import (
+    PostprocessingInput,
+    as_postprocessing_output,
+)
 from openghg_inversions.postprocessing.stats import calculate_stats
 from openghg_inversions.postprocessing.utils import rename_by_replacement
 
 
 def make_flux_outputs(
-    inv_out: LegacyInversionOutput,
+    inv_out: PostprocessingInput,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
     include_scale_factors: bool = True,
@@ -20,7 +23,7 @@ def make_flux_outputs(
     """Return dataset of stats for fluxes and scaling factors.
 
     Args:
-        inv_out: LegacyInversionOutput containing MCMC traces.
+        inv_out: Inversion output containing MCMC traces.
         stats: List of stats to use. If None, the default for
             calculate_stats is used, which is "mean" and "quantiles". See the
             postprocessing.stats submodule for more options.
@@ -42,6 +45,7 @@ def make_flux_outputs(
         xr.Dataset with computed flux stats.
 
     """
+    inv_out = as_postprocessing_output(inv_out)
     trace = inv_out.get_trace_dataset(var_names="x")
 
     if stats_args is None:
@@ -98,7 +102,7 @@ def flatten_post_prior(ds: xr.Dataset) -> xr.Dataset:
     ds_list = []
     dvs_list = []
     for coord, when in [("post", "posterior"), ("prior", "prior")]:
-        dvs = [str(dv) for dv in ds.data_vars if when in dv]
+        dvs = [str(dv) for dv in ds.data_vars if when in str(dv)]
         dvs_list.extend(dvs)
         # select either "posterior" or "prior" vars, remove those from the variable names
         # then add "post" or "prior" as a coordinate for the dimension "when"
@@ -149,7 +153,7 @@ def sort_data_vars(ds: xr.Dataset) -> xr.Dataset:
 
 
 def make_concentration_outputs(
-    inv_out: LegacyInversionOutput,
+    inv_out: PostprocessingInput,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
     combine_bc_and_offset: bool = False,
@@ -157,7 +161,7 @@ def make_concentration_outputs(
     """Return dataset of stats for concentrations.
 
     Args:
-        inv_out: LegacyInversionOutput containing MCMC traces.
+        inv_out: Inversion output containing MCMC traces.
         stats: List of stats to use. If None, the default for
             calculate_stats is used, which is "mean" and "quantiles". See the
             postprocessing.stats submodule for more options.
@@ -175,12 +179,14 @@ def make_concentration_outputs(
         xr.Dataset with computed flux stats.
 
     """
+    inv_out = as_postprocessing_output(inv_out)
     conc_vars = ["y"]
+    posterior = cast(Any, inv_out.trace).posterior
 
-    if "mu_bc" in inv_out.trace.posterior:
+    if "mu_bc" in posterior:
         conc_vars.append("mu_bc")
 
-    if "offset" in inv_out.trace.posterior:
+    if "offset" in posterior:
         conc_vars.append("offset")
 
     trace = inv_out.get_trace_dataset(var_names=conc_vars)
@@ -212,7 +218,7 @@ def make_concentration_outputs(
 
 
 def make_country_outputs(
-    inv_out: LegacyInversionOutput,
+    inv_out: PostprocessingInput,
     country_file: str | Path | None = None,
     country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
@@ -222,9 +228,9 @@ def make_country_outputs(
     """Calculate country emission stats.
 
     Args:
-        inv_out: LegacyInversionOutput containing MCMC traces.
+        inv_out: Inversion output containing MCMC traces.
         country_file: Path to country definition file. If None, the default
-            country file location and the domain of the LegacyInversionOutput will be used
+            country file location and the domain of the inversion output will be used
             to try to find a suitable country file.
         country_regions: Dict mapping country region names (e.g. "BENELUX") to a
             list of (country codes) of the countries comprising that regions (e.g.
@@ -247,6 +253,7 @@ def make_country_outputs(
         xr.Dataset containing statistics for the specified countries and regions.
 
     """
+    inv_out = as_postprocessing_output(inv_out)
     drop_missing_regions = False
 
     if country_regions == "paris":
@@ -275,7 +282,7 @@ def make_country_outputs(
 
 
 def basic_output(
-    inv_out: LegacyInversionOutput,
+    inv_out: PostprocessingInput,
     country_file: str | Path | None = None,
     country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
@@ -287,7 +294,7 @@ def basic_output(
     to create the model, like "H matrices" and the flux used.
 
     Args:
-        inv_out: LegacyInversionOutput to process
+        inv_out: inversion output to process
         country_file: path to country file
         country_regions: optional country regions to use. If "paris" is passed,
         then the PARIS regions will be used.
@@ -300,23 +307,31 @@ def basic_output(
         totals.
 
     """
-    obs_and_errs = inv_out.get_obs_and_errors()
-    conc_outs = make_concentration_outputs(inv_out, stats=stats, stats_args=stats_args)
-    flux_outs = make_flux_outputs(inv_out, stats=stats, stats_args=stats_args)
+    postprocessing_inv_out = as_postprocessing_output(inv_out)
+    obs_and_errs = postprocessing_inv_out.get_obs_and_errors()
+    conc_outs = make_concentration_outputs(postprocessing_inv_out, stats=stats, stats_args=stats_args)
+    flux_outs = make_flux_outputs(postprocessing_inv_out, stats=stats, stats_args=stats_args)
     country_outs = make_country_outputs(
-        inv_out,
+        postprocessing_inv_out,
         country_file=country_file,
         country_regions=country_regions,
         stats=stats,
         stats_args=stats_args,
     )
 
-    model_data = inv_out.get_model_data(var_names=["hx", "hbc", "min_error"]).rename(
+    model_data = postprocessing_inv_out.get_model_data(var_names=["hx", "hbc", "min_error"]).rename(
         {"hx": "Hx", "hbc": "Hbc", "min_error": "min_model_error"}
     )
 
     result = xr.merge(
-        [obs_and_errs, conc_outs, flux_outs, country_outs, model_data, inv_out.get_flat_basis()]
+        [
+            obs_and_errs,
+            conc_outs,
+            flux_outs,
+            country_outs,
+            model_data,
+            postprocessing_inv_out.get_flat_basis(),
+        ]
     )
 
     for dv in result.data_vars:
