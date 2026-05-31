@@ -34,10 +34,17 @@ def _load_json_attr(attrs: dict[Any, Any], key: str) -> dict[str, Any]:
     if raw is None:
         return {}
     if isinstance(raw, bytes):
-        raw = raw.decode()
+        try:
+            raw = raw.decode()
+        except UnicodeDecodeError:
+            return {}
     if not isinstance(raw, str):
         return {}
-    return json.loads(raw)
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _save_datatree(dt: xr.DataTree, output_file: str | Path, output_format: Literal["netcdf", "zarr"] | None) -> None:
