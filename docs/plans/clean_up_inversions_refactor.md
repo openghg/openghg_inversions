@@ -45,8 +45,12 @@ contract.
 - 2026-05-31: #400 / PR #434 moved RHIME orchestration into
   `openghg_inversions.rhime.runner`, kept the package `__init__` as the public
   re-export surface, kept lightweight model specs with the RHIME builders in
-  `openghg_inversions.models.rhime`, and kept `RhimeRunSpec` as metadata while
-  carrying the executable `RhimeSampler` on runner setup/results.
+  `openghg_inversions.models.rhime`, kept `RhimeRunSpec` as run metadata, and
+  carried the executable `RhimeSampler` on runner setup/results.
+- 2026-05-31: #400 / PR #434 moved RHIME setup construction into
+  `openghg_inversions.rhime.params` and output adapters into
+  `openghg_inversions.rhime.outputs`, leaving `runner.py` focused on
+  preparation, model build, sampling, and output dispatch.
 
 ## Recorded decisions for PR #434 / Issue #400
 
@@ -91,6 +95,19 @@ MCMC path: `pm.sample`, post-sampling burn slicing, and optional prior/posterior
 predictive groups. Follow-up sampler variants can add quick MAP checks,
 prior-predictive-only validation runs, variational inference, and custom PyMC
 step methods without reintroducing runner-level sampling branches.
+
+## Deferred Issue #431 data-preparation spec
+
+PR #434 / Issue #400 should not introduce `RhimeDataSpec`. The current
+`prepare_rhime_inputs` signature still mixes data gathering, filtering, basis
+function construction, and `make_inv_inputs` concerns, so a one-piece data spec
+would mostly mirror the INI template rather than clarify the architecture.
+
+Track the future split under #431. That work should break preparation into
+smaller contracts for data gathering, filtering, basis functions, and inversion
+input construction. A future `RhimeDataSpec` or `RequiredDataPlan` can then be
+introduced at the right boundary, with `sigma_freq`, `bc_freq`, and related
+model-input concerns moving closer to the model components that consume them.
 
 ## Deferred SemanticModel plan
 

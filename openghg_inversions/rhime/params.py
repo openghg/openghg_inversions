@@ -10,11 +10,15 @@ before constructing RHIME specs.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 import warnings
 
 from openghg_inversions.config import config
+from openghg_inversions.models import DEFAULT_X_PRIOR, RhimeModelSpec, SectorSpec, safe_pymc_name
+from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.rhime.specs import RhimeRunSpec, make_output_spec
 
 _ALIASES = {
     "outputpath": "output_path",
@@ -24,21 +28,27 @@ _ALIASES = {
     "sigprior": "sigma_prior",
     "offsetprior": "offset_prior",
     "emissions_name": "flux_sources",
-    "nit": "draws",
-    "nchain": "chains",
-    "verbose": "progressbar",
-    "sampler_kwargs": "sample_kwargs",
 }
 
 _INT_OPTIONS = ("draws", "burn", "tune", "chains")
 _MAPPING_OPTIONS = (
     "sample_kwargs",
+    "posterior_predictive_kwargs",
     "paris_postprocessing_kwargs",
     "offset_args",
     "min_error_options",
     "sector_sources",
 )
 _PRIOR_OPTIONS = ("x_prior", "bc_prior", "sigma_prior", "offset_prior")
+
+
+@dataclass(frozen=True)
+class RhimeRunnerSetup:
+    """Normalized RHIME setup derived from config or direct API parameters."""
+
+    run_spec: RhimeRunSpec
+    sampler: RhimeSampler
+    data_args: dict[str, Any]
 
 
 def as_list(value: str | Sequence[str] | None) -> list[str] | None:
@@ -296,6 +306,7 @@ def validate_supported_params(params: Mapping[str, Any], *, data_params: set[str
         "nuts_sampler",
         "progressbar",
         "sample_kwargs",
+        "posterior_predictive_kwargs",
         "output_format",
         "output_path",
         "save_trace",
@@ -310,3 +321,204 @@ def validate_supported_params(params: Mapping[str, Any], *, data_params: set[str
     unsupported = sorted(set(params) - supported)
     if unsupported:
         raise ValueError(f"Unsupported RHIME parameter(s): {unsupported!r}")
+
+
+def _tuple_from_optional_sequence(value: Any) -> tuple[str | None, ...]:
+    """Convert optional scalar or sequence values into tuple metadata."""
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, Sequence) and not isinstance(value, bytes):
+        return tuple(cast(str | None, item) for item in value)
+    return (str(value),)
+
+
+def _make_model_spec(
+    *,
+    species: str,
+    domain: str,
+    flux_sources: list[str],
+    x_prior: dict[str, Any] | None,
+    sector_priors: Mapping[str, dict[str, Any]] | None,
+    sector_sources: Mapping[str, str] | None,
+    bc_prior: dict[str, Any] | None,
+    sigma_prior: dict[str, Any] | None,
+    offset_prior: dict[str, Any] | None,
+    use_bc: bool,
+    sigma_per_site: bool,
+    add_offset: bool,
+    pollution_events_from_obs: bool,
+    no_model_error: bool,
+    power: dict[str, Any] | float,
+    offset_args: dict[str, Any] | None,
+) -> RhimeModelSpec:
+    """Create a lightweight model spec from normalized run parameters."""
+    default_x_prior = DEFAULT_X_PRIOR.copy() if x_prior is None else x_prior.copy()
+    sectors = []
+    used_suffixes: set[str] = set()
+    if sector_sources is not None:
+        mapped_sources = list(dict.fromkeys(sector_sources.values()))
+        if set(mapped_sources) != set(flux_sources):
+            raise ValueError(
+                "`sector_sources` values must match `flux_sources` so RHIME can retrieve the "
+                "OpenGHG data used by each sector."
+            )
+        sector_items = list(sector_sources.items())
+    else:
+        sector_items = [(source, source) for source in flux_sources]
+
+    for name, source in sector_items:
+        suffix = safe_pymc_name(name)
+        if suffix in used_suffixes:
+            raise ValueError(
+                "Sector names must be unique after PyMC name sanitisation; "
+                f"duplicate sanitized name {suffix!r}."
+            )
+        used_suffixes.add(suffix)
+        prior = (
+            sector_priors[name] if sector_priors is not None and name in sector_priors else default_x_prior
+        )
+        sectors.append(
+            SectorSpec(
+                name=name,
+                flux_source=source,
+                x_prior=dict(prior),
+                variable_suffix=suffix,
+            )
+        )
+    return RhimeModelSpec(
+        species=species,
+        domain=domain,
+        sectors=tuple(sectors),
+        use_bc=use_bc,
+        sigma_per_site=sigma_per_site,
+        add_offset=add_offset,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+        power=power,
+        bc_prior=bc_prior,
+        sigma_prior=sigma_prior,
+        offset_prior=offset_prior,
+        offset_args=offset_args,
+    )
+
+
+def make_rhime_runner_setup(
+    *,
+    params: Mapping[str, Any],
+    multisector: bool,
+    data_param_names: set[str],
+) -> RhimeRunnerSetup:
+    """Normalize raw RHIME parameters into specs and preparation arguments."""
+    normalized = normalise_rhime_params(params)
+    validate_required_params(normalized)
+    validate_supported_params(normalized, data_params=data_param_names)
+
+    remaining = dict(normalized)
+    flux_sources = resolve_flux_sources(flux_sources=remaining.pop("flux_sources", None))
+    sector_sources = normalise_sector_sources(remaining.pop("sector_sources", None))
+    if not multisector and sector_sources is not None:
+        raise ValueError("`sector_sources` is only supported by `run_rhime_multisector`.")
+    data_flux_sources = (
+        list(dict.fromkeys(sector_sources.values())) if sector_sources is not None else flux_sources
+    )
+    if sector_sources is not None and set(data_flux_sources) != set(flux_sources):
+        raise ValueError(
+            "`sector_sources` values must match `flux_sources` so RHIME can retrieve the "
+            "OpenGHG data used by each sector."
+        )
+    if multisector and len(data_flux_sources) < 2:
+        raise ValueError("`run_rhime_multisector` requires at least two flux sources.")
+    if not multisector and len(flux_sources) != 1:
+        raise ValueError("`run_rhime` requires exactly one flux source.")
+
+    species = remaining.pop("species")
+    sites = as_list(remaining.pop("sites")) or []
+    domain = remaining.pop("domain")
+    averaging_period = remaining.pop("averaging_period")
+    start_date = remaining.pop("start_date")
+    end_date = remaining.pop("end_date")
+    output_path = remaining.pop("output_path", None)
+    output_name = remaining.pop("output_name")
+
+    x_prior = normalise_optional_mapping(remaining.pop("x_prior", None))
+    bc_prior = normalise_optional_mapping(remaining.pop("bc_prior", None))
+    sigma_prior = normalise_optional_mapping(remaining.pop("sigma_prior", None))
+    offset_prior = normalise_optional_mapping(remaining.pop("offset_prior", None))
+    sector_priors = normalise_sector_priors(remaining.pop("sector_priors", None))
+    offset_args = normalise_optional_mapping(remaining.get("offset_args"))
+
+    use_bc = remaining.get("use_bc", True)
+    sigma_per_site = remaining.get("sigma_per_site", True)
+    add_offset = remaining.get("add_offset", False)
+    pollution_events_from_obs = remaining.pop("pollution_events_from_obs", False)
+    no_model_error = remaining.pop("no_model_error", False)
+    power = remaining.pop("power", 1.99)
+
+    sampler = RhimeSampler(
+        draws=remaining.pop("draws", 1000),
+        burn=remaining.pop("burn", 0),
+        tune=remaining.pop("tune", 1000),
+        chains=remaining.pop("chains", 4),
+        nuts_sampler=remaining.pop("nuts_sampler", "pymc"),
+        progressbar=remaining.pop("progressbar", False),
+        sample_kwargs=normalise_optional_mapping(remaining.pop("sample_kwargs", None)),
+        posterior_predictive_kwargs=normalise_optional_mapping(
+            remaining.pop("posterior_predictive_kwargs", None)
+        ),
+    )
+    output_spec = make_output_spec(
+        output_format=remaining.pop("output_format", "inv_out"),
+        output_path=output_path,
+        output_name=output_name,
+        save_trace=remaining.pop("save_trace", False),
+        save_inversion_output=remaining.pop("save_inversion_output", True),
+        country_file=remaining.get("country_file"),
+        paris_postprocessing_kwargs=normalise_optional_mapping(
+            remaining.pop("paris_postprocessing_kwargs", None)
+        ),
+        multisector=multisector,
+    )
+    model_spec = _make_model_spec(
+        species=species,
+        domain=domain,
+        flux_sources=flux_sources,
+        x_prior=x_prior,
+        sector_priors=sector_priors,
+        sector_sources=sector_sources,
+        bc_prior=bc_prior,
+        sigma_prior=sigma_prior,
+        offset_prior=offset_prior,
+        use_bc=use_bc,
+        sigma_per_site=sigma_per_site,
+        add_offset=add_offset,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+        power=power,
+        offset_args=offset_args,
+    )
+    run_spec = RhimeRunSpec(
+        start_date=start_date,
+        end_date=end_date,
+        sites=tuple(sites),
+        averaging_period=_tuple_from_optional_sequence(averaging_period),
+        model=model_spec,
+        output=output_spec,
+        split_by_sectors=multisector,
+    )
+
+    data_candidate_args = {
+        **remaining,
+        "species": species,
+        "sites": sites,
+        "domain": domain,
+        "averaging_period": averaging_period,
+        "start_date": start_date,
+        "end_date": end_date,
+        "output_name": output_name,
+        "flux_sources": data_flux_sources,
+        "split_by_sectors": multisector,
+    }
+    data_args = {name: value for name, value in data_candidate_args.items() if name in data_param_names}
+    return RhimeRunnerSetup(run_spec=run_spec, sampler=sampler, data_args=data_args)

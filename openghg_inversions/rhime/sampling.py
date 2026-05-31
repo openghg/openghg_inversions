@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any, Literal, cast
-import warnings
 
 import arviz as az
 import pymc as pm
@@ -67,40 +66,7 @@ class RhimeSampler:
         sample_prior_predictive: bool | int = True,
         sample_posterior_predictive: bool | Sequence[str] = ("y",),
         posterior_predictive_kwargs: dict[str, Any] | None = None,
-        nit: int | None = None,
-        nchain: int | None = None,
-        verbose: bool | None = None,
-        sampler_kwargs: dict[str, Any] | None = None,
     ) -> None:
-        if nit is not None:
-            warnings.warn(
-                "`RhimeSamplingSpec(nit=...)` is deprecated; use `RhimeSampler(draws=...)`.",
-                UserWarning,
-                stacklevel=2,
-            )
-            draws = nit
-        if nchain is not None:
-            warnings.warn(
-                "`RhimeSamplingSpec(nchain=...)` is deprecated; use `RhimeSampler(chains=...)`.",
-                UserWarning,
-                stacklevel=2,
-            )
-            chains = nchain
-        if verbose is not None:
-            warnings.warn(
-                "`RhimeSamplingSpec(verbose=...)` is deprecated; use `RhimeSampler(progressbar=...)`.",
-                UserWarning,
-                stacklevel=2,
-            )
-            progressbar = verbose
-        if sampler_kwargs is not None:
-            warnings.warn(
-                "`RhimeSamplingSpec(sampler_kwargs=...)` is deprecated; "
-                "use `RhimeSampler(sample_kwargs=...)`.",
-                UserWarning,
-                stacklevel=2,
-            )
-            sample_kwargs = sampler_kwargs
         self.draws = int(draws)
         self.burn = int(burn)
         self.tune = int(tune)
@@ -142,46 +108,6 @@ class RhimeSampler:
         """Return a concise representation for tests and debugging."""
         args = ", ".join(f"{name}={getattr(self, name)!r}" for name in self.__slots__)
         return f"{type(self).__name__}({args})"
-
-    @property
-    def nit(self) -> int:
-        """Deprecated compatibility alias for ``draws``."""
-        warnings.warn(
-            "`RhimeSamplingSpec.nit` is deprecated; use `RhimeSampler.draws`.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return self.draws
-
-    @property
-    def nchain(self) -> int:
-        """Deprecated compatibility alias for ``chains``."""
-        warnings.warn(
-            "`RhimeSamplingSpec.nchain` is deprecated; use `RhimeSampler.chains`.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return self.chains
-
-    @property
-    def verbose(self) -> bool:
-        """Deprecated compatibility alias for ``progressbar``."""
-        warnings.warn(
-            "`RhimeSamplingSpec.verbose` is deprecated; use `RhimeSampler.progressbar`.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return self.progressbar
-
-    @property
-    def sampler_kwargs(self) -> dict[str, Any] | None:
-        """Deprecated compatibility alias for ``sample_kwargs``."""
-        warnings.warn(
-            "`RhimeSamplingSpec.sampler_kwargs` is deprecated; use `RhimeSampler.sample_kwargs`.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return None if self.sample_kwargs is None else dict(self.sample_kwargs)
 
     def sample(self, model: pm.Model) -> az.InferenceData:
         """Sample a built RHIME model and append requested predictive groups."""
@@ -232,6 +158,3 @@ class RhimeSampler:
                 trace.extend(pm.sample_posterior_predictive(trace, **posterior_predictive_kwargs))
 
         return trace
-
-
-RhimeSamplingSpec = RhimeSampler

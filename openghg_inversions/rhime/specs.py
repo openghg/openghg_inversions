@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from openghg_inversions.models.rhime import RhimeModelSpec
 
@@ -59,9 +59,6 @@ class RhimeRunSpec:
         split_by_sectors: Whether flux data were prepared in sector-resolved
             mode. Single-sector and multi-sector RHIME are runner/model modes;
             this flag records the prepared data layout.
-        sampling: Deprecated compatibility field for old same-branch
-            ``RhimeSamplingSpec`` access. Modern runner code carries the
-            executable sampler separately.
     """
 
     start_date: str
@@ -71,4 +68,62 @@ class RhimeRunSpec:
     model: RhimeModelSpec
     output: RhimeOutputSpec
     split_by_sectors: bool = False
-    sampling: Any | None = None
+
+
+def validate_output_format(output_format: str) -> None:
+    """Raise if a RHIME output format is not supported by the modern runners."""
+    valid_formats = {"none", "inv_out", "basic", "paris"}
+    if output_format not in valid_formats:
+        raise ValueError(
+            f"Unsupported RHIME output_format {output_format!r}; expected one of {sorted(valid_formats)!r}."
+        )
+
+
+def validate_output_path_settings(
+    *,
+    output_format: str,
+    output_path: str | None,
+    save_trace: str | Path | bool,
+    save_inversion_output: str | Path | bool,
+    multisector: bool,
+) -> None:
+    """Raise if output settings imply a default save path but none is supplied."""
+    if output_format == "none":
+        return
+    if output_path is not None:
+        return
+    if save_trace is True:
+        raise ValueError("`output_path` is required when `save_trace=True`.")
+    if not multisector and save_inversion_output is True:
+        raise ValueError("`output_path` is required when saving the standard RHIME InversionOutput.")
+
+
+def make_output_spec(
+    *,
+    output_format: str,
+    output_path: str | None,
+    output_name: str,
+    save_trace: str | Path | bool,
+    save_inversion_output: str | Path | bool,
+    country_file: str | None,
+    paris_postprocessing_kwargs: dict[str, Any] | None,
+    multisector: bool,
+) -> RhimeOutputSpec:
+    """Create validated output settings from normalized RHIME parameters."""
+    validate_output_format(output_format)
+    validate_output_path_settings(
+        output_format=output_format,
+        output_path=output_path,
+        save_trace=save_trace,
+        save_inversion_output=save_inversion_output,
+        multisector=multisector,
+    )
+    return RhimeOutputSpec(
+        output_format=cast(OutputFormat, output_format),
+        output_path=output_path,
+        output_name=output_name,
+        save_trace=save_trace,
+        save_inversion_output=save_inversion_output,
+        country_file=country_file,
+        paris_postprocessing_kwargs=paris_postprocessing_kwargs,
+    )

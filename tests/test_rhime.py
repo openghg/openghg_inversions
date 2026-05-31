@@ -1,18 +1,22 @@
 from __future__ import annotations
 
-from dataclasses import fields
 import inspect
 from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
+import arviz as az
 import pymc as pm
 import pytest
 import xarray as xr
 
 import openghg_inversions.models as models
 import openghg_inversions.models.rhime as rhime_models_module
+import openghg_inversions.rhime as rhime_public
 import openghg_inversions.rhime.params as rhime_params
+import openghg_inversions.rhime.outputs as rhime_outputs
+import openghg_inversions.rhime.sampling as rhime_sampling
+import openghg_inversions.rhime.specs as rhime_specs
 import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.rhime.runner as rhime_module
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
@@ -32,7 +36,6 @@ from openghg_inversions.rhime import (
     RhimeOutputSpec,
     RhimeResult,
     RhimeRunSpec,
-    RhimeSamplingSpec,
     RhimeSampler,
     SectorSpec,
     params_from_config,
@@ -131,6 +134,24 @@ def _minimal_inv_inputs() -> xr.Dataset:
         {"H": (("region", "nmeasure"), [[1.0]])},
         coords={"region": [0], "nmeasure": [0]},
     )
+
+
+def _minimal_output_inv_inputs() -> xr.Dataset:
+    """Build minimal inversion inputs for output adapter tests."""
+    inv_inputs = xr.Dataset(
+        {
+            "H": (("region", "nmeasure"), [[1.0]]),
+            "mf": ("nmeasure", [10.0]),
+            "mf_error": ("nmeasure", [1.0]),
+            "mf_repeatability": ("nmeasure", [0.5]),
+            "mf_variability": ("nmeasure", [0.25]),
+            "site_indicator": ("nmeasure", [0]),
+            "time": ("nmeasure", np.array(["2019-01-01T00:00:00"], dtype="datetime64[ns]")),
+        },
+        coords={"region": [0], "nmeasure": [0]},
+    )
+    inv_inputs["mf"].attrs["units"] = "ppm"
+    return inv_inputs
 
 
 class _SpyBasisFunctions:
@@ -312,43 +333,14 @@ def test_public_rhime_dataclasses_keep_existing_positional_order() -> None:
     )
 
     assert run_spec.split_by_sectors is True
-    assert all(field.name != "sampler" for field in fields(run_spec))
-    assert run_spec.sampling is None
+    assert not hasattr(run_spec, "sampler")
+    assert not hasattr(run_spec, "sampling")
     assert result.output_metadata == output_metadata
     assert result.sampler == RhimeSampler()
-    with pytest.warns(UserWarning, match="sampling_spec"):
-        assert result.sampling_spec == RhimeSampler()
 
 
-def test_rhime_sampling_spec_import_alias_remains_compatible() -> None:
-    """The old same-branch sampler name remains as a compatibility alias."""
-    assert RhimeSamplingSpec is RhimeSampler
-    with pytest.warns(UserWarning):
-        sampler = RhimeSamplingSpec(
-            nit=7,
-            nchain=3,
-            verbose=True,
-            sampler_kwargs={"random_seed": 42},
-        )
-
-    assert sampler == RhimeSampler(
-        draws=7,
-        chains=3,
-        progressbar=True,
-        sample_kwargs={"random_seed": 42},
-    )
-    with pytest.warns(UserWarning, match="nit"):
-        assert sampler.nit == 7
-    with pytest.warns(UserWarning, match="nchain"):
-        assert sampler.nchain == 3
-    with pytest.warns(UserWarning, match="verbose"):
-        assert sampler.verbose is True
-    with pytest.warns(UserWarning, match="sampler_kwargs"):
-        assert sampler.sampler_kwargs == {"random_seed": 42}
-
-
-def test_rhime_result_accepts_deprecated_sampling_spec_keyword() -> None:
-    """RhimeResult accepts the old sampling_spec keyword as a sampler alias."""
+def test_unreleased_sampling_compatibility_shims_are_absent() -> None:
+    """Unreleased same-branch sampling compatibility names are not public API."""
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
@@ -370,19 +362,21 @@ def test_rhime_result_accepts_deprecated_sampling_spec_keyword() -> None:
         model_spec,
         output_spec,
     )
-    sampler = RhimeSampler(draws=7, chains=1)
 
-    with pytest.warns(UserWarning, match="sampling_spec"):
-        result = RhimeResult(
+    assert not hasattr(rhime_public, "RhimeSamplingSpec")
+    assert not hasattr(rhime_sampling, "RhimeSamplingSpec")
+    assert not hasattr(RhimeResult, "sampling_spec")
+    with pytest.raises(TypeError, match="nit"):
+        RhimeSampler(nit=7)  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="sampling_spec"):
+        RhimeResult(
             run_spec,
             model_spec,
             output_spec,
             _minimal_inv_inputs(),
             cast(Any, object()),
-            sampling_spec=sampler,
+            sampling_spec=RhimeSampler(),  # type: ignore[call-arg]
         )
-
-    assert result.sampler is sampler
 
 
 def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> None:
@@ -414,12 +408,18 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         "tune": "2",
         "chains": "3",
         "sample_kwargs": {"random_seed": 42},
+        "posterior_predictive_kwargs": {"random_seed": 43},
     }
 
-    setup = rhime_module._make_rhime_runner_setup(params=params, multisector=True)
+    setup = rhime_params.make_rhime_runner_setup(
+        params=params,
+        multisector=True,
+        data_param_names=set(inspect.signature(prepare_rhime_inputs).parameters),
+    )
 
     assert setup.data_args["flux_sources"] == ["ff-source", "gpp-source", "ter-source", "ocean-source"]
     assert setup.data_args["split_by_sectors"] is True
+    assert "sector_sources" not in setup.data_args
     assert setup.run_spec.sites == ("TAC",)
     assert setup.run_spec.averaging_period == ("1h",)
     assert setup.run_spec.output.output_format == "none"
@@ -431,8 +431,8 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
         nuts_sampler="pymc",
         progressbar=False,
         sample_kwargs={"random_seed": 42},
+        posterior_predictive_kwargs={"random_seed": 43},
     )
-    assert setup.run_spec.sampling == setup.sampler
     assert [sector.name for sector in setup.run_spec.model.sectors] == ["FF", "GPP", "TER", "ocean"]
     assert [sector.flux_source for sector in setup.run_spec.model.sectors] == [
         "ff-source",
@@ -444,24 +444,22 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
     assert setup.run_spec.model.sectors[1].x_prior == {"pdf": "normal", "mu": 0.7, "sigma": 0.2}
 
 
-def test_legacy_sampling_aliases_normalise_to_rhime_sampler_names() -> None:
-    """Legacy sampling names remain accepted only as compatibility aliases."""
-    with pytest.warns(UserWarning):
-        params = rhime_params.normalise_rhime_params(
-            {
-                "nit": "7",
-                "nchain": "3",
-                "verbose": True,
-                "sampler_kwargs": {"random_seed": 42},
-            }
-        )
+def test_legacy_sampling_names_are_not_rhime_config_aliases() -> None:
+    """RHIME accepts modern sampler names only; legacy HBMCMC names are unsupported."""
+    params = rhime_params.normalise_rhime_params(
+        {
+            "nit": "7",
+            "nchain": "3",
+            "verbose": True,
+            "sampler_kwargs": {"random_seed": 42},
+        }
+    )
 
-    assert params == {
-        "draws": 7,
-        "chains": 3,
-        "progressbar": True,
-        "sample_kwargs": {"random_seed": 42},
-    }
+    with pytest.raises(ValueError, match="nit"):
+        rhime_params.validate_supported_params(
+            params,
+            data_params=set(inspect.signature(prepare_rhime_inputs).parameters),
+        )
 
 
 def test_build_rhime_model_from_spec_forwards_single_sector_prior(
@@ -887,6 +885,8 @@ def test_cleanup_plan_records_issue_400_decisions() -> None:
     assert "openghg_inversions.rhime.model_specs" not in plan_doc
     assert "openghg_inversions.models.rhime" in plan_doc
     assert "prior-predictive-only" in plan_doc
+    assert "Deferred Issue #431 data-preparation spec" in plan_doc
+    assert "should not introduce `RhimeDataSpec`" in plan_doc
     assert "Deferred Issue #383 / Issue #429 output boundary" in plan_doc
 
 
@@ -1570,7 +1570,7 @@ def test_required_parameter_validation_rejects_empty_values(name: str, value) ->
 
 
 def test_output_path_validation_allows_output_none_without_path() -> None:
-    rhime_module._validate_output_path_settings(
+    rhime_specs.validate_output_path_settings(
         output_format="none",
         output_path=None,
         save_trace=False,
@@ -1581,13 +1581,75 @@ def test_output_path_validation_allows_output_none_without_path() -> None:
 
 def test_output_path_validation_rejects_default_standard_save_without_path() -> None:
     with pytest.raises(ValueError, match="output_path"):
-        rhime_module._validate_output_path_settings(
+        rhime_specs.validate_output_path_settings(
             output_format="inv_out",
             output_path=None,
             save_trace=False,
             save_inversion_output=True,
             multisector=False,
         )
+
+
+def test_make_output_spec_validates_trace_save_path() -> None:
+    with pytest.raises(ValueError, match="save_trace"):
+        rhime_specs.make_output_spec(
+            output_format="inv_out",
+            output_path=None,
+            output_name="test",
+            save_trace=True,
+            save_inversion_output=False,
+            country_file=None,
+            paris_postprocessing_kwargs=None,
+            multisector=False,
+        )
+
+
+def test_make_standard_output_bundle_returns_outputs_without_mutating_result() -> None:
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=(
+            SectorSpec(
+                name="FF",
+                flux_source="ff-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ff",
+            ),
+        ),
+    )
+    output_spec = RhimeOutputSpec(
+        output_format="inv_out",
+        output_name="test",
+        save_inversion_output=False,
+    )
+    run_spec = RhimeRunSpec(
+        "2019-01-01",
+        "2019-01-02",
+        ("TAC",),
+        ("1h",),
+        model_spec,
+        output_spec,
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+
+    bundle = rhime_outputs.make_standard_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=az.from_dict(posterior={"x": np.ones((1, 1))}),
+        prepared=prepared,
+        country_file=None,
+    )
+
+    assert isinstance(bundle.inv_out, InversionOutput)
+    assert bundle.outputs == {"inversion_output": bundle.inv_out}
+    assert bundle.output_metadata == {}
 
 
 def test_save_inferencedata_prefers_h5netcdf(tmp_path: Path) -> None:
@@ -1601,7 +1663,7 @@ def test_save_inferencedata_prefers_h5netcdf(tmp_path: Path) -> None:
     idata = FakeInferenceData()
     path = tmp_path / "trace.nc"
 
-    rhime_module._save_inferencedata(idata, path)  # type: ignore[reportArgumentType]
+    rhime_outputs._save_inferencedata(idata, path)  # type: ignore[reportArgumentType]
 
     assert idata.calls == [(str(path), {"engine": "h5netcdf", "compress": True})]
 
@@ -1619,7 +1681,7 @@ def test_save_inferencedata_falls_back_after_h5netcdf_failure(tmp_path: Path) ->
     idata = FakeInferenceData()
     path = tmp_path / "trace.nc"
 
-    rhime_module._save_inferencedata(idata, path)  # type: ignore[reportArgumentType]
+    rhime_outputs._save_inferencedata(idata, path)  # type: ignore[reportArgumentType]
 
     assert idata.calls == [
         (str(path), {"engine": "h5netcdf", "compress": True}),

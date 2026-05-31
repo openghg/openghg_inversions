@@ -26,45 +26,37 @@ Terminology used by the RHIME API:
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 import inspect
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 import time
-import warnings
 
 import arviz as az
-import numpy as np
 import pymc as pm
 import xarray as xr
 
-from openghg.util import split_function_inputs  # pyright: ignore[reportPrivateImportUsage]
-
-from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.rhime.outputs import (
+    RhimeOutputBundle,
+    make_multisector_output_bundle,
+    make_standard_output_bundle,
+)
 from . import params as rhime_params
 from .params import params_from_config, resolve_flux_sources
 from .sampling import RhimeSampler
-from .specs import (
-    OutputFormat,
-    RhimeOutputSpec,
-    RhimeRunSpec,
-)
+from .specs import RhimeOutputSpec, RhimeRunSpec
 from openghg_inversions.inversion_data import (
     RhimePreparedInputs,
     prepare_rhime_inputs,
 )
 from openghg_inversions.models import (
-    DEFAULT_X_PRIOR,
     RhimeModelSpec,
     SectorSpec,
     build_rhime_model_from_spec,
     build_rhime_multisector_model_from_spec,
-    safe_pymc_name,
 )
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
-from openghg_inversions.utils import ncdf_encoding
 
 __all__ = [
     "SectorSpec",
@@ -80,16 +72,7 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True)
-class _RhimeRunnerSetup:
-    """Normalized RHIME setup derived from config or direct API parameters."""
-
-    run_spec: RhimeRunSpec
-    sampler: RhimeSampler
-    data_args: dict[str, Any]
-
-
-@dataclass(init=False)
+@dataclass
 class RhimeResult:
     """Modern RHIME run result.
 
@@ -119,600 +102,26 @@ class RhimeResult:
     inv_out: InversionOutput | None = None
     sampler: RhimeSampler = field(default_factory=RhimeSampler)
 
-    def __init__(
-        self,
-        run_spec: RhimeRunSpec,
-        model_spec: RhimeModelSpec,
-        output_spec: RhimeOutputSpec,
-        inv_inputs: xr.Dataset,
-        idata: az.InferenceData,
-        output_metadata: dict[str, Any] | None = None,
-        outputs: dict[str, Any] | None = None,
-        basis_functions: BasisFunctions | None = None,
-        model: pm.Model | None = None,
-        inv_out: InversionOutput | None = None,
-        sampler: RhimeSampler | None = None,
-        sampling_spec: RhimeSampler | None = None,
-    ) -> None:
-        if sampling_spec is not None:
-            warnings.warn(
-                "`RhimeResult(..., sampling_spec=...)` is deprecated; use `sampler=...`.",
-                UserWarning,
-                stacklevel=2,
-            )
-            sampler = sampling_spec
 
-        self.run_spec = run_spec
-        self.model_spec = model_spec
-        self.output_spec = output_spec
-        self.inv_inputs = inv_inputs
-        self.idata = idata
-        self.output_metadata = output_metadata if output_metadata is not None else {}
-        self.outputs = outputs if outputs is not None else {}
-        self.basis_functions = basis_functions
-        self.model = model
-        self.inv_out = inv_out
-        self.sampler = sampler if sampler is not None else RhimeSampler()
-
-    @property
-    def sampling_spec(self) -> RhimeSampler:
-        """Deprecated compatibility alias for ``sampler``."""
-        warnings.warn(
-            "`RhimeResult.sampling_spec` is deprecated; use `RhimeResult.sampler`.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return self.sampler
-
-
-def _validate_output_format(output_format: str) -> None:
-    """Raise if a RHIME output format is not supported by the modern runners."""
-    valid_formats = {"none", "inv_out", "basic", "paris"}
-    if output_format not in valid_formats:
-        raise ValueError(
-            f"Unsupported RHIME output_format {output_format!r}; expected one of {sorted(valid_formats)!r}."
-        )
-
-
-def _validate_output_path_settings(
-    *,
-    output_format: str,
-    output_path: str | None,
-    save_trace: str | Path | bool,
-    save_inversion_output: str | Path | bool,
-    multisector: bool,
-) -> None:
-    """Raise if output settings imply a default save path but none is supplied."""
-    if output_format == "none":
-        return
-    if output_path is not None:
-        return
-    if save_trace is True:
-        raise ValueError("`output_path` is required when `save_trace=True`.")
-    if not multisector and save_inversion_output is True:
-        raise ValueError("`output_path` is required when saving the standard RHIME InversionOutput.")
-
-
-def _resolve_output_path(
-    save_setting: str | Path | bool, output_path: str | None, filename: str
-) -> Path | None:
-    """Resolve an optional output path from a bool/path save setting."""
-    if not save_setting:
-        return None
-    if isinstance(save_setting, str | Path):
-        return Path(save_setting)
-    if output_path is None:
-        raise ValueError("An output path is required when saving RHIME artifacts.")
-    return Path(output_path) / filename
-
-
-def _define_output_filename(
-    output_path: str | Path,
-    species: str,
-    domain: str,
-    output_name: str,
-    start_date: str,
-    *,
-    ext: str = ".nc",
-) -> Path:
-    """Create the RHIME output filename used for derived NetCDF products."""
-    return Path(output_path) / f"{output_name}_{species}_{domain}_{start_date}{ext}"
-
-
-def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
-    """Save InferenceData, preferring the h5netcdf backend with fallbacks."""
-    failures = []
-    for engine in ("h5netcdf", None, "netcdf4"):
-        try:
-            if engine is None:
-                idata.to_netcdf(str(path), compress=True)
-            else:
-                idata.to_netcdf(str(path), engine=engine, compress=True)
-        except Exception as exc:
-            engine_name = "arviz-default" if engine is None else engine
-            failures.append(f"{engine_name}: {exc}")
-        else:
-            return
-
-    joined_failures = "\n".join(failures)
-    raise RuntimeError(
-        f"Could not save RHIME trace to {path}. Tried h5netcdf, ArviZ default, and netcdf4:\n{joined_failures}"
-    )
-
-
-def _make_model_spec(
-    *,
-    species: str,
-    domain: str,
-    flux_sources: list[str],
-    x_prior: dict[str, Any] | None,
-    sector_priors: Mapping[str, dict[str, Any]] | None,
-    sector_sources: Mapping[str, str] | None,
-    bc_prior: dict[str, Any] | None,
-    sigma_prior: dict[str, Any] | None,
-    offset_prior: dict[str, Any] | None,
-    use_bc: bool,
-    sigma_per_site: bool,
-    add_offset: bool,
-    pollution_events_from_obs: bool,
-    no_model_error: bool,
-    power: dict[str, Any] | float,
-    offset_args: dict[str, Any] | None,
-) -> RhimeModelSpec:
-    """Create a lightweight model spec from normalized run parameters."""
-    default_x_prior = DEFAULT_X_PRIOR.copy() if x_prior is None else x_prior.copy()
-    sectors = []
-    used_suffixes: set[str] = set()
-    if sector_sources is not None:
-        mapped_sources = list(dict.fromkeys(sector_sources.values()))
-        if set(mapped_sources) != set(flux_sources):
-            raise ValueError(
-                "`sector_sources` values must match `flux_sources` so RHIME can retrieve the "
-                "OpenGHG data used by each sector."
-            )
-        sector_items = list(sector_sources.items())
-    else:
-        sector_items = [(source, source) for source in flux_sources]
-
-    for name, source in sector_items:
-        suffix = safe_pymc_name(name)
-        if suffix in used_suffixes:
-            raise ValueError(
-                "Sector names must be unique after PyMC name sanitisation; "
-                f"duplicate sanitized name {suffix!r}."
-            )
-        used_suffixes.add(suffix)
-        prior = (
-            sector_priors[name] if sector_priors is not None and name in sector_priors else default_x_prior
-        )
-        sectors.append(
-            SectorSpec(
-                name=name,
-                flux_source=source,
-                x_prior=dict(prior),
-                variable_suffix=suffix,
-            )
-        )
-    return RhimeModelSpec(
-        species=species,
-        domain=domain,
-        sectors=tuple(sectors),
-        use_bc=use_bc,
-        sigma_per_site=sigma_per_site,
-        add_offset=add_offset,
-        pollution_events_from_obs=pollution_events_from_obs,
-        no_model_error=no_model_error,
-        power=power,
-        bc_prior=bc_prior,
-        sigma_prior=sigma_prior,
-        offset_prior=offset_prior,
-        offset_args=offset_args,
-    )
-
-
-def _materialise_basis_and_flux_for_output(
-    prepared: RhimePreparedInputs,
-) -> tuple[xr.DataArray, xr.DataArray]:
-    """Return materialised arrays for transitional output adapters.
-
-    TODO(#383/#429): postprocessing should consume ``BasisFunctions`` directly
-    rather than requiring the runner to materialise a flat basis and flux.
-    """
-    basis = prepared.basis_functions.operator.basis_matrix
-    current_state_dim = prepared.basis_functions.operator.meta.state_dim
-    if current_state_dim != "region":
-        basis = basis.rename({current_state_dim: "region"})
-    region_coord = prepared.inv_inputs.region
-    if region_coord.name is None:
-        raise ValueError("prepared.inv_inputs.region must be named so it can be used for reindexing.")
-    basis = basis.reindex({region_coord.name: region_coord})
-    return basis, prepared.basis_functions.flux
-
-
-def _make_inversion_output(
-    *,
-    prepared: RhimePreparedInputs,
-    idata: az.InferenceData,
-    start_date: str,
-    end_date: str,
-    species: str,
-    domain: str,
-) -> InversionOutput:
-    """Create an InversionOutput directly from RHIME inputs and InferenceData.
-
-    This is a transitional direct constructor for the modern RHIME path. It is
-    deliberately not routed through the fixed-basis/inferpymc legacy adapter.
-    This should be refactored when issue #401 defines the modern
-    ``InversionOutput`` contract.
-    """
-    inv_inputs = prepared.inv_inputs
-    basis, flux = _materialise_basis_and_flux_for_output(prepared)
-    nmeasure = np.arange(inv_inputs.sizes["nmeasure"])
-    site_names = (
-        inv_inputs["site_names"] if "site_names" in inv_inputs else xr.DataArray(prepared.sites, dims="nsite")
-    )
-
-    obs_prior_factor = inv_inputs["mf_prior_factor"] if "mf_prior_factor" in inv_inputs else None
-    obs_prior_upper_level_factor = (
-        inv_inputs["mf_prior_upper_level_factor"] if "mf_prior_upper_level_factor" in inv_inputs else None
-    )
-
-    def nmeasure_array(name: str, source: xr.DataArray) -> xr.DataArray:
-        """Create a clean nmeasure DataArray without inherited MultiIndex coords."""
-        result = xr.DataArray(
-            source.values,
-            dims=["nmeasure"],
-            coords={"nmeasure": nmeasure},
-            name=name,
-        )
-        result.attrs = source.attrs
-        return result
-
-    return InversionOutput(
-        obs=nmeasure_array("Yobs", inv_inputs["mf"]),
-        obs_err=nmeasure_array("Yerror", inv_inputs["mf_error"]),
-        obs_repeatability=nmeasure_array("Yerror_repeatability", inv_inputs["mf_repeatability"]),
-        obs_variability=nmeasure_array("Yerror_variability", inv_inputs["mf_variability"]),
-        obs_prior_factor=(
-            nmeasure_array("Yobs_prior_factor", obs_prior_factor) if obs_prior_factor is not None else None
-        ),
-        obs_prior_upper_level_factor=(
-            nmeasure_array("Yobs_prior_upper_level_factor", obs_prior_upper_level_factor)
-            if obs_prior_upper_level_factor is not None
-            else None
-        ),
-        site_indicators=nmeasure_array("site_indicator", inv_inputs["site_indicator"]),
-        flux=flux,
-        basis=basis,
-        trace=idata,
-        site_names=site_names,
-        times=nmeasure_array("times", inv_inputs["time"]),
-        start_date=start_date,
-        end_date=end_date,
-        species=species,
-        domain=domain,
-    )
-
-
-def _write_standard_outputs(
-    *,
-    result: RhimeResult,
-    prepared: RhimePreparedInputs,
-    country_file: str | None,
-) -> None:
-    """Create and optionally save standard RHIME outputs."""
-    output_spec = result.output_spec
-    if output_spec.output_format == "none":
-        return
-
-    inv_out = _make_inversion_output(
-        prepared=prepared,
-        idata=result.idata,
-        start_date=result.run_spec.start_date,
-        end_date=result.run_spec.end_date,
-        species=result.model_spec.species,
-        domain=result.model_spec.domain,
-    )
-    result.inv_out = inv_out
-    result.outputs["inversion_output"] = inv_out
-
-    trace_path = _resolve_output_path(
-        output_spec.save_trace,
-        output_spec.output_path,
-        f"{output_spec.output_name}{result.run_spec.start_date}_trace.nc",
-    )
-    if trace_path is not None:
-        trace_path.parent.mkdir(parents=True, exist_ok=True)
-        _save_inferencedata(result.idata, trace_path)
-        result.output_metadata["trace_path"] = str(trace_path)
-
-    inv_out_path = _resolve_output_path(
-        output_spec.save_inversion_output,
-        output_spec.output_path,
-        f"{output_spec.output_name}{result.run_spec.start_date}_inversion_output.nc",
-    )
-    if inv_out_path is not None:
-        inv_out_path.parent.mkdir(parents=True, exist_ok=True)
-        inv_out.save(inv_out_path)
-        result.output_metadata["inversion_output_path"] = str(inv_out_path)
-
-    if output_spec.output_format == "basic":
-        from openghg_inversions.postprocessing.make_outputs import basic_output
-
-        result.outputs["basic"] = basic_output(inv_out, country_file=country_file)
-    elif output_spec.output_format == "paris":
-        from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
-
-        obs_avg_period = prepared.averaging_period[0] or "0h"
-        kwargs = output_spec.paris_postprocessing_kwargs or {}
-        flux_outs, conc_outs = make_paris_outputs(
-            inv_out,
-            country_file=country_file,
-            domain=result.model_spec.domain,
-            obs_avg_period=obs_avg_period,
-            **kwargs,
-        )
-        result.outputs["paris_flux"] = flux_outs
-        result.outputs["paris_concentration"] = conc_outs
-
-        if output_spec.output_path is not None:
-            Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
-            conc_file = _define_output_filename(
-                output_spec.output_path,
-                result.model_spec.species,
-                result.model_spec.domain,
-                output_spec.output_name + "_conc",
-                result.run_spec.start_date,
-                ext=".nc",
-            )
-            flux_file = _define_output_filename(
-                output_spec.output_path,
-                result.model_spec.species,
-                result.model_spec.domain,
-                output_spec.output_name + "_flux",
-                result.run_spec.start_date,
-                ext=".nc",
-            )
-            conc_outs.to_netcdf(
-                conc_file, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(conc_outs)
-            )
-            flux_outs.to_netcdf(
-                flux_file, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(flux_outs)
-            )
-            result.output_metadata["paris_concentration_path"] = str(conc_file)
-            result.output_metadata["paris_flux_path"] = str(flux_file)
-
-
-def _make_multisector_flux_diagnostics(
-    *,
-    idata: az.InferenceData,
-    prepared: RhimePreparedInputs,
-    model_spec: RhimeModelSpec,
-) -> xr.Dataset:
-    """Create provisional sector-aware posterior flux diagnostics.
-
-    TODO(#398/#429): replace this runner-local special case with
-    sector-aware postprocessing once the modern output layer supports multiple
-    sectors and ``BasisFunctions`` reconstruction directly.
-
-    Args:
-        idata: InferenceData returned by RHIME sampling.
-        prepared: Prepared RHIME input object containing retained basis functions.
-        model_spec: Model spec containing sector names and variable suffixes.
-
-    Returns:
-        Dataset containing posterior mean scaling factors, sector posterior flux
-        means, and total posterior flux mean.
-    """
-    basis, flux = _materialise_basis_and_flux_for_output(prepared)
-    posterior_flux = []
-    posterior_scaling = []
-
-    for sector in model_spec.sectors:
-        x_name = f"x_{sector.variable_suffix}"
-        x_mean = cast(Any, idata).posterior[x_name].mean(("chain", "draw"))
-        scale_grid = sparse_xr_dot(basis, x_mean)
-        sector_flux = flux.sel(source=sector.flux_source) if "source" in flux.dims else flux
-        posterior_scaling.append(scale_grid.expand_dims(sector=[sector.name]))
-        posterior_flux.append((scale_grid * sector_flux).expand_dims(sector=[sector.name]))
-
-    scaling = xr.concat(posterior_scaling, dim="sector").rename("posterior_scaling_mean")
-    flux_by_sector = xr.concat(posterior_flux, dim="sector").rename("posterior_flux_mean")
-    total_flux = flux_by_sector.sum("sector").rename("posterior_flux_total_mean")
-    return xr.merge([scaling, flux_by_sector, total_flux])
-
-
-def _write_multisector_outputs(
-    *,
-    result: RhimeResult,
-    prepared: RhimePreparedInputs,
-) -> None:
-    """Create and optionally save transitional multi-sector RHIME outputs."""
-    diagnostics = _make_multisector_flux_diagnostics(
-        idata=result.idata,
-        prepared=prepared,
-        model_spec=result.model_spec,
-    )
-    result.outputs["sector_flux_diagnostics"] = diagnostics
-
-    output_spec = result.output_spec
-    if output_spec.output_format == "paris":
-        result.output_metadata["paris_note"] = (
-            "Multi-sector PARIS schema support is not implemented in issue #398; "
-            "sector-aware modern diagnostics were generated instead."
-        )
-    if output_spec.output_path is not None and output_spec.output_format != "none":
-        Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
-        diagnostics_path = (
-            Path(output_spec.output_path)
-            / f"{output_spec.output_name}{result.run_spec.start_date}_sector_flux_diagnostics.nc"
-        )
-        diagnostics.to_netcdf(diagnostics_path, mode="w", encoding=ncdf_encoding(diagnostics))
-        result.output_metadata["sector_flux_diagnostics_path"] = str(diagnostics_path)
-
-
-def _tuple_from_optional_sequence(value: Any) -> tuple[str | None, ...]:
-    """Convert optional scalar or sequence values into tuple metadata."""
-    if value is None:
-        return ()
-    if isinstance(value, str):
-        return (value,)
-    if isinstance(value, Sequence) and not isinstance(value, bytes):
-        return tuple(cast(str | None, item) for item in value)
-    return (str(value),)
-
-
-def _make_output_spec(
-    *,
-    output_format: str,
-    output_path: str | None,
-    output_name: str,
-    save_trace: str | Path | bool,
-    save_inversion_output: str | Path | bool,
-    country_file: str | None,
-    paris_postprocessing_kwargs: dict[str, Any] | None,
-    multisector: bool,
-) -> RhimeOutputSpec:
-    """Create validated output settings from normalized RHIME parameters."""
-    _validate_output_format(output_format)
-    _validate_output_path_settings(
-        output_format=output_format,
-        output_path=output_path,
-        save_trace=save_trace,
-        save_inversion_output=save_inversion_output,
-        multisector=multisector,
-    )
-    return RhimeOutputSpec(
-        output_format=cast(OutputFormat, output_format),
-        output_path=output_path,
-        output_name=output_name,
-        save_trace=save_trace,
-        save_inversion_output=save_inversion_output,
-        country_file=country_file,
-        paris_postprocessing_kwargs=paris_postprocessing_kwargs,
-    )
+def _apply_output_bundle(result: RhimeResult, bundle: RhimeOutputBundle) -> None:
+    """Apply output helper results to a mutable RHIME result object."""
+    if bundle.inv_out is not None:
+        result.inv_out = bundle.inv_out
+    result.outputs.update(bundle.outputs)
+    result.output_metadata.update(bundle.output_metadata)
 
 
 def _make_rhime_runner_setup(
     *,
-    params: Mapping[str, Any],
+    params: dict[str, Any],
     multisector: bool,
-) -> _RhimeRunnerSetup:
+) -> rhime_params.RhimeRunnerSetup:
     """Normalize raw RHIME parameters into specs and preparation arguments."""
-    normalized = rhime_params.normalise_rhime_params(params)
-    rhime_params.validate_required_params(normalized)
-    rhime_params.validate_supported_params(
-        normalized,
-        data_params=set(inspect.signature(prepare_rhime_inputs).parameters),
-    )
-
-    remaining = dict(normalized)
-    flux_sources = resolve_flux_sources(flux_sources=remaining.pop("flux_sources", None))
-    sector_sources = rhime_params.normalise_sector_sources(remaining.pop("sector_sources", None))
-    if not multisector and sector_sources is not None:
-        raise ValueError("`sector_sources` is only supported by `run_rhime_multisector`.")
-    data_flux_sources = (
-        list(dict.fromkeys(sector_sources.values())) if sector_sources is not None else flux_sources
-    )
-    if sector_sources is not None and set(data_flux_sources) != set(flux_sources):
-        raise ValueError(
-            "`sector_sources` values must match `flux_sources` so RHIME can retrieve the "
-            "OpenGHG data used by each sector."
-        )
-    if multisector and len(data_flux_sources) < 2:
-        raise ValueError("`run_rhime_multisector` requires at least two flux sources.")
-    if not multisector and len(flux_sources) != 1:
-        raise ValueError("`run_rhime` requires exactly one flux source.")
-
-    species = remaining.pop("species")
-    sites = rhime_params.as_list(remaining.pop("sites")) or []
-    domain = remaining.pop("domain")
-    averaging_period = remaining.pop("averaging_period")
-    start_date = remaining.pop("start_date")
-    end_date = remaining.pop("end_date")
-    output_path = remaining.pop("output_path", None)
-    output_name = remaining.pop("output_name")
-
-    x_prior = rhime_params.normalise_optional_mapping(remaining.pop("x_prior", None))
-    bc_prior = rhime_params.normalise_optional_mapping(remaining.pop("bc_prior", None))
-    sigma_prior = rhime_params.normalise_optional_mapping(remaining.pop("sigma_prior", None))
-    offset_prior = rhime_params.normalise_optional_mapping(remaining.pop("offset_prior", None))
-    sector_priors = rhime_params.normalise_sector_priors(remaining.pop("sector_priors", None))
-    offset_args = rhime_params.normalise_optional_mapping(remaining.get("offset_args"))
-
-    use_bc = remaining.get("use_bc", True)
-    sigma_per_site = remaining.get("sigma_per_site", True)
-    add_offset = remaining.get("add_offset", False)
-    pollution_events_from_obs = remaining.pop("pollution_events_from_obs", False)
-    no_model_error = remaining.pop("no_model_error", False)
-    power = remaining.pop("power", 1.99)
-
-    sampler = RhimeSampler(
-        draws=remaining.pop("draws", 1000),
-        burn=remaining.pop("burn", 0),
-        tune=remaining.pop("tune", 1000),
-        chains=remaining.pop("chains", 4),
-        nuts_sampler=remaining.pop("nuts_sampler", "pymc"),
-        progressbar=remaining.pop("progressbar", False),
-        sample_kwargs=rhime_params.normalise_optional_mapping(remaining.pop("sample_kwargs", None)),
-    )
-    output_spec = _make_output_spec(
-        output_format=remaining.pop("output_format", "inv_out"),
-        output_path=output_path,
-        output_name=output_name,
-        save_trace=remaining.pop("save_trace", False),
-        save_inversion_output=remaining.pop("save_inversion_output", True),
-        country_file=remaining.get("country_file"),
-        paris_postprocessing_kwargs=rhime_params.normalise_optional_mapping(
-            remaining.pop("paris_postprocessing_kwargs", None)
-        ),
+    return rhime_params.make_rhime_runner_setup(
+        params=params,
         multisector=multisector,
+        data_param_names=set(inspect.signature(prepare_rhime_inputs).parameters),
     )
-    model_spec = _make_model_spec(
-        species=species,
-        domain=domain,
-        flux_sources=flux_sources,
-        x_prior=x_prior,
-        sector_priors=sector_priors,
-        sector_sources=sector_sources,
-        bc_prior=bc_prior,
-        sigma_prior=sigma_prior,
-        offset_prior=offset_prior,
-        use_bc=use_bc,
-        sigma_per_site=sigma_per_site,
-        add_offset=add_offset,
-        pollution_events_from_obs=pollution_events_from_obs,
-        no_model_error=no_model_error,
-        power=power,
-        offset_args=offset_args,
-    )
-    run_spec = RhimeRunSpec(
-        start_date=start_date,
-        end_date=end_date,
-        sites=tuple(sites),
-        averaging_period=_tuple_from_optional_sequence(averaging_period),
-        model=model_spec,
-        output=output_spec,
-        split_by_sectors=multisector,
-        sampling=sampler,
-    )
-
-    data_args, _ = split_function_inputs(
-        {
-            **remaining,
-            "species": species,
-            "sites": sites,
-            "domain": domain,
-            "averaging_period": averaging_period,
-            "start_date": start_date,
-            "end_date": end_date,
-            "output_name": output_name,
-            "flux_sources": data_flux_sources,
-            "split_by_sectors": multisector,
-        },
-        prepare_rhime_inputs,
-    )
-    return _RhimeRunnerSetup(run_spec=run_spec, sampler=sampler, data_args=data_args)
 
 
 def _run_spec_with_prepared_inputs(
@@ -757,13 +166,23 @@ def _run_common(
     )
 
     if multisector:
-        _write_multisector_outputs(result=result, prepared=prepared)
+        output_bundle = make_multisector_output_bundle(
+            output_spec=run_spec.output,
+            run_spec=run_spec,
+            model_spec=run_spec.model,
+            idata=idata,
+            prepared=prepared,
+        )
     else:
-        _write_standard_outputs(
-            result=result,
+        output_bundle = make_standard_output_bundle(
+            output_spec=run_spec.output,
+            run_spec=run_spec,
+            model_spec=run_spec.model,
+            idata=idata,
             prepared=prepared,
             country_file=run_spec.output.country_file,
         )
+    _apply_output_bundle(result, output_bundle)
 
     return result
 
