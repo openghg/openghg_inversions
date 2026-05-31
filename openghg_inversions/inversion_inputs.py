@@ -122,23 +122,47 @@ def add_min_error(
 ) -> xr.Dataset:
     """Add min_error to combined Dataset."""
     min_error_data: xr.DataArray | float | np.ndarray
+
+    def site_names_for_min_error() -> list[str]:
+        if "site_names" in ds:
+            return [str(site) for site in ds.site_names.values]
+        if "site" in ds:
+            return [str(site) for site in make_site_names(ds.site).values]
+        return [site for site in fp_data if not site.startswith(".")]
+
+    def site_indicator_for_min_error() -> xr.DataArray:
+        if "site_indicator" in ds:
+            return ds.site_indicator
+        if "site" in ds:
+            return xr_unique_inv(ds.site, sort=False).rename("site_indicator")
+        raise ValueError("Per-site min_error values require site_indicator or site data.")
+
+    def fp_data_for_ds_sites() -> dict[str, Any]:
+        return {site: fp_data[site] for site in site_names_for_min_error()}
+
     if isinstance(min_error, numbers.Real) and not isinstance(min_error, bool):
         min_error_data = float(min_error) * xr.ones_like(ds.mf)
     elif isinstance(min_error, np.ndarray) and min_error.ndim == 0:
         min_error_data = min_error * xr.ones_like(ds.mf)
     elif isinstance(min_error, dict):
-        sites = [k for k in fp_data if not k.startswith(".")]
+        fp_data_for_sites = fp_data_for_ds_sites()
+        sites = list(fp_data_for_sites)
+        missing_sites = [site for site in sites if site not in min_error]
+        if missing_sites:
+            raise ValueError(f"min_error mapping is missing values for site(s): {missing_sites}")
         err_per_site = np.array([min_error[site] for site in sites])
-        min_error_data = xr_setup_min_error(err_per_site, ds.site_indicator)
+        min_error_data = xr_setup_min_error(err_per_site, site_indicator_for_min_error())
     elif min_error == "residual":
-        res_err = residual_error_method(fp_data)
+        fp_data_for_sites = fp_data_for_ds_sites()
+        res_err = residual_error_method(fp_data_for_sites, by_site=min_error_per_site)
         if min_error_per_site:
-            min_error_data = xr_setup_min_error(res_err, ds.site_indicator)
+            min_error_data = xr_setup_min_error(res_err, site_indicator_for_min_error())
         else:
             min_error_data = res_err
     elif min_error == "percentile":
-        perc_err = percentile_error_method(fp_data)
-        min_error_data = xr_setup_min_error(perc_err, ds.site_indicator)
+        fp_data_for_sites = fp_data_for_ds_sites()
+        perc_err = percentile_error_method(fp_data_for_sites)
+        min_error_data = xr_setup_min_error(perc_err, site_indicator_for_min_error())
     else:
         raise ValueError(f"Option '{min_error}' is not valid.")
 
