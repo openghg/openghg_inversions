@@ -14,7 +14,7 @@ start - Start of date range to use for MCMC inversion (YYYY-MM-DD)
 end - End of date range to use for MCMC inversion (YYYY-MM-DD) (must be after start)
 -c / --config - configuration file. See config/ folder for templates and examples of this input file.
 
-If start and end are specified these will superceed the values within the configuration file, if present.
+If start and end are specified these will supersede the values within the configuration file, if present.
 If -c option is not specified, this script will look for configuration file within the
 acrg_hbmcmc/ directory called `hbmcmc_input.ini`.
 
@@ -81,7 +81,7 @@ def fixed_basis_expected_param() -> list[str]:
 def extract_mcmc_type(config_file: str | Path, default: str = "fixed_basis") -> str:
     """Find value which describes the MCMC function to use.
 
-    Checks the input configuation file the "mcmc_type" keyword within
+    Checks the input configuration file the "mcmc_type" keyword within
     the "MCMC.TYPE" section. If not present, the default is used.
 
     Args:
@@ -244,7 +244,7 @@ def hbmcmc_extract_param(
         Default = True
       command_line:
         Any additional command line arguments to be added to the param
-        dictionary or to superceed values contained within the config file.
+        dictionary or to supersede values contained within the config file.
 
     Returns:
       dict:
@@ -267,7 +267,7 @@ def hbmcmc_extract_param(
         config_file, expected_param=expected_param, ignore_sections=[mcmc_type_section]
     )
 
-    # Command line values added to param (or superceed inputs from the config
+    # Command line values added to param (or supersede inputs from the config
     # file)
     for key, value in command_line.items():
         if value is not None:
