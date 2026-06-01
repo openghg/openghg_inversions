@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import xarray as xr
 
 from openghg_inversions.basis.algorithms import (
@@ -94,6 +95,29 @@ def test_region_constrained_basis_uses_explicit_allocation():
     class_2_labels = set(np.unique(labels.where(classes == 2, 0))) - {0}
     assert len(class_1_labels) == 2
     assert len(class_2_labels) == 1
+
+
+def test_region_constrained_basis_splits_zero_weight_classes_by_area():
+    """All-zero weights should fall back to area allocation and splitting."""
+    weights = xr.DataArray(np.zeros((2, 4)), dims=("lat", "lon"))
+    classes = xr.DataArray(
+        np.array([["left", "left", "right", "right"], ["left", "left", "right", "right"]]),
+        dims=weights.dims,
+    )
+
+    labels = region_constrained_basis(weights, classes, nbasis=4)
+
+    assert set(np.unique(labels.values)) == {1, 2, 3, 4}
+    assert all(len(class_values) == 1 for class_values in _class_values_for_labels(labels, classes).values())
+
+
+def test_region_constrained_basis_rejects_explicit_over_allocation():
+    """Explicit class allocations cannot request more labels than mapped cells."""
+    weights = xr.DataArray(np.ones((2, 2)), dims=("lat", "lon"))
+    classes = xr.DataArray(np.array([["a", "a"], ["a", "a"]]), dims=weights.dims)
+
+    with pytest.raises(ValueError, match="exceed mapped cell counts"):
+        region_constrained_basis(weights, classes, nbasis={"a": 5})
 
 
 def test_region_constrained_basis_accepts_custom_split_strategy():
