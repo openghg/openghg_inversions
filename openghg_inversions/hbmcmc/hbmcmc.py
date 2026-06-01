@@ -35,8 +35,6 @@ import arviz as az
 import numpy as np
 import xarray as xr
 
-from openghg.util import split_function_inputs  # pyright: ignore[reportPrivateImportUsage]
-
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.models.priors import lognormal_mu_sigma
@@ -254,11 +252,13 @@ def _resolve_output_format(
         )
 
     resolved_output_format = output_format.lower()
-
-    if resolved_output_format == "hbmcmc" and is_column:
-        raise ValueError(
-            "Cannot use output_format 'hbmcmc' when column-based measurements are included. Please choose another output_format."
+    if resolved_output_format in {"hbmcmc", "hbmcmc_postprocessing"}:
+        warnings.warn(
+            f"output_format={resolved_output_format!r} is deprecated; use output_format='legacy' instead.",
+            UserWarning,
+            stacklevel=2,
         )
+        resolved_output_format = "legacy"
 
     return resolved_output_format
 
@@ -432,18 +432,6 @@ def _get_inversion_output(context: _OutputContext) -> InversionOutput:
     return context.inv_out
 
 
-def _prepare_legacy_hbmcmc_postprocess_args(context: _OutputContext) -> dict:
-    """Prepare the legacy argument bag for ``inferpymc_postprocessouts``."""
-    legacy_postprocess_args = context.legacy_postprocess_args.copy()
-    legacy_postprocess_args.update(context.mcmc_args)
-    del legacy_postprocess_args["inv_inputs"]
-    del legacy_postprocess_args["nit"]
-    del legacy_postprocess_args["verbose"]
-    del legacy_postprocess_args["offset_args"]
-    del legacy_postprocess_args["power"]
-    return legacy_postprocess_args
-
-
 def _handle_core_output_artifacts(context: _OutputContext) -> None:
     """Write core inversion artifacts needed before final output dispatch."""
     trace_path = context.paths.get("trace")
@@ -478,19 +466,13 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
         print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
         return outputs
 
-    if context.output_format == "hbmcmc_postprocessing":
+    if context.output_format == "legacy":
         from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 
         from ..postprocessing.legacy_outputs import make_legacy_hbmcmc_output
 
         outputs = make_legacy_hbmcmc_output(
             inv_out=_get_inversion_output(context),
-            mcmc_results=context.mcmc_results,
-            # TODO: Stop threading these explicitly once make_legacy_hbmcmc_output
-            # can consume the needed arrays directly from the modern model/input data path.
-            sigma_freq_index=context.legacy_postprocess_args["sigma_freq_index"],
-            Hx=context.legacy_postprocess_args["Hx"],
-            Hbc=context.legacy_postprocess_args.get("Hbc"),
             country_file=context.country_file,
             use_bc=context.use_bc,
         )
@@ -557,23 +539,7 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
         print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
         return xr.merge([conc_outs, flux_outs.rename(time="flux_time")])
 
-    # Legacy default hbmcmc output path.
-    mcmc_results = context.mcmc_results.copy()
-    del mcmc_results["trace"]
-    del mcmc_results["model"]
-    legacy_postprocess_args = _prepare_legacy_hbmcmc_postprocess_args(context)
-    legacy_postprocess_args.update(mcmc_results)
-    post_process_args_selection, _ = split_function_inputs(
-        legacy_postprocess_args, mcmc.inferpymc_postprocessouts
-    )
-    out = mcmc.inferpymc_postprocessouts(**post_process_args_selection)
-
-    end_post = time.time()
-
-    print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
-    print("---- Inversion completed ----")
-
-    return out
+    raise ValueError(f"Unsupported fixedbasisMCMC output_format {context.output_format!r}.")
 
 
 # ------------------------------------------------------------
@@ -647,13 +613,14 @@ def fixedbasisMCMC(
     output_format: Literal[
         "hbmcmc",
         "hbmcmc_postprocessing",
+        "legacy",
         "paris",
         "basic",
         "merged_data",
         "inv_out",
         "mcmc_args",
         "mcmc_results",
-    ] = "hbmcmc",
+    ] = "legacy",
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
     power: dict | float = 1.99,
@@ -662,8 +629,8 @@ def fixedbasisMCMC(
 ) -> xr.Dataset | dict | InversionOutput:
     """Script to run hierarchical Bayesian MCMC (RHIME) for inference of emissions.
 
-    Uses PyMC to solve the inverse problem. Saves an output from the inversion code
-    using inferpymc_postprocessouts.
+    Uses PyMC to solve the inverse problem. This is now a legacy compatibility
+    entry point; new workflows should call ``run_rhime`` directly.
 
     Args:
         species: Atmospheric trace gas species of interest (e.g. 'co2').
@@ -774,9 +741,9 @@ def fixedbasisMCMC(
         min_error_options: Dictionary of additional arguments to pass the the function used to calculate min. model
             error (as specified by `min_error`).
         output_format: Select what is returned/saved by inversion.
-            - "hbmcmc": (default) return the results of `inferpymc_postprocessouts`, and save result as netCDF
-            - "hbmcmc_postprocessing": return legacy-style output format, computed using functions from the
-              `postprocessing` submodule
+            - "legacy": (default) return old HBMCMC-compatible output formatting, computed from modern
+              `InversionOutput`, and save result as netCDF. Deprecated aliases: "hbmcmc" and
+              "hbmcmc_postprocessing".
             - "merged_data": return `fp_all` dictionary, no further processing and inversion *not* run
             - "inv_out": return modern `InversionOutput` object
             - "basic": return basic output created by new `postprocessing` submodule
@@ -802,8 +769,7 @@ def fixedbasisMCMC(
 
     output_format = cast(
         Literal[
-            "hbmcmc",
-            "hbmcmc_postprocessing",
+            "legacy",
             "paris",
             "basic",
             "merged_data",

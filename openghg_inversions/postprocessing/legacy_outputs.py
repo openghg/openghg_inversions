@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+import arviz as az
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -357,25 +358,165 @@ def _as_array(data: Any) -> np.ndarray:
     return np.asarray(data.values if isinstance(data, xr.DataArray) else data)
 
 
+def _first_available_data_var(
+    inv_out: InversionOutput, names: tuple[str, ...], description: str
+) -> xr.DataArray:
+    """Return the first matching model-data or inversion-input variable."""
+    datasets: list[xr.Dataset] = []
+    try:
+        datasets.append(inv_out.model_data())
+    except ValueError:
+        pass
+
+    datasets.append(inv_out.inv_inputs)
+
+    for dataset in datasets:
+        for name in names:
+            if name in dataset:
+                return dataset[name]
+
+    raise ValueError(
+        f"Legacy HBMCMC output formatting requires {description} in InferenceData model data "
+        "or InversionOutput.inv_inputs."
+    )
+
+
+def _legacy_sensitivity_matrix(data: xr.DataArray, description: str) -> np.ndarray:
+    """Return a sensitivity matrix with legacy ``(parameter, nmeasure)`` shape."""
+    if "nmeasure" not in data.dims:
+        if data.ndim != 2:
+            raise ValueError(f"{description} must be two-dimensional; got dims {data.dims!r}.")
+        return _as_array(data)
+
+    parameter_dims = [dim for dim in data.dims if dim != "nmeasure"]
+    if len(parameter_dims) != 1:
+        raise ValueError(f"{description} must have one parameter dimension and nmeasure; got {data.dims!r}.")
+
+    return _as_array(data.transpose(parameter_dims[0], "nmeasure"))
+
+
+def _legacy_hx(inv_out: InversionOutput) -> np.ndarray:
+    """Return emissions sensitivity from model data, falling back to inversion inputs."""
+    data = _first_available_data_var(
+        inv_out,
+        (inv_out.variable_name("emissions_sensitivity"), "H", "Hx"),
+        "emissions sensitivity",
+    )
+    return _legacy_sensitivity_matrix(data, "Emissions sensitivity")
+
+
+def _legacy_hbc(inv_out: InversionOutput) -> np.ndarray:
+    """Return boundary-condition sensitivity from model data, falling back to inversion inputs."""
+    data = _first_available_data_var(
+        inv_out,
+        (inv_out.variable_name("baseline_sensitivity"), "H_bc", "Hbc"),
+        "boundary-condition sensitivity",
+    )
+    return _legacy_sensitivity_matrix(data, "Boundary-condition sensitivity")
+
+
+def _legacy_sigma_freq_index(inv_out: InversionOutput) -> np.ndarray:
+    """Return the observation-aligned sigma frequency index."""
+    data = _first_available_data_var(inv_out, ("sigma_freq_index",), "sigma frequency index")
+    return _as_array(data.transpose("nmeasure") if "nmeasure" in data.dims else data).astype(int, copy=False)
+
+
+def _posterior_first_chain_var(
+    inv_out: InversionOutput, names: tuple[str, ...], description: str
+) -> xr.DataArray:
+    """Return a posterior variable from the first chain with draw first."""
+    posterior = getattr(inv_out.trace, "posterior", None)
+    if posterior is None:
+        raise ValueError("Legacy HBMCMC output formatting requires posterior trace samples.")
+
+    for name in names:
+        if name in posterior:
+            trace = posterior[name]
+            if "chain" in trace.dims:
+                trace = trace.isel(chain=0, drop=True)
+            if "draw" in trace.dims:
+                trace = trace.transpose("draw", ...)
+            return trace
+
+    raise ValueError(f"Legacy HBMCMC output formatting requires posterior samples for {description}.")
+
+
+def _legacy_xtrace(inv_out: InversionOutput) -> np.ndarray:
+    """Return first-chain flux-scale samples with legacy ``(steps, nparam)`` shape."""
+    trace = _posterior_first_chain_var(
+        inv_out, (inv_out.variable_name("flux_scale"), "x"), "emissions scaling"
+    )
+    values = _as_array(trace)
+    if values.ndim == 1:
+        return values[:, np.newaxis]
+    if values.ndim != 2:
+        raise ValueError(f"Emissions scaling trace must be one- or two-dimensional; got {trace.dims!r}.")
+    return values
+
+
+def _legacy_sigtrace(inv_out: InversionOutput) -> np.ndarray:
+    """Return first-chain sigma samples with legacy ``(steps, nsigma_site, nsigma_time)`` shape."""
+    trace = _posterior_first_chain_var(
+        inv_out, ("sigma", inv_out.variable_name("model_error")), "model-error sigma"
+    )
+    values = _as_array(trace)
+    if values.ndim == 1:
+        return values[:, np.newaxis, np.newaxis]
+    if values.ndim == 2:
+        return values[:, np.newaxis, :]
+    if values.ndim != 3:
+        raise ValueError(f"Sigma trace must have at most three legacy dimensions; got {trace.dims!r}.")
+    return values
+
+
+def _legacy_bctrace(inv_out: InversionOutput) -> np.ndarray:
+    """Return first-chain boundary-condition samples with legacy ``(steps, nBC)`` shape."""
+    trace = _posterior_first_chain_var(inv_out, ("bc",), "boundary-condition scaling")
+    values = _as_array(trace)
+    if values.ndim == 1:
+        return values[:, np.newaxis]
+    if values.ndim != 2:
+        raise ValueError(
+            f"Boundary-condition scaling trace must be one- or two-dimensional; got {trace.dims!r}."
+        )
+    return values
+
+
+def _legacy_convergence(inv_out: InversionOutput) -> str:
+    """Return legacy convergence status from ArviZ R-hat when enough chains exist."""
+    posterior = getattr(inv_out.trace, "posterior", None)
+    if posterior is None or posterior.sizes.get("chain", 0) < 2 or posterior.sizes.get("draw", 0) < 2:
+        return "Unavailable"
+
+    x_name = inv_out.variable_name("flux_scale")
+    if x_name not in posterior and "x" in posterior:
+        x_name = "x"
+    if x_name not in posterior:
+        return "Unavailable"
+
+    try:
+        rhat_dataset = cast(xr.Dataset, az.rhat(inv_out.trace, var_names=[x_name]))
+        rhat = rhat_dataset[x_name]
+        max_rhat = float(rhat.max(skipna=True).item())
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return "Unavailable"
+
+    if not np.isfinite(max_rhat):
+        return "Unavailable"
+    return "Failed" if max_rhat > 1.05 else "Passed"
+
+
 def make_legacy_hbmcmc_output(
     inv_out: InversionOutput,
-    mcmc_results: dict,
-    sigma_freq_index: np.ndarray | xr.DataArray,
-    Hx: np.ndarray | xr.DataArray,
-    Hbc: np.ndarray | xr.DataArray | None = None,
     country_file: str | Path | None = None,
     use_bc: bool = False,
 ) -> xr.Dataset:
-    """Create a legacy-format hbmcmc output dataset from compatibility inputs.
+    """Create a legacy-format hbmcmc output dataset from modern inversion output.
 
     TODO: needs to handle offsets
 
     Args:
         inv_out: Inversion outputs container.
-        mcmc_results: Compatibility sampling outputs returned by ``inferpymc``.
-        sigma_freq_index: Sigma frequency index per measurement.
-        Hx: Emissions sensitivity matrix with shape ``(nparam, nmeasure)``.
-        Hbc: Boundary-condition sensitivity matrix with shape ``(nBC, nmeasure)``.
         country_file: Optional path to country definition file.
         use_bc: Whether BC variables should be included.
 
@@ -384,10 +525,13 @@ def make_legacy_hbmcmc_output(
         ``inferpymc_postprocessouts``.
 
     """
-    Hx_arr = _as_array(Hx)
-    Hbc_arr = _as_array(Hbc) if Hbc is not None else None
-    sigma_freq = _as_array(sigma_freq_index)
     domain = _require_legacy_domain(inv_out)
+    Hx_arr = _legacy_hx(inv_out)
+    Hbc_arr = _legacy_hbc(inv_out) if use_bc else None
+    sigma_freq = _legacy_sigma_freq_index(inv_out)
+    xouts_arr = _legacy_xtrace(inv_out)
+    sigouts_arr = _legacy_sigtrace(inv_out)
+    bcouts_arr = _legacy_bctrace(inv_out) if use_bc else None
     times = _legacy_measurement_times(inv_out)
     site_indicators, site_names = _legacy_site_fields(inv_out)
 
@@ -464,8 +608,8 @@ def make_legacy_hbmcmc_output(
         "Yoffmode": conc.get("offset_posterior_mode", zero_obs),
         "Yoff68": conc.get("offset_posterior_hdi_68", zero_hdi),
         "Yoff95": conc.get("offset_posterior_hdi_95", zero_hdi),
-        "xtrace": (("steps", "nparam"), _as_array(mcmc_results["xouts"])),
-        "sigtrace": (("steps", "nsigma_site", "nsigma_time"), _as_array(mcmc_results["sigouts"])),
+        "xtrace": (("steps", "nparam"), xouts_arr),
+        "sigtrace": (("steps", "nsigma_site", "nsigma_time"), sigouts_arr),
         "siteindicator": site_indicators,
         "sigmafreqindex": ("nmeasure", sigma_freq),
         "sitenames": site_names,
@@ -494,7 +638,7 @@ def make_legacy_hbmcmc_output(
                 "YmodmodeBC": conc["mu_bc_posterior_mode"],
                 "Ymod95BC": conc["mu_bc_posterior_hdi_95"],
                 "Ymod68BC": conc["mu_bc_posterior_hdi_68"],
-                "bctrace": (("steps", "nBC"), _as_array(mcmc_results["bcouts"])),
+                "bctrace": (("steps", "nBC"), bcouts_arr),
                 "bcsensitivity": (("nmeasure", "nBC"), Hbc_arr.T),
             }
         )
@@ -503,8 +647,6 @@ def make_legacy_hbmcmc_output(
         if isinstance(value, xr.DataArray):
             data_vars[name] = _flatten_nmeasure_for_legacy(value)
 
-    xouts_arr = _as_array(mcmc_results["xouts"])
-    sigouts_arr = _as_array(mcmc_results["sigouts"])
     coords: dict[str, Any] = {
         "stepnum": ("steps", np.arange(xouts_arr.shape[0])),
         "paramnum": ("nparam", np.arange(Hx_arr.shape[0])),
@@ -535,7 +677,6 @@ def make_legacy_hbmcmc_output(
 
     out.attrs["Start date"] = str(inv_out.start_time.date())
     out.attrs["End date"] = str(inv_out.end_time.date())
-    if "convergence" in mcmc_results:
-        out.attrs["Convergence"] = mcmc_results["convergence"]
+    out.attrs["Convergence"] = _legacy_convergence(inv_out)
 
     return out

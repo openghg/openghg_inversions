@@ -1,9 +1,179 @@
+from types import SimpleNamespace
+from typing import Any, cast
+
+import arviz as az
 import numpy as np
 import pandas as pd
+import pytest
 import xarray as xr
 
 from openghg_inversions import utils
+from openghg_inversions.postprocessing import legacy_outputs
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.legacy_outputs import _compute_apriori_flux
+
+
+def _minimal_legacy_inv_inputs(*, include_bc: bool = False) -> xr.Dataset:
+    """Build observation and fallback sensitivity inputs for legacy output tests."""
+    data_vars = {
+        "H": (("region", "nmeasure"), np.array([[9.0, 9.0]])),
+        "mf": (
+            ("nmeasure",),
+            np.array([1900.0, 1901.0]),
+            {"units": "1e-09 mol/mol", "long_name": "observed_mole_fraction"},
+        ),
+        "mf_error": (("nmeasure",), np.array([2.0, 2.1]), {"units": "1e-09 mol/mol"}),
+        "mf_repeatability": (("nmeasure",), np.array([1.0, 1.1]), {"units": "1e-09 mol/mol"}),
+        "mf_variability": (("nmeasure",), np.array([1.5, 1.6]), {"units": "1e-09 mol/mol"}),
+        "site_indicator": (("nmeasure",), np.array([0, 0])),
+        "sigma_freq_index": (("nmeasure",), np.array([7, 8])),
+        "min_error": (("nmeasure",), np.zeros(2)),
+    }
+    coords = {
+        "region": np.array([0]),
+        "nmeasure": np.arange(2),
+        "site": ("nmeasure", np.array(["TAC", "TAC"])),
+        "time": (
+            "nmeasure",
+            np.array(["2019-01-01T00:00:00", "2019-01-01T01:00:00"], dtype="datetime64[ns]"),
+        ),
+    }
+    if include_bc:
+        data_vars["H_bc"] = (("bc_region", "nmeasure"), np.array([[1.0, 2.0]]))
+        coords["bc_region"] = np.array([0])
+
+    return xr.Dataset(data_vars=data_vars, coords=coords).set_index(nmeasure=["site", "time"])
+
+
+def _basis_functions_stub() -> SimpleNamespace:
+    """Return the minimal basis-functions interface consumed by the legacy adapter."""
+    flux = xr.DataArray(
+        np.array([[1.0]]),
+        dims=("lat", "lon"),
+        coords={"lat": [52.0], "lon": [1.0]},
+        name="flux",
+    )
+    return SimpleNamespace(
+        flux=flux,
+        operator=SimpleNamespace(meta=SimpleNamespace(state_dim="region")),
+    )
+
+
+def _legacy_inv_out(*, model_data: bool, include_bc: bool = False, chains: int = 1) -> InversionOutput:
+    """Build a minimal InversionOutput for legacy adapter tests."""
+    draw_count = 3
+    posterior_vars = {
+        "x": (("chain", "draw", "region"), np.ones((chains, draw_count, 1))),
+        "sigma": (
+            ("chain", "draw", "nsigma_site", "nsigma_time"),
+            np.ones((chains, draw_count, 1, 2)),
+        ),
+    }
+    coords: dict[str, object] = {
+        "chain": np.arange(chains),
+        "draw": np.arange(draw_count),
+        "region": np.array([0]),
+        "nsigma_site": np.array([0]),
+        "nsigma_time": np.array([0, 1]),
+    }
+    if include_bc:
+        posterior_vars["bc"] = (("chain", "draw", "bc_region"), np.full((chains, draw_count, 1), 0.5))
+        coords["bc_region"] = np.array([0])
+
+    groups: dict[str, xr.Dataset] = {"posterior": xr.Dataset(posterior_vars, coords=coords)}
+    if model_data:
+        constant_vars = {
+            "hx": (("nmeasure", "region"), np.array([[0.25], [0.75]])),
+            "sigma_freq_index": (("nmeasure",), np.array([0, 1])),
+        }
+        constant_coords: dict[str, object] = {"nmeasure": np.arange(2), "region": np.array([0])}
+        if include_bc:
+            constant_vars["hbc"] = (("nmeasure", "bc_region"), np.array([[0.5], [1.5]]))
+            constant_coords["bc_region"] = np.array([0])
+        groups["constant_data"] = xr.Dataset(constant_vars, coords=constant_coords)
+
+    return InversionOutput(
+        trace=cast(Any, az.InferenceData)(**groups),
+        inv_inputs=_minimal_legacy_inv_inputs(include_bc=include_bc),
+        basis_functions=cast(Any, _basis_functions_stub()),
+        run_metadata={
+            "start_date": "2019-01-01",
+            "end_date": "2019-01-02",
+            "sites": ["TAC"],
+            "split_by_sectors": False,
+        },
+        model_metadata={"species": "ch4", "domain": "EUROPE"},
+    )
+
+
+@pytest.fixture
+def stub_legacy_product_builders(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub heavy postprocessing builders so adapter tests focus on input derivation."""
+    nmeasure = np.arange(2)
+    hdi = np.array(["lower", "upper"])
+    lat = np.array([52.0])
+    lon = np.array([1.0])
+    country = np.array(["United Kingdom"])
+
+    def fake_concentration_outputs(inv_out: InversionOutput, **kwargs: object) -> xr.Dataset:
+        data_vars = {
+            "y_posterior_predictive_mean": (("nmeasure",), np.array([1.0, 2.0])),
+            "y_posterior_predictive_median": (("nmeasure",), np.array([1.0, 2.0])),
+            "y_posterior_predictive_mode": (("nmeasure",), np.array([1.0, 2.0])),
+            "y_posterior_predictive_hdi_68": (("nmeasure", "hdi"), np.ones((2, 2))),
+            "y_posterior_predictive_hdi_95": (("nmeasure", "hdi"), np.ones((2, 2))),
+        }
+        if "bc" in cast(Any, inv_out.trace).posterior:
+            data_vars.update(
+                {
+                    "mu_bc_posterior_mean": (("nmeasure",), np.array([0.5, 1.5])),
+                    "mu_bc_posterior_median": (("nmeasure",), np.array([0.5, 1.5])),
+                    "mu_bc_posterior_mode": (("nmeasure",), np.array([0.5, 1.5])),
+                    "mu_bc_posterior_hdi_68": (("nmeasure", "hdi"), np.ones((2, 2))),
+                    "mu_bc_posterior_hdi_95": (("nmeasure", "hdi"), np.ones((2, 2))),
+                }
+            )
+        return xr.Dataset(data_vars, coords={"nmeasure": nmeasure, "hdi": hdi})
+
+    def fake_flux_outputs(inv_out: InversionOutput, **kwargs: object) -> xr.Dataset:
+        return xr.Dataset(
+            {
+                "flux_posterior_mode": (("lat", "lon"), np.array([[1.0]])),
+                "scaling_posterior_mean": (("lat", "lon"), np.array([[1.0]])),
+                "scaling_posterior_mode": (("lat", "lon"), np.array([[1.0]])),
+            },
+            coords={"lat": lat, "lon": lon},
+        )
+
+    def fake_country_outputs(inv_out: InversionOutput, **kwargs: object) -> xr.Dataset:
+        return xr.Dataset(
+            {
+                "country_posterior_mean": (("country",), np.array([1.0])),
+                "country_posterior_median": (("country",), np.array([1.0])),
+                "country_posterior_mode": (("country",), np.array([1.0])),
+                "country_posterior_stdev": (("country",), np.array([0.1])),
+                "country_posterior_hdi_68": (("country", "hdi"), np.ones((1, 2))),
+                "country_posterior_hdi_95": (("country", "hdi"), np.ones((1, 2))),
+                "country_prior_mean": (("country",), np.array([1.0])),
+            },
+            coords={"country": country, "hdi": hdi},
+        )
+
+    monkeypatch.setattr(legacy_outputs, "make_concentration_outputs", fake_concentration_outputs)
+    monkeypatch.setattr(legacy_outputs, "make_flux_outputs", fake_flux_outputs)
+    monkeypatch.setattr(legacy_outputs, "make_country_outputs", fake_country_outputs)
+    monkeypatch.setattr(
+        legacy_outputs,
+        "flat_basis_for_output",
+        lambda inv_out: xr.DataArray(
+            np.array([[1]]), dims=("lat", "lon"), coords={"lat": lat, "lon": lon}, name="basis"
+        ),
+    )
+    monkeypatch.setattr(
+        legacy_outputs.utils,
+        "get_country",
+        lambda domain, country_file=None: SimpleNamespace(country=np.array([[1]])),
+    )
 
 
 def test_compute_apriori_flux_handles_missing_month():
@@ -34,7 +204,9 @@ def test_map_times_to_available_period_positions_handles_gappy_flux_months():
     times = pd.to_datetime(["2019-01-15", "2019-01-20", "2019-03-10", "2019-04-20"])
     flux_times = pd.to_datetime(["2019-01-01", "2019-03-01", "2019-04-01"])
 
-    positions = utils._map_times_to_available_period_positions(times, flux_times, "monthly")
+    positions = utils._map_times_to_available_period_positions(
+        times.to_numpy(), flux_times.to_numpy(), "monthly"
+    )
 
     np.testing.assert_array_equal(positions, np.array([0, 0, 1, 2]))
 
@@ -61,3 +233,33 @@ def test_compute_apriori_flux_handles_multi_year_flux_time():
         apriori_flux,
         xr.DataArray([[1.75]], dims=["lat", "lon"], coords={"lat": [0.0], "lon": [0.0]}),
     )
+
+
+def test_make_legacy_hbmcmc_output_derives_model_data_inputs(
+    stub_legacy_product_builders: None,
+) -> None:
+    """Legacy HBMCMC output no longer requires inferpymc result or side-channel arrays."""
+    inv_out = _legacy_inv_out(model_data=True)
+
+    output = legacy_outputs.make_legacy_hbmcmc_output(inv_out)
+
+    np.testing.assert_allclose(output["xsensitivity"].values, np.array([[0.25], [0.75]]))
+    np.testing.assert_array_equal(output["sigmafreqindex"].values, np.array([0, 1]))
+    np.testing.assert_allclose(output["xtrace"].values, np.ones((3, 1)))
+    np.testing.assert_allclose(output["sigtrace"].values, np.ones((3, 1, 2)))
+    assert output.attrs["Convergence"] == "Unavailable"
+
+
+def test_make_legacy_hbmcmc_output_falls_back_to_inv_inputs_for_sensitivities(
+    stub_legacy_product_builders: None,
+) -> None:
+    """Legacy HBMCMC output derives sensitivities from inv_inputs when model data is absent."""
+    inv_out = _legacy_inv_out(model_data=False, include_bc=True)
+
+    output = legacy_outputs.make_legacy_hbmcmc_output(inv_out, use_bc=True)
+
+    np.testing.assert_allclose(output["xsensitivity"].values, np.array([[9.0], [9.0]]))
+    np.testing.assert_allclose(output["bcsensitivity"].values, np.array([[1.0], [2.0]]))
+    np.testing.assert_array_equal(output["sigmafreqindex"].values, np.array([7, 8]))
+    np.testing.assert_allclose(output["bctrace"].values, np.full((3, 1), 0.5))
+    assert "YaprioriBC" in output

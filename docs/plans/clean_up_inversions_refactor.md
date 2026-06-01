@@ -20,15 +20,18 @@ version, which partially negates the benefit of keeping it as the main route.
 - [x] #401: use to separate `LegacyInversionOutput` from modern `InversionOutput`.
 - [x] #435: migrate postprocessing consumers from `LegacyInversionOutput` to the
   modern `InversionOutput`; opened as the follow-up from #401.
-- [ ] #383: revise toward "postprocessing consumes `BasisFunctions`, no `fp_data`
+- [x] #383: revise toward "postprocessing consumes `BasisFunctions`, no `fp_data`
   in modern path." Standard postprocessing should consume modern
   `InversionOutput` through product-neutral semantic accessors; old-format
   HBMCMC output may remain only as a dataset formatter over modern
   postprocessing results.
 - [ ] #429: keep as operator-backed output/postprocessing, but make it depend on
   the preparation split.
-- [ ] #416: should become active sooner; classify/deprecate `fixedbasisMCMC`,
-  `inferpymc`, `inferpymc_postprocessouts`, and hbmcmc helpers.
+- [ ] #416: first compatibility slice active; route fixedbasis-style
+  `run_hbmcmc.py` configs and deprecated HBMCMC output names to `run_rhime`
+  and the modern `legacy` formatter, then classify/deprecate the remaining
+  `fixedbasisMCMC`, `inferpymc`, `inferpymc_postprocessouts`, and hbmcmc
+  helpers.
 - [ ] #415: serializable RHIME bundle should serialize `RhimePreparedInputs`
   artifacts, not `fp_data`.
 - [ ] #405: complete sector-aware RHIME outputs and PARIS-compatible total outputs.
@@ -95,6 +98,12 @@ version, which partially negates the benefit of keeping it as the main route.
   validation for the later YAML/semantic-IR work.
 
 # Issue #401 Introduce `LegacyInversionOutput` and keep `InversionOutput` modern
+
+Historical note: #401 and #435 record intermediate architecture that has now
+been superseded. The current contract is the #383 / PR #439 state, plus the
+#416 first slice below: modern postprocessing consumes `InversionOutput`
+directly, `LegacyInversionOutput` is removed, and `inferpymc_postprocessouts`
+is no longer a normal output-dispatch target.
 
 ## Completed in PR #436 / Issue #401
 
@@ -256,43 +265,43 @@ layer. The modern postprocessing contract is `InversionOutput` plus retained
 `BasisFunctions`; product-specific modules own output names, legacy-format
 renames, and PARIS formatting.
 
-## Completed in Current PR / Issue #383
+## Completed in PR #439 / Issue #383
 
-- 2026-05-31: #383 / current PR added private operator-backed postprocessing
+- 2026-05-31: #383 / PR #439 added private operator-backed postprocessing
   helpers for standard single-sector flux and country products.
-- 2026-05-31: #383 / current PR routed modern `make_flux_outputs`, country
+- 2026-05-31: #383 / PR #439 routed modern `make_flux_outputs`, country
   totals, and PARIS flux outputs through retained `BasisFunctions` /
   `BasisOperator` data when a modern `InversionOutput` is supplied.
-- 2026-06-01: #383 / current PR moved fixedbasis `basic`, `paris`,
+- 2026-06-01: #383 / PR #439 moved fixedbasis `basic`, `paris`,
   `hbmcmc_postprocessing`, `inv_out`, and saved inversion-output handling onto
   modern `InversionOutput` backed by retained `BasisFunctions`, while keeping
   the true legacy `hbmcmc` formatter isolated.
-- 2026-06-01: #383 / current PR removed the transitional
+- 2026-06-01: #383 / PR #439 removed the transitional
   `StandardPostprocessingOutput` / `PostprocessingInput` /
   `ModernPostprocessingOutput` layer and did not replace it with public
   `standard_*` free functions. Product helpers consume modern
   `InversionOutput` directly.
-- 2026-06-01: #383 / current PR added product-neutral `InversionOutput`
+- 2026-06-01: #383 / PR #439 added product-neutral `InversionOutput`
   semantics for current postprocessing needs: period metadata, prior flux,
   site names, variable-role lookup, and canonical `input_dataset(...)`,
   `trace_dataset(...)`, and `model_data(...)` accessors. Product modules own
   their own single-sector/multisector validation.
-- 2026-06-01: #383 / current PR removed `LegacyInversionOutput`,
+- 2026-06-01: #383 / PR #439 removed `LegacyInversionOutput`,
   `make_inv_out_for_fixed_basis_mcmc(...)`, and the old RHIME-output
   reprocessing helpers. The remaining old-format `hbmcmc_postprocessing`
   product is a formatter over modern `InversionOutput`, not a separate
   inversion-output carrier.
-- 2026-06-01: #383 / current PR made fixedbasis sampling restore model-managed
+- 2026-06-01: #383 / PR #439 made fixedbasis sampling restore model-managed
   coordinates onto `InferenceData` and canonicalize fixedbasis trace dims back
   to the modern `BasisFunctions.operator.meta.state_dim` before constructing
   `InversionOutput`.
-- 2026-06-01: #383 / current PR added a module-level design note to
+- 2026-06-01: #383 / PR #439 added a module-level design note to
   `postprocessing/inversion_output.py` documenting that `InversionOutput` is a
   modern product-neutral carrier, product formatters own output schemas and
   capability checks, variable roles are a temporary bridge, and generic
   DataTree/MultiIndex serialization helpers should move to utilities later.
 
-## Recorded decisions for Current PR / Issue #383
+## Recorded decisions for PR #439 / Issue #383
 
 - Keep operator-backed flux/country reconstruction as internal postprocessing
   implementation detail for now. The public input is the modern
@@ -309,8 +318,8 @@ renames, and PARIS formatting.
   an `InversionOutput.require_single_sector(...)` method.
 - Keep output-name mapping inside product modules: `make_outputs.py` maps to
   `y_obs`, `model_error`, `Hx`, and `basis`; `make_paris_outputs.py` maps to
-  PARIS names and attrs; `legacy_outputs.py` maps to `inferpymc_postprocessouts`
-  style names.
+  PARIS names and attrs; `legacy_outputs.py` maps to legacy-format HBMCMC-style
+  names.
 - Do not reconstruct site/time coordinates in postprocessing. Model sampling
   and fixedbasis construction must restore valid `nmeasure=(site, time)`
   coordinates before product helpers run, and products should fail clearly if
@@ -343,11 +352,12 @@ Track multisector output work under #405. It can proceed after the modern
 postprocessing input contract is clearer, or in parallel if it stays limited to
 sector diagnostics and PARIS-compatible total outputs.
 
-Track fixedbasis removal under #416. The first slice should be a
-`run_hbmcmc.py` compatibility shim that translates legacy config names such as
-`outputpath`, `outputname`, `nit`, and `nchain` to the `run_rhime` API, while
-raising targeted errors for fixedbasis-only output formats. Once old scripts
-can run through `run_rhime`, remove `fixedbasisMCMC` and then remove
+Track fixedbasis removal under #416. The first slice is a `run_hbmcmc.py`
+compatibility shim that translates legacy config names such as `outputpath`,
+`outputname`, `nit`, and `nchain` to the `run_rhime` API, routes old
+`hbmcmc` / `hbmcmc_postprocessing` output requests to `legacy`, and rejects
+enabled fixedbasis-only options. Once old scripts can run through `run_rhime`,
+remove `fixedbasisMCMC`, then remove `inferpymc` and
 `inferpymc_postprocessouts`.
 
 # Issue #416 Fixedbasis transition and legacy adapter removal
@@ -363,17 +373,36 @@ review.
 - `fixedbasisMCMC` may remain as a compatibility entrypoint while #416 is
   active, but it should keep only the operational contract that current users
   need: same inputs in, successful run, and matching `output_format="paris"`
-  products.
+  and legacy-format products.
+- `legacy` is the modern compatibility output name. Deprecated
+  `hbmcmc` and `hbmcmc_postprocessing` output requests should resolve to
+  `legacy`.
 - Saved legacy inversion-output compatibility and direct legacy carrier return
   behavior are not strategic compatibility goals. #383 removes that carrier
   once fixedbasis postprocessing can construct modern `InversionOutput`.
-- `inferpymc_postprocessouts` should not remain the compatibility target.
-  `postprocessing/legacy_outputs.py` exists so the old-format dataset can be
-  produced from the modern postprocessing path by renaming variables and
-  arranging dimensions, then `inferpymc_postprocessouts` can be deleted.
+- `inferpymc_postprocessouts` should not remain the compatibility target or a
+  normal output-dispatch path. `postprocessing/legacy_outputs.py` exists so the
+  old-format dataset can be produced from modern `InversionOutput` by deriving
+  trace, sensitivity, frequency-index, and product fields internally; then
+  `inferpymc_postprocessouts` can be deleted.
 
 ## Preferred #416 implementation direction
 
+- Done in #416 first slice: add `output_format="legacy"` to RHIME single-sector
+  output dispatch and route deprecated `hbmcmc` / `hbmcmc_postprocessing`
+  names to it.
+- Done in #416 first slice: add a `run_hbmcmc.py` compatibility shim that reads
+  old fixedbasis-style INI files, translates legacy names (`outputpath`,
+  `outputname`, `nit`, `nchain`, `verbose`, `sampler_kwargs`) to modern RHIME
+  names, accepts and removes `mcmc_type="fixed_basis"`, and calls `run_rhime`.
+- Done in #416 first slice: keep old fixedbasis filename conventions for
+  outputs created via `run_hbmcmc.py`; direct `run_rhime` keeps RHIME filenames
+  unless explicitly given the compatibility filename convention.
+- Done in #416 first slice: refactor
+  `postprocessing.legacy_outputs.make_legacy_hbmcmc_output(...)` to consume
+  modern `InversionOutput` directly and derive `Hx`, `Hbc`,
+  `sigma_freq_index`, `xtrace`, `sigtrace`, `bctrace`, and convergence without
+  an inferpymc-shaped `mcmc_results` adapter.
 - Done in #383: pipe retained `BasisFunctions` through `FixedBasisPreparedData`
   for fixedbasis output modes after data preparation, construct modern
   `InversionOutput` from canonical `inv_inputs`, retained
@@ -394,12 +423,25 @@ review.
 - Done in #383: remove flat-basis fallback branches from modern flux/country
   postprocessing helpers.
 - Remove `inferpymc_postprocessouts` after old-format output parity is covered
-  by `postprocessing/legacy_outputs.py` using modern postprocessing inputs.
-- Remove `fixedbasisMCMC` once the #416 compatibility shim can run current
-  fixedbasis-style scripts through `run_rhime`.
+  by `postprocessing/legacy_outputs.py` using modern postprocessing inputs. No
+  normal RHIME/fixedbasis output dispatch should call it after the #416 first
+  slice.
+- Remove or quarantine direct `inferpymc` sampling once `fixedbasisMCMC` is no
+  longer needed as a Python compatibility entrypoint.
+- Remove `fixedbasisMCMC` once the #416 compatibility shim has enough
+  fixedbasis-style script parity coverage through `run_rhime`.
 
 ## Tests needed before removal
 
+- Done in #416 first slice: shim tests prove old config names route to
+  `run_rhime` with modern arguments and legacy filename convention.
+- Done in #416 first slice: alias tests prove `hbmcmc`,
+  `hbmcmc_postprocessing`, and `legacy` select the modern legacy formatter.
+- Done in #416 first slice: legacy formatter tests prove no `mcmc_results`,
+  `inferpymc_postprocessouts`, or `fp_data` are needed.
+- Done in #416 first slice: RHIME output-bundle tests prove
+  `output_format="legacy"` passes modern `InversionOutput` to the formatter and
+  writes the expected legacy file.
 - A focused fixedbasis compatibility test that proves the same fixedbasis input
   still runs and produces PARIS flux/concentration outputs matching the current
   behavior.

@@ -55,6 +55,36 @@ def _define_output_filename(
     return Path(output_path) / f"{output_name}_{species}_{domain}_{start_date}{ext}"
 
 
+def _define_legacy_output_filename(
+    output_path: str | Path,
+    species: str,
+    domain: str,
+    output_name: str,
+    start_date: str,
+    *,
+    ext: str = ".nc",
+) -> Path:
+    """Create the old fixedbasis/HBMCMC output filename for compatibility."""
+    return Path(output_path) / f"{species.upper()}_{domain}_{output_name}_{start_date}{ext}"
+
+
+def _define_derived_output_filename(
+    output_spec: RhimeOutputSpec,
+    *,
+    species: str,
+    domain: str,
+    output_name: str,
+    start_date: str,
+    ext: str = ".nc",
+) -> Path:
+    """Create a derived-output filename using the requested convention."""
+    if output_spec.output_path is None:
+        raise ValueError("An output path is required when saving RHIME outputs.")
+    if output_spec.output_filename_convention == "legacy":
+        return _define_legacy_output_filename(output_spec.output_path, species, domain, output_name, start_date, ext=ext)
+    return _define_output_filename(output_spec.output_path, species, domain, output_name, start_date, ext=ext)
+
+
 def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
     """Save InferenceData, preferring the h5netcdf backend with fallbacks."""
     if isinstance(idata, az.InferenceData):
@@ -204,20 +234,20 @@ def make_standard_output_bundle(
 
         if output_spec.output_path is not None:
             Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
-            conc_file = _define_output_filename(
-                output_spec.output_path,
-                model_spec.species,
-                model_spec.domain,
-                output_spec.output_name + "_conc",
-                run_spec.start_date,
+            conc_file = _define_derived_output_filename(
+                output_spec,
+                species=model_spec.species,
+                domain=model_spec.domain,
+                output_name=output_spec.output_name + "_conc",
+                start_date=run_spec.start_date,
                 ext=".nc",
             )
-            flux_file = _define_output_filename(
-                output_spec.output_path,
-                model_spec.species,
-                model_spec.domain,
-                output_spec.output_name + "_flux",
-                run_spec.start_date,
+            flux_file = _define_derived_output_filename(
+                output_spec,
+                species=model_spec.species,
+                domain=model_spec.domain,
+                output_name=output_spec.output_name + "_flux",
+                start_date=run_spec.start_date,
                 ext=".nc",
             )
             conc_outs.to_netcdf(
@@ -228,6 +258,29 @@ def make_standard_output_bundle(
             )
             output_metadata["paris_concentration_path"] = str(conc_file)
             output_metadata["paris_flux_path"] = str(flux_file)
+    elif output_spec.output_format == "legacy":
+        from openghg_inversions.postprocessing.legacy_outputs import make_legacy_hbmcmc_output
+
+        output_metadata["postprocessing_input_contract"] = "modern_inversion_output"
+        legacy_out = make_legacy_hbmcmc_output(
+            inv_out,
+            country_file=country_file,
+            use_bc=model_spec.use_bc,
+        )
+        outputs["legacy"] = legacy_out
+
+        if output_spec.output_path is not None:
+            Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
+            legacy_file = _define_derived_output_filename(
+                output_spec,
+                species=model_spec.species,
+                domain=model_spec.domain,
+                output_name=output_spec.output_name,
+                start_date=run_spec.start_date,
+                ext=".nc",
+            )
+            legacy_out.to_netcdf(legacy_file, mode="w", encoding=ncdf_encoding(legacy_out))
+            output_metadata["legacy_output_path"] = str(legacy_file)
 
     return RhimeOutputBundle(inv_out=inv_out, outputs=outputs, output_metadata=output_metadata)
 
