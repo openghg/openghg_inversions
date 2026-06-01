@@ -70,9 +70,9 @@ jobs:
           pip install -r requirements.txt
           pip install -e .
       - name: Install pytest
-        run: pip install pytest
+        run: pip install pytest pytest-xdist
       - name: Run tests
-        run: pytest tests/
+        run: pytest tests/ -n 2 --dist=loadscope
 
   # Stable job name for branch-protection required-check rules.
   # Use "CI Gate" as the required check name instead of brittle matrix-expanded names.
