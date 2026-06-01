@@ -9,9 +9,10 @@
   `hbmcmc` / `hbmcmc_postprocessing` output requests to it, and made
   `run_hbmcmc.py` translate fixedbasis-style configs into `run_rhime` calls while
   preserving legacy output filenames. The shim now validates translated arguments
-  before copying configs, old HBMCMC output attrs are produced from modern
-  `InversionOutput`, and user docs mark historical `fixedbasisMCMC` behavior as
-  available from release 0.6 or earlier. [#416](https://github.com/openghg/openghg_inversions/issues/416)
+  before copying configs, translates deprecated `calculate_min_error` and
+  `reparameterise_log_normal` options where possible, old HBMCMC output attrs
+  are produced from modern `InversionOutput`, and user docs mark historical
+  `fixedbasisMCMC` behavior as available from release 0.6 or earlier. [#416](https://github.com/openghg/openghg_inversions/issues/416)
 - Routed modern RHIME and fixedbasis postprocessing through modern `InversionOutput` semantics, retained `BasisFunctions` / `BasisOperator` products, variable-role lookups, and product-local capability checks; removed the transitional postprocessing protocol/view layer and deleted `LegacyInversionOutput` plus the dead legacy inversion-output builder helpers. [#383](https://github.com/openghg/openghg_inversions/issues/383)
 - Migrated standard RHIME `basic` and `paris` postprocessing toward modern `InversionOutput` as an intermediate step before the final #383 product-local postprocessing contract. [#435](https://github.com/openghg/openghg_inversions/issues/435)
 - Introduced the temporary modern/legacy output split and modern `InversionOutput` serialization; the transitional `LegacyInversionOutput` carrier was removed by #383. [#401](https://github.com/openghg/openghg_inversions/issues/401)

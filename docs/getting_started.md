@@ -90,8 +90,8 @@ Summary
 ## Method 1: python script or notebook
 
 New scripts should call `run_rhime` from `openghg_inversions.rhime`.
-`fixedbasisMCMC` remains only as a legacy compatibility entry point for old
-fixedbasis-style Python workflows.
+`fixedbasisMCMC` remains only as a temporary direct legacy Python path, not as
+the RHIME-backed compatibility route.
 It no longer preserves the exact historical `fixedbasisMCMC` / `inferpymc`
 passthrough behaviour; use release `0.6` or earlier if you need the old
 fixedbasis implementation.
