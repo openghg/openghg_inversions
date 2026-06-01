@@ -1,40 +1,39 @@
-# Clean Up Inversions Refactor for PR #434 / Issue #400
+# Clean Up Inversions Refactor
 
 This note tracks the near-term refactor sequence for moving from the legacy
-`fixedbasisMCMC` path to the modern `run_rhime` pipeline while keeping each PR
-scoped enough to review.
+`fixedbasisMCMC` path to the modern `run_rhime` pipeline.
 
-## Goal for PR #434 / Issue #400
+## Goal
 
 Switch over from `fixedbasisMCMC` to `run_rhime` as quickly as possible.
 Maintaining both paths is slowing development of the modern inversion pipeline,
 and `fixedbasisMCMC` is now radically different from the currently released
 version, which partially negates the benefit of keeping it as the main route.
 
-## Deferred issue sequence
+## Issue sequence
 
-- #400: keep for specs/terminology. `RhimePreparedInputs` should consume these
+- [x] #431:  move `RhimePreparedInputs` toward consuming RHIME specs, keeping `fp_data`,
+  `fp_all`, flat `.basis`, materialised basis arrays, and optional basis-object
+   side channels out of the modern contract.
+- [x] #400: keep for specs/terminology. `RhimePreparedInputs` should consume these
   specs later, but changing that prepared-input contract is not part of #400.
-- #383: revise toward "postprocessing consumes `BasisFunctions`, no `fp_data`
+- [x] #401: use to separate `LegacyInversionOutput` from modern `InversionOutput`.
+- [x] #435: migrate postprocessing consumers from `LegacyInversionOutput` to the
+  modern `InversionOutput`; opened as the follow-up from #401.
+- [ ] #383: revise toward "postprocessing consumes `BasisFunctions`, no `fp_data`
   in modern path." Legacy reconstruction from `fp_data[".basis"]` should remain
   only in compatibility adapters.
-- #401: use to separate `LegacyInversionOutput` from modern `InversionOutput`.
-- #435: migrate postprocessing consumers from `LegacyInversionOutput` to the
-  modern `InversionOutput`; opened as the follow-up from #401.
-- #405: complete sector-aware RHIME outputs and PARIS-compatible total outputs.
+- [ ] #429: keep as operator-backed output/postprocessing, but make it depend on
+  the preparation split.
+- [ ] #416: should become active sooner; classify/deprecate `fixedbasisMCMC`,
+  `inferpymc`, `inferpymc_postprocessouts`, and hbmcmc helpers.
+- [ ] #415: serializable RHIME bundle should serialize `RhimePreparedInputs`
+  artifacts, not `fp_data`.
+- [ ] #405: complete sector-aware RHIME outputs and PARIS-compatible total outputs.
   PR #436 makes multisector runs carry modern `InversionOutput`, but sector
   diagnostics and PARIS totals are still transitional.
-- #429: keep as operator-backed output/postprocessing, but make it depend on
-  the preparation split.
-- #416: should become active sooner; classify/deprecate `fixedbasisMCMC`,
-  `inferpymc`, `inferpymc_postprocessouts`, and hbmcmc helpers.
-- #415: serializable RHIME bundle should serialize `RhimePreparedInputs`
-  artifacts, not `fp_data`.
 
-Prep split note: #431 was closed by #433. That dependency moved
-`RhimePreparedInputs` toward consuming RHIME specs and keeping `fp_data`,
-`fp_all`, flat `.basis`, materialised basis arrays, and optional basis-object
-side channels out of the modern contract.
+# Issue #400 model specs and terminology
 
 ## Completed in PR #434 / Issue #400
 
@@ -93,27 +92,7 @@ side channels out of the modern contract.
   Keep the public spec dataclasses as stdlib dataclasses, and reserve schema
   validation for the later YAML/semantic-IR work.
 
-## Deferred sampler extensions
-
-PR #434 / Issue #400 should keep `RhimeSampler` focused on the current PyMC
-MCMC path: `pm.sample`, post-sampling burn slicing, and optional prior/posterior
-predictive groups. Follow-up sampler variants can add quick MAP checks,
-prior-predictive-only validation runs, variational inference, and custom PyMC
-step methods without reintroducing runner-level sampling branches.
-
-## Deferred Issue #431 data-preparation spec
-
-PR #434 / Issue #400 should not introduce `RhimeDataSpec`. The current
-`prepare_rhime_inputs` signature still mixes data gathering, filtering, basis
-function construction, and `make_inv_inputs` concerns, so a one-piece data spec
-would mostly mirror the INI template rather than clarify the architecture.
-
-#431 was closed by #433. Any remaining preparation split should break
-preparation into smaller contracts for data gathering, filtering, basis
-functions, and inversion input construction. A future `RhimeDataSpec` or
-`RequiredDataPlan` can then be introduced at the right boundary, with
-`sigma_freq`, `bc_freq`, and related model-input concerns moving closer to the
-model components that consume them.
+# Issue #401 Introduce `LegacyInversionOutput` and keep `InversionOutput` modern
 
 ## Completed in PR #436 / Issue #401
 
@@ -189,7 +168,7 @@ model components that consume them.
   malformed. PR #436 now decodes bytes and skips malformed records safely
   before applying `set_index`.
 
-## Issue #435 postprocessing consumer migration target
+# Issue #435 postprocessing consumer migration target
 
 #435 should move `make_outputs`, `make_paris_outputs`, `countries`,
 `diagnostics`, and `legacy_outputs` off `LegacyInversionOutput` where possible.
@@ -264,6 +243,8 @@ legacy basis reconstruction as fallback. #429 should then make the
 operator-backed path primary and define the deprecation policy for legacy
 basis reconstruction.
 
+# Issue #383 Use retained basis operators in postprocessing
+
 ## Completed in Current PR / Issue #383
 
 - 2026-05-31: #383 / current PR added private operator-backed postprocessing
@@ -304,6 +285,8 @@ raising targeted errors for fixedbasis-only output formats. Once old scripts
 can run through `run_rhime`, remove `fixedbasisMCMC` and then remove
 `inferpymc_postprocessouts`.
 
+# Deferred 
+
 ## Deferred SemanticModel plan
 
 PR #434 / Issue #400 keeps the production fast path on `RhimeModelSpec`,
@@ -332,6 +315,28 @@ abstract model-spec contract. That later dependency inversion is the right
 place for model builders to depend on abstract specs rather than RHIME-specific
 dataclasses.
 
+## Deferred sampler extensions
+
+PR #434 / Issue #400 should keep `RhimeSampler` focused on the current PyMC
+MCMC path: `pm.sample`, post-sampling burn slicing, and optional prior/posterior
+predictive groups. Follow-up sampler variants can add quick MAP checks,
+prior-predictive-only validation runs, variational inference, and custom PyMC
+step methods without reintroducing runner-level sampling branches.
+
+## Deferred Issue #431 data-preparation spec
+
+PR #434 / Issue #400 should not introduce `RhimeDataSpec`. The current
+`prepare_rhime_inputs` signature still mixes data gathering, filtering, basis
+function construction, and `make_inv_inputs` concerns, so a one-piece data spec
+would mostly mirror the INI template rather than clarify the architecture.
+
+#431 was closed by #433. Any remaining preparation split should break
+preparation into smaller contracts for data gathering, filtering, basis
+functions, and inversion input construction. A future `RhimeDataSpec` or
+`RequiredDataPlan` can then be introduced at the right boundary, with
+`sigma_freq`, `bc_freq`, and related model-input concerns moving closer to the
+model components that consume them.
+
 ## Deferred Issue #383 / Issue #429 output boundary
 
 - #383 landed the first modern postprocessing slice that consumes retained
@@ -340,3 +345,4 @@ dataclasses.
 - #429 remains the boundary for operator-backed output and postprocessing.
   It should make the operator-backed path primary, add durable reconstruction
   metadata, and define the deprecation policy for legacy basis reconstruction.
+
