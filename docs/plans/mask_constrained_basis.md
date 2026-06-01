@@ -73,3 +73,40 @@ part of #340.
   cleaned-up `GreedyAxisParallelSplitStrategy` as the constrained default and
   keeps `AxisAlignedWeightedSplitStrategy` as an explicit compatibility
   strategy.
+- 2026-06-01: Added #325 caller-facing adapter
+  `region_constrained_basis_function` and
+  `basis_algorithm="region_constrained"`.
+  It uses the #449 core helper with a caller-supplied `region_classes`
+  `DataArray`; country/region file loading remains outside the algorithm. The
+  wrapper now passes through `region_classes`, `region_allocation`, and
+  `min_regions_per_class` only for this algorithm.
+- 2026-06-01: Subagent review completed on the stacked #325 branch. Fixes made:
+  `region_constrained` now works through `fixed_outer_regions_basis` when
+  `region_classes` is supplied; all-zero class weights use an area surrogate for
+  splitting; explicit allocation is checked against mapped-cell capacity; and
+  `SplitStrategy` is exported. The apparent positional API issue for
+  the legacy compressed names `quadtreebasisfunction`/`bucketbasisfunction` was
+  present on `origin/devel`, but new wrapper options were moved to the end of
+  `basis_functions_wrapper` to avoid changing its existing positional order.
+- 2026-06-02: Research in `~/Documents/basis_functions` found bucket-threshold
+  optimizers, simulated annealing experiments, and numba notebook fragments.
+  These are useful future research inputs but are not clean drop-in
+  `SplitStrategy` candidates yet.
+- 2026-06-02: Histories `~/Documents/ipython_histories/ipython_hist_26.py` and
+  `ipython_hist_27.py` preserve country/region partition workflows: land/sea
+  and PARIS country partitions, country-fraction matrix labeling, and
+  `outer_region_definition_EUROPE.nc` with inner region `region == 6`. Follow-up
+  #325 work should keep file loading outside the pure helper and add tiny
+  land/sea, country, and outer-region fixtures that assert labels do not cross
+  classes.
+- 2026-06-02: Added PEP-style public function names
+  `quadtree_basis_function`, `bucket_basis_function`, and
+  `region_constrained_basis_function`. The old compressed names
+  `quadtreebasisfunction` and `bucketbasisfunction` remain as deprecated aliases
+  with warnings for compatibility; the draft-only compressed
+  `regionconstrainedbasisfunction` alias was removed before PR.
+- 2026-06-02: Extracted a `PartitionStep` protocol and `AxisParallelSplitStep`
+  from the greedy constrained strategy. Greedy orchestration now uses a small
+  priority-queue wrapper that pops the highest-weight partition first and can
+  accept split steps that return more than two child partitions without
+  overshooting the requested target count.

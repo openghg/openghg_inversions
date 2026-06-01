@@ -12,6 +12,7 @@ import pandas as pd
 import xarray as xr
 import logging
 
+from .algorithms import AllocationMode, region_constrained_basis
 from .algorithms import quadtree_algorithm, weighted_algorithm
 
 from openghg_inversions.config.paths import Paths
@@ -54,7 +55,7 @@ def basis(domain: str, basis_case: str, basis_directory: str | None = None) -> x
         if not basis_path.exists():
             basis_path.mkdir()
             raise ValueError(
-                f"Default basis directory {basis_path} was empty. " "Add basis files or specify `basis_path`."
+                f"Default basis directory {basis_path} was empty. Add basis files or specify `basis_path`."
             )
     else:
         basis_path = Path(basis_directory)
@@ -64,7 +65,7 @@ def basis(domain: str, basis_case: str, basis_directory: str | None = None) -> x
 
     if len(files) == 0:
         raise FileNotFoundError(
-            f"Can't find basis function files for domain '{domain}'" f"and basis_case '{basis_case}' "
+            f"Can't find basis function files for domain '{domain}'and basis_case '{basis_case}' "
         )
 
     basis_ds = read_netcdfs(files)
@@ -123,7 +124,7 @@ def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: 
 
     if len(files) == 0:
         raise FileNotFoundError(
-            f"Can't find BC basis function files for domain '{domain}'" f"and bc_basis_case '{basis_case}' "
+            f"Can't find BC basis function files for domain '{domain}'and bc_basis_case '{basis_case}' "
         )
 
     basis_ds = read_netcdfs(files)
@@ -212,7 +213,7 @@ def _mean_fp_times_mean_flux(
 def quadtreebasisfunction(
     fp_all: dict,
     start_date: str,
-    domain : str,
+    domain: str,
     emissions_name: list[str] | None = None,
     nbasis: int = 100,
     country_directory: str | None = None,
@@ -236,7 +237,7 @@ def quadtreebasisfunction(
       start_date (str):
         Start date of period of inversion
       domain (str):
-        Domain across which to calculate basis functions. 
+        Domain across which to calculate basis functions.
       emissions_name (list):
         List of keyword "source" args used for retrieving emissions files
         from the Object store
@@ -278,12 +279,12 @@ def quadtreebasisfunction(
 def bucketbasisfunction(
     fp_all: dict,
     start_date: str,
-    domain : str,
+    domain: str,
     emissions_name: list[str] | None = None,
     nbasis: int = 100,
     country_directory: str | None = None,
     abs_flux: bool = False,
-    mask: xr.DataArray | None = None
+    mask: xr.DataArray | None = None,
 ) -> xr.DataArray:
     """Basis functions calculated using a weighted region approach
     where each basis function / scaling region contains approximately
@@ -323,7 +324,9 @@ def bucketbasisfunction(
     fps = fps / fps.max()
 
     # use xr.apply_ufunc to keep xarray coords
-    func = partial(weighted_algorithm, nregion=nbasis, bucket=1, domain=domain, country_directory=country_directory)
+    func = partial(
+        weighted_algorithm, nregion=nbasis, bucket=1, domain=domain, country_directory=country_directory
+    )
     bucket_basis = xr.apply_ufunc(func, fps)
 
     bucket_basis = bucket_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
@@ -336,11 +339,64 @@ def bucketbasisfunction(
     return bucket_basis
 
 
+def regionconstrainedbasisfunction(
+    fp_all: dict,
+    start_date: str,
+    domain: str,
+    emissions_name: list[str] | None = None,
+    nbasis: int = 100,
+    country_directory: str | None = None,
+    abs_flux: bool = False,
+    mask: xr.DataArray | None = None,
+    region_classes: xr.DataArray | None = None,
+    allocation: AllocationMode = "weight",
+    min_regions_per_class: int = 1,
+) -> xr.DataArray:
+    """Create weighted basis regions constrained by caller-supplied classes.
+
+    This adapter keeps file loading outside the constrained algorithm: callers
+    provide ``region_classes`` directly, for example from a country file,
+    land/sea file, or a user-defined region-class field.
+    """
+    if region_classes is None:
+        raise ValueError("region_classes must be supplied for the region_constrained basis algorithm.")
+
+    flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
+    weights = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
+    max_weight = float(weights.max())
+    if max_weight > 0:
+        weights = weights / max_weight
+
+    region_classes = region_classes.transpose(*weights.dims)
+    region_classes = region_classes.sel({dim: weights.coords[dim] for dim in weights.dims})
+
+    constrained_basis = region_constrained_basis(
+        weights,
+        region_classes,
+        nbasis,
+        allocation=allocation,
+        min_regions_per_class=min_regions_per_class,
+    )
+
+    constrained_basis = constrained_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
+    constrained_basis = constrained_basis.rename("basis")
+
+    constrained_basis.attrs["creator"] = getpass.getuser()
+    constrained_basis.attrs["date created"] = str(pd.Timestamp.today())
+    constrained_basis.attrs["domain"] = domain
+
+    return constrained_basis
+
+
 # dict to retrieve basis function and description by algorithm name
 BasisFunction = namedtuple("BasisFunction", ["description", "algorithm"])
 basis_functions = {
     "quadtree": BasisFunction("quadtree algorithm", quadtreebasisfunction),
     "weighted": BasisFunction("weighted by data algorithm", bucketbasisfunction),
+    "region_constrained": BasisFunction(
+        "region-constrained weighted by data algorithm",
+        regionconstrainedbasisfunction,
+    ),
 }
 
 
@@ -353,6 +409,10 @@ def fixed_outer_regions_basis(
     nbasis: int = 100,
     country_directory: str | None = None,
     abs_flux: bool = False,
+    *,
+    region_classes: xr.DataArray | None = None,
+    region_allocation: AllocationMode = "weight",
+    min_regions_per_class: int = 1,
 ) -> xr.DataArray:
     """Fix outer region of basis functions to InTEM regions, and fit the inner regions using `basis_algorithm`.
 
@@ -362,7 +422,8 @@ def fixed_outer_regions_basis(
       start_date (str):
         Start date of period of inference
       basis_algorithm (str):
-        Name of the basis algorithm used. Options are "quadtree", "weighted"
+        Name of the basis algorithm used. Options are "quadtree", "weighted",
+        "region_constrained"
       domain (str):
         domain for the basis functions to be calculated over
       emissions_name (list):
@@ -377,6 +438,16 @@ def fixed_outer_regions_basis(
       abs_flux:
         When set to True uses absolute values of a flux array
         Default False
+      region_classes:
+        Region or country class field used with ``basis_algorithm="region_constrained"``.
+        File loading should happen before calling this helper.
+        Default None
+      region_allocation:
+        Allocation mode for ``region_constrained``. One of ``"weight"`` or ``"area"``.
+        Default "weight"
+      min_regions_per_class:
+        Minimum automatic allocation for each non-empty mapped class.
+        Default 1
 
     Returns:
         basis (xarray.DataArray) :
@@ -399,15 +470,31 @@ def fixed_outer_regions_basis(
     mask = intem_regions == inner_index
 
     basis_function = basis_functions[basis_algorithm].algorithm
-    inner_region = basis_function(fp_all, start_date, domain, emissions_name, nbasis, country_directory=country_directory, abs_flux=abs_flux, mask=mask)
+    algorithm_kwargs = {"country_directory": country_directory, "abs_flux": abs_flux, "mask": mask}
+    if basis_algorithm == "region_constrained":
+        algorithm_kwargs.update(
+            {
+                "region_classes": region_classes,
+                "allocation": region_allocation,
+                "min_regions_per_class": min_regions_per_class,
+            }
+        )
+    inner_region = basis_function(
+        fp_all,
+        start_date,
+        domain,
+        emissions_name,
+        nbasis,
+        **algorithm_kwargs,
+    )
 
-    basis = intem_regions.rename("basis") 
+    basis = intem_regions.rename("basis")
 
     loc_dict = {
         "lat": slice(inner_region.lat.min(), inner_region.lat.max() + 0.1),
         "lon": slice(inner_region.lon.min(), inner_region.lon.max() + 0.1),
     }
-    basis.loc[loc_dict] = (inner_region + inner_index-1).squeeze().values
+    basis.loc[loc_dict] = (inner_region + inner_index - 1).squeeze().values
 
     basis += 1  # intem_region_definitions.nc regions start at 0, not 1
 

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from types import SimpleNamespace
 
 from openghg_inversions.basis._functions import (
     basis,
@@ -14,11 +15,13 @@ from openghg_inversions.basis import (
     bucketbasisfunction,
     quadtreebasisfunction,
     fixed_outer_regions_basis,
+    regionconstrainedbasisfunction,
 )
 from openghg_inversions.basis._wrapper import (
     _save_basis,
     _save_basis_datatree,
     load_basis_functions,
+    make_basis_functions,
 )
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_SOURCE_ATTR,
@@ -149,6 +152,109 @@ def test_fixed_outer_region_basis_function(tac_ch4_data_args, raw_data_path):
     # TODO: create new "fixed" basis function file, since we've switched basis functions from
     # dataset to data array
     xr.testing.assert_allclose(basis_func, basis_func_reloaded.basis)
+
+
+def _tiny_region_constrained_fp_all() -> tuple[dict, xr.DataArray]:
+    time = pd.date_range("2020-01-01", periods=2)
+    lat = np.arange(4.0)
+    lon = np.arange(4.0)
+    coords = {"time": time, "lat": lat, "lon": lon}
+    flux = xr.DataArray(np.ones((2, 4, 4)), dims=("time", "lat", "lon"), coords=coords, name="flux")
+    fp = xr.DataArray(np.ones((2, 4, 4)), dims=("time", "lat", "lon"), coords=coords, name="fp")
+    region_classes = xr.DataArray(
+        np.array(
+            [
+                ["west", "west", "east", "east"],
+                ["west", "west", "east", "east"],
+                ["west", "west", "east", "east"],
+                ["west", "west", "east", "east"],
+            ],
+            dtype=object,
+        ),
+        dims=("lat", "lon"),
+        coords={"lat": lat, "lon": lon},
+        name="region_class",
+    )
+    fp_all = {
+        "SITE": xr.Dataset({"fp": fp}),
+        ".flux": {"total": SimpleNamespace(data=xr.Dataset({"flux": flux}))},
+    }
+    return fp_all, region_classes
+
+
+def _assert_basis_labels_do_not_cross_classes(labels: xr.DataArray, classes: xr.DataArray) -> None:
+    labels, classes = xr.align(labels, classes, join="exact")
+    for label in np.unique(labels.values):
+        if label == 0:
+            continue
+        class_values = set(classes.values[labels.values == label])
+        assert len(class_values) == 1
+
+
+def test_region_constrained_basis_function_uses_supplied_region_classes():
+    """Region-constrained basis generation uses caller-supplied class fields."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+
+    basis_func = regionconstrainedbasisfunction(
+        fp_all=fp_all,
+        start_date="2020-01-01",
+        domain="TEST",
+        emissions_name=["total"],
+        nbasis=4,
+        region_classes=region_classes,
+    )
+
+    labels = basis_func.squeeze("time", drop=True)
+    assert set(np.unique(labels.values)) == {1, 2, 3, 4}
+    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
+
+
+def test_make_basis_functions_accepts_region_constrained_algorithm():
+    """make_basis_functions can build a retained basis from caller-supplied classes."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+
+    basis_object = make_basis_functions(
+        fp_all=fp_all,
+        species="ch4",
+        domain="TEST",
+        start_date="2020-01-01",
+        emissions_name=["total"],
+        nbasis=4,
+        basis_algorithm="region_constrained",
+        region_classes=region_classes,
+    )
+
+    labels = basis_object.flat_basis()
+    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
+
+
+def test_fixed_outer_regions_can_use_region_constrained_algorithm(tmp_path):
+    """Fixed outer regions can pass class fields through to the inner basis algorithm."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_regions = xr.Dataset(
+        {
+            "region": (
+                ("lat", "lon"),
+                np.ones(region_classes.shape, dtype=int),
+            )
+        },
+        coords=region_classes.coords,
+    )
+    outer_regions.to_netcdf(tmp_path / "outer_region_definition_TEST.nc")
+
+    basis_func = fixed_outer_regions_basis(
+        fp_all=fp_all,
+        start_date="2020-01-01",
+        basis_algorithm="region_constrained",
+        domain="TEST",
+        emissions_name=["total"],
+        nbasis=4,
+        country_directory=str(tmp_path),
+        region_classes=region_classes,
+    )
+
+    labels = basis_func.squeeze("time", drop=True)
+    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
 
 
 def test_fp_sensitivity_one_flux():
