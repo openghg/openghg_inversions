@@ -156,15 +156,21 @@ RHIME terminology:
 - `tracer`: additional species used to constrain the primary species through linked forward models.
 - `emissions_name`: legacy compatibility spelling only; use `flux_sources` in new RHIME configs.
 
-### Legacy HBMCMC Parameter Passing
+### Legacy HBMCMC Compatibility
 
-Keyword arguments are propagated as follows:
-1. any key-value pair in an `ini` file or passed via the `--kwargs` flag is passed to the MCMC function as a keyword argument. (Currently, `fixedbasisMCMC` is the only available MCMC function)
-2. any keyword argument not recognised by the MCMC function (i.e. `fixedbasisMCMC`) is passed to the function `inferpymc` in `hbmcmc.inversion_pymc`, which is the function that creates and samples from the RHIME model.
+New runs should use `openghg-inversions run-rhime` or the Python
+`run_rhime(...)` API above. The historical `run_hbmcmc.py` script remains as a
+compatibility wrapper for old fixedbasis-style INI files: it translates legacy
+names such as `outputpath`, `outputname`, `nit`, `nchain`, `verbose`, and
+`sampler_kwargs` to modern RHIME names and then calls `run_rhime(...)`.
 
-Thus you can pass arguments to either `fixedbasisMCMC` or `inferpymc`, but all of these arguments will be specified in the `ini` file (or command line).
+The old output names `hbmcmc` and `hbmcmc_postprocessing` are deprecated
+aliases for the modern `legacy` output format. The compatibility wrapper keeps
+the old HBMCMC filename convention for these outputs; direct `run_rhime` calls
+use RHIME filenames unless configured otherwise.
 
-Let's look at these two steps in detail.
+The compatibility entry point still accepts the old INI layout and command-line
+overrides.
 
 #### Ways of passing arguments to the inversion
 
@@ -181,14 +187,15 @@ fix_basis_outer_regions = True
 use_bc = True
 nuts_sampler = "numpyro"
 save_trace = False
-calculate_min_error = "percentile"
+min_error = "percentile"
 pollution_events_from_obs = True
-reparameterise_log_normal = True
+reparameterise_log_normal = False
 sampler_kwargs = {"target_accept": 0.99}
 ```
 
-These will be passed to the MCMC function (e.g. `fixedbasisMCMC`) as keyword arguments.
-Any argument in `fixedbasisMCMC` can be specified in an `ini` file this way.
+These options are read from the old file layout and translated where a modern
+RHIME equivalent exists. Fixedbasis-only options that are enabled and no longer
+have a RHIME equivalent raise a targeted error.
 
 ##### Passing options at the command line
 

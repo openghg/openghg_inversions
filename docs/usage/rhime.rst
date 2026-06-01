@@ -123,3 +123,16 @@ are not the same strings as the OpenGHG source values.
        "TER": {"pdf": "normal", "mu": 1.0, "sigma": 0.5},
        "ocean": {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0}
    }
+
+Output Formats
+--------------
+
+Standard single-sector RHIME supports ``inv_out``, ``basic``, ``paris``, and
+``legacy`` output formats. ``legacy`` writes the old HBMCMC-compatible NetCDF
+product from the modern ``InversionOutput``. The deprecated names ``hbmcmc``
+and ``hbmcmc_postprocessing`` are accepted as aliases for ``legacy``.
+
+``run_hbmcmc.py`` is now a compatibility wrapper for old fixedbasis-style INI
+files. It translates legacy option names to the modern ``run_rhime`` API and
+uses the legacy filename convention. New scripts and new configs should use
+``openghg-inversions run-rhime`` or ``run_rhime(...)`` directly.

@@ -98,9 +98,9 @@ How do you run an inversion?
 Method 1: python script or notebook
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Assuming you have the necessary data, you just need to run the
-``fixedbasisMCMC`` function from ``hbmcmc.py`` in
-``openghg_inversions.hbmbmc``.
+New scripts should call ``run_rhime`` from ``openghg_inversions.rhime``.
+``fixedbasisMCMC`` remains only as a legacy compatibility entry point for old
+fixedbasis-style Python workflows.
 
 Method 2: ini file
 ~~~~~~~~~~~~~~~~~~
@@ -110,6 +110,9 @@ Method 2: ini file
 - Activate a conda or venv environment with inversions installed, and
   call
   ``python <path to openghg_inversions>/openghg_inversions/hbmcmc/run_hbmcmc.py -c my_inversion.ini``
+  for old fixedbasis-style INI files. The script now translates those configs
+  and runs the modern ``run_rhime`` pathway. New INI files should use
+  ``openghg-inversions run-rhime`` and the RHIME config vocabulary.
 - A sample ``.ini`` script is at the bottom of this document.
 
 Method 3: as a job on Blue Pebble
@@ -401,9 +404,9 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
 
    [MCMC.OUTPUT]
    ; Format of output
-   ; See docs for openghg_inversions.hbmcmc.hbmcmc.fixedbasisMCMC
-   ; for full list of options
-   output_format = "hbmcmc"  ; default option, but "paris" tends to be used more
+   ; "legacy" writes the old HBMCMC-compatible output through modern RHIME.
+   ; Deprecated aliases "hbmcmc" and "hbmcmc_postprocessing" are accepted.
+   output_format = "legacy"
 
    ; Details of where to write the output
    ; outputpath (str) - directory to write output
@@ -415,8 +418,9 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
 Description of HBMCMC output file
 ---------------------------------
 
-The output of ``run_hbmcmc`` (and ``fixedbasisMCMC``) is an xarray
-Dataset with the following variables and attributes:
+The legacy compatibility output from ``run_hbmcmc`` (and
+``fixedbasisMCMC(output_format="legacy")``) is an xarray Dataset with the
+following variables and attributes:
 
 HMCMC output data variables:
 
