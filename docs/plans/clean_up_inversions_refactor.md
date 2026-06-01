@@ -252,9 +252,10 @@ basis reconstruction.
 - 2026-05-31: #383 / current PR routed modern `make_flux_outputs`, country
   totals, and PARIS flux outputs through retained `BasisFunctions` /
   `BasisOperator` data when a modern `InversionOutput` is supplied.
-- 2026-05-31: #383 / current PR kept `LegacyInversionOutput` fixedbasis
-  behavior on the existing flat `.basis` fallback and did not reintroduce
-  `fp_data` to modern postprocessing.
+- 2026-06-01: #383 / current PR moved fixedbasis `basic`, `paris`,
+  `hbmcmc_postprocessing`, `inv_out`, and saved inversion-output handling onto
+  modern `InversionOutput` backed by retained `BasisFunctions`, while keeping
+  the true legacy `hbmcmc` formatter isolated.
 - 2026-05-31: #383 / current PR kept `StandardPostprocessingOutput` as the
   narrow transitional single-sector contract rather than expanding it for
   multisector or future PARIS products.
@@ -264,10 +265,10 @@ basis reconstruction.
 - Keep operator-backed flux/country reconstruction as an internal
   postprocessing implementation detail for now. Do not add retained basis
   fields or methods to `StandardPostprocessingOutput`.
-- Keep `LegacyInversionOutput.from_modern_output(...)` and flat-basis
-  materialisation available for explicit compatibility callers, but modern
-  RHIME `basic` and `paris` flux/country paths should prefer retained
-  `BasisFunctions`.
+- Treat `LegacyInversionOutput.from_modern_output(...)` and flat-basis
+  materialisation as disposable compatibility code. Modern RHIME `basic` and
+  fixedbasis `basic` and `paris` flux/country paths must prefer retained
+  `BasisFunctions`, and no new modern-to-legacy adapters should be added.
 - Keep `make_paris_flux_outputs_from_rhime(...)` as a legacy reprocessing
   adapter because old standard RHIME output datasets do not retain
   `BasisFunctions`.
@@ -284,6 +285,79 @@ Track fixedbasis removal under #416. The first slice should be a
 raising targeted errors for fixedbasis-only output formats. Once old scripts
 can run through `run_rhime`, remove `fixedbasisMCMC` and then remove
 `inferpymc_postprocessouts`.
+
+# Issue #416 Fixedbasis transition and legacy adapter removal
+
+Target this transition for the immediate cleanup window starting 2026-06-01.
+The current priority is to complete the move to the modern path before
+multisector postprocessing, because keeping the changing fixedbasis pathway and
+the modern pathway side by side is obscuring the architecture and slowing
+review.
+
+## Required short-term behavior
+
+- `fixedbasisMCMC` may remain as a compatibility entrypoint while #416 is
+  active, but it should keep only the operational contract that current users
+  need: same inputs in, successful run, and matching `output_format="paris"`
+  products.
+- Saved `LegacyInversionOutput` compatibility, `LegacyInversionOutput.load`,
+  and direct legacy carrier return behavior are not strategic compatibility
+  goals. They can be broken or removed once the modern replacement is in place.
+- `inferpymc_postprocessouts` should not remain the compatibility target.
+  `postprocessing/legacy_outputs.py` exists so the old-format dataset can be
+  produced from the modern postprocessing path by renaming variables and
+  arranging dimensions, then `inferpymc_postprocessouts` can be deleted.
+
+## Preferred #416 implementation direction
+
+- Done in #383: pipe retained `BasisFunctions` through `FixedBasisPreparedData`
+  for fixedbasis output modes after data preparation, construct modern
+  `InversionOutput` from canonical `inv_inputs`, retained
+  `basis_objects["emissions"]`, the `InferenceData` trace, and metadata, and
+  route fixedbasis `basic`, `paris`, `hbmcmc_postprocessing`, `inv_out`, and
+  saved inversion output through that modern carrier.
+- Keep any old-format `hbmcmc_postprocessing` output as a formatter over modern
+  postprocessing results, not as a reason to keep the old inversion output
+  carrier.
+
+## Aggressive cleanup after #416 lands and passes parity tests
+
+- Remove `LegacyInversionOutput.from_modern_output(...)`.
+- Remove `make_inv_out_for_fixed_basis_mcmc(...)`; the fixedbasis run path no
+  longer uses it after #383.
+- Remove `make_inv_out_from_rhime_outputs(...)` and
+  `make_paris_flux_outputs_from_rhime(...)` unless there is a concrete,
+  documented need to reprocess old RHIME output files that do not retain
+  `BasisFunctions`.
+- Remove flat-basis fallback branches from modern postprocessing helpers once
+  fixedbasis no longer supplies `LegacyInversionOutput`.
+- Remove `inferpymc_postprocessouts` after old-format output parity is covered
+  by `postprocessing/legacy_outputs.py` using modern postprocessing inputs.
+
+## Tests needed before removal
+
+- A focused fixedbasis compatibility test that proves the same fixedbasis input
+  still runs and produces PARIS flux/concentration outputs matching the current
+  behavior.
+- Done in #383: guard tests prove fixedbasis `basic`, `paris`, `inv_out`, and
+  saved inversion-output paths construct/pass modern `InversionOutput`, not
+  `LegacyInversionOutput`.
+- A legacy-format parity test for `postprocessing/legacy_outputs.py`, so the
+  old `hbmcmc_postprocessing` dataset shape and variable names can survive
+  without retaining `inferpymc_postprocessouts`.
+- Existing guard tests that standard RHIME `basic` and `paris` never call
+  `LegacyInversionOutput.from_modern_output(...)`.
+
+## Follow-up operator work for #429
+
+- Consider adding a `BasisOperator.project(...)` or similar reduction API for
+  grid-to-state products, based on the prototype
+  `~/Documents/inversions/src/inversions/basis_functions.py`. The prototype's
+  `project()` method covers weighted and normalised reductions that would make
+  postprocessing country totals, region means, and uncertainty reductions less
+  dependent on ad hoc `sparse_xr_dot` calls.
+- Keep this as #429 operator cleanup unless it is needed to remove fixedbasis
+  legacy carriers in #416.
 
 # Deferred 
 
@@ -345,4 +419,3 @@ model components that consume them.
 - #429 remains the boundary for operator-backed output and postprocessing.
   It should make the operator-backed path primary, add durable reconstruction
   metadata, and define the deprecation policy for legacy basis reconstruction.
-
