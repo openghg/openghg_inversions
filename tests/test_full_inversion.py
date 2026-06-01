@@ -5,7 +5,14 @@ from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
 
 
 @pytest.fixture
-def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_name):
+def mcmc_args(
+    tmp_path,
+    tac_ch4_data_args,
+    merged_data_dir,
+    merged_data_file_name,
+    default_bc_basis_directory,
+    europe_country_file,
+):
     mcmc_args = tac_ch4_data_args.copy()
     mcmc_args.update(
         {
@@ -21,6 +28,8 @@ def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_nam
             "reload_merged_data": True,
             "merged_data_dir": merged_data_dir,
             "merged_data_name": merged_data_file_name,
+            "bc_basis_directory": default_bc_basis_directory,
+            "country_file": europe_country_file,
         }
     )
     return mcmc_args

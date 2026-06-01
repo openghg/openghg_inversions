@@ -59,15 +59,13 @@ def test_data_processing_surface_notracer(tac_ch4_data_args, merged_data_file_na
 
 def test_load_merged_data(merged_data_dir, merged_data_file_name):
     """This should pass by finding the merged data with .zarr suffix."""
-    result = load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "no_zip")
+    load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "no_zip")
 
 
 def test_load_merged_data_missing_data_error(merged_data_dir, merged_data_file_name):
     """This should pass by finding the merged data with .zarr suffix."""
     with pytest.raises(ValueError):
-        result = load_merged_data(
-            merged_data_dir, merged_data_name=merged_data_file_name + "abc123", output_format="netcdf"
-        )
+        load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "abc123", output_format="netcdf")
 
 
 def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir):
@@ -105,7 +103,7 @@ def test_missing_data_at_one_site(tac_ch4_data_args):
     assert "MHD" not in fp_all
 
 
-def test_missing_data_at_all_sites():
+def test_missing_data_at_all_sites(openghg_test_store):
     """Check that a SearchError is raised if data is missing from all sites."""
     data_args = {
         "species": "ch4",

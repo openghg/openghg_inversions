@@ -1,4 +1,8 @@
+import pytest
+
 from openghg.retrieve import search
+
+pytestmark = pytest.mark.usefixtures("openghg_test_store")
 
 
 def test_default_session_fixture():
@@ -15,6 +19,7 @@ def test_default_session_fixture():
     assert "inversions_tests" in conf["object_store"]
 
     assert "openghg_inversions_testing_store" in conf["object_store"]["inversions_tests"]["path"]
+    assert conf["object_store"]["inversions_tests"]["permissions"] == "r"
 
 
 def test_obs_in_test_store():
