@@ -139,3 +139,5 @@ uses the legacy filename convention. New scripts and new configs should use
 This compatibility route no longer preserves the exact historical
 ``fixedbasisMCMC`` / ``inferpymc`` passthrough behaviour. Use release ``0.6`` or
 earlier if you need the old fixedbasis implementation.
+Direct ``fixedbasisMCMC(...)`` calls are a temporary legacy Python path, not a
+wrapper around ``run_rhime(...)``.

@@ -32,6 +32,7 @@ import argparse
 from pathlib import Path
 from shutil import copyfile
 from typing import Any
+import warnings
 
 import openghg_inversions.hbmcmc.hbmcmc_output as output
 
@@ -47,13 +48,8 @@ _RUN_HBMCMC_RHIME_ALIASES = {
     "verbose": "progressbar",
     "sampler_kwargs": "sample_kwargs",
 }
-_UNSUPPORTED_TRUE_LEGACY_OPTIONS = {
-    "calculate_min_error": "`calculate_min_error` is not supported by the RHIME compatibility shim; use `min_error`.",
-    "reparameterise_log_normal": (
-        "`reparameterise_log_normal` is not supported by the RHIME compatibility shim; "
-        "set `reparameterise` in the relevant prior dictionary if needed."
-    ),
-}
+_LOGNORMAL_PRIOR_NAMES = ("xprior", "x_prior", "bcprior", "bc_prior")
+_MIN_ERROR_METHODS = {"residual", "percentile"}
 
 
 def fixed_basis_expected_param() -> list[str]:
@@ -143,14 +139,58 @@ def _normalise_legacy_output_format(params: dict[str, Any]) -> None:
     params["output_format"] = str(raw_output_format).lower()
 
 
-def _drop_or_reject_legacy_only_options(params: dict[str, Any]) -> None:
-    """Drop no-op legacy options and reject enabled unsupported options."""
-    for name, message in _UNSUPPORTED_TRUE_LEGACY_OPTIONS.items():
-        if name not in params:
+def _translate_calculate_min_error(params: dict[str, Any]) -> None:
+    """Translate legacy ``calculate_min_error`` to the modern ``min_error`` option."""
+    if "calculate_min_error" not in params:
+        return
+
+    value = params.pop("calculate_min_error")
+    if not _legacy_option_enabled(value):
+        return
+
+    method = str(value).strip().lower()
+    if method not in _MIN_ERROR_METHODS:
+        raise ValueError(
+            "`calculate_min_error` is deprecated and can only be translated when set to "
+            f"one of {sorted(_MIN_ERROR_METHODS)!r}; use `min_error` instead."
+        )
+
+    warnings.warn(
+        "`calculate_min_error` is deprecated. The run_hbmcmc compatibility shim is translating "
+        "it to `min_error`.",
+        FutureWarning,
+        stacklevel=3,
+    )
+    params["min_error"] = method
+
+
+def _translate_reparameterise_log_normal(params: dict[str, Any]) -> None:
+    """Translate legacy lognormal reparameterisation flag into prior dictionaries."""
+    value = params.pop("reparameterise_log_normal", False)
+    if not _legacy_option_enabled(value):
+        return
+
+    warnings.warn(
+        "`reparameterise_log_normal` is deprecated. The run_hbmcmc compatibility shim is setting "
+        "`reparameterise=True` in lognormal emissions and BC prior dictionaries.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    for name in _LOGNORMAL_PRIOR_NAMES:
+        prior = params.get(name)
+        if not isinstance(prior, dict):
             continue
-        value = params.pop(name)
-        if _legacy_option_enabled(value):
-            raise ValueError(message)
+        if str(prior.get("pdf", "")).lower() != "lognormal":
+            continue
+        prior = prior.copy()
+        prior["reparameterise"] = True
+        params[name] = prior
+
+
+def _translate_legacy_options(params: dict[str, Any]) -> None:
+    """Translate legacy fixedbasis options that have modern RHIME equivalents."""
+    _translate_calculate_min_error(params)
+    _translate_reparameterise_log_normal(params)
 
 
 def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
@@ -167,7 +207,7 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
 
     _translate_legacy_aliases(translated)
     _normalise_legacy_output_format(translated)
-    _drop_or_reject_legacy_only_options(translated)
+    _translate_legacy_options(translated)
     translated["output_filename_convention"] = "legacy"
     return normalise_rhime_params(translated)
 

@@ -75,14 +75,33 @@ def test_fixedbasis_params_to_rhime_translates_legacy_names(tmp_path: Path) -> N
     assert "nchain" not in translated
 
 
-def test_fixedbasis_params_to_rhime_rejects_enabled_legacy_options(tmp_path: Path) -> None:
+def test_fixedbasis_params_to_rhime_translates_reparameterise_log_normal(tmp_path: Path) -> None:
     config_file = tmp_path / "hbmcmc.ini"
     _fixedbasis_config(config_file)
     params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
     params["reparameterise_log_normal"] = True
+    params["xprior"] = {"pdf": "lognormal", "mean": 1.0, "stdev": 2.0}
+    params["bcprior"] = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0}
 
-    with pytest.raises(ValueError, match="reparameterise_log_normal"):
-        run_hbmcmc.fixedbasis_params_to_rhime(params)
+    with pytest.warns(DeprecationWarning, match="reparameterise_log_normal"):
+        translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+
+    assert translated["x_prior"]["reparameterise"] is True
+    assert translated["bc_prior"]["reparameterise"] is True
+    assert "reparameterise_log_normal" not in translated
+
+
+def test_fixedbasis_params_to_rhime_translates_calculate_min_error(tmp_path: Path) -> None:
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    params["calculate_min_error"] = "percentile"
+
+    with pytest.warns(FutureWarning, match="calculate_min_error"):
+        translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+
+    assert translated["min_error"] == "percentile"
+    assert "calculate_min_error" not in translated
 
 
 def test_fixedbasis_params_to_rhime_rejects_non_fixed_basis_mcmc_type(tmp_path: Path) -> None:

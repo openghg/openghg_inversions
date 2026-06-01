@@ -38,6 +38,63 @@ version, which partially negates the benefit of keeping it as the main route.
   PR #436 makes multisector runs carry modern `InversionOutput`, but sector
   diagnostics and PARIS totals are still transitional.
 
+## Documentation requirements before broad user docs
+
+After the fixedbasis/RHIME transition merges, user-facing documentation should
+orient users around this route:
+
+- Existing fixedbasis-style INI and SLURM workflows may continue to call
+  `openghg_inversions/hbmcmc/run_hbmcmc.py`, but that script is now a
+  compatibility wrapper. It translates supported legacy config names to the
+  modern `run_rhime` API, keeps the legacy filename convention, and writes
+  compatibility outputs through the modern `legacy` formatter.
+- New scripts, notebooks, and config files should use
+  `openghg_inversions.rhime.run_rhime(...)`,
+  `openghg_inversions.rhime.run_rhime_multisector(...)`, or
+  `openghg-inversions run-rhime`, with RHIME vocabulary such as
+  `flux_sources`, `sector_sources`, `draws`, `chains`, `output_path`, and
+  `output_name`.
+- `fixedbasisMCMC`, `inferpymc`, and direct legacy passthrough behavior should
+  be documented only as compatibility/deprecation context, not as the normal
+  path for new users.
+
+Before expanding broad user docs, keep a concise maintainer-facing map of the
+modern responsibilities:
+
+- `openghg_inversions.rhime.__init__`: public RHIME re-export surface.
+- `openghg_inversions.rhime.runner`: orchestration; normalize setup, prepare
+  inputs, build the model, sample, and dispatch outputs.
+- `openghg_inversions.rhime.params`: config/API parameter loading, legacy alias
+  handling, scalar coercion, and validation before spec construction.
+- `openghg_inversions.rhime.specs`: run/output specs and output-format
+  validation.
+- `openghg_inversions.rhime.sampling`: executable PyMC sampler settings and
+  predictive sampling.
+- `openghg_inversions.rhime.outputs`: construction, saving, and compatibility
+  formatting of RHIME output bundles.
+- `openghg_inversions.models.rhime`: RHIME PyMC builders plus the current
+  `RhimeModelSpec` and `SectorSpec`.
+- `openghg_inversions.inversion_data.preparation`: data gathering/filtering,
+  basis construction, and `RhimePreparedInputs`.
+- `openghg_inversions.postprocessing.*`: product-specific output schemas and
+  capability checks over modern `InversionOutput`.
+
+Document current workarounds explicitly rather than hiding them. In particular,
+`RhimeModelSpec` and `SectorSpec` currently live under
+`openghg_inversions.models` beside the concrete RHIME builders. That is
+intentional for the near-term dependency direction,
+`openghg_inversions.rhime -> openghg_inversions.models`, and should remain
+until a `SemanticModel` or equivalent abstract model-spec contract makes
+dependency inversion useful. Do not move these specs solely for cosmetic
+package layout before that abstraction exists.
+
+Broad user documentation should wait until the compatibility/refactor surface
+is simpler: remove or quarantine dead fixedbasis/inferpymc paths, settle the
+operator-backed postprocessing boundary, clarify sector-aware output support,
+and then rewrite examples around the modern RHIME API and config template.
+Until then, make only small orientation updates that prevent users from
+choosing the legacy route for new work.
+
 # Issue #400 model specs and terminology
 
 ## Completed in PR #434 / Issue #400
@@ -355,9 +412,9 @@ sector diagnostics and PARIS-compatible total outputs.
 Track fixedbasis removal under #416. The first slice is a `run_hbmcmc.py`
 compatibility shim that translates legacy config names such as `outputpath`,
 `outputname`, `nit`, and `nchain` to the `run_rhime` API, routes old
-`hbmcmc` / `hbmcmc_postprocessing` output requests to `legacy`, and rejects
-enabled fixedbasis-only options. Once old scripts can run through `run_rhime`,
-remove `fixedbasisMCMC`, then remove `inferpymc` and
+`hbmcmc` / `hbmcmc_postprocessing` output requests to `legacy`, and translates
+legacy options that have modern equivalents. Once old scripts can run through
+`run_rhime`, remove `fixedbasisMCMC`, then remove `inferpymc` and
 `inferpymc_postprocessouts`.
 
 # Issue #416 Fixedbasis transition and legacy adapter removal
@@ -370,10 +427,14 @@ review.
 
 ## Required short-term behavior
 
-- `fixedbasisMCMC` may remain as a compatibility entrypoint while #416 is
-  active, but it should keep only the operational contract that current users
-  need: same inputs in, successful run, and matching `output_format="paris"`
-  and legacy-format products.
+- `run_hbmcmc.py` is the active fixedbasis-style compatibility route. It should
+  translate old INI/SLURM workflows to `run_rhime` and keep the practical old
+  outputs working through `output_format="legacy"`, `output_format="paris"`,
+  and modern `InversionOutput`.
+- `fixedbasisMCMC` is no longer the script/config compatibility route. It may
+  remain temporarily as a direct Python legacy path only while tests and users
+  finish moving to `run_hbmcmc.py` -> `run_rhime`; treat it as dead code
+  pending removal rather than investing in new compatibility behavior there.
 - `legacy` is the modern compatibility output name. Deprecated
   `hbmcmc` and `hbmcmc_postprocessing` output requests should resolve to
   `legacy`.
@@ -393,8 +454,10 @@ review.
   names to it.
 - Done in #416 first slice: add a `run_hbmcmc.py` compatibility shim that reads
   old fixedbasis-style INI files, translates legacy names (`outputpath`,
-  `outputname`, `nit`, `nchain`, `verbose`, `sampler_kwargs`) to modern RHIME
-  names, accepts and removes `mcmc_type="fixed_basis"`, and calls `run_rhime`.
+  `outputname`, `nit`, `nchain`, `verbose`, `sampler_kwargs`,
+  `calculate_min_error`, `reparameterise_log_normal`) to modern RHIME names or
+  prior dictionaries, accepts and removes `mcmc_type="fixed_basis"`, and calls
+  `run_rhime`.
 - Done in #416 first slice: keep old fixedbasis filename conventions for
   outputs created via `run_hbmcmc.py`; direct `run_rhime` keeps RHIME filenames
   unless explicitly given the compatibility filename convention.

@@ -220,12 +220,15 @@ RHIME terminology:
 
 New runs should use `openghg-inversions run-rhime` or the Python
 `run_rhime(...)` API above. The historical `run_hbmcmc.py` script remains as a
-compatibility wrapper for old fixedbasis-style INI files: it translates legacy
-names such as `outputpath`, `outputname`, `nit`, `nchain`, `verbose`, and
-`sampler_kwargs` to modern RHIME names and then calls `run_rhime(...)`.
+compatibility wrapper for old fixedbasis-style INI files: it translates
+supported legacy names and options to modern RHIME arguments and then calls
+`run_rhime(...)`.
 This branch is no longer preserving the exact historical fixedbasisMCMC /
 inferpymc passthrough behaviour. Use release `0.6` or earlier if you need the
 old fixedbasis implementation.
+
+Direct `fixedbasisMCMC(...)` calls are a temporary legacy Python path, not a
+wrapper around `run_rhime(...)`. New work should not target that API.
 
 The old output names `hbmcmc` and `hbmcmc_postprocessing` are deprecated
 aliases for the modern `legacy` output format. The compatibility wrapper keeps
