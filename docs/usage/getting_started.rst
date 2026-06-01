@@ -109,6 +109,9 @@ Method 1: python script or notebook
 New scripts should call ``run_rhime`` from ``openghg_inversions.rhime``.
 ``fixedbasisMCMC`` remains only as a legacy compatibility entry point for old
 fixedbasis-style Python workflows.
+It no longer preserves the exact historical ``fixedbasisMCMC`` / ``inferpymc``
+passthrough behaviour; use release ``0.6`` or earlier if you need the old
+fixedbasis implementation.
 
 Method 2: ini file
 ~~~~~~~~~~~~~~~~~~
@@ -121,6 +124,8 @@ Method 2: ini file
   for old fixedbasis-style INI files. The script now translates those configs
   and runs the modern ``run_rhime`` pathway. New INI files should use
   ``openghg-inversions run-rhime`` and the RHIME config vocabulary.
+  Unsupported fixedbasis-only options now raise targeted errors instead of
+  being passed through to ``inferpymc``.
 - A sample ``.ini`` script is at the bottom of this document.
 
 Method 3: as a job on Blue Pebble

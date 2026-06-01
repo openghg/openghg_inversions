@@ -398,11 +398,19 @@ review.
 - Done in #416 first slice: keep old fixedbasis filename conventions for
   outputs created via `run_hbmcmc.py`; direct `run_rhime` keeps RHIME filenames
   unless explicitly given the compatibility filename convention.
+- Done in #416 first slice: make `run_hbmcmc.py` validate the translated RHIME
+  arguments before copying configs or creating output directories, and force
+  the legacy filename convention from that shim even if a caller supplies a
+  direct RHIME filename override.
 - Done in #416 first slice: refactor
   `postprocessing.legacy_outputs.make_legacy_hbmcmc_output(...)` to consume
   modern `InversionOutput` directly and derive `Hx`, `Hbc`,
   `sigma_freq_index`, `xtrace`, `sigtrace`, `bctrace`, and convergence without
   an inferpymc-shaped `mcmc_results` adapter.
+- Done in #416 first slice: preserve the old legacy-output metadata attributes
+  needed by fixedbasis workflows (`Emissions Prior`, sampler counts, sigma
+  settings, and related prior attrs) without passing `mcmc_results` or `fp_data`
+  into the formatter.
 - Done in #383: pipe retained `BasisFunctions` through `FixedBasisPreparedData`
   for fixedbasis output modes after data preparation, construct modern
   `InversionOutput` from canonical `inv_inputs`, retained
@@ -430,6 +438,19 @@ review.
   longer needed as a Python compatibility entrypoint.
 - Remove `fixedbasisMCMC` once the #416 compatibility shim has enough
   fixedbasis-style script parity coverage through `run_rhime`.
+- Delete or quarantine dead compatibility code as it loses callers:
+  `legacy_postprocess_args` provenance plumbing in `fixedbasisMCMC`,
+  `rerun_output(...)` replay through `inferpymc_postprocessouts`, old
+  `inferpymc` result adapters used only to shape `mcmc_results`, and
+  compatibility-era README/API sections that describe direct `inferpymc`
+  passthrough.
+- Design a replacement for legacy flat `**kwargs` / INI argument routing before
+  widening the shim. The historical behavior passed unrecognised
+  `fixedbasisMCMC` kwargs to `inferpymc`, which made ownership of options
+  unclear. Current RHIME compatibility paths validate supported options and
+  reject unsupported keys. Future config work should use explicit namespaces
+  such as data/model/sampler/output/postprocessing, or another similarly clear
+  routing scheme, rather than restoring arbitrary passthrough.
 
 ## Tests needed before removal
 

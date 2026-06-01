@@ -223,6 +223,9 @@ New runs should use `openghg-inversions run-rhime` or the Python
 compatibility wrapper for old fixedbasis-style INI files: it translates legacy
 names such as `outputpath`, `outputname`, `nit`, `nchain`, `verbose`, and
 `sampler_kwargs` to modern RHIME names and then calls `run_rhime(...)`.
+This branch is no longer preserving the exact historical fixedbasisMCMC /
+inferpymc passthrough behaviour. Use release `0.6` or earlier if you need the
+old fixedbasis implementation.
 
 The old output names `hbmcmc` and `hbmcmc_postprocessing` are deprecated
 aliases for the modern `legacy` output format. The compatibility wrapper keeps
@@ -265,7 +268,7 @@ the inversion period, and you pass an `ini` file using the flag `-c`.
 In addition, you can pass the output path using the flag `--output-path`; this is useful if your SLURM script
 uses different output locations for different array jobs.
 
-You can also pass arbitrary keyword arguments to `run_hbmcmc.py` using the `--kwargs` flag.
+You can also pass supported RHIME-compatible keyword arguments to `run_hbmcmc.py` using the `--kwargs` flag.
 For instance:
 
 ``` bash
@@ -273,7 +276,9 @@ python run_hbmcmc.py "2019-01-01" "2019-02-01" -c "example.ini" --kwargs '{"aver
 ```
 It is crucial that you enclose the dictionary in single quotes, otherwise the command line will split the dictionary on white space.
 
-Again, this can be used to change the arguments passed to an inversion on the fly (say, in a SLURM script).
+Again, this can be used to change supported inversion arguments on the fly (say, in a SLURM script).
+Unsupported fixedbasis-only options now raise targeted errors instead of being
+passed through to `inferpymc`.
 
 The format of the dictionary inside single quotes must be JSON, because the value of `kwargs` is parsed using `json.loads`.
 Python translates JSON according to [this table](https://docs.python.org/3/library/json.html#encoders-and-decoders).
@@ -287,7 +292,10 @@ The following sections detail some parameters that enable/specify optional behav
 
 ##### Parameters for `fixedbasisMCMC`
 
-This is not a comprehensive list (see the docstring for `fixedbasisMCMC` in the [hbmcmc module](openghg_inversions/hbmcmc/hbmcmc.py) for more arguments).
+These are compatibility-era notes for old fixedbasis-style workflows, not the
+recommended interface for new runs. New configs should use the RHIME vocabulary
+above. See the docstring for `fixedbasisMCMC` in the [hbmcmc module](openghg_inversions/hbmcmc/hbmcmc.py)
+for the current compatibility arguments.
 
 
 Arguments affecting the data using in the inversion:
@@ -326,9 +334,12 @@ Arguments affecting the output of the inversion:
 
 ##### Parameters for `inferpymc`
 
-As mentioned above, any keyword argument passed to `fixedbasisMCMC` (either by an `ini` file or from `--kwargs` on the command line) that is not recognised by `fixedbasisMCMC` is passed on to `inferpymc`.
+In release `0.6` and earlier, unrecognised `fixedbasisMCMC` keyword arguments
+were passed through to `inferpymc`. Current compatibility paths validate
+RHIME-compatible options instead. The argument routing design is being cleaned
+up as part of the fixedbasis retirement work.
 
-These parameters include:
+Historical inferpymc-era parameters included:
 - `min_error`: a non-negative float value specifying a lower bound for the model-measurement mismatch error (i.e. the error on (y - y_mod)).
 - `nuts_sampler`: a string, which defaults to `"pymc"`. The other option is `"numpyro"`, which will the [JAX](https://jax.readthedocs.io/en/latest/index.html) accelerated sampler from [Numpyro](https://num.pyro.ai/en/stable/index.html); this tends to be significantly faster than the NUTS sampler built into PyMC.
 - `pollution_events_from_obs`: Determines whether the model error is calculated as a fraction of:
