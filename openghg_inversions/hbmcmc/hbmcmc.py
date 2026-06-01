@@ -688,7 +688,11 @@ def fixedbasisMCMC(
     dropped_sites = []
     for site in sites:
         # check if some datasets are empty due to filtering
-        site_ds = fp_data[site]["standard"].ds if isinstance(fp_data[site], xr.DataTree) and "standard" in fp_data[site].children else fp_data[site].ds
+        site_entry = fp_data[site]
+        if isinstance(site_entry, xr.DataTree):
+            site_ds = site_entry["standard"].ds if "standard" in site_entry.children else site_entry.ds
+        else:
+            site_ds = site_entry
         if site_ds.time.values.shape[0] == 0:
             dropped_sites.append(site)
             del fp_data[site]

@@ -1,13 +1,20 @@
 import pytest
+import arviz as az
+import numpy as np
 import xarray as xr
 
 from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
-from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.inversion_output import InversionOutput, make_inv_out_for_fixed_basis_mcmc
 from openghg_inversions.postprocessing.make_outputs import basic_output
 from openghg_inversions.postprocessing.make_paris_outputs import (
     make_paris_flux_outputs_from_rhime,
     make_paris_outputs,
 )
+
+
+class _FluxWrapper:
+    def __init__(self, data: xr.DataArray):
+        self.data = data
 
 
 @pytest.fixture
@@ -142,3 +149,111 @@ def test_save_inversion_output(mcmc_args, tmpdir):
     inv_out_reloaded = InversionOutput.load(tmpdir / "inv_out.nc")
 
     assert inv_out == inv_out_reloaded
+
+
+def test_nested_make_inv_out_uses_flux_grid_mask() -> None:
+    """Ensure PARIS nested mask is evaluated on flux grid when basis/flux grids differ."""
+    outer_basis = xr.DataArray(
+        np.array([[1, 2], [3, 4]], dtype=int),
+        dims=["lat", "lon"],
+        coords={"lat": [10.0, 11.0], "lon": [10.0, 11.0]},
+    )
+    inner_basis = xr.DataArray(
+        np.ones((2, 2), dtype=int),
+        dims=["lat", "lon"],
+        coords={"lat": [10.0, 11.0], "lon": [10.0, 11.0]},
+    )
+
+    outer_flux = xr.DataArray(
+        10.0 * np.ones((1, 2, 2)),
+        dims=["time", "lat", "lon"],
+        coords={"time": [np.datetime64("2022-01-01")], "lat": [0.0, 0.5], "lon": [0.0, 0.5]},
+    )
+    inner_flux = xr.DataArray(
+        20.0 * np.ones((1, 2, 2)),
+        dims=["time", "lat", "lon"],
+        coords={"time": [np.datetime64("2022-01-01")], "lat": [0.0, 0.5], "lon": [0.0, 0.5]},
+    )
+
+    inner_fp = xr.DataArray(
+        np.array([[[0.0, 0.0], [0.0, 1.0]]]),
+        dims=["time", "lat", "lon"],
+        coords={"time": [np.datetime64("2022-01-01")], "lat": [0.0, 0.5], "lon": [0.0, 0.5]},
+    )
+
+    mf = xr.DataArray(
+        [1800.0],
+        dims=["time"],
+        coords={"time": [np.datetime64("2022-01-01")]},
+        attrs={"units": "ppb", "long_name": "observed_mole_fraction"},
+    )
+    site_ds_inner = xr.Dataset(
+        {
+            "fp": inner_fp,
+            "mf": mf,
+            "mf_error": xr.DataArray([1.0], dims=["time"], coords={"time": mf.time}),
+            "mf_variability": xr.DataArray([1.0], dims=["time"], coords={"time": mf.time}),
+            "mf_repeatability": xr.DataArray([1.0], dims=["time"], coords={"time": mf.time}),
+        }
+    )
+    site_ds_standard = xr.Dataset(
+        {
+            "mf": mf,
+            "mf_error": xr.DataArray([1.0], dims=["time"], coords={"time": mf.time}),
+            "mf_variability": xr.DataArray([1.0], dims=["time"], coords={"time": mf.time}),
+            "mf_repeatability": xr.DataArray([1.0], dims=["time"], coords={"time": mf.time}),
+        }
+    )
+
+    site_tree = xr.DataTree.from_dict({"inner": site_ds_inner, "standard": site_ds_standard})
+
+    trace = az.InferenceData(
+        posterior=xr.Dataset(
+            {
+                "x": xr.DataArray(np.ones((2, 4)), dims=["draw", "nx"]),
+                "x_inner": xr.DataArray(np.ones((2, 1)), dims=["draw", "nx_inner"]),
+            }
+        ),
+        prior=xr.Dataset(
+            {
+                "x": xr.DataArray(np.ones((2, 4)), dims=["draw", "nx"]),
+                "x_inner": xr.DataArray(np.ones((2, 1)), dims=["draw", "nx_inner"]),
+            }
+        ),
+    )
+
+    fp_data = {
+        "SITE1": site_tree,
+        ".basis": outer_basis,
+        ".basis_inner": inner_basis,
+        ".flux": {"SITE1": _FluxWrapper(outer_flux)},
+        ".inner_flux": {"SITE1": _FluxWrapper(inner_flux)},
+    }
+
+    inv_out = make_inv_out_for_fixed_basis_mcmc(
+        fp_data=fp_data,
+        Y=np.array([1800.0]),
+        Ytime=np.array([np.datetime64("2022-01-01")]),
+        error=np.array([1.0]),
+        obs_repeatability=np.array([1.0]),
+        obs_variability=np.array([1.0]),
+        site_indicator=np.array([0]),
+        site_names=np.array(["SITE1"]),
+        mcmc_results={
+            "xouts_inner": np.ones((2, 1)),
+            "xouts": np.ones((2, 4)),
+            "trace": trace,
+            "model": None,
+        },
+        start_date="2022-01-01",
+        end_date="2022-01-01",
+        species="ch4",
+        domain="europe",
+    )
+
+    assert inv_out.flux.sizes["lat"] == 2
+    assert inv_out.flux.sizes["lon"] == 2
+    assert bool(inv_out.flux.notnull().all())
+
+    assert inv_out.flux.isel(flux_time=0).sel(lat=0.5, lon=0.5).item() == 20.0
+    assert inv_out.flux.isel(flux_time=0).sel(lat=0.0, lon=0.0).item() == 10.0

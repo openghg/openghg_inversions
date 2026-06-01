@@ -19,7 +19,9 @@ from openghg_inversions.postprocessing.make_outputs import (
     make_flux_outputs,
     make_country_outputs,
 )
-from openghg_inversions.postprocessing.stats import stats_functions
+from openghg_inversions.postprocessing.stats import stats_functions, calculate_stats
+from openghg_inversions.postprocessing.utils import rename_by_replacement
+from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.utils import get_country_file_path
 
 
@@ -223,6 +225,10 @@ def paris_concentration_outputs(
     result.sitenames.attrs["long_name"] = "identifier of site"
 
     result.attrs = make_global_attrs("conc")
+    result.attrs["prior_factor_adjustment_applied"] = "false"
+
+    if "Yobs_prior_factor" in result.data_vars and "Yobs_prior_upper_level_factor" in result.data_vars:
+        result.attrs["prior_factor_adjustment_applied"] = "true"
 
     return result
 
@@ -340,6 +346,65 @@ def paris_flux_output(
         result = result.merge(inversion_grid_flux_outs)
 
     result = result.transpose("time", "percentile", "country", "latitude", "longitude")
+
+    # Add fine-resolution inner domain flux output for nested PARIS inversions.
+    # The inner domain flux/basis are on the inner domain's native grid (e.g. 6 km).
+    # They are NOT regridded to the outer EUROPE grid, preserving the spatial detail.
+    # Inner domain variables use `latitude_inner`/`longitude_inner` dimensions (different
+    # size from the EUROPE grid) so they coexist in the same netCDF file without conflict.
+    if inv_out.inner_basis is not None and inv_out.inner_flux is not None:
+        n_inner_nx = len(inv_out.inner_basis.nx)
+
+        # Select the first n_inner_nx positions from the combined trace using positional
+        # indexing (.isel) so we are robust to whatever nx label values the trace holds.
+        # _combine_x_and_x_inner always places inner regions first, so positions 0..n_inner-1
+        # are the inner regions. Reassign nx to match inner_basis.nx (= [1..n_inner]) so that
+        # the coordinate aligns correctly in the sparse dot product.
+        inner_trace_ds = (
+            inv_out.get_trace_dataset(var_names="x")
+            .isel(nx=slice(n_inner_nx))
+            .assign_coords(nx=inv_out.inner_basis.nx.values)
+        )
+
+        # Compute posterior/prior stats over the inner trace
+        inner_stats_args = {**stats_args, "stats": stats, "chunk_dim": "nx"}
+        inner_stats_ds = calculate_stats(inner_trace_ds, **inner_stats_args)
+
+        # Reconstruct flux at native inner grid resolution: sum_k( x[k] * basis[k] * flux )
+        inner_flux_stats = sparse_xr_dot(inv_out.inner_flux * inv_out.inner_basis, inner_stats_ds)
+        inner_flux_stats = rename_by_replacement(inner_flux_stats, "x", "flux")
+
+        # Apply the same PARIS naming convention, then append _inner_domain suffix
+        def inner_renamer(name: str) -> str:
+            if "country" in name:
+                name = name.replace("country", "country_flux_total")
+            elif "flux" in name:
+                name = name.replace("flux", "flux_total")
+            if "quantile" in name:
+                name = "percentile_" + name.replace("_quantile", "")
+            for stats_func_name in stats_functions:
+                if name.endswith(f"_{stats_func_name}"):
+                    name = name.removesuffix(f"_{stats_func_name}")
+            return name + "_inner_domain"
+
+        inner_var_rename = {str(dv): inner_renamer(str(dv)) for dv in inner_flux_stats.data_vars}
+
+        # Rename lat/lon to inner-specific dimension names (distinct from EUROPE lat/lon)
+        inner_dim_rename: dict[str, str] = {"quantile": "percentile", "flux_time": "time"}
+        if "lat" in inner_flux_stats.dims:
+            inner_dim_rename["lat"] = "latitude_inner"
+        if "lon" in inner_flux_stats.dims:
+            inner_dim_rename["lon"] = "longitude_inner"
+
+        inner_flux_out = (
+            inner_flux_stats
+            .rename(inner_dim_rename)
+            .rename(inner_var_rename)
+            .pipe(time_func)
+            .pipe(convert_time_to_unix_epoch, "1d")
+            .pipe(add_variable_attrs, emissions_attrs)
+        )
+        result = xr.merge([result, inner_flux_out])
 
     result.attrs = make_global_attrs("flux")
 

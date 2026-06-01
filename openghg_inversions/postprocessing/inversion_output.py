@@ -202,6 +202,11 @@ class InversionOutput:
     model: pm.Model | None = None
     obs_prior_factor: xr.DataArray | None = None
     obs_prior_upper_level_factor: xr.DataArray | None = None
+    # Optional native fine-grid inner domain data (populated for nested PARIS inversions).
+    # These are kept at the inner domain's own resolution and are NOT regridded to the outer
+    # EUROPE grid, so they can be used to produce a high-resolution inner-domain flux output.
+    inner_basis: xr.DataArray | None = None  # sparse (nx, lat, lon) on inner fine grid; nx=1..n_inner
+    inner_flux: xr.DataArray | None = None   # (lat, lon) or (time, lat, lon) on inner fine grid
 
     def __post_init__(self) -> None:
         """Check that trace has posterior traces, and fix flux time values."""
@@ -227,6 +232,19 @@ class InversionOutput:
         elif "time" in self.basis.coords:
             # time not in dims, so just delete the coord
             self.basis = self.basis.drop_vars("time")
+
+        # Handle optional inner domain data (kept at native fine-grid resolution).
+        # Mirrors the same time-dim and alignment treatment as the outer flux/basis.
+        if self.inner_flux is not None:
+            if "time" not in self.inner_flux.dims:
+                self.inner_flux = self.inner_flux.expand_dims(time=[self.start_time])
+            self.inner_flux = self.inner_flux.rename(time="flux_time")
+            if self.inner_basis is not None:
+                if "time" in self.inner_basis.dims:
+                    self.inner_basis = self.inner_basis.rename(time="flux_time")
+                elif "time" in self.inner_basis.coords:
+                    self.inner_basis = self.inner_basis.drop_vars("time")
+                self.inner_basis = align_sparse_lat_lon(self.inner_basis, self.inner_flux)
 
         # create trace dataset
         trace_ds = convert_idata_to_dataset(self.trace)
@@ -705,7 +723,7 @@ def make_inv_out_for_fixed_basis_mcmc(
             if "x" in ds.data_vars and "x_inner" in ds.data_vars:
                 x_inner = ds["x_inner"].rename({"nx_inner": "nx"})
                 combined_x = xr.concat([x_inner, ds["x"]], dim="nx").assign_coords(nx=nx_coords)
-                ds = ds.drop_vars("x_inner").assign({"x": combined_x})
+                ds = ds.drop_vars(["x_inner", "x"]).assign({"x": combined_x})
             elif "x" in ds.data_vars:
                 # If only x is present, shift it to be 1-indexed to match basis
                 ds = ds.assign_coords(nx=nx_coords)
@@ -720,11 +738,20 @@ def make_inv_out_for_fixed_basis_mcmc(
     outer_flux = _to_flux_array(next(iter(fp_data[".flux"].values())).data)
     trace_for_output = mcmc_results["trace"]
 
-    has_inner = (
-        "xouts_inner" in mcmc_results
-        and ".basis_inner" in fp_data
-        and ".inner_flux" in fp_data
-    )
+    has_inner = "xouts_inner" in mcmc_results and ".basis_inner" in fp_data
+
+    # Fine-grid inner domain data (native resolution, not regridded to outer EUROPE grid).
+    # Set when has_inner is True; used downstream to produce a high-resolution PARIS flux output.
+    inner_basis_fine: xr.DataArray | None = None
+    inner_flux_fine: xr.DataArray | None = None
+
+    if has_inner and ".inner_flux" not in fp_data:
+        raise ValueError(
+            "PARIS nested inversion detected (inner MCMC trace and inner basis are present) but "
+            "'.inner_flux' is missing from fp_data. "
+            "Please supply `inner_emissions_store` so the inner-domain flux can be loaded for "
+            "correct PARIS output reconstruction."
+        )
 
     if has_inner:
         inner_basis = fp_data[".basis_inner"]
@@ -732,6 +759,16 @@ def make_inv_out_for_fixed_basis_mcmc(
 
         n_inner = int(mcmc_results["xouts_inner"].shape[1])
         n_outer = int(mcmc_results["xouts"].shape[1])
+
+        # Build native fine-grid inner basis (nx=1..n_inner) for high-resolution PARIS output.
+        # This is kept at the inner domain's own resolution and NOT regridded to the outer EUROPE
+        # grid, preserving the 6 km spatial detail of the inner domain.
+        inner_basis_fine = get_xr_dummies(
+            inner_basis,
+            cat_dim="nx",
+            categories=np.arange(1, n_inner + 1),
+        )
+        inner_flux_fine = inner_flux  # native fine grid; aligned by InversionOutput.__post_init__
 
         inner_coverage_masks = []
         for site in site_names:
@@ -743,30 +780,40 @@ def make_inv_out_for_fixed_basis_mcmc(
 
         if inner_coverage_masks:
             inner_coverage_union = xr.concat(inner_coverage_masks, dim="site").any("site")
-            inner_valid_mask = _interp_bool_mask_to_grid(
+            inner_valid_mask_basis = _interp_bool_mask_to_grid(
                 mask=inner_coverage_union,
                 lat=outer_basis.lat,
                 lon=outer_basis.lon,
+            )
+            inner_valid_mask_flux = _interp_bool_mask_to_grid(
+                mask=inner_coverage_union,
+                lat=outer_flux.lat,
+                lon=outer_flux.lon,
             )
         else:
             target_lat = outer_basis["lat"].values
             target_lon = outer_basis["lon"].values
             inner_basis_on_outer = inner_basis.interp(lat=target_lat, lon=target_lon, method="nearest")
             inner_basis_on_outer = inner_basis_on_outer.assign_coords(lat=target_lat, lon=target_lon)
-            inner_valid_mask = inner_basis_on_outer.fillna(0) > 0
+            inner_valid_mask_basis = inner_basis_on_outer.fillna(0) > 0
+            inner_valid_mask_flux = _interp_bool_mask_to_grid(
+                mask=inner_valid_mask_basis,
+                lat=outer_flux.lat,
+                lon=outer_flux.lon,
+            )
 
         target_lat = outer_basis["lat"].values
         target_lon = outer_basis["lon"].values
         inner_basis_on_outer = inner_basis.interp(lat=target_lat, lon=target_lon, method="nearest")
-        inner_basis_on_outer = inner_basis_on_outer.assign_coords(lat=target_lat, lon=target_lon)
+        inner_basis_on_outer = inner_basis_on_outer.assign_coords(lat=target_lat, lon=target_lon).fillna(0)
         outer_basis_shifted = xr.where(outer_basis > 0, outer_basis + n_inner, 0)
-        combined_basis_ids = xr.where(inner_valid_mask, inner_basis_on_outer, outer_basis_shifted)
+        combined_basis_ids = xr.where(inner_valid_mask_basis, inner_basis_on_outer, outer_basis_shifted)
 
         target_flux_lat = outer_flux["lat"].values
         target_flux_lon = outer_flux["lon"].values
         inner_flux_on_outer = inner_flux.interp(lat=target_flux_lat, lon=target_flux_lon, method="nearest").fillna(0)
         inner_flux_on_outer = inner_flux_on_outer.assign_coords(lat=target_flux_lat, lon=target_flux_lon)
-        flux = xr.where(inner_valid_mask, inner_flux_on_outer, outer_flux)
+        flux = xr.where(inner_valid_mask_flux, inner_flux_on_outer, outer_flux)
 
         basis = get_xr_dummies(
             combined_basis_ids,
@@ -780,7 +827,8 @@ def make_inv_out_for_fixed_basis_mcmc(
             flush=True,
         )
         print(
-            f"DEBUGOUT: PARIS inner coverage cells on outer grid={int(np.asarray(inner_valid_mask.sum().compute().values))}",
+            f"DEBUGOUT: PARIS inner coverage cells on basis grid={int(np.asarray(inner_valid_mask_basis.sum().compute().values))}; "
+            f"on flux grid={int(np.asarray(inner_valid_mask_flux.sum().compute().values))}",
             flush=True,
         )
     else:
@@ -837,6 +885,8 @@ def make_inv_out_for_fixed_basis_mcmc(
         end_date=end_date,
         species=species,
         domain=domain,
+        inner_basis=inner_basis_fine,
+        inner_flux=inner_flux_fine,
     )
 
 
