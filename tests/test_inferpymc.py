@@ -5,6 +5,7 @@ import pymc as pm
 import pytest
 import xarray as xr
 
+import openghg_inversions.hbmcmc.inversion_pymc as inversion_pymc_module
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.hbmcmc.inversion_pymc import (
     build_inferpymc_model,
@@ -196,6 +197,45 @@ def test_inferpymc_preserves_legacy_compatibility_outputs(inv_inputs: xr.Dataset
     assert "step2" in result
 
 
+def test_inferpymc_forwards_numpyro_sampler_without_pymc_step(
+    inv_inputs: xr.Dataset, model_args: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The legacy inferpymc adapter does not inject PyMC step methods for numpyro."""
+    captured = {}
+
+    def fake_sample(model: pm.Model, **kwargs):
+        captured["model"] = model
+        captured["sample_kwargs"] = kwargs
+        return object()
+
+    def fake_adapt_legacy_inferpymc_results(**kwargs):
+        captured["adapter_kwargs"] = kwargs
+        return {"ok": True}
+
+    monkeypatch.setattr(inversion_pymc_module, "sample", fake_sample)
+    monkeypatch.setattr(
+        inversion_pymc_module,
+        "_adapt_legacy_inferpymc_results",
+        fake_adapt_legacy_inferpymc_results,
+    )
+
+    result = inferpymc(
+        inv_inputs=inv_inputs,
+        nuts_sampler="numpyro",
+        nit=1,
+        burn=0,
+        tune=0,
+        nchain=1,
+        sampler_kwargs={"random_seed": 123, "compute_convergence_checks": False},
+        **model_args,
+    )
+
+    assert result == {"ok": True}
+    assert captured["sample_kwargs"]["nuts_sampler"] == "numpyro"
+    assert "step" not in captured["sample_kwargs"]
+    assert "step" not in captured["adapter_kwargs"]["sample_kwargs"]
+
+
 def test_build_inferpymc_model_contains_expected_variables(inv_inputs: xr.Dataset, model_args: dict) -> None:
     """The builder adds the core named variables expected by downstream code."""
     model = build_inferpymc_model(inv_inputs, **model_args)
@@ -215,6 +255,37 @@ def test_build_inferpymc_model_contains_expected_variables(inv_inputs: xr.Datase
         "y",
     }
     assert expected_named_vars.issubset(model.named_vars)
+
+
+def test_build_inferpymc_model_with_offset_args_adds_offset_terms(
+    inv_inputs: xr.Dataset, model_args: dict
+) -> None:
+    """Offset args are handled by model construction without a full pipeline run."""
+    args = dict(model_args)
+    args["add_offset"] = True
+    args["offset_args"] = {"drop_first": False, "offset_freq": "D"}
+
+    model = build_inferpymc_model(inv_inputs, **args)
+
+    assert {"offset", "offset_latent", "offset_design", "offset_freq_indicator"}.issubset(
+        model.named_vars
+    )
+
+
+def test_build_inferpymc_model_with_pollution_events_and_no_bc_builds_likelihood(
+    inv_inputs: xr.Dataset, model_args: dict
+) -> None:
+    """Obs-derived pollution-event scaling works without boundary conditions."""
+    args = dict(model_args)
+    args["use_bc"] = False
+    args["pollution_events_from_obs"] = True
+
+    model = build_inferpymc_model(inv_inputs, **args)
+
+    assert {"mu", "sigma", "epsilon", "y"}.issubset(model.named_vars)
+    assert "bc" not in model.named_vars
+    assert "hbc" not in model.named_vars
+    assert "mu_bc" not in model.named_vars
 
 
 def test_restore_inferencedata_coords_helper_restores_multiindex() -> None:

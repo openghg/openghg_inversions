@@ -19,7 +19,12 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from openghg_inversions.inversion_inputs import add_site_indicator, concat_gather_datasets, make_inv_inputs
+from openghg_inversions.inversion_inputs import (
+    add_min_error,
+    add_site_indicator,
+    concat_gather_datasets,
+    make_inv_inputs,
+)
 
 
 # Helpers for saving result of make_inv_inputs
@@ -226,6 +231,7 @@ def _make_minimal_fp_site(*, mf_base: float, include_inlet_height: bool) -> xr.D
     region = xr.DataArray(["r0", "r1"], dims="region", name="region")
     data_vars = {
         "mf": xr.DataArray(np.array([mf_base, mf_base + 1.0]), dims="time", coords={"time": time}),
+        "mf_mod": xr.DataArray(np.array([mf_base, mf_base + 1.0]), dims="time", coords={"time": time}),
         "mf_error": xr.DataArray(np.array([0.1, 0.2]), dims="time", coords={"time": time}),
         "mf_repeatability": xr.DataArray(np.array([0.05, 0.05]), dims="time", coords={"time": time}),
         "mf_variability": xr.DataArray(np.array([0.05, 0.15]), dims="time", coords={"time": time}),
@@ -278,3 +284,74 @@ def test_make_inv_inputs_accepts_integer_min_error():
     result = make_inv_inputs(fp_data=fp_data, sites=["AAA", "BBB"], min_error=40)
 
     assert np.all(result.min_error.values == 40.0)
+
+
+def test_make_inv_inputs_maps_dict_min_error_by_site():
+    """Site-specific min_error mappings should align onto selected stacked observations."""
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+        "CCC": _make_minimal_fp_site(mf_base=30.0, include_inlet_height=False),
+    }
+
+    result = make_inv_inputs(
+        fp_data=fp_data,
+        sites=["AAA", "BBB"],
+        min_error={"AAA": 1.5, "BBB": 2.5},
+    )
+
+    expected = np.where(result.site_indicator.values == 0, 1.5, 2.5)
+    np.testing.assert_allclose(result.min_error.values, expected)
+
+
+def test_add_min_error_can_use_site_coord_without_site_indicator():
+    """Standalone min_error setup can derive site info from a site coordinate."""
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+    }
+    ds = xr.Dataset(
+        {"mf": xr.DataArray(np.ones(4), dims="nmeasure")},
+        coords={"site": xr.DataArray(["AAA", "AAA", "BBB", "BBB"], dims="nmeasure")},
+    )
+
+    result = add_min_error(ds, fp_data=fp_data, min_error={"AAA": 1.5, "BBB": 2.5})
+
+    np.testing.assert_allclose(result.min_error.values, [1.5, 1.5, 2.5, 2.5])
+
+
+def test_make_inv_inputs_dict_min_error_missing_site_raises_clear_error():
+    """Site-specific min_error mappings should fail clearly when a selected site is missing."""
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+    }
+
+    with pytest.raises(ValueError, match="min_error mapping is missing values.*BBB"):
+        make_inv_inputs(
+            fp_data=fp_data,
+            sites=["AAA", "BBB"],
+            min_error={"AAA": 1.5},
+        )
+
+
+def test_make_inv_inputs_residual_min_error_can_be_site_specific():
+    """Residual min_error values can be calculated per selected site."""
+    fp_data = {
+        "AAA": _make_minimal_fp_site(mf_base=10.0, include_inlet_height=False),
+        "BBB": _make_minimal_fp_site(mf_base=20.0, include_inlet_height=False),
+        "CCC": _make_minimal_fp_site(mf_base=30.0, include_inlet_height=False),
+    }
+    fp_data["AAA"]["mf_mod"] = fp_data["AAA"]["mf"] - xr.DataArray([0.0, 2.0], dims="time")
+    fp_data["BBB"]["mf_mod"] = fp_data["BBB"]["mf"] - xr.DataArray([0.0, 4.0], dims="time")
+    fp_data["CCC"]["mf_mod"] = fp_data["CCC"]["mf"] - xr.DataArray([0.0, 8.0], dims="time")
+
+    result = make_inv_inputs(
+        fp_data=fp_data,
+        sites=["AAA", "BBB"],
+        min_error="residual",
+        min_error_per_site=True,
+    )
+
+    expected = np.where(result.site_indicator.values == 0, 1.0, 2.0)
+    np.testing.assert_allclose(result.min_error.values, expected)

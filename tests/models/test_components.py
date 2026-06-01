@@ -196,6 +196,26 @@ def test_add_offset_component_supports_manual_and_derived_freq() -> None:
         assert "offset_freq_indicator" in model.named_vars
 
 
+def test_add_offset_component_drop_first_and_freq_builds_expected_design() -> None:
+    """Check drop-first offsets still build the expected site-period design."""
+    site_indicator = _site_indicator()
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        add_offset_component(
+            site_indicator,
+            prior_args={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+            offset_freq="monthly",
+            output_name="offset",
+            drop_first=True,
+        )
+
+    offset_design = model.named_vars["offset_design"].eval()
+    assert offset_design.shape == (4, 2)
+    np.testing.assert_array_equal(offset_design[:2], np.zeros((2, 2)))
+    np.testing.assert_array_equal(offset_design[2:], np.array([[0, 1], [0, 1]]))
+
+
 def test_add_inferpymc_likelihood_component_adds_epsilon_and_y() -> None:
     """Check the likelihood helper adds epsilon, y, and sigma variables."""
     ds = _likelihood_dataset()
@@ -213,6 +233,49 @@ def test_add_inferpymc_likelihood_component_adds_epsilon_and_y() -> None:
         )
 
     assert {"epsilon", "y", "sigma"}.issubset(model.named_vars)
+
+
+def test_likelihood_no_model_error_uses_observation_error() -> None:
+    """Check no-model-error mode bypasses pollution-event model error."""
+    ds = _likelihood_dataset().copy()
+    ds["min_error"] = xr.full_like(ds["min_error"], 999.0)
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.ones(4), dims="nmeasure")
+        add_inferpymc_likelihood_component(
+            ds,
+            mu=mu,
+            mu_bc=None,
+            sigprior={"pdf": "uniform", "lower": 0.1, "upper": 1.0},
+            no_model_error=True,
+            sigma_per_site=False,
+        )
+
+    np.testing.assert_allclose(model.named_vars["epsilon"].eval(), ds["mf_error"].values)
+
+
+def test_likelihood_pollution_events_from_obs_can_run_without_boundary_conditions() -> None:
+    """Check obs-derived pollution-event scaling does not require BC terms."""
+    ds = _likelihood_dataset().copy()
+    ds["sigma_freq_index"] = xr.zeros_like(ds["sigma_freq_index"])
+
+    with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+        attach_coord_registry(model, CoordRegistry())
+        mu = pm.Data("mu_input", np.zeros(4), dims="nmeasure")
+        add_inferpymc_likelihood_component(
+            ds,
+            mu=mu,
+            mu_bc=None,
+            sigprior={"pdf": "uniform", "lower": 0.5, "upper": 1.5},
+            pollution_events_from_obs=True,
+            sigma_per_site=False,
+            power=2.0,
+        )
+
+    epsilon = model.named_vars["epsilon"].eval()
+    assert np.all(np.diff(epsilon) > 0)
+    assert "y" in model.named_vars
 
 
 def test_likelihood_samples_prior_predictive_with_shared_sigma_and_registered_site_indicator() -> None:
