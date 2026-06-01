@@ -43,3 +43,18 @@ part of #340.
   while `_weighted.bucket_split_landsea_basis` still slices the full land/sea
   file from index zero. The #449 helper should preserve coordinates and align
   masks before converting to arrays.
+- 2026-06-01: Added #449 core helper in
+  `openghg_inversions.basis.algorithms._constrained`.
+  `region_constrained_basis(weights, region_classes, nbasis, ...)` aligns 2D
+  `xarray.DataArray` inputs exactly, treats non-null class values as mapped,
+  preserves unmapped cells as output label `0`, partitions each class
+  independently, and offsets labels globally.
+- 2026-06-01: Added `allocate_nbasis_by_class` with explicit allocation mapping
+  support and automatic `weight`/`area` allocation. Automatic allocation enforces
+  `min_regions_per_class`, raises when the requested `nbasis` is below the class
+  minimum or above mapped-cell capacity, and falls back from weight to area when
+  all class weights are zero.
+- 2026-06-01: Added `SplitStrategy` plus
+  `AxisAlignedWeightedSplitStrategy`. This keeps the current axis-parallel
+  weighted split as the default while leaving a direct substitution point for
+  future inertial or quadtree-style strategies. No inertial split implemented.
