@@ -525,6 +525,11 @@ def _weighted_apriori_flux_for_months(flux_array_all: np.ndarray, month_index: n
     return apriori_flux
 
 
+def _hdi_for_parameter_traces(trace: np.ndarray, hdi_prob: float) -> np.ndarray:
+    """Return HDI intervals for traces shaped as ``(parameter, draw)``."""
+    return az.hdi(trace.T[np.newaxis, :, :], hdi_prob=hdi_prob)
+
+
 def inferpymc_postprocessouts(
     xouts: np.ndarray,
     sigouts: np.ndarray,
@@ -682,8 +687,8 @@ def inferpymc_postprocessouts(
         else:
             YmodmodeOFF[i] = np.mean(OFFSETtrace[i, :])
 
-    Ymod95OFF = az.hdi(OFFSETtrace.T, 0.95)
-    Ymod68OFF = az.hdi(OFFSETtrace.T, 0.68)
+    Ymod95OFF = _hdi_for_parameter_traces(OFFSETtrace, hdi_prob=0.95)
+    Ymod68OFF = _hdi_for_parameter_traces(OFFSETtrace, hdi_prob=0.68)
 
     # Y-BC HYPERPARAMETER
     if use_bc:
@@ -701,8 +706,8 @@ def inferpymc_postprocessouts(
             else:
                 YmodmodeBC[i] = np.mean(YBCtrace[i, :])
 
-        Ymod95BC = az.hdi(YBCtrace.T, 0.95)
-        Ymod68BC = az.hdi(YBCtrace.T, 0.68)
+        Ymod95BC = _hdi_for_parameter_traces(YBCtrace, hdi_prob=0.95)
+        Ymod68BC = _hdi_for_parameter_traces(YBCtrace, hdi_prob=0.68)
         YaprioriBC = np.sum(Hbc, axis=0)
 
     # Y-VALUES HYPERPARAMETER (XOUTS * H)
@@ -720,8 +725,8 @@ def inferpymc_postprocessouts(
         else:
             Ymodmode[i] = np.mean(Ytrace[i, :])
 
-    Ymod95 = az.hdi(Ytrace.T, 0.95)
-    Ymod68 = az.hdi(Ytrace.T, 0.68)
+    Ymod95 = _hdi_for_parameter_traces(Ytrace, hdi_prob=0.95)
+    Ymod68 = _hdi_for_parameter_traces(Ytrace, hdi_prob=0.68)
 
     if use_bc:
         Yapriori = np.sum(Hx.T, axis=1) + np.sum(Hbc.T, axis=1)
@@ -860,8 +865,8 @@ def inferpymc_postprocessouts(
             cntrymode[ci] = np.mean(cntrytottrace)
 
         cntrysd[ci] = np.std(cntrytottrace)
-        cntry68[ci, :] = az.hdi(cntrytottrace.values, 0.68)
-        cntry95[ci, :] = az.hdi(cntrytottrace.values, 0.95)
+        cntry68[ci, :] = az.hdi(cntrytottrace.values, hdi_prob=0.68)
+        cntry95[ci, :] = az.hdi(cntrytottrace.values, hdi_prob=0.95)
         cntryprior[ci] = cntrytotprior
 
     # make min. model error variable
