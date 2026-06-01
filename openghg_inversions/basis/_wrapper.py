@@ -16,6 +16,8 @@ from .basis_functions import (
 from ._functions import basis_functions, fixed_outer_regions_basis, basis, openghginv_path
 from ._helpers import apply_basis_functions_sensitivity, bc_sensitivity
 
+_VALID_BASIS_OUTPUT_FORMATS = ("legacy", "datatree")
+
 
 def make_basis_functions(
     *,
@@ -39,6 +41,13 @@ def make_basis_functions(
     This helper owns basis artifact generation/loading without applying the
     legacy fixedbasis ``fp_data`` side channels.
     """
+    saving_generated_basis = output_path is not None and basis_algorithm is not None and fp_basis_case is None
+    if saving_generated_basis and basis_output_format not in _VALID_BASIS_OUTPUT_FORMATS:
+        expected = "', '".join(_VALID_BASIS_OUTPUT_FORMATS)
+        raise ValueError(
+            f"Unknown basis_output_format '{basis_output_format}'. Expected one of: '{expected}'."
+        )
+
     basis_data_array: xr.DataArray | Mapping[str, xr.DataArray] | None = None
     basis_start = time()
 
@@ -101,7 +110,7 @@ def make_basis_functions(
 
     print(f"Computing basis took {time() - basis_start}s.")
 
-    if output_path is not None and basis_algorithm is not None and fp_basis_case is None:
+    if saving_generated_basis:
         if not isinstance(basis_data_array, xr.DataArray):
             raise TypeError("Saving generated basis output currently requires a single flat basis DataArray.")
         if basis_output_format == "legacy":
@@ -122,10 +131,6 @@ def make_basis_functions(
                 domain=domain,
                 species=species,
                 output_name=outputname,
-            )
-        else:
-            raise ValueError(
-                f"Unknown basis_output_format '{basis_output_format}'. Expected one of: 'legacy', 'datatree'."
             )
 
     return basis_functions_object

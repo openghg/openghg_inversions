@@ -1201,7 +1201,7 @@ def test_cleanup_plan_records_issue_400_decisions() -> None:
     assert "Deferred Issue #383 / Issue #429 output boundary" in plan_doc
 
 
-def _rhime_preparation_args(data_args: dict, flux_sources: list[str]) -> dict:
+def _rhime_preparation_args(data_args: dict, flux_sources: list[str], bc_basis_directory: Path) -> dict:
     args = data_args.copy()
     args.pop("emissions_name", None)
     args.update(
@@ -1211,6 +1211,7 @@ def _rhime_preparation_args(data_args: dict, flux_sources: list[str]) -> dict:
             "basis_algorithm": "quadtree",
             "nbasis": 4,
             "use_bc": True,
+            "bc_basis_directory": bc_basis_directory,
         }
     )
     return args
@@ -1237,9 +1238,13 @@ def test_rhime_prepared_inputs_contract_exposes_only_modern_fields() -> None:
 
 
 def test_prepare_rhime_inputs_single_sector_reloads_merged_data(
-    tac_ch4_data_args, merged_data_dir, merged_data_file_name
+    tac_ch4_data_args, merged_data_dir, merged_data_file_name, default_bc_basis_directory
 ) -> None:
-    args = _rhime_preparation_args(tac_ch4_data_args, tac_ch4_data_args["emissions_name"])
+    args = _rhime_preparation_args(
+        tac_ch4_data_args,
+        tac_ch4_data_args["emissions_name"],
+        default_bc_basis_directory,
+    )
     args.update(
         {
             "reload_merged_data": True,
@@ -1259,9 +1264,11 @@ def test_prepare_rhime_inputs_single_sector_reloads_merged_data(
         assert not hasattr(prepared, legacy_attr)
 
 
-def test_prepare_rhime_inputs_multisector_keeps_source_dimension(tac_ch4_data_args) -> None:
+def test_prepare_rhime_inputs_multisector_keeps_source_dimension(
+    tac_ch4_data_args, default_bc_basis_directory
+) -> None:
     flux_sources = ["total-ukghg-edgar7", "total-ukghg-edgar7-shuffled"]
-    args = _rhime_preparation_args(tac_ch4_data_args, flux_sources)
+    args = _rhime_preparation_args(tac_ch4_data_args, flux_sources, default_bc_basis_directory)
     args["split_by_sectors"] = True
 
     prepared = prepare_rhime_inputs(**args)
@@ -2616,7 +2623,7 @@ def test_run_rhime_multisector_rejects_single_flux_source(tac_ch4_data_args, tmp
         run_rhime_multisector(**args)
 
 
-def test_run_rhime_api_smoke(tac_ch4_data_args, tmp_path: Path) -> None:
+def test_run_rhime_api_smoke(tac_ch4_data_args, tmp_path: Path, default_bc_basis_directory) -> None:
     args = tac_ch4_data_args.copy()
     args.update(
         {
@@ -2625,6 +2632,7 @@ def test_run_rhime_api_smoke(tac_ch4_data_args, tmp_path: Path) -> None:
             "output_path": str(tmp_path),
             "basis_algorithm": "quadtree",
             "basis_output_path": str(tmp_path),
+            "bc_basis_directory": default_bc_basis_directory,
             "nbasis": 4,
             "draws": 1,
             "burn": 0,
@@ -2673,7 +2681,9 @@ def test_run_rhime_api_smoke(tac_ch4_data_args, tmp_path: Path) -> None:
     assert all("number_of_observations" not in long_name for long_name in obs_long_names)
 
 
-def test_run_rhime_multisector_api_smoke(tac_ch4_data_args, tmp_path: Path) -> None:
+def test_run_rhime_multisector_api_smoke(
+    tac_ch4_data_args, tmp_path: Path, default_bc_basis_directory
+) -> None:
     args = tac_ch4_data_args.copy()
     args.update(
         {
@@ -2686,6 +2696,7 @@ def test_run_rhime_multisector_api_smoke(tac_ch4_data_args, tmp_path: Path) -> N
             "output_path": str(tmp_path),
             "basis_algorithm": "quadtree",
             "basis_output_path": str(tmp_path),
+            "bc_basis_directory": default_bc_basis_directory,
             "nbasis": 4,
             "draws": 1,
             "burn": 0,

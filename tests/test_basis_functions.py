@@ -355,7 +355,9 @@ def test_synthetic_no_all_zero_state_rows_when_fp_positive_everywhere():
 
 
 # @pytest.mark.slow
-def test_basisfunctions_sensitivity_matches_apply_fp_basis_functions_real_data():
+def test_basisfunctions_sensitivity_matches_apply_fp_basis_functions_real_data(
+    default_bc_basis_directory, openghg_test_store
+):
     """New sensitivity matches legacy `apply_fp_basis_functions` for real test-suite data.
 
     This is a higher-level integration test:
@@ -391,10 +393,11 @@ def test_basisfunctions_sensitivity_matches_apply_fp_basis_functions_real_data()
         "domain": "EUROPE",
         "start_date": "2019-01-01",
         "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 20,
+        "nbasis": 100,
         "use_bc": True,
         "basis_algorithm": "weighted",
         "bc_basis_case": "NESW",
+        "bc_basis_directory": default_bc_basis_directory,
     }
 
     fp_all_with_basis = basis_functions_wrapper(fp_all, **basis_args)
@@ -432,7 +435,7 @@ def test_basisfunctions_sensitivity_matches_apply_fp_basis_functions_real_data()
 
 
 # @pytest.mark.slow
-def test_multisector_ragged_new_matches_old_after_conversion():
+def test_multisector_ragged_new_matches_old_after_conversion(openghg_test_store):
     """Ragged multi-source: new gathered H matches legacy padded H after conversion.
 
     Historically, multi-sector sensitivities were represented as a padded array:
@@ -492,13 +495,13 @@ def test_multisector_ragged_new_matches_old_after_conversion():
         "domain": "EUROPE",
         "start_date": "2019-01-01",
         "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 20,
+        "nbasis": 100,
     }
     weighted_basis_args_2 = {
         "domain": "EUROPE",
         "start_date": "2019-01-01",
         "emissions_name": ["sector2"],
-        "nbasis": 30,
+        "nbasis": 200,
     }
 
     basis1 = basis_functions["weighted"].algorithm(fp_all_sectoral, **weighted_basis_args_1)
@@ -892,7 +895,7 @@ def test_basis_functions_wrapper_return_basis_objects(tac_ch4_data_args):
         "domain": "EUROPE",
         "start_date": "2019-01-01",
         "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 8,
+        "nbasis": 100,
         "use_bc": False,
         "basis_algorithm": "weighted",
         "return_basis_objects": True,
@@ -915,7 +918,7 @@ def test_basis_functions_wrapper_invalid_basis_output_format(tac_ch4_data_args, 
         "domain": "EUROPE",
         "start_date": "2019-01-01",
         "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 8,
+        "nbasis": 100,
         "use_bc": False,
         "basis_algorithm": "weighted",
         "output_path": str(tmp_path),

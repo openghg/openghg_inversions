@@ -106,7 +106,14 @@ def _minimal_fixedbasis_prepared_data(**overrides):
 
 
 @pytest.fixture
-def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_name):
+def mcmc_args(
+    tmp_path,
+    tac_ch4_data_args,
+    merged_data_dir,
+    merged_data_file_name,
+    default_bc_basis_directory,
+    europe_country_file,
+):
     mcmc_args = tac_ch4_data_args.copy()
     mcmc_args.update(
         {
@@ -115,16 +122,26 @@ def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_nam
             "basis_algorithm": "quadtree",
             "basis_output_path": str(tmp_path),
             "nbasis": 4,
-            "nit": 100,
+            "nit": 1,
             "burn": 0,
             "tune": 0,
-            "nchain": 2,
+            "nchain": 1,
             "reload_merged_data": True,
             "merged_data_dir": merged_data_dir,
             "merged_data_name": merged_data_file_name,
+            "bc_basis_directory": default_bc_basis_directory,
+            "country_file": europe_country_file,
             "nuts_sampler": "numpyro",
         }
     )
+    return mcmc_args
+
+
+@pytest.fixture
+def slow_mcmc_args(mcmc_args):
+    """Restore the higher-draw postprocessing sampler settings for slow tests."""
+    mcmc_args = mcmc_args.copy()
+    mcmc_args.update({"nit": 100, "nchain": 2})
     return mcmc_args
 
 

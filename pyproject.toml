@@ -47,6 +47,7 @@ jupyter = [
 ]
 dev = [
   "pytest",
+  "pytest-xdist",
   "ruff",
   "black>=26.1.0",
   "pyright",
