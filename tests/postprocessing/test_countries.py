@@ -1,5 +1,4 @@
 import pytest
-import xarray as xr
 
 from openghg_inversions.postprocessing.countries import Countries, CountryRegions, paris_regions_dict
 from openghg_inversions.postprocessing._country_codes import CountryInfoList

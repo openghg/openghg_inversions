@@ -49,10 +49,8 @@ dev = [
   "pytest",
   "pytest-xdist",
   "ruff",
-  "black>=26.1.0",
   "pyright",
   "mypy",
-  "flake8",
 ]
 
 [dependency-groups]
@@ -83,10 +81,6 @@ openghg_inversions = [
 
 [tool.uv]
 default-groups = ["uv_dev"]
-
-[tool.black]
-line-length = 110
-target-version = ["py310"]
 
 [tool.ruff]
 line-length = 110

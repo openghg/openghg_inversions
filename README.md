@@ -293,23 +293,17 @@ To contribute to `openghg_inversions`, you should also install the developer pac
 ```bash
 pip install -r requirements-dev.txt
 ```
-This will install the packages `flake8, pytest, black`.
+This will install the packages `pytest`, `pytest-xdist`, `ruff`, `tox`, and `tox-uv`.
 
-We use `black` to format our code. To check if your code needs reformatting, run:
+We use `ruff` to lint our code. To check for lint issues, run:
 ``` bash
-black --check openghg_inversions
+ruff check openghg_inversions
 ```
 in your `openghg_inversions` repository (with your virtual env activated).
-If you replace the flag `--check` with `--diff`, you can see what will be changed.
 
-To make these changes, run
+To fix issues that Ruff can safely update, run:
 ``` bash
-black openghg_inversions
-```
-
-We also recommend using `flake8` to check for code style issues, which you can run with:
-``` bash
-flake8 openghg_inversions
+ruff check --fix openghg_inversions
 ```
 
 You can run the tests using:
@@ -328,24 +322,23 @@ It does this automatically, so you don't need to manage pip or conda virtual env
 To install `tox` globally in a "safe" way, use:
 
 ```bash
-python -m pip install pipx-in-pipx --user
-pipx install tox
+uv tool install tox --with tox-uv
 ```
-or, within a virtual environment, do `pip install tox`.
+or, within a virtual environment, install `tox` and `tox-uv`.
 
-Calling `tox -p` will run tests against OpenGHG devel and the last two releases of OpenGHG, and run black, flake8, and mypy.
+Calling `tox -p` will run tests against OpenGHG devel and the last two releases of OpenGHG, and run Ruff lint checks.
 
 To specify individual jobs, you can use, e.g.:
 
 ```bash
-tox -e openghgDev
+tox -e py310-openghgDev
 ```
 
 to run the tests against the devel branch.
 
 Use `tox -l` to list all options.
 
-To pass arguments to pytest, mypy, black, etc, you can use, e.g.
+To pass arguments to pytest, Ruff, mypy, etc, you can use, e.g.
 
 ```bash
 tox -- "openghg_inversions/hbmcmc"
