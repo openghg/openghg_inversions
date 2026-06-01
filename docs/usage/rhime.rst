@@ -136,3 +136,6 @@ and ``hbmcmc_postprocessing`` are accepted as aliases for ``legacy``.
 files. It translates legacy option names to the modern ``run_rhime`` API and
 uses the legacy filename convention. New scripts and new configs should use
 ``openghg-inversions run-rhime`` or ``run_rhime(...)`` directly.
+This compatibility route no longer preserves the exact historical
+``fixedbasisMCMC`` / ``inferpymc`` passthrough behaviour. Use release ``0.6`` or
+earlier if you need the old fixedbasis implementation.

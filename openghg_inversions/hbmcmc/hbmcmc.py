@@ -260,6 +260,12 @@ def _resolve_output_format(
         )
         resolved_output_format = "legacy"
 
+    if is_column and resolved_output_format == "legacy":
+        raise ValueError(
+            "Legacy HBMCMC output formatting is not supported for column observations; "
+            "use output_format='inv_out' or a modern RHIME output format."
+        )
+
     return resolved_output_format
 
 
@@ -362,6 +368,7 @@ def _build_inversion_output_args(
     *,
     prepared: FixedBasisPreparedData,
     legacy_postprocess_args: dict,
+    mcmc_args: dict,
     mcmc_results: dict,
     sites: list[str],
     averaging_period: list[str | None],
@@ -380,6 +387,7 @@ def _build_inversion_output_args(
     Args:
         prepared: Prepared fixedbasis data including retained basis functions.
         legacy_postprocess_args: Legacy postprocessing values computed alongside inversion inputs.
+        mcmc_args: Arguments passed to ``mcmc.inferpymc``.
         mcmc_results: Raw inversion outputs from ``mcmc.inferpymc``.
         sites: Site names used in the inversion.
         averaging_period: Observation averaging periods used in the inversion.
@@ -416,6 +424,7 @@ def _build_inversion_output_args(
             "output_name": outputname,
             "save_trace": save_trace,
             "save_inversion_output": save_inversion_output,
+            "legacy_hbmcmc_attrs": _legacy_hbmcmc_attrs_from_mcmc_args(mcmc_args),
         },
         "provenance": {
             "contract": "modern_fixedbasis_inversion_output",
@@ -423,6 +432,35 @@ def _build_inversion_output_args(
             "legacy_postprocessing_fields": sorted(str(key) for key in legacy_postprocess_args),
         },
     }
+
+
+def _format_legacy_prior_attr(prior: object) -> str | None:
+    """Format a prior dictionary using the historical HBMCMC attribute shape."""
+    if not isinstance(prior, dict):
+        return None
+    return ",".join(f"{key},{value}" for key, value in prior.items())
+
+
+def _legacy_hbmcmc_attrs_from_mcmc_args(mcmc_args: dict) -> dict[str, str]:
+    """Return legacy output attrs that are still needed by old fixedbasis workflows."""
+    attrs = {
+        "Burn in": str(int(mcmc_args["burn"])),
+        "Tuning steps": str(int(mcmc_args["tune"])),
+        "Number of chains": str(int(mcmc_args["nchain"])),
+        "Error for each site": str(mcmc_args["sigma_per_site"]),
+    }
+
+    prior_attrs = {
+        "Emissions Prior": _format_legacy_prior_attr(mcmc_args.get("xprior")),
+        "Model error Prior": _format_legacy_prior_attr(mcmc_args.get("sigprior")),
+    }
+    if mcmc_args.get("use_bc"):
+        prior_attrs["BCs Prior"] = _format_legacy_prior_attr(mcmc_args.get("bcprior"))
+    if mcmc_args.get("add_offset"):
+        prior_attrs["Offset Prior"] = _format_legacy_prior_attr(mcmc_args.get("offsetprior"))
+
+    attrs.update({name: value for name, value in prior_attrs.items() if value is not None})
+    return attrs
 
 
 def _get_inversion_output(context: _OutputContext) -> InversionOutput:
@@ -915,6 +953,7 @@ def fixedbasisMCMC(
     inversion_output_args = _build_inversion_output_args(
         prepared=prepared,
         legacy_postprocess_args=legacy_postprocess_args,
+        mcmc_args=mcmc_args,
         mcmc_results=mcmc_results,
         sites=sites,
         averaging_period=averaging_period,

@@ -1951,6 +1951,43 @@ def test_make_output_spec_validates_trace_save_path() -> None:
         )
 
 
+def test_make_output_spec_normalizes_filename_convention_case() -> None:
+    spec = rhime_specs.make_output_spec(
+        output_format="Legacy",
+        output_path="outputs",
+        output_name="test",
+        save_trace=False,
+        save_inversion_output=False,
+        country_file=None,
+        paris_postprocessing_kwargs=None,
+        output_filename_convention="Legacy",
+        multisector=False,
+    )
+
+    assert spec.output_format == "legacy"
+    assert spec.output_filename_convention == "legacy"
+
+
+def test_derived_output_filename_can_use_legacy_convention(tmp_path: Path) -> None:
+    spec = RhimeOutputSpec(
+        output_format="legacy",
+        output_path=str(tmp_path),
+        output_name="legacy_test",
+        save_inversion_output=False,
+        output_filename_convention="legacy",
+    )
+
+    filename = rhime_outputs._define_derived_output_filename(
+        spec,
+        species="ch4",
+        domain="EUROPE",
+        output_name=spec.output_name,
+        start_date="2019-01-01",
+    )
+
+    assert filename == tmp_path / "CH4_EUROPE_legacy_test_2019-01-01.nc"
+
+
 def test_make_standard_output_bundle_returns_outputs_without_mutating_result() -> None:
     model_spec, output_spec, run_spec = _minimal_output_specs()
     prepared = RhimePreparedInputs(
@@ -2550,7 +2587,6 @@ def test_standard_legacy_output_uses_modern_inversion_output(
         output_path=str(tmp_path),
         output_name="legacy_test",
         save_inversion_output=False,
-        output_filename_convention="legacy",
     )
     run_spec = RhimeRunSpec(
         run_spec.start_date,
@@ -2603,7 +2639,7 @@ def test_standard_legacy_output_uses_modern_inversion_output(
     assert captured["use_bc"] is True
     assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
     assert "legacy" in bundle.outputs
-    expected_path = tmp_path / "CH4_EUROPE_legacy_test_2019-01-01.nc"
+    expected_path = tmp_path / "legacy_test_ch4_EUROPE_2019-01-01.nc"
     assert expected_path.exists()
     assert bundle.output_metadata["legacy_output_path"] == str(expected_path)
 

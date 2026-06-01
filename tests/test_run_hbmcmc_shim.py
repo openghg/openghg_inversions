@@ -108,6 +108,18 @@ def test_fixedbasis_params_to_rhime_preserves_paris_compatibility_flag(tmp_path:
     assert "paris_postprocessing" not in translated
 
 
+def test_fixedbasis_params_to_rhime_forces_legacy_filename_convention(tmp_path: Path) -> None:
+    """run_hbmcmc keeps historical filenames even if a RHIME override is supplied."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    params["output_filename_convention"] = "rhime"
+
+    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+
+    assert translated["output_filename_convention"] == "legacy"
+
+
 def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config_file = tmp_path / "hbmcmc.ini"
     output_path = tmp_path / "outputs"
@@ -148,3 +160,26 @@ def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tm
     assert seen["run_rhime_kwargs"]["chains"] == 2
     assert seen["run_rhime_kwargs"]["output_format"] == "legacy"
     assert seen["run_rhime_kwargs"]["output_filename_convention"] == "legacy"
+
+
+def test_run_hbmcmc_main_validates_before_copying_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Unsupported legacy options fail before output directories or config copies are created."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+
+    def fail_copy_config_file(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("Config copy should happen only after shim validation.")
+
+    monkeypatch.setattr(run_hbmcmc.output, "copy_config_file", fail_copy_config_file)
+
+    with pytest.raises(ValueError, match="calculate_min_error"):
+        run_hbmcmc.main(
+            [
+                "-c",
+                str(config_file),
+                "--kwargs",
+                '{"calculate_min_error": true}',
+            ]
+        )

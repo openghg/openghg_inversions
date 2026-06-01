@@ -16,7 +16,8 @@ from openghg_inversions.postprocessing.inversion_output import (
     InversionOutput,
     _reset_serialisation_multiindexes,
 )
-from openghg_inversions.rhime.specs import RhimeOutputSpec, RhimeRunSpec
+from openghg_inversions.rhime.sampling import RhimeSampler
+from openghg_inversions.rhime.specs import OutputFilenameConvention, RhimeOutputSpec, RhimeRunSpec
 from openghg_inversions.utils import ncdf_encoding
 
 
@@ -49,23 +50,15 @@ def _define_output_filename(
     output_name: str,
     start_date: str,
     *,
+    filename_convention: OutputFilenameConvention = "rhime",
     ext: str = ".nc",
 ) -> Path:
-    """Create the RHIME output filename used for derived NetCDF products."""
-    return Path(output_path) / f"{output_name}_{species}_{domain}_{start_date}{ext}"
-
-
-def _define_legacy_output_filename(
-    output_path: str | Path,
-    species: str,
-    domain: str,
-    output_name: str,
-    start_date: str,
-    *,
-    ext: str = ".nc",
-) -> Path:
-    """Create the old fixedbasis/HBMCMC output filename for compatibility."""
-    return Path(output_path) / f"{species.upper()}_{domain}_{output_name}_{start_date}{ext}"
+    """Create a derived NetCDF filename using the selected convention."""
+    if filename_convention == "legacy":
+        filename = f"{species.upper()}_{domain}_{output_name}_{start_date}{ext}"
+    else:
+        filename = f"{output_name}_{species}_{domain}_{start_date}{ext}"
+    return Path(output_path) / filename
 
 
 def _define_derived_output_filename(
@@ -80,9 +73,15 @@ def _define_derived_output_filename(
     """Create a derived-output filename using the requested convention."""
     if output_spec.output_path is None:
         raise ValueError("An output path is required when saving RHIME outputs.")
-    if output_spec.output_filename_convention == "legacy":
-        return _define_legacy_output_filename(output_spec.output_path, species, domain, output_name, start_date, ext=ext)
-    return _define_output_filename(output_spec.output_path, species, domain, output_name, start_date, ext=ext)
+    return _define_output_filename(
+        output_spec.output_path,
+        species,
+        domain,
+        output_name,
+        start_date,
+        filename_convention=output_spec.output_filename_convention,
+        ext=ext,
+    )
 
 
 def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
@@ -137,6 +136,7 @@ def _make_inversion_output(
     run_spec: RhimeRunSpec,
     model_spec: RhimeModelSpec,
     output_spec: RhimeOutputSpec,
+    sampler: RhimeSampler | None = None,
 ) -> InversionOutput:
     """Create the modern RHIME InversionOutput without fixedbasis legacy adapters."""
     return InversionOutput(
@@ -158,12 +158,26 @@ def _make_inversion_output(
             "output_name": output_spec.output_name,
             "save_trace": output_spec.save_trace,
             "save_inversion_output": output_spec.save_inversion_output,
+            "sampler": _sampler_metadata(sampler),
         },
         provenance={
             "contract": "modern_rhime_inversion_output",
             "compatibility_issue": "401",
         },
     )
+
+
+def _sampler_metadata(sampler: RhimeSampler | None) -> dict[str, int | str] | None:
+    """Return serialisable sampler metadata for compatibility output attrs."""
+    if sampler is None:
+        return None
+    return {
+        "draws": sampler.draws,
+        "burn": sampler.burn,
+        "tune": sampler.tune,
+        "chains": sampler.chains,
+        "nuts_sampler": sampler.nuts_sampler,
+    }
 
 
 def make_standard_output_bundle(
@@ -174,6 +188,7 @@ def make_standard_output_bundle(
     idata: az.InferenceData,
     prepared: RhimePreparedInputs,
     country_file: str | None,
+    sampler: RhimeSampler | None = None,
 ) -> RhimeOutputBundle:
     """Create and optionally save standard RHIME outputs."""
     if output_spec.output_format == "none":
@@ -187,6 +202,7 @@ def make_standard_output_bundle(
         run_spec=run_spec,
         model_spec=model_spec,
         output_spec=output_spec,
+        sampler=sampler,
     )
     outputs["inversion_output"] = inv_out
     output_metadata["inversion_output_contract"] = "modern"

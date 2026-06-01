@@ -47,10 +47,6 @@ _RUN_HBMCMC_RHIME_ALIASES = {
     "verbose": "progressbar",
     "sampler_kwargs": "sample_kwargs",
 }
-_RUN_HBMCMC_OUTPUT_ALIASES = {
-    "hbmcmc": "legacy",
-    "hbmcmc_postprocessing": "legacy",
-}
 _UNSUPPORTED_TRUE_LEGACY_OPTIONS = {
     "calculate_min_error": "`calculate_min_error` is not supported by the RHIME compatibility shim; use `min_error`.",
     "reparameterise_log_normal": (
@@ -144,8 +140,7 @@ def _normalise_legacy_output_format(params: dict[str, Any]) -> None:
         params["output_format"] = "legacy"
         return
 
-    output_format = str(raw_output_format).lower()
-    params["output_format"] = _RUN_HBMCMC_OUTPUT_ALIASES.get(output_format, output_format)
+    params["output_format"] = str(raw_output_format).lower()
 
 
 def _drop_or_reject_legacy_only_options(params: dict[str, Any]) -> None:
@@ -173,7 +168,7 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
     _translate_legacy_aliases(translated)
     _normalise_legacy_output_format(translated)
     _drop_or_reject_legacy_only_options(translated)
-    translated.setdefault("output_filename_convention", "legacy")
+    translated["output_filename_convention"] = "legacy"
     return normalise_rhime_params(translated)
 
 
@@ -300,8 +295,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if not config_file.exists():
         raise ValueError(
-            "Configuration file cannot be found.\n"
-            f"Please check path and filename are correct: {config_file}"
+            f"Configuration file cannot be found.\nPlease check path and filename are correct: {config_file}"
         )
 
     mcmc_type = extract_mcmc_type(config_file)
@@ -309,9 +303,11 @@ def main(argv: list[str] | None = None) -> None:
 
     param = hbmcmc_extract_param(config_file, mcmc_type, **command_line_args)
 
+    rhime_params = fixedbasis_params_to_rhime(param)
+
     output.copy_config_file(str(config_file), param=param, **command_line_args)
 
-    run_rhime(**fixedbasis_params_to_rhime(param))
+    run_rhime(**rhime_params)
 
 
 if __name__ == "__main__":

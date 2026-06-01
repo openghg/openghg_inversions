@@ -181,6 +181,7 @@ def _run_common(
             idata=idata,
             prepared=prepared,
             country_file=run_spec.output.country_file,
+            sampler=setup.sampler,
         )
     _apply_output_bundle(result, output_bundle)
 

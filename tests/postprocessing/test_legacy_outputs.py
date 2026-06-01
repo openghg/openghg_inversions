@@ -240,6 +240,14 @@ def test_make_legacy_hbmcmc_output_derives_model_data_inputs(
 ) -> None:
     """Legacy HBMCMC output no longer requires inferpymc result or side-channel arrays."""
     inv_out = _legacy_inv_out(model_data=True)
+    inv_out.output_metadata["legacy_hbmcmc_attrs"] = {
+        "Burn in": "1",
+        "Tuning steps": "2",
+        "Number of chains": "1",
+        "Error for each site": "True",
+        "Emissions Prior": "pdf,normal,mu,1.0,sigma,0.2",
+        "Model error Prior": "pdf,uniform,lower,0.1,upper,10.0",
+    }
 
     output = legacy_outputs.make_legacy_hbmcmc_output(inv_out)
 
@@ -248,6 +256,7 @@ def test_make_legacy_hbmcmc_output_derives_model_data_inputs(
     np.testing.assert_allclose(output["xtrace"].values, np.ones((3, 1)))
     np.testing.assert_allclose(output["sigtrace"].values, np.ones((3, 1, 2)))
     assert output.attrs["Convergence"] == "Unavailable"
+    assert output.attrs["Emissions Prior"] == "pdf,normal,mu,1.0,sigma,0.2"
 
 
 def test_make_legacy_hbmcmc_output_falls_back_to_inv_inputs_for_sensitivities(

@@ -742,6 +742,12 @@ def test_resolve_output_format_canonicalizes_paris_compatibility():
     assert resolved == "paris"
 
 
+def test_resolve_output_format_rejects_column_legacy_output():
+    """Legacy HBMCMC formatting remains unsupported for column observations."""
+    with pytest.raises(ValueError, match="column observations"):
+        _resolve_output_format("hbmcmc", paris_postprocessing=False, is_column=True)
+
+
 def test_paris_postprocessing_compatibility_matches_paris_output_format(mcmc_args):
     """Compatibility PARIS output matches the explicit canonical format."""
     explicit_args = mcmc_args.copy()

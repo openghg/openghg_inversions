@@ -131,6 +131,8 @@ def make_output_spec(
     multisector: bool,
 ) -> RhimeOutputSpec:
     """Create validated output settings from normalized RHIME parameters."""
+    output_format = output_format.lower()
+    output_filename_convention = output_filename_convention.lower()
     validate_output_format(output_format)
     validate_output_filename_convention(output_filename_convention)
     validate_output_path_settings(
