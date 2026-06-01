@@ -31,6 +31,20 @@ var_pat = re.compile(r"\s*[a-z]+ ([a-zA-Z_]+)\(.*\)")
 attr_pat = re.compile(r"\s+([a-zA-Z_]+):([a-zA-Z_]+)\s*=\s*([^;]+)")
 
 
+def _require_paris_metadata(inv_out: InversionOutput) -> tuple[str, str]:
+    """Return metadata required by current PARIS products."""
+    if inv_out.is_multisector:
+        raise ValueError("PARIS postprocessing supports only single-sector RHIME outputs.")
+
+    species = inv_out.species
+    domain = inv_out.domain
+    if species is None or domain is None:
+        raise ValueError(
+            "PARIS postprocessing requires InversionOutput metadata fields 'species' and 'domain'."
+        )
+    return species, domain
+
+
 def get_data_var_attrs(template_file: str | Path, species: str | None = None) -> dict[str, dict[str, Any]]:
     """Extract data variable attributes from template file."""
     attr_dict: dict[str, Any] = {}
@@ -279,7 +293,7 @@ def paris_flux_output(
     inversion_grid: bool = True,
     flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
 ) -> xr.Dataset:
-    species, domain, _, _ = inv_out.require_single_sector()
+    species, domain = _require_paris_metadata(inv_out)
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}

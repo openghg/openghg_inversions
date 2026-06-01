@@ -39,6 +39,25 @@ TRACE_GROUP_SUFFIXES = (
     "_prior",
     "_posterior",
 )
+_PRODUCT_METADATA_FIELDS = Literal["species", "domain", "start_date", "end_date"]
+
+
+def _require_single_sector_output(inv_out: InversionOutput, product_name: str) -> None:
+    """Require single-sector input for a product that has not migrated to multisector."""
+    if inv_out.is_multisector:
+        raise ValueError(f"{product_name} supports only single-sector RHIME outputs.")
+
+
+def _require_output_metadata(
+    inv_out: InversionOutput,
+    field_name: _PRODUCT_METADATA_FIELDS,
+    product_name: str,
+) -> str:
+    """Return a required metadata field for a current single-sector product."""
+    value = getattr(inv_out, field_name)
+    if value is None:
+        raise ValueError(f"{product_name} requires InversionOutput metadata field {field_name!r}.")
+    return str(value)
 
 
 def _require_site_time_index(data: xr.DataArray | xr.Dataset) -> xr.DataArray | xr.Dataset:
@@ -76,7 +95,7 @@ def _rename_trace_roles(
 
 def observation_inputs_for_outputs(inv_out: InversionOutput) -> xr.Dataset:
     """Return observation inputs named for current basic/PARIS product helpers."""
-    inv_out.require_single_sector()
+    _require_single_sector_output(inv_out, "Observation output formatting")
     obs_inputs = inv_out.input_dataset(
         REQUIRED_OBSERVATION_ROLES,
         optional_roles=OPTIONAL_OBSERVATION_ROLES,
@@ -131,7 +150,7 @@ def observation_and_error_outputs(inv_out: InversionOutput) -> xr.Dataset:
 
 def flat_basis_for_output(inv_out: InversionOutput) -> xr.DataArray:
     """Return the retained flat basis map for output formats that still report one."""
-    inv_out.require_single_sector()
+    _require_single_sector_output(inv_out, "Flat-basis output formatting")
     basis = inv_out.basis_functions.flat_basis()
     if isinstance(basis, dict):
         raise ValueError("Current single-sector output formats require one flat basis map.")
@@ -184,7 +203,7 @@ def make_flux_outputs(
         xr.Dataset with computed flux stats.
 
     """
-    inv_out.require_single_sector()
+    _require_single_sector_output(inv_out, "Flux postprocessing")
     trace = _rename_trace_roles(
         inv_out.trace_dataset(var_roles="flux_scale"),
         inv_out,
@@ -403,8 +422,9 @@ def make_country_outputs(
         xr.Dataset containing statistics for the specified countries and regions.
 
     """
+    _require_single_sector_output(inv_out, "Country postprocessing")
+    domain = _require_output_metadata(inv_out, "domain", "Country postprocessing")
     drop_missing_regions = False
-    _, domain, _, _ = inv_out.require_single_sector()
 
     if country_regions == "paris":
         country_regions = paris_regions_dict.get(domain.lower())
@@ -457,7 +477,7 @@ def basic_output(
         totals.
 
     """
-    inv_out.require_single_sector()
+    _require_single_sector_output(inv_out, "Basic postprocessing")
     obs_and_errs = observation_and_error_outputs(inv_out)
     conc_outs = make_concentration_outputs(inv_out, stats=stats, stats_args=stats_args)
     flux_outs = make_flux_outputs(inv_out, stats=stats, stats_args=stats_args)

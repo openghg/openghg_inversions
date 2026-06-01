@@ -1,3 +1,26 @@
+"""Modern inversion output container and serialization helpers.
+
+``InversionOutput`` is the durable artifact produced by modern RHIME and by
+fixedbasis compatibility paths that have been routed through the modern
+postprocessing flow. It stores the sampled trace, canonical inversion inputs,
+retained ``BasisFunctions``, and run/model/output metadata needed to reproduce
+postprocessing products.
+
+The class deliberately stays product-neutral. Product modules such as
+``make_outputs``, ``make_paris_outputs``, and ``legacy_outputs`` decide which
+output formats they support, how variables are named in those formats, and
+whether a product can handle multisector data. ``InversionOutput`` only exposes
+modern semantic access to the underlying inputs and trace, including variable
+role lookup for model-specific variable names. The current role mapping is a
+small bridge until the project decides whether to use CF metadata via
+``cf_xarray`` or a custom accessor.
+
+Serialization is DataTree-based: object-specific ``to_datatree`` methods own
+their durable representation, while the local helper functions expand xarray
+MultiIndexes around NetCDF/Zarr limitations. Those generic helpers should move
+to shared utilities once the serialization surface settles.
+"""
+
 from pathlib import Path
 from collections.abc import Iterable, Mapping
 from typing_extensions import Self
@@ -425,21 +448,6 @@ class InversionOutput:
             return self.variable_roles[role]
         except KeyError as exc:
             raise KeyError(f"Unknown InversionOutput variable role: {role!r}") from exc
-
-    def require_single_sector(self) -> tuple[str, str, str, str]:
-        """Return required metadata for current single-sector postprocessing products."""
-        if self.is_multisector:
-            raise ValueError("Standard postprocessing supports only single-sector RHIME outputs.")
-
-        species = self.species
-        domain = self.domain
-        start_date = self.start_date
-        end_date = self.end_date
-        if species is None or domain is None or start_date is None or end_date is None:
-            raise ValueError(
-                "Modern InversionOutput metadata must include species, domain, start_date, and end_date."
-            )
-        return species, domain, start_date, end_date
 
     def input_dataset(
         self,

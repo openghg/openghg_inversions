@@ -185,7 +185,7 @@ Note: #383 immediately removes the temporary #435 standard view/protocol
 approach. Keep the #435 notes as historical context, but use the #383 section
 as the current postprocessing contract.
 
-## Completed in Current PR / Issue #435
+## Completed in PR #437 / Issue #435
 
 - 2026-05-31: #435 / current PR added a transitional
   `StandardPostprocessingOutput` contract and `ModernPostprocessingOutput`
@@ -211,7 +211,7 @@ as the current postprocessing contract.
   compatibility arrays and still requires legacy `mcmc_results`, sigma
   indexes, and sensitivity matrices.
 
-## Recorded decisions for Current PR / Issue #435
+## Recorded decisions for PR #437 / Issue #435
 
 - Use a narrow standard single-sector helper/view layer rather than making
   modern `InversionOutput` mimic every legacy attribute or splitting each
@@ -236,7 +236,7 @@ as the current postprocessing contract.
   `hbmcmc/run_hbmcmc.py` so old script invocations and `.ini` config files
   translate to `run_rhime`, then deprecate and remove the fixedbasis path.
 
-## Recommended next PR after Current PR / Issue #435
+## Recommended next PR after PR #437 / Issue #435
 
 #435 defines the postprocessing consumer contract around modern
 `InversionOutput` and removes the standard RHIME `basic`/`paris` adapter
@@ -274,8 +274,9 @@ renames, and PARIS formatting.
   `InversionOutput` directly.
 - 2026-06-01: #383 / current PR added product-neutral `InversionOutput`
   semantics for current postprocessing needs: period metadata, prior flux,
-  site names, single-sector validation, variable-role lookup, and canonical
-  `input_dataset(...)`, `trace_dataset(...)`, and `model_data(...)` accessors.
+  site names, variable-role lookup, and canonical `input_dataset(...)`,
+  `trace_dataset(...)`, and `model_data(...)` accessors. Product modules own
+  their own single-sector/multisector validation.
 - 2026-06-01: #383 / current PR removed `LegacyInversionOutput`,
   `make_inv_out_for_fixed_basis_mcmc(...)`, and the old RHIME-output
   reprocessing helpers. The remaining old-format `hbmcmc_postprocessing`
@@ -285,6 +286,11 @@ renames, and PARIS formatting.
   coordinates onto `InferenceData` and canonicalize fixedbasis trace dims back
   to the modern `BasisFunctions.operator.meta.state_dim` before constructing
   `InversionOutput`.
+- 2026-06-01: #383 / current PR added a module-level design note to
+  `postprocessing/inversion_output.py` documenting that `InversionOutput` is a
+  modern product-neutral carrier, product formatters own output schemas and
+  capability checks, variable roles are a temporary bridge, and generic
+  DataTree/MultiIndex serialization helpers should move to utilities later.
 
 ## Recorded decisions for Current PR / Issue #383
 
@@ -297,6 +303,10 @@ renames, and PARIS formatting.
   datasets and variable-role lookup. It should not expose PARIS names,
   `Yobs`-style names, `basisfunctions`, or other product-specific output
   schema details.
+- Keep product capability checks outside `InversionOutput`. Current
+  single-sector-only products (`basic`, PARIS, countries, and the old-format
+  formatter) should reject multisector inputs in their own modules. Do not add
+  an `InversionOutput.require_single_sector(...)` method.
 - Keep output-name mapping inside product modules: `make_outputs.py` maps to
   `y_obs`, `model_error`, `Hx`, and `basis`; `make_paris_outputs.py` maps to
   PARIS names and attrs; `legacy_outputs.py` maps to `inferpymc_postprocessouts`
@@ -314,6 +324,15 @@ renames, and PARIS formatting.
 - Use `BasisFunctions.flat_basis()` only in output formatters that still need
   to report a flat `basisfunctions`/`basis` variable. Do not make flat basis
   materialisation part of the modern processing path.
+- Treat the current `model_metadata["variable_roles"]` mapping as a narrow
+  bridge for model-specific names. Follow-up #444 should assess whether
+  `cf_xarray` standard-name selection is enough, whether a small custom xarray
+  accessor for inversion roles is clearer, and how to support standard-name or
+  role overrides without forcing ad hoc renames through product code.
+- Keep object-specific serialization on `to_datatree()` style methods.
+  Generic helpers for DataTree saves/loads and xarray MultiIndex
+  expansion/restoration should move to top-level utilities once the
+  `InversionOutput` and `BasisFunctions` serialization surface stabilizes.
 - Leave sector-aware PARIS totals and multisector diagnostics to #405, and
   leave default/deprecation policy for operator-backed reconstruction to #429.
 - Defer a general `BasisOperator.project(...)` / weighted-reduction API to

@@ -20,6 +20,17 @@ from openghg_inversions.postprocessing.make_outputs import (
 )
 
 
+def _require_legacy_domain(inv_out: InversionOutput) -> str:
+    """Return domain metadata required by the legacy-format product."""
+    if inv_out.is_multisector:
+        raise ValueError("Legacy HBMCMC output formatting supports only single-sector RHIME outputs.")
+
+    domain = inv_out.domain
+    if domain is None:
+        raise ValueError("Legacy HBMCMC output formatting requires InversionOutput metadata field 'domain'.")
+    return domain
+
+
 def _compute_apriori_flux(
     flux: xr.DataArray, start_date: str, end_date: str, times: xr.DataArray | np.ndarray | None = None
 ) -> xr.DataArray:
@@ -376,7 +387,7 @@ def make_legacy_hbmcmc_output(
     Hx_arr = _as_array(Hx)
     Hbc_arr = _as_array(Hbc) if Hbc is not None else None
     sigma_freq = _as_array(sigma_freq_index)
-    _, domain, _, _ = inv_out.require_single_sector()
+    domain = _require_legacy_domain(inv_out)
     times = _legacy_measurement_times(inv_out)
     site_indicators, site_names = _legacy_site_fields(inv_out)
 

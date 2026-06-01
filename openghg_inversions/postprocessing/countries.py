@@ -75,6 +75,17 @@ paris_regions_dict = {
 }
 
 
+def _require_country_species(inv_out: InversionOutput) -> str:
+    """Return species metadata required for country totals."""
+    if inv_out.is_multisector:
+        raise ValueError("Country postprocessing supports only single-sector RHIME outputs.")
+
+    species = inv_out.species
+    if species is None:
+        raise ValueError("Country postprocessing requires InversionOutput metadata field 'species'.")
+    return species
+
+
 class CountryRegions:
     """Regions defined by combining several countries."""
 
@@ -432,7 +443,7 @@ class Countries:
         TODO: there is a "country unit" conversion in the old code, but it seems to always product
               1.0, based on how it is used in hbmcmc
         """
-        species, _, _, _ = inv_out.require_single_sector()
+        species = _require_country_species(inv_out)
         x_to_country_mat = self.get_x_to_country_mat(inv_out)
         x_trace = inv_out.trace_dataset(var_roles="flux_scale")
         flux_scale_name = inv_out.variable_name("flux_scale")
