@@ -142,7 +142,8 @@ def filtering(
                 n_dropped = n_nofilter - n_filter
                 perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
                 print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
-                if n_filter == 0: break # no values left, so we won't apply remaining filters
+                if n_filter == 0:
+                    break  # no values left, so we won't apply remaining filters
 
     return datasets
 
