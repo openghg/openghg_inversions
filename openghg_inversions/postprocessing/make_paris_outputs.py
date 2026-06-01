@@ -9,19 +9,12 @@ import xarray as xr
 from openghg.util import timestamp_now  # pyright: ignore[reportPrivateImportUsage]
 from openghg_inversions.config.version import code_version
 from openghg_inversions.postprocessing.countries import Countries
-from openghg_inversions.postprocessing.inversion_output import (
-    InversionOutput,
-    standard_domain,
-    standard_end_time,
-    standard_flux,
-    standard_obs_and_errors,
-    standard_species,
-    standard_start_time,
-)
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
     make_concentration_outputs,
     make_flux_outputs,
     make_country_outputs,
+    observation_and_error_outputs,
 )
 from openghg_inversions.postprocessing.stats import stats_functions
 
@@ -148,7 +141,7 @@ def paris_concentration_outputs(
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
 
-    obs_and_errs_raw = standard_obs_and_errors(inv_out).unstack("nmeasure")
+    obs_and_errs_raw = observation_and_error_outputs(inv_out).unstack("nmeasure")
     existing_vars = set(obs_and_errs_raw.data_vars)
     rename_map = {
         "y_obs": "Yobs",
@@ -286,6 +279,7 @@ def paris_flux_output(
     inversion_grid: bool = True,
     flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
 ) -> xr.Dataset:
+    species, domain, _, _ = inv_out.require_single_sector()
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
@@ -298,7 +292,7 @@ def paris_flux_output(
         include_scale_factors=False,
     )
 
-    emissions_attrs = get_data_var_attrs(flux_template_path, standard_species(inv_out))
+    emissions_attrs = get_data_var_attrs(flux_template_path, species)
     country_outs = make_country_outputs(
         inv_out,
         country_file=country_file,
@@ -310,9 +304,7 @@ def paris_flux_output(
     country_outs = country_outs * 1e-3  # convert g/yr to kg/yr
 
     # add country mask
-    countries = Countries.from_file(
-        country_file=country_file, country_code="alpha3", domain=standard_domain(inv_out)
-    )
+    countries = Countries.from_file(country_file=country_file, country_code="alpha3", domain=domain)
 
     country_fraction = countries.matrix.as_numpy().rename("country_fraction")
 
@@ -349,8 +341,8 @@ def paris_flux_output(
 
     if time_point == "midpoint":
         flux_period = _flux_frequency_to_offset(flux_frequency)
-        inv_start = standard_start_time(inv_out)
-        inv_end = standard_end_time(inv_out)
+        inv_start = inv_out.start_time
+        inv_end = inv_out.end_time
 
         def time_func(ds):
             flux_times = pd.to_datetime(ds.time.values)
@@ -467,7 +459,7 @@ def make_paris_outputs(
     domain: str | None = None,
 ) -> tuple[xr.Dataset, xr.Dataset]:
     # infer flux frequency
-    flux_frequency = infer_flux_frequency(standard_flux(inv_out))
+    flux_frequency = infer_flux_frequency(inv_out.flux)
     conc_outs = paris_concentration_outputs(inv_out, report_mode=report_mode, obs_avg_period=obs_avg_period)
     flux_outs = paris_flux_output(
         inv_out,

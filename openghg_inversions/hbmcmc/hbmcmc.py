@@ -28,9 +28,10 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 import time
-from typing import Literal, cast
+from typing import Any, Literal, cast
 import warnings
 
+import arviz as az
 import numpy as np
 import xarray as xr
 
@@ -43,6 +44,7 @@ from openghg_inversions.utils import ncdf_encoding
 from openghg_inversions.inversion_data import FixedBasisPreparedData, prepare_fixedbasis_inversion_data
 from openghg_inversions.postprocessing.inversion_output import (
     InversionOutput,
+    _reset_serialisation_multiindexes,
 )
 
 
@@ -129,6 +131,32 @@ def _require_fixedbasis_emissions_basis(prepared: FixedBasisPreparedData) -> Bas
             f"Fixed-basis data preparation returned invalid emissions basis object {type(basis_functions)!r}."
         )
     return basis_functions
+
+
+def _canonicalize_fixedbasis_trace(trace: object, basis_functions: BasisFunctions) -> object:
+    """Rename legacy fixedbasis trace dims back to modern model dims."""
+    if not isinstance(trace, az.InferenceData):
+        return trace
+
+    rename_map = {
+        "nx": basis_functions.operator.meta.state_dim,
+        "nbc": "bc_region",
+    }
+    renamed_groups: dict[str, xr.Dataset] = {}
+
+    for group in trace.groups():
+        ds = trace[group]
+        applicable = {
+            old: new
+            for old, new in rename_map.items()
+            if old != new
+            and (old in ds.dims or old in ds.coords)
+            and new not in ds.dims
+            and new not in ds.coords
+        }
+        renamed_groups[group] = ds.rename(applicable) if applicable else ds.copy()
+
+    return cast(Any, az.InferenceData)(**renamed_groups)
 
 
 def _inv_inputs_from_rerun_arrays(
@@ -368,10 +396,11 @@ def _build_inversion_output_args(
     Returns:
         dict: Explicit keyword arguments for ``InversionOutput``.
     """
+    basis_functions = _require_fixedbasis_emissions_basis(prepared)
     return {
-        "trace": mcmc_results["trace"],
+        "trace": _canonicalize_fixedbasis_trace(mcmc_results["trace"], basis_functions),
         "inv_inputs": _require_fixedbasis_inv_inputs(prepared),
-        "basis_functions": _require_fixedbasis_emissions_basis(prepared),
+        "basis_functions": basis_functions,
         "run_metadata": {
             "start_date": start_date,
             "end_date": end_date,
@@ -419,7 +448,12 @@ def _handle_core_output_artifacts(context: _OutputContext) -> None:
     """Write core inversion artifacts needed before final output dispatch."""
     trace_path = context.paths.get("trace")
     if trace_path is not None:
-        context.mcmc_results["trace"].to_netcdf(str(trace_path), engine="netcdf4", compress=True)
+        trace = context.mcmc_results["trace"]
+        if isinstance(trace, az.InferenceData):
+            trace = cast(Any, az.InferenceData)(
+                **{group: _reset_serialisation_multiindexes(trace[group]) for group in trace.groups()}
+            )
+        trace.to_netcdf(str(trace_path), engine="netcdf4", compress=True)
 
     inversion_output_path = context.paths.get("inversion_output")
     if inversion_output_path is not None:

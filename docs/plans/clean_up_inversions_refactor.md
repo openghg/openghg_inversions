@@ -22,8 +22,9 @@ version, which partially negates the benefit of keeping it as the main route.
   modern `InversionOutput`; opened as the follow-up from #401.
 - [ ] #383: revise toward "postprocessing consumes `BasisFunctions`, no `fp_data`
   in modern path." Standard postprocessing should consume modern
-  `InversionOutput` directly; old-format HBMCMC output may remain only as a
-  dataset formatter over modern postprocessing results.
+  `InversionOutput` through product-neutral semantic accessors; old-format
+  HBMCMC output may remain only as a dataset formatter over modern
+  postprocessing results.
 - [ ] #429: keep as operator-backed output/postprocessing, but make it depend on
   the preparation split.
 - [ ] #416: should become active sooner; classify/deprecate `fixedbasisMCMC`,
@@ -180,6 +181,10 @@ This work links #401, #383, #429, #416, and #381. It should remove the RHIME
 `basic`/`paris` dependency on `LegacyInversionOutput.from_modern_output(...)`
 rather than expanding that adapter.
 
+Note: #383 immediately removes the temporary #435 standard view/protocol
+approach. Keep the #435 notes as historical context, but use the #383 section
+as the current postprocessing contract.
+
 ## Completed in Current PR / Issue #435
 
 - 2026-05-31: #435 / current PR added a transitional
@@ -246,6 +251,11 @@ basis reconstruction.
 
 # Issue #383 Use retained basis operators in postprocessing
 
+Correction to the #435/#437 transition: do not keep a standard helper/view
+layer. The modern postprocessing contract is `InversionOutput` plus retained
+`BasisFunctions`; product-specific modules own output names, legacy-format
+renames, and PARIS formatting.
+
 ## Completed in Current PR / Issue #383
 
 - 2026-05-31: #383 / current PR added private operator-backed postprocessing
@@ -259,29 +269,56 @@ basis reconstruction.
   the true legacy `hbmcmc` formatter isolated.
 - 2026-06-01: #383 / current PR removed the transitional
   `StandardPostprocessingOutput` / `PostprocessingInput` /
-  `ModernPostprocessingOutput` layer. Standard postprocessing helpers now take
-  modern `InversionOutput` directly and use its existing `trace`,
-  `inv_inputs`, `BasisFunctions`, and metadata fields.
+  `ModernPostprocessingOutput` layer and did not replace it with public
+  `standard_*` free functions. Product helpers consume modern
+  `InversionOutput` directly.
+- 2026-06-01: #383 / current PR added product-neutral `InversionOutput`
+  semantics for current postprocessing needs: period metadata, prior flux,
+  site names, single-sector validation, variable-role lookup, and canonical
+  `input_dataset(...)`, `trace_dataset(...)`, and `model_data(...)` accessors.
 - 2026-06-01: #383 / current PR removed `LegacyInversionOutput`,
   `make_inv_out_for_fixed_basis_mcmc(...)`, and the old RHIME-output
   reprocessing helpers. The remaining old-format `hbmcmc_postprocessing`
   product is a formatter over modern `InversionOutput`, not a separate
   inversion-output carrier.
+- 2026-06-01: #383 / current PR made fixedbasis sampling restore model-managed
+  coordinates onto `InferenceData` and canonicalize fixedbasis trace dims back
+  to the modern `BasisFunctions.operator.meta.state_dim` before constructing
+  `InversionOutput`.
 
 ## Recorded decisions for Current PR / Issue #383
 
 - Keep operator-backed flux/country reconstruction as internal postprocessing
   implementation detail for now. The public input is the modern
-  `InversionOutput`; do not add legacy convenience properties or formatter
-  methods to `InversionOutput` itself.
+  `InversionOutput`; do not add legacy convenience properties, legacy adapters,
+  or formatter methods to `InversionOutput` itself.
+- Keep `InversionOutput` methods product-neutral. It may expose modern
+  semantics that the pipeline genuinely owns, such as canonical input/model
+  datasets and variable-role lookup. It should not expose PARIS names,
+  `Yobs`-style names, `basisfunctions`, or other product-specific output
+  schema details.
+- Keep output-name mapping inside product modules: `make_outputs.py` maps to
+  `y_obs`, `model_error`, `Hx`, and `basis`; `make_paris_outputs.py` maps to
+  PARIS names and attrs; `legacy_outputs.py` maps to `inferpymc_postprocessouts`
+  style names.
+- Do not reconstruct site/time coordinates in postprocessing. Model sampling
+  and fixedbasis construction must restore valid `nmeasure=(site, time)`
+  coordinates before product helpers run, and products should fail clearly if
+  those coordinates are missing.
 - Treat saved legacy inversion-output artifacts and old RHIME-output
   reprocessing as disposable debugging compatibility. New postprocessing starts
   from modern `InversionOutput` or reruns the model to create one.
 - Modern RHIME `basic`, fixedbasis `basic`, fixedbasis `paris`, countries, and
   PARIS flux/country paths must use retained `BasisFunctions` rather than
   modern-to-legacy adapters or `fp_data`.
+- Use `BasisFunctions.flat_basis()` only in output formatters that still need
+  to report a flat `basisfunctions`/`basis` variable. Do not make flat basis
+  materialisation part of the modern processing path.
 - Leave sector-aware PARIS totals and multisector diagnostics to #405, and
   leave default/deprecation policy for operator-backed reconstruction to #429.
+- Defer a general `BasisOperator.project(...)` / weighted-reduction API to
+  #429. Current country and area-weighted products may use the existing sparse
+  helpers internally until that operator API is designed.
 
 Track multisector output work under #405. It can proceed after the modern
 postprocessing input contract is clearer, or in parallel if it stays limited to

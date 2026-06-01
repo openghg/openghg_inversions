@@ -1,7 +1,8 @@
 from pathlib import Path
+from collections.abc import Iterable, Mapping
 from typing_extensions import Self
 from dataclasses import dataclass, field
-from typing import Any, Hashable, Literal, TypeVar, cast
+from typing import Any, Hashable, Literal, cast
 import json
 
 import arviz as az
@@ -9,7 +10,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.array_ops import align_sparse_lat_lon
 from openghg_inversions.basis.basis_functions import BasisFunctions
 
 
@@ -306,61 +306,22 @@ def _add_attributes_to_trace_dataset(trace_ds: xr.Dataset, obs_units: str, obs_l
             trace_ds[dv].attrs["long_name"] = f"posterior_trace_of_{name}"
 
 
-XrDataArrayOrSet = TypeVar("XrDataArrayOrSet", xr.DataArray, xr.Dataset)
-
-
-def _nmeasure_to_site_time(
-    data: XrDataArrayOrSet,
-    site_indicators: xr.DataArray | np.ndarray,
-    times: xr.DataArray | np.ndarray,
-    site_names: xr.DataArray | dict | None = None,
-) -> XrDataArrayOrSet:
-    """Convert `nmeasure` dimension to multi-index over `site` and `time`.
-
-    This uses an array of `site_indicators` and an array of times to construct
-    coordinates for the dimension `nmeasure`. If the `site_indicators` are
-    numbers, `site_names` can be provided to convert these numbers into site
-    names.
-
-    Args:
-        data: xr.DataArray or xr.Dataset. Typically, this has a `nmeasure`
-          coordinate, but this isn't a strict requirement.
-        site_indicators: array specifying the site where a measurement was taken
-        times: array specifying the time a measurement was taken
-        site_names: optional DataArray or dict mapping the values of
-          `site_indicator` to strings. If `None`, the values of `site_indicator`
-          will be used unchanged.
-
-    Returns:
-        xr.DataArray or xr.Dataset (same type as input) with `nmeasure`
-          coordinate consisting of stacked `site` and `time` coordinates.
-
-    Raises:
-        ValueError: if `site_indicators` and `times` have different lengths.
-
-    """
-    if len(site_indicators) != len(times):
-        raise ValueError(
-            "Site indicators and times must be same length, got:"
-            f"\nsite indicators:\n{site_indicators}\ntimes:\n{times}"
-        )
-
-    time_vals = times.values if isinstance(times, xr.DataArray) else times
-    site_codes = site_indicators.values if isinstance(site_indicators, xr.DataArray) else site_indicators
-
-    if site_names is not None:
-        if isinstance(site_names, xr.DataArray):
-            site_names = dict(site_names.to_series())
-
-        site_codes = [site_names.get(x) for x in site_codes]
-
-    nmeasure_multiindex = pd.MultiIndex.from_arrays([site_codes, time_vals], names=["site", "time"])
-    xr_nmeasure_multiindex = xr.Coordinates.from_pandas_multiindex(nmeasure_multiindex, "nmeasure")
-
-    result = data.assign_coords(xr_nmeasure_multiindex)
-    result.time.attrs = times.attrs if isinstance(times, xr.DataArray) else {}
-
-    return result
+DEFAULT_VARIABLE_ROLES: dict[str, str] = {
+    "observation": "mf",
+    "observation_error": "mf_error",
+    "observation_prior_factor": "mf_prior_factor",
+    "observation_prior_upper_level_factor": "mf_prior_upper_level_factor",
+    "observation_repeatability": "mf_repeatability",
+    "observation_variability": "mf_variability",
+    "flux_scale": "x",
+    "model_error": "epsilon",
+    "concentration": "y",
+    "baseline": "mu_bc",
+    "offset": "offset",
+    "emissions_sensitivity": "hx",
+    "baseline_sensitivity": "hbc",
+    "minimum_error": "min_error",
+}
 
 
 @dataclass
@@ -403,6 +364,151 @@ class InversionOutput:
         """Domain name from model metadata."""
         value = self.model_metadata.get("domain")
         return None if value is None else str(value)
+
+    @property
+    def is_multisector(self) -> bool:
+        """Whether this output represents a multisector RHIME run."""
+        return bool(self.run_metadata.get("split_by_sectors"))
+
+    @property
+    def start_time(self) -> pd.Timestamp:
+        """Start time for the inversion period."""
+        if self.start_date is None:
+            raise ValueError("InversionOutput run metadata is missing `start_date`.")
+        return pd.to_datetime(self.start_date)
+
+    @property
+    def end_time(self) -> pd.Timestamp:
+        """End time for the inversion period."""
+        if self.end_date is None:
+            raise ValueError("InversionOutput run metadata is missing `end_date`.")
+        return pd.to_datetime(self.end_date)
+
+    @property
+    def period_midpoint(self) -> pd.Timestamp:
+        """Midpoint of the inversion period."""
+        return self.start_time + (self.end_time - self.start_time) / 2
+
+    @property
+    def flux(self) -> xr.DataArray:
+        """Prior flux carried by the retained basis functions."""
+        flux = self.basis_functions.flux
+        if "flux_time" in flux.dims:
+            return flux
+        if "time" in flux.dims:
+            return flux.rename(time="flux_time")
+        return flux.expand_dims(flux_time=[self.start_time])
+
+    @property
+    def site_names(self) -> xr.DataArray:
+        """Site names from inversion inputs or run metadata."""
+        if "site_names" in self.inv_inputs:
+            return self.inv_inputs["site_names"]
+
+        sites = self.run_metadata.get("sites", [])
+        return xr.DataArray(list(sites), dims="nsite", coords={"nsite": np.arange(len(sites))})
+
+    @property
+    def variable_roles(self) -> dict[str, str]:
+        """Mapping from modern semantic roles to concrete model variable names."""
+        roles = dict(DEFAULT_VARIABLE_ROLES)
+        overrides = self.model_metadata.get("variable_roles", {})
+        if overrides:
+            if not isinstance(overrides, Mapping):
+                raise ValueError("InversionOutput model metadata `variable_roles` must be a mapping.")
+            roles.update({str(role): str(name) for role, name in overrides.items()})
+        return roles
+
+    def variable_name(self, role: str) -> str:
+        """Return the concrete variable name for a semantic role."""
+        try:
+            return self.variable_roles[role]
+        except KeyError as exc:
+            raise KeyError(f"Unknown InversionOutput variable role: {role!r}") from exc
+
+    def require_single_sector(self) -> tuple[str, str, str, str]:
+        """Return required metadata for current single-sector postprocessing products."""
+        if self.is_multisector:
+            raise ValueError("Standard postprocessing supports only single-sector RHIME outputs.")
+
+        species = self.species
+        domain = self.domain
+        start_date = self.start_date
+        end_date = self.end_date
+        if species is None or domain is None or start_date is None or end_date is None:
+            raise ValueError(
+                "Modern InversionOutput metadata must include species, domain, start_date, and end_date."
+            )
+        return species, domain, start_date, end_date
+
+    def input_dataset(
+        self,
+        required_roles: Iterable[str] | str | None = None,
+        *,
+        optional_roles: Iterable[str] | str = (),
+    ) -> xr.Dataset:
+        """Return canonical inversion-input variables selected by semantic role."""
+        required = self._normalise_roles(required_roles)
+        optional = self._normalise_roles(optional_roles)
+        selected: list[str] = []
+        missing: list[str] = []
+
+        for role in required:
+            name = self.variable_name(role)
+            if name in self.inv_inputs:
+                selected.append(name)
+            else:
+                missing.append(f"{role} ({name})")
+
+        for role in optional:
+            name = self.variable_name(role)
+            if name in self.inv_inputs:
+                selected.append(name)
+
+        if missing:
+            raise ValueError(
+                "InversionOutput.inv_inputs is missing required variable role(s): " + ", ".join(missing) + "."
+            )
+
+        return self.inv_inputs[list(dict.fromkeys(selected))]
+
+    def trace_dataset(self, var_roles: Iterable[str] | str | None = None) -> xr.Dataset:
+        """Return prior and posterior trace samples selected by semantic role."""
+        result = convert_idata_to_dataset(self.trace)
+        obs_name = self.variable_name("observation")
+        if obs_name in self.inv_inputs:
+            obs = self.inv_inputs[obs_name]
+            obs_long_name = (
+                obs.attrs["longname"]
+                if "longname" in obs.attrs
+                else obs.attrs.get("long_name", "observed_mole_fraction")
+            )
+            _add_attributes_to_trace_dataset(result, obs.attrs.get("units", ""), obs_long_name)
+
+        if var_roles is not None:
+            result = _filter_trace_data_vars_by_name(result, self._variable_names_for_roles(var_roles))
+
+        return result
+
+    def model_data(self, var_roles: Iterable[str] | str | None = None) -> xr.Dataset:
+        """Return model input data from the ``InferenceData`` constant groups."""
+        result = convert_idata_to_dataset(self.trace, group_filters=["data"], add_suffix=False)
+        if var_roles is not None:
+            result = filter_data_vars_by_prefix(result, self._variable_names_for_roles(var_roles), sep="")
+        return result
+
+    @staticmethod
+    def _normalise_roles(roles: Iterable[str] | str | None) -> list[str]:
+        """Return role input as a list of strings."""
+        if roles is None:
+            return []
+        if isinstance(roles, str):
+            return [roles]
+        return [str(role) for role in roles]
+
+    def _variable_names_for_roles(self, roles: Iterable[str] | str) -> list[str]:
+        """Return concrete variable names for role input."""
+        return [self.variable_name(role) for role in self._normalise_roles(roles)]
 
     def to_datatree(self) -> xr.DataTree:
         """Convert the modern output to a serialisable DataTree."""
@@ -451,219 +557,3 @@ class InversionOutput:
     def load(cls, file_path: str | Path) -> Self:
         """Load a modern InversionOutput artifact."""
         return cls.from_datatree(_open_datatree_loaded(file_path))
-
-
-_OBS_INPUT_RENAMES = {
-    "mf": "y_obs",
-    "mf_error": "y_obs_error",
-    "mf_prior_factor": "y_obs_prior_factor",
-    "mf_prior_upper_level_factor": "y_obs_prior_upper_level_factor",
-    "mf_repeatability": "y_obs_repeatability",
-    "mf_variability": "y_obs_variability",
-}
-_REQUIRED_OBS_INPUTS = ("mf", "mf_error", "mf_repeatability", "mf_variability")
-
-
-def require_standard_postprocessing_metadata(inv_out: InversionOutput) -> tuple[str, str, str, str]:
-    """Return metadata required by current single-sector postprocessing helpers."""
-    if inv_out.run_metadata.get("split_by_sectors"):
-        raise ValueError("Standard postprocessing supports only single-sector RHIME outputs.")
-
-    species = inv_out.species
-    domain = inv_out.domain
-    start_date = inv_out.start_date
-    end_date = inv_out.end_date
-    if species is None or domain is None or start_date is None or end_date is None:
-        raise ValueError(
-            "Modern InversionOutput metadata must include species, domain, start_date, and end_date."
-        )
-    return species, domain, start_date, end_date
-
-
-def standard_species(inv_out: InversionOutput) -> str:
-    """Return the species name for standard postprocessing."""
-    species, _, _, _ = require_standard_postprocessing_metadata(inv_out)
-    return species
-
-
-def standard_domain(inv_out: InversionOutput) -> str:
-    """Return the domain name for standard postprocessing."""
-    _, domain, _, _ = require_standard_postprocessing_metadata(inv_out)
-    return domain
-
-
-def standard_start_time(inv_out: InversionOutput) -> pd.Timestamp:
-    """Return the inversion start time for standard postprocessing."""
-    _, _, start_date, _ = require_standard_postprocessing_metadata(inv_out)
-    return pd.to_datetime(start_date)
-
-
-def standard_end_time(inv_out: InversionOutput) -> pd.Timestamp:
-    """Return the inversion end time for standard postprocessing."""
-    _, _, _, end_date = require_standard_postprocessing_metadata(inv_out)
-    return pd.to_datetime(end_date)
-
-
-def standard_period_midpoint(inv_out: InversionOutput) -> pd.Timestamp:
-    """Return the midpoint of the inversion period."""
-    start_time = standard_start_time(inv_out)
-    return start_time + (standard_end_time(inv_out) - start_time) / 2
-
-
-def standard_site_names(inv_out: InversionOutput) -> xr.DataArray:
-    """Return site names from inversion inputs or run metadata."""
-    if "site_names" in inv_out.inv_inputs:
-        return inv_out.inv_inputs["site_names"]
-
-    sites = inv_out.run_metadata.get("sites", [])
-    return xr.DataArray(list(sites), dims="nsite", coords={"nsite": np.arange(len(sites))})
-
-
-def _standard_basis_from_basis_functions(
-    basis_functions: BasisFunctions, inv_inputs: xr.Dataset
-) -> xr.DataArray:
-    """Return the flat standard-postprocessing basis from modern basis functions."""
-    basis = basis_functions.operator.basis_matrix
-    current_state_dim = basis_functions.operator.meta.state_dim
-    if current_state_dim != "region":
-        basis = basis.rename({current_state_dim: "region"})
-    if "region" in inv_inputs.coords:
-        basis = basis.reindex(region=inv_inputs.region)
-    return basis
-
-
-def _modern_observation_inputs(inv_inputs: xr.Dataset) -> xr.Dataset:
-    """Extract the modern observation-input dataset used by postprocessing."""
-    missing = [name for name in _REQUIRED_OBS_INPUTS if name not in inv_inputs]
-    if missing:
-        missing_names = ", ".join(missing)
-        raise ValueError(f"Modern InversionOutput.inv_inputs is missing required variables: {missing_names}.")
-
-    available = [name for name in _OBS_INPUT_RENAMES if name in inv_inputs]
-    rename = {name: _OBS_INPUT_RENAMES[name] for name in available}
-    return inv_inputs[available].rename(rename)
-
-
-def _has_site_time_nmeasure_index(data: xr.DataArray | xr.Dataset) -> bool:
-    """Return True when ``data`` already has a site/time ``nmeasure`` index."""
-    nmeasure_index = data.indexes.get("nmeasure")
-    return isinstance(nmeasure_index, pd.MultiIndex) and list(nmeasure_index.names) == ["site", "time"]
-
-
-def standard_nmeasure_to_site_time(inv_out: InversionOutput, data: XrDataArrayOrSet) -> XrDataArrayOrSet:
-    """Convert an ``nmeasure`` dimension to a site/time MultiIndex."""
-    if "nmeasure" not in data.dims or _has_site_time_nmeasure_index(data):
-        return data
-
-    if {"site", "time"}.issubset(data.coords) and all(
-        data[coord].dims == ("nmeasure",) for coord in ("site", "time")
-    ):
-        return data.set_index(nmeasure=["site", "time"])
-
-    return _nmeasure_to_site_time(
-        data,
-        inv_out.inv_inputs["site_indicator"],
-        inv_out.inv_inputs["time"],
-        standard_site_names(inv_out),
-    )
-
-
-def standard_obs_inputs(inv_out: InversionOutput) -> xr.Dataset:
-    """Return observation and observation-error inputs for standard products."""
-    require_standard_postprocessing_metadata(inv_out)
-    return standard_nmeasure_to_site_time(inv_out, _modern_observation_inputs(inv_out.inv_inputs))
-
-
-def standard_trace_dataset(inv_out: InversionOutput, var_names: str | list[str] | None = None) -> xr.Dataset:
-    """Return prior and posterior trace samples for standard products."""
-    obs = standard_obs_inputs(inv_out)["y_obs"]
-    trace_ds = convert_idata_to_dataset(inv_out.trace)
-
-    if "longname" in obs.attrs:
-        obs_long_name = obs.attrs["longname"]
-    else:
-        obs_long_name = obs.attrs.get("long_name", "observed_mole_fraction")
-
-    _add_attributes_to_trace_dataset(trace_ds, obs.attrs.get("units", ""), obs_long_name)
-    result = standard_nmeasure_to_site_time(inv_out, trace_ds)
-
-    if var_names is not None:
-        result = _filter_trace_data_vars_by_name(result, var_names)
-
-    return result
-
-
-def standard_model_data(inv_out: InversionOutput, var_names: str | list[str] | None = None) -> xr.Dataset:
-    """Return model input data from the ``InferenceData`` constant groups."""
-    result = convert_idata_to_dataset(inv_out.trace, group_filters=["data"], add_suffix=False)
-    result = standard_nmeasure_to_site_time(inv_out, result)
-
-    if var_names is not None:
-        result = filter_data_vars_by_prefix(result, var_names, sep="")
-
-    return result
-
-
-def standard_total_err(inv_out: InversionOutput, take_mean: bool = True) -> xr.DataArray:
-    """Return the posterior model-data mismatch error."""
-    result = standard_trace_dataset(inv_out, var_names="epsilon").epsilon_posterior
-
-    if take_mean:
-        result = result.mean("draw")
-
-    result.attrs["units"] = standard_obs_inputs(inv_out)["y_obs"].attrs.get("units", "")
-    result.attrs["long_name"] = "total model-data mismatch error"
-
-    return result.rename("total_error")
-
-
-def standard_model_err(inv_out: InversionOutput) -> xr.DataArray:
-    """Return the inferred model-error component."""
-    total_err = standard_total_err(inv_out, take_mean=False)
-    obs = standard_obs_inputs(inv_out)
-    total_obs_err = obs["y_obs_error"]
-
-    result = np.sqrt(np.maximum(total_err**2 - total_obs_err**2, 0)).mean("draw")  # type: ignore
-    result.attrs["units"] = obs["y_obs"].attrs.get("units", "")
-    result.attrs["long_name"] = "inferred model error"
-    return result.rename("model_error")
-
-
-def standard_obs_and_errors(inv_out: InversionOutput) -> xr.Dataset:
-    """Return observations and derived uncertainty terms."""
-    result = xr.merge(
-        [standard_obs_inputs(inv_out), standard_model_err(inv_out), standard_total_err(inv_out)]
-    )
-    result.attrs = {}
-    return result
-
-
-def standard_flux(inv_out: InversionOutput) -> xr.DataArray:
-    """Return prior flux normalised for current standard products."""
-    flux = inv_out.basis_functions.flux
-    if "flux_time" in flux.dims:
-        return flux
-    if "time" in flux.dims:
-        return flux.rename(time="flux_time")
-    return flux.expand_dims(flux_time=[standard_start_time(inv_out)])
-
-
-def standard_basis_matrix(inv_out: InversionOutput) -> xr.DataArray:
-    """Return the current flat basis matrix for products that still report it."""
-    basis = _standard_basis_from_basis_functions(inv_out.basis_functions, inv_out.inv_inputs)
-    basis = align_sparse_lat_lon(basis, standard_flux(inv_out))
-    if "time" in basis.dims:
-        basis = basis.rename(time="flux_time")
-    elif "time" in basis.coords:
-        basis = basis.drop_vars("time")
-    return basis
-
-
-def standard_flat_basis(inv_out: InversionOutput) -> xr.DataArray:
-    """Return a two-dimensional basis-region map for standard output files."""
-    basis = standard_basis_matrix(inv_out)
-    if len(basis.dims) == 2:
-        return basis
-
-    region_dim = next(str(dim) for dim in basis.dims if dim not in ["lat", "lon", "latitude", "longitude"])
-    return (basis * basis[region_dim]).sum(region_dim).as_numpy().rename("basis")

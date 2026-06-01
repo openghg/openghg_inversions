@@ -17,7 +17,7 @@ from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 from openghg_inversions.utils import get_country_file_path
 from ._country_codes import CountryInfoList
 from ._basis_products import make_x_to_country_matrix
-from .inversion_output import InversionOutput, standard_species, standard_trace_dataset
+from .inversion_output import InversionOutput
 
 # type for xr.Dataset *or* xr.DataArray
 DataSetOrArray = TypeVar("DataSetOrArray", xr.DataArray, xr.Dataset)
@@ -379,8 +379,11 @@ class Countries:
         Returns:
             xr.DataArray with coordinate dimensions ("country", "basis_region")
         """
+        x_trace = inv_out.trace_dataset(var_roles="flux_scale")
         return make_x_to_country_matrix(
-            inv_out,
+            inv_out.basis_functions,
+            inv_out.flux,
+            x_trace,
             country_matrix=self.matrix,
             area_grid=self.area_grid,
             sparse=sparse,
@@ -429,10 +432,17 @@ class Countries:
         TODO: there is a "country unit" conversion in the old code, but it seems to always product
               1.0, based on how it is used in hbmcmc
         """
+        species, _, _, _ = inv_out.require_single_sector()
         x_to_country_mat = self.get_x_to_country_mat(inv_out)
-        x_trace = standard_trace_dataset(inv_out, var_names="x")
-
-        species = standard_species(inv_out)
+        x_trace = inv_out.trace_dataset(var_roles="flux_scale")
+        flux_scale_name = inv_out.variable_name("flux_scale")
+        x_trace = x_trace.rename(
+            {
+                data_var: str(data_var).replace(f"{flux_scale_name}_", "x_", 1)
+                for data_var in x_trace.data_vars
+                if str(data_var).startswith(f"{flux_scale_name}_")
+            }
+        )
 
         country_traces = Countries._get_country_trace(species, x_trace, x_to_country_mat)
 

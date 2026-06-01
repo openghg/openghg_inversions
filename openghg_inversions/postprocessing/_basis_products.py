@@ -6,11 +6,6 @@ import xarray as xr
 
 from openghg_inversions.array_ops import align_sparse_lat_lon, sparse_xr_dot
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.postprocessing.inversion_output import (
-    InversionOutput,
-    standard_flux,
-    standard_trace_dataset,
-)
 
 _TRACE_STATE_DIMS = ("region", "nx")
 
@@ -57,7 +52,11 @@ def _interpolate_dataset(
     operator_state = _to_operator_state_dim(state, basis_functions)
     data_vars = {}
     for name, data in operator_state.data_vars.items():
-        interpolated = basis_functions.operator.interpolate(data, weights=weights)
+        interpolated = (
+            basis_functions.interpolate(data)
+            if weights is None
+            else basis_functions.operator.interpolate(data, weights=weights)
+        )
         interpolated.attrs = state[name].attrs
         data_vars[name] = interpolated
     result = xr.Dataset(data_vars, attrs=state.attrs)
@@ -90,14 +89,13 @@ def _operator_region_flux_mean(basis_functions: BasisFunctions, flux: xr.DataArr
 
 
 def reconstruct_flux_stats(
-    inv_out: InversionOutput,
+    basis_functions: BasisFunctions,
+    flux: xr.DataArray,
     stats_ds: xr.Dataset,
     *,
     report_flux_on_inversion_grid: bool,
 ) -> xr.Dataset:
     """Reconstruct gridded flux statistics with the retained basis operator."""
-    basis_functions = inv_out.basis_functions
-    flux = standard_flux(inv_out)
     if report_flux_on_inversion_grid:
         region_flux = _operator_region_flux_mean(basis_functions, flux)
         state = _to_operator_state_dim(stats_ds, basis_functions) * region_flux
@@ -107,24 +105,23 @@ def reconstruct_flux_stats(
 
 
 def reconstruct_scale_factor_stats(
-    inv_out: InversionOutput,
+    basis_functions: BasisFunctions,
     stats_ds: xr.Dataset,
 ) -> xr.Dataset:
     """Reconstruct gridded scale-factor statistics with the retained operator."""
-    return _interpolate_dataset(stats_ds, inv_out.basis_functions, weights=None)
+    return _interpolate_dataset(stats_ds, basis_functions, weights=None)
 
 
 def make_x_to_country_matrix(
-    inv_out: InversionOutput,
+    basis_functions: BasisFunctions,
+    flux: xr.DataArray,
+    x_trace: xr.Dataset,
     *,
     country_matrix: xr.DataArray,
     area_grid: xr.DataArray,
     sparse: bool = False,
 ) -> xr.DataArray:
     """Construct a basis-state to country-total matrix."""
-    basis_functions = inv_out.basis_functions
-    flux = standard_flux(inv_out)
-    x_trace = standard_trace_dataset(inv_out, var_names="x")
     trace_state_dim = _trace_state_dim(x_trace, basis_functions)
     basis = align_sparse_lat_lon(basis_functions.operator.basis_matrix, flux)
     basis = _from_operator_state_dim(basis, basis_functions, trace_state_dim)

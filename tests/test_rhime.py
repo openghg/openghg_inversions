@@ -34,7 +34,8 @@ from openghg_inversions.models import (
     build_rhime_multisector_model_from_spec,
     safe_pymc_name,
 )
-from openghg_inversions.postprocessing.inversion_output import InversionOutput, standard_obs_inputs
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.make_outputs import observation_inputs_for_outputs
 from openghg_inversions.rhime import (
     RhimeModelSpec,
     RhimeOutputSpec,
@@ -261,12 +262,16 @@ def _minimal_output_inv_inputs() -> xr.Dataset:
             "mf_repeatability": ("nmeasure", [0.5]),
             "mf_variability": ("nmeasure", [0.25]),
             "site_indicator": ("nmeasure", [0]),
+        },
+        coords={
+            "region": [0],
+            "nmeasure": [0],
+            "site": ("nmeasure", ["TAC"]),
             "time": ("nmeasure", np.array(["2019-01-01T00:00:00"], dtype="datetime64[ns]")),
         },
-        coords={"region": [0], "nmeasure": [0]},
     )
     inv_inputs["mf"].attrs["units"] = "ppm"
-    return inv_inputs
+    return inv_inputs.set_index(nmeasure=["site", "time"])
 
 
 def _minimal_output_specs(
@@ -313,6 +318,10 @@ def _minimal_output_idata() -> az.InferenceData:
 def _postprocessing_output_idata(nregion: int = 1) -> az.InferenceData:
     """Build a small complete trace for modern postprocessing smoke tests."""
     region = np.arange(nregion)
+    nmeasure = pd.MultiIndex.from_arrays(
+        [["TAC"], np.array(["2019-01-01T00:00:00"], dtype="datetime64[ns]")],
+        names=["site", "time"],
+    )
     x_posterior = np.stack(
         [np.linspace(1.0 + draw, 2.0 + draw, nregion) for draw in range(3)],
         axis=0,
@@ -321,8 +330,7 @@ def _postprocessing_output_idata(nregion: int = 1) -> az.InferenceData:
         [np.linspace(0.8 + draw, 1.8 + draw, nregion) for draw in range(3)],
         axis=0,
     )
-    coords = {"region": region, "nmeasure": [0]}
-    return az.from_dict(
+    idata = az.from_dict(
         posterior={
             "x": x_posterior[np.newaxis, :, :],
             "epsilon": np.full((1, 3, 1), 2.0),
@@ -339,7 +347,7 @@ def _postprocessing_output_idata(nregion: int = 1) -> az.InferenceData:
             "hbc": np.full(1, 0.1),
             "min_error": np.zeros(1),
         },
-        coords=coords,
+        coords={"region": region, "nmeasure": np.arange(len(nmeasure))},
         dims={
             "x": ["region"],
             "epsilon": ["nmeasure"],
@@ -350,6 +358,22 @@ def _postprocessing_output_idata(nregion: int = 1) -> az.InferenceData:
             "min_error": ["nmeasure"],
         },
     )
+    nmeasure_coords = xr.Coordinates.from_pandas_multiindex(nmeasure, "nmeasure")
+    for group in idata.groups():
+        ds = idata[group]
+        if "nmeasure" in ds.dims:
+            setattr(idata, group, ds.assign_coords(nmeasure_coords))
+    return idata
+
+
+def _rename_idata_data_vars(idata: az.InferenceData, rename: dict[str, str]) -> az.InferenceData:
+    """Rename data variables across all InferenceData groups."""
+    groups: dict[str, xr.Dataset] = {}
+    for group in idata.groups():
+        ds = idata[group]
+        group_rename = {old: new for old, new in rename.items() if old in ds.data_vars}
+        groups[group] = ds.rename_vars(group_rename) if group_rename else ds.copy()
+    return cast(Any, az.InferenceData)(**groups)
 
 
 def _modern_postprocessing_inv_out(
@@ -2013,8 +2037,7 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
 def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
     """Modern output loading accepts bytes-encoded MultiIndex metadata."""
     model_spec, output_spec, run_spec = _minimal_output_specs()
-    inv_inputs = _minimal_output_inv_inputs().assign_coords(site=("nmeasure", ["TAC"]))
-    inv_inputs = inv_inputs.set_index(nmeasure=["site", "time"])
+    inv_inputs = _minimal_output_inv_inputs()
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(artifact_source="unit-test"),
@@ -2102,8 +2125,7 @@ def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:
 def test_modern_inversion_output_ignores_malformed_multiindex_metadata(raw_multiindex_dims: object) -> None:
     """Malformed MultiIndex metadata should not break modern output loading."""
     model_spec, output_spec, run_spec = _minimal_output_specs()
-    inv_inputs = _minimal_output_inv_inputs().assign_coords(site=("nmeasure", ["TAC"]))
-    inv_inputs = inv_inputs.set_index(nmeasure=["site", "time"])
+    inv_inputs = _minimal_output_inv_inputs()
     prepared = RhimePreparedInputs(
         inv_inputs=inv_inputs,
         basis_functions=_fake_basis_functions(artifact_source="unit-test"),
@@ -2178,10 +2200,10 @@ def test_modern_flux_outputs_use_retained_basis_operator(
     basis_functions, operator = _recording_basis_functions_matching_country_grid(europe_country_file)
     inv_out = _modern_postprocessing_inv_out(europe_country_file, basis_functions=basis_functions)
 
-    def fail_flat_basis(*args: Any, **kwargs: Any) -> None:
+    def fail_flat_basis(self: BasisFunctions) -> xr.DataArray:
         raise AssertionError("modern flux outputs should not materialise the flat basis view")
 
-    monkeypatch.setattr(inversion_output_module, "_standard_basis_from_basis_functions", fail_flat_basis)
+    monkeypatch.setattr(type(basis_functions), "flat_basis", fail_flat_basis)
 
     flux_outputs = make_flux_outputs(
         inv_out,
@@ -2222,10 +2244,10 @@ def test_modern_paris_flux_outputs_use_retained_basis_operator(
     basis_functions, operator = _recording_basis_functions_matching_country_grid(europe_country_file)
     inv_out = _modern_postprocessing_inv_out(europe_country_file, basis_functions=basis_functions)
 
-    def fail_flat_basis(*args: Any, **kwargs: Any) -> None:
+    def fail_flat_basis(self: BasisFunctions) -> xr.DataArray:
         raise AssertionError("modern PARIS flux outputs should not materialise the flat basis view")
 
-    monkeypatch.setattr(inversion_output_module, "_standard_basis_from_basis_functions", fail_flat_basis)
+    monkeypatch.setattr(type(basis_functions), "flat_basis", fail_flat_basis)
 
     flux_outputs = paris_flux_output(
         inv_out,
@@ -2239,8 +2261,8 @@ def test_modern_paris_flux_outputs_use_retained_basis_operator(
     assert operator.basis_matrix_accesses
 
 
-def test_standard_observation_inputs_stay_dataset_based() -> None:
-    """Standard postprocessing avoids split legacy observation fields."""
+def test_observation_inputs_for_outputs_stay_dataset_based() -> None:
+    """Modern postprocessing avoids split legacy observation fields."""
     model_spec, output_spec, run_spec = _minimal_output_specs()
     inv_inputs = _minimal_output_inv_inputs()
     inv_inputs["mf_prior_factor"] = ("nmeasure", [0.2])
@@ -2262,7 +2284,7 @@ def test_standard_observation_inputs_stay_dataset_based() -> None:
     )
     assert bundle.inv_out is not None
 
-    obs_inputs = standard_obs_inputs(bundle.inv_out)
+    obs_inputs = observation_inputs_for_outputs(bundle.inv_out)
 
     assert not hasattr(bundle.inv_out, "obs")
     assert not hasattr(bundle.inv_out, "obs_err")
@@ -2312,6 +2334,62 @@ def test_basic_output_processes_modern_output(europe_country_file: Path) -> None
     assert "y_posterior_predictive_mean" in outputs
     assert "flux_posterior_mean" in outputs
     assert "country_posterior_mean" in outputs
+
+
+def test_basic_output_uses_variable_roles_for_renamed_model_variables(
+    europe_country_file: Path,
+) -> None:
+    """Product code selects modern variables by semantic role, not hard-coded names."""
+    from openghg_inversions.postprocessing.make_outputs import basic_output
+
+    base = _modern_postprocessing_inv_out(europe_country_file)
+    inv_inputs = base.inv_inputs.rename(
+        {
+            "mf": "mole_fraction",
+            "mf_error": "mole_fraction_error",
+            "mf_repeatability": "repeatability",
+            "mf_variability": "variability",
+        }
+    )
+    trace = _rename_idata_data_vars(
+        base.trace,
+        {
+            "x": "scale_factor",
+            "epsilon": "total_mismatch",
+            "y": "modelled_mole_fraction",
+            "mu_bc": "background",
+        },
+    )
+
+    inv_out = InversionOutput(
+        trace=trace,
+        inv_inputs=inv_inputs,
+        basis_functions=base.basis_functions,
+        run_metadata=base.run_metadata,
+        model_metadata={
+            **base.model_metadata,
+            "variable_roles": {
+                "observation": "mole_fraction",
+                "observation_error": "mole_fraction_error",
+                "observation_repeatability": "repeatability",
+                "observation_variability": "variability",
+                "flux_scale": "scale_factor",
+                "model_error": "total_mismatch",
+                "concentration": "modelled_mole_fraction",
+                "baseline": "background",
+            },
+        },
+        output_metadata=base.output_metadata,
+        provenance=base.provenance,
+    )
+
+    outputs = basic_output(inv_out, country_file=europe_country_file)
+
+    assert "y_obs" in outputs
+    assert "model_error" in outputs
+    assert "flux_posterior_mean" in outputs
+    assert "country_posterior_mean" in outputs
+    assert "y_posterior_predictive_mean" in outputs
 
 
 def test_paris_output_processes_modern_output(europe_country_file: Path) -> None:

@@ -11,18 +11,12 @@ import openghg_inversions.hbmcmc.hbmcmc as hbmcmc_module
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
 from openghg_inversions.hbmcmc.hbmcmc import _resolve_output_format, fixedbasisMCMC
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-from openghg_inversions.postprocessing.inversion_output import (
-    InversionOutput,
-    standard_end_time,
-    standard_flux,
-    standard_obs_inputs,
-    standard_start_time,
-    standard_trace_dataset,
-)
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
     basic_output,
     make_country_outputs,
     make_flux_outputs,
+    observation_inputs_for_outputs,
 )
 
 from openghg_inversions.postprocessing.make_paris_outputs import (
@@ -34,7 +28,7 @@ from openghg_inversions.postprocessing.make_paris_outputs import (
 
 def _minimal_fixedbasis_inv_inputs() -> xr.Dataset:
     """Build the smallest fixedbasis inv_inputs dataset used by contract tests."""
-    return xr.Dataset(
+    ds = xr.Dataset(
         data_vars={
             "H": (("region", "nmeasure"), np.array([[0.25]], dtype="float64")),
             "mf": (("nmeasure",), np.array([1900.0], dtype="float64")),
@@ -48,9 +42,11 @@ def _minimal_fixedbasis_inv_inputs() -> xr.Dataset:
         coords={
             "region": np.array([0]),
             "nmeasure": np.array([0]),
+            "site": (("nmeasure",), np.array(["TAC"])),
             "time": (("nmeasure",), np.array(["2019-01-01T00:00:00"], dtype="datetime64[ns]")),
         },
     )
+    return ds.set_index(nmeasure=["site", "time"])
 
 
 def _minimal_fixedbasis_fp_data() -> dict:
@@ -589,7 +585,7 @@ def test_paris_flux_output_timestamp(inv_out, europe_country_file):
 
     # time is stored as days since Unix epoch; convert back for comparison
     actual = pd.Timestamp("1970-01-01") + pd.Timedelta(days=float(flux_outs.time.values[0]))
-    expected = standard_start_time(inv_out) + (standard_end_time(inv_out) - standard_start_time(inv_out)) / 2
+    expected = inv_out.period_midpoint
 
     assert actual == expected
 
@@ -673,7 +669,7 @@ def test_country_outputs_lognormal_reparam_conflict(mcmc_args, europe_country_fi
 
     inv_out = fixedbasisMCMC(**mcmc_args)
     assert isinstance(inv_out, InversionOutput)
-    trace_ds = standard_trace_dataset(inv_out, var_names="x")
+    trace_ds = inv_out.trace_dataset(var_roles="flux_scale")
     assert "x_prior" in trace_ds
     assert "x_posterior" in trace_ds
     assert "x_latent_prior" not in trace_ds
@@ -778,12 +774,12 @@ def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(mcm
     assert inv_out_path.exists()
     assert isinstance(inv_out, InversionOutput)
     assert isinstance(inv_out.basis_functions, BasisFunctions)
-    obs_inputs = standard_obs_inputs(inv_out)
+    obs_inputs = observation_inputs_for_outputs(inv_out)
     assert obs_inputs["y_obs"].dims == ("nmeasure",)
     assert obs_inputs["y_obs_error"].dims == ("nmeasure",)
-    assert standard_trace_dataset(inv_out, var_names="x")["x_posterior"].dims == ("draw", "nx")
+    assert inv_out.trace_dataset(var_roles="flux_scale")["x_posterior"].dims == ("draw", "region")
     assert "site" in obs_inputs.coords
     assert "time" in obs_inputs.coords
-    assert "time" not in standard_flux(inv_out).dims
-    if "flux_time" in standard_flux(inv_out).coords:
-        assert "flux_time" in standard_flux(inv_out).dims
+    assert "time" not in inv_out.flux.dims
+    if "flux_time" in inv_out.flux.coords:
+        assert "flux_time" in inv_out.flux.dims

@@ -10,20 +10,13 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions import utils
-from openghg_inversions.postprocessing.inversion_output import (
-    InversionOutput,
-    standard_domain,
-    standard_end_time,
-    standard_flat_basis,
-    standard_flux,
-    standard_obs_inputs,
-    standard_start_time,
-    standard_trace_dataset,
-)
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
+    flat_basis_for_output,
     make_concentration_outputs,
     make_country_outputs,
     make_flux_outputs,
+    observation_inputs_for_outputs,
 )
 
 
@@ -251,7 +244,7 @@ def _flatten_nmeasure_for_legacy(data: xr.DataArray) -> xr.DataArray:
 
 def _legacy_measurement_times(inv_out: InversionOutput) -> xr.DataArray:
     """Return measurement times as a flat legacy ``nmeasure`` array."""
-    obs_inputs = standard_obs_inputs(inv_out)
+    obs_inputs = observation_inputs_for_outputs(inv_out)
     nmeasure_index = obs_inputs.indexes.get("nmeasure")
     if isinstance(nmeasure_index, pd.MultiIndex) and "time" in nmeasure_index.names:
         times = nmeasure_index.get_level_values("time").to_numpy(dtype="datetime64[ns]")
@@ -278,7 +271,7 @@ def _legacy_site_fields(
     inv_out: InversionOutput,
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """Return site indicators and site names in the legacy flat format."""
-    obs_inputs = standard_obs_inputs(inv_out)
+    obs_inputs = observation_inputs_for_outputs(inv_out)
     nmeasure_index = obs_inputs.indexes.get("nmeasure")
     if isinstance(nmeasure_index, pd.MultiIndex) and "site" in nmeasure_index.names:
         site_values = nmeasure_index.get_level_values("site")
@@ -332,7 +325,20 @@ def _legacy_site_fields(
 
 def _obs_input(inv_out: InversionOutput, name: str, legacy_name: str) -> xr.DataArray:
     """Return an observation-input field renamed and flattened for legacy output."""
-    return _flatten_nmeasure_for_legacy(standard_obs_inputs(inv_out)[name]).rename(legacy_name)
+    return _flatten_nmeasure_for_legacy(observation_inputs_for_outputs(inv_out)[name]).rename(legacy_name)
+
+
+def _flux_scale_trace(inv_out: InversionOutput) -> xr.Dataset:
+    """Return flux-scale traces using legacy-compatible ``x`` names."""
+    trace = inv_out.trace_dataset(var_roles="flux_scale")
+    flux_scale_name = inv_out.variable_name("flux_scale")
+    return trace.rename(
+        {
+            data_var: str(data_var).replace(f"{flux_scale_name}_", "x_", 1)
+            for data_var in trace.data_vars
+            if str(data_var).startswith(f"{flux_scale_name}_")
+        }
+    )
 
 
 def _as_array(data: Any) -> np.ndarray:
@@ -370,6 +376,7 @@ def make_legacy_hbmcmc_output(
     Hx_arr = _as_array(Hx)
     Hbc_arr = _as_array(Hbc) if Hbc is not None else None
     sigma_freq = _as_array(sigma_freq_index)
+    _, domain, _, _ = inv_out.require_single_sector()
     times = _legacy_measurement_times(inv_out)
     site_indicators, site_names = _legacy_site_fields(inv_out)
 
@@ -382,12 +389,14 @@ def make_legacy_hbmcmc_output(
             "mode_kde__chunk_size": 1,
         },
     )
-    x_trace = standard_trace_dataset(inv_out, var_names="x")
+    x_trace = _flux_scale_trace(inv_out)
+    state_dim = inv_out.basis_functions.operator.meta.state_dim
+    flux_chunk_dim = state_dim if state_dim in x_trace.dims else "nx" if "nx" in x_trace.dims else "region"
     flux = make_flux_outputs(
         inv_out,
         stats=["mean", "mode_kde"],
         stats_args={
-            "mode_kde__chunk_dim": "nx" if "nx" in x_trace.dims else "region",
+            "mode_kde__chunk_dim": flux_chunk_dim,
             "mode_kde__chunk_size": 1,
         },
     )
@@ -405,17 +414,17 @@ def make_legacy_hbmcmc_output(
     country = _collapse_flux_time_for_legacy(
         country,
         times,
-        standard_flux(inv_out)["flux_time"],
-        standard_flux(inv_out).attrs.get("time_period"),
+        inv_out.flux["flux_time"],
+        inv_out.flux.attrs.get("time_period"),
     )
     country = _rename_hdi_for_legacy(_rename_country_for_legacy(country))
 
-    country_obj = utils.get_country(standard_domain(inv_out), country_file=country_file)
+    country_obj = utils.get_country(domain, country_file=country_file)
     country_idx = country_obj.country
     apriori_flux = _compute_apriori_flux(
-        standard_flux(inv_out),
-        str(standard_start_time(inv_out).date()),
-        str(standard_end_time(inv_out).date()),
+        inv_out.flux,
+        str(inv_out.start_time.date()),
+        str(inv_out.end_time.date()),
         times,
     )
 
@@ -453,7 +462,7 @@ def make_legacy_hbmcmc_output(
         "fluxmode": flux["flux_posterior_mode"],
         "scalingmean": flux["scaling_posterior_mean"],
         "scalingmode": flux["scaling_posterior_mode"],
-        "basisfunctions": standard_flat_basis(inv_out),
+        "basisfunctions": flat_basis_for_output(inv_out),
         "countrymean": country["country_posterior_mean"],
         "countrymedian": country["country_posterior_median"],
         "countrymode": country["country_posterior_mode"],
@@ -502,7 +511,7 @@ def make_legacy_hbmcmc_output(
 
     out = xr.Dataset(data_vars, coords=coords)
 
-    obs_units = standard_obs_inputs(inv_out)["y_obs"].attrs.get("units", "")
+    obs_units = observation_inputs_for_outputs(inv_out)["y_obs"].attrs.get("units", "")
     if obs_units.endswith("mol/mol"):
         obs_units = obs_units.split(" ")[0]
     try:
@@ -513,8 +522,8 @@ def make_legacy_hbmcmc_output(
     country_units = country["country_posterior_mean"].attrs.get("units", "g")
     _set_legacy_var_attrs(out, obs_units=obs_units, country_units=country_units, use_bc=use_bc)
 
-    out.attrs["Start date"] = str(standard_start_time(inv_out).date())
-    out.attrs["End date"] = str(standard_end_time(inv_out).date())
+    out.attrs["Start date"] = str(inv_out.start_time.date())
+    out.attrs["End date"] = str(inv_out.end_time.date())
     if "convergence" in mcmc_results:
         out.attrs["Convergence"] = mcmc_results["convergence"]
 
