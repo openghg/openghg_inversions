@@ -68,7 +68,8 @@ class AxisAlignedWeightedSplitStrategy:
         class_weights = np.where(class_mask, weights, 0.0)
         total_weight = float(class_weights.sum())
         if total_weight == 0.0:
-            return _labels_for_bucket(class_weights, class_mask, bucket=0.0)
+            class_weights = class_mask.astype(np.float64)
+            total_weight = float(class_weights.sum())
 
         low = 0.0
         high = total_weight
@@ -185,19 +186,21 @@ def allocate_nbasis_by_class(
     class_values = region_classes.to_numpy()
     mapped_classes = _mapped_classes(class_values, unmapped_values)
 
-    if isinstance(nbasis, Mapping):
-        return _explicit_allocation(mapped_classes, nbasis)
-
-    if nbasis < 0:
-        raise ValueError("nbasis must be non-negative.")
     if not mapped_classes:
-        if nbasis != 0:
+        if not isinstance(nbasis, Mapping) and nbasis != 0:
             raise ValueError("Cannot allocate basis regions without mapped classes.")
         return {}
 
     capacities = {
         class_value: int(np.count_nonzero(class_values == class_value)) for class_value in mapped_classes
     }
+
+    if isinstance(nbasis, Mapping):
+        return _explicit_allocation(mapped_classes, nbasis, capacities)
+
+    if nbasis < 0:
+        raise ValueError("nbasis must be non-negative.")
+
     minima = {
         class_value: min(min_regions_per_class, capacity) for class_value, capacity in capacities.items()
     }
@@ -257,6 +260,7 @@ def _mapped_classes(
 def _explicit_allocation(
     mapped_classes: list[Hashable],
     nbasis: Mapping[Hashable, int],
+    capacities: Mapping[Hashable, int],
 ) -> dict[Hashable, int]:
     missing = [class_value for class_value in mapped_classes if class_value not in nbasis]
     if missing:
@@ -266,6 +270,11 @@ def _explicit_allocation(
     invalid = {class_value: target for class_value, target in allocations.items() if target < 1}
     if invalid:
         raise ValueError(f"Class allocations must be positive for mapped classes: {invalid!r}.")
+    over_allocated = {
+        class_value: target for class_value, target in allocations.items() if target > capacities[class_value]
+    }
+    if over_allocated:
+        raise ValueError(f"Class allocations exceed mapped cell counts: {over_allocated!r}.")
     return allocations
 
 

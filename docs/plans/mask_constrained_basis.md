@@ -58,3 +58,7 @@ part of #340.
   `AxisAlignedWeightedSplitStrategy`. This keeps the current axis-parallel
   weighted split as the default while leaving a direct substitution point for
   future inertial or quadtree-style strategies. No inertial split implemented.
+- 2026-06-01: Subagent review fixes for #449 core: all-zero class weights now
+  split using an area surrogate, explicit allocations are checked against
+  mapped-cell capacity, and `SplitStrategy` is exported for typed custom
+  strategies.
