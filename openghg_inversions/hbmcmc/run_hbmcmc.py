@@ -291,7 +291,7 @@ def build_parser(default_config_file: Path) -> argparse.ArgumentParser:
     """Build the legacy run_hbmcmc argument parser."""
     parser = argparse.ArgumentParser(description="Running Hierarchical Bayesian MCMC script")
     parser.add_argument("start", help="Start date string of the format YYYY-MM-DD", nargs="?")
-    parser.add_argument("end", help="End date sting of the format YYYY-MM-DD", nargs="?")
+    parser.add_argument("end", help="End date string of the format YYYY-MM-DD", nargs="?")
     parser.add_argument(
         "-c", "--config", help="Name (including path) of configuration file", default=default_config_file
     )
