@@ -9,15 +9,20 @@ from openghg_inversions.postprocessing._basis_products import (
     reconstruct_scale_factor_stats,
 )
 from openghg_inversions.postprocessing.inversion_output import (
-    PostprocessingInput,
-    as_postprocessing_output,
+    InversionOutput,
+    standard_domain,
+    standard_flat_basis,
+    standard_flux,
+    standard_model_data,
+    standard_obs_and_errors,
+    standard_trace_dataset,
 )
 from openghg_inversions.postprocessing.stats import calculate_stats
 from openghg_inversions.postprocessing.utils import rename_by_replacement
 
 
 def make_flux_outputs(
-    inv_out: PostprocessingInput,
+    inv_out: InversionOutput,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
     include_scale_factors: bool = True,
@@ -48,9 +53,7 @@ def make_flux_outputs(
         xr.Dataset with computed flux stats.
 
     """
-    original_inv_out = inv_out
-    inv_out = as_postprocessing_output(inv_out)
-    trace = inv_out.get_trace_dataset(var_names="x")
+    trace = standard_trace_dataset(inv_out, var_names="x")
 
     if stats_args is None:
         stats_args = {}
@@ -62,7 +65,6 @@ def make_flux_outputs(
     stats_ds = calculate_stats(trace, **stats_args)
 
     flux_stats = reconstruct_flux_stats(
-        original_inv_out,
         inv_out,
         stats_ds,
         report_flux_on_inversion_grid=report_flux_on_inversion_grid,
@@ -74,12 +76,12 @@ def make_flux_outputs(
             flux_stats[dv].attrs["long_name"] = (
                 flux_stats[dv].attrs["long_name"].replace("trace_of_flux_scaling_factor", "flux")
             )
-            flux_stats[dv].attrs["units"] = inv_out.flux.attrs.get("units", "mol/m2/s")
+            flux_stats[dv].attrs["units"] = standard_flux(inv_out).attrs.get("units", "mol/m2/s")
 
     flux_stats = rename_by_replacement(flux_stats, "x", "flux")
 
     if include_scale_factors:
-        scale_factor_stats = reconstruct_scale_factor_stats(original_inv_out, inv_out, stats_ds)
+        scale_factor_stats = reconstruct_scale_factor_stats(inv_out, stats_ds)
 
         for dv in scale_factor_stats.data_vars:
             if dv in stats_ds.data_vars:
@@ -156,7 +158,7 @@ def sort_data_vars(ds: xr.Dataset) -> xr.Dataset:
 
 
 def make_concentration_outputs(
-    inv_out: PostprocessingInput,
+    inv_out: InversionOutput,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
     combine_bc_and_offset: bool = False,
@@ -182,7 +184,6 @@ def make_concentration_outputs(
         xr.Dataset with computed flux stats.
 
     """
-    inv_out = as_postprocessing_output(inv_out)
     conc_vars = ["y"]
     posterior = cast(Any, inv_out.trace).posterior
 
@@ -192,7 +193,7 @@ def make_concentration_outputs(
     if "offset" in posterior:
         conc_vars.append("offset")
 
-    trace = inv_out.get_trace_dataset(var_names=conc_vars)
+    trace = standard_trace_dataset(inv_out, var_names=conc_vars)
 
     if combine_bc_and_offset and "offset" in conc_vars:
         for dv in trace.data_vars:
@@ -221,7 +222,7 @@ def make_concentration_outputs(
 
 
 def make_country_outputs(
-    inv_out: PostprocessingInput,
+    inv_out: InversionOutput,
     country_file: str | Path | None = None,
     country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
@@ -256,11 +257,10 @@ def make_country_outputs(
         xr.Dataset containing statistics for the specified countries and regions.
 
     """
-    inv_out = as_postprocessing_output(inv_out)
     drop_missing_regions = False
 
     if country_regions == "paris":
-        country_regions = paris_regions_dict.get(inv_out.domain.lower())
+        country_regions = paris_regions_dict.get(standard_domain(inv_out).lower())
         drop_missing_regions = True
     elif isinstance(country_regions, str):
         country_regions = Path(country_regions)
@@ -269,7 +269,7 @@ def make_country_outputs(
         country_file=country_file,
         country_code=country_code,
         country_regions=country_regions,
-        domain=inv_out.domain,
+        domain=standard_domain(inv_out),
         drop_missing_regions=drop_missing_regions,
     )
     country_traces = countries.get_country_trace(inv_out=inv_out)
@@ -285,7 +285,7 @@ def make_country_outputs(
 
 
 def basic_output(
-    inv_out: PostprocessingInput,
+    inv_out: InversionOutput,
     country_file: str | Path | None = None,
     country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
@@ -310,19 +310,18 @@ def basic_output(
         totals.
 
     """
-    postprocessing_inv_out = as_postprocessing_output(inv_out)
-    obs_and_errs = postprocessing_inv_out.get_obs_and_errors()
-    conc_outs = make_concentration_outputs(postprocessing_inv_out, stats=stats, stats_args=stats_args)
-    flux_outs = make_flux_outputs(postprocessing_inv_out, stats=stats, stats_args=stats_args)
+    obs_and_errs = standard_obs_and_errors(inv_out)
+    conc_outs = make_concentration_outputs(inv_out, stats=stats, stats_args=stats_args)
+    flux_outs = make_flux_outputs(inv_out, stats=stats, stats_args=stats_args)
     country_outs = make_country_outputs(
-        postprocessing_inv_out,
+        inv_out,
         country_file=country_file,
         country_regions=country_regions,
         stats=stats,
         stats_args=stats_args,
     )
 
-    model_data = postprocessing_inv_out.get_model_data(var_names=["hx", "hbc", "min_error"]).rename(
+    model_data = standard_model_data(inv_out, var_names=["hx", "hbc", "min_error"]).rename(
         {"hx": "Hx", "hbc": "Hbc", "min_error": "min_model_error"}
     )
 
@@ -333,7 +332,7 @@ def basic_output(
             flux_outs,
             country_outs,
             model_data,
-            postprocessing_inv_out.get_flat_basis(),
+            standard_flat_basis(inv_out),
         ]
     )
 

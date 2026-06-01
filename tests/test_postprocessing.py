@@ -13,10 +13,12 @@ from openghg_inversions.hbmcmc.hbmcmc import _resolve_output_format, fixedbasisM
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 from openghg_inversions.postprocessing.inversion_output import (
     InversionOutput,
-    LegacyInversionOutput,
-    as_postprocessing_output,
+    standard_end_time,
+    standard_flux,
+    standard_obs_inputs,
+    standard_start_time,
+    standard_trace_dataset,
 )
-from openghg_inversions.postprocessing.legacy_outputs import make_legacy_hbmcmc_output
 from openghg_inversions.postprocessing.make_outputs import (
     basic_output,
     make_country_outputs,
@@ -25,7 +27,6 @@ from openghg_inversions.postprocessing.make_outputs import (
 
 from openghg_inversions.postprocessing.make_paris_outputs import (
     _flux_interval_midpoints,
-    make_paris_flux_outputs_from_rhime,
     make_paris_outputs,
     paris_flux_output,
 )
@@ -131,14 +132,13 @@ def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_nam
     return mcmc_args
 
 
-@pytest.fixture(scope="module")
-def inv_out(raw_data_path):
-    return LegacyInversionOutput.load(raw_data_path / "inversion_output.nc")
-
-
-@pytest.fixture(scope="module")
-def inv_out_eastasia(raw_data_path):
-    return LegacyInversionOutput.load(raw_data_path / "inversion_output_EASTASIA.nc")
+@pytest.fixture
+def inv_out(mcmc_args):
+    """Return a modern fixedbasis inversion output for postprocessing tests."""
+    mcmc_args["output_format"] = "inv_out"
+    result = fixedbasisMCMC(**mcmc_args)
+    assert isinstance(result, InversionOutput)
+    return result
 
 
 def test_fixedbasisMCMC_return_basis_objects_preserves_positional_output_format():
@@ -303,9 +303,6 @@ def test_fixedbasisMCMC_inv_out_returns_modern_output_without_legacy_adapter(mon
     def fail_inferpymc_postprocessouts(**kwargs):
         raise AssertionError("output_format='inv_out' must not call inferpymc_postprocessouts")
 
-    def fail_make_inv_out_for_fixed_basis_mcmc(*args, **kwargs):
-        raise AssertionError("output_format='inv_out' must not build LegacyInversionOutput")
-
     monkeypatch.setattr(
         hbmcmc_module,
         "prepare_fixedbasis_inversion_data",
@@ -313,11 +310,6 @@ def test_fixedbasisMCMC_inv_out_returns_modern_output_without_legacy_adapter(mon
     )
     monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc", fake_inferpymc)
     monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
-    monkeypatch.setattr(
-        "openghg_inversions.postprocessing.inversion_output.make_inv_out_for_fixed_basis_mcmc",
-        fail_make_inv_out_for_fixed_basis_mcmc,
-    )
-
     result = fixedbasisMCMC(
         species="ch4",
         sites=["TAC"],
@@ -373,9 +365,6 @@ def test_fixedbasisMCMC_paris_postprocessing_receives_modern_output(monkeypatch,
             xr.Dataset({"Yobs": ("time", np.array([1900.0]))}, coords={"time": [0.0]}),
         )
 
-    def fail_make_inv_out_for_fixed_basis_mcmc(*args, **kwargs):
-        raise AssertionError("fixedbasis PARIS must not build LegacyInversionOutput")
-
     monkeypatch.setattr(
         hbmcmc_module, "prepare_fixedbasis_inversion_data", fake_prepare_fixedbasis_inversion_data
     )
@@ -384,11 +373,6 @@ def test_fixedbasisMCMC_paris_postprocessing_receives_modern_output(monkeypatch,
         "openghg_inversions.postprocessing.make_paris_outputs.make_paris_outputs",
         fake_make_paris_outputs,
     )
-    monkeypatch.setattr(
-        "openghg_inversions.postprocessing.inversion_output.make_inv_out_for_fixed_basis_mcmc",
-        fail_make_inv_out_for_fixed_basis_mcmc,
-    )
-
     result = fixedbasisMCMC(
         species="ch4",
         sites=["TAC"],
@@ -605,31 +589,9 @@ def test_paris_flux_output_timestamp(inv_out, europe_country_file):
 
     # time is stored as days since Unix epoch; convert back for comparison
     actual = pd.Timestamp("1970-01-01") + pd.Timedelta(days=float(flux_outs.time.values[0]))
-    expected = inv_out.start_time + (inv_out.end_time - inv_out.start_time) / 2
+    expected = standard_start_time(inv_out) + (standard_end_time(inv_out) - standard_start_time(inv_out)) / 2
 
     assert actual == expected
-
-
-def test_rhime_flux_reprocessing(europe_country_file, raw_data_path):
-    """Check that we can re-run PARIS flux outputs on standard RHIME outputs."""
-    rhime_outs = xr.open_dataset(raw_data_path / "standard_rhime_outs.nc")
-    paris_outs = make_paris_flux_outputs_from_rhime(
-        rhime_outs, species="ch4", domain="europe", country_file=europe_country_file
-    )
-
-    assert "flux_total_prior" in paris_outs
-    assert "flux_total_posterior" in paris_outs
-
-
-def test_rhime_flux_reprocessing_eastasia(eastasia_country_file, raw_data_path):
-    """Check that we can re-run PARIS flux outputs on standard RHIME outputs from EASTASIA."""
-    rhime_outs = xr.open_dataset(raw_data_path / "standard_rhime_outs_EASTASIA.nc")
-    paris_outs = make_paris_flux_outputs_from_rhime(
-        rhime_outs, species="hfc23", domain="eastasia", country_file=eastasia_country_file
-    )
-
-    assert "flux_total_prior" in paris_outs
-    assert "flux_total_posterior" in paris_outs
 
 
 def test_basic_outputs(inv_out, europe_country_file):
@@ -652,8 +614,8 @@ def test_basic_outputs(inv_out, europe_country_file):
             assert cv + "_" + stat in outs
 
 
-def test_fixedbasis_flux_and_country_outputs_keep_flat_basis_fallback(inv_out, europe_country_file):
-    """Fixedbasis LegacyInversionOutput still reconstructs products from its flat basis."""
+def test_fixedbasis_flux_and_country_outputs_use_modern_basis_functions(inv_out, europe_country_file):
+    """Fixedbasis postprocessing reconstructs products from retained basis functions."""
     flux_outs = make_flux_outputs(
         inv_out,
         include_scale_factors=False,
@@ -665,26 +627,6 @@ def test_fixedbasis_flux_and_country_outputs_keep_flat_basis_fallback(inv_out, e
     assert "country_posterior_mean" in country_outs
 
 
-def test_basic_outputs_eastasia(inv_out_eastasia, eastasia_country_file):
-    """Test creation of basic output for EASTASIA domain.
-
-    The default stats calculated are "mean" and "quantile".
-    Check that these are all present.
-    """
-    outs = basic_output(inv_out_eastasia, country_file=eastasia_country_file)
-
-    conc_vars = ["y_posterior_predictive", "y_prior_predictive"]
-    for x in ["flux", "scaling", "country", "mu_bc"]:
-        for y in ["prior", "posterior"]:
-            conc_vars.append(x + "_" + y)
-
-    stats = ["mean", "quantile"]
-
-    for cv in conc_vars:
-        for stat in stats:
-            assert cv + "_" + stat in outs
-
-
 @pytest.mark.parametrize("offset", [False, True])
 def test_make_paris_outputs(inv_out, europe_country_file, tmpdir, offset):
     """Check that we can create and save PARIS outputs for EUROPE domain"""
@@ -693,8 +635,6 @@ def test_make_paris_outputs(inv_out, europe_country_file, tmpdir, offset):
         # fake an offset trace
         inv_out.trace.posterior["offset"] = xr.ones_like(inv_out.trace.posterior["mu_bc"])
         inv_out.trace.prior["offset"] = xr.ones_like(inv_out.trace.prior["mu_bc"])
-        inv_out.trace_ds["offset_posterior"] = xr.ones_like(inv_out.trace_ds.mu_bc_posterior)
-        inv_out.trace_ds["offset_prior"] = xr.ones_like(inv_out.trace_ds.mu_bc_prior)
 
     print(inv_out.trace.posterior)
 
@@ -733,7 +673,7 @@ def test_country_outputs_lognormal_reparam_conflict(mcmc_args, europe_country_fi
 
     inv_out = fixedbasisMCMC(**mcmc_args)
     assert isinstance(inv_out, InversionOutput)
-    trace_ds = as_postprocessing_output(inv_out).get_trace_dataset(var_names="x")
+    trace_ds = standard_trace_dataset(inv_out, var_names="x")
     assert "x_prior" in trace_ds
     assert "x_posterior" in trace_ds
     assert "x_latent_prior" not in trace_ds
@@ -838,54 +778,12 @@ def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(mcm
     assert inv_out_path.exists()
     assert isinstance(inv_out, InversionOutput)
     assert isinstance(inv_out.basis_functions, BasisFunctions)
-    postprocessing_view = as_postprocessing_output(inv_out)
-    assert postprocessing_view.obs_inputs["y_obs"].dims == ("nmeasure",)
-    assert postprocessing_view.obs_inputs["y_obs_error"].dims == ("nmeasure",)
-    assert postprocessing_view.get_trace_dataset(var_names="x")["x_posterior"].dims == ("draw", "nx")
-    assert "site" in postprocessing_view.obs_inputs.coords
-    assert "time" in postprocessing_view.obs_inputs.coords
-    assert "time" not in postprocessing_view.flux.dims
-    if "flux_time" in postprocessing_view.flux.coords:
-        assert "flux_time" in postprocessing_view.flux.dims
-
-
-def test_hbmcmc_postprocessing_output_matches_legacy_core_fields(raw_data_path, europe_country_file):
-    """Regression test for deterministic prior concentration terms in legacy-compatible output."""
-    with xr.open_dataset(raw_data_path / "standard_rhime_outs.nc") as legacy:
-        inv_out = LegacyInversionOutput.load(raw_data_path / "inversion_output.nc")
-        compat = make_legacy_hbmcmc_output(
-            inv_out=inv_out,
-            mcmc_results={
-                "xouts": legacy["xtrace"],
-                "sigouts": legacy["sigtrace"],
-                "bcouts": legacy["bctrace"],
-            },
-            sigma_freq_index=legacy["sigmafreqindex"].values,
-            Hx=legacy["xsensitivity"].values.T,
-            Hbc=legacy["bcsensitivity"].values.T,
-            country_file=europe_country_file,
-            use_bc=True,
-        )
-
-        assert (compat["Yapriori"].values == legacy["Yapriori"].values).all()
-        assert (compat["YaprioriBC"].values == legacy["YaprioriBC"].values).all()
-        assert (compat["Yobs"].values == legacy["Yobs"].values).all()
-
-        xr.testing.assert_allclose(compat["fluxapriori"], legacy["fluxapriori"], rtol=1e-6, atol=1e-9)
-
-        assert compat["Yapriori"].dims == legacy["Yapriori"].dims == ("nmeasure",)
-        assert compat["YaprioriBC"].dims == legacy["YaprioriBC"].dims == ("nmeasure",)
-        assert compat["Yobs"].dims == legacy["Yobs"].dims == ("nmeasure",)
-        assert compat["Ymod68"].dims == legacy["Ymod68"].dims == ("nmeasure", "nUI")
-        assert compat["country68"].dims == legacy["country68"].dims == ("countrynames", "nUI")
-        assert compat["countrymean"].dims == legacy["countrymean"].dims == ("countrynames",)
-        assert compat.sizes["nmeasure"] == legacy.sizes["nmeasure"]
-        assert compat["Yobs"].sizes["nmeasure"] == compat["Yapriori"].sizes["nmeasure"]
-        assert compat["Yapriori"].attrs["units"] == legacy["Yapriori"].attrs["units"]
-        assert compat["YaprioriBC"].attrs["units"] == legacy["YaprioriBC"].attrs["units"]
-        assert compat["Yobs"].attrs["units"] == legacy["Yobs"].attrs["units"]
-        assert "UInum" in compat.coords
-        assert "countrynames" in compat.coords
-
-        for dv in compat.data_vars:
-            assert "longname" in compat[dv].attrs
+    obs_inputs = standard_obs_inputs(inv_out)
+    assert obs_inputs["y_obs"].dims == ("nmeasure",)
+    assert obs_inputs["y_obs_error"].dims == ("nmeasure",)
+    assert standard_trace_dataset(inv_out, var_names="x")["x_posterior"].dims == ("draw", "nx")
+    assert "site" in obs_inputs.coords
+    assert "time" in obs_inputs.coords
+    assert "time" not in standard_flux(inv_out).dims
+    if "flux_time" in standard_flux(inv_out).coords:
+        assert "flux_time" in standard_flux(inv_out).dims

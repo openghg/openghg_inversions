@@ -184,12 +184,12 @@ def make_standard_output_bundle(
     if output_spec.output_format == "basic":
         from openghg_inversions.postprocessing.make_outputs import basic_output
 
-        output_metadata["postprocessing_input_contract"] = "standard_single_sector_modern_view"
+        output_metadata["postprocessing_input_contract"] = "modern_inversion_output"
         outputs["basic"] = basic_output(inv_out, country_file=country_file)
     elif output_spec.output_format == "paris":
         from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
 
-        output_metadata["postprocessing_input_contract"] = "standard_single_sector_modern_view"
+        output_metadata["postprocessing_input_contract"] = "modern_inversion_output"
         obs_avg_period = prepared.averaging_period[0] or "0h"
         kwargs = output_spec.paris_postprocessing_kwargs or {}
         flux_outs, conc_outs = make_paris_outputs(

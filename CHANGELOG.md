@@ -5,7 +5,7 @@
 ## Code changes
 
 
-- Routed modern RHIME and fixedbasis postprocessing through modern `InversionOutput` with retained `BasisFunctions` / `BasisOperator` products where available; fixedbasis `inv_out` and saved inversion-output artifacts now use the modern carrier. [#383](https://github.com/openghg/openghg_inversions/issues/383)
+- Routed modern RHIME and fixedbasis postprocessing through modern `InversionOutput` with retained `BasisFunctions` / `BasisOperator` products, removed the transitional postprocessing protocol/view layer, and deleted `LegacyInversionOutput` plus the dead legacy inversion-output builder helpers. [#383](https://github.com/openghg/openghg_inversions/issues/383)
 - Routed standard RHIME `basic` and `paris` postprocessing through modern `InversionOutput` using a standard single-sector postprocessing view with dataset-based observation inputs and model-managed trace coordinates, while keeping `LegacyInversionOutput` as the fixedbasis/legacy compatibility carrier. [#435](https://github.com/openghg/openghg_inversions/issues/435)
 - Split modern RHIME `InversionOutput` from the legacy-shaped postprocessing carrier, keeping `inferpymc_postprocessouts` on the fixedbasis `output_format="hbmcmc"` path only and using a temporary `LegacyInversionOutput` adapter for RHIME `basic`/`paris` postprocessing. [#401](https://github.com/openghg/openghg_inversions/issues/401)
 - Moved public RHIME model-builder exports into `openghg_inversions.models` and shared data preparation between `fixedbasisMCMC`, `run_rhime`, and `run_rhime_multisector`. [#399](https://github.com/openghg/openghg_inversions/issues/399), [#425](https://github.com/openghg/openghg_inversions/issues/425)

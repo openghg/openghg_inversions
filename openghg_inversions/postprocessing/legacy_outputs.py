@@ -11,9 +11,14 @@ import xarray as xr
 
 from openghg_inversions import utils
 from openghg_inversions.postprocessing.inversion_output import (
-    PostprocessingInput,
-    StandardPostprocessingOutput,
-    as_postprocessing_output,
+    InversionOutput,
+    standard_domain,
+    standard_end_time,
+    standard_flat_basis,
+    standard_flux,
+    standard_obs_inputs,
+    standard_start_time,
+    standard_trace_dataset,
 )
 from openghg_inversions.postprocessing.make_outputs import (
     make_concentration_outputs,
@@ -244,23 +249,23 @@ def _flatten_nmeasure_for_legacy(data: xr.DataArray) -> xr.DataArray:
     return result.assign_coords(nmeasure=np.arange(result.sizes["nmeasure"]))
 
 
-def _legacy_measurement_times(view: StandardPostprocessingOutput) -> xr.DataArray:
+def _legacy_measurement_times(inv_out: InversionOutput) -> xr.DataArray:
     """Return measurement times as a flat legacy ``nmeasure`` array."""
-    nmeasure_index = view.obs_inputs.indexes.get("nmeasure")
+    obs_inputs = standard_obs_inputs(inv_out)
+    nmeasure_index = obs_inputs.indexes.get("nmeasure")
     if isinstance(nmeasure_index, pd.MultiIndex) and "time" in nmeasure_index.names:
         times = nmeasure_index.get_level_values("time").to_numpy(dtype="datetime64[ns]")
         return xr.DataArray(
             times, dims=("nmeasure",), coords={"nmeasure": np.arange(len(times))}, name="Ytime"
         )
 
-    if "time" in view.obs_inputs.coords and view.obs_inputs["time"].dims == ("nmeasure",):
-        return _flatten_nmeasure_for_legacy(view.obs_inputs["time"]).rename("Ytime")
+    if "time" in obs_inputs.coords and obs_inputs["time"].dims == ("nmeasure",):
+        return _flatten_nmeasure_for_legacy(obs_inputs["time"]).rename("Ytime")
 
-    raw_times = getattr(view, "times", getattr(view, "_times", None))
-    if raw_times is None:
+    if "time" not in inv_out.inv_inputs:
         raise ValueError("Could not recover measurement times for legacy output formatting.")
 
-    values = raw_times.values if isinstance(raw_times, xr.DataArray) else raw_times
+    values = inv_out.inv_inputs["time"].values
     return xr.DataArray(
         np.asarray(values),
         dims=("nmeasure",),
@@ -270,10 +275,11 @@ def _legacy_measurement_times(view: StandardPostprocessingOutput) -> xr.DataArra
 
 
 def _legacy_site_fields(
-    view: StandardPostprocessingOutput,
+    inv_out: InversionOutput,
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """Return site indicators and site names in the legacy flat format."""
-    nmeasure_index = view.obs_inputs.indexes.get("nmeasure")
+    obs_inputs = standard_obs_inputs(inv_out)
+    nmeasure_index = obs_inputs.indexes.get("nmeasure")
     if isinstance(nmeasure_index, pd.MultiIndex) and "site" in nmeasure_index.names:
         site_values = nmeasure_index.get_level_values("site")
         names = list(pd.unique(site_values))
@@ -294,13 +300,15 @@ def _legacy_site_fields(
             ),
         )
 
-    raw_indicators = getattr(view, "site_indicators", getattr(view, "_site_indicators", None))
-    if raw_indicators is None:
+    if "site_indicator" not in inv_out.inv_inputs:
         raise ValueError("Could not recover site indicators for legacy output formatting.")
 
-    indicator_values = raw_indicators.values if isinstance(raw_indicators, xr.DataArray) else raw_indicators
+    indicator_values = inv_out.inv_inputs["site_indicator"].values
     indicators = np.asarray(indicator_values)
-    site_names = getattr(view, "site_names", None)
+    if "site_names" in inv_out.inv_inputs:
+        site_names = inv_out.inv_inputs["site_names"]
+    else:
+        site_names = inv_out.run_metadata.get("sites")
     if site_names is None:
         names = np.unique(indicators)
     else:
@@ -322,9 +330,9 @@ def _legacy_site_fields(
     )
 
 
-def _obs_input(view: StandardPostprocessingOutput, name: str, legacy_name: str) -> xr.DataArray:
+def _obs_input(inv_out: InversionOutput, name: str, legacy_name: str) -> xr.DataArray:
     """Return an observation-input field renamed and flattened for legacy output."""
-    return _flatten_nmeasure_for_legacy(view.obs_inputs[name]).rename(legacy_name)
+    return _flatten_nmeasure_for_legacy(standard_obs_inputs(inv_out)[name]).rename(legacy_name)
 
 
 def _as_array(data: Any) -> np.ndarray:
@@ -333,7 +341,7 @@ def _as_array(data: Any) -> np.ndarray:
 
 
 def make_legacy_hbmcmc_output(
-    inv_out: PostprocessingInput,
+    inv_out: InversionOutput,
     mcmc_results: dict,
     sigma_freq_index: np.ndarray | xr.DataArray,
     Hx: np.ndarray | xr.DataArray,
@@ -359,12 +367,11 @@ def make_legacy_hbmcmc_output(
         ``inferpymc_postprocessouts``.
 
     """
-    view = as_postprocessing_output(inv_out)
     Hx_arr = _as_array(Hx)
     Hbc_arr = _as_array(Hbc) if Hbc is not None else None
     sigma_freq = _as_array(sigma_freq_index)
-    times = _legacy_measurement_times(view)
-    site_indicators, site_names = _legacy_site_fields(view)
+    times = _legacy_measurement_times(inv_out)
+    site_indicators, site_names = _legacy_site_fields(inv_out)
 
     conc = make_concentration_outputs(
         inv_out,
@@ -375,7 +382,7 @@ def make_legacy_hbmcmc_output(
             "mode_kde__chunk_size": 1,
         },
     )
-    x_trace = view.get_trace_dataset(var_names="x")
+    x_trace = standard_trace_dataset(inv_out, var_names="x")
     flux = make_flux_outputs(
         inv_out,
         stats=["mean", "mode_kde"],
@@ -398,28 +405,33 @@ def make_legacy_hbmcmc_output(
     country = _collapse_flux_time_for_legacy(
         country,
         times,
-        view.flux["flux_time"],
-        view.flux.attrs.get("time_period"),
+        standard_flux(inv_out)["flux_time"],
+        standard_flux(inv_out).attrs.get("time_period"),
     )
     country = _rename_hdi_for_legacy(_rename_country_for_legacy(country))
 
-    country_obj = utils.get_country(view.domain, country_file=country_file)
+    country_obj = utils.get_country(standard_domain(inv_out), country_file=country_file)
     country_idx = country_obj.country
-    apriori_flux = _compute_apriori_flux(view.flux, str(view.start_date), str(view.end_date), times)
+    apriori_flux = _compute_apriori_flux(
+        standard_flux(inv_out),
+        str(standard_start_time(inv_out).date()),
+        str(standard_end_time(inv_out).date()),
+        times,
+    )
 
     yapriori = Hx_arr.sum(axis=0)
     if use_bc and Hbc_arr is not None:
         yapriori = yapriori + Hbc_arr.sum(axis=0)
 
-    obs = _obs_input(view, "y_obs", "Yobs")
+    obs = _obs_input(inv_out, "y_obs", "Yobs")
     zero_obs = xr.zeros_like(obs)
     zero_hdi = xr.zeros_like(conc["y_posterior_predictive_hdi_68"])
 
     data_vars: dict[str, Any] = {
         "Yobs": obs,
-        "Yerror": _obs_input(view, "y_obs_error", "Yerror"),
-        "Yerror_repeatability": _obs_input(view, "y_obs_repeatability", "Yerror_repeatability"),
-        "Yerror_variability": _obs_input(view, "y_obs_variability", "Yerror_variability"),
+        "Yerror": _obs_input(inv_out, "y_obs_error", "Yerror"),
+        "Yerror_repeatability": _obs_input(inv_out, "y_obs_repeatability", "Yerror_repeatability"),
+        "Yerror_variability": _obs_input(inv_out, "y_obs_variability", "Yerror_variability"),
         "Ytime": times,
         "Yapriori": ("nmeasure", yapriori),
         "Ymodmean": conc["y_posterior_predictive_mean"],
@@ -441,7 +453,7 @@ def make_legacy_hbmcmc_output(
         "fluxmode": flux["flux_posterior_mode"],
         "scalingmean": flux["scaling_posterior_mean"],
         "scalingmode": flux["scaling_posterior_mode"],
-        "basisfunctions": view.get_flat_basis(),
+        "basisfunctions": standard_flat_basis(inv_out),
         "countrymean": country["country_posterior_mean"],
         "countrymedian": country["country_posterior_median"],
         "countrymode": country["country_posterior_mode"],
@@ -490,7 +502,7 @@ def make_legacy_hbmcmc_output(
 
     out = xr.Dataset(data_vars, coords=coords)
 
-    obs_units = view.obs_inputs["y_obs"].attrs.get("units", "")
+    obs_units = standard_obs_inputs(inv_out)["y_obs"].attrs.get("units", "")
     if obs_units.endswith("mol/mol"):
         obs_units = obs_units.split(" ")[0]
     try:
@@ -501,8 +513,8 @@ def make_legacy_hbmcmc_output(
     country_units = country["country_posterior_mean"].attrs.get("units", "g")
     _set_legacy_var_attrs(out, obs_units=obs_units, country_units=country_units, use_bc=use_bc)
 
-    out.attrs["Start date"] = str(view.start_date)
-    out.attrs["End date"] = str(view.end_date)
+    out.attrs["Start date"] = str(standard_start_time(inv_out).date())
+    out.attrs["End date"] = str(standard_end_time(inv_out).date())
     if "convergence" in mcmc_results:
         out.attrs["Convergence"] = mcmc_results["convergence"]
 

@@ -21,8 +21,9 @@ version, which partially negates the benefit of keeping it as the main route.
 - [x] #435: migrate postprocessing consumers from `LegacyInversionOutput` to the
   modern `InversionOutput`; opened as the follow-up from #401.
 - [ ] #383: revise toward "postprocessing consumes `BasisFunctions`, no `fp_data`
-  in modern path." Legacy reconstruction from `fp_data[".basis"]` should remain
-  only in compatibility adapters.
+  in modern path." Standard postprocessing should consume modern
+  `InversionOutput` directly; old-format HBMCMC output may remain only as a
+  dataset formatter over modern postprocessing results.
 - [ ] #429: keep as operator-backed output/postprocessing, but make it depend on
   the preparation split.
 - [ ] #416: should become active sooner; classify/deprecate `fixedbasisMCMC`,
@@ -256,22 +257,29 @@ basis reconstruction.
   `hbmcmc_postprocessing`, `inv_out`, and saved inversion-output handling onto
   modern `InversionOutput` backed by retained `BasisFunctions`, while keeping
   the true legacy `hbmcmc` formatter isolated.
-- 2026-05-31: #383 / current PR kept `StandardPostprocessingOutput` as the
-  narrow transitional single-sector contract rather than expanding it for
-  multisector or future PARIS products.
+- 2026-06-01: #383 / current PR removed the transitional
+  `StandardPostprocessingOutput` / `PostprocessingInput` /
+  `ModernPostprocessingOutput` layer. Standard postprocessing helpers now take
+  modern `InversionOutput` directly and use its existing `trace`,
+  `inv_inputs`, `BasisFunctions`, and metadata fields.
+- 2026-06-01: #383 / current PR removed `LegacyInversionOutput`,
+  `make_inv_out_for_fixed_basis_mcmc(...)`, and the old RHIME-output
+  reprocessing helpers. The remaining old-format `hbmcmc_postprocessing`
+  product is a formatter over modern `InversionOutput`, not a separate
+  inversion-output carrier.
 
 ## Recorded decisions for Current PR / Issue #383
 
-- Keep operator-backed flux/country reconstruction as an internal
-  postprocessing implementation detail for now. Do not add retained basis
-  fields or methods to `StandardPostprocessingOutput`.
-- Treat `LegacyInversionOutput.from_modern_output(...)` and flat-basis
-  materialisation as disposable compatibility code. Modern RHIME `basic` and
-  fixedbasis `basic` and `paris` flux/country paths must prefer retained
-  `BasisFunctions`, and no new modern-to-legacy adapters should be added.
-- Keep `make_paris_flux_outputs_from_rhime(...)` as a legacy reprocessing
-  adapter because old standard RHIME output datasets do not retain
-  `BasisFunctions`.
+- Keep operator-backed flux/country reconstruction as internal postprocessing
+  implementation detail for now. The public input is the modern
+  `InversionOutput`; do not add legacy convenience properties or formatter
+  methods to `InversionOutput` itself.
+- Treat saved legacy inversion-output artifacts and old RHIME-output
+  reprocessing as disposable debugging compatibility. New postprocessing starts
+  from modern `InversionOutput` or reruns the model to create one.
+- Modern RHIME `basic`, fixedbasis `basic`, fixedbasis `paris`, countries, and
+  PARIS flux/country paths must use retained `BasisFunctions` rather than
+  modern-to-legacy adapters or `fp_data`.
 - Leave sector-aware PARIS totals and multisector diagnostics to #405, and
   leave default/deprecation policy for operator-backed reconstruction to #429.
 
@@ -300,9 +308,9 @@ review.
   active, but it should keep only the operational contract that current users
   need: same inputs in, successful run, and matching `output_format="paris"`
   products.
-- Saved `LegacyInversionOutput` compatibility, `LegacyInversionOutput.load`,
-  and direct legacy carrier return behavior are not strategic compatibility
-  goals. They can be broken or removed once the modern replacement is in place.
+- Saved legacy inversion-output compatibility and direct legacy carrier return
+  behavior are not strategic compatibility goals. #383 removes that carrier
+  once fixedbasis postprocessing can construct modern `InversionOutput`.
 - `inferpymc_postprocessouts` should not remain the compatibility target.
   `postprocessing/legacy_outputs.py` exists so the old-format dataset can be
   produced from the modern postprocessing path by renaming variables and
@@ -319,20 +327,20 @@ review.
 - Keep any old-format `hbmcmc_postprocessing` output as a formatter over modern
   postprocessing results, not as a reason to keep the old inversion output
   carrier.
+- Done in #383: remove the transitional postprocessing protocol/view layer and
+  require standard postprocessing helpers to consume `InversionOutput` directly.
 
 ## Aggressive cleanup after #416 lands and passes parity tests
 
-- Remove `LegacyInversionOutput.from_modern_output(...)`.
-- Remove `make_inv_out_for_fixed_basis_mcmc(...)`; the fixedbasis run path no
-  longer uses it after #383.
-- Remove `make_inv_out_from_rhime_outputs(...)` and
-  `make_paris_flux_outputs_from_rhime(...)` unless there is a concrete,
-  documented need to reprocess old RHIME output files that do not retain
-  `BasisFunctions`.
-- Remove flat-basis fallback branches from modern postprocessing helpers once
-  fixedbasis no longer supplies `LegacyInversionOutput`.
+- Done in #383: remove `LegacyInversionOutput.from_modern_output(...)`,
+  `make_inv_out_for_fixed_basis_mcmc(...)`, `make_inv_out_from_rhime_outputs(...)`,
+  and `make_paris_flux_outputs_from_rhime(...)`.
+- Done in #383: remove flat-basis fallback branches from modern flux/country
+  postprocessing helpers.
 - Remove `inferpymc_postprocessouts` after old-format output parity is covered
   by `postprocessing/legacy_outputs.py` using modern postprocessing inputs.
+- Remove `fixedbasisMCMC` once the #416 compatibility shim can run current
+  fixedbasis-style scripts through `run_rhime`.
 
 ## Tests needed before removal
 
@@ -342,11 +350,10 @@ review.
 - Done in #383: guard tests prove fixedbasis `basic`, `paris`, `inv_out`, and
   saved inversion-output paths construct/pass modern `InversionOutput`, not
   `LegacyInversionOutput`.
-- A legacy-format parity test for `postprocessing/legacy_outputs.py`, so the
-  old `hbmcmc_postprocessing` dataset shape and variable names can survive
-  without retaining `inferpymc_postprocessouts`.
-- Existing guard tests that standard RHIME `basic` and `paris` never call
-  `LegacyInversionOutput.from_modern_output(...)`.
+- Done in #383: old-format `hbmcmc_postprocessing` smoke tests cover the
+  dataset shape and variable names using modern `InversionOutput` inputs.
+- Done in #383: standard RHIME `basic` and `paris` dispatch tests assert the
+  output helpers receive modern `InversionOutput` directly.
 
 ## Follow-up operator work for #429
 

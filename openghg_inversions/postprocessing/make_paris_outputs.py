@@ -10,9 +10,13 @@ from openghg.util import timestamp_now  # pyright: ignore[reportPrivateImportUsa
 from openghg_inversions.config.version import code_version
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import (
-    PostprocessingInput,
-    make_inv_out_from_rhime_outputs,
-    as_postprocessing_output,
+    InversionOutput,
+    standard_domain,
+    standard_end_time,
+    standard_flux,
+    standard_obs_and_errors,
+    standard_species,
+    standard_start_time,
 )
 from openghg_inversions.postprocessing.make_outputs import (
     make_concentration_outputs,
@@ -134,18 +138,17 @@ def shift_measurement_time_to_midpoint(ds: xr.Dataset, period: str = "4h") -> xr
 
 
 def paris_concentration_outputs(
-    inv_out: PostprocessingInput, report_mode: bool = False, obs_avg_period: str = "4h"
+    inv_out: InversionOutput, report_mode: bool = False, obs_avg_period: str = "4h"
 ) -> xr.Dataset:
     """Create PARIS concentration outputs.
 
     TODO: add offset
     """
-    inv_out = as_postprocessing_output(inv_out)
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
 
-    obs_and_errs_raw = inv_out.get_obs_and_errors().unstack("nmeasure")
+    obs_and_errs_raw = standard_obs_and_errors(inv_out).unstack("nmeasure")
     existing_vars = set(obs_and_errs_raw.data_vars)
     rename_map = {
         "y_obs": "Yobs",
@@ -276,14 +279,13 @@ def _flux_interval_midpoints(
 
 
 def paris_flux_output(
-    inv_out: PostprocessingInput,
+    inv_out: InversionOutput,
     country_file: str | Path | None = None,
     time_point: Literal["start", "midpoint"] = "midpoint",
     report_mode: bool = False,
     inversion_grid: bool = True,
     flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
 ) -> xr.Dataset:
-    inv_out = as_postprocessing_output(inv_out)
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
 
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
@@ -296,7 +298,7 @@ def paris_flux_output(
         include_scale_factors=False,
     )
 
-    emissions_attrs = get_data_var_attrs(flux_template_path, inv_out.species)
+    emissions_attrs = get_data_var_attrs(flux_template_path, standard_species(inv_out))
     country_outs = make_country_outputs(
         inv_out,
         country_file=country_file,
@@ -308,7 +310,9 @@ def paris_flux_output(
     country_outs = country_outs * 1e-3  # convert g/yr to kg/yr
 
     # add country mask
-    countries = Countries.from_file(country_file=country_file, country_code="alpha3", domain=inv_out.domain)
+    countries = Countries.from_file(
+        country_file=country_file, country_code="alpha3", domain=standard_domain(inv_out)
+    )
 
     country_fraction = countries.matrix.as_numpy().rename("country_fraction")
 
@@ -345,8 +349,8 @@ def paris_flux_output(
 
     if time_point == "midpoint":
         flux_period = _flux_frequency_to_offset(flux_frequency)
-        inv_start = inv_out.start_time
-        inv_end = inv_out.end_time
+        inv_start = standard_start_time(inv_out)
+        inv_end = standard_end_time(inv_out)
 
         def time_func(ds):
             flux_times = pd.to_datetime(ds.time.values)
@@ -454,7 +458,7 @@ def infer_flux_frequency(flux: xr.DataArray) -> str:
 
 
 def make_paris_outputs(
-    inv_out: PostprocessingInput,
+    inv_out: InversionOutput,
     country_file: str | Path | None = None,
     time_point: Literal["start", "midpoint"] = "midpoint",
     report_mode: bool = False,
@@ -462,9 +466,8 @@ def make_paris_outputs(
     obs_avg_period: str = "4h",
     domain: str | None = None,
 ) -> tuple[xr.Dataset, xr.Dataset]:
-    inv_out = as_postprocessing_output(inv_out)
     # infer flux frequency
-    flux_frequency = infer_flux_frequency(inv_out.flux)
+    flux_frequency = infer_flux_frequency(standard_flux(inv_out))
     conc_outs = paris_concentration_outputs(inv_out, report_mode=report_mode, obs_avg_period=obs_avg_period)
     flux_outs = paris_flux_output(
         inv_out,
@@ -476,26 +479,3 @@ def make_paris_outputs(
     )
 
     return flux_outs, conc_outs
-
-
-def make_paris_flux_outputs_from_rhime(
-    rhime_outputs: xr.Dataset,
-    species: str,
-    domain: str,
-    country_file: str | Path | None = None,
-    time_point: Literal["start", "midpoint"] = "midpoint",
-    report_mode: bool = False,
-    inversion_grid: bool = True,
-    flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
-    start_date: str | None = None,
-    end_date: str | None = None,
-) -> xr.Dataset:
-    inv_out = make_inv_out_from_rhime_outputs(
-        rhime_outputs, species=species, domain=domain, start_date=start_date, end_date=end_date
-    )
-
-    flux_outputs = paris_flux_output(
-        inv_out, country_file, time_point, report_mode, inversion_grid, flux_frequency
-    )
-
-    return flux_outputs

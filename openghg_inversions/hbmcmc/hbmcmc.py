@@ -968,8 +968,7 @@ def rerun_output(input_file: str, outputname: str, outputpath: str, verbose: boo
         over the inversion period and so will not be identical to the
         original a priori flux, if it varies over the inversion period.
 
-    TODO: update this function to use `LegacyInversionOutput` (and possibly an ini file) as its inputs.
-    This may require updating `LegacyInversionOutput` to hold more model metadata.
+    TODO: replace this legacy-output replay path with an explicit modern rerun input.
     """
 
     def isFloat(string):

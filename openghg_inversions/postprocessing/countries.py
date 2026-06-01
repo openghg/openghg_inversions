@@ -17,7 +17,7 @@ from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 from openghg_inversions.utils import get_country_file_path
 from ._country_codes import CountryInfoList
 from ._basis_products import make_x_to_country_matrix
-from .inversion_output import PostprocessingInput, as_postprocessing_output
+from .inversion_output import InversionOutput, standard_species, standard_trace_dataset
 
 # type for xr.Dataset *or* xr.DataArray
 DataSetOrArray = TypeVar("DataSetOrArray", xr.DataArray, xr.Dataset)
@@ -367,7 +367,7 @@ class Countries:
 
     def get_x_to_country_mat(
         self,
-        inv_out: PostprocessingInput,
+        inv_out: InversionOutput,
         sparse: bool = False,
     ) -> xr.DataArray:
         """Construct a sparse matrix mapping from x sensitivities to country totals.
@@ -379,10 +379,7 @@ class Countries:
         Returns:
             xr.DataArray with coordinate dimensions ("country", "basis_region")
         """
-        original_inv_out = inv_out
-        inv_out = as_postprocessing_output(inv_out)
         return make_x_to_country_matrix(
-            original_inv_out,
             inv_out,
             country_matrix=self.matrix,
             area_grid=self.area_grid,
@@ -418,7 +415,7 @@ class Countries:
 
     def get_country_trace(
         self,
-        inv_out: PostprocessingInput,
+        inv_out: InversionOutput,
     ) -> xr.Dataset:
         """Calculate trace(s) for total country emissions.
 
@@ -432,11 +429,10 @@ class Countries:
         TODO: there is a "country unit" conversion in the old code, but it seems to always product
               1.0, based on how it is used in hbmcmc
         """
-        inv_out = as_postprocessing_output(inv_out)
         x_to_country_mat = self.get_x_to_country_mat(inv_out)
-        x_trace = inv_out.get_trace_dataset(var_names="x")
+        x_trace = standard_trace_dataset(inv_out, var_names="x")
 
-        species = inv_out.species
+        species = standard_species(inv_out)
 
         country_traces = Countries._get_country_trace(species, x_trace, x_to_country_mat)
 
