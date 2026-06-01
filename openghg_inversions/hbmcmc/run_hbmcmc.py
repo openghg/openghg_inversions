@@ -29,6 +29,7 @@ This file will need to be edited to add parameters for your MCMC run.
 import json
 import sys
 import argparse
+import inspect
 from pathlib import Path
 from shutil import copyfile
 from typing import Any
@@ -38,8 +39,9 @@ import openghg_inversions.hbmcmc.hbmcmc_output as output
 
 from openghg_inversions.config import config
 from openghg_inversions.config.paths import Paths
+from openghg_inversions.inversion_data import prepare_rhime_inputs
 from openghg_inversions.rhime import run_rhime
-from openghg_inversions.rhime.params import normalise_rhime_params
+from openghg_inversions.rhime.params import make_rhime_runner_setup, normalise_rhime_params
 
 
 _RUN_HBMCMC_RHIME_ALIASES = {
@@ -212,6 +214,15 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
     return normalise_rhime_params(translated)
 
 
+def validate_rhime_params(params: dict[str, Any]) -> None:
+    """Validate translated single-sector RHIME params before script side effects."""
+    make_rhime_runner_setup(
+        params=params,
+        multisector=False,
+        data_param_names=set(inspect.signature(prepare_rhime_inputs).parameters),
+    )
+
+
 def hbmcmc_extract_param(
     config_file: str | Path,
     mcmc_type: str | None = "fixed_basis",
@@ -344,6 +355,7 @@ def main(argv: list[str] | None = None) -> None:
     param = hbmcmc_extract_param(config_file, mcmc_type, **command_line_args)
 
     rhime_params = fixedbasis_params_to_rhime(param)
+    validate_rhime_params(rhime_params)
 
     output.copy_config_file(str(config_file), param=param, **command_line_args)
 

@@ -202,3 +202,26 @@ def test_run_hbmcmc_main_validates_before_copying_config(
                 '{"calculate_min_error": true}',
             ]
         )
+
+
+def test_run_hbmcmc_main_validates_rhime_params_before_copying_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Unsupported RHIME params fail before output directories or config copies are created."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+
+    def fail_copy_config_file(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("Config copy should happen only after RHIME validation.")
+
+    monkeypatch.setattr(run_hbmcmc.output, "copy_config_file", fail_copy_config_file)
+
+    with pytest.raises(ValueError, match="Unsupported RHIME parameter"):
+        run_hbmcmc.main(
+            [
+                "-c",
+                str(config_file),
+                "--kwargs",
+                '{"unknown_rhime_option": true}',
+            ]
+        )
