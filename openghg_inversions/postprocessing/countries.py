@@ -440,7 +440,7 @@ class Countries:
         Returns:
             xr.Dataset with coordinate dimensions ("country", "draw")
 
-        TODO: there is a "country unit" conversion in the old code, but it seems to always product
+        TODO: there is a "country unit" conversion in the old code, but it seems to always produce
               1.0, based on how it is used in hbmcmc
         """
         species = _require_country_species(inv_out)
