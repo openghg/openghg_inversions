@@ -410,7 +410,7 @@ def mhd_and_tac_fp_data(mhd_and_tac_ch4_data_args, default_bc_basis_directory):
         "domain": "EUROPE",
         "start_date": "2019-01-01",
         "emissions_name": ["total-ukghg-edgar7"],
-        "nbasis": 20,
+        "nbasis": 100,
         "use_bc": True,
         "basis_algorithm": "weighted",
         "bc_basis_case": "NESW",
