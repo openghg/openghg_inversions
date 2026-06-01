@@ -8,16 +8,19 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.hbmcmc.hbmcmc as hbmcmc_module
-from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
 from openghg_inversions.hbmcmc.hbmcmc import _resolve_output_format, fixedbasisMCMC
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
-from openghg_inversions.postprocessing.inversion_output import LegacyInversionOutput
-from openghg_inversions.postprocessing.legacy_outputs import make_legacy_hbmcmc_output
-from openghg_inversions.postprocessing.make_outputs import basic_output, make_country_outputs
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.make_outputs import (
+    basic_output,
+    make_country_outputs,
+    make_flux_outputs,
+    observation_inputs_for_outputs,
+)
 
 from openghg_inversions.postprocessing.make_paris_outputs import (
     _flux_interval_midpoints,
-    make_paris_flux_outputs_from_rhime,
     make_paris_outputs,
     paris_flux_output,
 )
@@ -25,7 +28,7 @@ from openghg_inversions.postprocessing.make_paris_outputs import (
 
 def _minimal_fixedbasis_inv_inputs() -> xr.Dataset:
     """Build the smallest fixedbasis inv_inputs dataset used by contract tests."""
-    return xr.Dataset(
+    ds = xr.Dataset(
         data_vars={
             "H": (("region", "nmeasure"), np.array([[0.25]], dtype="float64")),
             "mf": (("nmeasure",), np.array([1900.0], dtype="float64")),
@@ -39,9 +42,11 @@ def _minimal_fixedbasis_inv_inputs() -> xr.Dataset:
         coords={
             "region": np.array([0]),
             "nmeasure": np.array([0]),
+            "site": (("nmeasure",), np.array(["TAC"])),
             "time": (("nmeasure",), np.array(["2019-01-01T00:00:00"], dtype="datetime64[ns]")),
         },
     )
+    return ds.set_index(nmeasure=["site", "time"])
 
 
 def _minimal_fixedbasis_fp_data() -> dict:
@@ -73,6 +78,19 @@ def _minimal_fixedbasis_fp_data() -> dict:
     }
 
 
+def _minimal_fixedbasis_basis_functions() -> BasisFunctions:
+    """Build retained basis functions matching the minimal fixedbasis fixture."""
+    fp_data = _minimal_fixedbasis_fp_data()
+    basis = fp_data[".basis"] + 1
+    flux = fp_data[".flux"]["total"].flux
+    return BasisFunctions.from_flat_basis(
+        basis_flat=basis,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+        metadata={BASIS_ARTIFACT_SOURCE_ATTR: "test"},
+    )
+
+
 def _minimal_fixedbasis_prepared_data(**overrides):
     """Build a prepared-data object using the fixedbasis preparation contract exported by hbmcmc."""
     defaults = {
@@ -81,7 +99,7 @@ def _minimal_fixedbasis_prepared_data(**overrides):
         "inv_inputs": _minimal_fixedbasis_inv_inputs(),
         "sites": ["TAC"],
         "averaging_period": ["1H"],
-        "basis_objects": {"emissions": object()},
+        "basis_objects": {"emissions": _minimal_fixedbasis_basis_functions()},
     }
     defaults.update(overrides)
     return hbmcmc_module.FixedBasisPreparedData(**defaults)
@@ -110,14 +128,13 @@ def mcmc_args(tmp_path, tac_ch4_data_args, merged_data_dir, merged_data_file_nam
     return mcmc_args
 
 
-@pytest.fixture(scope="module")
-def inv_out(raw_data_path):
-    return LegacyInversionOutput.load(raw_data_path / "inversion_output.nc")
-
-
-@pytest.fixture(scope="module")
-def inv_out_eastasia(raw_data_path):
-    return LegacyInversionOutput.load(raw_data_path / "inversion_output_EASTASIA.nc")
+@pytest.fixture
+def inv_out(mcmc_args):
+    """Return a modern fixedbasis inversion output for postprocessing tests."""
+    mcmc_args["output_format"] = "inv_out"
+    result = fixedbasisMCMC(**mcmc_args)
+    assert isinstance(result, InversionOutput)
+    return result
 
 
 def test_fixedbasisMCMC_return_basis_objects_preserves_positional_output_format():
@@ -136,6 +153,7 @@ def test_fixedbasisMCMC_can_return_basis_objects_in_mcmc_args(mcmc_args):
 
     result = fixedbasisMCMC(**mcmc_args)
 
+    assert isinstance(result, dict)
     assert isinstance(result["basis_objects"]["emissions"], BasisFunctions)
     assert "basis_objects" not in result["inv_inputs"]
 
@@ -173,6 +191,7 @@ def test_fixedbasisMCMC_uses_fixedbasis_preparation_contract_for_mcmc_args(monke
     assert captured_kwargs["split_by_sectors"] is False
     assert captured_kwargs["return_basis_objects"] is True
     assert captured_kwargs["merged_data_only"] is False
+    assert isinstance(result, dict)
     assert result["inv_inputs"] is prepared.inv_inputs
     assert result["basis_objects"] is prepared.basis_objects
     assert "basis_objects" not in result["inv_inputs"]
@@ -254,12 +273,13 @@ def test_fixedbasisMCMC_hbmcmc_output_uses_legacy_postprocess_path(monkeypatch, 
     )
 
     assert captured_inferpymc_args["inv_inputs"] is prepared.inv_inputs
+    assert isinstance(result, xr.Dataset)
     assert result["xtrace_mean"].dims == ("nx",)
     assert result["xtrace_mean"].values.tolist() == [1.05]
 
 
-def test_fixedbasisMCMC_inv_out_returns_legacy_without_inferpymc_postprocess(monkeypatch, tmp_path):
-    """The fixedbasis inv_out path builds LegacyInversionOutput without legacy output postprocessing."""
+def test_fixedbasisMCMC_inv_out_returns_modern_output_without_legacy_adapter(monkeypatch, tmp_path):
+    """The fixedbasis inv_out path returns modern InversionOutput without legacy adapters."""
     prepared = _minimal_fixedbasis_prepared_data()
 
     def fake_prepare_fixedbasis_inversion_data(**kwargs):
@@ -286,7 +306,6 @@ def test_fixedbasisMCMC_inv_out_returns_legacy_without_inferpymc_postprocess(mon
     )
     monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc", fake_inferpymc)
     monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
-
     result = fixedbasisMCMC(
         species="ch4",
         sites=["TAC"],
@@ -300,7 +319,133 @@ def test_fixedbasisMCMC_inv_out_returns_legacy_without_inferpymc_postprocess(mon
         use_bc=False,
     )
 
-    assert isinstance(result, LegacyInversionOutput)
+    assert isinstance(result, InversionOutput)
+    assert result.inv_inputs is prepared.inv_inputs
+    assert result.basis_functions is prepared.basis_objects["emissions"]
+
+
+def test_fixedbasisMCMC_paris_postprocessing_receives_modern_output(monkeypatch, tmp_path):
+    """Fixedbasis PARIS postprocessing uses modern InversionOutput internally."""
+    prepared = _minimal_fixedbasis_prepared_data()
+    captured = {}
+
+    def fake_prepare_fixedbasis_inversion_data(**kwargs):
+        captured["prepare_kwargs"] = kwargs
+        return prepared
+
+    def fake_inferpymc(**kwargs):
+        return {
+            "trace": az.from_dict(
+                posterior={
+                    "x": np.ones((1, 1, 1)),
+                    "y": np.ones((1, 1, 1)),
+                    "epsilon": np.ones((1, 1, 1)),
+                },
+                prior={
+                    "x": np.ones((1, 1, 1)),
+                    "y": np.ones((1, 1, 1)),
+                    "epsilon": np.ones((1, 1, 1)),
+                },
+                coords={"nx": [0], "nmeasure": [0]},
+                dims={"x": ["nx"], "y": ["nmeasure"], "epsilon": ["nmeasure"]},
+            ),
+            "model": object(),
+            "xouts": np.array([[1.0]], dtype="float64"),
+        }
+
+    def fake_make_paris_outputs(inv_out, **kwargs):
+        captured["inv_out"] = inv_out
+        captured["paris_kwargs"] = kwargs
+        return (
+            xr.Dataset({"flux_total_posterior": ("time", np.array([1.0]))}, coords={"time": [0.0]}),
+            xr.Dataset({"Yobs": ("time", np.array([1900.0]))}, coords={"time": [0.0]}),
+        )
+
+    monkeypatch.setattr(
+        hbmcmc_module, "prepare_fixedbasis_inversion_data", fake_prepare_fixedbasis_inversion_data
+    )
+    monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc", fake_inferpymc)
+    monkeypatch.setattr(
+        "openghg_inversions.postprocessing.make_paris_outputs.make_paris_outputs",
+        fake_make_paris_outputs,
+    )
+    result = fixedbasisMCMC(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        outputpath=str(tmp_path),
+        outputname="paris-modern",
+        output_format="paris",
+        use_bc=False,
+    )
+
+    assert captured["prepare_kwargs"]["return_basis_objects"] is True
+    assert isinstance(captured["inv_out"], InversionOutput)
+    assert captured["inv_out"].basis_functions is prepared.basis_objects["emissions"]
+    assert isinstance(result, xr.Dataset)
+    assert "Yobs" in result
+
+
+def test_fixedbasisMCMC_basic_postprocessing_receives_modern_output(monkeypatch, tmp_path):
+    """Fixedbasis basic postprocessing uses modern InversionOutput internally."""
+    prepared = _minimal_fixedbasis_prepared_data()
+    captured = {}
+
+    def fake_prepare_fixedbasis_inversion_data(**kwargs):
+        captured["prepare_kwargs"] = kwargs
+        return prepared
+
+    def fake_inferpymc(**kwargs):
+        return {
+            "trace": az.from_dict(
+                posterior={
+                    "x": np.ones((1, 1, 1)),
+                    "y": np.ones((1, 1, 1)),
+                    "epsilon": np.ones((1, 1, 1)),
+                },
+                prior={
+                    "x": np.ones((1, 1, 1)),
+                    "y": np.ones((1, 1, 1)),
+                    "epsilon": np.ones((1, 1, 1)),
+                },
+                coords={"nx": [0], "nmeasure": [0]},
+                dims={"x": ["nx"], "y": ["nmeasure"], "epsilon": ["nmeasure"]},
+            ),
+            "model": object(),
+            "xouts": np.array([[1.0]], dtype="float64"),
+        }
+
+    def fake_basic_output(inv_out, country_file=None):
+        captured["inv_out"] = inv_out
+        captured["country_file"] = country_file
+        return xr.Dataset({"ok": ((), 1)})
+
+    monkeypatch.setattr(
+        hbmcmc_module, "prepare_fixedbasis_inversion_data", fake_prepare_fixedbasis_inversion_data
+    )
+    monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc", fake_inferpymc)
+    monkeypatch.setattr("openghg_inversions.postprocessing.make_outputs.basic_output", fake_basic_output)
+
+    result = fixedbasisMCMC(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        outputpath=str(tmp_path),
+        outputname="basic-modern",
+        output_format="basic",
+        use_bc=False,
+    )
+
+    assert captured["prepare_kwargs"]["return_basis_objects"] is True
+    assert isinstance(captured["inv_out"], InversionOutput)
+    assert isinstance(result, xr.Dataset)
+    assert result["ok"].item() == 1
 
 
 @pytest.mark.parametrize("missing_key", [".basis", ".flux"])
@@ -440,31 +585,9 @@ def test_paris_flux_output_timestamp(inv_out, europe_country_file):
 
     # time is stored as days since Unix epoch; convert back for comparison
     actual = pd.Timestamp("1970-01-01") + pd.Timedelta(days=float(flux_outs.time.values[0]))
-    expected = inv_out.start_time + (inv_out.end_time - inv_out.start_time) / 2
+    expected = inv_out.period_midpoint
 
     assert actual == expected
-
-
-def test_rhime_flux_reprocessing(europe_country_file, raw_data_path):
-    """Check that we can re-run PARIS flux outputs on standard RHIME outputs."""
-    rhime_outs = xr.open_dataset(raw_data_path / "standard_rhime_outs.nc")
-    paris_outs = make_paris_flux_outputs_from_rhime(
-        rhime_outs, species="ch4", domain="europe", country_file=europe_country_file
-    )
-
-    assert "flux_total_prior" in paris_outs
-    assert "flux_total_posterior" in paris_outs
-
-
-def test_rhime_flux_reprocessing_eastasia(eastasia_country_file, raw_data_path):
-    """Check that we can re-run PARIS flux outputs on standard RHIME outputs from EASTASIA."""
-    rhime_outs = xr.open_dataset(raw_data_path / "standard_rhime_outs_EASTASIA.nc")
-    paris_outs = make_paris_flux_outputs_from_rhime(
-        rhime_outs, species="hfc23", domain="eastasia", country_file=eastasia_country_file
-    )
-
-    assert "flux_total_prior" in paris_outs
-    assert "flux_total_posterior" in paris_outs
 
 
 def test_basic_outputs(inv_out, europe_country_file):
@@ -487,24 +610,17 @@ def test_basic_outputs(inv_out, europe_country_file):
             assert cv + "_" + stat in outs
 
 
-def test_basic_outputs_eastasia(inv_out_eastasia, eastasia_country_file):
-    """Test creation of basic output for EASTASIA domain.
+def test_fixedbasis_flux_and_country_outputs_use_modern_basis_functions(inv_out, europe_country_file):
+    """Fixedbasis postprocessing reconstructs products from retained basis functions."""
+    flux_outs = make_flux_outputs(
+        inv_out,
+        include_scale_factors=False,
+        report_flux_on_inversion_grid=False,
+    )
+    country_outs = make_country_outputs(inv_out, country_file=europe_country_file, country_regions="paris")
 
-    The default stats calculated are "mean" and "quantile".
-    Check that these are all present.
-    """
-    outs = basic_output(inv_out_eastasia, country_file=eastasia_country_file)
-
-    conc_vars = ["y_posterior_predictive", "y_prior_predictive"]
-    for x in ["flux", "scaling", "country", "mu_bc"]:
-        for y in ["prior", "posterior"]:
-            conc_vars.append(x + "_" + y)
-
-    stats = ["mean", "quantile"]
-
-    for cv in conc_vars:
-        for stat in stats:
-            assert cv + "_" + stat in outs
+    assert "flux_posterior_mean" in flux_outs
+    assert "country_posterior_mean" in country_outs
 
 
 @pytest.mark.parametrize("offset", [False, True])
@@ -515,8 +631,6 @@ def test_make_paris_outputs(inv_out, europe_country_file, tmpdir, offset):
         # fake an offset trace
         inv_out.trace.posterior["offset"] = xr.ones_like(inv_out.trace.posterior["mu_bc"])
         inv_out.trace.prior["offset"] = xr.ones_like(inv_out.trace.prior["mu_bc"])
-        inv_out.trace_ds["offset_posterior"] = xr.ones_like(inv_out.trace_ds.mu_bc_posterior)
-        inv_out.trace_ds["offset_prior"] = xr.ones_like(inv_out.trace_ds.mu_bc_prior)
 
     print(inv_out.trace.posterior)
 
@@ -538,10 +652,13 @@ def test_save_inversion_output(mcmc_args, tmpdir):
     mcmc_args["output_format"] = "inv_out"
     inv_out = fixedbasisMCMC(**mcmc_args)
 
-    assert isinstance(inv_out, LegacyInversionOutput)
-    inv_out_reloaded = LegacyInversionOutput.load(tmpdir / "inv_out.nc")
+    assert isinstance(inv_out, InversionOutput)
+    inv_out_reloaded = InversionOutput.load(tmpdir / "inv_out.nc")
 
-    assert inv_out == inv_out_reloaded
+    assert inv_out_reloaded.species == inv_out.species
+    assert inv_out_reloaded.domain == inv_out.domain
+    assert isinstance(inv_out_reloaded.basis_functions, BasisFunctions)
+    xr.testing.assert_identical(inv_out_reloaded.inv_inputs, inv_out.inv_inputs)
 
 
 def test_country_outputs_lognormal_reparam_conflict(mcmc_args, europe_country_file):
@@ -551,7 +668,8 @@ def test_country_outputs_lognormal_reparam_conflict(mcmc_args, europe_country_fi
     mcmc_args["xprior"] = {"pdf": "lognormal", "mu": 1.0, "sigma": 1.0}
 
     inv_out = fixedbasisMCMC(**mcmc_args)
-    trace_ds = inv_out.get_trace_dataset(var_names="x")
+    assert isinstance(inv_out, InversionOutput)
+    trace_ds = inv_out.trace_dataset(var_roles="flux_scale")
     assert "x_prior" in trace_ds
     assert "x_posterior" in trace_ds
     assert "x_latent_prior" not in trace_ds
@@ -568,6 +686,7 @@ def test_hbmcmc_postprocessing_saves_legacy_output(mcmc_args, tmpdir):
     mcmc_args["outputpath"] = str(tmpdir)
 
     outputs = fixedbasisMCMC(**mcmc_args)
+    assert isinstance(outputs, xr.Dataset)
     output_file = define_output_filename(
         outputpath=str(tmpdir),
         species=mcmc_args["species"],
@@ -603,6 +722,8 @@ def test_paris_postprocessing_compatibility_matches_paris_output_format(mcmc_arg
     with pytest.warns(UserWarning, match="Use `output_format = 'paris'` instead"):
         compat = fixedbasisMCMC(**compat_args)
 
+    assert isinstance(explicit, xr.Dataset)
+    assert isinstance(compat, xr.Dataset)
     assert set(explicit.data_vars) == set(compat.data_vars)
     assert explicit.sizes == compat.sizes
     assert explicit["Yobs"].dims == compat["Yobs"].dims
@@ -615,6 +736,7 @@ def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(mcmc_arg
     mcmc_args["outputpath"] = str(tmpdir)
 
     outputs = fixedbasisMCMC(**mcmc_args)
+    assert isinstance(outputs, xr.Dataset)
 
     expected_vars = [
         "Yobs",
@@ -650,53 +772,14 @@ def test_inv_out_and_trace_outputs_preserve_downstream_dims_and_custom_paths(mcm
 
     assert trace_path.exists()
     assert inv_out_path.exists()
-    assert inv_out.obs.dims == ("nmeasure",)
-    assert inv_out.obs_err.dims == ("nmeasure",)
-    assert inv_out.trace_ds["x_posterior"].dims == ("draw", "nx")
-    assert "site" in inv_out.obs.coords
-    assert "time" in inv_out.obs.coords
+    assert isinstance(inv_out, InversionOutput)
+    assert isinstance(inv_out.basis_functions, BasisFunctions)
+    obs_inputs = observation_inputs_for_outputs(inv_out)
+    assert obs_inputs["y_obs"].dims == ("nmeasure",)
+    assert obs_inputs["y_obs_error"].dims == ("nmeasure",)
+    assert inv_out.trace_dataset(var_roles="flux_scale")["x_posterior"].dims == ("draw", "region")
+    assert "site" in obs_inputs.coords
+    assert "time" in obs_inputs.coords
     assert "time" not in inv_out.flux.dims
     if "flux_time" in inv_out.flux.coords:
         assert "flux_time" in inv_out.flux.dims
-
-
-def test_hbmcmc_postprocessing_output_matches_legacy_core_fields(raw_data_path, europe_country_file):
-    """Regression test for deterministic prior concentration terms in legacy-compatible output."""
-    with xr.open_dataset(raw_data_path / "standard_rhime_outs.nc") as legacy:
-        inv_out = LegacyInversionOutput.load(raw_data_path / "inversion_output.nc")
-        compat = make_legacy_hbmcmc_output(
-            inv_out=inv_out,
-            mcmc_results={
-                "xouts": legacy["xtrace"],
-                "sigouts": legacy["sigtrace"],
-                "bcouts": legacy["bctrace"],
-            },
-            sigma_freq_index=legacy["sigmafreqindex"].values,
-            Hx=legacy["xsensitivity"].values.T,
-            Hbc=legacy["bcsensitivity"].values.T,
-            country_file=europe_country_file,
-            use_bc=True,
-        )
-
-        assert (compat["Yapriori"].values == legacy["Yapriori"].values).all()
-        assert (compat["YaprioriBC"].values == legacy["YaprioriBC"].values).all()
-        assert (compat["Yobs"].values == legacy["Yobs"].values).all()
-
-        xr.testing.assert_allclose(compat["fluxapriori"], legacy["fluxapriori"], rtol=1e-6, atol=1e-9)
-
-        assert compat["Yapriori"].dims == legacy["Yapriori"].dims == ("nmeasure",)
-        assert compat["YaprioriBC"].dims == legacy["YaprioriBC"].dims == ("nmeasure",)
-        assert compat["Yobs"].dims == legacy["Yobs"].dims == ("nmeasure",)
-        assert compat["Ymod68"].dims == legacy["Ymod68"].dims == ("nmeasure", "nUI")
-        assert compat["country68"].dims == legacy["country68"].dims == ("countrynames", "nUI")
-        assert compat["countrymean"].dims == legacy["countrymean"].dims == ("countrynames",)
-        assert compat.sizes["nmeasure"] == legacy.sizes["nmeasure"]
-        assert compat["Yobs"].sizes["nmeasure"] == compat["Yapriori"].sizes["nmeasure"]
-        assert compat["Yapriori"].attrs["units"] == legacy["Yapriori"].attrs["units"]
-        assert compat["YaprioriBC"].attrs["units"] == legacy["YaprioriBC"].attrs["units"]
-        assert compat["Yobs"].attrs["units"] == legacy["Yobs"].attrs["units"]
-        assert "UInum" in compat.coords
-        assert "countrynames" in compat.coords
-
-        for dv in compat.data_vars:
-            assert "longname" in compat[dv].attrs

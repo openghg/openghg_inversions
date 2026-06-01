@@ -26,6 +26,7 @@ from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename  # no
 from openghg_inversions.config.version import code_version  # noqa: E402
 from openghg_inversions.models import build_rhime_model  # noqa: E402
 from openghg_inversions.models.components import resolve_model_variable  # noqa: E402
+from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords  # noqa: E402
 from openghg_inversions.models.priors import PriorArgs  # noqa: E402
 from openghg_inversions.inversion_inputs import _compact_integer_index  # noqa: E402
 
@@ -254,6 +255,9 @@ def sample(
         sample_prior_predictive=sample_prior_predictive,
         sample_posterior_predictive=sample_posterior_predictive,
     )
+    registry = get_coord_registry(model)
+    if registry is not None:
+        burned_trace = restore_inferencedata_coords(burned_trace, registry)
 
     nuts_sampler = sample_kwargs.get("nuts_sampler", "pymc")
     if nuts_sampler != "pymc" and sample_kwargs.get("compute_convergence_checks", True):

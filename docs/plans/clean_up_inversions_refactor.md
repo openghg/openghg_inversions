@@ -1,40 +1,41 @@
-# Clean Up Inversions Refactor for PR #434 / Issue #400
+# Clean Up Inversions Refactor
 
 This note tracks the near-term refactor sequence for moving from the legacy
-`fixedbasisMCMC` path to the modern `run_rhime` pipeline while keeping each PR
-scoped enough to review.
+`fixedbasisMCMC` path to the modern `run_rhime` pipeline.
 
-## Goal for PR #434 / Issue #400
+## Goal
 
 Switch over from `fixedbasisMCMC` to `run_rhime` as quickly as possible.
 Maintaining both paths is slowing development of the modern inversion pipeline,
 and `fixedbasisMCMC` is now radically different from the currently released
 version, which partially negates the benefit of keeping it as the main route.
 
-## Deferred issue sequence
+## Issue sequence
 
-- #400: keep for specs/terminology. `RhimePreparedInputs` should consume these
+- [x] #431:  move `RhimePreparedInputs` toward consuming RHIME specs, keeping `fp_data`,
+  `fp_all`, flat `.basis`, materialised basis arrays, and optional basis-object
+   side channels out of the modern contract.
+- [x] #400: keep for specs/terminology. `RhimePreparedInputs` should consume these
   specs later, but changing that prepared-input contract is not part of #400.
-- #383: revise toward "postprocessing consumes `BasisFunctions`, no `fp_data`
-  in modern path." Legacy reconstruction from `fp_data[".basis"]` should remain
-  only in compatibility adapters.
-- #401: use to separate `LegacyInversionOutput` from modern `InversionOutput`.
-- #435: migrate postprocessing consumers from `LegacyInversionOutput` to the
+- [x] #401: use to separate `LegacyInversionOutput` from modern `InversionOutput`.
+- [x] #435: migrate postprocessing consumers from `LegacyInversionOutput` to the
   modern `InversionOutput`; opened as the follow-up from #401.
-- #405: complete sector-aware RHIME outputs and PARIS-compatible total outputs.
+- [ ] #383: revise toward "postprocessing consumes `BasisFunctions`, no `fp_data`
+  in modern path." Standard postprocessing should consume modern
+  `InversionOutput` through product-neutral semantic accessors; old-format
+  HBMCMC output may remain only as a dataset formatter over modern
+  postprocessing results.
+- [ ] #429: keep as operator-backed output/postprocessing, but make it depend on
+  the preparation split.
+- [ ] #416: should become active sooner; classify/deprecate `fixedbasisMCMC`,
+  `inferpymc`, `inferpymc_postprocessouts`, and hbmcmc helpers.
+- [ ] #415: serializable RHIME bundle should serialize `RhimePreparedInputs`
+  artifacts, not `fp_data`.
+- [ ] #405: complete sector-aware RHIME outputs and PARIS-compatible total outputs.
   PR #436 makes multisector runs carry modern `InversionOutput`, but sector
   diagnostics and PARIS totals are still transitional.
-- #429: keep as operator-backed output/postprocessing, but make it depend on
-  the preparation split.
-- #416: should become active sooner; classify/deprecate `fixedbasisMCMC`,
-  `inferpymc`, `inferpymc_postprocessouts`, and hbmcmc helpers.
-- #415: serializable RHIME bundle should serialize `RhimePreparedInputs`
-  artifacts, not `fp_data`.
 
-Prep split note: #431 was closed by #433. That dependency moved
-`RhimePreparedInputs` toward consuming RHIME specs and keeping `fp_data`,
-`fp_all`, flat `.basis`, materialised basis arrays, and optional basis-object
-side channels out of the modern contract.
+# Issue #400 model specs and terminology
 
 ## Completed in PR #434 / Issue #400
 
@@ -93,27 +94,7 @@ side channels out of the modern contract.
   Keep the public spec dataclasses as stdlib dataclasses, and reserve schema
   validation for the later YAML/semantic-IR work.
 
-## Deferred sampler extensions
-
-PR #434 / Issue #400 should keep `RhimeSampler` focused on the current PyMC
-MCMC path: `pm.sample`, post-sampling burn slicing, and optional prior/posterior
-predictive groups. Follow-up sampler variants can add quick MAP checks,
-prior-predictive-only validation runs, variational inference, and custom PyMC
-step methods without reintroducing runner-level sampling branches.
-
-## Deferred Issue #431 data-preparation spec
-
-PR #434 / Issue #400 should not introduce `RhimeDataSpec`. The current
-`prepare_rhime_inputs` signature still mixes data gathering, filtering, basis
-function construction, and `make_inv_inputs` concerns, so a one-piece data spec
-would mostly mirror the INI template rather than clarify the architecture.
-
-#431 was closed by #433. Any remaining preparation split should break
-preparation into smaller contracts for data gathering, filtering, basis
-functions, and inversion input construction. A future `RhimeDataSpec` or
-`RequiredDataPlan` can then be introduced at the right boundary, with
-`sigma_freq`, `bc_freq`, and related model-input concerns moving closer to the
-model components that consume them.
+# Issue #401 Introduce `LegacyInversionOutput` and keep `InversionOutput` modern
 
 ## Completed in PR #436 / Issue #401
 
@@ -189,7 +170,7 @@ model components that consume them.
   malformed. PR #436 now decodes bytes and skips malformed records safely
   before applying `set_index`.
 
-## Issue #435 postprocessing consumer migration target
+# Issue #435 postprocessing consumer migration target
 
 #435 should move `make_outputs`, `make_paris_outputs`, `countries`,
 `diagnostics`, and `legacy_outputs` off `LegacyInversionOutput` where possible.
@@ -200,7 +181,11 @@ This work links #401, #383, #429, #416, and #381. It should remove the RHIME
 `basic`/`paris` dependency on `LegacyInversionOutput.from_modern_output(...)`
 rather than expanding that adapter.
 
-## Completed in Current PR / Issue #435
+Note: #383 immediately removes the temporary #435 standard view/protocol
+approach. Keep the #435 notes as historical context, but use the #383 section
+as the current postprocessing contract.
+
+## Completed in PR #437 / Issue #435
 
 - 2026-05-31: #435 / current PR added a transitional
   `StandardPostprocessingOutput` contract and `ModernPostprocessingOutput`
@@ -226,7 +211,7 @@ rather than expanding that adapter.
   compatibility arrays and still requires legacy `mcmc_results`, sigma
   indexes, and sensitivity matrices.
 
-## Recorded decisions for Current PR / Issue #435
+## Recorded decisions for PR #437 / Issue #435
 
 - Use a narrow standard single-sector helper/view layer rather than making
   modern `InversionOutput` mimic every legacy attribute or splitting each
@@ -251,7 +236,7 @@ rather than expanding that adapter.
   `hbmcmc/run_hbmcmc.py` so old script invocations and `.ini` config files
   translate to `run_rhime`, then deprecate and remove the fixedbasis path.
 
-## Recommended next PR after Current PR / Issue #435
+## Recommended next PR after PR #437 / Issue #435
 
 #435 defines the postprocessing consumer contract around modern
 `InversionOutput` and removes the standard RHIME `basic`/`paris` adapter
@@ -264,6 +249,96 @@ legacy basis reconstruction as fallback. #429 should then make the
 operator-backed path primary and define the deprecation policy for legacy
 basis reconstruction.
 
+# Issue #383 Use retained basis operators in postprocessing
+
+Correction to the #435/#437 transition: do not keep a standard helper/view
+layer. The modern postprocessing contract is `InversionOutput` plus retained
+`BasisFunctions`; product-specific modules own output names, legacy-format
+renames, and PARIS formatting.
+
+## Completed in Current PR / Issue #383
+
+- 2026-05-31: #383 / current PR added private operator-backed postprocessing
+  helpers for standard single-sector flux and country products.
+- 2026-05-31: #383 / current PR routed modern `make_flux_outputs`, country
+  totals, and PARIS flux outputs through retained `BasisFunctions` /
+  `BasisOperator` data when a modern `InversionOutput` is supplied.
+- 2026-06-01: #383 / current PR moved fixedbasis `basic`, `paris`,
+  `hbmcmc_postprocessing`, `inv_out`, and saved inversion-output handling onto
+  modern `InversionOutput` backed by retained `BasisFunctions`, while keeping
+  the true legacy `hbmcmc` formatter isolated.
+- 2026-06-01: #383 / current PR removed the transitional
+  `StandardPostprocessingOutput` / `PostprocessingInput` /
+  `ModernPostprocessingOutput` layer and did not replace it with public
+  `standard_*` free functions. Product helpers consume modern
+  `InversionOutput` directly.
+- 2026-06-01: #383 / current PR added product-neutral `InversionOutput`
+  semantics for current postprocessing needs: period metadata, prior flux,
+  site names, variable-role lookup, and canonical `input_dataset(...)`,
+  `trace_dataset(...)`, and `model_data(...)` accessors. Product modules own
+  their own single-sector/multisector validation.
+- 2026-06-01: #383 / current PR removed `LegacyInversionOutput`,
+  `make_inv_out_for_fixed_basis_mcmc(...)`, and the old RHIME-output
+  reprocessing helpers. The remaining old-format `hbmcmc_postprocessing`
+  product is a formatter over modern `InversionOutput`, not a separate
+  inversion-output carrier.
+- 2026-06-01: #383 / current PR made fixedbasis sampling restore model-managed
+  coordinates onto `InferenceData` and canonicalize fixedbasis trace dims back
+  to the modern `BasisFunctions.operator.meta.state_dim` before constructing
+  `InversionOutput`.
+- 2026-06-01: #383 / current PR added a module-level design note to
+  `postprocessing/inversion_output.py` documenting that `InversionOutput` is a
+  modern product-neutral carrier, product formatters own output schemas and
+  capability checks, variable roles are a temporary bridge, and generic
+  DataTree/MultiIndex serialization helpers should move to utilities later.
+
+## Recorded decisions for Current PR / Issue #383
+
+- Keep operator-backed flux/country reconstruction as internal postprocessing
+  implementation detail for now. The public input is the modern
+  `InversionOutput`; do not add legacy convenience properties, legacy adapters,
+  or formatter methods to `InversionOutput` itself.
+- Keep `InversionOutput` methods product-neutral. It may expose modern
+  semantics that the pipeline genuinely owns, such as canonical input/model
+  datasets and variable-role lookup. It should not expose PARIS names,
+  `Yobs`-style names, `basisfunctions`, or other product-specific output
+  schema details.
+- Keep product capability checks outside `InversionOutput`. Current
+  single-sector-only products (`basic`, PARIS, countries, and the old-format
+  formatter) should reject multisector inputs in their own modules. Do not add
+  an `InversionOutput.require_single_sector(...)` method.
+- Keep output-name mapping inside product modules: `make_outputs.py` maps to
+  `y_obs`, `model_error`, `Hx`, and `basis`; `make_paris_outputs.py` maps to
+  PARIS names and attrs; `legacy_outputs.py` maps to `inferpymc_postprocessouts`
+  style names.
+- Do not reconstruct site/time coordinates in postprocessing. Model sampling
+  and fixedbasis construction must restore valid `nmeasure=(site, time)`
+  coordinates before product helpers run, and products should fail clearly if
+  those coordinates are missing.
+- Treat saved legacy inversion-output artifacts and old RHIME-output
+  reprocessing as disposable debugging compatibility. New postprocessing starts
+  from modern `InversionOutput` or reruns the model to create one.
+- Modern RHIME `basic`, fixedbasis `basic`, fixedbasis `paris`, countries, and
+  PARIS flux/country paths must use retained `BasisFunctions` rather than
+  modern-to-legacy adapters or `fp_data`.
+- Use `BasisFunctions.flat_basis()` only in output formatters that still need
+  to report a flat `basisfunctions`/`basis` variable. Do not make flat basis
+  materialisation part of the modern processing path.
+- Treat the current `model_metadata["variable_roles"]` mapping as a narrow
+  bridge for model-specific names. Follow-up #444 should assess whether
+  `cf_xarray` standard-name selection is enough, whether a small custom xarray
+  accessor for inversion roles is clearer, and how to support standard-name or
+  role overrides without forcing ad hoc renames through product code.
+- Keep object-specific serialization on `to_datatree()` style methods.
+  Generic helpers for DataTree saves/loads and xarray MultiIndex
+  expansion/restoration should move to top-level utilities once the
+  `InversionOutput` and `BasisFunctions` serialization surface stabilizes.
+- Leave sector-aware PARIS totals and multisector diagnostics to #405, and
+  leave default/deprecation policy for operator-backed reconstruction to #429.
+- Defer a general `BasisOperator.project(...)` / weighted-reduction API to
+  #429. Current country and area-weighted products may use the existing sparse
+  helpers internally until that operator API is designed.
+
 Track multisector output work under #405. It can proceed after the modern
 postprocessing input contract is clearer, or in parallel if it stays limited to
 sector diagnostics and PARIS-compatible total outputs.
@@ -274,6 +349,80 @@ Track fixedbasis removal under #416. The first slice should be a
 raising targeted errors for fixedbasis-only output formats. Once old scripts
 can run through `run_rhime`, remove `fixedbasisMCMC` and then remove
 `inferpymc_postprocessouts`.
+
+# Issue #416 Fixedbasis transition and legacy adapter removal
+
+Target this transition for the immediate cleanup window starting 2026-06-01.
+The current priority is to complete the move to the modern path before
+multisector postprocessing, because keeping the changing fixedbasis pathway and
+the modern pathway side by side is obscuring the architecture and slowing
+review.
+
+## Required short-term behavior
+
+- `fixedbasisMCMC` may remain as a compatibility entrypoint while #416 is
+  active, but it should keep only the operational contract that current users
+  need: same inputs in, successful run, and matching `output_format="paris"`
+  products.
+- Saved legacy inversion-output compatibility and direct legacy carrier return
+  behavior are not strategic compatibility goals. #383 removes that carrier
+  once fixedbasis postprocessing can construct modern `InversionOutput`.
+- `inferpymc_postprocessouts` should not remain the compatibility target.
+  `postprocessing/legacy_outputs.py` exists so the old-format dataset can be
+  produced from the modern postprocessing path by renaming variables and
+  arranging dimensions, then `inferpymc_postprocessouts` can be deleted.
+
+## Preferred #416 implementation direction
+
+- Done in #383: pipe retained `BasisFunctions` through `FixedBasisPreparedData`
+  for fixedbasis output modes after data preparation, construct modern
+  `InversionOutput` from canonical `inv_inputs`, retained
+  `basis_objects["emissions"]`, the `InferenceData` trace, and metadata, and
+  route fixedbasis `basic`, `paris`, `hbmcmc_postprocessing`, `inv_out`, and
+  saved inversion output through that modern carrier.
+- Keep any old-format `hbmcmc_postprocessing` output as a formatter over modern
+  postprocessing results, not as a reason to keep the old inversion output
+  carrier.
+- Done in #383: remove the transitional postprocessing protocol/view layer and
+  require standard postprocessing helpers to consume `InversionOutput` directly.
+
+## Aggressive cleanup after #416 lands and passes parity tests
+
+- Done in #383: remove `LegacyInversionOutput.from_modern_output(...)`,
+  `make_inv_out_for_fixed_basis_mcmc(...)`, `make_inv_out_from_rhime_outputs(...)`,
+  and `make_paris_flux_outputs_from_rhime(...)`.
+- Done in #383: remove flat-basis fallback branches from modern flux/country
+  postprocessing helpers.
+- Remove `inferpymc_postprocessouts` after old-format output parity is covered
+  by `postprocessing/legacy_outputs.py` using modern postprocessing inputs.
+- Remove `fixedbasisMCMC` once the #416 compatibility shim can run current
+  fixedbasis-style scripts through `run_rhime`.
+
+## Tests needed before removal
+
+- A focused fixedbasis compatibility test that proves the same fixedbasis input
+  still runs and produces PARIS flux/concentration outputs matching the current
+  behavior.
+- Done in #383: guard tests prove fixedbasis `basic`, `paris`, `inv_out`, and
+  saved inversion-output paths construct/pass modern `InversionOutput`, not
+  `LegacyInversionOutput`.
+- Done in #383: old-format `hbmcmc_postprocessing` smoke tests cover the
+  dataset shape and variable names using modern `InversionOutput` inputs.
+- Done in #383: standard RHIME `basic` and `paris` dispatch tests assert the
+  output helpers receive modern `InversionOutput` directly.
+
+## Follow-up operator work for #429
+
+- Consider adding a `BasisOperator.project(...)` or similar reduction API for
+  grid-to-state products, based on the prototype
+  `~/Documents/inversions/src/inversions/basis_functions.py`. The prototype's
+  `project()` method covers weighted and normalised reductions that would make
+  postprocessing country totals, region means, and uncertainty reductions less
+  dependent on ad hoc `sparse_xr_dot` calls.
+- Keep this as #429 operator cleanup unless it is needed to remove fixedbasis
+  legacy carriers in #416.
+
+# Deferred 
 
 ## Deferred SemanticModel plan
 
@@ -303,12 +452,33 @@ abstract model-spec contract. That later dependency inversion is the right
 place for model builders to depend on abstract specs rather than RHIME-specific
 dataclasses.
 
+## Deferred sampler extensions
+
+PR #434 / Issue #400 should keep `RhimeSampler` focused on the current PyMC
+MCMC path: `pm.sample`, post-sampling burn slicing, and optional prior/posterior
+predictive groups. Follow-up sampler variants can add quick MAP checks,
+prior-predictive-only validation runs, variational inference, and custom PyMC
+step methods without reintroducing runner-level sampling branches.
+
+## Deferred Issue #431 data-preparation spec
+
+PR #434 / Issue #400 should not introduce `RhimeDataSpec`. The current
+`prepare_rhime_inputs` signature still mixes data gathering, filtering, basis
+function construction, and `make_inv_inputs` concerns, so a one-piece data spec
+would mostly mirror the INI template rather than clarify the architecture.
+
+#431 was closed by #433. Any remaining preparation split should break
+preparation into smaller contracts for data gathering, filtering, basis
+functions, and inversion input construction. A future `RhimeDataSpec` or
+`RequiredDataPlan` can then be introduced at the right boundary, with
+`sigma_freq`, `bc_freq`, and related model-input concerns moving closer to the
+model components that consume them.
+
 ## Deferred Issue #383 / Issue #429 output boundary
 
-- #383 remains the boundary for modern postprocessing consuming retained
-  `BasisFunctions` directly. Until that lands, runner-local basis/flux
-  materialisation is a temporary adapter for the current `InversionOutput`
-  boundary.
+- #383 landed the first modern postprocessing slice that consumes retained
+  `BasisFunctions` for standard flux/country products while preserving flat
+  legacy fallback.
 - #429 remains the boundary for operator-backed output and postprocessing.
-  PR #434 should only mark runner-local basis materialisation and multisector
-  output diagnostics as transitional, not move the output contract.
+  It should make the operator-backed path primary, add durable reconstruction
+  metadata, and define the deprecation policy for legacy basis reconstruction.

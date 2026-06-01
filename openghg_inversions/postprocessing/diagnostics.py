@@ -6,7 +6,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.postprocessing.inversion_output import PostprocessingInput, as_postprocessing_output
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing.make_outputs import observation_inputs_for_outputs
 from openghg_inversions.postprocessing.utils import add_suffix, get_parameters
 
 Diagnostic = namedtuple("Diagnostic", ["func", "params"])
@@ -30,7 +31,7 @@ def register_diagnostic(diagnostic: Callable) -> Callable:
 
 @register_diagnostic
 @add_suffix("trace")
-def summary(inv_out: PostprocessingInput) -> xr.Dataset:
+def summary(inv_out: InversionOutput) -> xr.Dataset:
     """Return diagnostics summary computed by arviz.
 
     Diagnostics reported:
@@ -103,8 +104,21 @@ def _r2_by_site(ds: xr.Dataset, report_prior: bool = False) -> xr.Dataset:
     return ds.groupby("site").map(func).to_dataset("new").rename({0: "r2_bayes", 1: "r2_bayes_std"})
 
 
+def _concentration_trace(inv_out: InversionOutput) -> xr.Dataset:
+    """Return concentration traces using diagnostic product names."""
+    trace = inv_out.trace_dataset(var_roles="concentration")
+    concentration_name = inv_out.variable_name("concentration")
+    return trace.rename(
+        {
+            data_var: str(data_var).replace(f"{concentration_name}_", "y_", 1)
+            for data_var in trace.data_vars
+            if str(data_var).startswith(f"{concentration_name}_")
+        }
+    )
+
+
 @register_diagnostic
-def bayes_r2_by_site(inv_out: PostprocessingInput, report_prior: bool = False) -> xr.Dataset:
+def bayes_r2_by_site(inv_out: InversionOutput, report_prior: bool = False) -> xr.Dataset:
     """Compute Bayesian R2 scores grouped by site.
 
     Scores are computed for posterior predictive traces (compared
@@ -123,9 +137,8 @@ def bayes_r2_by_site(inv_out: PostprocessingInput, report_prior: bool = False) -
             with uncertainties.
 
     """
-    inv_out = as_postprocessing_output(inv_out)
-    y_true = inv_out.obs_inputs["y_obs"].unstack("nmeasure")
-    y_pred = inv_out.get_trace_dataset(var_names="y").unstack("nmeasure")
+    y_true = observation_inputs_for_outputs(inv_out)["y_obs"].unstack("nmeasure")
+    y_pred = _concentration_trace(inv_out).unstack("nmeasure")
     ds = xr.merge([y_true, y_pred])
 
     return _r2_by_site(ds, report_prior=report_prior)
@@ -133,7 +146,7 @@ def bayes_r2_by_site(inv_out: PostprocessingInput, report_prior: bool = False) -
 
 @register_diagnostic
 def bayes_r2_by_site_resample(
-    inv_out: PostprocessingInput, freq: str = "MS", report_prior: bool = False
+    inv_out: InversionOutput, freq: str = "MS", report_prior: bool = False
 ) -> xr.Dataset:
     """Compute Bayesian R2 scores grouped by site and time.
 
@@ -155,9 +168,8 @@ def bayes_r2_by_site_resample(
             with uncertainties.
 
     """
-    inv_out = as_postprocessing_output(inv_out)
-    y_true = inv_out.obs_inputs["y_obs"].unstack("nmeasure")
-    y_pred = inv_out.get_trace_dataset(var_names="y").unstack("nmeasure")
+    y_true = observation_inputs_for_outputs(inv_out)["y_obs"].unstack("nmeasure")
+    y_pred = _concentration_trace(inv_out).unstack("nmeasure")
     ds = xr.merge([y_true, y_pred])
 
     results = []
