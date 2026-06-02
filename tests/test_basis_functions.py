@@ -4,6 +4,7 @@ import pytest
 import xarray as xr
 from types import SimpleNamespace
 
+import openghg_inversions.basis._functions as basis_module
 from openghg_inversions.basis._functions import (
     basis,
     basis_functions,
@@ -12,10 +13,10 @@ from openghg_inversions.basis._functions import (
 )
 from openghg_inversions.basis import (
     basis_functions_wrapper,
-    bucketbasisfunction,
-    quadtreebasisfunction,
+    bucket_basis_function,
+    quadtree_basis_function,
     fixed_outer_regions_basis,
-    regionconstrainedbasisfunction,
+    region_constrained_basis_function,
 )
 from openghg_inversions.basis._wrapper import (
     _save_basis,
@@ -87,7 +88,7 @@ def test_quadtree_basis_function(tac_ch4_data_args, raw_data_path):
     """
     fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
     emissions_name = next(iter(fp_all[".flux"].keys()))
-    basis_func = quadtreebasisfunction(
+    basis_func = quadtree_basis_function(
         emissions_name=[emissions_name], fp_all=fp_all, start_date="2019-01-01", seed=42, domain="EUROPE"
     )
 
@@ -109,7 +110,7 @@ def test_bucket_basis_function(tac_ch4_data_args, raw_data_path):
     """
     fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
     emissions_name = next(iter(fp_all[".flux"].keys()))
-    basis_func = bucketbasisfunction(
+    basis_func = bucket_basis_function(
         emissions_name=[emissions_name],
         fp_all=fp_all,
         start_date="2019-01-01",
@@ -155,6 +156,7 @@ def test_fixed_outer_region_basis_function(tac_ch4_data_args, raw_data_path):
 
 
 def _tiny_region_constrained_fp_all() -> tuple[dict, xr.DataArray]:
+    """Build a tiny fp_all fixture and aligned region classes."""
     time = pd.date_range("2020-01-01", periods=2)
     lat = np.arange(4.0)
     lon = np.arange(4.0)
@@ -183,6 +185,7 @@ def _tiny_region_constrained_fp_all() -> tuple[dict, xr.DataArray]:
 
 
 def _assert_basis_labels_do_not_cross_classes(labels: xr.DataArray, classes: xr.DataArray) -> None:
+    """Assert each positive basis label maps to exactly one class value."""
     labels, classes = xr.align(labels, classes, join="exact")
     for label in np.unique(labels.values):
         if label == 0:
@@ -195,7 +198,7 @@ def test_region_constrained_basis_function_uses_supplied_region_classes():
     """Region-constrained basis generation uses caller-supplied class fields."""
     fp_all, region_classes = _tiny_region_constrained_fp_all()
 
-    basis_func = regionconstrainedbasisfunction(
+    basis_func = region_constrained_basis_function(
         fp_all=fp_all,
         start_date="2020-01-01",
         domain="TEST",
@@ -207,6 +210,25 @@ def test_region_constrained_basis_function_uses_supplied_region_classes():
     labels = basis_func.squeeze("time", drop=True)
     assert set(np.unique(labels.values)) == {1, 2, 3, 4}
     _assert_basis_labels_do_not_cross_classes(labels, region_classes)
+
+
+@pytest.mark.parametrize(
+    ("legacy_name", "canonical_name"),
+    [
+        ("bucketbasisfunction", "bucket_basis_function"),
+        ("quadtreebasisfunction", "quadtree_basis_function"),
+        ("regionconstrainedbasisfunction", "region_constrained_basis_function"),
+    ],
+)
+def test_legacy_basis_function_names_warn(monkeypatch, legacy_name, canonical_name):
+    """Legacy compressed basis function names warn and delegate to canonical names."""
+    sentinel = object()
+    monkeypatch.setattr(basis_module, canonical_name, lambda *args, **kwargs: sentinel)
+
+    with pytest.warns(DeprecationWarning, match=f"{legacy_name}.*deprecated"):
+        result = getattr(basis_module, legacy_name)("arg", option=True)
+
+    assert result is sentinel
 
 
 def test_make_basis_functions_accepts_region_constrained_algorithm():

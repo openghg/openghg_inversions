@@ -247,7 +247,7 @@ def basis_functions_wrapper(
         File output name
         Default None
       output_path (str, optional):
-        Passed to `outputdir` argument of `quadtreebasisfunction`. Used for testing.
+        Passed to `outputdir` argument of `quadtree_basis_function`. Used for testing.
         Default None
       return_basis_objects (bool, optional):
         If True, return a tuple ``(fp_data, basis_objects)`` where

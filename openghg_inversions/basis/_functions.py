@@ -1,6 +1,7 @@
 """Functions to create basis datasets from fluxes and footprints."""
 
 import os
+import warnings
 
 import getpass
 from collections import namedtuple
@@ -210,7 +211,7 @@ def _mean_fp_times_mean_flux(
     return mean_fp * mean_flux
 
 
-def quadtreebasisfunction(
+def quadtree_basis_function(
     fp_all: dict,
     start_date: str,
     domain: str,
@@ -276,7 +277,7 @@ def quadtreebasisfunction(
     return quad_basis
 
 
-def bucketbasisfunction(
+def bucket_basis_function(
     fp_all: dict,
     start_date: str,
     domain: str,
@@ -339,7 +340,7 @@ def bucketbasisfunction(
     return bucket_basis
 
 
-def regionconstrainedbasisfunction(
+def region_constrained_basis_function(
     fp_all: dict,
     start_date: str,
     domain: str,
@@ -388,14 +389,44 @@ def regionconstrainedbasisfunction(
     return constrained_basis
 
 
+def quadtreebasisfunction(*args, **kwargs) -> xr.DataArray:
+    """Deprecated alias for :func:`quadtree_basis_function`."""
+    warnings.warn(
+        "`quadtreebasisfunction` is deprecated; use `quadtree_basis_function` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return quadtree_basis_function(*args, **kwargs)
+
+
+def bucketbasisfunction(*args, **kwargs) -> xr.DataArray:
+    """Deprecated alias for :func:`bucket_basis_function`."""
+    warnings.warn(
+        "`bucketbasisfunction` is deprecated; use `bucket_basis_function` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return bucket_basis_function(*args, **kwargs)
+
+
+def regionconstrainedbasisfunction(*args, **kwargs) -> xr.DataArray:
+    """Deprecated alias for :func:`region_constrained_basis_function`."""
+    warnings.warn(
+        "`regionconstrainedbasisfunction` is deprecated; use `region_constrained_basis_function` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return region_constrained_basis_function(*args, **kwargs)
+
+
 # dict to retrieve basis function and description by algorithm name
 BasisFunction = namedtuple("BasisFunction", ["description", "algorithm"])
 basis_functions = {
-    "quadtree": BasisFunction("quadtree algorithm", quadtreebasisfunction),
-    "weighted": BasisFunction("weighted by data algorithm", bucketbasisfunction),
+    "quadtree": BasisFunction("quadtree algorithm", quadtree_basis_function),
+    "weighted": BasisFunction("weighted by data algorithm", bucket_basis_function),
     "region_constrained": BasisFunction(
         "region-constrained weighted by data algorithm",
-        regionconstrainedbasisfunction,
+        region_constrained_basis_function,
     ),
 }
 
