@@ -1,4 +1,4 @@
-"""Functions to calling basis function algorithms and applying basis functions to data."""
+"""Wrappers for creating basis functions and applying them to sensitivities."""
 
 from collections.abc import Mapping
 from pathlib import Path
@@ -43,6 +43,50 @@ def make_basis_functions(
 
     This helper owns basis artifact generation/loading without applying the
     legacy fixedbasis ``fp_data`` side channels.
+
+    Args:
+        fp_all: Legacy merged-data dictionary containing flux and footprint data.
+        species: Atmospheric trace gas species used when saving generated basis
+            artifacts.
+        domain: Inversion domain used for generated basis metadata and basis
+            artifact lookup.
+        start_date: Start date of the inversion period.
+        emissions_name: Optional list of OpenGHG flux source names used to
+            select emissions from ``fp_all``.
+        nbasis: Desired number of generated basis regions.
+        basis_algorithm: Algorithm used when generating a basis field on the
+            fly. Supported values are ``"quadtree"``, ``"weighted"``, and
+            ``"region_constrained"``.
+        fix_outer_regions: If true, use fixed InTEM outer regions and generate
+            basis labels only for the inner region.
+        fp_basis_case: Optional saved emissions basis case. When supplied, a
+            saved artifact is loaded instead of generating a basis.
+        basis_directory: Optional root directory for saved emissions basis
+            artifacts.
+        country_directory: Optional directory containing auxiliary land/sea and
+            InTEM outer-region files used by generated basis algorithms.
+        outputname: Optional output-name component used when saving generated
+            basis artifacts.
+        output_path: Optional directory where generated basis artifacts should
+            be saved.
+        basis_output_format: Format for saved generated basis artifacts.
+            ``"legacy"`` writes the historical flat netCDF file, while
+            ``"datatree"`` writes the retained ``BasisFunctions`` artifact.
+        region_classes: Two-dimensional class field used only with
+            ``basis_algorithm="region_constrained"``. Loading this field from a
+            file is the caller's responsibility.
+        region_allocation: Automatic class-allocation mode for
+            ``region_constrained``. One of ``"weight"`` or ``"area"``.
+        min_regions_per_class: Minimum automatic allocation for each non-empty
+            mapped class when using ``region_constrained``.
+
+    Returns:
+        Retained emissions basis object ready for sensitivity projection.
+
+    Raises:
+        ValueError: If neither a saved basis case nor an algorithm is supplied,
+            or if an unsupported output format or basis algorithm is requested.
+        TypeError: If a generated algorithm returns an unsupported basis object.
     """
     saving_generated_basis = output_path is not None and basis_algorithm is not None and fp_basis_case is None
     if saving_generated_basis and basis_output_format not in _VALID_BASIS_OUTPUT_FORMATS:
@@ -189,85 +233,61 @@ def basis_functions_wrapper(
     region_allocation: Literal["weight", "area"] = "weight",
     min_regions_per_class: int = 1,
 ):
-    """Wrapper function for selecting basis function
-    algorithm.
+    """Create basis sensitivities for a legacy fixed-basis inversion.
 
     Args:
-      fp_all (dict):
-        Dictionary object produced from get_data functions
-      species (str):
-        Atmospheric trace gas species of interest
-      domain (str):
-        Model domain
-      start_date (str):
-        Start date of period of inference
-      emissions_name (str/list):
-        Emissions dataset key words for retrieving from object store
-      nbasis (int):
-        Number of basis function regions to calculated in domain
-      use_bc (bool):
-        Option to include/exclude boundary conditions in inversion
-      basis_algorithm (str, optional):
-        One of "quadtree" (for using Quadtree algorithm) or
-        "weighted" (for using an algorihtm that splits region
-        by input data). Land-sea separation is not imposed in the
-        quadtree basis functions, but is imposed by default in "weighted"
-        "region_constrained" uses a caller-supplied ``region_classes``
-        field to prevent labels crossing those classes.
-        Default None
-      fixed_outer_region (bool):
-        When set to True uses InTEM regions to derive basis functions for inner region
-        Default False
-      fp_basis_case (str):
-        Name of basis function to use for emissions.
-        Default None
-      bc_basis_case (str, optional):
-        Name of basis case type for boundary conditions (NOTE, I don't
-        think that currently you can do anything apart from scaling NSEW
-        boundary conditions if you want to scale these monthly.)
-        Default None
-      basis_directory (str, optional):
-        Directory containing the basis function if not default.
-        Default None
-      bc_basis_directory (str, optional):
-        Directory containing the boundary condition basis functions
-        (e.g. files starting with "NESW")
-        Default None
-      region_classes (xarray.DataArray, optional):
-        Region or country class field used with ``basis_algorithm="region_constrained"``.
-        File loading should happen before calling this wrapper.
-        Default None
-      region_allocation (str, optional):
-        Allocation mode for ``region_constrained``. One of ``"weight"`` or ``"area"``.
-        Default "weight"
-      min_regions_per_class (int, optional):
-        Minimum automatic allocation for each non-empty mapped class.
-        Default 1
-      outputname (str, optional):
-        File output name
-        Default None
-      output_path (str, optional):
-        Passed to `outputdir` argument of `quadtree_basis_function`. Used for testing.
-        Default None
-      return_basis_objects (bool, optional):
-        If True, return a tuple ``(fp_data, basis_objects)`` where
-        ``basis_objects["emissions"]`` is a ``BasisFunctions`` object constructed
-        from the basis used in this wrapper.
-        Default False
-      basis_output_format (str, optional):
-        Format to use when saving basis output with ``output_path``:
-        - ``"legacy"``: save legacy flat basis netCDF (default)
-        - ``"datatree"``: save BasisFunctions DataTree netCDF
-        Default "legacy"
+        fp_all: Legacy merged-data dictionary containing flux and footprint data.
+        species: Atmospheric trace gas species used when saving generated basis
+            artifacts.
+        domain: Inversion domain.
+        start_date: Start date of the inversion period.
+        emissions_name: Optional list of OpenGHG flux source names used to
+            select emissions from ``fp_all``.
+        nbasis: Desired number of generated basis regions.
+        use_bc: If true, include boundary-condition sensitivities.
+        basis_algorithm: Algorithm used when generating a basis field on the
+            fly. ``"quadtree"`` does not impose land/sea separation,
+            ``"weighted"`` uses the legacy weighted land/sea split, and
+            ``"region_constrained"`` requires caller-supplied
+            ``region_classes`` to prevent labels crossing those classes.
+        fix_outer_regions: If true, use fixed InTEM outer regions and generate
+            basis labels only for the inner region.
+        fp_basis_case: Optional saved emissions basis case. When supplied, a
+            saved artifact is loaded instead of generating a basis.
+        bc_basis_case: Boundary-condition basis case to load when ``use_bc`` is
+            true.
+        basis_directory: Optional root directory for saved emissions basis
+            artifacts.
+        bc_basis_directory: Optional root directory for saved boundary-condition
+            basis artifacts.
+        country_directory: Optional directory containing auxiliary land/sea and
+            InTEM outer-region files used by generated basis algorithms.
+        outputname: Optional output-name component used when saving generated
+            basis artifacts.
+        output_path: Optional directory where generated basis artifacts should
+            be saved.
+        return_basis_objects: If true, return the legacy ``fp_data`` dictionary
+            plus retained basis objects.
+        basis_output_format: Format for saved generated basis artifacts.
+            ``"legacy"`` writes the historical flat netCDF file, while
+            ``"datatree"`` writes the retained ``BasisFunctions`` artifact.
+        region_classes: Two-dimensional class field used only with
+            ``basis_algorithm="region_constrained"``. Loading this field from a
+            file is the caller's responsibility.
+        region_allocation: Automatic class-allocation mode for
+            ``region_constrained``. One of ``"weight"`` or ``"area"``.
+        min_regions_per_class: Minimum automatic allocation for each non-empty
+            mapped class when using ``region_constrained``.
 
     Returns:
-      fp_data (dict) or tuple[dict, dict[str, BasisFunctions]]:
-        By default, returns a dictionary object similar to fp_all but with information
-        on basis functions and sensitivities.
+        By default, returns a dictionary similar to ``fp_all`` but with basis
+        function and sensitivity data added. If ``return_basis_objects=True``,
+        returns ``(fp_data, basis_objects)`` where ``basis_objects["emissions"]``
+        is the retained emissions ``BasisFunctions`` object.
 
-        If ``return_basis_objects=True``, returns ``(fp_data, basis_objects)`` where
-        ``basis_objects`` contains an ``"emissions"`` key with a ``BasisFunctions``
-        object that wraps the basis operator and representative flux.
+    Raises:
+        ValueError: If boundary conditions are requested without
+            ``bc_basis_case``.
     """
     if use_bc is True and bc_basis_case is None:
         raise ValueError("If `use_bc` is True, you must specify `bc_basis_case`.")

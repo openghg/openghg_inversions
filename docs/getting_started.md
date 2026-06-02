@@ -71,8 +71,9 @@ NOTE: flux and boundary conditions data usually has a specific *domain*, but it 
     -   default location is `openghg_inversions/countries`
 -   basis functions
     -   &ldquo;basis function&rdquo; usually means a netCDF file with latitude and longitude coordinates, with integer values. So all of the coordinates with value 1 are in region 1, and so on.
-    -   basis functions for fluxes are created on the fly by a &ldquo;quadtree basis&rdquo; algorithm. You can also read in pre-defined basis functions. Default location: `openghg_inversions/basis_functions`
-    -   basis functions for the boundary conditions have a similar format. Defaul location `openghg_inversions/bc_basis_functions`
+    -   basis functions for fluxes can be created on the fly with the `quadtree` or `weighted` algorithms. You can also read in pre-defined basis functions. Default location: `openghg_inversions/basis_functions`
+    -   region-constrained basis generation is available through the Python basis API when the caller supplies an already loaded `region_classes` `DataArray`. This is intended for land/sea, country, or other region-class masks, and keeps labels from crossing those classes. The current `.ini`/`run_hbmcmc.py` route does not yet load `region_classes` from a file, so use a saved basis file or the Python wrapper for this case.
+    -   basis functions for the boundary conditions have a similar format. Default location `openghg_inversions/bc_basis_functions`
 
 Summary
 
@@ -249,6 +250,9 @@ met_model = 'UKV'  ; or None if not specified, check the metadata for your footp
 ; - if specified, looks for file format {fp_basis_case}_{domain}_*.nc
 ; - if None, creates basis function using quadtree algorithm and associated parameters
 ;   - nbasis - Number of basis functions to use for quadtree derived basis function (rounded to %4)
+; Region-constrained basis functions are available through the Python basis API
+; when a caller supplies region_classes. This .ini route does not currently load
+; region_classes from file.
 
 bc_basis_case  = "NESW"
 bc_basis_directory = "/group/chemistry/acrg/LPDM/bc_basis_functions/"  ; LPDM/bc_basis_functions is default

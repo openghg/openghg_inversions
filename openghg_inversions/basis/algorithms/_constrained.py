@@ -44,7 +44,18 @@ class SplitStrategy(Protocol):
         class_mask: np.ndarray,
         target_regions: int,
     ) -> np.ndarray:
-        """Return positive local labels for cells in ``class_mask``."""
+        """Split one class into local basis labels.
+
+        Args:
+            weights: Non-negative weight field for the full grid.
+            class_mask: Boolean mask selecting the cells in the class being
+                split.
+            target_regions: Requested number of local labels for this class.
+
+        Returns:
+            Integer label array with positive labels inside ``class_mask`` and
+            zero outside it.
+        """
         ...
 
 
@@ -52,7 +63,17 @@ class PartitionStep(Protocol):
     """Strategy protocol for splitting one partition into child partitions."""
 
     def __call__(self, nodes: GridPartition, weights: np.ndarray) -> list[GridPartition]:
-        """Return child partitions for ``nodes``."""
+        """Split one grid-node partition.
+
+        Args:
+            nodes: Grid nodes in the partition being split.
+            weights: Non-negative weight field aligned to the source grid.
+
+        Returns:
+            Child grid-node partitions. Returning one child leaves the
+            partition effectively unsplit; returning multiple children lets the
+            greedy orchestrator decide how many can fit in the target count.
+        """
         ...
 
 
@@ -69,7 +90,16 @@ class AxisParallelSplitStep:
     clean_splits: bool = False
 
     def __call__(self, nodes: GridPartition, weights: np.ndarray) -> list[GridPartition]:
-        """Return child partitions from an axis-parallel split."""
+        """Return child partitions from one axis-parallel split.
+
+        Args:
+            nodes: Grid nodes in the partition being split.
+            weights: Non-negative weight field aligned to the source grid.
+
+        Returns:
+            Two child partitions when the split succeeds, or the original
+            partition when the input cannot be split without an empty side.
+        """
         left, right = _axis_parallel_split_nodes(
             nodes,
             weights,
@@ -100,7 +130,18 @@ class GreedyAxisParallelSplitStrategy:
         class_mask: np.ndarray,
         target_regions: int,
     ) -> np.ndarray:
-        """Return class-local labels using greedy axis-parallel bisection."""
+        """Return class-local labels using greedy repeated splitting.
+
+        Args:
+            weights: Non-negative weight field for the full grid.
+            class_mask: Boolean mask selecting the cells in the class being
+                split.
+            target_regions: Requested number of local labels for this class.
+
+        Returns:
+            Integer label array with positive class-local labels inside
+            ``class_mask`` and zero outside it.
+        """
         if target_regions < 1:
             raise ValueError("target_regions must be at least 1.")
         if not class_mask.any():
@@ -142,7 +183,18 @@ class AxisAlignedWeightedSplitStrategy:
         class_mask: np.ndarray,
         target_regions: int,
     ) -> np.ndarray:
-        """Return class-local labels using recursive weighted bucket splits."""
+        """Return class-local labels using recursive weighted bucket splits.
+
+        Args:
+            weights: Non-negative weight field for the full grid.
+            class_mask: Boolean mask selecting the cells in the class being
+                split.
+            target_regions: Requested number of local labels for this class.
+
+        Returns:
+            Integer label array with positive class-local labels inside
+            ``class_mask`` and zero outside it.
+        """
         if target_regions < 1:
             raise ValueError("target_regions must be at least 1.")
         if not class_mask.any():

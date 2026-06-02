@@ -9,12 +9,13 @@ part of #340.
 
 - `codex/basis-prototype-examples`: pushed as a reference branch only. No PR opened.
 - `codex/318-landsea-regression`: targeted regression test for current weighted
-  land/sea behavior. Intended to prove whether the existing algorithm crosses
-  land/sea classes before changing production code.
-- `codex/449-mask-constrained-core`: planned follow-up branch for a pure
-  mask/region-constrained helper and split-strategy protocol.
-- `codex/325-region-mask-basis`: planned follow-up branch for country/region-mask
-  callers built on the #449 helper.
+  land/sea behavior. Merged through PR #462.
+- `codex/449-mask-constrained-core`: pure mask/region-constrained helper and
+  split-strategy protocol. Merged through PR #462.
+- `codex/325-region-mask-basis`: country/region-mask caller adapter built on the
+  #449 helper. Merged through PR #462.
+- `codex/449-docs-docstrings`: follow-up branch for merged-status tracking,
+  user-facing region-configuration notes, and focused basis docstring cleanup.
 
 ## Design Notes
 
@@ -31,6 +32,80 @@ part of #340.
 - Document `nbasis` allocation. Initial target: support explicit per-class
   allocation plus automatic allocation proportional to class total weight, with a
   minimum for non-empty mapped classes.
+
+## Concrete Region And Partition Options
+
+Do not change accepted `run_hbmcmc.py` inputs until #448 has landed. Once that
+interface is available, the same region/partition options should be exposed
+through `run-rhime`, `run-rhime-multisector`, and their Python equivalents. The
+pre-#448 work should stay in pure helpers and lower-level Python APIs so it can
+be tested without committing to config syntax.
+
+### Region Sources
+
+- Existing land/sea files. This is the smallest usable option because the
+  legacy weighted algorithm already uses files such as
+  `country-land-sea_{domain}.nc` and `country-EUROPE-UKMO-landsea-2023.nc`.
+  Add a coordinate-preserving loader that returns a `region_classes`
+  `DataArray`, rather than reusing the current NumPy-only
+  `_weighted.load_landsea_indices`. This gives a direct lower-level replacement
+  for "weighted, but constrained by land/sea" and should be easy to test with
+  the existing synthetic #318 fixture plus one package land/sea file.
+- Country or region masks from `country_file`. The workflows preserved in
+  `~/Documents/ipython_histories/ipython_hist_26.py` and
+  `ipython_hist_27.py` used country masks, PARIS country groupings, and
+  country-fraction matrices. A concrete helper could load a named variable from
+  a country file, optionally group country labels into larger named regions, and
+  return `region_classes`. This is useful, but needs careful handling of ocean,
+  unmatched country codes, fractional cells, and whether grouping follows
+  postprocessing country-region definitions.
+- User-specified inner rectangle. Add a helper that converts latitude/longitude
+  bounds, two corner points, or grid-index bounds into a binary
+  `region_classes` field. This would be useful for inner/outer experiments and
+  realistic tests before full country-region configuration is available.
+  Decide whether the outer cells are a second class, left unmapped, or routed to
+  a separate fixed-outer-region path.
+- Fixed InTEM outer-region files. Keep `fixed_outer_regions_basis` for backwards
+  compatibility because the InTEM regions are familiar to users. A new, clearer
+  interface can still expose the same files as a region source, but should
+  preserve the known outer-region behaviour while allowing the inner region to
+  use any split strategy.
+- Direct user-supplied mask file and variable. For Python APIs this already
+  exists as a `DataArray`. For CLI/config routes after #448, the minimal general
+  form is likely a file path plus variable name plus optional unmapped values.
+  This overlaps with land/sea and country files, so keep the implementation
+  common.
+
+### Partition And Grouping Options
+
+- Keep greedy axis-parallel splitting as the current default because it is the
+  cleaned-up prototype path and does not depend on the poorly designed legacy
+  weighted recursion.
+- Keep the existing recursive weighted splitter as an explicit compatibility
+  strategy only.
+- Add small partition-step adapters for quadtree-style splits and prototype
+  inertial splits when there is a clear test case. The current `PartitionStep`
+  boundary can already accept steps that return more than two child partitions.
+- Treat simulated annealing, precomputed multiscale weights, and observation-
+  weighted definitions as future optimizer/weight-builder work. They are useful
+  sources from `~/Documents/basis_functions`, but they should not block the
+  first usable region-source options.
+- Start tracking partition/group metadata alongside labels. Inner/outer regions,
+  land/sea, country groups, and future layered masks should be represented as
+  basis groups or coordinates so priors and posterior summaries can be applied
+  by group. This likely needs a non-`xarray` internal representation before
+  conversion to a `BasisFunctions` artifact.
+
+### Test Strategy
+
+- Before #448: test pure loaders and helper functions with small fixtures, plus
+  lower-level Python calls into `region_constrained_basis_function`.
+- After #448: add real-world integration tests through `run_hbmcmc.py`,
+  `run-rhime`, and `run-rhime-multisector`, using the same option schema where
+  possible.
+- For regression fixtures, prefer tiny deterministic arrays first. Larger frozen
+  basis fixtures can be added later behind a pytest mark once the interface is
+  stable.
 
 ## Status
 
@@ -110,3 +185,11 @@ part of #340.
   priority-queue wrapper that pops the highest-weight partition first and can
   accept split steps that return more than two child partitions without
   overshooting the requested target count.
+- 2026-06-02: PR #462 merged the stacked #318/#449/#325 implementation into
+  `devel`. The direct weighted land/sea regression did not expose a boundary
+  crossing bug, so production weighted behavior was left unchanged; the separate
+  coordinate-safety risk remains tracked as future interface cleanup.
+- 2026-06-02: Started `codex/449-docs-docstrings` to document the merged
+  `region_constrained` path. Current note: the pure Python basis API accepts an
+  already loaded `region_classes` `DataArray`, but `.ini`/`run_hbmcmc.py` users
+  do not yet have a file-loading/config hook for these masks.
