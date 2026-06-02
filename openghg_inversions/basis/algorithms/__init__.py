@@ -3,6 +3,7 @@
 from ._constrained import (
     AllocationMode,
     AxisAlignedWeightedSplitStrategy,
+    GreedyAxisParallelSplitStrategy,
     SplitStrategy,
     allocate_nbasis_by_class,
     region_constrained_basis,
@@ -13,6 +14,7 @@ from ._weighted import nregion_landsea_basis as weighted_algorithm
 __all__ = [
     "AllocationMode",
     "AxisAlignedWeightedSplitStrategy",
+    "GreedyAxisParallelSplitStrategy",
     "SplitStrategy",
     "allocate_nbasis_by_class",
     "quadtree_algorithm",
