@@ -16,7 +16,8 @@ label-offset behavior.
 from __future__ import annotations
 
 from collections.abc import Hashable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from queue import PriorityQueue
 from typing import Literal, Protocol, TypeAlias, cast
 
 import numpy as np
@@ -47,6 +48,39 @@ class SplitStrategy(Protocol):
         ...
 
 
+class PartitionStep(Protocol):
+    """Strategy protocol for splitting one partition into child partitions."""
+
+    def __call__(self, nodes: GridPartition, weights: np.ndarray) -> list[GridPartition]:
+        """Return child partitions for ``nodes``."""
+        ...
+
+
+@dataclass(frozen=True)
+class AxisParallelSplitStep:
+    """Split one partition along an axis-parallel line.
+
+    This is a cleaned-up version of the prototype's axis-parallel split step.
+    Greedy orchestration is handled separately by
+    :class:`GreedyAxisParallelSplitStrategy`.
+    """
+
+    balanced: bool = True
+    clean_splits: bool = False
+
+    def __call__(self, nodes: GridPartition, weights: np.ndarray) -> list[GridPartition]:
+        """Return child partitions from an axis-parallel split."""
+        left, right = _axis_parallel_split_nodes(
+            nodes,
+            weights,
+            balanced=self.balanced,
+            clean_splits=self.clean_splits,
+        )
+        if not left or not right:
+            return [nodes]
+        return [left, right]
+
+
 @dataclass(frozen=True)
 class GreedyAxisParallelSplitStrategy:
     """Class-local greedy repeated-bisection strategy.
@@ -58,6 +92,7 @@ class GreedyAxisParallelSplitStrategy:
 
     balanced: bool = True
     clean_splits: bool = False
+    split_step: PartitionStep | None = None
 
     def __call__(
         self,
@@ -76,12 +111,15 @@ class GreedyAxisParallelSplitStrategy:
             class_weights = class_mask.astype(np.float64)
 
         nodes = _node_list_from_mask(class_mask)
-        partition = _greedy_axis_parallel_partitioning(
+        split_step = self.split_step or AxisParallelSplitStep(
+            balanced=self.balanced,
+            clean_splits=self.clean_splits,
+        )
+        partition = _greedy_partitioning(
             [nodes],
             target_regions,
             class_weights,
-            balanced=self.balanced,
-            clean_splits=self.clean_splits,
+            split_step=split_step,
         )
         return _labels_from_node_partition(partition, weights.shape)
 
@@ -517,58 +555,103 @@ def _labels_from_node_partition(partition: list[GridPartition], shape: tuple[int
     return labels
 
 
-def _greedy_axis_parallel_partitioning(
+@dataclass(order=True)
+class _PrioritizedPartition:
+    """Priority queue item for selecting the next partition to split."""
+
+    priority: tuple[float, int, int]
+    nodes: GridPartition = field(compare=False)
+
+
+class _PartitionPriorityQueue:
+    """Priority queue that pops the highest-weight partition first."""
+
+    def __init__(self, weights: np.ndarray) -> None:
+        """Create a partition priority queue ranked by weight and size.
+
+        Args:
+            weights: Non-negative weight field used to rank partitions.
+        """
+        self._queue: PriorityQueue[_PrioritizedPartition] = PriorityQueue()
+        self._weights = weights
+        self._counter = 0
+
+    def __bool__(self) -> bool:
+        """Return true when the queue contains at least one partition."""
+        return not self._queue.empty()
+
+    def push(self, nodes: GridPartition) -> None:
+        """Insert a partition into the priority queue."""
+        if not nodes:
+            return
+        priority = (-_node_weight(nodes, self._weights), -len(nodes), self._counter)
+        self._counter += 1
+        self._queue.put_nowait(_PrioritizedPartition(priority, nodes))
+
+    def pop(self) -> GridPartition:
+        """Remove and return the highest-priority partition."""
+        return self._queue.get_nowait().nodes
+
+
+def _greedy_partitioning(
     init_partition: list[GridPartition],
     target_regions: int,
     weights: np.ndarray,
     *,
-    balanced: bool,
-    clean_splits: bool,
+    split_step: PartitionStep,
 ) -> list[GridPartition]:
-    """Split the highest-weight active partition until a target count is reached.
+    """Apply a partition step greedily until a target count is reached.
 
     Args:
         init_partition: Initial list of partitions to refine. For class-local
             splitting this normally contains one node list for the class.
         target_regions: Desired number of output partitions.
-        weights: Non-negative weight field used for part ranking, weighted axis
-            choice, and balanced split points.
-        balanced: If true, split each selected part near half its total weight.
-            If false, split near half its cell count.
-        clean_splits: If true, avoid splitting nodes with the same selected-axis
-            coordinate across both sides. This can produce degenerate splits.
+        weights: Non-negative weight field used for part ranking and passed to
+            ``split_step``.
+        split_step: Callable that splits one selected partition into child
+            partitions. Returning fewer than two non-empty children marks the
+            selected partition as done.
 
     Returns:
         List of output partitions. The result may contain fewer than
         ``target_regions`` entries when no active partition can be split further.
     """
-    active = [nodes for nodes in init_partition if nodes]
+    active = _PartitionPriorityQueue(weights)
     done: list[GridPartition] = []
+    current_regions = 0
 
-    while len(done) + len(active) < target_regions and active:
-        split_index = max(
-            range(len(active)),
-            key=lambda index: (_node_weight(active[index], weights), len(active[index])),
-        )
-        nodes = active.pop(split_index)
-        left, right = _axis_parallel_split_nodes(
-            nodes,
-            weights,
-            balanced=balanced,
-            clean_splits=clean_splits,
-        )
+    for nodes in init_partition:
+        if not nodes:
+            continue
+        current_regions += 1
+        if len(nodes) > 1:
+            active.push(nodes)
+        else:
+            done.append(nodes)
 
-        if not left or not right:
+    while current_regions < target_regions and active:
+        nodes = active.pop()
+        child_partitions = [child for child in split_step(nodes, weights) if child]
+
+        if len(child_partitions) < 2:
+            done.append(nodes)
+            continue
+        if current_regions - 1 + len(child_partitions) > target_regions:
             done.append(nodes)
             continue
 
-        for subnodes in (left, right):
+        current_regions -= 1
+        for subnodes in child_partitions:
+            current_regions += 1
             if len(subnodes) > 1:
-                active.append(subnodes)
+                active.push(subnodes)
             else:
                 done.append(subnodes)
 
-    return done + active
+    while active:
+        done.append(active.pop())
+
+    return done
 
 
 def _axis_parallel_split_nodes(
@@ -720,9 +803,11 @@ def _labels_dataarray(labels: np.ndarray, weights: xr.DataArray) -> xr.DataArray
 
 __all__ = [
     "AllocationMode",
+    "AxisParallelSplitStep",
     "AxisAlignedWeightedSplitStrategy",
     "GreedyAxisParallelSplitStrategy",
     "NbasisAllocation",
+    "PartitionStep",
     "SplitStrategy",
     "allocate_nbasis_by_class",
     "region_constrained_basis",
