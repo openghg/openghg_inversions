@@ -130,6 +130,52 @@ def test_greedy_axis_parallel_strategy_hits_target_region_count():
     assert set(np.unique(labels)) == {1, 2, 3, 4, 5}
 
 
+def test_greedy_strategy_accepts_partition_step_returning_multiple_regions():
+    """Greedy splitting accepts partition steps that return more than two children."""
+    weights = np.ones((2, 3))
+    class_mask = np.ones(weights.shape, dtype=bool)
+
+    class SplitByColumn:
+        """Custom partition step that groups nodes by column."""
+
+        def __call__(self, nodes: list[tuple[int, int]], weights: np.ndarray) -> list[list[tuple[int, int]]]:
+            partitions = [[], [], []]
+            for row, col in nodes:
+                partitions[col].append((row, col))
+            return partitions
+
+    labels = GreedyAxisParallelSplitStrategy(split_step=SplitByColumn())(
+        weights,
+        class_mask,
+        target_regions=3,
+    )
+
+    assert set(np.unique(labels)) == {1, 2, 3}
+
+
+def test_greedy_strategy_does_not_overshoot_target_with_multi_region_step():
+    """Multi-region partition steps are skipped when they would exceed target."""
+    weights = np.ones((2, 3))
+    class_mask = np.ones(weights.shape, dtype=bool)
+
+    class SplitByColumn:
+        """Custom partition step that groups nodes by column."""
+
+        def __call__(self, nodes: list[tuple[int, int]], weights: np.ndarray) -> list[list[tuple[int, int]]]:
+            partitions = [[], [], []]
+            for row, col in nodes:
+                partitions[col].append((row, col))
+            return partitions
+
+    labels = GreedyAxisParallelSplitStrategy(split_step=SplitByColumn())(
+        weights,
+        class_mask,
+        target_regions=2,
+    )
+
+    assert set(np.unique(labels)) == {1}
+
+
 def test_region_constrained_basis_rejects_explicit_over_allocation():
     """Explicit class allocations cannot request more labels than mapped cells."""
     weights = xr.DataArray(np.ones((2, 2)), dims=("lat", "lon"))
