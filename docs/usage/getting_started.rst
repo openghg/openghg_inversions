@@ -299,7 +299,7 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    met_model = 'UKV'  ; or None if not specified, check the metadata for your footprint
 
    [INPUT.BASIS_CASE]
-   ; Input values to extract the basis cases to use within the inversion for boundary conditions nd emissions
+   ; Input values to extract the basis cases to use within the inversion for boundary conditions and emissions
    ; basis_algorithm (str): Choice of basis function algorithm to use. One of "quadtree" or "weighted".
    ; The Python basis API also supports "region_constrained" when the caller supplies a region_classes DataArray;
    ; this .ini route does not currently load region_classes from file.
