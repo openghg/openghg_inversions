@@ -4,6 +4,7 @@ import pytest
 import xarray as xr
 from types import SimpleNamespace
 
+import openghg_inversions.basis as basis_package
 import openghg_inversions.basis._functions as basis_module
 from openghg_inversions.basis._functions import (
     basis,
@@ -217,7 +218,6 @@ def test_region_constrained_basis_function_uses_supplied_region_classes():
     [
         ("bucketbasisfunction", "bucket_basis_function"),
         ("quadtreebasisfunction", "quadtree_basis_function"),
-        ("regionconstrainedbasisfunction", "region_constrained_basis_function"),
     ],
 )
 def test_legacy_basis_function_names_warn(monkeypatch, legacy_name, canonical_name):
@@ -229,6 +229,16 @@ def test_legacy_basis_function_names_warn(monkeypatch, legacy_name, canonical_na
         result = getattr(basis_module, legacy_name)("arg", option=True)
 
     assert result is sentinel
+    with pytest.warns(DeprecationWarning, match=f"{legacy_name}.*deprecated"):
+        package_result = getattr(basis_package, legacy_name)("arg", option=True)
+
+    assert package_result is sentinel
+
+
+def test_region_constrained_compressed_name_is_not_exported():
+    """The new region-constrained function only uses the canonical name."""
+    assert not hasattr(basis_module, "regionconstrainedbasisfunction")
+    assert not hasattr(basis_package, "regionconstrainedbasisfunction")
 
 
 def test_make_basis_functions_accepts_region_constrained_algorithm():

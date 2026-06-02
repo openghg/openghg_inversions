@@ -66,7 +66,7 @@ def basis(domain: str, basis_case: str, basis_directory: str | None = None) -> x
 
     if len(files) == 0:
         raise FileNotFoundError(
-            f"Can't find basis function files for domain '{domain}'and basis_case '{basis_case}' "
+            f"Can't find basis function files for domain '{domain}' and basis_case '{basis_case}' "
         )
 
     basis_ds = read_netcdfs(files)
@@ -125,7 +125,7 @@ def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: 
 
     if len(files) == 0:
         raise FileNotFoundError(
-            f"Can't find BC basis function files for domain '{domain}'and bc_basis_case '{basis_case}' "
+            f"Can't find BC basis function files for domain '{domain}' and bc_basis_case '{basis_case}' "
         )
 
     basis_ds = read_netcdfs(files)
@@ -407,16 +407,6 @@ def bucketbasisfunction(*args, **kwargs) -> xr.DataArray:
         stacklevel=2,
     )
     return bucket_basis_function(*args, **kwargs)
-
-
-def regionconstrainedbasisfunction(*args, **kwargs) -> xr.DataArray:
-    """Deprecated alias for :func:`region_constrained_basis_function`."""
-    warnings.warn(
-        "`regionconstrainedbasisfunction` is deprecated; use `region_constrained_basis_function` instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return region_constrained_basis_function(*args, **kwargs)
 
 
 # dict to retrieve basis function and description by algorithm name

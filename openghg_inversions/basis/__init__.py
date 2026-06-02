@@ -7,7 +7,6 @@ from ._functions import (
     quadtree_basis_function,
     quadtreebasisfunction,
     region_constrained_basis_function,
-    regionconstrainedbasisfunction,
 )
 from ._wrapper import (
     basis_functions_wrapper,
@@ -22,7 +21,6 @@ __all__ = [
     "quadtreebasisfunction",
     "fixed_outer_regions_basis",
     "region_constrained_basis_function",
-    "regionconstrainedbasisfunction",
     "basis_functions_wrapper",
     "load_basis_functions",
     "make_basis_functions",
