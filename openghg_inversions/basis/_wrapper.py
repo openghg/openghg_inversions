@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from pathlib import Path
 from time import time
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import xarray as xr
 
@@ -35,6 +35,9 @@ def make_basis_functions(
     outputname: str | None = None,
     output_path: str | None = None,
     basis_output_format: Literal["legacy", "datatree"] = "legacy",
+    region_classes: xr.DataArray | None = None,
+    region_allocation: Literal["weight", "area"] = "weight",
+    min_regions_per_class: int = 1,
 ) -> BasisFunctions:
     """Create or load retained emissions basis functions.
 
@@ -70,11 +73,21 @@ def make_basis_functions(
         print("Using fixed outer regions for basis functions.")
         try:
             basis_data_array = fixed_outer_regions_basis(
-                fp_all, start_date, basis_algorithm, domain, emissions_name, nbasis, country_directory
+                fp_all,
+                start_date,
+                basis_algorithm,
+                domain,
+                emissions_name,
+                nbasis,
+                country_directory,
+                region_classes=region_classes,
+                region_allocation=region_allocation,
+                min_regions_per_class=min_regions_per_class,
             )
         except KeyError as e:
             raise ValueError(
-                "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
+                "Basis algorithm not recognised. Please use 'quadtree', 'weighted', "
+                "'region_constrained', or input a basis function file"
             ) from e
         print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
         print("Using generated in-memory basis artifact.")
@@ -89,11 +102,26 @@ def make_basis_functions(
             basis_function = basis_functions[basis_algorithm]
         except KeyError as e:
             raise ValueError(
-                "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
+                "Basis algorithm not recognised. Please use 'quadtree', 'weighted', "
+                "'region_constrained', or input a basis function file"
             ) from e
         print(f"Using {basis_function.description} to derive basis functions.")
+        algorithm_kwargs: dict[str, Any] = {"country_directory": country_directory}
+        if basis_algorithm == "region_constrained":
+            algorithm_kwargs.update(
+                {
+                    "region_classes": region_classes,
+                    "allocation": region_allocation,
+                    "min_regions_per_class": min_regions_per_class,
+                }
+            )
         basis_candidate = basis_function.algorithm(
-            fp_all, start_date, domain, emissions_name, nbasis, country_directory=country_directory
+            fp_all,
+            start_date,
+            domain,
+            emissions_name,
+            nbasis,
+            **algorithm_kwargs,
         )
         if not isinstance(basis_candidate, (xr.DataArray, Mapping)):
             raise TypeError(
@@ -111,6 +139,8 @@ def make_basis_functions(
     print(f"Computing basis took {time() - basis_start}s.")
 
     if saving_generated_basis:
+        assert basis_algorithm is not None
+        assert output_path is not None
         if not isinstance(basis_data_array, xr.DataArray):
             raise TypeError("Saving generated basis output currently requires a single flat basis DataArray.")
         if basis_output_format == "legacy":
@@ -155,6 +185,9 @@ def basis_functions_wrapper(
     output_path: str | None = None,
     return_basis_objects: bool = False,
     basis_output_format: Literal["legacy", "datatree"] = "legacy",
+    region_classes: xr.DataArray | None = None,
+    region_allocation: Literal["weight", "area"] = "weight",
+    min_regions_per_class: int = 1,
 ):
     """Wrapper function for selecting basis function
     algorithm.
@@ -179,6 +212,8 @@ def basis_functions_wrapper(
         "weighted" (for using an algorihtm that splits region
         by input data). Land-sea separation is not imposed in the
         quadtree basis functions, but is imposed by default in "weighted"
+        "region_constrained" uses a caller-supplied ``region_classes``
+        field to prevent labels crossing those classes.
         Default None
       fixed_outer_region (bool):
         When set to True uses InTEM regions to derive basis functions for inner region
@@ -198,11 +233,21 @@ def basis_functions_wrapper(
         Directory containing the boundary condition basis functions
         (e.g. files starting with "NESW")
         Default None
+      region_classes (xarray.DataArray, optional):
+        Region or country class field used with ``basis_algorithm="region_constrained"``.
+        File loading should happen before calling this wrapper.
+        Default None
+      region_allocation (str, optional):
+        Allocation mode for ``region_constrained``. One of ``"weight"`` or ``"area"``.
+        Default "weight"
+      min_regions_per_class (int, optional):
+        Minimum automatic allocation for each non-empty mapped class.
+        Default 1
       outputname (str, optional):
         File output name
         Default None
       output_path (str, optional):
-        Passed to `outputdir` argument of `quadtreebasisfunction`. Used for testing.
+        Passed to `outputdir` argument of `quadtree_basis_function`. Used for testing.
         Default None
       return_basis_objects (bool, optional):
         If True, return a tuple ``(fp_data, basis_objects)`` where
@@ -239,6 +284,9 @@ def basis_functions_wrapper(
         fp_basis_case=fp_basis_case,
         basis_directory=basis_directory,
         country_directory=country_directory,
+        region_classes=region_classes,
+        region_allocation=region_allocation,
+        min_regions_per_class=min_regions_per_class,
         outputname=outputname,
         output_path=output_path,
         basis_output_format=basis_output_format,
@@ -374,7 +422,7 @@ def _save_basis(
       basis (xarray.DataArray):
         basis dataset to save
       basis_algorithm (str):
-        name of basis algorithm (e.g. "quadtree" or "weighted")
+        name of basis algorithm (e.g. "quadtree", "weighted", or "region_constrained")
       output_dir (str):
         root directory to save basis functions
       domain (str):

@@ -1,0 +1,112 @@
+# Mask-Constrained Basis Work Plan
+
+## Scope
+
+This tracks the branch sequence for issues #318, #449, #325, and the split-strategy
+part of #340.
+
+## Branches
+
+- `codex/basis-prototype-examples`: pushed as a reference branch only. No PR opened.
+- `codex/318-landsea-regression`: targeted regression test for current weighted
+  land/sea behavior. Intended to prove whether the existing algorithm crosses
+  land/sea classes before changing production code.
+- `codex/449-mask-constrained-core`: planned follow-up branch for a pure
+  mask/region-constrained helper and split-strategy protocol.
+- `codex/325-region-mask-basis`: planned follow-up branch for country/region-mask
+  callers built on the #449 helper.
+
+## Design Notes
+
+- Keep file loading outside the core constrained helper. The core should accept
+  a 2D weight field and a 2D mask/region-class `xarray.DataArray`.
+- Partition each mapped class independently, then offset labels globally so
+  region labels never collide across classes.
+- Preserve unmapped cells consistently with label `0`.
+- Start with a prototype-inspired greedy axis-parallel repeated-bisection split
+  strategy rather than the current recursive weighted bucket splitter. Do not
+  implement inertial partitions yet, but keep the strategy boundary explicit so
+  an inertial split, quadtree-style split, recursive weighted split, or other
+  partitioning step can be substituted.
+- Document `nbasis` allocation. Initial target: support explicit per-class
+  allocation plus automatic allocation proportional to class total weight, with a
+  minimum for non-empty mapped classes.
+
+## Status
+
+- 2026-06-01: Prototype examples pushed without PR.
+- 2026-06-01: Started #318 regression branch from `origin/devel`.
+- 2026-06-01: Added a synthetic #318 regression test for
+  `bucket_split_landsea_basis`. Current direct weighted land/sea labels do not
+  cross land/sea classes, so this branch does not need a production fix.
+- 2026-06-01: Mapper review found a separate coordinate-safety risk: when
+  `fixed_outer_regions_basis` calls weighted with a cropped mask,
+  `_mean_fp_times_mean_flux(..., drop=True)` can shift the weight-field origin
+  while `_weighted.bucket_split_landsea_basis` still slices the full land/sea
+  file from index zero. The #449 helper should preserve coordinates and align
+  masks before converting to arrays.
+- 2026-06-01: Added #449 core helper in
+  `openghg_inversions.basis.algorithms._constrained`.
+  `region_constrained_basis(weights, region_classes, nbasis, ...)` aligns 2D
+  `xarray.DataArray` inputs exactly, treats non-null class values as mapped,
+  preserves unmapped cells as output label `0`, partitions each class
+  independently, and offsets labels globally.
+- 2026-06-01: Added `allocate_nbasis_by_class` with explicit allocation mapping
+  support and automatic `weight`/`area` allocation. Automatic allocation enforces
+  `min_regions_per_class`, raises when the requested `nbasis` is below the class
+  minimum or above mapped-cell capacity, and falls back from weight to area when
+  all class weights are zero.
+- 2026-06-01: Added `SplitStrategy` plus the initial
+  `AxisAlignedWeightedSplitStrategy`. This kept the current axis-parallel
+  weighted split available while leaving a direct substitution point for future
+  inertial or quadtree-style strategies. No inertial split implemented.
+- 2026-06-01: Subagent review fixes for #449 core: all-zero class weights now
+  split using an area surrogate, explicit allocations are checked against
+  mapped-cell capacity, and `SplitStrategy` is exported for typed custom
+  strategies.
+- 2026-06-02: User review noted the existing recursive weighted algorithm is a
+  poor default for the constrained helper. Prototype research found the clean
+  non-recursive replacement in
+  `~/Documents/inversions/src/inversions/basis_algorithms.py`: greedy repeated
+  bisection that repeatedly splits the highest-weight current part, with
+  axis-parallel and inertial split functions. The #449 core now uses a
+  cleaned-up `GreedyAxisParallelSplitStrategy` as the constrained default and
+  keeps `AxisAlignedWeightedSplitStrategy` as an explicit compatibility
+  strategy.
+- 2026-06-01: Added #325 caller-facing adapter
+  `region_constrained_basis_function` and
+  `basis_algorithm="region_constrained"`.
+  It uses the #449 core helper with a caller-supplied `region_classes`
+  `DataArray`; country/region file loading remains outside the algorithm. The
+  wrapper now passes through `region_classes`, `region_allocation`, and
+  `min_regions_per_class` only for this algorithm.
+- 2026-06-01: Subagent review completed on the stacked #325 branch. Fixes made:
+  `region_constrained` now works through `fixed_outer_regions_basis` when
+  `region_classes` is supplied; all-zero class weights use an area surrogate for
+  splitting; explicit allocation is checked against mapped-cell capacity; and
+  `SplitStrategy` is exported. The apparent positional API issue for
+  the legacy compressed names `quadtreebasisfunction`/`bucketbasisfunction` was
+  present on `origin/devel`, but new wrapper options were moved to the end of
+  `basis_functions_wrapper` to avoid changing its existing positional order.
+- 2026-06-02: Research in `~/Documents/basis_functions` found bucket-threshold
+  optimizers, simulated annealing experiments, and numba notebook fragments.
+  These are useful future research inputs but are not clean drop-in
+  `SplitStrategy` candidates yet.
+- 2026-06-02: Histories `~/Documents/ipython_histories/ipython_hist_26.py` and
+  `ipython_hist_27.py` preserve country/region partition workflows: land/sea
+  and PARIS country partitions, country-fraction matrix labeling, and
+  `outer_region_definition_EUROPE.nc` with inner region `region == 6`. Follow-up
+  #325 work should keep file loading outside the pure helper and add tiny
+  land/sea, country, and outer-region fixtures that assert labels do not cross
+  classes.
+- 2026-06-02: Added PEP-style public function names
+  `quadtree_basis_function`, `bucket_basis_function`, and
+  `region_constrained_basis_function`. The old compressed names
+  `quadtreebasisfunction` and `bucketbasisfunction` remain as deprecated aliases
+  with warnings for compatibility; the draft-only compressed
+  `regionconstrainedbasisfunction` alias was removed before PR.
+- 2026-06-02: Extracted a `PartitionStep` protocol and `AxisParallelSplitStep`
+  from the greedy constrained strategy. Greedy orchestration now uses a small
+  priority-queue wrapper that pops the highest-weight partition first and can
+  accept split steps that return more than two child partitions without
+  overshooting the requested target count.
