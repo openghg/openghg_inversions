@@ -136,20 +136,19 @@ def basis_boundary_conditions(domain: str, basis_case: str, bc_basis_directory: 
 def _flux_fp_from_fp_all(
     fp_all: dict, emissions_name: list[str] | None = None
 ) -> tuple[xr.DataArray, list[xr.DataArray]]:
-    """Get flux and list of footprints from `fp_all` dictionary and optional list of emissions names.
+    """Extract a flux field and site footprints from a legacy ``fp_all`` mapping.
 
     Args:
-      fp_all (dict):
-        Output from footprints_data_merge() function. Dictionary of datasets.
-      emissions_name (list):
-        List of "source" key words as used for retrieving specific emissions
-        from the object store.
+        fp_all: Dictionary returned by the merged-data preparation path. Flux
+            data are expected under the ``".flux"`` key, while measurement-site
+            footprint datasets are stored under the remaining site keys.
+        emissions_name: Optional list of OpenGHG flux source names. When
+            supplied, the first source is selected from ``fp_all[".flux"]``.
+            When omitted, the first available flux entry is used.
 
     Returns:
-      flux (xarray.DataArray):
-        Array containing the flux data.
-      footprints (list):
-        List of xarray DataArray containing the footprints of each sites.
+        Tuple containing the selected flux ``DataArray`` and the list of
+        footprint ``DataArray`` objects for all sites.
     """
     if emissions_name is not None:
         flux = fp_all[".flux"][emissions_name[0]].data.flux
@@ -172,19 +171,17 @@ def _mean_fp_times_mean_flux(
 ) -> xr.DataArray:
     """Multiply mean flux by mean of footprints, optionally restricted to a Boolean mask.
 
-    Args :
-      flux (xarray.DataArray):
-        Array containing the flux data.
-      footprints (list):
-        List of xarray DataArray containing the footprints of each sites.
-      abs_flux (bool):
-        If True this will take the absolute value of the flux in the multiplication.
-      mask (xarray.DataArray):
-        Boolean mask on lat/lon coordinates, indicates the spatial area kept during
-        the multiplication.
+    Args:
+        flux: Flux field with a ``time`` dimension and spatial grid dimensions.
+        footprints: Footprint fields for each site. Their time coordinates are
+            outer-aligned before summing so every measurement contributes once.
+        abs_flux: If true, use the absolute value of ``flux`` before averaging.
+        mask: Optional Boolean spatial mask. When supplied, weights outside the
+            mask are dropped from the returned field.
 
-    Return:
-      xarray DataArray containing temporal mean flux multiplied by temporal mean of footprints
+    Returns:
+        Spatial weight field equal to temporal mean flux multiplied by the
+        measurement-weighted temporal mean footprint.
     """
     if abs_flux is True:
         print("Using absolute value of flux array.")
@@ -222,43 +219,34 @@ def quadtree_basis_function(
     seed: int | None = None,
     mask: xr.DataArray | None = None,
 ) -> xr.DataArray:
-    """Creates a basis function with nbasis grid cells using a quadtree algorithm.
+    """Create a basis field with the quadtree algorithm.
 
     The domain is split with smaller grid cells for regions which contribute
-    more to the a priori (above basline) mole fraction. This is based on the
+    more to the a priori above-baseline mole fraction. This is based on the
     average footprint over the inversion period and the a priori emissions field.
 
     The number of basis functions is optimised using dual annealing. Probably
-    not the best or fastest method as there should only be one minima, but doesn't
-    require the Jacobian or Hessian for optimisation.
+    not the best or fastest method as there should only be one minimum, but it
+    does not require the Jacobian or Hessian for optimisation.
 
     Args:
-      fp_all (dict):
-        fp_all dictionary of datasets as produced from get_data functions
-      start_date (str):
-        Start date of period of inversion
-      domain (str):
-        Domain across which to calculate basis functions.
-      emissions_name (list):
-        List of keyword "source" args used for retrieving emissions files
-        from the Object store
-        Default None
-      nbasis (int):
-        Desired number of basis function regions
-        Default 100
-      abs_flux (bool):
-        When set to True uses absolute values of a flux array
-        Default False
-      seed (int):
-        Optional seed to pass to scipy.optimize.dual_annealing. Used for testing.
-        Default None
-      mask (xarray.DataArray):
-        Boolean mask on lat/lon coordinates. Used to find basis on sub-region
-        Default None
+        fp_all: Legacy merged-data dictionary produced by the data preparation
+            path.
+        start_date: Start date of the inversion period.
+        domain: Domain across which to calculate basis functions.
+        emissions_name: Optional list of OpenGHG flux source names used to
+            select emissions from ``fp_all``.
+        nbasis: Desired number of basis regions.
+        country_directory: Accepted for a consistent basis-algorithm interface;
+            the quadtree algorithm does not use it.
+        abs_flux: If true, use absolute flux values when constructing weights.
+        seed: Optional seed passed to ``scipy.optimize.dual_annealing``.
+        mask: Optional Boolean spatial mask for fitting basis functions over a
+            sub-region.
 
     Returns:
-      quad_basis (xarray.DataArray):
-        Array with lat/lon dimensions and basis regions encoded by integers.
+        Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
+        dimension, and integer region labels.
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
@@ -287,38 +275,30 @@ def bucket_basis_function(
     abs_flux: bool = False,
     mask: xr.DataArray | None = None,
 ) -> xr.DataArray:
-    """Basis functions calculated using a weighted region approach
-    where each basis function / scaling region contains approximately
-    the same value.
+    """Create a basis field with the legacy weighted bucket algorithm.
+
+    This algorithm recursively splits weighted rectangles so each scaling region
+    contains approximately the same total weight. The implementation also uses
+    land/sea masks from ``country_directory`` through the lower-level weighted
+    algorithm.
 
     Args:
-      fp_all (dict):
-        fp_all dictionary of datasets as produced from get_data functions
-      start_date (str):
-        Start date of period of inversion
-      domain (str):
-        domain for the basis functions to be calculated over
-      emissions_name (list):
-        List of keyword "source" args used for retrieving emissions files
-        from the Object store
-        Default None
-      nbasis (int):
-        Desired number of basis function regions
-        Default 100
-      country_directory (str):
-        Directory containing land-sea files. If None, will use default files.
-      abs_flux (bool):
-        When set to True uses absolute values of a flux array
-        Default False
-      mask (xarray.DataArray):
-        Boolean mask on lat/lon coordinates. Used to find basis on sub-region
-        Default None
-      country_directory (str):
-        Directory containing land-sea files. If None, will use default files.
+        fp_all: Legacy merged-data dictionary produced by the data preparation
+            path.
+        start_date: Start date of the inversion period.
+        domain: Domain across which to calculate basis functions.
+        emissions_name: Optional list of OpenGHG flux source names used to
+            select emissions from ``fp_all``.
+        nbasis: Desired number of basis regions.
+        country_directory: Optional directory containing land/sea files. When
+            omitted, default package files are used.
+        abs_flux: If true, use absolute flux values when constructing weights.
+        mask: Optional Boolean spatial mask for fitting basis functions over a
+            sub-region.
 
     Returns:
-      bucket_basis (xarray.DataArray):
-        Array with lat/lon dimensions and basis regions encoded by integers.
+        Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
+        dimension, and integer region labels.
     """
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
     fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
@@ -357,7 +337,41 @@ def region_constrained_basis_function(
 
     This adapter keeps file loading outside the constrained algorithm: callers
     provide ``region_classes`` directly, for example from a country file,
-    land/sea file, or a user-defined region-class field.
+    land/sea file, or a user-defined region-class field. It links the pure
+    ``region_constrained_basis`` helper to the current ``fp_all``-based wrapper
+    interface by constructing the usual footprint-times-flux weight field first.
+
+    Args:
+        fp_all: Legacy merged-data dictionary produced by the data preparation
+            path.
+        start_date: Start date of the inversion period.
+        domain: Domain across which to calculate basis functions.
+        emissions_name: Optional list of OpenGHG flux source names used to
+            select emissions from ``fp_all``.
+        nbasis: Total number of basis regions, or class-local allocation
+            accepted by ``region_constrained_basis``.
+        country_directory: Accepted for a consistent basis-algorithm interface;
+            file loading for ``region_classes`` must happen before calling this
+            adapter.
+        abs_flux: If true, use absolute flux values when constructing weights.
+        mask: Optional Boolean spatial mask for fitting basis functions over a
+            sub-region.
+        region_classes: Two-dimensional class field on the same spatial grid as
+            the generated weights. Positive basis labels are generated
+            independently within each non-null class value.
+        allocation: Automatic allocation mode used when ``nbasis`` is an
+            integer. ``"weight"`` allocates regions by total class weight;
+            ``"area"`` allocates by mapped cell count.
+        min_regions_per_class: Minimum automatic allocation for each non-empty
+            mapped class.
+
+    Returns:
+        Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
+        dimension, and globally unique integer labels that do not cross
+        ``region_classes`` values.
+
+    Raises:
+        ValueError: If ``region_classes`` is not supplied.
     """
     if region_classes is None:
         raise ValueError("region_classes must be supplied for the region_constrained basis algorithm.")
@@ -435,44 +449,37 @@ def fixed_outer_regions_basis(
     region_allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
 ) -> xr.DataArray:
-    """Fix outer region of basis functions to InTEM regions, and fit the inner regions using `basis_algorithm`.
+    """Use fixed InTEM outer regions and fit inner regions with an algorithm.
+
+    The InTEM outer-region file defines known outer labels. The largest region
+    value is treated as the inner inversion region; this inner mask is passed to
+    ``basis_algorithm`` and then inserted back into the fixed outer map.
 
     Args:
-      fp_all (dict):
-        fp_all dictionary object as produced from get_data functions
-      start_date (str):
-        Start date of period of inference
-      basis_algorithm (str):
-        Name of the basis algorithm used. Options are "quadtree", "weighted",
-        "region_constrained"
-      domain (str):
-        domain for the basis functions to be calculated over
-      emissions_name (list):
-        List of keyword "source" args used for retrieving emissions files
-        from the Object store.
-      nbasis (int):
-        Desired number of basis function regions
-        Default 100
-      country_directory (str):
-        Directory containing land-sea files and InTEM outer region files.
-        If None, will use default files.
-      abs_flux:
-        When set to True uses absolute values of a flux array
-        Default False
-      region_classes:
-        Region or country class field used with ``basis_algorithm="region_constrained"``.
-        File loading should happen before calling this helper.
-        Default None
-      region_allocation:
-        Allocation mode for ``region_constrained``. One of ``"weight"`` or ``"area"``.
-        Default "weight"
-      min_regions_per_class:
-        Minimum automatic allocation for each non-empty mapped class.
-        Default 1
+        fp_all: Legacy merged-data dictionary produced by the data preparation
+            path.
+        start_date: Start date of the inversion period.
+        basis_algorithm: Algorithm used to fit the inner region. Supported
+            values are ``"quadtree"``, ``"weighted"``, and
+            ``"region_constrained"``.
+        domain: Domain across which to calculate basis functions.
+        emissions_name: Optional list of OpenGHG flux source names used to
+            select emissions from ``fp_all``.
+        nbasis: Desired number of inner-region basis labels.
+        country_directory: Optional directory containing land/sea files and the
+            InTEM outer-region file. When omitted, default package files are
+            used.
+        abs_flux: If true, use absolute flux values when constructing weights.
+        region_classes: Region or country class field used only with
+            ``basis_algorithm="region_constrained"``. File loading should
+            happen before calling this helper.
+        region_allocation: Allocation mode for ``region_constrained``. One of
+            ``"weight"`` or ``"area"``.
+        min_regions_per_class: Minimum automatic allocation for each non-empty
+            mapped class when using ``region_constrained``.
 
     Returns:
-        basis (xarray.DataArray) :
-          Array with lat/lon dimensions and basis regions encoded by integers.
+        Basis field with fixed outer labels and generated inner labels.
     """
     if country_directory is None:
         logger.info(f"Loading default InTEM outer region file for domain {domain}.")

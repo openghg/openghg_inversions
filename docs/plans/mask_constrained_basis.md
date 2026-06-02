@@ -9,12 +9,13 @@ part of #340.
 
 - `codex/basis-prototype-examples`: pushed as a reference branch only. No PR opened.
 - `codex/318-landsea-regression`: targeted regression test for current weighted
-  land/sea behavior. Intended to prove whether the existing algorithm crosses
-  land/sea classes before changing production code.
-- `codex/449-mask-constrained-core`: planned follow-up branch for a pure
-  mask/region-constrained helper and split-strategy protocol.
-- `codex/325-region-mask-basis`: planned follow-up branch for country/region-mask
-  callers built on the #449 helper.
+  land/sea behavior. Merged through PR #462.
+- `codex/449-mask-constrained-core`: pure mask/region-constrained helper and
+  split-strategy protocol. Merged through PR #462.
+- `codex/325-region-mask-basis`: country/region-mask caller adapter built on the
+  #449 helper. Merged through PR #462.
+- `codex/449-docs-docstrings`: follow-up branch for merged-status tracking,
+  user-facing region-configuration notes, and focused basis docstring cleanup.
 
 ## Design Notes
 
@@ -110,3 +111,11 @@ part of #340.
   priority-queue wrapper that pops the highest-weight partition first and can
   accept split steps that return more than two child partitions without
   overshooting the requested target count.
+- 2026-06-02: PR #462 merged the stacked #318/#449/#325 implementation into
+  `devel`. The direct weighted land/sea regression did not expose a boundary
+  crossing bug, so production weighted behavior was left unchanged; the separate
+  coordinate-safety risk remains tracked as future interface cleanup.
+- 2026-06-02: Started `codex/449-docs-docstrings` to document the merged
+  `region_constrained` path. Current note: the pure Python basis API accepts an
+  already loaded `region_classes` `DataArray`, but `.ini`/`run_hbmcmc.py` users
+  do not yet have a file-loading/config hook for these masks.

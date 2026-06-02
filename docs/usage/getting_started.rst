@@ -79,11 +79,19 @@ Data not stored in OpenGHG
   - “basis function” usually means a netCDF file with latitude and
     longitude coordinates, with integer values. So all of the
     coordinates with value 1 are in region 1, and so on.
-  - basis functions for fluxes are created on the fly by a “quadtree
-    basis” algorithm. You can also read in pre-defined basis functions.
-    Default location: ``openghg_inversions/basis_functions``
+  - basis functions for fluxes can be created on the fly with the
+    ``quadtree`` or ``weighted`` algorithms. You can also read in
+    pre-defined basis functions. Default location:
+    ``openghg_inversions/basis_functions``
+  - region-constrained basis generation is available through the Python
+    basis API when the caller supplies an already loaded ``region_classes``
+    ``DataArray``. This is intended for land/sea, country, or other
+    region-class masks, and keeps labels from crossing those classes. The
+    current ``.ini``/``run_hbmcmc.py`` route does not yet load
+    ``region_classes`` from a file, so use a saved basis file or the Python
+    wrapper for this case.
   - basis functions for the boundary conditions have a similar format.
-    Defaul location ``openghg_inversions/bc_basis_functions``
+    Default location ``openghg_inversions/bc_basis_functions``
 
 Summary
 
@@ -292,7 +300,9 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
 
    [INPUT.BASIS_CASE]
    ; Input values to extract the basis cases to use within the inversion for boundary conditions nd emissions
-   ; basis_algorithm (str): Choice of basis function algorithm to use. One of "quadtree" or "weighted"
+   ; basis_algorithm (str): Choice of basis function algorithm to use. One of "quadtree" or "weighted".
+   ; The Python basis API also supports "region_constrained" when the caller supplies a region_classes DataArray;
+   ; this .ini route does not currently load region_classes from file.
    ; bc_basis_case (str): Boundary conditions basis, defaults to "NESW" (looks for file format {bc_basis_case}_{domain}_*.nc)
    ; bc_basis_directory (str/None): Directory for bc_basis functions. If None provided, creates new folder in openghg_inversions expecting to find bc_basis_function files there.
    ; fp_basis_case (str/None): Emissions bases:
