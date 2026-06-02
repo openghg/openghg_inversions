@@ -423,11 +423,19 @@ sites, you will usually use the same flux and boundary conditions.</p>
 <li><p>“basis function” usually means a netCDF file with latitude and
 longitude coordinates, with integer values. So all of the
 coordinates with value 1 are in region 1, and so on.</p></li>
-<li><p>basis functions for fluxes are created on the fly by a “quadtree
-basis” algorithm. You can also read in pre-defined basis functions.
-Default location: <code class="docutils literal notranslate"><span class="pre">openghg_inversions/basis_functions</span></code></p></li>
+<li><p>basis functions for fluxes can be created on the fly with the
+<code class="docutils literal notranslate"><span class="pre">quadtree</span></code> or <code class="docutils literal notranslate"><span class="pre">weighted</span></code> algorithms. You can also read in
+pre-defined basis functions. Default location:
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions/basis_functions</span></code></p></li>
+<li><p>region-constrained basis generation is available through the Python
+basis API when the caller supplies an already loaded <code class="docutils literal notranslate"><span class="pre">region_classes</span></code>
+<code class="docutils literal notranslate"><span class="pre">DataArray</span></code>. This is intended for land/sea, country, or other
+region-class masks, and keeps labels from crossing those classes. The
+current <code class="docutils literal notranslate"><span class="pre">.ini</span></code>/<code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> route does not yet load
+<code class="docutils literal notranslate"><span class="pre">region_classes</span></code> from a file, so use a saved basis file or the Python
+wrapper for this case.</p></li>
 <li><p>basis functions for the boundary conditions have a similar format.
-Defaul location <code class="docutils literal notranslate"><span class="pre">openghg_inversions/bc_basis_functions</span></code></p></li>
+Default location <code class="docutils literal notranslate"><span class="pre">openghg_inversions/bc_basis_functions</span></code></p></li>
 </ul>
 </li>
 </ul>
@@ -634,8 +642,10 @@ well.)</p></li>
 <span class="na">met_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;UKV&#39;</span><span class="w">  </span><span class="c1">; or None if not specified, check the metadata for your footprint</span>
 
 <span class="k">[INPUT.BASIS_CASE]</span>
-<span class="c1">; Input values to extract the basis cases to use within the inversion for boundary conditions nd emissions</span>
-<span class="c1">; basis_algorithm (str): Choice of basis function algorithm to use. One of &quot;quadtree&quot; or &quot;weighted&quot;</span>
+<span class="c1">; Input values to extract the basis cases to use within the inversion for boundary conditions and emissions</span>
+<span class="c1">; basis_algorithm (str): Choice of basis function algorithm to use. One of &quot;quadtree&quot; or &quot;weighted&quot;.</span>
+<span class="c1">; The Python basis API also supports &quot;region_constrained&quot; when the caller supplies a region_classes DataArray;</span>
+<span class="c1">; this .ini route does not currently load region_classes from file.</span>
 <span class="c1">; bc_basis_case (str): Boundary conditions basis, defaults to &quot;NESW&quot; (looks for file format {bc_basis_case}_{domain}_*.nc)</span>
 <span class="c1">; bc_basis_directory (str/None): Directory for bc_basis functions. If None provided, creates new folder in openghg_inversions expecting to find bc_basis_function files there.</span>
 <span class="c1">; fp_basis_case (str/None): Emissions bases:</span>

@@ -479,9 +479,13 @@ basis functions. If None, will use default files.</p></li>
 <li><p><strong>country_file</strong> – Path to the country definition file.</p></li>
 <li><p><strong>bc_input</strong> – Variable for calling BC data from ‘bc_store’ - equivalent of
 ‘emissions_name’ for fluxes.</p></li>
-<li><p><strong>basis_algorithm</strong> – Select basis function algorithm for creating basis function file
-for emissions on the fly. Options include “quadtree” or “weighted”.
-Defaults to “weighted” which distinguishes between land-sea regions.</p></li>
+<li><p><strong>basis_algorithm</strong> – Select basis function algorithm for creating basis
+function file for emissions on the fly. Current fixedbasis and
+<code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> configs support <code class="docutils literal notranslate"><span class="pre">&quot;quadtree&quot;</span></code> or
+<code class="docutils literal notranslate"><span class="pre">&quot;weighted&quot;</span></code>; <code class="docutils literal notranslate"><span class="pre">&quot;weighted&quot;</span></code> distinguishes between land-sea
+regions. The lower-level Python basis API also supports
+<code class="docutils literal notranslate"><span class="pre">&quot;region_constrained&quot;</span></code> when a caller supplies an already loaded
+<code class="docutils literal notranslate"><span class="pre">region_classes</span></code> field.</p></li>
 <li><p><strong>nbasis</strong> – Number of basis functions that you want if using quadtree derived
 basis function. This will optimise to closest value that fits with
 quadtree splitting algorithm, i.e. nbasis % 4 = 1.</p></li>
