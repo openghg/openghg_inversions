@@ -8,6 +8,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg.util import timestamp_now
+from openghg_inversions import convert
 from openghg_inversions.config.version import code_version
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import (
@@ -134,6 +135,29 @@ def shift_measurement_time_to_midpoint(ds: xr.Dataset, period: str = "4h") -> xr
     time_shifted = pd.to_datetime(ds["time"].astype("datetime64[ns]").values) + pd.to_timedelta(period) / 2
     ds = ds.assign_coords(time=time_shifted)
     return ds
+
+
+def make_inner_domain_country_outputs(
+    flux_stats: xr.Dataset,
+    countries: Countries,
+    species: str,
+) -> xr.Dataset:
+    """Calculate country-total emissions from reconstructed inner-domain flux stats."""
+    flux_on_country_grid = flux_stats.interp(
+        lat=countries.matrix.lat, lon=countries.matrix.lon
+    ).fillna(0.0)
+    country_stats = sparse_xr_dot(countries.matrix, countries.area_grid * flux_on_country_grid)
+
+    seconds_per_year = 365 * 24 * 3600
+    country_stats = country_stats * seconds_per_year * convert.molar_mass(species) * 1e-3
+    country_stats = rename_by_replacement(country_stats, "flux", "country")
+
+    for dv in country_stats.data_vars:
+        suffix = str(dv).removeprefix("country_")
+        country_stats[dv].attrs["units"] = "kg a-1"
+        country_stats[dv].attrs["long_name"] = f"inner-domain country-total {suffix} {species} fluxes"
+
+    return country_stats.as_numpy()
 
 
 def paris_concentration_outputs(
@@ -354,7 +378,7 @@ def paris_flux_output(
     # size from the EUROPE grid) so they coexist in the same netCDF file without conflict.
     if inv_out.inner_basis is not None and inv_out.inner_flux is not None:
         n_inner_nx = len(inv_out.inner_basis.nx)
-
+        outer_on_inner = flux_outs.interp(lat=inv_out.inner_flux.lat, lon=inv_out.inner_flux.lon)
         # Select the first n_inner_nx positions from the combined trace using positional
         # indexing (.isel) so we are robust to whatever nx label values the trace holds.
         # _combine_x_and_x_inner always places inner regions first, so positions 0..n_inner-1
@@ -374,6 +398,10 @@ def paris_flux_output(
         inner_flux_stats = sparse_xr_dot(inv_out.inner_flux * inv_out.inner_basis, inner_stats_ds)
         inner_flux_stats = rename_by_replacement(inner_flux_stats, "x", "flux")
 
+        stitched_flux = outer_on_inner.copy()
+        stitched_flux = xr.where(np.isfinite(inner_flux_stats), inner_flux_stats, outer_on_inner)
+        inner_country_outs = make_inner_domain_country_outputs(stitched_flux, countries, inv_out.species)
+
         # Apply the same PARIS naming convention, then append _inner_domain suffix
         def inner_renamer(name: str) -> str:
             if "country" in name:
@@ -388,6 +416,7 @@ def paris_flux_output(
             return name + "_inner_domain"
 
         inner_var_rename = {str(dv): inner_renamer(str(dv)) for dv in inner_flux_stats.data_vars}
+        inner_country_rename = {str(dv): inner_renamer(str(dv)) for dv in inner_country_outs.data_vars}
 
         # Rename lat/lon to inner-specific dimension names (distinct from EUROPE lat/lon)
         inner_dim_rename: dict[str, str] = {"quantile": "percentile", "flux_time": "time"}
@@ -404,7 +433,16 @@ def paris_flux_output(
             .pipe(convert_time_to_unix_epoch, "1d")
             .pipe(add_variable_attrs, emissions_attrs)
         )
-        result = xr.merge([result, inner_flux_out])
+        inner_country_out = (
+            inner_country_outs
+            .rename({"quantile": "percentile", "flux_time": "time"})
+            .rename(inner_country_rename)
+            .pipe(time_func)
+            .pipe(convert_time_to_unix_epoch, "1d")
+            .pipe(add_variable_attrs, emissions_attrs)
+            .transpose("time", "percentile", "country")
+        )
+        result = xr.merge([result, inner_flux_out, inner_country_out])
 
     result.attrs = make_global_attrs("flux")
 
