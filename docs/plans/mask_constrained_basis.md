@@ -16,6 +16,8 @@ part of #340.
   #449 helper. Merged through PR #462.
 - `codex/449-docs-docstrings`: follow-up branch for merged-status tracking,
   user-facing region-configuration notes, and focused basis docstring cleanup.
+- `codex/449-state-vector-groups-design`: design-only branch for state-vector
+  grouping, inner/outer layout, grouped priors, and layered partitions.
 
 ## Design Notes
 
@@ -146,6 +148,8 @@ be tested without committing to config syntax.
   basis groups or coordinates so priors and posterior summaries can be applied
   by group. This likely needs a non-`xarray` internal representation before
   conversion to a `BasisFunctions` artifact.
+- See `docs/plans/state_vector_grouping.md` for the proposed first grouped
+  layout contract.
 
 ### Test Strategy
 
@@ -244,6 +248,12 @@ be tested without committing to config syntax.
   `region_constrained` path. Current note: the pure Python basis API accepts an
   already loaded `region_classes` `DataArray`, but `.ini`/`run_hbmcmc.py` users
   do not yet have a file-loading/config hook for these masks.
+- 2026-06-02: Added `docs/plans/state_vector_grouping.md` on
+  `codex/449-state-vector-groups-design`. The note proposes a small internal
+  `BasisLayout`/`BasisPartition` concept plus xarray state coordinates
+  (`basis_group`, `basis_partition`, `region_in_partition`) so inner/outer,
+  land/sea, country groups, and layered masks can share one state axis while
+  retaining enough metadata for grouped priors and postprocessing.
 - 2026-06-21: Added greedy split stopping through a lower-level
   `SplitAcceptancePolicy` hook and `MinChildWeightShare` policy. Rejected
   splits freeze the selected parent partition, so the requested class-local
