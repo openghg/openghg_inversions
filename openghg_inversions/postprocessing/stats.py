@@ -101,27 +101,40 @@ def mode_kde(
     """
 
     def mode_of_row(row):
-        if np.all(np.isnan(row)):
+        row = row[np.isfinite(row)]
+        if row.size == 0:
             return np.nan
 
-        if np.nanmax(row) > np.nanmin(row):
-            xvals = np.linspace(np.nanmin(row), np.nanmax(row), 200)
+        if row.size == 1:
+            return float(row[0])
+
+        if np.max(row) > np.min(row):
+            xvals = np.linspace(np.min(row), np.max(row), 200)
             kde = scipy.stats.gaussian_kde(row).evaluate(xvals)
             return xvals[kde.argmax()]
 
-        return np.nanmean(row)
+        return float(np.mean(row))
 
     def func(arr):
+        if arr.shape[-1] == 0:
+            return np.full(arr.shape[:-1], np.nan, dtype=float)
         return np.apply_along_axis(func1d=mode_of_row, axis=-1, arr=arr)
 
     if chunk_dim is not None:
         return xr.apply_ufunc(
             func,
-            ds.dropna(dim=sample_dim).chunk({chunk_dim: chunk_size}),
+            ds.chunk({chunk_dim: chunk_size}),
             input_core_dims=[[sample_dim]],
             dask="parallelized",
+            output_dtypes=[float],
         )
-    return xr.apply_ufunc(func, ds, input_core_dims=[[sample_dim]], dask="parallelized")
+    return xr.apply_ufunc(
+        func,
+        ds,
+        input_core_dims=[[sample_dim]],
+        dask="parallelized",
+        output_dtypes=[float],
+    )
 
 
 @register_stat
