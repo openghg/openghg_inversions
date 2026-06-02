@@ -23,9 +23,11 @@ part of #340.
 - Partition each mapped class independently, then offset labels globally so
   region labels never collide across classes.
 - Preserve unmapped cells consistently with label `0`.
-- Start with the current axis-parallel weighted split strategy. Do not implement
-  inertial partitions yet, but keep the strategy boundary explicit so an inertial
-  split, quadtree-style split, or other partitioning step can be substituted.
+- Start with a prototype-inspired greedy axis-parallel repeated-bisection split
+  strategy rather than the current recursive weighted bucket splitter. Do not
+  implement inertial partitions yet, but keep the strategy boundary explicit so
+  an inertial split, quadtree-style split, recursive weighted split, or other
+  partitioning step can be substituted.
 - Document `nbasis` allocation. Initial target: support explicit per-class
   allocation plus automatic allocation proportional to class total weight, with a
   minimum for non-empty mapped classes.
@@ -54,11 +56,20 @@ part of #340.
   `min_regions_per_class`, raises when the requested `nbasis` is below the class
   minimum or above mapped-cell capacity, and falls back from weight to area when
   all class weights are zero.
-- 2026-06-01: Added `SplitStrategy` plus
-  `AxisAlignedWeightedSplitStrategy`. This keeps the current axis-parallel
-  weighted split as the default while leaving a direct substitution point for
-  future inertial or quadtree-style strategies. No inertial split implemented.
+- 2026-06-01: Added `SplitStrategy` plus the initial
+  `AxisAlignedWeightedSplitStrategy`. This kept the current axis-parallel
+  weighted split available while leaving a direct substitution point for future
+  inertial or quadtree-style strategies. No inertial split implemented.
 - 2026-06-01: Subagent review fixes for #449 core: all-zero class weights now
   split using an area surrogate, explicit allocations are checked against
   mapped-cell capacity, and `SplitStrategy` is exported for typed custom
   strategies.
+- 2026-06-02: User review noted the existing recursive weighted algorithm is a
+  poor default for the constrained helper. Prototype research found the clean
+  non-recursive replacement in
+  `~/Documents/inversions/src/inversions/basis_algorithms.py`: greedy repeated
+  bisection that repeatedly splits the highest-weight current part, with
+  axis-parallel and inertial split functions. The #449 core now uses a
+  cleaned-up `GreedyAxisParallelSplitStrategy` as the constrained default and
+  keeps `AxisAlignedWeightedSplitStrategy` as an explicit compatibility
+  strategy.

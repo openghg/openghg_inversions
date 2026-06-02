@@ -3,12 +3,14 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.basis.algorithms import (
+    GreedyAxisParallelSplitStrategy,
     allocate_nbasis_by_class,
     region_constrained_basis,
 )
 
 
 def _class_values_for_labels(labels: xr.DataArray, classes: xr.DataArray) -> dict[int, set]:
+    """Collect class values covered by each positive basis label."""
     result = {}
     for label in np.unique(labels.values):
         if label == 0:
@@ -111,6 +113,23 @@ def test_region_constrained_basis_splits_zero_weight_classes_by_area():
     assert all(len(class_values) == 1 for class_values in _class_values_for_labels(labels, classes).values())
 
 
+def test_greedy_axis_parallel_strategy_hits_target_region_count():
+    """Greedy axis-parallel splitting reaches the requested count when cells permit."""
+    weights = np.array(
+        [
+            [8.0, 7.0, 1.0, 1.0],
+            [6.0, 5.0, 1.0, 1.0],
+            [1.0, 1.0, 6.0, 7.0],
+            [1.0, 1.0, 8.0, 9.0],
+        ]
+    )
+    class_mask = np.ones(weights.shape, dtype=bool)
+
+    labels = GreedyAxisParallelSplitStrategy()(weights, class_mask, target_regions=5)
+
+    assert set(np.unique(labels)) == {1, 2, 3, 4, 5}
+
+
 def test_region_constrained_basis_rejects_explicit_over_allocation():
     """Explicit class allocations cannot request more labels than mapped cells."""
     weights = xr.DataArray(np.ones((2, 2)), dims=("lat", "lon"))
@@ -129,6 +148,8 @@ def test_region_constrained_basis_accepts_custom_split_strategy():
     )
 
     class OneRegionPerClass:
+        """Custom test splitter that ignores requested region count."""
+
         def __call__(
             self,
             weights: np.ndarray,
