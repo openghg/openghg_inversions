@@ -1,10 +1,12 @@
 from pathlib import Path
-from typing import Any, Literal, cast
+from collections.abc import Mapping
+from typing import Any, Literal, NamedTuple, cast
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
+from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
 from openghg_inversions.postprocessing._basis_products import (
     reconstruct_flux_stats,
@@ -42,10 +44,91 @@ TRACE_GROUP_SUFFIXES = (
 _PRODUCT_METADATA_FIELDS = Literal["species", "domain", "start_date", "end_date"]
 
 
+class OutputSector(NamedTuple):
+    """Sector metadata needed for postprocessing reconstruction."""
+
+    name: str
+    flux_source: str
+    variable_suffix: str
+
+
 def _require_single_sector_output(inv_out: InversionOutput, product_name: str) -> None:
     """Require single-sector input for a product that has not migrated to multisector."""
     if inv_out.is_multisector:
         raise ValueError(f"{product_name} supports only single-sector RHIME outputs.")
+
+
+def _multisector_output_sectors(inv_out: InversionOutput) -> list[OutputSector]:
+    """Return sector metadata from a multisector ``InversionOutput``."""
+    raw_sectors = inv_out.model_metadata.get("sectors")
+    if not raw_sectors:
+        raise ValueError("Multisector postprocessing requires sector metadata in model_metadata['sectors'].")
+
+    sectors: list[OutputSector] = []
+    for raw_sector in raw_sectors:
+        if isinstance(raw_sector, Mapping):
+            name = raw_sector.get("name")
+            flux_source = raw_sector.get("flux_source")
+            variable_suffix = raw_sector.get("variable_suffix")
+        else:
+            name = getattr(raw_sector, "name", None)
+            flux_source = getattr(raw_sector, "flux_source", None)
+            variable_suffix = getattr(raw_sector, "variable_suffix", None)
+        if name is None or flux_source is None or variable_suffix is None:
+            raise ValueError("Sector metadata must include 'name', 'flux_source', and 'variable_suffix'.")
+        sectors.append(OutputSector(str(name), str(flux_source), str(variable_suffix)))
+
+    return sectors
+
+
+def _sector_scale_trace(inv_out: InversionOutput, sector: OutputSector) -> xr.Dataset:
+    """Return one sector's scale trace renamed to the standard single-sector base name."""
+    base_name = f"x_{sector.variable_suffix}"
+    trace = inv_out.trace_dataset()
+    rename: dict[str, str] = {}
+    for suffix in TRACE_GROUP_SUFFIXES:
+        data_var = f"{base_name}{suffix}"
+        if data_var in trace:
+            rename[data_var] = f"x{suffix}"
+
+    if not rename:
+        raise ValueError(f"Could not find flux scale trace variable for sector {sector.name!r}.")
+
+    return trace[list(rename)].rename(rename)
+
+
+def _sector_flux(inv_out: InversionOutput, sector: OutputSector) -> xr.DataArray:
+    """Return prior flux for one sector."""
+    flux = inv_out.flux
+    if "source" in flux.dims:
+        return flux.sel(source=sector.flux_source, drop=True)
+    return flux
+
+
+def _sector_basis_functions(
+    inv_out: InversionOutput,
+    sector: OutputSector,
+    trace: xr.Dataset,
+) -> BasisFunctions:
+    """Return a basis object whose state dimension matches one sector trace."""
+    sector_flux = _sector_flux(inv_out, sector)
+    flat_basis = inv_out.basis_functions.flat_basis()
+    if not isinstance(flat_basis, dict):
+        return inv_out.basis_functions.with_flux(sector_flux)
+
+    try:
+        sector_basis = flat_basis[sector.flux_source]
+    except KeyError as exc:
+        raise ValueError(
+            f"BasisFunctions object is missing basis for sector flux source {sector.flux_source!r}."
+        ) from exc
+
+    return BasisFunctions.from_flat_basis(
+        basis_flat=sector_basis,
+        flux=sector_flux,
+        operator_kwargs={"state_dim": _state_chunk_dim(trace, inv_out)},
+        metadata=inv_out.basis_functions.metadata,
+    )
 
 
 def _require_output_metadata(
@@ -171,6 +254,153 @@ def _state_chunk_dim(trace: xr.Dataset, inv_out: InversionOutput) -> str:
     raise ValueError(f"Could not find basis state dimension in trace dims {tuple(trace.dims)}.")
 
 
+def _stats_args_with_defaults(
+    stats: list[str] | None,
+    stats_args: dict | None,
+    *,
+    chunk_dim: str | None = None,
+) -> dict:
+    """Return a copied stats kwargs dictionary with standard optional entries."""
+    result = dict(stats_args or {})
+    if stats is not None:
+        result["stats"] = stats
+    if chunk_dim is not None:
+        result["chunk_dim"] = chunk_dim
+    return result
+
+
+def _rename_sector_flux_vars(ds: xr.Dataset, sector: OutputSector, *, total: bool = False) -> xr.Dataset:
+    """Rename standard flux output variables with sector or total labels."""
+    label = "total" if total else sector.variable_suffix
+    rename = {}
+    for data_var in ds.data_vars:
+        name = str(data_var)
+        if name.startswith("flux_"):
+            rename[name] = name.replace("flux_", f"flux_{label}_", 1)
+        elif name.startswith("scaling_"):
+            rename[name] = name.replace("scaling_", f"scaling_{label}_", 1)
+    return ds.rename(rename)
+
+
+def _sector_flux_trace_dataset(
+    inv_out: InversionOutput,
+    sector: OutputSector,
+    *,
+    report_flux_on_inversion_grid: bool,
+) -> xr.Dataset:
+    """Return one sector's per-draw reconstructed flux trace."""
+    trace = _sector_scale_trace(inv_out, sector)
+    basis_functions = _sector_basis_functions(inv_out, sector, trace)
+    sector_flux = _sector_flux(inv_out, sector)
+    reconstructed = reconstruct_flux_stats(
+        basis_functions,
+        sector_flux,
+        trace,
+        report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+    )
+    reconstructed = rename_by_replacement(reconstructed, "x", "flux")
+    return _rename_sector_flux_vars(reconstructed, sector)
+
+
+def _sector_scale_factor_stats(
+    inv_out: InversionOutput,
+    sector: OutputSector,
+    stats_args: dict,
+) -> xr.Dataset:
+    """Return one sector's gridded scale-factor statistics."""
+    trace = _sector_scale_trace(inv_out, sector)
+    basis_functions = _sector_basis_functions(inv_out, sector, trace)
+    scale_stats = calculate_stats(trace, **stats_args)
+    result = reconstruct_scale_factor_stats(basis_functions, scale_stats)
+    for data_var in result.data_vars:
+        if data_var in scale_stats.data_vars:
+            result[data_var].attrs = scale_stats[data_var].attrs
+            result[data_var].attrs["long_name"] = result[data_var].attrs["long_name"].replace("trace_of_", "")
+    result = rename_by_replacement(result, "x", "scaling")
+    return _rename_sector_flux_vars(result, sector)
+
+
+def _set_multisector_flux_attrs(
+    ds: xr.Dataset, inv_out: InversionOutput, sectors: list[OutputSector]
+) -> xr.Dataset:
+    """Restore units and readable long names on multisector flux variables."""
+    default_units = inv_out.flux.attrs.get("units", "")
+    sector_units = {
+        sector.variable_suffix: _sector_flux(inv_out, sector).attrs.get("units", default_units)
+        for sector in sectors
+    }
+    total_units = next(iter(sector_units.values()), default_units)
+
+    for data_var in ds.data_vars:
+        name = str(data_var)
+        if name.startswith("flux_total_"):
+            ds[data_var].attrs["units"] = total_units
+            ds[data_var].attrs["long_name"] = name.replace("_", " ")
+            continue
+
+        for sector in sectors:
+            if name.startswith(f"flux_{sector.variable_suffix}_"):
+                ds[data_var].attrs["units"] = sector_units[sector.variable_suffix]
+                ds[data_var].attrs["long_name"] = name.replace(
+                    f"flux_{sector.variable_suffix}_",
+                    f"{sector.name} flux ",
+                    1,
+                ).replace("_", " ")
+                break
+
+    return ds
+
+
+def make_sector_flux_outputs(
+    inv_out: InversionOutput,
+    stats: list[str] | None = None,
+    stats_args: dict | None = None,
+    include_scale_factors: bool = True,
+    report_flux_on_inversion_grid: bool = True,
+) -> xr.Dataset:
+    """Return multisector flux statistics by sector plus correctly reconstructed total flux statistics."""
+    if not inv_out.is_multisector:
+        raise ValueError("Sector flux postprocessing requires multisector RHIME outputs.")
+
+    sectors = _multisector_output_sectors(inv_out)
+    sample_trace = _sector_scale_trace(inv_out, sectors[0])
+    scale_stats_args = _stats_args_with_defaults(
+        stats,
+        stats_args,
+        chunk_dim=_state_chunk_dim(sample_trace, inv_out),
+    )
+    flux_stats_args = _stats_args_with_defaults(stats, stats_args)
+
+    sector_flux_traces = [
+        _sector_flux_trace_dataset(
+            inv_out,
+            sector,
+            report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+        )
+        for sector in sectors
+    ]
+    total_flux_trace = xr.concat(
+        [
+            dataset.rename(
+                {
+                    data_var: str(data_var).replace(f"flux_{sector.variable_suffix}_", "flux_total_", 1)
+                    for data_var in dataset.data_vars
+                }
+            )
+            for sector, dataset in zip(sectors, sector_flux_traces, strict=True)
+        ],
+        dim="sector",
+    ).sum("sector")
+
+    outputs = [calculate_stats(total_flux_trace, **flux_stats_args)]
+    for sector, flux_trace in zip(sectors, sector_flux_traces, strict=True):
+        outputs.append(calculate_stats(flux_trace, **flux_stats_args))
+        if include_scale_factors:
+            outputs.append(_sector_scale_factor_stats(inv_out, sector, scale_stats_args))
+
+    return _set_multisector_flux_attrs(xr.merge(outputs), inv_out, sectors).as_numpy()
+
+
 def make_flux_outputs(
     inv_out: InversionOutput,
     stats: list[str] | None = None,
@@ -203,6 +433,15 @@ def make_flux_outputs(
         xr.Dataset with computed flux stats.
 
     """
+    if inv_out.is_multisector:
+        return make_sector_flux_outputs(
+            inv_out,
+            stats=stats,
+            stats_args=stats_args,
+            include_scale_factors=include_scale_factors,
+            report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+        )
+
     _require_single_sector_output(inv_out, "Flux postprocessing")
     trace = _rename_trace_roles(
         inv_out.trace_dataset(var_roles="flux_scale"),
@@ -210,13 +449,7 @@ def make_flux_outputs(
         {"flux_scale": "x"},
     )
 
-    if stats_args is None:
-        stats_args = {}
-
-    if stats is not None:
-        stats_args["stats"] = stats
-
-    stats_args["chunk_dim"] = _state_chunk_dim(trace, inv_out)
+    stats_args = _stats_args_with_defaults(stats, stats_args, chunk_dim=_state_chunk_dim(trace, inv_out))
     stats_ds = calculate_stats(trace, **stats_args)
 
     flux_stats = reconstruct_flux_stats(

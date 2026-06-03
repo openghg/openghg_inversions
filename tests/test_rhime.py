@@ -108,6 +108,55 @@ def _fake_basis_functions(*, artifact_source: str = "generated") -> BasisFunctio
     )
 
 
+def _fake_multisector_basis_functions(*, artifact_source: str = "generated") -> BasisFunctions:
+    """Build a one-cell basis artifact with source-specific prior flux."""
+    basis = xr.DataArray(
+        [[1]],
+        dims=("lat", "lon"),
+        coords={"lat": [0.0], "lon": [0.0]},
+        name="basis",
+    )
+    flux = xr.DataArray(
+        [[[1.0]], [[3.0]]],
+        dims=("source", "lat", "lon"),
+        coords={"source": ["ff-inventory", "ocean-inventory"], "lat": [0.0], "lon": [0.0]},
+        name="flux",
+    )
+    flux.attrs["units"] = "mol/m2/s"
+    return BasisFunctions.from_flat_basis(
+        basis_flat=basis,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+        metadata={BASIS_ARTIFACT_SOURCE_ATTR: artifact_source},
+    )
+
+
+def _fake_source_specific_multisector_basis_functions(
+    *,
+    artifact_source: str = "generated",
+) -> BasisFunctions:
+    """Build a one-cell source-specific basis artifact for multisector tests."""
+    basis = xr.DataArray(
+        [[1]],
+        dims=("lat", "lon"),
+        coords={"lat": [0.0], "lon": [0.0]},
+        name="basis",
+    )
+    flux = xr.DataArray(
+        [[[1.0]], [[3.0]]],
+        dims=("source", "lat", "lon"),
+        coords={"source": ["ff-inventory", "ocean-inventory"], "lat": [0.0], "lon": [0.0]},
+        name="flux",
+    )
+    flux.attrs["units"] = "mol/m2/s"
+    return BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={"ff-inventory": basis, "ocean-inventory": basis},
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+        metadata={BASIS_ARTIFACT_SOURCE_ATTR: artifact_source},
+    )
+
+
 def _fake_basis_functions_matching_country_grid(country_file: Path) -> BasisFunctions:
     """Build a one-region basis artifact on the grid of a test country file."""
     country_grid = xr.open_dataset(country_file)
@@ -403,6 +452,40 @@ def _modern_postprocessing_inv_out(
             "split_by_sectors": False,
         },
         model_metadata={"species": "ch4", "domain": "EUROPE"},
+    )
+
+
+def _multisector_postprocessing_inv_out(basis_functions: BasisFunctions | None = None) -> InversionOutput:
+    """Build a small multisector output for flux reconstruction tests."""
+    return InversionOutput(
+        trace=az.from_dict(
+            posterior={
+                "x_ff": np.array([[[0.0], [2.0]]]),
+                "x_ocean": np.array([[[2.0 / 3.0], [0.0]]]),
+            },
+            prior={
+                "x_ff": np.array([[[1.0], [1.0]]]),
+                "x_ocean": np.array([[[1.0], [1.0]]]),
+            },
+            coords={"region": [0]},
+            dims={"x_ff": ["region"], "x_ocean": ["region"]},
+        ),
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=basis_functions or _fake_multisector_basis_functions(),
+        run_metadata={
+            "start_date": "2019-01-01",
+            "end_date": "2019-01-02",
+            "sites": ["TAC"],
+            "split_by_sectors": True,
+        },
+        model_metadata={
+            "species": "ch4",
+            "domain": "EUROPE",
+            "sectors": [
+                {"name": "FF", "flux_source": "ff-inventory", "variable_suffix": "ff"},
+                {"name": "Ocean", "flux_source": "ocean-inventory", "variable_suffix": "ocean"},
+            ],
+        },
     )
 
 
@@ -2118,6 +2201,9 @@ def test_make_multisector_output_bundle_returns_modern_inv_out() -> None:
     assert bundle.inv_out.run_metadata["split_by_sectors"] is True
     assert bundle.output_metadata["inversion_output_contract"] == "modern"
     assert "sector_flux_diagnostics" in bundle.outputs
+    assert "flux_ff_posterior_mean" in bundle.outputs["sector_flux_diagnostics"]
+    assert "flux_ocean_posterior_mean" in bundle.outputs["sector_flux_diagnostics"]
+    assert "flux_total_posterior_mean" in bundle.outputs["sector_flux_diagnostics"]
     assert bundle.outputs["inversion_output"] is bundle.inv_out
 
 
@@ -2312,6 +2398,45 @@ def test_modern_inversion_output_supports_flux_outputs() -> None:
     )
 
     assert "flux_posterior_mean" in modern_flux
+
+
+def test_multisector_flux_outputs_reconstruct_sector_and_total_flux() -> None:
+    """Multisector flux postprocessing reconstructs sector fluxes before total statistics."""
+    from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
+
+    outputs = make_flux_outputs(
+        _multisector_postprocessing_inv_out(),
+        stats=["mean", "stdev"],
+        include_scale_factors=True,
+        report_flux_on_inversion_grid=False,
+    )
+
+    assert "flux_ff_posterior_mean" in outputs
+    assert "flux_ocean_posterior_mean" in outputs
+    assert "scaling_ff_posterior_mean" in outputs
+    assert "flux_total_posterior_mean" in outputs
+    assert "flux_total_posterior_stdev" in outputs
+    assert outputs["flux_ff_posterior_mean"].attrs["units"] == "mol/m2/s"
+    assert outputs["flux_total_posterior_mean"].attrs["units"] == "mol/m2/s"
+    assert float(outputs["flux_total_posterior_mean"].item()) == 2.0
+    assert float(outputs["flux_total_posterior_stdev"].item()) == 0.0
+    assert float(outputs["flux_ff_posterior_stdev"].item()) > 0.0
+
+
+def test_multisector_flux_outputs_support_source_specific_basis() -> None:
+    """Sector flux reconstruction handles source-specific retained basis artifacts."""
+    from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
+
+    outputs = make_flux_outputs(
+        _multisector_postprocessing_inv_out(_fake_source_specific_multisector_basis_functions()),
+        stats=["mean", "mode_kde"],
+        include_scale_factors=False,
+        report_flux_on_inversion_grid=False,
+    )
+
+    assert "flux_total_posterior_mean" in outputs
+    assert "flux_total_posterior_mode" in outputs
+    assert float(outputs["flux_total_posterior_mean"].item()) == 2.0
 
 
 def test_modern_flux_outputs_use_retained_basis_operator(
@@ -2964,7 +3089,9 @@ def test_run_rhime_multisector_api_smoke(
     assert "x_ff" in posterior
     assert "x_ocean" in posterior
     assert "sector_flux_diagnostics" in result.outputs
-    assert list(result.outputs["sector_flux_diagnostics"].coords["sector"].values) == ["FF", "ocean"]
+    assert "flux_ff_posterior_mean" in result.outputs["sector_flux_diagnostics"]
+    assert "flux_ocean_posterior_mean" in result.outputs["sector_flux_diagnostics"]
+    assert "flux_total_posterior_mean" in result.outputs["sector_flux_diagnostics"]
 
 
 def test_cli_run_rhime_passes_config_and_overrides(monkeypatch, tmp_path: Path) -> None:

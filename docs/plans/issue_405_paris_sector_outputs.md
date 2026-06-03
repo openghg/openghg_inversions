@@ -14,15 +14,16 @@ Track implementation progress for GitHub issue #405: sector-aware RHIME outputs 
 
 1. `codex/405-paris-template-version`: add this planning note, import the uploaded CDL templates, and add template-version plumbing while preserving the current default.
 2. Single-sector latest PARIS branch: implement explicit latest-template concentration and flux outputs, including `platform`, observation `index`, `time_bnds`, new `mf_*` names, flux `time_bnds`, `cell_area`, and latest country variable names.
-3. Multisector total branch: reconstruct sector prior/posterior flux traces with each sector's own prior flux, sum reconstructed flux traces for total outputs, and route multisector `output_format="paris"` through total PARIS output creation.
-4. Per-sector PARIS branch: add sector-specific PARIS variables and a documented sector diagnostics dataset for variables that do not fit cleanly in the product files.
+3. Sector reconstruction branch: reconstruct sector prior/posterior flux traces with each sector's own prior flux, sum reconstructed flux traces for total outputs, and move RHIME multisector diagnostics onto the postprocessing helper.
+4. Multisector total PARIS branch: route multisector `output_format="paris"` through total PARIS output creation.
+5. Per-sector PARIS branch: add sector-specific PARIS variables and a documented sector diagnostics dataset for variables that do not fit cleanly in the product files.
 
 ## Progress
 
 - [x] Recorded decisions and branch plan.
 - [x] Added latest CDL templates in-tree.
 - [x] Added explicit latest single-sector PARIS products.
-- [ ] Added sector-aware flux reconstruction.
+- [x] Added sector-aware flux reconstruction.
 - [ ] Routed multisector PARIS outputs through total product creation.
 - [ ] Added per-sector PARIS variables and diagnostics.
 
