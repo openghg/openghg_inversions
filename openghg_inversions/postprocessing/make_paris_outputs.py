@@ -2,7 +2,7 @@ from pathlib import Path
 import getpass
 import re
 from collections.abc import Hashable
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -24,9 +24,44 @@ from openghg_inversions.postprocessing.stats import stats_functions
 # path to `paris_formatting` submodule
 paris_formatting_path = Path(__file__).parent
 
-# paths to template files
-conc_template_path = paris_formatting_path / "PARIS_Lagrangian_inversion_concentration_EUROPE_v03.cdl"
-flux_template_path = paris_formatting_path / "PARIS_Lagrangian_inversion_flux_EUROPE.cdl"
+ParisTemplateVersion = Literal["legacy", "latest"]
+
+
+class ParisTemplateFiles(NamedTuple):
+    """CDL templates used for one PARIS output schema version."""
+
+    concentration: Path
+    concentration_version: str
+    flux: Path
+    flux_version: str
+
+
+DEFAULT_PARIS_TEMPLATE_VERSION: ParisTemplateVersion = "legacy"
+PARIS_TEMPLATE_FILES: dict[ParisTemplateVersion, ParisTemplateFiles] = {
+    "legacy": ParisTemplateFiles(
+        concentration=paris_formatting_path / "PARIS_Lagrangian_inversion_concentration_EUROPE_v03.cdl",
+        concentration_version="v03",
+        flux=paris_formatting_path / "PARIS_Lagrangian_inversion_flux_EUROPE.cdl",
+        flux_version="legacy",
+    ),
+    "latest": ParisTemplateFiles(
+        concentration=paris_formatting_path / "PARIS_Lagrangian_inversion_concentration_EUROPE_v04.cdl",
+        concentration_version="v04",
+        flux=paris_formatting_path / "PARIS_Lagrangian_inversion_flux_EUROPE_v03.cdl",
+        flux_version="v03",
+    ),
+}
+
+
+def paris_template_files(template_version: ParisTemplateVersion) -> ParisTemplateFiles:
+    """Return CDL template paths for a PARIS output schema version."""
+    try:
+        return PARIS_TEMPLATE_FILES[template_version]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unsupported PARIS template version {template_version!r}; "
+            f"expected one of {sorted(PARIS_TEMPLATE_FILES)!r}."
+        ) from exc
 
 
 var_pat = re.compile(r"\s*[a-z]+ ([a-zA-Z_]+)\(.*\)")
@@ -157,7 +192,10 @@ def shift_measurement_time_to_midpoint(ds: xr.Dataset, period: str = "4h") -> xr
 
 
 def paris_concentration_outputs(
-    inv_out: InversionOutput, report_mode: bool = False, obs_avg_period: str = "4h"
+    inv_out: InversionOutput,
+    report_mode: bool = False,
+    obs_avg_period: str = "4h",
+    template_version: ParisTemplateVersion = DEFAULT_PARIS_TEMPLATE_VERSION,
 ) -> xr.Dataset:
     """Create PARIS concentration outputs.
 
@@ -212,7 +250,8 @@ def paris_concentration_outputs(
     if "qYapost_bias" in conc_outputs.data_vars:
         conc_outputs = conc_outputs.drop_vars(["qYapost_bias", "qYapriori_bias"])
 
-    conc_attrs = get_data_var_attrs(conc_template_path)
+    template_files = paris_template_files(template_version)
+    conc_attrs = get_data_var_attrs(template_files.concentration)
 
     units = float(obs_and_errs_raw["y_obs"].attrs["units"].split(" ")[0])
 
@@ -243,6 +282,7 @@ def paris_concentration_outputs(
     result.sitenames.attrs["long_name"] = "identifier of site"
 
     result.attrs = make_global_attrs("conc")
+    result.attrs["paris_concentration_template_version"] = template_files.concentration_version
 
     return _cast_float_data_vars_to_float32(result)
 
@@ -304,6 +344,7 @@ def paris_flux_output(
     report_mode: bool = False,
     inversion_grid: bool = True,
     flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
+    template_version: ParisTemplateVersion = DEFAULT_PARIS_TEMPLATE_VERSION,
 ) -> xr.Dataset:
     species, domain = _require_paris_metadata(inv_out)
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
@@ -318,7 +359,8 @@ def paris_flux_output(
         include_scale_factors=False,
     )
 
-    emissions_attrs = get_data_var_attrs(flux_template_path, species)
+    template_files = paris_template_files(template_version)
+    emissions_attrs = get_data_var_attrs(template_files.flux, species)
     country_outs = make_country_outputs(
         inv_out,
         country_file=country_file,
@@ -410,6 +452,7 @@ def paris_flux_output(
     result = result.transpose("time", "percentile", "country", "latitude", "longitude")
 
     result.attrs = make_global_attrs("flux")
+    result.attrs["paris_flux_template_version"] = template_files.flux_version
 
     return _cast_float_data_vars_to_float32(result).as_numpy()
 
@@ -483,10 +526,16 @@ def make_paris_outputs(
     inversion_grid: bool = True,
     obs_avg_period: str = "4h",
     domain: str | None = None,
+    template_version: ParisTemplateVersion = DEFAULT_PARIS_TEMPLATE_VERSION,
 ) -> tuple[xr.Dataset, xr.Dataset]:
     # infer flux frequency
     flux_frequency = infer_flux_frequency(inv_out.flux)
-    conc_outs = paris_concentration_outputs(inv_out, report_mode=report_mode, obs_avg_period=obs_avg_period)
+    conc_outs = paris_concentration_outputs(
+        inv_out,
+        report_mode=report_mode,
+        obs_avg_period=obs_avg_period,
+        template_version=template_version,
+    )
     flux_outs = paris_flux_output(
         inv_out,
         report_mode=report_mode,
@@ -494,6 +543,7 @@ def make_paris_outputs(
         inversion_grid=inversion_grid,
         time_point=time_point,
         flux_frequency=flux_frequency,
+        template_version=template_version,
     )
 
     return flux_outs, conc_outs
