@@ -389,6 +389,7 @@ def make_concentration_outputs(
 def make_country_outputs(
     inv_out: InversionOutput,
     country_file: str | Path | None = None,
+    country_selections: list[str] | None = None,
     country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
@@ -401,6 +402,7 @@ def make_country_outputs(
         country_file: Path to country definition file. If None, the default
             country file location and the domain of the inversion output will be used
             to try to find a suitable country file.
+        country_selections: Optional country names or country codes to report.
         country_regions: Dict mapping country region names (e.g. "BENELUX") to a
             list of (country codes) of the countries comprising that regions (e.g.
             ["BEL", "NLD", "LUX"]).
@@ -435,6 +437,7 @@ def make_country_outputs(
     countries = Countries.from_file(
         country_file=country_file,
         country_code=country_code,
+        country_selections=country_selections,
         country_regions=country_regions,
         domain=domain,
         drop_missing_regions=drop_missing_regions,

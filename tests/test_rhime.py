@@ -2544,6 +2544,53 @@ def test_paris_output_processes_modern_output(europe_country_file: Path) -> None
         assert flux_outputs[name].dtype == np.dtype("float32")
 
 
+def test_latest_paris_output_processes_modern_output(europe_country_file: Path, tmp_path: Path) -> None:
+    """Explicit latest PARIS output uses the new concentration and flux templates."""
+    from openghg_inversions.postprocessing.make_paris_outputs import (
+        PARIS_LATEST_COUNTRIES,
+        make_paris_outputs,
+    )
+
+    flux_outputs, conc_outputs = make_paris_outputs(
+        _modern_postprocessing_inv_out(europe_country_file),
+        country_file=europe_country_file,
+        obs_avg_period="1h",
+        domain="europe",
+        inversion_grid=False,
+        template_version="latest",
+    )
+
+    assert conc_outputs.attrs["paris_concentration_template_version"] == "v04"
+    assert "index" in conc_outputs.dims
+    assert "platform" in conc_outputs.coords
+    assert "time_bnds" in conc_outputs
+    assert "number_of_identifier" in conc_outputs
+    assert "assimilation_flag" in conc_outputs
+    assert "mf_observed" in conc_outputs
+    assert "mf_posterior" in conc_outputs
+    assert "percentile_mf_posterior" in conc_outputs
+    assert "Yobs" not in conc_outputs
+
+    assert flux_outputs.attrs["paris_flux_template_version"] == "v03"
+    assert "time_bnds" in flux_outputs
+    assert "cell_area" in flux_outputs
+    assert "country_fraction" in flux_outputs
+    assert "flux_total_posterior" in flux_outputs
+    assert "flux_total_posterior_country" in flux_outputs
+    assert "stdev_flux_total_posterior" in flux_outputs
+    assert "covariance_flux_total_posterior_country" in flux_outputs
+    assert tuple(flux_outputs.country.values) == PARIS_LATEST_COUNTRIES
+    assert flux_outputs["covariance_flux_total_posterior_country"].shape == (
+        flux_outputs.sizes["time"],
+        flux_outputs.sizes["country"],
+        flux_outputs.sizes["country"],
+    )
+    assert "country_flux_total_posterior" not in flux_outputs
+
+    conc_outputs.to_netcdf(tmp_path / "latest_conc.nc")
+    flux_outputs.to_netcdf(tmp_path / "latest_flux.nc")
+
+
 def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
     """RHIME basic postprocessing consumes modern output without legacy adapters."""
     model_spec, output_spec, run_spec = _minimal_output_specs(output_format="basic")
