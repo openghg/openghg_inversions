@@ -11,6 +11,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions import utils
+from openghg_inversions._country_file import load_country_dataset
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
     flat_basis_for_output,
@@ -345,6 +346,18 @@ def _as_array(data: Any) -> np.ndarray:
     return np.asarray(data.values if isinstance(data, xr.DataArray) else data)
 
 
+def _legacy_country_index(domain: str, country_file: str | Path | None = None) -> np.ndarray:
+    """Return the raw country index grid used by legacy-format outputs."""
+    country_dataset = load_country_dataset(
+        utils.get_country_file_path(country_file=country_file, domain=domain)
+    )
+    if "country" in country_dataset:
+        return _as_array(country_dataset["country"])
+    if "region" in country_dataset:
+        return _as_array(country_dataset["region"])
+    raise ValueError("Variables 'country' or 'region' not found in country file.")
+
+
 def _model_or_input_var(
     inv_out: InversionOutput,
     *,
@@ -632,8 +645,7 @@ def make_legacy_hbmcmc_output(
     )
     country = _rename_hdi_for_legacy(_rename_country_for_legacy(country))
 
-    country_obj = utils.get_country(domain, country_file=country_file)
-    country_idx = country_obj.country
+    country_idx = _legacy_country_index(domain, country_file=country_file)
     apriori_flux = _compute_apriori_flux(
         inv_out.flux,
         str(inv_out.start_time.date()),

@@ -1,12 +1,15 @@
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
 import arviz as az
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
+from openghg_inversions import _country_file as country_file_mod
 from openghg_inversions import utils
 from openghg_inversions.postprocessing import legacy_outputs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -57,6 +60,15 @@ def _basis_functions_stub() -> SimpleNamespace:
         flux=flux,
         operator=SimpleNamespace(meta=SimpleNamespace(state_dim="region")),
     )
+
+
+def _write_minimal_country_file(path: str | Path) -> None:
+    """Write a minimal country file for fallback loader tests."""
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset("lat", data=np.array([52.0], dtype="float32"))
+        h5.create_dataset("lon", data=np.array([1.0], dtype="float32"))
+        h5.create_dataset("country", data=np.array([[1.0]]))
+        h5.create_dataset("name", data=np.array([b"UNITED KINGDOM"]))
 
 
 def _legacy_inv_out(*, model_data: bool, include_bc: bool = False, chains: int = 1) -> InversionOutput:
@@ -170,9 +182,7 @@ def stub_legacy_product_builders(monkeypatch: pytest.MonkeyPatch) -> None:
         ),
     )
     monkeypatch.setattr(
-        legacy_outputs.utils,
-        "get_country",
-        lambda domain, country_file=None: SimpleNamespace(country=np.array([[1]])),
+        legacy_outputs, "_legacy_country_index", lambda domain, country_file=None: np.array([[1]])
     )
 
 
@@ -209,6 +219,21 @@ def test_map_times_to_available_period_positions_handles_gappy_flux_months():
     )
 
     np.testing.assert_array_equal(positions, np.array([0, 0, 1, 2]))
+
+
+def test_legacy_country_index_falls_back_when_h5netcdf_open_fails(monkeypatch, tmp_path):
+    """Legacy country index loading uses the same direct HDF5 fallback as modern country outputs."""
+    country_file = tmp_path / "country_TEST.nc"
+    _write_minimal_country_file(country_file)
+
+    def fail_open_dataset(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("Unspecified error in H5DSget_num_scales")
+
+    monkeypatch.setattr(country_file_mod.xr, "open_dataset", fail_open_dataset)
+
+    country_index = legacy_outputs._legacy_country_index("TEST", country_file=country_file)
+
+    np.testing.assert_array_equal(country_index, np.array([[1.0]]))
 
 
 def test_compute_apriori_flux_handles_multi_year_flux_time():

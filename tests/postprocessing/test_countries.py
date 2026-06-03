@@ -1,9 +1,20 @@
+import h5py
+import numpy as np
 import pytest
 import xarray as xr
 
 import openghg_inversions._country_file as country_file_loader
 from openghg_inversions.postprocessing.countries import Countries, CountryRegions, paris_regions_dict
 from openghg_inversions.postprocessing._country_codes import CountryInfoList
+
+
+def _write_minimal_country_file(path):
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset("lat", data=np.array([1.0, 2.0], dtype="float32"))
+        h5.create_dataset("lon", data=np.array([3.0, 4.0], dtype="float32"))
+        h5.create_dataset("country", data=np.array([[0.0, 1.0], [1.0, 0.0]]))
+        h5.create_dataset("name", data=np.array([b"OCEAN", b"FRANCE"]))
+        h5.create_dataset("country_code", data=np.array([b"OCEAN", b"FRA"]))
 
 
 def test_countries_from_file_falls_back_to_h5netcdf(monkeypatch, europe_country_file):
@@ -33,6 +44,27 @@ def test_countries_from_file_falls_back_to_h5netcdf(monkeypatch, europe_country_
 
     assert open_calls == ["default", "h5netcdf"]
     assert len(countries.country_selections) == len(dataset.name)
+
+
+def test_countries_from_file_falls_back_when_xarray_engines_fail(monkeypatch, tmp_path):
+    """Check country files can be read directly when xarray/HDF5 scale decoding fails."""
+    country_file = tmp_path / "country_TEST.nc"
+    _write_minimal_country_file(country_file)
+
+    def fail_open_dataset(*args, **kwargs):
+        raise RuntimeError("Unspecified error in H5DSget_num_scales")
+
+    monkeypatch.setattr(country_file_loader.xr, "open_dataset", fail_open_dataset)
+
+    with pytest.warns(RuntimeWarning, match="direct HDF5 reader 'h5py'"):
+        dataset = country_file_loader.load_country_dataset(country_file)
+
+    assert dataset.attrs[country_file_loader.COUNTRY_FILE_SELECTED_ENGINE_ATTR] == "h5py"
+
+    countries = Countries(dataset)
+
+    assert list(countries.country_labels) == ["OCEAN", "FRANCE"]
+    assert dict(countries.matrix.sizes) == {"lat": 2, "lon": 2, "country": 2}
 
 
 def test_country_regions_missing_check():
@@ -93,7 +125,6 @@ def test_countries_matrix_with_regions(country_code, country_ds, europe_country_
     )
 
     assert len(countries.country_selections) == len(country_ds.name) + len(paris_regions_dict["europe"])
-
 
 @pytest.mark.parametrize("country_code", ["alpha2", "alpha3", None])
 def test_countries_matrix_with_regions_EASTASIA(country_code, country_ds_eastasia, eastasia_country_file):
