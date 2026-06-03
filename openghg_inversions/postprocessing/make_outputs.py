@@ -351,26 +351,15 @@ def _set_multisector_flux_attrs(
     return ds
 
 
-def make_sector_flux_outputs(
+def _multisector_flux_trace_parts(
     inv_out: InversionOutput,
-    stats: list[str] | None = None,
-    stats_args: dict | None = None,
-    include_scale_factors: bool = True,
     report_flux_on_inversion_grid: bool = True,
-) -> xr.Dataset:
-    """Return multisector flux statistics by sector plus correctly reconstructed total flux statistics."""
+) -> tuple[list[OutputSector], list[xr.Dataset], xr.Dataset]:
+    """Return sector metadata, sector flux traces, and total flux trace."""
     if not inv_out.is_multisector:
         raise ValueError("Sector flux postprocessing requires multisector RHIME outputs.")
 
     sectors = _multisector_output_sectors(inv_out)
-    sample_trace = _sector_scale_trace(inv_out, sectors[0])
-    scale_stats_args = _stats_args_with_defaults(
-        stats,
-        stats_args,
-        chunk_dim=_state_chunk_dim(sample_trace, inv_out),
-    )
-    flux_stats_args = _stats_args_with_defaults(stats, stats_args)
-
     sector_flux_traces = [
         _sector_flux_trace_dataset(
             inv_out,
@@ -391,6 +380,41 @@ def make_sector_flux_outputs(
         ],
         dim="sector",
     ).sum("sector")
+
+    return sectors, sector_flux_traces, total_flux_trace
+
+
+def make_multisector_flux_trace_outputs(
+    inv_out: InversionOutput,
+    report_flux_on_inversion_grid: bool = True,
+) -> xr.Dataset:
+    """Return per-draw reconstructed sector and total flux traces for multisector outputs."""
+    _, sector_flux_traces, total_flux_trace = _multisector_flux_trace_parts(
+        inv_out,
+        report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+    )
+    return xr.merge([total_flux_trace, *sector_flux_traces]).as_numpy()
+
+
+def make_sector_flux_outputs(
+    inv_out: InversionOutput,
+    stats: list[str] | None = None,
+    stats_args: dict | None = None,
+    include_scale_factors: bool = True,
+    report_flux_on_inversion_grid: bool = True,
+) -> xr.Dataset:
+    """Return multisector flux statistics by sector plus correctly reconstructed total flux statistics."""
+    sectors, sector_flux_traces, total_flux_trace = _multisector_flux_trace_parts(
+        inv_out,
+        report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+    )
+    sample_trace = _sector_scale_trace(inv_out, sectors[0])
+    scale_stats_args = _stats_args_with_defaults(
+        stats,
+        stats_args,
+        chunk_dim=_state_chunk_dim(sample_trace, inv_out),
+    )
+    flux_stats_args = _stats_args_with_defaults(stats, stats_args)
 
     outputs = [calculate_stats(total_flux_trace, **flux_stats_args)]
     for sector, flux_trace in zip(sectors, sector_flux_traces, strict=True):

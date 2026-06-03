@@ -314,6 +314,7 @@ def make_multisector_output_bundle(
     model_spec: RhimeModelSpec,
     idata: az.InferenceData,
     prepared: RhimePreparedInputs,
+    country_file: str | None,
 ) -> RhimeOutputBundle:
     """Create and optionally save transitional multi-sector RHIME outputs."""
     with timed("rhime.output.inversion_output_create", output_format=output_spec.output_format):
@@ -346,10 +347,53 @@ def make_multisector_output_bundle(
             output_metadata["inversion_output_path"] = str(inv_out_path)
 
     if output_spec.output_format == "paris":
-        output_metadata["paris_note"] = (
-            "Multi-sector PARIS schema support is not implemented in issue #398; "
-            "sector-aware modern diagnostics were generated instead."
-        )
+        paris_kwargs = dict(output_spec.paris_postprocessing_kwargs or {})
+        if paris_kwargs.get("template_version") == "latest":
+            from openghg_inversions.postprocessing.make_paris_outputs import (
+                infer_flux_frequency,
+                paris_flux_output,
+            )
+
+            output_metadata["paris_note"] = (
+                "Multi-sector PARIS latest flux total output was generated; "
+                "multi-sector PARIS concentration output is not implemented yet."
+            )
+            flux_outs = paris_flux_output(
+                inv_out_for_outputs,
+                country_file=country_file,
+                time_point=paris_kwargs.pop("time_point", "midpoint"),
+                report_mode=paris_kwargs.pop("report_mode", False),
+                inversion_grid=paris_kwargs.pop("inversion_grid", True),
+                flux_frequency=paris_kwargs.pop(
+                    "flux_frequency",
+                    infer_flux_frequency(inv_out_for_outputs.flux),
+                ),
+                template_version="latest",
+            )
+            outputs["paris_flux"] = flux_outs
+
+            if output_spec.output_path is not None:
+                Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
+                flux_file = _define_output_filename(
+                    output_spec.output_path,
+                    model_spec.species,
+                    model_spec.domain,
+                    output_spec.output_name + "_flux",
+                    run_spec.start_date,
+                    ext=".nc",
+                )
+                flux_outs.to_netcdf(
+                    flux_file,
+                    unlimited_dims=["time"],
+                    mode="w",
+                    encoding=ncdf_encoding(flux_outs),
+                )
+                output_metadata["paris_flux_path"] = str(flux_file)
+        else:
+            output_metadata["paris_note"] = (
+                "Multi-sector PARIS output requires paris_postprocessing_kwargs "
+                "with template_version='latest'; sector-aware diagnostics were generated instead."
+            )
     if output_spec.output_path is not None and output_spec.output_format != "none":
         Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
         diagnostics_path = (

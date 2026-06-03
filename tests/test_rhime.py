@@ -131,6 +131,31 @@ def _fake_multisector_basis_functions(*, artifact_source: str = "generated") -> 
     )
 
 
+def _fake_multisector_basis_functions_matching_country_grid(country_file: Path) -> BasisFunctions:
+    """Build a one-region multisector basis artifact on the grid of a test country file."""
+    country_grid = xr.open_dataset(country_file)
+    basis = xr.DataArray(
+        np.ones((country_grid.sizes["lat"], country_grid.sizes["lon"]), dtype=int),
+        dims=("lat", "lon"),
+        coords={"lat": country_grid.lat, "lon": country_grid.lon},
+        name="basis",
+    )
+    flux = xr.concat(
+        [
+            xr.ones_like(basis, dtype=float).expand_dims(source=["ff-inventory"]),
+            (3.0 * xr.ones_like(basis, dtype=float)).expand_dims(source=["ocean-inventory"]),
+        ],
+        dim="source",
+    ).rename("flux")
+    flux.attrs["units"] = "mol/m2/s"
+    return BasisFunctions.from_flat_basis(
+        basis_flat=basis,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+        metadata={BASIS_ARTIFACT_SOURCE_ATTR: "country-grid-multisector-test"},
+    )
+
+
 def _fake_source_specific_multisector_basis_functions(
     *,
     artifact_source: str = "generated",
@@ -2195,6 +2220,7 @@ def test_make_multisector_output_bundle_returns_modern_inv_out() -> None:
         model_spec=model_spec,
         idata=idata,
         prepared=prepared,
+        country_file=None,
     )
 
     assert isinstance(bundle.inv_out, InversionOutput)
@@ -2205,6 +2231,62 @@ def test_make_multisector_output_bundle_returns_modern_inv_out() -> None:
     assert "flux_ocean_posterior_mean" in bundle.outputs["sector_flux_diagnostics"]
     assert "flux_total_posterior_mean" in bundle.outputs["sector_flux_diagnostics"]
     assert bundle.outputs["inversion_output"] is bundle.inv_out
+
+
+def test_make_multisector_output_bundle_builds_latest_paris_flux(europe_country_file: Path) -> None:
+    """Multi-sector PARIS output builds explicit latest total flux output."""
+    sectors = (
+        SectorSpec(
+            name="FF",
+            flux_source="ff-inventory",
+            x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            variable_suffix="ff",
+        ),
+        SectorSpec(
+            name="Ocean",
+            flux_source="ocean-inventory",
+            x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            variable_suffix="ocean",
+        ),
+    )
+    model_spec = RhimeModelSpec(species="ch4", domain="EUROPE", sectors=sectors)
+    output_spec = RhimeOutputSpec(
+        output_format="paris",
+        output_name="test",
+        save_inversion_output=False,
+        paris_postprocessing_kwargs={"template_version": "latest", "inversion_grid": False},
+    )
+    run_spec = RhimeRunSpec(
+        "2019-01-01",
+        "2019-01-02",
+        ("TAC",),
+        ("1h",),
+        model_spec,
+        output_spec,
+        split_by_sectors=True,
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_multisector_basis_functions_matching_country_grid(europe_country_file),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+    idata = cast(Any, _multisector_postprocessing_inv_out().trace)
+
+    bundle = rhime_outputs.make_multisector_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=idata,
+        prepared=prepared,
+        country_file=str(europe_country_file),
+    )
+
+    assert "paris_flux" in bundle.outputs
+    assert "paris_concentration" not in bundle.outputs
+    assert "not implemented yet" in bundle.output_metadata["paris_note"]
+    assert "flux_total_posterior" in bundle.outputs["paris_flux"]
 
 
 def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
@@ -2714,6 +2796,57 @@ def test_latest_paris_output_processes_modern_output(europe_country_file: Path, 
 
     conc_outputs.to_netcdf(tmp_path / "latest_conc.nc")
     flux_outputs.to_netcdf(tmp_path / "latest_flux.nc")
+
+
+def test_latest_paris_flux_output_processes_multisector_total(
+    europe_country_file: Path,
+    tmp_path: Path,
+) -> None:
+    """Explicit latest PARIS flux output can use multisector reconstructed total flux."""
+    from openghg_inversions import convert
+    from openghg_inversions.postprocessing.countries import Countries
+    from openghg_inversions.postprocessing.make_paris_outputs import PARIS_LATEST_COUNTRIES, paris_flux_output
+
+    inv_out = _multisector_postprocessing_inv_out(
+        _fake_multisector_basis_functions_matching_country_grid(europe_country_file)
+    )
+
+    flux_outputs = paris_flux_output(
+        inv_out,
+        country_file=europe_country_file,
+        inversion_grid=False,
+        template_version="latest",
+    )
+
+    assert flux_outputs.attrs["paris_flux_template_version"] == "v03"
+    assert "flux_total_posterior" in flux_outputs
+    assert "stdev_flux_total_posterior" in flux_outputs
+    assert "flux_ff_posterior" not in flux_outputs
+    assert "flux_total_posterior_country" in flux_outputs
+    assert "covariance_flux_total_posterior_country" in flux_outputs
+    assert tuple(flux_outputs.country.values) == PARIS_LATEST_COUNTRIES
+    countries = Countries.from_file(
+        country_file=europe_country_file,
+        country_code="alpha3",
+        country_selections=list(PARIS_LATEST_COUNTRIES),
+        domain="EUROPE",
+    )
+    expected_country = (
+        2.0
+        * (countries.matrix * countries.area_grid).sum(("lat", "lon"))
+        * 365
+        * 24
+        * 3600
+        * convert.molar_mass("ch4")
+        * 1e-3
+    ).reindex(country=list(PARIS_LATEST_COUNTRIES))
+    np.testing.assert_allclose(
+        flux_outputs["flux_total_posterior_country"].isel(time=0).values,
+        expected_country.data.todense(),
+        rtol=1e-6,
+    )
+
+    flux_outputs.to_netcdf(tmp_path / "latest_multisector_flux.nc")
 
 
 def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:

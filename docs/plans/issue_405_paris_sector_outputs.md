@@ -24,7 +24,7 @@ Track implementation progress for GitHub issue #405: sector-aware RHIME outputs 
 - [x] Added latest CDL templates in-tree.
 - [x] Added explicit latest single-sector PARIS products.
 - [x] Added sector-aware flux reconstruction.
-- [ ] Routed multisector PARIS outputs through total product creation.
+- [x] Routed multisector PARIS outputs through total product creation.
 - [ ] Added per-sector PARIS variables and diagnostics.
 
 ## Test Plan

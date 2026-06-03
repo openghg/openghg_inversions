@@ -12,6 +12,8 @@ import pandas as pd
 import xarray as xr
 
 from openghg.util import timestamp_now  # pyright: ignore[reportPrivateImportUsage]
+from openghg_inversions import convert
+from openghg_inversions.array_ops import align_sparse_lat_lon, sparse_xr_dot
 from openghg_inversions.config.version import code_version
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -19,9 +21,10 @@ from openghg_inversions.postprocessing.make_outputs import (
     make_concentration_outputs,
     make_flux_outputs,
     make_country_outputs,
+    make_multisector_flux_trace_outputs,
     observation_and_error_outputs,
 )
-from openghg_inversions.postprocessing.stats import stats_functions
+from openghg_inversions.postprocessing.stats import calculate_stats, stats_functions
 
 
 # path to `paris_formatting` submodule
@@ -97,9 +100,9 @@ var_pat = re.compile(r"\s*[a-z]+ ([a-zA-Z_]+)\(.*\)")
 attr_pat = re.compile(r"\s+([a-zA-Z_]+):([a-zA-Z_]+)\s*=\s*([^;]+)")
 
 
-def _require_paris_metadata(inv_out: InversionOutput) -> tuple[str, str]:
+def _require_paris_metadata(inv_out: InversionOutput, *, allow_multisector: bool = False) -> tuple[str, str]:
     """Return metadata required by current PARIS products."""
-    if inv_out.is_multisector:
+    if inv_out.is_multisector and not allow_multisector:
         raise ValueError("PARIS postprocessing supports only single-sector RHIME outputs.")
 
     species = inv_out.species
@@ -721,14 +724,63 @@ def _latest_paris_countries(country_file: str | Path | None, domain: str) -> Cou
     return countries
 
 
+def _multisector_country_trace_kg(inv_out: InversionOutput, countries: Countries, species: str) -> xr.Dataset:
+    """Return multisector total country flux traces in kg/yr from reconstructed total flux."""
+    total_flux_trace = make_multisector_flux_trace_outputs(
+        inv_out,
+        report_flux_on_inversion_grid=False,
+    )[["flux_total_prior", "flux_total_posterior"]].rename(
+        {
+            "flux_total_prior": "country_prior",
+            "flux_total_posterior": "country_posterior",
+        }
+    )
+    country_weights = countries.matrix.as_numpy() * countries.area_grid.as_numpy()
+    country_weights = align_sparse_lat_lon(country_weights, total_flux_trace["country_posterior"])
+    country_trace = sparse_xr_dot(country_weights, total_flux_trace, dim=["lat", "lon"])
+    country_trace = country_trace * 365 * 24 * 3600 * convert.molar_mass(species) * 1e-3
+    return country_trace.reindex(country=list(PARIS_LATEST_COUNTRIES))
+
+
+def _latest_country_outputs(
+    inv_out: InversionOutput,
+    countries: Countries,
+    species: str,
+    stats: list[str],
+    stats_args: dict[str, Any],
+    country_file: str | Path | None,
+) -> xr.Dataset:
+    """Return latest PARIS country statistics for single- or multisector outputs."""
+    if inv_out.is_multisector:
+        country_trace = _multisector_country_trace_kg(inv_out, countries, species)
+        country_stats_args = dict(stats_args)
+        country_stats_args["stats"] = stats
+        return calculate_stats(country_trace, **country_stats_args)
+
+    country_outs = make_country_outputs(
+        inv_out,
+        country_file=country_file,
+        country_selections=list(PARIS_LATEST_COUNTRIES),
+        stats=stats,
+        stats_args=stats_args,
+        country_code="alpha3",
+    )
+    return (country_outs * 1e-3).reindex(country=list(PARIS_LATEST_COUNTRIES))
+
+
 def _country_posterior_covariance_kg(
     inv_out: InversionOutput,
     countries: Countries,
+    species: str,
     flux_frequency: Literal["monthly", "yearly"] | str,
 ) -> np.ndarray:
     """Return posterior country-total covariance in kg2 yr-2."""
-    country_trace = countries.get_country_trace(inv_out=inv_out)
-    posterior = country_trace["country_posterior"] * 1e-3
+    if inv_out.is_multisector:
+        country_trace = _multisector_country_trace_kg(inv_out, countries, species)
+        posterior = country_trace["country_posterior"]
+    else:
+        country_trace = countries.get_country_trace(inv_out=inv_out)
+        posterior = country_trace["country_posterior"] * 1e-3
     flux_period = _flux_frequency_to_offset(flux_frequency)
     flux_times = list(pd.to_datetime(posterior.flux_time.values))
     _, _, valid_indices = _flux_interval_midpoints_and_bounds(
@@ -900,7 +952,7 @@ def paris_flux_output_latest(
     if time_point != "midpoint":
         raise ValueError("Latest PARIS flux output requires midpoint time coordinates and time bounds.")
 
-    species, domain = _require_paris_metadata(inv_out)
+    species, domain = _require_paris_metadata(inv_out, allow_multisector=True)
     stats = ["kde_mode", "stdev", "quantiles"] if report_mode else ["mean", "stdev", "quantiles"]
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
 
@@ -911,27 +963,31 @@ def paris_flux_output_latest(
         report_flux_on_inversion_grid=False,
         include_scale_factors=False,
     )
-    country_outs = make_country_outputs(
+    countries = _latest_paris_countries(country_file=country_file, domain=domain)
+    if inv_out.is_multisector:
+        flux_outs = flux_outs[
+            [data_var for data_var in flux_outs.data_vars if str(data_var).startswith("flux_total_")]
+        ]
+    country_outs = _latest_country_outputs(
         inv_out,
-        country_file=country_file,
-        country_selections=list(PARIS_LATEST_COUNTRIES),
+        countries=countries,
+        species=species,
         stats=stats,
         stats_args=stats_args,
-        country_code="alpha3",
+        country_file=country_file,
     )
-    country_outs = (country_outs * 1e-3).reindex(country=list(PARIS_LATEST_COUNTRIES))
-
-    countries = _latest_paris_countries(country_file=country_file, domain=domain)
     country_fraction = countries.matrix.as_numpy().rename("country_fraction")
     cell_area = countries.area_grid.as_numpy().rename("cell_area")
     country_covariance = _country_posterior_covariance_kg(
         inv_out,
         countries=countries,
+        species=species,
         flux_frequency=flux_frequency,
     )
 
     def flux_renamer(name: str) -> str:
-        name = name.replace("flux_", "flux_total_", 1)
+        if not name.startswith("flux_total_"):
+            name = name.replace("flux_", "flux_total_", 1)
         if "quantile" in name:
             name = "percentile_" + name.replace("_quantile", "")
         elif name.endswith("_stdev"):
@@ -985,15 +1041,23 @@ def paris_flux_output_latest(
 
     if inversion_grid:
         inversion_grid_flux_rename_dict = {v: f"{v}_inversion_grid" for v in flux_rename_dict.values()}
+        inversion_grid_flux_outs_raw = make_flux_outputs(
+            inv_out,
+            stats=stats,
+            stats_args=stats_args,
+            report_flux_on_inversion_grid=True,
+            include_scale_factors=False,
+        )
+        if inv_out.is_multisector:
+            inversion_grid_flux_outs_raw = inversion_grid_flux_outs_raw[
+                [
+                    data_var
+                    for data_var in inversion_grid_flux_outs_raw.data_vars
+                    if str(data_var).startswith("flux_total_")
+                ]
+            ]
         inversion_grid_flux_outs = (
-            make_flux_outputs(
-                inv_out,
-                stats=stats,
-                stats_args=stats_args,
-                report_flux_on_inversion_grid=True,
-                include_scale_factors=False,
-            )
-            .rename(dim_rename_dict)
+            inversion_grid_flux_outs_raw.rename(dim_rename_dict)
             .pipe(_assign_flux_time_bounds, flux_frequency, inv_out.start_time, inv_out.end_time)
             .pipe(_convert_flux_time_and_bounds_to_epoch_days)
             .rename(flux_rename_dict)
