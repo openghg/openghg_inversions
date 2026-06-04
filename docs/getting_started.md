@@ -136,7 +136,7 @@ This is assuming you can ssh into blue pebble, and are able to modify files and 
     -   `module load ...` will load a module
 -   Typically you will use the latest anaconda module: `module load lang/python/anaconda`.
 -   To make your own environment for `openghg_inversions`, you should:
-    1.  Prefer the repository Pixi environment for new development installs: `git clone https://github.com/openghg/openghg_inversions.git`, `cd openghg_inversions`, then `pixi install -e dev`. This keeps `h5py`, `h5netcdf`, `netcdf4`, and HDF5 on a single conda-forge binary stack.
+    1.  Prefer the repository Pixi environment for new development installs: `git clone https://github.com/openghg/openghg_inversions.git`, `cd openghg_inversions`, then `pixi install -e dev`. This keeps `h5py`, `h5netcdf`, `netcdf4`, and HDF5 on a single conda-forge binary stack. On systems with access to the ACRG country files, run `OPENGHG_COUNTRY_FILE_SMOKE_DIR=/group/chem/acrg/LPDM/countries pixi run -e dev country-file-smoke` to check the real country-file HDF5 backends.
     2.  If Pixi is not available, make a conda env `conda create --name inv_env numpy` (note: installing `numpy` from `conda` will install `openblas`, which is a fast linear algebra library; these libraries are in non-standard locations on Blue Pebble, and `pip install numpy` will not find them.)
     3.  clone openghg_inversions: `git clone https://github.com/openghg/openghg_inversions.git`
     4.  `pip install openghg_inversions` (in the same directory where you just cloned `openghg_inversions`)

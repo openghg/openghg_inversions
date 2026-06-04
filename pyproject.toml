@@ -105,6 +105,7 @@ dev = { features = ["dev", "jupyter"], solve-group = "default" }
 [tool.pixi.feature.dev.tasks]
 test = "pytest"
 test-xdist = "pytest -n 2 --dist=loadscope tests"
+country-file-smoke = "pytest -s tests/postprocessing/test_country_file_smoke.py"
 lint = "ruff check ."
 typecheck = "pyright"
 tox = "tox -p"
@@ -138,6 +139,7 @@ minversion = "6.0"
 testpaths = ["tests"]
 markers = [
   "create_frozen: tests that generate/update frozen regression outputs (not run by default)",
+  "country_file_smoke: optional real country-file HDF5 backend smoke tests",
   "slow: tests that take a long time",
 ]
 addopts = "-m 'not create_frozen and not slow'"

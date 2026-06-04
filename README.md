@@ -38,6 +38,21 @@ pixi run -e dev typecheck
 pixi run -e dev tox
 ```
 
+To run the optional real country-file HDF5 smoke check on a machine that
+can access the ACRG country files, set the country directory and run the
+Pixi task:
+
+```bash
+OPENGHG_COUNTRY_FILE_SMOKE_DIR=/group/chem/acrg/LPDM/countries pixi run -e dev country-file-smoke
+```
+
+The smoke check opens `country_EUROPE_EEZ_PARIS_gapfilled.nc` and
+`country_EUROPE.nc` with xarray's default backend, `h5netcdf`, and
+`netcdf4`, then exercises `openghg_inversions._country_file.load_country_dataset`.
+It prints the `xarray`, `h5netcdf`, `h5py`, and `netCDF4` versions and the
+per-engine result. Without `OPENGHG_COUNTRY_FILE_SMOKE_DIR`, the real-file
+tests are skipped so uv/pip CI does not need access to cluster data.
+
 To test against a local OpenGHG checkout without replacing the Pixi-managed
 HDF5/NetCDF dependencies, install only the local package code:
 
