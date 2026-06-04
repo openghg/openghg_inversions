@@ -350,6 +350,40 @@ running locally you are using Python 3.10 or later on Linux or MacOS.
 Please see the <a class="reference external" href="https://github.com/openghg/openghg/">OpenGHG project</a>
 for further installation instructions of OpenGHG and setting up an
 object store.</p>
+<section id="recommended-development-install-using-pixi">
+<h2>Recommended development install using Pixi<a class="headerlink" href="#recommended-development-install-using-pixi" title="Link to this heading">#</a></h2>
+<p>OpenGHG Inversions and OpenGHG read and write NetCDF/HDF5 data through
+<code class="docutils literal notranslate"><span class="pre">xarray</span></code>, <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code>, <code class="docutils literal notranslate"><span class="pre">h5py</span></code>, and <code class="docutils literal notranslate"><span class="pre">netcdf4</span></code>. Plain <code class="docutils literal notranslate"><span class="pre">pip</span></code> or
+<code class="docutils literal notranslate"><span class="pre">uv</span></code> installs can select PyPI wheels with incompatible bundled HDF5
+libraries. The Pixi workspace in this repository installs the compiled
+HDF5/NetCDF stack from conda-forge and installs <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code> in
+editable mode.</p>
+<p>Install <a class="reference external" href="https://pixi.prefix.dev/latest/installation/">Pixi</a>, then run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/openghg/openghg_inversions.git
+<span class="nb">cd</span><span class="w"> </span>openghg_inversions
+pixi<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>dev
+pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import openghg_inversions, h5py, h5netcdf, netCDF4&quot;</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">dev</span></code> environment includes the test, lint, type-checking, and tox
+tools used by the repository:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span><span class="nb">test</span>
+pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>lint
+pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>typecheck
+pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>tox
+</pre></div>
+</div>
+<p>If you need to test against a local OpenGHG checkout, install only the
+local package code into the Pixi environment. The <code class="docutils literal notranslate"><span class="pre">--no-deps</span></code> flag is
+important because it prevents <code class="docutils literal notranslate"><span class="pre">pip</span></code> from replacing Pixi’s conda-forge
+HDF5/NetCDF packages with wheels.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--no-deps<span class="w"> </span>-e<span class="w"> </span>~/Documents/openghg
+</pre></div>
+</div>
+<p>Avoid running commands such as <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-U</span> <span class="pre">h5py</span> <span class="pre">h5netcdf</span> <span class="pre">netcdf4</span></code>
+inside the Pixi environment. That can reintroduce the binary mismatch
+that Pixi is intended to avoid.</p>
+</section>
 <section id="setup-a-virtual-environment">
 <h2>Setup a virtual environment<a class="headerlink" href="#setup-a-virtual-environment" title="Link to this heading">#</a></h2>
 <p>Check that you have Python 3.10 or greater:</p>
@@ -398,10 +432,16 @@ information about this in the “Contributing” section below):</p>
 about <code class="docutils literal notranslate"><span class="pre">pymc</span></code> or <code class="docutils literal notranslate"><span class="pre">pytensor</span></code> using the <code class="docutils literal notranslate"><span class="pre">numpy</span></code> C-API, then your
 inversions might run slowly because the fast linear algebra libraries
 used by <code class="docutils literal notranslate"><span class="pre">numpy</span></code> haven’t been found.</p>
-<p>Solutions to this are: 1. try <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">pip</span> <span class="pre">install</span> <span class="pre">numpy</span></code> after
-upgrading <code class="docutils literal notranslate"><span class="pre">pip,</span> <span class="pre">setuptools,</span> <span class="pre">wheel</span></code> 2. create a <code class="docutils literal notranslate"><span class="pre">conda</span></code> env, install
-<code class="docutils literal notranslate"><span class="pre">numpy</span></code> using <code class="docutils literal notranslate"><span class="pre">conda</span></code>, then use <code class="docutils literal notranslate"><span class="pre">pip</span></code> to upgrade
-<code class="docutils literal notranslate"><span class="pre">pip,</span> <span class="pre">setuptools,</span> <span class="pre">wheel</span></code> and install <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code></p>
+<p>Solutions to this are:</p>
+<ol class="arabic simple">
+<li><p>Use the Pixi development environment above, which installs <code class="docutils literal notranslate"><span class="pre">numpy</span></code>
+and the NetCDF/HDF5 stack from conda-forge.</p></li>
+<li><p>Try <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">pip</span> <span class="pre">install</span> <span class="pre">numpy</span></code> after upgrading
+<code class="docutils literal notranslate"><span class="pre">pip,</span> <span class="pre">setuptools,</span> <span class="pre">wheel</span></code>.</p></li>
+<li><p>Create a <code class="docutils literal notranslate"><span class="pre">conda</span></code> env, install <code class="docutils literal notranslate"><span class="pre">numpy</span></code> using <code class="docutils literal notranslate"><span class="pre">conda</span></code>, then use
+<code class="docutils literal notranslate"><span class="pre">pip</span></code> to upgrade <code class="docutils literal notranslate"><span class="pre">pip,</span> <span class="pre">setuptools,</span> <span class="pre">wheel</span></code> and install
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>.</p></li>
+</ol>
 </section>
 </section>
 
@@ -452,6 +492,7 @@ upgrading <code class="docutils literal notranslate"><span class="pre">pip,</spa
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#recommended-development-install-using-pixi">Recommended development install using Pixi</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#setup-a-virtual-environment">Setup a virtual environment</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-using-pip">Installation using <code class="docutils literal notranslate"><span class="pre">pip</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#verify-that-pymc-is-using-fast-linear-algebra-libraries">Verify that PyMC is using fast linear algebra libraries</a></li>

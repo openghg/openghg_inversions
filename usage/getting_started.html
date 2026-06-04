@@ -461,7 +461,7 @@ files.</p></li>
 <ul class="simple">
 <li><p>Create a <code class="docutils literal notranslate"><span class="pre">my_inversion.ini</span></code> file based on the template in
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions/hbmcmc/config/</span></code>.</p></li>
-<li><p>Activate a conda or venv environment with inversions installed, and
+<li><p>Activate a Pixi, conda, or venv environment with inversions installed, and
 call
 <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">&lt;path</span> <span class="pre">to</span> <span class="pre">openghg_inversions&gt;/openghg_inversions/hbmcmc/run_hbmcmc.py</span> <span class="pre">-c</span> <span class="pre">my_inversion.ini</span></code></p></li>
 <li><p>A sample <code class="docutils literal notranslate"><span class="pre">.ini</span></code> script is at the bottom of this document.</p></li>
@@ -521,7 +521,13 @@ about running jobs on SLURM could apply elsewhere.)</p>
 <code class="docutils literal notranslate"><span class="pre">module</span> <span class="pre">load</span> <span class="pre">lang/python/anaconda</span></code>.</p></li>
 <li><p>To make your own environment for <code class="docutils literal notranslate"><span class="pre">openghg_inversions</span></code>, you should:</p>
 <ol class="arabic simple">
-<li><p>make a conda env <code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">create</span> <span class="pre">--name</span> <span class="pre">inv_env</span> <span class="pre">numpy</span></code> (note:
+<li><p>Prefer the repository Pixi environment for new development installs:
+<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">clone</span> <span class="pre">https://github.com/openghg/openghg_inversions.git</span></code>,
+<code class="docutils literal notranslate"><span class="pre">cd</span> <span class="pre">openghg_inversions</span></code>, then <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">dev</span></code>. This keeps
+<code class="docutils literal notranslate"><span class="pre">h5py</span></code>, <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code>, <code class="docutils literal notranslate"><span class="pre">netcdf4</span></code>, and HDF5 on a single conda-forge
+binary stack.</p></li>
+<li><p>If Pixi is not available, make a conda env
+<code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">create</span> <span class="pre">--name</span> <span class="pre">inv_env</span> <span class="pre">numpy</span></code> (note:
 installing <code class="docutils literal notranslate"><span class="pre">numpy</span></code> from <code class="docutils literal notranslate"><span class="pre">conda</span></code> will install <code class="docutils literal notranslate"><span class="pre">openblas</span></code>,
 which is a fast linear algebra library; these libraries are in
 non-standard locations on Blue Pebble, and <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">numpy</span></code>
