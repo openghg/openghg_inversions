@@ -11,7 +11,44 @@ Currently, OpenGHG Inversions includes the following regional inversion models:
 
 ## Installation
 
-### Using pip (recommended for most users)
+### Using Pixi (recommended for development)
+
+OpenGHG Inversions reads and writes NetCDF/HDF5 data through OpenGHG,
+`xarray`, `h5netcdf`, `h5py`, and `netcdf4`. If these packages
+are installed from unrelated PyPI wheels, their bundled HDF5 libraries can
+be incompatible. The Pixi environment in this repository installs the
+compiled HDF5/NetCDF stack from conda-forge and installs
+`openghg_inversions` in editable mode.
+
+Install [Pixi](https://pixi.prefix.dev/latest/installation/), then run:
+
+```bash
+git clone https://github.com/openghg/openghg_inversions.git
+cd openghg_inversions
+pixi install -e dev
+pixi run -e dev python -c "import openghg_inversions, h5py, h5netcdf, netCDF4"
+```
+
+Useful development commands:
+
+```bash
+pixi run -e dev test
+pixi run -e dev lint
+pixi run -e dev typecheck
+pixi run -e dev tox
+```
+
+To test against a local OpenGHG checkout without replacing the Pixi-managed
+HDF5/NetCDF dependencies, install only the local package code:
+
+```bash
+pixi run -e dev python -m pip install --no-deps -e ~/Documents/openghg
+```
+
+Avoid running plain `pip install -U h5py h5netcdf netcdf4` inside the Pixi
+environment, as that can reintroduce incompatible wheels.
+
+### Using pip
 
 ```bash
 pip install openghg-inversions
@@ -38,7 +75,14 @@ uv pip install openghg-inversions
 
 If you want to contribute or modify the package:
 
-**With uv (recommended):**
+**With Pixi (recommended when working with NetCDF/HDF5 data):**
+```bash
+git clone https://github.com/openghg/openghg_inversions.git
+cd openghg_inversions
+pixi install -e dev
+```
+
+**With uv:**
 ```bash
 git clone https://github.com/openghg/openghg_inversions.git
 cd openghg_inversions
@@ -103,8 +147,9 @@ This should run without printing any messages.
 If you receive a message about `pymc` or `pytensor` using the `numpy` C-API, then your inversions might run slowly because the fast linear algebra libraries used by `numpy` haven't been found.
 
 Solutions to this are:
-1. try `python -m pip install numpy` after upgrading `pip, setuptools, wheel`
-2. create a `conda` env, install `numpy` using `conda`, then use `pip` to upgrade  `pip, setuptools, wheel` and install `openghg_inversions`
+1. Use the Pixi development environment above, which installs `numpy` and the NetCDF/HDF5 stack from conda-forge.
+2. Try `python -m pip install numpy` after upgrading `pip, setuptools, wheel`.
+3. Create a `conda` env, install `numpy` using `conda`, then use `pip` to upgrade `pip, setuptools, wheel` and install `openghg_inversions`.
 
 
 ## Using OpenGHG Inversions

@@ -98,7 +98,7 @@ Assuming you have the necessary data, you just need to run the `fixedbasisMCMC` 
 ## Method 2: ini file
 
 -   Create a `.ini` file based on the templates in `openghg_inversions/config/templates`. (NOTE: these need to be updated.)
--   Activate a conda or venv environment with inversions installed, and call `python <path to openghg_inversions>/openghg_inversions/hbmcmc/run_hbmcmc.py -c somefile.ini`
+-   Activate a Pixi, conda, or venv environment with inversions installed, and call `python <path to openghg_inversions>/openghg_inversions/hbmcmc/run_hbmcmc.py -c somefile.ini`
 -   A sample `.ini` script is at the bottom of this document.
 
 
@@ -136,9 +136,10 @@ This is assuming you can ssh into blue pebble, and are able to modify files and 
     -   `module load ...` will load a module
 -   Typically you will use the latest anaconda module: `module load lang/python/anaconda`.
 -   To make your own environment for `openghg_inversions`, you should:
-    1.  make a conda env `conda create --name inv_env numpy` (note: installing `numpy` from `conda` will install `openblas`, which is a fast linear algebra library; these libraries are in non-standard locations on Blue Pebble, and `pip install numpy` will not find them.)
-    2.  clone openghg_inversions: `git clone https://github.com/openghg/openghg_inversions.git`
-    3.  `pip install openghg_inversions` (in the same directory where you just cloned `openghg_inversions`)
+    1.  Prefer the repository Pixi environment for new development installs: `git clone https://github.com/openghg/openghg_inversions.git`, `cd openghg_inversions`, then `pixi install -e dev`. This keeps `h5py`, `h5netcdf`, `netcdf4`, and HDF5 on a single conda-forge binary stack.
+    2.  If Pixi is not available, make a conda env `conda create --name inv_env numpy` (note: installing `numpy` from `conda` will install `openblas`, which is a fast linear algebra library; these libraries are in non-standard locations on Blue Pebble, and `pip install numpy` will not find them.)
+    3.  clone openghg_inversions: `git clone https://github.com/openghg/openghg_inversions.git`
+    4.  `pip install openghg_inversions` (in the same directory where you just cloned `openghg_inversions`)
 
 
 <a id="orgc73302c"></a>

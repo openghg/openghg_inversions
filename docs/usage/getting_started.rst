@@ -115,7 +115,7 @@ Method 2: ini file
 
 - Create a ``my_inversion.ini`` file based on the template in
   ``openghg_inversions/hbmcmc/config/``.
-- Activate a conda or venv environment with inversions installed, and
+- Activate a Pixi, conda, or venv environment with inversions installed, and
   call
   ``python <path to openghg_inversions>/openghg_inversions/hbmcmc/run_hbmcmc.py -c my_inversion.ini``
 - A sample ``.ini`` script is at the bottom of this document.
@@ -173,14 +173,20 @@ TODO: update conda instructions
   ``module load lang/python/anaconda``.
 - To make your own environment for ``openghg_inversions``, you should:
 
-  1. make a conda env ``conda create --name inv_env numpy`` (note:
+  1. Prefer the repository Pixi environment for new development installs:
+     ``git clone https://github.com/openghg/openghg_inversions.git``,
+     ``cd openghg_inversions``, then ``pixi install -e dev``. This keeps
+     ``h5py``, ``h5netcdf``, ``netcdf4``, and HDF5 on a single conda-forge
+     binary stack.
+  2. If Pixi is not available, make a conda env
+     ``conda create --name inv_env numpy`` (note:
      installing ``numpy`` from ``conda`` will install ``openblas``,
      which is a fast linear algebra library; these libraries are in
      non-standard locations on Blue Pebble, and ``pip install numpy``
      will not find them.)
-  2. clone openghg_inversions:
+  3. clone openghg_inversions:
      ``git clone https://github.com/openghg/openghg_inversions.git``
-  3. ``pip install openghg_inversions`` (in the same directory where you
+  4. ``pip install openghg_inversions`` (in the same directory where you
      just cloned ``openghg_inversions``)
 
 Example batch job script
