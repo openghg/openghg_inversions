@@ -63,6 +63,21 @@ def test_bucket_basis_operator_roundtrip_preserves_default_state_dim():
     assert "state" in op2.basis_matrix.dims
 
 
+def test_bucket_basis_operator_accepts_zero_based_flat_basis():
+    """Legacy HBMCMC output basis labels can still reconstruct a dummy basis."""
+    basis = xr.DataArray(
+        np.array([[0, 1, 2]], dtype=int),
+        dims=("lat", "lon"),
+        coords={"lat": [0.0], "lon": [0.0, 1.0, 2.0]},
+        name="basis_flat",
+    )
+
+    op = BucketBasisOperator(basis, state_dim="state")
+
+    assert list(op.basis_matrix.state.values) == [0, 1, 2]
+    assert op.basis_matrix.sizes["state"] == 3
+
+
 # --------------------------------------------------------------------------------------
 # Test interpolation for MultiSourceBucketBasisOperator
 # --------------------------------------------------------------------------------------
