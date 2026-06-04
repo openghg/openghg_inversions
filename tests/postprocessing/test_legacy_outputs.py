@@ -285,6 +285,9 @@ def test_make_legacy_hbmcmc_output_derives_model_data_inputs(
     np.testing.assert_allclose(output["sitelats"].values, np.array([52.5]))
     np.testing.assert_allclose(output["sitelons"].values, np.array([1.25]))
     np.testing.assert_array_equal(output["basisfunctions"].values, np.array([[0]]))
+    for name in output.data_vars:
+        if np.issubdtype(output[name].dtype, np.floating):
+            assert output[name].dtype == np.dtype("float32")
     assert np.isfinite(output["Ymod68"].values).sum() == output["Ymod68"].size
     assert np.isfinite(output["Ymod95"].values).sum() == output["Ymod95"].size
     assert np.isfinite(output["country68"].values).sum() == output["country68"].size
@@ -307,4 +310,7 @@ def test_make_legacy_hbmcmc_output_falls_back_to_inv_inputs_for_sensitivities(
     np.testing.assert_allclose(output["bcsensitivity"].values, np.array([[1.0], [2.0]]))
     np.testing.assert_array_equal(output["sigmafreqindex"].values, np.array([7, 8]))
     np.testing.assert_allclose(output["bctrace"].values, np.full((3, 1), 0.5))
+    assert output["bcsensitivity"].dtype == np.dtype("float32")
+    assert output["bctrace"].dtype == np.dtype("float32")
+    assert output["YaprioriBC"].dtype == np.dtype("float32")
     assert "YaprioriBC" in output

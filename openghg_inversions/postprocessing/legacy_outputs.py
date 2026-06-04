@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from pathlib import Path
 from typing import Any, cast
 
@@ -189,6 +190,16 @@ def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, us
     for dv in ds.data_vars:
         if "longname" not in ds[dv].attrs:
             ds[dv].attrs["longname"] = str(dv).replace("_", " ")
+
+
+def _cast_legacy_float_data_vars(ds: xr.Dataset) -> xr.Dataset:
+    """Cast floating legacy data variables to float32 at the product boundary."""
+    updates: dict[Hashable, xr.DataArray] = {}
+    for name in ds.data_vars:
+        if name in ds and np.issubdtype(ds[name].dtype, np.floating):
+            updates[name] = ds[name].astype("float32")
+
+    return ds.assign(updates) if updates else ds
 
 
 def _rename_hdi_for_legacy(ds: xr.Dataset) -> xr.Dataset:
@@ -799,7 +810,7 @@ def make_legacy_hbmcmc_output(
     if use_bc and Hbc is not None:
         coords["numBC"] = ("nBC", np.arange(Hbc.shape[0]))
 
-    out = xr.Dataset(data_vars, coords=coords)
+    out = _cast_legacy_float_data_vars(xr.Dataset(data_vars, coords=coords))
 
     obs_units = observation_inputs_for_outputs(inv_out)["y_obs"].attrs.get("units", "")
     if obs_units.endswith("mol/mol"):
