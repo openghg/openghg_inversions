@@ -70,6 +70,7 @@ def test_fixedbasis_params_to_rhime_translates_legacy_names(tmp_path: Path) -> N
     assert translated["sample_kwargs"] == {"target_accept": 0.9}
     assert translated["output_format"] == "legacy"
     assert translated["output_filename_convention"] == "legacy"
+    assert translated["save_inversion_output"] is False
     assert "mcmc_type" not in translated
     assert "nit" not in translated
     assert "nchain" not in translated
@@ -137,6 +138,18 @@ def test_fixedbasis_params_to_rhime_forces_legacy_filename_convention(tmp_path: 
     translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
 
     assert translated["output_filename_convention"] == "legacy"
+
+
+def test_fixedbasis_params_to_rhime_preserves_explicit_inversion_output_save(tmp_path: Path) -> None:
+    """run_hbmcmc only suppresses inv_out sidecars when the old config did not request them."""
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    params["save_inversion_output"] = "explicit_inv_out.nc"
+
+    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+
+    assert translated["save_inversion_output"] == "explicit_inv_out.nc"
 
 
 def test_run_hbmcmc_main_routes_to_run_rhime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

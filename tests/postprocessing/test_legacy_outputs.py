@@ -112,6 +112,8 @@ def _legacy_inv_out(*, model_data: bool, include_bc: bool = False, chains: int =
             "start_date": "2019-01-01",
             "end_date": "2019-01-02",
             "sites": ["TAC"],
+            "site_lats": [52.5],
+            "site_lons": [1.25],
             "split_by_sectors": False,
         },
         model_metadata={"species": "ch4", "domain": "EUROPE"},
@@ -278,6 +280,14 @@ def test_make_legacy_hbmcmc_output_derives_model_data_inputs(
 
     np.testing.assert_allclose(output["xsensitivity"].values, np.array([[0.25], [0.75]]))
     np.testing.assert_array_equal(output["sigmafreqindex"].values, np.array([0, 1]))
+    np.testing.assert_allclose(output["min_model_error"].values, np.zeros(2))
+    np.testing.assert_allclose(output["sitelats"].values, np.array([52.5]))
+    np.testing.assert_allclose(output["sitelons"].values, np.array([1.25]))
+    np.testing.assert_array_equal(output["basisfunctions"].values, np.array([[0]]))
+    assert np.isfinite(output["Ymod68"].values).sum() == output["Ymod68"].size
+    assert np.isfinite(output["Ymod95"].values).sum() == output["Ymod95"].size
+    assert np.isfinite(output["country68"].values).sum() == output["country68"].size
+    assert np.isfinite(output["country95"].values).sum() == output["country95"].size
     np.testing.assert_allclose(output["xtrace"].values, np.ones((3, 1)))
     np.testing.assert_allclose(output["sigtrace"].values, np.ones((3, 1, 2)))
     assert output.attrs["Convergence"] == "Unavailable"

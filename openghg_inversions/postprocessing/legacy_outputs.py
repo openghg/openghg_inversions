@@ -92,6 +92,7 @@ def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, us
         "Yerror": f"{obs_units} mol/mol",
         "Yerror_repeatability": f"{obs_units} mol/mol",
         "Yerror_variability": f"{obs_units} mol/mol",
+        "min_model_error": f"{obs_units} mol/mol",
         "Yapriori": f"{obs_units} mol/mol",
         "Ymodmean": f"{obs_units} mol/mol",
         "Ymodmedian": f"{obs_units} mol/mol",
@@ -134,6 +135,8 @@ def _set_legacy_var_attrs(ds: xr.Dataset, obs_units: str, country_units: str, us
         "siteindicator": "index of site of measurement corresponding to sitenames",
         "sigmafreqindex": "period over which the model error is estimated",
         "sitenames": "site names",
+        "sitelons": "site longitudes corresponding to site names",
+        "sitelats": "site latitudes corresponding to site names",
         "fluxapriori": "mean a priori flux over period",
         "fluxmode": "mode posterior flux over period",
         "scalingmean": "mean scaling factor field over period",
@@ -341,6 +344,57 @@ def _obs_input(inv_out: InversionOutput, name: str, legacy_name: str) -> xr.Data
     return _flatten_nmeasure_for_legacy(observation_inputs_for_outputs(inv_out)[name]).rename(legacy_name)
 
 
+def _legacy_min_model_error(inv_out: InversionOutput) -> xr.DataArray:
+    """Return minimum model error in the legacy flat observation shape."""
+    try:
+        min_error = _model_or_input_var(
+            inv_out,
+            model_name=inv_out.variable_name("minimum_error"),
+            input_name="min_error",
+            description="minimum model error",
+        )
+    except ValueError:
+        min_error = xr.zeros_like(_obs_input(inv_out, "y_obs", "Yobs"))
+
+    if "nmeasure" not in min_error.dims:
+        obs = _obs_input(inv_out, "y_obs", "Yobs")
+        values = _as_array(min_error)
+        if values.size != 1:
+            raise ValueError(
+                f"Legacy HBMCMC minimum model error must be scalar or have nmeasure; got {min_error.dims!r}."
+            )
+        min_error = xr.full_like(obs, float(values.reshape(-1)[0]))
+
+    return _flatten_nmeasure_for_legacy(min_error).rename("min_model_error")
+
+
+def _site_metadata_values(inv_out: InversionOutput, names: tuple[str, ...], nsite: int) -> np.ndarray:
+    """Return site-aligned metadata values, or NaNs when unavailable."""
+    for metadata in (inv_out.run_metadata, inv_out.output_metadata):
+        for name in names:
+            values = metadata.get(name)
+            if values is None:
+                continue
+            array = np.asarray(values, dtype=float)
+            if array.size != nsite:
+                raise ValueError(
+                    f"Legacy HBMCMC site metadata {name!r} has {array.size} values for {nsite} sites."
+                )
+            return array
+    return np.full(nsite, np.nan, dtype=float)
+
+
+def _legacy_site_locations(inv_out: InversionOutput, nsite: int) -> tuple[xr.DataArray, xr.DataArray]:
+    """Return site longitudes and latitudes in the historical variables."""
+    lons = _site_metadata_values(inv_out, ("sitelons", "site_lons", "site_longitudes"), nsite)
+    lats = _site_metadata_values(inv_out, ("sitelats", "site_lats", "site_latitudes"), nsite)
+    coords = {"nsite": np.arange(nsite)}
+    return (
+        xr.DataArray(lons, dims=("nsite",), coords=coords, name="sitelons"),
+        xr.DataArray(lats, dims=("nsite",), coords=coords, name="sitelats"),
+    )
+
+
 def _as_array(data: Any) -> np.ndarray:
     """Convert xarray or array-like values to a NumPy array without relying on ``.values``."""
     return np.asarray(data.values if isinstance(data, xr.DataArray) else data)
@@ -529,6 +583,15 @@ def _legacy_postprocess_fields(inv_out: InversionOutput, *, use_bc: bool) -> dic
     return fields
 
 
+def _legacy_flat_basis(inv_out: InversionOutput) -> xr.DataArray:
+    """Return the legacy zero-based basis-function map."""
+    basis = flat_basis_for_output(inv_out)
+    values = _as_array(basis)
+    if values.size and np.nanmin(values) >= 1:
+        values = values - 1
+    return xr.DataArray(values, dims=basis.dims, coords=basis.coords, attrs=basis.attrs, name="basisfunctions")
+
+
 def _format_legacy_attr_prior(prior: object) -> str | None:
     """Format prior metadata using the historical comma-separated attr shape."""
     if not isinstance(prior, dict):
@@ -609,6 +672,7 @@ def make_legacy_hbmcmc_output(
     sigma_freq_index = legacy_fields["sigma_freq_index"]
     times = _legacy_measurement_times(inv_out)
     site_indicators, site_names = _legacy_site_fields(inv_out)
+    site_lons, site_lats = _legacy_site_locations(inv_out, site_names.sizes["nsite"])
 
     conc = make_concentration_outputs(
         inv_out,
@@ -666,6 +730,7 @@ def make_legacy_hbmcmc_output(
         "Yerror": _obs_input(inv_out, "y_obs_error", "Yerror"),
         "Yerror_repeatability": _obs_input(inv_out, "y_obs_repeatability", "Yerror_repeatability"),
         "Yerror_variability": _obs_input(inv_out, "y_obs_variability", "Yerror_variability"),
+        "min_model_error": _legacy_min_model_error(inv_out),
         "Ytime": times,
         "Yapriori": ("nmeasure", yapriori),
         "Ymodmean": conc["y_posterior_predictive_mean"],
@@ -683,11 +748,13 @@ def make_legacy_hbmcmc_output(
         "siteindicator": site_indicators,
         "sigmafreqindex": ("nmeasure", sigma_freq_index),
         "sitenames": site_names,
+        "sitelons": site_lons,
+        "sitelats": site_lats,
         "fluxapriori": apriori_flux,
         "fluxmode": flux["flux_posterior_mode"],
         "scalingmean": flux["scaling_posterior_mean"],
         "scalingmode": flux["scaling_posterior_mode"],
-        "basisfunctions": flat_basis_for_output(inv_out),
+        "basisfunctions": _legacy_flat_basis(inv_out),
         "countrymean": country["country_posterior_mean"],
         "countrymedian": country["country_posterior_median"],
         "countrymode": country["country_posterior_mode"],

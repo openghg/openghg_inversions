@@ -69,6 +69,8 @@ class RhimePreparedInputs:
         averaging_period: Averaging periods aligned to retained sites.
         basis_artifact_source: Description of whether the basis was generated
             or loaded from an artifact.
+        site_lats: Release latitudes aligned to ``sites``, when available.
+        site_lons: Release longitudes aligned to ``sites``, when available.
     """
 
     inv_inputs: xr.Dataset
@@ -76,6 +78,8 @@ class RhimePreparedInputs:
     sites: tuple[str, ...]
     averaging_period: tuple[str | None, ...]
     basis_artifact_source: str
+    site_lats: tuple[float, ...] | None = None
+    site_lons: tuple[float, ...] | None = None
 
 
 @dataclass
@@ -94,6 +98,35 @@ def _filter_site_aligned_value(value: object, keep_indices: list[int]) -> object
     if not isinstance(value, Sequence):
         return value
     return [item for index, item in enumerate(value) if index in keep_indices]
+
+
+def _first_scalar_data_value(ds: xr.Dataset, names: tuple[str, ...]) -> float:
+    """Return the first scalar value found in a dataset variable or coordinate."""
+    for name in names:
+        if name not in ds:
+            continue
+        values = np.asarray(ds[name].values).reshape(-1)
+        if values.size:
+            return float(values[0])
+    return np.nan
+
+
+def _site_release_coordinates(
+    fp_data: dict[str, xr.Dataset],
+    sites: Sequence[str],
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Return release lat/lon values aligned to retained sites."""
+    lats: list[float] = []
+    lons: list[float] = []
+    for site in sites:
+        site_data = fp_data.get(site)
+        if site_data is None:
+            lats.append(np.nan)
+            lons.append(np.nan)
+            continue
+        lats.append(_first_scalar_data_value(site_data, ("release_lat", "sitelats")))
+        lons.append(_first_scalar_data_value(site_data, ("release_lon", "sitelons")))
+    return tuple(lats), tuple(lons)
 
 
 def _drop_sites_missing_from_loaded_data(
@@ -726,6 +759,7 @@ def prepare_rhime_inputs(
         min_error_options=min_error_options,
     )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
+    site_lats, site_lons = _site_release_coordinates(fp_data, prepared_sites)
 
     return RhimePreparedInputs(
         inv_inputs=inv_inputs,
@@ -733,4 +767,6 @@ def prepare_rhime_inputs(
         basis_artifact_source=basis_source,
         sites=tuple(prepared_sites),
         averaging_period=tuple(prepared_averaging_period),
+        site_lats=site_lats,
+        site_lons=site_lons,
     )

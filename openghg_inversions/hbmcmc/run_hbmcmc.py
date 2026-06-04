@@ -211,6 +211,8 @@ def fixedbasis_params_to_rhime(params: dict[str, Any]) -> dict[str, Any]:
     _normalise_legacy_output_format(translated)
     _translate_legacy_options(translated)
     translated["output_filename_convention"] = "legacy"
+    if "save_inversion_output" not in translated and translated["output_format"] != "inv_out":
+        translated["save_inversion_output"] = False
     return normalise_rhime_params(translated)
 
 
