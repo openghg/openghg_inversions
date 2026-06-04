@@ -1925,6 +1925,35 @@ def test_output_path_validation_rejects_default_standard_save_without_path() -> 
         )
 
 
+def test_runner_setup_defaults_inv_out_save_only_for_inv_out_format(tmp_path: Path) -> None:
+    """Derived RHIME products should not save large inv_out sidecars unless requested."""
+    base_params = {
+        "species": "ch4",
+        "sites": ["TAC"],
+        "averaging_period": ["1h"],
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-02",
+        "flux_sources": ["total-ukghg-edgar7"],
+        "output_name": "test",
+    }
+    data_params = set(inspect.signature(prepare_rhime_inputs).parameters)
+
+    inv_out_setup = rhime_params.make_rhime_runner_setup(
+        params={**base_params, "output_format": "inv_out", "output_path": str(tmp_path)},
+        multisector=False,
+        data_param_names=data_params,
+    )
+    paris_setup = rhime_params.make_rhime_runner_setup(
+        params={**base_params, "output_format": "paris"},
+        multisector=False,
+        data_param_names=data_params,
+    )
+
+    assert inv_out_setup.run_spec.output.save_inversion_output is True
+    assert paris_setup.run_spec.output.save_inversion_output is False
+
+
 def test_output_path_validation_rejects_multisector_legacy_output() -> None:
     with pytest.raises(ValueError, match="single-sector"):
         rhime_specs.validate_output_path_settings(

@@ -12,9 +12,11 @@
   before copying configs, translates deprecated `calculate_min_error` and
   `reparameterise_log_normal` options where possible, old HBMCMC output attrs
   are produced from modern `InversionOutput`, legacy KDE mode statistics now
-  handle all-NaN and partially-NaN rows without dropping every draw, and user
-  docs mark historical `fixedbasisMCMC` behavior as available from release 0.6
-  or earlier. Country-file loading in modern country and legacy-format
+  handle all-NaN and partially-NaN rows without dropping every draw, derived
+  RHIME products no longer save large `InversionOutput` sidecars unless
+  `save_inversion_output` is requested, and user docs mark historical
+  `fixedbasisMCMC` behavior as available from release 0.6 or earlier.
+  Country-file loading in modern country and legacy-format
   postprocessing now falls back to direct HDF5 reads when h5netcdf dimension-scale
   decoding fails on cluster nodes. [#416](https://github.com/openghg/openghg_inversions/issues/416)
 - Routed modern RHIME and fixedbasis postprocessing through modern `InversionOutput` semantics, retained `BasisFunctions` / `BasisOperator` products, variable-role lookups, and product-local capability checks; removed the transitional postprocessing protocol/view layer and deleted `LegacyInversionOutput` plus the dead legacy inversion-output builder helpers. [#383](https://github.com/openghg/openghg_inversions/issues/383)

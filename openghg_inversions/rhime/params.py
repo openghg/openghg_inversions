@@ -491,12 +491,14 @@ def make_rhime_runner_setup(
             remaining.pop("posterior_predictive_kwargs", None)
         ),
     )
+    output_format = remaining.pop("output_format", "inv_out")
+    save_inversion_output = remaining.pop("save_inversion_output", output_format == "inv_out")
     output_spec = make_output_spec(
-        output_format=remaining.pop("output_format", "inv_out"),
+        output_format=output_format,
         output_path=output_path,
         output_name=output_name,
         save_trace=remaining.pop("save_trace", False),
-        save_inversion_output=remaining.pop("save_inversion_output", True),
+        save_inversion_output=save_inversion_output,
         country_file=remaining.get("country_file"),
         paris_postprocessing_kwargs=normalise_optional_mapping(
             remaining.pop("paris_postprocessing_kwargs", None)
