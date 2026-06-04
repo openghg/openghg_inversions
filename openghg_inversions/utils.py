@@ -7,6 +7,7 @@ conditions, and their sensitivities.
 Many functions in this submodule originated in the ACRG code base (in `acrg.name`).
 
 """
+
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,6 +19,7 @@ import xarray as xr
 
 from openghg.analyse import combine_datasets as openghg_combine_datasets
 
+from openghg_inversions._country_file import load_country_dataset
 from openghg_inversions.config.paths import Paths
 
 
@@ -61,7 +63,7 @@ def open_ds(
     Args:
         path: Path to file to open.
         chunks: Size of chunks for each dimension, e.g. {'lat': 50, 'lon': 50}.
-            Opens dataset with dask, such that it is opened 'lazily' and all of the data 
+            Opens dataset with dask, such that it is opened 'lazily' and all of the data
             is not loaded into memory. Defaults to None - dataset is opened without dask.
         combine: Way in which the data should be combined (if using chunks), either:
             'by_coords': order the datasets before concatenating (default)
@@ -87,14 +89,14 @@ def read_netcdfs(
     verbose: bool = True,
 ) -> xr.Dataset:
     """Use xarray to open sequential netCDF files and concatenate them along the specified dimension.
-    
+
     Note: this function makes sure that file is closed after open_dataset call.
 
     Args:
         files: List of netCDF filenames.
         dim: Dimension of netCDF to use for concatenating the files. Default = "time".
         chunks: Size of chunks for each dimension, e.g. {'lat': 50, 'lon': 50}.
-            Opens dataset with dask, such that it is opened 'lazily' and all of the data 
+            Opens dataset with dask, such that it is opened 'lazily' and all of the data
             is not loaded into memory. Defaults to None - dataset is opened without dask.
         verbose: If True, print progress information.
 
@@ -151,7 +153,11 @@ def ncdf_encoding(ds_in: xr.Dataset) -> dict:
     for dv in ds_in.data_vars:
         if dtype_pat.match(ds_in[dv].data.dtype.str):
             do_not_compress.append(dv)
-    encoding = {var: {"zlib": True, "complevel": 5, "shuffle": True} for var in ds_in.data_vars if var not in do_not_compress}
+    encoding = {
+        var: {"zlib": True, "complevel": 5, "shuffle": True}
+        for var in ds_in.data_vars
+        if var not in do_not_compress
+    }
 
     return encoding
 
@@ -203,19 +209,19 @@ def get_country(domain: str, country_file: str | Path | None = None):
     """
     filename = get_country_file_path(country_file=country_file, domain=domain)
 
-    with xr.open_dataset(filename) as f:
-        lon = f.variables["lon"][:].values
-        lat = f.variables["lat"][:].values
+    f = load_country_dataset(filename)
+    lon = f.variables["lon"][:].values
+    lat = f.variables["lat"][:].values
 
-        # Get country indices and names
-        if "country" in f.variables:
-            country = f.variables["country"][:, :]
-        elif "region" in f.variables:
-            country = f.variables["region"][:, :]
-        else:
-            raise ValueError(f"Variables 'country' or 'region' not found in country file {filename}.")
+    # Get country indices and names
+    if "country" in f.variables:
+        country = f.variables["country"][:, :]
+    elif "region" in f.variables:
+        country = f.variables["region"][:, :]
+    else:
+        raise ValueError(f"Variables 'country' or 'region' not found in country file {filename}.")
 
-        name = f.variables["name"].values.astype(str)
+    name = f.variables["name"].values.astype(str)
 
     result = dict(
         lon=lon,
@@ -305,7 +311,9 @@ def _map_times_to_available_period_positions(
     missing = pd.Index(time_periods).difference(available_periods)
     if len(missing) > 0:
         period_label = "years" if period == "yearly" else "months"
-        raise ValueError(f"Observation {period_label} {list(missing.astype(str))} are missing from available flux periods.")
+        raise ValueError(
+            f"Observation {period_label} {list(missing.astype(str))} are missing from available flux periods."
+        )
 
     period_positions = {period_value: idx for idx, period_value in enumerate(available_periods)}
     return np.array([period_positions[period_value] for period_value in time_periods], dtype=int)
