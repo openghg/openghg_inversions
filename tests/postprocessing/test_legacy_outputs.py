@@ -281,6 +281,7 @@ def test_make_legacy_hbmcmc_output_derives_model_data_inputs(
     np.testing.assert_allclose(output["xsensitivity"].values, np.array([[0.25], [0.75]]))
     np.testing.assert_array_equal(output["sigmafreqindex"].values, np.array([0, 1]))
     np.testing.assert_allclose(output["min_model_error"].values, np.zeros(2))
+    assert "min_model_error" not in output.attrs
     np.testing.assert_allclose(output["sitelats"].values, np.array([52.5]))
     np.testing.assert_allclose(output["sitelons"].values, np.array([1.25]))
     np.testing.assert_array_equal(output["basisfunctions"].values, np.array([[0]]))

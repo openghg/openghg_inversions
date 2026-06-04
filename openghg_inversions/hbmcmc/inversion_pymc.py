@@ -1051,9 +1051,6 @@ def inferpymc_postprocessouts(
     outds.attrs["Date created"] = str(pd.Timestamp("today"))
     outds.attrs["Convergence"] = convergence
     outds.attrs["Repository version"] = code_version()
-    outds.attrs["min_model_error"] = (
-        min_error  # TODO: remove this once PARIS formatting switches over to using min error data var
-    )
 
     # variables with variable length data types shouldn't be compressed
     # e.g. object ("O") or unicode ("U") type
