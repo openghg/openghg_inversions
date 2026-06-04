@@ -1,85 +1,128 @@
 #!/usr/bin/env bash
-# Script to get version numbers of OpenGHG
+# Script to get non-yanked OpenGHG release versions from PyPI.
 #
-# The major version is always the most recent.
+# Minor versions are specified as N behind the most recent minor version.
 #
-# You can specify a minor version, and the most recent release number for that minor version
-# will be returned.
+# For instance, if the non-yanked versions are: 0.18.0, 0.17.1, 0.17.0, 0.16.0
+# then:
 #
-# Minor versions are specified as N behind the most recent.
+# ./openghg_versions.sh -N 0
 #
-# For instance, if the versions are: 1.2.1, 1.2.0, 1.1.0, 1.0.3, ...
+# returns 0.18.0,
 #
-# Then:
+# ./openghg_versions.sh -N 1
 #
-# ./openghg_version.sh -N 0
-#
-# returns 1.2.1,
-#
-# ./openghg_version.sh -N 1
-#
-# returns 1.1.0, and
-#
-# ./openghg_version.sh -N 2
-#
-# returns 1.0.3
-#
+# returns 0.17.1.
+
+set -euo pipefail
 
 minor_N=0
-MAJOR_VERSION=-1
+major_version=""
 test=false
 
-while getopts M:N:t flag
-do
+while getopts M:N:t flag; do
     case "${flag}" in
         t) test=true;;
         N) minor_N=${OPTARG};;
-        M) MAJOR_VERSION=${OPTARG};;
+        M) major_version=${OPTARG};;
     esac
 done
 
+python3 - "$minor_N" "$major_version" "$test" <<'PY'
+from __future__ import annotations
 
-# get version tags
-OPENGHG_TAGS=$(curl https://api.github.com/repos/openghg/openghg/tags -s)
-OPENGHG_VERSIONS_STR=$(echo $OPENGHG_TAGS | jq .[] | jq .name -r | grep -E "[0-9]+\.[0-9]+\.[0-9]+")
+import json
+import os
+import re
+import sys
+import urllib.request
 
-## NOTE: each version will be on a new line
 
-# TODO: check major version
+PYPI_URL = "https://pypi.org/pypi/openghg/json"
+VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 
-# if major version not specified, extract it.
-# versions are sorted, so take major version from first entry.
-if [[ $MAJOR_VERSION -eq -1 ]]; then
-    MAJOR_VERSION=$(echo $OPENGHG_VERSIONS_STR | cut -d. -f1)
-fi
 
-# get minor versions for this major version
-OPENGHG_VERSIONS_STR_MAJOR=$(echo $OPENGHG_VERSIONS_STR | grep -E "${MAJOR_VERSION}\.[0-9]+\.[0-9]+")
-MINOR_VERSIONS=($(for x in $OPENGHG_VERSIONS_STR_MAJOR; do echo $x | cut -d. -f2; done | uniq))
+def load_pypi_json() -> dict:
+    fixture_path = os.environ.get("OPENGHG_PYPI_JSON")
+    if fixture_path:
+        with open(fixture_path, encoding="utf-8") as handle:
+            return json.load(handle)
 
-# get specified minor
-function get_minor()
-{
-    local MINOR_VERSION=${MINOR_VERSIONS[${1:0}]}  # $1 defaults to 0
-    echo $OPENGHG_VERSIONS_STR | grep -oE "${MAJOR_VERSION}\.${MINOR_VERSION}\.[0-9]+" | head -n 1
-}
+    with urllib.request.urlopen(PYPI_URL, timeout=30) as response:
+        return json.load(response)
 
-# test or return
-if [[ "$test" == true ]]; then
-    echo "OPENGHG_VERSIONS_STR:"
-    echo "${OPENGHG_VERSIONS_STR}"
-    echo "MAJOR_VERSION = ${MAJOR_VERSION}"
 
-    echo "MINOR_VERSIONS:"
-    for x in ${MINOR_VERSIONS[*]}; do echo $x; done
+def release_has_installable_file(files: list[dict]) -> bool:
+    return bool(files) and any(not file_info.get("yanked", False) for file_info in files)
 
-    # get lastest release on last two minor versions
-    ULTIMATE_MINOR_VERSION_LATEST=$(get_minor)
-    PENULTIMATE_MINOR_VERSION_LATEST=$(get_minor 1)
 
-    echo "Latest minor, most recent release = $ULTIMATE_MINOR_VERSION_LATEST"
-    echo "Previous minor, most recent release = $PENULTIMATE_MINOR_VERSION_LATEST"
-else
-    # return specified minor
-    get_minor $minor_N
-fi
+def parse_versions(data: dict) -> list[tuple[tuple[int, int, int], str]]:
+    versions: list[tuple[tuple[int, int, int], str]] = []
+    for version, files in data["releases"].items():
+        match = VERSION_RE.fullmatch(version)
+        if match is None or not release_has_installable_file(files):
+            continue
+        versions.append(((int(match.group(1)), int(match.group(2)), int(match.group(3))), version))
+    return sorted(versions)
+
+
+def selected_version(
+    versions: list[tuple[tuple[int, int, int], str]],
+    *,
+    major: int | None,
+    minor_offset: int,
+) -> str:
+    if not versions:
+        raise SystemExit("No installable OpenGHG releases found.")
+
+    selected_major = major if major is not None else max(version_tuple[0] for version_tuple, _ in versions)
+    major_versions = [(version_tuple, version) for version_tuple, version in versions if version_tuple[0] == selected_major]
+    if not major_versions:
+        raise SystemExit(f"No installable OpenGHG releases found for major version {selected_major}.")
+
+    minor_versions = sorted({version_tuple[1] for version_tuple, _ in major_versions}, reverse=True)
+    try:
+        selected_minor = minor_versions[minor_offset]
+    except IndexError as exc:
+        raise SystemExit(
+            f"No OpenGHG minor release at offset {minor_offset}; available minors: {minor_versions}"
+        ) from exc
+
+    patch_versions = [
+        (version_tuple, version)
+        for version_tuple, version in major_versions
+        if version_tuple[1] == selected_minor
+    ]
+    return max(patch_versions)[1]
+
+
+def main() -> int:
+    minor_offset = int(sys.argv[1])
+    major = int(sys.argv[2]) if sys.argv[2] else None
+    test_mode = sys.argv[3] == "true"
+
+    versions = parse_versions(load_pypi_json())
+    result = selected_version(versions, major=major, minor_offset=minor_offset)
+
+    if test_mode:
+        selected_major = major if major is not None else max(version_tuple[0] for version_tuple, _ in versions)
+        minor_versions = sorted(
+            {version_tuple[1] for version_tuple, _ in versions if version_tuple[0] == selected_major},
+            reverse=True,
+        )
+        print("OpenGHG installable releases:")
+        for _, version in versions:
+            print(version)
+        print(f"Selected major version = {selected_major}")
+        print("Minor versions:")
+        for minor in minor_versions:
+            print(minor)
+        print(f"Selected release = {result}")
+    else:
+        print(result)
+
+    return 0
+
+
+raise SystemExit(main())
+PY

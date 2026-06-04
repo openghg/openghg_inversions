@@ -7,6 +7,48 @@ Please see the `OpenGHG project <https://github.com/openghg/openghg/>`__
 for further installation instructions of OpenGHG and setting up an
 object store.
 
+Recommended development install using Pixi
+------------------------------------------
+
+OpenGHG Inversions and OpenGHG read and write NetCDF/HDF5 data through
+``xarray``, ``h5netcdf``, ``h5py``, and ``netcdf4``. Plain ``pip`` or
+``uv`` installs can select PyPI wheels with incompatible bundled HDF5
+libraries. The Pixi workspace in this repository installs the compiled
+HDF5/NetCDF stack from conda-forge and installs ``openghg_inversions`` in
+editable mode.
+
+Install `Pixi <https://pixi.prefix.dev/latest/installation/>`__, then run:
+
+.. code:: bash
+
+   git clone https://github.com/openghg/openghg_inversions.git
+   cd openghg_inversions
+   pixi install -e dev
+   pixi run -e dev python -c "import openghg_inversions, h5py, h5netcdf, netCDF4"
+
+The ``dev`` environment includes the test, lint, type-checking, and tox
+tools used by the repository:
+
+.. code:: bash
+
+   pixi run -e dev test
+   pixi run -e dev lint
+   pixi run -e dev typecheck
+   pixi run -e dev tox
+
+If you need to test against a local OpenGHG checkout, install only the
+local package code into the Pixi environment. The ``--no-deps`` flag is
+important because it prevents ``pip`` from replacing Pixi's conda-forge
+HDF5/NetCDF packages with wheels.
+
+.. code:: bash
+
+   pixi run -e dev python -m pip install --no-deps -e ~/Documents/openghg
+
+Avoid running commands such as ``pip install -U h5py h5netcdf netcdf4``
+inside the Pixi environment. That can reintroduce the binary mismatch
+that Pixi is intended to avoid.
+
 Setup a virtual environment
 ---------------------------
 
@@ -72,7 +114,12 @@ about ``pymc`` or ``pytensor`` using the ``numpy`` C-API, then your
 inversions might run slowly because the fast linear algebra libraries
 used by ``numpy`` haven’t been found.
 
-Solutions to this are: 1. try ``python -m pip install numpy`` after
-upgrading ``pip, setuptools, wheel`` 2. create a ``conda`` env, install
-``numpy`` using ``conda``, then use ``pip`` to upgrade
-``pip, setuptools, wheel`` and install ``openghg_inversions``
+Solutions to this are:
+
+1. Use the Pixi development environment above, which installs ``numpy``
+   and the NetCDF/HDF5 stack from conda-forge.
+2. Try ``python -m pip install numpy`` after upgrading
+   ``pip, setuptools, wheel``.
+3. Create a ``conda`` env, install ``numpy`` using ``conda``, then use
+   ``pip`` to upgrade ``pip, setuptools, wheel`` and install
+   ``openghg_inversions``.
