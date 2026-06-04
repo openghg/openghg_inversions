@@ -178,6 +178,9 @@ TODO: update conda instructions
      ``cd openghg_inversions``, then ``pixi install -e dev``. This keeps
      ``h5py``, ``h5netcdf``, ``netcdf4``, and HDF5 on a single conda-forge
      binary stack.
+     On systems with access to the ACRG country files, run
+     ``OPENGHG_COUNTRY_FILE_SMOKE_DIR=/group/chem/acrg/LPDM/countries pixi run -e dev country-file-smoke``
+     to check the real country-file HDF5 backends.
   2. If Pixi is not available, make a conda env
      ``conda create --name inv_env numpy`` (note:
      installing ``numpy`` from ``conda`` will install ``openblas``,

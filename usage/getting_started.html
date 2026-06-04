@@ -525,7 +525,10 @@ about running jobs on SLURM could apply elsewhere.)</p>
 <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">clone</span> <span class="pre">https://github.com/openghg/openghg_inversions.git</span></code>,
 <code class="docutils literal notranslate"><span class="pre">cd</span> <span class="pre">openghg_inversions</span></code>, then <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">dev</span></code>. This keeps
 <code class="docutils literal notranslate"><span class="pre">h5py</span></code>, <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code>, <code class="docutils literal notranslate"><span class="pre">netcdf4</span></code>, and HDF5 on a single conda-forge
-binary stack.</p></li>
+binary stack.
+On systems with access to the ACRG country files, run
+<code class="docutils literal notranslate"><span class="pre">OPENGHG_COUNTRY_FILE_SMOKE_DIR=/group/chem/acrg/LPDM/countries</span> <span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">-e</span> <span class="pre">dev</span> <span class="pre">country-file-smoke</span></code>
+to check the real country-file HDF5 backends.</p></li>
 <li><p>If Pixi is not available, make a conda env
 <code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">create</span> <span class="pre">--name</span> <span class="pre">inv_env</span> <span class="pre">numpy</span></code> (note:
 installing <code class="docutils literal notranslate"><span class="pre">numpy</span></code> from <code class="docutils literal notranslate"><span class="pre">conda</span></code> will install <code class="docutils literal notranslate"><span class="pre">openblas</span></code>,

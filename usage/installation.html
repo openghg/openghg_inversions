@@ -373,6 +373,20 @@ pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span
 pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>tox
 </pre></div>
 </div>
+<p>To run the optional real country-file HDF5 smoke check on a machine that
+can access the ACRG country files, set the country directory and run the
+Pixi task:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">OPENGHG_COUNTRY_FILE_SMOKE_DIR</span><span class="o">=</span>/group/chem/acrg/LPDM/countries<span class="w"> </span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>country-file-smoke
+</pre></div>
+</div>
+<p>The smoke check opens <code class="docutils literal notranslate"><span class="pre">country_EUROPE_EEZ_PARIS_gapfilled.nc</span></code> and
+<code class="docutils literal notranslate"><span class="pre">country_EUROPE.nc</span></code> with xarray’s default backend, <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">netcdf4</span></code>, then exercises
+<code class="docutils literal notranslate"><span class="pre">openghg_inversions._country_file.load_country_dataset</span></code>. It prints the
+<code class="docutils literal notranslate"><span class="pre">xarray</span></code>, <code class="docutils literal notranslate"><span class="pre">h5netcdf</span></code>, <code class="docutils literal notranslate"><span class="pre">h5py</span></code>, and <code class="docutils literal notranslate"><span class="pre">netCDF4</span></code> versions and the
+per-engine result. Without <code class="docutils literal notranslate"><span class="pre">OPENGHG_COUNTRY_FILE_SMOKE_DIR</span></code>, the
+real-file tests are skipped so uv/pip CI does not need access to cluster
+data.</p>
 <p>If you need to test against a local OpenGHG checkout, install only the
 local package code into the Pixi environment. The <code class="docutils literal notranslate"><span class="pre">--no-deps</span></code> flag is
 important because it prevents <code class="docutils literal notranslate"><span class="pre">pip</span></code> from replacing Pixi’s conda-forge
