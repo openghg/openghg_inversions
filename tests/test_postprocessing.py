@@ -795,6 +795,8 @@ def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(mcmc_arg
     assert outputs["Yobs"].dims == ("nmeasure",)
     assert outputs["Ymod68"].dims == ("nmeasure", "nUI")
     assert outputs["country68"].dims == ("countrynames", "nUI")
+    for interval_name in ("Ymod68", "Ymod95", "country68", "country95"):
+        assert np.isfinite(outputs[interval_name].values).sum() == outputs[interval_name].size
     assert "UInum" in outputs.coords
     assert "countrynames" in outputs.coords
 
