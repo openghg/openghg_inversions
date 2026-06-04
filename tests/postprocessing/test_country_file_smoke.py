@@ -62,6 +62,9 @@ def _summarise_dataset(dataset: xr.Dataset) -> str:
 
 @pytest.fixture(scope="module", autouse=True)
 def print_country_file_dependency_versions() -> None:
+    if os.environ.get(COUNTRY_FILE_SMOKE_DIR_ENV) is None:
+        return
+
     versions = {
         "xarray": _version("xarray"),
         "h5netcdf": _version("h5netcdf"),
@@ -72,7 +75,6 @@ def print_country_file_dependency_versions() -> None:
         f"{package}={package_version}" for package, package_version in versions.items()
     )
     print(f"country-file smoke dependency versions: {version_report}")
-
 
 @pytest.fixture(scope="module")
 def country_file_smoke_dir() -> Path:
