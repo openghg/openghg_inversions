@@ -414,7 +414,10 @@
                   
   <section id="module-openghg_inversions.hbmcmc.run_hbmcmc">
 <span id="openghg-inversions-hbmcmc-run-hbmcmc"></span><h1>openghg_inversions.hbmcmc.run_hbmcmc<a class="headerlink" href="#module-openghg_inversions.hbmcmc.run_hbmcmc" title="Link to this heading">#</a></h1>
-<p>Wrapper script to read in parameters from a configuration file and run underlying MCMC script.</p>
+<p>Compatibility script for running old fixedbasis-style configs through RHIME.</p>
+<p>This entry point preserves the historical <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> command-line
+surface for old INI files, but translates supported fixedbasis-style parameter
+names and calls the modern <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> pathway.</p>
 <dl class="simple">
 <dt>Run as:</dt><dd><p>$ python run_hbmcmc.py [start end -c config.ini]</p>
 </dd>
@@ -425,7 +428,7 @@ $ python run_hbmcmc.py 2012-01-01 2013-01-01 -c hbmcmc_ch4_run.ini</p>
 <p>start - Start of date range to use for MCMC inversion (YYYY-MM-DD)
 end - End of date range to use for MCMC inversion (YYYY-MM-DD) (must be after start)
 -c / –config - configuration file. See config/ folder for templates and examples of this input file.</p>
-<p>If start and end are specified these will superceed the values within the configuration file, if present.
+<p>If start and end are specified these will supersede the values within the configuration file, if present.
 If -c option is not specified, this script will look for configuration file within the
 acrg_hbmcmc/ directory called <cite>hbmcmc_input.ini</cite>.</p>
 <dl class="simple">
@@ -436,25 +439,16 @@ acrg_hbmcmc/ directory called <cite>hbmcmc_input.ini</cite>.</p>
 create a configuration file called <cite>hbmcmc_input.ini</cite> within your acrg_hbmcmc/ directory and exit.
 This file will need to be edited to add parameters for your MCMC run.</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="openghg_inversions.hbmcmc.run_hbmcmc.define_mcmc_function">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.run_hbmcmc.</span></span><span class="sig-name descname"><span class="pre">define_mcmc_function</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mcmc_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable" title="(in Python v3.14)"><span class="pre">Callable</span></a></span></span><a class="headerlink" href="#openghg_inversions.hbmcmc.run_hbmcmc.define_mcmc_function" title="Link to this definition">#</a></dt>
-<dd><p>Links mcmc_type name to function.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>mcmc_type</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Keyword for MCMC function to use.
-Current option “fixed_basis” (openghg_inversions.hbmcmc.fixedbasisMCMC())</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Function</p>
-</dd>
-</dl>
+<dt class="sig sig-object py" id="openghg_inversions.hbmcmc.run_hbmcmc.build_parser">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.run_hbmcmc.</span></span><span class="sig-name descname"><span class="pre">build_parser</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">default_config_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser" title="(in Python v3.14)"><span class="pre">ArgumentParser</span></a></span></span><a class="headerlink" href="#openghg_inversions.hbmcmc.run_hbmcmc.build_parser" title="Link to this definition">#</a></dt>
+<dd><p>Build the legacy run_hbmcmc argument parser.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.hbmcmc.run_hbmcmc.extract_mcmc_type">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.run_hbmcmc.</span></span><span class="sig-name descname"><span class="pre">extract_mcmc_type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">default</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'fixed_basis'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></span><a class="headerlink" href="#openghg_inversions.hbmcmc.run_hbmcmc.extract_mcmc_type" title="Link to this definition">#</a></dt>
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.run_hbmcmc.</span></span><span class="sig-name descname"><span class="pre">extract_mcmc_type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">default</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'fixed_basis'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></span><a class="headerlink" href="#openghg_inversions.hbmcmc.run_hbmcmc.extract_mcmc_type" title="Link to this definition">#</a></dt>
 <dd><p>Find value which describes the MCMC function to use.</p>
-<p>Checks the input configuation file the “mcmc_type” keyword within
+<p>Checks the input configuration file the “mcmc_type” keyword within
 the “MCMC.TYPE” section. If not present, the default is used.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -489,9 +483,18 @@ outputpath, outputname</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.hbmcmc.run_hbmcmc.fixedbasis_params_to_rhime">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.run_hbmcmc.</span></span><span class="sig-name descname"><span class="pre">fixedbasis_params_to_rhime</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#openghg_inversions.hbmcmc.run_hbmcmc.fixedbasis_params_to_rhime" title="Link to this definition">#</a></dt>
+<dd><p>Translate fixedbasis-style script/config parameters into RHIME arguments.</p>
+<p>The compatibility shim deliberately stays at the entrypoint boundary:
+legacy config spellings are normalised here, then the modern <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code>
+API performs its existing validation and spec construction.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.hbmcmc.run_hbmcmc.hbmcmc_extract_param">
-<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.run_hbmcmc.</span></span><span class="sig-name descname"><span class="pre">hbmcmc_extract_param</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">mcmc_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'fixed_basis'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">print_param</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">command_line</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.hbmcmc.run_hbmcmc.hbmcmc_extract_param" title="Link to this definition">#</a></dt>
-<dd><p>Extract parameters from input configuration file and associated MCMC function.</p>
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.run_hbmcmc.</span></span><span class="sig-name descname"><span class="pre">hbmcmc_extract_param</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">mcmc_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'fixed_basis'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">print_param</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">command_line</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openghg_inversions.hbmcmc.run_hbmcmc.hbmcmc_extract_param" title="Link to this definition">#</a></dt>
+<dd><p>Extract fixedbasis-style parameters from an input configuration file.</p>
 <p>Checks the mcmc_type to extract the required parameters.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -499,23 +502,35 @@ outputpath, outputname</p>
 <li><p><strong>config_file</strong> – Configuration file name. Should be an .ini file.</p></li>
 <li><p><strong>mcmc_type</strong> – Keyword for MCMC function to use.
 Default = “fixed_basis” (only option at present)</p></li>
-<li><p><strong>print_param</strong> – Went set to True, print out extracted parameter names.
+<li><p><strong>print_param</strong> – When set to True, print out extracted parameter names.
 Default = True</p></li>
 <li><p><strong>command_line</strong> – Any additional command line arguments to be added to the param
-dictionary or to superceed values contained within the config file.</p></li>
+dictionary or to supersede values contained within the config file.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>MCMC function to use, dictionary of parameter names and values passed
-to MCMC function</p>
+<dd class="field-even"><p>Dictionary of parameter names and values from the fixedbasis-style
+configuration file plus command-line overrides.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>function,<a class="reference external" href="https://docs.python.org/3/library/collections.html#collections.OrderedDict" title="(in Python v3.14)">collections.OrderedDict</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a></p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><strong>ValueError if expected parameter is missing</strong><strong> or </strong><strong>has None value.</strong> – </p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.hbmcmc.run_hbmcmc.main">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.run_hbmcmc.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">argv</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.hbmcmc.run_hbmcmc.main" title="Link to this definition">#</a></dt>
+<dd><p>Run fixedbasis-style configs through the modern RHIME path.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.hbmcmc.run_hbmcmc.validate_rhime_params">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.hbmcmc.run_hbmcmc.</span></span><span class="sig-name descname"><span class="pre">validate_rhime_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#openghg_inversions.hbmcmc.run_hbmcmc.validate_rhime_params" title="Link to this definition">#</a></dt>
+<dd><p>Validate translated single-sector RHIME params before script side effects.</p>
 </dd></dl>
 
 </section>
@@ -567,10 +582,13 @@ to MCMC function</p>
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="pst-show_toc_level nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.run_hbmcmc.define_mcmc_function"><code class="docutils literal notranslate"><span class="pre">define_mcmc_function()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.run_hbmcmc.build_parser"><code class="docutils literal notranslate"><span class="pre">build_parser()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.run_hbmcmc.extract_mcmc_type"><code class="docutils literal notranslate"><span class="pre">extract_mcmc_type()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.run_hbmcmc.fixed_basis_expected_param"><code class="docutils literal notranslate"><span class="pre">fixed_basis_expected_param()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.run_hbmcmc.fixedbasis_params_to_rhime"><code class="docutils literal notranslate"><span class="pre">fixedbasis_params_to_rhime()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.run_hbmcmc.hbmcmc_extract_param"><code class="docutils literal notranslate"><span class="pre">hbmcmc_extract_param()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.run_hbmcmc.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.hbmcmc.run_hbmcmc.validate_rhime_params"><code class="docutils literal notranslate"><span class="pre">validate_rhime_params()</span></code></a></li>
 </ul>
   </nav></div>
 

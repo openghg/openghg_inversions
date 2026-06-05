@@ -452,9 +452,12 @@ files.</p></li>
 <h2>How do you run an inversion?<a class="headerlink" href="#how-do-you-run-an-inversion" title="Link to this heading">#</a></h2>
 <section id="method-1-python-script-or-notebook">
 <h3>Method 1: python script or notebook<a class="headerlink" href="#method-1-python-script-or-notebook" title="Link to this heading">#</a></h3>
-<p>Assuming you have the necessary data, you just need to run the
-<code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> function from <code class="docutils literal notranslate"><span class="pre">hbmcmc.py</span></code> in
-<code class="docutils literal notranslate"><span class="pre">openghg_inversions.hbmbmc</span></code>.</p>
+<p>New scripts should call <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> from <code class="docutils literal notranslate"><span class="pre">openghg_inversions.rhime</span></code>.
+<code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> remains only as a temporary direct legacy Python path, not
+as the RHIME-backed compatibility route.
+It no longer preserves the exact historical <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code> / <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code>
+passthrough behaviour; use release <code class="docutils literal notranslate"><span class="pre">0.6</span></code> or earlier if you need the old
+fixedbasis implementation.</p>
 </section>
 <section id="method-2-ini-file">
 <h3>Method 2: ini file<a class="headerlink" href="#method-2-ini-file" title="Link to this heading">#</a></h3>
@@ -463,7 +466,12 @@ files.</p></li>
 <code class="docutils literal notranslate"><span class="pre">openghg_inversions/hbmcmc/config/</span></code>.</p></li>
 <li><p>Activate a Pixi, conda, or venv environment with inversions installed, and
 call
-<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">&lt;path</span> <span class="pre">to</span> <span class="pre">openghg_inversions&gt;/openghg_inversions/hbmcmc/run_hbmcmc.py</span> <span class="pre">-c</span> <span class="pre">my_inversion.ini</span></code></p></li>
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">&lt;path</span> <span class="pre">to</span> <span class="pre">openghg_inversions&gt;/openghg_inversions/hbmcmc/run_hbmcmc.py</span> <span class="pre">-c</span> <span class="pre">my_inversion.ini</span></code>
+for old fixedbasis-style INI files. The script now translates those configs
+and runs the modern <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> pathway. New INI files should use
+<code class="docutils literal notranslate"><span class="pre">openghg-inversions</span> <span class="pre">run-rhime</span></code> and the RHIME config vocabulary.
+Unsupported fixedbasis-only options now raise targeted errors instead of
+being passed through to <code class="docutils literal notranslate"><span class="pre">inferpymc</span></code>.</p></li>
 <li><p>A sample <code class="docutils literal notranslate"><span class="pre">.ini</span></code> script is at the bottom of this document.</p></li>
 </ul>
 </section>
@@ -763,9 +771,9 @@ well.)</p></li>
 
 <span class="k">[MCMC.OUTPUT]</span>
 <span class="c1">; Format of output</span>
-<span class="c1">; See docs for openghg_inversions.hbmcmc.hbmcmc.fixedbasisMCMC</span>
-<span class="c1">; for full list of options</span>
-<span class="na">output_format</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;hbmcmc&quot;</span><span class="w">  </span><span class="c1">; default option, but &quot;paris&quot; tends to be used more</span>
+<span class="c1">; &quot;legacy&quot; writes the old HBMCMC-compatible output through modern RHIME.</span>
+<span class="c1">; Deprecated aliases &quot;hbmcmc&quot; and &quot;hbmcmc_postprocessing&quot; are accepted.</span>
+<span class="na">output_format</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;legacy&quot;</span>
 
 <span class="c1">; Details of where to write the output</span>
 <span class="c1">; outputpath (str) - directory to write output</span>
@@ -778,8 +786,9 @@ well.)</p></li>
 </section>
 <section id="description-of-hbmcmc-output-file">
 <h2>Description of HBMCMC output file<a class="headerlink" href="#description-of-hbmcmc-output-file" title="Link to this heading">#</a></h2>
-<p>The output of <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> (and <code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC</span></code>) is an xarray
-Dataset with the following variables and attributes:</p>
+<p>The legacy compatibility output from <code class="docutils literal notranslate"><span class="pre">run_hbmcmc</span></code> (and
+<code class="docutils literal notranslate"><span class="pre">fixedbasisMCMC(output_format=&quot;legacy&quot;)</span></code>) is an xarray Dataset with the
+following variables and attributes:</p>
 <p>HMCMC output data variables:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">Y</span></code>: Measurements used in inversion</p></li>
