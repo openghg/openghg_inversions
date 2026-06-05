@@ -1,8 +1,10 @@
 from pathlib import Path
 import getpass
 import re
+from collections.abc import Hashable
 from typing import Any, Literal
 
+import numpy as np
 import pandas as pd
 import xarray as xr
 
@@ -130,6 +132,16 @@ def add_variable_attrs(
     return ds
 
 
+def _cast_float_data_vars_to_float32(ds: xr.Dataset) -> xr.Dataset:
+    """Cast floating PARIS data variables to float32 at the product boundary."""
+    updates: dict[Hashable, xr.DataArray] = {}
+    for name in ds.data_vars:
+        if np.issubdtype(ds[name].dtype, np.floating):
+            updates[name] = ds[name].astype("float32")
+
+    return ds.assign(updates) if updates else ds
+
+
 def convert_time_to_unix_epoch(x: xr.Dataset, units: str = "1s") -> xr.Dataset:
     """Convert `time` coordinate of xarray Dataset or DataArray to number of "units" since 1 Jan 1970 (the "UNIX epoch")."""
     time_converted = (pd.DatetimeIndex(x.time) - pd.Timestamp("1970-01-01")) / pd.Timedelta(units)
@@ -232,7 +244,7 @@ def paris_concentration_outputs(
 
     result.attrs = make_global_attrs("conc")
 
-    return result
+    return _cast_float_data_vars_to_float32(result)
 
 
 def _flux_frequency_to_offset(flux_frequency: str) -> pd.DateOffset | pd.Timedelta:
@@ -399,7 +411,7 @@ def paris_flux_output(
 
     result.attrs = make_global_attrs("flux")
 
-    return result.as_numpy()
+    return _cast_float_data_vars_to_float32(result).as_numpy()
 
 
 def infer_flux_frequency(flux: xr.DataArray) -> str:

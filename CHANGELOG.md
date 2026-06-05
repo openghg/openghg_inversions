@@ -19,7 +19,9 @@
   Country-file loading in modern country and legacy-format
   postprocessing now falls back to direct HDF5 reads when h5netcdf dimension-scale
   decoding fails on cluster nodes, and floating legacy-format output variables
-  are written as `float32` to avoid footprint-alignment upcasts.
+  are written as `float32` to avoid footprint-alignment upcasts. Modern PARIS
+  compatibility outputs also cast floating data variables to `float32` to match
+  the historical fixedbasis-style file contract.
   [#416](https://github.com/openghg/openghg_inversions/issues/416)
 - Routed modern RHIME and fixedbasis postprocessing through modern `InversionOutput` semantics, retained `BasisFunctions` / `BasisOperator` products, variable-role lookups, and product-local capability checks; removed the transitional postprocessing protocol/view layer and deleted `LegacyInversionOutput` plus the dead legacy inversion-output builder helpers. [#383](https://github.com/openghg/openghg_inversions/issues/383)
 - Migrated standard RHIME `basic` and `paris` postprocessing toward modern `InversionOutput` as an intermediate step before the final #383 product-local postprocessing contract. [#435](https://github.com/openghg/openghg_inversions/issues/435)

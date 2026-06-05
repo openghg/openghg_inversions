@@ -2359,6 +2359,12 @@ def test_modern_paris_flux_outputs_use_retained_basis_operator(
     assert "flux_total_posterior" in flux_outputs
     assert "country_flux_total_posterior" in flux_outputs
     assert "flux_total_posterior_inversion_grid" in flux_outputs
+    for name in (
+        "flux_total_posterior",
+        "country_flux_total_posterior",
+        "flux_total_posterior_inversion_grid",
+    ):
+        assert flux_outputs[name].dtype == np.dtype("float32")
     assert operator.interpolate_calls
     assert operator.basis_matrix_accesses
 
@@ -2510,6 +2516,10 @@ def test_paris_output_processes_modern_output(europe_country_file: Path) -> None
     assert "Yapost" in conc_outputs
     assert "flux_total_posterior" in flux_outputs
     assert "country_flux_total_posterior" in flux_outputs
+    for name in ("uYtotal", "YapostBC", "Yapost", "YaprioriBC", "Yapriori"):
+        assert conc_outputs[name].dtype == np.dtype("float32")
+    for name in ("flux_total_posterior", "country_flux_total_posterior"):
+        assert flux_outputs[name].dtype == np.dtype("float32")
 
 
 def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
