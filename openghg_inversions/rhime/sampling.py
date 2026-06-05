@@ -6,12 +6,72 @@ from collections.abc import Sequence
 from typing import Any, Literal, cast
 
 import arviz as az
+import numpy as np
 import pymc as pm
+import xarray as xr
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
+
+
+def _finite_values(data: xr.DataArray) -> np.ndarray:
+    """Return finite numeric values from a sample-stats variable."""
+    values = np.asarray(data.values)
+    if values.dtype == bool:
+        return values.astype(float).reshape(-1)
+    values = values.astype(float, copy=False).reshape(-1)
+    return values[np.isfinite(values)]
+
+
+def _sample_stat_mean(sample_stats: xr.Dataset, name: str) -> float | None:
+    """Return a finite mean for a sample-stats variable, if available."""
+    if name not in sample_stats:
+        return None
+    values = _finite_values(sample_stats[name])
+    if values.size == 0:
+        return None
+    return float(values.mean())
+
+
+def _sample_stat_max(sample_stats: xr.Dataset, name: str) -> float | None:
+    """Return a finite maximum for a sample-stats variable, if available."""
+    if name not in sample_stats:
+        return None
+    values = _finite_values(sample_stats[name])
+    if values.size == 0:
+        return None
+    return float(values.max())
+
+
+def _sample_stat_sum(sample_stats: xr.Dataset, name: str) -> int | None:
+    """Return an integer sum for a sample-stats variable, if available."""
+    if name not in sample_stats:
+        return None
+    values = _finite_values(sample_stats[name])
+    if values.size == 0:
+        return None
+    return int(values.sum())
+
+
+def _log_sample_stats(trace: az.InferenceData, *, label: str) -> None:
+    """Log compact sampler diagnostics from an ``InferenceData`` object."""
+    sample_stats = getattr(trace, "sample_stats", None)
+    if not isinstance(sample_stats, xr.Dataset):
+        return
+
+    fields: dict[str, float | int | None] = {
+        "n_steps_mean": _sample_stat_mean(sample_stats, "n_steps"),
+        "n_steps_max": _sample_stat_max(sample_stats, "n_steps"),
+        "tree_depth_mean": _sample_stat_mean(sample_stats, "tree_depth"),
+        "tree_depth_max": _sample_stat_max(sample_stats, "tree_depth"),
+        "step_size_mean": _sample_stat_mean(sample_stats, "step_size"),
+        "acceptance_rate_mean": _sample_stat_mean(sample_stats, "acceptance_rate"),
+        "divergences": _sample_stat_sum(sample_stats, "diverging"),
+    }
+    if any(value is not None for value in fields.values()):
+        log_timing(label, 0.0, **fields)
 
 
 class RhimeSampler:
@@ -143,6 +203,7 @@ class RhimeSampler:
             chains=self.chains,
             nuts_sampler=self.nuts_sampler,
         )
+        _log_sample_stats(raw_trace, label="rhime.sampler.sample_stats")
 
         timing_start = timer_start()
         trace = cast(az.InferenceData, raw_trace.isel(draw=slice(self.burn, None)))

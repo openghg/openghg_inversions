@@ -844,6 +844,15 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
 
     class FakeInferenceData:
         posterior = FakePosterior()
+        sample_stats = xr.Dataset(
+            {
+                "n_steps": (("chain", "draw"), np.array([[1, 2, 3], [4, 5, 6]])),
+                "tree_depth": (("chain", "draw"), np.array([[2, 2, 3], [3, 4, 4]])),
+                "step_size": (("chain", "draw"), np.array([[0.1, 0.1, 0.2], [0.2, 0.2, 0.2]])),
+                "acceptance_rate": (("chain", "draw"), np.array([[0.8, 0.9, 1.0], [0.7, 0.8, 0.9]])),
+                "diverging": (("chain", "draw"), np.array([[False, True, False], [False, False, True]])),
+            }
+        )
 
         def __init__(self) -> None:
             self.isel_kwargs: dict[str, Any] | None = None
@@ -858,6 +867,7 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
 
     fake_idata = FakeInferenceData()
     seen: dict[str, Any] = {}
+    timings: list[tuple[str, dict[str, Any]]] = []
 
     def fake_sample(**kwargs: Any) -> Any:
         seen["sample_kwargs"] = kwargs
@@ -871,7 +881,11 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         seen["posterior_predictive"] = {"trace": trace, **kwargs}
         return "posterior"
 
+    def fake_log_timing(label: str, seconds: float, **fields: Any) -> None:
+        timings.append((label, fields))
+
     monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr(rhime_sampling, "log_timing", fake_log_timing)
     monkeypatch.setattr(
         "openghg_inversions.rhime.sampling.pm.sample_prior_predictive",
         fake_prior_predictive,
@@ -913,6 +927,14 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         "random_seed": 42,
     }
     assert fake_idata.extensions == ["prior", "posterior"]
+    sample_stats_fields = dict(timings)["rhime.sampler.sample_stats"]
+    assert sample_stats_fields["n_steps_mean"] == 3.5
+    assert sample_stats_fields["n_steps_max"] == 6.0
+    assert sample_stats_fields["tree_depth_mean"] == 3.0
+    assert sample_stats_fields["tree_depth_max"] == 4.0
+    assert sample_stats_fields["step_size_mean"] == pytest.approx(1.0 / 6.0)
+    assert sample_stats_fields["acceptance_rate_mean"] == pytest.approx(0.85)
+    assert sample_stats_fields["divergences"] == 2
 
 
 def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
