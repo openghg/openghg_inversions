@@ -8,6 +8,7 @@ from typing import Any, Literal, cast
 import arviz as az
 import pymc as pm
 
+from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
@@ -120,6 +121,7 @@ class RhimeSampler:
         sample_kwargs.setdefault("progressbar", self.progressbar)
         sample_kwargs.setdefault("cores", self.chains)
 
+        timing_start = timer_start()
         with model:
             raw_trace = cast(
                 az.InferenceData,
@@ -133,12 +135,29 @@ class RhimeSampler:
                     **sample_kwargs,
                 ),
             )
+        log_timing(
+            "rhime.sampler.pm_sample",
+            timer_seconds(timing_start),
+            draws=self.draws,
+            tune=self.tune,
+            chains=self.chains,
+            nuts_sampler=self.nuts_sampler,
+        )
 
+        timing_start = timer_start()
         trace = cast(az.InferenceData, raw_trace.isel(draw=slice(self.burn, None)))
+        log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
+
         trace = self._extend_predictive(trace, model=model)
+        timing_start = timer_start()
         registry = get_coord_registry(model)
         if registry is not None:
             trace = restore_inferencedata_coords(trace, registry)
+        log_timing(
+            "rhime.sampler.coord_restore",
+            timer_seconds(timing_start),
+            restored=registry is not None,
+        )
         return trace
 
     def _extend_predictive(self, trace: az.InferenceData, *, model: pm.Model) -> az.InferenceData:
@@ -149,8 +168,14 @@ class RhimeSampler:
                 if self.sample_prior_predictive is True
                 else int(self.sample_prior_predictive)
             )
+            timing_start = timer_start()
             with model:
                 trace.extend(pm.sample_prior_predictive(prior_draws, model))
+            log_timing(
+                "rhime.sampler.prior_predictive",
+                timer_seconds(timing_start),
+                draws=prior_draws,
+            )
 
         if self.sample_posterior_predictive:
             posterior_var_names = (
@@ -160,7 +185,13 @@ class RhimeSampler:
             posterior_predictive_kwargs.setdefault("model", model)
             if posterior_var_names is not None:
                 posterior_predictive_kwargs.setdefault("var_names", posterior_var_names)
+            timing_start = timer_start()
             with model:
                 trace.extend(pm.sample_posterior_predictive(trace, **posterior_predictive_kwargs))
+            log_timing(
+                "rhime.sampler.posterior_predictive",
+                timer_seconds(timing_start),
+                var_names=posterior_var_names,
+            )
 
         return trace

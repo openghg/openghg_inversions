@@ -30,12 +30,12 @@ from dataclasses import dataclass, field, replace
 import inspect
 from pathlib import Path
 from typing import Any
-import time
 
 import arviz as az
 import pymc as pm
 import xarray as xr
 
+from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.rhime.outputs import (
     RhimeOutputBundle,
@@ -142,17 +142,43 @@ def _run_common(
     params: dict[str, Any],
 ) -> RhimeResult:
     """Run the shared RHIME pipeline after public wrapper/config normalization."""
+    timing_start = timer_start()
     setup = _make_rhime_runner_setup(params=params, multisector=multisector)
+    log_timing("rhime.runner_setup", timer_seconds(timing_start), multisector=multisector)
+
+    timing_start = timer_start()
     prepared = prepare_rhime_inputs(**setup.data_args)
+    log_timing(
+        "rhime.prepare_inputs",
+        timer_seconds(timing_start),
+        multisector=multisector,
+        nmeasure=prepared.inv_inputs.sizes.get("nmeasure"),
+        sites=len(prepared.sites),
+        regions=prepared.inv_inputs.sizes.get("region"),
+        sources=prepared.inv_inputs.sizes.get("source"),
+        basis_source=prepared.basis_artifact_source,
+    )
     run_spec = _run_spec_with_prepared_inputs(setup.run_spec, prepared)
 
-    start_build = time.time()
+    build_and_sample_start = timer_start()
+    timing_start = timer_start()
     if multisector:
         model = build_rhime_multisector_model_from_spec(prepared.inv_inputs, run_spec.model)
     else:
         model = build_rhime_model_from_spec(prepared.inv_inputs, run_spec.model)
+    log_timing("rhime.model_build", timer_seconds(timing_start), multisector=multisector)
 
+    timing_start = timer_start()
     idata = setup.sampler.sample(model)
+    log_timing(
+        "rhime.sampler_total",
+        timer_seconds(timing_start),
+        draws=setup.sampler.draws,
+        burn=setup.sampler.burn,
+        tune=setup.sampler.tune,
+        chains=setup.sampler.chains,
+        nuts_sampler=setup.sampler.nuts_sampler,
+    )
     result = RhimeResult(
         run_spec=run_spec,
         model_spec=run_spec.model,
@@ -162,9 +188,10 @@ def _run_common(
         sampler=setup.sampler,
         model=model,
         basis_functions=prepared.basis_functions,
-        output_metadata={"build_and_sample_seconds": time.time() - start_build},
+        output_metadata={"build_and_sample_seconds": timer_seconds(build_and_sample_start)},
     )
 
+    timing_start = timer_start()
     if multisector:
         output_bundle = make_multisector_output_bundle(
             output_spec=run_spec.output,
@@ -183,6 +210,12 @@ def _run_common(
             country_file=run_spec.output.country_file,
             sampler=setup.sampler,
         )
+    log_timing(
+        "rhime.output_bundle_total",
+        timer_seconds(timing_start),
+        multisector=multisector,
+        output_format=run_spec.output.output_format,
+    )
     _apply_output_bundle(result, output_bundle)
 
     return result

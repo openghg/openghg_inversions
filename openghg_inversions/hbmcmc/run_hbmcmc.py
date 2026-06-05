@@ -37,6 +37,7 @@ import warnings
 
 import openghg_inversions.hbmcmc.hbmcmc_output as output
 
+from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.config import config
 from openghg_inversions.config.paths import Paths
 from openghg_inversions.inversion_data import prepare_rhime_inputs
@@ -351,15 +352,20 @@ def main(argv: list[str] | None = None) -> None:
             f"Configuration file cannot be found.\nPlease check path and filename are correct: {config_file}"
         )
 
+    timing_start = timer_start()
     mcmc_type = extract_mcmc_type(config_file)
     print(f"Using MCMC type: {mcmc_type} - routing fixedbasis-style config to run_rhime(...)")
-
     param = hbmcmc_extract_param(config_file, mcmc_type, **command_line_args)
+    log_timing("run_hbmcmc.config_extract", timer_seconds(timing_start))
 
-    rhime_params = fixedbasis_params_to_rhime(param)
-    validate_rhime_params(rhime_params)
+    with timed("run_hbmcmc.fixedbasis_to_rhime_translation"):
+        rhime_params = fixedbasis_params_to_rhime(param)
 
-    output.copy_config_file(str(config_file), param=param, **command_line_args)
+    with timed("run_hbmcmc.validation"):
+        validate_rhime_params(rhime_params)
+
+    with timed("run_hbmcmc.config_copy"):
+        output.copy_config_file(str(config_file), param=param, **command_line_args)
 
     run_rhime(**rhime_params)
 
