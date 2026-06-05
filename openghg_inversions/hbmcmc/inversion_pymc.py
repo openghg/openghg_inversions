@@ -8,11 +8,10 @@ from typing import Any
 
 import numpy as np
 
-# import pytensor before pymc so we can set config values
-import pytensor
+# Configure PyTensor before importing PyMC.
+from openghg_inversions._pymc_config import configure_pytensor
 
-pytensor.config.floatX = "float32"
-pytensor.config.warn_float64 = "warn"
+configure_pytensor()
 
 import pymc as pm  # noqa: E402
 import pandas as pd  # noqa: E402

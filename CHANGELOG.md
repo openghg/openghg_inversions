@@ -24,7 +24,10 @@
   the historical fixedbasis-style file contract. RHIME and the `run_hbmcmc.py`
   compatibility shim now emit grep-friendly `TIMING ... seconds=... maxrss_kb=...`
   lines for setup, preparation, sampling, postprocessing, and output writes so
-  batch logs can identify runtime regressions.
+  batch logs can identify runtime regressions. Modern RHIME model imports also
+  apply the same PyTensor `floatX=float32` default as the historical
+  fixedbasis PyMC path, avoiding accidental float64 sampling after the
+  `run_hbmcmc.py` route switch.
   [#416](https://github.com/openghg/openghg_inversions/issues/416)
 - Routed modern RHIME and fixedbasis postprocessing through modern `InversionOutput` semantics, retained `BasisFunctions` / `BasisOperator` products, variable-role lookups, and product-local capability checks; removed the transitional postprocessing protocol/view layer and deleted `LegacyInversionOutput` plus the dead legacy inversion-output builder helpers. [#383](https://github.com/openghg/openghg_inversions/issues/383)
 - Migrated standard RHIME `basic` and `paris` postprocessing toward modern `InversionOutput` as an intermediate step before the final #383 product-local postprocessing contract. [#435](https://github.com/openghg/openghg_inversions/issues/435)
