@@ -22,6 +22,7 @@ import warnings
 import numpy as np
 import xarray as xr
 
+from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.basis import basis_functions_wrapper, make_basis_functions
 from openghg_inversions.basis._helpers import _legacy_multisource_h_if_needed, bc_sensitivity
 from openghg_inversions.basis.basis_functions import BasisFunctions
@@ -69,6 +70,8 @@ class RhimePreparedInputs:
         averaging_period: Averaging periods aligned to retained sites.
         basis_artifact_source: Description of whether the basis was generated
             or loaded from an artifact.
+        site_lats: Release latitudes aligned to ``sites``, when available.
+        site_lons: Release longitudes aligned to ``sites``, when available.
     """
 
     inv_inputs: xr.Dataset
@@ -76,6 +79,8 @@ class RhimePreparedInputs:
     sites: tuple[str, ...]
     averaging_period: tuple[str | None, ...]
     basis_artifact_source: str
+    site_lats: tuple[float, ...] | None = None
+    site_lons: tuple[float, ...] | None = None
 
 
 @dataclass
@@ -94,6 +99,35 @@ def _filter_site_aligned_value(value: object, keep_indices: list[int]) -> object
     if not isinstance(value, Sequence):
         return value
     return [item for index, item in enumerate(value) if index in keep_indices]
+
+
+def _first_scalar_data_value(ds: xr.Dataset, names: tuple[str, ...]) -> float:
+    """Return the first scalar value found in a dataset variable or coordinate."""
+    for name in names:
+        if name not in ds:
+            continue
+        values = np.asarray(ds[name].values).reshape(-1)
+        if values.size:
+            return float(values[0])
+    return np.nan
+
+
+def _site_release_coordinates(
+    fp_data: dict[str, xr.Dataset],
+    sites: Sequence[str],
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Return release lat/lon values aligned to retained sites."""
+    lats: list[float] = []
+    lons: list[float] = []
+    for site in sites:
+        site_data = fp_data.get(site)
+        if site_data is None:
+            lats.append(np.nan)
+            lons.append(np.nan)
+            continue
+        lats.append(_first_scalar_data_value(site_data, ("release_lat", "sitelats")))
+        lons.append(_first_scalar_data_value(site_data, ("release_lon", "sitelons")))
+    return tuple(lats), tuple(lons)
 
 
 def _drop_sites_missing_from_loaded_data(
@@ -392,6 +426,7 @@ def _rhime_site_data_from_basis_functions(
         if fp_data[site].sizes.get("time", 0) == 0:
             continue
         fp_x_flux = fp_data[site][fp_x_flux_name]
+        timing_start = timer_start()
         sensitivity = basis_functions.sensitivity(fp_x_flux)
         state_dims = [dim for dim in sensitivity.dims if dim not in fp_x_flux.dims]
         if "region" in sensitivity.dims:
@@ -413,14 +448,23 @@ def _rhime_site_data_from_basis_functions(
                 flux_sources=flux_sources,
             )
         fp_data[site]["H"] = sensitivity
+        log_timing(
+            "rhime.prepare_inputs.footprint_sensitivity",
+            timer_seconds(timing_start),
+            site=site,
+            nmeasure=fp_data[site].sizes.get("time"),
+            regions=sensitivity.sizes.get("region"),
+            sources=sensitivity.sizes.get("source"),
+        )
 
     if use_bc:
-        fp_data = bc_sensitivity(
-            fp_data,
-            domain=domain,
-            basis_case=bc_basis_case,
-            bc_basis_directory=bc_basis_directory,
-        )
+        with timed("rhime.prepare_inputs.bc_sensitivity", sites=len(sites)):
+            fp_data = bc_sensitivity(
+                fp_data,
+                domain=domain,
+                basis_case=bc_basis_case,
+                bc_basis_directory=bc_basis_directory,
+            )
 
     return fp_data
 
@@ -645,87 +689,107 @@ def prepare_rhime_inputs(
         Modern RHIME prepared inputs containing canonical ``inv_inputs`` and a
         retained ``BasisFunctions`` object.
     """
-    merged = _prepare_merged_data(
-        species=species,
-        sites=sites,
-        domain=domain,
-        averaging_period=averaging_period,
-        start_date=start_date,
-        end_date=end_date,
-        output_name=output_name,
-        flux_sources=flux_sources,
-        split_by_sectors=split_by_sectors,
-        bc_store=bc_store,
-        obs_store=obs_store,
-        footprint_store=footprint_store,
-        emissions_store=emissions_store,
-        met_model=met_model,
-        fp_model=fp_model,
-        fp_height=fp_height,
-        fp_species=fp_species,
-        inlet=inlet,
-        instrument=instrument,
-        max_level=max_level,
-        calibration_scale=calibration_scale,
-        obs_data_level=obs_data_level,
-        platform=platform,
-        use_tracer=use_tracer,
-        use_bc=use_bc,
-        bc_input=bc_input,
-        averaging_error=averaging_error,
-        reload_merged_data=reload_merged_data,
-        save_merged_data=save_merged_data,
-        merged_data_dir=merged_data_dir,
-        merged_data_name=merged_data_name,
-    )
+    with timed("rhime.prepare_inputs.merged_data", sites=len(sites), split_by_sectors=split_by_sectors):
+        merged = _prepare_merged_data(
+            species=species,
+            sites=sites,
+            domain=domain,
+            averaging_period=averaging_period,
+            start_date=start_date,
+            end_date=end_date,
+            output_name=output_name,
+            flux_sources=flux_sources,
+            split_by_sectors=split_by_sectors,
+            bc_store=bc_store,
+            obs_store=obs_store,
+            footprint_store=footprint_store,
+            emissions_store=emissions_store,
+            met_model=met_model,
+            fp_model=fp_model,
+            fp_height=fp_height,
+            fp_species=fp_species,
+            inlet=inlet,
+            instrument=instrument,
+            max_level=max_level,
+            calibration_scale=calibration_scale,
+            obs_data_level=obs_data_level,
+            platform=platform,
+            use_tracer=use_tracer,
+            use_bc=use_bc,
+            bc_input=bc_input,
+            averaging_error=averaging_error,
+            reload_merged_data=reload_merged_data,
+            save_merged_data=save_merged_data,
+            merged_data_dir=merged_data_dir,
+            merged_data_name=merged_data_name,
+        )
 
-    basis_functions = make_basis_functions(
+    with timed(
+        "rhime.prepare_inputs.basis_build",
         basis_algorithm=basis_algorithm,
         nbasis=nbasis,
         fp_basis_case=fp_basis_case,
-        basis_directory=basis_directory,
-        country_directory=country_directory,
-        fp_all=merged.fp_all,
-        species=species,
-        domain=domain,
-        start_date=start_date,
-        fix_outer_regions=fix_basis_outer_regions,
-        emissions_name=flux_sources,
-        outputname=output_name,
-        output_path=basis_output_path,
-    )
+    ):
+        basis_functions = make_basis_functions(
+            basis_algorithm=basis_algorithm,
+            nbasis=nbasis,
+            fp_basis_case=fp_basis_case,
+            basis_directory=basis_directory,
+            country_directory=country_directory,
+            fp_all=merged.fp_all,
+            species=species,
+            domain=domain,
+            start_date=start_date,
+            fix_outer_regions=fix_basis_outer_regions,
+            emissions_name=flux_sources,
+            outputname=output_name,
+            output_path=basis_output_path,
+        )
     basis_source = basis_functions.basis_artifact_source or "generated"
 
-    fp_data = _rhime_site_data_from_basis_functions(
-        fp_all=merged.fp_all,
-        basis_functions=basis_functions,
-        sites=merged.sites,
-        domain=domain,
-        split_by_sectors=split_by_sectors,
-        flux_sources=flux_sources,
-        use_bc=use_bc,
-        bc_basis_case=bc_basis_case,
-        bc_basis_directory=_bc_basis_directory_arg(bc_basis_directory),
-    )
-    fp_data, prepared_sites, prepared_averaging_period = _apply_filters_and_drop_empty_sites(
-        fp_data=fp_data,
-        sites=merged.sites,
-        averaging_period=merged.averaging_period,
-        filters=filters,
-    )
+    with timed("rhime.prepare_inputs.footprint_sensitivity_total", sites=len(merged.sites)):
+        fp_data = _rhime_site_data_from_basis_functions(
+            fp_all=merged.fp_all,
+            basis_functions=basis_functions,
+            sites=merged.sites,
+            domain=domain,
+            split_by_sectors=split_by_sectors,
+            flux_sources=flux_sources,
+            use_bc=use_bc,
+            bc_basis_case=bc_basis_case,
+            bc_basis_directory=_bc_basis_directory_arg(bc_basis_directory),
+        )
+    with timed("rhime.prepare_inputs.obs_filtering", sites=len(merged.sites), filters=filters is not None):
+        fp_data, prepared_sites, prepared_averaging_period = _apply_filters_and_drop_empty_sites(
+            fp_data=fp_data,
+            sites=merged.sites,
+            averaging_period=merged.averaging_period,
+            filters=filters,
+        )
     _set_domain_attrs(fp_data, prepared_sites, domain)
 
-    inv_inputs = _make_inv_inputs(
-        fp_data=fp_data,
-        sites=prepared_sites,
-        start_date=start_date,
-        bc_freq=bc_freq,
-        sigma_freq=sigma_freq,
-        min_error=min_error,
-        calculate_min_error=None,
-        min_error_options=min_error_options,
-    )
+    with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(prepared_sites)):
+        inv_inputs = _make_inv_inputs(
+            fp_data=fp_data,
+            sites=prepared_sites,
+            start_date=start_date,
+            bc_freq=bc_freq,
+            sigma_freq=sigma_freq,
+            min_error=min_error,
+            calculate_min_error=None,
+            min_error_options=min_error_options,
+        )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
+    site_lats, site_lons = _site_release_coordinates(fp_data, prepared_sites)
+    log_timing(
+        "rhime.prepare_inputs.prepared_dims",
+        0.0,
+        nmeasure=inv_inputs.sizes.get("nmeasure"),
+        sites=len(prepared_sites),
+        regions=inv_inputs.sizes.get("region"),
+        sources=inv_inputs.sizes.get("source"),
+        basis_source=basis_source,
+    )
 
     return RhimePreparedInputs(
         inv_inputs=inv_inputs,
@@ -733,4 +797,6 @@ def prepare_rhime_inputs(
         basis_artifact_source=basis_source,
         sites=tuple(prepared_sites),
         averaging_period=tuple(prepared_averaging_period),
+        site_lats=site_lats,
+        site_lons=site_lons,
     )

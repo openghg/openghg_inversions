@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 import warnings
 from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import cast, Literal, TypeVar
-from collections.abc import Iterable, Mapping, Sequence
 from typing_extensions import Self
 
 import xarray as xr

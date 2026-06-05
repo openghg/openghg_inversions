@@ -11,6 +11,7 @@ import openghg_inversions.hbmcmc.hbmcmc as hbmcmc_module
 from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
 from openghg_inversions.hbmcmc.hbmcmc import _resolve_output_format, fixedbasisMCMC
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
+from openghg_inversions.postprocessing import legacy_outputs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
     basic_output,
@@ -249,10 +250,11 @@ def test_fixedbasisMCMC_merged_data_returns_prepared_fp_all(monkeypatch, tmp_pat
     assert captured_kwargs["reload_merged_data"] is False
 
 
-def test_fixedbasisMCMC_hbmcmc_output_uses_legacy_postprocess_path(monkeypatch, tmp_path):
-    """The default hbmcmc output path still consumes legacy postprocessing args."""
+def test_fixedbasisMCMC_hbmcmc_output_uses_modern_legacy_formatter(monkeypatch, tmp_path):
+    """Deprecated hbmcmc output aliases route through the modern legacy formatter."""
     prepared = _minimal_fixedbasis_prepared_data()
     captured_inferpymc_args = {}
+    captured_formatter_args = {}
 
     def fake_prepare_fixedbasis_inversion_data(**kwargs):
         return prepared
@@ -260,13 +262,23 @@ def test_fixedbasisMCMC_hbmcmc_output_uses_legacy_postprocess_path(monkeypatch, 
     def fake_inferpymc(**kwargs):
         captured_inferpymc_args.update(kwargs)
         return {
-            "trace": object(),
+            "trace": az.from_dict(
+                posterior={"x": np.ones((1, 2, 1)), "sigma": np.ones((1, 2, 1, 1))},
+                coords={"nx": [0], "nsigma_site": [0], "nsigma_time": [0]},
+                dims={"x": ["nx"], "sigma": ["nsigma_site", "nsigma_time"]},
+            ),
             "model": object(),
             "xouts": np.array([[1.0], [1.1]], dtype="float64"),
         }
 
-    def fake_inferpymc_postprocessouts(xouts):
-        return xr.Dataset({"xtrace_mean": (("nx",), xouts.mean(axis=0))})
+    def fail_inferpymc_postprocessouts(**kwargs):
+        raise AssertionError("output_format='legacy' must not call inferpymc_postprocessouts")
+
+    def fake_make_legacy_hbmcmc_output(inv_out, country_file=None, use_bc=False):
+        captured_formatter_args["inv_out"] = inv_out
+        captured_formatter_args["country_file"] = country_file
+        captured_formatter_args["use_bc"] = use_bc
+        return xr.Dataset({"xtrace_mean": (("nx",), np.array([1.05]))})
 
     monkeypatch.setattr(
         hbmcmc_module,
@@ -274,7 +286,8 @@ def test_fixedbasisMCMC_hbmcmc_output_uses_legacy_postprocess_path(monkeypatch, 
         fake_prepare_fixedbasis_inversion_data,
     )
     monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc", fake_inferpymc)
-    monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc_postprocessouts", fake_inferpymc_postprocessouts)
+    monkeypatch.setattr(hbmcmc_module.mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
+    monkeypatch.setattr(legacy_outputs, "make_legacy_hbmcmc_output", fake_make_legacy_hbmcmc_output)
 
     result = fixedbasisMCMC(
         species="ch4",
@@ -290,6 +303,9 @@ def test_fixedbasisMCMC_hbmcmc_output_uses_legacy_postprocess_path(monkeypatch, 
     )
 
     assert captured_inferpymc_args["inv_inputs"] is prepared.inv_inputs
+    assert isinstance(captured_formatter_args["inv_out"], InversionOutput)
+    assert captured_formatter_args["country_file"] is None
+    assert captured_formatter_args["use_bc"] is False
     assert isinstance(result, xr.Dataset)
     assert result["xtrace_mean"].dims == ("nx",)
     assert result["xtrace_mean"].values.tolist() == [1.05]
@@ -726,6 +742,12 @@ def test_resolve_output_format_canonicalizes_paris_compatibility():
     assert resolved == "paris"
 
 
+def test_resolve_output_format_rejects_column_legacy_output():
+    """Legacy HBMCMC formatting remains unsupported for column observations."""
+    with pytest.raises(ValueError, match="column observations"):
+        _resolve_output_format("hbmcmc", paris_postprocessing=False, is_column=True)
+
+
 def test_paris_postprocessing_compatibility_matches_paris_output_format(mcmc_args):
     """Compatibility PARIS output matches the explicit canonical format."""
     explicit_args = mcmc_args.copy()
@@ -773,6 +795,8 @@ def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(mcmc_arg
     assert outputs["Yobs"].dims == ("nmeasure",)
     assert outputs["Ymod68"].dims == ("nmeasure", "nUI")
     assert outputs["country68"].dims == ("countrynames", "nUI")
+    for interval_name in ("Ymod68", "Ymod95", "country68", "country95"):
+        assert np.isfinite(outputs[interval_name].values).sum() == outputs[interval_name].size
     assert "UInum" in outputs.coords
     assert "countrynames" in outputs.coords
 

@@ -5,9 +5,33 @@
 ## Code changes
 
 
+- Added a modern `output_format="legacy"` compatibility product, routed deprecated
+  `hbmcmc` / `hbmcmc_postprocessing` output requests to it, and made
+  `run_hbmcmc.py` translate fixedbasis-style configs into `run_rhime` calls while
+  preserving legacy output filenames. The shim now validates translated arguments
+  before copying configs, translates deprecated `calculate_min_error` and
+  `reparameterise_log_normal` options where possible, old HBMCMC output attrs
+  are produced from modern `InversionOutput`, legacy KDE mode statistics now
+  handle all-NaN and partially-NaN rows without dropping every draw, derived
+  RHIME products no longer save large `InversionOutput` sidecars unless
+  `save_inversion_output` is requested, and user docs mark historical
+  `fixedbasisMCMC` behavior as available from release 0.6 or earlier.
+  Country-file loading in modern country and legacy-format
+  postprocessing now falls back to direct HDF5 reads when h5netcdf dimension-scale
+  decoding fails on cluster nodes, and floating legacy-format output variables
+  are written as `float32` to avoid footprint-alignment upcasts. Modern PARIS
+  compatibility outputs also cast floating data variables to `float32` to match
+  the historical fixedbasis-style file contract. RHIME and the `run_hbmcmc.py`
+  compatibility shim now emit grep-friendly `TIMING ... seconds=... maxrss_kb=...`
+  lines for setup, preparation, sampling, sampler statistics, postprocessing,
+  and output writes so batch logs can identify runtime regressions. Modern
+  RHIME model imports also apply the same PyTensor `floatX=float32` default as
+  the historical fixedbasis PyMC path, avoiding accidental float64 sampling
+  after the `run_hbmcmc.py` route switch.
+  [#416](https://github.com/openghg/openghg_inversions/issues/416)
 - Routed modern RHIME and fixedbasis postprocessing through modern `InversionOutput` semantics, retained `BasisFunctions` / `BasisOperator` products, variable-role lookups, and product-local capability checks; removed the transitional postprocessing protocol/view layer and deleted `LegacyInversionOutput` plus the dead legacy inversion-output builder helpers. [#383](https://github.com/openghg/openghg_inversions/issues/383)
-- Routed standard RHIME `basic` and `paris` postprocessing through modern `InversionOutput` using a standard single-sector postprocessing view with dataset-based observation inputs and model-managed trace coordinates, while keeping `LegacyInversionOutput` as the fixedbasis/legacy compatibility carrier. [#435](https://github.com/openghg/openghg_inversions/issues/435)
-- Split modern RHIME `InversionOutput` from the legacy-shaped postprocessing carrier, keeping `inferpymc_postprocessouts` on the fixedbasis `output_format="hbmcmc"` path only and using a temporary `LegacyInversionOutput` adapter for RHIME `basic`/`paris` postprocessing. [#401](https://github.com/openghg/openghg_inversions/issues/401)
+- Migrated standard RHIME `basic` and `paris` postprocessing toward modern `InversionOutput` as an intermediate step before the final #383 product-local postprocessing contract. [#435](https://github.com/openghg/openghg_inversions/issues/435)
+- Introduced the temporary modern/legacy output split and modern `InversionOutput` serialization; the transitional `LegacyInversionOutput` carrier was removed by #383. [#401](https://github.com/openghg/openghg_inversions/issues/401)
 - Moved public RHIME model-builder exports into `openghg_inversions.models` and shared data preparation between `fixedbasisMCMC`, `run_rhime`, and `run_rhime_multisector`. [#399](https://github.com/openghg/openghg_inversions/issues/399), [#425](https://github.com/openghg/openghg_inversions/issues/425)
 - Retained `BasisFunctions` objects through shared inversion preparation, RHIME results, and opt-in `fixedbasisMCMC` debug output; DataTree basis artifacts are loaded when available while legacy flat basis artifacts remain supported. [#428](https://github.com/openghg/openghg_inversions/issues/428)
 - Added modern `run_rhime` and shared-basis `run_rhime_multisector` pipelines, RHIME CLI entry points, RHIME config template, modern result/spec objects, and focused tests for the new public runners. [#398](https://github.com/openghg/openghg_inversions/issues/398)

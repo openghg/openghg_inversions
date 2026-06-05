@@ -90,7 +90,12 @@ Summary
 
 ## Method 1: python script or notebook
 
-Assuming you have the necessary data, you just need to run the `fixedbasisMCMC` function from `hbmcmc.py` in `openghg_inversions.hbmbmc`.
+New scripts should call `run_rhime` from `openghg_inversions.rhime`.
+`fixedbasisMCMC` remains only as a temporary direct legacy Python path, not as
+the RHIME-backed compatibility route.
+It no longer preserves the exact historical `fixedbasisMCMC` / `inferpymc`
+passthrough behaviour; use release `0.6` or earlier if you need the old
+fixedbasis implementation.
 
 
 <a id="org6a59239"></a>
@@ -98,7 +103,7 @@ Assuming you have the necessary data, you just need to run the `fixedbasisMCMC` 
 ## Method 2: ini file
 
 -   Create a `.ini` file based on the templates in `openghg_inversions/config/templates`. (NOTE: these need to be updated.)
--   Activate a Pixi, conda, or venv environment with inversions installed, and call `python <path to openghg_inversions>/openghg_inversions/hbmcmc/run_hbmcmc.py -c somefile.ini`
+-   Activate a Pixi, conda, or venv environment with inversions installed, and call `python <path to openghg_inversions>/openghg_inversions/hbmcmc/run_hbmcmc.py -c somefile.ini` for old fixedbasis-style INI files. The script now translates those configs and runs the modern `run_rhime` pathway. New INI files should use `openghg-inversions run-rhime` and the RHIME config vocabulary. Unsupported fixedbasis-only options now raise targeted errors instead of being passed through to `inferpymc`.
 -   A sample `.ini` script is at the bottom of this document.
 
 
@@ -330,7 +335,7 @@ outputname = 'ch4_TAC_test'  ; (required)
 
 # Description of HBMCMC output file
 
-The output of `run_hbmcmc` (and `fixedbasisMCMC`) is an xarray Dataset with the following variables and attributes:
+The legacy compatibility output from `run_hbmcmc` (and `fixedbasisMCMC(output_format="legacy")`) is an xarray Dataset with the following variables and attributes:
 
 HMCMC output data variables:
 

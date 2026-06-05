@@ -29,6 +29,10 @@ _ALIASES = {
     "offsetprior": "offset_prior",
     "emissions_name": "flux_sources",
 }
+_OUTPUT_FORMAT_ALIASES = {
+    "hbmcmc": "legacy",
+    "hbmcmc_postprocessing": "legacy",
+}
 
 _INT_OPTIONS = ("draws", "burn", "tune", "chains")
 _MAPPING_OPTIONS = (
@@ -126,6 +130,7 @@ def params_from_config(
 def normalise_rhime_params(params: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize aliases, coerce simple scalars, and validate structured values."""
     normalized = normalise_param_aliases(params)
+    normalise_output_format_alias(normalized)
     coerce_simple_param_types(normalized)
     validate_rhime_param_types(normalized)
     return normalized
@@ -163,6 +168,23 @@ def normalise_param_aliases(params: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("`mcmc_type` is not supported by RHIME runners; use `nuts_sampler` if needed.")
 
     return normalized
+
+
+def normalise_output_format_alias(params: dict[str, Any]) -> None:
+    """Normalize deprecated HBMCMC output format names in-place."""
+    output_format = params.get("output_format")
+    if output_format is None:
+        return
+    output_format = str(output_format).lower()
+    alias = _OUTPUT_FORMAT_ALIASES.get(output_format)
+    if alias is not None:
+        warnings.warn(
+            f"RHIME output_format {output_format!r} is deprecated; use {alias!r} instead.",
+            UserWarning,
+            stacklevel=3,
+        )
+        output_format = alias
+    params["output_format"] = output_format
 
 
 def coerce_simple_param_types(params: dict[str, Any]) -> None:
@@ -312,6 +334,7 @@ def validate_supported_params(params: Mapping[str, Any], *, data_params: set[str
         "save_trace",
         "save_inversion_output",
         "paris_postprocessing_kwargs",
+        "output_filename_convention",
         "offset_args",
         "country_file",
         "add_offset",
@@ -468,16 +491,19 @@ def make_rhime_runner_setup(
             remaining.pop("posterior_predictive_kwargs", None)
         ),
     )
+    output_format = remaining.pop("output_format", "inv_out")
+    save_inversion_output = remaining.pop("save_inversion_output", output_format == "inv_out")
     output_spec = make_output_spec(
-        output_format=remaining.pop("output_format", "inv_out"),
+        output_format=output_format,
         output_path=output_path,
         output_name=output_name,
         save_trace=remaining.pop("save_trace", False),
-        save_inversion_output=remaining.pop("save_inversion_output", True),
+        save_inversion_output=save_inversion_output,
         country_file=remaining.get("country_file"),
         paris_postprocessing_kwargs=normalise_optional_mapping(
             remaining.pop("paris_postprocessing_kwargs", None)
         ),
+        output_filename_convention=remaining.pop("output_filename_convention", "rhime"),
         multisector=multisector,
     )
     model_spec = _make_model_spec(

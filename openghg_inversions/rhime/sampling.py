@@ -6,11 +6,72 @@ from collections.abc import Sequence
 from typing import Any, Literal, cast
 
 import arviz as az
+import numpy as np
 import pymc as pm
+import xarray as xr
 
+from openghg_inversions._timing import log_timing, timer_seconds, timer_start
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
+
+
+def _finite_values(data: xr.DataArray) -> np.ndarray:
+    """Return finite numeric values from a sample-stats variable."""
+    values = np.asarray(data.values)
+    if values.dtype == bool:
+        return values.astype(float).reshape(-1)
+    values = values.astype(float, copy=False).reshape(-1)
+    return values[np.isfinite(values)]
+
+
+def _sample_stat_mean(sample_stats: xr.Dataset, name: str) -> float | None:
+    """Return a finite mean for a sample-stats variable, if available."""
+    if name not in sample_stats:
+        return None
+    values = _finite_values(sample_stats[name])
+    if values.size == 0:
+        return None
+    return float(values.mean())
+
+
+def _sample_stat_max(sample_stats: xr.Dataset, name: str) -> float | None:
+    """Return a finite maximum for a sample-stats variable, if available."""
+    if name not in sample_stats:
+        return None
+    values = _finite_values(sample_stats[name])
+    if values.size == 0:
+        return None
+    return float(values.max())
+
+
+def _sample_stat_sum(sample_stats: xr.Dataset, name: str) -> int | None:
+    """Return an integer sum for a sample-stats variable, if available."""
+    if name not in sample_stats:
+        return None
+    values = _finite_values(sample_stats[name])
+    if values.size == 0:
+        return None
+    return int(values.sum())
+
+
+def _log_sample_stats(trace: az.InferenceData, *, label: str) -> None:
+    """Log compact sampler diagnostics from an ``InferenceData`` object."""
+    sample_stats = getattr(trace, "sample_stats", None)
+    if not isinstance(sample_stats, xr.Dataset):
+        return
+
+    fields: dict[str, float | int | None] = {
+        "n_steps_mean": _sample_stat_mean(sample_stats, "n_steps"),
+        "n_steps_max": _sample_stat_max(sample_stats, "n_steps"),
+        "tree_depth_mean": _sample_stat_mean(sample_stats, "tree_depth"),
+        "tree_depth_max": _sample_stat_max(sample_stats, "tree_depth"),
+        "step_size_mean": _sample_stat_mean(sample_stats, "step_size"),
+        "acceptance_rate_mean": _sample_stat_mean(sample_stats, "acceptance_rate"),
+        "divergences": _sample_stat_sum(sample_stats, "diverging"),
+    }
+    if any(value is not None for value in fields.values()):
+        log_timing(label, 0.0, **fields)
 
 
 class RhimeSampler:
@@ -120,6 +181,7 @@ class RhimeSampler:
         sample_kwargs.setdefault("progressbar", self.progressbar)
         sample_kwargs.setdefault("cores", self.chains)
 
+        timing_start = timer_start()
         with model:
             raw_trace = cast(
                 az.InferenceData,
@@ -133,12 +195,30 @@ class RhimeSampler:
                     **sample_kwargs,
                 ),
             )
+        log_timing(
+            "rhime.sampler.pm_sample",
+            timer_seconds(timing_start),
+            draws=self.draws,
+            tune=self.tune,
+            chains=self.chains,
+            nuts_sampler=self.nuts_sampler,
+        )
+        _log_sample_stats(raw_trace, label="rhime.sampler.sample_stats")
 
+        timing_start = timer_start()
         trace = cast(az.InferenceData, raw_trace.isel(draw=slice(self.burn, None)))
+        log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
+
         trace = self._extend_predictive(trace, model=model)
+        timing_start = timer_start()
         registry = get_coord_registry(model)
         if registry is not None:
             trace = restore_inferencedata_coords(trace, registry)
+        log_timing(
+            "rhime.sampler.coord_restore",
+            timer_seconds(timing_start),
+            restored=registry is not None,
+        )
         return trace
 
     def _extend_predictive(self, trace: az.InferenceData, *, model: pm.Model) -> az.InferenceData:
@@ -149,8 +229,14 @@ class RhimeSampler:
                 if self.sample_prior_predictive is True
                 else int(self.sample_prior_predictive)
             )
+            timing_start = timer_start()
             with model:
                 trace.extend(pm.sample_prior_predictive(prior_draws, model))
+            log_timing(
+                "rhime.sampler.prior_predictive",
+                timer_seconds(timing_start),
+                draws=prior_draws,
+            )
 
         if self.sample_posterior_predictive:
             posterior_var_names = (
@@ -160,7 +246,13 @@ class RhimeSampler:
             posterior_predictive_kwargs.setdefault("model", model)
             if posterior_var_names is not None:
                 posterior_predictive_kwargs.setdefault("var_names", posterior_var_names)
+            timing_start = timer_start()
             with model:
                 trace.extend(pm.sample_posterior_predictive(trace, **posterior_predictive_kwargs))
+            log_timing(
+                "rhime.sampler.posterior_predictive",
+                timer_seconds(timing_start),
+                var_names=posterior_var_names,
+            )
 
         return trace

@@ -14,7 +14,8 @@ from typing import Any, Literal, cast
 
 from openghg_inversions.models.rhime import RhimeModelSpec
 
-OutputFormat = Literal["none", "inv_out", "basic", "paris"]
+OutputFormat = Literal["none", "inv_out", "basic", "paris", "legacy"]
+OutputFilenameConvention = Literal["rhime", "legacy"]
 
 
 @dataclass(frozen=True)
@@ -24,16 +25,23 @@ class RhimeOutputSpec:
     Args:
         output_format: Output mode. ``"inv_out"`` saves/returns the modern
             inversion output, ``"basic"`` and ``"paris"`` additionally create
-            derived outputs, and ``"none"`` skips output products.
+            derived outputs, ``"legacy"`` creates the old HBMCMC-compatible
+            NetCDF product from modern RHIME output, and ``"none"`` skips
+            output products.
         output_path: Directory for saved outputs.
         output_name: Base output name.
         save_trace: Trace save setting. If true, save to ``output_path`` using
             the default trace file name; if a path, save there.
-        save_inversion_output: Inversion-output save setting. Defaults to true
-            for CLI-friendly behaviour.
+        save_inversion_output: Inversion-output save setting. Runner parameter
+            normalization defaults this to true for ``output_format="inv_out"``
+            and false for derived product formats.
         country_file: Optional country mask file used by derived outputs.
         paris_postprocessing_kwargs: Extra keyword arguments for PARIS output
             creation.
+        output_filename_convention: Filename convention for derived products.
+            Direct RHIME runs use ``"rhime"``. The ``run_hbmcmc.py``
+            compatibility shim uses ``"legacy"`` for old SLURM/config
+            workflows.
     """
 
     output_format: OutputFormat = "inv_out"
@@ -43,6 +51,7 @@ class RhimeOutputSpec:
     save_inversion_output: str | Path | bool = True
     country_file: str | None = None
     paris_postprocessing_kwargs: dict[str, Any] | None = None
+    output_filename_convention: OutputFilenameConvention = "rhime"
 
 
 @dataclass(frozen=True)
@@ -72,7 +81,7 @@ class RhimeRunSpec:
 
 def validate_output_format(output_format: str) -> None:
     """Raise if a RHIME output format is not supported by the modern runners."""
-    valid_formats = {"none", "inv_out", "basic", "paris"}
+    valid_formats = {"none", "inv_out", "basic", "paris", "legacy"}
     if output_format not in valid_formats:
         raise ValueError(
             f"Unsupported RHIME output_format {output_format!r}; expected one of {sorted(valid_formats)!r}."
@@ -88,6 +97,8 @@ def validate_output_path_settings(
     multisector: bool,
 ) -> None:
     """Raise if output settings imply a default save path but none is supplied."""
+    if multisector and output_format == "legacy":
+        raise ValueError("RHIME output_format 'legacy' supports only single-sector runs.")
     if output_format == "none":
         return
     if output_path is not None:
@@ -96,6 +107,16 @@ def validate_output_path_settings(
         raise ValueError("`output_path` is required when `save_trace=True`.")
     if save_inversion_output is True:
         raise ValueError("`output_path` is required when saving the RHIME InversionOutput.")
+
+
+def validate_output_filename_convention(output_filename_convention: str) -> None:
+    """Raise if an output filename convention is not supported."""
+    valid_conventions = {"rhime", "legacy"}
+    if output_filename_convention not in valid_conventions:
+        raise ValueError(
+            "Unsupported RHIME output_filename_convention "
+            f"{output_filename_convention!r}; expected one of {sorted(valid_conventions)!r}."
+        )
 
 
 def make_output_spec(
@@ -107,10 +128,14 @@ def make_output_spec(
     save_inversion_output: str | Path | bool,
     country_file: str | None,
     paris_postprocessing_kwargs: dict[str, Any] | None,
+    output_filename_convention: str,
     multisector: bool,
 ) -> RhimeOutputSpec:
     """Create validated output settings from normalized RHIME parameters."""
+    output_format = output_format.lower()
+    output_filename_convention = output_filename_convention.lower()
     validate_output_format(output_format)
+    validate_output_filename_convention(output_filename_convention)
     validate_output_path_settings(
         output_format=output_format,
         output_path=output_path,
@@ -126,4 +151,5 @@ def make_output_spec(
         save_inversion_output=save_inversion_output,
         country_file=country_file,
         paris_postprocessing_kwargs=paris_postprocessing_kwargs,
+        output_filename_convention=cast(OutputFilenameConvention, output_filename_convention),
     )

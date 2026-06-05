@@ -714,6 +714,23 @@ def test_legacy_sampling_names_are_not_rhime_config_aliases() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("legacy_output_format", "expected_output_format"),
+    [
+        ("hbmcmc", "legacy"),
+        ("hbmcmc_postprocessing", "legacy"),
+        ("legacy", "legacy"),
+    ],
+)
+def test_rhime_normalises_legacy_output_format_aliases(
+    legacy_output_format: str, expected_output_format: str
+) -> None:
+    """Old HBMCMC output names now select the modern legacy formatter."""
+    params = rhime_params.normalise_rhime_params({"output_format": legacy_output_format})
+
+    assert params["output_format"] == expected_output_format
+
+
 def test_build_rhime_model_from_spec_forwards_single_sector_prior(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -827,6 +844,15 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
 
     class FakeInferenceData:
         posterior = FakePosterior()
+        sample_stats = xr.Dataset(
+            {
+                "n_steps": (("chain", "draw"), np.array([[1, 2, 3], [4, 5, 6]])),
+                "tree_depth": (("chain", "draw"), np.array([[2, 2, 3], [3, 4, 4]])),
+                "step_size": (("chain", "draw"), np.array([[0.1, 0.1, 0.2], [0.2, 0.2, 0.2]])),
+                "acceptance_rate": (("chain", "draw"), np.array([[0.8, 0.9, 1.0], [0.7, 0.8, 0.9]])),
+                "diverging": (("chain", "draw"), np.array([[False, True, False], [False, False, True]])),
+            }
+        )
 
         def __init__(self) -> None:
             self.isel_kwargs: dict[str, Any] | None = None
@@ -841,6 +867,7 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
 
     fake_idata = FakeInferenceData()
     seen: dict[str, Any] = {}
+    timings: list[tuple[str, dict[str, Any]]] = []
 
     def fake_sample(**kwargs: Any) -> Any:
         seen["sample_kwargs"] = kwargs
@@ -854,7 +881,11 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         seen["posterior_predictive"] = {"trace": trace, **kwargs}
         return "posterior"
 
+    def fake_log_timing(label: str, seconds: float, **fields: Any) -> None:
+        timings.append((label, fields))
+
     monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr(rhime_sampling, "log_timing", fake_log_timing)
     monkeypatch.setattr(
         "openghg_inversions.rhime.sampling.pm.sample_prior_predictive",
         fake_prior_predictive,
@@ -896,6 +927,14 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         "random_seed": 42,
     }
     assert fake_idata.extensions == ["prior", "posterior"]
+    sample_stats_fields = dict(timings)["rhime.sampler.sample_stats"]
+    assert sample_stats_fields["n_steps_mean"] == 3.5
+    assert sample_stats_fields["n_steps_max"] == 6.0
+    assert sample_stats_fields["tree_depth_mean"] == 3.0
+    assert sample_stats_fields["tree_depth_max"] == 4.0
+    assert sample_stats_fields["step_size_mean"] == pytest.approx(1.0 / 6.0)
+    assert sample_stats_fields["acceptance_rate_mean"] == pytest.approx(0.85)
+    assert sample_stats_fields["divergences"] == 2
 
 
 def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
@@ -1825,7 +1864,7 @@ def test_run_rhime_rejects_unsupported_output_format(tmp_path: Path) -> None:
         "flux_sources": ["total-ukghg-edgar7"],
         "output_path": str(tmp_path),
         "output_name": "test",
-        "output_format": "legacy",
+        "output_format": "definitely-not-supported",
     }
 
     with pytest.raises(ValueError, match="Unsupported RHIME output_format"):
@@ -1842,7 +1881,7 @@ def test_run_rhime_can_validate_output_format_without_output_path() -> None:
         "end_date": "2019-01-02",
         "flux_sources": ["total-ukghg-edgar7"],
         "output_name": "test",
-        "output_format": "legacy",
+        "output_format": "definitely-not-supported",
     }
 
     with pytest.raises(ValueError, match="Unsupported RHIME output_format"):
@@ -1908,6 +1947,46 @@ def test_output_path_validation_rejects_default_standard_save_without_path() -> 
         )
 
 
+def test_runner_setup_defaults_inv_out_save_only_for_inv_out_format(tmp_path: Path) -> None:
+    """Derived RHIME products should not save large inv_out sidecars unless requested."""
+    base_params = {
+        "species": "ch4",
+        "sites": ["TAC"],
+        "averaging_period": ["1h"],
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-02",
+        "flux_sources": ["total-ukghg-edgar7"],
+        "output_name": "test",
+    }
+    data_params = set(inspect.signature(prepare_rhime_inputs).parameters)
+
+    inv_out_setup = rhime_params.make_rhime_runner_setup(
+        params={**base_params, "output_format": "inv_out", "output_path": str(tmp_path)},
+        multisector=False,
+        data_param_names=data_params,
+    )
+    paris_setup = rhime_params.make_rhime_runner_setup(
+        params={**base_params, "output_format": "paris"},
+        multisector=False,
+        data_param_names=data_params,
+    )
+
+    assert inv_out_setup.run_spec.output.save_inversion_output is True
+    assert paris_setup.run_spec.output.save_inversion_output is False
+
+
+def test_output_path_validation_rejects_multisector_legacy_output() -> None:
+    with pytest.raises(ValueError, match="single-sector"):
+        rhime_specs.validate_output_path_settings(
+            output_format="legacy",
+            output_path="outputs",
+            save_trace=False,
+            save_inversion_output=False,
+            multisector=True,
+        )
+
+
 def test_make_output_spec_validates_trace_save_path() -> None:
     with pytest.raises(ValueError, match="save_trace"):
         rhime_specs.make_output_spec(
@@ -1918,8 +1997,46 @@ def test_make_output_spec_validates_trace_save_path() -> None:
             save_inversion_output=False,
             country_file=None,
             paris_postprocessing_kwargs=None,
+            output_filename_convention="rhime",
             multisector=False,
         )
+
+
+def test_make_output_spec_normalizes_filename_convention_case() -> None:
+    spec = rhime_specs.make_output_spec(
+        output_format="Legacy",
+        output_path="outputs",
+        output_name="test",
+        save_trace=False,
+        save_inversion_output=False,
+        country_file=None,
+        paris_postprocessing_kwargs=None,
+        output_filename_convention="Legacy",
+        multisector=False,
+    )
+
+    assert spec.output_format == "legacy"
+    assert spec.output_filename_convention == "legacy"
+
+
+def test_derived_output_filename_can_use_legacy_convention(tmp_path: Path) -> None:
+    spec = RhimeOutputSpec(
+        output_format="legacy",
+        output_path=str(tmp_path),
+        output_name="legacy_test",
+        save_inversion_output=False,
+        output_filename_convention="legacy",
+    )
+
+    filename = rhime_outputs._define_derived_output_filename(
+        spec,
+        species="ch4",
+        domain="EUROPE",
+        output_name=spec.output_name,
+        start_date="2019-01-01",
+    )
+
+    assert filename == tmp_path / "CH4_EUROPE_legacy_test_2019-01-01.nc"
 
 
 def test_make_standard_output_bundle_returns_outputs_without_mutating_result() -> None:
@@ -2264,6 +2381,12 @@ def test_modern_paris_flux_outputs_use_retained_basis_operator(
     assert "flux_total_posterior" in flux_outputs
     assert "country_flux_total_posterior" in flux_outputs
     assert "flux_total_posterior_inversion_grid" in flux_outputs
+    for name in (
+        "flux_total_posterior",
+        "country_flux_total_posterior",
+        "flux_total_posterior_inversion_grid",
+    ):
+        assert flux_outputs[name].dtype == np.dtype("float32")
     assert operator.interpolate_calls
     assert operator.basis_matrix_accesses
 
@@ -2415,6 +2538,10 @@ def test_paris_output_processes_modern_output(europe_country_file: Path) -> None
     assert "Yapost" in conc_outputs
     assert "flux_total_posterior" in flux_outputs
     assert "country_flux_total_posterior" in flux_outputs
+    for name in ("uYtotal", "YapostBC", "Yapost", "YaprioriBC", "Yapriori"):
+        assert conc_outputs[name].dtype == np.dtype("float32")
+    for name in ("flux_total_posterior", "country_flux_total_posterior"):
+        assert flux_outputs[name].dtype == np.dtype("float32")
 
 
 def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
@@ -2509,6 +2636,73 @@ def test_standard_paris_output_uses_modern_postprocessing_without_legacy_adapter
     assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
     assert "paris_flux" in bundle.outputs
     assert "paris_concentration" in bundle.outputs
+
+
+def test_standard_legacy_output_uses_modern_inversion_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """RHIME legacy output is formatted from modern InversionOutput."""
+    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="legacy")
+    output_spec = RhimeOutputSpec(
+        output_format="legacy",
+        output_path=str(tmp_path),
+        output_name="legacy_test",
+        save_inversion_output=False,
+    )
+    run_spec = RhimeRunSpec(
+        run_spec.start_date,
+        run_spec.end_date,
+        run_spec.sites,
+        run_spec.averaging_period,
+        model_spec,
+        output_spec,
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+    captured: dict[str, Any] = {}
+
+    def fail_inferpymc_postprocessouts(**kwargs: Any) -> None:
+        raise AssertionError("run_rhime legacy output must not call inferpymc_postprocessouts")
+
+    def fake_make_legacy_hbmcmc_output(
+        inv_out: InversionOutput,
+        country_file: str | None = None,
+        use_bc: bool = False,
+    ) -> xr.Dataset:
+        captured["inv_out"] = inv_out
+        captured["country_file"] = country_file
+        captured["use_bc"] = use_bc
+        return xr.Dataset({"legacy": ((), 1)})
+
+    monkeypatch.setattr(legacy_mcmc, "inferpymc_postprocessouts", fail_inferpymc_postprocessouts)
+    monkeypatch.setattr(
+        "openghg_inversions.postprocessing.legacy_outputs.make_legacy_hbmcmc_output",
+        fake_make_legacy_hbmcmc_output,
+    )
+
+    bundle = rhime_outputs.make_standard_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=_minimal_output_idata(),
+        prepared=prepared,
+        country_file="countries.json",
+    )
+
+    assert isinstance(bundle.inv_out, InversionOutput)
+    assert captured["inv_out"] is bundle.inv_out
+    assert captured["country_file"] == "countries.json"
+    assert captured["use_bc"] is True
+    assert bundle.output_metadata["postprocessing_input_contract"] == "modern_inversion_output"
+    assert "legacy" in bundle.outputs
+    expected_path = tmp_path / "legacy_test_ch4_EUROPE_2019-01-01.nc"
+    assert expected_path.exists()
+    assert bundle.output_metadata["legacy_output_path"] == str(expected_path)
 
 
 def test_save_inferencedata_prefers_h5netcdf(tmp_path: Path) -> None:

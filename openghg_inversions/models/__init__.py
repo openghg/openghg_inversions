@@ -1,5 +1,11 @@
 """Reusable model-building helpers for OpenGHG inversions."""
 
+# ruff: noqa: E402
+
+from openghg_inversions._pymc_config import configure_pytensor
+
+configure_pytensor()
+
 from openghg_inversions.models.components import (
     LinearComponentResult,
     add_inferpymc_likelihood_component,
