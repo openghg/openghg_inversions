@@ -128,6 +128,23 @@ def test_fixedbasis_params_to_rhime_preserves_paris_compatibility_flag(tmp_path:
     assert "paris_postprocessing" not in translated
 
 
+def test_fixedbasis_params_to_rhime_preserves_latest_paris_kwargs(tmp_path: Path) -> None:
+    config_file = tmp_path / "hbmcmc.ini"
+    _fixedbasis_config(config_file)
+    params = run_hbmcmc.hbmcmc_extract_param(str(config_file), print_param=False)
+    params.pop("output_format")
+    params["paris_postprocessing"] = True
+    params["paris_postprocessing_kwargs"] = {"template_version": "latest", "inversion_grid": False}
+
+    translated = run_hbmcmc.fixedbasis_params_to_rhime(params)
+
+    assert translated["output_format"] == "paris"
+    assert translated["paris_postprocessing_kwargs"] == {
+        "template_version": "latest",
+        "inversion_grid": False,
+    }
+
+
 def test_fixedbasis_params_to_rhime_forces_legacy_filename_convention(tmp_path: Path) -> None:
     """run_hbmcmc keeps historical filenames even if a RHIME override is supplied."""
     config_file = tmp_path / "hbmcmc.ini"

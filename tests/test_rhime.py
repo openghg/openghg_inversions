@@ -131,13 +131,19 @@ def _fake_multisector_basis_functions(*, artifact_source: str = "generated") -> 
     )
 
 
-def _fake_multisector_basis_functions_matching_country_grid(country_file: Path) -> BasisFunctions:
+def _fake_multisector_basis_functions_matching_country_grid(
+    country_file: Path,
+    *,
+    coord_offset: float = 0.0,
+) -> BasisFunctions:
     """Build a one-region multisector basis artifact on the grid of a test country file."""
     country_grid = xr.open_dataset(country_file)
+    lat = country_grid.lat.values + coord_offset
+    lon = country_grid.lon.values + coord_offset
     basis = xr.DataArray(
         np.ones((country_grid.sizes["lat"], country_grid.sizes["lon"]), dtype=int),
         dims=("lat", "lon"),
-        coords={"lat": country_grid.lat, "lon": country_grid.lon},
+        coords={"lat": lat, "lon": lon},
         name="basis",
     )
     flux = xr.concat(
@@ -2254,7 +2260,11 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(europe_country_
         output_format="paris",
         output_name="test",
         save_inversion_output=False,
-        paris_postprocessing_kwargs={"template_version": "latest", "inversion_grid": False},
+        paris_postprocessing_kwargs={
+            "template_version": "latest",
+            "inversion_grid": False,
+            "flux_frequency": "yearly",
+        },
     )
     run_spec = RhimeRunSpec(
         "2019-01-01",
@@ -2265,9 +2275,11 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(europe_country_
         output_spec,
         split_by_sectors=True,
     )
+    basis_functions = _fake_multisector_basis_functions_matching_country_grid(europe_country_file)
+    basis_functions.flux.attrs["time_period"] = "not-a-parseable-period"
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
-        basis_functions=_fake_multisector_basis_functions_matching_country_grid(europe_country_file),
+        basis_functions=basis_functions,
         sites=("TAC",),
         averaging_period=("1h",),
         basis_artifact_source="generated",
@@ -2777,6 +2789,11 @@ def test_latest_paris_output_processes_modern_output(europe_country_file: Path, 
     assert "mf_posterior" in conc_outputs
     assert "percentile_mf_posterior" in conc_outputs
     assert "Yobs" not in conc_outputs
+    assert conc_outputs["mf_posterior"].dtype == np.dtype("float32")
+    assert conc_outputs["mf_bc_prior"].dtype == np.dtype("float32")
+    assert conc_outputs["time_bnds"].dtype == np.dtype("float64")
+    assert conc_outputs["longitude"].dtype == np.dtype("float64")
+    assert conc_outputs["number_of_identifier"].dtype == np.dtype("int16")
 
     assert flux_outputs.attrs["paris_flux_template_version"] == "v03"
     assert "time_bnds" in flux_outputs
@@ -2793,9 +2810,55 @@ def test_latest_paris_output_processes_modern_output(europe_country_file: Path, 
         flux_outputs.sizes["country"],
     )
     assert "country_flux_total_posterior" not in flux_outputs
+    assert flux_outputs["flux_total_posterior"].dtype == np.dtype("float32")
+    assert flux_outputs["covariance_flux_total_posterior_country"].dtype == np.dtype("float32")
+    assert flux_outputs["time_bnds"].dtype == np.dtype("float64")
 
-    conc_outputs.to_netcdf(tmp_path / "latest_conc.nc")
-    flux_outputs.to_netcdf(tmp_path / "latest_flux.nc")
+    conc_file = tmp_path / "latest_conc.nc"
+    flux_file = tmp_path / "latest_flux.nc"
+    conc_outputs.to_netcdf(conc_file)
+    flux_outputs.to_netcdf(flux_file)
+    with xr.open_dataset(conc_file, decode_times=False) as reloaded_conc:
+        assert reloaded_conc["mf_posterior"].dtype == np.dtype("float32")
+        assert reloaded_conc["time_bnds"].dtype == np.dtype("float64")
+        assert reloaded_conc["longitude"].dtype == np.dtype("float64")
+    with xr.open_dataset(flux_file, decode_times=False) as reloaded_flux:
+        assert reloaded_flux["flux_total_posterior"].dtype == np.dtype("float32")
+        assert reloaded_flux["covariance_flux_total_posterior_country"].dtype == np.dtype("float32")
+        assert reloaded_flux["time_bnds"].dtype == np.dtype("float64")
+
+
+def test_latest_paris_concentration_fills_missing_bc_with_nan(europe_country_file: Path) -> None:
+    """Latest PARIS concentration keeps mandatory BC fields when no baseline trace exists."""
+    from openghg_inversions.postprocessing.make_paris_outputs import paris_concentration_outputs
+
+    base = _modern_postprocessing_inv_out(europe_country_file)
+    groups = {}
+    for group in base.trace.groups():
+        ds = base.trace[group]
+        groups[group] = ds.drop_vars([name for name in ("mu_bc", "hbc") if name in ds], errors="ignore")
+    trace = cast(Any, az.InferenceData)(**groups)
+    inv_out = InversionOutput(
+        trace=trace,
+        inv_inputs=base.inv_inputs,
+        basis_functions=base.basis_functions,
+        run_metadata=base.run_metadata,
+        model_metadata={**base.model_metadata, "use_bc": False},
+        output_metadata=base.output_metadata,
+        provenance=base.provenance,
+    )
+
+    conc_outputs = paris_concentration_outputs(
+        inv_out,
+        obs_avg_period="1h",
+        template_version="latest",
+    )
+
+    for name in ("mf_bc_prior", "mf_bc_posterior"):
+        assert name in conc_outputs
+        assert conc_outputs[name].dims == ("index",)
+        assert conc_outputs[name].dtype == np.dtype("float32")
+        assert np.isnan(conc_outputs[name].values).all()
 
 
 def test_latest_paris_flux_output_processes_multisector_total(
@@ -2808,7 +2871,7 @@ def test_latest_paris_flux_output_processes_multisector_total(
     from openghg_inversions.postprocessing.make_paris_outputs import PARIS_LATEST_COUNTRIES, paris_flux_output
 
     inv_out = _multisector_postprocessing_inv_out(
-        _fake_multisector_basis_functions_matching_country_grid(europe_country_file)
+        _fake_multisector_basis_functions_matching_country_grid(europe_country_file, coord_offset=1e-10)
     )
 
     flux_outputs = paris_flux_output(
@@ -2825,6 +2888,14 @@ def test_latest_paris_flux_output_processes_multisector_total(
     assert "flux_total_posterior_country" in flux_outputs
     assert "covariance_flux_total_posterior_country" in flux_outputs
     assert tuple(flux_outputs.country.values) == PARIS_LATEST_COUNTRIES
+    country_fraction_data = flux_outputs["country_fraction"].data
+    if hasattr(country_fraction_data, "todense"):
+        country_fraction_data = country_fraction_data.todense()
+    cell_area_data = flux_outputs["cell_area"].data
+    if hasattr(cell_area_data, "todense"):
+        cell_area_data = cell_area_data.todense()
+    assert not np.isnan(np.asarray(country_fraction_data)).any()
+    assert not np.isnan(np.asarray(cell_area_data)).any()
     countries = Countries.from_file(
         country_file=europe_country_file,
         country_code="alpha3",

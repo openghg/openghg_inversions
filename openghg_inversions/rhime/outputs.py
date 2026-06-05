@@ -348,11 +348,24 @@ def make_multisector_output_bundle(
 
     if output_spec.output_format == "paris":
         paris_kwargs = dict(output_spec.paris_postprocessing_kwargs or {})
-        if paris_kwargs.get("template_version") == "latest":
+        template_version = paris_kwargs.pop("template_version", None)
+        if template_version == "latest":
             from openghg_inversions.postprocessing.make_paris_outputs import (
                 infer_flux_frequency,
                 paris_flux_output,
             )
+
+            flux_frequency = paris_kwargs.pop("flux_frequency", None)
+            if flux_frequency is None:
+                flux_frequency = infer_flux_frequency(inv_out_for_outputs.flux)
+            time_point = paris_kwargs.pop("time_point", "midpoint")
+            report_mode = paris_kwargs.pop("report_mode", False)
+            inversion_grid = paris_kwargs.pop("inversion_grid", True)
+            if paris_kwargs:
+                unexpected = ", ".join(sorted(paris_kwargs))
+                raise ValueError(
+                    f"Unsupported multi-sector latest PARIS postprocessing kwargs: {unexpected}."
+                )
 
             output_metadata["paris_note"] = (
                 "Multi-sector PARIS latest flux total output was generated; "
@@ -361,13 +374,10 @@ def make_multisector_output_bundle(
             flux_outs = paris_flux_output(
                 inv_out_for_outputs,
                 country_file=country_file,
-                time_point=paris_kwargs.pop("time_point", "midpoint"),
-                report_mode=paris_kwargs.pop("report_mode", False),
-                inversion_grid=paris_kwargs.pop("inversion_grid", True),
-                flux_frequency=paris_kwargs.pop(
-                    "flux_frequency",
-                    infer_flux_frequency(inv_out_for_outputs.flux),
-                ),
+                time_point=time_point,
+                report_mode=report_mode,
+                inversion_grid=inversion_grid,
+                flux_frequency=flux_frequency,
                 template_version="latest",
             )
             outputs["paris_flux"] = flux_outs

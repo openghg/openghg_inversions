@@ -97,7 +97,15 @@ def paris_template_files(template_version: ParisTemplateVersion) -> ParisTemplat
 
 
 var_pat = re.compile(r"\s*[a-z]+ ([a-zA-Z_]+)\(.*\)")
+var_type_pat = re.compile(r"\s*([a-z]+) ([a-zA-Z_]+)\(.*\)")
 attr_pat = re.compile(r"\s+([a-zA-Z_]+):([a-zA-Z_]+)\s*=\s*([^;]+)")
+NETCDF_TO_NUMPY_DTYPE = {
+    "byte": "int8",
+    "short": "int16",
+    "int": "int32",
+    "float": "float32",
+    "double": "float64",
+}
 
 
 def _require_paris_metadata(inv_out: InversionOutput, *, allow_multisector: bool = False) -> tuple[str, str]:
@@ -135,6 +143,26 @@ def get_data_var_attrs(template_file: str | Path, species: str | None = None) ->
                     attr_dict[m.group(1)][m.group(2)] = val
 
     return attr_dict
+
+
+def get_data_var_dtypes(template_file: str | Path) -> dict[str, str]:
+    """Extract numeric variable dtypes from a CDL template file."""
+    dtype_dict: dict[str, str] = {}
+
+    with open(template_file) as f:
+        in_vars = False
+        for line in f.readlines():
+            if line.startswith("variables"):
+                in_vars = True
+            if not in_vars:
+                continue
+            if (m := var_type_pat.match(line)) is None:
+                continue
+            netcdf_type, var_name = m.groups()
+            if netcdf_type in NETCDF_TO_NUMPY_DTYPE:
+                dtype_dict[var_name] = NETCDF_TO_NUMPY_DTYPE[netcdf_type]
+
+    return dtype_dict
 
 
 def _site_info_for_site(site: str) -> dict[str, Any]:
@@ -379,6 +407,23 @@ def _cast_float_data_vars_to_float32(ds: xr.Dataset) -> xr.Dataset:
     return ds.assign(updates) if updates else ds
 
 
+def _astype_data_array(da: xr.DataArray, dtype: str) -> xr.DataArray:
+    """Cast a DataArray, including template-required duplicate-dimension variables."""
+    if len(set(da.dims)) == len(da.dims):
+        return da.astype(dtype)
+    return da.copy(data=da.data.astype(dtype))
+
+
+def _cast_data_vars_to_template_dtypes(ds: xr.Dataset, template_file: str | Path) -> xr.Dataset:
+    """Cast PARIS data variables to numeric dtypes declared by a CDL template."""
+    updates: dict[Hashable, xr.DataArray] = {}
+    for name, dtype in get_data_var_dtypes(template_file).items():
+        if name in ds.data_vars and ds[name].dtype != np.dtype(dtype):
+            updates[name] = _astype_data_array(ds[name], dtype)
+
+    return ds.assign(updates) if updates else ds
+
+
 def convert_time_to_unix_epoch(x: xr.Dataset, units: str = "1s") -> xr.Dataset:
     """Convert `time` coordinate of xarray Dataset or DataArray to number of "units" since 1 Jan 1970 (the "UNIX epoch")."""
     time_converted = (pd.DatetimeIndex(x.time) - pd.Timestamp("1970-01-01")) / pd.Timedelta(units)
@@ -586,6 +631,15 @@ def paris_concentration_outputs_latest(
     else:
         result = result.rename({"time": "index"})
 
+    # The latest template requires these fields even when no baseline was solved.
+    # No-BC runs currently have no baseline time series to report, so record it as missing.
+    reference_mf = next(
+        result[name] for name in ("mf_prior", "mf_posterior", "mf_observed") if name in result
+    )
+    for name in ("mf_bc_prior", "mf_bc_posterior"):
+        if name not in result:
+            result[name] = xr.full_like(reference_mf, np.nan, dtype="float32")
+
     size = result.sizes["index"]
     site_values = np.asarray(result["site"].values) if "site" in result else np.asarray(["unknown"] * size)
     platform_metadata = _platform_metadata(inv_out, site_values, size)
@@ -605,7 +659,7 @@ def paris_concentration_outputs_latest(
     result.attrs = make_global_attrs("conc", species=species, domain=domain)
     result.attrs["paris_concentration_template_version"] = template_files.concentration_version
 
-    return result.as_numpy()
+    return _cast_data_vars_to_template_dtypes(result, template_files.concentration).as_numpy()
 
 
 def _flux_frequency_to_offset(flux_frequency: str) -> pd.DateOffset | pd.Timedelta:
@@ -1027,8 +1081,8 @@ def paris_flux_output_latest(
             [
                 flux_outs,
                 country_outs,
-                country_fraction.reindex_like(flux_outs),
-                cell_area.reindex_like(flux_outs),
+                align_sparse_lat_lon(country_fraction, flux_outs),
+                align_sparse_lat_lon(cell_area, flux_outs),
             ],
             join="outer",
         )
@@ -1075,7 +1129,7 @@ def paris_flux_output_latest(
     result.attrs = make_global_attrs("flux", species=species, domain=domain)
     result.attrs["paris_flux_template_version"] = template_files.flux_version
 
-    return result
+    return _cast_data_vars_to_template_dtypes(result, template_files.flux)
 
 
 def infer_flux_frequency(flux: xr.DataArray) -> str:
