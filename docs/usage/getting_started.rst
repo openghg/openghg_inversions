@@ -79,11 +79,19 @@ Data not stored in OpenGHG
   - “basis function” usually means a netCDF file with latitude and
     longitude coordinates, with integer values. So all of the
     coordinates with value 1 are in region 1, and so on.
-  - basis functions for fluxes are created on the fly by a “quadtree
-    basis” algorithm. You can also read in pre-defined basis functions.
-    Default location: ``openghg_inversions/basis_functions``
+  - basis functions for fluxes can be created on the fly with the
+    ``quadtree`` or ``weighted`` algorithms. You can also read in
+    pre-defined basis functions. Default location:
+    ``openghg_inversions/basis_functions``
+  - region-constrained basis generation is available through the Python
+    basis API when the caller supplies an already loaded ``region_classes``
+    ``DataArray``. This is intended for land/sea, country, or other
+    region-class masks, and keeps labels from crossing those classes. The
+    current ``.ini``/``run_hbmcmc.py`` route does not yet load
+    ``region_classes`` from a file, so use a saved basis file or the Python
+    wrapper for this case.
   - basis functions for the boundary conditions have a similar format.
-    Defaul location ``openghg_inversions/bc_basis_functions``
+    Default location ``openghg_inversions/bc_basis_functions``
 
 Summary
 
@@ -110,7 +118,7 @@ Method 2: ini file
 
 - Create a ``my_inversion.ini`` file based on the template in
   ``openghg_inversions/hbmcmc/config/``.
-- Activate a conda or venv environment with inversions installed, and
+- Activate a Pixi, conda, or venv environment with inversions installed, and
   call
   ``python <path to openghg_inversions>/openghg_inversions/hbmcmc/run_hbmcmc.py -c my_inversion.ini``
   for old fixedbasis-style INI files. The script now translates those configs
@@ -173,14 +181,23 @@ TODO: update conda instructions
   ``module load lang/python/anaconda``.
 - To make your own environment for ``openghg_inversions``, you should:
 
-  1. make a conda env ``conda create --name inv_env numpy`` (note:
+  1. Prefer the repository Pixi environment for new development installs:
+     ``git clone https://github.com/openghg/openghg_inversions.git``,
+     ``cd openghg_inversions``, then ``pixi install -e dev``. This keeps
+     ``h5py``, ``h5netcdf``, ``netcdf4``, and HDF5 on a single conda-forge
+     binary stack.
+     On systems with access to the ACRG country files, run
+     ``OPENGHG_COUNTRY_FILE_SMOKE_DIR=/group/chem/acrg/LPDM/countries pixi run -e dev country-file-smoke``
+     to check the real country-file HDF5 backends.
+  2. If Pixi is not available, make a conda env
+     ``conda create --name inv_env numpy`` (note:
      installing ``numpy`` from ``conda`` will install ``openblas``,
      which is a fast linear algebra library; these libraries are in
      non-standard locations on Blue Pebble, and ``pip install numpy``
      will not find them.)
-  2. clone openghg_inversions:
+  3. clone openghg_inversions:
      ``git clone https://github.com/openghg/openghg_inversions.git``
-  3. ``pip install openghg_inversions`` (in the same directory where you
+  4. ``pip install openghg_inversions`` (in the same directory where you
      just cloned ``openghg_inversions``)
 
 Example batch job script
@@ -299,8 +316,10 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    met_model = 'UKV'  ; or None if not specified, check the metadata for your footprint
 
    [INPUT.BASIS_CASE]
-   ; Input values to extract the basis cases to use within the inversion for boundary conditions nd emissions
-   ; basis_algorithm (str): Choice of basis function algorithm to use. One of "quadtree" or "weighted"
+   ; Input values to extract the basis cases to use within the inversion for boundary conditions and emissions
+   ; basis_algorithm (str): Choice of basis function algorithm to use. One of "quadtree" or "weighted".
+   ; The Python basis API also supports "region_constrained" when the caller supplies a region_classes DataArray;
+   ; this .ini route does not currently load region_classes from file.
    ; bc_basis_case (str): Boundary conditions basis, defaults to "NESW" (looks for file format {bc_basis_case}_{domain}_*.nc)
    ; bc_basis_directory (str/None): Directory for bc_basis functions. If None provided, creates new folder in openghg_inversions expecting to find bc_basis_function files there.
    ; fp_basis_case (str/None): Emissions bases:

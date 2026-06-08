@@ -1,12 +1,15 @@
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
 import arviz as az
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
+from openghg_inversions import _country_file as country_file_mod
 from openghg_inversions import utils
 from openghg_inversions.postprocessing import legacy_outputs
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
@@ -59,6 +62,15 @@ def _basis_functions_stub() -> SimpleNamespace:
     )
 
 
+def _write_minimal_country_file(path: str | Path) -> None:
+    """Write a minimal country file for fallback loader tests."""
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset("lat", data=np.array([52.0], dtype="float32"))
+        h5.create_dataset("lon", data=np.array([1.0], dtype="float32"))
+        h5.create_dataset("country", data=np.array([[1.0]]))
+        h5.create_dataset("name", data=np.array([b"UNITED KINGDOM"]))
+
+
 def _legacy_inv_out(*, model_data: bool, include_bc: bool = False, chains: int = 1) -> InversionOutput:
     """Build a minimal InversionOutput for legacy adapter tests."""
     draw_count = 3
@@ -100,6 +112,8 @@ def _legacy_inv_out(*, model_data: bool, include_bc: bool = False, chains: int =
             "start_date": "2019-01-01",
             "end_date": "2019-01-02",
             "sites": ["TAC"],
+            "site_lats": [52.5],
+            "site_lons": [1.25],
             "split_by_sectors": False,
         },
         model_metadata={"species": "ch4", "domain": "EUROPE"},
@@ -170,9 +184,7 @@ def stub_legacy_product_builders(monkeypatch: pytest.MonkeyPatch) -> None:
         ),
     )
     monkeypatch.setattr(
-        legacy_outputs.utils,
-        "get_country",
-        lambda domain, country_file=None: SimpleNamespace(country=np.array([[1]])),
+        legacy_outputs, "_legacy_country_index", lambda domain, country_file=None: np.array([[1]])
     )
 
 
@@ -209,6 +221,21 @@ def test_map_times_to_available_period_positions_handles_gappy_flux_months():
     )
 
     np.testing.assert_array_equal(positions, np.array([0, 0, 1, 2]))
+
+
+def test_legacy_country_index_falls_back_when_h5netcdf_open_fails(monkeypatch, tmp_path):
+    """Legacy country index loading uses the same direct HDF5 fallback as modern country outputs."""
+    country_file = tmp_path / "country_TEST.nc"
+    _write_minimal_country_file(country_file)
+
+    def fail_open_dataset(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("Unspecified error in H5DSget_num_scales")
+
+    monkeypatch.setattr(country_file_mod.xr, "open_dataset", fail_open_dataset)
+
+    country_index = legacy_outputs._legacy_country_index("TEST", country_file=country_file)
+
+    np.testing.assert_array_equal(country_index, np.array([[1.0]]))
 
 
 def test_compute_apriori_flux_handles_multi_year_flux_time():
@@ -253,6 +280,18 @@ def test_make_legacy_hbmcmc_output_derives_model_data_inputs(
 
     np.testing.assert_allclose(output["xsensitivity"].values, np.array([[0.25], [0.75]]))
     np.testing.assert_array_equal(output["sigmafreqindex"].values, np.array([0, 1]))
+    np.testing.assert_allclose(output["min_model_error"].values, np.zeros(2))
+    assert "min_model_error" not in output.attrs
+    np.testing.assert_allclose(output["sitelats"].values, np.array([52.5]))
+    np.testing.assert_allclose(output["sitelons"].values, np.array([1.25]))
+    np.testing.assert_array_equal(output["basisfunctions"].values, np.array([[0]]))
+    for name in output.data_vars:
+        if np.issubdtype(output[name].dtype, np.floating):
+            assert output[name].dtype == np.dtype("float32")
+    assert np.isfinite(output["Ymod68"].values).sum() == output["Ymod68"].size
+    assert np.isfinite(output["Ymod95"].values).sum() == output["Ymod95"].size
+    assert np.isfinite(output["country68"].values).sum() == output["country68"].size
+    assert np.isfinite(output["country95"].values).sum() == output["country95"].size
     np.testing.assert_allclose(output["xtrace"].values, np.ones((3, 1)))
     np.testing.assert_allclose(output["sigtrace"].values, np.ones((3, 1, 2)))
     assert output.attrs["Convergence"] == "Unavailable"
@@ -271,4 +310,7 @@ def test_make_legacy_hbmcmc_output_falls_back_to_inv_inputs_for_sensitivities(
     np.testing.assert_allclose(output["bcsensitivity"].values, np.array([[1.0], [2.0]]))
     np.testing.assert_array_equal(output["sigmafreqindex"].values, np.array([7, 8]))
     np.testing.assert_allclose(output["bctrace"].values, np.full((3, 1), 0.5))
+    assert output["bcsensitivity"].dtype == np.dtype("float32")
+    assert output["bctrace"].dtype == np.dtype("float32")
+    assert output["YaprioriBC"].dtype == np.dtype("float32")
     assert "YaprioriBC" in output

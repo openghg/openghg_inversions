@@ -49,14 +49,12 @@ dev = [
   "pytest",
   "pytest-xdist",
   "ruff",
-  "black>=26.1.0",
   "pyright",
   "mypy",
-  "flake8",
 ]
 
 [dependency-groups]
-# UV only depedency groups; just mirror some extras
+# UV only dependency groups; just mirror some extras
 uv_dev = ["openghg_inversions[jupyter,dev]"]
 
 [project.urls]
@@ -66,6 +64,55 @@ uv_dev = ["openghg_inversions[jupyter,dev]"]
 
 [project.scripts]
 openghg-inversions = "openghg_inversions.cli:main"
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-64", "osx-arm64"]
+
+[tool.pixi.dependencies]
+# Use the CI Python version for the reproducible Pixi development environment.
+python = "3.10.*"
+pip = "*"
+
+# Keep the compiled scientific and HDF5/NetCDF stack on conda-forge. These
+# entries override matching PyPI dependencies from this project and OpenGHG.
+numpy = ">=2.0"
+numba = ">=0.59"
+pymc = "*"
+pytensor = "*"
+arviz = "*"
+xarray = ">=2025.06.0"
+pandas = "<3.0"
+matplotlib = "*"
+scipy = "*"
+sparse = "*"
+flox = "*"
+opt_einsum = "*"
+zarr = "==2.18.3"
+numcodecs = "<0.16"
+hdf5 = "*"
+h5netcdf = ">=1.0.0,<=1.8.1"
+h5py = "<3.15"
+netcdf4 = ">=1.6.0,<=1.7.2"
+
+[tool.pixi.pypi-dependencies]
+openghg_inversions = { path = ".", editable = true }
+
+[tool.pixi.environments]
+default = { features = [], solve-group = "default" }
+dev = { features = ["dev", "jupyter"], solve-group = "default" }
+
+[tool.pixi.feature.dev.tasks]
+test = "pytest"
+test-xdist = "pytest -n 2 --dist=loadscope tests"
+country-file-smoke = "pytest -s tests/postprocessing/test_country_file_smoke.py"
+lint = "ruff check ."
+typecheck = "pyright"
+tox = "tox -p"
+
+[tool.pixi.feature.dev.pypi-dependencies]
+tox = ">=4.24"
+tox-uv = "*"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -84,10 +131,6 @@ openghg_inversions = [
 [tool.uv]
 default-groups = ["uv_dev"]
 
-[tool.black]
-line-length = 110
-target-version = ["py310"]
-
 [tool.ruff]
 line-length = 110
 
@@ -96,6 +139,7 @@ minversion = "6.0"
 testpaths = ["tests"]
 markers = [
   "create_frozen: tests that generate/update frozen regression outputs (not run by default)",
+  "country_file_smoke: optional real country-file HDF5 backend smoke tests",
   "slow: tests that take a long time",
 ]
 addopts = "-m 'not create_frozen and not slow'"

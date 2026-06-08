@@ -5,14 +5,15 @@ from __future__ import annotations
 import json
 import warnings
 from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import cast, Literal, TypeVar
-from collections.abc import Iterable, Mapping, Sequence
 from typing_extensions import Self
 
 import xarray as xr
 from openghg_inversions import convert, utils
 
+from openghg_inversions._country_file import load_country_dataset
 from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 from openghg_inversions.utils import get_country_file_path
 from ._country_codes import CountryInfoList
@@ -369,7 +370,7 @@ class Countries:
         """
         country_file_path = get_country_file_path(country_file=country_file, domain=domain)
         return cls(
-            xr.open_dataset(country_file_path, engine="h5netcdf"),
+            load_country_dataset(country_file_path),
             country_code=country_code,
             country_selections=country_selections,
             country_regions=country_regions,

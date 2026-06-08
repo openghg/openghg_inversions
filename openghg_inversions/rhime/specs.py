@@ -32,8 +32,9 @@ class RhimeOutputSpec:
         output_name: Base output name.
         save_trace: Trace save setting. If true, save to ``output_path`` using
             the default trace file name; if a path, save there.
-        save_inversion_output: Inversion-output save setting. Defaults to true
-            for CLI-friendly behaviour.
+        save_inversion_output: Inversion-output save setting. Runner parameter
+            normalization defaults this to true for ``output_format="inv_out"``
+            and false for derived product formats.
         country_file: Optional country mask file used by derived outputs.
         paris_postprocessing_kwargs: Extra keyword arguments for PARIS output
             creation.

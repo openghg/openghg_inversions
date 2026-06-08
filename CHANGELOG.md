@@ -11,8 +11,24 @@
   preserving legacy output filenames. The shim now validates translated arguments
   before copying configs, translates deprecated `calculate_min_error` and
   `reparameterise_log_normal` options where possible, old HBMCMC output attrs
-  are produced from modern `InversionOutput`, and user docs mark historical
-  `fixedbasisMCMC` behavior as available from release 0.6 or earlier. [#416](https://github.com/openghg/openghg_inversions/issues/416)
+  are produced from modern `InversionOutput`, legacy KDE mode statistics now
+  handle all-NaN and partially-NaN rows without dropping every draw, derived
+  RHIME products no longer save large `InversionOutput` sidecars unless
+  `save_inversion_output` is requested, and user docs mark historical
+  `fixedbasisMCMC` behavior as available from release 0.6 or earlier.
+  Country-file loading in modern country and legacy-format
+  postprocessing now falls back to direct HDF5 reads when h5netcdf dimension-scale
+  decoding fails on cluster nodes, and floating legacy-format output variables
+  are written as `float32` to avoid footprint-alignment upcasts. Modern PARIS
+  compatibility outputs also cast floating data variables to `float32` to match
+  the historical fixedbasis-style file contract. RHIME and the `run_hbmcmc.py`
+  compatibility shim now emit grep-friendly `TIMING ... seconds=... maxrss_kb=...`
+  lines for setup, preparation, sampling, sampler statistics, postprocessing,
+  and output writes so batch logs can identify runtime regressions. Modern
+  RHIME model imports also apply the same PyTensor `floatX=float32` default as
+  the historical fixedbasis PyMC path, avoiding accidental float64 sampling
+  after the `run_hbmcmc.py` route switch.
+  [#416](https://github.com/openghg/openghg_inversions/issues/416)
 - Routed modern RHIME and fixedbasis postprocessing through modern `InversionOutput` semantics, retained `BasisFunctions` / `BasisOperator` products, variable-role lookups, and product-local capability checks; removed the transitional postprocessing protocol/view layer and deleted `LegacyInversionOutput` plus the dead legacy inversion-output builder helpers. [#383](https://github.com/openghg/openghg_inversions/issues/383)
 - Migrated standard RHIME `basic` and `paris` postprocessing toward modern `InversionOutput` as an intermediate step before the final #383 product-local postprocessing contract. [#435](https://github.com/openghg/openghg_inversions/issues/435)
 - Introduced the temporary modern/legacy output split and modern `InversionOutput` serialization; the transitional `LegacyInversionOutput` carrier was removed by #383. [#401](https://github.com/openghg/openghg_inversions/issues/401)

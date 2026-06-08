@@ -8,11 +8,10 @@ from typing import Any
 
 import numpy as np
 
-# import pytensor before pymc so we can set config values
-import pytensor
+# Configure PyTensor before importing PyMC.
+from openghg_inversions._pymc_config import configure_pytensor
 
-pytensor.config.floatX = "float32"
-pytensor.config.warn_float64 = "warn"
+configure_pytensor()
 
 import pymc as pm  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -1056,9 +1055,6 @@ def inferpymc_postprocessouts(
     outds.attrs["Date created"] = str(pd.Timestamp("today"))
     outds.attrs["Convergence"] = convergence
     outds.attrs["Repository version"] = code_version()
-    outds.attrs["min_model_error"] = (
-        min_error  # TODO: remove this once PARIS formatting switches over to using min error data var
-    )
 
     # variables with variable length data types shouldn't be compressed
     # e.g. object ("O") or unicode ("U") type

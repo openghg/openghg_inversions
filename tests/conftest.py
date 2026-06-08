@@ -1,4 +1,5 @@
-from collections import Counter, namedtuple
+import json
+from collections import namedtuple
 from contextlib import contextmanager
 import getpass
 import os
@@ -12,7 +13,6 @@ from types import MappingProxyType
 from unittest.mock import patch
 
 import pytest
-from openghg.retrieve import search
 from openghg.standardise import (
     standardise_surface,
     standardise_bc,
@@ -20,11 +20,13 @@ from openghg.standardise import (
     standardise_footprint,
     standardise_column,
 )
-from openghg.types import ObjectStoreError
 import xarray as xr
 import zarr
 
 _raw_data_path = Path(".").resolve() / "tests/data/"
+_TEST_STORE_DIR_NAME = "openghg_inversions_testing_store"
+_TEST_STORE_READY_MARKER_NAME = "openghg_inversions_testing_store.ready.json"
+_TEST_STORE_LOCK_NAME = "openghg_inversions_testing_store.lock"
 
 
 @pytest.fixture(scope="session")
@@ -112,7 +114,7 @@ def southamerica_country_file(raw_data_path):
 
 @pytest.fixture(scope="session")
 def session_config_mocker(user_data_path) -> Iterator[dict]:
-    inversions_test_store_path = user_data_path / "openghg_inversions_testing_store"
+    inversions_test_store_path = user_data_path / _TEST_STORE_DIR_NAME
 
     mock_config = {
         "object_store": {
@@ -246,19 +248,50 @@ flux_satellite_datapath = (
 test_data_list.append(TestData(standardise_flux, flux_satellite_metadata, flux_satellite_datapath, "flux"))
 
 
-def _openghg_test_store_needs_data() -> bool:
-    """Return True when the shared OpenGHG test store needs population."""
-    try:
-        results = search(store="inversions_tests")
-    except ObjectStoreError:
-        return True
+def _test_store_path(user_data_path: Path) -> Path:
+    """Return the shared OpenGHG object-store path used by tests."""
+    return user_data_path / _TEST_STORE_DIR_NAME
 
-    try:
-        found_dtypes = results.results["data_type"].to_list()
-    except KeyError:
-        return True
 
-    return Counter([x.data_type for x in test_data_list]) != Counter(found_dtypes)
+def _test_store_ready_marker_path(user_data_path: Path) -> Path:
+    """Return the marker path used to identify a populated shared test store."""
+    return user_data_path / _TEST_STORE_READY_MARKER_NAME
+
+
+def _test_store_signature() -> str:
+    """Return a stable signature for the source data used to populate the store."""
+    entries = []
+    for test_data in test_data_list:
+        file_stat = test_data.path.stat()
+        entries.append(
+            {
+                "data_type": test_data.data_type,
+                "standardise_function": test_data.func.__name__,
+                "metadata": test_data.metadata,
+                "path": str(test_data.path),
+                "size": file_stat.st_size,
+                "mtime_ns": file_stat.st_mtime_ns,
+            }
+        )
+
+    return json.dumps(entries, indent=2, sort_keys=True)
+
+
+def _test_store_is_marked_ready(user_data_path: Path) -> bool:
+    """Return True when the ready marker matches the current fixture manifest."""
+    if not _test_store_path(user_data_path).exists():
+        return False
+
+    marker_path = _test_store_ready_marker_path(user_data_path)
+    try:
+        return marker_path.read_text() == _test_store_signature()
+    except OSError:
+        return False
+
+
+def _mark_test_store_ready(user_data_path: Path) -> None:
+    """Write the ready marker after the shared test store has been populated."""
+    _test_store_ready_marker_path(user_data_path).write_text(_test_store_signature())
 
 
 @contextmanager
@@ -285,28 +318,36 @@ def _file_lock(lock_path: Path, timeout: float = 120.0) -> Iterator[None]:
 def openghg_test_store(session_config_mocker, user_data_path) -> None:
     """Add data to test object.
 
-    Check first if there is enough data. A more specific
-    check for the data necessary for testing is carried out
-    in "test_conftest.py".
+    The shared test store is expensive to populate, so first-time setup is
+    guarded by a cross-worker lock and an explicit ready marker. A more specific
+    check for the data necessary for testing is carried out in
+    "test_conftest.py".
 
     This fixture depends on `session_config_mocker` to make sure
     that `session_config_mocker` runs first.
     """
-    if _openghg_test_store_needs_data():
-        with _file_lock(user_data_path / "openghg_inversions_testing_store.lock"):
-            if not _openghg_test_store_needs_data():
-                return
+    if _test_store_is_marked_ready(user_data_path):
+        return
 
-            session_config_mocker["object_store"]["inversions_tests"]["permissions"] = "rw"
-            try:
-                for test_data in test_data_list:
-                    standardise_fn = test_data.func
-                    file_path = test_data.path
-                    metadata = dict(test_data.metadata)
-                    metadata["store"] = "inversions_tests"
-                    standardise_fn(filepath=file_path, **metadata)
-            finally:
-                session_config_mocker["object_store"]["inversions_tests"]["permissions"] = "r"
+    with _file_lock(user_data_path / _TEST_STORE_LOCK_NAME):
+        if _test_store_is_marked_ready(user_data_path):
+            return
+
+        shutil.rmtree(_test_store_path(user_data_path), ignore_errors=True)
+        _test_store_ready_marker_path(user_data_path).unlink(missing_ok=True)
+
+        session_config_mocker["object_store"]["inversions_tests"]["permissions"] = "rw"
+        try:
+            for test_data in test_data_list:
+                standardise_fn = test_data.func
+                file_path = test_data.path
+                metadata = dict(test_data.metadata)
+                metadata["store"] = "inversions_tests"
+                standardise_fn(filepath=file_path, **metadata)
+        finally:
+            session_config_mocker["object_store"]["inversions_tests"]["permissions"] = "r"
+
+        _mark_test_store_ready(user_data_path)
 
 
 @pytest.fixture(scope="session")

@@ -708,9 +708,13 @@ def fixedbasisMCMC(
         country_file: Path to the country definition file.
         bc_input: Variable for calling BC data from 'bc_store' - equivalent of
             'emissions_name' for fluxes.
-        basis_algorithm: Select basis function algorithm for creating basis function file
-            for emissions on the fly. Options include "quadtree" or "weighted".
-            Defaults to "weighted" which distinguishes between land-sea regions.
+        basis_algorithm: Select basis function algorithm for creating basis
+            function file for emissions on the fly. Current fixedbasis and
+            ``run_hbmcmc.py`` configs support ``"quadtree"`` or
+            ``"weighted"``; ``"weighted"`` distinguishes between land-sea
+            regions. The lower-level Python basis API also supports
+            ``"region_constrained"`` when a caller supplies an already loaded
+            ``region_classes`` field.
         nbasis: Number of basis functions that you want if using quadtree derived
             basis function. This will optimise to closest value that fits with
             quadtree splitting algorithm, i.e. nbasis % 4 = 1.

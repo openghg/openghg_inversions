@@ -25,7 +25,7 @@ jobs:
       devel: ${{ steps.versions.outputs.OPENGHG_DEVEL }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: set OpenGHG latest and previous minor versions, and devel
         id: versions
         run: |
@@ -57,20 +57,21 @@ jobs:
           echo "${{ needs.openghg-version.outputs.previous_minor }}"
           echo "${{ needs.openghg-version.outputs.devel }}"
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
       - name: Install package
         run: |
-          pip install --upgrade pip setuptools wheel
-          pip install ${{ matrix.openghg-version }}
-          pip install -r requirements.txt
-          pip install -e .
-      - name: Install pytest
-        run: pip install pytest pytest-xdist
+          uv pip install --system --upgrade setuptools wheel
+          # Keep the matrix-selected OpenGHG target in the same uv resolution as the package install.
+          uv pip install --system "${{ matrix.openghg-version }}" -r requirements.txt -e . pytest pytest-xdist
       - name: Prime ArviZ cache
         run: python -c "import arviz"
       - name: Run tests

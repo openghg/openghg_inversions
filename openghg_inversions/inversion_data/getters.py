@@ -176,7 +176,7 @@ def get_obs_data(
                 # or format satellitename-obs_region-selection
                 split_site_name = site.split("-")
                 satellite = split_site_name[0]
-                obs_region = split_site_name[1]
+                _obs_region = split_site_name[1]
                 if len(split_site_name) == 3:
                     selection = split_site_name[2]
                 else:
@@ -294,9 +294,9 @@ def get_footprint_to_match(
         satellite = split_site_name[0]
         obs_region = split_site_name[1]
         if len(split_site_name) == 3:
-            selection = split_site_name[2]
+            _selection = split_site_name[2]
         else:
-            selection = None
+            _selection = None
 
         # get available footprint heights
         fp_kwargs = {
@@ -412,6 +412,7 @@ def get_footprint_data(
     """
     # if fp_height is 'auto', use `get_footprint_to_match`
     # otherwise, use `get_footprint`
+    store = None
     satellite = None
     obs_region = None
     try:
@@ -439,9 +440,9 @@ def get_footprint_data(
             satellite = split_site_name[0]
             obs_region = split_site_name[1]
             if len(split_site_name) == 3:
-                selection = split_site_name[2]
+                _selection = split_site_name[2]
             else:
-                selection = None
+                _selection = None
             def get_func(store):
                 return get_footprint(domain=domain,
                     satellite=satellite,

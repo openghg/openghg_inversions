@@ -21,8 +21,10 @@ from openghg_inversions.postprocessing.make_outputs import (
 )
 
 from openghg_inversions.postprocessing.make_paris_outputs import (
+    DEFAULT_PARIS_TEMPLATE_VERSION,
     _flux_interval_midpoints,
     make_paris_outputs,
+    paris_template_files,
     paris_flux_output,
 )
 
@@ -679,6 +681,22 @@ def test_make_paris_outputs(inv_out, europe_country_file, tmpdir, offset):
     conc_outs.to_netcdf(tmpdir / "conc.nc")
 
 
+def test_paris_template_registry_requires_explicit_latest():
+    """PARIS output keeps the legacy templates by default for the next release."""
+    legacy = paris_template_files(DEFAULT_PARIS_TEMPLATE_VERSION)
+    latest = paris_template_files("latest")
+
+    assert DEFAULT_PARIS_TEMPLATE_VERSION == "legacy"
+    assert legacy.concentration_version == "v03"
+    assert legacy.flux_version == "legacy"
+    assert latest.concentration_version == "v04"
+    assert latest.flux_version == "v03"
+    assert legacy.concentration.exists()
+    assert legacy.flux.exists()
+    assert latest.concentration.exists()
+    assert latest.flux.exists()
+
+
 def test_save_inversion_output(mcmc_args, tmpdir):
     """Check that we can save and reload inversion outputs"""
     mcmc_args["save_inversion_output"] = str(tmpdir / "inv_out.nc")
@@ -795,6 +813,8 @@ def test_hbmcmc_postprocessing_preserves_expected_vars_attrs_and_coords(mcmc_arg
     assert outputs["Yobs"].dims == ("nmeasure",)
     assert outputs["Ymod68"].dims == ("nmeasure", "nUI")
     assert outputs["country68"].dims == ("countrynames", "nUI")
+    for interval_name in ("Ymod68", "Ymod95", "country68", "country95"):
+        assert np.isfinite(outputs[interval_name].values).sum() == outputs[interval_name].size
     assert "UInum" in outputs.coords
     assert "countrynames" in outputs.coords
 

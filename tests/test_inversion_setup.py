@@ -4,7 +4,6 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.hbmcmc.inversionsetup import sigma_freq_indicies
-from openghg_inversions.hbmcmc.inversionsetup import monthly_bcs, create_bc_sensitivity
 
 # -------------------------
 # Fixtures: mocked fp_data
@@ -82,7 +81,6 @@ def _monthly_period_index(times: pd.DatetimeIndex, start_date: str, end_date: st
       each time is assigned period m if allmonth[m] <= t < allmonth[m+1]
     """
     allmonth = pd.date_range(start_date, end_date, freq="MS")[:-1]
-    nmonth = len(allmonth)
 
     # Need the right-edge for the last month bin
     allmonth_edges = pd.date_range(start_date, end_date, freq="MS")  # includes last edge

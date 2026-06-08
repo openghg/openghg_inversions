@@ -108,6 +108,86 @@ def _fake_basis_functions(*, artifact_source: str = "generated") -> BasisFunctio
     )
 
 
+def _fake_multisector_basis_functions(*, artifact_source: str = "generated") -> BasisFunctions:
+    """Build a one-cell basis artifact with source-specific prior flux."""
+    basis = xr.DataArray(
+        [[1]],
+        dims=("lat", "lon"),
+        coords={"lat": [0.0], "lon": [0.0]},
+        name="basis",
+    )
+    flux = xr.DataArray(
+        [[[1.0]], [[3.0]]],
+        dims=("source", "lat", "lon"),
+        coords={"source": ["ff-inventory", "ocean-inventory"], "lat": [0.0], "lon": [0.0]},
+        name="flux",
+    )
+    flux.attrs["units"] = "mol/m2/s"
+    return BasisFunctions.from_flat_basis(
+        basis_flat=basis,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+        metadata={BASIS_ARTIFACT_SOURCE_ATTR: artifact_source},
+    )
+
+
+def _fake_multisector_basis_functions_matching_country_grid(
+    country_file: Path,
+    *,
+    coord_offset: float = 0.0,
+) -> BasisFunctions:
+    """Build a one-region multisector basis artifact on the grid of a test country file."""
+    country_grid = xr.open_dataset(country_file)
+    lat = country_grid.lat.values + coord_offset
+    lon = country_grid.lon.values + coord_offset
+    basis = xr.DataArray(
+        np.ones((country_grid.sizes["lat"], country_grid.sizes["lon"]), dtype=int),
+        dims=("lat", "lon"),
+        coords={"lat": lat, "lon": lon},
+        name="basis",
+    )
+    flux = xr.concat(
+        [
+            xr.ones_like(basis, dtype=float).expand_dims(source=["ff-inventory"]),
+            (3.0 * xr.ones_like(basis, dtype=float)).expand_dims(source=["ocean-inventory"]),
+        ],
+        dim="source",
+    ).rename("flux")
+    flux.attrs["units"] = "mol/m2/s"
+    return BasisFunctions.from_flat_basis(
+        basis_flat=basis,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+        metadata={BASIS_ARTIFACT_SOURCE_ATTR: "country-grid-multisector-test"},
+    )
+
+
+def _fake_source_specific_multisector_basis_functions(
+    *,
+    artifact_source: str = "generated",
+) -> BasisFunctions:
+    """Build a one-cell source-specific basis artifact for multisector tests."""
+    basis = xr.DataArray(
+        [[1]],
+        dims=("lat", "lon"),
+        coords={"lat": [0.0], "lon": [0.0]},
+        name="basis",
+    )
+    flux = xr.DataArray(
+        [[[1.0]], [[3.0]]],
+        dims=("source", "lat", "lon"),
+        coords={"source": ["ff-inventory", "ocean-inventory"], "lat": [0.0], "lon": [0.0]},
+        name="flux",
+    )
+    flux.attrs["units"] = "mol/m2/s"
+    return BasisFunctions.from_multi_source_flat_basis(
+        basis_flat={"ff-inventory": basis, "ocean-inventory": basis},
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+        metadata={BASIS_ARTIFACT_SOURCE_ATTR: artifact_source},
+    )
+
+
 def _fake_basis_functions_matching_country_grid(country_file: Path) -> BasisFunctions:
     """Build a one-region basis artifact on the grid of a test country file."""
     country_grid = xr.open_dataset(country_file)
@@ -403,6 +483,40 @@ def _modern_postprocessing_inv_out(
             "split_by_sectors": False,
         },
         model_metadata={"species": "ch4", "domain": "EUROPE"},
+    )
+
+
+def _multisector_postprocessing_inv_out(basis_functions: BasisFunctions | None = None) -> InversionOutput:
+    """Build a small multisector output for flux reconstruction tests."""
+    return InversionOutput(
+        trace=az.from_dict(
+            posterior={
+                "x_ff": np.array([[[0.0], [2.0]]]),
+                "x_ocean": np.array([[[2.0 / 3.0], [0.0]]]),
+            },
+            prior={
+                "x_ff": np.array([[[1.0], [1.0]]]),
+                "x_ocean": np.array([[[1.0], [1.0]]]),
+            },
+            coords={"region": [0]},
+            dims={"x_ff": ["region"], "x_ocean": ["region"]},
+        ),
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=basis_functions or _fake_multisector_basis_functions(),
+        run_metadata={
+            "start_date": "2019-01-01",
+            "end_date": "2019-01-02",
+            "sites": ["TAC"],
+            "split_by_sectors": True,
+        },
+        model_metadata={
+            "species": "ch4",
+            "domain": "EUROPE",
+            "sectors": [
+                {"name": "FF", "flux_source": "ff-inventory", "variable_suffix": "ff"},
+                {"name": "Ocean", "flux_source": "ocean-inventory", "variable_suffix": "ocean"},
+            ],
+        },
     )
 
 
@@ -844,6 +958,15 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
 
     class FakeInferenceData:
         posterior = FakePosterior()
+        sample_stats = xr.Dataset(
+            {
+                "n_steps": (("chain", "draw"), np.array([[1, 2, 3], [4, 5, 6]])),
+                "tree_depth": (("chain", "draw"), np.array([[2, 2, 3], [3, 4, 4]])),
+                "step_size": (("chain", "draw"), np.array([[0.1, 0.1, 0.2], [0.2, 0.2, 0.2]])),
+                "acceptance_rate": (("chain", "draw"), np.array([[0.8, 0.9, 1.0], [0.7, 0.8, 0.9]])),
+                "diverging": (("chain", "draw"), np.array([[False, True, False], [False, False, True]])),
+            }
+        )
 
         def __init__(self) -> None:
             self.isel_kwargs: dict[str, Any] | None = None
@@ -858,6 +981,7 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
 
     fake_idata = FakeInferenceData()
     seen: dict[str, Any] = {}
+    timings: list[tuple[str, dict[str, Any]]] = []
 
     def fake_sample(**kwargs: Any) -> Any:
         seen["sample_kwargs"] = kwargs
@@ -871,7 +995,11 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         seen["posterior_predictive"] = {"trace": trace, **kwargs}
         return "posterior"
 
+    def fake_log_timing(label: str, seconds: float, **fields: Any) -> None:
+        timings.append((label, fields))
+
     monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr(rhime_sampling, "log_timing", fake_log_timing)
     monkeypatch.setattr(
         "openghg_inversions.rhime.sampling.pm.sample_prior_predictive",
         fake_prior_predictive,
@@ -913,6 +1041,14 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         "random_seed": 42,
     }
     assert fake_idata.extensions == ["prior", "posterior"]
+    sample_stats_fields = dict(timings)["rhime.sampler.sample_stats"]
+    assert sample_stats_fields["n_steps_mean"] == 3.5
+    assert sample_stats_fields["n_steps_max"] == 6.0
+    assert sample_stats_fields["tree_depth_mean"] == 3.0
+    assert sample_stats_fields["tree_depth_max"] == 4.0
+    assert sample_stats_fields["step_size_mean"] == pytest.approx(1.0 / 6.0)
+    assert sample_stats_fields["acceptance_rate_mean"] == pytest.approx(0.85)
+    assert sample_stats_fields["divergences"] == 2
 
 
 def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
@@ -1128,6 +1264,35 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_prior_values(
             output_format="none",
             flux_sources=["FF", "GPP"],
             sector_priors={"FF": "bad"},
+        )
+
+
+def test_run_rhime_multisector_rejects_source_keyed_xprior_before_data_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy source-keyed ``xprior`` fails before RHIME data preparation."""
+
+    def fail_prepare(**kwargs):
+        raise AssertionError("prepare_rhime_inputs should not be called")
+
+    setattr(fail_prepare, "__signature__", inspect.signature(prepare_rhime_inputs))
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+
+    with pytest.raises(ValueError, match="source-keyed priors"):
+        run_rhime_multisector(
+            species="ch4",
+            sites=["TAC"],
+            averaging_period=["1h"],
+            domain="EUROPE",
+            start_date="2019-01-01",
+            end_date="2019-01-02",
+            output_name="test",
+            output_format="none",
+            emissions_name=["sector-a", "sector-b"],
+            xprior={
+                "sector-a": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                "sector-b": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+            },
         )
 
 
@@ -1925,6 +2090,35 @@ def test_output_path_validation_rejects_default_standard_save_without_path() -> 
         )
 
 
+def test_runner_setup_defaults_inv_out_save_only_for_inv_out_format(tmp_path: Path) -> None:
+    """Derived RHIME products should not save large inv_out sidecars unless requested."""
+    base_params = {
+        "species": "ch4",
+        "sites": ["TAC"],
+        "averaging_period": ["1h"],
+        "domain": "EUROPE",
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-02",
+        "flux_sources": ["total-ukghg-edgar7"],
+        "output_name": "test",
+    }
+    data_params = set(inspect.signature(prepare_rhime_inputs).parameters)
+
+    inv_out_setup = rhime_params.make_rhime_runner_setup(
+        params={**base_params, "output_format": "inv_out", "output_path": str(tmp_path)},
+        multisector=False,
+        data_param_names=data_params,
+    )
+    paris_setup = rhime_params.make_rhime_runner_setup(
+        params={**base_params, "output_format": "paris"},
+        multisector=False,
+        data_param_names=data_params,
+    )
+
+    assert inv_out_setup.run_spec.output.save_inversion_output is True
+    assert paris_setup.run_spec.output.save_inversion_output is False
+
+
 def test_output_path_validation_rejects_multisector_legacy_output() -> None:
     with pytest.raises(ValueError, match="single-sector"):
         rhime_specs.validate_output_path_settings(
@@ -2061,13 +2255,79 @@ def test_make_multisector_output_bundle_returns_modern_inv_out() -> None:
         model_spec=model_spec,
         idata=idata,
         prepared=prepared,
+        country_file=None,
     )
 
     assert isinstance(bundle.inv_out, InversionOutput)
     assert bundle.inv_out.run_metadata["split_by_sectors"] is True
     assert bundle.output_metadata["inversion_output_contract"] == "modern"
     assert "sector_flux_diagnostics" in bundle.outputs
+    assert "flux_ff_posterior_mean" in bundle.outputs["sector_flux_diagnostics"]
+    assert "flux_ocean_posterior_mean" in bundle.outputs["sector_flux_diagnostics"]
+    assert "flux_total_posterior_mean" in bundle.outputs["sector_flux_diagnostics"]
     assert bundle.outputs["inversion_output"] is bundle.inv_out
+
+
+def test_make_multisector_output_bundle_builds_latest_paris_flux(europe_country_file: Path) -> None:
+    """Multi-sector PARIS output builds explicit latest total flux output."""
+    sectors = (
+        SectorSpec(
+            name="FF",
+            flux_source="ff-inventory",
+            x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            variable_suffix="ff",
+        ),
+        SectorSpec(
+            name="Ocean",
+            flux_source="ocean-inventory",
+            x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            variable_suffix="ocean",
+        ),
+    )
+    model_spec = RhimeModelSpec(species="ch4", domain="EUROPE", sectors=sectors)
+    output_spec = RhimeOutputSpec(
+        output_format="paris",
+        output_name="test",
+        save_inversion_output=False,
+        paris_postprocessing_kwargs={
+            "template_version": "latest",
+            "inversion_grid": False,
+            "flux_frequency": "yearly",
+        },
+    )
+    run_spec = RhimeRunSpec(
+        "2019-01-01",
+        "2019-01-02",
+        ("TAC",),
+        ("1h",),
+        model_spec,
+        output_spec,
+        split_by_sectors=True,
+    )
+    basis_functions = _fake_multisector_basis_functions_matching_country_grid(europe_country_file)
+    basis_functions.flux.attrs["time_period"] = "not-a-parseable-period"
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=basis_functions,
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+    idata = cast(Any, _multisector_postprocessing_inv_out().trace)
+
+    bundle = rhime_outputs.make_multisector_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=idata,
+        prepared=prepared,
+        country_file=str(europe_country_file),
+    )
+
+    assert "paris_flux" in bundle.outputs
+    assert "paris_concentration" not in bundle.outputs
+    assert "not implemented yet" in bundle.output_metadata["paris_note"]
+    assert "flux_total_posterior" in bundle.outputs["paris_flux"]
 
 
 def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
@@ -2263,6 +2523,45 @@ def test_modern_inversion_output_supports_flux_outputs() -> None:
     assert "flux_posterior_mean" in modern_flux
 
 
+def test_multisector_flux_outputs_reconstruct_sector_and_total_flux() -> None:
+    """Multisector flux postprocessing reconstructs sector fluxes before total statistics."""
+    from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
+
+    outputs = make_flux_outputs(
+        _multisector_postprocessing_inv_out(),
+        stats=["mean", "stdev"],
+        include_scale_factors=True,
+        report_flux_on_inversion_grid=False,
+    )
+
+    assert "flux_ff_posterior_mean" in outputs
+    assert "flux_ocean_posterior_mean" in outputs
+    assert "scaling_ff_posterior_mean" in outputs
+    assert "flux_total_posterior_mean" in outputs
+    assert "flux_total_posterior_stdev" in outputs
+    assert outputs["flux_ff_posterior_mean"].attrs["units"] == "mol/m2/s"
+    assert outputs["flux_total_posterior_mean"].attrs["units"] == "mol/m2/s"
+    assert float(outputs["flux_total_posterior_mean"].item()) == 2.0
+    assert float(outputs["flux_total_posterior_stdev"].item()) == 0.0
+    assert float(outputs["flux_ff_posterior_stdev"].item()) > 0.0
+
+
+def test_multisector_flux_outputs_support_source_specific_basis() -> None:
+    """Sector flux reconstruction handles source-specific retained basis artifacts."""
+    from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
+
+    outputs = make_flux_outputs(
+        _multisector_postprocessing_inv_out(_fake_source_specific_multisector_basis_functions()),
+        stats=["mean", "mode_kde"],
+        include_scale_factors=False,
+        report_flux_on_inversion_grid=False,
+    )
+
+    assert "flux_total_posterior_mean" in outputs
+    assert "flux_total_posterior_mode" in outputs
+    assert float(outputs["flux_total_posterior_mean"].item()) == 2.0
+
+
 def test_modern_flux_outputs_use_retained_basis_operator(
     monkeypatch: pytest.MonkeyPatch,
     europe_country_file: Path,
@@ -2330,6 +2629,12 @@ def test_modern_paris_flux_outputs_use_retained_basis_operator(
     assert "flux_total_posterior" in flux_outputs
     assert "country_flux_total_posterior" in flux_outputs
     assert "flux_total_posterior_inversion_grid" in flux_outputs
+    for name in (
+        "flux_total_posterior",
+        "country_flux_total_posterior",
+        "flux_total_posterior_inversion_grid",
+    ):
+        assert flux_outputs[name].dtype == np.dtype("float32")
     assert operator.interpolate_calls
     assert operator.basis_matrix_accesses
 
@@ -2481,6 +2786,167 @@ def test_paris_output_processes_modern_output(europe_country_file: Path) -> None
     assert "Yapost" in conc_outputs
     assert "flux_total_posterior" in flux_outputs
     assert "country_flux_total_posterior" in flux_outputs
+    for name in ("uYtotal", "YapostBC", "Yapost", "YaprioriBC", "Yapriori"):
+        assert conc_outputs[name].dtype == np.dtype("float32")
+    for name in ("flux_total_posterior", "country_flux_total_posterior"):
+        assert flux_outputs[name].dtype == np.dtype("float32")
+
+
+def test_latest_paris_output_processes_modern_output(europe_country_file: Path, tmp_path: Path) -> None:
+    """Explicit latest PARIS output uses the new concentration and flux templates."""
+    from openghg_inversions.postprocessing.make_paris_outputs import (
+        PARIS_LATEST_COUNTRIES,
+        make_paris_outputs,
+    )
+
+    flux_outputs, conc_outputs = make_paris_outputs(
+        _modern_postprocessing_inv_out(europe_country_file),
+        country_file=europe_country_file,
+        obs_avg_period="1h",
+        domain="europe",
+        inversion_grid=False,
+        template_version="latest",
+    )
+
+    assert conc_outputs.attrs["paris_concentration_template_version"] == "v04"
+    assert "index" in conc_outputs.dims
+    assert "platform" in conc_outputs.coords
+    assert "time_bnds" in conc_outputs
+    assert "number_of_identifier" in conc_outputs
+    assert "assimilation_flag" in conc_outputs
+    assert "mf_observed" in conc_outputs
+    assert "mf_posterior" in conc_outputs
+    assert "percentile_mf_posterior" in conc_outputs
+    assert "Yobs" not in conc_outputs
+    assert conc_outputs["mf_posterior"].dtype == np.dtype("float32")
+    assert conc_outputs["mf_bc_prior"].dtype == np.dtype("float32")
+    assert conc_outputs["time_bnds"].dtype == np.dtype("float64")
+    assert conc_outputs["longitude"].dtype == np.dtype("float64")
+    assert conc_outputs["number_of_identifier"].dtype == np.dtype("int16")
+
+    assert flux_outputs.attrs["paris_flux_template_version"] == "v03"
+    assert "time_bnds" in flux_outputs
+    assert "cell_area" in flux_outputs
+    assert "country_fraction" in flux_outputs
+    assert "flux_total_posterior" in flux_outputs
+    assert "flux_total_posterior_country" in flux_outputs
+    assert "stdev_flux_total_posterior" in flux_outputs
+    assert "covariance_flux_total_posterior_country" in flux_outputs
+    assert tuple(flux_outputs.country.values) == PARIS_LATEST_COUNTRIES
+    assert flux_outputs["covariance_flux_total_posterior_country"].shape == (
+        flux_outputs.sizes["time"],
+        flux_outputs.sizes["country"],
+        flux_outputs.sizes["country"],
+    )
+    assert "country_flux_total_posterior" not in flux_outputs
+    assert flux_outputs["flux_total_posterior"].dtype == np.dtype("float32")
+    assert flux_outputs["covariance_flux_total_posterior_country"].dtype == np.dtype("float32")
+    assert flux_outputs["time_bnds"].dtype == np.dtype("float64")
+
+    conc_file = tmp_path / "latest_conc.nc"
+    flux_file = tmp_path / "latest_flux.nc"
+    conc_outputs.to_netcdf(conc_file)
+    flux_outputs.to_netcdf(flux_file)
+    with xr.open_dataset(conc_file, decode_times=False) as reloaded_conc:
+        assert reloaded_conc["mf_posterior"].dtype == np.dtype("float32")
+        assert reloaded_conc["time_bnds"].dtype == np.dtype("float64")
+        assert reloaded_conc["longitude"].dtype == np.dtype("float64")
+    with xr.open_dataset(flux_file, decode_times=False) as reloaded_flux:
+        assert reloaded_flux["flux_total_posterior"].dtype == np.dtype("float32")
+        assert reloaded_flux["covariance_flux_total_posterior_country"].dtype == np.dtype("float32")
+        assert reloaded_flux["time_bnds"].dtype == np.dtype("float64")
+
+
+def test_latest_paris_concentration_fills_missing_bc_with_nan(europe_country_file: Path) -> None:
+    """Latest PARIS concentration keeps mandatory BC fields when no baseline trace exists."""
+    from openghg_inversions.postprocessing.make_paris_outputs import paris_concentration_outputs
+
+    base = _modern_postprocessing_inv_out(europe_country_file)
+    groups = {}
+    for group in base.trace.groups():
+        ds = base.trace[group]
+        groups[group] = ds.drop_vars([name for name in ("mu_bc", "hbc") if name in ds], errors="ignore")
+    trace = cast(Any, az.InferenceData)(**groups)
+    inv_out = InversionOutput(
+        trace=trace,
+        inv_inputs=base.inv_inputs,
+        basis_functions=base.basis_functions,
+        run_metadata=base.run_metadata,
+        model_metadata={**base.model_metadata, "use_bc": False},
+        output_metadata=base.output_metadata,
+        provenance=base.provenance,
+    )
+
+    conc_outputs = paris_concentration_outputs(
+        inv_out,
+        obs_avg_period="1h",
+        template_version="latest",
+    )
+
+    for name in ("mf_bc_prior", "mf_bc_posterior"):
+        assert name in conc_outputs
+        assert conc_outputs[name].dims == ("index",)
+        assert conc_outputs[name].dtype == np.dtype("float32")
+        assert np.isnan(conc_outputs[name].values).all()
+
+
+def test_latest_paris_flux_output_processes_multisector_total(
+    europe_country_file: Path,
+    tmp_path: Path,
+) -> None:
+    """Explicit latest PARIS flux output can use multisector reconstructed total flux."""
+    from openghg_inversions import convert
+    from openghg_inversions.postprocessing.countries import Countries
+    from openghg_inversions.postprocessing.make_paris_outputs import PARIS_LATEST_COUNTRIES, paris_flux_output
+
+    inv_out = _multisector_postprocessing_inv_out(
+        _fake_multisector_basis_functions_matching_country_grid(europe_country_file, coord_offset=1e-10)
+    )
+
+    flux_outputs = paris_flux_output(
+        inv_out,
+        country_file=europe_country_file,
+        inversion_grid=False,
+        template_version="latest",
+    )
+
+    assert flux_outputs.attrs["paris_flux_template_version"] == "v03"
+    assert "flux_total_posterior" in flux_outputs
+    assert "stdev_flux_total_posterior" in flux_outputs
+    assert "flux_ff_posterior" not in flux_outputs
+    assert "flux_total_posterior_country" in flux_outputs
+    assert "covariance_flux_total_posterior_country" in flux_outputs
+    assert tuple(flux_outputs.country.values) == PARIS_LATEST_COUNTRIES
+    country_fraction_data = flux_outputs["country_fraction"].data
+    if hasattr(country_fraction_data, "todense"):
+        country_fraction_data = country_fraction_data.todense()
+    cell_area_data = flux_outputs["cell_area"].data
+    if hasattr(cell_area_data, "todense"):
+        cell_area_data = cell_area_data.todense()
+    assert not np.isnan(np.asarray(country_fraction_data)).any()
+    assert not np.isnan(np.asarray(cell_area_data)).any()
+    countries = Countries.from_file(
+        country_file=europe_country_file,
+        country_code="alpha3",
+        country_selections=list(PARIS_LATEST_COUNTRIES),
+        domain="EUROPE",
+    )
+    expected_country = (
+        2.0
+        * (countries.matrix * countries.area_grid).sum(("lat", "lon"))
+        * 365
+        * 24
+        * 3600
+        * convert.molar_mass("ch4")
+        * 1e-3
+    ).reindex(country=list(PARIS_LATEST_COUNTRIES))
+    np.testing.assert_allclose(
+        flux_outputs["flux_total_posterior_country"].isel(time=0).values,
+        expected_country.data.todense(),
+        rtol=1e-6,
+    )
+
+    flux_outputs.to_netcdf(tmp_path / "latest_multisector_flux.nc")
 
 
 def test_standard_basic_output_uses_modern_postprocessing_without_legacy_adapter(monkeypatch) -> None:
@@ -2856,7 +3322,9 @@ def test_run_rhime_multisector_api_smoke(
     assert "x_ff" in posterior
     assert "x_ocean" in posterior
     assert "sector_flux_diagnostics" in result.outputs
-    assert list(result.outputs["sector_flux_diagnostics"].coords["sector"].values) == ["FF", "ocean"]
+    assert "flux_ff_posterior_mean" in result.outputs["sector_flux_diagnostics"]
+    assert "flux_ocean_posterior_mean" in result.outputs["sector_flux_diagnostics"]
+    assert "flux_total_posterior_mean" in result.outputs["sector_flux_diagnostics"]
 
 
 def test_cli_run_rhime_passes_config_and_overrides(monkeypatch, tmp_path: Path) -> None:

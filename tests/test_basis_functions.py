@@ -2,7 +2,10 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from types import SimpleNamespace
 
+import openghg_inversions.basis as basis_package
+import openghg_inversions.basis._functions as basis_module
 from openghg_inversions.basis._functions import (
     basis,
     basis_functions,
@@ -11,14 +14,16 @@ from openghg_inversions.basis._functions import (
 )
 from openghg_inversions.basis import (
     basis_functions_wrapper,
-    bucketbasisfunction,
-    quadtreebasisfunction,
+    bucket_basis_function,
+    quadtree_basis_function,
     fixed_outer_regions_basis,
+    region_constrained_basis_function,
 )
 from openghg_inversions.basis._wrapper import (
     _save_basis,
     _save_basis_datatree,
     load_basis_functions,
+    make_basis_functions,
 )
 from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_SOURCE_ATTR,
@@ -84,7 +89,7 @@ def test_quadtree_basis_function(tac_ch4_data_args, raw_data_path):
     """
     fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
     emissions_name = next(iter(fp_all[".flux"].keys()))
-    basis_func = quadtreebasisfunction(
+    basis_func = quadtree_basis_function(
         emissions_name=[emissions_name], fp_all=fp_all, start_date="2019-01-01", seed=42, domain="EUROPE"
     )
 
@@ -106,7 +111,7 @@ def test_bucket_basis_function(tac_ch4_data_args, raw_data_path):
     """
     fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
     emissions_name = next(iter(fp_all[".flux"].keys()))
-    basis_func = bucketbasisfunction(
+    basis_func = bucket_basis_function(
         emissions_name=[emissions_name],
         fp_all=fp_all,
         start_date="2019-01-01",
@@ -149,6 +154,139 @@ def test_fixed_outer_region_basis_function(tac_ch4_data_args, raw_data_path):
     # TODO: create new "fixed" basis function file, since we've switched basis functions from
     # dataset to data array
     xr.testing.assert_allclose(basis_func, basis_func_reloaded.basis)
+
+
+def _tiny_region_constrained_fp_all() -> tuple[dict, xr.DataArray]:
+    """Build a tiny fp_all fixture and aligned region classes."""
+    time = pd.date_range("2020-01-01", periods=2)
+    lat = np.arange(4.0)
+    lon = np.arange(4.0)
+    coords = {"time": time, "lat": lat, "lon": lon}
+    flux = xr.DataArray(np.ones((2, 4, 4)), dims=("time", "lat", "lon"), coords=coords, name="flux")
+    fp = xr.DataArray(np.ones((2, 4, 4)), dims=("time", "lat", "lon"), coords=coords, name="fp")
+    region_classes = xr.DataArray(
+        np.array(
+            [
+                ["west", "west", "east", "east"],
+                ["west", "west", "east", "east"],
+                ["west", "west", "east", "east"],
+                ["west", "west", "east", "east"],
+            ],
+            dtype=object,
+        ),
+        dims=("lat", "lon"),
+        coords={"lat": lat, "lon": lon},
+        name="region_class",
+    )
+    fp_all = {
+        "SITE": xr.Dataset({"fp": fp}),
+        ".flux": {"total": SimpleNamespace(data=xr.Dataset({"flux": flux}))},
+    }
+    return fp_all, region_classes
+
+
+def _assert_basis_labels_do_not_cross_classes(labels: xr.DataArray, classes: xr.DataArray) -> None:
+    """Assert each positive basis label maps to exactly one class value."""
+    labels, classes = xr.align(labels, classes, join="exact")
+    for label in np.unique(labels.values):
+        if label == 0:
+            continue
+        class_values = set(classes.values[labels.values == label])
+        assert len(class_values) == 1
+
+
+def test_region_constrained_basis_function_uses_supplied_region_classes():
+    """Region-constrained basis generation uses caller-supplied class fields."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+
+    basis_func = region_constrained_basis_function(
+        fp_all=fp_all,
+        start_date="2020-01-01",
+        domain="TEST",
+        emissions_name=["total"],
+        nbasis=4,
+        region_classes=region_classes,
+    )
+
+    labels = basis_func.squeeze("time", drop=True)
+    assert set(np.unique(labels.values)) == {1, 2, 3, 4}
+    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
+
+
+@pytest.mark.parametrize(
+    ("legacy_name", "canonical_name"),
+    [
+        ("bucketbasisfunction", "bucket_basis_function"),
+        ("quadtreebasisfunction", "quadtree_basis_function"),
+    ],
+)
+def test_legacy_basis_function_names_warn(monkeypatch, legacy_name, canonical_name):
+    """Legacy compressed basis function names warn and delegate to canonical names."""
+    sentinel = object()
+    monkeypatch.setattr(basis_module, canonical_name, lambda *args, **kwargs: sentinel)
+
+    with pytest.warns(DeprecationWarning, match=f"{legacy_name}.*deprecated"):
+        result = getattr(basis_module, legacy_name)("arg", option=True)
+
+    assert result is sentinel
+    with pytest.warns(DeprecationWarning, match=f"{legacy_name}.*deprecated"):
+        package_result = getattr(basis_package, legacy_name)("arg", option=True)
+
+    assert package_result is sentinel
+
+
+def test_region_constrained_compressed_name_is_not_exported():
+    """The new region-constrained function only uses the canonical name."""
+    assert not hasattr(basis_module, "regionconstrainedbasisfunction")
+    assert not hasattr(basis_package, "regionconstrainedbasisfunction")
+
+
+def test_make_basis_functions_accepts_region_constrained_algorithm():
+    """make_basis_functions can build a retained basis from caller-supplied classes."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+
+    basis_object = make_basis_functions(
+        fp_all=fp_all,
+        species="ch4",
+        domain="TEST",
+        start_date="2020-01-01",
+        emissions_name=["total"],
+        nbasis=4,
+        basis_algorithm="region_constrained",
+        region_classes=region_classes,
+    )
+
+    labels = basis_object.flat_basis()
+    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
+
+
+def test_fixed_outer_regions_can_use_region_constrained_algorithm(tmp_path):
+    """Fixed outer regions can pass class fields through to the inner basis algorithm."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    outer_regions = xr.Dataset(
+        {
+            "region": (
+                ("lat", "lon"),
+                np.ones(region_classes.shape, dtype=int),
+            )
+        },
+        coords=region_classes.coords,
+    )
+    outer_regions.to_netcdf(tmp_path / "outer_region_definition_TEST.nc")
+
+    basis_func = fixed_outer_regions_basis(
+        fp_all=fp_all,
+        start_date="2020-01-01",
+        basis_algorithm="region_constrained",
+        domain="TEST",
+        emissions_name=["total"],
+        nbasis=4,
+        country_directory=str(tmp_path),
+        region_classes=region_classes,
+    )
+
+    labels = basis_func.squeeze("time", drop=True)
+    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
 
 
 def test_fp_sensitivity_one_flux():

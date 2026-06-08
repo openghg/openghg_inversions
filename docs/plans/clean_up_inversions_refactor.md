@@ -501,6 +501,13 @@ review.
   longer needed as a Python compatibility entrypoint.
 - Remove `fixedbasisMCMC` once the #416 compatibility shim has enough
   fixedbasis-style script parity coverage through `run_rhime`.
+- Track and resolve `InversionOutput` storage policy in
+  [#465](https://github.com/openghg/openghg_inversions/issues/465). Derived
+  products should not silently save large `inv_out` sidecars; trace saves
+  should avoid persisted deterministic variables where they can be recreated
+  from latent variables, model specs, and retained model components; any future
+  Zarr-based storage needs to account for strict inode limits on shared
+  workspaces.
 - Delete or quarantine dead compatibility code as it loses callers:
   `legacy_postprocess_args` provenance plumbing in `fixedbasisMCMC`,
   `rerun_output(...)` replay through `inferpymc_postprocessouts`, old
