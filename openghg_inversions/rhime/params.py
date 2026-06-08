@@ -265,6 +265,17 @@ def normalise_sector_priors(
     return {str(sector): dict(prior) for sector, prior in sector_priors.items()}
 
 
+def validate_multisector_x_prior(x_prior: Mapping[str, Any] | None) -> None:
+    """Raise if multi-sector ``x_prior`` is not a shared prior spec."""
+    if x_prior is None or "pdf" in x_prior:
+        return
+    raise ValueError(
+        "Invalid RHIME config value for `x_prior`: multi-sector source-keyed priors are not "
+        "supported via `xprior`/`x_prior`; use `sector_priors` keyed by sector name, or provide "
+        "a single shared prior dict with top-level `pdf`."
+    )
+
+
 def normalise_sector_sources(
     sector_sources: Mapping[str, Any] | None,
 ) -> dict[str, str] | None:
@@ -470,6 +481,8 @@ def make_rhime_runner_setup(
     sigma_prior = normalise_optional_mapping(remaining.pop("sigma_prior", None))
     offset_prior = normalise_optional_mapping(remaining.pop("offset_prior", None))
     sector_priors = normalise_sector_priors(remaining.pop("sector_priors", None))
+    if multisector:
+        validate_multisector_x_prior(x_prior)
     offset_args = normalise_optional_mapping(remaining.get("offset_args"))
 
     use_bc = remaining.get("use_bc", True)
