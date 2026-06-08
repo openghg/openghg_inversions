@@ -1267,6 +1267,35 @@ def test_run_rhime_multisector_rejects_non_mapping_sector_prior_values(
         )
 
 
+def test_run_rhime_multisector_rejects_source_keyed_xprior_before_data_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy source-keyed ``xprior`` fails before RHIME data preparation."""
+
+    def fail_prepare(**kwargs):
+        raise AssertionError("prepare_rhime_inputs should not be called")
+
+    setattr(fail_prepare, "__signature__", inspect.signature(prepare_rhime_inputs))
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+
+    with pytest.raises(ValueError, match="source-keyed priors"):
+        run_rhime_multisector(
+            species="ch4",
+            sites=["TAC"],
+            averaging_period=["1h"],
+            domain="EUROPE",
+            start_date="2019-01-01",
+            end_date="2019-01-02",
+            output_name="test",
+            output_format="none",
+            emissions_name=["sector-a", "sector-b"],
+            xprior={
+                "sector-a": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                "sector-b": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
+            },
+        )
+
+
 def test_run_rhime_multisector_rejects_non_mapping_sector_sources(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
