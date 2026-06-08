@@ -9,6 +9,7 @@ import xarray as xr
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
 from openghg_inversions.postprocessing._basis_products import (
+    add_basis_reconstruction_metadata,
     reconstruct_flux_stats,
     reconstruct_scale_factor_stats,
 )
@@ -111,23 +112,9 @@ def _sector_basis_functions(
     trace: xr.Dataset,
 ) -> BasisFunctions:
     """Return a basis object whose state dimension matches one sector trace."""
-    sector_flux = _sector_flux(inv_out, sector)
-    flat_basis = inv_out.basis_functions.flat_basis()
-    if not isinstance(flat_basis, dict):
-        return inv_out.basis_functions.with_flux(sector_flux)
-
-    try:
-        sector_basis = flat_basis[sector.flux_source]
-    except KeyError as exc:
-        raise ValueError(
-            f"BasisFunctions object is missing basis for sector flux source {sector.flux_source!r}."
-        ) from exc
-
-    return BasisFunctions.from_flat_basis(
-        basis_flat=sector_basis,
-        flux=sector_flux,
-        operator_kwargs={"state_dim": _state_chunk_dim(trace, inv_out)},
-        metadata=inv_out.basis_functions.metadata,
+    return inv_out.basis_functions.for_source(
+        sector.flux_source,
+        state_dim=_state_chunk_dim(trace, inv_out),
     )
 
 
@@ -393,7 +380,8 @@ def make_multisector_flux_trace_outputs(
         inv_out,
         report_flux_on_inversion_grid=report_flux_on_inversion_grid,
     )
-    return xr.merge([total_flux_trace, *sector_flux_traces]).as_numpy()
+    result = xr.merge([total_flux_trace, *sector_flux_traces]).as_numpy()
+    return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
 
 def make_sector_flux_outputs(
@@ -422,7 +410,8 @@ def make_sector_flux_outputs(
         if include_scale_factors:
             outputs.append(_sector_scale_factor_stats(inv_out, sector, scale_stats_args))
 
-    return _set_multisector_flux_attrs(xr.merge(outputs), inv_out, sectors).as_numpy()
+    result = _set_multisector_flux_attrs(xr.merge(outputs), inv_out, sectors).as_numpy()
+    return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
 
 def make_flux_outputs(
@@ -507,7 +496,7 @@ def make_flux_outputs(
 
         flux_stats = xr.merge([flux_stats, scale_factor_stats])
 
-    return flux_stats.as_numpy()
+    return add_basis_reconstruction_metadata(flux_stats.as_numpy(), inv_out.basis_functions)
 
 
 def flatten_post_prior(ds: xr.Dataset) -> xr.Dataset:
@@ -708,7 +697,7 @@ def make_country_outputs(
 
     country_stats = calculate_stats(country_traces, **stats_args)
 
-    return country_stats.as_numpy()
+    return add_basis_reconstruction_metadata(country_stats.as_numpy(), inv_out.basis_functions)
 
 
 def basic_output(
@@ -778,4 +767,4 @@ def basic_output(
 
     result.attrs["description"] = "RHIME inversion outputs."
 
-    return result
+    return add_basis_reconstruction_metadata(result, inv_out.basis_functions)

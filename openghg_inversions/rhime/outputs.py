@@ -131,6 +131,7 @@ def _make_inversion_output(
             "averaging_period": list(run_spec.averaging_period),
             "split_by_sectors": run_spec.split_by_sectors,
             "basis_artifact_source": prepared.basis_artifact_source,
+            "basis_artifact_path": prepared.basis_artifact_path,
             "site_lats": list(prepared.site_lats) if prepared.site_lats is not None else None,
             "site_lons": list(prepared.site_lons) if prepared.site_lons is not None else None,
         },
@@ -146,6 +147,7 @@ def _make_inversion_output(
         provenance={
             "contract": "modern_rhime_inversion_output",
             "compatibility_issue": "401",
+            "basis_representation": "operator-backed",
         },
     )
 

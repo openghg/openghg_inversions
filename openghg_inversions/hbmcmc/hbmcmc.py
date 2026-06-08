@@ -416,6 +416,7 @@ def _build_inversion_output_args(
             "averaging_period": list(averaging_period),
             "split_by_sectors": False,
             "basis_artifact_source": prepared.basis_artifact_source,
+            "basis_artifact_path": prepared.basis_artifact_path,
         },
         "model_metadata": {"species": species, "domain": domain},
         "output_metadata": {
@@ -429,6 +430,7 @@ def _build_inversion_output_args(
         "provenance": {
             "contract": "modern_fixedbasis_inversion_output",
             "compatibility_issue": "416",
+            "basis_representation": "operator-backed",
             "legacy_postprocessing_fields": sorted(str(key) for key in legacy_postprocess_args),
         },
     }

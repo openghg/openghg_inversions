@@ -35,6 +35,9 @@ from openghg_inversions.basis.operators import (
 
 BASIS_METADATA_ATTR_PREFIX = "openghg_inversions:"
 BASIS_ARTIFACT_SOURCE_ATTR = f"{BASIS_METADATA_ATTR_PREFIX}basis_artifact_source"
+BASIS_ARTIFACT_PATH_ATTR = f"{BASIS_METADATA_ATTR_PREFIX}basis_artifact_path"
+_BASIS_ARTIFACT_SOURCE_FALLBACK_ATTR = "basis_artifact_source"
+_BASIS_ARTIFACT_PATH_FALLBACK_ATTR = "basis_artifact_path"
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,8 +192,47 @@ class FluxWeightedBasis:
     @property
     def basis_artifact_source(self) -> str | None:
         """Return the source used to create/load this basis, when recorded."""
-        source = self.metadata.get(BASIS_ARTIFACT_SOURCE_ATTR)
+        source = self.metadata.get(
+            BASIS_ARTIFACT_SOURCE_ATTR, self.metadata.get(_BASIS_ARTIFACT_SOURCE_FALLBACK_ATTR)
+        )
         return str(source) if source is not None else None
+
+    @property
+    def basis_artifact_path(self) -> str | None:
+        """Return the basis artifact path used to create/load this basis, when recorded."""
+        path = self.metadata.get(
+            BASIS_ARTIFACT_PATH_ATTR, self.metadata.get(_BASIS_ARTIFACT_PATH_FALLBACK_ATTR)
+        )
+        return str(path) if path is not None else None
+
+    def for_source(self, source: str, *, state_dim: str | None = None) -> Self:
+        """Return a source-specific basis object for postprocessing.
+
+        Shared-basis operators are reused with the selected source flux. Operators
+        that own source-specific basis maps can expose an ``operator_for_source``
+        method to return a single-source operator without going through the
+        legacy flat-basis view.
+
+        Args:
+            source: Flux source label to select from source-specific flux and
+                basis operators.
+            state_dim: Optional state dimension for the selected source
+                operator. When omitted, the operator chooses its default.
+
+        Returns:
+            A basis object with the selected source flux and a compatible
+            operator.
+
+        Raises:
+            ValueError: If the underlying source-specific operator does not
+                contain ``source``.
+        """
+        flux = self.flux.sel(source=source, drop=True) if "source" in self.flux.dims else self.flux
+        operator_for_source = getattr(self.operator, "operator_for_source", None)
+        if callable(operator_for_source):
+            operator = cast(BasisOperator, operator_for_source(source, state_dim=state_dim))
+            return type(self)(operator=operator, flux=flux, metadata=dict(self.metadata))
+        return type(self)(operator=self.operator, flux=flux, metadata=dict(self.metadata))
 
     def flat_basis(self) -> xr.DataArray | dict[str, xr.DataArray]:
         """Return the legacy flattened basis view used by ``fp_sensitivity``."""
@@ -395,11 +437,11 @@ def basis_functions_from_fp_all_flat_basis(
     basis_flat: xr.DataArray | Mapping[str, xr.DataArray],
     metadata: Mapping[str, Any] | None = None,
 ) -> FluxWeightedBasis:
-    """Legacy adapter that constructs a basis object from wrapper inputs.
+    """Compatibility adapter that constructs a basis object from flat basis data.
 
-    This is a temporary compatibility helper for the current ``fp_sensitivity``
-    path. Remove it when issue #429 makes ``BasisFunctions.sensitivity`` the
-    source of prepared sensitivities.
+    Legacy flat basis artifacts remain readable for a transition period, but
+    modern preparation and postprocessing should consume the returned
+    ``BasisFunctions`` object rather than the flat representation directly.
 
     Args:
         fp_all: Legacy merged-data dictionary containing a ``".flux"`` side

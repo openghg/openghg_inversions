@@ -7,7 +7,46 @@ import xarray as xr
 from openghg_inversions.array_ops import align_sparse_lat_lon, sparse_xr_dot
 from openghg_inversions.basis.basis_functions import BasisFunctions
 
+BASIS_RECONSTRUCTION_PATH_ATTR = "basis_reconstruction_path"
+BASIS_ARTIFACT_SOURCE_OUTPUT_ATTR = "basis_artifact_source"
+BASIS_ARTIFACT_PATH_OUTPUT_ATTR = "basis_artifact_path"
+
+BASIS_RECONSTRUCTION_OPERATOR_BACKED = "operator-backed"
+
+BASIS_ARTIFACT_SOURCE_GENERATED = "generated"
+BASIS_ARTIFACT_SOURCE_LOADED_DATATREE = "loaded-datatree"
+BASIS_ARTIFACT_SOURCE_LOADED_LEGACY_FLAT = "loaded-legacy-flat"
+
+_OUTPUT_BASIS_ARTIFACT_SOURCE_LABELS = {
+    "generated": BASIS_ARTIFACT_SOURCE_GENERATED,
+    "datatree": BASIS_ARTIFACT_SOURCE_LOADED_DATATREE,
+    "legacy_flat": BASIS_ARTIFACT_SOURCE_LOADED_LEGACY_FLAT,
+}
+
 _TRACE_STATE_DIMS = ("region", "nx")
+
+
+def basis_artifact_output_label(basis_functions: BasisFunctions) -> str:
+    """Return the stable output label for a retained basis artifact source."""
+    source = getattr(basis_functions, "basis_artifact_source", None) or BASIS_ARTIFACT_SOURCE_GENERATED
+    return _OUTPUT_BASIS_ARTIFACT_SOURCE_LABELS.get(source, source)
+
+
+def add_basis_reconstruction_metadata(
+    ds: xr.Dataset,
+    basis_functions: BasisFunctions,
+    *,
+    reconstruction_path: str = BASIS_RECONSTRUCTION_OPERATOR_BACKED,
+) -> xr.Dataset:
+    """Attach stable basis provenance metadata to a derived output dataset."""
+    result = ds.copy(deep=False)
+    result.attrs = dict(result.attrs)
+    result.attrs[BASIS_RECONSTRUCTION_PATH_ATTR] = reconstruction_path
+    result.attrs[BASIS_ARTIFACT_SOURCE_OUTPUT_ATTR] = basis_artifact_output_label(basis_functions)
+    basis_artifact_path = getattr(basis_functions, "basis_artifact_path", None)
+    if basis_artifact_path is not None:
+        result.attrs[BASIS_ARTIFACT_PATH_OUTPUT_ATTR] = basis_artifact_path
+    return result
 
 
 def _trace_state_dim(ds: xr.Dataset, basis_functions: BasisFunctions | None = None) -> str:

@@ -5,6 +5,14 @@
 ## Code changes
 
 
+- Made retained `BasisFunctions` / `BasisOperator` metadata the primary basis
+  contract for RHIME preparation and modern postprocessing outputs. Derived
+  flux, country, PARIS, and legacy-format products now record stable basis
+  reconstruction metadata, retained basis artifacts record loaded/saved paths,
+  and source-specific multisector flux reconstruction no longer reaches through
+  the legacy flat-basis view. Legacy flat basis artifacts remain readable as an
+  explicit compatibility fallback but are deprecated for new workflows.
+  [#429](https://github.com/openghg/openghg_inversions/issues/429)
 - Added a modern `output_format="legacy"` compatibility product, routed deprecated
   `hbmcmc` / `hbmcmc_postprocessing` output requests to it, and made
   `run_hbmcmc.py` translate fixedbasis-style configs into `run_rhime` calls while

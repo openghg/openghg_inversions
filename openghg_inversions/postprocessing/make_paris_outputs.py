@@ -15,6 +15,7 @@ from openghg.util import timestamp_now  # pyright: ignore[reportPrivateImportUsa
 from openghg_inversions import convert
 from openghg_inversions.array_ops import align_sparse_lat_lon, sparse_xr_dot
 from openghg_inversions.config.version import code_version
+from openghg_inversions.postprocessing._basis_products import add_basis_reconstruction_metadata
 from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
@@ -991,7 +992,8 @@ def paris_flux_output(
     result.attrs = make_global_attrs("flux")
     result.attrs["paris_flux_template_version"] = template_files.flux_version
 
-    return _cast_float_data_vars_to_float32(result).as_numpy()
+    result = _cast_float_data_vars_to_float32(result).as_numpy()
+    return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
 
 def paris_flux_output_latest(
@@ -1129,7 +1131,8 @@ def paris_flux_output_latest(
     result.attrs = make_global_attrs("flux", species=species, domain=domain)
     result.attrs["paris_flux_template_version"] = template_files.flux_version
 
-    return _cast_data_vars_to_template_dtypes(result, template_files.flux)
+    result = _cast_data_vars_to_template_dtypes(result, template_files.flux)
+    return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
 
 def infer_flux_frequency(flux: xr.DataArray) -> str:

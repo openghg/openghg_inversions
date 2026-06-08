@@ -546,14 +546,26 @@ review.
 
 ## Follow-up operator work for #429
 
+- Done in #429 first slice: modern RHIME preparation and postprocessing treat
+  retained `BasisFunctions` / `BasisOperator` objects as the primary basis
+  representation, and derived flux, country, PARIS, and legacy-format products
+  record stable operator-backed reconstruction metadata.
+- Done in #429 first slice: retained basis artifacts record loaded/saved file
+  paths when known, and source-specific multisector flux reconstruction moved
+  source selection to the `BasisFunctions` / operator boundary rather than
+  reaching through the legacy flat-basis view.
+- Legacy flat basis artifacts remain readable only as an explicit
+  compatibility fallback. Compatibility output formats may still emit flat
+  basis maps, but new workflows should prefer DataTree `BasisFunctions`
+  artifacts.
 - Consider adding a `BasisOperator.project(...)` or similar reduction API for
   grid-to-state products, based on the prototype
   `~/Documents/inversions/src/inversions/basis_functions.py`. The prototype's
   `project()` method covers weighted and normalised reductions that would make
   postprocessing country totals, region means, and uncertainty reductions less
   dependent on ad hoc `sparse_xr_dot` calls.
-- Keep this as #429 operator cleanup unless it is needed to remove fixedbasis
-  legacy carriers in #416.
+- Track any future `BasisOperator.project(...)` work separately from #429 unless
+  it is needed to remove a concrete legacy compatibility boundary.
 
 # Deferred 
 
@@ -610,8 +622,6 @@ model components that consume them.
 ## Deferred Issue #383 / Issue #429 output boundary
 
 - #383 landed the first modern postprocessing slice that consumes retained
-  `BasisFunctions` for standard flux/country products while preserving flat
-  legacy fallback.
-- #429 remains the boundary for operator-backed output and postprocessing.
-  It should make the operator-backed path primary, add durable reconstruction
-  metadata, and define the deprecation policy for legacy basis reconstruction.
+  `BasisFunctions` for standard flux/country products.
+- #429 made operator-backed postprocessing primary, added durable reconstruction
+  metadata, and defined the deprecation policy for legacy basis reconstruction.

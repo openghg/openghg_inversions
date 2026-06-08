@@ -230,6 +230,14 @@ old fixedbasis implementation.
 Direct `fixedbasisMCMC(...)` calls are a temporary legacy Python path, not a
 wrapper around `run_rhime(...)`. New work should not target that API.
 
+Modern RHIME preparation, `InversionOutput`, and postprocessing use retained
+`BasisFunctions` / `BasisOperator` objects as the primary basis representation.
+Derived flux, country, PARIS, and legacy-format products record the
+operator-backed reconstruction path and retained basis artifact source/path when
+known. Legacy flat basis NetCDF artifacts remain readable as an explicit
+compatibility fallback, but new workflows should save and load DataTree
+`BasisFunctions` artifacts.
+
 The old output names `hbmcmc` and `hbmcmc_postprocessing` are deprecated
 aliases for the modern `legacy` output format. The compatibility wrapper keeps
 the old HBMCMC filename convention for these outputs; direct `run_rhime` calls

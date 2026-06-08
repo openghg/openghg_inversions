@@ -22,7 +22,11 @@ import openghg_inversions.rhime.sampling as rhime_sampling
 import openghg_inversions.rhime.specs as rhime_specs
 import openghg_inversions.inversion_data.preparation as prep_module
 import openghg_inversions.rhime.runner as rhime_module
-from openghg_inversions.basis.basis_functions import BASIS_ARTIFACT_SOURCE_ATTR, BasisFunctions
+from openghg_inversions.basis.basis_functions import (
+    BASIS_ARTIFACT_PATH_ATTR,
+    BASIS_ARTIFACT_SOURCE_ATTR,
+    BasisFunctions,
+)
 from openghg_inversions.cli import main
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_inputs import make_inv_inputs
@@ -35,6 +39,13 @@ from openghg_inversions.models import (
     safe_pymc_name,
 )
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.postprocessing._basis_products import (
+    BASIS_ARTIFACT_PATH_OUTPUT_ATTR,
+    BASIS_ARTIFACT_SOURCE_LOADED_DATATREE,
+    BASIS_ARTIFACT_SOURCE_OUTPUT_ATTR,
+    BASIS_RECONSTRUCTION_OPERATOR_BACKED,
+    BASIS_RECONSTRUCTION_PATH_ATTR,
+)
 from openghg_inversions.postprocessing.make_outputs import observation_inputs_for_outputs
 from openghg_inversions.rhime import (
     RhimeModelSpec,
@@ -2333,12 +2344,16 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(europe_country_
 def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     """Modern RHIME InversionOutput preserves retained inputs, basis, and metadata."""
     model_spec, output_spec, run_spec = _minimal_output_specs()
+    basis_artifact_path = str(tmp_path / "unit-basis.nc")
     prepared = RhimePreparedInputs(
         inv_inputs=_minimal_output_inv_inputs(),
-        basis_functions=_fake_basis_functions(artifact_source="unit-test"),
+        basis_functions=_fake_basis_functions(artifact_source="unit-test").with_metadata(
+            {BASIS_ARTIFACT_PATH_ATTR: basis_artifact_path}
+        ),
         sites=("TAC",),
         averaging_period=("1h",),
         basis_artifact_source="unit-test",
+        basis_artifact_path=basis_artifact_path,
     )
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
@@ -2358,6 +2373,9 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     assert reloaded.domain == "EUROPE"
     assert reloaded.start_date == "2019-01-01"
     assert reloaded.run_metadata["basis_artifact_source"] == "unit-test"
+    assert reloaded.run_metadata["basis_artifact_path"] == basis_artifact_path
+    assert reloaded.basis_functions.basis_artifact_path == basis_artifact_path
+    assert reloaded.provenance["basis_representation"] == "operator-backed"
     assert reloaded.output_metadata["output_format"] == "inv_out"
     xr.testing.assert_identical(reloaded.inv_inputs, prepared.inv_inputs)
     xr.testing.assert_identical(reloaded.basis_functions.flux, prepared.basis_functions.flux)
@@ -2546,12 +2564,19 @@ def test_multisector_flux_outputs_reconstruct_sector_and_total_flux() -> None:
     assert float(outputs["flux_ff_posterior_stdev"].item()) > 0.0
 
 
-def test_multisector_flux_outputs_support_source_specific_basis() -> None:
+def test_multisector_flux_outputs_support_source_specific_basis(monkeypatch: pytest.MonkeyPatch) -> None:
     """Sector flux reconstruction handles source-specific retained basis artifacts."""
     from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
 
+    basis_functions = _fake_source_specific_multisector_basis_functions()
+
+    def fail_flat_basis(self: BasisFunctions) -> xr.DataArray:
+        raise AssertionError("source-specific multisector outputs should not materialise flat basis")
+
+    monkeypatch.setattr(type(basis_functions), "flat_basis", fail_flat_basis)
+
     outputs = make_flux_outputs(
-        _multisector_postprocessing_inv_out(_fake_source_specific_multisector_basis_functions()),
+        _multisector_postprocessing_inv_out(basis_functions),
         stats=["mean", "mode_kde"],
         include_scale_factors=False,
         report_flux_on_inversion_grid=False,
@@ -2586,6 +2611,28 @@ def test_modern_flux_outputs_use_retained_basis_operator(
     assert "flux_posterior_mean" in flux_outputs
     assert "scaling_posterior_mean" in flux_outputs
     assert operator.interpolate_calls
+
+
+def test_modern_outputs_record_basis_reconstruction_metadata(europe_country_file: Path) -> None:
+    """Modern derived outputs record stable basis reconstruction metadata."""
+    from openghg_inversions.postprocessing.make_outputs import make_country_outputs, make_flux_outputs
+
+    basis_artifact_path = "/tmp/example-basis.nc"
+    basis_functions = _fake_basis_functions_matching_country_grid(europe_country_file).with_metadata(
+        {
+            BASIS_ARTIFACT_SOURCE_ATTR: "datatree",
+            "basis_artifact_path": basis_artifact_path,
+        }
+    )
+    inv_out = _modern_postprocessing_inv_out(europe_country_file, basis_functions=basis_functions)
+
+    flux_outputs = make_flux_outputs(inv_out, include_scale_factors=False)
+    country_outputs = make_country_outputs(inv_out, country_file=europe_country_file)
+
+    for outputs in (flux_outputs, country_outputs):
+        assert outputs.attrs[BASIS_RECONSTRUCTION_PATH_ATTR] == BASIS_RECONSTRUCTION_OPERATOR_BACKED
+        assert outputs.attrs[BASIS_ARTIFACT_SOURCE_OUTPUT_ATTR] == BASIS_ARTIFACT_SOURCE_LOADED_DATATREE
+        assert outputs.attrs[BASIS_ARTIFACT_PATH_OUTPUT_ATTR] == basis_artifact_path
 
 
 def test_modern_operator_flux_and_country_outputs_run_on_nonuniform_basis(
@@ -2629,6 +2676,7 @@ def test_modern_paris_flux_outputs_use_retained_basis_operator(
     assert "flux_total_posterior" in flux_outputs
     assert "country_flux_total_posterior" in flux_outputs
     assert "flux_total_posterior_inversion_grid" in flux_outputs
+    assert flux_outputs.attrs[BASIS_RECONSTRUCTION_PATH_ATTR] == BASIS_RECONSTRUCTION_OPERATOR_BACKED
     for name in (
         "flux_total_posterior",
         "country_flux_total_posterior",
