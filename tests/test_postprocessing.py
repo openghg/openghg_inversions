@@ -21,8 +21,10 @@ from openghg_inversions.postprocessing.make_outputs import (
 )
 
 from openghg_inversions.postprocessing.make_paris_outputs import (
+    DEFAULT_PARIS_TEMPLATE_VERSION,
     _flux_interval_midpoints,
     make_paris_outputs,
+    paris_template_files,
     paris_flux_output,
 )
 
@@ -677,6 +679,22 @@ def test_make_paris_outputs(inv_out, europe_country_file, tmpdir, offset):
     # check we can write to netCDF
     flux_outs.to_netcdf(tmpdir / "flux.nc")
     conc_outs.to_netcdf(tmpdir / "conc.nc")
+
+
+def test_paris_template_registry_requires_explicit_latest():
+    """PARIS output keeps the legacy templates by default for the next release."""
+    legacy = paris_template_files(DEFAULT_PARIS_TEMPLATE_VERSION)
+    latest = paris_template_files("latest")
+
+    assert DEFAULT_PARIS_TEMPLATE_VERSION == "legacy"
+    assert legacy.concentration_version == "v03"
+    assert legacy.flux_version == "legacy"
+    assert latest.concentration_version == "v04"
+    assert latest.flux_version == "v03"
+    assert legacy.concentration.exists()
+    assert legacy.flux.exists()
+    assert latest.concentration.exists()
+    assert latest.flux.exists()
 
 
 def test_save_inversion_output(mcmc_args, tmpdir):

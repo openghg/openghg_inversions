@@ -199,6 +199,7 @@ def _run_common(
             model_spec=run_spec.model,
             idata=idata,
             prepared=prepared,
+            country_file=run_spec.output.country_file,
         )
     else:
         output_bundle = make_standard_output_bundle(

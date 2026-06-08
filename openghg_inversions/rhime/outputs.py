@@ -10,7 +10,6 @@ import arviz as az
 import xarray as xr
 
 from openghg_inversions._timing import timed
-from openghg_inversions.array_ops import sparse_xr_dot
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models import RhimeModelSpec
 from openghg_inversions.postprocessing.inversion_output import (
@@ -109,25 +108,6 @@ def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
     raise RuntimeError(
         f"Could not save RHIME trace to {path}. Tried h5netcdf, ArviZ default, and netcdf4:\n{joined_failures}"
     )
-
-
-def _materialise_basis_and_flux_for_output(
-    prepared: RhimePreparedInputs,
-) -> tuple[xr.DataArray, xr.DataArray]:
-    """Return materialised arrays for transitional output adapters.
-
-    TODO(#383/#429): postprocessing should consume ``BasisFunctions`` directly
-    rather than requiring the runner to materialise a flat basis and flux.
-    """
-    basis = prepared.basis_functions.operator.basis_matrix
-    current_state_dim = prepared.basis_functions.operator.meta.state_dim
-    if current_state_dim != "region":
-        basis = basis.rename({current_state_dim: "region"})
-    region_coord = prepared.inv_inputs.region
-    if region_coord.name is None:
-        raise ValueError("prepared.inv_inputs.region must be named so it can be used for reindexing.")
-    basis = basis.reindex({region_coord.name: region_coord})
-    return basis, prepared.basis_functions.flux
 
 
 def _make_inversion_output(
@@ -314,42 +294,17 @@ def make_standard_output_bundle(
 
 
 def _make_multisector_flux_diagnostics(
-    *,
-    idata: az.InferenceData,
-    prepared: RhimePreparedInputs,
-    model_spec: RhimeModelSpec,
+    inv_out: InversionOutput,
 ) -> xr.Dataset:
-    """Create provisional sector-aware posterior flux diagnostics.
+    """Create sector-aware flux diagnostics with the shared postprocessing layer."""
+    from openghg_inversions.postprocessing.make_outputs import make_sector_flux_outputs
 
-    TODO(#398/#429): replace this runner-local special case with
-    sector-aware postprocessing once the modern output layer supports multiple
-    sectors and ``BasisFunctions`` reconstruction directly.
-
-    Args:
-        idata: InferenceData returned by RHIME sampling.
-        prepared: Prepared RHIME input object containing retained basis functions.
-        model_spec: Model spec containing sector names and variable suffixes.
-
-    Returns:
-        Dataset containing posterior mean scaling factors, sector posterior flux
-        means, and total posterior flux mean.
-    """
-    basis, flux = _materialise_basis_and_flux_for_output(prepared)
-    posterior_flux = []
-    posterior_scaling = []
-
-    for sector in model_spec.sectors:
-        x_name = f"x_{sector.variable_suffix}"
-        x_mean = cast(Any, idata).posterior[x_name].mean(("chain", "draw"))
-        scale_grid = sparse_xr_dot(basis, x_mean)
-        sector_flux = flux.sel(source=sector.flux_source) if "source" in flux.dims else flux
-        posterior_scaling.append(scale_grid.expand_dims(sector=[sector.name]))
-        posterior_flux.append((scale_grid * sector_flux).expand_dims(sector=[sector.name]))
-
-    scaling = xr.concat(posterior_scaling, dim="sector").rename("posterior_scaling_mean")
-    flux_by_sector = xr.concat(posterior_flux, dim="sector").rename("posterior_flux_mean")
-    total_flux = flux_by_sector.sum("sector").rename("posterior_flux_total_mean")
-    return xr.merge([scaling, flux_by_sector, total_flux])
+    return make_sector_flux_outputs(
+        inv_out,
+        stats=["mean"],
+        include_scale_factors=True,
+        report_flux_on_inversion_grid=False,
+    )
 
 
 def make_multisector_output_bundle(
@@ -359,26 +314,24 @@ def make_multisector_output_bundle(
     model_spec: RhimeModelSpec,
     idata: az.InferenceData,
     prepared: RhimePreparedInputs,
+    country_file: str | None,
 ) -> RhimeOutputBundle:
     """Create and optionally save transitional multi-sector RHIME outputs."""
+    with timed("rhime.output.inversion_output_create", output_format=output_spec.output_format):
+        inv_out_for_outputs = _make_inversion_output(
+            prepared=prepared,
+            idata=idata,
+            run_spec=run_spec,
+            model_spec=model_spec,
+            output_spec=output_spec,
+        )
     inv_out = None
     with timed("rhime.output.multisector_diagnostics"):
-        diagnostics = _make_multisector_flux_diagnostics(
-            idata=idata,
-            prepared=prepared,
-            model_spec=model_spec,
-        )
+        diagnostics = _make_multisector_flux_diagnostics(inv_out_for_outputs)
     outputs: dict[str, Any] = {"sector_flux_diagnostics": diagnostics}
     output_metadata: dict[str, Any] = {}
     if output_spec.output_format != "none":
-        with timed("rhime.output.inversion_output_create", output_format=output_spec.output_format):
-            inv_out = _make_inversion_output(
-                prepared=prepared,
-                idata=idata,
-                run_spec=run_spec,
-                model_spec=model_spec,
-                output_spec=output_spec,
-            )
+        inv_out = inv_out_for_outputs
         outputs["inversion_output"] = inv_out
         output_metadata["inversion_output_contract"] = "modern"
 
@@ -394,10 +347,63 @@ def make_multisector_output_bundle(
             output_metadata["inversion_output_path"] = str(inv_out_path)
 
     if output_spec.output_format == "paris":
-        output_metadata["paris_note"] = (
-            "Multi-sector PARIS schema support is not implemented in issue #398; "
-            "sector-aware modern diagnostics were generated instead."
-        )
+        paris_kwargs = dict(output_spec.paris_postprocessing_kwargs or {})
+        template_version = paris_kwargs.pop("template_version", None)
+        if template_version == "latest":
+            from openghg_inversions.postprocessing.make_paris_outputs import (
+                infer_flux_frequency,
+                paris_flux_output,
+            )
+
+            flux_frequency = paris_kwargs.pop("flux_frequency", None)
+            if flux_frequency is None:
+                flux_frequency = infer_flux_frequency(inv_out_for_outputs.flux)
+            time_point = paris_kwargs.pop("time_point", "midpoint")
+            report_mode = paris_kwargs.pop("report_mode", False)
+            inversion_grid = paris_kwargs.pop("inversion_grid", True)
+            if paris_kwargs:
+                unexpected = ", ".join(sorted(paris_kwargs))
+                raise ValueError(
+                    f"Unsupported multi-sector latest PARIS postprocessing kwargs: {unexpected}."
+                )
+
+            output_metadata["paris_note"] = (
+                "Multi-sector PARIS latest flux total output was generated; "
+                "multi-sector PARIS concentration output is not implemented yet."
+            )
+            flux_outs = paris_flux_output(
+                inv_out_for_outputs,
+                country_file=country_file,
+                time_point=time_point,
+                report_mode=report_mode,
+                inversion_grid=inversion_grid,
+                flux_frequency=flux_frequency,
+                template_version="latest",
+            )
+            outputs["paris_flux"] = flux_outs
+
+            if output_spec.output_path is not None:
+                Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
+                flux_file = _define_output_filename(
+                    output_spec.output_path,
+                    model_spec.species,
+                    model_spec.domain,
+                    output_spec.output_name + "_flux",
+                    run_spec.start_date,
+                    ext=".nc",
+                )
+                flux_outs.to_netcdf(
+                    flux_file,
+                    unlimited_dims=["time"],
+                    mode="w",
+                    encoding=ncdf_encoding(flux_outs),
+                )
+                output_metadata["paris_flux_path"] = str(flux_file)
+        else:
+            output_metadata["paris_note"] = (
+                "Multi-sector PARIS output requires paris_postprocessing_kwargs "
+                "with template_version='latest'; sector-aware diagnostics were generated instead."
+            )
     if output_spec.output_path is not None and output_spec.output_format != "none":
         Path(output_spec.output_path).mkdir(parents=True, exist_ok=True)
         diagnostics_path = (
