@@ -74,7 +74,9 @@ def parse_prior(name: str, prior_params: PriorArgs, **kwargs) -> TensorVariable:
 
         if params.get("reparameterise", False):
             latent = pm.Normal(f"{name}_latent", 0, 1, **kwargs)
-            return pm.Deterministic(name, pt.exp(params["mu"] + params["sigma"] * latent), **kwargs)
+            mu = pm.floatX(params["mu"])
+            sigma = pm.floatX(params["sigma"])
+            return pm.Deterministic(name, pt.exp(mu + sigma * latent), **kwargs)
 
     params.pop("reparameterise", None)
 

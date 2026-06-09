@@ -600,7 +600,9 @@ def _legacy_flat_basis(inv_out: InversionOutput) -> xr.DataArray:
     values = _as_array(basis)
     if values.size and np.nanmin(values) >= 1:
         values = values - 1
-    return xr.DataArray(values, dims=basis.dims, coords=basis.coords, attrs=basis.attrs, name="basisfunctions")
+    return xr.DataArray(
+        values, dims=basis.dims, coords=basis.coords, attrs=basis.attrs, name="basisfunctions"
+    )
 
 
 def _format_legacy_attr_prior(prior: object) -> str | None:

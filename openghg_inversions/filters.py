@@ -202,9 +202,9 @@ def six_hr_mean(dataset: xr.Dataset, keep_missing: bool = False) -> xr.Dataset:
 
     """
     if keep_missing:
-        return dataset.resample(indexer={"time": "6H"}).mean()
+        return dataset.resample(indexer={"time": "6h"}).mean()
     else:
-        return dataset.resample(indexer={"time": "6H"}).mean().dropna(dim="time")
+        return dataset.resample(indexer={"time": "6h"}).mean().dropna(dim="time")
 
 
 @register_filter

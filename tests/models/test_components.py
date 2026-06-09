@@ -26,20 +26,23 @@ def _obs_index() -> pd.MultiIndex:
     )
 
 
+def _obs_coords() -> xr.Coordinates:
+    """Create explicit xarray coordinates for the stacked observation index."""
+    return xr.Coordinates.from_pandas_multiindex(_obs_index(), "nmeasure")
+
+
 def _site_indicator() -> xr.DataArray:
     """Create a simple site-indicator DataArray aligned to the test index."""
-    index = _obs_index()
     return xr.DataArray(
         np.array([0, 0, 1, 1]),
         dims=("nmeasure",),
-        coords={"nmeasure": index},
+        coords=_obs_coords(),
         name="site_indicator",
     )
 
 
 def _likelihood_dataset() -> xr.Dataset:
     """Create a minimal canonical-style dataset for likelihood tests."""
-    index = _obs_index()
     return xr.Dataset(
         data_vars={
             "mf": ("nmeasure", np.array([1.0, 2.0, 3.0, 4.0])),
@@ -48,9 +51,7 @@ def _likelihood_dataset() -> xr.Dataset:
             "sigma_freq_index": ("nmeasure", np.array([0, 0, 1, 1])),
             "min_error": ("nmeasure", np.full(4, 0.01)),
         },
-        coords={
-            "nmeasure": index,
-        },
+        coords=_obs_coords(),
     )
 
 
@@ -238,7 +239,7 @@ def test_add_inferpymc_likelihood_component_adds_epsilon_and_y() -> None:
 def test_likelihood_no_model_error_uses_observation_error() -> None:
     """Check no-model-error mode bypasses pollution-event model error."""
     ds = _likelihood_dataset().copy()
-    ds["min_error"] = xr.full_like(ds["min_error"], 999.0)
+    ds["min_error"] = ("nmeasure", np.full(ds.sizes["nmeasure"], 999.0))
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())
@@ -258,7 +259,7 @@ def test_likelihood_no_model_error_uses_observation_error() -> None:
 def test_likelihood_pollution_events_from_obs_can_run_without_boundary_conditions() -> None:
     """Check obs-derived pollution-event scaling does not require BC terms."""
     ds = _likelihood_dataset().copy()
-    ds["sigma_freq_index"] = xr.zeros_like(ds["sigma_freq_index"])
+    ds["sigma_freq_index"] = ("nmeasure", np.zeros(ds.sizes["nmeasure"], dtype=int))
 
     with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
         attach_coord_registry(model, CoordRegistry())

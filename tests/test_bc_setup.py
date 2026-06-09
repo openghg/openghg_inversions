@@ -96,6 +96,7 @@ def _freq_edges_old_create_bc(start_date: str, end_date: str, freq: str) -> pd.D
     """
     Edges matching create_bc_sensitivity old logic.
     """
+    freq = freq.replace("H", "h")
     digits = "".join([s for s in freq if s.isdigit()])
     dys = int(digits) if digits else 0
     return pd.date_range(
