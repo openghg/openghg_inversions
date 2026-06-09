@@ -92,6 +92,8 @@ def make_freq_indicator(
     # fixed-duration freq strings (e.g. "8d", "12h", "3h")
     if isinstance(freq, str) and freq.isalpha():
         freq = f"1{freq}"
+    if isinstance(freq, str):
+        freq = freq.replace("H", "h")
     anchor = np.datetime64(anchor_time) if anchor_time is not None else time.min().values
     dt = np.timedelta64(pd.to_timedelta(freq).value, "ns")  # robust to xarray dtype
     idx = ((time.values.astype("datetime64[ns]") - anchor) // dt).astype(int)
@@ -173,7 +175,7 @@ def add_min_error(
     else:
         min_error_data = min_error_data.rename("min_error")
 
-    ds["min_error"] = min_error_data
+    ds["min_error"] = xr.DataArray(min_error_data.data, dims=("nmeasure",), name="min_error")
     return ds
 
 
@@ -264,8 +266,9 @@ def _drop_nan_and_compute(
         "mf_mod",
     ]
     to_compute = [v for v in to_compute if v in ds]
-    if to_compute:
-        ds[to_compute] = ds[to_compute].compute()
+    for var_name in to_compute:
+        computed = ds[var_name].compute()
+        ds[var_name] = (computed.dims, computed.data, computed.attrs)
 
     return ds
 
@@ -329,7 +332,12 @@ def make_inv_inputs(
         ds = transform_bc(ds, freq=bc_freq, anchor_time=start_date)
 
     ds = add_site_indicator(ds)
-    ds["sigma_freq_index"] = make_sigma_freq(ds.time, freq=sigma_freq, anchor_time=start_date)
+    sigma_freq_index = make_sigma_freq(ds.time, freq=sigma_freq, anchor_time=start_date)
+    ds["sigma_freq_index"] = xr.DataArray(
+        sigma_freq_index.data,
+        dims=("nmeasure",),
+        name="sigma_freq_index",
+    )
 
     ds = add_min_error(ds, fp_data=fp_data, min_error=min_error, min_error_per_site=min_error_per_site)
 

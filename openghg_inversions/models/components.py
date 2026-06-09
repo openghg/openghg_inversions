@@ -406,7 +406,7 @@ def add_inferpymc_likelihood_component(
 
     if no_model_error is True:
         mean_obs = np.nanmean(data["mf"].values)
-        small_amount = 1e-12 * mean_obs
+        small_amount = pm.floatX(1e-12 * mean_obs)
         eps = pt.maximum(pt.abs(error_data), small_amount)
     else:
         power0 = parse_prior("power", power) if isinstance(power, dict) else power
