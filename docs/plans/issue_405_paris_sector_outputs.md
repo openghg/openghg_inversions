@@ -16,7 +16,7 @@ Track implementation progress for GitHub issue #405: sector-aware RHIME outputs 
 2. Single-sector latest PARIS branch: implement explicit latest-template concentration and flux outputs, including `platform`, observation `index`, `time_bnds`, new `mf_*` names, flux `time_bnds`, `cell_area`, and latest country variable names.
 3. Sector reconstruction branch: reconstruct sector prior/posterior flux traces with each sector's own prior flux, sum reconstructed flux traces for total outputs, and move RHIME multisector diagnostics onto the postprocessing helper.
 4. Multisector total PARIS branch: route multisector `output_format="paris"` through total PARIS output creation.
-5. Per-sector PARIS branch: add sector-specific PARIS variables and a documented sector diagnostics dataset for variables that do not fit cleanly in the product files.
+5. Per-sector PARIS branch: add sector-specific PARIS flux variables and document any sector diagnostics that do not fit cleanly in the product files. Per-sector concentration remains a separate design item because multisector PARIS concentration output is not currently produced.
 
 ## Progress
 
@@ -25,7 +25,8 @@ Track implementation progress for GitHub issue #405: sector-aware RHIME outputs 
 - [x] Added explicit latest single-sector PARIS products.
 - [x] Added sector-aware flux reconstruction.
 - [x] Routed multisector PARIS outputs through total product creation.
-- [ ] Added per-sector PARIS variables and diagnostics.
+- [x] Added per-sector PARIS flux variables, sector coordinates, country totals, and covariance diagnostics.
+- [ ] Designed per-sector PARIS concentration variables for multisector concentration output.
 
 ## Test Plan
 

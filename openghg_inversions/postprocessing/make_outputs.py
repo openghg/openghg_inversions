@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs
 from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
@@ -44,6 +45,7 @@ TRACE_GROUP_SUFFIXES = (
     "_posterior",
 )
 _PRODUCT_METADATA_FIELDS = Literal["species", "domain", "start_date", "end_date"]
+_DENSE_INVERSION_GRID_STATS = {"quantiles", "hdi", "median", "mode", "mode_kde"}
 
 
 class OutputSector(NamedTuple):
@@ -348,6 +350,21 @@ def _copy_first_flux_nonfinite_metadata(ds: xr.Dataset, sources: list[xr.Dataset
     return ds
 
 
+def _to_dense_dataset(ds: xr.Dataset) -> xr.Dataset:
+    """Convert sparse-backed data variables to dense arrays before unsupported reductions."""
+    return xr.Dataset(
+        {name: to_dense(data) for name, data in ds.data_vars.items()},
+        coords=ds.coords,
+        attrs=ds.attrs,
+    )
+
+
+def _multisector_inversion_grid_stats_need_dense(stats: list[str] | None) -> bool:
+    """Return whether selected inversion-grid stats need dense arrays for sparse inputs."""
+    selected_stats = stats or ["mean", "quantiles"]
+    return any(stat in _DENSE_INVERSION_GRID_STATS for stat in selected_stats)
+
+
 def _multisector_flux_trace_parts(
     inv_out: InversionOutput,
     report_flux_on_inversion_grid: bool = True,
@@ -414,9 +431,17 @@ def make_sector_flux_outputs(
     )
     flux_stats_args = _stats_args_with_defaults(stats, stats_args)
 
-    outputs = [calculate_stats(total_flux_trace, **flux_stats_args)]
+    should_densify = report_flux_on_inversion_grid and _multisector_inversion_grid_stats_need_dense(stats)
+
+    outputs = [
+        calculate_stats(
+            _to_dense_dataset(total_flux_trace) if should_densify else total_flux_trace,
+            **flux_stats_args,
+        )
+    ]
     for sector, flux_trace in zip(sectors, sector_flux_traces, strict=True):
-        outputs.append(calculate_stats(flux_trace, **flux_stats_args))
+        stats_input = _to_dense_dataset(flux_trace) if should_densify else flux_trace
+        outputs.append(calculate_stats(stats_input, **flux_stats_args))
         if include_scale_factors:
             outputs.append(_sector_scale_factor_stats(inv_out, sector, scale_stats_args))
 
