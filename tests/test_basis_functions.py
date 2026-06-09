@@ -1,8 +1,10 @@
+from pathlib import Path
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
-from types import SimpleNamespace
 
 import openghg_inversions.basis as basis_package
 import openghg_inversions.basis._functions as basis_module
@@ -26,6 +28,7 @@ from openghg_inversions.basis._wrapper import (
     make_basis_functions,
 )
 from openghg_inversions.basis.basis_functions import (
+    BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
     BasisFunctions,
     basis_functions_from_fp_all_flat_basis,
@@ -1143,7 +1146,7 @@ def test_load_basis_functions_prefers_datatree_schema(tmp_path):
     )
     fp_all = {".flux": {"emissions": current_flux}, ".split_by_sectors": False}
 
-    _save_basis_datatree(
+    saved_path = _save_basis_datatree(
         basis_functions=bf,
         basis=basis_flat,
         basis_algorithm="weighted",
@@ -1161,6 +1164,7 @@ def test_load_basis_functions_prefers_datatree_schema(tmp_path):
     )
 
     assert loaded.basis_artifact_source == "datatree"
+    assert loaded.basis_artifact_path == str(saved_path)
     assert isinstance(loaded, BasisFunctions)
     xr.testing.assert_identical(loaded.flat_basis(), bf.operator.basis_flat.rename("basis"))
     xr.testing.assert_identical(loaded.operator.basis_matrix, bf.operator.basis_matrix)
@@ -1296,7 +1300,7 @@ def test_load_basis_functions_falls_back_to_legacy_flat(tmp_path):
     flux = xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float).rename("flux")
     fp_all = {".flux": {"emissions": flux}, ".split_by_sectors": False}
 
-    _save_basis(
+    saved_path = _save_basis(
         basis=basis_flat,
         basis_algorithm="weighted",
         output_dir=str(tmp_path),
@@ -1318,6 +1322,63 @@ def test_load_basis_functions_falls_back_to_legacy_flat(tmp_path):
         operator_kwargs={"state_dim": "region"},
     )
     assert loaded.basis_artifact_source == "legacy_flat"
+    assert loaded.basis_artifact_path == str(saved_path)
     assert isinstance(loaded, BasisFunctions)
     xr.testing.assert_identical(loaded.operator.basis_matrix, expected.operator.basis_matrix)
     xr.testing.assert_identical(loaded.flux, expected.flux)
+
+
+def test_basis_artifact_metadata_properties_accept_plain_keys():
+    """Basis artifact metadata properties accept pre-namespaced metadata keys."""
+    basis_flat = make_basis_flat_from_blocks([[1]])
+    flux = xr.ones_like(basis_flat, dtype=float).rename("flux")
+    basis_functions = BasisFunctions.from_flat_basis(
+        basis_flat=basis_flat,
+        flux=flux,
+        operator_kwargs={"state_dim": "region"},
+        metadata={"basis_artifact_source": "datatree", "basis_artifact_path": "/tmp/plain-basis.nc"},
+    )
+
+    assert basis_functions.basis_artifact_source == "datatree"
+    assert basis_functions.basis_artifact_path == "/tmp/plain-basis.nc"
+
+
+def test_make_basis_functions_records_saved_generated_basis_path(tmp_path):
+    """Generated basis saves record the written artifact path on the retained object."""
+    basis_flat = make_basis_flat_from_blocks([[1, 1], [2, 2]]).expand_dims(time=[np.datetime64("2019-01-01")])
+    flux = xr.ones_like(basis_flat.isel(time=0, drop=True), dtype=float).rename("flux")
+    fp_all = {".flux": {"emissions": flux}, ".split_by_sectors": False}
+
+    class StaticBasisAlgorithm:
+        description = "static test basis"
+
+        @staticmethod
+        def algorithm(*args: object, **kwargs: object) -> xr.DataArray:
+            return basis_flat
+
+    old_algorithm = basis_module.basis_functions.get("static_path_test")
+    basis_module.basis_functions["static_path_test"] = StaticBasisAlgorithm
+    try:
+        basis_object = make_basis_functions(
+            fp_all=fp_all,
+            species="ch4",
+            domain="EUROPE",
+            start_date="2019-01-01",
+            emissions_name=["emissions"],
+            nbasis=2,
+            basis_algorithm="static_path_test",
+            outputname="path-check",
+            output_path=str(tmp_path),
+            basis_output_format="datatree",
+        )
+    finally:
+        if old_algorithm is None:
+            del basis_module.basis_functions["static_path_test"]
+        else:
+            basis_module.basis_functions["static_path_test"] = old_algorithm
+
+    assert basis_object.basis_artifact_source == "generated"
+    assert basis_object.basis_artifact_path is not None
+    assert basis_object.basis_artifact_path.endswith("_basis_datatree.nc")
+    assert Path(basis_object.basis_artifact_path).exists()
+    assert basis_object.metadata[BASIS_ARTIFACT_PATH_ATTR] == basis_object.basis_artifact_path

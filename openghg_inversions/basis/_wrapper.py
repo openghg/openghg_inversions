@@ -8,6 +8,7 @@ from typing import Any, Literal, cast
 import xarray as xr
 
 from .basis_functions import (
+    BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
     BasisFunctions,
     basis_functions_from_fp_all_flat_basis,
@@ -188,7 +189,7 @@ def make_basis_functions(
         if not isinstance(basis_data_array, xr.DataArray):
             raise TypeError("Saving generated basis output currently requires a single flat basis DataArray.")
         if basis_output_format == "legacy":
-            _save_basis(
+            basis_artifact_path = _save_basis(
                 basis=basis_data_array,
                 basis_algorithm=basis_algorithm,
                 output_dir=output_path,
@@ -197,7 +198,7 @@ def make_basis_functions(
                 output_name=outputname,
             )
         elif basis_output_format == "datatree":
-            _save_basis_datatree(
+            basis_artifact_path = _save_basis_datatree(
                 basis_functions=basis_functions_object,
                 basis=basis_data_array,
                 basis_algorithm=basis_algorithm,
@@ -206,6 +207,11 @@ def make_basis_functions(
                 species=species,
                 output_name=outputname,
             )
+        else:
+            raise ValueError(f"Unknown basis_output_format '{basis_output_format}'.")
+        basis_functions_object = basis_functions_object.with_metadata(
+            {BASIS_ARTIFACT_PATH_ATTR: str(basis_artifact_path)}
+        )
 
     return basis_functions_object
 
@@ -382,7 +388,10 @@ def load_basis_functions(
         print(f"Loaded DataTree basis artifact: {datatree_files[0]}")
         current_flux = flux_from_fp_all(fp_all)
         basis_functions = basis_functions.with_flux(current_flux).with_metadata(
-            {BASIS_ARTIFACT_SOURCE_ATTR: "datatree"}
+            {
+                BASIS_ARTIFACT_SOURCE_ATTR: "datatree",
+                BASIS_ARTIFACT_PATH_ATTR: str(datatree_files[0]),
+            }
         )
         if "source" in current_flux.dims:
             basis_functions = basis_functions.select_sources(
@@ -399,7 +408,10 @@ def load_basis_functions(
     return basis_functions_from_fp_all_flat_basis(
         fp_all=fp_all,
         basis_flat=basis_data_array,
-        metadata={BASIS_ARTIFACT_SOURCE_ATTR: "legacy_flat"},
+        metadata={
+            BASIS_ARTIFACT_SOURCE_ATTR: "legacy_flat",
+            BASIS_ARTIFACT_PATH_ATTR: _basis_artifact_path_metadata(files),
+        },
     )
 
 
@@ -419,6 +431,11 @@ def _basis_artifact_files(
     return files
 
 
+def _basis_artifact_path_metadata(files: list[Path]) -> str:
+    """Return deterministic artifact path metadata for one or more matched files."""
+    return ";".join(str(file) for file in files)
+
+
 def _is_basis_datatree_artifact(path: Path) -> bool:
     """Return true when a file contains the BasisFunctions DataTree schema."""
     try:
@@ -435,7 +452,7 @@ def _save_basis(
     domain: str,
     species: str,
     output_name: str | None = None,
-) -> None:
+) -> Path:
     """Save basis functions to netCDF.
 
     Args:
@@ -454,7 +471,7 @@ def _save_basis(
         Default None
 
     Returns:
-        None. Saves basis dataset to netCDF.
+        Path to the written basis artifact.
     """
     basis_out_path = Path(output_dir, domain.upper())
 
@@ -468,7 +485,9 @@ def _save_basis(
     else:
         output_name = f"{basis_algorithm}_{species}-{output_name}_{domain}_{start_date}.nc"
 
-    basis.to_netcdf(basis_out_path / output_name, mode="w")
+    output_path = basis_out_path / output_name
+    basis.to_netcdf(output_path, mode="w")
+    return output_path
 
 
 def _save_basis_datatree(
@@ -479,7 +498,7 @@ def _save_basis_datatree(
     domain: str,
     species: str,
     output_name: str | None = None,
-) -> None:
+) -> Path:
     """Save ``BasisFunctions`` using the wrapper's DataTree file convention.
 
     This is an opt-in serialization path around ``BasisFunctions.save``. The
@@ -498,4 +517,6 @@ def _save_basis_datatree(
     else:
         output_name = f"{basis_algorithm}_{species}-{output_name}_{domain}_{start_date}_basis_datatree.nc"
 
-    basis_functions.save(basis_out_path / output_name)
+    output_path = basis_out_path / output_name
+    basis_functions.save(output_path)
+    return output_path

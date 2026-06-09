@@ -46,6 +46,7 @@ class FixedBasisPreparedData:
         averaging_period: Averaging periods aligned to retained sites.
         basis_objects: Basis objects returned by ``basis_functions_wrapper``.
         basis_artifact_source: Source of the flux basis artifact.
+        basis_artifact_path: Path to the flux basis artifact, when loaded or saved.
     """
 
     fp_all: dict
@@ -55,6 +56,7 @@ class FixedBasisPreparedData:
     averaging_period: list[str | None] = field(default_factory=list)
     basis_objects: dict[str, BasisFunctions] = field(default_factory=dict)
     basis_artifact_source: str = "generated"
+    basis_artifact_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,7 @@ class RhimePreparedInputs:
         averaging_period: Averaging periods aligned to retained sites.
         basis_artifact_source: Description of whether the basis was generated
             or loaded from an artifact.
+        basis_artifact_path: Path to the basis artifact, when loaded or saved.
         site_lats: Release latitudes aligned to ``sites``, when available.
         site_lons: Release longitudes aligned to ``sites``, when available.
     """
@@ -79,6 +82,7 @@ class RhimePreparedInputs:
     sites: tuple[str, ...]
     averaging_period: tuple[str | None, ...]
     basis_artifact_source: str
+    basis_artifact_path: str | None = None
     site_lats: tuple[float, ...] | None = None
     site_lons: tuple[float, ...] | None = None
 
@@ -584,7 +588,9 @@ def prepare_fixedbasis_inversion_data(
         return_basis_objects=True,
     )
     fp_data, fixedbasis_basis_objects = cast(tuple[dict, dict[str, BasisFunctions]], basis_result)
-    basis_source = fixedbasis_basis_objects["emissions"].basis_artifact_source or "generated"
+    emissions_basis = fixedbasis_basis_objects["emissions"]
+    basis_source = emissions_basis.basis_artifact_source or "generated"
+    basis_path = getattr(emissions_basis, "basis_artifact_path", None)
     basis_objects = fixedbasis_basis_objects if return_basis_objects else {}
 
     fp_data, prepared_sites, prepared_averaging_period = _apply_filters_and_drop_empty_sites(
@@ -613,6 +619,7 @@ def prepare_fixedbasis_inversion_data(
         inv_inputs=inv_inputs,
         basis_objects=basis_objects,
         basis_artifact_source=basis_source,
+        basis_artifact_path=basis_path,
         sites=prepared_sites,
         averaging_period=prepared_averaging_period,
     )
@@ -746,6 +753,7 @@ def prepare_rhime_inputs(
             output_path=basis_output_path,
         )
     basis_source = basis_functions.basis_artifact_source or "generated"
+    basis_path = getattr(basis_functions, "basis_artifact_path", None)
 
     with timed("rhime.prepare_inputs.footprint_sensitivity_total", sites=len(merged.sites)):
         fp_data = _rhime_site_data_from_basis_functions(
@@ -795,6 +803,7 @@ def prepare_rhime_inputs(
         inv_inputs=inv_inputs,
         basis_functions=basis_functions,
         basis_artifact_source=basis_source,
+        basis_artifact_path=basis_path,
         sites=tuple(prepared_sites),
         averaging_period=tuple(prepared_averaging_period),
         site_lats=site_lats,

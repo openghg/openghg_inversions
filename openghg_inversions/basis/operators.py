@@ -52,7 +52,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal, cast
 from typing_extensions import Self
 
 import numpy as np
@@ -594,6 +594,36 @@ class MultiSourceBucketBasisOperator(BasisOperator):
     def basis_matrix(self) -> xr.DataArray:
         """Basis matrix."""
         return self._basis_matrix
+
+    def operator_for_source(self, source: str, *, state_dim: str | None = None) -> BucketBasisOperator:
+        """Return a single-source bucket operator for one source.
+
+        This keeps source-specific basis selection at the operator boundary,
+        avoiding direct use of the legacy flat-basis compatibility view in
+        modern postprocessing code.
+
+        Args:
+            source: Source label to select from the source-specific basis
+                mapping.
+            state_dim: Optional state dimension for the returned single-source
+                operator. If omitted, the per-source region dimension is used.
+
+        Returns:
+            A single-source bucket operator for ``source``.
+
+        Raises:
+            ValueError: If ``source`` is not present in this operator.
+        """
+        try:
+            basis_flat = self.basis_flat[source]
+        except KeyError as exc:
+            raise ValueError(f"Basis operator is missing basis for source {source!r}.") from exc
+
+        meta = BasisMeta(grid_dims=self.meta.grid_dims, state_dim=state_dim or self.region_in_source_dim)
+        operator_cls = cast(Any, BucketBasisOperator)
+        return cast(
+            BucketBasisOperator, operator_cls(basis_flat=basis_flat, meta=meta, region_labels="range0")
+        )
 
     def _align_source_like_state(self, other: xr.DataArray) -> xr.DataArray:
         """Broadcast `other(source, ...)` onto `state` using the state MultiIndex level `source`.

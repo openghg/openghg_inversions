@@ -132,6 +132,15 @@ Standard single-sector RHIME supports ``inv_out``, ``basic``, ``paris``, and
 product from the modern ``InversionOutput``. The deprecated names ``hbmcmc``
 and ``hbmcmc_postprocessing`` are accepted as aliases for ``legacy``.
 
+Modern RHIME preparation, ``InversionOutput`` artifacts, and postprocessing use
+retained ``BasisFunctions`` / ``BasisOperator`` objects as the primary basis
+representation. Derived flux, country, PARIS, and legacy-format products record
+``basis_reconstruction_path="operator-backed"`` plus the retained basis artifact
+source/path when known. Legacy flat basis NetCDF files remain readable as an
+explicit compatibility fallback, and flat basis maps may still be emitted by
+compatibility output formats, but new workflows should save and load DataTree
+``BasisFunctions`` artifacts instead of relying on flat-basis reconstruction.
+
 ``run_hbmcmc.py`` is now a compatibility wrapper for old fixedbasis-style INI
 files. It translates legacy option names to the modern ``run_rhime`` API and
 uses the legacy filename convention. New scripts and new configs should use

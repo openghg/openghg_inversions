@@ -13,6 +13,7 @@ import xarray as xr
 
 from openghg_inversions import utils
 from openghg_inversions._country_file import load_country_dataset
+from openghg_inversions.postprocessing._basis_products import add_basis_reconstruction_metadata
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_outputs import (
     flat_basis_for_output,
@@ -830,4 +831,4 @@ def make_legacy_hbmcmc_output(
     out.attrs["Convergence"] = _legacy_convergence(inv_out)
     out.attrs.update(_legacy_hbmcmc_attrs(inv_out))
 
-    return out
+    return add_basis_reconstruction_metadata(out, inv_out.basis_functions)
