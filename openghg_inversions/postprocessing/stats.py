@@ -1,4 +1,10 @@
-"""Functions for computing statistics on datasets."""
+"""Functions for computing statistics on datasets.
+
+Statistics that call ``_to_dense_dataset`` need dense-compatible chunks for the
+operation itself. Statistics that can operate on sparse-backed arrays should not
+densify their inputs here; product code can still densify final outputs before
+NetCDF serialisation.
+"""
 
 from collections import namedtuple
 from collections.abc import Callable, Iterable, Sequence
@@ -8,6 +14,7 @@ import numpy as np
 import scipy
 import xarray as xr
 
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.postprocessing.utils import add_suffix, get_parameters, update_attrs
 
 StatsFunction = namedtuple("StatsFunction", ["name", "func", "params"])
@@ -35,11 +42,22 @@ def register_stat(stat: Callable) -> Callable:
     return stat
 
 
+def _to_dense_dataset(ds: xr.Dataset) -> xr.Dataset:
+    """Convert sparse-backed variables to dense chunks when a statistic cannot handle sparse arrays."""
+    return xr.Dataset(
+        {name: to_dense(data) for name, data in ds.data_vars.items()},
+        coords=ds.coords,
+        attrs=ds.attrs,
+    )
+
+
 @register_stat
 @add_suffix("quantile")
 @update_attrs("quantile_of")
 def quantiles(
-    ds: xr.Dataset, quantiles: Sequence[float] = [0.159, 0.841], sample_dim: str = "draw"
+    ds: xr.Dataset,
+    quantiles: Sequence[float] = [0.159, 0.841],
+    sample_dim: str = "draw",
 ) -> xr.Dataset:
     """Compute quantiles.
 
@@ -55,6 +73,7 @@ def quantiles(
         xr.Dataset of specified quantiles, with a new `quantile` dimension.
 
     """
+    ds = _to_dense_dataset(ds)
     # cast to float32 since quantiles involve interpolation, and this always converts to
     # float64 in numpy and scipy interpolation routines
     return ds.quantile(q=quantiles, dim=sample_dim).astype("float32")
@@ -85,6 +104,7 @@ def mode(ds: xr.Dataset, sample_dim="draw", thin: int = 1):
     else:
         k = int(ds.sizes[sample_dim] ** 0.8)  # k = (# draws)^{4/5}
 
+    ds = _to_dense_dataset(ds)
     return xr.apply_ufunc(mode_of_arr, ds, input_core_dims=[[sample_dim]], kwargs={"k": k})
 
 
@@ -92,7 +112,10 @@ def mode(ds: xr.Dataset, sample_dim="draw", thin: int = 1):
 @add_suffix("mode")
 @update_attrs("mode_of")
 def mode_kde(
-    ds: xr.Dataset, sample_dim="draw", chunk_dim: str | None = None, chunk_size: int = 10
+    ds: xr.Dataset,
+    sample_dim="draw",
+    chunk_dim: str | None = None,
+    chunk_size: int = 10,
 ) -> xr.Dataset:
     """Calculate the (KDE smoothed) mode of a data array containing MCMC samples.
 
@@ -120,6 +143,7 @@ def mode_kde(
             return np.full(arr.shape[:-1], np.nan, dtype=float)
         return np.apply_along_axis(func1d=mode_of_row, axis=-1, arr=arr)
 
+    ds = _to_dense_dataset(ds)
     if chunk_dim is not None:
         return xr.apply_ufunc(
             func,
@@ -138,8 +162,13 @@ def mode_kde(
 
 
 @register_stat
-def hdi(ds: xr.Dataset, hdi_prob: float | Iterable[float] = 0.68, sample_dim: str = "draw"):
+def hdi(
+    ds: xr.Dataset,
+    hdi_prob: float | Iterable[float] = 0.68,
+    sample_dim: str = "draw",
+):
     """Compute highest density interval with the given probabilities."""
+    ds = _to_dense_dataset(ds)
     # handle case of multiple hdi_probs
     if isinstance(hdi_prob, Iterable):
         return xr.merge([hdi(ds, hdi_prob=prob, sample_dim=sample_dim) for prob in hdi_prob])
@@ -180,6 +209,7 @@ def mean(ds: xr.Dataset, sample_dim="draw"):
 @update_attrs("median_of")
 def median(ds: xr.Dataset, sample_dim="draw"):
     """Compute sample median."""
+    ds = _to_dense_dataset(ds)
     return ds.median(dim=sample_dim)
 
 
