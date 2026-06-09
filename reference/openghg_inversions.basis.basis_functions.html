@@ -449,6 +449,12 @@ the same basis is applied to each source when broadcasting occurs in downstream 
 <li><p>Alignment/broadcasting details are currently delegated to the operator implementations.</p></li>
 </ul>
 <dl class="py property">
+<dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.basis_artifact_path">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_artifact_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.basis_artifact_path" title="Link to this definition">#</a></dt>
+<dd><p>Return the basis artifact path used to create/load this basis, when recorded.</p>
+</dd></dl>
+
+<dl class="py property">
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.basis_artifact_source">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">basis_artifact_source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.basis_artifact_source" title="Link to this definition">#</a></dt>
 <dd><p>Return the source used to create/load this basis, when recorded.</p>
@@ -464,6 +470,34 @@ the same basis is applied to each source when broadcasting occurs in downstream 
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.flux">
 <span class="sig-name descname"><span class="pre">flux</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.4.0)"><span class="pre">DataArray</span></a></span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.flux" title="Link to this definition">#</a></dt>
 <dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.for_source">
+<span class="sig-name descname"><span class="pre">for_source</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Self" title="(in Python v3.14)"><span class="pre">Self</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.for_source" title="Link to this definition">#</a></dt>
+<dd><p>Return a source-specific basis object for postprocessing.</p>
+<p>Shared-basis operators are reused with the selected source flux. Operators
+that own source-specific basis maps can expose an <code class="docutils literal notranslate"><span class="pre">operator_for_source</span></code>
+method to return a single-source operator without going through the
+legacy flat-basis view.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source</strong> – Flux source label to select from source-specific flux and
+basis operators.</p></li>
+<li><p><strong>state_dim</strong> – Optional state dimension for the selected source
+operator. When omitted, the operator chooses its default.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A basis object with the selected source flux and a compatible
+operator.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the underlying source-specific operator does not
+    contain <code class="docutils literal notranslate"><span class="pre">source</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.FluxWeightedBasis.from_datatree">
@@ -693,10 +727,10 @@ May contain extra dims (e.g. time, site, source).</p></li>
 <dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.basis.basis_functions.basis_functions_from_fp_all_flat_basis">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.basis.basis_functions.</span></span><span class="sig-name descname"><span class="pre">basis_functions_from_fp_all_flat_basis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">fp_all</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><span class="pre">dict</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis_flat</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.4.0)"><span class="pre">DataArray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.xarray.dev/en/stable/generated/xarray.DataArray.html#xarray.DataArray" title="(in xarray v2026.4.0)"><span class="pre">DataArray</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping" title="(in Python v3.14)"><span class="pre">Mapping</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis" title="openghg_inversions.basis.basis_functions.FluxWeightedBasis"><span class="pre">FluxWeightedBasis</span></a></span></span><a class="headerlink" href="#openghg_inversions.basis.basis_functions.basis_functions_from_fp_all_flat_basis" title="Link to this definition">#</a></dt>
-<dd><p>Legacy adapter that constructs a basis object from wrapper inputs.</p>
-<p>This is a temporary compatibility helper for the current <code class="docutils literal notranslate"><span class="pre">fp_sensitivity</span></code>
-path. Remove it when issue #429 makes <code class="docutils literal notranslate"><span class="pre">BasisFunctions.sensitivity</span></code> the
-source of prepared sensitivities.</p>
+<dd><p>Compatibility adapter that constructs a basis object from flat basis data.</p>
+<p>Legacy flat basis artifacts remain readable for a transition period, but
+modern preparation and postprocessing should consume the returned
+<code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> object rather than the flat representation directly.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -790,9 +824,11 @@ flux array for sectoral workflows.</p>
     <ul class="pst-show_toc_level nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.BasisFunctions"><code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.basis_artifact_path"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.basis_artifact_path</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.basis_artifact_source"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.basis_artifact_source</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.flat_basis"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.flat_basis()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.flux"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.flux</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.for_source"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.for_source()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.from_datatree"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.from_datatree()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.from_flat_basis"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.from_flat_basis()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.basis.basis_functions.FluxWeightedBasis.from_multi_source_flat_basis"><code class="docutils literal notranslate"><span class="pre">FluxWeightedBasis.from_multi_source_flat_basis()</span></code></a></li>

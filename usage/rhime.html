@@ -463,6 +463,14 @@ are not the same strings as the OpenGHG source values.</p>
 <code class="docutils literal notranslate"><span class="pre">legacy</span></code> output formats. <code class="docutils literal notranslate"><span class="pre">legacy</span></code> writes the old HBMCMC-compatible NetCDF
 product from the modern <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code>. The deprecated names <code class="docutils literal notranslate"><span class="pre">hbmcmc</span></code>
 and <code class="docutils literal notranslate"><span class="pre">hbmcmc_postprocessing</span></code> are accepted as aliases for <code class="docutils literal notranslate"><span class="pre">legacy</span></code>.</p>
+<p>Modern RHIME preparation, <code class="docutils literal notranslate"><span class="pre">InversionOutput</span></code> artifacts, and postprocessing use
+retained <code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> / <code class="docutils literal notranslate"><span class="pre">BasisOperator</span></code> objects as the primary basis
+representation. Derived flux, country, PARIS, and legacy-format products record
+<code class="docutils literal notranslate"><span class="pre">basis_reconstruction_path=&quot;operator-backed&quot;</span></code> plus the retained basis artifact
+source/path when known. Legacy flat basis NetCDF files remain readable as an
+explicit compatibility fallback, and flat basis maps may still be emitted by
+compatibility output formats, but new workflows should save and load DataTree
+<code class="docutils literal notranslate"><span class="pre">BasisFunctions</span></code> artifacts instead of relying on flat-basis reconstruction.</p>
 <p><code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> is now a compatibility wrapper for old fixedbasis-style INI
 files. It translates legacy option names to the modern <code class="docutils literal notranslate"><span class="pre">run_rhime</span></code> API and
 uses the legacy filename convention. New scripts and new configs should use
