@@ -107,11 +107,7 @@ def make_global_attrs(
 def add_variable_attrs(
     ds: xr.Dataset, attrs: dict[str, dict[str, Any]], units: float | None = None
 ) -> xr.Dataset:
-    """Update data variables and coordinates of Dataset based on attributes dictionary.
-
-    If `units` provided, data variables with "units" attribute will be rescaled by `units`. This is to convert e.g.
-    from 1e-9 mol/mol to mol/mol.
-    """
+    """Update data variables and coordinates of Dataset based on attributes dictionary."""
     for k, v in attrs.items():
         if k in ds.data_vars:
             if units is not None and "units" in v and v["units"].count("mol") == 2:
@@ -124,29 +120,59 @@ def add_variable_attrs(
 
 
 def convert_time_to_unix_epoch(x: xr.Dataset, units: str = "1s") -> xr.Dataset:
-    """Convert `time` coordinate of xarray Dataset or DataArray to number of "units" since 1 Jan 1970 (the "UNIX epoch")."""
+    """Convert `time` coordinate to number of 'units' since 1 Jan 1970."""
     time_converted = (pd.DatetimeIndex(x.time) - pd.Timestamp("1970-01-01")) / pd.Timedelta(units)
-
     return x.assign_coords(time=time_converted)
 
 
 def shift_measurement_time_to_midpoint(ds: xr.Dataset, period: str = "4h") -> xr.Dataset:
-    """Adjust `time` coordinate of concentrations to represent half averaging "period"."""
+    """Adjust `time` coordinate of concentrations to represent half averaging 'period'."""
     time_shifted = pd.to_datetime(ds["time"].astype("datetime64[ns]").values) + pd.to_timedelta(period) / 2
     ds = ds.assign_coords(time=time_shifted)
     return ds
 
+def _densify_dataarray(da: xr.DataArray) -> xr.DataArray:
+    """Return a copy of da with sparse backing replaced by dense numpy array."""
+    data = da.data
+    if hasattr(data, "todense"):
+        data = np.asarray(data.todense())
+    return da.copy(data=data)
+
+def _densify(da: xr.DataArray) -> np.ndarray:
+    """Extract numpy array from DataArray, densifying sparse backing if necessary."""
+    data = da.data
+    if hasattr(data, "todense"):
+        data = data.todense()
+    return np.asarray(data)
 
 def make_inner_domain_country_outputs(
     flux_stats: xr.Dataset,
     countries: Countries,
     species: str,
 ) -> xr.Dataset:
-    """Calculate country-total emissions from reconstructed inner-domain flux stats."""
-    flux_on_country_grid = flux_stats.interp(
-        lat=countries.matrix.lat, lon=countries.matrix.lon
+    inner_lat = flux_stats.lat
+    inner_lon = flux_stats.lon
+
+    # Densify before interp — scipy cannot handle sparse-backed arrays
+    fine_country_matrix = _densify_dataarray(countries.matrix).interp(
+        lat=inner_lat,
+        lon=inner_lon,
+        method="nearest",
+        kwargs={"fill_value": 0.0},
     ).fillna(0.0)
-    country_stats = sparse_xr_dot(countries.matrix, countries.area_grid * flux_on_country_grid)
+
+    dlat_deg = float(abs(inner_lat.diff("lat").median()))
+    dlon_deg = float(abs(inner_lon.diff("lon").median()))
+    R = 6.371e6
+    lat_rad = np.deg2rad(inner_lat)
+    cell_area = (
+        np.cos(lat_rad)
+        * np.deg2rad(dlat_deg)
+        * np.deg2rad(dlon_deg)
+        * R ** 2
+    )
+
+    country_stats = sparse_xr_dot(fine_country_matrix, cell_area * flux_stats)
 
     seconds_per_year = 365 * 24 * 3600
     country_stats = country_stats * seconds_per_year * convert.molar_mass(species) * 1e-3
@@ -155,7 +181,9 @@ def make_inner_domain_country_outputs(
     for dv in country_stats.data_vars:
         suffix = str(dv).removeprefix("country_")
         country_stats[dv].attrs["units"] = "kg a-1"
-        country_stats[dv].attrs["long_name"] = f"inner-domain country-total {suffix} {species} fluxes"
+        country_stats[dv].attrs["long_name"] = (
+            f"inner-domain country-total {suffix} {species} fluxes at 6 km resolution"
+        )
 
     return country_stats.as_numpy()
 
@@ -163,12 +191,8 @@ def make_inner_domain_country_outputs(
 def paris_concentration_outputs(
     inv_out: InversionOutput, report_mode: bool = False, obs_avg_period: str = "4h"
 ) -> xr.Dataset:
-    """Create PARIS concentration outputs.
-
-    TODO: add offset
-    """
+    """Create PARIS concentration outputs."""
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
-
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
 
     obs_and_errs_raw = inv_out.get_obs_and_errors().unstack("nmeasure")
@@ -189,19 +213,18 @@ def paris_concentration_outputs(
         .drop_vars("y_obs_error")
     )
 
-    conc_outputs = make_concentration_outputs(inv_out, stats, stats_args, combine_bc_and_offset=True).unstack("nmeasure")
+    conc_outputs = make_concentration_outputs(
+        inv_out, stats, stats_args, combine_bc_and_offset=True
+    ).unstack("nmeasure")
 
-    # rename to match PARIS concentrations template
     def renamer(name: str) -> str:
         when = "apost" if "posterior" in name else "apriori"
-
         if "bc" in name:
             suffix = "BC"
         elif "offset" in name:
             suffix = "_bias"
         else:
             suffix = ""
-
         prefix = "qY" if "quantile" in name else "Y"
         return prefix + when + suffix
 
@@ -211,17 +234,13 @@ def paris_concentration_outputs(
 
     conc_outputs = conc_outputs.rename(rename_dict)
 
-    # We produce these, but they aren't in the template
     if "qYapostBC" in conc_outputs.data_vars:
         conc_outputs = conc_outputs.drop_vars(["qYapostBC", "qYaprioriBC"])
-
     if "qYapost_bias" in conc_outputs.data_vars:
         conc_outputs = conc_outputs.drop_vars(["qYapost_bias", "qYapriori_bias"])
 
     conc_attrs = get_data_var_attrs(conc_template_path)
-
-    units = float(inv_out.obs.attrs["units"].split(" ")[0])  # e.g. get 1e-12 from "1e-12 mol/mol"
-
+    units = float(inv_out.obs.attrs["units"].split(" ")[0])
     common_rename_dict = {"site": "nsite"}
 
     result = (
@@ -247,7 +266,6 @@ def paris_concentration_outputs(
             result["YaprioriBC"] += factor
 
     result.sitenames.attrs["long_name"] = "identifier of site"
-
     result.attrs = make_global_attrs("conc")
     result.attrs["prior_factor_adjustment_applied"] = "false"
 
@@ -263,12 +281,23 @@ def paris_flux_output(
     time_point: Literal["start", "midpoint"] = "midpoint",
     report_mode: bool = False,
     inversion_grid: bool = True,
-    flux_frequency: Literal["monthly", "yearly"] | str = "yearly"
-) -> xr.Dataset:
-    stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
+    flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
+) -> tuple[xr.Dataset, xr.Dataset | None]:
+    """Create PARIS flux outputs.
 
+    Returns:
+        Tuple of (outer_flux_dataset, inner_flux_dataset).
+        inner_flux_dataset is None when no inner domain is present.
+        The inner dataset is at the native fine-grid resolution (e.g. 6 km),
+        stitched with the outer domain interpolated to that grid wherever the
+        inner basis has no coverage, so there are no holes.
+    """
+    stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
 
+    # ------------------------------------------------------------------ #
+    # Outer domain                                                         #
+    # ------------------------------------------------------------------ #
     flux_outs = make_flux_outputs(
         inv_out,
         stats=stats,
@@ -284,35 +313,26 @@ def paris_flux_output(
         country_regions="paris",
         stats=stats,
         stats_args=stats_args,
-        country_code="alpha3"
+        country_code="alpha3",
     )
-    country_outs = country_outs * 1e-3  # convert g/yr to kg/yr
+    country_outs = country_outs * 1e-3  # g/yr -> kg/yr
 
-    # add country mask
     countries = Countries.from_file(
-        country_file=country_file, country_code="alpha3", domain=inv_out.domain
+        country_file=country_file, country_code="alpha3", domain=inv_out.domain,
+        
     )
-
     country_fraction = countries.matrix.as_numpy().rename("country_fraction")
 
-    # rename to match PARIS flux template
     def renamer(name: str) -> str:
-        """Rename variables to match PARIS flux template.
-
-        NOTE: this won't work correctly if HDI is used instead of quantiles.
-        """
         if "country" in name:
             name = name.replace("country", "country_flux_total")
         elif "flux" in name:
             name = name.replace("flux", "flux_total")
-
         if "quantile" in name:
             name = "percentile_" + name.replace("_quantile", "")
-
         for stats_func_name in stats_functions:
             if name.endswith(f"_{stats_func_name}"):
                 name = name.removesuffix(f"_{stats_func_name}")
-
         return name
 
     flux_rename_dict = {str(dv): renamer(str(dv)) for dv in flux_outs.data_vars}
@@ -320,7 +340,6 @@ def paris_flux_output(
     rename_dict = {**flux_rename_dict, **country_rename_dict}
 
     dim_rename_dict = {"quantile": "percentile", "flux_time": "time"}
-
     if "lat" in flux_outs.dims:
         dim_rename_dict["lat"] = "latitude"
     if "lon" in flux_outs.dims:
@@ -334,15 +353,14 @@ def paris_flux_output(
         else:
             offset = pd.to_timedelta(flux_frequency) / 2
 
-        def time_func(ds):
+        def time_func(ds: xr.Dataset) -> xr.Dataset:
             return ds.assign_coords(time=(pd.to_datetime(ds.time.values) + offset))
     else:
-
-        def time_func(ds):
+        def time_func(ds: xr.Dataset) -> xr.Dataset:
             return ds
 
     result = (
-        xr.merge([flux_outs, country_outs, country_fraction.reindex_like(flux_outs)], join='outer')
+        xr.merge([flux_outs, country_outs, country_fraction.reindex_like(flux_outs)], join="outer")
         .rename(dim_rename_dict)
         .pipe(time_func)
         .pipe(convert_time_to_unix_epoch, "1d")
@@ -370,111 +388,325 @@ def paris_flux_output(
         result = result.merge(inversion_grid_flux_outs)
 
     result = result.transpose("time", "percentile", "country", "latitude", "longitude")
-
-    # Add fine-resolution inner domain flux output for nested PARIS inversions.
-    # The inner domain flux/basis are on the inner domain's native grid (e.g. 6 km).
-    # They are NOT regridded to the outer EUROPE grid, preserving the spatial detail.
-    # Inner domain variables use `latitude_inner`/`longitude_inner` dimensions (different
-    # size from the EUROPE grid) so they coexist in the same netCDF file without conflict.
-    if inv_out.inner_basis is not None and inv_out.inner_flux is not None:
-        n_inner_nx = len(inv_out.inner_basis.nx)
-        outer_on_inner = flux_outs.interp(lat=inv_out.inner_flux.lat, lon=inv_out.inner_flux.lon)
-        # Select the first n_inner_nx positions from the combined trace using positional
-        # indexing (.isel) so we are robust to whatever nx label values the trace holds.
-        # _combine_x_and_x_inner always places inner regions first, so positions 0..n_inner-1
-        # are the inner regions. Reassign nx to match inner_basis.nx (= [1..n_inner]) so that
-        # the coordinate aligns correctly in the sparse dot product.
-        inner_trace_ds = (
-            inv_out.get_trace_dataset(var_names="x")
-            .isel(nx=slice(n_inner_nx))
-            .assign_coords(nx=inv_out.inner_basis.nx.values)
-        )
-
-        # Compute posterior/prior stats over the inner trace
-        inner_stats_args = {**stats_args, "stats": stats, "chunk_dim": "nx"}
-        inner_stats_ds = calculate_stats(inner_trace_ds, **inner_stats_args)
-
-        # Reconstruct flux at native inner grid resolution: sum_k( x[k] * basis[k] * flux )
-        inner_flux_stats = sparse_xr_dot(inv_out.inner_flux * inv_out.inner_basis, inner_stats_ds)
-        inner_flux_stats = rename_by_replacement(inner_flux_stats, "x", "flux")
-
-        stitched_flux = outer_on_inner.copy()
-        stitched_flux = xr.where(np.isfinite(inner_flux_stats), inner_flux_stats, outer_on_inner)
-        inner_country_outs = make_inner_domain_country_outputs(stitched_flux, countries, inv_out.species)
-
-        # Apply the same PARIS naming convention, then append _inner_domain suffix
-        def inner_renamer(name: str) -> str:
-            if "country" in name:
-                name = name.replace("country", "country_flux_total")
-            elif "flux" in name:
-                name = name.replace("flux", "flux_total")
-            if "quantile" in name:
-                name = "percentile_" + name.replace("_quantile", "")
-            for stats_func_name in stats_functions:
-                if name.endswith(f"_{stats_func_name}"):
-                    name = name.removesuffix(f"_{stats_func_name}")
-            return name + "_inner_domain"
-
-        inner_var_rename = {str(dv): inner_renamer(str(dv)) for dv in inner_flux_stats.data_vars}
-        inner_country_rename = {str(dv): inner_renamer(str(dv)) for dv in inner_country_outs.data_vars}
-
-        # Rename lat/lon to inner-specific dimension names (distinct from EUROPE lat/lon)
-        inner_dim_rename: dict[str, str] = {"quantile": "percentile", "flux_time": "time"}
-        if "lat" in inner_flux_stats.dims:
-            inner_dim_rename["lat"] = "latitude_inner"
-        if "lon" in inner_flux_stats.dims:
-            inner_dim_rename["lon"] = "longitude_inner"
-
-        inner_flux_out = (
-            inner_flux_stats
-            .rename(inner_dim_rename)
-            .rename(inner_var_rename)
-            .pipe(time_func)
-            .pipe(convert_time_to_unix_epoch, "1d")
-            .pipe(add_variable_attrs, emissions_attrs)
-        )
-        inner_country_out = (
-            inner_country_outs
-            .rename({"quantile": "percentile", "flux_time": "time"})
-            .rename(inner_country_rename)
-            .pipe(time_func)
-            .pipe(convert_time_to_unix_epoch, "1d")
-            .pipe(add_variable_attrs, emissions_attrs)
-            .transpose("time", "percentile", "country")
-        )
-        result = xr.merge([result, inner_flux_out, inner_country_out])
-
     result.attrs = make_global_attrs("flux")
 
-    return result.as_numpy()
+    # ------------------------------------------------------------------ #
+    # Inner domain (fine grid, e.g. 6 km) — separate output              #
+    # ------------------------------------------------------------------ #
+    if inv_out.inner_basis is None or inv_out.inner_flux is None:
+        return result.as_numpy(), None
+
+    n_inner_nx = len(inv_out.inner_basis.nx)  # recompute here to be safe
+    full_trace_ds = inv_out.get_trace_dataset(var_names="x")
+
+    inner_trace_ds = (
+        full_trace_ds
+        .isel(nx=slice(0, n_inner_nx))
+        .assign_coords(nx=inv_out.inner_basis.nx.values)
+    )
+
+    # Verify alignment before proceeding
+    assert inner_trace_ds.sizes["nx"] == n_inner_nx, (
+        f"Inner trace nx size {inner_trace_ds.sizes['nx']} != n_inner_nx {n_inner_nx}"
+    )
+    assert np.array_equal(inner_trace_ds.nx.values, inv_out.inner_basis.nx.values), (
+        f"nx mismatch: trace={inner_trace_ds.nx.values[:5]}... basis={inv_out.inner_basis.nx.values[:5]}..."
+    )
+
+    inner_stats_args = {**stats_args, "stats": stats, "chunk_dim": "nx"}
+    inner_stats_ds = calculate_stats(inner_trace_ds, **inner_stats_args)
+
+    # Reconstruct flux at native 6 km resolution: sum_k( x[k] * basis[k] * flux )
+    # Result has dims (flux_time, lat_inner, lon_inner, quantile) — full spatial detail preserved
+    inner_flux_stats = sparse_xr_dot(inv_out.inner_flux * inv_out.inner_basis, inner_stats_ds)
+    inner_flux_stats = rename_by_replacement(inner_flux_stats, "x", "flux")
+
+    # --- 2. Build coverage mask (where inner basis has non-zero coverage) ---
+    # inner_basis.sum("nx") > 0 is sparse-backed; densify before boolean ops
+    inner_basis_sum = inv_out.inner_basis.sum("nx")
+    inner_basis_sum_data = _densify(inner_basis_sum)
+    inner_coverage_mask_np = inner_basis_sum_data > 0  # (lat, lon) or (flux_time, lat, lon)
+
+    # --- 3. Interpolate outer flux_outs to the inner fine grid ---
+    # flux_outs is on the EUROPE grid; interp to inner lat/lon so we can
+    # fill gaps in the inner domain with outer values (no holes in output).
+    outer_on_inner = flux_outs.interp(
+        lat=inv_out.inner_flux.lat,
+        lon=inv_out.inner_flux.lon,
+        method="linear",  # linear is fine for gap-filling; inner domain overrides where covered
+    ).fillna(0.0)
+
+    # --- 4. Stitch: use inner flux where covered, outer interpolated elsewhere ---
+    stitched_pieces = {}
+    for dv in inner_flux_stats.data_vars:
+        inner_da = inner_flux_stats[dv]
+        inner_np = _densify(inner_da)  # shape matches inner_da.dims exactly
+
+        # Build outer fallback aligned to inner_da.dims by name
+        dv_str = str(dv)
+        if dv_str in outer_on_inner.data_vars:
+            outer_da = outer_on_inner[dv_str]
+            # Transpose outer_da to match inner_da.dims, inserting missing dims as size-1
+            outer_dims = list(outer_da.dims)
+            inner_dims = list(inner_da.dims)
+
+            # Add any dims present in inner but absent in outer as size-1 axes
+            for dim in inner_dims:
+                if dim not in outer_dims:
+                    outer_da = outer_da.expand_dims({dim: 1})
+                    outer_dims = list(outer_da.dims)
+
+            # Reorder to match inner_da.dims exactly
+            outer_da = outer_da.transpose(*inner_dims)
+            outer_np = np.broadcast_to(_densify(outer_da), inner_np.shape).copy()
+        else:
+            outer_np = np.zeros_like(inner_np)
+
+        # Build mask aligned to inner_da.dims by name
+        # inner_coverage_mask_np has dims (lat, lon) or (flux_time, lat, lon)
+        if inner_coverage_mask_np.ndim == 2:
+            mask_dims = ["lat", "lon"]
+        else:
+            mask_dims = ["flux_time", "lat", "lon"]
+
+        inner_dims = list(inner_da.dims)
+        mask = inner_coverage_mask_np
+        for i, dim in enumerate(inner_dims):
+            if dim not in mask_dims:
+                mask = np.expand_dims(mask, axis=i)
+
+        mask = np.broadcast_to(mask, inner_np.shape)
+
+        stitched_np = np.where(mask, inner_np, outer_np)
+        stitched_pieces[dv_str] = xr.DataArray(
+            stitched_np,
+            dims=inner_da.dims,
+            coords=inner_da.coords,
+            attrs=inner_da.attrs,
+        )
+
+    stitched_flux = xr.Dataset(stitched_pieces).fillna(0.0)
+    # Diagnostic: check how much of the domain is covered by inner basis
+    inner_coverage_fraction = float(inner_coverage_mask_np.mean())
+    inner_nonzero = int(inner_coverage_mask_np.sum())
+    total_cells = int(inner_coverage_mask_np.size)
+    print(
+        f"DEBUGOUT inner domain coverage: {inner_nonzero}/{total_cells} cells "
+        f"({100*inner_coverage_fraction:.1f}%) covered by inner basis",
+        flush=True,
+    )
+
+    # Check spatial detail in stitched_flux
+    for dv in list(stitched_flux.data_vars)[:2]:
+        da = stitched_flux[dv]
+        inner_np = _densify(da)
+
+        # Build mask with axes matching da.dims by name (same logic as stitch block)
+        if inner_coverage_mask_np.ndim == 2:
+            mask_dims = ["lat", "lon"]
+        else:
+            mask_dims = ["flux_time", "lat", "lon"]
+
+        mask = inner_coverage_mask_np
+        for i, dim in enumerate(list(da.dims)):
+            if dim not in mask_dims:
+                mask = np.expand_dims(mask, axis=i)
+
+        mask_broadcast = np.broadcast_to(mask, inner_np.shape)
+
+        inner_vals = inner_np[mask_broadcast]
+        outer_vals = inner_np[~mask_broadcast]
+        print(
+            f"DEBUGOUT stitched {dv}: "
+            f"inner region mean={np.nanmean(inner_vals):.3e} std={np.nanstd(inner_vals):.3e} | "
+            f"outer region mean={np.nanmean(outer_vals):.3e} std={np.nanstd(outer_vals):.3e}",
+            flush=True,
+        )
+    # --- 5. Country totals at fine resolution using fine-grid country mask ---
+    inner_country_outs = make_inner_domain_country_outputs(
+            stitched_flux, countries, inv_out.species
+        )
+    print(f"DEBUGOUT countries.matrix country dim: {list(countries.matrix.country.values)}", flush=True)
+
+        # --- 6. Inversion-grid flux for inner domain ---
+        # One uniform value per basis region painted back onto the fine grid.
+        # Mirrors the outer inversion_grid output.
+    inner_agg_flux = (
+            (inv_out.inner_basis * inv_out.inner_flux).sum(["lat", "lon"])
+            / inv_out.inner_basis.sum(["lat", "lon"])
+        ).fillna(0.0)
+
+    inner_inversion_grid_flux_raw = sparse_xr_dot(
+            inv_out.inner_basis,
+            inner_agg_flux * inner_stats_ds,
+        )
+    inner_inversion_grid_flux_raw = rename_by_replacement(
+            inner_inversion_grid_flux_raw, "x", "flux"
+        )
+
+        # --- 7. Apply PARIS naming convention ---
+        # stitched_flux vars are already named e.g. "flux_posterior_mean", "flux_prior_mean"
+        # after rename_by_replacement(..., "x", "flux") in step 1.
+        # inner_country_outs vars come from make_inner_domain_country_outputs which calls
+        # rename_by_replacement(..., "flux", "country"), giving "country_posterior_mean" etc.
+        # inner_inversion_grid_flux_raw vars are "flux_posterior_mean" etc. (same as stitched_flux)
+        #
+        # We apply renamer() ONCE to each set, using the raw names as input.
+        # renamer() must NOT be applied to already-renamed names.
+
+    def paris_renamer(name: str) -> str:
+        """Convert raw stat names to PARIS convention.
+
+            Input names look like:
+              flux_posterior_mean       -> flux_total_posterior
+              flux_prior_mean           -> flux_total_prior
+              flux_posterior_quantile   -> percentile_flux_total_posterior
+              flux_prior_quantile       -> percentile_flux_total_prior
+              country_posterior_mean    -> country_flux_total_posterior
+              country_prior_mean        -> country_flux_total_prior
+              country_posterior_quantile -> percentile_country_flux_total_posterior
+              country_prior_quantile    -> percentile_country_flux_total_prior
+        """
+        is_country = name.startswith("country_")
+        is_percentile = "quantile" in name
+
+        # Determine posterior/prior
+        if "posterior" in name:
+            when = "posterior"
+        elif "prior" in name:
+            when = "prior"
+        else:
+            # fallback: keep as-is for unrecognised names
+            return name
+
+        if is_country:
+            base = "country_flux_total"
+        else:
+            base = "flux_total"
+
+        if is_percentile:
+            return f"percentile_{base}_{when}"
+        else:
+            return f"{base}_{when}"
+
+        # Build rename dicts using paris_renamer on the raw variable names
+    inner_flux_rename = {
+        str(dv): paris_renamer(str(dv))
+        for dv in stitched_flux.data_vars
+    }
+    inner_country_rename = {
+        str(dv): paris_renamer(str(dv))
+        for dv in inner_country_outs.data_vars
+    }
+    inner_inv_grid_rename = {
+        str(dv): paris_renamer(str(dv)) + "_inversion_grid"
+        for dv in inner_inversion_grid_flux_raw.data_vars
+    }
+
+    # Dim rename: use same names as outer so the inner file is self-consistent
+    inner_dim_rename: dict[str, str] = {"quantile": "percentile", "flux_time": "time"}
+    inner_dim_rename["lat"] = "latitude"
+    inner_dim_rename["lon"] = "longitude"
+
+    inner_flux_out = (
+        stitched_flux
+        .rename(inner_dim_rename)
+        .rename(inner_flux_rename)
+        .pipe(time_func)
+        .pipe(convert_time_to_unix_epoch, "1d")
+        .pipe(add_variable_attrs, emissions_attrs)
+    )
+
+    inner_country_out = (
+        inner_country_outs
+        .rename({"quantile": "percentile", "flux_time": "time"})
+        .rename(inner_country_rename)
+        .pipe(time_func)
+        .pipe(convert_time_to_unix_epoch, "1d")
+        .pipe(add_variable_attrs, emissions_attrs)
+        .transpose("time", "percentile", "country")
+    )
+
+    inner_inversion_grid_out = (
+        inner_inversion_grid_flux_raw
+        .rename(inner_dim_rename)
+        .rename(inner_inv_grid_rename)
+        .pipe(time_func)
+        .pipe(convert_time_to_unix_epoch, "1d")
+        .pipe(add_variable_attrs, emissions_attrs)
+    )
+
+    # Fine-grid country fraction mask
+    inner_country_fraction = _densify_dataarray(countries.matrix).interp(
+        lat=inv_out.inner_flux.lat,
+        lon=inv_out.inner_flux.lon,
+        method="nearest",
+        kwargs={"fill_value": 0.0},
+    ).fillna(0.0).as_numpy().rename({"lat": "latitude", "lon": "longitude"}).rename("country_fraction") 
+
+    # Set attrs manually — template won't match after rename
+    inner_country_fraction.attrs = {
+            "units": "1",
+            "long_name": "fraction of grid cell associated to country",
+        }
+    # Transpose inner outputs to match outer dim ordering: (time, [percentile,] lat, lon)
+    # and manually copy attributes for inversion_grid vars which don't match template keys
+    def _fix_inner_inv_grid_attrs_and_order(ds: xr.Dataset) -> xr.Dataset:
+        """Transpose dims and copy attrs from base var to _inversion_grid variant."""
+        result_vars = {}
+        for dv in ds.data_vars:
+            da = ds[dv]
+            dv_str = str(dv)
+
+            # Copy attrs from the matching non-inversion_grid var in emissions_attrs
+            # e.g. "flux_total_posterior_inversion_grid" -> look up "flux_total_posterior"
+            if not da.attrs and dv_str.endswith("_inversion_grid"):
+                base_name = dv_str.removesuffix("_inversion_grid")
+                if base_name in emissions_attrs:
+                    da = da.copy()
+                    da.attrs = dict(emissions_attrs[base_name])
+
+            # Reorder dims to (time, percentile, latitude, longitude) where present
+            target_dim_order = [
+                d for d in ["time", "percentile", "latitude", "longitude"]
+                if d in da.dims
+            ]
+            # append any unexpected extra dims at the end
+            target_dim_order += [d for d in da.dims if d not in target_dim_order]
+            da = da.transpose(*target_dim_order)
+
+            result_vars[dv_str] = da
+
+        return ds.assign(result_vars)
+
+    inner_flux_out = _fix_inner_inv_grid_attrs_and_order(inner_flux_out)
+    inner_inversion_grid_out = _fix_inner_inv_grid_attrs_and_order(inner_inversion_grid_out)
+
+    inner_result = xr.merge(
+        [inner_flux_out, inner_country_out, inner_inversion_grid_out, inner_country_fraction],
+        join="outer",
+    )
+    inner_result = xr.merge(
+        [inner_flux_out, inner_country_out, inner_inversion_grid_out, inner_country_fraction],
+        join="outer",
+    )
+    inner_result.attrs = make_global_attrs("flux")
+    inner_result.attrs["inner_domain"] = "true"
+    inner_result.attrs["spatial_resolution"] = "6km (native inner domain)"
+
+    inner_result = inner_result.astype({v: "float32" for v in inner_result.data_vars})
+
+    return result.as_numpy(), inner_result.as_numpy()
 
 
 def infer_flux_frequency(flux: xr.DataArray) -> str:
-    """Attempt to infer flux frequency.
-
-    This does not work in all cases. If the flux has a "time_period" attribute,
-    then that will be used. Otherwise, we try to infer the period by looking at
-    the differences between timestamps. If only one timestamp is found, then a
-    default value of "yearly" is returned.
-
-    Args:
-        flux: flux DataArray
-
-    Returns:
-        frequency string that can be parsed by pd.to_timedelta, or is "yearly" or "monthly"
-
-    Raises:
-        ValueError: if inferred frequency is not "yearly" or "monthly", and cannot be parsed by pd.to_timedelta
-
-    """
+    """Attempt to infer flux frequency."""
     if "time_period" in flux.attrs:
         time_period = flux.attrs["time_period"]
         if "year" in time_period:
             return "yearly"
         if "month" in time_period:
             return "monthly"
-
-        # check if the result can be parsed by pd.to_timedelta
         try:
             pd.to_timedelta(time_period)
         except ValueError as e:
@@ -483,22 +715,15 @@ def infer_flux_frequency(flux: xr.DataArray) -> str:
             ) from e
         else:
             return time_period
-
     else:
-        # take most frequent gap between times
         try:
             flux_frequency_delta = pd.Series(flux.flux_time.values).diff().mode()[0]
         except KeyError:
-            # only one time value
             return "yearly"
         else:
             flux_frequency = pd.tseries.frequencies.to_offset(flux_frequency_delta).freqstr  # type: ignore
-
-            # "1 days" will be converted to "D" by the previous two lines, so we need to add a "1" in front
             if not flux_frequency[0].isdigit():
                 flux_frequency = "1" + flux_frequency
-
-            # check if the result can be parsed
             try:
                 pd.to_timedelta(flux_frequency)
             except ValueError as e:
@@ -517,8 +742,17 @@ def make_paris_outputs(
     report_mode: bool = False,
     inversion_grid: bool = True,
     obs_avg_period: str = "4h",
-    domain: str | None = None
-) -> tuple[xr.Dataset, xr.Dataset]:
+    domain: str | None = None,
+) -> tuple[xr.Dataset, xr.Dataset | None, xr.Dataset]:
+    """Create all PARIS outputs.
+
+    Returns:
+        Tuple of (flux_outs, inner_flux_outs, conc_outs).
+        inner_flux_outs is None when no inner domain is present.
+        When present, inner_flux_outs is a separate dataset at the native
+        fine-grid resolution (e.g. 6 km), suitable for saving as a separate
+        netCDF file with '_inner_domain' in the filename.
+    """
     def _pick_mean(ds: xr.Dataset, candidates: list[str]) -> tuple[str | None, float | None]:
         for var in candidates:
             if var in ds.data_vars:
@@ -542,33 +776,29 @@ def make_paris_outputs(
     def _format_values(da: xr.DataArray) -> str:
         return "[" + ", ".join(f"{float(v):.3f}" for v in np.asarray(da.values)) + "]"
 
-    # infer flux frequency
     flux_frequency = infer_flux_frequency(inv_out.flux)
     conc_outs = paris_concentration_outputs(inv_out, report_mode=report_mode, obs_avg_period=obs_avg_period)
-    flux_outs = paris_flux_output(
+    flux_outs, inner_flux_outs = paris_flux_output(
         inv_out,
         report_mode=report_mode,
         country_file=country_file,
         inversion_grid=inversion_grid,
         time_point=time_point,
-        flux_frequency=flux_frequency
+        flux_frequency=flux_frequency,
     )
 
+    # Consistency diagnostics
     conc_prior_var, conc_prior_mean = _pick_mean(
-        conc_outs,
-        ["Yapriori", "qYapriori", "Yapriori_modeled", "qYapriori_modeled"],
+        conc_outs, ["Yapriori", "qYapriori", "Yapriori_modeled", "qYapriori_modeled"]
     )
     conc_post_var, conc_post_mean = _pick_mean(
-        conc_outs,
-        ["Yapost", "qYapost", "Yapost_modeled", "qYapost_modeled"],
+        conc_outs, ["Yapost", "qYapost", "Yapost_modeled", "qYapost_modeled"]
     )
     flux_prior_var, flux_prior_mean = _pick_mean(
-        flux_outs,
-        ["flux_total_prior", "flux_total_apriori", "percentile_flux_total_prior", "percentile_flux_total_apriori"],
+        flux_outs, ["flux_total_prior", "flux_total_apriori", "percentile_flux_total_prior", "percentile_flux_total_apriori"]
     )
     flux_post_var, flux_post_mean = _pick_mean(
-        flux_outs,
-        ["flux_total_posterior", "flux_total_apost", "percentile_flux_total_posterior", "percentile_flux_total_apost"],
+        flux_outs, ["flux_total_posterior", "flux_total_apost", "percentile_flux_total_posterior", "percentile_flux_total_apost"]
     )
 
     if None not in [conc_prior_mean, conc_post_mean, flux_prior_mean, flux_post_mean]:
@@ -576,7 +806,6 @@ def make_paris_outputs(
         flux_delta = flux_post_mean - flux_prior_mean
         conc_ratio = np.nan if abs(conc_prior_mean) < 1e-30 else conc_post_mean / conc_prior_mean
         flux_ratio = np.nan if abs(flux_prior_mean) < 1e-30 else flux_post_mean / flux_prior_mean
-
         print(
             "DEBUGOUT: PARIS consistency | "
             f"conc({conc_post_var}-{conc_prior_var})={conc_delta:.6e}, ratio={conc_ratio:.6f} | "
@@ -617,7 +846,10 @@ def make_paris_outputs(
 
     conc_prior_name = next((v for v in ["Yapriori", "qYapriori"] if v in conc_outs), None)
     conc_post_name = next((v for v in ["Yapost", "qYapost"] if v in conc_outs), None)
-    site_coord_name = "sitenames" if "sitenames" in conc_outs.coords else ("nsite" if "nsite" in conc_outs.coords else None)
+    site_coord_name = (
+        "sitenames" if "sitenames" in conc_outs.coords
+        else ("nsite" if "nsite" in conc_outs.coords else None)
+    )
     if conc_prior_name and conc_post_name and site_coord_name is not None and "time" in conc_outs.coords:
         mhd_label = _find_coord_label(conc_outs[site_coord_name], ["MHD"])
         if mhd_label is not None:
@@ -630,7 +862,7 @@ def make_paris_outputs(
                 flush=True,
             )
 
-    return flux_outs, conc_outs
+    return flux_outs, inner_flux_outs, conc_outs
 
 
 def make_paris_flux_outputs_from_rhime(
@@ -644,13 +876,11 @@ def make_paris_flux_outputs_from_rhime(
     flux_frequency: Literal["monthly", "yearly"] | str = "yearly",
     start_date: str | None = None,
     end_date: str | None = None,
-) -> xr.Dataset:
+) -> tuple[xr.Dataset, xr.Dataset | None]:
     inv_out = make_inv_out_from_rhime_outputs(
         rhime_outputs, species=species, domain=domain, start_date=start_date, end_date=end_date
     )
-
-    flux_outputs = paris_flux_output(
+    flux_outputs, inner_flux_outs = paris_flux_output(
         inv_out, country_file, time_point, report_mode, inversion_grid, flux_frequency
     )
-
-    return flux_outputs
+    return flux_outputs, inner_flux_outs
