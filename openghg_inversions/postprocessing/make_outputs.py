@@ -336,7 +336,7 @@ def basic_output(
     country_outs = make_country_outputs(
         inv_out,
         country_file=country_file,
-        country_regions=country_regions,
+        country_regions="paris",
         stats=stats,
         stats_args=stats_args
     )
