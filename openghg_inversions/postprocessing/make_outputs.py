@@ -85,6 +85,10 @@ def make_flux_outputs(
 
         flux_stats = xr.merge([flux_stats, scale_factor_stats])
 
+    print(f"flux_stats sizes: {dict(flux_stats.sizes)}")
+    print(f"flux_stats dtype: {flux_stats[list(flux_stats.data_vars)[0]].dtype}")
+    print(f"Estimated memory: {sum(v.size * v.dtype.itemsize for v in flux_stats.values()) / 1e9:.1f} GB")
+    
     return flux_stats.as_numpy()
 
 

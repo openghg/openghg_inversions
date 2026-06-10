@@ -220,7 +220,7 @@ class InversionOutput:
 
         # align basis with flux; this is necessary due to an issue with sparse matrices
         self.basis = align_sparse_lat_lon(self.basis, self.flux)
-        # 转换sparse为dense，避免后续sparse/dense混合运算错误
+        # change sparse into dense
         if hasattr(self.basis.data, 'todense'):
             self.basis = self.basis.copy(data=self.basis.data.todense())
         # if basis has time, make sure it is aligned to flux
