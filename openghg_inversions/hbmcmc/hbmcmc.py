@@ -871,13 +871,16 @@ def fixedbasisMCMC(
         if not averaging_period[0]:
             logging.info("Default obs averaging period %s used in PARIS post-processing.", obs_avg_period)
         paris_postprocessing_kwargs = paris_postprocessing_kwargs or {}
-        flux_outs, conc_outs = make_paris_outputs(
+       # make_paris_outputs now always returns (flux_outs, inner_flux_outs, conc_outs)
+        # inner_flux_outs is None when no inner domain was used
+        flux_outs, inner_flux_outs, conc_outs = make_paris_outputs(
             inv_out,
             country_file=country_file,
             domain=domain,
             obs_avg_period=obs_avg_period,
             **paris_postprocessing_kwargs,
         )
+        Path(outputpath).mkdir(parents=True, exist_ok=True)
 
         conc_output_filename = define_output_filename(
             outputpath, species, domain, outputname + "_conc", start_date, ext=".nc"
@@ -896,7 +899,27 @@ def fixedbasisMCMC(
 
         logging.info("PARIS concentration outputs saved to", conc_output_filename)
         logging.info("PARIS flux outputs saved to", flux_output_filename)
-
+                # --- inner domain output (separate file, '_inner_domain' in name) ---
+        if inner_flux_outs is not None:
+            inner_flux_output_filename = define_output_filename(
+                outputpath,
+                species,
+                inner_domain if inner_domain is not None else domain,
+                outputname + "_flux", start_date, ext=".nc"
+            )
+            inner_flux_outs.to_netcdf(
+                inner_flux_output_filename,
+                unlimited_dims=["time"],
+                mode="w",
+                encoding=ncdf_encoding(inner_flux_outs),
+            )
+            logging.info(
+                "PARIS inner-domain flux outputs (6 km) saved to %s", inner_flux_output_filename
+            )
+            print(
+                f"Inner domain flux saved: {inner_flux_output_filename}",
+                flush=True,
+            )
         end_post = time.time()
         print(f"Post processing Complete. Time taken = {end_post - start_post:.2f} seconds")
 
