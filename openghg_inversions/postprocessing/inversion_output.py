@@ -25,25 +25,20 @@ from pathlib import Path
 from collections.abc import Iterable, Mapping
 from typing_extensions import Self
 from dataclasses import dataclass, field
-from typing import Any, Hashable, Literal, cast
+from typing import  Union, Any, Optional, TypeVar, Hashable, Literal, cast
 import json
-
+import logging
 import warnings
+
 import pymc as pm
 import arviz as az
 import numpy as np
 import pandas as pd
 import xarray as xr
 
+XrDataArrayOrSet = Union[xr.DataArray, xr.Dataset]
+from openghg_inversions.array_ops import align_sparse_lat_lon
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.utils import (
-    align_sparse_lat_lon,
-    convert_idata_to_dataset,
-    _add_attributes_to_trace_dataset,
-    _nmeasure_to_site_time,
-    XrDataArrayOrSet,
-    filter_data_vars_by_prefix
-)
 
 MODERN_INVERSION_OUTPUT_SCHEMA = "openghg_inversions.inversion_output"
 MULTIINDEX_DIMS_ATTR = "openghg_inversions:multiindex_dims"
@@ -397,45 +392,55 @@ class InversionOutput:
         value = self.model_metadata.get("domain")
         return None if value is None else str(value)
     def __post_init__(self) -> None:
-        # align basis with flux; this is necessary due to an issue with sparse matrices
-        self.basis = align_sparse_lat_lon(self.basis, self.flux)
-        # change sparse into dense
-        if hasattr(self.basis.data, 'todense'):
-            self.basis = self.basis.copy(data=self.basis.data.todense())
-        # if basis has time, make sure it is aligned to flux
-        if "time" in self.basis.dims:
-            self.basis = self.basis.rename(time="flux_time")
-        elif "time" in self.basis.coords:
-            # time not in dims, so just delete the coord
-            self.basis = self.basis.drop_vars("time")
+        """Perform OCO2 specific alignment and coordinate transformation."""
+        try:
+            # 1. Access DataArrays using 0.19.0 paths
+            # basis is in operator, flux is in inv_inputs
+            basis_da = self.basis_functions.operator.basis
+            flux_da = self.inv_inputs.flux
 
-        # create trace dataset
-        trace_ds = convert_idata_to_dataset(self.trace)
+            # 2. Apply your custom OCO2 alignment fix
+            basis_da = align_sparse_lat_lon(basis_da, flux_da)
+            
+            if hasattr(basis_da.data, 'todense'):
+                basis_da = basis_da.copy(data=basis_da.data.todense())
+                
+            if "time" in basis_da.dims:
+                basis_da = basis_da.rename(time="flux_time")
+            elif "time" in basis_da.coords:
+                basis_da = basis_da.drop_vars("time")
 
-        if "longname" in self.obs.attrs:
-            obs_long_name = self.obs.attrs["longname"]
-        else:
-            obs_long_name = self.obs.attrs.get("long_name", "observed_mole_fraction")
+            # 3. Write back to frozen attributes using object.__setattr__
+            object.__setattr__(self.basis_functions.operator, 'basis', basis_da)
 
-        _add_attributes_to_trace_dataset(trace_ds, self.obs.attrs["units"], obs_long_name)
-        self.trace_ds = self.nmeasure_to_site_time(trace_ds)
+            # 4. Process Trace Data
+            trace_ds = convert_idata_to_dataset(self.trace)
+            
+            obs_data = self.inv_inputs.obs
+            obs_units = obs_data.attrs.get("units", "unknown")
+            obs_long_name = obs_data.attrs.get("longname", obs_data.attrs.get("long_name", "observed_mole_fraction"))
 
-        # format obs data and errors
-        self.obs = self.nmeasure_to_site_time(self.obs.rename("y_obs"))
-        self.obs_err = self.nmeasure_to_site_time(self.obs_err.rename("y_obs_error"))
+            _add_attributes_to_trace_dataset(trace_ds, obs_units, obs_long_name)
+            
+            # Map trace_ds back to self
+            object.__setattr__(self, 'trace_ds', self.nmeasure_to_site_time(trace_ds))
 
-        if self.obs_prior_factor is not None and self.obs_prior_upper_level_factor is not None:
-            self.obs_prior_factor = self.nmeasure_to_site_time(
-                self.obs_prior_factor.rename("y_obs_prior_factor")
-            )
-            self.obs_prior_upper_level_factor = self.nmeasure_to_site_time(
-                self.obs_prior_upper_level_factor.rename("y_obs_prior_upper_level_factor")
-            )
-        self.obs_repeatability = self.nmeasure_to_site_time(
-            self.obs_repeatability.rename("y_obs_repeatability")
-        )
-        self.obs_variability = self.nmeasure_to_site_time(self.obs_variability.rename("y_obs_variability"))
+            # 5. Format inv_inputs variables
+            self.inv_inputs["obs"] = self.nmeasure_to_site_time(self.inv_inputs.obs.rename("y_obs"))
+            
+            err_name = "obs_error" if "obs_error" in self.inv_inputs else "obs_err"
+            if err_name in self.inv_inputs:
+                self.inv_inputs[err_name] = self.nmeasure_to_site_time(self.inv_inputs[err_name].rename("y_obs_error"))
 
+            # 6. Create shortcuts for backward compatibility
+            object.__setattr__(self, 'obs', self.inv_inputs.obs)
+            object.__setattr__(self, 'flux', self.inv_inputs.flux)
+
+            logging.info("InversionOutput: Custom alignment successful.")
+
+        except Exception as e:
+            logging.warning(f"InversionOutput: Post-init alignment encountered an issue: {e}")
+    
     def __eq__(self, other: Any) -> bool:
         """Check equality between InversionOutput objects.
 
@@ -507,8 +512,13 @@ class InversionOutput:
             data with `nmeasure` converted to a stacked (site, time) coordinate.
 
         """
-        return _nmeasure_to_site_time(data, self.site_indicators, self.times, self.site_names)
-
+        #return _nmeasure_to_site_time(data, self.site_indicators, self.times, self.site_names)
+        return _nmeasure_to_site_time(
+            data, 
+            self.run_metadata.get("site_indicators"), 
+            self.run_metadata.get("times"), 
+            self.run_metadata.get("site_names")
+        )
     def get_trace_dataset(self, var_names: str | list[str] | None = None) -> xr.Dataset:
         """Return an xarray Dataset containing a prior/posterior parameter/predictive samples.
 
