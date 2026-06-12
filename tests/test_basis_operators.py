@@ -63,11 +63,29 @@ def test_bucket_basis_operator_roundtrip_preserves_default_state_dim():
     assert "state" in op2.basis_matrix.dims
 
 
+def test_bucket_basis_operator_accepts_zero_based_flat_basis():
+    """Legacy HBMCMC output basis labels can still reconstruct a dummy basis."""
+    basis = xr.DataArray(
+        np.array([[0, 1, 2]], dtype=int),
+        dims=("lat", "lon"),
+        coords={"lat": [0.0], "lon": [0.0, 1.0, 2.0]},
+        name="basis_flat",
+    )
+
+    op = BucketBasisOperator(basis, state_dim="state")
+
+    assert list(op.basis_matrix.state.values) == [0, 1, 2]
+    assert op.basis_matrix.sizes["state"] == 3
+
+
 # --------------------------------------------------------------------------------------
 # Test interpolation for MultiSourceBucketBasisOperator
 # --------------------------------------------------------------------------------------
 
-def _make_multisource_operator_for_broadcast_tests(state_dim: str = "state") -> MultiSourceBucketBasisOperator:
+
+def _make_multisource_operator_for_broadcast_tests(
+    state_dim: str = "state",
+) -> MultiSourceBucketBasisOperator:
     """Create a tiny multisource operator with ragged per-source region counts.
 
     Source A has 2 regions; source B has 1 region.
@@ -87,7 +105,9 @@ def _make_multisource_operator_for_broadcast_tests(state_dim: str = "state") -> 
     return MultiSourceBucketBasisOperator({"A": basis_a, "B": basis_b}, state_dim=state_dim)
 
 
-def _state_for_operator(op: MultiSourceBucketBasisOperator, values: list[float], name: str = "state") -> xr.DataArray:
+def _state_for_operator(
+    op: MultiSourceBucketBasisOperator, values: list[float], name: str = "state"
+) -> xr.DataArray:
     """Create a state(state) vector matching the operator's gathered MultiIndex order."""
     state_index = op.basis_matrix[op.meta.state_dim]
     if len(values) != state_index.size:
@@ -122,8 +142,13 @@ def test_multisource_interpolate_broadcasts_weights_source_to_state():
     assert set(out.dims) == {"lat", "lon"}
 
     expected = xr.DataArray(
-        np.array([[10.0 * 2.0 + 1000.0 * 3.0, 100.0 * 2.0 + 1000.0 * 3.0],
-                  [10.0 * 2.0 + 1000.0 * 3.0, 100.0 * 2.0 + 1000.0 * 3.0]], dtype=float),
+        np.array(
+            [
+                [10.0 * 2.0 + 1000.0 * 3.0, 100.0 * 2.0 + 1000.0 * 3.0],
+                [10.0 * 2.0 + 1000.0 * 3.0, 100.0 * 2.0 + 1000.0 * 3.0],
+            ],
+            dtype=float,
+        ),
         dims=("lat", "lon"),
         coords={"lat": [0, 1], "lon": [0, 1]},
         name=out.name,
@@ -163,3 +188,37 @@ def test_multisource_interpolate_broadcasts_weights_source_with_nontrivial_value
     )
 
     xr.testing.assert_allclose(out, expected)
+
+
+def test_multisource_operator_for_source_matches_source_slice_interpolation():
+    """Selected source operators reproduce the corresponding multisource interpolation slice."""
+    op = _make_multisource_operator_for_broadcast_tests(state_dim="state")
+
+    # Select the two-region source A from the gathered multisource operator.
+    selected = op.operator_for_source("A", state_dim="region")
+    source_state = xr.DataArray(
+        [2.0, 5.0],
+        dims=("region",),
+        coords={"region": [0, 1]},
+        name="x",
+    )
+    source_weights = xr.DataArray(
+        np.array([[3.0, 7.0], [11.0, 13.0]], dtype=float),
+        dims=("lat", "lon"),
+        coords={"lat": [0, 1], "lon": [0, 1]},
+        name="weights",
+    )
+
+    selected_out = selected.interpolate(source_state, weights=source_weights)
+
+    multisource_state = _state_for_operator(op, [2.0, 5.0, 0.0], name="x")
+    multisource_weights = xr.concat(
+        [
+            source_weights.expand_dims(source=["A"]),
+            xr.zeros_like(source_weights).expand_dims(source=["B"]),
+        ],
+        dim="source",
+    )
+    multisource_out = op.interpolate(multisource_state, weights=multisource_weights)
+
+    xr.testing.assert_allclose(selected_out, multisource_out)

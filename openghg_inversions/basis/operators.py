@@ -52,7 +52,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal, cast
 from typing_extensions import Self
 
 import numpy as np
@@ -386,7 +386,7 @@ class BucketBasisOperator(BasisOperator):
             region_labels: Policy for the output state coordinate labels:
                 - `"range0"`: `0..N-1` (legacy-friendly)
                 - `"range1"`: `1..N`
-                - `"basis_values"`: use the unique positive labels found in `basis_flat`.
+                - `"basis_values"`: use the ordered non-negative labels found in `basis_flat`.
             chunks: Optional chunking to apply to the basis matrix.
         """
         meta = meta or BasisMeta()
@@ -432,25 +432,37 @@ class BucketBasisOperator(BasisOperator):
             `mat` with an updated state coordinate.
 
         Notes:
-            This assumes `get_xr_dummies` orders categories in ascending order of the
-            unique positive labels in `basis_flat`.
+            This assumes `get_xr_dummies` orders categories in ascending order
+            of the unique labels in `basis_flat`. Both one-based basis labels
+            (`1..N`) and zero-based legacy output labels (`0..N-1`) are
+            accepted.
         """
-        # Determine basis label values present (assume positive ints, often 1..N)
         labels = np.unique(self.basis_flat.values.astype(int))
-        labels = labels[labels > 0]
-        n = len(labels)
+        positive_labels = labels[labels > 0]
+        non_negative_labels = labels[labels >= 0]
+        n = mat.sizes[self.meta.state_dim]
+
+        if len(positive_labels) == n:
+            basis_value_labels = positive_labels
+        elif len(non_negative_labels) == n:
+            basis_value_labels = non_negative_labels
+        else:
+            raise ValueError(
+                "Basis labels must be one-based positive values or zero-based non-negative values; "
+                f"got labels {labels.tolist()} for {n} dummy columns."
+            )
 
         if self.region_labels == "range0":
             coord = np.arange(n, dtype=int)
         elif self.region_labels == "range1":
             coord = np.arange(1, n + 1, dtype=int)
         elif self.region_labels == "basis_values":
-            coord = labels.astype(int)
+            coord = basis_value_labels.astype(int)
         else:
             raise ValueError(f"Unknown region_labels policy: {self.region_labels}")
 
         # Assign coordinate. Important: this assumes get_xr_dummies created state columns
-        # ordered by sorted unique labels > 0. If that assumption changes, we must reindex.
+        # ordered by sorted unique labels. If that assumption changes, we must reindex.
         return mat.assign_coords({self.meta.state_dim: coord})
 
     # ---- DataTree IO ----
@@ -582,6 +594,36 @@ class MultiSourceBucketBasisOperator(BasisOperator):
     def basis_matrix(self) -> xr.DataArray:
         """Basis matrix."""
         return self._basis_matrix
+
+    def operator_for_source(self, source: str, *, state_dim: str | None = None) -> BucketBasisOperator:
+        """Return a single-source bucket operator for one source.
+
+        This keeps source-specific basis selection at the operator boundary,
+        avoiding direct use of the legacy flat-basis compatibility view in
+        modern postprocessing code.
+
+        Args:
+            source: Source label to select from the source-specific basis
+                mapping.
+            state_dim: Optional state dimension for the returned single-source
+                operator. If omitted, the per-source region dimension is used.
+
+        Returns:
+            A single-source bucket operator for ``source``.
+
+        Raises:
+            ValueError: If ``source`` is not present in this operator.
+        """
+        try:
+            basis_flat = self.basis_flat[source]
+        except KeyError as exc:
+            raise ValueError(f"Basis operator is missing basis for source {source!r}.") from exc
+
+        meta = BasisMeta(grid_dims=self.meta.grid_dims, state_dim=state_dim or self.region_in_source_dim)
+        operator_cls = cast(Any, BucketBasisOperator)
+        return cast(
+            BucketBasisOperator, operator_cls(basis_flat=basis_flat, meta=meta, region_labels="range0")
+        )
 
     def _align_source_like_state(self, other: xr.DataArray) -> xr.DataArray:
         """Broadcast `other(source, ...)` onto `state` using the state MultiIndex level `source`.

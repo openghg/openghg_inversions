@@ -1,13 +1,417 @@
 from pathlib import Path
-from typing import Literal
+from collections.abc import Mapping
+from typing import Any, Literal, NamedTuple, cast
 
+import numpy as np
+import pandas as pd
 import xarray as xr
 
-from openghg_inversions.array_ops import sparse_xr_dot
+from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
+from openghg_inversions.postprocessing._basis_products import (
+    add_basis_reconstruction_metadata,
+    reconstruct_flux_stats,
+    reconstruct_scale_factor_stats,
+)
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.stats import calculate_stats
 from openghg_inversions.postprocessing.utils import rename_by_replacement
+
+
+OBSERVATION_OUTPUT_NAMES = {
+    "observation": "y_obs",
+    "observation_error": "y_obs_error",
+    "observation_prior_factor": "y_obs_prior_factor",
+    "observation_prior_upper_level_factor": "y_obs_prior_upper_level_factor",
+    "observation_repeatability": "y_obs_repeatability",
+    "observation_variability": "y_obs_variability",
+}
+REQUIRED_OBSERVATION_ROLES = (
+    "observation",
+    "observation_error",
+    "observation_repeatability",
+    "observation_variability",
+)
+OPTIONAL_OBSERVATION_ROLES = (
+    "observation_prior_factor",
+    "observation_prior_upper_level_factor",
+)
+TRACE_GROUP_SUFFIXES = (
+    "_prior_predictive",
+    "_posterior_predictive",
+    "_prior",
+    "_posterior",
+)
+_PRODUCT_METADATA_FIELDS = Literal["species", "domain", "start_date", "end_date"]
+
+
+class OutputSector(NamedTuple):
+    """Sector metadata needed for postprocessing reconstruction."""
+
+    name: str
+    flux_source: str
+    variable_suffix: str
+
+
+def _require_single_sector_output(inv_out: InversionOutput, product_name: str) -> None:
+    """Require single-sector input for a product that has not migrated to multisector."""
+    if inv_out.is_multisector:
+        raise ValueError(f"{product_name} supports only single-sector RHIME outputs.")
+
+
+def _multisector_output_sectors(inv_out: InversionOutput) -> list[OutputSector]:
+    """Return sector metadata from a multisector ``InversionOutput``."""
+    raw_sectors = inv_out.model_metadata.get("sectors")
+    if not raw_sectors:
+        raise ValueError("Multisector postprocessing requires sector metadata in model_metadata['sectors'].")
+
+    sectors: list[OutputSector] = []
+    for raw_sector in raw_sectors:
+        if isinstance(raw_sector, Mapping):
+            name = raw_sector.get("name")
+            flux_source = raw_sector.get("flux_source")
+            variable_suffix = raw_sector.get("variable_suffix")
+        else:
+            name = getattr(raw_sector, "name", None)
+            flux_source = getattr(raw_sector, "flux_source", None)
+            variable_suffix = getattr(raw_sector, "variable_suffix", None)
+        if name is None or flux_source is None or variable_suffix is None:
+            raise ValueError("Sector metadata must include 'name', 'flux_source', and 'variable_suffix'.")
+        sectors.append(OutputSector(str(name), str(flux_source), str(variable_suffix)))
+
+    return sectors
+
+
+def _sector_scale_trace(inv_out: InversionOutput, sector: OutputSector) -> xr.Dataset:
+    """Return one sector's scale trace renamed to the standard single-sector base name."""
+    base_name = f"x_{sector.variable_suffix}"
+    trace = inv_out.trace_dataset()
+    rename: dict[str, str] = {}
+    for suffix in TRACE_GROUP_SUFFIXES:
+        data_var = f"{base_name}{suffix}"
+        if data_var in trace:
+            rename[data_var] = f"x{suffix}"
+
+    if not rename:
+        raise ValueError(f"Could not find flux scale trace variable for sector {sector.name!r}.")
+
+    return trace[list(rename)].rename(rename)
+
+
+def _sector_flux(inv_out: InversionOutput, sector: OutputSector) -> xr.DataArray:
+    """Return prior flux for one sector."""
+    flux = inv_out.flux
+    if "source" in flux.dims:
+        return flux.sel(source=sector.flux_source, drop=True)
+    return flux
+
+
+def _sector_basis_functions(
+    inv_out: InversionOutput,
+    sector: OutputSector,
+    trace: xr.Dataset,
+) -> BasisFunctions:
+    """Return a basis object whose state dimension matches one sector trace."""
+    return inv_out.basis_functions.for_source(
+        sector.flux_source,
+        state_dim=_state_chunk_dim(trace, inv_out),
+    )
+
+
+def _require_output_metadata(
+    inv_out: InversionOutput,
+    field_name: _PRODUCT_METADATA_FIELDS,
+    product_name: str,
+) -> str:
+    """Return a required metadata field for a current single-sector product."""
+    value = getattr(inv_out, field_name)
+    if value is None:
+        raise ValueError(f"{product_name} requires InversionOutput metadata field {field_name!r}.")
+    return str(value)
+
+
+def _require_site_time_index(data: xr.DataArray | xr.Dataset) -> xr.DataArray | xr.Dataset:
+    """Require a restored site/time ``nmeasure`` MultiIndex."""
+    if "nmeasure" not in data.dims:
+        return data
+
+    index = data.indexes.get("nmeasure")
+    if isinstance(index, pd.MultiIndex) and list(index.names) == ["site", "time"]:
+        return data
+
+    raise ValueError(
+        "Modern postprocessing requires `nmeasure` to have restored site/time coordinates. "
+        "Coordinate restoration should happen when constructing InversionOutput, not in postprocessing."
+    )
+
+
+def _rename_trace_roles(
+    ds: xr.Dataset,
+    inv_out: InversionOutput,
+    role_output_names: dict[str, str],
+) -> xr.Dataset:
+    """Rename trace variables from concrete model names to product names."""
+    rename: dict[str, str] = {}
+    for role, output_name in role_output_names.items():
+        model_name = inv_out.variable_name(role)
+        for data_var in ds.data_vars:
+            name = str(data_var)
+            for suffix in TRACE_GROUP_SUFFIXES:
+                if name == f"{model_name}{suffix}":
+                    rename[name] = f"{output_name}{suffix}"
+                    break
+    return ds.rename(rename)
+
+
+def observation_inputs_for_outputs(inv_out: InversionOutput) -> xr.Dataset:
+    """Return observation inputs named for current basic/PARIS product helpers."""
+    _require_single_sector_output(inv_out, "Observation output formatting")
+    obs_inputs = inv_out.input_dataset(
+        REQUIRED_OBSERVATION_ROLES,
+        optional_roles=OPTIONAL_OBSERVATION_ROLES,
+    )
+    rename = {
+        inv_out.variable_name(role): output_name
+        for role, output_name in OBSERVATION_OUTPUT_NAMES.items()
+        if inv_out.variable_name(role) in obs_inputs
+    }
+    return cast(xr.Dataset, _require_site_time_index(obs_inputs.rename(rename)))
+
+
+def total_error_output(inv_out: InversionOutput, take_mean: bool = True) -> xr.DataArray:
+    """Return the posterior model-data mismatch error for basic/PARIS products."""
+    trace = _rename_trace_roles(
+        inv_out.trace_dataset(var_roles="model_error"),
+        inv_out,
+        {"model_error": "epsilon"},
+    )
+    result = trace.epsilon_posterior
+
+    if take_mean:
+        result = result.mean("draw")
+
+    obs_inputs = observation_inputs_for_outputs(inv_out)
+    result.attrs["units"] = obs_inputs["y_obs"].attrs.get("units", "")
+    result.attrs["long_name"] = "total model-data mismatch error"
+
+    return result.rename("total_error")
+
+
+def model_error_output(inv_out: InversionOutput) -> xr.DataArray:
+    """Return the inferred model-error component for basic/PARIS products."""
+    total_err = total_error_output(inv_out, take_mean=False)
+    obs = observation_inputs_for_outputs(inv_out)
+    total_obs_err = obs["y_obs_error"]
+
+    result = np.sqrt(np.maximum(total_err**2 - total_obs_err**2, 0)).mean("draw")  # type: ignore
+    result.attrs["units"] = obs["y_obs"].attrs.get("units", "")
+    result.attrs["long_name"] = "inferred model error"
+    return result.rename("model_error")
+
+
+def observation_and_error_outputs(inv_out: InversionOutput) -> xr.Dataset:
+    """Return observations and derived uncertainty terms for current products."""
+    result = xr.merge(
+        [observation_inputs_for_outputs(inv_out), model_error_output(inv_out), total_error_output(inv_out)]
+    )
+    result.attrs = {}
+    return result
+
+
+def flat_basis_for_output(inv_out: InversionOutput) -> xr.DataArray:
+    """Return the retained flat basis map for output formats that still report one."""
+    _require_single_sector_output(inv_out, "Flat-basis output formatting")
+    basis = inv_out.basis_functions.flat_basis()
+    if isinstance(basis, dict):
+        raise ValueError("Current single-sector output formats require one flat basis map.")
+    if "time" in basis.dims:
+        basis = basis.squeeze("time", drop=True)
+    return basis.as_numpy().rename("basis")
+
+
+def _state_chunk_dim(trace: xr.Dataset, inv_out: InversionOutput) -> str:
+    """Return the basis-state dimension for trace-stat chunking."""
+    state_dim = inv_out.basis_functions.operator.meta.state_dim
+    if state_dim in trace.dims:
+        return state_dim
+    if "region" in trace.dims:
+        return "region"
+    if "nx" in trace.dims:
+        return "nx"
+    raise ValueError(f"Could not find basis state dimension in trace dims {tuple(trace.dims)}.")
+
+
+def _stats_args_with_defaults(
+    stats: list[str] | None,
+    stats_args: dict | None,
+    *,
+    chunk_dim: str | None = None,
+) -> dict:
+    """Return a copied stats kwargs dictionary with standard optional entries."""
+    result = dict(stats_args or {})
+    if stats is not None:
+        result["stats"] = stats
+    if chunk_dim is not None:
+        result["chunk_dim"] = chunk_dim
+    return result
+
+
+def _rename_sector_flux_vars(ds: xr.Dataset, sector: OutputSector, *, total: bool = False) -> xr.Dataset:
+    """Rename standard flux output variables with sector or total labels."""
+    label = "total" if total else sector.variable_suffix
+    rename = {}
+    for data_var in ds.data_vars:
+        name = str(data_var)
+        if name.startswith("flux_"):
+            rename[name] = name.replace("flux_", f"flux_{label}_", 1)
+        elif name.startswith("scaling_"):
+            rename[name] = name.replace("scaling_", f"scaling_{label}_", 1)
+    return ds.rename(rename)
+
+
+def _sector_flux_trace_dataset(
+    inv_out: InversionOutput,
+    sector: OutputSector,
+    *,
+    report_flux_on_inversion_grid: bool,
+) -> xr.Dataset:
+    """Return one sector's per-draw reconstructed flux trace."""
+    trace = _sector_scale_trace(inv_out, sector)
+    basis_functions = _sector_basis_functions(inv_out, sector, trace)
+    sector_flux = _sector_flux(inv_out, sector)
+    reconstructed = reconstruct_flux_stats(
+        basis_functions,
+        sector_flux,
+        trace,
+        report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+    )
+    reconstructed = rename_by_replacement(reconstructed, "x", "flux")
+    return _rename_sector_flux_vars(reconstructed, sector)
+
+
+def _sector_scale_factor_stats(
+    inv_out: InversionOutput,
+    sector: OutputSector,
+    stats_args: dict,
+) -> xr.Dataset:
+    """Return one sector's gridded scale-factor statistics."""
+    trace = _sector_scale_trace(inv_out, sector)
+    basis_functions = _sector_basis_functions(inv_out, sector, trace)
+    scale_stats = calculate_stats(trace, **stats_args)
+    result = reconstruct_scale_factor_stats(basis_functions, scale_stats)
+    for data_var in result.data_vars:
+        if data_var in scale_stats.data_vars:
+            result[data_var].attrs = scale_stats[data_var].attrs
+            result[data_var].attrs["long_name"] = result[data_var].attrs["long_name"].replace("trace_of_", "")
+    result = rename_by_replacement(result, "x", "scaling")
+    return _rename_sector_flux_vars(result, sector)
+
+
+def _set_multisector_flux_attrs(
+    ds: xr.Dataset, inv_out: InversionOutput, sectors: list[OutputSector]
+) -> xr.Dataset:
+    """Restore units and readable long names on multisector flux variables."""
+    default_units = inv_out.flux.attrs.get("units", "")
+    sector_units = {
+        sector.variable_suffix: _sector_flux(inv_out, sector).attrs.get("units", default_units)
+        for sector in sectors
+    }
+    total_units = next(iter(sector_units.values()), default_units)
+
+    for data_var in ds.data_vars:
+        name = str(data_var)
+        if name.startswith("flux_total_"):
+            ds[data_var].attrs["units"] = total_units
+            ds[data_var].attrs["long_name"] = name.replace("_", " ")
+            continue
+
+        for sector in sectors:
+            if name.startswith(f"flux_{sector.variable_suffix}_"):
+                ds[data_var].attrs["units"] = sector_units[sector.variable_suffix]
+                ds[data_var].attrs["long_name"] = name.replace(
+                    f"flux_{sector.variable_suffix}_",
+                    f"{sector.name} flux ",
+                    1,
+                ).replace("_", " ")
+                break
+
+    return ds
+
+
+def _multisector_flux_trace_parts(
+    inv_out: InversionOutput,
+    report_flux_on_inversion_grid: bool = True,
+) -> tuple[list[OutputSector], list[xr.Dataset], xr.Dataset]:
+    """Return sector metadata, sector flux traces, and total flux trace."""
+    if not inv_out.is_multisector:
+        raise ValueError("Sector flux postprocessing requires multisector RHIME outputs.")
+
+    sectors = _multisector_output_sectors(inv_out)
+    sector_flux_traces = [
+        _sector_flux_trace_dataset(
+            inv_out,
+            sector,
+            report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+        )
+        for sector in sectors
+    ]
+    total_flux_trace = xr.concat(
+        [
+            dataset.rename(
+                {
+                    data_var: str(data_var).replace(f"flux_{sector.variable_suffix}_", "flux_total_", 1)
+                    for data_var in dataset.data_vars
+                }
+            )
+            for sector, dataset in zip(sectors, sector_flux_traces, strict=True)
+        ],
+        dim="sector",
+    ).sum("sector")
+
+    return sectors, sector_flux_traces, total_flux_trace
+
+
+def make_multisector_flux_trace_outputs(
+    inv_out: InversionOutput,
+    report_flux_on_inversion_grid: bool = True,
+) -> xr.Dataset:
+    """Return per-draw reconstructed sector and total flux traces for multisector outputs."""
+    _, sector_flux_traces, total_flux_trace = _multisector_flux_trace_parts(
+        inv_out,
+        report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+    )
+    result = xr.merge([total_flux_trace, *sector_flux_traces]).as_numpy()
+    return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
+
+
+def make_sector_flux_outputs(
+    inv_out: InversionOutput,
+    stats: list[str] | None = None,
+    stats_args: dict | None = None,
+    include_scale_factors: bool = True,
+    report_flux_on_inversion_grid: bool = True,
+) -> xr.Dataset:
+    """Return multisector flux statistics by sector plus correctly reconstructed total flux statistics."""
+    sectors, sector_flux_traces, total_flux_trace = _multisector_flux_trace_parts(
+        inv_out,
+        report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+    )
+    sample_trace = _sector_scale_trace(inv_out, sectors[0])
+    scale_stats_args = _stats_args_with_defaults(
+        stats,
+        stats_args,
+        chunk_dim=_state_chunk_dim(sample_trace, inv_out),
+    )
+    flux_stats_args = _stats_args_with_defaults(stats, stats_args)
+
+    outputs = [calculate_stats(total_flux_trace, **flux_stats_args)]
+    for sector, flux_trace in zip(sectors, sector_flux_traces, strict=True):
+        outputs.append(calculate_stats(flux_trace, **flux_stats_args))
+        if include_scale_factors:
+            outputs.append(_sector_scale_factor_stats(inv_out, sector, scale_stats_args))
+
+    result = _set_multisector_flux_attrs(xr.merge(outputs), inv_out, sectors).as_numpy()
+    return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
 
 def make_flux_outputs(
@@ -20,7 +424,7 @@ def make_flux_outputs(
     """Return dataset of stats for fluxes and scaling factors.
 
     Args:
-        inv_out: InversionOutput containing MCMC traces.
+        inv_out: Inversion output containing MCMC traces.
         stats: List of stats to use. If None, the default for
             calculate_stats is used, which is "mean" and "quantiles". See the
             postprocessing.stats submodule for more options.
@@ -42,24 +446,31 @@ def make_flux_outputs(
         xr.Dataset with computed flux stats.
 
     """
-    trace = inv_out.get_trace_dataset(var_names="x")
+    if inv_out.is_multisector:
+        return make_sector_flux_outputs(
+            inv_out,
+            stats=stats,
+            stats_args=stats_args,
+            include_scale_factors=include_scale_factors,
+            report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+        )
 
-    if stats_args is None:
-        stats_args = {}
+    _require_single_sector_output(inv_out, "Flux postprocessing")
+    trace = _rename_trace_roles(
+        inv_out.trace_dataset(var_roles="flux_scale"),
+        inv_out,
+        {"flux_scale": "x"},
+    )
 
-    if stats is not None:
-        stats_args["stats"] = stats
-
-    stats_args["chunk_dim"] = "nx"
+    stats_args = _stats_args_with_defaults(stats, stats_args, chunk_dim=_state_chunk_dim(trace, inv_out))
     stats_ds = calculate_stats(trace, **stats_args)
 
-    if report_flux_on_inversion_grid:
-        agg_flux = (
-            (inv_out.basis * inv_out.flux).sum(["lat", "lon"]) / inv_out.basis.sum(["lat", "lon"])
-        ).fillna(0.0)
-        flux_stats = sparse_xr_dot(inv_out.basis, agg_flux * stats_ds)
-    else:
-        flux_stats = sparse_xr_dot((inv_out.flux * inv_out.basis), stats_ds)
+    flux_stats = reconstruct_flux_stats(
+        inv_out.basis_functions,
+        inv_out.flux,
+        stats_ds,
+        report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+    )
 
     for dv in flux_stats.data_vars:
         if dv in stats_ds.data_vars:
@@ -72,7 +483,7 @@ def make_flux_outputs(
     flux_stats = rename_by_replacement(flux_stats, "x", "flux")
 
     if include_scale_factors:
-        scale_factor_stats = sparse_xr_dot(inv_out.basis, stats_ds)
+        scale_factor_stats = reconstruct_scale_factor_stats(inv_out.basis_functions, stats_ds)
 
         for dv in scale_factor_stats.data_vars:
             if dv in stats_ds.data_vars:
@@ -85,11 +496,15 @@ def make_flux_outputs(
 
         flux_stats = xr.merge([flux_stats, scale_factor_stats])
 
+<<<<<<< HEAD
     print(f"flux_stats sizes: {dict(flux_stats.sizes)}")
     print(f"flux_stats dtype: {flux_stats[list(flux_stats.data_vars)[0]].dtype}")
     print(f"Estimated memory: {sum(v.size * v.dtype.itemsize for v in flux_stats.values()) / 1e9:.1f} GB")
     
     return flux_stats.as_numpy()
+=======
+    return add_basis_reconstruction_metadata(flux_stats.as_numpy(), inv_out.basis_functions)
+>>>>>>> devel
 
 
 def flatten_post_prior(ds: xr.Dataset) -> xr.Dataset:
@@ -102,7 +517,7 @@ def flatten_post_prior(ds: xr.Dataset) -> xr.Dataset:
     ds_list = []
     dvs_list = []
     for coord, when in [("post", "posterior"), ("prior", "prior")]:
-        dvs = [str(dv) for dv in ds.data_vars if when in dv]
+        dvs = [str(dv) for dv in ds.data_vars if when in str(dv)]
         dvs_list.extend(dvs)
         # select either "posterior" or "prior" vars, remove those from the variable names
         # then add "post" or "prior" as a coordinate for the dimension "when"
@@ -161,7 +576,7 @@ def make_concentration_outputs(
     """Return dataset of stats for concentrations.
 
     Args:
-        inv_out: InversionOutput containing MCMC traces.
+        inv_out: Inversion output containing MCMC traces.
         stats: List of stats to use. If None, the default for
             calculate_stats is used, which is "mean" and "quantiles". See the
             postprocessing.stats submodule for more options.
@@ -179,24 +594,37 @@ def make_concentration_outputs(
         xr.Dataset with computed flux stats.
 
     """
-    conc_vars = ["y"]
+    posterior = cast(Any, inv_out.trace).posterior
+    concentration_role = "concentration"
+    baseline_role = "baseline"
+    offset_role = "offset"
+    conc_roles = [concentration_role]
+    baseline_name = inv_out.variable_name(baseline_role)
+    offset_name = inv_out.variable_name(offset_role)
 
-    if "mu_bc" in inv_out.trace.posterior:
-        conc_vars.append("mu_bc")
+    if baseline_name in posterior:
+        conc_roles.append(baseline_role)
 
-    if "offset" in inv_out.trace.posterior:
-        conc_vars.append("offset")
+    if offset_name in posterior:
+        conc_roles.append(offset_role)
 
-    trace = inv_out.get_trace_dataset(var_names=conc_vars)
+    trace = _rename_trace_roles(
+        inv_out.trace_dataset(var_roles=conc_roles),
+        inv_out,
+        {concentration_role: "y", baseline_role: "mu_bc", offset_role: "offset"},
+    )
 
-    if combine_bc_and_offset and "offset" in conc_vars:
+    if combine_bc_and_offset and offset_role in conc_roles:
         for dv in trace.data_vars:
             if str(dv).startswith("mu_bc"):
                 offset_dv = str(dv).replace("mu_bc", "offset")
                 trace[dv] = trace[dv] + trace[offset_dv]
 
                 # update long name, creating if not present
-                trace[dv].attrs["long_name"] = trace[dv].attrs.get("long_name", str(dv).split("_")[-1] + "_baseline") + "_including_offset"
+                trace[dv].attrs["long_name"] = (
+                    trace[dv].attrs.get("long_name", str(dv).split("_")[-1] + "_baseline")
+                    + "_including_offset"
+                )
 
     if stats_args is None:
         stats_args = {}
@@ -215,18 +643,20 @@ def make_concentration_outputs(
 def make_country_outputs(
     inv_out: InversionOutput,
     country_file: str | Path | None = None,
+    country_selections: list[str] | None = None,
     country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
     stats_args: dict | None = None,
-    country_code: Literal["alpha2", "alpha3"] | None = "alpha3"
+    country_code: Literal["alpha2", "alpha3"] | None = "alpha3",
 ) -> xr.Dataset:
     """Calculate country emission stats.
 
     Args:
-        inv_out: InversionOutput containing MCMC traces.
+        inv_out: Inversion output containing MCMC traces.
         country_file: Path to country definition file. If None, the default
-            country file location and the domain of the InversionOutput will be used
+            country file location and the domain of the inversion output will be used
             to try to find a suitable country file.
+        country_selections: Optional country names or country codes to report.
         country_regions: Dict mapping country region names (e.g. "BENELUX") to a
             list of (country codes) of the countries comprising that regions (e.g.
             ["BEL", "NLD", "LUX"]).
@@ -248,10 +678,12 @@ def make_country_outputs(
         xr.Dataset containing statistics for the specified countries and regions.
 
     """
+    _require_single_sector_output(inv_out, "Country postprocessing")
+    domain = _require_output_metadata(inv_out, "domain", "Country postprocessing")
     drop_missing_regions = False
 
     if country_regions == "paris":
-        country_regions = paris_regions_dict.get(inv_out.domain.lower())
+        country_regions = paris_regions_dict.get(domain.lower())
         drop_missing_regions = True
     elif isinstance(country_regions, str):
         country_regions = Path(country_regions)
@@ -259,8 +691,9 @@ def make_country_outputs(
     countries = Countries.from_file(
         country_file=country_file,
         country_code=country_code,
+        country_selections=country_selections,
         country_regions=country_regions,
-        domain=inv_out.domain,
+        domain=domain,
         drop_missing_regions=drop_missing_regions,
     )
     country_traces = countries.get_country_trace(inv_out=inv_out)
@@ -272,7 +705,7 @@ def make_country_outputs(
 
     country_stats = calculate_stats(country_traces, **stats_args)
 
-    return country_stats.as_numpy()
+    return add_basis_reconstruction_metadata(country_stats.as_numpy(), inv_out.basis_functions)
 
 
 def basic_output(
@@ -280,7 +713,7 @@ def basic_output(
     country_file: str | Path | None = None,
     country_regions: str | Path | dict[str, list[str]] | Literal["paris"] | None = None,
     stats: list[str] | None = None,
-    stats_args: dict | None = None
+    stats_args: dict | None = None,
 ) -> xr.Dataset:
     """Create basic output with concentrations, flux totals, and country totals.
 
@@ -288,7 +721,7 @@ def basic_output(
     to create the model, like "H matrices" and the flux used.
 
     Args:
-        inv_out: InversionOutput to process
+        inv_out: inversion output to process
         country_file: path to country file
         country_regions: optional country regions to use. If "paris" is passed,
         then the PARIS regions will be used.
@@ -301,7 +734,8 @@ def basic_output(
         totals.
 
     """
-    obs_and_errs = inv_out.get_obs_and_errors()
+    _require_single_sector_output(inv_out, "Basic postprocessing")
+    obs_and_errs = observation_and_error_outputs(inv_out)
     conc_outs = make_concentration_outputs(inv_out, stats=stats, stats_args=stats_args)
     flux_outs = make_flux_outputs(inv_out, stats=stats, stats_args=stats_args)
     country_outs = make_country_outputs(
@@ -309,15 +743,30 @@ def basic_output(
         country_file=country_file,
         country_regions=country_regions,
         stats=stats,
-        stats_args=stats_args
+        stats_args=stats_args,
     )
 
-    model_data = inv_out.get_model_data(var_names=["hx", "hbc", "min_error"]).rename(
-        {"hx": "Hx", "hbc": "Hbc", "min_error": "min_model_error"}
+    model_data = inv_out.model_data(
+        var_roles=["emissions_sensitivity", "baseline_sensitivity", "minimum_error"]
+    )
+    model_data_renames = {
+        inv_out.variable_name("emissions_sensitivity"): "Hx",
+        inv_out.variable_name("baseline_sensitivity"): "Hbc",
+        inv_out.variable_name("minimum_error"): "min_model_error",
+    }
+    model_data = model_data.rename(
+        {name: output_name for name, output_name in model_data_renames.items() if name in model_data}
     )
 
     result = xr.merge(
-        [obs_and_errs, conc_outs, flux_outs, country_outs, model_data, inv_out.get_flat_basis()]
+        [
+            obs_and_errs,
+            conc_outs,
+            flux_outs,
+            country_outs,
+            model_data,
+            flat_basis_for_output(inv_out),
+        ]
     )
 
     for dv in result.data_vars:
@@ -326,4 +775,4 @@ def basic_output(
 
     result.attrs["description"] = "RHIME inversion outputs."
 
-    return result
+    return add_basis_reconstruction_metadata(result, inv_out.basis_functions)

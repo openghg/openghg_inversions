@@ -1,6 +1,7 @@
 """Functions for creating the inputs needed by PyMC."""
 
 import datetime as dt
+import numbers
 from typing import Any, Iterable, Literal
 
 import numpy as np
@@ -11,6 +12,16 @@ from openghg_inversions.array_ops import get_xr_dummies, concat_gather_datasets
 from openghg_inversions.model_error import percentile_error_method, residual_error_method, xr_setup_min_error
 
 DatetimeLike = str | dt.datetime | np.datetime64 | pd.Timestamp
+
+
+def _compact_integer_index(values: np.ndarray) -> np.ndarray:
+    """Remap integer indicator values to contiguous 0..N-1 positions."""
+    values = np.asarray(values, dtype=int)
+    if values.size == 0:
+        return values
+
+    unique_values = np.unique(values)
+    return np.searchsorted(unique_values, values).astype(int)
 
 
 def xr_unique_inv(da: xr.DataArray, sort: bool = True) -> xr.DataArray:
@@ -79,6 +90,10 @@ def make_freq_indicator(
         return time.dt.month - time.min().dt.month + 12 * (time.dt.year - time.min().dt.year)
 
     # fixed-duration freq strings (e.g. "8d", "12h", "3h")
+    if isinstance(freq, str) and freq.isalpha():
+        freq = f"1{freq}"
+    if isinstance(freq, str):
+        freq = freq.replace("H", "h")
     anchor = np.datetime64(anchor_time) if anchor_time is not None else time.min().values
     dt = np.timedelta64(pd.to_timedelta(freq).value, "ns")  # robust to xarray dtype
     idx = ((time.values.astype("datetime64[ns]") - anchor) // dt).astype(int)
@@ -91,40 +106,76 @@ def make_sigma_freq(
     freq: Literal["monthly"] | str | None = None,
     anchor_time: DatetimeLike | None = None,
 ) -> xr.DataArray:
-    res = (
+    result = (
         xr.zeros_like(time).astype(int)
         if freq is None
         else make_freq_indicator(time, freq, anchor_time=anchor_time)
     )
-    return res.rename("sigma_freq_index")
+    result = xr.apply_ufunc(_compact_integer_index, result.astype(int))
+    return result.rename("sigma_freq_index")
 
 
 # ADD FUNCTIONS
 def add_min_error(
     ds: xr.Dataset,
     fp_data: dict[str, Any],
-    min_error: str | dict[str, float] | float = 0.0,
+    min_error: str | dict[str, float] | int | float = 0.0,
     min_error_per_site: bool = True,
 ) -> xr.Dataset:
     """Add min_error to combined Dataset."""
-    if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
-        ds["min_error"] = min_error * xr.ones_like(ds.mf)
+    min_error_data: xr.DataArray | float | np.ndarray
+
+    def site_names_for_min_error() -> list[str]:
+        if "site_names" in ds:
+            return [str(site) for site in ds.site_names.values]
+        if "site" in ds:
+            return [str(site) for site in make_site_names(ds.site).values]
+        return [site for site in fp_data if not site.startswith(".")]
+
+    def site_indicator_for_min_error() -> xr.DataArray:
+        if "site_indicator" in ds:
+            return ds.site_indicator
+        if "site" in ds:
+            return xr_unique_inv(ds.site, sort=False).rename("site_indicator")
+        raise ValueError("Per-site min_error values require site_indicator or site data.")
+
+    def fp_data_for_ds_sites() -> dict[str, Any]:
+        return {site: fp_data[site] for site in site_names_for_min_error()}
+
+    if isinstance(min_error, numbers.Real) and not isinstance(min_error, bool):
+        min_error_data = float(min_error) * xr.ones_like(ds.mf)
+    elif isinstance(min_error, np.ndarray) and min_error.ndim == 0:
+        min_error_data = min_error * xr.ones_like(ds.mf)
     elif isinstance(min_error, dict):
-        sites = [k for k in fp_data if not k.startswith(".")]
+        fp_data_for_sites = fp_data_for_ds_sites()
+        sites = list(fp_data_for_sites)
+        missing_sites = [site for site in sites if site not in min_error]
+        if missing_sites:
+            raise ValueError(f"min_error mapping is missing values for site(s): {missing_sites}")
         err_per_site = np.array([min_error[site] for site in sites])
-        ds["min_error"] = xr_setup_min_error(err_per_site, ds.site_indicator)
+        min_error_data = xr_setup_min_error(err_per_site, site_indicator_for_min_error())
     elif min_error == "residual":
-        res_err = residual_error_method(fp_data)
+        fp_data_for_sites = fp_data_for_ds_sites()
+        res_err = residual_error_method(fp_data_for_sites, by_site=min_error_per_site)
         if min_error_per_site:
-            ds["min_error"] = xr_setup_min_error(res_err, ds.site_indicator)
+            min_error_data = xr_setup_min_error(res_err, site_indicator_for_min_error())
         else:
-            ds["min_error"] = res_err
+            min_error_data = res_err
     elif min_error == "percentile":
-        perc_err = percentile_error_method(fp_data)
-        ds["min_error"] = xr_setup_min_error(perc_err, ds.site_indicator)
+        fp_data_for_sites = fp_data_for_ds_sites()
+        perc_err = percentile_error_method(fp_data_for_sites)
+        min_error_data = xr_setup_min_error(perc_err, site_indicator_for_min_error())
     else:
         raise ValueError(f"Option '{min_error}' is not valid.")
 
+    if not isinstance(min_error_data, xr.DataArray):
+        min_error_data = xr.full_like(ds.mf, min_error_data).rename("min_error")
+    elif "nmeasure" not in min_error_data.dims:
+        min_error_data = xr.full_like(ds.mf, min_error_data.values).rename("min_error")
+    else:
+        min_error_data = min_error_data.rename("min_error")
+
+    ds["min_error"] = xr.DataArray(min_error_data.data, dims=("nmeasure",), name="min_error")
     return ds
 
 
@@ -176,7 +227,9 @@ def transform_bc(
 
 
 # INVERSION INPUTS PIPELINE
-def _drop_nan_and_compute(ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")) -> xr.Dataset:
+def _drop_nan_and_compute(
+    ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")
+) -> xr.Dataset:
     """Drop NaNs in required inversion variables and materialize core variables.
 
     This centralizes the dataset cleanup that was previously duplicated in
@@ -213,10 +266,37 @@ def _drop_nan_and_compute(ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "
         "mf_mod",
     ]
     to_compute = [v for v in to_compute if v in ds]
-    if to_compute:
-        ds[to_compute] = ds[to_compute].compute()
+    for var_name in to_compute:
+        computed = ds[var_name].compute()
+        ds[var_name] = (computed.dims, computed.data, computed.attrs)
 
     return ds
+
+
+def _check_required_inv_input_vars(
+    ds: xr.Dataset, fp_data: dict[str, Any], sites: list[str], required_vars: Iterable[str] = ()
+) -> None:
+    """Raise if concat-drop mode removed variables required by the inversion pipeline.
+
+    Args:
+        ds: Gathered inversion-input dataset after concatenation.
+        fp_data: Original per-site input datasets.
+        sites: Site names included in the inversion input assembly.
+        required_vars: Variables that must always be present after concatenation.
+
+    Raises:
+        ValueError: If a required variable is missing from the gathered dataset.
+    """
+    missing_required = [var for var in required_vars if var not in ds]
+
+    if any("H_bc" in fp_data[site] for site in sites) and "H_bc" not in ds:
+        missing_required.append("H_bc")
+
+    if missing_required:
+        raise ValueError(
+            "Required inversion data variables were dropped during dataset gathering: "
+            f"{sorted(set(missing_required))}"
+        )
 
 
 def make_inv_inputs(
@@ -224,7 +304,7 @@ def make_inv_inputs(
     sites: list[str] | None = None,
     bc_freq: Literal["monthly"] | str | None = None,
     sigma_freq: Literal["monthly"] | str | None = None,
-    min_error: str | dict[str, float] | float = 0.0,
+    min_error: str | dict[str, float] | int | float = 0.0,
     min_error_per_site: bool = True,
     start_date: DatetimeLike | None = None,
 ) -> xr.Dataset:
@@ -235,13 +315,29 @@ def make_inv_inputs(
         key_dim="site",
         ragged_dim="time",
         stack_dim="nmeasure",
+        missing_data_vars="drop",
+    )
+
+    # Check that we have variables for standard RHIME inversion (`inferpymc`).
+    # Note that mf_prior_factor and mf_prior_upper_level_factor are only needed
+    # for post-processing (and only if column data is used).
+    _check_required_inv_input_vars(
+        ds,
+        fp_data=fp_data,
+        sites=sites,
+        required_vars=("H", "mf", "mf_error", "mf_repeatability", "mf_variability"),
     )
 
     if "H_bc" in ds:
         ds = transform_bc(ds, freq=bc_freq, anchor_time=start_date)
 
     ds = add_site_indicator(ds)
-    ds["sigma_freq_index"] = make_sigma_freq(ds.time, freq=sigma_freq, anchor_time=start_date)
+    sigma_freq_index = make_sigma_freq(ds.time, freq=sigma_freq, anchor_time=start_date)
+    ds["sigma_freq_index"] = xr.DataArray(
+        sigma_freq_index.data,
+        dims=("nmeasure",),
+        name="sigma_freq_index",
+    )
 
     ds = add_min_error(ds, fp_data=fp_data, min_error=min_error, min_error_per_site=min_error_per_site)
 

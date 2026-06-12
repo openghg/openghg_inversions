@@ -4,7 +4,7 @@ from openghg.retrieve import get_footprint, get_flux
 
 from openghg_inversions.utils import combine_datasets
 
-def test_combine_datasets():
+def test_combine_datasets(openghg_test_store):
     fp = get_footprint(site="tac", domain="europe").data
     flux = get_flux(species="ch4", source="total-ukghg-edgar7", domain="europe").data
 

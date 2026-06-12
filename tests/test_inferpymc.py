@@ -1,5 +1,3 @@
-from types import MappingProxyType
-
 import arviz as az
 import numpy as np
 import pandas as pd
@@ -7,69 +5,19 @@ import pymc as pm
 import pytest
 import xarray as xr
 
-from openghg_inversions.hbmcmc.hbmcmc import make_inv_inputs_legacy
+import openghg_inversions.hbmcmc.inversion_pymc as inversion_pymc_module
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.hbmcmc.inversion_pymc import (
-    InferPyMCModelSetup,
-    _prepare_inferpymc_inputs,
-    _restore_inferencedata_coords,
     build_inferpymc_model,
     inferpymc,
+    sample,
 )
+from openghg_inversions.models.coords import restore_inferencedata_coords
 
 
 @pytest.fixture(scope="module")
-def inferpymc_args(mhd_and_tac_fp_data) -> MappingProxyType:
-    """Create direct inputs for inferpymc using existing inversion input machinery.
-
-    NOTE: the module level scope allows us to define other module scoped fixtures
-    using this fixture, but it means we need to be careful about not mutating the
-    return of the fixture.
-
-    The result is wrapped in a MappingProxyType as a precaution.
-    """
-    mcmc_args, _ = make_inv_inputs_legacy(
-        fp_data=mhd_and_tac_fp_data,
-        sites=["MHD", "TAC"],
-        start_date="2019-01-01",
-        use_bc=True,
-        bc_freq="3h",
-        sigma_freq="3h",
-        min_error="percentile",
-        calculate_min_error=None,
-        min_error_options={},
-    )
-
-    mcmc_args.update(
-        {
-            "nit": 1,
-            "burn": 0,
-            "tune": 0,
-            "nchain": 1,
-            "xprior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-            "bcprior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
-            "sigprior": {"pdf": "uniform", "lower": 0.1, "upper": 10.0},
-            "sigma_per_site": True,
-            "offsetprior": {"pdf": "normal", "mu": 0, "sigma": 1},
-            "add_offset": False,
-            "min_error": 0.0,
-            "use_bc": True,
-            "reparameterise_log_normal": False,
-            "pollution_events_from_obs": True,
-            "no_model_error": False,
-            "offset_args": {"drop_first": False, "offset_freq": "D"},
-            "power": 1.99,
-            "verbose": False,
-            "sampler_kwargs": {"random_seed": 123, "compute_convergence_checks": False},
-        }
-    )
-    return MappingProxyType(mcmc_args)
-
-
-@pytest.fixture(scope="module")
-def inferpymc_inputs_dataset(mhd_and_tac_fp_data) -> xr.Dataset:
-    """Create xarray inversion inputs for the Stage B dataset path."""
-    ds = make_inv_inputs(
+def inv_inputs(mhd_and_tac_fp_data) -> xr.Dataset:
+    return make_inv_inputs(
         mhd_and_tac_fp_data,
         sites=["MHD", "TAC"],
         bc_freq="3h",
@@ -78,90 +26,137 @@ def inferpymc_inputs_dataset(mhd_and_tac_fp_data) -> xr.Dataset:
         min_error_per_site=False,
         start_date="2019-01-01",
     )
-    return ds
 
 
-def test_build_inferpymc_model_returns_setup_for_pymc(inferpymc_args: dict) -> None:
-    """Check extracted model builder returns PyMC step methods for the pymc sampler."""
-    setup = build_inferpymc_model(
-        Hx=inferpymc_args["Hx"],
-        Y=inferpymc_args["Y"],
-        error=inferpymc_args["error"],
-        siteindicator=inferpymc_args["siteindicator"],
-        sigma_freq_index=inferpymc_args["sigma_freq_index"],
-        Hbc=inferpymc_args["Hbc"],
-        xprior=inferpymc_args["xprior"],
-        bcprior=inferpymc_args["bcprior"],
-        sigprior=inferpymc_args["sigprior"],
-        sigma_per_site=inferpymc_args["sigma_per_site"],
-        offsetprior=inferpymc_args["offsetprior"],
-        add_offset=inferpymc_args["add_offset"],
-        min_error=inferpymc_args["min_error"],
-        use_bc=inferpymc_args["use_bc"],
-        reparameterise_log_normal=inferpymc_args["reparameterise_log_normal"],
-        pollution_events_from_obs=inferpymc_args["pollution_events_from_obs"],
-        no_model_error=inferpymc_args["no_model_error"],
-        offset_args=inferpymc_args["offset_args"],
-        power=inferpymc_args["power"],
-        nuts_sampler="pymc",
+@pytest.fixture
+def model_args() -> dict:
+    return {
+        "xprior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+        "bcprior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+        "sigprior": {"pdf": "uniform", "lower": 0.1, "upper": 10.0},
+        "sigma_per_site": True,
+        "offsetprior": {"pdf": "normal", "mu": 0, "sigma": 1},
+        "add_offset": False,
+        "use_bc": True,
+        "reparameterise_log_normal": False,
+        "pollution_events_from_obs": True,
+        "no_model_error": False,
+        "offset_args": {"drop_first": False, "offset_freq": "D"},
+        "power": 1.99,
+    }
+
+
+@pytest.fixture
+def sample_args() -> dict:
+    return {"draws": 1, "tune": 0, "chains": 1, "random_seed": 123, "compute_convergence_checks": False}
+
+
+def test_build_inferpymc_model_returns_model(inv_inputs: xr.Dataset, model_args: dict) -> None:
+    """Building the modern inferpymc model returns a PyMC model with canonical coords."""
+    model = build_inferpymc_model(inv_inputs, **model_args)
+
+    assert isinstance(model, pm.Model)
+    assert len(model.coords["nmeasure"]) == inv_inputs.sizes["nmeasure"]
+    assert len(model.coords["region"]) == inv_inputs.sizes["region"]
+    assert len(model.coords["bc_region"]) == inv_inputs.sizes["bc_region"]
+    assert len(model.coords["nsigma_site"]) == len(np.unique(inv_inputs["site_indicator"].values))
+    assert len(model.coords["nsigma_time"]) == len(np.unique(inv_inputs["sigma_freq_index"].values))
+
+
+def test_build_inferpymc_model_warns_for_deprecated_reparameterise_flag(
+    inv_inputs: xr.Dataset, model_args: dict
+) -> None:
+    """The transitional lognormal reparameterisation flag still warns."""
+    args = dict(model_args)
+    args["xprior"] = {"pdf": "lognormal", "mu": 1.0, "sigma": 1.0}
+    args["reparameterise_log_normal"] = True
+
+    with pytest.warns(DeprecationWarning, match="reparameterise=True"):
+        build_inferpymc_model(inv_inputs, **args)
+
+
+def test_build_inferpymc_model_requires_inv_inputs() -> None:
+    """The model builder requires canonical inversion inputs."""
+    with pytest.raises(TypeError):
+        build_inferpymc_model()  # type: ignore[call-arg]
+
+
+def test_sample_returns_burned_modern_result(
+    inv_inputs: xr.Dataset, model_args: dict, sample_args: dict
+) -> None:
+    """Modern sampling returns burn-sliced inference data with canonical dims."""
+    model = build_inferpymc_model(inv_inputs, **model_args)
+    args = dict(sample_args)
+    args.update({"draws": 2, "burn": 1})
+
+    modern_result = sample(model, **args)
+
+    assert isinstance(modern_result, az.InferenceData)
+    assert modern_result.posterior.sizes["draw"] == 1
+    assert "region" in modern_result.posterior["x"].dims
+    assert "bc_region" in modern_result.posterior["bc"].dims
+
+
+def test_sample_does_not_add_predictive_groups_by_default(
+    inv_inputs: xr.Dataset, model_args: dict, sample_args: dict
+) -> None:
+    """Modern sampling leaves predictive groups out unless requested."""
+    model = build_inferpymc_model(inv_inputs, **model_args)
+    modern_result = sample(model, **sample_args)
+
+    assert "prior" not in modern_result
+    assert "prior_predictive" not in modern_result
+    assert "posterior_predictive" not in modern_result
+
+
+def test_sample_accepts_plain_model_and_predictive_options(
+    inv_inputs: xr.Dataset, model_args: dict, sample_args: dict
+) -> None:
+    """Modern sampling adds predictive groups only when explicitly requested."""
+    model = build_inferpymc_model(inv_inputs, **model_args)
+    args = dict(sample_args)
+    args.update({"sample_prior_predictive": True, "sample_posterior_predictive": ["y"]})
+
+    modern_result = sample(model, **args)
+
+    assert "prior" in modern_result
+    assert "prior_predictive" in modern_result
+    assert "posterior_predictive" in modern_result
+
+
+def test_sample_always_returns_inferencedata(
+    inv_inputs: xr.Dataset, model_args: dict, sample_args: dict
+) -> None:
+    """Modern sampling always returns InferenceData regardless of caller kwargs."""
+    model = build_inferpymc_model(inv_inputs, **model_args)
+    args = dict(sample_args)
+    args["return_inferencedata"] = False
+
+    modern_result = sample(model, **args)
+
+    assert isinstance(modern_result, az.InferenceData)
+
+
+def test_sample_preserves_log_likelihood(inv_inputs: xr.Dataset, model_args: dict, sample_args: dict) -> None:
+    """Modern sampling keeps log likelihood data in the trace."""
+    model = build_inferpymc_model(inv_inputs, **model_args)
+    modern_result = sample(model, **sample_args)
+
+    assert "log_likelihood" in modern_result
+
+
+def test_inferpymc_preserves_legacy_compatibility_outputs(inv_inputs: xr.Dataset, model_args: dict) -> None:
+    """The public inferpymc wrapper still returns the legacy-shaped outputs."""
+    result = inferpymc(
+        inv_inputs=inv_inputs,
+        nit=1,
+        burn=0,
+        tune=0,
+        nchain=1,
+        verbose=False,
+        sampler_kwargs={"random_seed": 123, "compute_convergence_checks": False},
+        **model_args,
     )
-
-    assert isinstance(setup, InferPyMCModelSetup)
-    assert isinstance(setup.model, pm.Model)
-    assert isinstance(setup.step1, pm.NUTS)
-    assert isinstance(setup.step2, pm.Slice)
-    assert setup.sample_kwargs["step"] == [setup.step1, setup.step2]
-
-
-def test_build_inferpymc_model_returns_no_steps_for_numpyro(inferpymc_args: dict) -> None:
-    """Check model setup does not pass steps them via sample_kwargs['step'] for the numpyro sampler.
-
-    The steps are still created by build_inferpymc_model and stored in the dataclass. This matches
-    the pre-existing behaviour, but perhaps should be changed.
-    """
-    setup = build_inferpymc_model(
-        Hx=inferpymc_args["Hx"],
-        Y=inferpymc_args["Y"],
-        error=inferpymc_args["error"],
-        siteindicator=inferpymc_args["siteindicator"],
-        sigma_freq_index=inferpymc_args["sigma_freq_index"],
-        Hbc=inferpymc_args["Hbc"],
-        xprior=inferpymc_args["xprior"],
-        bcprior=inferpymc_args["bcprior"],
-        sigprior=inferpymc_args["sigprior"],
-        sigma_per_site=inferpymc_args["sigma_per_site"],
-        offsetprior=inferpymc_args["offsetprior"],
-        add_offset=inferpymc_args["add_offset"],
-        min_error=inferpymc_args["min_error"],
-        use_bc=inferpymc_args["use_bc"],
-        reparameterise_log_normal=inferpymc_args["reparameterise_log_normal"],
-        pollution_events_from_obs=inferpymc_args["pollution_events_from_obs"],
-        no_model_error=inferpymc_args["no_model_error"],
-        offset_args=inferpymc_args["offset_args"],
-        power=inferpymc_args["power"],
-        nuts_sampler="numpyro",
-    )
-
-    assert isinstance(setup, InferPyMCModelSetup)
-    assert isinstance(setup.model, pm.Model)
-    assert isinstance(setup.step1, pm.NUTS)
-    assert isinstance(setup.step2, pm.Slice)
-    assert setup.sample_kwargs["step"] is None
-
-
-@pytest.fixture(scope="module")
-def inferpymc_with_bc_result(inferpymc_args: dict):
-    """Run inferpymc with inferpymc_args, including use_bc=True.
-
-    The results from `inferpymc(**inferpymc_args)` are used at least
-    twice in the tests, so this fixture saves some computation.
-    """
-    return inferpymc(**inferpymc_args)
-
-
-def test_inferpymc_runs_on_inversion_inputs(inferpymc_args: dict, inferpymc_with_bc_result) -> None:
-    """Smoke test inferpymc directly on prepared inversion inputs."""
-    result = inferpymc_with_bc_result
 
     expected_keys = {
         "xouts",
@@ -178,15 +173,18 @@ def test_inferpymc_runs_on_inversion_inputs(inferpymc_args: dict, inferpymc_with
     }
     assert expected_keys.issubset(result.keys())
 
-    y = np.asarray(inferpymc_args["Y"])
-    hx = np.asarray(inferpymc_args["Hx"])
-    siteindicator = np.asarray(inferpymc_args["siteindicator"])
-    sigma_freq_index = np.asarray(inferpymc_args["sigma_freq_index"])
+    assert "prior_predictive" in result["trace"]
+    assert "posterior_predictive" in result["trace"]
+    assert "nx" in result["trace"].posterior["x"].dims
+    assert "nbc" in result["trace"].posterior["bc"].dims
+    assert "region" not in result["trace"].posterior["x"].dims
+    assert "bc_region" not in result["trace"].posterior["bc"].dims
 
-    assert result["xouts"].sizes["nx"] == hx.shape[0]
-    assert result["sigouts"].sizes["nsigma_time"] == len(np.unique(sigma_freq_index))
-    assert result["sigouts"].sizes["nsigma_site"] == len(np.unique(siteindicator))
+    assert result["xouts"].sizes["nx"] == inv_inputs.sizes["region"]
+    assert result["sigouts"].sizes["nsigma_time"] == len(np.unique(inv_inputs["sigma_freq_index"].values))
+    assert result["sigouts"].sizes["nsigma_site"] == len(np.unique(inv_inputs["site_indicator"].values))
 
+    y = inv_inputs["mf"].values
     assert y.size in result["Ytrace"].shape
     assert result["OFFSETtrace"].shape == result["Ytrace"].shape
     assert result["YBCtrace"].shape == result["Ytrace"].shape
@@ -195,11 +193,52 @@ def test_inferpymc_runs_on_inversion_inputs(inferpymc_args: dict, inferpymc_with
     assert np.isfinite(result["OFFSETtrace"]).all()
     assert np.isfinite(result["YBCtrace"]).all()
 
+    assert "step1" in result
+    assert "step2" in result
 
-def test_inferpymc_model_contains_expected_variables(inferpymc_args: dict, inferpymc_with_bc_result) -> None:
-    """Check that inferpymc builds the expected PyMC model structure."""
-    result = inferpymc_with_bc_result
-    model = result["model"]
+
+def test_inferpymc_forwards_numpyro_sampler_without_pymc_step(
+    inv_inputs: xr.Dataset, model_args: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The legacy inferpymc adapter does not inject PyMC step methods for numpyro."""
+    captured = {}
+
+    def fake_sample(model: pm.Model, **kwargs):
+        captured["model"] = model
+        captured["sample_kwargs"] = kwargs
+        return object()
+
+    def fake_adapt_legacy_inferpymc_results(**kwargs):
+        captured["adapter_kwargs"] = kwargs
+        return {"ok": True}
+
+    monkeypatch.setattr(inversion_pymc_module, "sample", fake_sample)
+    monkeypatch.setattr(
+        inversion_pymc_module,
+        "_adapt_legacy_inferpymc_results",
+        fake_adapt_legacy_inferpymc_results,
+    )
+
+    result = inferpymc(
+        inv_inputs=inv_inputs,
+        nuts_sampler="numpyro",
+        nit=1,
+        burn=0,
+        tune=0,
+        nchain=1,
+        sampler_kwargs={"random_seed": 123, "compute_convergence_checks": False},
+        **model_args,
+    )
+
+    assert result == {"ok": True}
+    assert captured["sample_kwargs"]["nuts_sampler"] == "numpyro"
+    assert "step" not in captured["sample_kwargs"]
+    assert "step" not in captured["adapter_kwargs"]["sample_kwargs"]
+
+
+def test_build_inferpymc_model_contains_expected_variables(inv_inputs: xr.Dataset, model_args: dict) -> None:
+    """The builder adds the core named variables expected by downstream code."""
+    model = build_inferpymc_model(inv_inputs, **model_args)
 
     expected_named_vars = {
         "x",
@@ -215,101 +254,42 @@ def test_inferpymc_model_contains_expected_variables(inferpymc_args: dict, infer
         "epsilon",
         "y",
     }
-
     assert expected_named_vars.issubset(model.named_vars)
 
-    coords = model.coords
-    y = np.asarray(inferpymc_args["Y"])
-    hx = np.asarray(inferpymc_args["Hx"])
-    hbc = np.asarray(inferpymc_args["Hbc"])
-    siteindicator = np.asarray(inferpymc_args["siteindicator"])
-    sigma_freq_index = np.asarray(inferpymc_args["sigma_freq_index"])
 
-    assert len(coords["nmeasure"]) == y.size
-    assert len(coords["nx"]) == hx.shape[0]
-    assert len(coords["nbc"]) == hbc.shape[0]
-    assert len(coords["nsigma_site"]) == len(np.unique(siteindicator))
-    assert len(coords["nsigma_time"]) == len(np.unique(sigma_freq_index))
-
-
-def test_prepare_inferpymc_inputs_dataset_matches_legacy(
-    inferpymc_args: dict, inferpymc_inputs_dataset: xr.Dataset
+def test_build_inferpymc_model_with_offset_args_adds_offset_terms(
+    inv_inputs: xr.Dataset, model_args: dict
 ) -> None:
-    """Check dataset and legacy preparation paths agree on core arrays."""
-    prepared_dataset = _prepare_inferpymc_inputs(
-        inv_inputs=inferpymc_inputs_dataset,
-        sigma_per_site=True,
-        use_bc=True,
-        state="region",
-        bc_state="bc_region",
-    )
-    prepared_legacy = _prepare_inferpymc_inputs(
-        Hx=inferpymc_args["Hx"],
-        Y=inferpymc_args["Y"],
-        error=inferpymc_args["error"],
-        siteindicator=inferpymc_args["siteindicator"],
-        sigma_freq_index=inferpymc_args["sigma_freq_index"],
-        Hbc=inferpymc_args["Hbc"],
-        min_error=inferpymc_args["min_error"],
-        sigma_per_site=True,
-        use_bc=True,
+    """Offset args are handled by model construction without a full pipeline run."""
+    args = dict(model_args)
+    args["add_offset"] = True
+    args["offset_args"] = {"drop_first": False, "offset_freq": "D"}
+
+    model = build_inferpymc_model(inv_inputs, **args)
+
+    assert {"offset", "offset_latent", "offset_design", "offset_freq_indicator"}.issubset(
+        model.named_vars
     )
 
-    np.testing.assert_allclose(prepared_dataset.hx, prepared_legacy.hx)
-    np.testing.assert_allclose(prepared_dataset.y, prepared_legacy.y)
-    np.testing.assert_allclose(prepared_dataset.error, prepared_legacy.error)
-    np.testing.assert_array_equal(prepared_dataset.site_indicator, prepared_legacy.site_indicator)
-    np.testing.assert_array_equal(prepared_dataset.sigma_freq_index, prepared_legacy.sigma_freq_index)
-    assert prepared_dataset.hbc is not None
-    assert prepared_legacy.hbc is not None
-    np.testing.assert_allclose(prepared_dataset.hbc, prepared_legacy.hbc)
-    assert prepared_dataset.original_coords
 
-
-def test_build_inferpymc_model_accepts_dataset(
-    inferpymc_args: dict, inferpymc_inputs_dataset: xr.Dataset
+def test_build_inferpymc_model_with_pollution_events_and_no_bc_builds_likelihood(
+    inv_inputs: xr.Dataset, model_args: dict
 ) -> None:
-    """Check model builder accepts direct xarray inversion inputs."""
-    setup = build_inferpymc_model(
-        inv_inputs=inferpymc_inputs_dataset,
-        xprior=inferpymc_args["xprior"],
-        bcprior=inferpymc_args["bcprior"],
-        sigprior=inferpymc_args["sigprior"],
-        sigma_per_site=inferpymc_args["sigma_per_site"],
-        offsetprior=inferpymc_args["offsetprior"],
-        add_offset=inferpymc_args["add_offset"],
-        use_bc=inferpymc_args["use_bc"],
-        reparameterise_log_normal=inferpymc_args["reparameterise_log_normal"],
-        pollution_events_from_obs=inferpymc_args["pollution_events_from_obs"],
-        no_model_error=inferpymc_args["no_model_error"],
-        offset_args=inferpymc_args["offset_args"],
-        power=inferpymc_args["power"],
-        nuts_sampler="pymc",
-    )
+    """Obs-derived pollution-event scaling works without boundary conditions."""
+    args = dict(model_args)
+    args["use_bc"] = False
+    args["pollution_events_from_obs"] = True
 
-    assert isinstance(setup, InferPyMCModelSetup)
-    assert isinstance(setup.model, pm.Model)
-    assert len(setup.model.coords["nmeasure"]) == inferpymc_inputs_dataset.sizes["nmeasure"]
-    assert len(setup.model.coords["nx"]) == inferpymc_inputs_dataset.sizes["region"]
+    model = build_inferpymc_model(inv_inputs, **args)
 
-
-def test_build_inferpymc_model_rejects_mixed_input_modes(
-    inferpymc_args: dict, inferpymc_inputs_dataset: xr.Dataset
-) -> None:
-    """Check dataset and legacy input paths cannot be combined."""
-    with pytest.raises(ValueError, match="cannot be combined"):
-        build_inferpymc_model(
-            inv_inputs=inferpymc_inputs_dataset,
-            Hx=inferpymc_args["Hx"],
-            Y=inferpymc_args["Y"],
-            error=inferpymc_args["error"],
-            siteindicator=inferpymc_args["siteindicator"],
-            sigma_freq_index=inferpymc_args["sigma_freq_index"],
-        )
+    assert {"mu", "sigma", "epsilon", "y"}.issubset(model.named_vars)
+    assert "bc" not in model.named_vars
+    assert "hbc" not in model.named_vars
+    assert "mu_bc" not in model.named_vars
 
 
 def test_restore_inferencedata_coords_helper_restores_multiindex() -> None:
-    """Check restoration helper can re-attach a MultiIndex coordinate."""
+    """Coordinate restoration recreates the original MultiIndex on InferenceData."""
     multi_index = pd.MultiIndex.from_arrays(
         [["MHD", "MHD", "TAC"], pd.to_datetime(["2019-01-01", "2019-01-02", "2019-01-01"])],
         names=["site", "time"],
@@ -320,24 +300,20 @@ def test_restore_inferencedata_coords_helper_restores_multiindex() -> None:
     )
     idata = az.InferenceData(posterior=posterior)
 
-    restored = _restore_inferencedata_coords(idata, {"nmeasure": multi_index})
+    restored = restore_inferencedata_coords(idata, {"nmeasure": multi_index})
 
     assert "nmeasure" in restored.posterior.indexes
     assert restored.posterior.indexes["nmeasure"].equals(multi_index)
 
 
-def test_inferpymc_runs_without_boundary_conditions(inferpymc_args: dict) -> None:
-    """Check inferpymc direct call when boundary conditions are disabled."""
-    inferpymc_args = dict(inferpymc_args)
-    inferpymc_args["use_bc"] = False
-    inferpymc_args["Hbc"] = None
+def test_build_inferpymc_model_without_boundary_conditions_omits_bc_vars(
+    inv_inputs: xr.Dataset, model_args: dict
+) -> None:
+    """Disabling boundary conditions removes BC variables at model-build time."""
+    args = dict(model_args)
+    args["use_bc"] = False
 
-    result = inferpymc(**inferpymc_args)
-
-    assert "bcouts" not in result
-    assert "YBCtrace" not in result
-
-    model = result["model"]
+    model = build_inferpymc_model(inv_inputs, **args)
     assert "bc" not in model.named_vars
     assert "hbc" not in model.named_vars
     assert "mu_bc" not in model.named_vars

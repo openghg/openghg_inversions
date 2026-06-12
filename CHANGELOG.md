@@ -4,6 +4,47 @@
 
 ## Code changes
 
+
+- Made retained `BasisFunctions` / `BasisOperator` metadata the primary basis
+  contract for RHIME preparation and modern postprocessing outputs. Derived
+  flux, country, PARIS, and legacy-format products now record stable basis
+  reconstruction metadata, retained basis artifacts record loaded/saved paths,
+  and source-specific multisector flux reconstruction no longer reaches through
+  the legacy flat-basis view. Legacy flat basis artifacts remain readable as an
+  explicit compatibility fallback but are deprecated for new workflows.
+  [#429](https://github.com/openghg/openghg_inversions/issues/429)
+- Added a modern `output_format="legacy"` compatibility product, routed deprecated
+  `hbmcmc` / `hbmcmc_postprocessing` output requests to it, and made
+  `run_hbmcmc.py` translate fixedbasis-style configs into `run_rhime` calls while
+  preserving legacy output filenames. The shim now validates translated arguments
+  before copying configs, translates deprecated `calculate_min_error` and
+  `reparameterise_log_normal` options where possible, old HBMCMC output attrs
+  are produced from modern `InversionOutput`, legacy KDE mode statistics now
+  handle all-NaN and partially-NaN rows without dropping every draw, derived
+  RHIME products no longer save large `InversionOutput` sidecars unless
+  `save_inversion_output` is requested, and user docs mark historical
+  `fixedbasisMCMC` behavior as available from release 0.6 or earlier.
+  Country-file loading in modern country and legacy-format
+  postprocessing now falls back to direct HDF5 reads when h5netcdf dimension-scale
+  decoding fails on cluster nodes, and floating legacy-format output variables
+  are written as `float32` to avoid footprint-alignment upcasts. Modern PARIS
+  compatibility outputs also cast floating data variables to `float32` to match
+  the historical fixedbasis-style file contract. RHIME and the `run_hbmcmc.py`
+  compatibility shim now emit grep-friendly `TIMING ... seconds=... maxrss_kb=...`
+  lines for setup, preparation, sampling, sampler statistics, postprocessing,
+  and output writes so batch logs can identify runtime regressions. Modern
+  RHIME model imports also apply the same PyTensor `floatX=float32` default as
+  the historical fixedbasis PyMC path, avoiding accidental float64 sampling
+  after the `run_hbmcmc.py` route switch.
+  [#416](https://github.com/openghg/openghg_inversions/issues/416)
+- Routed modern RHIME and fixedbasis postprocessing through modern `InversionOutput` semantics, retained `BasisFunctions` / `BasisOperator` products, variable-role lookups, and product-local capability checks; removed the transitional postprocessing protocol/view layer and deleted `LegacyInversionOutput` plus the dead legacy inversion-output builder helpers. [#383](https://github.com/openghg/openghg_inversions/issues/383)
+- Migrated standard RHIME `basic` and `paris` postprocessing toward modern `InversionOutput` as an intermediate step before the final #383 product-local postprocessing contract. [#435](https://github.com/openghg/openghg_inversions/issues/435)
+- Introduced the temporary modern/legacy output split and modern `InversionOutput` serialization; the transitional `LegacyInversionOutput` carrier was removed by #383. [#401](https://github.com/openghg/openghg_inversions/issues/401)
+- Moved public RHIME model-builder exports into `openghg_inversions.models` and shared data preparation between `fixedbasisMCMC`, `run_rhime`, and `run_rhime_multisector`. [#399](https://github.com/openghg/openghg_inversions/issues/399), [#425](https://github.com/openghg/openghg_inversions/issues/425)
+- Retained `BasisFunctions` objects through shared inversion preparation, RHIME results, and opt-in `fixedbasisMCMC` debug output; DataTree basis artifacts are loaded when available while legacy flat basis artifacts remain supported. [#428](https://github.com/openghg/openghg_inversions/issues/428)
+- Added modern `run_rhime` and shared-basis `run_rhime_multisector` pipelines, RHIME CLI entry points, RHIME config template, modern result/spec objects, and focused tests for the new public runners. [#398](https://github.com/openghg/openghg_inversions/issues/398)
+- Made concat-gather handling of mismatched site data variables order-independent, added an opt-in drop policy used by `make_inv_inputs`, and added lightweight regression tests for issue #394. [#394](https://github.com/openghg/openghg_inversions/issues/394)
+- Fix bug which was assigninig the wrong times to inversion flux outputs in non-standard cases, such as 3-monthly inversions. [#PR 387](https://github.com/openghg/openghg_inversions/pull/387)
 - Fix small bug where postprocessing was failing if country codes in file didn't match exactly those in `paris_regions_dict`. [#PR 377](https://github.com/openghg/openghg_inversions/pull/377)
 - More flexibility for new inversion domains. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
 - More flexibility for types of boundary condition basis functions. [#PR 333](https://github.com/openghg/openghg_inversions/pull/333)
@@ -17,6 +58,10 @@
 - Added opt-in `basis_functions_wrapper` support for returning `BasisFunctions` objects and saving basis artifacts in DataTree format while keeping legacy flat-basis output as the default. [PR #367](https://github.com/openghg/openghg_inversions/pull/367)
 - Stage A of PyMC model refactor. Added regression tests for `inferpymc` and extracted function to build the PyMC model. [PR #378](https://github.com/openghg/openghg_inversions/pull/378)
 - Stage B of PyMC model refactor. Updated `inferpymc` to accept current/legacy inputs as well as xarray `Dataset`. [PR #380](https://github.com/openghg/openghg_inversions/pull/380)
+- Stage C of PyMC model refactor. Added function for building PyMC "model components". The model building code from Stage B is still used by default, but the new code can be selected by adding `model_builder="components"` to the .ini file. [PR #382](https://github.com/openghg/openghg_inversions/pull/382)
+- Stage D of PyMC model refactor. Removed temporary scaffolding to preserve legacy model building code. `inferpymc` now only accepts inversion inputs as `xr.Dataset`, and `fixedbasisMCMC` has been updated to reflect this. [PR #389](https://github.com/openghg/openghg_inversions/pull/389)
+- Neutral refactor of `fixedbasisMCMC` output handling to make the end-of-run logic clearer, whichis now split into explicit stages for artefact creation, `InversionOutput` construction, and output mode dispatch. [PR #390](https://github.com/openghg/openghg_inversions/pull/390)
+- Stage E follow-up PyMC refactor tidy-up. `inferpymc` is now a thinner compatibility wrapper over model building, modern `InferenceData` sampling, and explicit legacy adaptation; legacy trace renaming moved out of model construction; `InversionOutput` no longer carries a PyMC model; and the current latent/step compatibility logic is more clearly isolated ahead of a future modern run-inversion path. [PR #391](https://github.com/openghg/openghg_inversions/pull/391)
 
 # Version 0.6.0
 

@@ -71,8 +71,9 @@ NOTE: flux and boundary conditions data usually has a specific *domain*, but it 
     -   default location is `openghg_inversions/countries`
 -   basis functions
     -   &ldquo;basis function&rdquo; usually means a netCDF file with latitude and longitude coordinates, with integer values. So all of the coordinates with value 1 are in region 1, and so on.
-    -   basis functions for fluxes are created on the fly by a &ldquo;quadtree basis&rdquo; algorithm. You can also read in pre-defined basis functions. Default location: `openghg_inversions/basis_functions`
-    -   basis functions for the boundary conditions have a similar format. Defaul location `openghg_inversions/bc_basis_functions`
+    -   basis functions for fluxes can be created on the fly with the `quadtree` or `weighted` algorithms. You can also read in pre-defined basis functions. Default location: `openghg_inversions/basis_functions`
+    -   region-constrained basis generation is available through the Python basis API when the caller supplies an already loaded `region_classes` `DataArray`. This is intended for land/sea, country, or other region-class masks, and keeps labels from crossing those classes. The current `.ini`/`run_hbmcmc.py` route does not yet load `region_classes` from a file, so use a saved basis file or the Python wrapper for this case.
+    -   basis functions for the boundary conditions have a similar format. Default location `openghg_inversions/bc_basis_functions`
 
 Summary
 
@@ -89,7 +90,12 @@ Summary
 
 ## Method 1: python script or notebook
 
-Assuming you have the necessary data, you just need to run the `fixedbasisMCMC` function from `hbmcmc.py` in `openghg_inversions.hbmbmc`.
+New scripts should call `run_rhime` from `openghg_inversions.rhime`.
+`fixedbasisMCMC` remains only as a temporary direct legacy Python path, not as
+the RHIME-backed compatibility route.
+It no longer preserves the exact historical `fixedbasisMCMC` / `inferpymc`
+passthrough behaviour; use release `0.6` or earlier if you need the old
+fixedbasis implementation.
 
 
 <a id="org6a59239"></a>
@@ -97,7 +103,7 @@ Assuming you have the necessary data, you just need to run the `fixedbasisMCMC` 
 ## Method 2: ini file
 
 -   Create a `.ini` file based on the templates in `openghg_inversions/config/templates`. (NOTE: these need to be updated.)
--   Activate a conda or venv environment with inversions installed, and call `python <path to openghg_inversions>/openghg_inversions/hbmcmc/run_hbmcmc.py -c somefile.ini`
+-   Activate a Pixi, conda, or venv environment with inversions installed, and call `python <path to openghg_inversions>/openghg_inversions/hbmcmc/run_hbmcmc.py -c somefile.ini` for old fixedbasis-style INI files. The script now translates those configs and runs the modern `run_rhime` pathway. New INI files should use `openghg-inversions run-rhime` and the RHIME config vocabulary. Unsupported fixedbasis-only options now raise targeted errors instead of being passed through to `inferpymc`.
 -   A sample `.ini` script is at the bottom of this document.
 
 
@@ -135,9 +141,10 @@ This is assuming you can ssh into blue pebble, and are able to modify files and 
     -   `module load ...` will load a module
 -   Typically you will use the latest anaconda module: `module load lang/python/anaconda`.
 -   To make your own environment for `openghg_inversions`, you should:
-    1.  make a conda env `conda create --name inv_env numpy` (note: installing `numpy` from `conda` will install `openblas`, which is a fast linear algebra library; these libraries are in non-standard locations on Blue Pebble, and `pip install numpy` will not find them.)
-    2.  clone openghg_inversions: `git clone https://github.com/openghg/openghg_inversions.git`
-    3.  `pip install openghg_inversions` (in the same directory where you just cloned `openghg_inversions`)
+    1.  Prefer the repository Pixi environment for new development installs: `git clone https://github.com/openghg/openghg_inversions.git`, `cd openghg_inversions`, then `pixi install -e dev`. This keeps `h5py`, `h5netcdf`, `netcdf4`, and HDF5 on a single conda-forge binary stack. On systems with access to the ACRG country files, run `OPENGHG_COUNTRY_FILE_SMOKE_DIR=/group/chem/acrg/LPDM/countries pixi run -e dev country-file-smoke` to check the real country-file HDF5 backends.
+    2.  If Pixi is not available, make a conda env `conda create --name inv_env numpy` (note: installing `numpy` from `conda` will install `openblas`, which is a fast linear algebra library; these libraries are in non-standard locations on Blue Pebble, and `pip install numpy` will not find them.)
+    3.  clone openghg_inversions: `git clone https://github.com/openghg/openghg_inversions.git`
+    4.  `pip install openghg_inversions` (in the same directory where you just cloned `openghg_inversions`)
 
 
 <a id="orgc73302c"></a>
@@ -230,15 +237,16 @@ instrument    = ["picarro"]
 
 
 [INPUT.PRIORS]
-; Input values for extracting footprints, emissions and boundary conditions files (also uses values from INPUT.MEASUREMENTS)
+; Legacy fixedbasis input values for extracting footprints, fluxes and boundary conditions files (also uses values from INPUT.MEASUREMENTS)
+; New RHIME configs use flux_sources for OpenGHG flux source values.
 ; domain (str) - Name of inversion spatial domain
 ; fp_height (list) - Release height for footprints (must match number of sites).
-; emissions_name (list/None) - Name for specific emissions source.
+; emissions_name (list/None) - Legacy key for a specific flux source.
 
 domain = 'EUROPE'  ; (required)
 fp_height = ["185m"]  ; typically the same as inlet, but may differ slightly (e.g. if instrument moved to 180m, for instance)
 fp_model = "NAME"  ; LPDM model, usually NAME
-emissions_name = ["total-ukghg-edgar7"]  ; total = all emissions sources; agric-ukghg-edgar7 would be agricultural sources only
+emissions_name = ["total-ukghg-edgar7"]  ; legacy fixedbasis key; new RHIME configs use flux_sources
 met_model = 'UKV'  ; or None if not specified, check the metadata for your footprint
 
 [INPUT.BASIS_CASE]
@@ -248,6 +256,9 @@ met_model = 'UKV'  ; or None if not specified, check the metadata for your footp
 ; - if specified, looks for file format {fp_basis_case}_{domain}_*.nc
 ; - if None, creates basis function using quadtree algorithm and associated parameters
 ;   - nbasis - Number of basis functions to use for quadtree derived basis function (rounded to %4)
+; Region-constrained basis functions are available through the Python basis API
+; when a caller supplies region_classes. This .ini route does not currently load
+; region_classes from file.
 
 bc_basis_case  = "NESW"
 bc_basis_directory = "/group/chemistry/acrg/LPDM/bc_basis_functions/"  ; LPDM/bc_basis_functions is default
@@ -324,7 +335,7 @@ outputname = 'ch4_TAC_test'  ; (required)
 
 # Description of HBMCMC output file
 
-The output of `run_hbmcmc` (and `fixedbasisMCMC`) is an xarray Dataset with the following variables and attributes:
+The legacy compatibility output from `run_hbmcmc` (and `fixedbasisMCMC(output_format="legacy")`) is an xarray Dataset with the following variables and attributes:
 
 HMCMC output data variables:
 
@@ -365,4 +376,3 @@ Attributes:
 -   Creator
 -   Date created
 -   Convergence: Passed/Failed based on multiple chains (min 2) having Gelman-Rubin diagnostic < 1.05
-

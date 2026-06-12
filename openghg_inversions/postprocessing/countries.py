@@ -5,17 +5,19 @@ from __future__ import annotations
 import json
 import warnings
 from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import cast, Literal, TypeVar
-from collections.abc import Iterable, Mapping, Sequence
 from typing_extensions import Self
 
 import xarray as xr
 from openghg_inversions import convert, utils
 
-from openghg_inversions.array_ops import align_sparse_lat_lon, get_xr_dummies, sparse_xr_dot
+from openghg_inversions._country_file import load_country_dataset
+from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot
 from openghg_inversions.utils import get_country_file_path
 from ._country_codes import CountryInfoList
+from ._basis_products import make_x_to_country_matrix
 from .inversion_output import InversionOutput
 
 # type for xr.Dataset *or* xr.DataArray
@@ -72,6 +74,17 @@ paris_regions_dict = {
     "westusa": {},
     "saussie": {},
 }
+
+
+def _require_country_species(inv_out: InversionOutput) -> str:
+    """Return species metadata required for country totals."""
+    if inv_out.is_multisector:
+        raise ValueError("Country postprocessing supports only single-sector RHIME outputs.")
+
+    species = inv_out.species
+    if species is None:
+        raise ValueError("Country postprocessing requires InversionOutput metadata field 'species'.")
+    return species
 
 
 class CountryRegions:
@@ -357,7 +370,7 @@ class Countries:
         """
         country_file_path = get_country_file_path(country_file=country_file, domain=domain)
         return cls(
-            xr.open_dataset(country_file_path),
+            load_country_dataset(country_file_path),
             country_code=country_code,
             country_selections=country_selections,
             country_regions=country_regions,
@@ -372,24 +385,21 @@ class Countries:
         """Construct a sparse matrix mapping from x sensitivities to country totals.
 
         Args:
-            inv_out: InversionOutput object, used to get basis functions and flux.
+            inv_out: Inversion output, used to get basis functions and flux.
             sparse: if True, values of returned DataArray are `sparse.COO` array.
 
         Returns:
             xr.DataArray with coordinate dimensions ("country", "basis_region")
         """
-        # multiply flux and basis and align to country lat/lon
-        basis = align_sparse_lat_lon(inv_out.basis, inv_out.flux)
-        flux_x_basis = align_sparse_lat_lon(inv_out.flux * basis, self.area_grid)
-
-        # compute matrix/tensor product: country_mat.T @ (area_grid * flux * basis_mat)
-        # transpose doesn't need to be taken explicitly because alignment is done by dimension name
-        result = sparse_xr_dot(self.matrix, (self.area_grid * flux_x_basis))
-
-        if sparse:
-            return result
-
-        return result.as_numpy()
+        x_trace = inv_out.trace_dataset(var_roles="flux_scale")
+        return make_x_to_country_matrix(
+            inv_out.basis_functions,
+            inv_out.flux,
+            x_trace,
+            country_matrix=self.matrix,
+            area_grid=self.area_grid,
+            sparse=sparse,
+        )
 
     @staticmethod
     def _get_country_trace(
@@ -426,18 +436,25 @@ class Countries:
 
         Args:
             species: name of species, e.g. "co2", "ch4", "sf6", etc.
-            inv_out: InversionOutput
+            inv_out: Inversion output.
 
         Returns:
             xr.Dataset with coordinate dimensions ("country", "draw")
 
-        TODO: there is a "country unit" conversion in the old code, but it seems to always product
+        TODO: there is a "country unit" conversion in the old code, but it seems to always produce
               1.0, based on how it is used in hbmcmc
         """
+        species = _require_country_species(inv_out)
         x_to_country_mat = self.get_x_to_country_mat(inv_out)
-        x_trace = inv_out.get_trace_dataset(var_names="x")
-
-        species = inv_out.species
+        x_trace = inv_out.trace_dataset(var_roles="flux_scale")
+        flux_scale_name = inv_out.variable_name("flux_scale")
+        x_trace = x_trace.rename(
+            {
+                data_var: str(data_var).replace(f"{flux_scale_name}_", "x_", 1)
+                for data_var in x_trace.data_vars
+                if str(data_var).startswith(f"{flux_scale_name}_")
+            }
+        )
 
         country_traces = Countries._get_country_trace(species, x_trace, x_to_country_mat)
 

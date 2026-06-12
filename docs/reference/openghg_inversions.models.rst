@@ -1,0 +1,14 @@
+openghg\_inversions.models
+==========================
+
+.. automodule:: openghg_inversions.models
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+
+
+.. toctree::
+   :maxdepth: 4
+
+   openghg_inversions.models.rhime

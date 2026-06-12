@@ -1,16 +1,199 @@
-from pathlib import Path
-from typing_extensions import Self
-import warnings
-from dataclasses import dataclass
-from typing import Any, Literal, TypeVar
+"""Modern inversion output container and serialization helpers.
 
+``InversionOutput`` is the durable artifact produced by modern RHIME and by
+fixedbasis compatibility paths that have been routed through the modern
+postprocessing flow. It stores the sampled trace, canonical inversion inputs,
+retained ``BasisFunctions``, and run/model/output metadata needed to reproduce
+postprocessing products.
+
+The class deliberately stays product-neutral. Product modules such as
+``make_outputs``, ``make_paris_outputs``, and ``legacy_outputs`` decide which
+output formats they support, how variables are named in those formats, and
+whether a product can handle multisector data. ``InversionOutput`` only exposes
+modern semantic access to the underlying inputs and trace, including variable
+role lookup for model-specific variable names. The current role mapping is a
+small bridge until the project decides whether to use CF metadata via
+``cf_xarray`` or a custom accessor.
+
+Serialization is DataTree-based: object-specific ``to_datatree`` methods own
+their durable representation, while the local helper functions expand xarray
+MultiIndexes around NetCDF/Zarr limitations. Those generic helpers should move
+to shared utilities once the serialization surface settles.
+"""
+
+from pathlib import Path
+from collections.abc import Iterable, Mapping
+from typing_extensions import Self
+from dataclasses import dataclass, field
+from typing import Any, Hashable, Literal, cast
+import json
+
+import warnings
+import pymc as pm
 import arviz as az
 import numpy as np
 import pandas as pd
-import pymc as pm
 import xarray as xr
 
-from openghg_inversions.array_ops import get_xr_dummies, align_sparse_lat_lon
+from openghg_inversions.basis.basis_functions import BasisFunctions
+from openghg_inversions.utils import (
+    align_sparse_lat_lon,
+    convert_idata_to_dataset,
+    _add_attributes_to_trace_dataset,
+    _nmeasure_to_site_time,
+    XrDataArrayOrSet,
+    filter_data_vars_by_prefix
+)
+
+MODERN_INVERSION_OUTPUT_SCHEMA = "openghg_inversions.inversion_output"
+MULTIINDEX_DIMS_ATTR = "openghg_inversions:multiindex_dims"
+
+
+def _json_default(value: object) -> str:
+    """JSON fallback for metadata values stored on output artifacts."""
+    return str(value)
+
+
+def _json_attr(value: dict[str, Any]) -> str:
+    """Encode output metadata for xarray attrs."""
+    return json.dumps(value, default=_json_default)
+
+
+def _load_json_attr(attrs: dict[Any, Any], key: str) -> dict[str, Any]:
+    """Decode optional JSON metadata from xarray attrs."""
+    raw = attrs.get(key)
+    if raw is None:
+        return {}
+    if isinstance(raw, bytes):
+        try:
+            raw = raw.decode()
+        except UnicodeDecodeError:
+            return {}
+    if not isinstance(raw, str):
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _save_datatree(
+    dt: xr.DataTree, output_file: str | Path, output_format: Literal["netcdf", "zarr"] | None
+) -> None:
+    """Save a DataTree to NetCDF or Zarr, inferring format from the path when needed."""
+    output_file = Path(output_file)
+
+    if output_format is None:
+        try:
+            output_format = {".nc": "netcdf", ".zarr": "zarr"}[output_file.suffix]  # type: ignore
+        except KeyError:
+            raise ValueError(
+                f"Output file {output_file} does not end in '.nc' or '.zarr'; please specify `output_format`."
+            )
+
+    if output_format == "netcdf":
+        if output_file.suffix != ".nc":
+            output_file = output_file.with_suffix(".nc")
+        dt.to_netcdf(output_file)
+    elif output_format == "zarr":
+        if output_file.suffix != ".zarr":
+            output_file = output_file.with_suffix(".zarr")
+        dt.to_zarr(output_file)
+    else:
+        raise ValueError(f"Unsupported output_format: {output_format!r}")
+
+
+def _open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
+    """Open and load a DataTree artifact with the same engine fallback as legacy outputs."""
+    open_errors: list[Exception] = []
+    for engine in ("h5netcdf", None):
+        try:
+            dt = (
+                xr.open_datatree(file_path, engine=engine)
+                if engine is not None
+                else xr.open_datatree(file_path)
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            open_errors.append(exc)
+        else:
+            with dt:
+                return dt.load()
+
+    raise open_errors[-1]
+
+
+def _inferencedata_to_datatree(idata: az.InferenceData) -> xr.DataTree:
+    """Convert an ArviZ InferenceData object to a DataTree."""
+    return xr.DataTree.from_dict(
+        {group: _reset_serialisation_multiindexes(idata[group]) for group in idata.groups()}
+    )
+
+
+def _inferencedata_from_datatree(dt: xr.DataTree) -> az.InferenceData:
+    """Convert a DataTree of InferenceData groups back to ArviZ InferenceData."""
+    return cast(Any, az.InferenceData)(
+        **{group: _restore_serialisation_multiindexes(child.to_dataset()) for group, child in dt.items()}
+    )
+
+
+def _reset_serialisation_multiindexes(ds: xr.Dataset) -> xr.Dataset:
+    """Expand xarray MultiIndexes before DataTree serialisation."""
+    result = ds
+    multiindex_dims: list[dict[str, object]] = []
+    for dim, index in ds.indexes.items():
+        if dim in result.dims and isinstance(index, pd.MultiIndex):
+            level_names = list(index.names)
+            if any(name is None for name in level_names):
+                raise ValueError(f"Cannot serialise unnamed MultiIndex levels for dimension {dim!r}.")
+            result = result.reset_index(dim)
+            multiindex_dims.append({"dim": str(dim), "levels": [str(name) for name in level_names]})
+    if multiindex_dims:
+        result = result.copy()
+        result.attrs = dict(result.attrs)
+        result.attrs[MULTIINDEX_DIMS_ATTR] = json.dumps({"dims": multiindex_dims})
+    return result
+
+
+def _restore_serialisation_multiindexes(ds: xr.Dataset) -> xr.Dataset:
+    """Restore MultiIndexes expanded for DataTree serialisation."""
+    raw_multiindex_dims = ds.attrs.get(MULTIINDEX_DIMS_ATTR)
+    if raw_multiindex_dims is None:
+        return ds
+
+    result = ds.copy()
+    result.attrs = dict(result.attrs)
+    del result.attrs[MULTIINDEX_DIMS_ATTR]
+
+    if isinstance(raw_multiindex_dims, bytes):
+        try:
+            raw_multiindex_dims = raw_multiindex_dims.decode()
+        except UnicodeDecodeError:
+            return result
+    if not isinstance(raw_multiindex_dims, str):
+        return result
+
+    try:
+        payload = json.loads(raw_multiindex_dims)
+    except json.JSONDecodeError:
+        return result
+
+    records = payload.get("dims") if isinstance(payload, dict) else None
+    if not isinstance(records, list):
+        return result
+
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        dim = record.get("dim")
+        levels = record.get("levels")
+        if not isinstance(dim, str) or not isinstance(levels, list):
+            continue
+        if not all(isinstance(level, str) for level in levels):
+            continue
+        if dim in result.dims and all(level in result and result[level].dims == (dim,) for level in levels):
+            result = result.set_index({dim: levels})
+    return result
 
 
 def filter_data_vars_by_prefix(
@@ -42,6 +225,37 @@ def filter_data_vars_by_prefix(
                 data_vars.append(dv)
 
     return ds[data_vars]
+
+
+def _filter_trace_data_vars_by_name(ds: xr.Dataset, var_names: str | list[str]) -> xr.Dataset:
+    """Select trace variables by exact base variable name.
+
+    Trace datasets use names like ``x_prior`` or ``mu_bc_posterior``. This
+    helper matches the full base variable name before the trace-group suffix so
+    ``var_names="x"`` does not also select ``x_latent_prior``.
+    """
+    if isinstance(var_names, str):
+        var_names = [var_names]
+
+    group_suffixes = (
+        "_prior_predictive",
+        "_posterior_predictive",
+        "_prior",
+        "_posterior",
+    )
+    selected: list[Hashable] = []
+    wanted = set(var_names)
+
+    for dv in ds.data_vars:
+        name = str(dv)
+        for suffix in group_suffixes:
+            if name.endswith(suffix):
+                base_name = name.removesuffix(suffix)
+                if base_name in wanted:
+                    selected.append(dv)
+                break
+
+    return ds[selected]
 
 
 def convert_idata_to_dataset(
@@ -124,100 +338,65 @@ def _add_attributes_to_trace_dataset(trace_ds: xr.Dataset, obs_units: str, obs_l
             trace_ds[dv].attrs["long_name"] = f"posterior_trace_of_{name}"
 
 
-XrDataArrayOrSet = TypeVar("XrDataArrayOrSet", xr.DataArray, xr.Dataset)
-
-
-def _nmeasure_to_site_time(
-    data: XrDataArrayOrSet,
-    site_indicators: xr.DataArray | np.ndarray,
-    times: xr.DataArray | np.ndarray,
-    site_names: xr.DataArray | dict | None = None,
-) -> XrDataArrayOrSet:
-    """Convert `nmeasure` dimension to multi-index over `site` and `time`.
-
-    This uses an array of `site_indicators` and an array of times to construct
-    coordinates for the dimension `nmeasure`. If the `site_indicators` are
-    numbers, `site_names` can be provided to convert these numbers into site
-    names.
-
-    Args:
-        data: xr.DataArray or xr.Dataset. Typically, this has a `nmeasure`
-          coordinate, but this isn't a strict requirement.
-        site_indicators: array specifying the site where a measurement was taken
-        times: array specifying the time a measurement was taken
-        site_names: optional DataArray or dict mapping the values of
-          `site_indicator` to strings. If `None`, the values of `site_indicator`
-          will be used unchanged.
-
-    Returns:
-        xr.DataArray or xr.Dataset (same type as input) with `nmeasure`
-          coordinate consisting of stacked `site` and `time` coordinates.
-
-    Raises:
-        ValueError: if `site_indicators` and `times` have different lengths.
-
-    """
-    if len(site_indicators) != len(times):
-        raise ValueError(
-            "Site indicators and times must be same length, got:"
-            f"\nsite indicators:\n{site_indicators}\ntimes:\n{times}"
-        )
-
-    time_vals = times.values if isinstance(times, xr.DataArray) else times
-    site_codes = site_indicators.values if isinstance(site_indicators, xr.DataArray) else site_indicators
-
-    if site_names is not None:
-        if isinstance(site_names, xr.DataArray):
-            site_names = dict(site_names.to_series())
-
-        site_codes = [site_names.get(x) for x in site_codes]
-
-    nmeasure_multiindex = pd.MultiIndex.from_arrays([site_codes, time_vals], names=["site", "time"])
-    xr_nmeasure_multiindex = xr.Coordinates.from_pandas_multiindex(nmeasure_multiindex, "nmeasure")
-
-    result = data.assign_coords(xr_nmeasure_multiindex)
-    result.time.attrs = times.attrs if isinstance(times, xr.DataArray) else {}
-
-    return result
+DEFAULT_VARIABLE_ROLES: dict[str, str] = {
+    "observation": "mf",
+    "observation_error": "mf_error",
+    "observation_prior_factor": "mf_prior_factor",
+    "observation_prior_upper_level_factor": "mf_prior_upper_level_factor",
+    "observation_repeatability": "mf_repeatability",
+    "observation_variability": "mf_variability",
+    "flux_scale": "x",
+    "model_error": "epsilon",
+    "concentration": "y",
+    "baseline": "mu_bc",
+    "offset": "offset",
+    "emissions_sensitivity": "hx",
+    "baseline_sensitivity": "hbc",
+    "minimum_error": "min_error",
+}
 
 
 @dataclass
 class InversionOutput:
-    """Outputs of inversion needed for post-processing."""
+    """Modern RHIME inversion output contract.
 
-    obs: xr.DataArray
-    obs_err: xr.DataArray
-    obs_repeatability: xr.DataArray
-    obs_variability: xr.DataArray
-    flux: xr.DataArray
-    basis: xr.DataArray
+    This object carries the runtime artifacts needed to reproduce and extend
+    RHIME outputs without exposing fixedbasis ``fp_data`` or legacy
+    ``inferpymc_postprocessouts`` dictionaries.
+    """
+
     trace: az.InferenceData
-    site_indicators: xr.DataArray
-    times: xr.DataArray
-    start_date: str
-    end_date: str
-    species: str
-    domain: str
-    site_names: xr.DataArray | None = None
-    model: pm.Model | None = None
-    obs_prior_factor: xr.DataArray | None = None
-    obs_prior_upper_level_factor: xr.DataArray | None = None
+    inv_inputs: xr.Dataset
+    basis_functions: BasisFunctions
+    run_metadata: dict[str, Any] = field(default_factory=dict)
+    model_metadata: dict[str, Any] = field(default_factory=dict)
+    output_metadata: dict[str, Any] = field(default_factory=dict)
+    provenance: dict[str, Any] = field(default_factory=dict)
 
+    @property
+    def start_date(self) -> str | None:
+        """Inversion start date from run metadata."""
+        value = self.run_metadata.get("start_date")
+        return None if value is None else str(value)
+
+    @property
+    def end_date(self) -> str | None:
+        """Inversion end date from run metadata."""
+        value = self.run_metadata.get("end_date")
+        return None if value is None else str(value)
+
+    @property
+    def species(self) -> str | None:
+        """Species name from model metadata."""
+        value = self.model_metadata.get("species")
+        return None if value is None else str(value)
+
+    @property
+    def domain(self) -> str | None:
+        """Domain name from model metadata."""
+        value = self.model_metadata.get("domain")
+        return None if value is None else str(value)
     def __post_init__(self) -> None:
-        """Check that trace has posterior traces, and fix flux time values."""
-        if not hasattr(self.trace, "posterior"):
-            raise ValueError("`trace` InferenceData must have `posterior` traces.")
-
-        if self.model is not None:
-            self.sample_predictive_distributions()
-
-        # check if flux has time coordinate, and add one if necessary
-        if "time" not in self.flux.dims:
-            self.flux = self.flux.expand_dims(time=[self.start_time])
-
-        # change "time" dim of flux to "flux_time" to avoid NaNs when merging with obs times
-        self.flux = self.flux.rename(time="flux_time")
-
         # align basis with flux; this is necessary due to an issue with sparse matrices
         self.basis = align_sparse_lat_lon(self.basis, self.flux)
         # change sparse into dense
@@ -366,468 +545,180 @@ class InversionOutput:
             result = filter_data_vars_by_prefix(result, var_names, sep="")
 
         return result
+    @property
+    def is_multisector(self) -> bool:
+        """Whether this output represents a multisector RHIME run."""
+        return bool(self.run_metadata.get("split_by_sectors"))
 
     @property
     def start_time(self) -> pd.Timestamp:
-        """Start date of inversion."""
-        if self.start_date is not None:
-            return pd.to_datetime(self.start_date)
-        return pd.to_datetime(self.times.min().values[0])
+        """Start time for the inversion period."""
+        if self.start_date is None:
+            raise ValueError("InversionOutput run metadata is missing `start_date`.")
+        return pd.to_datetime(self.start_date)
 
     @property
     def end_time(self) -> pd.Timestamp:
-        """End date of inversion."""
-        if self.end_date is not None:
-            return pd.to_datetime(self.end_date)
-        return pd.to_datetime(self.times.max().values[0])
+        """End time for the inversion period."""
+        if self.end_date is None:
+            raise ValueError("InversionOutput run metadata is missing `end_date`.")
+        return pd.to_datetime(self.end_date)
 
     @property
     def period_midpoint(self) -> pd.Timestamp:
-        """Midpoint of inversion period."""
-        return self.start_time + (self.start_time - self.end_time) / 2
+        """Midpoint of the inversion period."""
+        return self.start_time + (self.end_time - self.start_time) / 2
 
-    def get_total_err(self, take_mean: bool = True) -> xr.DataArray:
-        """Return the posterior model-data mismatch error.
+    @property
+    def flux(self) -> xr.DataArray:
+        """Prior flux carried by the retained basis functions."""
+        flux = self.basis_functions.flux
+        if "flux_time" in flux.dims:
+            return flux
+        if "time" in flux.dims:
+            return flux.rename(time="flux_time")
+        return flux.expand_dims(flux_time=[self.start_time])
 
-        This is the variable `epsilon` in the RHIME model. It can be thought of
-        as sqrt(repeatability**2 + variability**2 + model_error**2), although the
-        actual definition is more complicated.
+    @property
+    def site_names(self) -> xr.DataArray:
+        """Site names from inversion inputs or run metadata."""
+        if "site_names" in self.inv_inputs:
+            return self.inv_inputs["site_names"]
 
-        Args:
-            take_mean: if True, take mean over trace of error term, otherwise
-              return the full trace.
+        sites = self.run_metadata.get("sites", [])
+        return xr.DataArray(list(sites), dims="nsite", coords={"nsite": np.arange(len(sites))})
 
-        Returns:
-            xr.DataArray containing total error
+    @property
+    def variable_roles(self) -> dict[str, str]:
+        """Mapping from modern semantic roles to concrete model variable names."""
+        roles = dict(DEFAULT_VARIABLE_ROLES)
+        overrides = self.model_metadata.get("variable_roles", {})
+        if overrides:
+            if not isinstance(overrides, Mapping):
+                raise ValueError("InversionOutput model metadata `variable_roles` must be a mapping.")
+            roles.update({str(role): str(name) for role, name in overrides.items()})
+        return roles
 
-        """
-        result = self.get_trace_dataset(var_names="epsilon").epsilon_posterior
+    def variable_name(self, role: str) -> str:
+        """Return the concrete variable name for a semantic role."""
+        try:
+            return self.variable_roles[role]
+        except KeyError as exc:
+            raise KeyError(f"Unknown InversionOutput variable role: {role!r}") from exc
 
-        if take_mean:
-            result = result.mean("draw")
+    def input_dataset(
+        self,
+        required_roles: Iterable[str] | str | None = None,
+        *,
+        optional_roles: Iterable[str] | str = (),
+    ) -> xr.Dataset:
+        """Return canonical inversion-input variables selected by semantic role."""
+        required = self._normalise_roles(required_roles)
+        optional = self._normalise_roles(optional_roles)
+        selected: list[str] = []
+        missing: list[str] = []
 
-        result.attrs["units"] = self.obs.attrs["units"]
-        result.attrs["long_name"] = "total model-data mismatch error"
+        for role in required:
+            name = self.variable_name(role)
+            if name in self.inv_inputs:
+                selected.append(name)
+            else:
+                missing.append(f"{role} ({name})")
 
-        return result.rename("total_error")
+        for role in optional:
+            name = self.variable_name(role)
+            if name in self.inv_inputs:
+                selected.append(name)
 
-    def get_model_err(self) -> xr.DataArray:
-        """Return model_error.
+        if missing:
+            raise ValueError(
+                "InversionOutput.inv_inputs is missing required variable role(s): " + ", ".join(missing) + "."
+            )
 
-        The model error is calculated by subtracting the square of the obs error
-        from the square of the total error, and then taking a square root.
+        return self.inv_inputs[list(dict.fromkeys(selected))]
 
-        Returns:
-            xr.DataArray containing model error
+    def trace_dataset(self, var_roles: Iterable[str] | str | None = None) -> xr.Dataset:
+        """Return prior and posterior trace samples selected by semantic role."""
+        result = convert_idata_to_dataset(self.trace)
+        obs_name = self.variable_name("observation")
+        if obs_name in self.inv_inputs:
+            obs = self.inv_inputs[obs_name]
+            obs_long_name = (
+                obs.attrs["longname"]
+                if "longname" in obs.attrs
+                else obs.attrs.get("long_name", "observed_mole_fraction")
+            )
+            _add_attributes_to_trace_dataset(result, obs.attrs.get("units", ""), obs_long_name)
 
-        """
-        total_err = self.get_total_err(take_mean=False)
-        total_obs_err = self.obs_err
-
-        result = np.sqrt(np.maximum(total_err**2 - total_obs_err**2, 0)).mean("draw")  # type: ignore
-        result.attrs["units"] = self.obs.attrs["units"]
-        result.attrs["long_name"] = "inferred model error"
-        return result.rename("model_error")
-
-    def get_obs_and_errors(self) -> xr.Dataset:
-        """Return dataset containing observations and related error terms.
-
-        The dataset return contains: obs, obs error (as used by the inversion),
-        obs repeatability and variability, model error, and total error (i.e.
-        the model-data mismatch error).
-
-        Returns:
-            xr.Dataset containing obs and error data
-
-        """
-        # TODO: some of these variables could just be stored in a dataset in InversionOutput,
-        # rather than in separate data arrays
-        to_merge = [
-            self.obs,
-            self.obs_err,
-            self.obs_prior_factor,
-            self.obs_prior_upper_level_factor,
-            self.obs_repeatability,
-            self.obs_variability,
-            self.get_model_err(),
-            self.get_total_err(),
-        ]
-
-        to_merge = [x for x in to_merge if x is not None]
-        result = xr.merge(to_merge)
-        result.attrs = {}
+        if var_roles is not None:
+            result = _filter_trace_data_vars_by_name(result, self._variable_names_for_roles(var_roles))
 
         return result
 
-    def get_flat_basis(self) -> xr.DataArray:
-        """Return 2D DataArray encoding basis regions.
+    def model_data(self, var_roles: Iterable[str] | str | None = None) -> xr.Dataset:
+        """Return model input data from the ``InferenceData`` constant groups."""
+        result = convert_idata_to_dataset(self.trace, group_filters=["data"], add_suffix=False)
+        if var_roles is not None:
+            result = filter_data_vars_by_prefix(result, self._variable_names_for_roles(var_roles), sep="")
+        return result
 
-        The `InversionOutput.basis` matrix is sparse, with three dimensions: latitude, longitude, and region
-        (which corresponds to a basis function). A sparse matrix cannot be saved directly to disk, or compared
-        with other matrices of this type, and converting directly to a dense matrix could use a very large
-        amount of memory.
+    @staticmethod
+    def _normalise_roles(roles: Iterable[str] | str | None) -> list[str]:
+        """Return role input as a list of strings."""
+        if roles is None:
+            return []
+        if isinstance(roles, str):
+            return [roles]
+        return [str(role) for role in roles]
 
-        This function converts the basis matrix to a 2D array with latitude and longitude coordinates, and basis
-        regions encoded by numbers in this 2D array.
-
-        Returns:
-            xr.DataArray encoding basis functions, with latitude and longitude coordinates
-
-        """
-        if len(self.basis.dims) == 2:
-            return self.basis
-
-        region_dim = next(
-            str(dim) for dim in self.basis.dims if dim not in ["lat", "lon", "latitude", "longitude"]
-        )
-
-        return (self.basis * self.basis[region_dim]).sum(region_dim).as_numpy().rename("basis")
+    def _variable_names_for_roles(self, roles: Iterable[str] | str) -> list[str]:
+        """Return concrete variable names for role input."""
+        return [self.variable_name(role) for role in self._normalise_roles(roles)]
 
     def to_datatree(self) -> xr.DataTree:
-        """Convert InversionOutput to xarray DataTree.
-
-        The output of this method can be saved to netCDF or zarr.
-
-        To make it possible to save the data, the `nmeasure` multi-index needs to be removed.
-        The multi-index is restored by the `from_datatree` method.
-
-        Returns:
-            xr.DataTree containing the trace (as a sub-DataTree), obs and errors, the flat basis
-              functions, and the flux, as well as the start/end dates, species, and domain in its
-              attributes.
-
-        """
-        to_merge = [
-            self.obs,
-            self.obs_err,
-            self.obs_prior_factor,
-            self.obs_prior_upper_level_factor,
-            self.obs_repeatability,
-            self.obs_variability,
-        ]
-        to_merge = [x for x in to_merge if x is not None]
-        dt_dict = {
-            "trace": xr.DataTree.from_dict({group: ds for group, ds in self.trace.items()}),
-            "obs_and_errors": xr.merge(to_merge).reset_index("nmeasure"),
-            "basis": self.get_flat_basis().to_dataset(),
-            "flux": self.flux.rename(flux_time="time").rename("flux").to_dataset(),
-        }
-        dt = xr.DataTree.from_dict(dt_dict)
+        """Convert the modern output to a serialisable DataTree."""
+        dt = xr.DataTree.from_dict(
+            {
+                "trace": _inferencedata_to_datatree(self.trace),
+                "inv_inputs": xr.DataTree(_reset_serialisation_multiindexes(self.inv_inputs)),
+                "basis_functions": self.basis_functions.to_datatree(),
+            }
+        )
         dt.attrs = {
-            "start_date": str(self.start_date),
-            "end_date": str(self.end_date),
-            "species": self.species,
-            "domain": self.domain,
+            "schema": MODERN_INVERSION_OUTPUT_SCHEMA,
+            "schema_version": 1,
+            "run_metadata": _json_attr(self.run_metadata),
+            "model_metadata": _json_attr(self.model_metadata),
+            "output_metadata": _json_attr(self.output_metadata),
+            "provenance": _json_attr(self.provenance),
         }
         return dt
 
     def save(self, output_file: str | Path, output_format: Literal["netcdf", "zarr"] | None = None) -> None:
-        """Save InversionOutput to netCDF or Zarr.
-
-        There is a corresponding `load` method to recover the InversionOutput
-        from a saved version.
-
-        Args:
-            output_file: path to file where the InversionOutput should be saved
-            output_format: format to save to; if `None`, this will be inferred by the
-              extension of `output_file`
-
-        Raises:
-            ValueError: If `output_format` is not specified and cannot be inferred
-              from the output file extension.
-
-        """
-        output_file = Path(output_file)
-
-        if output_format is None:
-            try:
-                output_format = {".nc": "netcdf", ".zarr": "zarr"}[output_file.suffix]  # type: ignore
-            except KeyError:
-                raise ValueError(
-                    f"Output file {output_file} does not end in '.nc' or '.zarr'; please specify `output_format`."
-                )
-
-        if output_format == "netcdf":
-            if output_file.suffix != ".nc":
-                output_file = Path(output_file.stem + ".nc")
-            self.to_datatree().to_netcdf(output_file)
-
-        if output_format == "zarr":
-            if output_file.suffix != ".zarr":
-                output_file = Path(output_file.stem + ".zarr")
-            self.to_datatree().to_zarr(output_file)
+        """Save modern InversionOutput to NetCDF or Zarr."""
+        _save_datatree(self.to_datatree(), output_file, output_format)
 
     @classmethod
-    def from_datatree(cls: type[Self], dt: xr.DataTree) -> Self:
-        """Construct InversionOutput from serialised InversionOutput xr.DataTree.
+    def from_datatree(cls, dt: xr.DataTree) -> Self:
+        """Construct a modern InversionOutput from a serialised DataTree."""
+        schema = dt.attrs.get("schema")
+        if schema is not None and schema != MODERN_INVERSION_OUTPUT_SCHEMA:
+            raise ValueError(f"Unexpected InversionOutput schema: {schema!r}")
 
-        This method is the inverse of `to_datatree`.
-
-        Args:
-            dt: xr.DataTree constructed using `InversionOutput.to_datatree`
-
-        Returns:
-            InversionOutput: reconstructed from datatree
-
-        """
-        obs_and_errs_ds = dt.obs_and_errors.to_dataset().drop_vars(["site", "time"])
-        obs_and_errs = dict(obs_and_errs_ds)
-        obs_and_errs = {
-            k.replace("y_", "").replace("obs_error", "obs_err"): v for k, v in obs_and_errs.items()
-        }
-        inv_info = {
-            "start_date": dt.attrs.get("start_date"),
-            "end_date": dt.attrs.get("end_date"),
-            "species": dt.attrs.get("species"),
-            "domain": dt.attrs.get("domain"),
-        }
-        basis = get_xr_dummies(dt.basis.basis, cat_dim="nx", categories=dt.trace.posterior.nx)
-        trace = az.InferenceData(**{group: val.to_dataset() for group, val in dt.trace.items()})
+        trace = _inferencedata_from_datatree(cast(xr.DataTree, dt["trace"]))
+        inv_inputs = _restore_serialisation_multiindexes(cast(xr.DataTree, dt["inv_inputs"]).to_dataset())
+        basis_functions = BasisFunctions.from_datatree(cast(xr.DataTree, dt["basis_functions"]))
         return cls(
-            **obs_and_errs,
-            flux=dt.flux.flux,
-            basis=basis,
             trace=trace,
-            site_indicators=dt.obs_and_errors.site,
-            times=dt.obs_and_errors.time,
-            **inv_info,
+            inv_inputs=inv_inputs,
+            basis_functions=basis_functions,
+            run_metadata=_load_json_attr(dt.attrs, "run_metadata"),
+            model_metadata=_load_json_attr(dt.attrs, "model_metadata"),
+            output_metadata=_load_json_attr(dt.attrs, "output_metadata"),
+            provenance=_load_json_attr(dt.attrs, "provenance"),
         )
 
     @classmethod
-    def load(cls: type[Self], file_path: str | Path) -> Self:
-        """Load InversionOutput from file.
-
-        Use this to load `InversionOutput` that was previously saved using
-        `InversionOutput.save`.
-
-        Args:
-            file_path: path to saved InversionOutput
-
-        Returns:
-            InversionOutput loaded from saved file
-
-        """
-        open_errors: list[Exception] = []
-        for engine in ("h5netcdf", None):
-            try:
-                dt = xr.open_datatree(file_path, engine=engine) if engine is not None else xr.open_datatree(file_path)
-            except (OSError, RuntimeError, ValueError) as exc:
-                open_errors.append(exc)
-            else:
-                return cls.from_datatree(dt)
-
-        raise open_errors[-1]
-
-
-def make_inv_out_for_fixed_basis_mcmc(
-    fp_data: dict,
-    Y: np.ndarray,
-    Ytime: np.ndarray,
-    error: np.ndarray,
-    obs_repeatability: np.ndarray,
-    obs_variability: np.ndarray,
-    site_indicator: np.ndarray,
-    site_names: np.ndarray | list[str],  # could be a list?
-    mcmc_results: dict,
-    start_date: str,
-    end_date: str,
-    species: str,
-    domain: str,
-    obs_prior_factor: np.ndarray | None = None,
-    obs_prior_upper_level_factor: np.ndarray | None = None,
-) -> InversionOutput:
-    """Create InversionOutput in `fixedbasisMCMC`."""
-    nmeasure = np.arange(len(Y))
-    y_obs = xr.DataArray(Y, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs")
-    times = xr.DataArray(Ytime, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="times")
-    y_error = xr.DataArray(error, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror")
-    y_obs_prior_factor = (
-        xr.DataArray(
-            obs_prior_factor, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yobs_prior_factor"
-        )
-        if obs_prior_factor is not None
-        else None
-    )
-    y_obs_prior_upper_level_factor = (
-        xr.DataArray(
-            obs_prior_upper_level_factor,
-            dims=["nmeasure"],
-            coords={"nmeasure": nmeasure},
-            name="Yobs_prior_upper_level_factor",
-        )
-        if obs_prior_upper_level_factor is not None
-        else None
-    )
-    y_error_repeatability = xr.DataArray(
-        obs_repeatability, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror_repeatability"
-    )
-    y_error_variability = xr.DataArray(
-        obs_variability, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="Yerror_variability"
-    )
-    site_indicator_da = xr.DataArray(
-        site_indicator, dims=["nmeasure"], coords={"nmeasure": nmeasure}, name="site_indicator"
-    )
-    site_names_da = xr.DataArray(
-        site_names, dims=["nsite"], coords={"nsite": np.arange(len(site_names))}, name="site_names"
-    )
-
-    _, nx = mcmc_results["xouts"].shape
-    nx = np.arange(nx)
-
-    basis = get_xr_dummies(fp_data[".basis"], cat_dim="nx", categories=nx)
-
-    scenarios = [v for k, v in fp_data.items() if not k.startswith(".")]
-
-    try:
-        flux = scenarios[0].flux_stacked
-    except AttributeError:
-        flux = next(iter(fp_data[".flux"].values())).data
-
-    # TODO: this only works if there is one flux used (or if multiple, but ModelScenario stacks them)
-    if isinstance(flux, xr.Dataset):
-        flux = flux.flux if "flux" in flux else flux[flux.data_vars[0]]
-
-    if not isinstance(flux, xr.DataArray):
-        raise ValueError("Flux from `fp_data` could not be converted to a xr.DataArray.")
-
-    # add attributes
-    scenario = scenarios[0]
-    y_obs.attrs = scenario.mf.attrs
-    times.attrs = scenario.time.attrs
-    y_error.attrs = scenario.mf_error.attrs
-    y_error_variability.attrs = scenario.mf_variability.attrs
-    y_error_repeatability.attrs = scenario.mf_repeatability.attrs
-    for scenario in scenarios:
-        if not ("mf_prior_factor" in scenario and "mf_prior_upper_level_factor" in scenario):
-            continue
-        y_obs_prior_factor.attrs = scenario.mf_prior_factor.attrs
-        y_obs_prior_upper_level_factor.attrs = scenario.mf_prior_upper_level_factor.attrs
-
-    return InversionOutput(
-        obs=y_obs,
-        obs_err=y_error,
-        obs_prior_factor=y_obs_prior_factor,
-        obs_prior_upper_level_factor=y_obs_prior_upper_level_factor,
-        obs_repeatability=y_error_repeatability,
-        obs_variability=y_error_variability,
-        site_indicators=site_indicator_da,
-        flux=flux,
-        basis=basis,
-        model=mcmc_results["model"],
-        trace=mcmc_results["trace"],
-        site_names=site_names_da,
-        times=times,
-        start_date=start_date,
-        end_date=end_date,
-        species=species,
-        domain=domain,
-    )
-
-
-# Functions to re-run post-processing on standard RHIME outputs
-#
-# This is a temporary fix. A more general fix will be possible when we can recreate the
-# RHIME model using the modular model set-up.
-#
-# In particular, there are not prior or predictive traces, so only flux and country totals
-# can be recomputed.
-def _clean_rhime_output(ds: xr.Dataset) -> xr.Dataset:
-    """Take raw RHIME output and rename/drop/create variables to get dataset ready for further processing."""
-    use_bc = "bctrace" in ds.data_vars
-
-    rename_vars_dict = dict(stepnum="draw", paramnum="nlatent", measurenum="nmeasure")
-
-    rename_dict = {
-        "nsites": "nsite",
-        "nparam": "nx",
-        "xtrace": "x",
-        "sigtrace": "sigma",
-    }
-
-    if use_bc:
-        rename_vars_dict["numBC"] = "nBC"
-        rename_dict.update({"bctrace": "bc", "nBC": "nbc"})
-
-    ds = (
-        ds.rename_vars(rename_vars_dict)
-        .drop_dims(["nUI", "nlatent"])
-        .swap_dims(nsite="nsites", steps="draw")
-        .rename(rename_dict)
-    )
-    ds["x"] = ds.x.assign_coords(nx=("nx", ds.basisfunctions.to_series().sort_values().unique()))
-
-    data_vars = [
-        "Yobs",
-        "Yerror",
-        "Yerror_repeatability",
-        "Yerror_variability",
-        "Ytime",
-        "x",
-        "sigma",
-        "siteindicator",
-        "sigmafreqindex",
-        "sitenames",
-        "fluxapriori",
-        "basisfunctions",
-        "xsensitivity",
-    ]
-
-    if "Yobs_prior_factor" in ds.data_vars or "Yobs_prior_upper_level_factor" in ds.data_vars:
-        data_vars.append(["Yobs_prior_factor", "Yobs_prior_upper_level_factor"])
-    if use_bc:
-        data_vars.extend(["bc", "bcsensitivity"])
-
-    ds = ds[data_vars]
-
-    return ds
-
-
-def _make_idata_from_rhime_outs(rhime_out_ds: xr.Dataset) -> az.InferenceData:
-    """Create arviz InferenceData with posterior group created from RHIME output."""
-    trace_dvs = [dv for dv in rhime_out_ds.data_vars if "draw" in list(rhime_out_ds[dv].coords)]
-    traces = rhime_out_ds[trace_dvs].expand_dims({"chain": [0]})
-    prior = xr.ones_like(traces[["x"]])
-    constant_data = rhime_out_ds[["xsensitivity"]]
-    constant_data["min_model_error"] = xr.DataArray(
-        rhime_out_ds.attrs["min_model_error"], coords={"nmeasure": rhime_out_ds.nmeasure}, dims="nmeasure"
-    )
-    return az.InferenceData(posterior=traces, prior=prior, constant_data=constant_data)
-
-
-def make_inv_out_from_rhime_outputs(
-    ds: xr.Dataset, species: str, domain: str, start_date: str | None = None, end_date: str | None = None
-) -> InversionOutput:
-    """Create inversion output from RHIME outputs.
-
-    This can be used to re-run flux and country total outputs using the PARIS postprocessing.
-    However, this doesn't recover enough information to re-compute concentration outputs.
-    """
-    flux = ds.fluxapriori
-
-    ds_clean = _clean_rhime_output(ds)
-    site_indicators = ds_clean.siteindicator
-    basis = get_xr_dummies(ds_clean.basisfunctions, cat_dim="nx", categories=ds_clean.nx.values)
-
-    start_date = start_date or ds_clean.Ytime.min().values
-    end_date = end_date or ds_clean.Ytime.max().values
-
-    trace = _make_idata_from_rhime_outs(ds_clean)
-
-    return InversionOutput(
-        obs=ds_clean.Yobs,
-        obs_err=ds_clean.Yerror,
-        obs_prior_factor=getattr(ds_clean, "Yobs_prior_factor", None),
-        obs_prior_upper_level_factor=getattr(ds_clean, "Yobs_prior_upper_level_factor", None),
-        obs_repeatability=ds_clean.Yerror_repeatability,
-        obs_variability=ds_clean.Yerror_variability,
-        flux=flux,
-        basis=basis,
-        trace=trace,
-        site_indicators=site_indicators,
-        site_names=ds_clean.sitenames,
-        times=ds_clean.Ytime,
-        species=species,
-        domain=domain,
-        start_date=start_date,
-        end_date=end_date,
-    )
+    def load(cls, file_path: str | Path) -> Self:
+        """Load a modern InversionOutput artifact."""
+        return cls.from_datatree(_open_datatree_loaded(file_path))

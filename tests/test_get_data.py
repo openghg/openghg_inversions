@@ -22,9 +22,7 @@ from openghg_inversions.inversion_data.get_data import (
 from openghg_inversions.inversion_data.getters import get_flux_data
 
 
-def test_data_processing_surface_notracer(
-        tac_ch4_data_args, merged_data_file_name, raw_data_path
-):
+def test_data_processing_surface_notracer(tac_ch4_data_args, merged_data_file_name, raw_data_path):
     """Check that `data_processing_surface_notracer` produces the same output
     as v0.1, with test data frozen on 9 Feb 2024, or the same as v0.2, with test data frozen on
     15 Apr 2024 (using the zarr backend).
@@ -35,7 +33,15 @@ def test_data_processing_surface_notracer(
     assert len(result) == 6
 
     # check keys of "fp_all"
-    assert list(result[0].keys()) == [".species", ".flux", ".split_by_sectors", ".bc", "TAC", ".scales", ".units"]
+    assert list(result[0].keys()) == [
+        ".species",
+        ".flux",
+        ".split_by_sectors",
+        ".bc",
+        "TAC",
+        ".scales",
+        ".units",
+    ]
 
     # variables to check (to avoid surprises from new variables added to data)
     check_vars = ["mf", "fp", "mf_mod", "bc_mod", "fp_x_flux", "bc_n"]
@@ -50,17 +56,16 @@ def test_data_processing_surface_notracer(
         expected_tac_combined_scenario["TAC"][check_vars].isel(time=0),
     )
 
+
 def test_load_merged_data(merged_data_dir, merged_data_file_name):
     """This should pass by finding the merged data with .zarr suffix."""
-    result = load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "no_zip")
+    load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "no_zip")
 
 
 def test_load_merged_data_missing_data_error(merged_data_dir, merged_data_file_name):
     """This should pass by finding the merged data with .zarr suffix."""
     with pytest.raises(ValueError):
-        result = load_merged_data(
-            merged_data_dir, merged_data_name=merged_data_file_name + "abc123", output_format="netcdf"
-        )
+        load_merged_data(merged_data_dir, merged_data_name=merged_data_file_name + "abc123", output_format="netcdf")
 
 
 def test_save_load_merged_data(tac_ch4_data_args, merged_data_dir):
@@ -98,7 +103,7 @@ def test_missing_data_at_one_site(tac_ch4_data_args):
     assert "MHD" not in fp_all
 
 
-def test_missing_data_at_all_sites():
+def test_missing_data_at_all_sites(openghg_test_store):
     """Check that a SearchError is raised if data is missing from all sites."""
     data_args = {
         "species": "ch4",
@@ -179,6 +184,11 @@ def test_add_averaging_error(tac_ch4_data_args):
         for var in ["mf_error", "mf_repeatability", "mf_variability"]:
             for ds in [ds1, ds2]:
                 assert var in ds
+                assert "number_of_observations" not in ds[var].attrs["long_name"]
+
+        assert ds1.mf_error.attrs["long_name"] == ds1.mf.attrs["long_name"] + "_error"
+        assert ds1.mf_repeatability.attrs["long_name"] == ds1.mf.attrs["long_name"] + "_repeatability"
+        assert ds1.mf_variability.attrs["long_name"] == ds1.mf.attrs["long_name"] + "_variability"
 
         # averagingerror=True is default, so for ds1, "mf_error" should have repeatability
         # and variability added
@@ -250,14 +260,17 @@ def test_looking_older_flux_files(tac_ch4_data_args, capsys):
     assert "Using flux data from 2019-01-01" in stdout
 
 
-@pytest.mark.parametrize("end_date, time_period", [("2019-02-01", "monthly"), ("2020-01-01", "1 year"), ("2019-01-02", "1 year")])
+@pytest.mark.parametrize(
+    "end_date, time_period", [("2019-02-01", "monthly"), ("2020-01-01", "1 year"), ("2019-01-02", "1 year")]
+)
 def test_flux_time_period_inference(end_date, time_period, tac_ch4_data_args):
-    kwargs = {"sources": tac_ch4_data_args["emissions_name"],
-              "species": tac_ch4_data_args["species"],
-              "domain": tac_ch4_data_args["domain"],
-              "start_date": "2019-01-01",
-              "end_date": end_date,
-              }
+    kwargs = {
+        "sources": tac_ch4_data_args["emissions_name"],
+        "species": tac_ch4_data_args["species"],
+        "domain": tac_ch4_data_args["domain"],
+        "start_date": "2019-01-01",
+        "end_date": end_date,
+    }
     flux_data = get_flux_data(**kwargs)
 
     source = tac_ch4_data_args["emissions_name"][0]

@@ -4,7 +4,50 @@ import pytest
 import sparse
 import xarray as xr
 
-from openghg_inversions.array_ops import align_to_multi_index_level_values
+from openghg_inversions.array_ops import (
+    align_to_multi_index_level_values,
+    concat_gather_datatree,
+    concat_gather_datasets,
+)
+
+
+def _make_site_dataset(site: str, *, include_inlet_height: bool) -> xr.Dataset:
+    """Create a small site dataset for concat-gather tests."""
+    time = xr.DataArray(pd.date_range("2020-01-01", periods=2, freq="1h"), dims="time", name="time")
+    data_vars = {
+        "mf": xr.DataArray(np.array([1.0, 2.0]), dims="time", coords={"time": time}),
+        "mf_error": xr.DataArray(np.array([0.1, 0.2]), dims="time", coords={"time": time}),
+    }
+    if include_inlet_height:
+        data_vars["inlet_height"] = xr.DataArray(np.array([100.0, 100.0]), dims="time", coords={"time": time})
+
+    return xr.Dataset(data_vars).assign_coords(site=site)
+
+
+def _concat_with_policy(
+    datasets: dict[str, xr.Dataset],
+    *,
+    missing_data_vars: str,
+    use_datatree: bool,
+) -> xr.Dataset:
+    """Run concat-gather via datasets or datatree with the same options."""
+    if use_datatree:
+        datatree = xr.DataTree.from_dict({key: value for key, value in datasets.items()})
+        return concat_gather_datatree(
+            datatree,
+            key_dim="site",
+            ragged_dim="time",
+            stack_dim="nmeasure",
+            missing_data_vars=missing_data_vars,
+        )
+
+    return concat_gather_datasets(
+        datasets,
+        key_dim="site",
+        ragged_dim="time",
+        stack_dim="nmeasure",
+        missing_data_vars=missing_data_vars,
+    )
 
 
 def test_transpose():
@@ -111,3 +154,36 @@ def test_align_to_multi_index_level_values_with_other_level_as_dim_warns():
         )
 
     xr.testing.assert_equal(da_stack.a, da_aligned.a)
+
+
+@pytest.mark.parametrize("use_datatree", [False, True], ids=["datasets", "datatree"])
+@pytest.mark.parametrize("order", [("AAA", "BBB"), ("BBB", "AAA")], ids=["extra-first", "extra-second"])
+def test_concat_gather_missing_data_vars_error_is_order_independent(
+    use_datatree: bool, order: tuple[str, str]
+):
+    """Mismatched data vars should raise regardless of dataset order."""
+    datasets = {
+        "AAA": _make_site_dataset("AAA", include_inlet_height=True),
+        "BBB": _make_site_dataset("BBB", include_inlet_height=False),
+    }
+    ordered = {key: datasets[key] for key in order}
+
+    with pytest.raises(ValueError, match="inlet_height"):
+        _concat_with_policy(ordered, missing_data_vars="error", use_datatree=use_datatree)
+
+
+@pytest.mark.parametrize("use_datatree", [False, True], ids=["datasets", "datatree"])
+@pytest.mark.parametrize("order", [("AAA", "BBB"), ("BBB", "AAA")], ids=["extra-first", "extra-second"])
+def test_concat_gather_missing_data_vars_drop_warns_and_drops(use_datatree: bool, order: tuple[str, str]):
+    """Drop mode should keep only shared vars and warn once."""
+    datasets = {
+        "AAA": _make_site_dataset("AAA", include_inlet_height=True),
+        "BBB": _make_site_dataset("BBB", include_inlet_height=False),
+    }
+    ordered = {key: datasets[key] for key in order}
+
+    with pytest.warns(UserWarning, match="Dropping data variables.*inlet_height"):
+        result = _concat_with_policy(ordered, missing_data_vars="drop", use_datatree=use_datatree)
+
+    assert set(result.data_vars) == {"mf", "mf_error"}
+    assert "inlet_height" not in result
