@@ -86,6 +86,24 @@ be tested without committing to config syntax.
 - Add small partition-step adapters for quadtree-style splits and prototype
   inertial splits when there is a clear test case. The current `PartitionStep`
   boundary can already accept steps that return more than two child partitions.
+- Keep split stopping at the greedy orchestration boundary. A `PartitionStep`
+  proposes child partitions; the greedy strategy decides whether to accept
+  those children before updating the active queue.
+- The first split-stopping policy is `MinChildWeightShare`, which rejects a
+  proposed split when the lightest child falls below a configured share of the
+  parent partition weight. When enabled, requested region counts are upper
+  targets: the strategy may return fewer labels if remaining split candidates
+  fail the policy.
+- Freeze is the first supported rejected-split action. A rejected parent is
+  marked done so deterministic split steps do not propose the same rejected
+  children repeatedly. Requeue remains a possible future policy, but it needs
+  explicit loop prevention and a reason that a later attempt could succeed.
+  Fallback to a different split step or a more permissive split is also deferred
+  until there is evidence that the extra behavior is needed.
+- Defer config-file routing, `basis_functions_wrapper` exposure, and RHIME
+  runner options for split stopping. The core policy is useful and testable at
+  the lower-level greedy strategy boundary, while public routing should wait for
+  the surrounding basis option schema to settle.
 - Treat simulated annealing, precomputed multiscale weights, and observation-
   weighted definitions as future optimizer/weight-builder work. They are useful
   sources from `~/Documents/basis_functions`, but they should not block the
@@ -193,3 +211,7 @@ be tested without committing to config syntax.
   `region_constrained` path. Current note: the pure Python basis API accepts an
   already loaded `region_classes` `DataArray`, but `.ini`/`run_hbmcmc.py` users
   do not yet have a file-loading/config hook for these masks.
+- 2026-06-21: Added greedy split stopping through a lower-level
+  `SplitAcceptancePolicy` hook and `MinChildWeightShare` policy. Rejected
+  splits freeze the selected parent partition, so the requested class-local
+  region count is treated as an upper target when stopping is configured.

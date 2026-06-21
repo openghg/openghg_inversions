@@ -5,6 +5,7 @@ import xarray as xr
 from openghg_inversions.basis.algorithms import (
     AxisParallelSplitStep,
     GreedyAxisParallelSplitStrategy,
+    MinChildWeightShare,
     allocate_nbasis_by_class,
     region_constrained_basis,
 )
@@ -310,6 +311,91 @@ def test_greedy_strategy_does_not_overshoot_target_with_multi_region_step():
     )
 
     assert set(np.unique(labels)) == {1}
+
+
+def test_greedy_strategy_rejects_low_weight_child_split():
+    """Splits producing a low-weight child are rejected."""
+    weights = np.array([[100.0, 1.0, 1.0, 1.0]])
+    class_mask = np.ones(weights.shape, dtype=bool)
+
+    labels = GreedyAxisParallelSplitStrategy(
+        split_acceptance=MinChildWeightShare(min_child_weight_share=0.05),
+    )(weights, class_mask, target_regions=2)
+
+    assert set(np.unique(labels)) == {1}
+
+
+def test_greedy_strategy_accepts_split_above_min_child_weight_share():
+    """Splits are accepted when all children meet the minimum weight share."""
+    weights = np.ones((1, 4))
+    class_mask = np.ones(weights.shape, dtype=bool)
+
+    labels = GreedyAxisParallelSplitStrategy(
+        split_acceptance=MinChildWeightShare(min_child_weight_share=0.25),
+    )(weights, class_mask, target_regions=2)
+
+    assert set(np.unique(labels)) == {1, 2}
+
+
+def test_greedy_strategy_split_stopping_can_return_fewer_regions_than_requested():
+    """Greedy stopping treats requested regions as an upper target."""
+    weights = np.array([[50.0, 50.0, 1.0, 1.0]])
+    class_mask = np.ones(weights.shape, dtype=bool)
+
+    labels = GreedyAxisParallelSplitStrategy(
+        split_acceptance=MinChildWeightShare(min_child_weight_share=0.1),
+    )(weights, class_mask, target_regions=3)
+
+    assert set(np.unique(labels)) == {1, 2}
+
+
+def test_greedy_strategy_split_stopping_freezes_rejected_partition():
+    """Rejected partitions are frozen instead of being requeued."""
+    weights = np.array([[100.0, 1.0, 1.0, 1.0]])
+    class_mask = np.ones(weights.shape, dtype=bool)
+
+    class LowWeightTailSplit:
+        """Custom splitter that repeatedly proposes the same poor split."""
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __call__(self, nodes: list[tuple[int, int]], weights: np.ndarray) -> list[list[tuple[int, int]]]:
+            self.calls += 1
+            return [nodes[:1], nodes[1:]]
+
+    split_step = LowWeightTailSplit()
+    labels = GreedyAxisParallelSplitStrategy(
+        split_step=split_step,
+        split_acceptance=MinChildWeightShare(min_child_weight_share=0.05),
+    )(weights, class_mask, target_regions=3)
+
+    assert set(np.unique(labels)) == {1}
+    assert split_step.calls == 1
+
+
+def test_region_constrained_basis_split_stopping_keeps_class_boundaries():
+    """Weight-share stopping still partitions each region class independently."""
+    weights = xr.DataArray(
+        np.array([[50.0, 50.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]),
+        dims=("lat", "lon"),
+    )
+    classes = xr.DataArray(
+        np.array([["high", "high", "high", "high"], ["even", "even", "even", "even"]]),
+        dims=weights.dims,
+    )
+
+    labels = region_constrained_basis(
+        weights,
+        classes,
+        nbasis={"high": 3, "even": 2},
+        split_strategy=GreedyAxisParallelSplitStrategy(
+            split_acceptance=MinChildWeightShare(min_child_weight_share=0.1),
+        ),
+    )
+
+    assert len(set(np.unique(labels.values)) - {0}) == 4
+    assert all(len(class_values) == 1 for class_values in _class_values_for_labels(labels, classes).values())
 
 
 def test_region_constrained_basis_rejects_explicit_over_allocation():
