@@ -78,6 +78,60 @@ class PartitionStep(Protocol):
         ...
 
 
+class SplitAcceptancePolicy(Protocol):
+    """Policy protocol for accepting proposed child partitions."""
+
+    def __call__(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+    ) -> bool:
+        """Return true when proposed child partitions should be accepted.
+
+        Args:
+            parent: Parent partition selected by greedy orchestration.
+            children: Non-empty child partitions proposed by a
+                :class:`PartitionStep`.
+            weights: Non-negative weight field aligned to the source grid.
+
+        Returns:
+            True if greedy orchestration should replace ``parent`` with
+            ``children``. False freezes ``parent`` as a completed partition.
+        """
+        ...
+
+
+@dataclass(frozen=True)
+class MinChildWeightShare:
+    """Reject splits whose lightest child is below a parent-weight share."""
+
+    min_child_weight_share: float
+
+    def __post_init__(self) -> None:
+        """Validate the minimum child weight share threshold."""
+        if not 0.0 <= self.min_child_weight_share <= 1.0:
+            raise ValueError("min_child_weight_share must be between 0 and 1.")
+
+    def __call__(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+    ) -> bool:
+        """Return true when every child has enough parent weight share."""
+        parent_weight = _node_weight(parent, weights)
+        if parent_weight <= 0.0:
+            parent_weight = float(len(parent))
+            child_weights = [float(len(child)) for child in children]
+        else:
+            child_weights = [_node_weight(child, weights) for child in children]
+
+        if parent_weight <= 0.0:
+            return False
+        return min(child_weights) / parent_weight >= self.min_child_weight_share
+
+
 @dataclass(frozen=True)
 class AxisParallelSplitStep:
     """Split one partition along an axis-parallel line.
@@ -162,6 +216,7 @@ class GreedyAxisParallelSplitStrategy:
     balanced: bool = True
     clean_splits: bool = False
     split_step: PartitionStep | None = None
+    split_acceptance: SplitAcceptancePolicy | None = None
 
     def __call__(
         self,
@@ -175,7 +230,9 @@ class GreedyAxisParallelSplitStrategy:
             weights: Non-negative weight field for the full grid.
             class_mask: Boolean mask selecting the cells in the class being
                 split.
-            target_regions: Requested number of local labels for this class.
+            target_regions: Requested upper target for local labels in this
+                class. Split acceptance policies may stop before this count is
+                reached.
 
         Returns:
             Integer label array with positive class-local labels inside
@@ -200,6 +257,7 @@ class GreedyAxisParallelSplitStrategy:
             target_regions,
             class_weights,
             split_step=split_step,
+            split_acceptance=self.split_acceptance,
         )
         return _labels_from_node_partition(partition, weights.shape)
 
@@ -690,6 +748,7 @@ def _greedy_partitioning(
     weights: np.ndarray,
     *,
     split_step: PartitionStep,
+    split_acceptance: SplitAcceptancePolicy | None = None,
 ) -> list[GridPartition]:
     """Apply a partition step greedily until a target count is reached.
 
@@ -702,10 +761,14 @@ def _greedy_partitioning(
         split_step: Callable that splits one selected partition into child
             partitions. Returning fewer than two non-empty children marks the
             selected partition as done.
+        split_acceptance: Optional policy applied after ``split_step`` proposes
+            non-empty children and before those children are accepted. Rejected
+            splits freeze the selected parent partition.
 
     Returns:
         List of output partitions. The result may contain fewer than
-        ``target_regions`` entries when no active partition can be split further.
+        ``target_regions`` entries when no active partition can be split further
+        or when split acceptance rejects the remaining candidates.
     """
     active = _PartitionPriorityQueue(weights)
     done: list[GridPartition] = []
@@ -728,6 +791,9 @@ def _greedy_partitioning(
             done.append(nodes)
             continue
         if current_regions - 1 + len(child_partitions) > target_regions:
+            done.append(nodes)
+            continue
+        if split_acceptance is not None and not split_acceptance(nodes, child_partitions, weights):
             done.append(nodes)
             continue
 
@@ -1051,8 +1117,10 @@ __all__ = [
     "AxisParallelSplitStep",
     "AxisAlignedWeightedSplitStrategy",
     "GreedyAxisParallelSplitStrategy",
+    "MinChildWeightShare",
     "NbasisAllocation",
     "PartitionStep",
+    "SplitAcceptancePolicy",
     "SplitStrategy",
     "allocate_nbasis_by_class",
     "region_constrained_basis",
