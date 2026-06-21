@@ -114,10 +114,20 @@ class AxisParallelSplitStep:
 
 @dataclass(frozen=True)
 class InertialSplitStep:
-    """Experimental split step using a weighted inertial regression axis.
+    """Experimental split step using a weighted principal inertial axis.
 
-    This step uses grid-index coordinates only. Latitude, area, and physical
-    distance semantics are intentionally deferred to the OGI-048 design work.
+    The split projects partition cells onto the principal axis of their
+    weighted grid-index covariance, then cuts that one-dimensional ordering by
+    weight or by count. This lets diagonal, rotated, or strongly anisotropic
+    high-gradient structures split along their natural orientation instead of
+    being forced through row/column cuts. The greedy class-local orchestrator
+    still invokes this step independently inside each region class, so labels
+    keep the same region-constrained boundary guarantees as axis-parallel
+    splitting.
+
+    This step deliberately uses grid-index coordinates only. Latitude, area,
+    physical distance semantics, and possible lat/lon/time coordinates are
+    deferred to later design work.
     """
 
     balanced: bool = True
@@ -785,10 +795,18 @@ def _inertial_split_nodes(
     *,
     balanced: bool,
 ) -> tuple[GridPartition, GridPartition]:
-    """Split nodes along their weighted orthogonal-regression axis.
+    """Split nodes along their weighted principal inertial axis.
 
-    Degenerate or numerically unstable inertial fits fall back to an
-    axis-parallel split so callers always get deterministic behavior.
+    The implementation treats the row/column node coordinates as point masses,
+    orders cells by projection onto the dominant weighted covariance axis, and
+    splits that ordering near half total weight or half cell count. Compared
+    with row/column splits, this can preserve diagonal or rotated structures
+    while still returning ordinary node partitions to the greedy constrained
+    strategy.
+
+    Degenerate geometry, tied projections at the selected cut, or numerically
+    unstable inertial fits fall back to an axis-parallel split so callers always
+    get deterministic behavior.
     """
     fallback = _axis_parallel_split_nodes(
         nodes,
@@ -851,7 +869,15 @@ def _weighted_inertial_axis(
     nodes: GridPartition,
     node_weights: npt.NDArray[np.float64],
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]] | None:
-    """Return the principal weighted orthogonal-regression axis and centroid."""
+    """Return the principal weighted inertial axis and centroid.
+
+    The current problem is only a 2D row/column covariance, so a closed-form
+    axis formula would be possible. ``np.linalg.eigh`` is intentionally kept
+    here because the covariance is symmetric, the arrays are tiny, and the
+    symmetric eigensolver avoids slope/division edge cases while leaving a
+    straightforward path to future higher-dimensional coordinate spaces such as
+    lat/lon/time basis functions.
+    """
     if not np.isfinite(node_weights).all():
         return None
 
@@ -871,6 +897,8 @@ def _weighted_inertial_axis(
     if not np.isfinite(covariance).all():
         return None
 
+    # ``eigh`` is a stable symmetric eigensolver for this tiny covariance and
+    # keeps the implementation dimension-agnostic if coordinates grow past 2D.
     try:
         eigenvalues, eigenvectors = np.linalg.eigh(covariance)
     except np.linalg.LinAlgError:

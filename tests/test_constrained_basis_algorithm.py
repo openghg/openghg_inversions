@@ -227,6 +227,25 @@ def test_inertial_split_unbalanced_uses_count_based_split():
     assert sorted(_partition_weight(child, weights) for child in children) == [3.0, 101.0]
 
 
+def test_inertial_split_can_differ_from_axis_parallel_split():
+    """Inertial ordering can split anisotropic shapes away from row/column cuts."""
+    nodes = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0)]
+    weights = np.zeros((2, 4))
+    for node in nodes:
+        weights[node] = 1.0
+
+    inertial_children = InertialSplitStep(balanced=False)(nodes, weights)
+    axis_parallel_children = AxisParallelSplitStep(balanced=False)(nodes, weights)
+
+    inertial_sets = {frozenset(child) for child in inertial_children}
+    axis_parallel_sets = {frozenset(child) for child in axis_parallel_children}
+    assert inertial_sets != axis_parallel_sets
+    assert inertial_sets == {
+        frozenset({(0, 3), (0, 2)}),
+        frozenset({(0, 1), (0, 0), (1, 0)}),
+    }
+
+
 def test_region_constrained_basis_with_inertial_step_keeps_class_boundaries():
     """Inertial split steps still run independently inside region classes."""
     weights = xr.DataArray(np.ones((4, 4)), dims=("lat", "lon"))
