@@ -33,6 +33,7 @@ AllocationMode: TypeAlias = Literal["weight", "area"]
 NbasisAllocation: TypeAlias = int | Mapping[Hashable, int]
 GridNode: TypeAlias = tuple[int, int]
 GridPartition: TypeAlias = list[GridNode]
+_INERTIAL_TOLERANCE = 1.0e-12
 
 
 class SplitStrategy(Protocol):
@@ -106,6 +107,44 @@ class AxisParallelSplitStep:
             balanced=self.balanced,
             clean_splits=self.clean_splits,
         )
+        if not left or not right:
+            return [nodes]
+        return [left, right]
+
+
+@dataclass(frozen=True)
+class InertialSplitStep:
+    """Experimental split step using a weighted principal inertial axis.
+
+    The split projects partition cells onto the principal axis of their
+    weighted grid-index covariance, then cuts that one-dimensional ordering by
+    weight or by count. This lets diagonal, rotated, or strongly anisotropic
+    high-gradient structures split along their natural orientation instead of
+    being forced through row/column cuts. The greedy class-local orchestrator
+    still invokes this step independently inside each region class, so labels
+    keep the same region-constrained boundary guarantees as axis-parallel
+    splitting.
+
+    This step deliberately uses grid-index coordinates only. Latitude, area,
+    physical distance semantics, and possible lat/lon/time coordinates are
+    deferred to later design work.
+    """
+
+    balanced: bool = True
+
+    def __call__(self, nodes: GridPartition, weights: np.ndarray) -> list[GridPartition]:
+        """Return child partitions from one inertial-axis split.
+
+        Args:
+            nodes: Grid nodes in the partition being split.
+            weights: Non-negative weight field aligned to the source grid.
+
+        Returns:
+            Two child partitions when the inertial split succeeds, or the
+            original partition when neither inertial nor fallback splitting can
+            produce two non-empty sides.
+        """
+        left, right = _inertial_split_nodes(nodes, weights, balanced=self.balanced)
         if not left or not right:
             return [nodes]
         return [left, right]
@@ -748,6 +787,160 @@ def _axis_parallel_split_nodes(
         return left, right
 
     return ordered[:split_index], ordered[split_index:]
+
+
+def _inertial_split_nodes(
+    nodes: GridPartition,
+    weights: np.ndarray,
+    *,
+    balanced: bool,
+) -> tuple[GridPartition, GridPartition]:
+    """Split nodes along their weighted principal inertial axis.
+
+    The implementation treats the row/column node coordinates as point masses,
+    orders cells by projection onto the dominant weighted covariance axis, and
+    splits that ordering near half total weight or half cell count. Compared
+    with row/column splits, this can preserve diagonal or rotated structures
+    while still returning ordinary node partitions to the greedy constrained
+    strategy.
+
+    Degenerate geometry, tied projections at the selected cut, or numerically
+    unstable inertial fits fall back to an axis-parallel split so callers always
+    get deterministic behavior.
+    """
+    fallback = _axis_parallel_split_nodes(
+        nodes,
+        weights,
+        balanced=balanced,
+        clean_splits=False,
+    )
+    if len(nodes) < 3:
+        return fallback
+
+    inertial_order = _inertial_ordered_nodes(nodes, weights)
+    if inertial_order is None:
+        return fallback
+
+    ordered, projections = inertial_order
+    if balanced:
+        rows, cols = _node_indices(ordered)
+        split_index = _idx_of_half_cumsum(weights[rows, cols])
+    else:
+        split_index = len(ordered) // 2
+
+    split_index = min(max(split_index, 1), len(ordered) - 1)
+    if _projection_tie_at_split(projections, split_index):
+        return fallback
+
+    left = ordered[:split_index]
+    right = ordered[split_index:]
+    if not left or not right:
+        return fallback
+    return left, right
+
+
+def _inertial_ordered_nodes(
+    nodes: GridPartition,
+    weights: np.ndarray,
+) -> tuple[GridPartition, npt.NDArray[np.float64]] | None:
+    """Return nodes ordered by projection onto the weighted inertial axis."""
+    rows, cols = _node_indices(nodes)
+    node_weights = weights[rows, cols].astype(np.float64)
+    axis_and_centroid = _weighted_inertial_axis(nodes, node_weights)
+    if axis_and_centroid is None:
+        return None
+
+    axis, centroid = axis_and_centroid
+    coords = np.asarray(nodes, dtype=np.float64)
+    projections = (coords - centroid) @ axis
+    if not np.isfinite(projections).all() or float(np.ptp(projections)) <= _INERTIAL_TOLERANCE:
+        return None
+
+    order = sorted(
+        range(len(nodes)),
+        key=lambda index: (float(projections[index]), nodes[index][0], nodes[index][1]),
+    )
+    ordered_nodes = [nodes[index] for index in order]
+    ordered_projections = projections[order]
+    return ordered_nodes, ordered_projections
+
+
+def _weighted_inertial_axis(
+    nodes: GridPartition,
+    node_weights: npt.NDArray[np.float64],
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]] | None:
+    """Return the principal weighted inertial axis and centroid.
+
+    The current problem is only a 2D row/column covariance, so a closed-form
+    axis formula would be possible. ``np.linalg.eigh`` is intentionally kept
+    here because the covariance is symmetric, the arrays are tiny, and the
+    symmetric eigensolver avoids slope/division edge cases while leaving a
+    straightforward path to future higher-dimensional coordinate spaces such as
+    lat/lon/time basis functions.
+    """
+    if not np.isfinite(node_weights).all():
+        return None
+
+    total_weight = float(node_weights.sum())
+    if total_weight <= 0.0 or not np.isfinite(total_weight):
+        return None
+
+    coords = np.asarray(nodes, dtype=np.float64)
+    weight_column = node_weights.reshape(-1, 1)
+    centroid = (coords * weight_column).sum(axis=0) / total_weight
+    centered = coords - centroid
+    mxy = float((node_weights * centered[:, 0] * centered[:, 1]).sum())
+    if np.isclose(mxy, 0.0, rtol=_INERTIAL_TOLERANCE, atol=_INERTIAL_TOLERANCE):
+        return None
+
+    covariance = centered.T @ (centered * weight_column) / total_weight
+    if not np.isfinite(covariance).all():
+        return None
+
+    # ``eigh`` is a stable symmetric eigensolver for this tiny covariance and
+    # keeps the implementation dimension-agnostic if coordinates grow past 2D.
+    try:
+        eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+    except np.linalg.LinAlgError:
+        return None
+
+    if not np.isfinite(eigenvalues).all() or not np.isfinite(eigenvectors).all():
+        return None
+
+    axis_index = int(np.argmax(eigenvalues))
+    if float(eigenvalues[axis_index]) <= _INERTIAL_TOLERANCE:
+        return None
+    eigenvalue_gap = float(eigenvalues[axis_index] - eigenvalues[1 - axis_index])
+    if eigenvalue_gap <= _INERTIAL_TOLERANCE * max(1.0, abs(float(eigenvalues[axis_index]))):
+        return None
+
+    axis = eigenvectors[:, axis_index].astype(np.float64)
+    axis_norm = float(np.linalg.norm(axis))
+    if axis_norm <= _INERTIAL_TOLERANCE or not np.isfinite(axis_norm):
+        return None
+
+    axis = _canonical_inertial_axis(axis / axis_norm)
+    return axis, centroid
+
+
+def _canonical_inertial_axis(axis: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """Flip an eigenvector to a deterministic orientation for sorting."""
+    nonzero = np.flatnonzero(np.abs(axis) > _INERTIAL_TOLERANCE)
+    if len(nonzero) > 0 and axis[int(nonzero[0])] < 0.0:
+        return -axis
+    return axis
+
+
+def _projection_tie_at_split(projections: npt.NDArray[np.float64], split_index: int) -> bool:
+    """Return true when an inertial split would divide equal projections."""
+    return bool(
+        np.isclose(
+            projections[split_index - 1],
+            projections[split_index],
+            rtol=_INERTIAL_TOLERANCE,
+            atol=_INERTIAL_TOLERANCE,
+        )
+    )
 
 
 def _idx_of_half_cumsum(weights: npt.ArrayLike) -> int:
