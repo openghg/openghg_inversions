@@ -27,16 +27,16 @@
   </noscript>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="../_static/styles/theme.css?digest=0790524f97105ba85085" rel="stylesheet" />
-<link href="../_static/styles/pydata-sphinx-theme.css?digest=0790524f97105ba85085" rel="stylesheet" />
+  <link href="../_static/styles/theme.css?digest=a95f357e85573c9b56d5" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=a95f357e85573c9b56d5" rel="stylesheet" />
 
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
   
   <!-- So that users can add custom icons -->
-  <script defer src="../_static/scripts/fontawesome.js?digest=0790524f97105ba85085"></script>
+  <script defer src="../_static/scripts/fontawesome.js?digest=a95f357e85573c9b56d5"></script>
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=0790524f97105ba85085" />
-<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=0790524f97105ba85085" />
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
 
     <script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
@@ -434,10 +434,16 @@
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy"><code class="docutils literal notranslate"><span class="pre">GreedyAxisParallelSplitStrategy</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy.balanced"><code class="docutils literal notranslate"><span class="pre">GreedyAxisParallelSplitStrategy.balanced</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy.clean_splits"><code class="docutils literal notranslate"><span class="pre">GreedyAxisParallelSplitStrategy.clean_splits</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy.split_acceptance"><code class="docutils literal notranslate"><span class="pre">GreedyAxisParallelSplitStrategy.split_acceptance</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy.split_step"><code class="docutils literal notranslate"><span class="pre">GreedyAxisParallelSplitStrategy.split_step</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.MinChildWeightShare"><code class="docutils literal notranslate"><span class="pre">MinChildWeightShare</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.MinChildWeightShare.min_child_weight_share"><code class="docutils literal notranslate"><span class="pre">MinChildWeightShare.min_child_weight_share</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.PartitionStep"><code class="docutils literal notranslate"><span class="pre">PartitionStep</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.SplitAcceptancePolicy"><code class="docutils literal notranslate"><span class="pre">SplitAcceptancePolicy</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.SplitStrategy"><code class="docutils literal notranslate"><span class="pre">SplitStrategy</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.allocate_nbasis_by_class"><code class="docutils literal notranslate"><span class="pre">allocate_nbasis_by_class()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.quadtree_algorithm"><code class="docutils literal notranslate"><span class="pre">quadtree_algorithm()</span></code></a></li>
@@ -1356,8 +1362,8 @@
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script defer src="../_static/scripts/bootstrap.js?digest=0790524f97105ba85085"></script>
-<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=0790524f97105ba85085"></script>
+  <script defer src="../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5"></script>
 
   <footer class="bd-footer">
 <div class="bd-footer__inner bd-page-width">
@@ -1391,7 +1397,7 @@
         <div class="footer-item">
 <p class="theme-version">
   <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
-  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.18.0.
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.19.0.
 </p></div>
       
     </div>
