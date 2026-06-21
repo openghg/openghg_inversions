@@ -104,7 +104,11 @@ class SplitAcceptancePolicy(Protocol):
 
 @dataclass(frozen=True)
 class MinChildWeightShare:
-    """Reject splits whose lightest child is below a parent-weight share."""
+    """Reject splits whose lightest child is below a parent-weight share.
+
+    This is a split-balance guard. It compares children with their current
+    parent partition, not with the total class/source weight being partitioned.
+    """
 
     min_child_weight_share: float
 
@@ -130,6 +134,67 @@ class MinChildWeightShare:
         if parent_weight <= 0.0:
             return False
         return min(child_weights) / parent_weight >= self.min_child_weight_share
+
+
+@dataclass(frozen=True)
+class MinParentWeightShare:
+    """Reject splits whose parent is below a class/source-total weight share."""
+
+    min_parent_weight_share: float
+
+    def __post_init__(self) -> None:
+        """Validate the minimum parent weight share threshold."""
+        if not 0.0 <= self.min_parent_weight_share <= 1.0:
+            raise ValueError("min_parent_weight_share must be between 0 and 1.")
+
+    def __call__(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+    ) -> bool:
+        """Return true when the parent is important enough to split.
+
+        ``weights`` is the class/source-local field passed to greedy
+        partitioning, so ``weights.sum()`` is the denominator for this policy.
+        If that total is zero, fall back to cell-count shares for direct policy
+        use; the default greedy strategy already converts all-zero classes to an
+        area surrogate before policies are evaluated.
+        """
+        del children
+
+        total_weight = float(weights.sum())
+        if total_weight <= 0.0:
+            total_weight = float(weights.size)
+            parent_weight = float(len(parent))
+        else:
+            parent_weight = _node_weight(parent, weights)
+
+        if total_weight <= 0.0:
+            return False
+        return parent_weight / total_weight >= self.min_parent_weight_share
+
+
+@dataclass(frozen=True, init=False)
+class AllSplitAcceptancePolicies:
+    """Accept a split only when every policy accepts it."""
+
+    policies: tuple[SplitAcceptancePolicy, ...]
+
+    def __init__(self, *policies: SplitAcceptancePolicy) -> None:
+        """Create a policy that combines multiple acceptance policies."""
+        if not policies:
+            raise ValueError("At least one split acceptance policy is required.")
+        object.__setattr__(self, "policies", tuple(policies))
+
+    def __call__(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+    ) -> bool:
+        """Return true when all component policies accept the split."""
+        return all(policy(parent, children, weights) for policy in self.policies)
 
 
 @dataclass(frozen=True)
@@ -1114,10 +1179,12 @@ def _labels_dataarray(labels: np.ndarray, weights: xr.DataArray) -> xr.DataArray
 
 __all__ = [
     "AllocationMode",
+    "AllSplitAcceptancePolicies",
     "AxisParallelSplitStep",
     "AxisAlignedWeightedSplitStrategy",
     "GreedyAxisParallelSplitStrategy",
     "MinChildWeightShare",
+    "MinParentWeightShare",
     "NbasisAllocation",
     "PartitionStep",
     "SplitAcceptancePolicy",

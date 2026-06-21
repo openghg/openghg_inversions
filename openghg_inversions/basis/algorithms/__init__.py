@@ -2,10 +2,12 @@
 
 from ._constrained import (
     AllocationMode,
+    AllSplitAcceptancePolicies,
     AxisParallelSplitStep,
     AxisAlignedWeightedSplitStrategy,
     GreedyAxisParallelSplitStrategy,
     MinChildWeightShare,
+    MinParentWeightShare,
     PartitionStep,
     SplitAcceptancePolicy,
     SplitStrategy,
@@ -17,10 +19,12 @@ from ._weighted import nregion_landsea_basis as weighted_algorithm
 
 __all__ = [
     "AllocationMode",
+    "AllSplitAcceptancePolicies",
     "AxisParallelSplitStep",
     "AxisAlignedWeightedSplitStrategy",
     "GreedyAxisParallelSplitStrategy",
     "MinChildWeightShare",
+    "MinParentWeightShare",
     "SplitStrategy",
     "PartitionStep",
     "SplitAcceptancePolicy",

@@ -89,11 +89,24 @@ be tested without committing to config syntax.
 - Keep split stopping at the greedy orchestration boundary. A `PartitionStep`
   proposes child partitions; the greedy strategy decides whether to accept
   those children before updating the active queue.
-- The first split-stopping policy is `MinChildWeightShare`, which rejects a
-  proposed split when the lightest child falls below a configured share of the
-  parent partition weight. When enabled, requested region counts are upper
-  targets: the strategy may return fewer labels if remaining split candidates
-  fail the policy.
+- Split-stopping policies have distinct threshold semantics. `MinChildWeightShare`
+  is a parent-relative balance guard: it rejects a proposed split when the
+  lightest child falls below a configured share of the current parent partition
+  weight. It does not prevent a very low-weight parent from splitting again if
+  that split is balanced.
+- `MinParentWeightShare` is the class/source-total low-weight stopping rule. It
+  rejects a proposed split when the selected parent partition falls below a
+  configured share of the class/source-local weight field passed to greedy
+  partitioning, using `parent_weight / weights.sum()`. This is the policy to
+  use when RHIME-style experiments should avoid spending basis regions on low
+  absolute-weight source regions.
+- Thresholds are not interchangeable between these policies. A value such as
+  `0.02` or `0.1` means "share of current parent" for `MinChildWeightShare`, but
+  "share of class/source total" for `MinParentWeightShare`. They can be composed
+  when callers need both parent absolute importance and child balance.
+- When stopping is enabled, requested region counts are upper targets: the
+  strategy may return fewer labels if remaining split candidates fail the
+  policy.
 - Freeze is the first supported rejected-split action. A rejected parent is
   marked done so deterministic split steps do not propose the same rejected
   children repeatedly. Requeue remains a possible future policy, but it needs
@@ -215,3 +228,7 @@ be tested without committing to config syntax.
   `SplitAcceptancePolicy` hook and `MinChildWeightShare` policy. Rejected
   splits freeze the selected parent partition, so the requested class-local
   region count is treated as an upper target when stopping is configured.
+- 2026-06-21: Corrected the split-stopping design distinction after PR #480.
+  `MinChildWeightShare` is a balance guard, while `MinParentWeightShare` handles
+  class/source-total low absolute-weight stopping using the class-local
+  `weights.sum()` denominator.
