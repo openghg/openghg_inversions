@@ -428,13 +428,7 @@ def paris_flux_output(
     if inversion_grid:
         inversion_grid_flux_rename_dict = {v: f"{v}_inversion_grid" for v in flux_rename_dict.values()}
         inversion_grid_flux_outs = (
-            make_flux_outputs(
-                inv_out,
-                stats=stats,
-                stats_args=stats_args,
-                report_flux_on_inversion_grid=True,
-                include_scale_factors=False,
-            ).fillna(0.0)
+            flux_outs.copy()
             .interp(lat=output_lat, lon=output_lon, method="linear")
             .fillna(0.0)
             .rename(dim_rename_dict)
@@ -473,18 +467,10 @@ def paris_flux_output(
             inner_flux_stats, countries, inv_out.species
         )
 
-    inner_agg_flux = (
-            (inv_out.inner_basis * inner_flux).sum(["lat", "lon"])
-            / inv_out.inner_basis.sum(["lat", "lon"])
-        ).fillna(0.0)
-
-    inner_inversion_grid_flux_raw = sparse_xr_dot(
-            inv_out.inner_basis,
-            inner_agg_flux * inner_stats_ds,
-        )
-    inner_inversion_grid_flux_raw = rename_by_replacement(
-            inner_inversion_grid_flux_raw, "x", "flux"
-        ).fillna(0.0)
+    # Keep native prior-flux texture in the PARIS inversion-grid variables.
+    # Fluxie reads these names for plot_inversion_flux_grid, so using region
+    # average flux here hides the 6 km detail carried by inner_flux_stats.
+    inner_inversion_grid_flux_raw = inner_flux_stats.copy()
 
     def paris_renamer(name: str) -> str:
         """Convert raw stat names to PARIS convention.

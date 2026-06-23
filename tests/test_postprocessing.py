@@ -156,8 +156,20 @@ def test_save_inversion_output(mcmc_args, tmpdir):
     assert inv_out == inv_out_reloaded
 
 
-def test_nested_make_inv_out_uses_flux_grid_mask(europe_country_file) -> None:
+def test_nested_make_inv_out_uses_flux_grid_mask(tmp_path) -> None:
     """Ensure PARIS nested mask is evaluated on flux grid when basis/flux grids differ."""
+    country_file = tmp_path / "country_toy.nc"
+    xr.Dataset(
+        {
+            "country": (
+                ["lat", "lon"],
+                np.ones((2, 2), dtype=np.int16),
+            ),
+            "name": (["name"], np.array(["OCEAN", "France"])),
+        },
+        coords={"lat": [0.0, 0.5], "lon": [0.0, 0.5]},
+    ).to_netcdf(country_file, engine="h5netcdf")
+
     outer_basis = xr.DataArray(
         np.array([[1, 2], [3, 4]], dtype=int),
         dims=["lat", "lon"],
@@ -175,7 +187,7 @@ def test_nested_make_inv_out_uses_flux_grid_mask(europe_country_file) -> None:
         coords={"time": [np.datetime64("2022-01-01")], "lat": [0.0, 0.5], "lon": [0.0, 0.5]},
     )
     inner_flux = xr.DataArray(
-        20.0 * np.ones((1, 2, 2)),
+        np.array([[[20.0, 30.0], [40.0, 50.0]]]),
         dims=["time", "lat", "lon"],
         coords={"time": [np.datetime64("2022-01-01")], "lat": [0.0, 0.5], "lon": [0.0, 0.5]},
     )
@@ -253,7 +265,7 @@ def test_nested_make_inv_out_uses_flux_grid_mask(europe_country_file) -> None:
         start_date="2022-01-01",
         end_date="2022-01-01",
         species="ch4",
-        domain="europe",
+        domain="toy",
     )
 
     assert inv_out.flux.sizes["lat"] == 2
@@ -263,12 +275,16 @@ def test_nested_make_inv_out_uses_flux_grid_mask(europe_country_file) -> None:
     assert inv_out.flux.isel(flux_time=0).sel(lat=0.5, lon=0.5).item() == 0.0
     assert inv_out.flux.isel(flux_time=0).sel(lat=0.0, lon=0.0).item() == 0.0
 
-    flux_outs, inner_flux_outs = paris_flux_output(inv_out, country_file=europe_country_file)
+    flux_outs, inner_flux_outs = paris_flux_output(inv_out, country_file=country_file)
 
     assert inner_flux_outs is not None
-    assert flux_outs.sizes["country"] == 47
-    assert inner_flux_outs.sizes["country"] == 47
+    assert flux_outs.sizes["country"] == 2
+    assert inner_flux_outs.sizes["country"] == 2
     assert bool(np.isfinite(flux_outs["flux_total_posterior"]).all())
     assert bool(np.isfinite(inner_flux_outs["flux_total_posterior"]).all())
     assert bool(np.isfinite(flux_outs["country_flux_total_posterior"]).all())
     assert bool(np.isfinite(inner_flux_outs["country_flux_total_posterior"]).all())
+    xr.testing.assert_allclose(
+        inner_flux_outs["flux_total_posterior_inversion_grid"],
+        inner_flux_outs["flux_total_posterior"],
+    )
