@@ -182,6 +182,7 @@ def make_concentration_outputs(
     stats: list[str] | None = None,
     stats_args: dict | None = None,
     combine_bc_and_offset: bool = False,
+    concentration_variable: Literal["y", "mu"] = "y",
 ) -> xr.Dataset:
     """Return dataset of stats for concentrations.
 
@@ -199,22 +200,44 @@ def make_concentration_outputs(
             argument chunk_size = 20 to the stat function mode_kde, and no others.
         combine_bc_and_offset: If True, the offset is added to the baseline (before stats
             are calculated).
+        concentration_variable: Variable used for the main concentration output.
+            Use "y" for prior/posterior predictive samples including likelihood
+            noise, or "mu" for deterministic modelled concentrations.
 
     Returns:
         xr.Dataset with computed flux stats.
 
     """
-    conc_vars = ["y"]
+    trace_all = inv_out.get_trace_dataset()
+
+    def _trace_var_names(variable: str) -> list[str]:
+        suffixes = ("prior", "posterior", "prior_predictive", "posterior_predictive")
+        return [f"{variable}_{suffix}" for suffix in suffixes if f"{variable}_{suffix}" in trace_all.data_vars]
+
+    conc_vars = _trace_var_names(concentration_variable)
 
     if "mu_bc" in inv_out.trace.posterior:
-        conc_vars.append("mu_bc")
+        conc_vars.extend(_trace_var_names("mu_bc"))
 
     if "offset" in inv_out.trace.posterior:
-        conc_vars.append("offset")
+        conc_vars.extend(_trace_var_names("offset"))
 
-    trace = inv_out.get_trace_dataset(var_names=conc_vars)
+    trace = trace_all[conc_vars]
 
-    if combine_bc_and_offset and "offset" in conc_vars:
+    if concentration_variable == "mu" and combine_bc_and_offset:
+        for dv in list(trace.data_vars):
+            dv_str = str(dv)
+            if not dv_str.startswith("mu_") or dv_str.startswith("mu_bc_"):
+                continue
+            suffix = dv_str.removeprefix("mu_")
+            bc_dv = f"mu_bc_{suffix}"
+            offset_dv = f"offset_{suffix}"
+            if bc_dv in trace.data_vars:
+                trace[dv] = trace[dv] + trace[bc_dv]
+            if offset_dv in trace.data_vars:
+                trace[dv] = trace[dv] + trace[offset_dv]
+
+    if combine_bc_and_offset and any(name.startswith("offset_") for name in conc_vars):
         for dv in trace.data_vars:
             if str(dv).startswith("mu_bc"):
                 offset_dv = str(dv).replace("mu_bc", "offset")

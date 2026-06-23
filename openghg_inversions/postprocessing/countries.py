@@ -345,7 +345,7 @@ class Countries:
         """
         # multiply flux and basis and align to country lat/lon
         basis = align_sparse_lat_lon(inv_out.basis, inv_out.flux)
-        flux_x_basis = align_sparse_lat_lon(inv_out.flux * basis, self.area_grid)
+        flux_x_basis = align_sparse_lat_lon(inv_out.flux.fillna(0.0) * basis, self.area_grid)
 
         # compute matrix/tensor product: country_mat.T @ (area_grid * flux * basis_mat)
         # transpose doesn't need to be taken explicitly because alignment is done by dimension name

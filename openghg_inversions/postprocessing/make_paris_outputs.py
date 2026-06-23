@@ -10,7 +10,7 @@ import xarray as xr
 from openghg.util import timestamp_now
 from openghg_inversions import convert
 from openghg_inversions.config.version import code_version
-from openghg_inversions.postprocessing.countries import Countries
+from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
 from openghg_inversions.postprocessing.inversion_output import (
     InversionOutput,
     make_inv_out_from_rhime_outputs,
@@ -145,6 +145,19 @@ def _densify(da: xr.DataArray) -> np.ndarray:
         data = data.todense()
     return np.asarray(data)
 
+
+def _paris_country_regions(domain: str) -> dict[str, list[str]] | None:
+    return paris_regions_dict.get(domain.lower())
+
+
+def _paris_countries(country_file: str | Path | None, domain: str) -> Countries:
+    return Countries.from_file(
+        country_file=country_file,
+        country_code="alpha3",
+        country_regions=_paris_country_regions(domain),
+        domain=domain,
+    )
+
 def make_inner_domain_country_outputs(
     flux_stats: xr.Dataset,
     countries: Countries,
@@ -172,7 +185,7 @@ def make_inner_domain_country_outputs(
         * R ** 2
     )
 
-    country_stats = sparse_xr_dot(fine_country_matrix, cell_area * flux_stats)
+    country_stats = sparse_xr_dot(fine_country_matrix, (cell_area * flux_stats).fillna(0.0))
 
     seconds_per_year = 365 * 24 * 3600
     country_stats = country_stats * seconds_per_year * convert.molar_mass(species) * 1e-3
@@ -186,6 +199,39 @@ def make_inner_domain_country_outputs(
         )
 
     return country_stats.as_numpy()
+
+
+def _get_inner_trace_dataset(inv_out: InversionOutput, n_inner_nx: int) -> xr.Dataset:
+    """Return inner-domain x traces with variables named like the standard x trace."""
+    trace_ds = inv_out.get_trace_dataset()
+    inner_vars = [str(dv) for dv in trace_ds.data_vars if str(dv).startswith("x_inner_")]
+
+    if inner_vars:
+        inner_trace = trace_ds[inner_vars].rename_vars(
+            {name: name.replace("x_inner_", "x_", 1) for name in inner_vars}
+        )
+        if "nx_inner" in inner_trace.dims:
+            inner_trace = inner_trace.rename({"nx_inner": "nx"})
+    else:
+        combined_trace = inv_out.get_trace_dataset(var_names="x")
+        if "nx" not in combined_trace.dims:
+            raise ValueError("Cannot create inner PARIS flux output: no nx dimension found in x trace.")
+        if combined_trace.sizes["nx"] < n_inner_nx:
+            raise ValueError(
+                "Cannot create inner PARIS flux output: inner basis has "
+                f"{n_inner_nx} regions but the available x trace has only "
+                f"{combined_trace.sizes['nx']} regions. Expected an x_inner trace "
+                "or a combined x trace containing the inner block first."
+            )
+        inner_trace = combined_trace.isel(nx=slice(0, n_inner_nx))
+
+    if inner_trace.sizes.get("nx") != n_inner_nx:
+        raise ValueError(
+            "Cannot create inner PARIS flux output: inner trace has "
+            f"{inner_trace.sizes.get('nx')} regions but inner basis has {n_inner_nx}."
+        )
+
+    return inner_trace.assign_coords(nx=inv_out.inner_basis.nx.values)
 
 
 def paris_concentration_outputs(
@@ -214,7 +260,7 @@ def paris_concentration_outputs(
     )
 
     conc_outputs = make_concentration_outputs(
-        inv_out, stats, stats_args, combine_bc_and_offset=True
+        inv_out, stats, stats_args, combine_bc_and_offset=True, concentration_variable="mu"
     ).unstack("nmeasure")
 
     def renamer(name: str) -> str:
@@ -266,7 +312,7 @@ def paris_concentration_outputs(
             result["YaprioriBC"] += factor
 
     result.sitenames.attrs["long_name"] = "identifier of site"
-    result.attrs = make_global_attrs("conc")
+    result.attrs = make_global_attrs("conc", species=inv_out.species, domain=inv_out.domain)
     result.attrs["prior_factor_adjustment_applied"] = "false"
 
     if "Yobs_prior_factor" in result.data_vars and "Yobs_prior_upper_level_factor" in result.data_vars:
@@ -288,9 +334,8 @@ def paris_flux_output(
     Returns:
         Tuple of (outer_flux_dataset, inner_flux_dataset).
         inner_flux_dataset is None when no inner domain is present.
-        The inner dataset is at the native fine-grid resolution (e.g. 6 km),
-        stitched with the outer domain interpolated to that grid wherever the
-        inner basis has no coverage, so there are no holes.
+        The inner dataset is at the native fine-grid resolution (e.g. 6 km).
+        The outer dataset is interpolated to that grid when an inner domain is present.
     """
     stats = ["kde_mode", "quantiles"] if report_mode else ["mean", "quantiles"]
     stats_args = {"quantiles__quantiles": [0.159, 0.841]}
@@ -304,7 +349,7 @@ def paris_flux_output(
         stats_args=stats_args,
         report_flux_on_inversion_grid=False,
         include_scale_factors=False,
-    )
+    ).fillna(0.0)
 
     emissions_attrs = get_data_var_attrs(flux_template_path, inv_out.species)
     country_outs = make_country_outputs(
@@ -317,11 +362,23 @@ def paris_flux_output(
     )
     country_outs = country_outs * 1e-3  # g/yr -> kg/yr
 
-    countries = Countries.from_file(
-        country_file=country_file, country_code="alpha3", domain=inv_out.domain,
-        
+    countries = _paris_countries(country_file=country_file, domain=inv_out.domain)
+
+    if inv_out.inner_flux is not None:
+        output_lat = inv_out.inner_flux.lat
+        output_lon = inv_out.inner_flux.lon
+        flux_outs = flux_outs.interp(lat=output_lat, lon=output_lon, method="linear").fillna(0.0)
+    else:
+        output_lat = flux_outs.lat
+        output_lon = flux_outs.lon
+
+    country_fraction = (
+        _densify_dataarray(countries.matrix)
+        .interp(lat=output_lat, lon=output_lon, method="nearest", kwargs={"fill_value": 0.0})
+        .fillna(0.0)
+        .as_numpy()
+        .rename("country_fraction")
     )
-    country_fraction = countries.matrix.as_numpy().rename("country_fraction")
 
     def renamer(name: str) -> str:
         if "country" in name:
@@ -360,7 +417,7 @@ def paris_flux_output(
             return ds
 
     result = (
-        xr.merge([flux_outs, country_outs, country_fraction.reindex_like(flux_outs)], join="outer")
+        xr.merge([flux_outs, country_outs, country_fraction], join="outer")
         .rename(dim_rename_dict)
         .pipe(time_func)
         .pipe(convert_time_to_unix_epoch, "1d")
@@ -377,7 +434,9 @@ def paris_flux_output(
                 stats_args=stats_args,
                 report_flux_on_inversion_grid=True,
                 include_scale_factors=False,
-            )
+            ).fillna(0.0)
+            .interp(lat=output_lat, lon=output_lon, method="linear")
+            .fillna(0.0)
             .rename(dim_rename_dict)
             .pipe(time_func)
             .pipe(convert_time_to_unix_epoch, "1d")
@@ -388,7 +447,7 @@ def paris_flux_output(
         result = result.merge(inversion_grid_flux_outs)
 
     result = result.transpose("time", "percentile", "country", "latitude", "longitude")
-    result.attrs = make_global_attrs("flux")
+    result.attrs = make_global_attrs("flux", species=inv_out.species, domain=inv_out.domain)
 
     # ------------------------------------------------------------------ #
     # Inner domain (fine grid, e.g. 6 km) — separate output              #
@@ -397,142 +456,25 @@ def paris_flux_output(
         return result.as_numpy(), None
 
     n_inner_nx = len(inv_out.inner_basis.nx)  # recompute here to be safe
-    full_trace_ds = inv_out.get_trace_dataset(var_names="x")
-
-    inner_trace_ds = (
-        full_trace_ds
-        .isel(nx=slice(0, n_inner_nx))
-        .assign_coords(nx=inv_out.inner_basis.nx.values)
-    )
-
-    # Verify alignment before proceeding
-    assert inner_trace_ds.sizes["nx"] == n_inner_nx, (
-        f"Inner trace nx size {inner_trace_ds.sizes['nx']} != n_inner_nx {n_inner_nx}"
-    )
-    assert np.array_equal(inner_trace_ds.nx.values, inv_out.inner_basis.nx.values), (
-        f"nx mismatch: trace={inner_trace_ds.nx.values[:5]}... basis={inv_out.inner_basis.nx.values[:5]}..."
-    )
+    inner_trace_ds = _get_inner_trace_dataset(inv_out, n_inner_nx)
 
     inner_stats_args = {**stats_args, "stats": stats, "chunk_dim": "nx"}
     inner_stats_ds = calculate_stats(inner_trace_ds, **inner_stats_args)
 
     # Reconstruct flux at native 6 km resolution: sum_k( x[k] * basis[k] * flux )
     # Result has dims (flux_time, lat_inner, lon_inner, quantile) — full spatial detail preserved
-    inner_flux_stats = sparse_xr_dot(inv_out.inner_flux * inv_out.inner_basis, inner_stats_ds)
+    inner_flux = inv_out.inner_flux.fillna(0.0)
+
+    inner_flux_stats = sparse_xr_dot(inner_flux * inv_out.inner_basis, inner_stats_ds)
     inner_flux_stats = rename_by_replacement(inner_flux_stats, "x", "flux")
+    inner_flux_stats = inner_flux_stats.fillna(0.0)
 
-    # --- 2. Build coverage mask (where inner basis has non-zero coverage) ---
-    # inner_basis.sum("nx") > 0 is sparse-backed; densify before boolean ops
-    inner_basis_sum = inv_out.inner_basis.sum("nx")
-    inner_basis_sum_data = _densify(inner_basis_sum)
-    inner_coverage_mask_np = inner_basis_sum_data > 0  # (lat, lon) or (flux_time, lat, lon)
-
-    # --- 3. Interpolate outer flux_outs to the inner fine grid ---
-    # flux_outs is on the EUROPE grid; interp to inner lat/lon so we can
-    # fill gaps in the inner domain with outer values (no holes in output).
-    outer_on_inner = flux_outs.interp(
-        lat=inv_out.inner_flux.lat,
-        lon=inv_out.inner_flux.lon,
-        method="linear",  # linear is fine for gap-filling; inner domain overrides where covered
-    ).fillna(0.0)
-
-    # --- 4. Stitch: use inner flux where covered, outer interpolated elsewhere ---
-    stitched_pieces = {}
-    for dv in inner_flux_stats.data_vars:
-        inner_da = inner_flux_stats[dv]
-        inner_np = _densify(inner_da)  # shape matches inner_da.dims exactly
-
-        # Build outer fallback aligned to inner_da.dims by name
-        dv_str = str(dv)
-        if dv_str in outer_on_inner.data_vars:
-            outer_da = outer_on_inner[dv_str]
-            # Transpose outer_da to match inner_da.dims, inserting missing dims as size-1
-            outer_dims = list(outer_da.dims)
-            inner_dims = list(inner_da.dims)
-
-            # Add any dims present in inner but absent in outer as size-1 axes
-            for dim in inner_dims:
-                if dim not in outer_dims:
-                    outer_da = outer_da.expand_dims({dim: 1})
-                    outer_dims = list(outer_da.dims)
-
-            # Reorder to match inner_da.dims exactly
-            outer_da = outer_da.transpose(*inner_dims)
-            outer_np = np.broadcast_to(_densify(outer_da), inner_np.shape).copy()
-        else:
-            outer_np = np.zeros_like(inner_np)
-
-        # Build mask aligned to inner_da.dims by name
-        # inner_coverage_mask_np has dims (lat, lon) or (flux_time, lat, lon)
-        if inner_coverage_mask_np.ndim == 2:
-            mask_dims = ["lat", "lon"]
-        else:
-            mask_dims = ["flux_time", "lat", "lon"]
-
-        inner_dims = list(inner_da.dims)
-        mask = inner_coverage_mask_np
-        for i, dim in enumerate(inner_dims):
-            if dim not in mask_dims:
-                mask = np.expand_dims(mask, axis=i)
-
-        mask = np.broadcast_to(mask, inner_np.shape)
-
-        stitched_np = np.where(mask, inner_np, outer_np)
-        stitched_pieces[dv_str] = xr.DataArray(
-            stitched_np,
-            dims=inner_da.dims,
-            coords=inner_da.coords,
-            attrs=inner_da.attrs,
-        )
-
-    stitched_flux = xr.Dataset(stitched_pieces).fillna(0.0)
-    # Diagnostic: check how much of the domain is covered by inner basis
-    inner_coverage_fraction = float(inner_coverage_mask_np.mean())
-    inner_nonzero = int(inner_coverage_mask_np.sum())
-    total_cells = int(inner_coverage_mask_np.size)
-    print(
-        f"DEBUGOUT inner domain coverage: {inner_nonzero}/{total_cells} cells "
-        f"({100*inner_coverage_fraction:.1f}%) covered by inner basis",
-        flush=True,
-    )
-
-    # Check spatial detail in stitched_flux
-    for dv in list(stitched_flux.data_vars)[:2]:
-        da = stitched_flux[dv]
-        inner_np = _densify(da)
-
-        # Build mask with axes matching da.dims by name (same logic as stitch block)
-        if inner_coverage_mask_np.ndim == 2:
-            mask_dims = ["lat", "lon"]
-        else:
-            mask_dims = ["flux_time", "lat", "lon"]
-
-        mask = inner_coverage_mask_np
-        for i, dim in enumerate(list(da.dims)):
-            if dim not in mask_dims:
-                mask = np.expand_dims(mask, axis=i)
-
-        mask_broadcast = np.broadcast_to(mask, inner_np.shape)
-
-        inner_vals = inner_np[mask_broadcast]
-        outer_vals = inner_np[~mask_broadcast]
-        print(
-            f"DEBUGOUT stitched {dv}: "
-            f"inner region mean={np.nanmean(inner_vals):.3e} std={np.nanstd(inner_vals):.3e} | "
-            f"outer region mean={np.nanmean(outer_vals):.3e} std={np.nanstd(outer_vals):.3e}",
-            flush=True,
-        )
-    # --- 5. Country totals at fine resolution using fine-grid country mask ---
     inner_country_outs = make_inner_domain_country_outputs(
-            stitched_flux, countries, inv_out.species
+            inner_flux_stats, countries, inv_out.species
         )
-    print(f"DEBUGOUT countries.matrix country dim: {list(countries.matrix.country.values)}", flush=True)
 
-        # --- 6. Inversion-grid flux for inner domain ---
-        # One uniform value per basis region painted back onto the fine grid.
-        # Mirrors the outer inversion_grid output.
     inner_agg_flux = (
-            (inv_out.inner_basis * inv_out.inner_flux).sum(["lat", "lon"])
+            (inv_out.inner_basis * inner_flux).sum(["lat", "lon"])
             / inv_out.inner_basis.sum(["lat", "lon"])
         ).fillna(0.0)
 
@@ -542,17 +484,7 @@ def paris_flux_output(
         )
     inner_inversion_grid_flux_raw = rename_by_replacement(
             inner_inversion_grid_flux_raw, "x", "flux"
-        )
-
-        # --- 7. Apply PARIS naming convention ---
-        # stitched_flux vars are already named e.g. "flux_posterior_mean", "flux_prior_mean"
-        # after rename_by_replacement(..., "x", "flux") in step 1.
-        # inner_country_outs vars come from make_inner_domain_country_outputs which calls
-        # rename_by_replacement(..., "flux", "country"), giving "country_posterior_mean" etc.
-        # inner_inversion_grid_flux_raw vars are "flux_posterior_mean" etc. (same as stitched_flux)
-        #
-        # We apply renamer() ONCE to each set, using the raw names as input.
-        # renamer() must NOT be applied to already-renamed names.
+        ).fillna(0.0)
 
     def paris_renamer(name: str) -> str:
         """Convert raw stat names to PARIS convention.
@@ -592,7 +524,7 @@ def paris_flux_output(
         # Build rename dicts using paris_renamer on the raw variable names
     inner_flux_rename = {
         str(dv): paris_renamer(str(dv))
-        for dv in stitched_flux.data_vars
+        for dv in inner_flux_stats.data_vars
     }
     inner_country_rename = {
         str(dv): paris_renamer(str(dv))
@@ -609,7 +541,7 @@ def paris_flux_output(
     inner_dim_rename["lon"] = "longitude"
 
     inner_flux_out = (
-        stitched_flux
+        inner_flux_stats
         .rename(inner_dim_rename)
         .rename(inner_flux_rename)
         .pipe(time_func)
@@ -686,11 +618,7 @@ def paris_flux_output(
         [inner_flux_out, inner_country_out, inner_inversion_grid_out, inner_country_fraction],
         join="outer",
     )
-    inner_result = xr.merge(
-        [inner_flux_out, inner_country_out, inner_inversion_grid_out, inner_country_fraction],
-        join="outer",
-    )
-    inner_result.attrs = make_global_attrs("flux")
+    inner_result.attrs = make_global_attrs("flux", species=inv_out.species, domain=inv_out.domain)
     inner_result.attrs["inner_domain"] = "true"
     inner_result.attrs["spatial_resolution"] = "6km (native inner domain)"
 
@@ -751,7 +679,7 @@ def make_paris_outputs(
         inner_flux_outs is None when no inner domain is present.
         When present, inner_flux_outs is a separate dataset at the native
         fine-grid resolution (e.g. 6 km), suitable for saving as a separate
-        netCDF file with '_inner_domain' in the filename.
+        netCDF file using the standard PARIS filename builder for the nested domain.
     """
     def _pick_mean(ds: xr.Dataset, candidates: list[str]) -> tuple[str | None, float | None]:
         for var in candidates:

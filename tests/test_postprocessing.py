@@ -9,6 +9,7 @@ from openghg_inversions.postprocessing.make_outputs import basic_output
 from openghg_inversions.postprocessing.make_paris_outputs import (
     make_paris_flux_outputs_from_rhime,
     make_paris_outputs,
+    paris_flux_output,
 )
 
 
@@ -122,7 +123,11 @@ def test_make_paris_outputs(inv_out, europe_country_file, tmpdir, offset):
 
     print(inv_out.trace.posterior)
 
-    flux_outs, conc_outs = make_paris_outputs(inv_out, country_file=europe_country_file, obs_avg_period="1h", domain="europe")
+    flux_outs, inner_flux_outs, conc_outs = make_paris_outputs(
+        inv_out, country_file=europe_country_file, obs_avg_period="1h", domain="europe"
+    )
+
+    assert inner_flux_outs is None
 
     if offset:
         assert "Yapriori_bias" in conc_outs
@@ -151,7 +156,7 @@ def test_save_inversion_output(mcmc_args, tmpdir):
     assert inv_out == inv_out_reloaded
 
 
-def test_nested_make_inv_out_uses_flux_grid_mask() -> None:
+def test_nested_make_inv_out_uses_flux_grid_mask(europe_country_file) -> None:
     """Ensure PARIS nested mask is evaluated on flux grid when basis/flux grids differ."""
     outer_basis = xr.DataArray(
         np.array([[1, 2], [3, 4]], dtype=int),
@@ -255,5 +260,15 @@ def test_nested_make_inv_out_uses_flux_grid_mask() -> None:
     assert inv_out.flux.sizes["lon"] == 2
     assert bool(inv_out.flux.notnull().all())
 
-    assert inv_out.flux.isel(flux_time=0).sel(lat=0.5, lon=0.5).item() == 20.0
-    assert inv_out.flux.isel(flux_time=0).sel(lat=0.0, lon=0.0).item() == 10.0
+    assert inv_out.flux.isel(flux_time=0).sel(lat=0.5, lon=0.5).item() == 0.0
+    assert inv_out.flux.isel(flux_time=0).sel(lat=0.0, lon=0.0).item() == 0.0
+
+    flux_outs, inner_flux_outs = paris_flux_output(inv_out, country_file=europe_country_file)
+
+    assert inner_flux_outs is not None
+    assert flux_outs.sizes["country"] == 47
+    assert inner_flux_outs.sizes["country"] == 47
+    assert bool(np.isfinite(flux_outs["flux_total_posterior"]).all())
+    assert bool(np.isfinite(inner_flux_outs["flux_total_posterior"]).all())
+    assert bool(np.isfinite(flux_outs["country_flux_total_posterior"]).all())
+    assert bool(np.isfinite(inner_flux_outs["country_flux_total_posterior"]).all())

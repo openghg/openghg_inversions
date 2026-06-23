@@ -713,6 +713,16 @@ def make_inv_out_for_fixed_basis_mcmc(
             >= 0.5
         )
 
+    def _inner_extent_mask_to_grid(inner_ds: xr.Dataset, lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
+        lat_min = float(inner_ds.lat.min())
+        lat_max = float(inner_ds.lat.max())
+        lon_min = float(inner_ds.lon.min())
+        lon_max = float(inner_ds.lon.max())
+        lat_mask = (lat >= lat_min) & (lat <= lat_max)
+        lon_mask = (lon >= lon_min) & (lon <= lon_max)
+        target = xr.DataArray(np.zeros((lat.size, lon.size), dtype=bool), coords={"lat": lat, "lon": lon}, dims=("lat", "lon"))
+        return (lat_mask & lon_mask).broadcast_like(target)
+
     def _combine_x_and_x_inner(trace: az.InferenceData, total_nx: int) -> az.InferenceData:
         trace_groups = {}
         # Basis IDs in RHIME are typically 1-indexed. Align nx to 1..total_nx.
@@ -723,7 +733,7 @@ def make_inv_out_for_fixed_basis_mcmc(
             if "x" in ds.data_vars and "x_inner" in ds.data_vars:
                 x_inner = ds["x_inner"].rename({"nx_inner": "nx"})
                 combined_x = xr.concat([x_inner, ds["x"]], dim="nx").assign_coords(nx=nx_coords)
-                ds = ds.drop_vars(["x_inner", "x"]).assign({"x": combined_x})
+                ds = ds.drop_vars("x").assign({"x": combined_x})
             elif "x" in ds.data_vars:
                 # If only x is present, shift it to be 1-indexed to match basis
                 ds = ds.assign_coords(nx=nx_coords)
@@ -775,18 +785,24 @@ def make_inv_out_for_fixed_basis_mcmc(
             dt_site = fp_data.get(site)
             if isinstance(dt_site, xr.DataTree) and "inner" in dt_site.children:
                 inner_ds = dt_site["inner"].ds
-                if "fp" in inner_ds:
-                    inner_coverage_masks.append((inner_ds["fp"] != 0).any("time"))
+                inner_coverage_masks.append(inner_ds)
 
         if inner_coverage_masks:
-            inner_coverage_union = xr.concat(inner_coverage_masks, dim="site").any("site")
+            inner_basis_masks = [
+                _inner_extent_mask_to_grid(inner_ds, lat=outer_basis.lat, lon=outer_basis.lon)
+                for inner_ds in inner_coverage_masks
+            ]
+            inner_flux_masks = [
+                _inner_extent_mask_to_grid(inner_ds, lat=outer_flux.lat, lon=outer_flux.lon)
+                for inner_ds in inner_coverage_masks
+            ]
             inner_valid_mask_basis = _interp_bool_mask_to_grid(
-                mask=inner_coverage_union,
+                mask=xr.concat(inner_basis_masks, dim="site").any("site"),
                 lat=outer_basis.lat,
                 lon=outer_basis.lon,
             )
             inner_valid_mask_flux = _interp_bool_mask_to_grid(
-                mask=inner_coverage_union,
+                mask=xr.concat(inner_flux_masks, dim="site").any("site"),
                 lat=outer_flux.lat,
                 lon=outer_flux.lon,
             )
@@ -802,35 +818,19 @@ def make_inv_out_for_fixed_basis_mcmc(
                 lon=outer_flux.lon,
             )
 
-        target_lat = outer_basis["lat"].values
-        target_lon = outer_basis["lon"].values
-        inner_basis_on_outer = inner_basis.interp(lat=target_lat, lon=target_lon, method="nearest")
-        inner_basis_on_outer = inner_basis_on_outer.assign_coords(lat=target_lat, lon=target_lon).fillna(0)
         outer_basis_shifted = xr.where(outer_basis > 0, outer_basis + n_inner, 0)
-        combined_basis_ids = xr.where(inner_valid_mask_basis, inner_basis_on_outer, outer_basis_shifted)
 
         target_flux_lat = outer_flux["lat"].values
         target_flux_lon = outer_flux["lon"].values
-        inner_flux_on_outer = inner_flux.interp(lat=target_flux_lat, lon=target_flux_lon, method="nearest").fillna(0)
-        inner_flux_on_outer = inner_flux_on_outer.assign_coords(lat=target_flux_lat, lon=target_flux_lon)
-        flux = xr.where(inner_valid_mask_flux, inner_flux_on_outer, outer_flux)
+        inner_valid_mask_flux = inner_valid_mask_flux.assign_coords(lat=target_flux_lat, lon=target_flux_lon)
+        flux = xr.where(inner_valid_mask_flux, 0.0, outer_flux)
 
         basis = get_xr_dummies(
-            combined_basis_ids,
+            outer_basis_shifted,
             cat_dim="nx",
             categories=np.arange(1, n_inner + n_outer + 1),
         )
         trace_for_output = _combine_x_and_x_inner(trace_for_output, total_nx=n_inner + n_outer)
-
-        print(
-            f"DEBUGOUT: PARIS nested merge active; nx_inner={n_inner}, nx_outer={n_outer}, nx_total={n_inner + n_outer}",
-            flush=True,
-        )
-        print(
-            f"DEBUGOUT: PARIS inner coverage cells on basis grid={int(np.asarray(inner_valid_mask_basis.sum().compute().values))}; "
-            f"on flux grid={int(np.asarray(inner_valid_mask_flux.sum().compute().values))}",
-            flush=True,
-        )
     else:
         n_outer = int(mcmc_results["xouts"].shape[1])
         # Ensure nx coordinate labels match 1-indexed basis IDs
