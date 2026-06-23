@@ -27,6 +27,7 @@ def basis_functions_wrapper(
     outputname: str | None = None,
     output_path: str | None = None,
     inner_domain: str | None = None,
+    inner_nbasis: int | None = None,
 ):
     """Wrapper function for selecting basis function
     algorithm.
@@ -76,6 +77,9 @@ def basis_functions_wrapper(
       output_path (str, optional):
         Passed to `outputdir` argument of `quadtreebasisfunction`. Used for testing.
         Default None
+      inner_nbasis (int, optional):
+        Number of basis regions to use for the inner domain. If not set, uses
+        `nbasis` for both outer and inner domains.
 
     Returns:
       fp_data (dict):
@@ -122,12 +126,13 @@ def basis_functions_wrapper(
         print(f"Using {basis_function.description} to derive basis functions.")
 
         if inner_domain is not None:
+            inner_nbasis = inner_nbasis or nbasis
             inner_basis_data_array = basis_function.algorithm(
                 fp_all=fp_all,
                 start_date=start_date,
                 domain=f"{domain}-{inner_domain}",
                 emissions_name=emissions_name,
-                nbasis=nbasis,
+                nbasis=inner_nbasis,
                 country_directory=country_directory,
                 scenario="inner",
             )
@@ -173,6 +178,15 @@ def basis_functions_wrapper(
             species=species,
             output_name=outputname,
         )
+        if inner_basis_data_array is not None and inner_domain is not None:
+            _save_basis(
+                basis=inner_basis_data_array,
+                basis_algorithm=basis_algorithm,
+                output_dir=output_path,
+                domain=f"{domain}-{inner_domain}",
+                species=species,
+                output_name=outputname,
+            )
 
     return fp_data
 

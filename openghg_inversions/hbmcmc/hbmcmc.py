@@ -335,6 +335,7 @@ def fixedbasisMCMC(
     inner_domain: str | None = None,
     basis_algorithm: str = "weighted",
     nbasis: int = 100,
+    inner_nbasis: int | None = None,
     xprior: dict = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 1.0, "lower": 0.0},
     bcprior: dict = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.1, "lower": 0.0},
     sigprior: dict = {"pdf": "uniform", "lower": 0.1, "upper": 3},
@@ -420,6 +421,9 @@ def fixedbasisMCMC(
         nbasis: Number of basis functions that you want if using quadtree derived
             basis function. This will optimise to closest value that fits with
             quadtree splitting algorithm, i.e. nbasis % 4 = 1.
+        inner_nbasis: Number of basis functions to use for the inner domain.
+            If not set, uses `nbasis`. Increase this for finer 6 km
+            `*_inversion_grid` PARIS maps without changing the outer basis.
         xprior: Dictionary containing information about the prior PDF for emissions.
             The entry "pdf" is the name of the analytical PDF used, see
             https://docs.pymc.io/api/distributions/continuous.html for PDFs
@@ -643,6 +647,7 @@ def fixedbasisMCMC(
     fp_data = basis_functions_wrapper(
         basis_algorithm=basis_algorithm,
         nbasis=nbasis,
+        inner_nbasis=inner_nbasis,
         fp_basis_case=fp_basis_case,
         bc_basis_case=bc_basis_case,
         basis_directory=basis_directory,
@@ -899,12 +904,12 @@ def fixedbasisMCMC(
 
         logging.info("PARIS concentration outputs saved to", conc_output_filename)
         logging.info("PARIS flux outputs saved to", flux_output_filename)
-                # --- inner domain output (separate file, '_inner_domain' in name) ---
         if inner_flux_outs is not None:
+            nested_domain = f"{domain}-{inner_domain}" if inner_domain is not None else domain
             inner_flux_output_filename = define_output_filename(
                 outputpath,
                 species,
-                inner_domain if inner_domain is not None else domain,
+                nested_domain,
                 outputname + "_flux", start_date, ext=".nc"
             )
             inner_flux_outs.to_netcdf(
