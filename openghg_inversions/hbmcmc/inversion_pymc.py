@@ -4,9 +4,29 @@ PyMC library used for Bayesian modelling.
 
 import re
 import getpass
+import os
+import tempfile
 from pathlib import Path
 
 import numpy as np
+
+
+def _set_default_pytensor_compile_dir() -> None:
+    """Keep PyTensor's C cache off shared filesystems unless the user configured it."""
+    pytensor_flags = os.environ.get("PYTENSOR_FLAGS", "")
+    if "compiledir" in pytensor_flags or "base_compiledir" in pytensor_flags:
+        return
+
+    job_id = os.environ.get("SLURM_JOB_ID") or os.environ.get("PBS_JOBID") or "local"
+    task_id = os.environ.get("SLURM_PROCID") or os.environ.get("SLURM_ARRAY_TASK_ID") or "0"
+    base_compiledir = Path(tempfile.gettempdir()) / f"pytensor-{getpass.getuser()}-{job_id}-{task_id}-{os.getpid()}"
+
+    flags = [flag for flag in pytensor_flags.split(",") if flag]
+    flags.append(f"base_compiledir={base_compiledir}")
+    os.environ["PYTENSOR_FLAGS"] = ",".join(flags)
+
+
+_set_default_pytensor_compile_dir()
 
 # import pytensor before pymc so we can set config values
 import pytensor
@@ -291,7 +311,14 @@ def inferpymc(
     sites = siteindicator.astype(int) if sigma_per_site else np.zeros_like(siteindicator).astype(int)
 
     coords = _make_coords(
-        Y, Hx, siteindicator, sigma_freq_index, Hbc, sigma_per_site=sigma_per_site, sites=None
+        Y,
+        Hx,
+        siteindicator,
+        sigma_freq_index,
+        Hbc,
+        sigma_per_site=sigma_per_site,
+        sites=None,
+        Hx_inner=Hx_inner,
     )
 
     if isinstance(min_error, float) or (isinstance(min_error, np.ndarray) and min_error.ndim == 0):
@@ -320,18 +347,20 @@ def inferpymc(
         sigma = parse_prior("sigma", sigprior, dims=("nsigma_site", "nsigma_time"))
 
         hx = pm.Data("hx", hx, dims=("nmeasure", "nx"))
+        regional_mu = pt.dot(hx, x)
 
         if Hx_inner is not None:
             hx_inner = pm.Data("hx_inner", Hx_inner.T, dims=("nmeasure", "nx_inner"))
             x_inner = parse_prior("x_inner", xprior, dims="nx_inner")
             step1_vars.append(x_inner)
+            regional_mu = regional_mu + pt.dot(hx_inner, x_inner)
             mu = pm.Deterministic(
                 "mu",
-                pt.dot(hx, x) + pt.dot(hx_inner, x_inner),
+                regional_mu,
                 dims="nmeasure",
             )
         else:
-            mu = pm.Deterministic("mu", pt.dot(hx, x), dims="nmeasure")
+            mu = pm.Deterministic("mu", regional_mu, dims="nmeasure")
     
         if use_bc:
             hbc = pm.Data("hbc", hbc, dims=("nmeasure", "nbc"))
@@ -353,7 +382,7 @@ def inferpymc(
             else:
                 pollution_event = pt.abs(Y) + 1e-6 * pt.mean(Y)  # small non-zero term to prevent NaNs
         else:
-            pollution_event = pt.abs(pt.dot(hx, x))
+            pollution_event = pt.abs(regional_mu)
 
         pollution_event_scaled_error = pollution_event * sigma[sites, sigma_freq_index]
 
@@ -416,7 +445,7 @@ def inferpymc(
 
     if use_bc:
         YBCtrace = posterior_burned.mu_bc + OFFtrace
-        Ytrace = posterior_burned.mu + YBCtrace
+        Ytrace = posterior_burned.mu + OFFtrace
     else:
         Ytrace = posterior_burned.mu + OFFtrace
 
