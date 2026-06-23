@@ -1,9 +1,23 @@
 """Functions to create fit basis functiosn and apply to data."""
 
+import numpy as np
 import xarray as xr
 
 from openghg_inversions.array_ops import get_xr_dummies, sparse_xr_dot, to_dense
 from ._functions import basis_boundary_conditions
+
+
+def _inner_extent_mask_to_grid(inner_data: xr.Dataset, lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
+    """Create a target-grid mask covering the full inner-domain lat/lon extent."""
+    lat_min = float(inner_data.lat.min())
+    lat_max = float(inner_data.lat.max())
+    lon_min = float(inner_data.lon.min())
+    lon_max = float(inner_data.lon.max())
+
+    lat_mask = (lat >= lat_min) & (lat <= lat_max)
+    lon_mask = (lon >= lon_min) & (lon <= lon_max)
+    target = xr.DataArray(np.zeros((lat.size, lon.size), dtype=bool), coords={"lat": lat, "lon": lon}, dims=("lat", "lon"))
+    return (lat_mask & lon_mask).broadcast_like(target)
 
 
 def fp_sensitivity(
@@ -98,6 +112,16 @@ def fp_sensitivity(
             else:
                 root_ds = entry.ds
             fp_x_flux_outer = root_ds[fp_x_flux_name]
+
+            if "inner" in entry.children:
+                inner_ds = entry["inner"].ds
+                inner_on_outer = _inner_extent_mask_to_grid(
+                    inner_ds,
+                    lat=fp_x_flux_outer.lat,
+                    lon=fp_x_flux_outer.lon,
+                )
+                fp_x_flux_outer = fp_x_flux_outer.where(~inner_on_outer, other=0.0)
+                root_ds = root_ds.assign({fp_x_flux_name: fp_x_flux_outer})
 
             # Compute outer H from the (already masked) fp_x_flux
             sensitivity = apply_fp_basis_functions(

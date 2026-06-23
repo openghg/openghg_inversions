@@ -60,10 +60,22 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
     """
     # TODO: do we want to fill missing values in repeatability or variability?
     for site in sites:
-        for node_name in ["standard", "inner"]:
-            if node_name not in fp_all[site]:
+        site_entry = fp_all[site]
+        node_names = ["standard", "inner"] if isinstance(site_entry, xr.DataTree) else [None]
+
+        for node_name in node_names:
+            if isinstance(site_entry, xr.DataTree):
+                if node_name not in site_entry:
+                    continue
+                ds = site_entry[node_name].ds.copy()
+                node_label = str(node_name)
+            else:
+                ds = site_entry.copy()
+                node_label = "standard"
+
+            if ds is None:
                 continue
-            ds = fp_all[site][node_name].ds.copy()
+
             variability_missing = False
             if "mf_variability" not in ds:
                 ds["mf_variability"] = xr.zeros_like(ds.mf)
@@ -72,7 +84,9 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
 
             if "mf_repeatability" not in ds:
                 if variability_missing:
-                    raise ValueError(f"Obs data for site {site} ({node_name}) is missing both repeatability and variability.")
+                    raise ValueError(
+                        f"Obs data for site {site} ({node_label}) is missing both repeatability and variability."
+                    )
 
                 ds["mf_repeatability"] = xr.zeros_like(ds.mf_variability)
                 ds["mf_repeatability"].attrs["long_name"] = ds.mf.attrs.get("long_name", "") + "_repeatability"
@@ -81,7 +95,9 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
 
                 if add_averaging_error:
                     logger.info(
-                        "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site %s (%s)", site, node_name
+                        "`mf_repeatability` not present; using `mf_variability` for `mf_error` at site %s (%s)",
+                        site,
+                        node_label,
                     )
 
             elif add_averaging_error:
@@ -105,7 +121,7 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
                     ),
                     percent0,
                     site,
-                    node_name,
+                    node_label,
                 )
 
                 mf_err_da = ds["mf_error"].as_numpy()
@@ -122,7 +138,10 @@ def add_obs_error(sites: list[str], fp_all: dict, add_averaging_error: bool = Tr
                 )
                 logger.info(info_msg)
 
-            fp_all[site][node_name].ds = ds
+            if isinstance(site_entry, xr.DataTree):
+                fp_all[site][node_name].ds = ds
+            else:
+                fp_all[site] = ds
 
 def convert_to_list(
     x: list[str | None] | str | None, length: int, name: str | None = None
@@ -167,15 +186,27 @@ def _interp_bool_mask_to_grid(mask: xr.DataArray, lat: xr.DataArray, lon: xr.Dat
     )
 
 
+def _inner_extent_mask_to_grid(inner_data: xr.Dataset, lat: xr.DataArray, lon: xr.DataArray) -> xr.DataArray:
+    """Create a target-grid mask covering the full inner-domain lat/lon extent."""
+    lat_min = float(inner_data.lat.min())
+    lat_max = float(inner_data.lat.max())
+    lon_min = float(inner_data.lon.min())
+    lon_max = float(inner_data.lon.max())
+
+    lat_mask = (lat >= lat_min) & (lat <= lat_max)
+    lon_mask = (lon >= lon_min) & (lon <= lon_max)
+    return (lat_mask & lon_mask).broadcast_like(xr.DataArray(np.zeros((lat.size, lon.size)), coords={"lat": lat, "lon": lon}, dims=("lat", "lon")))
+
+
 def _apply_inner_mask_on_standard_domain(standard_footprint_data: xr.Dataset, inner_footprint_data: xr.Dataset):
-    """Mask standard-domain footprint values where inner-domain coverage exists.
+    """Mask standard-domain footprint values over the full inner-domain extent.
 
     Args:
         standard_footprint_data: Standard-domain footprint dataset.
         inner_footprint_data: Inner-domain footprint dataset.
 
     Returns:
-        Copy of ``standard_footprint_data`` with ``fp`` zeroed in cells covered by the inner domain.
+        Copy of ``standard_footprint_data`` with ``fp`` zeroed over the inner-domain extent.
     """
     fp_standard = standard_footprint_data.copy()
 
@@ -185,9 +216,8 @@ def _apply_inner_mask_on_standard_domain(standard_footprint_data: xr.Dataset, in
     if "fp" not in fp_standard or "fp" not in inner_footprint_data:
         return fp_standard
 
-    inner_has_coverage = (inner_footprint_data["fp"] != 0).any("time")
-    inner_on_standard = _interp_bool_mask_to_grid(
-        mask=inner_has_coverage,
+    inner_on_standard = _inner_extent_mask_to_grid(
+        inner_data=inner_footprint_data,
         lat=fp_standard.lat,
         lon=fp_standard.lon,
     )
@@ -200,7 +230,7 @@ def _apply_inner_mask_on_standard_flux(
     standard_flux_dict: dict,
     inner_footprint_data: xr.Dataset,
 ) -> dict:
-    """Mask standard-domain flux values where inner-domain coverage exists.
+    """Mask standard-domain flux values over the full inner-domain extent.
 
     Args:
         standard_flux_dict: Dict of FluxData-like objects with ``data.flux`` DataArray.
@@ -213,12 +243,7 @@ def _apply_inner_mask_on_standard_flux(
         return standard_flux_dict
 
     first_flux = next(iter(standard_flux_dict.values())).data.flux
-    inner_has_coverage = (inner_footprint_data["fp"] != 0).any("time")
-    inner_on_flux = _interp_bool_mask_to_grid(
-        mask=inner_has_coverage,
-        lat=first_flux.lat,
-        lon=first_flux.lon,
-    )
+    inner_on_flux = _inner_extent_mask_to_grid(inner_footprint_data, lat=first_flux.lat, lon=first_flux.lon)
 
     return _apply_boolean_mask_on_standard_flux(standard_flux_dict, inner_on_flux)
 
@@ -231,7 +256,7 @@ def _apply_boolean_mask_on_standard_flux(
 
     Args:
         standard_flux_dict: Dict of FluxData-like objects with ``data.flux`` DataArray.
-        mask_on_standard_grid: Boolean mask on standard-domain lat/lon grid where True means "inner-domain coverage".
+        mask_on_standard_grid: Boolean mask on standard-domain lat/lon grid where True means "inner-domain extent".
 
     Returns:
         New flux dict with masked ``flux`` fields.
@@ -372,7 +397,13 @@ def data_processing_surface_notracer(
     
     fp_all[".flux"] = flux_dict
 
-    if inner_emissions_store is not None:
+    inner_flux_dict = None
+    if inner_domain is not None:
+        if inner_emissions_store is None:
+            raise ValueError(
+                "`inner_domain` was specified but `inner_emissions_store` is missing. "
+                "Inner-domain inversions require native inner-domain flux as well as inner footprints."
+            )
         inner_flux_dict = get_flux_data(
             sources=emissions_name,
             species=species,
@@ -502,9 +533,8 @@ def data_processing_surface_notracer(
             )
 
             first_flux = next(iter(flux_dict.values())).data.flux
-            inner_has_coverage = (inner_footprint_data.data["fp"] != 0).any("time")
-            inner_on_standard_flux = _interp_bool_mask_to_grid(
-                mask=inner_has_coverage,
+            inner_on_standard_flux = _inner_extent_mask_to_grid(
+                inner_footprint_data.data,
                 lat=first_flux.lat,
                 lon=first_flux.lon,
             )
@@ -516,8 +546,8 @@ def data_processing_surface_notracer(
         scenario_combined = merged_scenario_data(
             obs_data=site_data, footprint_data=standard_footprint_data,
             flux_dict=standard_flux_for_site, bc_data=bc_data, inner_footprint_data=inner_footprint_data,
-            inner_flux_dict= inner_flux_dict if inner_emissions_store is not None else None, 
-            platform=platform[i], max_level=max_level
+            inner_flux_dict=inner_flux_dict,
+            platform=platform[i], max_level=max_level[i]
         )
         fp_all[site] = scenario_combined
 
@@ -589,4 +619,3 @@ def data_processing_surface_notracer(
             print(f"\nfp_all saved in {merged_data_dir}\n")
 
     return fp_all, sites, inlet, fp_height, instrument, averaging_period
-

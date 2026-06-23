@@ -12,6 +12,7 @@ from helpers import basis_function, footprint
 def test_fp_x_flux(tac_ch4_data_args):
     fp_all, *_ = data_processing_surface_notracer(**tac_ch4_data_args)
     emissions_name = [next(iter(fp_all[".flux"].keys()))]
+    tac_ds = fp_all["TAC"]["standard"].ds if isinstance(fp_all["TAC"], xr.DataTree) else fp_all["TAC"]
 
     flux1, fp1 = _flux_fp_from_fp_all(fp_all, emissions_name)
     mean_fp_flux1 = _mean_fp_times_mean_flux(flux1, fp1)
@@ -25,9 +26,13 @@ def test_fp_x_flux(tac_ch4_data_args):
     xr.testing.assert_allclose(mean_fp_flux1, mean_fp_flux2)
 
     # shift time of second site -- this should not change the mean over time
-    max_time = pd.Timedelta(fp_all["TAC"].time.max().values - fp_all["TAC"].time.min().values)
-    new_time = (fp_all["TAC"].time + max_time)
-    fp_all["ABC"] = fp_all["ABC"].assign_coords(time=new_time)
+    max_time = pd.Timedelta(tac_ds.time.max().values - tac_ds.time.min().values)
+    new_time = tac_ds.time + max_time
+    if isinstance(fp_all["ABC"], xr.DataTree):
+        abc_ds = fp_all["ABC"]["standard"].ds.assign_coords(time=new_time)
+        fp_all["ABC"] = xr.DataTree.from_dict({"/standard": abc_ds})
+    else:
+        fp_all["ABC"] = fp_all["ABC"].assign_coords(time=new_time)
 
     flux3, fp3 = _flux_fp_from_fp_all(fp_all, emissions_name)
     mean_fp_flux3 = _mean_fp_times_mean_flux(flux3, fp3)
@@ -186,7 +191,7 @@ def test_fp_sensitivity_inner_requires_datatree_entry():
         fp_sensitivity(fp_and_data, basis_func, inner_basis_func=inner_basis_func)
 
 
-def test_fp_sensitivity_masks_outer_where_inner_has_coverage():
+def test_fp_sensitivity_masks_outer_where_inner_has_extent():
     time = pd.date_range("2019-01-01", periods=2)
     lat = np.array([0.0, 1.0])
     lon = np.array([0.0, 1.0])
@@ -215,9 +220,9 @@ def test_fp_sensitivity_masks_outer_where_inner_has_coverage():
 
     h_outer = result["TAC"]["standard"].ds["H"].squeeze("region")
 
-    # Total outer contribution is 4 cells before masking. One cell overlaps
-    # with inner and is forced to zero, so the expected outer sum is 3.
-    np.testing.assert_allclose(h_outer.values, np.array([3.0, 3.0]))
+    # The full inner-domain extent is masked out of the outer contribution,
+    # even when only part of the inner footprint has non-zero sensitivity.
+    np.testing.assert_allclose(h_outer.values, np.array([0.0, 0.0]))
 
 
 def test_fp_sensitivity_preserves_empty_root_standard_child():
