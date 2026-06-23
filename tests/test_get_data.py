@@ -11,6 +11,7 @@ from openghg.retrieve import get_obs_surface
 from openghg.types import SearchError
 
 import openghg_inversions.inversion_data.get_data
+from openghg_inversions.inversion_data.scenario import align_inner_to_outer_time
 from openghg_inversions.inversion_data.serialise import (
     fp_all_from_dataset,
     make_combined_scenario,
@@ -122,6 +123,32 @@ def test_datatree_scenarios_preserved_in_serialisation_roundtrip():
         dt_first["/scenarios/TAC/inner"].to_dataset(),
         dt_second["/scenarios/TAC/inner"].to_dataset(),
     )
+
+
+def test_inner_scenario_time_alignment_uses_nearest_with_tolerance():
+    outer_time = pd.to_datetime(["2019-01-01 00:00", "2019-01-01 01:00", "2019-01-01 02:00"])
+    inner_time = pd.to_datetime(["2019-01-01 00:29", "2019-01-01 01:31"])
+
+    scenario_combined = xr.Dataset(coords={"time": outer_time})
+    inner_domain_merged = xr.Dataset(
+        {"fp_x_flux": xr.DataArray([1.0, 2.0], dims=["time"], coords={"time": inner_time})}
+    )
+
+    aligned = align_inner_to_outer_time(
+        inner_domain_merged=inner_domain_merged,
+        scenario_combined=scenario_combined,
+        averaging_period="1h",
+    )
+
+    np.testing.assert_allclose(aligned["fp_x_flux"].values, [1.0, 0.0, 2.0])
+
+    exact_only = align_inner_to_outer_time(
+        inner_domain_merged=inner_domain_merged,
+        scenario_combined=scenario_combined,
+        averaging_period=None,
+    )
+
+    np.testing.assert_allclose(exact_only["fp_x_flux"].values, [0.0, 0.0, 0.0])
 
 
 def test_missing_data_at_one_site(tac_ch4_data_args):

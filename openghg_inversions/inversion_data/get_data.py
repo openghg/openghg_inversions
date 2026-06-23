@@ -547,7 +547,7 @@ def data_processing_surface_notracer(
             obs_data=site_data, footprint_data=standard_footprint_data,
             flux_dict=standard_flux_for_site, bc_data=bc_data, inner_footprint_data=inner_footprint_data,
             inner_flux_dict=inner_flux_dict,
-            platform=platform[i], max_level=max_level[i]
+            platform=platform[i], max_level=max_level[i], averaging_period=averaging_period[i]
         )
         fp_all[site] = scenario_combined
 

@@ -1,7 +1,37 @@
+import pandas as pd
 import xarray as xr
 
 from openghg.analyse import ModelScenario
 from openghg.dataobjects import ObsData, BoundaryConditionsData, FluxData, FootprintData
+
+
+def _time_alignment_tolerance(averaging_period: str | None) -> pd.Timedelta | None:
+    if averaging_period is None:
+        return None
+
+    try:
+        return pd.Timedelta(averaging_period) / 2
+    except ValueError:
+        return None
+
+
+def align_inner_to_outer_time(
+    inner_domain_merged: xr.Dataset,
+    scenario_combined: xr.Dataset,
+    averaging_period: str | None,
+) -> xr.Dataset:
+    """Align inner-domain scenario times to the outer/observation time axis."""
+    tolerance = _time_alignment_tolerance(averaging_period)
+    if tolerance is None:
+        return inner_domain_merged.reindex(time=scenario_combined.time, fill_value=0.0)
+
+    return inner_domain_merged.reindex(
+        time=scenario_combined.time,
+        method="nearest",
+        tolerance=tolerance,
+        fill_value=0.0,
+    )
+
 
 def merged_scenario_data(
     obs_data: ObsData,
@@ -11,7 +41,8 @@ def merged_scenario_data(
     bc_data: BoundaryConditionsData | None = None,
     inner_footprint_data: FootprintData | None = None,
     platform: str | None = None,
-    max_level: int | None = None
+    max_level: int | None = None,
+    averaging_period: str | None = None,
 ) -> xr.DataTree:
     """Create ModelScenario and get result of `footprint_data_merge`."""
     # Create ModelScenario object for all emissions_sectors
@@ -58,12 +89,13 @@ def merged_scenario_data(
             cache=False,
         )
 
-        # Align inner to outer time axis.
-        # If inner footprint is missing any timestamps that exist in the outer
-        # scenario (e.g. sparse inner store coverage), fill those with 0 so
-        # both nodes share exactly the same time dimension in the DataTree.
-        inner_domain_merged = inner_domain_merged.reindex(
-            time=scenario_combined.time, fill_value=0.0
+        # Align inner to the outer/obs time axis. Use nearest matching within
+        # half the averaging window so small timestamp offsets do not remove a
+        # valid inner contribution. Genuinely missing inner coverage remains 0.
+        inner_domain_merged = align_inner_to_outer_time(
+            inner_domain_merged=inner_domain_merged,
+            scenario_combined=scenario_combined,
+            averaging_period=averaging_period,
         )
 
         dt_dict["/inner"] = inner_domain_merged
