@@ -3,8 +3,10 @@ import pytest
 import xarray as xr
 
 from openghg_inversions.basis.algorithms import (
+    AllSplitAcceptancePolicies,
     AxisParallelSplitStep,
     GreedyAxisParallelSplitStrategy,
+    MinChildTargetWeightShare,
     MinChildWeightShare,
     allocate_nbasis_by_class,
     region_constrained_basis,
@@ -372,6 +374,160 @@ def test_greedy_strategy_split_stopping_freezes_rejected_partition():
 
     assert set(np.unique(labels)) == {1}
     assert split_step.calls == 1
+
+
+def test_child_target_weight_share_rejects_small_balanced_children():
+    """Target-weight stopping rejects children below the equal-region target."""
+    weights = np.array([[100.0, 100.0, 1.0, 1.0]])
+    parent = [(0, 2), (0, 3)]
+    children = [[(0, 2)], [(0, 3)]]
+
+    assert MinChildWeightShare(min_child_weight_share=0.1)(parent, children, weights)
+    assert not MinChildTargetWeightShare(min_child_target_weight_share=0.1)(
+        parent,
+        children,
+        weights,
+        target_regions=3,
+    )
+
+
+def test_child_target_weight_share_can_accept_parent_imbalanced_children():
+    """Target-weight stopping is not a parent-relative balance guard."""
+    weights = np.array([[100.0, 1.0, 1.0, 1.0]])
+    parent = [(0, 0), (0, 1), (0, 2), (0, 3)]
+    children = [[(0, 0)], [(0, 1), (0, 2), (0, 3)]]
+
+    assert MinChildTargetWeightShare(min_child_target_weight_share=0.05)(
+        parent,
+        children,
+        weights,
+        target_regions=2,
+    )
+    assert not MinChildWeightShare(min_child_weight_share=0.05)(parent, children, weights)
+
+
+def test_child_target_weight_share_rejects_split_that_creates_small_child():
+    """Target-weight stopping rejects a split that would create a small region."""
+    weights = np.array([[100.0, 1.0, 1.0, 1.0]])
+    class_mask = np.ones(weights.shape, dtype=bool)
+
+    class LowWeightTailSplit:
+        """Split one heavy cell from the low-weight tail."""
+
+        def __call__(self, nodes: list[tuple[int, int]], weights: np.ndarray) -> list[list[tuple[int, int]]]:
+            return [nodes[:1], nodes[1:]]
+
+    labels = GreedyAxisParallelSplitStrategy(
+        split_step=LowWeightTailSplit(),
+        split_acceptance=MinChildTargetWeightShare(min_child_target_weight_share=0.1),
+    )(weights, class_mask, target_regions=2)
+
+    assert set(np.unique(labels)) == {1}
+
+
+def test_child_target_weight_share_accepts_normal_split():
+    """Target-weight stopping accepts children above the equal-region threshold."""
+    weights = np.array([[100.0, 10.0, 10.0]])
+    class_mask = np.ones(weights.shape, dtype=bool)
+
+    class HeavyThenTailSplit:
+        """Split one heavy cell from an acceptable tail."""
+
+        def __call__(self, nodes: list[tuple[int, int]], weights: np.ndarray) -> list[list[tuple[int, int]]]:
+            return [nodes[:1], nodes[1:]]
+
+    labels = GreedyAxisParallelSplitStrategy(
+        split_step=HeavyThenTailSplit(),
+        split_acceptance=MinChildTargetWeightShare(min_child_target_weight_share=0.1),
+    )(weights, class_mask, target_regions=2)
+
+    assert set(np.unique(labels)) == {1, 2}
+
+
+def test_min_child_target_weight_share_zero_weight_falls_back_to_area_target():
+    """Zero total weight uses cell counts for direct policy calls."""
+    weights = np.zeros((1, 4))
+    parent = [(0, 0), (0, 1), (0, 2), (0, 3)]
+    children = [[(0, 0)], [(0, 1)]]
+
+    assert MinChildTargetWeightShare(min_child_target_weight_share=0.5)(
+        parent,
+        children,
+        weights,
+        target_regions=2,
+    )
+    assert not MinChildTargetWeightShare(min_child_target_weight_share=0.75)(
+        parent,
+        children,
+        weights,
+        target_regions=2,
+    )
+
+
+@pytest.mark.parametrize("threshold", [-0.1, 1.1])
+def test_min_child_target_weight_share_validates_threshold(threshold: float):
+    """Target weight share thresholds must be between zero and one."""
+    with pytest.raises(ValueError, match="min_child_target_weight_share must be between 0 and 1"):
+        MinChildTargetWeightShare(min_child_target_weight_share=threshold)
+
+
+def test_all_split_acceptance_policies_requires_every_policy_to_accept():
+    """Split acceptance policies can be composed with all-of semantics."""
+    weights = np.array([[100.0, 1.0, 1.0, 1.0]])
+    parent = [(0, 0), (0, 1), (0, 2), (0, 3)]
+    children = [[(0, 0)], [(0, 1), (0, 2), (0, 3)]]
+    policy = AllSplitAcceptancePolicies(
+        MinChildTargetWeightShare(min_child_target_weight_share=0.05),
+        MinChildWeightShare(min_child_weight_share=0.05),
+    )
+
+    assert not policy(parent, children, weights, target_regions=2)
+
+
+def test_greedy_strategy_composes_target_and_balance_policies():
+    """Greedy orchestration passes target counts into composed policies."""
+    weights = np.array([[100.0, 1.0, 1.0, 1.0]])
+    class_mask = np.ones(weights.shape, dtype=bool)
+
+    class LowWeightTailSplit:
+        """Split one heavy cell from the low-weight tail."""
+
+        def __call__(self, nodes: list[tuple[int, int]], weights: np.ndarray) -> list[list[tuple[int, int]]]:
+            return [nodes[:1], nodes[1:]]
+
+    labels = GreedyAxisParallelSplitStrategy(
+        split_step=LowWeightTailSplit(),
+        split_acceptance=AllSplitAcceptancePolicies(
+            MinChildTargetWeightShare(min_child_target_weight_share=0.05),
+            MinChildWeightShare(min_child_weight_share=0.05),
+        ),
+    )(weights, class_mask, target_regions=2)
+
+    assert set(np.unique(labels)) == {1}
+
+
+def test_region_constrained_basis_child_target_stopping_uses_class_local_total():
+    """Target-weight stopping uses each class total as the denominator."""
+    weights = xr.DataArray(
+        np.array([[100.0, 100.0], [1.0, 1.0]]),
+        dims=("lat", "lon"),
+    )
+    classes = xr.DataArray(
+        np.array([["high", "high"], ["low", "low"]]),
+        dims=weights.dims,
+    )
+
+    labels = region_constrained_basis(
+        weights,
+        classes,
+        nbasis={"high": 1, "low": 2},
+        split_strategy=GreedyAxisParallelSplitStrategy(
+            split_acceptance=MinChildTargetWeightShare(min_child_target_weight_share=0.5),
+        ),
+    )
+
+    assert len(set(np.unique(labels.values)) - {0}) == 3
+    assert all(len(class_values) == 1 for class_values in _class_values_for_labels(labels, classes).values())
 
 
 def test_region_constrained_basis_split_stopping_keeps_class_boundaries():

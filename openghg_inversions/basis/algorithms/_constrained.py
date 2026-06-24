@@ -102,9 +102,67 @@ class SplitAcceptancePolicy(Protocol):
         ...
 
 
+class TargetSplitAcceptancePolicy(SplitAcceptancePolicy, Protocol):
+    """Policy protocol for accepting splits using the class-local target count."""
+
+    def __call__(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+        target_regions: int | None = None,
+    ) -> bool:
+        """Return true when proposed child partitions should be accepted.
+
+        Args:
+            parent: Parent partition selected by greedy orchestration.
+            children: Non-empty child partitions proposed by a
+                :class:`PartitionStep`.
+            weights: Non-negative class/source-local weight field aligned to
+                the source grid.
+            target_regions: Requested class/source-local upper target count
+                when available.
+
+        Returns:
+            True if greedy orchestration should replace ``parent`` with
+            ``children``. False freezes ``parent`` as a completed partition.
+        """
+        ...
+
+    def accept_split(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+        target_regions: int,
+    ) -> bool:
+        """Return true when proposed children should be accepted.
+
+        Args:
+            parent: Parent partition selected by greedy orchestration.
+            children: Non-empty child partitions proposed by a
+                :class:`PartitionStep`.
+            weights: Non-negative class/source-local weight field aligned to
+                the source grid.
+            target_regions: Requested class/source-local upper target count.
+
+        Returns:
+            True if greedy orchestration should replace ``parent`` with
+            ``children``. False freezes ``parent`` as a completed partition.
+        """
+        ...
+
+
+SplitAcceptance: TypeAlias = SplitAcceptancePolicy | TargetSplitAcceptancePolicy
+
+
 @dataclass(frozen=True)
 class MinChildWeightShare:
-    """Reject splits whose lightest child is below a parent-weight share."""
+    """Reject splits whose lightest child is below a parent-weight share.
+
+    This is a split-balance guard. It compares children with their current
+    parent partition, not with the total class/source weight being partitioned.
+    """
 
     min_child_weight_share: float
 
@@ -130,6 +188,108 @@ class MinChildWeightShare:
         if parent_weight <= 0.0:
             return False
         return min(child_weights) / parent_weight >= self.min_child_weight_share
+
+
+@dataclass(frozen=True)
+class MinChildTargetWeightShare:
+    """Reject splits whose lightest child is below an equal-target share.
+
+    ``min_child_target_weight_share`` is compared with
+    ``min(child_weight) / (weights.sum() / target_regions)`` for the
+    class/source-local weights being partitioned. This policy stops creation of
+    low-weight basis regions relative to the requested equal-weight target; it
+    is not a parent-relative split-balance guard.
+    """
+
+    min_child_target_weight_share: float
+
+    def __post_init__(self) -> None:
+        """Validate the minimum child target weight share threshold."""
+        if not 0.0 <= self.min_child_target_weight_share <= 1.0:
+            raise ValueError("min_child_target_weight_share must be between 0 and 1.")
+
+    def __call__(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+        target_regions: int | None = None,
+    ) -> bool:
+        """Return true when every child meets the equal-target threshold."""
+        if target_regions is None:
+            raise ValueError("target_regions is required for MinChildTargetWeightShare.")
+        return self.accept_split(parent, children, weights, target_regions)
+
+    def accept_split(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+        target_regions: int,
+    ) -> bool:
+        """Return true when every child is large enough to become a region.
+
+        ``weights`` is the class/source-local field passed to greedy
+        partitioning, so ``weights.sum() / target_regions`` is the equal-weight
+        target region weight. If the total weight is zero, fall back to
+        cell-count shares for direct policy use; the default greedy strategy
+        already converts all-zero classes to an area surrogate before policies
+        are evaluated.
+        """
+        del parent
+
+        if target_regions < 1:
+            raise ValueError("target_regions must be at least 1.")
+
+        total_weight = float(weights.sum())
+        if total_weight <= 0.0:
+            total_weight = float(weights.size)
+            child_weights = [float(len(child)) for child in children]
+        else:
+            child_weights = [_node_weight(child, weights) for child in children]
+
+        if total_weight <= 0.0:
+            return False
+        equal_target_weight = total_weight / target_regions
+        if equal_target_weight <= 0.0:
+            return False
+        return min(child_weights) / equal_target_weight >= self.min_child_target_weight_share
+
+
+@dataclass(frozen=True, init=False)
+class AllSplitAcceptancePolicies:
+    """Accept a split only when every policy accepts it."""
+
+    policies: tuple[SplitAcceptance, ...]
+
+    def __init__(self, *policies: SplitAcceptance) -> None:
+        """Create a policy that combines multiple acceptance policies."""
+        if not policies:
+            raise ValueError("At least one split acceptance policy is required.")
+        object.__setattr__(self, "policies", tuple(policies))
+
+    def __call__(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+        target_regions: int | None = None,
+    ) -> bool:
+        """Return true when all component policies accept the split."""
+        return all(
+            _split_acceptance_allows(policy, parent, children, weights, target_regions)
+            for policy in self.policies
+        )
+
+    def accept_split(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+        target_regions: int,
+    ) -> bool:
+        """Return true when all component policies accept the split."""
+        return self(parent, children, weights, target_regions)
 
 
 @dataclass(frozen=True)
@@ -216,7 +376,7 @@ class GreedyAxisParallelSplitStrategy:
     balanced: bool = True
     clean_splits: bool = False
     split_step: PartitionStep | None = None
-    split_acceptance: SplitAcceptancePolicy | None = None
+    split_acceptance: SplitAcceptance | None = None
 
     def __call__(
         self,
@@ -748,7 +908,7 @@ def _greedy_partitioning(
     weights: np.ndarray,
     *,
     split_step: PartitionStep,
-    split_acceptance: SplitAcceptancePolicy | None = None,
+    split_acceptance: SplitAcceptance | None = None,
 ) -> list[GridPartition]:
     """Apply a partition step greedily until a target count is reached.
 
@@ -793,7 +953,13 @@ def _greedy_partitioning(
         if current_regions - 1 + len(child_partitions) > target_regions:
             done.append(nodes)
             continue
-        if split_acceptance is not None and not split_acceptance(nodes, child_partitions, weights):
+        if split_acceptance is not None and not _split_acceptance_allows(
+            split_acceptance,
+            nodes,
+            child_partitions,
+            weights,
+            target_regions,
+        ):
             done.append(nodes)
             continue
 
@@ -1063,6 +1229,21 @@ def _node_weight(nodes: GridPartition, weights: np.ndarray) -> float:
     return float(weights[rows, cols].sum())
 
 
+def _split_acceptance_allows(
+    policy: SplitAcceptance,
+    parent: GridPartition,
+    children: list[GridPartition],
+    weights: np.ndarray,
+    target_regions: int | None = None,
+) -> bool:
+    """Return true when a split acceptance policy accepts a proposed split."""
+    if target_regions is not None:
+        accept_split = getattr(policy, "accept_split", None)
+        if accept_split is not None:
+            return bool(accept_split(parent, children, weights, target_regions))
+    return bool(policy(parent, children, weights))
+
+
 def _node_indices(nodes: GridPartition) -> tuple[list[int], list[int]]:
     """Split grid-index nodes into row and column index lists."""
     if not nodes:
@@ -1114,14 +1295,18 @@ def _labels_dataarray(labels: np.ndarray, weights: xr.DataArray) -> xr.DataArray
 
 __all__ = [
     "AllocationMode",
+    "AllSplitAcceptancePolicies",
     "AxisParallelSplitStep",
     "AxisAlignedWeightedSplitStrategy",
     "GreedyAxisParallelSplitStrategy",
     "MinChildWeightShare",
+    "MinChildTargetWeightShare",
     "NbasisAllocation",
     "PartitionStep",
+    "SplitAcceptance",
     "SplitAcceptancePolicy",
     "SplitStrategy",
+    "TargetSplitAcceptancePolicy",
     "allocate_nbasis_by_class",
     "region_constrained_basis",
 ]
