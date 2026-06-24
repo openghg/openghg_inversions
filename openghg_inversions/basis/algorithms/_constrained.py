@@ -5,12 +5,20 @@ computed 2D weight field and an already loaded 2D class mask. File loading,
 footprint/flux reduction, and domain-specific country lookup stay at the caller
 boundary.
 
-The default implementation uses the prototype-inspired greedy axis-parallel
-split shape: each class is split independently with repeated bisection, then
-labels are offset globally. The class orchestration accepts a split strategy
-protocol so an inertial partition, quadtree step, recursive weighted split, or
-other tile generator can be substituted without changing mask alignment or
-label-offset behavior.
+The main public entry point is :func:`region_constrained_basis`, with
+:func:`allocate_nbasis_by_class` handling class-local target allocation. The
+default implementation uses :class:`GreedyAxisParallelSplitStrategy` with
+:class:`AxisParallelSplitStep`; callers can supply other partition steps such as
+:class:`InertialSplitStep`.
+
+Greedy split steps can optionally use a geometry object for split-shape
+decisions. Geometry affects only coordinate comparisons such as long-axis
+choice and inertial projection; contribution weights, label allocation, and
+split-stopping policies remain separate.
+
+Output labels preserve the input weight dimensions and coordinates. Positive
+labels are globally unique, unmapped cells remain ``0``, and region-class
+boundaries are never crossed.
 """
 
 from __future__ import annotations
@@ -86,27 +94,38 @@ class SplitGeometry(Protocol):
         nodes: GridPartition,
         node_weights: npt.NDArray[np.float64] | None = None,
     ) -> npt.NDArray[np.float64] | None:
-        """Return ``(northing, easting)`` coordinates for grid nodes.
+        """Return physical coordinates for grid nodes.
 
         Args:
             nodes: Grid nodes in the partition being split.
             node_weights: Optional non-negative weights for the same nodes.
 
         Returns:
-            A finite ``(nnode, 2)`` coordinate array, or ``None`` when physical
-            coordinates are unavailable and index-space fallback should be used.
+            A finite ``(nnode, 2)`` coordinate array whose first column is
+            aligned with grid axis ``0`` and second column is aligned with grid
+            axis ``1``. Return ``None`` when physical coordinates are
+            unavailable and index-space fallback should be used.
         """
         ...
 
 
-@dataclass(frozen=True)
+@dataclass
 class LatLonGridGeometry:
     """Local tangent-plane geometry for latitude/longitude grids.
 
-    Coordinates are computed per partition in metres using a local equirectangular
-    approximation centered on the weighted latitude/longitude of the selected
-    nodes. The returned coordinate columns are northing then easting, matching
-    grid axes ``0`` and ``1`` for row/column split decisions.
+    Coordinates are computed per partition in metres using a local
+    equirectangular approximation centered on the weighted latitude/longitude of
+    the selected nodes. The returned coordinate columns are local north-south
+    and east-west metre offsets, matching grid axes ``0`` and ``1`` for
+    row/column split decisions.
+
+    Attributes:
+        latitudes: Finite two-dimensional latitude coordinate grid in degrees,
+            aligned to grid node ``(row, col)`` indexing.
+        longitudes: Finite two-dimensional longitude coordinate grid in
+            degrees, with the same shape and node alignment as ``latitudes``.
+        earth_radius_m: Earth radius used for converting angular differences to
+            metres. Must be positive and finite.
     """
 
     latitudes: npt.NDArray[np.float64]
@@ -126,8 +145,8 @@ class LatLonGridGeometry:
 
         Args:
             data: Two-dimensional grid with latitude and longitude coordinates,
-                ordered as ``(lat_name, lon_name)`` so node axes align with
-                northing/easting geometry.
+                ordered as ``(lat_name, lon_name)`` so node axes align with the
+                returned north-south and east-west metre offsets.
             lat_name: Name of the latitude coordinate and first dimension.
             lon_name: Name of the longitude coordinate and second dimension.
             earth_radius_m: Earth radius used for metre scaling.
@@ -162,7 +181,13 @@ class LatLonGridGeometry:
         )
 
     def __post_init__(self) -> None:
-        """Validate geometry arrays."""
+        """Validate and normalize geometry arrays.
+
+        Raises:
+            ValueError: If latitude/longitude arrays are not two-dimensional,
+                aligned, finite arrays or the Earth radius is not positive and
+                finite.
+        """
         latitudes = np.asarray(self.latitudes, dtype=np.float64)
         longitudes = np.asarray(self.longitudes, dtype=np.float64)
         if latitudes.shape != longitudes.shape:
@@ -174,21 +199,40 @@ class LatLonGridGeometry:
         if self.earth_radius_m <= 0.0 or not np.isfinite(self.earth_radius_m):
             raise ValueError("earth_radius_m must be positive and finite.")
 
-        object.__setattr__(self, "latitudes", latitudes)
-        object.__setattr__(self, "longitudes", longitudes)
+        self.latitudes = latitudes
+        self.longitudes = longitudes
 
     def coordinates(
         self,
         nodes: GridPartition,
         node_weights: npt.NDArray[np.float64] | None = None,
     ) -> npt.NDArray[np.float64] | None:
-        """Return local tangent-plane coordinates for ``nodes`` in metres."""
+        """Return local tangent-plane coordinates for ``nodes`` in metres.
+
+        Args:
+            nodes: Grid nodes in the selected partition.
+            node_weights: Optional non-negative weights for the same nodes.
+                These weights set the local projection center. Equal weights are
+                used when weights are omitted or all zero.
+
+        Returns:
+            A finite ``(nnode, 2)`` array of local north-south and east-west
+            metre offsets. The local center is the weighted mean latitude and
+            circular weighted mean longitude for ``nodes``, so partitions near
+            the antimeridian use the shorter wrapped longitude difference.
+            Empty ``nodes`` returns an empty coordinate array. Invalid
+            coordinates, out-of-bounds nodes, or invalid ``node_weights`` return
+            ``None`` so callers can fall back to row/column index coordinates.
+        """
         if not nodes:
             return np.empty((0, 2), dtype=np.float64)
 
         rows, cols = _node_indices(nodes)
-        latitudes = self.latitudes[rows, cols].astype(np.float64)
-        longitudes = self.longitudes[rows, cols].astype(np.float64)
+        try:
+            latitudes = self.latitudes[rows, cols].astype(np.float64)
+            longitudes = self.longitudes[rows, cols].astype(np.float64)
+        except IndexError:
+            return None
         if not np.isfinite(latitudes).all() or not np.isfinite(longitudes).all():
             return None
 
@@ -199,9 +243,9 @@ class LatLonGridGeometry:
         lat0 = float(np.average(latitudes, weights=weights))
         lon0 = _weighted_circular_longitude(longitudes, weights)
         delta_lon = ((longitudes - lon0 + 180.0) % 360.0) - 180.0
-        northing = self.earth_radius_m * np.deg2rad(latitudes - lat0)
-        easting = self.earth_radius_m * np.deg2rad(delta_lon) * np.cos(np.deg2rad(lat0))
-        coords = np.column_stack((northing, easting)).astype(np.float64)
+        north_south_m = self.earth_radius_m * np.deg2rad(latitudes - lat0)
+        east_west_m = self.earth_radius_m * np.deg2rad(delta_lon) * np.cos(np.deg2rad(lat0))
+        coords = np.column_stack((north_south_m, east_west_m)).astype(np.float64)
         if not np.isfinite(coords).all():
             return None
         return coords
@@ -428,6 +472,15 @@ class AxisParallelSplitStep:
     This is a cleaned-up version of the prototype's axis-parallel split step.
     Greedy orchestration is handled separately by
     :class:`GreedyAxisParallelSplitStrategy`.
+
+    Attributes:
+        balanced: If true, choose the weighted long axis and split near half
+            total node weight. If false, choose the geometric long axis and
+            split by cell count.
+        clean_splits: If true, keep all cells with the same selected-axis
+            coordinate on the same side of the split.
+        geometry: Optional geometry used to choose the split axis. The split
+            itself remains a row- or column-aligned cut.
     """
 
     balanced: bool = True
@@ -444,6 +497,9 @@ class AxisParallelSplitStep:
         Returns:
             Two child partitions when the split succeeds, or the original
             partition when the input cannot be split without an empty side.
+            When ``geometry`` is provided, it is used only to choose the split
+            axis; child partitions are still produced by sorting row/column
+            nodes along that axis.
         """
         left, right = _axis_parallel_split_nodes(
             nodes,
@@ -471,7 +527,15 @@ class InertialSplitStep:
 
     By default the covariance uses grid-index coordinates. Pass
     ``geometry=LatLonGridGeometry.from_dataarray(...)`` to use local physical
-    northing/easting coordinates for each selected partition.
+    north-south and east-west metre offsets for each selected partition.
+    Degenerate covariance, tied projections at the selected cut, and other
+    numerically unstable cases fall back to an axis-parallel split.
+
+    Attributes:
+        balanced: If true, split the inertial projection near half total node
+            weight. If false, split by cell count.
+        geometry: Optional geometry used for the covariance and projection. The
+            fallback split uses the same geometry for axis choice.
     """
 
     balanced: bool = True
@@ -1183,6 +1247,18 @@ def _inertial_split_nodes(
     Degenerate geometry, tied projections at the selected cut, or numerically
     unstable inertial fits fall back to an axis-parallel split so callers always
     get deterministic behavior.
+
+    Args:
+        nodes: Grid-index nodes in the partition being split.
+        weights: Non-negative weight field aligned to the source grid.
+        balanced: If true, split near half total node weight. If false, split by
+            cell count.
+        geometry: Optional physical geometry used for covariance/projection and
+            for fallback axis choice.
+
+    Returns:
+        Two child partitions. Either side may be empty only if both inertial and
+        fallback splitting are degenerate.
     """
     fallback = _axis_parallel_split_nodes(
         nodes,
@@ -1222,7 +1298,20 @@ def _inertial_ordered_nodes(
     *,
     geometry: SplitGeometry | None = None,
 ) -> tuple[GridPartition, npt.NDArray[np.float64]] | None:
-    """Return nodes ordered by projection onto the weighted inertial axis."""
+    """Return nodes ordered by projection onto the weighted inertial axis.
+
+    Args:
+        nodes: Grid-index nodes in the partition being split.
+        weights: Non-negative weight field aligned to the source grid.
+        geometry: Optional physical geometry used to compute projection
+            coordinates.
+
+    Returns:
+        A pair of ordered nodes and their projections, where projection values
+        are aligned element-for-element with the ordered nodes. Returns ``None``
+        when no stable projection ordering is available and callers should use
+        fallback splitting.
+    """
     rows, cols = _node_indices(nodes)
     node_weights = weights[rows, cols].astype(np.float64)
     axis_and_centroid = _weighted_inertial_axis(nodes, node_weights, geometry=geometry)
@@ -1258,6 +1347,18 @@ def _weighted_inertial_axis(
     symmetric eigensolver avoids slope/division edge cases while leaving a
     straightforward path to future higher-dimensional coordinate spaces such as
     lat/lon/time basis functions.
+
+    Args:
+        nodes: Grid-index nodes in the partition being split.
+        node_weights: One non-negative weight for each node.
+        geometry: Optional geometry used to map nodes into coordinates before
+            fitting the weighted covariance. Without geometry, row/column index
+            coordinates are used.
+
+    Returns:
+        A normalized principal-axis vector and the weighted centroid in the
+        same coordinate units. Returns ``None`` when weights, geometry,
+        covariance, or eigenvectors are degenerate.
     """
     if not np.isfinite(node_weights).all():
         return None
@@ -1383,7 +1484,19 @@ def _node_coordinates(
     geometry: SplitGeometry | None = None,
     node_weights: npt.NDArray[np.float64] | None = None,
 ) -> npt.NDArray[np.float64]:
-    """Return physical coordinates when available, otherwise row/column indices."""
+    """Return physical coordinates when available, otherwise row/column indices.
+
+    Args:
+        nodes: Grid-index nodes to map into coordinate space.
+        geometry: Optional geometry object. If it returns invalid or missing
+            coordinates, this helper falls back to index coordinates.
+        node_weights: Optional node weights forwarded to ``geometry`` for
+            partition-local coordinate centering.
+
+    Returns:
+        A finite ``(len(nodes), 2)`` coordinate array. The fallback coordinate
+        columns are raw row and column indices.
+    """
     if geometry is not None:
         coords = geometry.coordinates(nodes, node_weights)
         if coords is not None:
@@ -1397,7 +1510,18 @@ def _coordinate_weights(
     size: int,
     node_weights: npt.NDArray[np.float64] | None,
 ) -> npt.NDArray[np.float64] | None:
-    """Return finite non-negative coordinate weights with equal-weight fallback."""
+    """Return finite non-negative coordinate weights with equal-weight fallback.
+
+    Args:
+        size: Expected number of weights.
+        node_weights: Optional weights to validate.
+
+    Returns:
+        A one-dimensional weight array of length ``size``. Missing or all-zero
+        weights become equal weights. Invalid length, non-finite values, or
+        negative values return ``None`` so coordinate generation can fail
+        cleanly.
+    """
     if node_weights is None:
         return np.ones(size, dtype=np.float64)
 

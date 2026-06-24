@@ -203,6 +203,55 @@ def test_lat_lon_geometry_requires_lat_lon_dimension_order():
         LatLonGridGeometry.from_dataarray(grid)
 
 
+@pytest.mark.parametrize(
+    "geometry_result",
+    [
+        None,
+        np.full((12, 2), np.nan),
+        np.zeros((12, 1)),
+    ],
+)
+def test_axis_parallel_split_falls_back_when_geometry_is_unavailable(geometry_result):
+    """Invalid split geometry falls back to row/column axis choice."""
+
+    class InvalidGeometry:
+        """Geometry that cannot provide usable physical coordinates."""
+
+        def coordinates(self, nodes, node_weights=None):
+            return geometry_result
+
+    weights = np.ones((2, 6))
+    nodes = [(row, col) for row in range(2) for col in range(6)]
+
+    children = AxisParallelSplitStep(
+        balanced=False,
+        clean_splits=True,
+        geometry=InvalidGeometry(),
+    )(nodes, weights)
+    fallback_children = AxisParallelSplitStep(balanced=False, clean_splits=True)(nodes, weights)
+
+    assert children == fallback_children
+
+
+def test_axis_parallel_split_falls_back_when_lat_lon_geometry_shape_mismatches():
+    """Lat/lon geometry outside the node bounds falls back to row/column indices."""
+    weights = np.ones((2, 6))
+    nodes = [(row, col) for row in range(2) for col in range(6)]
+    geometry = LatLonGridGeometry(
+        latitudes=np.array([[80.0]]),
+        longitudes=np.array([[0.0]]),
+    )
+
+    children = AxisParallelSplitStep(
+        balanced=False,
+        clean_splits=True,
+        geometry=geometry,
+    )(nodes, weights)
+    fallback_children = AxisParallelSplitStep(balanced=False, clean_splits=True)(nodes, weights)
+
+    assert children == fallback_children
+
+
 def test_inertial_split_produces_two_non_empty_child_partitions():
     """Non-degenerate inertial splits produce two child node partitions."""
     nodes = [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
@@ -331,6 +380,34 @@ def test_inertial_split_uses_lat_lon_geometry_for_projection_order():
         frozenset({(0, 0), (0, 1)}),
         frozenset({(0, 2), (1, 0), (1, 2)}),
     }
+
+
+@pytest.mark.parametrize(
+    "geometry_result",
+    [
+        None,
+        np.full((5, 2), np.nan),
+        np.zeros((5, 1)),
+    ],
+)
+def test_inertial_split_falls_back_when_geometry_is_unavailable(geometry_result):
+    """Invalid split geometry falls back to row/column coordinate behavior."""
+
+    class InvalidGeometry:
+        """Geometry that cannot provide usable physical coordinates."""
+
+        def coordinates(self, nodes, node_weights=None):
+            return geometry_result
+
+    nodes = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0)]
+    weights = np.zeros((2, 4))
+    for node in nodes:
+        weights[node] = 1.0
+
+    children = InertialSplitStep(balanced=False, geometry=InvalidGeometry())(nodes, weights)
+    fallback_children = InertialSplitStep(balanced=False)(nodes, weights)
+
+    assert children == fallback_children
 
 
 def test_region_constrained_basis_with_inertial_step_keeps_class_boundaries():

@@ -94,12 +94,12 @@ be tested without committing to config syntax.
   and should not silently multiply the contribution weights.
 - Lat/lon-aware splitting should be opt-in at the split-step boundary. Passing
   `LatLonGridGeometry.from_dataarray(...)` to `AxisParallelSplitStep` or
-  `InertialSplitStep` scales grid-cell centers into local northing/easting
-  metres for the currently selected partition. Axis-parallel cuts remain
-  constant-row or constant-column cuts; geometry only changes which axis is
-  considered physically longer. Inertial splitting uses the same local physical
-  coordinates for covariance and projection. Default split steps continue to use
-  row/column index geometry.
+  `InertialSplitStep` scales grid-cell centers into local north-south and
+  east-west metre offsets for the currently selected partition. Axis-parallel
+  cuts remain constant-row or constant-column cuts; geometry only changes which
+  axis is considered physically longer. Inertial splitting uses the same local
+  physical coordinates for covariance and projection. Default split steps
+  continue to use row/column index geometry.
 - Keep split stopping at the greedy orchestration boundary. A `PartitionStep`
   proposes child partitions; the greedy strategy decides whether to accept
   those children before updating the active queue.
