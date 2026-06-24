@@ -6,12 +6,13 @@ from openghg_inversions.basis.algorithms import (
     AllSplitAcceptancePolicies,
     AxisParallelSplitStep,
     GreedyAxisParallelSplitStrategy,
+    InertialSplitStep,
+    LatLonGridGeometry,
     MinChildTargetWeightShare,
     MinChildWeightShare,
     allocate_nbasis_by_class,
     region_constrained_basis,
 )
-from openghg_inversions.basis.algorithms._constrained import InertialSplitStep
 
 
 def _class_values_for_labels(labels: xr.DataArray, classes: xr.DataArray) -> dict[int, set]:
@@ -143,6 +144,65 @@ def test_greedy_axis_parallel_strategy_hits_target_region_count():
     assert set(np.unique(labels)) == {1, 2, 3, 4, 5}
 
 
+def test_axis_parallel_split_uses_lat_lon_geometry_for_axis_choice():
+    """Physical geometry can choose latitude over high-latitude index width."""
+    weights = np.ones((2, 6))
+    grid = xr.DataArray(
+        weights,
+        dims=("lat", "lon"),
+        coords={"lat": [80.0, 81.0], "lon": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]},
+    )
+    geometry = LatLonGridGeometry.from_dataarray(grid)
+    nodes = [(row, col) for row in range(2) for col in range(6)]
+
+    index_children = AxisParallelSplitStep(balanced=False, clean_splits=True)(nodes, weights)
+    physical_children = AxisParallelSplitStep(
+        balanced=False,
+        clean_splits=True,
+        geometry=geometry,
+    )(nodes, weights)
+
+    assert {frozenset(child) for child in index_children} == {
+        frozenset((row, col) for row in range(2) for col in range(3)),
+        frozenset((row, col) for row in range(2) for col in range(3, 6)),
+    }
+    assert {frozenset(child) for child in physical_children} == {
+        frozenset((0, col) for col in range(6)),
+        frozenset((1, col) for col in range(6)),
+    }
+
+
+def test_axis_parallel_balanced_split_uses_lat_lon_geometry_for_axis_choice():
+    """Default balanced axis selection also uses physical geometry when provided."""
+    weights = np.ones((2, 6))
+    grid = xr.DataArray(
+        weights,
+        dims=("lat", "lon"),
+        coords={"lat": [80.0, 81.0], "lon": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]},
+    )
+    geometry = LatLonGridGeometry.from_dataarray(grid)
+    nodes = [(row, col) for row in range(2) for col in range(6)]
+
+    children = AxisParallelSplitStep(clean_splits=True, geometry=geometry)(nodes, weights)
+
+    assert {frozenset(child) for child in children} == {
+        frozenset((0, col) for col in range(6)),
+        frozenset((1, col) for col in range(6)),
+    }
+
+
+def test_lat_lon_geometry_requires_lat_lon_dimension_order():
+    """Lat/lon geometry must keep node axis zero aligned to latitude."""
+    grid = xr.DataArray(
+        np.ones((6, 2)),
+        dims=("lon", "lat"),
+        coords={"lat": [80.0, 81.0], "lon": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]},
+    )
+
+    with pytest.raises(ValueError, match="dimensions ordered"):
+        LatLonGridGeometry.from_dataarray(grid)
+
+
 def test_inertial_split_produces_two_non_empty_child_partitions():
     """Non-degenerate inertial splits produce two child node partitions."""
     nodes = [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
@@ -246,6 +306,30 @@ def test_inertial_split_can_differ_from_axis_parallel_split():
     assert inertial_sets == {
         frozenset({(0, 3), (0, 2)}),
         frozenset({(0, 1), (0, 0), (1, 0)}),
+    }
+
+
+def test_inertial_split_uses_lat_lon_geometry_for_projection_order():
+    """Physical geometry can change inertial PCA ordering at high latitude."""
+    weights = np.ones((3, 10))
+    grid = xr.DataArray(
+        weights,
+        dims=("lat", "lon"),
+        coords={"lat": [80.0, 84.0, 88.0], "lon": np.arange(10.0)},
+    )
+    geometry = LatLonGridGeometry.from_dataarray(grid)
+    nodes = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 2)]
+
+    index_children = InertialSplitStep(balanced=False)(nodes, weights)
+    physical_children = InertialSplitStep(balanced=False, geometry=geometry)(nodes, weights)
+
+    assert {frozenset(child) for child in index_children} == {
+        frozenset({(0, 0), (1, 0)}),
+        frozenset({(0, 1), (0, 2), (1, 2)}),
+    }
+    assert {frozenset(child) for child in physical_children} == {
+        frozenset({(0, 0), (0, 1)}),
+        frozenset({(0, 2), (1, 0), (1, 2)}),
     }
 
 
