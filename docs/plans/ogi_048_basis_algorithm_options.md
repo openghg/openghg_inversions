@@ -9,7 +9,7 @@ The constrained basis path is a small orchestration framework rather than one fi
 The independently variable pieces are:
 
 - **Region classes**: no mask, land/ocean, countries, grouped countries, or any caller-supplied class field.
-- **Class allocation**: explicit per-class counts, automatic allocation by class total weight, or automatic allocation by cell count.
+- **Class allocation**: explicit per-class counts, automatic allocation by class total weight, or automatic allocation by cell count. The Blue Pebble score matrix below uses only weight allocation for masked objectives.
 - **Greedy orchestration**: repeatedly split the currently highest-weight partition until the target is reached or no acceptable split remains.
 - **Partition step**: axis-parallel row/column splits or inertial principal-axis splits.
 - **Split mode**: count-based splits or balanced splits near half parent weight.
@@ -32,7 +32,6 @@ Candidate labels use the format `allocation/split_step/split_mode/geometry`. The
 | `land_sea` | two hard classes, land and ocean |
 | `selected_countries` | ocean, selected countries, and `other_land` are separate classes |
 | `single_class` | the no-mask allocation case; there is no inter-class allocation decision |
-| `area` | allocate target regions to classes by cell count |
 | `weight` | allocate target regions to classes by total training weight |
 | `axis_parallel` | split a region with a row- or column-aligned cut |
 | `inertial` | split a region using its principal weighted axis |
@@ -56,7 +55,15 @@ The script reads footprints and CH4 flux from OpenGHG store `shared_store_zarr` 
 
 January and July 2019 are scored separately. Each month uses three temporal CV splits: a one-week holdout starting on days 6, 13, 20, with a two-day buffer excluded before and after the held-out week. For each month/split, one shared basis is built from the combined remaining TAC and MHD in-month training footprints, matching the production multi-site basis objective. Held-out scores are then reported separately for TAC and MHD.
 
-Per-score-site/month aggregate scores are written to `docs/plans/ogi_048_basis_option_scores.csv`, split-level scores are written to `docs/plans/ogi_048_basis_option_split_scores.csv`, and overall all-score-site/month/split scores are written to `docs/plans/ogi_048_basis_option_overall_scores.csv`. The split-level table contains 504 scored rows and includes `basis_training_sites`, `basis_train_observations`, and `score_site_holdout_observations` to make the shared-basis training set explicit.
+Masked constrained candidates use `weight` allocation only, so the generated evidence focuses on the allocation mode used for the current recommendation.
+
+Per-score-site/month aggregate scores are written to `docs/plans/ogi_048_basis_option_scores.csv`, split-level scores are written to `docs/plans/ogi_048_basis_option_split_scores.csv`, and overall all-score-site/month/split scores are written to `docs/plans/ogi_048_basis_option_overall_scores.csv`. The split-level table contains 312 scored rows and includes `basis_training_sites`, `basis_train_observations`, and `score_site_holdout_observations` to make the shared-basis training set explicit.
+
+## Representative Input Fields
+
+The log-scale maps below show the representative monthly prior flux and the combined training `fp_x_flux` field used to construct the first displayed basis split. The `fp_x_flux` field is normalized before candidate generation, but the plotted field is the unnormalized footprint-times-flux product.
+
+![Representative input fields](figures/ogi_048_basis_options/basis_option_input_fields_250.png)
 
 ## Region Class Modes
 
@@ -72,7 +79,9 @@ The score used here is a held-out prior-flux observation-space compression score
 
 Only this held-out CV score is included in these tables and plots. It is still not a posterior-quality metric and does not replace posterior or synthetic-recovery tests.
 
-## Basis Map Contrasts
+## Best Representative Basis Maps
+
+The map figure shows the best overall held-out CV candidates by objective, using one representative January basis split for display. No-mask and land/sea rows show the best three constrained candidates plus the matching legacy option. Selected-country has no legacy counterpart, so it shows the best four constrained candidates.
 
 ![Basis option contrasts](figures/ogi_048_basis_options/basis_option_contrasts_250.png)
 
@@ -124,10 +133,10 @@ The heatmap shows the mean split score for each held-out site/month context, gro
 | Land/Sea Mask | TAC | January | 2 | weight/axis_parallel/count/lat_lon_metres | 250.0 | 3 | 0.0348 | 1.884e-09 | -7.661e-10 | 0.9954 |
 | Land/Sea Mask | TAC | July | 1 | weight/inertial/count/row_column | 250.0 | 3 | 0.0476 | 2.810e-09 | -2.891e-10 | 0.9959 |
 | Land/Sea Mask | TAC | July | 2 | weight/axis_parallel/count/lat_lon_metres | 250.0 | 3 | 0.0480 | 2.769e-09 | 2.143e-10 | 0.9958 |
-| Selected Countries | MHD | January | 1 | area/inertial/balanced/row_column | 250.0 | 3 | 0.1181 | 8.784e-10 | 8.488e-12 | 0.9731 |
-| Selected Countries | MHD | January | 2 | area/inertial/count/row_column | 250.0 | 3 | 0.1323 | 9.868e-10 | 4.563e-10 | 0.9804 |
-| Selected Countries | MHD | July | 1 | area/inertial/count/lat_lon_metres | 250.0 | 3 | 0.0791 | 1.622e-09 | 9.994e-11 | 0.9860 |
-| Selected Countries | MHD | July | 2 | area/inertial/balanced/row_column | 250.0 | 3 | 0.0805 | 1.672e-09 | 6.971e-10 | 0.9887 |
+| Selected Countries | MHD | January | 1 | weight/inertial/balanced/row_column | 250.0 | 3 | 0.1360 | 9.121e-10 | -4.194e-11 | 0.9578 |
+| Selected Countries | MHD | January | 2 | weight/inertial/balanced/lat_lon_metres | 250.0 | 3 | 0.1532 | 9.749e-10 | 6.143e-10 | 0.9692 |
+| Selected Countries | MHD | July | 1 | weight/inertial/count/lat_lon_metres | 250.0 | 3 | 0.1020 | 2.069e-09 | 1.047e-09 | 0.9909 |
+| Selected Countries | MHD | July | 2 | weight/inertial/balanced/row_column | 250.0 | 3 | 0.1034 | 2.078e-09 | 1.148e-09 | 0.9803 |
 | Selected Countries | TAC | January | 1 | weight/axis_parallel/count/lat_lon_metres | 250.0 | 3 | 0.0545 | 2.954e-09 | -1.207e-09 | 0.9892 |
 | Selected Countries | TAC | January | 2 | weight/inertial/count/row_column | 250.0 | 3 | 0.0588 | 3.121e-09 | -1.087e-09 | 0.9842 |
 | Selected Countries | TAC | July | 1 | weight/inertial/count/lat_lon_metres | 250.0 | 3 | 0.0574 | 3.448e-09 | -6.097e-10 | 0.9946 |

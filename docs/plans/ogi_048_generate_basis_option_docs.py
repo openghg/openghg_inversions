@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xarray as xr
-from matplotlib.colors import BoundaryNorm, ListedColormap
+from matplotlib.colors import BoundaryNorm, ListedColormap, LogNorm
 from matplotlib.figure import Figure
 from openghg.retrieve import get_flux, get_footprint
 
@@ -121,6 +121,16 @@ class MonthInputs:
 
 
 @dataclass(frozen=True)
+class RepresentativeFields:
+    """Representative fields used to explain the scoring inputs."""
+
+    month_label: str
+    split_id: str
+    flux: xr.DataArray
+    fp_x_flux: xr.DataArray
+
+
+@dataclass(frozen=True)
 class CandidateLabels:
     """One generated basis-label field before scoring."""
 
@@ -166,7 +176,9 @@ def main() -> None:
     """Generate the documentation page, plots, and score CSVs."""
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
 
-    split_scores, representative_scenarios, representative_class_modes = build_cross_validation_scores()
+    split_scores, representative_scenarios, representative_class_modes, representative_fields = (
+        build_cross_validation_scores()
+    )
     split_scores.to_csv(SPLIT_SCORES_PATH, index=False)
     scores = aggregate_split_scores(split_scores)
     scores.to_csv(SCORES_PATH, index=False)
@@ -174,12 +186,14 @@ def main() -> None:
     overall_scores.to_csv(OVERALL_SCORES_PATH, index=False)
 
     class_figure = plot_region_classes(representative_class_modes)
-    basis_figure = plot_basis_contrasts(representative_scenarios)
+    field_figure = plot_input_fields(representative_fields)
+    basis_figure = plot_basis_contrasts(representative_scenarios, overall_scores)
     score_heatmap = plot_score_heatmap(scores)
     score_ranked = plot_ranked_scores(overall_scores)
 
     write_report(
         class_figure=class_figure,
+        field_figure=field_figure,
         basis_figure=basis_figure,
         score_heatmap=score_heatmap,
         score_ranked=score_ranked,
@@ -189,11 +203,17 @@ def main() -> None:
     )
 
 
-def build_cross_validation_scores() -> tuple[pd.DataFrame, list[Scenario], dict[str, xr.DataArray]]:
+def build_cross_validation_scores() -> tuple[
+    pd.DataFrame,
+    list[Scenario],
+    dict[str, xr.DataArray],
+    RepresentativeFields,
+]:
     """Build split-level scores for all sites, months, and basis candidates."""
     records: list[dict[str, Any]] = []
     representative_scenarios: list[Scenario] = []
     representative_class_modes: dict[str, xr.DataArray] | None = None
+    representative_fields: RepresentativeFields | None = None
     basis_training_sites = ",".join(site.site for site in SITES)
 
     for month in MONTHS:
@@ -223,10 +243,11 @@ def build_cross_validation_scores() -> tuple[pd.DataFrame, list[Scenario], dict[
                 train_footprints[site.site] = train_footprint
                 holdout_footprints[site.site] = holdout_footprint
 
-            weights = build_combined_weights(
+            fp_x_flux = build_combined_fp_x_flux(
                 footprints=[train_footprints[site.site] for site in SITES],
                 flux=reference_inputs.flux_for_weights,
             )
+            weights = normalize_weights(fp_x_flux)
             geometry = LatLonGridGeometry.from_dataarray(weights)
             country = align_to_test_grid(reference=weights, target=reference_inputs.country, target_name="country")
             class_modes = build_region_class_modes(country, weights, reference_inputs.country_names)
@@ -235,6 +256,13 @@ def build_cross_validation_scores() -> tuple[pd.DataFrame, list[Scenario], dict[
                 class_modes=class_modes,
                 geometry=geometry,
             )
+            if representative_fields is None:
+                representative_fields = RepresentativeFields(
+                    month_label=month.label,
+                    split_id=split.split_id,
+                    flux=reference_inputs.flux,
+                    fp_x_flux=fp_x_flux,
+                )
 
             for site in SITES:
                 print(f"Scoring {site.site} {month.label} {split.split_id}", flush=True)
@@ -265,8 +293,10 @@ def build_cross_validation_scores() -> tuple[pd.DataFrame, list[Scenario], dict[
 
     if representative_class_modes is None:
         raise RuntimeError("No representative class modes were generated.")
+    if representative_fields is None:
+        raise RuntimeError("No representative input fields were generated.")
 
-    return pd.DataFrame.from_records(records), representative_scenarios, representative_class_modes
+    return pd.DataFrame.from_records(records), representative_scenarios, representative_class_modes, representative_fields
 
 
 def load_blue_pebble_month(*, site: SiteSpec, month: MonthSpec) -> MonthInputs:
@@ -426,9 +456,14 @@ def select_training_footprint(
     return footprint.where(in_month & outside_buffer, drop=True)
 
 
-def build_combined_weights(*, footprints: list[xr.DataArray], flux: xr.DataArray) -> xr.DataArray:
-    """Build normalized wrapper-equivalent weights from all training footprints."""
-    weights = _mean_fp_times_mean_flux(flux, footprints).fillna(0.0).rename("weight")
+def build_combined_fp_x_flux(*, footprints: list[xr.DataArray], flux: xr.DataArray) -> xr.DataArray:
+    """Build wrapper-equivalent mean footprint times mean flux from all training footprints."""
+    return _mean_fp_times_mean_flux(flux, footprints).fillna(0.0).rename("fp_x_flux")
+
+
+def normalize_weights(fp_x_flux: xr.DataArray) -> xr.DataArray:
+    """Normalize a footprint-times-flux field for basis construction."""
+    weights = fp_x_flux.rename("weight")
     max_weight = float(weights.max())
     if max_weight > 0.0:
         weights = weights / max_weight
@@ -487,7 +522,7 @@ def build_candidate_labels(
     """Build all feasible constrained and legacy comparison basis candidates."""
     candidates: list[CandidateLabels] = []
     for class_mode, region_classes in class_modes.items():
-        allocations = ("single_class",) if class_mode == "no_mask" else ("area", "weight")
+        allocations = ("single_class",) if class_mode == "no_mask" else ("weight",)
         for allocation_name in allocations:
             allocation = "weight" if allocation_name == "single_class" else allocation_name
             for split_step_name in ("axis_parallel", "inertial"):
@@ -830,79 +865,135 @@ def plot_region_classes(class_modes: dict[str, xr.DataArray]) -> str:
     return save_figure(fig, "region_class_modes.png")
 
 
-def plot_basis_contrasts(scenarios: list[Scenario]) -> str:
-    """Plot a small set of basis maps contrasting the main independent options."""
-    contrast_specs = [
-        ("no mask axis/count", "region_constrained", "no_mask", "single_class", "axis_parallel", "count", "row_column"),
-        (
-            "no mask inertial",
-            "region_constrained",
-            "no_mask",
-            "single_class",
-            "inertial",
-            "count",
-            "row_column",
-        ),
-        ("quadtree", "quadtreebasisfunction", "no_mask", "legacy", "quadtreebasisfunction", "legacy", "row_column"),
-        ("land/sea area", "region_constrained", "land_sea", "area", "axis_parallel", "count", "row_column"),
-        (
-            "land/sea weight",
-            "region_constrained",
-            "land_sea",
-            "weight",
-            "axis_parallel",
-            "count",
-            "row_column",
-        ),
-        ("weighted/bucket", "bucketbasisfunction", "land_sea", "legacy", "bucketbasisfunction", "legacy", "row_column"),
-        (
-            "selected countries area",
-            "region_constrained",
-            "selected_countries",
-            "area",
-            "axis_parallel",
-            "count",
-            "row_column",
-        ),
-        (
-            "selected countries weight",
-            "region_constrained",
-            "selected_countries",
-            "weight",
-            "axis_parallel",
-            "count",
-            "row_column",
-        ),
-        (
-            "selected countries inertial",
-            "region_constrained",
-            "selected_countries",
-            "area",
-            "inertial",
-            "count",
-            "lat_lon_metres",
-        ),
-    ]
-    fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(13, 10), sharex=True, sharey=True)
-    for ax, spec in zip(axes.ravel(), contrast_specs, strict=True):
-        title, basis_family, class_mode, allocation, split_step, split_mode, geometry = spec
-        scenario = find_scenario(scenarios, basis_family, class_mode, allocation, split_step, split_mode, geometry)
-        ax.pcolormesh(
-            scenario.labels.lon,
-            scenario.labels.lat,
-            scenario.labels.values.astype(float),
-            shading="auto",
-            cmap="nipy_spectral",
-            rasterized=True,
-        )
-        ax.set_title(
-            f"{objective_label(class_mode)}: {title}\n"
-            f"regions={scenario.actual_regions}"
-        )
-        ax.set_xlabel("lon")
-        ax.set_ylabel("lat")
+def plot_input_fields(fields: RepresentativeFields) -> str:
+    """Plot representative flux and footprint-times-flux fields."""
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(12, 4.5), constrained_layout=True)
+    plot_log_field(
+        axes[0],
+        fields.flux,
+        title=f"{fields.month_label} prior flux",
+        colorbar_label="flux",
+        fig=fig,
+    )
+    plot_log_field(
+        axes[1],
+        fields.fp_x_flux,
+        title=f"{fields.split_id} training fp x flux",
+        colorbar_label="fp x flux",
+        fig=fig,
+    )
+    return save_figure(fig, "basis_option_input_fields_250.png")
+
+
+def plot_basis_contrasts(scenarios: list[Scenario], overall_scores: pd.DataFrame) -> str:
+    """Plot best representative basis maps for each objective group."""
+    row_specs = best_map_rows(overall_scores)
+    fig, axes = plt.subplots(nrows=3, ncols=4, figsize=(16, 10.5), sharex=True, sharey=True)
+    for row_index, class_mode in enumerate(OBJECTIVE_GROUPS):
+        for col_index, row in enumerate(row_specs[class_mode]):
+            ax = axes[row_index, col_index]
+            scenario = find_scenario(
+                scenarios,
+                str(row["basis_family"]),
+                str(row["class_mode"]),
+                str(row["allocation"]),
+                str(row["split_step"]),
+                str(row["split_mode"]),
+                str(row["geometry"]),
+            )
+            plot_basis_label_map(ax, scenario.labels)
+            rank_label = "legacy" if row["basis_family"] != "region_constrained" else f"rank {col_index + 1}"
+            ax.set_title(
+                f"{objective_label(class_mode)} {rank_label}\n"
+                f"{row['candidate']}\n"
+                f"NRMSE={row['heldout_cv_nrmse']:.3f}, regions={scenario.actual_regions}",
+                fontsize=9,
+            )
+            ax.set_xlabel("lon")
+            ax.set_ylabel("lat")
+
+        for col_index in range(len(row_specs[class_mode]), axes.shape[1]):
+            axes[row_index, col_index].axis("off")
+
     fig.tight_layout()
     return save_figure(fig, "basis_option_contrasts_250.png")
+
+
+def best_map_rows(overall_scores: pd.DataFrame) -> dict[str, list[dict[str, Any]]]:
+    """Return candidate rows to display as maps for each objective group."""
+    rows: dict[str, list[dict[str, Any]]] = {}
+    legacy_by_group = {
+        "no_mask": "quadtreebasisfunction",
+        "land_sea": "bucketbasisfunction",
+    }
+    for class_mode in OBJECTIVE_GROUPS:
+        group = overall_scores.loc[overall_scores["class_mode"] == class_mode].sort_values("heldout_cv_nrmse")
+        legacy_family = legacy_by_group.get(class_mode)
+        if legacy_family is None:
+            selected = group.head(4)
+        else:
+            constrained = group.loc[group["basis_family"] == "region_constrained"].head(3)
+            legacy = group.loc[group["basis_family"] == legacy_family].head(1)
+            selected = pd.concat([constrained, legacy], ignore_index=True)
+        rows[class_mode] = dataframe_records(selected)
+    return rows
+
+
+def plot_basis_label_map(ax: plt.Axes, labels: xr.DataArray) -> None:
+    """Plot basis labels with shuffled colors so adjacent labels are visually distinct."""
+    shuffled = shuffled_label_values(labels)
+    cmap = plt.get_cmap("turbo").copy()
+    cmap.set_bad("white")
+    ax.pcolormesh(
+        labels.lon,
+        labels.lat,
+        shuffled,
+        shading="auto",
+        cmap=cmap,
+        rasterized=True,
+    )
+
+
+def shuffled_label_values(labels: xr.DataArray) -> np.ndarray:
+    """Return deterministic shuffled plotting values for positive basis labels."""
+    label_values = np.asarray(labels.values, dtype=np.int64)
+    shuffled = np.full(label_values.shape, np.nan, dtype=np.float64)
+    positive_labels = np.unique(label_values[label_values > 0])
+    if positive_labels.size == 0:
+        return shuffled
+    rng = np.random.default_rng(QUADTREE_SEED)
+    color_values = np.linspace(0.0, 1.0, positive_labels.size, endpoint=True)
+    rng.shuffle(color_values)
+    for label, color_value in zip(positive_labels, color_values, strict=True):
+        shuffled[label_values == label] = color_value
+    return shuffled
+
+
+def plot_log_field(ax: plt.Axes, field: xr.DataArray, *, title: str, colorbar_label: str, fig: Figure) -> None:
+    """Plot a positive field on a log colour scale."""
+    values = np.asarray(field.values, dtype=np.float64)
+    positive = values[np.isfinite(values) & (values > 0.0)]
+    if positive.size == 0:
+        raise ValueError(f"{title!r} has no positive values for log-scale plotting.")
+    vmin = float(np.nanpercentile(positive, 2.0))
+    vmax = float(np.nanpercentile(positive, 98.0))
+    if vmin <= 0.0 or vmin >= vmax:
+        vmin = float(np.min(positive))
+        vmax = float(np.max(positive))
+    masked = field.where(field > 0.0)
+    mesh = ax.pcolormesh(
+        field.lon,
+        field.lat,
+        masked,
+        shading="auto",
+        norm=LogNorm(vmin=vmin, vmax=vmax),
+        cmap="magma",
+        rasterized=True,
+    )
+    ax.set_title(title)
+    ax.set_xlabel("lon")
+    ax.set_ylabel("lat")
+    fig.colorbar(mesh, ax=ax, shrink=0.75, label=colorbar_label)
 
 
 def plot_score_heatmap(scores: pd.DataFrame) -> str:
@@ -1016,6 +1107,7 @@ def save_figure(fig: Figure, filename: str) -> str:
 def write_report(
     *,
     class_figure: str,
+    field_figure: str,
     basis_figure: str,
     score_heatmap: str,
     score_ranked: str,
@@ -1040,7 +1132,7 @@ def write_report(
         "The independently variable pieces are:",
         "",
         "- **Region classes**: no mask, land/ocean, countries, grouped countries, or any caller-supplied class field.",
-        "- **Class allocation**: explicit per-class counts, automatic allocation by class total weight, or automatic allocation by cell count.",
+        "- **Class allocation**: explicit per-class counts, automatic allocation by class total weight, or automatic allocation by cell count. The Blue Pebble score matrix below uses only weight allocation for masked objectives.",
         "- **Greedy orchestration**: repeatedly split the currently highest-weight partition until the target is reached or no acceptable split remains.",
         "- **Partition step**: axis-parallel row/column splits or inertial principal-axis splits.",
         "- **Split mode**: count-based splits or balanced splits near half parent weight.",
@@ -1063,7 +1155,6 @@ def write_report(
         "| `land_sea` | two hard classes, land and ocean |",
         "| `selected_countries` | ocean, selected countries, and `other_land` are separate classes |",
         "| `single_class` | the no-mask allocation case; there is no inter-class allocation decision |",
-        "| `area` | allocate target regions to classes by cell count |",
         "| `weight` | allocate target regions to classes by total training weight |",
         "| `axis_parallel` | split a region with a row- or column-aligned cut |",
         "| `inertial` | split a region using its principal weighted axis |",
@@ -1088,7 +1179,15 @@ def write_report(
         "January and July 2019 are scored separately. Each month uses three temporal CV splits: a one-week holdout starting on days "
         f"{holdout_day_text}, with a two-day buffer excluded before and after the held-out week. For each month/split, one shared basis is built from the combined remaining TAC and MHD in-month training footprints, matching the production multi-site basis objective. Held-out scores are then reported separately for TAC and MHD.",
         "",
+        "Masked constrained candidates use `weight` allocation only, so the generated evidence focuses on the allocation mode used for the current recommendation.",
+        "",
         f"Per-score-site/month aggregate scores are written to `{SCORES_PATH.relative_to(ROOT)}`, split-level scores are written to `{SPLIT_SCORES_PATH.relative_to(ROOT)}`, and overall all-score-site/month/split scores are written to `{OVERALL_SCORES_PATH.relative_to(ROOT)}`. The split-level table contains {len(split_scores)} scored rows and includes `basis_training_sites`, `basis_train_observations`, and `score_site_holdout_observations` to make the shared-basis training set explicit.",
+        "",
+        "## Representative Input Fields",
+        "",
+        "The log-scale maps below show the representative monthly prior flux and the combined training `fp_x_flux` field used to construct the first displayed basis split. The `fp_x_flux` field is normalized before candidate generation, but the plotted field is the unnormalized footprint-times-flux product.",
+        "",
+        f"![Representative input fields]({field_figure})",
         "",
         "## Region Class Modes",
         "",
@@ -1105,7 +1204,9 @@ def write_report(
         "",
         "Only this held-out CV score is included in these tables and plots. It is still not a posterior-quality metric and does not replace posterior or synthetic-recovery tests.",
         "",
-        "## Basis Map Contrasts",
+        "## Best Representative Basis Maps",
+        "",
+        "The map figure shows the best overall held-out CV candidates by objective, using one representative January basis split for display. No-mask and land/sea rows show the best three constrained candidates plus the matching legacy option. Selected-country has no legacy counterpart, so it shows the best four constrained candidates.",
         "",
         f"![Basis option contrasts]({basis_figure})",
         "",
