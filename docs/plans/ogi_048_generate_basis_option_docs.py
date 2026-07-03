@@ -26,6 +26,7 @@ from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.figure import Figure
 from openghg.retrieve import get_flux, get_footprint
 
+from openghg_inversions.basis._functions import _mean_fp_times_mean_flux
 from openghg_inversions.basis.algorithms import (
     AllocationMode,
     AxisParallelSplitStep,
@@ -43,6 +44,7 @@ FIGURE_DIR = ROOT / "docs" / "plans" / "figures" / "ogi_048_basis_options"
 REPORT_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_algorithm_options.md"
 SCORES_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_option_scores.csv"
 SPLIT_SCORES_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_option_split_scores.csv"
+OVERALL_SCORES_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_option_overall_scores.csv"
 
 COUNTRY_PATH = ROOT / "tests" / "data" / "country_EUROPE.nc"
 LPDM_COUNTRY_PATH = Path("/group/chem/acrg/LPDM/countries/country_EUROPE.nc")
@@ -55,17 +57,13 @@ TARGET_REGIONS = 250
 QUADTREE_SEED = 42
 HOLDOUT_DAYS = 7
 BUFFER_DAYS = 2
-HOLDOUT_START_DAYS = (6, 20)
-SMOOTH_PERTURBATIONS = (
-    "lat_gradient",
-    "lon_gradient",
-    "western_europe_blob",
-    "nordic_blob",
-)
-BOUNDARY_ALIGNED_PERTURBATIONS = (
-    "land_ocean_contrast",
-    "selected_country_patch",
-)
+HOLDOUT_START_DAYS = (6, 13, 20)
+OBJECTIVE_GROUPS = ("no_mask", "land_sea", "selected_countries")
+OBJECTIVE_LABELS = {
+    "no_mask": "No Mask",
+    "land_sea": "Land/Sea Mask",
+    "selected_countries": "Selected Countries",
+}
 SELECTED_COUNTRIES = (
     "UNITED KINGDOM OF GREAT BRITAIN AND NORTHERN IRELAND",
     "FRANCE",
@@ -116,6 +114,7 @@ class MonthInputs:
     """Loaded flux, footprint, and country fields for one site/month."""
 
     flux: xr.DataArray
+    flux_for_weights: xr.DataArray
     footprint: xr.DataArray
     country: xr.DataArray
     country_names: tuple[str, ...]
@@ -146,17 +145,10 @@ class Scenario:
     split_mode: str
     geometry: str
     labels: xr.DataArray
-    projected_flux: xr.DataArray
-    smooth_perturbation_mean_nrmse: float
-    smooth_perturbation_max_nrmse: float
-    boundary_perturbation_mean_nrmse: float
-    all_perturbation_mean_nrmse: float
-    perturbation_scores: dict[str, float]
-    prior_flux_obs_nrmse: float
-    prior_flux_obs_rmse: float
-    prior_flux_obs_bias: float
-    prior_flux_obs_corr: float
-    flux_field_nrmse: float
+    heldout_cv_nrmse: float
+    heldout_cv_rmse: float
+    heldout_cv_bias: float
+    heldout_cv_corr: float
     actual_regions: int
 
 
@@ -178,11 +170,13 @@ def main() -> None:
     split_scores.to_csv(SPLIT_SCORES_PATH, index=False)
     scores = aggregate_split_scores(split_scores)
     scores.to_csv(SCORES_PATH, index=False)
+    overall_scores = aggregate_overall_scores(split_scores)
+    overall_scores.to_csv(OVERALL_SCORES_PATH, index=False)
 
     class_figure = plot_region_classes(representative_class_modes)
     basis_figure = plot_basis_contrasts(representative_scenarios)
     score_heatmap = plot_score_heatmap(scores)
-    score_ranked = plot_ranked_scores(scores)
+    score_ranked = plot_ranked_scores(overall_scores)
 
     write_report(
         class_figure=class_figure,
@@ -191,6 +185,7 @@ def main() -> None:
         score_ranked=score_ranked,
         scores=scores,
         split_scores=split_scores,
+        overall_scores=overall_scores,
     )
 
 
@@ -199,16 +194,23 @@ def build_cross_validation_scores() -> tuple[pd.DataFrame, list[Scenario], dict[
     records: list[dict[str, Any]] = []
     representative_scenarios: list[Scenario] = []
     representative_class_modes: dict[str, xr.DataArray] | None = None
+    basis_training_sites = ",".join(site.site for site in SITES)
 
-    for site in SITES:
-        for month in MONTHS:
+    for month in MONTHS:
+        inputs_by_site: dict[str, MonthInputs] = {}
+        for site in SITES:
             print(f"Loading {site.site} {site.inlet} {month.label}", flush=True)
-            inputs = load_blue_pebble_month(site=site, month=month)
-            perturbations = build_perturbations(inputs.flux, inputs.country, inputs.country_names)
-            splits = build_month_splits(month)
+            inputs_by_site[site.site] = load_blue_pebble_month(site=site, month=month)
 
-            for split in splits:
-                print(f"Scoring {site.site} {month.label} {split.split_id}", flush=True)
+        splits = build_month_splits(month)
+        reference_inputs = inputs_by_site[SITES[0].site]
+
+        for split in splits:
+            print(f"Building shared {month.label} basis for {split.split_id}", flush=True)
+            train_footprints: dict[str, xr.DataArray] = {}
+            holdout_footprints: dict[str, xr.DataArray] = {}
+            for site in SITES:
+                inputs = inputs_by_site[site.site]
                 train_footprint = select_training_footprint(inputs.footprint, month=month, split=split)
                 holdout_footprint = inputs.footprint.sel(time=slice(split.holdout_start, split.holdout_end))
                 holdout_footprint = holdout_footprint.where(holdout_footprint.time < split.holdout_end, drop=True)
@@ -218,21 +220,29 @@ def build_cross_validation_scores() -> tuple[pd.DataFrame, list[Scenario], dict[
                 if holdout_footprint.sizes["time"] == 0:
                     raise ValueError(f"No holdout observations for {site.site} {month.label} {split.split_id}.")
 
-                weights = build_weights(train_footprint, inputs.flux)
-                geometry = LatLonGridGeometry.from_dataarray(weights)
-                class_modes = build_region_class_modes(inputs.country, weights, inputs.country_names)
-                candidate_labels = build_candidate_labels(
-                    weights=weights,
-                    class_modes=class_modes,
-                    geometry=geometry,
-                )
+                train_footprints[site.site] = train_footprint
+                holdout_footprints[site.site] = holdout_footprint
 
+            weights = build_combined_weights(
+                footprints=[train_footprints[site.site] for site in SITES],
+                flux=reference_inputs.flux_for_weights,
+            )
+            geometry = LatLonGridGeometry.from_dataarray(weights)
+            country = align_to_test_grid(reference=weights, target=reference_inputs.country, target_name="country")
+            class_modes = build_region_class_modes(country, weights, reference_inputs.country_names)
+            candidate_labels = build_candidate_labels(
+                weights=weights,
+                class_modes=class_modes,
+                geometry=geometry,
+            )
+
+            for site in SITES:
+                print(f"Scoring {site.site} {month.label} {split.split_id}", flush=True)
+                inputs = inputs_by_site[site.site]
                 scenarios = score_candidates(
                     candidates=candidate_labels,
                     flux=inputs.flux,
-                    holdout_footprint=holdout_footprint,
-                    train_weights=weights,
-                    perturbations=perturbations,
+                    holdout_footprint=holdout_footprints[site.site],
                 )
                 if not representative_scenarios:
                     representative_scenarios = scenarios
@@ -244,8 +254,11 @@ def build_cross_validation_scores() -> tuple[pd.DataFrame, list[Scenario], dict[
                         site=site,
                         month=month,
                         split=split,
-                        train_observations=train_footprint.sizes["time"],
-                        holdout_observations=holdout_footprint.sizes["time"],
+                        basis_training_sites=basis_training_sites,
+                        basis_train_observations=sum(
+                            train_footprints[training_site.site].sizes["time"] for training_site in SITES
+                        ),
+                        score_site_holdout_observations=holdout_footprints[site.site].sizes["time"],
                     )
                     for scenario in scenarios
                 )
@@ -283,23 +296,29 @@ def load_blue_pebble_month(*, site: SiteSpec, month: MonthSpec) -> MonthInputs:
         end_date=iso_date(month.end),
         store=BLUE_PEBBLE_STORE,
     ).data
-    flux = (
-        flux_dataset.flux.squeeze("time", drop=True)
-        .transpose("lat", "lon")
-        .astype(np.float64)
-        .load()
-        .rename("flux")
-    )
+    flux_for_weights = flux_dataset.flux.transpose("time", "lat", "lon").astype(np.float64).load().rename("flux")
+    flux = flux_for_weights.mean("time").transpose("lat", "lon").rename("flux")
 
     footprint_mean = footprint.mean("time").transpose("lat", "lon")
     flux = align_to_test_grid(reference=footprint_mean, target=flux, target_name="flux")
+    flux_for_weights = align_time_grid_to_test_grid(
+        reference=footprint_mean,
+        target=flux_for_weights,
+        target_name="flux",
+    )
     footprint = align_time_grid_to_test_grid(
         reference=footprint_mean,
         target=footprint,
         target_name="footprint",
     )
     country, country_names = load_country(reference=footprint_mean)
-    return MonthInputs(flux=flux, footprint=footprint, country=country, country_names=country_names)
+    return MonthInputs(
+        flux=flux,
+        flux_for_weights=flux_for_weights,
+        footprint=footprint,
+        country=country,
+        country_names=country_names,
+    )
 
 
 def iso_date(timestamp: pd.Timestamp) -> str:
@@ -407,9 +426,9 @@ def select_training_footprint(
     return footprint.where(in_month & outside_buffer, drop=True)
 
 
-def build_weights(footprint: xr.DataArray, flux: xr.DataArray) -> xr.DataArray:
-    """Build normalized basis-construction weights from training footprints."""
-    weights = (footprint.mean("time") * flux).fillna(0.0).rename("weight")
+def build_combined_weights(*, footprints: list[xr.DataArray], flux: xr.DataArray) -> xr.DataArray:
+    """Build normalized wrapper-equivalent weights from all training footprints."""
+    weights = _mean_fp_times_mean_flux(flux, footprints).fillna(0.0).rename("weight")
     max_weight = float(weights.max())
     if max_weight > 0.0:
         weights = weights / max_weight
@@ -457,67 +476,6 @@ def short_country_label(name: str) -> str:
     if name in replacements:
         return replacements[name]
     return name.title()
-
-
-def build_perturbations(
-    reference: xr.DataArray,
-    country: xr.DataArray,
-    country_names: tuple[str, ...],
-) -> dict[str, xr.DataArray]:
-    """Build deterministic fine-grid flux-scale perturbation fields."""
-    lat = reference.lat
-    lon = reference.lon
-    lat_grid, lon_grid = xr.broadcast(lat, lon)
-    country_values = country.astype(int)
-
-    selected_country_ids = country_ids_for_names(SELECTED_COUNTRIES, country_names)
-    selected_country_mask = xr.zeros_like(country_values, dtype=bool)
-    for country_id in selected_country_ids:
-        selected_country_mask = selected_country_mask | (country_values == country_id)
-
-    perturbations = {
-        "lat_gradient": normalize_perturbation(lat_grid - lat_grid.mean()),
-        "lon_gradient": normalize_perturbation(lon_grid - lon_grid.mean()),
-        "western_europe_blob": normalize_perturbation(
-            gaussian_blob(lat_grid, lon_grid, center_lat=50.0, center_lon=2.0, sigma_lat=8.0, sigma_lon=10.0)
-        ),
-        "nordic_blob": normalize_perturbation(
-            gaussian_blob(lat_grid, lon_grid, center_lat=62.0, center_lon=15.0, sigma_lat=7.0, sigma_lon=11.0)
-        ),
-        "land_ocean_contrast": normalize_perturbation(xr.where(country_values > 0, 1.0, -1.0)),
-        "selected_country_patch": normalize_perturbation(xr.where(selected_country_mask, 1.0, 0.0)),
-    }
-    return {name: field.rename(name) for name, field in perturbations.items()}
-
-
-def country_ids_for_names(country_names: tuple[str, ...], all_country_names: tuple[str, ...]) -> set[int]:
-    """Return country fixture numeric IDs for requested names."""
-    requested = set(country_names)
-    return {index for index, name in enumerate(all_country_names) if name in requested}
-
-
-def gaussian_blob(
-    lat_grid: xr.DataArray,
-    lon_grid: xr.DataArray,
-    *,
-    center_lat: float,
-    center_lon: float,
-    sigma_lat: float,
-    sigma_lon: float,
-) -> xr.DataArray:
-    """Return a smooth Gaussian perturbation on the lat/lon grid."""
-    lat_term = ((lat_grid - center_lat) / sigma_lat) ** 2
-    lon_term = ((lon_grid - center_lon) / sigma_lon) ** 2
-    return xr.apply_ufunc(np.exp, -0.5 * (lat_term + lon_term))
-
-
-def normalize_perturbation(field: xr.DataArray) -> xr.DataArray:
-    """Center and scale a perturbation to unit RMS."""
-    centered = field - field.mean()
-    rms = float(np.sqrt(np.mean(np.asarray(centered.values, dtype=np.float64) ** 2)))
-    if rms == 0.0:
-        raise ValueError("Cannot normalize a constant perturbation.")
-    return centered / rms
 
 
 def build_candidate_labels(
@@ -598,10 +556,18 @@ def build_legacy_candidate_labels(weights: xr.DataArray) -> list[CandidateLabels
     normalized_grid = normalized_grid / grid_max
 
     legacy_specs = (
-        ("bucketbasisfunction", lambda: weighted_algorithm(normalized_grid, nregion=TARGET_REGIONS)),
-        ("quadtreebasisfunction", lambda: quadtree_algorithm(normalized_grid, nbasis=TARGET_REGIONS, seed=QUADTREE_SEED)),
+        (
+            "bucketbasisfunction",
+            "land_sea",
+            lambda: weighted_algorithm(normalized_grid, nregion=TARGET_REGIONS),
+        ),
+        (
+            "quadtreebasisfunction",
+            "no_mask",
+            lambda: quadtree_algorithm(normalized_grid, nbasis=TARGET_REGIONS, seed=QUADTREE_SEED),
+        ),
     )
-    for basis_family, build_labels in legacy_specs:
+    for basis_family, class_mode, build_labels in legacy_specs:
         try:
             raw_labels = build_labels()
         except Exception as exc:  # pragma: no cover - used by evidence-generation script only
@@ -616,7 +582,7 @@ def build_legacy_candidate_labels(weights: xr.DataArray) -> list[CandidateLabels
         candidates.append(
             CandidateLabels(
                 basis_family=basis_family,
-                class_mode="legacy",
+                class_mode=class_mode,
                 allocation="legacy",
                 split_step=basis_family,
                 split_mode="legacy",
@@ -633,22 +599,14 @@ def score_candidates(
     candidates: list[CandidateLabels],
     flux: xr.DataArray,
     holdout_footprint: xr.DataArray,
-    train_weights: xr.DataArray,
-    perturbations: dict[str, xr.DataArray],
 ) -> list[Scenario]:
     """Score each candidate on one held-out footprint window."""
     scenarios: list[Scenario] = []
     y_full = modelled_observations(holdout_footprint, flux)
     for candidate in candidates:
-        projected_flux = project_flux_to_regions(flux, candidate.labels)
+        labels = align_to_test_grid(reference=flux, target=candidate.labels, target_name="basis")
+        projected_flux = project_flux_to_regions(flux, labels)
         y_projected = modelled_observations(holdout_footprint, projected_flux)
-        perturbation_scores = score_perturbation_reconstruction(
-            footprint=holdout_footprint,
-            flux=flux,
-            labels=candidate.labels,
-            weights=train_weights,
-            perturbations=perturbations,
-        )
         scenarios.append(
             Scenario(
                 basis_family=candidate.basis_family,
@@ -657,53 +615,15 @@ def score_candidates(
                 split_step=candidate.split_step,
                 split_mode=candidate.split_mode,
                 geometry=candidate.geometry,
-                labels=candidate.labels,
-                projected_flux=projected_flux,
-                smooth_perturbation_mean_nrmse=mean_scores(perturbation_scores, SMOOTH_PERTURBATIONS),
-                smooth_perturbation_max_nrmse=max_scores(perturbation_scores, SMOOTH_PERTURBATIONS),
-                boundary_perturbation_mean_nrmse=mean_scores(
-                    perturbation_scores, BOUNDARY_ALIGNED_PERTURBATIONS
-                ),
-                all_perturbation_mean_nrmse=float(np.mean(list(perturbation_scores.values()))),
-                perturbation_scores=perturbation_scores,
-                prior_flux_obs_nrmse=normalized_rmse(y_projected, y_full),
-                prior_flux_obs_rmse=rmse(y_projected, y_full),
-                prior_flux_obs_bias=float((y_projected - y_full).mean()),
-                prior_flux_obs_corr=correlation(y_projected, y_full),
-                flux_field_nrmse=normalized_rmse(projected_flux, flux),
+                labels=labels,
+                heldout_cv_nrmse=normalized_rmse(y_projected, y_full),
+                heldout_cv_rmse=rmse(y_projected, y_full),
+                heldout_cv_bias=float((y_projected - y_full).mean()),
+                heldout_cv_corr=correlation(y_projected, y_full),
                 actual_regions=candidate.actual_regions,
             )
         )
     return scenarios
-
-
-def mean_scores(scores: dict[str, float], names: tuple[str, ...]) -> float:
-    """Return the mean score for a named subset of perturbations."""
-    return float(np.mean([scores[name] for name in names]))
-
-
-def max_scores(scores: dict[str, float], names: tuple[str, ...]) -> float:
-    """Return the maximum score for a named subset of perturbations."""
-    return float(np.max([scores[name] for name in names]))
-
-
-def score_perturbation_reconstruction(
-    *,
-    footprint: xr.DataArray,
-    flux: xr.DataArray,
-    labels: xr.DataArray,
-    weights: xr.DataArray,
-    perturbations: dict[str, xr.DataArray],
-) -> dict[str, float]:
-    """Score held-out observation-space reconstruction for fine-grid perturbations."""
-    scores: dict[str, float] = {}
-    fp_x_flux = footprint * flux
-    for name, perturbation in perturbations.items():
-        projected = project_field_to_regions(perturbation, labels, mean_weights=weights)
-        y_full = (fp_x_flux * perturbation).sum(("lat", "lon")).rename("perturbation_observation")
-        y_projected = (fp_x_flux * projected).sum(("lat", "lon")).rename("perturbation_observation")
-        scores[name] = normalized_rmse(y_projected, y_full)
-    return scores
 
 
 def project_flux_to_regions(flux: xr.DataArray, labels: xr.DataArray) -> xr.DataArray:
@@ -780,8 +700,9 @@ def scenario_record(
     site: SiteSpec,
     month: MonthSpec,
     split: SplitSpec,
-    train_observations: int,
-    holdout_observations: int,
+    basis_training_sites: str,
+    basis_train_observations: int,
+    score_site_holdout_observations: int,
 ) -> dict[str, Any]:
     """Return one split-level score record."""
     record: dict[str, Any] = {
@@ -793,8 +714,9 @@ def scenario_record(
         "holdout_end": (split.holdout_end - pd.Timedelta(days=1)).date().isoformat(),
         "buffer_start": split.buffer_start.date().isoformat(),
         "buffer_end": (split.buffer_end - pd.Timedelta(days=1)).date().isoformat(),
-        "train_observations": train_observations,
-        "holdout_observations": holdout_observations,
+        "basis_training_sites": basis_training_sites,
+        "basis_train_observations": basis_train_observations,
+        "score_site_holdout_observations": score_site_holdout_observations,
         "basis_family": scenario.basis_family,
         "class_mode": scenario.class_mode,
         "allocation": scenario.allocation,
@@ -803,18 +725,11 @@ def scenario_record(
         "geometry": scenario.geometry,
         "target_regions": TARGET_REGIONS,
         "actual_regions": scenario.actual_regions,
-        "smooth_perturbation_mean_nrmse": scenario.smooth_perturbation_mean_nrmse,
-        "smooth_perturbation_max_nrmse": scenario.smooth_perturbation_max_nrmse,
-        "boundary_perturbation_mean_nrmse": scenario.boundary_perturbation_mean_nrmse,
-        "all_perturbation_mean_nrmse": scenario.all_perturbation_mean_nrmse,
-        "prior_flux_obs_nrmse": scenario.prior_flux_obs_nrmse,
-        "prior_flux_obs_rmse": scenario.prior_flux_obs_rmse,
-        "prior_flux_obs_bias": scenario.prior_flux_obs_bias,
-        "prior_flux_obs_corr": scenario.prior_flux_obs_corr,
-        "flux_field_nrmse": scenario.flux_field_nrmse,
+        "heldout_cv_nrmse": scenario.heldout_cv_nrmse,
+        "heldout_cv_rmse": scenario.heldout_cv_rmse,
+        "heldout_cv_bias": scenario.heldout_cv_bias,
+        "heldout_cv_corr": scenario.heldout_cv_corr,
     }
-    for perturbation_name, score in scenario.perturbation_scores.items():
-        record[f"perturbation_{perturbation_name}_nrmse"] = score
     return record
 
 
@@ -824,6 +739,7 @@ def aggregate_split_scores(split_scores: pd.DataFrame) -> pd.DataFrame:
         "site",
         "inlet",
         "month",
+        "basis_training_sites",
         "basis_family",
         "class_mode",
         "allocation",
@@ -833,16 +749,10 @@ def aggregate_split_scores(split_scores: pd.DataFrame) -> pd.DataFrame:
         "target_regions",
     ]
     numeric_columns = [
-        "smooth_perturbation_mean_nrmse",
-        "smooth_perturbation_max_nrmse",
-        "boundary_perturbation_mean_nrmse",
-        "all_perturbation_mean_nrmse",
-        "prior_flux_obs_nrmse",
-        "prior_flux_obs_rmse",
-        "prior_flux_obs_bias",
-        "prior_flux_obs_corr",
-        "flux_field_nrmse",
-        *[f"perturbation_{name}_nrmse" for name in (*SMOOTH_PERTURBATIONS, *BOUNDARY_ALIGNED_PERTURBATIONS)],
+        "heldout_cv_nrmse",
+        "heldout_cv_rmse",
+        "heldout_cv_bias",
+        "heldout_cv_corr",
     ]
     grouped = split_scores.groupby(group_columns, sort=False, dropna=False)
     scores = grouped[numeric_columns].mean().reset_index()
@@ -851,7 +761,33 @@ def aggregate_split_scores(split_scores: pd.DataFrame) -> pd.DataFrame:
     scores["actual_regions_min"] = grouped["actual_regions"].min().to_numpy()
     scores["actual_regions_max"] = grouped["actual_regions"].max().to_numpy()
     scores["candidate"] = [candidate_display_label(row) for row in dataframe_records(scores)]
-    return scores.sort_values(["site", "month", "smooth_perturbation_mean_nrmse"]).reset_index(drop=True)
+    return scores.sort_values(["site", "month", "class_mode", "heldout_cv_nrmse"]).reset_index(drop=True)
+
+
+def aggregate_overall_scores(split_scores: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate split-level scores to one overall row per candidate."""
+    group_columns = [
+        "basis_family",
+        "class_mode",
+        "allocation",
+        "split_step",
+        "split_mode",
+        "geometry",
+        "target_regions",
+        "basis_training_sites",
+    ]
+    grouped = split_scores.groupby(group_columns, sort=False, dropna=False)
+    scores = grouped[["heldout_cv_nrmse", "heldout_cv_rmse", "heldout_cv_bias", "heldout_cv_corr"]].mean()
+    scores = scores.reset_index()
+    scores["n_score_rows"] = grouped.size().to_numpy()
+    scores["n_basis_splits"] = grouped[["month", "split_id"]].apply(
+        lambda frame: frame.drop_duplicates().shape[0]
+    ).to_numpy()
+    scores["actual_regions"] = grouped["actual_regions"].mean().to_numpy()
+    scores["actual_regions_min"] = grouped["actual_regions"].min().to_numpy()
+    scores["actual_regions_max"] = grouped["actual_regions"].max().to_numpy()
+    scores["candidate"] = [candidate_display_label(row) for row in dataframe_records(scores)]
+    return scores.sort_values(["class_mode", "heldout_cv_nrmse"]).reset_index(drop=True)
 
 
 def dataframe_records(frame: pd.DataFrame) -> list[dict[str, Any]]:
@@ -862,12 +798,19 @@ def dataframe_records(frame: pd.DataFrame) -> list[dict[str, Any]]:
 def candidate_display_label(row: dict[str, Any]) -> str:
     """Return a compact label for a candidate row."""
     basis_family = str(row["basis_family"])
-    if basis_family != "region_constrained":
-        return basis_family
+    if basis_family == "bucketbasisfunction":
+        return "weighted/bucket"
+    if basis_family == "quadtreebasisfunction":
+        return "quadtree"
     return (
-        f"{row['class_mode']}/{row['allocation']}/{row['split_step']}/"
+        f"{row['allocation']}/{row['split_step']}/"
         f"{row['split_mode']}/{row['geometry']}"
     )
+
+
+def objective_label(class_mode: str) -> str:
+    """Return a report label for an objective group."""
+    return OBJECTIVE_LABELS.get(class_mode, class_mode.replace("_", " ").title())
 
 
 def plot_region_classes(class_modes: dict[str, xr.DataArray]) -> str:
@@ -890,29 +833,30 @@ def plot_region_classes(class_modes: dict[str, xr.DataArray]) -> str:
 def plot_basis_contrasts(scenarios: list[Scenario]) -> str:
     """Plot a small set of basis maps contrasting the main independent options."""
     contrast_specs = [
-        ("land/sea axis count row", "region_constrained", "land_sea", "area", "axis_parallel", "count", "row_column"),
+        ("no mask axis/count", "region_constrained", "no_mask", "single_class", "axis_parallel", "count", "row_column"),
         (
-            "lat/lon geometry",
+            "no mask inertial",
             "region_constrained",
-            "land_sea",
-            "area",
-            "axis_parallel",
+            "no_mask",
+            "single_class",
+            "inertial",
             "count",
-            "lat_lon_metres",
-        ),
-        (
-            "balanced split",
-            "region_constrained",
-            "land_sea",
-            "area",
-            "axis_parallel",
-            "balanced",
             "row_column",
         ),
-        ("inertial split", "region_constrained", "land_sea", "area", "inertial", "count", "row_column"),
-        ("no mask", "region_constrained", "no_mask", "single_class", "axis_parallel", "count", "row_column"),
+        ("quadtree", "quadtreebasisfunction", "no_mask", "legacy", "quadtreebasisfunction", "legacy", "row_column"),
+        ("land/sea area", "region_constrained", "land_sea", "area", "axis_parallel", "count", "row_column"),
         (
-            "selected countries",
+            "land/sea weight",
+            "region_constrained",
+            "land_sea",
+            "weight",
+            "axis_parallel",
+            "count",
+            "row_column",
+        ),
+        ("weighted/bucket", "bucketbasisfunction", "land_sea", "legacy", "bucketbasisfunction", "legacy", "row_column"),
+        (
+            "selected countries area",
             "region_constrained",
             "selected_countries",
             "area",
@@ -921,7 +865,7 @@ def plot_basis_contrasts(scenarios: list[Scenario]) -> str:
             "row_column",
         ),
         (
-            "weight allocation",
+            "selected countries weight",
             "region_constrained",
             "selected_countries",
             "weight",
@@ -930,7 +874,7 @@ def plot_basis_contrasts(scenarios: list[Scenario]) -> str:
             "row_column",
         ),
         (
-            "inertial + metre geometry",
+            "selected countries inertial",
             "region_constrained",
             "selected_countries",
             "area",
@@ -938,18 +882,8 @@ def plot_basis_contrasts(scenarios: list[Scenario]) -> str:
             "count",
             "lat_lon_metres",
         ),
-        ("bucketbasisfunction", "bucketbasisfunction", "legacy", "legacy", "bucketbasisfunction", "legacy", "row_column"),
-        (
-            "quadtreebasisfunction",
-            "quadtreebasisfunction",
-            "legacy",
-            "legacy",
-            "quadtreebasisfunction",
-            "legacy",
-            "row_column",
-        ),
     ]
-    fig, axes = plt.subplots(nrows=5, ncols=2, figsize=(12, 16), sharex=True, sharey=True)
+    fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(13, 10), sharex=True, sharey=True)
     for ax, spec in zip(axes.ravel(), contrast_specs, strict=True):
         title, basis_family, class_mode, allocation, split_step, split_mode, geometry = spec
         scenario = find_scenario(scenarios, basis_family, class_mode, allocation, split_step, split_mode, geometry)
@@ -962,7 +896,7 @@ def plot_basis_contrasts(scenarios: list[Scenario]) -> str:
             rasterized=True,
         )
         ax.set_title(
-            f"{title}\nsmooth NRMSE={scenario.smooth_perturbation_mean_nrmse:.3f}, "
+            f"{objective_label(class_mode)}: {title}\n"
             f"regions={scenario.actual_regions}"
         )
         ax.set_xlabel("lon")
@@ -972,81 +906,68 @@ def plot_basis_contrasts(scenarios: list[Scenario]) -> str:
 
 
 def plot_score_heatmap(scores: pd.DataFrame) -> str:
-    """Plot site/month CV scores for all candidates as a heatmap."""
-    ordered_candidates = (
-        scores.groupby("candidate", sort=False)["smooth_perturbation_mean_nrmse"]
-        .mean()
-        .sort_values()
-        .index.tolist()
-    )
+    """Plot site/month CV scores for all candidates as grouped heatmaps."""
+    metric = "heldout_cv_nrmse"
     context_order = [
         f"{site.site}\n{month.label}"
         for site in SITES
         for month in MONTHS
     ]
-    matrix = np.full((len(ordered_candidates), len(context_order)), np.nan)
-    for row_index, candidate in enumerate(ordered_candidates):
-        for col_index, context in enumerate(context_order):
-            site, month = context.split("\n")
-            match = scores.loc[
-                (scores["candidate"] == candidate) & (scores["site"] == site) & (scores["month"] == month),
-                "smooth_perturbation_mean_nrmse",
-            ]
-            if len(match) == 1:
-                matrix[row_index, col_index] = float(match.iloc[0])
+    fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(12, 13), constrained_layout=True)
+    image = None
+    vmin = float(scores[metric].min())
+    vmax = float(scores[metric].max())
+    for ax, class_mode in zip(axes, OBJECTIVE_GROUPS, strict=True):
+        group = scores.loc[scores["class_mode"] == class_mode]
+        ordered_candidates = group.groupby("candidate", sort=False)[metric].mean().sort_values().index.tolist()
+        matrix = np.full((len(ordered_candidates), len(context_order)), np.nan)
+        for row_index, candidate in enumerate(ordered_candidates):
+            for col_index, context in enumerate(context_order):
+                site, month = context.split("\n")
+                match = group.loc[
+                    (group["candidate"] == candidate) & (group["site"] == site) & (group["month"] == month),
+                    metric,
+                ]
+                if len(match) == 1:
+                    matrix[row_index, col_index] = float(match.iloc[0])
 
-    height = max(10.0, 0.28 * len(ordered_candidates))
-    fig, ax = plt.subplots(figsize=(12, height), constrained_layout=True)
-    image = ax.imshow(matrix, cmap="viridis_r", aspect="auto")
-    ax.set_xticks(np.arange(len(context_order)), labels=context_order)
-    ax.set_yticks(np.arange(len(ordered_candidates)), labels=ordered_candidates, fontsize=6)
-    ax.set_xlabel("Held-out footprint context")
-    ax.set_title("Mean CV smooth-perturbation NRMSE by site and month")
-    fig.colorbar(image, ax=ax, shrink=0.75, label="mean split NRMSE")
+        image = ax.imshow(matrix, cmap="viridis_r", aspect="auto", vmin=vmin, vmax=vmax)
+        ax.set_xticks(np.arange(len(context_order)), labels=context_order)
+        ax.set_yticks(np.arange(len(ordered_candidates)), labels=ordered_candidates, fontsize=6)
+        ax.set_title(f"{objective_label(class_mode)} objective")
+        ax.set_xlabel("Held-out footprint context")
+
+    if image is not None:
+        fig.colorbar(image, ax=axes.ravel().tolist(), shrink=0.75, label="mean held-out CV NRMSE")
     return save_figure(fig, "basis_option_score_heatmaps_250.png")
 
 
 def plot_ranked_scores(scores: pd.DataFrame) -> str:
-    """Plot option combinations sorted by overall CV observation NRMSE."""
-    grouped = (
-        scores.groupby(
-            [
-                "candidate",
-                "basis_family",
-                "class_mode",
-                "allocation",
-                "split_step",
-                "split_mode",
-                "geometry",
-            ],
-            sort=False,
-        )["smooth_perturbation_mean_nrmse"]
-        .mean()
-        .reset_index()
-        .sort_values("smooth_perturbation_mean_nrmse")
-        .reset_index(drop=True)
-    )
-    fig, ax = plt.subplots(figsize=(12, 11), constrained_layout=True)
+    """Plot option combinations sorted by overall held-out CV observation NRMSE."""
+    metric = "heldout_cv_nrmse"
+    fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(15, 8), sharex=True, constrained_layout=True)
     colors = {
         "region_constrained": "tab:blue",
         "bucketbasisfunction": "tab:orange",
         "quadtreebasisfunction": "tab:green",
     }
-    y = np.arange(len(grouped))
-    ax.scatter(
-        grouped["smooth_perturbation_mean_nrmse"],
-        y,
-        c=[colors.get(value, "tab:gray") for value in grouped["basis_family"]],
-        s=34,
-    )
-    ax.set_yticks(y, labels=grouped["candidate"], fontsize=6)
-    ax.invert_yaxis()
-    ax.set_xlabel("Mean CV smooth-perturbation NRMSE across TAC/MHD January/July")
-    ax.set_title("250-region option combinations sorted by cross-validated reconstruction score")
+    for ax, class_mode in zip(axes, OBJECTIVE_GROUPS, strict=True):
+        group = scores.loc[scores["class_mode"] == class_mode].sort_values(metric).reset_index(drop=True)
+        y = np.arange(len(group))
+        ax.scatter(
+            group[metric],
+            y,
+            c=[colors.get(value, "tab:gray") for value in group["basis_family"]],
+            s=34,
+        )
+        ax.set_yticks(y, labels=group["candidate"], fontsize=6)
+        ax.invert_yaxis()
+        ax.set_xlabel("Overall held-out CV NRMSE")
+        ax.set_title(objective_label(class_mode))
+        ax.grid(True, axis="x", linewidth=0.4, alpha=0.4)
     for basis_family, color in colors.items():
-        ax.scatter([], [], color=color, label=basis_family)
-    ax.legend(loc="lower right")
-    ax.grid(True, axis="x", linewidth=0.4, alpha=0.4)
+        axes[-1].scatter([], [], color=color, label=basis_family)
+    axes[-1].legend(loc="lower right", fontsize=8)
     return save_figure(fig, "basis_option_ranked_scores_250.png")
 
 
@@ -1100,10 +1021,13 @@ def write_report(
     score_ranked: str,
     scores: pd.DataFrame,
     split_scores: pd.DataFrame,
+    overall_scores: pd.DataFrame,
 ) -> None:
     """Write the documentation page."""
-    best_rows = top_score_rows(scores, n=5)
+    overall_rows = overall_score_rows(overall_scores, n=5)
+    context_rows = context_score_rows(scores, n=2)
     selected_country_text = ", ".join(short_country_label(name) for name in SELECTED_COUNTRIES)
+    holdout_day_text = ", ".join(str(day) for day in HOLDOUT_START_DAYS)
     lines = [
         "# Constrained Basis Algorithm Options",
         "",
@@ -1123,20 +1047,48 @@ def write_report(
         "- **Geometry**: row/column index geometry or local lat/lon metre geometry for split-shape decisions.",
         "- **Split stopping**: optional policies that reject proposed child regions. When stopping is enabled, the requested region count is an upper target.",
         "",
-        "The comparison also includes legacy `bucketbasisfunction` and `quadtreebasisfunction` rows generated from the same training weights. Their actual region counts can differ from the 250 target.",
+        "The comparison also includes legacy `bucketbasisfunction` and `quadtreebasisfunction` rows generated from the same training weights. Their actual region counts can differ from the 250 target. `bucketbasisfunction` is shown as `weighted/bucket`; in this codebase the `weighted_algorithm` alias uses the land/sea weighted bucket splitter, so it is grouped with the land/sea objective. `quadtreebasisfunction` is shown as `quadtree` and grouped with the no-mask objective.",
         "",
-        "The important separation is that `weights` define contribution/importance, while `geometry` defines physical coordinates for split shape. Lat/lon geometry does not change contribution weights, class allocation, or posterior weighting.",
+        "The important separation is that `weights` define contribution/importance, while `geometry` defines physical coordinates for split shape. Lat/lon geometry does not change contribution weights, class allocation, or posterior weighting. The Blue Pebble generator builds these weights with the same multi-site footprint-times-flux reduction used by the production `basis_functions_wrapper` path.",
         "",
         "For the no-mask score rows below, allocation is reported as `single_class` because there is only one class. The generator uses the normal weight-allocation API internally, but no inter-class allocation decision is being tested in that case.",
+        "",
+        "## Option Shorthand",
+        "",
+        "Candidate labels use the format `allocation/split_step/split_mode/geometry`. The objective group is shown separately because no mask, land/sea mask, and selected-country mask answer different scientific basis-design questions.",
+        "",
+        "| shorthand | meaning |",
+        "|---|---|",
+        "| `no_mask` | one class over the full domain; no hard class boundary is imposed |",
+        "| `land_sea` | two hard classes, land and ocean |",
+        "| `selected_countries` | ocean, selected countries, and `other_land` are separate classes |",
+        "| `single_class` | the no-mask allocation case; there is no inter-class allocation decision |",
+        "| `area` | allocate target regions to classes by cell count |",
+        "| `weight` | allocate target regions to classes by total training weight |",
+        "| `axis_parallel` | split a region with a row- or column-aligned cut |",
+        "| `inertial` | split a region using its principal weighted axis |",
+        "| `count` | choose splits by child cell counts |",
+        "| `balanced` | choose splits near half of the parent-region weight |",
+        "| `row_column` | use grid row/column coordinates when evaluating split shape |",
+        "| `lat_lon_metres` | use local metre-scaled longitude/latitude coordinates for split shape |",
+        "| `weighted/bucket` | legacy `bucketbasisfunction`; uses the land/sea weighted bucket algorithm |",
+        "| `quadtree` | legacy `quadtreebasisfunction`; recursively subdivides the grid without a class mask |",
+        "| `CV` | cross-validation; here, temporal holdout scoring with one shared basis per month/split |",
+        "| `NRMSE` | RMSE divided by the RMS of the full-grid held-out modelled observation |",
+        "| `fp` | OpenGHG/NAME footprint field |",
+        "| `H` | basis sensitivity matrix produced by projecting `fp * flux` onto basis regions |",
+        "| `CH4` | methane |",
+        "| `NAME` | the Numerical Atmospheric-dispersion Modelling Environment transport model |",
+        "| `TAC`, `MHD` | Tacolneston and Mace Head measurement sites |",
         "",
         "## Blue Pebble Cross-Validation Data",
         "",
         f"The script reads footprints and CH4 flux from OpenGHG store `{BLUE_PEBBLE_STORE}` on Blue Pebble. It uses TAC 185m and MHD 10m EUROPE NAME inert footprints, and the monthly `{BLUE_PEBBLE_FLUX_SOURCE}` CH4 flux product.",
         "",
-        "January and July 2019 are scored separately. Each site/month uses two temporal CV splits: a one-week holdout starting on days "
-        f"{HOLDOUT_START_DAYS[0]} and {HOLDOUT_START_DAYS[1]}, with a two-day buffer excluded before and after the held-out week. Basis weights are built only from the remaining in-month footprints.",
+        "January and July 2019 are scored separately. Each month uses three temporal CV splits: a one-week holdout starting on days "
+        f"{holdout_day_text}, with a two-day buffer excluded before and after the held-out week. For each month/split, one shared basis is built from the combined remaining TAC and MHD in-month training footprints, matching the production multi-site basis objective. Held-out scores are then reported separately for TAC and MHD.",
         "",
-        f"Aggregate scores are written to `{SCORES_PATH.relative_to(ROOT)}` and split-level scores are written to `{SPLIT_SCORES_PATH.relative_to(ROOT)}`. The split-level table contains {len(split_scores)} scored rows.",
+        f"Per-score-site/month aggregate scores are written to `{SCORES_PATH.relative_to(ROOT)}`, split-level scores are written to `{SPLIT_SCORES_PATH.relative_to(ROOT)}`, and overall all-score-site/month/split scores are written to `{OVERALL_SCORES_PATH.relative_to(ROOT)}`. The split-level table contains {len(split_scores)} scored rows and includes `basis_training_sites`, `basis_train_observations`, and `score_site_holdout_observations` to make the shared-basis training set explicit.",
         "",
         "## Region Class Modes",
         "",
@@ -1147,42 +1099,43 @@ def write_report(
         "",
         "## Held-Out Forward-Model Compression Score",
         "",
-        "A normal multiplicative prior basis exactly reproduces the prior modelled observations when all basis coefficients are one: summing projected `H` over all regions gives the same `sum(fp * flux)` as the full grid. That RMSE is therefore a trivial zero and is not useful for comparing basis shapes.",
+        "A normal multiplicative prior basis exactly reproduces the prior modelled observations when all basis coefficients are one: summing projected `H` over all regions gives the same `sum(fp * flux)` as the full grid. That direct RMSE is therefore a trivial zero and is not useful for comparing basis shapes.",
         "",
-        "Instead, this page uses deterministic perturbation-reconstruction diagnostics on held-out footprints. Fine-grid flux-scale perturbation fields are applied to held-out `fp * flux`, then each perturbation is projected to one training-weighted mean value per basis region. This is still an optimistic representability diagnostic, but the footprint data used for scoring are not used to construct the basis weights.",
+        "The score used here is a held-out prior-flux observation-space compression score. For each candidate basis, the prior flux field is approximated by one cell-mean value per basis region. Held-out modelled observations from this projected flux field are compared with held-out modelled observations from the full grid. Lower held-out CV NRMSE means the shared basis preserves the full-grid prior-flux observation response more efficiently on footprints that were not used to construct the basis weights.",
         "",
-        "The headline score and ranking use only smooth perturbations: latitude and longitude gradients plus western-Europe and Nordic Gaussian blobs. Boundary-aligned perturbations, a land/ocean contrast and a selected-country patch, are reported separately because they can tautologically reward basis masks that hard-code the same boundaries.",
-        "",
-        "A secondary score also projects the prior flux field itself to one cell-mean value per region and compares held-out modelled observations from full and projected flux. That is a prior observation-space compression score; low observation NRMSE can still coexist with poor spatial flux-field reconstruction.",
-        "",
-        "Neither score is a posterior-quality metric, and neither replaces posterior or synthetic-recovery tests.",
+        "Only this held-out CV score is included in these tables and plots. It is still not a posterior-quality metric and does not replace posterior or synthetic-recovery tests.",
         "",
         "## Basis Map Contrasts",
         "",
         f"![Basis option contrasts]({basis_figure})",
         "",
-        "## Scores For 250-Region Options",
+        "## Grouped Scores For 250-Region Options",
         "",
-        "The heatmap shows the mean split score for each site/month context. The ranked plot averages the four site/month aggregate rows for each candidate.",
+        "The heatmap shows the mean split score for each held-out site/month context, grouped by objective. The ranked plot uses the overall score averaged over all TAC/MHD January/July split rows for each candidate.",
         "",
         f"![Score heatmaps]({score_heatmap})",
         "",
         f"![Ranked scores]({score_ranked})",
         "",
-        "### Best Smooth-Perturbation Scores By Site And Month",
+        "### Overall Held-Out CV Scores",
         "",
-        "| site | month | rank | candidate | regions | splits | smooth perturb NRMSE | max smooth NRMSE | boundary perturb NRMSE | prior obs NRMSE | flux-field NRMSE |",
-        "|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|",
-        *best_rows,
+        "| objective | rank | candidate | regions | score rows | basis splits | CV NRMSE | CV RMSE | CV bias | CV corr |",
+        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|",
+        *overall_rows,
+        "",
+        "### Best Held-Out CV Scores By Site, Month, And Objective",
+        "",
+        "| objective | score site | month | rank | candidate | regions | CV splits | CV NRMSE | CV RMSE | CV bias | CV corr |",
+        "|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|",
+        *context_rows,
         "",
         "## Interpretation",
         "",
-        "- Lower smooth-perturbation NRMSE means the basis preserves the held-out observation response of the deterministic smooth fine-grid perturbations more efficiently.",
-        "- Lower boundary-perturbation NRMSE means the basis preserves perturbations that match land/ocean or selected-country boundaries. It is useful context, but it is not used for the headline ranking.",
-        "- Lower prior observation NRMSE means the basis preserves the prior forward model better under a region-mean flux-field approximation, not that it preserves the full spatial flux field.",
+        "- Lower held-out CV NRMSE means the basis preserves the prior forward model better under a region-mean flux-field approximation on held-out footprints.",
         "- Balanced splits often help when the score is dominated by high-contribution areas, but they are not guaranteed to produce visually regular regions.",
         "- Region classes impose hard boundaries, which can help interpretability but can also spend regions on low-contribution classes.",
         "- Lat/lon metre geometry is a physical-coordinate correction. It can change region shapes, especially for inertial or high-latitude splits, but it is not itself a weight-balancing rule.",
+        "- The three objective groups should not be read as one single efficiency race. No mask, land/sea, and selected-country masks are often chosen for scientific or reporting reasons as well as basis efficiency.",
         "- Split-stopping policies are not included in the score matrix because they can return fewer than 250 actual regions, making direct comparison less clean.",
         "",
         "## What This Does Not Prove",
@@ -1193,21 +1146,46 @@ def write_report(
     REPORT_PATH.write_text("\n".join(lines), encoding="utf-8")
 
 
-def top_score_rows(scores: pd.DataFrame, *, n: int) -> list[str]:
-    """Format the best score rows for markdown."""
+def overall_score_rows(overall_scores: pd.DataFrame, *, n: int) -> list[str]:
+    """Format the best overall score rows for markdown."""
     rows: list[str] = []
-    for (site, month), group_obj in scores.groupby(["site", "month"], sort=False):
-        group = cast(pd.DataFrame, group_obj).sort_values("smooth_perturbation_mean_nrmse").head(n)
+    for class_mode in OBJECTIVE_GROUPS:
+        group = overall_scores.loc[overall_scores["class_mode"] == class_mode].sort_values("heldout_cv_nrmse").head(n)
         for rank, row in enumerate(dataframe_records(group), start=1):
             rows.append(
-                f"| {site} | {month} | {rank} | {row['candidate']} | "
-                f"{row['actual_regions']:.1f} | {row['n_splits']} | "
-                f"{row['smooth_perturbation_mean_nrmse']:.4f} | "
-                f"{row['smooth_perturbation_max_nrmse']:.4f} | "
-                f"{row['boundary_perturbation_mean_nrmse']:.4f} | "
-                f"{row['prior_flux_obs_nrmse']:.4f} | {row['flux_field_nrmse']:.4f} |"
+                f"| {objective_label(class_mode)} | {rank} | {row['candidate']} | "
+                f"{row['actual_regions']:.1f} | {row['n_score_rows']} | {row['n_basis_splits']} | "
+                f"{format_float(row['heldout_cv_nrmse'])} | {format_float(row['heldout_cv_rmse'])} | "
+                f"{format_float(row['heldout_cv_bias'])} | {format_float(row['heldout_cv_corr'])} |"
             )
     return rows
+
+
+def context_score_rows(scores: pd.DataFrame, *, n: int) -> list[str]:
+    """Format the best per-context score rows for markdown."""
+    rows: list[str] = []
+    for class_mode in OBJECTIVE_GROUPS:
+        objective_scores = scores.loc[scores["class_mode"] == class_mode]
+        for (site, month), group_obj in objective_scores.groupby(["site", "month"], sort=False):
+            group = cast(pd.DataFrame, group_obj).sort_values("heldout_cv_nrmse").head(n)
+            for rank, row in enumerate(dataframe_records(group), start=1):
+                rows.append(
+                    f"| {objective_label(class_mode)} | {site} | {month} | {rank} | {row['candidate']} | "
+                    f"{row['actual_regions']:.1f} | {row['n_splits']} | "
+                    f"{format_float(row['heldout_cv_nrmse'])} | {format_float(row['heldout_cv_rmse'])} | "
+                    f"{format_float(row['heldout_cv_bias'])} | {format_float(row['heldout_cv_corr'])} |"
+                )
+    return rows
+
+
+def format_float(value: Any, *, digits: int = 4) -> str:
+    """Format a numeric score for markdown."""
+    numeric = float(value)
+    if np.isnan(numeric):
+        return "nan"
+    if numeric != 0.0 and abs(numeric) < 10**-digits:
+        return f"{numeric:.3e}"
+    return f"{numeric:.{digits}f}"
 
 
 if __name__ == "__main__":
