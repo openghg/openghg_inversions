@@ -1,0 +1,9 @@
+case_id,month,split_id,class_mode,allocation,split_step,split_mode,geometry,eccentricity_fix_threshold,current_worst_region,current_actual_regions,current_max_pca_eccentricity,current_max_finite_pca_eccentricity,current_infinite_pca_eccentricity_regions,current_max_bbox_aspect_ratio,current_multi_component_regions,fixed_actual_regions,fixed_max_pca_eccentricity,fixed_max_finite_pca_eccentricity,fixed_infinite_pca_eccentricity_regions,fixed_max_bbox_aspect_ratio,fixed_multi_component_regions
+1,January,january_13_19,no_mask,single_class,inertial,count,row_column,10.0,227,250,inf,10.402980178845748,27,7.0,19,250,9.591460752012363,9.591460752012363,0,6.0,20
+2,January,january_20_26,land_sea,weight,inertial,count,row_column,10.0,98,250,inf,35.186373294290206,21,11.0,59,250,9.278996698915854,9.278996698915854,0,6.357142857142857,75
+3,January,january_13_19,selected_countries,weight,inertial,count,row_column,10.0,7,250,inf,52.39091942971377,26,9.5,53,205,9.870415452987523,9.870415452987523,0,9.5,67
+4,January,january_06_12,no_mask,single_class,inertial,balanced,row_column,10.0,156,250,inf,134.24412710181002,33,13.538461538461538,21,250,6.494370366209536,6.494370366209536,0,4.3076923076923075,22
+5,July,july_20_26,land_sea,weight,inertial,balanced,row_column,10.0,249,250,inf,136.01320987418106,25,11.0625,76,250,7.521435171995559,7.521435171995559,0,4.285714285714286,58
+6,January,january_06_12,selected_countries,weight,inertial,balanced,lat_lon_metres,10.0,5,250,inf,125.05758383442812,19,19.77777777777778,59,200,9.480412787328223,9.480412787328223,0,5.571428571428571,58
+7,July,july_06_12,land_sea,weight,inertial,balanced,lat_lon_metres,10.0,15,250,inf,38.23473116004914,18,19.625,69,250,10.197276392079097,10.197276392079097,0,5.761904761904762,66
+8,July,july_06_12,land_sea,weight,inertial,count,lat_lon_metres,10.0,238,250,inf,21.70859760552842,15,10.0,74,250,8.490921951588197,8.490921951588197,0,6.076923076923077,74

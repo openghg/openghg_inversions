@@ -61,6 +61,8 @@ Per-score-site/month aggregate scores are written to `docs/plans/ogi_048_basis_o
 
 Constrained split-history diagnostics are written to `docs/plans/ogi_048_basis_option_split_history.csv.gz`. Final-region shape diagnostics for all candidates are written to `docs/plans/ogi_048_basis_option_region_diagnostics.csv.gz`; those include bounding-box aspect ratio, fill fraction, 4-neighbour connected-component counts, grid compactness, and PCA eccentricity.
 
+Current-vs-eccentricity-guard case diagnostics are written to `docs/plans/ogi_048_basis_option_eccentricity_fix_cases.csv`. The guarded cases use `MaxChildPCAEccentricity(max_child_pca_eccentricity=10)` as a split-stopping policy, so the requested 250 regions becomes an upper target.
+
 ## Representative Input Fields
 
 The log-scale maps below show the representative monthly prior flux and the combined training `fp_x_flux` field used to construct the first displayed basis split. The `fp_x_flux` field is normalized before candidate generation, but the plotted field is the unnormalized footprint-times-flux product.
@@ -101,6 +103,23 @@ The table below lists the highest-eccentricity final regions among constrained i
 | Selected Countries | January | january_13_19 | weight/inertial/count/row_column | 7 | 8 | 8.00 | 1.00 | 1 | inf | 0.310 |
 | Selected Countries | July | july_13_19 | weight/inertial/balanced/row_column | 243 | 2 | 7.00 | 0.29 | 2 | inf | 0.393 |
 | No Mask | January | january_13_19 | single_class/inertial/count/row_column | 227 | 7 | 7.00 | 1.00 | 1 | inf | 0.344 |
+
+### Eccentricity-Guarded Diagnostic Cases
+
+The figure below rebuilds an objective-balanced set of worst current inertial settings with the same month, split, objective, split mode, and geometry. Each objective first contributes the setting containing its worst infinite-eccentricity region and the setting containing its worst finite-eccentricity region; those setting-level summaries may still include other infinite-eccentricity regions. The remaining rows are filled by the global worst distinct settings. The left column is the current algorithm, with the worst current region outlined. The right column adds `MaxChildPCAEccentricity`; it rejects proposed child partitions whose PCA eccentricity is infinite or above the threshold.
+
+![Inertial eccentricity fix cases](figures/ogi_048_basis_options/basis_option_inertial_eccentricity_fix_cases_250.png)
+
+| case | objective | month | split | option | current regions | fixed regions | current inf ecc | fixed inf ecc | current max finite ecc | fixed max finite ecc | current multi-comp | fixed multi-comp |
+|---:|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | No Mask | January | january_13_19 | single_class/inertial/count/row_column | 250 | 250 | 27 | 0 | 10.4 | 9.6 | 19 | 20 |
+| 2 | Land/Sea Mask | January | january_20_26 | weight/inertial/count/row_column | 250 | 250 | 21 | 0 | 35.2 | 9.3 | 59 | 75 |
+| 3 | Selected Countries | January | january_13_19 | weight/inertial/count/row_column | 250 | 205 | 26 | 0 | 52.4 | 9.9 | 53 | 67 |
+| 4 | No Mask | January | january_06_12 | single_class/inertial/balanced/row_column | 250 | 250 | 33 | 0 | 134.2 | 6.5 | 21 | 22 |
+| 5 | Land/Sea Mask | July | july_20_26 | weight/inertial/balanced/row_column | 250 | 250 | 25 | 0 | 136.0 | 7.5 | 76 | 58 |
+| 6 | Selected Countries | January | january_06_12 | weight/inertial/balanced/lat_lon_metres | 250 | 200 | 19 | 0 | 125.1 | 9.5 | 59 | 58 |
+| 7 | Land/Sea Mask | July | july_06_12 | weight/inertial/balanced/lat_lon_metres | 250 | 250 | 18 | 0 | 38.2 | 10.2 | 69 | 66 |
+| 8 | Land/Sea Mask | July | july_06_12 | weight/inertial/count/lat_lon_metres | 250 | 250 | 15 | 0 | 21.7 | 8.5 | 74 | 74 |
 
 ## Grouped Scores For 250-Region Options
 

@@ -33,6 +33,7 @@ from openghg_inversions.basis.algorithms import (
     AxisParallelSplitStep,
     InertialSplitStep,
     LatLonGridGeometry,
+    MaxChildPCAEccentricity,
     allocate_nbasis_by_class,
     quadtree_algorithm,
     weighted_algorithm,
@@ -47,6 +48,7 @@ SPLIT_SCORES_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_option_split_scores
 OVERALL_SCORES_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_option_overall_scores.csv"
 SPLIT_HISTORY_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_option_split_history.csv.gz"
 REGION_DIAGNOSTICS_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_option_region_diagnostics.csv.gz"
+ECCENTRICITY_FIX_CASES_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_option_eccentricity_fix_cases.csv"
 
 COUNTRY_PATH = ROOT / "tests" / "data" / "country_EUROPE.nc"
 LPDM_COUNTRY_PATH = Path("/group/chem/acrg/LPDM/countries/country_EUROPE.nc")
@@ -61,6 +63,10 @@ HOLDOUT_DAYS = 7
 BUFFER_DAYS = 2
 HOLDOUT_START_DAYS = (6, 13, 20)
 NEIGHBOUR_OFFSETS = ((1, 0), (-1, 0), (0, 1), (0, -1))
+ECCENTRICITY_FIX_THRESHOLD = 10.0
+ECCENTRICITY_FIX_PER_OBJECTIVE_INFINITE_CASE_COUNT = 1
+ECCENTRICITY_FIX_PER_OBJECTIVE_FINITE_CASE_COUNT = 1
+ECCENTRICITY_FIX_TOTAL_CASE_COUNT = 8
 OBJECTIVE_GROUPS = ("no_mask", "land_sea", "selected_countries")
 OBJECTIVE_LABELS = {
     "no_mask": "No Mask",
@@ -136,6 +142,17 @@ class RepresentativeFields:
 
 
 @dataclass(frozen=True)
+class BasisBuildContext:
+    """Fields needed to rebuild one month/split basis case."""
+
+    month: MonthSpec
+    split: SplitSpec
+    weights: xr.DataArray
+    class_modes: dict[str, xr.DataArray]
+    geometry: LatLonGridGeometry
+
+
+@dataclass(frozen=True)
 class CandidateLabels:
     """One generated basis-label field before scoring."""
 
@@ -168,6 +185,24 @@ class Scenario:
     actual_regions: int
 
 
+@dataclass(frozen=True)
+class EccentricityFixCase:
+    """One current-vs-fixed inertial diagnostic case."""
+
+    case_id: int
+    month: str
+    split_id: str
+    class_mode: str
+    allocation: str
+    split_mode: str
+    geometry: str
+    current_worst_region: int
+    current_labels: xr.DataArray
+    fixed_labels: xr.DataArray
+    current_summary: dict[str, Any]
+    fixed_summary: dict[str, Any]
+
+
 SITES = (
     SiteSpec(site="TAC", inlet="185m"),
     SiteSpec(site="MHD", inlet="10m"),
@@ -189,6 +224,7 @@ def main() -> None:
         representative_scenarios,
         representative_class_modes,
         representative_fields,
+        basis_contexts,
     ) = (
         build_cross_validation_scores()
     )
@@ -205,17 +241,22 @@ def main() -> None:
     basis_figure = plot_basis_contrasts(representative_scenarios, overall_scores)
     score_heatmap = plot_score_heatmap(scores)
     score_ranked = plot_ranked_scores(overall_scores)
+    eccentricity_fix_cases = build_eccentricity_fix_cases(region_diagnostics, basis_contexts)
+    eccentricity_fix_cases_table(eccentricity_fix_cases).to_csv(ECCENTRICITY_FIX_CASES_PATH, index=False)
+    eccentricity_fix_figure = plot_eccentricity_fix_cases(eccentricity_fix_cases)
 
     write_report(
         class_figure=class_figure,
         field_figure=field_figure,
         basis_figure=basis_figure,
+        eccentricity_fix_figure=eccentricity_fix_figure,
         score_heatmap=score_heatmap,
         score_ranked=score_ranked,
         scores=scores,
         split_scores=split_scores,
         overall_scores=overall_scores,
         region_diagnostics=region_diagnostics,
+        eccentricity_fix_cases=eccentricity_fix_cases,
     )
 
 
@@ -226,6 +267,7 @@ def build_cross_validation_scores() -> tuple[
     list[Scenario],
     dict[str, xr.DataArray],
     RepresentativeFields,
+    list[BasisBuildContext],
 ]:
     """Build split-level scores for all sites, months, and basis candidates."""
     records: list[dict[str, Any]] = []
@@ -234,6 +276,7 @@ def build_cross_validation_scores() -> tuple[
     representative_scenarios: list[Scenario] = []
     representative_class_modes: dict[str, xr.DataArray] | None = None
     representative_fields: RepresentativeFields | None = None
+    basis_contexts: list[BasisBuildContext] = []
     basis_training_sites = ",".join(site.site for site in SITES)
 
     for month in MONTHS:
@@ -271,6 +314,15 @@ def build_cross_validation_scores() -> tuple[
             geometry = LatLonGridGeometry.from_dataarray(weights)
             country = align_to_test_grid(reference=weights, target=reference_inputs.country, target_name="country")
             class_modes = build_region_class_modes(country, weights, reference_inputs.country_names)
+            basis_contexts.append(
+                BasisBuildContext(
+                    month=month,
+                    split=split,
+                    weights=weights,
+                    class_modes=class_modes,
+                    geometry=geometry,
+                )
+            )
             candidate_labels = build_candidate_labels(
                 weights=weights,
                 class_modes=class_modes,
@@ -341,6 +393,7 @@ def build_cross_validation_scores() -> tuple[
         representative_scenarios,
         representative_class_modes,
         representative_fields,
+        basis_contexts,
     )
 
 
@@ -607,6 +660,7 @@ def build_constrained_basis_labels(
     split_step_name: str,
     split_mode: str,
     geometry: LatLonGridGeometry | None,
+    split_acceptance: Any | None = None,
 ) -> tuple[xr.DataArray, tuple[dict[str, Any], ...]]:
     """Build one 250-target constrained basis label map."""
     balanced = split_mode == "balanced"
@@ -623,6 +677,7 @@ def build_constrained_basis_labels(
         nbasis=TARGET_REGIONS,
         allocation=cast(AllocationMode, allocation),
         split_step=split_step,
+        split_acceptance=split_acceptance,
     )
     return labels.astype(np.int32).rename("basis"), tuple(split_history)
 
@@ -634,6 +689,7 @@ def recording_region_constrained_basis(
     nbasis: int,
     allocation: AllocationMode,
     split_step: Any,
+    split_acceptance: Any | None = None,
 ) -> tuple[xr.DataArray, list[dict[str, Any]]]:
     """Generate constrained labels while recording accepted greedy splits."""
     weights, region_classes = align_recording_inputs(weights=weights, region_classes=region_classes)
@@ -669,6 +725,7 @@ def recording_region_constrained_basis(
             target_regions=target_regions,
             weights=class_weights,
             split_step=split_step,
+            split_acceptance=split_acceptance,
         )
         for record in class_history:
             record.update(
@@ -734,6 +791,7 @@ def recording_greedy_partition(
     target_regions: int,
     weights: np.ndarray,
     split_step: Any,
+    split_acceptance: Any | None = None,
 ) -> tuple[list[GridPartition], list[dict[str, Any]]]:
     """Apply the production greedy queue pattern while recording split attempts."""
     active: list[tuple[tuple[float, int, int], int, int, GridPartition]] = []
@@ -773,6 +831,15 @@ def recording_greedy_partition(
         elif current_regions - 1 + len(child_partitions) > target_regions:
             accepted = False
             rejection_reason = "target_exceeded"
+        elif split_acceptance is not None and not split_acceptance_allows(
+            split_acceptance,
+            parent_nodes,
+            child_partitions,
+            weights,
+            target_regions,
+        ):
+            accepted = False
+            rejection_reason = "split_acceptance"
 
         if not accepted:
             history.extend(
@@ -922,6 +989,183 @@ def candidate_region_diagnostic_records(
             }
         )
     return rows
+
+
+def build_eccentricity_fix_cases(
+    region_diagnostics: pd.DataFrame,
+    basis_contexts: list[BasisBuildContext],
+) -> list[EccentricityFixCase]:
+    """Rebuild the worst inertial cases with the eccentricity split guard enabled."""
+    context_by_key = {(context.month.label, context.split.split_id): context for context in basis_contexts}
+    cases: list[EccentricityFixCase] = []
+    for case_id, row in enumerate(worst_eccentricity_case_rows(region_diagnostics), start=1):
+        context = context_by_key[(str(row["month"]), str(row["split_id"]))]
+        class_mode = str(row["class_mode"])
+        allocation_name = str(row["allocation"])
+        allocation = "weight" if allocation_name == "single_class" else allocation_name
+        split_mode = str(row["split_mode"])
+        geometry_name = str(row["geometry"])
+        split_geometry = context.geometry if geometry_name == "lat_lon_metres" else None
+        region_classes = context.class_modes[class_mode]
+
+        current_labels, _current_history = build_constrained_basis_labels(
+            weights=context.weights,
+            region_classes=region_classes,
+            allocation=allocation,
+            split_step_name="inertial",
+            split_mode=split_mode,
+            geometry=split_geometry,
+        )
+        fixed_labels, _fixed_history = build_constrained_basis_labels(
+            weights=context.weights,
+            region_classes=region_classes,
+            allocation=allocation,
+            split_step_name="inertial",
+            split_mode=split_mode,
+            geometry=split_geometry,
+            split_acceptance=MaxChildPCAEccentricity(
+                max_child_pca_eccentricity=ECCENTRICITY_FIX_THRESHOLD,
+                geometry=split_geometry,
+            ),
+        )
+        current_summary = label_shape_summary(current_labels, context.weights)
+        fixed_summary = label_shape_summary(fixed_labels, context.weights)
+        cases.append(
+            EccentricityFixCase(
+                case_id=case_id,
+                month=context.month.label,
+                split_id=context.split.split_id,
+                class_mode=class_mode,
+                allocation=allocation_name,
+                split_mode=split_mode,
+                geometry=geometry_name,
+                current_worst_region=int(row["region_label"]),
+                current_labels=current_labels,
+                fixed_labels=fixed_labels,
+                current_summary=current_summary,
+                fixed_summary=fixed_summary,
+            )
+        )
+    return cases
+
+
+def worst_eccentricity_case_rows(region_diagnostics: pd.DataFrame) -> list[dict[str, Any]]:
+    """Return objective-balanced current inertial settings with the worst region shapes."""
+    constrained_inertial = region_diagnostics.loc[
+        (region_diagnostics["basis_family"] == "region_constrained")
+        & (region_diagnostics["split_step"] == "inertial")
+    ].copy()
+    case_columns = ["month", "split_id", "class_mode", "allocation", "split_mode", "geometry"]
+    selected_rows: list[pd.Series] = []
+    selected_keys: set[tuple[Any, ...]] = set()
+
+    infinite = constrained_inertial.loc[np.isinf(constrained_inertial["region_pca_eccentricity"])].sort_values(
+        ["region_bbox_aspect_ratio", "region_connected_components", "region_cells"],
+        ascending=[False, False, False],
+    )
+    finite = constrained_inertial.loc[np.isfinite(constrained_inertial["region_pca_eccentricity"])].sort_values(
+        ["region_pca_eccentricity", "region_connected_components", "region_bbox_aspect_ratio"],
+        ascending=[False, False, False],
+    )
+
+    def add_case_rows(rows: pd.DataFrame, max_new_rows: int) -> None:
+        for _, candidate in rows.iterrows():
+            if max_new_rows <= 0:
+                break
+            key = tuple(candidate[column] for column in case_columns)
+            if key in selected_keys:
+                continue
+            selected_rows.append(candidate)
+            selected_keys.add(key)
+            max_new_rows -= 1
+
+    for objective in OBJECTIVE_GROUPS:
+        add_case_rows(
+            infinite.loc[infinite["class_mode"] == objective].drop_duplicates(case_columns),
+            ECCENTRICITY_FIX_PER_OBJECTIVE_INFINITE_CASE_COUNT,
+        )
+    for objective in OBJECTIVE_GROUPS:
+        add_case_rows(
+            finite.loc[finite["class_mode"] == objective].drop_duplicates(case_columns),
+            ECCENTRICITY_FIX_PER_OBJECTIVE_FINITE_CASE_COUNT,
+        )
+
+    remaining_cases = ECCENTRICITY_FIX_TOTAL_CASE_COUNT - len(selected_rows)
+    if remaining_cases > 0:
+        add_case_rows(infinite.drop_duplicates(case_columns), remaining_cases)
+    remaining_cases = ECCENTRICITY_FIX_TOTAL_CASE_COUNT - len(selected_rows)
+    if remaining_cases > 0:
+        add_case_rows(finite.drop_duplicates(case_columns), remaining_cases)
+
+    selected = pd.DataFrame(selected_rows)
+    return dataframe_records(selected)
+
+
+def label_shape_summary(labels: xr.DataArray, weights: xr.DataArray) -> dict[str, Any]:
+    """Summarize final-region shape diagnostics for one label field."""
+    label_values = np.asarray(labels.values, dtype=np.int64)
+    weight_values = np.asarray(weights.values, dtype=np.float64)
+    rows = [
+        partition_shape_metrics(
+            node_list_from_mask(label_values == region_label),
+            weights=weight_values,
+            prefix="region",
+        )
+        for region_label in np.unique(label_values[label_values > 0])
+    ]
+    metrics = pd.DataFrame.from_records(rows)
+    finite_eccentricity = metrics["region_pca_eccentricity"].replace([np.inf, -np.inf], np.nan).dropna()
+    return {
+        "actual_regions": count_regions(labels),
+        "max_pca_eccentricity": float(metrics["region_pca_eccentricity"].max()),
+        "max_finite_pca_eccentricity": float(finite_eccentricity.max()) if not finite_eccentricity.empty else np.nan,
+        "infinite_pca_eccentricity_regions": int(np.isinf(metrics["region_pca_eccentricity"]).sum()),
+        "max_bbox_aspect_ratio": float(metrics["region_bbox_aspect_ratio"].max()),
+        "multi_component_regions": int((metrics["region_connected_components"] > 1).sum()),
+    }
+
+
+def eccentricity_fix_cases_table(cases: list[EccentricityFixCase]) -> pd.DataFrame:
+    """Return one compact row per current-vs-fixed eccentricity case."""
+    records: list[dict[str, Any]] = []
+    for case in cases:
+        records.append(
+            {
+                "case_id": case.case_id,
+                "month": case.month,
+                "split_id": case.split_id,
+                "class_mode": case.class_mode,
+                "allocation": case.allocation,
+                "split_step": "inertial",
+                "split_mode": case.split_mode,
+                "geometry": case.geometry,
+                "eccentricity_fix_threshold": ECCENTRICITY_FIX_THRESHOLD,
+                "current_worst_region": case.current_worst_region,
+                **prefixed_summary(case.current_summary, "current"),
+                **prefixed_summary(case.fixed_summary, "fixed"),
+            }
+        )
+    return pd.DataFrame.from_records(records)
+
+
+def prefixed_summary(summary: dict[str, Any], prefix: str) -> dict[str, Any]:
+    """Prefix summary keys for tabular current-vs-fixed output."""
+    return {f"{prefix}_{key}": value for key, value in summary.items()}
+
+
+def split_acceptance_allows(
+    policy: Any,
+    parent: GridPartition,
+    children: list[GridPartition],
+    weights: np.ndarray,
+    target_regions: int | None = None,
+) -> bool:
+    """Return true when a generator split acceptance policy accepts children."""
+    if target_regions is not None:
+        accept_split = getattr(policy, "accept_split", None)
+        if accept_split is not None:
+            return bool(accept_split(parent, children, weights, target_regions))
+    return bool(policy(parent, children, weights))
 
 
 def basis_context_record(
@@ -1448,6 +1692,63 @@ def plot_basis_contrasts(scenarios: list[Scenario], overall_scores: pd.DataFrame
     return save_figure(fig, "basis_option_contrasts_250.png")
 
 
+def plot_eccentricity_fix_cases(cases: list[EccentricityFixCase]) -> str:
+    """Plot current and eccentricity-guarded labels for the worst inertial cases."""
+    if not cases:
+        raise ValueError("At least one eccentricity fix case is required.")
+
+    fig, axes = plt.subplots(
+        nrows=len(cases),
+        ncols=2,
+        figsize=(11.5, 3.2 * len(cases)),
+        sharex=True,
+        sharey=True,
+        constrained_layout=True,
+    )
+    if len(cases) == 1:
+        axes = np.asarray([axes])
+
+    for row_index, case in enumerate(cases):
+        current_ax = axes[row_index, 0]
+        fixed_ax = axes[row_index, 1]
+        plot_basis_label_map(current_ax, case.current_labels)
+        overlay_region_outline(current_ax, case.current_labels, case.current_worst_region)
+        plot_basis_label_map(fixed_ax, case.fixed_labels)
+        current_ax.set_title(
+            f"{case_label(case)}\n"
+            f"current: inf {case.current_summary['infinite_pca_eccentricity_regions']}, "
+            f"max finite {format_float(case.current_summary['max_finite_pca_eccentricity'], digits=1)}, "
+            f"regions {case.current_summary['actual_regions']}",
+            fontsize=9,
+        )
+        fixed_ax.set_title(
+            f"ecc <= {ECCENTRICITY_FIX_THRESHOLD:g}\n"
+            f"fixed: inf {case.fixed_summary['infinite_pca_eccentricity_regions']}, "
+            f"max finite {format_float(case.fixed_summary['max_finite_pca_eccentricity'], digits=1)}, "
+            f"regions {case.fixed_summary['actual_regions']}",
+            fontsize=9,
+        )
+        for ax in (current_ax, fixed_ax):
+            ax.set_xlabel("lon")
+            ax.set_ylabel("lat")
+
+    return save_figure(fig, "basis_option_inertial_eccentricity_fix_cases_250.png")
+
+
+def overlay_region_outline(ax: plt.Axes, labels: xr.DataArray, region_label: int) -> None:
+    """Outline one basis region on a label map."""
+    mask = xr.where(labels == region_label, 1.0, 0.0)
+    ax.contour(labels.lon, labels.lat, mask, levels=[0.5], colors="black", linewidths=0.8)
+
+
+def case_label(case: EccentricityFixCase) -> str:
+    """Return a compact label for an eccentricity diagnostic row."""
+    return (
+        f"{objective_label(case.class_mode)} {case.month} {case.split_id}\n"
+        f"{case.allocation}/inertial/{case.split_mode}/{case.geometry}"
+    )
+
+
 def best_map_rows(overall_scores: pd.DataFrame) -> dict[str, list[dict[str, Any]]]:
     """Return candidate rows to display as maps for each objective group."""
     rows: dict[str, list[dict[str, Any]]] = {}
@@ -1638,17 +1939,20 @@ def write_report(
     class_figure: str,
     field_figure: str,
     basis_figure: str,
+    eccentricity_fix_figure: str,
     score_heatmap: str,
     score_ranked: str,
     scores: pd.DataFrame,
     split_scores: pd.DataFrame,
     overall_scores: pd.DataFrame,
     region_diagnostics: pd.DataFrame,
+    eccentricity_fix_cases: list[EccentricityFixCase],
 ) -> None:
     """Write the documentation page."""
     overall_rows = overall_score_rows(overall_scores, n=5)
     context_rows = context_score_rows(scores, n=2)
     narrow_rows = narrow_region_rows(region_diagnostics, n=8)
+    eccentricity_case_rows = eccentricity_fix_case_rows(eccentricity_fix_cases)
     selected_country_text = ", ".join(short_country_label(name) for name in SELECTED_COUNTRIES)
     holdout_day_text = ", ".join(str(day) for day in HOLDOUT_START_DAYS)
     lines = [
@@ -1716,6 +2020,8 @@ def write_report(
         "",
         f"Constrained split-history diagnostics are written to `{SPLIT_HISTORY_PATH.relative_to(ROOT)}`. Final-region shape diagnostics for all candidates are written to `{REGION_DIAGNOSTICS_PATH.relative_to(ROOT)}`; those include bounding-box aspect ratio, fill fraction, 4-neighbour connected-component counts, grid compactness, and PCA eccentricity.",
         "",
+        f"Current-vs-eccentricity-guard case diagnostics are written to `{ECCENTRICITY_FIX_CASES_PATH.relative_to(ROOT)}`. The guarded cases use `MaxChildPCAEccentricity(max_child_pca_eccentricity={ECCENTRICITY_FIX_THRESHOLD:g})` as a split-stopping policy, so the requested 250 regions becomes an upper target.",
+        "",
         "## Representative Input Fields",
         "",
         "The log-scale maps below show the representative monthly prior flux and the combined training `fp_x_flux` field used to construct the first displayed basis split. The `fp_x_flux` field is normalized before candidate generation, but the plotted field is the unnormalized footprint-times-flux product.",
@@ -1750,6 +2056,16 @@ def write_report(
         "| objective | month | split | candidate | region | cells | bbox aspect | fill | components | PCA ecc. | compactness |",
         "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
         *narrow_rows,
+        "",
+        "### Eccentricity-Guarded Diagnostic Cases",
+        "",
+        "The figure below rebuilds an objective-balanced set of worst current inertial settings with the same month, split, objective, split mode, and geometry. Each objective first contributes the setting containing its worst infinite-eccentricity region and the setting containing its worst finite-eccentricity region; those setting-level summaries may still include other infinite-eccentricity regions. The remaining rows are filled by the global worst distinct settings. The left column is the current algorithm, with the worst current region outlined. The right column adds `MaxChildPCAEccentricity`; it rejects proposed child partitions whose PCA eccentricity is infinite or above the threshold.",
+        "",
+        f"![Inertial eccentricity fix cases]({eccentricity_fix_figure})",
+        "",
+        "| case | objective | month | split | option | current regions | fixed regions | current inf ecc | fixed inf ecc | current max finite ecc | fixed max finite ecc | current multi-comp | fixed multi-comp |",
+        "|---:|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        *eccentricity_case_rows,
         "",
         "## Grouped Scores For 250-Region Options",
         "",
@@ -1851,6 +2167,24 @@ def narrow_region_rows(region_diagnostics: pd.DataFrame, *, n: int) -> list[str]
             f"{row['region_connected_components']} | "
             f"{format_float(row['region_pca_eccentricity'], digits=2)} | "
             f"{format_float(row['region_grid_compactness'], digits=3)} |"
+        )
+    return rows
+
+
+def eccentricity_fix_case_rows(cases: list[EccentricityFixCase]) -> list[str]:
+    """Format current-vs-fixed diagnostic case rows for markdown."""
+    rows: list[str] = []
+    for case in cases:
+        rows.append(
+            f"| {case.case_id} | {objective_label(case.class_mode)} | {case.month} | {case.split_id} | "
+            f"{case.allocation}/inertial/{case.split_mode}/{case.geometry} | "
+            f"{case.current_summary['actual_regions']} | {case.fixed_summary['actual_regions']} | "
+            f"{case.current_summary['infinite_pca_eccentricity_regions']} | "
+            f"{case.fixed_summary['infinite_pca_eccentricity_regions']} | "
+            f"{format_float(case.current_summary['max_finite_pca_eccentricity'], digits=1)} | "
+            f"{format_float(case.fixed_summary['max_finite_pca_eccentricity'], digits=1)} | "
+            f"{case.current_summary['multi_component_regions']} | "
+            f"{case.fixed_summary['multi_component_regions']} |"
         )
     return rows
 

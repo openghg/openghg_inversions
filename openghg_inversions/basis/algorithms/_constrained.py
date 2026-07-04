@@ -44,6 +44,16 @@ GridPartition: TypeAlias = list[GridNode]
 _INERTIAL_TOLERANCE = 1.0e-12
 
 
+@dataclass(frozen=True)
+class _CoordinatePCA:
+    """Principal-component fit for partition coordinates."""
+
+    centroid: npt.NDArray[np.float64]
+    centered: npt.NDArray[np.float64]
+    eigenvalues: npt.NDArray[np.float64]
+    eigenvectors: npt.NDArray[np.float64]
+
+
 class SplitStrategy(Protocol):
     """Strategy protocol for class-local basis splitting."""
 
@@ -427,6 +437,44 @@ class MinChildTargetWeightShare:
         if equal_target_weight <= 0.0:
             return False
         return min(child_weights) / equal_target_weight >= self.min_child_target_weight_share
+
+
+@dataclass(frozen=True)
+class MaxChildPCAEccentricity:
+    """Reject splits that create child partitions above a PCA eccentricity limit.
+
+    The eccentricity is computed from each child partition's unweighted node
+    coordinates. If ``geometry`` is supplied, its physical coordinates are used;
+    otherwise row/column index coordinates are used. Single-cell children have
+    eccentricity ``1`` because they have no resolvable long axis. Multi-cell
+    rank-one children have infinite eccentricity and are rejected by any finite
+    threshold.
+    """
+
+    max_child_pca_eccentricity: float
+    geometry: SplitGeometry | None = None
+    tolerance: float = _INERTIAL_TOLERANCE
+
+    def __post_init__(self) -> None:
+        """Validate the eccentricity threshold and tolerance."""
+        if self.max_child_pca_eccentricity < 1.0 or not np.isfinite(self.max_child_pca_eccentricity):
+            raise ValueError("max_child_pca_eccentricity must be at least 1 and finite.")
+        if self.tolerance < 0.0 or not np.isfinite(self.tolerance):
+            raise ValueError("tolerance must be non-negative and finite.")
+
+    def __call__(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+    ) -> bool:
+        """Return true when every child is below the eccentricity threshold."""
+        del parent, weights
+        return all(
+            _partition_pca_eccentricity(child, geometry=self.geometry, tolerance=self.tolerance)
+            <= self.max_child_pca_eccentricity
+            for child in children
+        )
 
 
 @dataclass(frozen=True, init=False)
@@ -1368,14 +1416,55 @@ def _weighted_inertial_axis(
         return None
 
     coords = _node_coordinates(nodes, geometry=geometry, node_weights=node_weights)
-    weight_column = node_weights.reshape(-1, 1)
-    centroid = (coords * weight_column).sum(axis=0) / total_weight
-    centered = coords - centroid
-    mxy = float((node_weights * centered[:, 0] * centered[:, 1]).sum())
+    pca = _coordinate_pca(coords, node_weights=node_weights)
+    if pca is None:
+        return None
+
+    mxy = float((node_weights * pca.centered[:, 0] * pca.centered[:, 1]).sum())
     if np.isclose(mxy, 0.0, rtol=_INERTIAL_TOLERANCE, atol=_INERTIAL_TOLERANCE):
         return None
 
-    covariance = centered.T @ (centered * weight_column) / total_weight
+    axis_index = int(np.argmax(pca.eigenvalues))
+    if float(pca.eigenvalues[axis_index]) <= _INERTIAL_TOLERANCE:
+        return None
+    eigenvalue_gap = float(pca.eigenvalues[axis_index] - pca.eigenvalues[1 - axis_index])
+    if eigenvalue_gap <= _INERTIAL_TOLERANCE * max(1.0, abs(float(pca.eigenvalues[axis_index]))):
+        return None
+
+    axis = pca.eigenvectors[:, axis_index].astype(np.float64)
+    axis_norm = float(np.linalg.norm(axis))
+    if axis_norm <= _INERTIAL_TOLERANCE or not np.isfinite(axis_norm):
+        return None
+
+    axis = _canonical_inertial_axis(axis / axis_norm)
+    return axis, pca.centroid
+
+
+def _coordinate_pca(
+    coords: npt.NDArray[np.float64],
+    *,
+    node_weights: npt.NDArray[np.float64] | None = None,
+) -> _CoordinatePCA | None:
+    """Return a PCA fit for finite partition coordinates."""
+    if coords.ndim != 2 or coords.shape[0] == 0 or not np.isfinite(coords).all():
+        return None
+
+    if node_weights is None:
+        centroid = coords.mean(axis=0)
+        centered = coords - centroid
+        covariance = centered.T @ centered / len(coords)
+    else:
+        weights = np.asarray(node_weights, dtype=np.float64).reshape(-1)
+        if weights.shape != (coords.shape[0],) or not np.isfinite(weights).all():
+            return None
+        total_weight = float(weights.sum())
+        if total_weight <= 0.0 or not np.isfinite(total_weight):
+            return None
+        weight_column = weights.reshape(-1, 1)
+        centroid = (coords * weight_column).sum(axis=0) / total_weight
+        centered = coords - centroid
+        covariance = centered.T @ (centered * weight_column) / total_weight
+
     if not np.isfinite(covariance).all():
         return None
 
@@ -1388,21 +1477,12 @@ def _weighted_inertial_axis(
 
     if not np.isfinite(eigenvalues).all() or not np.isfinite(eigenvectors).all():
         return None
-
-    axis_index = int(np.argmax(eigenvalues))
-    if float(eigenvalues[axis_index]) <= _INERTIAL_TOLERANCE:
-        return None
-    eigenvalue_gap = float(eigenvalues[axis_index] - eigenvalues[1 - axis_index])
-    if eigenvalue_gap <= _INERTIAL_TOLERANCE * max(1.0, abs(float(eigenvalues[axis_index]))):
-        return None
-
-    axis = eigenvectors[:, axis_index].astype(np.float64)
-    axis_norm = float(np.linalg.norm(axis))
-    if axis_norm <= _INERTIAL_TOLERANCE or not np.isfinite(axis_norm):
-        return None
-
-    axis = _canonical_inertial_axis(axis / axis_norm)
-    return axis, centroid
+    return _CoordinatePCA(
+        centroid=centroid.astype(np.float64),
+        centered=centered.astype(np.float64),
+        eigenvalues=eigenvalues.astype(np.float64),
+        eigenvectors=eigenvectors.astype(np.float64),
+    )
 
 
 def _canonical_inertial_axis(axis: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
@@ -1504,6 +1584,30 @@ def _node_coordinates(
             if coord_values.shape == (len(nodes), 2) and np.isfinite(coord_values).all():
                 return coord_values
     return np.asarray(nodes, dtype=np.float64)
+
+
+def _partition_pca_eccentricity(
+    nodes: GridPartition,
+    *,
+    geometry: SplitGeometry | None = None,
+    tolerance: float = _INERTIAL_TOLERANCE,
+) -> float:
+    """Return the square-root PCA variance ratio for one partition shape."""
+    if len(nodes) < 2:
+        return 1.0
+
+    coords = _node_coordinates(nodes, geometry=geometry)
+    pca = _coordinate_pca(coords)
+    if pca is None:
+        return np.inf
+
+    minor = float(max(pca.eigenvalues[0], 0.0))
+    major = float(max(pca.eigenvalues[-1], 0.0))
+    if major <= tolerance:
+        return 1.0
+    if minor <= tolerance:
+        return np.inf
+    return float(np.sqrt(major / minor))
 
 
 def _coordinate_weights(
@@ -1628,6 +1732,7 @@ __all__ = [
     "GreedyAxisParallelSplitStrategy",
     "InertialSplitStep",
     "LatLonGridGeometry",
+    "MaxChildPCAEccentricity",
     "MinChildWeightShare",
     "MinChildTargetWeightShare",
     "NbasisAllocation",

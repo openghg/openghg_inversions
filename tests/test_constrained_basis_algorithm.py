@@ -8,6 +8,7 @@ from openghg_inversions.basis.algorithms import (
     GreedyAxisParallelSplitStrategy,
     InertialSplitStep,
     LatLonGridGeometry,
+    MaxChildPCAEccentricity,
     MinChildTargetWeightShare,
     MinChildWeightShare,
     allocate_nbasis_by_class,
@@ -665,6 +666,100 @@ def test_greedy_strategy_composes_target_and_balance_policies():
     )(weights, class_mask, target_regions=2)
 
     assert set(np.unique(labels)) == {1}
+
+
+def test_max_child_pca_eccentricity_rejects_rank_one_child():
+    """Rank-one multi-cell children have infinite PCA eccentricity."""
+    weights = np.ones((3, 3))
+    parent = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (2, 0)]
+    children = [[(0, 0), (0, 1), (0, 2)], [(1, 0), (1, 1), (2, 0)]]
+
+    assert not MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0)(parent, children, weights)
+
+
+def test_max_child_pca_eccentricity_accepts_compact_and_single_cell_children():
+    """Compact child shapes and single-cell children are accepted."""
+    weights = np.ones((3, 3))
+    parent = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 2)]
+    children = [[(0, 0), (0, 1), (1, 0), (1, 1)], [(2, 2)]]
+
+    assert MaxChildPCAEccentricity(max_child_pca_eccentricity=2.0)(parent, children, weights)
+
+
+def test_greedy_strategy_pca_eccentricity_stopping_freezes_rejected_partition():
+    """Shape stopping can reject an otherwise valid split."""
+    weights = np.ones((1, 4))
+    class_mask = np.ones(weights.shape, dtype=bool)
+
+    labels = GreedyAxisParallelSplitStrategy(
+        split_acceptance=MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0),
+    )(weights, class_mask, target_regions=2)
+
+    assert set(np.unique(labels)) == {1}
+
+
+def test_max_child_pca_eccentricity_can_use_custom_geometry():
+    """Custom geometry can change the eccentricity decision."""
+
+    class LineGeometry:
+        """Map every node onto one physical line."""
+
+        def coordinates(self, nodes, node_weights=None):
+            return np.array([[row + col, row + col] for row, col in nodes], dtype=np.float64)
+
+    weights = np.ones((2, 2))
+    parent = [(row, col) for row in range(2) for col in range(2)]
+    children = [parent]
+
+    assert MaxChildPCAEccentricity(max_child_pca_eccentricity=2.0)(parent, children, weights)
+    assert not MaxChildPCAEccentricity(max_child_pca_eccentricity=2.0, geometry=LineGeometry())(
+        parent,
+        children,
+        weights,
+    )
+
+
+def test_max_child_pca_eccentricity_tolerance_controls_rank_one_detection():
+    """Tolerance controls when small minor variance is treated as rank one."""
+    weights = np.ones((2, 4))
+    parent = [(0, 0), (0, 3), (1, 0), (1, 3)]
+    children = [parent]
+
+    assert MaxChildPCAEccentricity(max_child_pca_eccentricity=3.0, tolerance=0.0)(parent, children, weights)
+    assert not MaxChildPCAEccentricity(max_child_pca_eccentricity=3.0, tolerance=0.25)(
+        parent,
+        children,
+        weights,
+    )
+
+
+def test_max_child_pca_eccentricity_composes_with_target_weight_policy():
+    """PCA shape stopping composes with target-aware policies."""
+    weights = np.ones((1, 4))
+    class_mask = np.ones(weights.shape, dtype=bool)
+
+    labels = GreedyAxisParallelSplitStrategy(
+        split_acceptance=AllSplitAcceptancePolicies(
+            MinChildTargetWeightShare(min_child_target_weight_share=0.1),
+            MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0),
+        ),
+    )(weights, class_mask, target_regions=2)
+
+    assert set(np.unique(labels)) == {1}
+
+
+@pytest.mark.parametrize("threshold", [0.0, 0.999, -1.0, np.inf, np.nan])
+def test_max_child_pca_eccentricity_validates_threshold(threshold: float):
+    """PCA eccentricity thresholds must be positive and finite."""
+    with pytest.raises(ValueError, match="max_child_pca_eccentricity must be at least 1 and finite"):
+        MaxChildPCAEccentricity(max_child_pca_eccentricity=threshold)
+
+
+@pytest.mark.parametrize("tolerance", [-1.0, np.inf, np.nan])
+def test_max_child_pca_eccentricity_validates_tolerance(tolerance: float):
+    """PCA eccentricity tolerance must be non-negative and finite."""
+    with pytest.raises(ValueError, match="tolerance must be non-negative and finite"):
+        MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0, tolerance=tolerance)
 
 
 def test_region_constrained_basis_child_target_stopping_uses_class_local_total():
