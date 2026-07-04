@@ -38,6 +38,7 @@ from openghg_inversions.basis.algorithms import (
     quadtree_algorithm,
     weighted_algorithm,
 )
+from openghg_inversions.basis.algorithms._weighted import bucket_value_split
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -67,11 +68,15 @@ ECCENTRICITY_FIX_THRESHOLD = 10.0
 ECCENTRICITY_FIX_PER_OBJECTIVE_INFINITE_CASE_COUNT = 1
 ECCENTRICITY_FIX_PER_OBJECTIVE_FINITE_CASE_COUNT = 1
 ECCENTRICITY_FIX_TOTAL_CASE_COUNT = 8
-OBJECTIVE_GROUPS = ("no_mask", "land_sea", "selected_countries")
+CONTRAST_MIN_LAMBDA = 1.0e-18
+CONTRAST_ACCEPTANCE_LABEL = "contrast_lambda_1e-18"
+OBJECTIVE_GROUPS = ("no_mask", "land_sea", "selected_countries", "fixed_outer")
+ECCENTRICITY_OBJECTIVE_GROUPS = ("no_mask", "land_sea", "selected_countries")
 OBJECTIVE_LABELS = {
     "no_mask": "No Mask",
     "land_sea": "Land/Sea Mask",
     "selected_countries": "Selected Countries",
+    "fixed_outer": "Fixed Outer Regions",
 }
 SELECTED_COUNTRIES = (
     "UNITED KINGDOM OF GREAT BRITAIN AND NORTHERN IRELAND",
@@ -142,6 +147,16 @@ class RepresentativeFields:
 
 
 @dataclass(frozen=True)
+class ContrastDesign:
+    """Precomputed design arrays for contrast-score diagnostics."""
+
+    weighted_contribution: np.ndarray
+    cell_weight: np.ndarray
+    grid_shape: tuple[int, int]
+    min_contrast_lambda: float
+
+
+@dataclass(frozen=True)
 class BasisBuildContext:
     """Fields needed to rebuild one month/split basis case."""
 
@@ -162,6 +177,9 @@ class CandidateLabels:
     split_step: str
     split_mode: str
     geometry: str
+    outer_treatment: str
+    split_acceptance: str
+    contrast_min_lambda: float | None
     labels: xr.DataArray
     actual_regions: int
     split_history: tuple[dict[str, Any], ...] = ()
@@ -177,6 +195,9 @@ class Scenario:
     split_step: str
     split_mode: str
     geometry: str
+    outer_treatment: str
+    split_acceptance: str
+    contrast_min_lambda: float | None
     labels: xr.DataArray
     heldout_cv_nrmse: float
     heldout_cv_rmse: float
@@ -254,6 +275,7 @@ def main() -> None:
         score_ranked=score_ranked,
         scores=scores,
         split_scores=split_scores,
+        split_history=split_history,
         overall_scores=overall_scores,
         region_diagnostics=region_diagnostics,
         eccentricity_fix_cases=eccentricity_fix_cases,
@@ -311,6 +333,11 @@ def build_cross_validation_scores() -> tuple[
                 flux=reference_inputs.flux_for_weights,
             )
             weights = normalize_weights(fp_x_flux)
+            contrast_design = build_contrast_design(
+                footprints=[train_footprints[site.site] for site in SITES],
+                flux=reference_inputs.flux,
+                weights=weights,
+            )
             geometry = LatLonGridGeometry.from_dataarray(weights)
             country = align_to_test_grid(reference=weights, target=reference_inputs.country, target_name="country")
             class_modes = build_region_class_modes(country, weights, reference_inputs.country_names)
@@ -327,6 +354,7 @@ def build_cross_validation_scores() -> tuple[
                 weights=weights,
                 class_modes=class_modes,
                 geometry=geometry,
+                contrast_design=contrast_design,
             )
             for candidate in candidate_labels:
                 split_history_records.extend(
@@ -568,6 +596,39 @@ def normalize_weights(fp_x_flux: xr.DataArray) -> xr.DataArray:
     return weights
 
 
+def build_contrast_design(
+    *,
+    footprints: list[xr.DataArray],
+    flux: xr.DataArray,
+    weights: xr.DataArray,
+) -> ContrastDesign:
+    """Build training-only contrast-score arrays for one shared basis split.
+
+    Rows are design footprint observations. Native-cell masses are the monthly
+    prior flux field with a tiny positive floor; observed mole-fraction values
+    are not used.
+    """
+    aligned_flux = align_to_test_grid(reference=weights, target=flux, target_name="contrast_cell_weight")
+    cell_weight = aligned_flux.fillna(0.0)
+    positive = np.asarray(cell_weight.values, dtype=np.float64)
+    positive = positive[np.isfinite(positive) & (positive > 0.0)]
+    floor = float(np.nanpercentile(positive, 0.1)) * 1.0e-6 if positive.size else 1.0
+    cell_weight_values = np.asarray(cell_weight.clip(min=floor).values, dtype=np.float64)
+
+    contribution_parts = [
+        np.asarray(footprint.fillna(0.0).transpose("time", *weights.dims).values, dtype=np.float64)
+        for footprint in footprints
+    ]
+    contribution = np.concatenate(contribution_parts, axis=0).reshape((-1, cell_weight_values.size))
+    weighted_contribution = contribution * cell_weight_values.ravel().reshape(1, -1)
+    return ContrastDesign(
+        weighted_contribution=weighted_contribution,
+        cell_weight=cell_weight_values.ravel(),
+        grid_shape=cell_weight_values.shape,
+        min_contrast_lambda=CONTRAST_MIN_LAMBDA,
+    )
+
+
 def build_region_class_modes(
     country: xr.DataArray,
     weights: xr.DataArray,
@@ -616,6 +677,7 @@ def build_candidate_labels(
     weights: xr.DataArray,
     class_modes: dict[str, xr.DataArray],
     geometry: LatLonGridGeometry,
+    contrast_design: ContrastDesign,
 ) -> list[CandidateLabels]:
     """Build all feasible constrained and legacy comparison basis candidates."""
     candidates: list[CandidateLabels] = []
@@ -642,13 +704,44 @@ def build_candidate_labels(
                                 split_step=split_step_name,
                                 split_mode=split_mode,
                                 geometry=geometry_name,
+                                outer_treatment="full_domain",
+                                split_acceptance="none",
+                                contrast_min_lambda=None,
                                 labels=labels,
                                 actual_regions=count_regions(labels),
                                 split_history=split_history,
                             )
                         )
+                        if split_step_name == "axis_parallel":
+                            contrast_policy = RecordingContrastSplitAcceptance(contrast_design)
+                            labels, split_history = build_constrained_basis_labels(
+                                weights=weights,
+                                region_classes=region_classes,
+                                allocation=allocation,
+                                split_step_name=split_step_name,
+                                split_mode=split_mode,
+                                geometry=split_geometry,
+                                split_acceptance=contrast_policy,
+                            )
+                            candidates.append(
+                                CandidateLabels(
+                                    basis_family="region_constrained",
+                                    class_mode=class_mode,
+                                    allocation=allocation_name,
+                                    split_step=split_step_name,
+                                    split_mode=split_mode,
+                                    geometry=geometry_name,
+                                    outer_treatment="full_domain",
+                                    split_acceptance=CONTRAST_ACCEPTANCE_LABEL,
+                                    contrast_min_lambda=CONTRAST_MIN_LAMBDA,
+                                    labels=labels,
+                                    actual_regions=count_regions(labels),
+                                    split_history=split_history,
+                                )
+                            )
 
     candidates.extend(build_legacy_candidate_labels(weights))
+    candidates.extend(build_fixed_outer_candidate_labels(weights=weights, landsea_classes=class_modes["land_sea"]))
     return candidates
 
 
@@ -746,6 +839,66 @@ def recording_region_constrained_basis(
     return labels_dataarray(labels, weights), history
 
 
+class RecordingContrastSplitAcceptance:
+    """Fast contrast-score gate for this generator's diagnostic sweep."""
+
+    def __init__(self, design: ContrastDesign) -> None:
+        self.design = design
+        self.last_diagnostics: dict[str, Any] = {}
+
+    def __call__(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+    ) -> bool:
+        """Return true when the proposed binary split exceeds the threshold."""
+        del parent, weights
+        if len(children) != 2:
+            self.last_diagnostics = {}
+            raise ValueError("RecordingContrastSplitAcceptance requires a binary split.")
+
+        score = self.score_split(children[0], children[1])
+        accepted = score["contrast_lambda"] >= self.design.min_contrast_lambda
+        self.last_diagnostics = {
+            **score,
+            "contrast_min_lambda": self.design.min_contrast_lambda,
+            "contrast_accepts": accepted,
+            "contrast_uncalibrated": True,
+        }
+        return accepted
+
+    def score_split(self, child_a: GridPartition, child_b: GridPartition) -> dict[str, float]:
+        """Return mass-preserving split contrast diagnostics for two children."""
+        index_a = flat_node_indices(child_a, self.design.grid_shape)
+        index_b = flat_node_indices(child_b, self.design.grid_shape)
+        weight_a = self.design.cell_weight[index_a]
+        weight_b = self.design.cell_weight[index_b]
+        mu_a = float(weight_a.sum())
+        mu_b = float(weight_b.sum())
+        mu_g = mu_a + mu_b
+        if mu_a <= 0.0 or mu_b <= 0.0 or not np.isfinite(mu_g):
+            raise ValueError("Contrast child masses must be positive and finite.")
+
+        h_a = self.design.weighted_contribution[:, index_a].sum(axis=1)
+        h_b = self.design.weighted_contribution[:, index_b].sum(axis=1)
+        contrast = (mu_b / mu_g) * h_a - (mu_a / mu_g) * h_b
+        lambda_value = float(np.sum(contrast**2))
+        return {
+            "contrast_lambda": lambda_value,
+            "contrast_delta_dfs": float(lambda_value / (1.0 + lambda_value)),
+            "contrast_delta_eig": float(0.5 * np.log1p(lambda_value)),
+            "contrast_mu_a": mu_a,
+            "contrast_mu_b": mu_b,
+        }
+
+
+def flat_node_indices(nodes: GridPartition, shape: tuple[int, int]) -> np.ndarray:
+    """Return flat indices for grid-index nodes."""
+    rows, cols = node_indices(nodes)
+    return np.ravel_multi_index((np.asarray(rows), np.asarray(cols)), shape)
+
+
 def align_recording_inputs(
     *,
     weights: xr.DataArray,
@@ -825,21 +978,24 @@ def recording_greedy_partition(
 
         accepted = True
         rejection_reason = ""
+        split_diagnostics: dict[str, Any] = {}
         if len(child_partitions) < 2:
             accepted = False
             rejection_reason = "unsplittable"
         elif current_regions - 1 + len(child_partitions) > target_regions:
             accepted = False
             rejection_reason = "target_exceeded"
-        elif split_acceptance is not None and not split_acceptance_allows(
-            split_acceptance,
-            parent_nodes,
-            child_partitions,
-            weights,
-            target_regions,
-        ):
-            accepted = False
-            rejection_reason = "split_acceptance"
+        elif split_acceptance is not None:
+            accepted = split_acceptance_allows(
+                split_acceptance,
+                parent_nodes,
+                child_partitions,
+                weights,
+                target_regions,
+            )
+            split_diagnostics = split_acceptance_diagnostics(split_acceptance)
+            if not accepted:
+                rejection_reason = "split_acceptance"
 
         if not accepted:
             history.extend(
@@ -854,6 +1010,7 @@ def recording_greedy_partition(
                     parent_nodes=parent_nodes,
                     child_entries=[(None, child) for child in child_partitions],
                     weights=weights,
+                    split_diagnostics=split_diagnostics,
                 )
             )
             done.append(parent_nodes)
@@ -876,6 +1033,7 @@ def recording_greedy_partition(
                 parent_nodes=parent_nodes,
                 child_entries=child_entries,
                 weights=weights,
+                split_diagnostics=split_diagnostics,
             )
         )
 
@@ -906,10 +1064,12 @@ def split_history_rows(
     parent_nodes: GridPartition,
     child_entries: list[tuple[int | None, GridPartition]],
     weights: np.ndarray,
+    split_diagnostics: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Return one split-history row per proposed child partition."""
     if not child_entries:
         child_entries = [(None, [])]
+    split_diagnostics = {} if split_diagnostics is None else split_diagnostics
     parent_metrics = partition_shape_metrics(parent_nodes, weights=weights, prefix="parent")
     parent_weight = float(parent_metrics["parent_weight"])
     rows: list[dict[str, Any]] = []
@@ -929,6 +1089,7 @@ def split_history_rows(
                 "parent_depth": parent_depth,
                 "child_depth": parent_depth + 1 if accepted else parent_depth,
                 "child_weight_share_of_parent": child_weight / parent_weight if parent_weight > 0.0 else np.nan,
+                **split_diagnostics,
                 **parent_metrics,
                 **child_metrics,
             }
@@ -1079,12 +1240,12 @@ def worst_eccentricity_case_rows(region_diagnostics: pd.DataFrame) -> list[dict[
             selected_keys.add(key)
             max_new_rows -= 1
 
-    for objective in OBJECTIVE_GROUPS:
+    for objective in ECCENTRICITY_OBJECTIVE_GROUPS:
         add_case_rows(
             infinite.loc[infinite["class_mode"] == objective].drop_duplicates(case_columns),
             ECCENTRICITY_FIX_PER_OBJECTIVE_INFINITE_CASE_COUNT,
         )
-    for objective in OBJECTIVE_GROUPS:
+    for objective in ECCENTRICITY_OBJECTIVE_GROUPS:
         add_case_rows(
             finite.loc[finite["class_mode"] == objective].drop_duplicates(case_columns),
             ECCENTRICITY_FIX_PER_OBJECTIVE_FINITE_CASE_COUNT,
@@ -1168,6 +1329,14 @@ def split_acceptance_allows(
     return bool(policy(parent, children, weights))
 
 
+def split_acceptance_diagnostics(policy: Any) -> dict[str, Any]:
+    """Return diagnostics recorded by a split-acceptance policy, if present."""
+    diagnostics = getattr(policy, "last_diagnostics", None)
+    if diagnostics is None:
+        return {}
+    return dict(diagnostics)
+
+
 def basis_context_record(
     *,
     month: MonthSpec,
@@ -1193,6 +1362,9 @@ def candidate_key_record(candidate: CandidateLabels) -> dict[str, Any]:
         "split_step": candidate.split_step,
         "split_mode": candidate.split_mode,
         "geometry": candidate.geometry,
+        "outer_treatment": candidate.outer_treatment,
+        "split_acceptance": candidate.split_acceptance,
+        "contrast_min_lambda": candidate.contrast_min_lambda,
         "candidate": candidate_display_label(
             {
                 "basis_family": candidate.basis_family,
@@ -1200,6 +1372,8 @@ def candidate_key_record(candidate: CandidateLabels) -> dict[str, Any]:
                 "split_step": candidate.split_step,
                 "split_mode": candidate.split_mode,
                 "geometry": candidate.geometry,
+                "outer_treatment": candidate.outer_treatment,
+                "split_acceptance": candidate.split_acceptance,
             }
         ),
         "target_regions": TARGET_REGIONS,
@@ -1354,6 +1528,182 @@ def node_weight(nodes: GridPartition, weights: np.ndarray) -> float:
     return float(weights[rows, cols].sum())
 
 
+def build_fixed_outer_candidate_labels(
+    *,
+    weights: xr.DataArray,
+    landsea_classes: xr.DataArray,
+) -> list[CandidateLabels]:
+    """Build fixed-outer quadtree and weighted/bucket comparison labels."""
+    outer_regions = load_outer_regions(reference=weights)
+    inner_mask = outer_regions == int(outer_regions.max())
+    row_slice, col_slice = inner_bbox_slices(inner_mask)
+    inner_weights = weights.isel({weights.dims[0]: row_slice, weights.dims[1]: col_slice})
+    inner_landsea = landsea_classes.isel({weights.dims[0]: row_slice, weights.dims[1]: col_slice})
+    normalized_grid = np.asarray(inner_weights.fillna(0.0).values, dtype=np.float64)
+    grid_max = float(np.max(normalized_grid))
+    if grid_max <= 0.0:
+        return []
+    normalized_grid = normalized_grid / grid_max
+
+    landsea_mask = np.asarray(inner_landsea.values == "land", dtype=np.int64)
+    fixed_specs = (
+        (
+            "bucketbasisfunction",
+            lambda: weighted_bucket_with_landsea_mask(
+                normalized_grid,
+                landsea_mask=landsea_mask,
+                nregion=TARGET_REGIONS,
+            ),
+        ),
+        (
+            "quadtreebasisfunction",
+            lambda: quadtree_algorithm(normalized_grid, nbasis=TARGET_REGIONS, seed=QUADTREE_SEED),
+        ),
+    )
+
+    candidates: list[CandidateLabels] = []
+    for basis_family, build_inner_labels in fixed_specs:
+        try:
+            raw_inner_labels = build_inner_labels()
+        except Exception as exc:  # pragma: no cover - used by evidence-generation script only
+            print(f"Skipping fixed outer {basis_family}: {exc}")
+            continue
+        inner_labels = xr.DataArray(
+            np.asarray(raw_inner_labels, dtype=np.int32),
+            dims=inner_weights.dims,
+            coords=inner_weights.coords,
+            name="basis",
+        )
+        labels = reinsert_fixed_outer_labels(
+            outer_regions=outer_regions,
+            inner_labels=inner_labels,
+            row_slice=row_slice,
+            col_slice=col_slice,
+        )
+        candidates.append(
+            CandidateLabels(
+                basis_family=basis_family,
+                class_mode="fixed_outer",
+                allocation="legacy",
+                split_step=basis_family,
+                split_mode="legacy",
+                geometry="row_column",
+                outer_treatment="fixed_outer",
+                split_acceptance="none",
+                contrast_min_lambda=None,
+                labels=labels,
+                actual_regions=count_regions(labels),
+            )
+        )
+    return candidates
+
+
+def load_outer_regions(*, reference: xr.DataArray) -> xr.DataArray:
+    """Load fixed EUROPE outer regions aligned to the scoring grid."""
+    path = ROOT / "openghg_inversions" / "basis" / f"outer_region_definition_{BLUE_PEBBLE_DOMAIN}.nc"
+    outer_regions = xr.open_dataset(path).region.transpose(*reference.dims).load()
+    return align_to_test_grid(reference=reference, target=outer_regions, target_name="outer_regions")
+
+
+def inner_bbox_slices(inner_mask: xr.DataArray) -> tuple[slice, slice]:
+    """Return bounding-box index slices for the fixed-outer inner region."""
+    mask_values = np.asarray(inner_mask.values, dtype=bool)
+    rows, cols = np.where(mask_values)
+    if rows.size == 0 or cols.size == 0:
+        raise ValueError("Fixed outer region file does not contain an inner region.")
+    row_slice = slice(int(rows.min()), int(rows.max()) + 1)
+    col_slice = slice(int(cols.min()), int(cols.max()) + 1)
+    if not mask_values[row_slice, col_slice].all():
+        raise ValueError("Fixed outer inner region is not rectangular; update the generator reinsert logic.")
+    return row_slice, col_slice
+
+
+def reinsert_fixed_outer_labels(
+    *,
+    outer_regions: xr.DataArray,
+    inner_labels: xr.DataArray,
+    row_slice: slice,
+    col_slice: slice,
+) -> xr.DataArray:
+    """Insert inner labels into fixed outer regions following the production offset rule."""
+    inner_index = int(outer_regions.max())
+    values = np.asarray(outer_regions.values, dtype=np.int32).copy()
+    values[row_slice, col_slice] = np.asarray(inner_labels.values, dtype=np.int32) + inner_index - 1
+    values = values + 1
+    return xr.DataArray(values, dims=outer_regions.dims, coords=outer_regions.coords, name="basis")
+
+
+def weighted_bucket_with_landsea_mask(
+    grid: np.ndarray,
+    *,
+    landsea_mask: np.ndarray,
+    nregion: int,
+    bucket: float = 1.0,
+    tol: int = 1,
+) -> np.ndarray:
+    """Return weighted/bucket labels using a caller-aligned land/sea mask."""
+    bucket_value = optimize_bucket_with_landsea_mask(
+        grid,
+        landsea_mask=landsea_mask,
+        bucket=bucket,
+        nregion=nregion,
+        tol=tol,
+    )
+    return bucket_split_landsea_with_mask(grid, bucket_value, landsea_mask=landsea_mask)
+
+
+def optimize_bucket_with_landsea_mask(
+    grid: np.ndarray,
+    *,
+    landsea_mask: np.ndarray,
+    bucket: float,
+    nregion: int,
+    tol: int,
+) -> float:
+    """Optimize bucket value for a weighted/bucket split with aligned land/sea mask."""
+    current_bucket = bucket
+    current_tol = tol
+    for _ in range(10):
+        for iteration in range(1000):
+            current_nregion = int(
+                np.max(bucket_split_landsea_with_mask(grid, current_bucket, landsea_mask=landsea_mask))
+            )
+            if nregion - current_tol <= current_nregion <= nregion + current_tol:
+                print(
+                    "optimize_bucket_with_landsea_mask found bucket value "
+                    f"{current_bucket} after {iteration} iterations with tolerance {current_tol}."
+                )
+                return current_bucket
+            if current_nregion < nregion + current_tol:
+                current_bucket *= 0.995
+            else:
+                current_bucket *= 1.005
+        current_tol += 1
+    raise RuntimeError("Could not optimize fixed-outer weighted/bucket region count.")
+
+
+def bucket_split_landsea_with_mask(
+    grid: np.ndarray,
+    bucket: float,
+    *,
+    landsea_mask: np.ndarray,
+) -> np.ndarray:
+    """Split weighted rectangles and then separate each rectangle by land/sea."""
+    regions = bucket_value_split(grid, bucket)
+    labels = np.zeros(shape=grid.shape, dtype=np.int32)
+    for ymin, ymax, xmin, xmax in regions:
+        sea_rows, sea_cols = np.where(landsea_mask[ymin:ymax, xmin:xmax] == 0)
+        land_rows, land_cols = np.where(landsea_mask[ymin:ymax, xmin:xmax] == 1)
+        label = int(np.max(labels))
+        if len(sea_rows) > 0:
+            label += 1
+            labels[sea_rows + ymin, sea_cols + xmin] = label
+        if len(land_rows) > 0:
+            label += 1
+            labels[land_rows + ymin, land_cols + xmin] = label
+    return labels
+
+
 def build_legacy_candidate_labels(weights: xr.DataArray) -> list[CandidateLabels]:
     """Build legacy bucketbasisfunction and quadtreebasisfunction comparison labels."""
     candidates: list[CandidateLabels] = []
@@ -1395,6 +1745,9 @@ def build_legacy_candidate_labels(weights: xr.DataArray) -> list[CandidateLabels
                 split_step=basis_family,
                 split_mode="legacy",
                 geometry="row_column",
+                outer_treatment="full_domain",
+                split_acceptance="none",
+                contrast_min_lambda=None,
                 labels=labels,
                 actual_regions=count_regions(labels),
             )
@@ -1423,6 +1776,9 @@ def score_candidates(
                 split_step=candidate.split_step,
                 split_mode=candidate.split_mode,
                 geometry=candidate.geometry,
+                outer_treatment=candidate.outer_treatment,
+                split_acceptance=candidate.split_acceptance,
+                contrast_min_lambda=candidate.contrast_min_lambda,
                 labels=labels,
                 heldout_cv_nrmse=normalized_rmse(y_projected, y_full),
                 heldout_cv_rmse=rmse(y_projected, y_full),
@@ -1531,6 +1887,9 @@ def scenario_record(
         "split_step": scenario.split_step,
         "split_mode": scenario.split_mode,
         "geometry": scenario.geometry,
+        "outer_treatment": scenario.outer_treatment,
+        "split_acceptance": scenario.split_acceptance,
+        "contrast_min_lambda": scenario.contrast_min_lambda,
         "target_regions": TARGET_REGIONS,
         "actual_regions": scenario.actual_regions,
         "heldout_cv_nrmse": scenario.heldout_cv_nrmse,
@@ -1554,6 +1913,9 @@ def aggregate_split_scores(split_scores: pd.DataFrame) -> pd.DataFrame:
         "split_step",
         "split_mode",
         "geometry",
+        "outer_treatment",
+        "split_acceptance",
+        "contrast_min_lambda",
         "target_regions",
     ]
     numeric_columns = [
@@ -1581,6 +1943,9 @@ def aggregate_overall_scores(split_scores: pd.DataFrame) -> pd.DataFrame:
         "split_step",
         "split_mode",
         "geometry",
+        "outer_treatment",
+        "split_acceptance",
+        "contrast_min_lambda",
         "target_regions",
         "basis_training_sites",
     ]
@@ -1607,13 +1972,20 @@ def candidate_display_label(row: dict[str, Any]) -> str:
     """Return a compact label for a candidate row."""
     basis_family = str(row["basis_family"])
     if basis_family == "bucketbasisfunction":
-        return "weighted/bucket"
-    if basis_family == "quadtreebasisfunction":
-        return "quadtree"
-    return (
-        f"{row['allocation']}/{row['split_step']}/"
-        f"{row['split_mode']}/{row['geometry']}"
-    )
+        label = "weighted/bucket"
+    elif basis_family == "quadtreebasisfunction":
+        label = "quadtree"
+    else:
+        label = (
+            f"{row['allocation']}/{row['split_step']}/"
+            f"{row['split_mode']}/{row['geometry']}"
+        )
+
+    if str(row.get("split_acceptance", "none")) != "none":
+        label = f"{label}/contrast"
+    if str(row.get("outer_treatment", "full_domain")) == "fixed_outer":
+        label = f"fixed_outer/{label}"
+    return label
 
 
 def objective_label(class_mode: str) -> str:
@@ -1661,7 +2033,14 @@ def plot_input_fields(fields: RepresentativeFields) -> str:
 def plot_basis_contrasts(scenarios: list[Scenario], overall_scores: pd.DataFrame) -> str:
     """Plot best representative basis maps for each objective group."""
     row_specs = best_map_rows(overall_scores)
-    fig, axes = plt.subplots(nrows=3, ncols=4, figsize=(16, 10.5), sharex=True, sharey=True)
+    fig, axes = plt.subplots(
+        nrows=len(OBJECTIVE_GROUPS),
+        ncols=4,
+        figsize=(16, 3.5 * len(OBJECTIVE_GROUPS)),
+        sharex=True,
+        sharey=True,
+    )
+    axes = np.asarray(axes)
     for row_index, class_mode in enumerate(OBJECTIVE_GROUPS):
         for col_index, row in enumerate(row_specs[class_mode]):
             ax = axes[row_index, col_index]
@@ -1673,9 +2052,11 @@ def plot_basis_contrasts(scenarios: list[Scenario], overall_scores: pd.DataFrame
                 str(row["split_step"]),
                 str(row["split_mode"]),
                 str(row["geometry"]),
+                str(row["outer_treatment"]),
+                str(row["split_acceptance"]),
             )
             plot_basis_label_map(ax, scenario.labels)
-            rank_label = "legacy" if row["basis_family"] != "region_constrained" else f"rank {col_index + 1}"
+            rank_label = "reference" if row["basis_family"] != "region_constrained" else f"rank {col_index + 1}"
             ax.set_title(
                 f"{objective_label(class_mode)} {rank_label}\n"
                 f"{row['candidate']}\n"
@@ -1762,8 +2143,14 @@ def best_map_rows(overall_scores: pd.DataFrame) -> dict[str, list[dict[str, Any]
         if legacy_family is None:
             selected = group.head(4)
         else:
-            constrained = group.loc[group["basis_family"] == "region_constrained"].head(3)
-            legacy = group.loc[group["basis_family"] == legacy_family].head(1)
+            constrained = group.loc[
+                (group["basis_family"] == "region_constrained")
+                & (group["outer_treatment"] == "full_domain")
+            ].head(3)
+            legacy = group.loc[
+                (group["basis_family"] == legacy_family)
+                & (group["outer_treatment"] == "full_domain")
+            ].head(1)
             selected = pd.concat([constrained, legacy], ignore_index=True)
         rows[class_mode] = dataframe_records(selected)
     return rows
@@ -1834,7 +2221,13 @@ def plot_score_heatmap(scores: pd.DataFrame) -> str:
         for site in SITES
         for month in MONTHS
     ]
-    fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(12, 13), constrained_layout=True)
+    fig, axes = plt.subplots(
+        nrows=len(OBJECTIVE_GROUPS),
+        ncols=1,
+        figsize=(12, 4.3 * len(OBJECTIVE_GROUPS)),
+        constrained_layout=True,
+    )
+    axes = np.asarray(axes).ravel()
     image = None
     vmin = float(scores[metric].min())
     vmax = float(scores[metric].max())
@@ -1866,19 +2259,21 @@ def plot_score_heatmap(scores: pd.DataFrame) -> str:
 def plot_ranked_scores(scores: pd.DataFrame) -> str:
     """Plot option combinations sorted by overall held-out CV observation NRMSE."""
     metric = "heldout_cv_nrmse"
-    fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(15, 8), sharex=True, constrained_layout=True)
-    colors = {
-        "region_constrained": "tab:blue",
-        "bucketbasisfunction": "tab:orange",
-        "quadtreebasisfunction": "tab:green",
-    }
+    fig, axes = plt.subplots(
+        nrows=1,
+        ncols=len(OBJECTIVE_GROUPS),
+        figsize=(5.0 * len(OBJECTIVE_GROUPS), 8),
+        sharex=True,
+        constrained_layout=True,
+    )
+    axes = np.asarray(axes).ravel()
     for ax, class_mode in zip(axes, OBJECTIVE_GROUPS, strict=True):
         group = scores.loc[scores["class_mode"] == class_mode].sort_values(metric).reset_index(drop=True)
         y = np.arange(len(group))
         ax.scatter(
             group[metric],
             y,
-            c=[colors.get(value, "tab:gray") for value in group["basis_family"]],
+            c=[ranked_score_color(row) for row in dataframe_records(group)],
             s=34,
         )
         ax.set_yticks(y, labels=group["candidate"], fontsize=6)
@@ -1886,10 +2281,30 @@ def plot_ranked_scores(scores: pd.DataFrame) -> str:
         ax.set_xlabel("Overall held-out CV NRMSE")
         ax.set_title(objective_label(class_mode))
         ax.grid(True, axis="x", linewidth=0.4, alpha=0.4)
-    for basis_family, color in colors.items():
-        axes[-1].scatter([], [], color=color, label=basis_family)
+    legend_specs = {
+        "region_constrained": "tab:blue",
+        "contrast_score": "tab:red",
+        "weighted/bucket": "tab:orange",
+        "quadtree": "tab:green",
+        "fixed_outer": "tab:purple",
+    }
+    for label, color in legend_specs.items():
+        axes[-1].scatter([], [], color=color, label=label)
     axes[-1].legend(loc="lower right", fontsize=8)
     return save_figure(fig, "basis_option_ranked_scores_250.png")
+
+
+def ranked_score_color(row: dict[str, Any]) -> str:
+    """Return plot colour for one ranked-score candidate."""
+    if str(row["outer_treatment"]) == "fixed_outer":
+        return "tab:purple"
+    if str(row["split_acceptance"]) != "none":
+        return "tab:red"
+    if str(row["basis_family"]) == "bucketbasisfunction":
+        return "tab:orange"
+    if str(row["basis_family"]) == "quadtreebasisfunction":
+        return "tab:green"
+    return "tab:blue"
 
 
 def categorical_codes(classes: xr.DataArray) -> tuple[np.ndarray, list[str]]:
@@ -1909,6 +2324,8 @@ def find_scenario(
     split_step: str,
     split_mode: str,
     geometry: str,
+    outer_treatment: str,
+    split_acceptance: str,
 ) -> Scenario:
     """Return one scenario by its option keys."""
     for scenario in scenarios:
@@ -1919,10 +2336,13 @@ def find_scenario(
             and scenario.split_step == split_step
             and scenario.split_mode == split_mode
             and scenario.geometry == geometry
+            and scenario.outer_treatment == outer_treatment
+            and scenario.split_acceptance == split_acceptance
         ):
             return scenario
     raise ValueError(
-        f"No scenario found for {(basis_family, class_mode, allocation, split_step, split_mode, geometry)!r}."
+        "No scenario found for "
+        f"{(basis_family, class_mode, allocation, split_step, split_mode, geometry, outer_treatment, split_acceptance)!r}."
     )
 
 
@@ -1944,6 +2364,7 @@ def write_report(
     score_ranked: str,
     scores: pd.DataFrame,
     split_scores: pd.DataFrame,
+    split_history: pd.DataFrame,
     overall_scores: pd.DataFrame,
     region_diagnostics: pd.DataFrame,
     eccentricity_fix_cases: list[EccentricityFixCase],
@@ -1952,6 +2373,8 @@ def write_report(
     overall_rows = overall_score_rows(overall_scores, n=5)
     context_rows = context_score_rows(scores, n=2)
     narrow_rows = narrow_region_rows(region_diagnostics, n=8)
+    contrast_rows = axis_contrast_comparison_rows(overall_scores, split_history)
+    fixed_outer_rows = fixed_outer_comparison_rows(overall_scores)
     eccentricity_case_rows = eccentricity_fix_case_rows(eccentricity_fix_cases)
     selected_country_text = ", ".join(short_country_label(name) for name in SELECTED_COUNTRIES)
     holdout_day_text = ", ".join(str(day) for day in HOLDOUT_START_DAYS)
@@ -1974,9 +2397,11 @@ def write_report(
         "- **Geometry**: row/column index geometry or local lat/lon metre geometry for split-shape decisions.",
         "- **Split stopping**: optional policies that reject proposed child regions. When stopping is enabled, the requested region count is an upper target.",
         "",
-        "The comparison also includes legacy `bucketbasisfunction` and `quadtreebasisfunction` rows generated from the same training weights. Their actual region counts can differ from the 250 target. `bucketbasisfunction` is shown as `weighted/bucket`; in this codebase the `weighted_algorithm` alias uses the land/sea weighted bucket splitter, so it is grouped with the land/sea objective. `quadtreebasisfunction` is shown as `quadtree` and grouped with the no-mask objective.",
+        "The comparison also includes legacy `bucketbasisfunction` and `quadtreebasisfunction` rows generated from the same training weights. Their actual region counts can differ from the 250 target. `bucketbasisfunction` is shown as `weighted/bucket`; in this codebase the `weighted_algorithm` alias uses the land/sea weighted bucket splitter, so it is grouped with the land/sea objective. `quadtreebasisfunction` is shown as `quadtree` and grouped with the no-mask objective. Fixed-outer rows keep the package EUROPE InTEM outer regions fixed and build the inner region with quadtree or weighted/bucket splitting.",
         "",
         "The important separation is that `weights` define contribution/importance, while `geometry` defines physical coordinates for split shape. Lat/lon geometry does not change contribution weights, class allocation, or posterior weighting. The Blue Pebble generator builds these weights with the same multi-site footprint-times-flux reduction used by the production `basis_functions_wrapper` path.",
+        "",
+        f"Axis-parallel contrast rows append `/contrast` to the candidate label. They use the mass-preserving contrast score with `tau=1`, identity design covariance, and `min_contrast_lambda={CONTRAST_MIN_LAMBDA:.1e}`. This is an uncalibrated ranking/debugging threshold, not a calibrated expected-information-gain value.",
         "",
         "For the no-mask score rows below, allocation is reported as `single_class` because there is only one class. The generator uses the normal weight-allocation API internally, but no inter-class allocation decision is being tested in that case.",
         "",
@@ -1989,6 +2414,8 @@ def write_report(
         "| `no_mask` | one class over the full domain; no hard class boundary is imposed |",
         "| `land_sea` | two hard classes, land and ocean |",
         "| `selected_countries` | ocean, selected countries, and `other_land` are separate classes |",
+        "| `fixed_outer` | package EUROPE InTEM outer regions are fixed; only the inner region is generated |",
+        "| `full_domain` | candidate generated across the full EUROPE domain |",
         "| `single_class` | the no-mask allocation case; there is no inter-class allocation decision |",
         "| `weight` | allocate target regions to classes by total training weight |",
         "| `axis_parallel` | split a region with a row- or column-aligned cut |",
@@ -1999,6 +2426,7 @@ def write_report(
         "| `lat_lon_metres` | use local metre-scaled longitude/latitude coordinates for split shape |",
         "| `weighted/bucket` | legacy `bucketbasisfunction`; uses the land/sea weighted bucket algorithm |",
         "| `quadtree` | legacy `quadtreebasisfunction`; recursively subdivides the grid without a class mask |",
+        "| `contrast` | optional axis-parallel split gate using the mass-preserving contrast score |",
         "| `CV` | cross-validation; here, temporal holdout scoring with one shared basis per month/split |",
         "| `NRMSE` | RMSE divided by the RMS of the full-grid held-out modelled observation |",
         "| `fp` | OpenGHG/NAME footprint field |",
@@ -2014,7 +2442,7 @@ def write_report(
         "January and July 2019 are scored separately. Each month uses three temporal CV splits: a one-week holdout starting on days "
         f"{holdout_day_text}, with a two-day buffer excluded before and after the held-out week. For each month/split, one shared basis is built from the combined remaining TAC and MHD in-month training footprints, matching the production multi-site basis objective. Held-out scores are then reported separately for TAC and MHD.",
         "",
-        "Masked constrained candidates use `weight` allocation only, so the generated evidence focuses on the allocation mode used for the current recommendation.",
+        "Masked constrained candidates use `weight` allocation only, so the generated evidence focuses on the allocation mode used for the current recommendation. Contrast-score diagnostics use only training footprints and prior flux/mass weights; they do not use observed mole fractions, residuals, or held-out footprints.",
         "",
         f"Per-score-site/month aggregate scores are written to `{SCORES_PATH.relative_to(ROOT)}`, split-level scores are written to `{SPLIT_SCORES_PATH.relative_to(ROOT)}`, and overall all-score-site/month/split scores are written to `{OVERALL_SCORES_PATH.relative_to(ROOT)}`. The split-level table contains {len(split_scores)} scored rows and includes `basis_training_sites`, `basis_train_observations`, and `score_site_holdout_observations` to make the shared-basis training set explicit.",
         "",
@@ -2045,7 +2473,7 @@ def write_report(
         "",
         "## Best Representative Basis Maps",
         "",
-        "The map figure shows the best overall held-out CV candidates by objective, using one representative January basis split for display. No-mask and land/sea rows show the best three constrained candidates plus the matching legacy option. Selected-country has no legacy counterpart, so it shows the best four constrained candidates.",
+        "The map figure shows the best overall held-out CV candidates by objective, using one representative January basis split for display. No-mask and land/sea rows show the best three full-domain constrained candidates plus the matching full-domain legacy option. Selected-country has no legacy counterpart, so it shows the best four constrained candidates. Fixed-outer rows show the available fixed-outer reference candidates.",
         "",
         f"![Basis option contrasts]({basis_figure})",
         "",
@@ -2075,6 +2503,22 @@ def write_report(
         "",
         f"![Ranked scores]({score_ranked})",
         "",
+        "### Axis-Parallel Contrast Gate Diagnostics",
+        "",
+        "The table below pairs each full-domain axis-parallel baseline with its contrast-gated counterpart. The contrast score uses `tau=1` and identity design covariance, so `lambda` and `delta_eig` are useful here only as uncalibrated split-ranking quantities.",
+        "",
+        "| objective | option | baseline regions | contrast regions | rejected splits | baseline CV NRMSE | contrast CV NRMSE | delta NRMSE | median lambda |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+        *contrast_rows,
+        "",
+        "### Fixed-Outer Diagnostics",
+        "",
+        "The fixed-outer rows hold the package EUROPE outer regions fixed and build the inner region with the listed legacy splitter. The weighted/bucket fixed-inner diagnostic uses a cropped land/sea mask so land/sea separation remains aligned after cropping.",
+        "",
+        "| fixed candidate | full-domain comparator | fixed regions | full regions | fixed CV NRMSE | full CV NRMSE | delta NRMSE |",
+        "|---|---|---:|---:|---:|---:|---:|",
+        *fixed_outer_rows,
+        "",
         "### Overall Held-Out CV Scores",
         "",
         "| objective | rank | candidate | regions | score rows | basis splits | CV NRMSE | CV RMSE | CV bias | CV corr |",
@@ -2093,8 +2537,8 @@ def write_report(
         "- Balanced splits often help when the score is dominated by high-contribution areas, but they are not guaranteed to produce visually regular regions.",
         "- Region classes impose hard boundaries, which can help interpretability but can also spend regions on low-contribution classes.",
         "- Lat/lon metre geometry is a physical-coordinate correction. It can change region shapes, especially for inertial or high-latitude splits, but it is not itself a weight-balancing rule.",
-        "- The three objective groups should not be read as one single efficiency race. No mask, land/sea, and selected-country masks are often chosen for scientific or reporting reasons as well as basis efficiency.",
-        "- Split-stopping policies are not included in the score matrix because they can return fewer than 250 actual regions, making direct comparison less clean.",
+        "- The objective groups should not be read as one single efficiency race. No mask, land/sea, selected-country masks, and fixed outer regions are often chosen for scientific or reporting reasons as well as basis efficiency.",
+        "- Split-stopping policies can return fewer than 250 actual regions. Contrast rows should therefore be read with their actual region counts and rejection counts, not just their nominal target.",
         "",
         "## What This Does Not Prove",
         "",
@@ -2102,6 +2546,103 @@ def write_report(
         "",
     ]
     REPORT_PATH.write_text("\n".join(lines), encoding="utf-8")
+
+
+def axis_contrast_comparison_rows(overall_scores: pd.DataFrame, split_history: pd.DataFrame) -> list[str]:
+    """Format paired axis-parallel baseline vs contrast-gated score rows."""
+    rows: list[str] = []
+    axis_rows = overall_scores.loc[
+        (overall_scores["basis_family"] == "region_constrained")
+        & (overall_scores["split_step"] == "axis_parallel")
+        & (overall_scores["outer_treatment"] == "full_domain")
+    ]
+    baseline_rows = axis_rows.loc[axis_rows["split_acceptance"] == "none"]
+    contrast_rows = axis_rows.loc[axis_rows["split_acceptance"] == CONTRAST_ACCEPTANCE_LABEL]
+    event_counts = contrast_split_event_counts(split_history)
+    key_columns = ["class_mode", "allocation", "split_mode", "geometry"]
+    for contrast_row in dataframe_records(contrast_rows.sort_values(["class_mode", "split_mode", "geometry"])):
+        baseline = baseline_rows
+        for column in key_columns:
+            baseline = baseline.loc[baseline[column] == contrast_row[column]]
+        if baseline.empty:
+            continue
+        baseline_row = dataframe_records(baseline.head(1))[0]
+        event_key = tuple(contrast_row[column] for column in key_columns)
+        event_summary = event_counts.get(event_key, {})
+        rejected = int(event_summary.get("rejected", 0))
+        median_lambda = event_summary.get("median_lambda", np.nan)
+        delta_nrmse = float(contrast_row["heldout_cv_nrmse"]) - float(baseline_row["heldout_cv_nrmse"])
+        rows.append(
+            f"| {objective_label(str(contrast_row['class_mode']))} | "
+            f"{contrast_row['allocation']}/axis_parallel/{contrast_row['split_mode']}/{contrast_row['geometry']} | "
+            f"{baseline_row['actual_regions']:.1f} | {contrast_row['actual_regions']:.1f} | {rejected} | "
+            f"{format_float(baseline_row['heldout_cv_nrmse'])} | "
+            f"{format_float(contrast_row['heldout_cv_nrmse'])} | {format_float(delta_nrmse)} | "
+            f"{format_float(median_lambda, digits=3)} |"
+        )
+    return rows or ["| _none_ |  |  |  |  |  |  |  |  |"]
+
+
+def contrast_split_event_counts(split_history: pd.DataFrame) -> dict[tuple[Any, ...], dict[str, float]]:
+    """Return accepted/rejected event counts and median score for contrast candidates."""
+    if split_history.empty or "split_acceptance" not in split_history:
+        return {}
+    contrast = split_history.loc[split_history["split_acceptance"] == CONTRAST_ACCEPTANCE_LABEL].copy()
+    if contrast.empty:
+        return {}
+    event_columns = [
+        "month",
+        "split_id",
+        "basis_training_sites",
+        "class_mode",
+        "allocation",
+        "split_mode",
+        "geometry",
+        "split_event",
+        "accepted",
+        "contrast_lambda",
+    ]
+    events = contrast[event_columns].drop_duplicates()
+    grouped = events.groupby(["class_mode", "allocation", "split_mode", "geometry"], sort=False, dropna=False)
+    summary: dict[tuple[Any, ...], dict[str, float]] = {}
+    for key, group_obj in grouped:
+        group = cast(pd.DataFrame, group_obj)
+        summary[cast(tuple[Any, ...], key)] = {
+            "accepted": float(group["accepted"].sum()),
+            "rejected": float((~group["accepted"].astype(bool)).sum()),
+            "median_lambda": float(group["contrast_lambda"].median()),
+        }
+    return summary
+
+
+def fixed_outer_comparison_rows(overall_scores: pd.DataFrame) -> list[str]:
+    """Format fixed-outer score rows with full-domain comparator deltas."""
+    rows: list[str] = []
+    fixed_rows = overall_scores.loc[overall_scores["outer_treatment"] == "fixed_outer"].sort_values(
+        "heldout_cv_nrmse"
+    )
+    comparator_class = {
+        "bucketbasisfunction": "land_sea",
+        "quadtreebasisfunction": "no_mask",
+    }
+    for fixed_row in dataframe_records(fixed_rows):
+        class_mode = comparator_class.get(str(fixed_row["basis_family"]))
+        comparator = overall_scores.loc[
+            (overall_scores["basis_family"] == fixed_row["basis_family"])
+            & (overall_scores["class_mode"] == class_mode)
+            & (overall_scores["outer_treatment"] == "full_domain")
+        ]
+        if comparator.empty:
+            continue
+        comparator_row = dataframe_records(comparator.head(1))[0]
+        delta_nrmse = float(fixed_row["heldout_cv_nrmse"]) - float(comparator_row["heldout_cv_nrmse"])
+        rows.append(
+            f"| {fixed_row['candidate']} | {objective_label(str(comparator_row['class_mode']))} "
+            f"{comparator_row['candidate']} | {fixed_row['actual_regions']:.1f} | "
+            f"{comparator_row['actual_regions']:.1f} | {format_float(fixed_row['heldout_cv_nrmse'])} | "
+            f"{format_float(comparator_row['heldout_cv_nrmse'])} | {format_float(delta_nrmse)} |"
+        )
+    return rows or ["| _none_ |  |  |  |  |  |  |"]
 
 
 def overall_score_rows(overall_scores: pd.DataFrame, *, n: int) -> list[str]:

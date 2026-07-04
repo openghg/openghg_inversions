@@ -16,9 +16,11 @@ The independently variable pieces are:
 - **Geometry**: row/column index geometry or local lat/lon metre geometry for split-shape decisions.
 - **Split stopping**: optional policies that reject proposed child regions. When stopping is enabled, the requested region count is an upper target.
 
-The comparison also includes legacy `bucketbasisfunction` and `quadtreebasisfunction` rows generated from the same training weights. Their actual region counts can differ from the 250 target. `bucketbasisfunction` is shown as `weighted/bucket`; in this codebase the `weighted_algorithm` alias uses the land/sea weighted bucket splitter, so it is grouped with the land/sea objective. `quadtreebasisfunction` is shown as `quadtree` and grouped with the no-mask objective.
+The comparison also includes legacy `bucketbasisfunction` and `quadtreebasisfunction` rows generated from the same training weights. Their actual region counts can differ from the 250 target. `bucketbasisfunction` is shown as `weighted/bucket`; in this codebase the `weighted_algorithm` alias uses the land/sea weighted bucket splitter, so it is grouped with the land/sea objective. `quadtreebasisfunction` is shown as `quadtree` and grouped with the no-mask objective. Fixed-outer rows keep the package EUROPE InTEM outer regions fixed and build the inner region with quadtree or weighted/bucket splitting.
 
 The important separation is that `weights` define contribution/importance, while `geometry` defines physical coordinates for split shape. Lat/lon geometry does not change contribution weights, class allocation, or posterior weighting. The Blue Pebble generator builds these weights with the same multi-site footprint-times-flux reduction used by the production `basis_functions_wrapper` path.
+
+Axis-parallel contrast rows append `/contrast` to the candidate label. They use the mass-preserving contrast score with `tau=1`, identity design covariance, and `min_contrast_lambda=1.0e-18`. This is an uncalibrated ranking/debugging threshold, not a calibrated expected-information-gain value.
 
 For the no-mask score rows below, allocation is reported as `single_class` because there is only one class. The generator uses the normal weight-allocation API internally, but no inter-class allocation decision is being tested in that case.
 
@@ -31,6 +33,8 @@ Candidate labels use the format `allocation/split_step/split_mode/geometry`. The
 | `no_mask` | one class over the full domain; no hard class boundary is imposed |
 | `land_sea` | two hard classes, land and ocean |
 | `selected_countries` | ocean, selected countries, and `other_land` are separate classes |
+| `fixed_outer` | package EUROPE InTEM outer regions are fixed; only the inner region is generated |
+| `full_domain` | candidate generated across the full EUROPE domain |
 | `single_class` | the no-mask allocation case; there is no inter-class allocation decision |
 | `weight` | allocate target regions to classes by total training weight |
 | `axis_parallel` | split a region with a row- or column-aligned cut |
@@ -41,6 +45,7 @@ Candidate labels use the format `allocation/split_step/split_mode/geometry`. The
 | `lat_lon_metres` | use local metre-scaled longitude/latitude coordinates for split shape |
 | `weighted/bucket` | legacy `bucketbasisfunction`; uses the land/sea weighted bucket algorithm |
 | `quadtree` | legacy `quadtreebasisfunction`; recursively subdivides the grid without a class mask |
+| `contrast` | optional axis-parallel split gate using the mass-preserving contrast score |
 | `CV` | cross-validation; here, temporal holdout scoring with one shared basis per month/split |
 | `NRMSE` | RMSE divided by the RMS of the full-grid held-out modelled observation |
 | `fp` | OpenGHG/NAME footprint field |
@@ -55,9 +60,9 @@ The script reads footprints and CH4 flux from OpenGHG store `shared_store_zarr` 
 
 January and July 2019 are scored separately. Each month uses three temporal CV splits: a one-week holdout starting on days 6, 13, 20, with a two-day buffer excluded before and after the held-out week. For each month/split, one shared basis is built from the combined remaining TAC and MHD in-month training footprints, matching the production multi-site basis objective. Held-out scores are then reported separately for TAC and MHD.
 
-Masked constrained candidates use `weight` allocation only, so the generated evidence focuses on the allocation mode used for the current recommendation.
+Masked constrained candidates use `weight` allocation only, so the generated evidence focuses on the allocation mode used for the current recommendation. Contrast-score diagnostics use only training footprints and prior flux/mass weights; they do not use observed mole fractions, residuals, or held-out footprints.
 
-Per-score-site/month aggregate scores are written to `docs/plans/ogi_048_basis_option_scores.csv`, split-level scores are written to `docs/plans/ogi_048_basis_option_split_scores.csv`, and overall all-score-site/month/split scores are written to `docs/plans/ogi_048_basis_option_overall_scores.csv`. The split-level table contains 312 scored rows and includes `basis_training_sites`, `basis_train_observations`, and `score_site_holdout_observations` to make the shared-basis training set explicit.
+Per-score-site/month aggregate scores are written to `docs/plans/ogi_048_basis_option_scores.csv`, split-level scores are written to `docs/plans/ogi_048_basis_option_split_scores.csv`, and overall all-score-site/month/split scores are written to `docs/plans/ogi_048_basis_option_overall_scores.csv`. The split-level table contains 480 scored rows and includes `basis_training_sites`, `basis_train_observations`, and `score_site_holdout_observations` to make the shared-basis training set explicit.
 
 Constrained split-history diagnostics are written to `docs/plans/ogi_048_basis_option_split_history.csv.gz`. Final-region shape diagnostics for all candidates are written to `docs/plans/ogi_048_basis_option_region_diagnostics.csv.gz`; those include bounding-box aspect ratio, fill fraction, 4-neighbour connected-component counts, grid compactness, and PCA eccentricity.
 
@@ -85,7 +90,7 @@ Only this held-out CV score is included in these tables and plots. It is still n
 
 ## Best Representative Basis Maps
 
-The map figure shows the best overall held-out CV candidates by objective, using one representative January basis split for display. No-mask and land/sea rows show the best three constrained candidates plus the matching legacy option. Selected-country has no legacy counterpart, so it shows the best four constrained candidates.
+The map figure shows the best overall held-out CV candidates by objective, using one representative January basis split for display. No-mask and land/sea rows show the best three full-domain constrained candidates plus the matching full-domain legacy option. Selected-country has no legacy counterpart, so it shows the best four constrained candidates. Fixed-outer rows show the available fixed-outer reference candidates.
 
 ![Basis option contrasts](figures/ogi_048_basis_options/basis_option_contrasts_250.png)
 
@@ -129,6 +134,34 @@ The heatmap shows the mean split score for each held-out site/month context, gro
 
 ![Ranked scores](figures/ogi_048_basis_options/basis_option_ranked_scores_250.png)
 
+### Axis-Parallel Contrast Gate Diagnostics
+
+The table below pairs each full-domain axis-parallel baseline with its contrast-gated counterpart. The contrast score uses `tau=1` and identity design covariance, so `lambda` and `delta_eig` are useful here only as uncalibrated split-ranking quantities.
+
+| objective | option | baseline regions | contrast regions | rejected splits | baseline CV NRMSE | contrast CV NRMSE | delta NRMSE | median lambda |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Land/Sea Mask | weight/axis_parallel/balanced/lat_lon_metres | 250.0 | 250.0 | 248 | 0.1644 | 0.1636 | -0.0008 | 1.985e-17 |
+| Land/Sea Mask | weight/axis_parallel/balanced/row_column | 250.0 | 250.0 | 267 | 0.1802 | 0.1799 | -0.0003 | 1.819e-17 |
+| Land/Sea Mask | weight/axis_parallel/count/lat_lon_metres | 250.0 | 236.8 | 200 | 0.1134 | 0.1506 | 0.0372 | 2.664e-17 |
+| Land/Sea Mask | weight/axis_parallel/count/row_column | 250.0 | 237.8 | 242 | 0.1143 | 0.1713 | 0.0569 | 2.104e-17 |
+| No Mask | single_class/axis_parallel/balanced/lat_lon_metres | 250.0 | 250.0 | 264 | 0.1462 | 0.1425 | -0.0036 | 1.819e-17 |
+| No Mask | single_class/axis_parallel/balanced/row_column | 250.0 | 250.0 | 258 | 0.1595 | 0.1571 | -0.0024 | 1.826e-17 |
+| No Mask | single_class/axis_parallel/count/lat_lon_metres | 250.0 | 52.5 | 301 | 0.1156 | 1.1850 | 1.0694 | 1.062e-18 |
+| No Mask | single_class/axis_parallel/count/row_column | 250.0 | 54.3 | 312 | 0.1149 | 1.1795 | 1.0645 | 1.054e-18 |
+| Selected Countries | weight/axis_parallel/balanced/lat_lon_metres | 250.0 | 240.5 | 374 | 0.1498 | 0.1457 | -0.0041 | 1.282e-17 |
+| Selected Countries | weight/axis_parallel/balanced/row_column | 250.0 | 245.7 | 389 | 0.1464 | 0.1445 | -0.0020 | 1.227e-17 |
+| Selected Countries | weight/axis_parallel/count/lat_lon_metres | 250.0 | 204.8 | 365 | 0.1359 | 0.2207 | 0.0848 | 8.592e-18 |
+| Selected Countries | weight/axis_parallel/count/row_column | 250.0 | 236.2 | 382 | 0.1461 | 0.2014 | 0.0554 | 1.016e-17 |
+
+### Fixed-Outer Diagnostics
+
+The fixed-outer rows hold the package EUROPE outer regions fixed and build the inner region with the listed legacy splitter. The weighted/bucket fixed-inner diagnostic uses a cropped land/sea mask so land/sea separation remains aligned after cropping.
+
+| fixed candidate | full-domain comparator | fixed regions | full regions | fixed CV NRMSE | full CV NRMSE | delta NRMSE |
+|---|---|---:|---:|---:|---:|---:|
+| fixed_outer/weighted/bucket | Land/Sea Mask weighted/bucket | 255.8 | 249.8 | 0.1961 | 0.1515 | 0.0446 |
+| fixed_outer/quadtree | No Mask quadtree | 255.0 | 250.5 | 0.2001 | 0.1865 | 0.0137 |
+
 ### Overall Held-Out CV Scores
 
 | objective | rank | candidate | regions | score rows | basis splits | CV NRMSE | CV RMSE | CV bias | CV corr |
@@ -148,6 +181,8 @@ The heatmap shows the mean split score for each held-out site/month context, gro
 | Selected Countries | 3 | weight/inertial/count/lat_lon_metres | 250.0 | 12 | 6 | 0.1121 | 2.489e-09 | -5.627e-11 | 0.9768 |
 | Selected Countries | 4 | weight/inertial/count/row_column | 250.0 | 12 | 6 | 0.1277 | 2.767e-09 | -7.820e-12 | 0.9716 |
 | Selected Countries | 5 | weight/axis_parallel/count/lat_lon_metres | 250.0 | 12 | 6 | 0.1359 | 3.046e-09 | 2.529e-10 | 0.9715 |
+| Fixed Outer Regions | 1 | fixed_outer/weighted/bucket | 255.8 | 12 | 6 | 0.1961 | 4.622e-09 | 2.075e-09 | 0.9216 |
+| Fixed Outer Regions | 2 | fixed_outer/quadtree | 255.0 | 12 | 6 | 0.2001 | 4.969e-09 | 1.950e-09 | 0.9214 |
 
 ### Best Held-Out CV Scores By Site, Month, And Objective
 
@@ -155,8 +190,8 @@ The heatmap shows the mean split score for each held-out site/month context, gro
 |---|---|---|---:|---|---:|---:|---:|---:|---:|---:|
 | No Mask | MHD | January | 1 | single_class/axis_parallel/count/row_column | 250.0 | 3 | 0.1606 | 1.264e-09 | 6.617e-10 | 0.9615 |
 | No Mask | MHD | January | 2 | single_class/axis_parallel/count/lat_lon_metres | 250.0 | 3 | 0.1655 | 1.278e-09 | 7.668e-10 | 0.9598 |
-| No Mask | MHD | July | 1 | single_class/axis_parallel/balanced/row_column | 250.0 | 3 | 0.1330 | 2.767e-09 | 4.628e-10 | 0.9595 |
-| No Mask | MHD | July | 2 | single_class/axis_parallel/balanced/lat_lon_metres | 250.0 | 3 | 0.1358 | 2.834e-09 | 4.703e-10 | 0.9583 |
+| No Mask | MHD | July | 1 | single_class/axis_parallel/balanced/row_column/contrast | 250.0 | 3 | 0.1231 | 2.540e-09 | 4.831e-11 | 0.9616 |
+| No Mask | MHD | July | 2 | single_class/axis_parallel/balanced/lat_lon_metres/contrast | 250.0 | 3 | 0.1266 | 2.617e-09 | 1.337e-10 | 0.9611 |
 | No Mask | TAC | January | 1 | single_class/axis_parallel/count/lat_lon_metres | 250.0 | 3 | 0.0560 | 3.302e-09 | -7.940e-10 | 0.9898 |
 | No Mask | TAC | January | 2 | single_class/axis_parallel/count/row_column | 250.0 | 3 | 0.0570 | 3.355e-09 | -9.321e-10 | 0.9897 |
 | No Mask | TAC | July | 1 | single_class/inertial/count/row_column | 250.0 | 3 | 0.0717 | 4.046e-09 | 1.456e-09 | 0.9883 |
@@ -177,6 +212,14 @@ The heatmap shows the mean split score for each held-out site/month context, gro
 | Selected Countries | TAC | January | 2 | weight/inertial/count/row_column | 250.0 | 3 | 0.0588 | 3.121e-09 | -1.087e-09 | 0.9842 |
 | Selected Countries | TAC | July | 1 | weight/inertial/count/lat_lon_metres | 250.0 | 3 | 0.0574 | 3.448e-09 | -6.097e-10 | 0.9946 |
 | Selected Countries | TAC | July | 2 | weight/inertial/count/row_column | 250.0 | 3 | 0.0629 | 3.778e-09 | -1.159e-09 | 0.9929 |
+| Fixed Outer Regions | MHD | January | 1 | fixed_outer/quadtree | 255.0 | 3 | 0.1903 | 1.306e-09 | 7.248e-10 | 0.9411 |
+| Fixed Outer Regions | MHD | January | 2 | fixed_outer/weighted/bucket | 255.7 | 3 | 0.1965 | 1.348e-09 | 8.400e-10 | 0.9438 |
+| Fixed Outer Regions | MHD | July | 1 | fixed_outer/quadtree | 255.0 | 3 | 0.4473 | 9.129e-09 | 6.848e-09 | 0.7713 |
+| Fixed Outer Regions | MHD | July | 2 | fixed_outer/weighted/bucket | 256.0 | 3 | 0.4489 | 9.175e-09 | 6.802e-09 | 0.7627 |
+| Fixed Outer Regions | TAC | January | 1 | fixed_outer/weighted/bucket | 255.7 | 3 | 0.0401 | 2.183e-09 | -2.945e-10 | 0.9936 |
+| Fixed Outer Regions | TAC | January | 2 | fixed_outer/quadtree | 255.0 | 3 | 0.0592 | 3.354e-09 | -6.775e-10 | 0.9889 |
+| Fixed Outer Regions | TAC | July | 1 | fixed_outer/weighted/bucket | 256.0 | 3 | 0.0987 | 5.781e-09 | 9.522e-10 | 0.9864 |
+| Fixed Outer Regions | TAC | July | 2 | fixed_outer/quadtree | 255.0 | 3 | 0.1038 | 6.086e-09 | 9.065e-10 | 0.9845 |
 
 ## Interpretation
 
@@ -184,8 +227,8 @@ The heatmap shows the mean split score for each held-out site/month context, gro
 - Balanced splits often help when the score is dominated by high-contribution areas, but they are not guaranteed to produce visually regular regions.
 - Region classes impose hard boundaries, which can help interpretability but can also spend regions on low-contribution classes.
 - Lat/lon metre geometry is a physical-coordinate correction. It can change region shapes, especially for inertial or high-latitude splits, but it is not itself a weight-balancing rule.
-- The three objective groups should not be read as one single efficiency race. No mask, land/sea, and selected-country masks are often chosen for scientific or reporting reasons as well as basis efficiency.
-- Split-stopping policies are not included in the score matrix because they can return fewer than 250 actual regions, making direct comparison less clean.
+- The objective groups should not be read as one single efficiency race. No mask, land/sea, selected-country masks, and fixed outer regions are often chosen for scientific or reporting reasons as well as basis efficiency.
+- Split-stopping policies can return fewer than 250 actual regions. Contrast rows should therefore be read with their actual region counts and rejection counts, not just their nominal target.
 
 ## What This Does Not Prove
 
