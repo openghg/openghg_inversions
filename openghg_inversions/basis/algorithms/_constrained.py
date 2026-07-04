@@ -429,6 +429,44 @@ class MinChildTargetWeightShare:
         return min(child_weights) / equal_target_weight >= self.min_child_target_weight_share
 
 
+@dataclass(frozen=True)
+class MaxChildPCAEccentricity:
+    """Reject splits that create child partitions above a PCA eccentricity limit.
+
+    The eccentricity is computed from each child partition's unweighted node
+    coordinates. If ``geometry`` is supplied, its physical coordinates are used;
+    otherwise row/column index coordinates are used. Single-cell children have
+    eccentricity ``1`` because they have no resolvable long axis. Multi-cell
+    rank-one children have infinite eccentricity and are rejected by any finite
+    threshold.
+    """
+
+    max_child_pca_eccentricity: float
+    geometry: SplitGeometry | None = None
+    tolerance: float = _INERTIAL_TOLERANCE
+
+    def __post_init__(self) -> None:
+        """Validate the eccentricity threshold and tolerance."""
+        if self.max_child_pca_eccentricity < 1.0 or not np.isfinite(self.max_child_pca_eccentricity):
+            raise ValueError("max_child_pca_eccentricity must be at least 1 and finite.")
+        if self.tolerance < 0.0 or not np.isfinite(self.tolerance):
+            raise ValueError("tolerance must be non-negative and finite.")
+
+    def __call__(
+        self,
+        parent: GridPartition,
+        children: list[GridPartition],
+        weights: np.ndarray,
+    ) -> bool:
+        """Return true when every child is below the eccentricity threshold."""
+        del parent, weights
+        return all(
+            _partition_pca_eccentricity(child, geometry=self.geometry, tolerance=self.tolerance)
+            <= self.max_child_pca_eccentricity
+            for child in children
+        )
+
+
 @dataclass(frozen=True, init=False)
 class AllSplitAcceptancePolicies:
     """Accept a split only when every policy accepts it."""
@@ -1506,6 +1544,38 @@ def _node_coordinates(
     return np.asarray(nodes, dtype=np.float64)
 
 
+def _partition_pca_eccentricity(
+    nodes: GridPartition,
+    *,
+    geometry: SplitGeometry | None = None,
+    tolerance: float = _INERTIAL_TOLERANCE,
+) -> float:
+    """Return the square-root PCA variance ratio for one partition shape."""
+    if len(nodes) < 2:
+        return 1.0
+
+    coords = _node_coordinates(nodes, geometry=geometry)
+    centered = coords - coords.mean(axis=0)
+    covariance = centered.T @ centered / len(nodes)
+    if not np.isfinite(covariance).all():
+        return np.inf
+
+    try:
+        eigenvalues = np.linalg.eigvalsh(covariance)
+    except np.linalg.LinAlgError:
+        return np.inf
+    if not np.isfinite(eigenvalues).all():
+        return np.inf
+
+    minor = float(max(eigenvalues[0], 0.0))
+    major = float(max(eigenvalues[-1], 0.0))
+    if major <= tolerance:
+        return 1.0
+    if minor <= tolerance:
+        return np.inf
+    return float(np.sqrt(major / minor))
+
+
 def _coordinate_weights(
     size: int,
     node_weights: npt.NDArray[np.float64] | None,
@@ -1628,6 +1698,7 @@ __all__ = [
     "GreedyAxisParallelSplitStrategy",
     "InertialSplitStep",
     "LatLonGridGeometry",
+    "MaxChildPCAEccentricity",
     "MinChildWeightShare",
     "MinChildTargetWeightShare",
     "NbasisAllocation",
