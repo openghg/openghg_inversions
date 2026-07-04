@@ -59,6 +59,8 @@ Masked constrained candidates use `weight` allocation only, so the generated evi
 
 Per-score-site/month aggregate scores are written to `docs/plans/ogi_048_basis_option_scores.csv`, split-level scores are written to `docs/plans/ogi_048_basis_option_split_scores.csv`, and overall all-score-site/month/split scores are written to `docs/plans/ogi_048_basis_option_overall_scores.csv`. The split-level table contains 312 scored rows and includes `basis_training_sites`, `basis_train_observations`, and `score_site_holdout_observations` to make the shared-basis training set explicit.
 
+Constrained split-history diagnostics are written to `docs/plans/ogi_048_basis_option_split_history.csv.gz`. Final-region shape diagnostics for all candidates are written to `docs/plans/ogi_048_basis_option_region_diagnostics.csv.gz`; those include bounding-box aspect ratio, fill fraction, 4-neighbour connected-component counts, grid compactness, and PCA eccentricity.
+
 ## Representative Input Fields
 
 The log-scale maps below show the representative monthly prior flux and the combined training `fp_x_flux` field used to construct the first displayed basis split. The `fp_x_flux` field is normalized before candidate generation, but the plotted field is the unnormalized footprint-times-flux product.
@@ -84,6 +86,21 @@ Only this held-out CV score is included in these tables and plots. It is still n
 The map figure shows the best overall held-out CV candidates by objective, using one representative January basis split for display. No-mask and land/sea rows show the best three constrained candidates plus the matching legacy option. Selected-country has no legacy counterpart, so it shows the best four constrained candidates.
 
 ![Basis option contrasts](figures/ogi_048_basis_options/basis_option_contrasts_250.png)
+
+### Narrow-Region Diagnostics
+
+The table below lists the highest-eccentricity final regions among constrained inertial candidates. These diagnostics are not ranking scores; they are included to trace the narrow regions visible in the masked inertial maps.
+
+| objective | month | split | candidate | region | cells | bbox aspect | fill | components | PCA ecc. | compactness |
+|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Land/Sea Mask | January | january_20_26 | weight/inertial/count/row_column | 98 | 3 | 11.00 | 0.27 | 2 | inf | 0.377 |
+| Land/Sea Mask | July | july_06_12 | weight/inertial/balanced/lat_lon_metres | 15 | 2 | 11.00 | 0.18 | 2 | inf | 0.393 |
+| Land/Sea Mask | July | july_06_12 | weight/inertial/count/lat_lon_metres | 238 | 2 | 10.00 | 0.20 | 2 | inf | 0.393 |
+| Land/Sea Mask | July | july_20_26 | weight/inertial/count/lat_lon_metres | 234 | 2 | 10.00 | 0.20 | 2 | inf | 0.393 |
+| Land/Sea Mask | January | january_13_19 | weight/inertial/count/row_column | 7 | 8 | 8.00 | 1.00 | 1 | inf | 0.310 |
+| Selected Countries | January | january_13_19 | weight/inertial/count/row_column | 7 | 8 | 8.00 | 1.00 | 1 | inf | 0.310 |
+| Selected Countries | July | july_13_19 | weight/inertial/balanced/row_column | 243 | 2 | 7.00 | 0.29 | 2 | inf | 0.393 |
+| No Mask | January | january_13_19 | single_class/inertial/count/row_column | 227 | 7 | 7.00 | 1.00 | 1 | inf | 0.344 |
 
 ## Grouped Scores For 250-Region Options
 

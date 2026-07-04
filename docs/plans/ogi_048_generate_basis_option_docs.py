@@ -11,6 +11,7 @@ month, and scores are computed on the held-out week.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from heapq import heappop, heappush
 from pathlib import Path
 from typing import Any, cast
 
@@ -30,11 +31,10 @@ from openghg_inversions.basis._functions import _mean_fp_times_mean_flux
 from openghg_inversions.basis.algorithms import (
     AllocationMode,
     AxisParallelSplitStep,
-    GreedyAxisParallelSplitStrategy,
     InertialSplitStep,
     LatLonGridGeometry,
+    allocate_nbasis_by_class,
     quadtree_algorithm,
-    region_constrained_basis,
     weighted_algorithm,
 )
 
@@ -45,6 +45,8 @@ REPORT_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_algorithm_options.md"
 SCORES_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_option_scores.csv"
 SPLIT_SCORES_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_option_split_scores.csv"
 OVERALL_SCORES_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_option_overall_scores.csv"
+SPLIT_HISTORY_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_option_split_history.csv.gz"
+REGION_DIAGNOSTICS_PATH = ROOT / "docs" / "plans" / "ogi_048_basis_option_region_diagnostics.csv.gz"
 
 COUNTRY_PATH = ROOT / "tests" / "data" / "country_EUROPE.nc"
 LPDM_COUNTRY_PATH = Path("/group/chem/acrg/LPDM/countries/country_EUROPE.nc")
@@ -58,6 +60,7 @@ QUADTREE_SEED = 42
 HOLDOUT_DAYS = 7
 BUFFER_DAYS = 2
 HOLDOUT_START_DAYS = (6, 13, 20)
+NEIGHBOUR_OFFSETS = ((1, 0), (-1, 0), (0, 1), (0, -1))
 OBJECTIVE_GROUPS = ("no_mask", "land_sea", "selected_countries")
 OBJECTIVE_LABELS = {
     "no_mask": "No Mask",
@@ -79,6 +82,8 @@ SELECTED_COUNTRIES = (
     "ROMANIA",
     "RUSSIAN FEDERATION",
 )
+GridNode = tuple[int, int]
+GridPartition = list[GridNode]
 
 
 @dataclass(frozen=True)
@@ -142,6 +147,7 @@ class CandidateLabels:
     geometry: str
     labels: xr.DataArray
     actual_regions: int
+    split_history: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -176,10 +182,19 @@ def main() -> None:
     """Generate the documentation page, plots, and score CSVs."""
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
 
-    split_scores, representative_scenarios, representative_class_modes, representative_fields = (
+    (
+        split_scores,
+        split_history,
+        region_diagnostics,
+        representative_scenarios,
+        representative_class_modes,
+        representative_fields,
+    ) = (
         build_cross_validation_scores()
     )
     split_scores.to_csv(SPLIT_SCORES_PATH, index=False)
+    split_history.to_csv(SPLIT_HISTORY_PATH, index=False)
+    region_diagnostics.to_csv(REGION_DIAGNOSTICS_PATH, index=False)
     scores = aggregate_split_scores(split_scores)
     scores.to_csv(SCORES_PATH, index=False)
     overall_scores = aggregate_overall_scores(split_scores)
@@ -200,10 +215,13 @@ def main() -> None:
         scores=scores,
         split_scores=split_scores,
         overall_scores=overall_scores,
+        region_diagnostics=region_diagnostics,
     )
 
 
 def build_cross_validation_scores() -> tuple[
+    pd.DataFrame,
+    pd.DataFrame,
     pd.DataFrame,
     list[Scenario],
     dict[str, xr.DataArray],
@@ -211,6 +229,8 @@ def build_cross_validation_scores() -> tuple[
 ]:
     """Build split-level scores for all sites, months, and basis candidates."""
     records: list[dict[str, Any]] = []
+    split_history_records: list[dict[str, Any]] = []
+    region_diagnostic_records: list[dict[str, Any]] = []
     representative_scenarios: list[Scenario] = []
     representative_class_modes: dict[str, xr.DataArray] | None = None
     representative_fields: RepresentativeFields | None = None
@@ -256,6 +276,24 @@ def build_cross_validation_scores() -> tuple[
                 class_modes=class_modes,
                 geometry=geometry,
             )
+            for candidate in candidate_labels:
+                split_history_records.extend(
+                    candidate_split_history_records(
+                        candidate,
+                        month=month,
+                        split=split,
+                        basis_training_sites=basis_training_sites,
+                    )
+                )
+                region_diagnostic_records.extend(
+                    candidate_region_diagnostic_records(
+                        candidate,
+                        weights=weights,
+                        month=month,
+                        split=split,
+                        basis_training_sites=basis_training_sites,
+                    )
+                )
             if representative_fields is None:
                 representative_fields = RepresentativeFields(
                     month_label=month.label,
@@ -296,7 +334,14 @@ def build_cross_validation_scores() -> tuple[
     if representative_fields is None:
         raise RuntimeError("No representative input fields were generated.")
 
-    return pd.DataFrame.from_records(records), representative_scenarios, representative_class_modes, representative_fields
+    return (
+        pd.DataFrame.from_records(records),
+        pd.DataFrame.from_records(split_history_records),
+        pd.DataFrame.from_records(region_diagnostic_records),
+        representative_scenarios,
+        representative_class_modes,
+        representative_fields,
+    )
 
 
 def load_blue_pebble_month(*, site: SiteSpec, month: MonthSpec) -> MonthInputs:
@@ -528,7 +573,7 @@ def build_candidate_labels(
             for split_step_name in ("axis_parallel", "inertial"):
                 for split_mode in ("count", "balanced"):
                     for geometry_name, split_geometry in (("row_column", None), ("lat_lon_metres", geometry)):
-                        labels = build_constrained_basis_labels(
+                        labels, split_history = build_constrained_basis_labels(
                             weights=weights,
                             region_classes=region_classes,
                             allocation=allocation,
@@ -546,6 +591,7 @@ def build_candidate_labels(
                                 geometry=geometry_name,
                                 labels=labels,
                                 actual_regions=count_regions(labels),
+                                split_history=split_history,
                             )
                         )
 
@@ -561,7 +607,7 @@ def build_constrained_basis_labels(
     split_step_name: str,
     split_mode: str,
     geometry: LatLonGridGeometry | None,
-) -> xr.DataArray:
+) -> tuple[xr.DataArray, tuple[dict[str, Any], ...]]:
     """Build one 250-target constrained basis label map."""
     balanced = split_mode == "balanced"
     if split_step_name == "axis_parallel":
@@ -571,14 +617,497 @@ def build_constrained_basis_labels(
     else:
         raise ValueError(f"Unknown split step {split_step_name!r}.")
 
-    labels = region_constrained_basis(
+    labels, split_history = recording_region_constrained_basis(
+        weights=weights,
+        region_classes=region_classes,
+        nbasis=TARGET_REGIONS,
+        allocation=cast(AllocationMode, allocation),
+        split_step=split_step,
+    )
+    return labels.astype(np.int32).rename("basis"), tuple(split_history)
+
+
+def recording_region_constrained_basis(
+    *,
+    weights: xr.DataArray,
+    region_classes: xr.DataArray,
+    nbasis: int,
+    allocation: AllocationMode,
+    split_step: Any,
+) -> tuple[xr.DataArray, list[dict[str, Any]]]:
+    """Generate constrained labels while recording accepted greedy splits."""
+    weights, region_classes = align_recording_inputs(weights=weights, region_classes=region_classes)
+    weight_values = validated_weight_values(weights)
+    class_values = region_classes.to_numpy()
+    mapped_classes = mapped_class_values(class_values)
+    labels = np.zeros(weight_values.shape, dtype=np.int64)
+    history: list[dict[str, Any]] = []
+
+    if not mapped_classes:
+        return labels_dataarray(labels, weights), history
+
+    targets = allocate_nbasis_by_class(
         weights,
         region_classes,
-        TARGET_REGIONS,
-        allocation=cast(AllocationMode, allocation),
-        split_strategy=GreedyAxisParallelSplitStrategy(split_step=split_step),
+        nbasis,
+        allocation=allocation,
     )
-    return labels.astype(np.int32).rename("basis")
+
+    next_label = 1
+    for class_value in mapped_classes:
+        target_regions = targets[class_value]
+        class_mask = class_values == class_value
+        class_weights = np.where(class_mask, weight_values, 0.0)
+        class_weight_sum = float(class_weights.sum())
+        if class_weight_sum == 0.0:
+            class_weights = class_mask.astype(np.float64)
+            class_weight_sum = float(class_weights.sum())
+
+        nodes = node_list_from_mask(class_mask)
+        partitions, class_history = recording_greedy_partition(
+            nodes=nodes,
+            target_regions=target_regions,
+            weights=class_weights,
+            split_step=split_step,
+        )
+        for record in class_history:
+            record.update(
+                {
+                    "class_value": str(class_value),
+                    "class_target_regions": int(target_regions),
+                    "class_cells": int(np.count_nonzero(class_mask)),
+                    "class_weight": class_weight_sum,
+                }
+            )
+        history.extend(class_history)
+
+        for nodes in partitions:
+            rows, cols = node_indices(nodes)
+            labels[rows, cols] = next_label
+            next_label += 1
+
+    return labels_dataarray(labels, weights), history
+
+
+def align_recording_inputs(
+    *,
+    weights: xr.DataArray,
+    region_classes: xr.DataArray,
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Align generator inputs in the same shape expected by constrained basis code."""
+    if weights.ndim != 2 or region_classes.ndim != 2:
+        raise ValueError("weights and region_classes must be two-dimensional.")
+    if set(weights.dims) != set(region_classes.dims):
+        raise ValueError("weights and region_classes must use the same dimensions.")
+    region_classes = region_classes.transpose(*weights.dims)
+    return xr.align(weights, region_classes, join="exact")
+
+
+def validated_weight_values(weights: xr.DataArray) -> np.ndarray:
+    """Return finite non-negative weights for recording diagnostics."""
+    values = np.asarray(weights.to_numpy(), dtype=np.float64)
+    if not np.isfinite(values).all():
+        raise ValueError("weights must be finite.")
+    if (values < 0.0).any():
+        raise ValueError("weights must be non-negative.")
+    return values
+
+
+def mapped_class_values(class_values: np.ndarray) -> list[Any]:
+    """Return first-seen non-null class values."""
+    classes: list[Any] = []
+    for value in pd.unique(class_values.ravel()):
+        if pd.isna(value):
+            continue
+        classes.append(value)
+    return classes
+
+
+def labels_dataarray(labels: np.ndarray, template: xr.DataArray) -> xr.DataArray:
+    """Return a label DataArray aligned to the template weight field."""
+    return xr.DataArray(labels, dims=template.dims, coords=template.coords, name="basis")
+
+
+def recording_greedy_partition(
+    *,
+    nodes: GridPartition,
+    target_regions: int,
+    weights: np.ndarray,
+    split_step: Any,
+) -> tuple[list[GridPartition], list[dict[str, Any]]]:
+    """Apply the production greedy queue pattern while recording split attempts."""
+    active: list[tuple[tuple[float, int, int], int, int, GridPartition]] = []
+    done: list[GridPartition] = []
+    history: list[dict[str, Any]] = []
+    next_partition_id = 1
+    queue_counter = 0
+    split_event = 0
+    current_regions = 0
+
+    def push_active(partition_nodes: GridPartition, *, partition_id: int, depth: int) -> None:
+        nonlocal queue_counter
+        if not partition_nodes:
+            return
+        priority = (-node_weight(partition_nodes, weights), -len(partition_nodes), queue_counter)
+        queue_counter += 1
+        heappush(active, (priority, partition_id, depth, partition_nodes))
+
+    if nodes:
+        current_regions = 1
+        if len(nodes) > 1:
+            push_active(nodes, partition_id=next_partition_id, depth=0)
+        else:
+            done.append(nodes)
+        next_partition_id += 1
+
+    while current_regions < target_regions and active:
+        _priority, parent_id, parent_depth, parent_nodes = heappop(active)
+        child_partitions = [child for child in split_step(parent_nodes, weights) if child]
+        split_event += 1
+
+        accepted = True
+        rejection_reason = ""
+        if len(child_partitions) < 2:
+            accepted = False
+            rejection_reason = "unsplittable"
+        elif current_regions - 1 + len(child_partitions) > target_regions:
+            accepted = False
+            rejection_reason = "target_exceeded"
+
+        if not accepted:
+            history.extend(
+                split_history_rows(
+                    split_event=split_event,
+                    accepted=False,
+                    rejection_reason=rejection_reason,
+                    target_regions=target_regions,
+                    current_regions_before=current_regions,
+                    parent_id=parent_id,
+                    parent_depth=parent_depth,
+                    parent_nodes=parent_nodes,
+                    child_entries=[(None, child) for child in child_partitions],
+                    weights=weights,
+                )
+            )
+            done.append(parent_nodes)
+            continue
+
+        child_entries: list[tuple[int | None, GridPartition]] = []
+        for child in child_partitions:
+            child_entries.append((next_partition_id, child))
+            next_partition_id += 1
+
+        history.extend(
+            split_history_rows(
+                split_event=split_event,
+                accepted=True,
+                rejection_reason="",
+                target_regions=target_regions,
+                current_regions_before=current_regions,
+                parent_id=parent_id,
+                parent_depth=parent_depth,
+                parent_nodes=parent_nodes,
+                child_entries=child_entries,
+                weights=weights,
+            )
+        )
+
+        current_regions -= 1
+        for child_id, child_nodes in child_entries:
+            current_regions += 1
+            if len(child_nodes) > 1:
+                push_active(child_nodes, partition_id=cast(int, child_id), depth=parent_depth + 1)
+            else:
+                done.append(child_nodes)
+
+    while active:
+        _priority, _partition_id, _depth, active_nodes = heappop(active)
+        done.append(active_nodes)
+
+    return done, history
+
+
+def split_history_rows(
+    *,
+    split_event: int,
+    accepted: bool,
+    rejection_reason: str,
+    target_regions: int,
+    current_regions_before: int,
+    parent_id: int,
+    parent_depth: int,
+    parent_nodes: GridPartition,
+    child_entries: list[tuple[int | None, GridPartition]],
+    weights: np.ndarray,
+) -> list[dict[str, Any]]:
+    """Return one split-history row per proposed child partition."""
+    if not child_entries:
+        child_entries = [(None, [])]
+    parent_metrics = partition_shape_metrics(parent_nodes, weights=weights, prefix="parent")
+    parent_weight = float(parent_metrics["parent_weight"])
+    rows: list[dict[str, Any]] = []
+    for child_index, (child_id, child_nodes) in enumerate(child_entries):
+        child_metrics = partition_shape_metrics(child_nodes, weights=weights, prefix="child")
+        child_weight = float(child_metrics["child_weight"])
+        rows.append(
+            {
+                "split_event": split_event,
+                "accepted": accepted,
+                "rejection_reason": rejection_reason,
+                "target_regions": target_regions,
+                "current_regions_before": current_regions_before,
+                "parent_partition_id": parent_id,
+                "child_partition_id": child_id,
+                "child_index": child_index,
+                "parent_depth": parent_depth,
+                "child_depth": parent_depth + 1 if accepted else parent_depth,
+                "child_weight_share_of_parent": child_weight / parent_weight if parent_weight > 0.0 else np.nan,
+                **parent_metrics,
+                **child_metrics,
+            }
+        )
+    return rows
+
+
+def candidate_split_history_records(
+    candidate: CandidateLabels,
+    *,
+    month: MonthSpec,
+    split: SplitSpec,
+    basis_training_sites: str,
+) -> list[dict[str, Any]]:
+    """Return split-history rows with candidate and CV context fields."""
+    rows: list[dict[str, Any]] = []
+    for record in candidate.split_history:
+        rows.append(
+            {
+                **basis_context_record(month=month, split=split, basis_training_sites=basis_training_sites),
+                **candidate_key_record(candidate),
+                **record,
+            }
+        )
+    return rows
+
+
+def candidate_region_diagnostic_records(
+    candidate: CandidateLabels,
+    *,
+    weights: xr.DataArray,
+    month: MonthSpec,
+    split: SplitSpec,
+    basis_training_sites: str,
+) -> list[dict[str, Any]]:
+    """Return final-region shape diagnostics for one candidate basis."""
+    labels = align_to_test_grid(reference=weights, target=candidate.labels, target_name="basis")
+    label_values = np.asarray(labels.values, dtype=np.int64)
+    weight_values = np.asarray(weights.values, dtype=np.float64)
+    lat_values = np.asarray(labels.coords[labels.dims[0]].values, dtype=np.float64)
+    lon_values = np.asarray(labels.coords[labels.dims[1]].values, dtype=np.float64)
+
+    rows: list[dict[str, Any]] = []
+    for region_label in np.unique(label_values[label_values > 0]):
+        nodes = node_list_from_mask(label_values == region_label)
+        rows.append(
+            {
+                **basis_context_record(month=month, split=split, basis_training_sites=basis_training_sites),
+                **candidate_key_record(candidate),
+                "region_label": int(region_label),
+                **partition_shape_metrics(
+                    nodes,
+                    weights=weight_values,
+                    prefix="region",
+                    lat_values=lat_values,
+                    lon_values=lon_values,
+                ),
+            }
+        )
+    return rows
+
+
+def basis_context_record(
+    *,
+    month: MonthSpec,
+    split: SplitSpec,
+    basis_training_sites: str,
+) -> dict[str, Any]:
+    """Return context fields common to split and region diagnostics."""
+    return {
+        "month": month.label,
+        "split_id": split.split_id,
+        "holdout_start": split.holdout_start.date().isoformat(),
+        "holdout_end": (split.holdout_end - pd.Timedelta(days=1)).date().isoformat(),
+        "basis_training_sites": basis_training_sites,
+    }
+
+
+def candidate_key_record(candidate: CandidateLabels) -> dict[str, Any]:
+    """Return identifying fields for one candidate."""
+    return {
+        "basis_family": candidate.basis_family,
+        "class_mode": candidate.class_mode,
+        "allocation": candidate.allocation,
+        "split_step": candidate.split_step,
+        "split_mode": candidate.split_mode,
+        "geometry": candidate.geometry,
+        "candidate": candidate_display_label(
+            {
+                "basis_family": candidate.basis_family,
+                "allocation": candidate.allocation,
+                "split_step": candidate.split_step,
+                "split_mode": candidate.split_mode,
+                "geometry": candidate.geometry,
+            }
+        ),
+        "target_regions": TARGET_REGIONS,
+        "actual_regions": candidate.actual_regions,
+    }
+
+
+def partition_shape_metrics(
+    nodes: GridPartition,
+    *,
+    weights: np.ndarray,
+    prefix: str,
+    lat_values: np.ndarray | None = None,
+    lon_values: np.ndarray | None = None,
+) -> dict[str, Any]:
+    """Return compactness/eccentricity diagnostics for a grid-node partition."""
+    if not nodes:
+        return {
+            f"{prefix}_cells": 0,
+            f"{prefix}_weight": 0.0,
+            f"{prefix}_row_min": np.nan,
+            f"{prefix}_row_max": np.nan,
+            f"{prefix}_col_min": np.nan,
+            f"{prefix}_col_max": np.nan,
+            f"{prefix}_bbox_height_cells": 0,
+            f"{prefix}_bbox_width_cells": 0,
+            f"{prefix}_bbox_area_cells": 0,
+            f"{prefix}_bbox_aspect_ratio": np.nan,
+            f"{prefix}_bbox_fill_fraction": np.nan,
+            f"{prefix}_connected_components": 0,
+            f"{prefix}_largest_component_fraction": np.nan,
+            f"{prefix}_perimeter_edges": 0,
+            f"{prefix}_grid_compactness": np.nan,
+            f"{prefix}_pca_major_variance": np.nan,
+            f"{prefix}_pca_minor_variance": np.nan,
+            f"{prefix}_pca_eccentricity": np.nan,
+        }
+
+    rows, cols = node_indices(nodes)
+    row_min = int(min(rows))
+    row_max = int(max(rows))
+    col_min = int(min(cols))
+    col_max = int(max(cols))
+    height = row_max - row_min + 1
+    width = col_max - col_min + 1
+    bbox_area = height * width
+    perimeter = grid_perimeter(nodes)
+    component_count, largest_component = connected_component_summary(nodes)
+    pca_major, pca_minor, pca_eccentricity = pca_shape_summary(nodes)
+
+    metrics: dict[str, Any] = {
+        f"{prefix}_cells": len(nodes),
+        f"{prefix}_weight": float(weights[rows, cols].sum()),
+        f"{prefix}_row_min": row_min,
+        f"{prefix}_row_max": row_max,
+        f"{prefix}_col_min": col_min,
+        f"{prefix}_col_max": col_max,
+        f"{prefix}_bbox_height_cells": height,
+        f"{prefix}_bbox_width_cells": width,
+        f"{prefix}_bbox_area_cells": bbox_area,
+        f"{prefix}_bbox_aspect_ratio": max(height, width) / max(1, min(height, width)),
+        f"{prefix}_bbox_fill_fraction": len(nodes) / bbox_area if bbox_area > 0 else np.nan,
+        f"{prefix}_connected_components": component_count,
+        f"{prefix}_largest_component_fraction": largest_component / len(nodes),
+        f"{prefix}_perimeter_edges": perimeter,
+        f"{prefix}_grid_compactness": (4.0 * np.pi * len(nodes) / perimeter**2) if perimeter > 0 else np.nan,
+        f"{prefix}_pca_major_variance": pca_major,
+        f"{prefix}_pca_minor_variance": pca_minor,
+        f"{prefix}_pca_eccentricity": pca_eccentricity,
+    }
+    if lat_values is not None and lon_values is not None:
+        metrics.update(
+            {
+                f"{prefix}_lat_min": float(np.min(lat_values[rows])),
+                f"{prefix}_lat_max": float(np.max(lat_values[rows])),
+                f"{prefix}_lon_min": float(np.min(lon_values[cols])),
+                f"{prefix}_lon_max": float(np.max(lon_values[cols])),
+            }
+        )
+    return metrics
+
+
+def pca_shape_summary(nodes: GridPartition) -> tuple[float, float, float]:
+    """Return unweighted PCA variance and eccentricity diagnostics for a partition."""
+    if len(nodes) < 2:
+        return np.nan, np.nan, np.nan
+    coords = np.asarray(nodes, dtype=np.float64)
+    centered = coords - coords.mean(axis=0)
+    covariance = centered.T @ centered / len(nodes)
+    eigenvalues = np.linalg.eigvalsh(covariance)
+    if not np.isfinite(eigenvalues).all():
+        return np.nan, np.nan, np.nan
+    minor = float(max(eigenvalues[0], 0.0))
+    major = float(max(eigenvalues[-1], 0.0))
+    if major == 0.0:
+        eccentricity = np.nan
+    elif minor <= 1.0e-12:
+        eccentricity = np.inf
+    else:
+        eccentricity = float(np.sqrt(major / minor))
+    return major, minor, eccentricity
+
+
+def connected_component_summary(nodes: GridPartition) -> tuple[int, int]:
+    """Return component count and largest 4-neighbour component size."""
+    remaining = set(nodes)
+    component_count = 0
+    largest_component = 0
+    while remaining:
+        component_count += 1
+        stack = [remaining.pop()]
+        component_size = 0
+        while stack:
+            row, col = stack.pop()
+            component_size += 1
+            for drow, dcol in NEIGHBOUR_OFFSETS:
+                neighbour = (row + drow, col + dcol)
+                if neighbour in remaining:
+                    remaining.remove(neighbour)
+                    stack.append(neighbour)
+        largest_component = max(largest_component, component_size)
+    return component_count, largest_component
+
+
+def grid_perimeter(nodes: GridPartition) -> int:
+    """Return the number of exposed 4-neighbour cell edges."""
+    node_set = set(nodes)
+    perimeter = 0
+    for row, col in node_set:
+        for drow, dcol in NEIGHBOUR_OFFSETS:
+            if (row + drow, col + dcol) not in node_set:
+                perimeter += 1
+    return perimeter
+
+
+def node_list_from_mask(mask: np.ndarray) -> GridPartition:
+    """Return grid-index nodes selected by a Boolean mask."""
+    return list(zip(*np.where(mask)))
+
+
+def node_indices(nodes: GridPartition) -> tuple[list[int], list[int]]:
+    """Split grid-index nodes into row and column index lists."""
+    if not nodes:
+        return [], []
+    rows, cols = zip(*nodes)
+    return list(rows), list(cols)
+
+
+def node_weight(nodes: GridPartition, weights: np.ndarray) -> float:
+    """Return total weight for one partition."""
+    rows, cols = node_indices(nodes)
+    return float(weights[rows, cols].sum())
 
 
 def build_legacy_candidate_labels(weights: xr.DataArray) -> list[CandidateLabels]:
@@ -1114,10 +1643,12 @@ def write_report(
     scores: pd.DataFrame,
     split_scores: pd.DataFrame,
     overall_scores: pd.DataFrame,
+    region_diagnostics: pd.DataFrame,
 ) -> None:
     """Write the documentation page."""
     overall_rows = overall_score_rows(overall_scores, n=5)
     context_rows = context_score_rows(scores, n=2)
+    narrow_rows = narrow_region_rows(region_diagnostics, n=8)
     selected_country_text = ", ".join(short_country_label(name) for name in SELECTED_COUNTRIES)
     holdout_day_text = ", ".join(str(day) for day in HOLDOUT_START_DAYS)
     lines = [
@@ -1183,6 +1714,8 @@ def write_report(
         "",
         f"Per-score-site/month aggregate scores are written to `{SCORES_PATH.relative_to(ROOT)}`, split-level scores are written to `{SPLIT_SCORES_PATH.relative_to(ROOT)}`, and overall all-score-site/month/split scores are written to `{OVERALL_SCORES_PATH.relative_to(ROOT)}`. The split-level table contains {len(split_scores)} scored rows and includes `basis_training_sites`, `basis_train_observations`, and `score_site_holdout_observations` to make the shared-basis training set explicit.",
         "",
+        f"Constrained split-history diagnostics are written to `{SPLIT_HISTORY_PATH.relative_to(ROOT)}`. Final-region shape diagnostics for all candidates are written to `{REGION_DIAGNOSTICS_PATH.relative_to(ROOT)}`; those include bounding-box aspect ratio, fill fraction, 4-neighbour connected-component counts, grid compactness, and PCA eccentricity.",
+        "",
         "## Representative Input Fields",
         "",
         "The log-scale maps below show the representative monthly prior flux and the combined training `fp_x_flux` field used to construct the first displayed basis split. The `fp_x_flux` field is normalized before candidate generation, but the plotted field is the unnormalized footprint-times-flux product.",
@@ -1209,6 +1742,14 @@ def write_report(
         "The map figure shows the best overall held-out CV candidates by objective, using one representative January basis split for display. No-mask and land/sea rows show the best three constrained candidates plus the matching legacy option. Selected-country has no legacy counterpart, so it shows the best four constrained candidates.",
         "",
         f"![Basis option contrasts]({basis_figure})",
+        "",
+        "### Narrow-Region Diagnostics",
+        "",
+        "The table below lists the highest-eccentricity final regions among constrained inertial candidates. These diagnostics are not ranking scores; they are included to trace the narrow regions visible in the masked inertial maps.",
+        "",
+        "| objective | month | split | candidate | region | cells | bbox aspect | fill | components | PCA ecc. | compactness |",
+        "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
+        *narrow_rows,
         "",
         "## Grouped Scores For 250-Region Options",
         "",
@@ -1279,11 +1820,48 @@ def context_score_rows(scores: pd.DataFrame, *, n: int) -> list[str]:
     return rows
 
 
+def narrow_region_rows(region_diagnostics: pd.DataFrame, *, n: int) -> list[str]:
+    """Format the highest-eccentricity inertial region diagnostics."""
+    if region_diagnostics.empty:
+        return ["| _none_ |  |  |  |  |  |  |  |  |  |  |"]
+
+    constrained_inertial = region_diagnostics.loc[
+        (region_diagnostics["basis_family"] == "region_constrained")
+        & (region_diagnostics["split_step"] == "inertial")
+    ].copy()
+    if constrained_inertial.empty:
+        return ["| _none_ |  |  |  |  |  |  |  |  |  |  |"]
+
+    constrained_inertial["sort_eccentricity"] = constrained_inertial["region_pca_eccentricity"].replace(
+        np.inf,
+        1.0e12,
+    )
+    constrained_inertial = constrained_inertial.sort_values(
+        ["sort_eccentricity", "region_bbox_aspect_ratio", "region_connected_components"],
+        ascending=[False, False, False],
+    ).head(n)
+
+    rows: list[str] = []
+    for row in dataframe_records(constrained_inertial):
+        rows.append(
+            f"| {objective_label(str(row['class_mode']))} | {row['month']} | {row['split_id']} | "
+            f"{row['candidate']} | {row['region_label']} | {row['region_cells']} | "
+            f"{format_float(row['region_bbox_aspect_ratio'], digits=2)} | "
+            f"{format_float(row['region_bbox_fill_fraction'], digits=2)} | "
+            f"{row['region_connected_components']} | "
+            f"{format_float(row['region_pca_eccentricity'], digits=2)} | "
+            f"{format_float(row['region_grid_compactness'], digits=3)} |"
+        )
+    return rows
+
+
 def format_float(value: Any, *, digits: int = 4) -> str:
     """Format a numeric score for markdown."""
     numeric = float(value)
     if np.isnan(numeric):
         return "nan"
+    if np.isinf(numeric):
+        return "inf" if numeric > 0.0 else "-inf"
     if numeric != 0.0 and abs(numeric) < 10**-digits:
         return f"{numeric:.3e}"
     return f"{numeric:.{digits}f}"
