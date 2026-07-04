@@ -5,6 +5,7 @@ import xarray as xr
 from openghg_inversions.basis.algorithms import (
     AllSplitAcceptancePolicies,
     AxisParallelSplitStep,
+    ContrastScoreSplitAcceptance,
     GreedyAxisParallelSplitStrategy,
     InertialSplitStep,
     LatLonGridGeometry,
@@ -12,7 +13,9 @@ from openghg_inversions.basis.algorithms import (
     MinChildTargetWeightShare,
     MinChildWeightShare,
     allocate_nbasis_by_class,
+    contrast_tau_from_multiplier_cv,
     region_constrained_basis,
+    split_contrast_score,
 )
 
 
@@ -760,6 +763,182 @@ def test_max_child_pca_eccentricity_validates_tolerance(tolerance: float):
     """PCA eccentricity tolerance must be non-negative and finite."""
     with pytest.raises(ValueError, match="tolerance must be non-negative and finite"):
         MaxChildPCAEccentricity(max_child_pca_eccentricity=10.0, tolerance=tolerance)
+
+
+def test_split_contrast_score_is_zero_for_equal_mass_weighted_mean_contribution():
+    """Equal child mean contribution vectors add no observation-space direction."""
+    contribution = np.array([[[1.0, 1.0]], [[2.0, 2.0]]])
+    cell_weight = np.array([[2.0, 3.0]])
+
+    score = split_contrast_score(
+        contribution=contribution,
+        cell_weight=cell_weight,
+        child_a=[(0, 0)],
+        child_b=[(0, 1)],
+    )
+
+    assert np.allclose(score.contrast, [0.0, 0.0])
+    assert score.lambda_value == pytest.approx(0.0)
+    assert score.delta_dfs == pytest.approx(0.0)
+    assert score.delta_eig == pytest.approx(0.0)
+    assert score.uncalibrated
+
+
+def test_split_contrast_score_child_swap_changes_sign_not_information_scores():
+    """Child order changes the contrast sign but not lambda, DFS, or EIG."""
+    contribution = np.array([[[1.0, 0.0]], [[0.0, 2.0]]])
+    cell_weight = np.array([[2.0, 3.0]])
+
+    score_ab = split_contrast_score(
+        contribution=contribution,
+        cell_weight=cell_weight,
+        child_a=[(0, 0)],
+        child_b=[(0, 1)],
+    )
+    score_ba = split_contrast_score(
+        contribution=contribution,
+        cell_weight=cell_weight,
+        child_a=[(0, 1)],
+        child_b=[(0, 0)],
+    )
+
+    assert np.allclose(score_ab.contrast, -score_ba.contrast)
+    assert score_ab.lambda_value == pytest.approx(score_ba.lambda_value)
+    assert score_ab.delta_dfs == pytest.approx(score_ba.delta_dfs)
+    assert score_ab.delta_eig == pytest.approx(score_ba.delta_eig)
+
+
+def test_split_contrast_additive_multiplier_parameterisation_preserves_mass():
+    """The split contrast coefficient changes child multipliers without changing regional mass."""
+    mu_a = 2.0
+    mu_b = 3.0
+    mu_g = mu_a + mu_b
+    alpha_0 = 1.2
+    delta = 0.4
+
+    alpha_a = alpha_0 + delta * mu_b / mu_g
+    alpha_b = alpha_0 - delta * mu_a / mu_g
+
+    assert mu_a * alpha_a + mu_b * alpha_b == pytest.approx(mu_g * alpha_0)
+
+
+def test_split_contrast_lambda_scales_as_tau_squared():
+    """Tau is the prior SD of the split contrast coefficient."""
+    contribution = np.array([[[1.0, 0.0]], [[0.0, 1.0]]])
+    cell_weight = np.ones((1, 2))
+
+    score_tau_1 = split_contrast_score(
+        contribution=contribution,
+        cell_weight=cell_weight,
+        child_a=[(0, 0)],
+        child_b=[(0, 1)],
+        contrast_tau=1.0,
+    )
+    score_tau_3 = split_contrast_score(
+        contribution=contribution,
+        cell_weight=cell_weight,
+        child_a=[(0, 0)],
+        child_b=[(0, 1)],
+        contrast_tau=3.0,
+    )
+
+    assert score_tau_3.lambda_value == pytest.approx(9.0 * score_tau_1.lambda_value)
+
+
+def test_split_contrast_diagonal_design_covariance_uses_weighted_norm():
+    """Diagonal S entries are variances in the design-observation row space."""
+    contribution = np.array([[[1.0, 0.0]], [[0.0, 2.0]]])
+    cell_weight = np.array([[2.0, 3.0]])
+    s_diag = np.array([2.0, 8.0])
+
+    score = split_contrast_score(
+        contribution=contribution,
+        cell_weight=cell_weight,
+        child_a=[(0, 0)],
+        child_b=[(0, 1)],
+        contrast_tau=2.0,
+        contrast_s_diag=s_diag,
+    )
+
+    expected_contrast = np.array([1.2, -2.4])
+    expected_lambda = 4.0 * np.sum(expected_contrast**2 / s_diag)
+    assert np.allclose(score.contrast, expected_contrast)
+    assert score.lambda_value == pytest.approx(expected_lambda)
+
+
+def test_split_contrast_xarray_diagonal_covariance_aligns_design_dims():
+    """Xarray diagonal S is aligned to contribution design dimensions."""
+    contribution = xr.DataArray(
+        np.array([[[[1.0, 0.0]], [[0.0, 2.0]]]]),
+        dims=("site", "time", "lat", "lon"),
+        coords={"site": ["TAC"], "time": [0, 1], "lat": [0], "lon": [0, 1]},
+    )
+    cell_weight = xr.DataArray(
+        np.array([[2.0, 3.0]]),
+        dims=("lat", "lon"),
+        coords={"lat": [0], "lon": [0, 1]},
+    )
+    s_diag = xr.DataArray(
+        np.array([[2.0], [8.0]]),
+        dims=("time", "site"),
+        coords={"site": ["TAC"], "time": [0, 1]},
+    )
+
+    score = split_contrast_score(
+        contribution=contribution,
+        cell_weight=cell_weight,
+        child_a=[(0, 0)],
+        child_b=[(0, 1)],
+        contrast_tau=2.0,
+        contrast_s_diag=s_diag,
+    )
+
+    expected_contrast = np.array([1.2, -2.4])
+    expected_lambda = 4.0 * np.sum(expected_contrast**2 / np.array([2.0, 8.0]))
+    assert np.allclose(score.contrast, expected_contrast)
+    assert score.lambda_value == pytest.approx(expected_lambda)
+
+
+def test_contrast_tau_from_multiplier_cv_helpers():
+    """Multiplier-CV helpers are optional approximations for contrast tau."""
+    cv = 0.5
+
+    assert contrast_tau_from_multiplier_cv(cv, approximation="additive") == pytest.approx(np.sqrt(2.0) * cv)
+    assert contrast_tau_from_multiplier_cv(cv, approximation="log") == pytest.approx(
+        np.sqrt(2.0) * np.sqrt(np.log1p(cv**2))
+    )
+
+
+def test_contrast_score_acceptance_rejects_low_contrast_split():
+    """A high threshold freezes a low-contrast proposed split."""
+    weights = np.ones((1, 2))
+    class_mask = np.ones(weights.shape, dtype=bool)
+    contribution = np.array([[[1.0, 1.0]], [[2.0, 2.0]]])
+
+    labels = GreedyAxisParallelSplitStrategy(
+        split_acceptance=ContrastScoreSplitAcceptance(
+            contribution=contribution,
+            min_contrast_lambda=0.1,
+        ),
+    )(weights, class_mask, target_regions=2)
+
+    assert set(np.unique(labels)) == {1}
+
+
+def test_contrast_score_acceptance_accepts_high_contrast_split():
+    """A low threshold accepts a high-contrast proposed split."""
+    weights = np.ones((1, 2))
+    class_mask = np.ones(weights.shape, dtype=bool)
+    contribution = np.array([[[1.0, 0.0]], [[0.0, 1.0]]])
+
+    labels = GreedyAxisParallelSplitStrategy(
+        split_acceptance=ContrastScoreSplitAcceptance(
+            contribution=contribution,
+            min_contrast_lambda=0.1,
+        ),
+    )(weights, class_mask, target_regions=2)
+
+    assert set(np.unique(labels)) == {1, 2}
 
 
 def test_region_constrained_basis_child_target_stopping_uses_class_local_total():

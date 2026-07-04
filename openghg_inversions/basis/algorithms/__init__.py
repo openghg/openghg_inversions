@@ -1,5 +1,11 @@
 """Algorithms for computing basis functions."""
 
+from ._contrast import (
+    ContrastScoreSplitAcceptance,
+    SplitContrastScore,
+    contrast_tau_from_multiplier_cv,
+    split_contrast_score,
+)
 from ._constrained import (
     AllocationMode,
     AllSplitAcceptancePolicies,
@@ -28,6 +34,7 @@ __all__ = [
     "AllSplitAcceptancePolicies",
     "AxisParallelSplitStep",
     "AxisAlignedWeightedSplitStrategy",
+    "ContrastScoreSplitAcceptance",
     "GreedyAxisParallelSplitStrategy",
     "InertialSplitStep",
     "LatLonGridGeometry",
@@ -41,7 +48,10 @@ __all__ = [
     "SplitGeometry",
     "TargetSplitAcceptancePolicy",
     "allocate_nbasis_by_class",
+    "contrast_tau_from_multiplier_cv",
     "quadtree_algorithm",
     "region_constrained_basis",
+    "split_contrast_score",
+    "SplitContrastScore",
     "weighted_algorithm",
 ]
