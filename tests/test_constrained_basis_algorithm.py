@@ -6,12 +6,13 @@ from openghg_inversions.basis.algorithms import (
     AllSplitAcceptancePolicies,
     AxisParallelSplitStep,
     GreedyAxisParallelSplitStrategy,
+    InertialSplitStep,
+    LatLonGridGeometry,
     MinChildTargetWeightShare,
     MinChildWeightShare,
     allocate_nbasis_by_class,
     region_constrained_basis,
 )
-from openghg_inversions.basis.algorithms._constrained import InertialSplitStep
 
 
 def _class_values_for_labels(labels: xr.DataArray, classes: xr.DataArray) -> dict[int, set]:
@@ -143,6 +144,114 @@ def test_greedy_axis_parallel_strategy_hits_target_region_count():
     assert set(np.unique(labels)) == {1, 2, 3, 4, 5}
 
 
+def test_axis_parallel_split_uses_lat_lon_geometry_for_axis_choice():
+    """Physical geometry can choose latitude over high-latitude index width."""
+    weights = np.ones((2, 6))
+    grid = xr.DataArray(
+        weights,
+        dims=("lat", "lon"),
+        coords={"lat": [80.0, 81.0], "lon": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]},
+    )
+    geometry = LatLonGridGeometry.from_dataarray(grid)
+    nodes = [(row, col) for row in range(2) for col in range(6)]
+
+    index_children = AxisParallelSplitStep(balanced=False, clean_splits=True)(nodes, weights)
+    physical_children = AxisParallelSplitStep(
+        balanced=False,
+        clean_splits=True,
+        geometry=geometry,
+    )(nodes, weights)
+
+    assert {frozenset(child) for child in index_children} == {
+        frozenset((row, col) for row in range(2) for col in range(3)),
+        frozenset((row, col) for row in range(2) for col in range(3, 6)),
+    }
+    assert {frozenset(child) for child in physical_children} == {
+        frozenset((0, col) for col in range(6)),
+        frozenset((1, col) for col in range(6)),
+    }
+
+
+def test_axis_parallel_balanced_split_uses_lat_lon_geometry_for_axis_choice():
+    """Default balanced axis selection also uses physical geometry when provided."""
+    weights = np.ones((2, 6))
+    grid = xr.DataArray(
+        weights,
+        dims=("lat", "lon"),
+        coords={"lat": [80.0, 81.0], "lon": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]},
+    )
+    geometry = LatLonGridGeometry.from_dataarray(grid)
+    nodes = [(row, col) for row in range(2) for col in range(6)]
+
+    children = AxisParallelSplitStep(clean_splits=True, geometry=geometry)(nodes, weights)
+
+    assert {frozenset(child) for child in children} == {
+        frozenset((0, col) for col in range(6)),
+        frozenset((1, col) for col in range(6)),
+    }
+
+
+def test_lat_lon_geometry_requires_lat_lon_dimension_order():
+    """Lat/lon geometry must keep node axis zero aligned to latitude."""
+    grid = xr.DataArray(
+        np.ones((6, 2)),
+        dims=("lon", "lat"),
+        coords={"lat": [80.0, 81.0], "lon": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]},
+    )
+
+    with pytest.raises(ValueError, match="dimensions ordered"):
+        LatLonGridGeometry.from_dataarray(grid)
+
+
+@pytest.mark.parametrize(
+    "geometry_result",
+    [
+        None,
+        np.full((12, 2), np.nan),
+        np.zeros((12, 1)),
+    ],
+)
+def test_axis_parallel_split_falls_back_when_geometry_is_unavailable(geometry_result):
+    """Invalid split geometry falls back to row/column axis choice."""
+
+    class InvalidGeometry:
+        """Geometry that cannot provide usable physical coordinates."""
+
+        def coordinates(self, nodes, node_weights=None):
+            return geometry_result
+
+    weights = np.ones((2, 6))
+    nodes = [(row, col) for row in range(2) for col in range(6)]
+
+    children = AxisParallelSplitStep(
+        balanced=False,
+        clean_splits=True,
+        geometry=InvalidGeometry(),
+    )(nodes, weights)
+    fallback_children = AxisParallelSplitStep(balanced=False, clean_splits=True)(nodes, weights)
+
+    assert children == fallback_children
+
+
+def test_axis_parallel_split_falls_back_when_lat_lon_geometry_shape_mismatches():
+    """Lat/lon geometry outside the node bounds falls back to row/column indices."""
+    weights = np.ones((2, 6))
+    nodes = [(row, col) for row in range(2) for col in range(6)]
+    geometry = LatLonGridGeometry(
+        latitudes=np.array([[80.0]]),
+        longitudes=np.array([[0.0]]),
+    )
+
+    children = AxisParallelSplitStep(
+        balanced=False,
+        clean_splits=True,
+        geometry=geometry,
+    )(nodes, weights)
+    fallback_children = AxisParallelSplitStep(balanced=False, clean_splits=True)(nodes, weights)
+
+    assert children == fallback_children
+
+
 def test_inertial_split_produces_two_non_empty_child_partitions():
     """Non-degenerate inertial splits produce two child node partitions."""
     nodes = [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
@@ -247,6 +356,58 @@ def test_inertial_split_can_differ_from_axis_parallel_split():
         frozenset({(0, 3), (0, 2)}),
         frozenset({(0, 1), (0, 0), (1, 0)}),
     }
+
+
+def test_inertial_split_uses_lat_lon_geometry_for_projection_order():
+    """Physical geometry can change inertial PCA ordering at high latitude."""
+    weights = np.ones((3, 10))
+    grid = xr.DataArray(
+        weights,
+        dims=("lat", "lon"),
+        coords={"lat": [80.0, 84.0, 88.0], "lon": np.arange(10.0)},
+    )
+    geometry = LatLonGridGeometry.from_dataarray(grid)
+    nodes = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 2)]
+
+    index_children = InertialSplitStep(balanced=False)(nodes, weights)
+    physical_children = InertialSplitStep(balanced=False, geometry=geometry)(nodes, weights)
+
+    assert {frozenset(child) for child in index_children} == {
+        frozenset({(0, 0), (1, 0)}),
+        frozenset({(0, 1), (0, 2), (1, 2)}),
+    }
+    assert {frozenset(child) for child in physical_children} == {
+        frozenset({(0, 0), (0, 1)}),
+        frozenset({(0, 2), (1, 0), (1, 2)}),
+    }
+
+
+@pytest.mark.parametrize(
+    "geometry_result",
+    [
+        None,
+        np.full((5, 2), np.nan),
+        np.zeros((5, 1)),
+    ],
+)
+def test_inertial_split_falls_back_when_geometry_is_unavailable(geometry_result):
+    """Invalid split geometry falls back to row/column coordinate behavior."""
+
+    class InvalidGeometry:
+        """Geometry that cannot provide usable physical coordinates."""
+
+        def coordinates(self, nodes, node_weights=None):
+            return geometry_result
+
+    nodes = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0)]
+    weights = np.zeros((2, 4))
+    for node in nodes:
+        weights[node] = 1.0
+
+    children = InertialSplitStep(balanced=False, geometry=InvalidGeometry())(nodes, weights)
+    fallback_children = InertialSplitStep(balanced=False)(nodes, weights)
+
+    assert children == fallback_children
 
 
 def test_region_constrained_basis_with_inertial_step_keeps_class_boundaries():

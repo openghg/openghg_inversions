@@ -86,6 +86,20 @@ be tested without committing to config syntax.
 - Add small partition-step adapters for quadtree-style splits and prototype
   inertial splits when there is a clear test case. The current `PartitionStep`
   boundary can already accept steps that return more than two child partitions.
+- Keep three split inputs conceptually separate. The existing `weights` field is
+  the contribution/importance field used for priority, half-weight cuts,
+  allocation, and split-stopping thresholds. Optional split `geometry` is only
+  for physical coordinate decisions such as axis selection and inertial
+  projection. Physical cell area is a separate future allocation/input policy
+  and should not silently multiply the contribution weights.
+- Lat/lon-aware splitting should be opt-in at the split-step boundary. Passing
+  `LatLonGridGeometry.from_dataarray(...)` to `AxisParallelSplitStep` or
+  `InertialSplitStep` scales grid-cell centers into local north-south and
+  east-west metre offsets for the currently selected partition. Axis-parallel
+  cuts remain constant-row or constant-column cuts; geometry only changes which
+  axis is considered physically longer. Inertial splitting uses the same local
+  physical coordinates for covariance and projection. Default split steps
+  continue to use row/column index geometry.
 - Keep split stopping at the greedy orchestration boundary. A `PartitionStep`
   proposes child partitions; the greedy strategy decides whether to accept
   those children before updating the active queue.
@@ -238,3 +252,7 @@ be tested without committing to config syntax.
   `MinChildWeightShare` is a balance guard, while `MinChildTargetWeightShare`
   handles class/source-total low-weight region stopping using the class-local
   `weights.sum() / target_regions` equal-region denominator.
+- 2026-06-24: Started the OGI-048 implementation path for lat/lon-aware split
+  geometry. The narrow API adds `LatLonGridGeometry` as an opt-in geometry
+  object for axis-parallel and inertial split steps, while keeping weights,
+  split stopping, allocation, and public config routing unchanged.
