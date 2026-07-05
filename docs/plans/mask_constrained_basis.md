@@ -24,6 +24,8 @@ part of #340.
 - `codex/449-weight-first-basis`: additive interface cleanup that exposes
   weight-first generated-basis helpers and keeps the legacy `fp_all` functions
   as adapters.
+- `codex/ogi-043-fixed-outer-layout`: design note for preserving legacy InTEM
+  fixed outer regions while exposing them as grouped constrained partitions.
 
 ## Design Notes
 
@@ -269,6 +271,11 @@ be tested without committing to config syntax.
   for quadtree, weighted bucket, and region-constrained bases. The existing
   public `fp_all` functions now delegate to those helpers, so callers can start
   moving toward explicit weight fields without losing the legacy adapter path.
+- 2026-07-05: Added `docs/plans/fixed_outer_regions_grouping.md` for OGI-043.
+  The decision keeps `fixed_outer_regions_basis` as the legacy compatibility
+  route while defining the grouped RHIME path as a constrained allocation:
+  fixed outer classes get one basis region each and the inner class receives the
+  requested generated regions.
 - 2026-06-21: Added greedy split stopping through a lower-level
   `SplitAcceptancePolicy` hook and `MinChildWeightShare` policy. Rejected
   splits freeze the selected parent partition, so the requested class-local
