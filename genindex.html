@@ -329,6 +329,8 @@
         <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.TargetSplitAcceptancePolicy.accept_split">(openghg_inversions.basis.algorithms.TargetSplitAcceptancePolicy method)</a>
 </li>
       </ul></li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance.accepts">accepts() (openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance method)</a>
+</li>
       <li><a href="reference/openghg_inversions.models.html#openghg_inversions.models.CoordRegistry.add">add() (openghg_inversions.models.CoordRegistry method)</a>
 
       <ul>
@@ -387,10 +389,10 @@
       </ul></li>
       <li><a href="reference/openghg_inversions.inversion_inputs.html#openghg_inversions.inversion_inputs.add_site_indicator">add_site_indicator() (in module openghg_inversions.inversion_inputs)</a>
 </li>
-      <li><a href="reference/openghg_inversions.postprocessing.utils.html#openghg_inversions.postprocessing.utils.add_suffix">add_suffix() (in module openghg_inversions.postprocessing.utils)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/openghg_inversions.postprocessing.utils.html#openghg_inversions.postprocessing.utils.add_suffix">add_suffix() (in module openghg_inversions.postprocessing.utils)</a>
+</li>
       <li><a href="reference/openghg_inversions.postprocessing.make_paris_outputs.html#openghg_inversions.postprocessing.make_paris_outputs.add_variable_attrs">add_variable_attrs() (in module openghg_inversions.postprocessing.make_paris_outputs)</a>
 </li>
       <li><a href="reference/openghg_inversions.inversion_data.getters.html#openghg_inversions.inversion_data.getters.adjust_flux_start_date">adjust_flux_start_date() (in module openghg_inversions.inversion_data.getters)</a>
@@ -595,6 +597,8 @@
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.stats.html#openghg_inversions.postprocessing.stats.calculate_stats">calculate_stats() (in module openghg_inversions.postprocessing.stats)</a>
 </li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance.cell_weight">cell_weight (openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance attribute)</a>
+</li>
       <li><a href="reference/openghg_inversions.rhime.html#openghg_inversions.rhime.RhimeSampler.chains">chains (openghg_inversions.rhime.RhimeSampler attribute)</a>
 
       <ul>
@@ -635,11 +639,25 @@
 </li>
       <li><a href="reference/openghg_inversions.array_ops.html#openghg_inversions.array_ops.concat_gather_datatree">concat_gather_datatree() (in module openghg_inversions.array_ops)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.postprocessing.make_paris_outputs.html#openghg_inversions.postprocessing.make_paris_outputs.ParisTemplateFiles.concentration">concentration (openghg_inversions.postprocessing.make_paris_outputs.ParisTemplateFiles attribute)</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.make_paris_outputs.html#openghg_inversions.postprocessing.make_paris_outputs.ParisTemplateFiles.concentration_version">concentration_version (openghg_inversions.postprocessing.make_paris_outputs.ParisTemplateFiles attribute)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.SplitContrastScore.contrast">contrast (openghg_inversions.basis.algorithms.SplitContrastScore attribute)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance.contrast_s_diag">contrast_s_diag (openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance attribute)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance.contrast_sigma_design">contrast_sigma_design (openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance attribute)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance.contrast_tau">contrast_tau (openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance attribute)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.contrast_tau_from_multiplier_cv">contrast_tau_from_multiplier_cv() (in module openghg_inversions.basis.algorithms)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance">ContrastScoreSplitAcceptance (class in openghg_inversions.basis.algorithms)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance.contribution">contribution (openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance attribute)</a>
 </li>
       <li><a href="reference/openghg_inversions.config.config.html#openghg_inversions.config.config.convert">convert() (in module openghg_inversions.config.config)</a>
 </li>
@@ -721,15 +739,19 @@
 </li>
       <li><a href="reference/openghg_inversions.filters.html#openghg_inversions.filters.daytime">daytime() (in module openghg_inversions.filters)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.filters.html#openghg_inversions.filters.daytime9to5">daytime9to5() (in module openghg_inversions.filters)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BasisOperator.decode_datatree">decode_datatree() (openghg_inversions.basis.operators.BasisOperator class method)</a>
 </li>
       <li><a href="reference/openghg_inversions.hbmcmc.hbmcmc_output.html#openghg_inversions.hbmcmc.hbmcmc_output.define_output_filename">define_output_filename() (in module openghg_inversions.hbmcmc.hbmcmc_output)</a>
 </li>
       <li><a href="reference/openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.define_stations">define_stations() (in module openghg_inversions.hbmcmc.hbmcmc_post_process)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.SplitContrastScore.delta_dfs">delta_dfs (openghg_inversions.basis.algorithms.SplitContrastScore attribute)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.SplitContrastScore.delta_eig">delta_eig (openghg_inversions.basis.algorithms.SplitContrastScore attribute)</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.diagnostics.html#openghg_inversions.postprocessing.diagnostics.Diagnostic">Diagnostic (class in openghg_inversions.postprocessing.diagnostics)</a>
 </li>
@@ -1057,6 +1079,8 @@
 <h2 id="L">L</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.SplitContrastScore.lambda_value">lambda_value (openghg_inversions.basis.algorithms.SplitContrastScore attribute)</a>
+</li>
       <li><a href="reference/openghg_inversions.models.components.html#openghg_inversions.models.components.LinearComponentResult.latent">latent (openghg_inversions.models.components.LinearComponentResult attribute)</a>
 
       <ul>
@@ -1075,10 +1099,10 @@
       </ul></li>
       <li><a href="reference/openghg_inversions.config.config.html#openghg_inversions.config.config.list_check">list_check() (in module openghg_inversions.config.config)</a>
 </li>
-      <li><a href="reference/openghg_inversions.filters.html#openghg_inversions.filters.list_filters">list_filters() (in module openghg_inversions.filters)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/openghg_inversions.filters.html#openghg_inversions.filters.list_filters">list_filters() (in module openghg_inversions.filters)</a>
+</li>
       <li><a href="reference/openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis.load">load() (openghg_inversions.basis.basis_functions.FluxWeightedBasis class method)</a>
 
       <ul>
@@ -1180,6 +1204,10 @@
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.MinChildTargetWeightShare.min_child_target_weight_share">min_child_target_weight_share (openghg_inversions.basis.algorithms.MinChildTargetWeightShare attribute)</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.MinChildWeightShare.min_child_weight_share">min_child_weight_share (openghg_inversions.basis.algorithms.MinChildWeightShare attribute)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance.min_contrast_delta_eig">min_contrast_delta_eig (openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance attribute)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance.min_contrast_lambda">min_contrast_lambda (openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance attribute)</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.MinChildTargetWeightShare">MinChildTargetWeightShare (class in openghg_inversions.basis.algorithms)</a>
 </li>
@@ -1325,6 +1353,10 @@
       <li><a href="reference/openghg_inversions.convert.html#openghg_inversions.convert.mol2g">mol2g() (in module openghg_inversions.convert)</a>
 </li>
       <li><a href="reference/openghg_inversions.hbmcmc.inversionsetup.html#openghg_inversions.hbmcmc.inversionsetup.monthly_bcs">monthly_bcs() (in module openghg_inversions.hbmcmc.inversionsetup)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.SplitContrastScore.mu_a">mu_a (openghg_inversions.basis.algorithms.SplitContrastScore attribute)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.SplitContrastScore.mu_b">mu_b (openghg_inversions.basis.algorithms.SplitContrastScore attribute)</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.MultiSourceBucketBasisOperator">MultiSourceBucketBasisOperator (class in openghg_inversions.basis.operators)</a>
 </li>
@@ -2227,6 +2259,8 @@
 </li>
       <li><a href="reference/openghg_inversions.basis.operators.html#openghg_inversions.basis.operators.BasisOperator.schema_version">schema_version (openghg_inversions.basis.operators.BasisOperator attribute)</a>
 </li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance.score_split">score_split() (openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance method)</a>
+</li>
       <li><a href="reference/openghg_inversions.models.rhime.html#openghg_inversions.models.rhime.RhimeModelSpec.sectors">sectors (openghg_inversions.models.rhime.RhimeModelSpec attribute)</a>
 
       <ul>
@@ -2323,6 +2357,8 @@
 </li>
       <li><a href="reference/openghg_inversions.array_ops.html#openghg_inversions.array_ops.sparse_xr_dot">sparse_xr_dot() (in module openghg_inversions.array_ops)</a>
 </li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance.spatial_dims">spatial_dims (openghg_inversions.basis.algorithms.ContrastScoreSplitAcceptance attribute)</a>
+</li>
       <li><a href="reference/openghg_inversions.models.rhime.html#openghg_inversions.models.rhime.RhimeModelSpec.species">species (openghg_inversions.models.rhime.RhimeModelSpec attribute)</a>
 
       <ul>
@@ -2345,9 +2381,13 @@
         <li><a href="reference/openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec.split_by_sectors">(openghg_inversions.rhime.specs.RhimeRunSpec attribute)</a>
 </li>
       </ul></li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.split_contrast_score">split_contrast_score() (in module openghg_inversions.basis.algorithms)</a>
+</li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy.split_step">split_step (openghg_inversions.basis.algorithms.GreedyAxisParallelSplitStrategy attribute)</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.SplitAcceptancePolicy">SplitAcceptancePolicy (class in openghg_inversions.basis.algorithms)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.SplitContrastScore">SplitContrastScore (class in openghg_inversions.basis.algorithms)</a>
 </li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.SplitGeometry">SplitGeometry (class in openghg_inversions.basis.algorithms)</a>
 </li>
@@ -2385,6 +2425,8 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.TargetSplitAcceptancePolicy">TargetSplitAcceptancePolicy (class in openghg_inversions.basis.algorithms)</a>
 </li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.SplitContrastScore.tau">tau (openghg_inversions.basis.algorithms.SplitContrastScore attribute)</a>
+</li>
       <li><a href="reference/openghg_inversions.basis.basis_functions.html#openghg_inversions.basis.basis_functions.FluxWeightedBasis.to_datatree">to_datatree() (openghg_inversions.basis.basis_functions.FluxWeightedBasis method)</a>
 
       <ul>
@@ -2399,10 +2441,10 @@
       </ul></li>
       <li><a href="reference/openghg_inversions.array_ops.html#openghg_inversions.array_ops.to_dense">to_dense() (in module openghg_inversions.array_ops)</a>
 </li>
-      <li><a href="reference/openghg_inversions.postprocessing.countries.html#openghg_inversions.postprocessing.countries.CountryRegions.to_dict">to_dict() (openghg_inversions.postprocessing.countries.CountryRegions method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/openghg_inversions.postprocessing.countries.html#openghg_inversions.postprocessing.countries.CountryRegions.to_dict">to_dict() (openghg_inversions.postprocessing.countries.CountryRegions method)</a>
+</li>
       <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.MaxChildPCAEccentricity.tolerance">tolerance (openghg_inversions.basis.algorithms.MaxChildPCAEccentricity attribute)</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.make_outputs.html#openghg_inversions.postprocessing.make_outputs.total_error_output">total_error_output() (in module openghg_inversions.postprocessing.make_outputs)</a>
@@ -2428,6 +2470,8 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/openghg_inversions.hbmcmc.hbmcmc_post_process.html#openghg_inversions.hbmcmc.hbmcmc_post_process.unbiasedDivergingCmap">unbiasedDivergingCmap() (in module openghg_inversions.hbmcmc.hbmcmc_post_process)</a>
+</li>
+      <li><a href="reference/openghg_inversions.basis.algorithms.html#openghg_inversions.basis.algorithms.SplitContrastScore.uncalibrated">uncalibrated (openghg_inversions.basis.algorithms.SplitContrastScore attribute)</a>
 </li>
       <li><a href="reference/openghg_inversions.postprocessing.utils.html#openghg_inversions.postprocessing.utils.update_attrs">update_attrs() (in module openghg_inversions.postprocessing.utils)</a>
 </li>
