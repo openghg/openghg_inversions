@@ -26,6 +26,9 @@ part of #340.
   as adapters.
 - `codex/ogi-043-fixed-outer-layout`: design note for preserving legacy InTEM
   fixed outer regions while exposing them as grouped constrained partitions.
+- `codex/ogi-041-filter-before-basis`: RHIME-only bugfix branch with one
+  observation-filter stage before basis loading or generation and sensitivity
+  construction.
 
 ## Design Notes
 
@@ -281,6 +284,12 @@ be tested without committing to config syntax.
   route while defining the grouped RHIME path as a constrained allocation:
   fixed outer classes get one basis region each and the inner class receives the
   requested generated regions.
+- 2026-07-05: Started OGI-041 on `codex/ogi-041-filter-before-basis`.
+  Modern RHIME preparation now applies observation filters once, before either
+  loading or generating the basis and before sensitivity construction. The same
+  filtered merged data, sites, and averaging metadata flow through both stages.
+  The legacy fixedbasis preparation path remains unchanged and should be handled
+  by a separate task if that behavior needs to move.
 - 2026-06-21: Added greedy split stopping through a lower-level
   `SplitAcceptancePolicy` hook and `MinChildWeightShare` policy. Rejected
   splits freeze the selected parent partition, so the requested class-local
