@@ -94,6 +94,12 @@ The map figure shows the best overall held-out CV candidates by objective, using
 
 ![Basis option contrasts](figures/ogi_048_basis_options/basis_option_contrasts_250.png)
 
+### Default Versus Contrast Axis-Parallel Maps
+
+The paired maps below use the representative January split and one like-for-like option: full-domain constrained basis, weight allocation, axis-parallel row/column splitting, balanced split mode, and a 250-region target. The no-mask row is labelled `single_class` in tables because no inter-class allocation is needed, but it uses the same weight-allocation path internally. Rows show no mask, land/sea, and selected-country masks; columns compare default split acceptance with the contrast-score gate.
+
+![Axis-parallel default versus contrast](figures/ogi_048_basis_options/basis_option_axis_parallel_default_vs_contrast_250.png)
+
 ### Narrow-Region Diagnostics
 
 The table below lists the highest-eccentricity final regions among constrained inertial candidates. These diagnostics are not ranking scores; they are included to trace the narrow regions visible in the masked inertial maps.

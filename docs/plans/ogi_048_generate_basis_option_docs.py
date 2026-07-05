@@ -72,6 +72,8 @@ CONTRAST_MIN_LAMBDA = 1.0e-18
 CONTRAST_ACCEPTANCE_LABEL = "contrast_lambda_1e-18"
 OBJECTIVE_GROUPS = ("no_mask", "land_sea", "selected_countries", "fixed_outer")
 ECCENTRICITY_OBJECTIVE_GROUPS = ("no_mask", "land_sea", "selected_countries")
+AXIS_CONTRAST_MAP_GROUPS = ("no_mask", "land_sea", "selected_countries")
+AXIS_CONTRAST_MAP_SPLIT_MODE = "balanced"
 OBJECTIVE_LABELS = {
     "no_mask": "No Mask",
     "land_sea": "Land/Sea Mask",
@@ -260,6 +262,7 @@ def main() -> None:
     class_figure = plot_region_classes(representative_class_modes)
     field_figure = plot_input_fields(representative_fields)
     basis_figure = plot_basis_contrasts(representative_scenarios, overall_scores)
+    axis_contrast_figure = plot_axis_parallel_default_vs_contrast(representative_scenarios)
     score_heatmap = plot_score_heatmap(scores)
     score_ranked = plot_ranked_scores(overall_scores)
     eccentricity_fix_cases = build_eccentricity_fix_cases(region_diagnostics, basis_contexts)
@@ -270,6 +273,7 @@ def main() -> None:
         class_figure=class_figure,
         field_figure=field_figure,
         basis_figure=basis_figure,
+        axis_contrast_figure=axis_contrast_figure,
         eccentricity_fix_figure=eccentricity_fix_figure,
         score_heatmap=score_heatmap,
         score_ranked=score_ranked,
@@ -2073,6 +2077,45 @@ def plot_basis_contrasts(scenarios: list[Scenario], overall_scores: pd.DataFrame
     return save_figure(fig, "basis_option_contrasts_250.png")
 
 
+def plot_axis_parallel_default_vs_contrast(scenarios: list[Scenario]) -> str:
+    """Plot paired default-vs-contrast maps for one axis-parallel option."""
+    fig, axes = plt.subplots(
+        nrows=len(AXIS_CONTRAST_MAP_GROUPS),
+        ncols=2,
+        figsize=(10.5, 10.5),
+        sharex=True,
+        sharey=True,
+        constrained_layout=True,
+    )
+    axes = np.asarray(axes)
+    column_specs = (("none", "Default split acceptance"), (CONTRAST_ACCEPTANCE_LABEL, "Contrast-score acceptance"))
+    for row_index, class_mode in enumerate(AXIS_CONTRAST_MAP_GROUPS):
+        allocation = "single_class" if class_mode == "no_mask" else "weight"
+        for col_index, (split_acceptance, column_label) in enumerate(column_specs):
+            ax = axes[row_index, col_index]
+            scenario = find_scenario(
+                scenarios,
+                "region_constrained",
+                class_mode,
+                allocation,
+                "axis_parallel",
+                AXIS_CONTRAST_MAP_SPLIT_MODE,
+                "row_column",
+                "full_domain",
+                split_acceptance,
+            )
+            plot_basis_label_map(ax, scenario.labels)
+            title = (
+                f"{objective_label(class_mode)}\n"
+                f"{column_label}\n"
+                f"regions={scenario.actual_regions}, NRMSE={scenario.heldout_cv_nrmse:.3f}"
+            )
+            ax.set_title(title, fontsize=9)
+            ax.set_xlabel("lon")
+            ax.set_ylabel("lat")
+    return save_figure(fig, "basis_option_axis_parallel_default_vs_contrast_250.png")
+
+
 def plot_eccentricity_fix_cases(cases: list[EccentricityFixCase]) -> str:
     """Plot current and eccentricity-guarded labels for the worst inertial cases."""
     if not cases:
@@ -2359,6 +2402,7 @@ def write_report(
     class_figure: str,
     field_figure: str,
     basis_figure: str,
+    axis_contrast_figure: str,
     eccentricity_fix_figure: str,
     score_heatmap: str,
     score_ranked: str,
@@ -2476,6 +2520,12 @@ def write_report(
         "The map figure shows the best overall held-out CV candidates by objective, using one representative January basis split for display. No-mask and land/sea rows show the best three full-domain constrained candidates plus the matching full-domain legacy option. Selected-country has no legacy counterpart, so it shows the best four constrained candidates. Fixed-outer rows show the available fixed-outer reference candidates.",
         "",
         f"![Basis option contrasts]({basis_figure})",
+        "",
+        "### Default Versus Contrast Axis-Parallel Maps",
+        "",
+        "The paired maps below use the representative January split and one like-for-like option: full-domain constrained basis, weight allocation, axis-parallel row/column splitting, balanced split mode, and a 250-region target. The no-mask row is labelled `single_class` in tables because no inter-class allocation is needed, but it uses the same weight-allocation path internally. Rows show no mask, land/sea, and selected-country masks; columns compare default split acceptance with the contrast-score gate.",
+        "",
+        f"![Axis-parallel default versus contrast]({axis_contrast_figure})",
         "",
         "### Narrow-Region Diagnostics",
         "",
