@@ -74,6 +74,7 @@ OBJECTIVE_GROUPS = ("no_mask", "land_sea", "selected_countries", "fixed_outer")
 ECCENTRICITY_OBJECTIVE_GROUPS = ("no_mask", "land_sea", "selected_countries")
 AXIS_CONTRAST_MAP_GROUPS = ("no_mask", "land_sea", "selected_countries")
 AXIS_CONTRAST_MAP_SPLIT_MODE = "balanced"
+CONSTRAINED_SPLIT_MODES = ("balanced",)
 OBJECTIVE_LABELS = {
     "no_mask": "No Mask",
     "land_sea": "Land/Sea Mask",
@@ -82,18 +83,12 @@ OBJECTIVE_LABELS = {
 }
 SELECTED_COUNTRIES = (
     "UNITED KINGDOM OF GREAT BRITAIN AND NORTHERN IRELAND",
+    "IRELAND",
     "FRANCE",
     "GERMANY",
-    "SPAIN",
     "ITALY",
-    "POLAND",
-    "UKRAINE",
-    "SWEDEN",
-    "NORWAY",
-    "FINLAND",
-    "TURKEY",
-    "ROMANIA",
-    "RUSSIAN FEDERATION",
+    "BELGIUM",
+    "NETHERLANDS",
 )
 GridNode = tuple[int, int]
 GridPartition = list[GridNode]
@@ -690,7 +685,7 @@ def build_candidate_labels(
         for allocation_name in allocations:
             allocation = "weight" if allocation_name == "single_class" else allocation_name
             for split_step_name in ("axis_parallel", "inertial"):
-                for split_mode in ("count", "balanced"):
+                for split_mode in CONSTRAINED_SPLIT_MODES:
                     for geometry_name, split_geometry in (("row_column", None), ("lat_lon_metres", geometry)):
                         labels, split_history = build_constrained_basis_labels(
                             weights=weights,
@@ -2437,7 +2432,7 @@ def write_report(
         "- **Class allocation**: explicit per-class counts, automatic allocation by class total weight, or automatic allocation by cell count. The Blue Pebble score matrix below uses only weight allocation for masked objectives.",
         "- **Greedy orchestration**: repeatedly split the currently highest-weight partition until the target is reached or no acceptable split remains.",
         "- **Partition step**: axis-parallel row/column splits or inertial principal-axis splits.",
-        "- **Split mode**: count-based splits or balanced splits near half parent weight.",
+        "- **Split mode**: the generated evidence below uses weight-balanced splits near half parent weight.",
         "- **Geometry**: row/column index geometry or local lat/lon metre geometry for split-shape decisions.",
         "- **Split stopping**: optional policies that reject proposed child regions. When stopping is enabled, the requested region count is an upper target.",
         "",
@@ -2464,7 +2459,6 @@ def write_report(
         "| `weight` | allocate target regions to classes by total training weight |",
         "| `axis_parallel` | split a region with a row- or column-aligned cut |",
         "| `inertial` | split a region using its principal weighted axis |",
-        "| `count` | choose splits by child cell counts |",
         "| `balanced` | choose splits near half of the parent-region weight |",
         "| `row_column` | use grid row/column coordinates when evaluating split shape |",
         "| `lat_lon_metres` | use local metre-scaled longitude/latitude coordinates for split shape |",
@@ -2486,7 +2480,7 @@ def write_report(
         "January and July 2019 are scored separately. Each month uses three temporal CV splits: a one-week holdout starting on days "
         f"{holdout_day_text}, with a two-day buffer excluded before and after the held-out week. For each month/split, one shared basis is built from the combined remaining TAC and MHD in-month training footprints, matching the production multi-site basis objective. Held-out scores are then reported separately for TAC and MHD.",
         "",
-        "Masked constrained candidates use `weight` allocation only, so the generated evidence focuses on the allocation mode used for the current recommendation. Contrast-score diagnostics use only training footprints and prior flux/mass weights; they do not use observed mole fractions, residuals, or held-out footprints.",
+        "Masked constrained candidates use `weight` allocation and the constrained splitters use the `balanced` weight-partitioning mode only, so the generated evidence focuses on the options used for the current recommendation. Contrast-score diagnostics use only training footprints and prior flux/mass weights; they do not use observed mole fractions, residuals, or held-out footprints.",
         "",
         f"Per-score-site/month aggregate scores are written to `{SCORES_PATH.relative_to(ROOT)}`, split-level scores are written to `{SPLIT_SCORES_PATH.relative_to(ROOT)}`, and overall all-score-site/month/split scores are written to `{OVERALL_SCORES_PATH.relative_to(ROOT)}`. The split-level table contains {len(split_scores)} scored rows and includes `basis_training_sites`, `basis_train_observations`, and `score_site_holdout_observations` to make the shared-basis training set explicit.",
         "",
