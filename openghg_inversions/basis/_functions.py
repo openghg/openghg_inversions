@@ -7,13 +7,18 @@ import getpass
 from collections import namedtuple
 from functools import partial
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import pandas as pd
 import xarray as xr
 import logging
 
-from .algorithms import AllocationMode, region_constrained_basis
+from .algorithms import (
+    AllocationMode,
+    ContrastScoreSplitAcceptance,
+    GreedyAxisParallelSplitStrategy,
+    region_constrained_basis,
+)
 from .algorithms import quadtree_algorithm, weighted_algorithm
 
 from openghg_inversions.config.paths import Paths
@@ -332,6 +337,14 @@ def region_constrained_basis_function(
     region_classes: xr.DataArray | None = None,
     allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
+    split_acceptance: Literal["none", "contrast_score"] = "none",
+    contrast_contribution: xr.DataArray | None = None,
+    contrast_cell_weight: xr.DataArray | None = None,
+    min_contrast_delta_eig: float | None = None,
+    min_contrast_lambda: float | None = None,
+    contrast_tau: float | None = None,
+    contrast_sigma_design: float | None = None,
+    contrast_s_diag: xr.DataArray | None = None,
 ) -> xr.DataArray:
     """Create weighted basis regions constrained by caller-supplied classes.
 
@@ -364,6 +377,26 @@ def region_constrained_basis_function(
             ``"area"`` allocates by mapped cell count.
         min_regions_per_class: Minimum automatic allocation for each non-empty
             mapped class.
+        split_acceptance: Optional split-acceptance criterion. The default
+            ``"none"`` preserves existing behavior. ``"contrast_score"`` uses
+            a mass-preserving observation-space contrast gate.
+        contrast_contribution: Design contribution array for contrast scoring,
+            with at least one design-observation dimension plus the two spatial
+            dimensions. Observed mole-fraction values must not be used here.
+        contrast_cell_weight: Optional prior flux or split-mass field used as
+            ``mu`` in contrast scoring. When omitted, the unnormalised generated
+            basis weight field is used as a split-mass proxy.
+        min_contrast_delta_eig: Optional minimum ``delta_eig`` threshold. If
+            both contrast thresholds are omitted, contrast diagnostics are
+            computed but proposed splits are not rejected.
+        min_contrast_lambda: Optional minimum ``lambda`` threshold.
+        contrast_tau: Prior standard deviation of the split contrast
+            coefficient ``delta = alpha_A - alpha_B``. If omitted, ``tau=1`` is
+            used and scores are uncalibrated.
+        contrast_sigma_design: Optional scalar design standard deviation,
+            equivalent to ``S = contrast_sigma_design**2 I``.
+        contrast_s_diag: Optional diagonal design covariance entries in the
+            same row space as ``contrast_contribution``.
 
     Returns:
         Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
@@ -378,12 +411,23 @@ def region_constrained_basis_function(
 
     flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
     weights = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
+    raw_weights = weights.copy()
     max_weight = float(weights.max())
     if max_weight > 0:
         weights = weights / max_weight
 
     region_classes = region_classes.transpose(*weights.dims)
     region_classes = region_classes.sel({dim: weights.coords[dim] for dim in weights.dims})
+    split_strategy = _region_constrained_split_strategy(
+        split_acceptance=split_acceptance,
+        contrast_contribution=contrast_contribution,
+        contrast_cell_weight=contrast_cell_weight if contrast_cell_weight is not None else raw_weights,
+        min_contrast_delta_eig=min_contrast_delta_eig,
+        min_contrast_lambda=min_contrast_lambda,
+        contrast_tau=contrast_tau,
+        contrast_sigma_design=contrast_sigma_design,
+        contrast_s_diag=contrast_s_diag,
+    )
 
     constrained_basis = region_constrained_basis(
         weights,
@@ -391,6 +435,7 @@ def region_constrained_basis_function(
         nbasis,
         allocation=allocation,
         min_regions_per_class=min_regions_per_class,
+        split_strategy=split_strategy,
     )
 
     constrained_basis = constrained_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
@@ -401,6 +446,37 @@ def region_constrained_basis_function(
     constrained_basis.attrs["domain"] = domain
 
     return constrained_basis
+
+
+def _region_constrained_split_strategy(
+    *,
+    split_acceptance: Literal["none", "contrast_score"],
+    contrast_contribution: xr.DataArray | None,
+    contrast_cell_weight: xr.DataArray,
+    min_contrast_delta_eig: float | None,
+    min_contrast_lambda: float | None,
+    contrast_tau: float | None,
+    contrast_sigma_design: float | None,
+    contrast_s_diag: xr.DataArray | None,
+):
+    """Return an optional region-constrained split strategy."""
+    if split_acceptance == "none":
+        return None
+    if split_acceptance != "contrast_score":
+        raise ValueError("split_acceptance must be 'none' or 'contrast_score'.")
+    if contrast_contribution is None:
+        raise ValueError("contrast_contribution is required when split_acceptance='contrast_score'.")
+    return GreedyAxisParallelSplitStrategy(
+        split_acceptance=ContrastScoreSplitAcceptance(
+            contribution=contrast_contribution,
+            cell_weight=contrast_cell_weight,
+            min_contrast_delta_eig=min_contrast_delta_eig,
+            min_contrast_lambda=min_contrast_lambda,
+            contrast_tau=contrast_tau,
+            contrast_sigma_design=contrast_sigma_design,
+            contrast_s_diag=contrast_s_diag,
+        )
+    )
 
 
 def quadtreebasisfunction(*args, **kwargs) -> xr.DataArray:
@@ -448,6 +524,14 @@ def fixed_outer_regions_basis(
     region_classes: xr.DataArray | None = None,
     region_allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
+    split_acceptance: Literal["none", "contrast_score"] = "none",
+    contrast_contribution: xr.DataArray | None = None,
+    contrast_cell_weight: xr.DataArray | None = None,
+    min_contrast_delta_eig: float | None = None,
+    min_contrast_lambda: float | None = None,
+    contrast_tau: float | None = None,
+    contrast_sigma_design: float | None = None,
+    contrast_s_diag: xr.DataArray | None = None,
 ) -> xr.DataArray:
     """Use fixed InTEM outer regions and fit inner regions with an algorithm.
 
@@ -477,6 +561,18 @@ def fixed_outer_regions_basis(
             ``"weight"`` or ``"area"``.
         min_regions_per_class: Minimum automatic allocation for each non-empty
             mapped class when using ``region_constrained``.
+        split_acceptance: Optional split-acceptance criterion for
+            ``region_constrained`` inner-region splitting.
+        contrast_contribution: Design contribution array used only when
+            ``split_acceptance="contrast_score"``.
+        contrast_cell_weight: Optional prior flux or split-mass field used for
+            contrast scoring.
+        min_contrast_delta_eig: Optional minimum contrast ``delta_eig``.
+        min_contrast_lambda: Optional minimum contrast ``lambda``.
+        contrast_tau: Prior standard deviation of the split contrast
+            coefficient. If omitted, ``tau=1`` is uncalibrated.
+        contrast_sigma_design: Optional scalar design standard deviation.
+        contrast_s_diag: Optional diagonal design covariance entries.
 
     Returns:
         Basis field with fixed outer labels and generated inner labels.
@@ -505,6 +601,14 @@ def fixed_outer_regions_basis(
                 "region_classes": region_classes,
                 "allocation": region_allocation,
                 "min_regions_per_class": min_regions_per_class,
+                "split_acceptance": split_acceptance,
+                "contrast_contribution": contrast_contribution,
+                "contrast_cell_weight": contrast_cell_weight,
+                "min_contrast_delta_eig": min_contrast_delta_eig,
+                "min_contrast_lambda": min_contrast_lambda,
+                "contrast_tau": contrast_tau,
+                "contrast_sigma_design": contrast_sigma_design,
+                "contrast_s_diag": contrast_s_diag,
             }
         )
     inner_region = basis_function(

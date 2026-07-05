@@ -216,6 +216,33 @@ def test_region_constrained_basis_function_uses_supplied_region_classes():
     _assert_basis_labels_do_not_cross_classes(labels, region_classes)
 
 
+def test_region_constrained_basis_function_can_use_contrast_score_acceptance():
+    """Contrast-score acceptance is opt-in and can stop low-contrast wrapper splits."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    contrast_contribution = xr.DataArray(
+        np.ones((2, *region_classes.shape), dtype=float),
+        dims=("design_obs", *region_classes.dims),
+        coords={"design_obs": [0, 1], **region_classes.coords},
+        name="design_contribution",
+    )
+
+    basis_func = region_constrained_basis_function(
+        fp_all=fp_all,
+        start_date="2020-01-01",
+        domain="TEST",
+        emissions_name=["total"],
+        nbasis=4,
+        region_classes=region_classes,
+        split_acceptance="contrast_score",
+        contrast_contribution=contrast_contribution,
+        min_contrast_lambda=0.1,
+    )
+
+    labels = basis_func.squeeze("time", drop=True)
+    assert set(np.unique(labels.values)) == {1, 2}
+    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
+
+
 @pytest.mark.parametrize(
     ("legacy_name", "canonical_name"),
     [

@@ -39,6 +39,14 @@ def make_basis_functions(
     region_classes: xr.DataArray | None = None,
     region_allocation: Literal["weight", "area"] = "weight",
     min_regions_per_class: int = 1,
+    split_acceptance: Literal["none", "contrast_score"] = "none",
+    contrast_contribution: xr.DataArray | None = None,
+    contrast_cell_weight: xr.DataArray | None = None,
+    min_contrast_delta_eig: float | None = None,
+    min_contrast_lambda: float | None = None,
+    contrast_tau: float | None = None,
+    contrast_sigma_design: float | None = None,
+    contrast_s_diag: xr.DataArray | None = None,
 ) -> BasisFunctions:
     """Create or load retained emissions basis functions.
 
@@ -80,6 +88,19 @@ def make_basis_functions(
             ``region_constrained``. One of ``"weight"`` or ``"area"``.
         min_regions_per_class: Minimum automatic allocation for each non-empty
             mapped class when using ``region_constrained``.
+        split_acceptance: Optional split-acceptance criterion for
+            ``region_constrained``. Defaults to ``"none"`` to preserve existing
+            behavior. ``"contrast_score"`` requires ``contrast_contribution``.
+        contrast_contribution: Design contribution array for contrast scoring;
+            do not use observed mole-fraction values or residuals.
+        contrast_cell_weight: Optional prior flux or split-mass field for
+            contrast scoring.
+        min_contrast_delta_eig: Optional minimum contrast ``delta_eig``.
+        min_contrast_lambda: Optional minimum contrast ``lambda``.
+        contrast_tau: Prior standard deviation of the split contrast
+            coefficient. If omitted, ``tau=1`` is uncalibrated.
+        contrast_sigma_design: Optional scalar design standard deviation.
+        contrast_s_diag: Optional diagonal design covariance entries.
 
     Returns:
         Retained emissions basis object ready for sensitivity projection.
@@ -128,6 +149,14 @@ def make_basis_functions(
                 region_classes=region_classes,
                 region_allocation=region_allocation,
                 min_regions_per_class=min_regions_per_class,
+                split_acceptance=split_acceptance,
+                contrast_contribution=contrast_contribution,
+                contrast_cell_weight=contrast_cell_weight,
+                min_contrast_delta_eig=min_contrast_delta_eig,
+                min_contrast_lambda=min_contrast_lambda,
+                contrast_tau=contrast_tau,
+                contrast_sigma_design=contrast_sigma_design,
+                contrast_s_diag=contrast_s_diag,
             )
         except KeyError as e:
             raise ValueError(
@@ -158,6 +187,14 @@ def make_basis_functions(
                     "region_classes": region_classes,
                     "allocation": region_allocation,
                     "min_regions_per_class": min_regions_per_class,
+                    "split_acceptance": split_acceptance,
+                    "contrast_contribution": contrast_contribution,
+                    "contrast_cell_weight": contrast_cell_weight,
+                    "min_contrast_delta_eig": min_contrast_delta_eig,
+                    "min_contrast_lambda": min_contrast_lambda,
+                    "contrast_tau": contrast_tau,
+                    "contrast_sigma_design": contrast_sigma_design,
+                    "contrast_s_diag": contrast_s_diag,
                 }
             )
         basis_candidate = basis_function.algorithm(
@@ -238,6 +275,14 @@ def basis_functions_wrapper(
     region_classes: xr.DataArray | None = None,
     region_allocation: Literal["weight", "area"] = "weight",
     min_regions_per_class: int = 1,
+    split_acceptance: Literal["none", "contrast_score"] = "none",
+    contrast_contribution: xr.DataArray | None = None,
+    contrast_cell_weight: xr.DataArray | None = None,
+    min_contrast_delta_eig: float | None = None,
+    min_contrast_lambda: float | None = None,
+    contrast_tau: float | None = None,
+    contrast_sigma_design: float | None = None,
+    contrast_s_diag: xr.DataArray | None = None,
 ):
     """Create basis sensitivities for a legacy fixed-basis inversion.
 
@@ -284,6 +329,19 @@ def basis_functions_wrapper(
             ``region_constrained``. One of ``"weight"`` or ``"area"``.
         min_regions_per_class: Minimum automatic allocation for each non-empty
             mapped class when using ``region_constrained``.
+        split_acceptance: Optional split-acceptance criterion for
+            ``region_constrained``. Defaults to ``"none"`` to preserve existing
+            behavior.
+        contrast_contribution: Design contribution array for contrast scoring;
+            do not use observed mole-fraction values or residuals.
+        contrast_cell_weight: Optional prior flux or split-mass field for
+            contrast scoring.
+        min_contrast_delta_eig: Optional minimum contrast ``delta_eig``.
+        min_contrast_lambda: Optional minimum contrast ``lambda``.
+        contrast_tau: Prior standard deviation of the split contrast
+            coefficient. If omitted, ``tau=1`` is uncalibrated.
+        contrast_sigma_design: Optional scalar design standard deviation.
+        contrast_s_diag: Optional diagonal design covariance entries.
 
     Returns:
         By default, returns a dictionary similar to ``fp_all`` but with basis
@@ -313,6 +371,14 @@ def basis_functions_wrapper(
         region_classes=region_classes,
         region_allocation=region_allocation,
         min_regions_per_class=min_regions_per_class,
+        split_acceptance=split_acceptance,
+        contrast_contribution=contrast_contribution,
+        contrast_cell_weight=contrast_cell_weight,
+        min_contrast_delta_eig=min_contrast_delta_eig,
+        min_contrast_lambda=min_contrast_lambda,
+        contrast_tau=contrast_tau,
+        contrast_sigma_design=contrast_sigma_design,
+        contrast_s_diag=contrast_s_diag,
         outputname=outputname,
         output_path=output_path,
         basis_output_format=basis_output_format,

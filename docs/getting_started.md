@@ -73,6 +73,7 @@ NOTE: flux and boundary conditions data usually has a specific *domain*, but it 
     -   &ldquo;basis function&rdquo; usually means a netCDF file with latitude and longitude coordinates, with integer values. So all of the coordinates with value 1 are in region 1, and so on.
     -   basis functions for fluxes can be created on the fly with the `quadtree` or `weighted` algorithms. You can also read in pre-defined basis functions. Default location: `openghg_inversions/basis_functions`
     -   region-constrained basis generation is available through the Python basis API when the caller supplies an already loaded `region_classes` `DataArray`. This is intended for land/sea, country, or other region-class masks, and keeps labels from crossing those classes. The current `.ini`/`run_hbmcmc.py` route does not yet load `region_classes` from a file, so use a saved basis file or the Python wrapper for this case.
+    -   region-constrained splitting can optionally use `split_acceptance="contrast_score"` with a design contribution array. This uses a fixed design covariance `S` and a prior split-contrast standard deviation `tau`; the default `tau=1`, `S=I` is only an uncalibrated ranking/debugging score, not calibrated expected information gain. Do not build this score from observed mole fractions or residuals.
     -   basis functions for the boundary conditions have a similar format. Default location `openghg_inversions/bc_basis_functions`
 
 Summary
