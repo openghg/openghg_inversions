@@ -64,6 +64,12 @@ from openghg_inversions.array_ops import (
     force_align,
     get_xr_dummies,
 )
+from openghg_inversions.basis.layout import (
+    BASIS_GROUP_COORD,
+    BASIS_LABEL_DIM,
+    BASIS_PARTITION_COORD,
+    REGION_IN_PARTITION_COORD,
+)
 
 # ----------------------------
 # Registry
@@ -358,6 +364,7 @@ def drop_singleton_time(da: xr.DataArray, *, name: str = "basis_flat") -> xr.Dat
 # at 0 (i.e. 0, 1, ..., N-1) or at 1 (i.e. 1, 2, ..., N), or "basis_values"
 # which will use whatever values are in the flat basis array values.
 RegionLabels = Literal["range0", "range1", "basis_values"]
+STATE_METADATA_COORDS = (BASIS_GROUP_COORD, BASIS_PARTITION_COORD, REGION_IN_PARTITION_COORD)
 
 
 @register_basis_operator("bucket")
@@ -374,6 +381,7 @@ class BucketBasisOperator(BasisOperator):
         meta: BasisMeta | None = None,
         state_dim: str | None = None,
         region_labels: RegionLabels = "range0",
+        state_metadata: xr.Dataset | None = None,
         chunks: dict[str, int] | None = None,
     ) -> None:
         """Creates a single-source bucket basis operator.
@@ -387,6 +395,8 @@ class BucketBasisOperator(BasisOperator):
                 - `"range0"`: `0..N-1` (legacy-friendly)
                 - `"range1"`: `1..N`
                 - `"basis_values"`: use the ordered non-negative labels found in `basis_flat`.
+            state_metadata: Optional metadata for the state axis. Metadata may be
+                indexed by raw ``basis_label`` values or by the final state dimension.
             chunks: Optional chunking to apply to the basis matrix.
         """
         meta = meta or BasisMeta()
@@ -403,14 +413,23 @@ class BucketBasisOperator(BasisOperator):
         # create dummy matrix (grid -> state)
         # cat_dim name must match meta.state_dim
         mat = get_xr_dummies(self.basis_flat, cat_dim=self.meta.state_dim)
+        basis_value_labels = self._basis_value_labels(mat)
 
         # optionally override state coordinate policy
-        mat = self._apply_region_labels_policy(mat)
+        mat = self._apply_region_labels_policy(mat, basis_value_labels=basis_value_labels)
+
+        if state_metadata is not None:
+            mat = self._assign_state_metadata(
+                mat,
+                state_metadata,
+                basis_value_labels=basis_value_labels,
+            )
 
         # chunking
         mat = mat.chunk(chunks) if chunks is not None else mat.chunk()
 
         self._basis_matrix = mat
+        self._state_metadata = self._state_metadata_from_matrix(mat)
 
     @property
     def meta(self) -> BasisMeta:
@@ -422,7 +441,33 @@ class BucketBasisOperator(BasisOperator):
         """Basis matrix."""
         return self._basis_matrix
 
-    def _apply_region_labels_policy(self, mat: xr.DataArray) -> xr.DataArray:
+    @property
+    def state_metadata(self) -> xr.Dataset | None:
+        """Semantic metadata coordinates carried on the state dimension."""
+        return self._state_metadata
+
+    def _basis_value_labels(self, mat: xr.DataArray) -> np.ndarray:
+        """Return raw basis labels in the dummy-column order."""
+        labels = np.unique(self.basis_flat.values.astype(int))
+        positive_labels = labels[labels > 0]
+        non_negative_labels = labels[labels >= 0]
+        n = mat.sizes[self.meta.state_dim]
+
+        if len(positive_labels) == n:
+            return positive_labels.astype(int)
+        if len(non_negative_labels) == n:
+            return non_negative_labels.astype(int)
+        raise ValueError(
+            "Basis labels must be one-based positive values or zero-based non-negative values; "
+            f"got labels {labels.tolist()} for {n} dummy columns."
+        )
+
+    def _apply_region_labels_policy(
+        self,
+        mat: xr.DataArray,
+        *,
+        basis_value_labels: np.ndarray | None = None,
+    ) -> xr.DataArray:
         """Applies the configured `region_labels` policy to the state coordinate.
 
         Args:
@@ -437,20 +482,9 @@ class BucketBasisOperator(BasisOperator):
             (`1..N`) and zero-based legacy output labels (`0..N-1`) are
             accepted.
         """
-        labels = np.unique(self.basis_flat.values.astype(int))
-        positive_labels = labels[labels > 0]
-        non_negative_labels = labels[labels >= 0]
+        if basis_value_labels is None:
+            basis_value_labels = self._basis_value_labels(mat)
         n = mat.sizes[self.meta.state_dim]
-
-        if len(positive_labels) == n:
-            basis_value_labels = positive_labels
-        elif len(non_negative_labels) == n:
-            basis_value_labels = non_negative_labels
-        else:
-            raise ValueError(
-                "Basis labels must be one-based positive values or zero-based non-negative values; "
-                f"got labels {labels.tolist()} for {n} dummy columns."
-            )
 
         if self.region_labels == "range0":
             coord = np.arange(n, dtype=int)
@@ -464,6 +498,85 @@ class BucketBasisOperator(BasisOperator):
         # Assign coordinate. Important: this assumes get_xr_dummies created state columns
         # ordered by sorted unique labels. If that assumption changes, we must reindex.
         return mat.assign_coords({self.meta.state_dim: coord})
+
+    def _assign_state_metadata(
+        self,
+        mat: xr.DataArray,
+        state_metadata: xr.Dataset,
+        *,
+        basis_value_labels: np.ndarray,
+    ) -> xr.DataArray:
+        """Attach metadata coordinates after final state labels are known."""
+        metadata = self._metadata_on_state_dim(
+            state_metadata,
+            mat=mat,
+            basis_value_labels=basis_value_labels,
+        )
+        coords: dict[str, tuple[str, np.ndarray]] = {}
+        for name in STATE_METADATA_COORDS:
+            if name not in metadata:
+                raise ValueError(f"State metadata is missing required variable {name!r}.")
+            variable = metadata[name]
+            if variable.dims != (self.meta.state_dim,):
+                raise ValueError(
+                    f"State metadata variable {name!r} must have only dimension "
+                    f"{self.meta.state_dim!r}; got {variable.dims!r}."
+                )
+            coords[name] = (self.meta.state_dim, np.asarray(variable.values))
+        return mat.assign_coords(coords)
+
+    def _metadata_on_state_dim(
+        self,
+        state_metadata: xr.Dataset,
+        *,
+        mat: xr.DataArray,
+        basis_value_labels: np.ndarray,
+    ) -> xr.Dataset:
+        """Return metadata indexed in final state-coordinate order."""
+        state_coord = mat[self.meta.state_dim]
+        if BASIS_LABEL_DIM in state_metadata.dims:
+            metadata_labels = np.asarray(state_metadata[BASIS_LABEL_DIM].values).astype(int)
+            expected_labels = np.asarray(basis_value_labels).astype(int)
+            if set(metadata_labels.tolist()) != set(expected_labels.tolist()):
+                raise ValueError(
+                    "State metadata basis_label values must match the basis labels; "
+                    f"got {metadata_labels.tolist()} and expected {expected_labels.tolist()}."
+                )
+            metadata = state_metadata.sel({BASIS_LABEL_DIM: expected_labels})
+            metadata = metadata.rename({BASIS_LABEL_DIM: self.meta.state_dim})
+        elif self.meta.state_dim in state_metadata.dims:
+            metadata = state_metadata.copy()
+            if metadata.sizes[self.meta.state_dim] != mat.sizes[self.meta.state_dim]:
+                raise ValueError(
+                    f"State metadata has {metadata.sizes[self.meta.state_dim]} entries on "
+                    f"{self.meta.state_dim!r}; expected {mat.sizes[self.meta.state_dim]}."
+                )
+            if self.meta.state_dim in metadata.coords and not np.array_equal(
+                metadata[self.meta.state_dim].values,
+                state_coord.values,
+            ):
+                raise ValueError(
+                    f"State metadata coordinate {self.meta.state_dim!r} does not match "
+                    "the final operator state coordinate."
+                )
+        else:
+            raise ValueError(
+                f"State metadata must be indexed by {BASIS_LABEL_DIM!r} or "
+                f"{self.meta.state_dim!r}."
+            )
+        return metadata.assign_coords({self.meta.state_dim: state_coord})
+
+    def _state_metadata_from_matrix(self, mat: xr.DataArray) -> xr.Dataset | None:
+        """Extract serialisable state metadata from basis-matrix coordinates."""
+        if not all(name in mat.coords for name in STATE_METADATA_COORDS):
+            return None
+        return xr.Dataset(
+            data_vars={
+                name: (self.meta.state_dim, np.asarray(mat.coords[name].values))
+                for name in STATE_METADATA_COORDS
+            },
+            coords={self.meta.state_dim: np.asarray(mat[self.meta.state_dim].values)},
+        )
 
     # ---- DataTree IO ----
 
@@ -486,6 +599,8 @@ class BucketBasisOperator(BasisOperator):
                 "region_labels": self.region_labels,
             }
         )
+        if self.state_metadata is not None:
+            dt["state_metadata"] = xr.DataTree(self.state_metadata)
         return dt
 
     @classmethod
@@ -501,6 +616,7 @@ class BucketBasisOperator(BasisOperator):
         ds = dt.to_dataset()
 
         basis_flat = ds["basis_flat"]
+        state_metadata = dt["state_metadata"].to_dataset() if "state_metadata" in dt else None
         meta = BasisMeta(
             grid_dims=tuple(dt.attrs.get("grid_dims", ("lat", "lon"))),
             state_dim=str(dt.attrs.get("state_dim", "state")),
@@ -511,6 +627,7 @@ class BucketBasisOperator(BasisOperator):
             basis_flat=basis_flat,
             meta=meta,
             region_labels=region_labels,  # type: ignore[arg-type]
+            state_metadata=state_metadata,
         )
 
 
