@@ -24,6 +24,14 @@ Axis-parallel contrast rows append `/contrast` to the candidate label. They use 
 
 For the no-mask score rows below, allocation is reported as `single_class` because there is only one class. The generator uses the normal weight-allocation API internally, but no inter-class allocation decision is being tested in that case.
 
+Current API routing is narrower than this option matrix. The core constrained
+algorithm can compose split-stopping policies such as `MinChildWeightShare`,
+`MinChildTargetWeightShare`, and `MaxChildPCAEccentricity`, and those policies
+can return fewer regions than the requested target. Higher-level basis wrappers
+currently expose only `split_acceptance="none"` and
+`split_acceptance="contrast_score"`; child-share stopping thresholds are not
+available through `.ini`, `run_hbmcmc.py`, or RHIME config options.
+
 ## Option Shorthand
 
 Candidate labels use the format `allocation/split_step/split_mode/geometry`. The objective group is shown separately because no mask, land/sea mask, and selected-country mask answer different scientific basis-design questions.

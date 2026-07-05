@@ -124,6 +124,32 @@ are not the same strings as the OpenGHG source values.
        "ocean": {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0}
    }
 
+Generated Basis Functions
+-------------------------
+
+RHIME can load saved flux basis functions with ``fp_basis_case`` or generate a
+basis with ``basis_algorithm`` and ``nbasis``. The legacy generated-basis
+choices exposed through RHIME config are still ``"quadtree"`` and
+``"weighted"``.
+
+The lower-level Python basis API also supports ``"region_constrained"`` when a
+caller supplies an already loaded ``region_classes`` ``DataArray``. That path
+keeps generated labels from crossing land/sea, country, inner/outer, or other
+class boundaries, but RHIME config and ``run_hbmcmc.py`` do not yet load
+``region_classes`` from files. For RHIME runs that need these masks today,
+build and save the basis through the Python basis API, then load it as a saved
+basis case.
+
+Region-constrained algorithms have split-stopping policies at the lower-level
+strategy boundary. ``MinChildWeightShare`` is a parent-relative balance guard:
+it compares the lightest proposed child with the current parent partition.
+``MinChildTargetWeightShare`` is an equal-target low-weight guard: it compares
+the lightest proposed child with ``weights.sum() / target_regions`` for the
+class/source-local field being partitioned. Thresholds such as ``0.1`` mean
+different things for those policies, and generated region counts become upper
+targets when split stopping rejects remaining candidates. These child-share
+policies are not currently routed through RHIME config options.
+
 Output Formats
 --------------
 
