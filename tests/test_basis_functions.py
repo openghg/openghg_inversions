@@ -15,10 +15,14 @@ from openghg_inversions.basis._functions import (
     _mean_fp_times_mean_flux,
 )
 from openghg_inversions.basis import (
+    basis_weights_from_fp_all,
     basis_functions_wrapper,
+    bucket_basis_from_weights,
     bucket_basis_function,
-    quadtree_basis_function,
     fixed_outer_regions_basis,
+    quadtree_basis_from_weights,
+    quadtree_basis_function,
+    region_constrained_basis_from_weights,
     region_constrained_basis_function,
 )
 from openghg_inversions.basis._wrapper import (
@@ -81,6 +85,129 @@ def test_fp_x_flux(tac_ch4_data_args):
     mean_fp_flux3 = _mean_fp_times_mean_flux(flux3, fp3)
 
     xr.testing.assert_allclose(mean_fp_flux1, mean_fp_flux3)
+
+
+def _simple_fp_all_for_basis_weights() -> dict:
+    """Build a tiny legacy ``fp_all`` mapping for weight-adapter tests."""
+    time = pd.date_range("2019-01-01", periods=2)
+    coords = {"time": time, "lat": [10.0, 20.0], "lon": [1.0, 2.0]}
+    flux = xr.DataArray(
+        np.array(
+            [
+                [[1.0, 2.0], [3.0, 4.0]],
+                [[2.0, 3.0], [4.0, 5.0]],
+            ]
+        ),
+        dims=("time", "lat", "lon"),
+        coords=coords,
+        name="flux",
+    )
+    footprint = xr.DataArray(
+        np.ones((2, 2, 2)),
+        dims=("time", "lat", "lon"),
+        coords=coords,
+        name="fp",
+    )
+    return {
+        ".flux": {"test-source": SimpleNamespace(data=xr.Dataset({"flux": flux}))},
+        "TAC": xr.Dataset({"fp": footprint}),
+    }
+
+
+def test_basis_weights_from_fp_all_matches_current_weight_definition():
+    """Weight helper matches the current mean-footprint times mean-flux convention."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+
+    weights = basis_weights_from_fp_all(fp_all, ["test-source"])
+
+    xr.testing.assert_allclose(weights, flux.mean("time"))
+
+
+def test_basis_weights_from_fp_all_applies_abs_flux_and_mask():
+    """Weight helper preserves legacy absolute-flux and mask handling."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux
+    fp_all[".flux"]["test-source"] = SimpleNamespace(data=xr.Dataset({"flux": -flux}))
+    mask = xr.DataArray(
+        np.array([[True, False], [False, True]]),
+        dims=("lat", "lon"),
+        coords={"lat": flux.lat, "lon": flux.lon},
+    )
+
+    weights = basis_weights_from_fp_all(fp_all, ["test-source"], abs_flux=True, mask=mask)
+
+    expected = flux.mean("time").where(mask, drop=True)
+    xr.testing.assert_allclose(weights, expected)
+
+
+def test_quadtree_basis_from_weights_matches_fp_all_adapter(monkeypatch):
+    """Quadtree ``fp_all`` wrapper delegates to the weight-first helper."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    weights = basis_weights_from_fp_all(fp_all, ["test-source"])
+
+    def fake_quadtree_algorithm(grid: np.ndarray, nbasis: int, seed: int | None = None) -> np.ndarray:
+        """Return deterministic labels while recording expected adapter args."""
+        assert nbasis == 3
+        assert seed == 7
+        return (grid > 0).astype(int)
+
+    monkeypatch.setattr(basis_module, "quadtree_algorithm", fake_quadtree_algorithm)
+
+    from_weights = quadtree_basis_from_weights(weights, "2019-01-01", "TEST", nbasis=3, seed=7)
+    from_fp_all = quadtree_basis_function(
+        fp_all,
+        "2019-01-01",
+        "TEST",
+        emissions_name=["test-source"],
+        nbasis=3,
+        seed=7,
+    )
+
+    xr.testing.assert_equal(from_fp_all, from_weights)
+    assert from_fp_all.attrs["domain"] == "TEST"
+
+
+def test_bucket_basis_from_weights_matches_fp_all_adapter(monkeypatch):
+    """Weighted bucket ``fp_all`` wrapper delegates to the weight-first helper."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    weights = basis_weights_from_fp_all(fp_all, ["test-source"])
+
+    def fake_weighted_algorithm(
+        grid: np.ndarray,
+        nregion: int,
+        bucket: float,
+        domain: str,
+        country_directory: str | None = None,
+    ) -> np.ndarray:
+        """Return deterministic labels while recording expected adapter args."""
+        assert nregion == 4
+        assert bucket == 1
+        assert domain == "TEST"
+        assert country_directory == "/tmp/countries"
+        assert np.isclose(grid.max(), 1.0)
+        return np.arange(1, grid.size + 1).reshape(grid.shape)
+
+    monkeypatch.setattr(basis_module, "weighted_algorithm", fake_weighted_algorithm)
+
+    from_weights = bucket_basis_from_weights(
+        weights,
+        "2019-01-01",
+        "TEST",
+        nbasis=4,
+        country_directory="/tmp/countries",
+    )
+    from_fp_all = bucket_basis_function(
+        fp_all,
+        "2019-01-01",
+        "TEST",
+        emissions_name=["test-source"],
+        nbasis=4,
+        country_directory="/tmp/countries",
+    )
+
+    xr.testing.assert_equal(from_fp_all, from_weights)
+    assert from_fp_all.attrs["domain"] == "TEST"
 
 
 def test_quadtree_basis_function(tac_ch4_data_args, raw_data_path):
@@ -216,6 +343,31 @@ def test_region_constrained_basis_function_uses_supplied_region_classes():
     _assert_basis_labels_do_not_cross_classes(labels, region_classes)
 
 
+def test_region_constrained_basis_from_weights_matches_fp_all_adapter():
+    """Region-constrained ``fp_all`` wrapper delegates to the weight-first helper."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    weights = basis_weights_from_fp_all(fp_all, ["total"])
+
+    from_weights = region_constrained_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        region_classes=region_classes,
+        nbasis=2,
+    )
+    from_fp_all = region_constrained_basis_function(
+        fp_all=fp_all,
+        start_date="2020-01-01",
+        domain="TEST",
+        emissions_name=["total"],
+        nbasis=2,
+        region_classes=region_classes,
+    )
+
+    xr.testing.assert_equal(from_fp_all, from_weights)
+    assert from_fp_all.attrs["domain"] == "TEST"
+
+
 def test_region_constrained_basis_function_can_use_contrast_score_acceptance():
     """Contrast-score acceptance is opt-in and can stop low-contrast wrapper splits."""
     fp_all, region_classes = _tiny_region_constrained_fp_all()
@@ -233,6 +385,33 @@ def test_region_constrained_basis_function_can_use_contrast_score_acceptance():
         emissions_name=["total"],
         nbasis=4,
         region_classes=region_classes,
+        split_acceptance="contrast_score",
+        contrast_contribution=contrast_contribution,
+        min_contrast_lambda=0.1,
+    )
+
+    labels = basis_func.squeeze("time", drop=True)
+    assert set(np.unique(labels.values)) == {1, 2}
+    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
+
+
+def test_region_constrained_basis_from_weights_preserves_contrast_score_acceptance():
+    """Weight-first constrained helper keeps the contrast-score acceptance option."""
+    fp_all, region_classes = _tiny_region_constrained_fp_all()
+    weights = basis_weights_from_fp_all(fp_all, ["total"])
+    contrast_contribution = xr.DataArray(
+        np.ones((2, *region_classes.shape), dtype=float),
+        dims=("design_obs", *region_classes.dims),
+        coords={"design_obs": [0, 1], **region_classes.coords},
+        name="design_contribution",
+    )
+
+    basis_func = region_constrained_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        region_classes=region_classes,
+        nbasis=4,
         split_acceptance="contrast_score",
         contrast_contribution=contrast_contribution,
         min_contrast_lambda=0.1,
@@ -269,6 +448,14 @@ def test_region_constrained_compressed_name_is_not_exported():
     """The new region-constrained function only uses the canonical name."""
     assert not hasattr(basis_module, "regionconstrainedbasisfunction")
     assert not hasattr(basis_package, "regionconstrainedbasisfunction")
+
+
+def test_legacy_basis_algorithm_registry_keeps_quadtree_and_weighted():
+    """Legacy run_hbmcmc algorithm names remain registered."""
+    assert "quadtree" in basis_functions
+    assert "weighted" in basis_functions
+    assert basis_functions["quadtree"].algorithm is quadtree_basis_function
+    assert basis_functions["weighted"].algorithm is bucket_basis_function
 
 
 def test_make_basis_functions_accepts_region_constrained_algorithm():

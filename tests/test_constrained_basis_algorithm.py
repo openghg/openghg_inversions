@@ -14,6 +14,7 @@ from openghg_inversions.basis.algorithms import (
     MinChildWeightShare,
     allocate_nbasis_by_class,
     contrast_tau_from_multiplier_cv,
+    intersect_region_class_layers,
     region_constrained_basis,
     split_contrast_score,
 )
@@ -129,6 +130,141 @@ def test_region_constrained_basis_splits_zero_weight_classes_by_area():
 
     assert set(np.unique(labels.values)) == {1, 2, 3, 4}
     assert all(len(class_values) == 1 for class_values in _class_values_for_labels(labels, classes).values())
+
+
+def test_intersect_region_class_layers_creates_composite_classes():
+    """Layered masks can be crossed into class labels for constrained splitting."""
+    weights = xr.DataArray(
+        np.ones((3, 3)),
+        dims=("lat", "lon"),
+        coords={"lat": [1.0, 2.0, 3.0], "lon": [10.0, 20.0, 30.0]},
+    )
+    landsea = xr.DataArray(
+        np.array(
+            [
+                ["land", "land", "sea"],
+                ["land", "sea", "sea"],
+                ["unknown", "sea", "sea"],
+            ],
+            dtype=object,
+        ),
+        dims=weights.dims,
+        coords=weights.coords,
+    )
+    inner_outer = xr.DataArray(
+        np.array(
+            [
+                ["inner", "outer", "outer"],
+                ["inner", "inner", "outer"],
+                ["inner", "outer", "outer"],
+            ],
+            dtype=object,
+        ),
+        dims=weights.dims,
+        coords=weights.coords,
+    )
+
+    classes = intersect_region_class_layers(
+        {"surface": landsea, "window": inner_outer},
+        unmapped_values={"unknown"},
+    )
+    labels = region_constrained_basis(weights, classes, nbasis=4, allocation="area")
+
+    assert classes.name == "region_classes"
+    assert classes.attrs["region_class_layers"] == ("surface", "window")
+    assert classes.sel(lat=1.0, lon=10.0).item() == ("land", "inner")
+    assert classes.sel(lat=1.0, lon=30.0).item() == ("sea", "outer")
+    assert np.isnan(classes.sel(lat=3.0, lon=10.0).item())
+    assert set(np.unique(labels.values)) == {0, 1, 2, 3, 4}
+    assert all(len(class_values) == 1 for class_values in _class_values_for_labels(labels, classes).values())
+
+
+def test_intersect_region_class_layers_aligns_transposed_layers():
+    """Layer intersections preserve the first layer's dimension order."""
+    landsea = xr.DataArray(
+        np.array([["land", "sea"], ["land", "sea"]], dtype=object),
+        dims=("lat", "lon"),
+        coords={"lat": [1.0, 2.0], "lon": [10.0, 20.0]},
+    )
+    inner_outer = xr.DataArray(
+        np.array([["inner", "outer"], ["outer", "outer"]], dtype=object).T,
+        dims=("lon", "lat"),
+        coords={"lon": [10.0, 20.0], "lat": [1.0, 2.0]},
+    )
+
+    classes = intersect_region_class_layers({"surface": landsea, "window": inner_outer})
+
+    assert classes.dims == landsea.dims
+    assert classes.sel(lat=1.0, lon=10.0).item() == ("land", "inner")
+    assert classes.sel(lat=2.0, lon=10.0).item() == ("land", "outer")
+
+
+def test_tuple_class_masks_work_when_last_dimension_matches_tuple_length():
+    """Tuple class labels should not be compared with NumPy broadcasting."""
+    weights = xr.DataArray(
+        np.ones((2, 2)),
+        dims=("lat", "lon"),
+        coords={"lat": [1.0, 2.0], "lon": [10.0, 20.0]},
+    )
+    landsea = xr.DataArray(
+        np.array([["land", "sea"], ["land", "sea"]], dtype=object),
+        dims=weights.dims,
+        coords=weights.coords,
+    )
+    inner_outer = xr.DataArray(
+        np.array([["inner", "outer"], ["outer", "inner"]], dtype=object),
+        dims=weights.dims,
+        coords=weights.coords,
+    )
+    classes = intersect_region_class_layers({"surface": landsea, "window": inner_outer})
+
+    allocation = allocate_nbasis_by_class(
+        weights,
+        classes,
+        nbasis={
+            ("land", "inner"): 1,
+            ("sea", "outer"): 1,
+            ("land", "outer"): 1,
+            ("sea", "inner"): 1,
+        },
+    )
+    labels = region_constrained_basis(weights, classes, nbasis=allocation)
+
+    assert allocation == {
+        ("land", "inner"): 1,
+        ("sea", "outer"): 1,
+        ("land", "outer"): 1,
+        ("sea", "inner"): 1,
+    }
+    assert set(np.unique(labels.values)) == {1, 2, 3, 4}
+    assert all(len(class_values) == 1 for class_values in _class_values_for_labels(labels, classes).values())
+
+
+def test_intersect_region_class_layers_unmaps_nulls_in_later_layers():
+    """A null in any layer should leave the composite class unmapped."""
+    landsea = xr.DataArray(
+        np.array([["land", "sea"], ["land", "sea"]], dtype=object),
+        dims=("lat", "lon"),
+    )
+    inner_outer = xr.DataArray(
+        np.array([["inner", np.nan], ["outer", "inner"]], dtype=object),
+        dims=landsea.dims,
+    )
+
+    classes = intersect_region_class_layers({"surface": landsea, "window": inner_outer})
+
+    assert np.isnan(classes.isel(lat=0, lon=1).item())
+    assert classes.isel(lat=1, lon=1).item() == ("sea", "inner")
+
+
+def test_intersect_region_class_layers_rejects_unhashable_values():
+    """Composite class labels require hashable layer values."""
+    bad_values = np.empty((1, 1), dtype=object)
+    bad_values[0, 0] = ["not", "hashable"]
+    bad_layer = xr.DataArray(bad_values, dims=("lat", "lon"))
+
+    with pytest.raises(ValueError, match="not hashable"):
+        intersect_region_class_layers({"bad": bad_layer})
 
 
 def test_greedy_axis_parallel_strategy_hits_target_region_count():

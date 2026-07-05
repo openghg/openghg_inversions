@@ -19,6 +19,11 @@ split-stopping policies remain separate.
 Output labels preserve the input weight dimensions and coordinates. Positive
 labels are globally unique, unmapped cells remain ``0``, and region-class
 boundaries are never crossed.
+
+Layered region-class helpers are also pure. They combine already loaded masks
+into composite class labels so callers can express intersections such as
+land/sea by inner/outer without baking file loading or runner configuration into
+the algorithm.
 """
 
 from __future__ import annotations
@@ -800,13 +805,90 @@ def region_constrained_basis(
     next_label = 1
     for class_value in mapped_classes:
         target_regions = targets[class_value]
-        class_mask = class_values == class_value
+        class_mask = _class_value_mask(class_values, class_value)
         local_labels = strategy(weight_values, class_mask, target_regions)
         for local_label in _positive_labels(local_labels):
             labels[(local_labels == local_label) & class_mask] = next_label
             next_label += 1
 
     return _labels_dataarray(labels, weights)
+
+
+def intersect_region_class_layers(
+    layers: Mapping[Hashable, xr.DataArray],
+    *,
+    unmapped_values: Iterable[Hashable] = (),
+    name: str = "region_classes",
+) -> xr.DataArray:
+    """Intersect aligned region-class layers into composite class labels.
+
+    Args:
+        layers: Ordered mapping from layer name to two-dimensional class field.
+            Mapping insertion order defines the order of values in each output
+            class tuple.
+        unmapped_values: Layer values that should leave the output cell
+            unmapped. Null values in any layer are always unmapped.
+        name: Name for the returned ``DataArray``.
+
+    Returns:
+        Object-valued ``DataArray`` with the same dimensions and coordinates as
+        the first layer. Mapped cells contain tuples of layer values, while
+        cells that are null or explicitly unmapped in any layer contain
+        ``NaN``.
+
+    Raises:
+        ValueError: If no layers are supplied, any layer is not two-dimensional,
+            layer dimension names differ, or a mapped layer value is not
+            hashable.
+        xarray.AlignmentError: If layer coordinates do not align exactly.
+
+    Notes:
+        The tuple labels can be passed directly to
+        :func:`region_constrained_basis`. This is the small lattice-style
+        construction needed for layered masks such as land/sea crossed with an
+        inner/outer rectangle.
+    """
+    layer_items = list(layers.items())
+    if not layer_items:
+        raise ValueError("At least one region-class layer must be supplied.")
+
+    template = layer_items[0][1]
+    if template.ndim != 2:
+        raise ValueError("Region-class layers must be two-dimensional.")
+
+    aligned_layers: list[xr.DataArray] = []
+    for layer_name, layer in layer_items:
+        if layer.ndim != 2:
+            raise ValueError(f"Region-class layer {layer_name!r} must be two-dimensional.")
+        if set(layer.dims) != set(template.dims):
+            raise ValueError("Region-class layers must use the same dimensions.")
+        aligned_layers.append(layer.transpose(*template.dims))
+
+    aligned_layers = list(xr.align(*aligned_layers, join="exact"))
+    layer_values = [layer.to_numpy() for layer in aligned_layers]
+    unmapped = set(unmapped_values)
+    class_values = np.empty(template.shape, dtype=object)
+    class_values[:] = np.nan
+
+    for index in np.ndindex(template.shape):
+        values: list[Hashable] = []
+        mapped = True
+        for layer in layer_values:
+            value = cast(Hashable, layer[index])
+            if _is_unmapped_layer_value(value, unmapped):
+                mapped = False
+                break
+            values.append(value)
+        if mapped:
+            class_values[index] = tuple(values)
+
+    return xr.DataArray(
+        class_values,
+        dims=template.dims,
+        coords=template.coords,
+        name=name,
+        attrs={"region_class_layers": tuple(str(layer_name) for layer_name, _ in layer_items)},
+    )
 
 
 def allocate_nbasis_by_class(
@@ -852,7 +934,8 @@ def allocate_nbasis_by_class(
         return {}
 
     capacities = {
-        class_value: int(np.count_nonzero(class_values == class_value)) for class_value in mapped_classes
+        class_value: int(np.count_nonzero(_class_value_mask(class_values, class_value)))
+        for class_value in mapped_classes
     }
 
     if isinstance(nbasis, Mapping):
@@ -939,10 +1022,38 @@ def _mapped_classes(
     unmapped = set(unmapped_values)
     classes: list[Hashable] = []
     for value in pd.unique(class_values.ravel()):
-        if pd.isna(value) or value in unmapped:
+        if _is_unmapped_layer_value(cast(Hashable, value), unmapped):
             continue
         classes.append(cast(Hashable, value))
     return classes
+
+
+def _is_unmapped_layer_value(value: Hashable, unmapped_values: set[Hashable]) -> bool:
+    """Return true when a layer value should not be mapped."""
+    isna = pd.isna(value)
+    if isinstance(isna, (bool, np.bool_)) and bool(isna):
+        return True
+    try:
+        return value in unmapped_values
+    except TypeError as exc:
+        raise ValueError(f"Region-class layer value {value!r} is not hashable.") from exc
+
+
+def _class_value_mask(class_values: np.ndarray, class_value: Hashable) -> np.ndarray:
+    """Return a Boolean mask for one class value, including tuple labels."""
+    if isinstance(class_value, tuple):
+        return np.asarray(
+            np.frompyfunc(lambda value: value == class_value, 1, 1)(class_values),
+            dtype=bool,
+        )
+
+    try:
+        mask = class_values == class_value
+    except ValueError:
+        mask = np.frompyfunc(lambda value: value == class_value, 1, 1)(class_values)
+    if not isinstance(mask, np.ndarray) or mask.shape != class_values.shape:
+        mask = np.frompyfunc(lambda value: value == class_value, 1, 1)(class_values)
+    return np.asarray(mask, dtype=bool)
 
 
 def _explicit_allocation(
@@ -1005,14 +1116,15 @@ def _allocation_scores(
     """
     if allocation == "area":
         return {
-            class_value: float(np.count_nonzero(class_values == class_value))
+            class_value: float(np.count_nonzero(_class_value_mask(class_values, class_value)))
             for class_value in mapped_classes
         }
     if allocation != "weight":
         raise ValueError("allocation must be 'weight' or 'area'.")
 
     scores = {
-        class_value: float(weights[class_values == class_value].sum()) for class_value in mapped_classes
+        class_value: float(weights[_class_value_mask(class_values, class_value)].sum())
+        for class_value in mapped_classes
     }
     if sum(scores.values()) == 0.0:
         return _allocation_scores(weights, class_values, mapped_classes, "area")
@@ -1743,5 +1855,6 @@ __all__ = [
     "SplitStrategy",
     "TargetSplitAcceptancePolicy",
     "allocate_nbasis_by_class",
+    "intersect_region_class_layers",
     "region_constrained_basis",
 ]

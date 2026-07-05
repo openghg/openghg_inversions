@@ -17,6 +17,7 @@ from .algorithms import (
     AllocationMode,
     ContrastScoreSplitAcceptance,
     GreedyAxisParallelSplitStrategy,
+    NbasisAllocation,
     region_constrained_basis,
 )
 from .algorithms import quadtree_algorithm, weighted_algorithm
@@ -213,6 +214,206 @@ def _mean_fp_times_mean_flux(
     return mean_fp * mean_flux
 
 
+def basis_weights_from_fp_all(
+    fp_all: dict,
+    emissions_name: list[str] | None = None,
+    *,
+    abs_flux: bool = False,
+    mask: xr.DataArray | None = None,
+) -> xr.DataArray:
+    """Build the standard 2D basis weight field from a legacy ``fp_all`` mapping.
+
+    The generated basis algorithms historically computed weights internally
+    from mean footprints multiplied by mean flux. This helper exposes that
+    adapter step so algorithms and experiments can use already computed weight
+    fields directly.
+
+    Args:
+        fp_all: Legacy merged-data dictionary produced by the data preparation
+            path.
+        emissions_name: Optional list of OpenGHG flux source names used to
+            select emissions from ``fp_all``.
+        abs_flux: If true, use absolute flux values before averaging.
+        mask: Optional Boolean spatial mask. When supplied, weights outside the
+            mask are dropped from the returned field.
+
+    Returns:
+        Two-dimensional weight field with spatial coordinates preserved.
+    """
+    flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
+    return _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
+
+
+def _normalise_weights_by_max(weights: xr.DataArray) -> xr.DataArray:
+    """Return weights scaled by their maximum when the maximum is positive."""
+    max_weight = float(weights.max())
+    if max_weight > 0:
+        return weights / max_weight
+    return weights
+
+
+def _finalise_generated_basis(
+    basis_field: xr.DataArray,
+    *,
+    start_date: str,
+    domain: str,
+) -> xr.DataArray:
+    """Attach the legacy generated-basis dimensions, name, and metadata."""
+    basis_field = basis_field.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
+    basis_field = basis_field.rename("basis")
+    basis_field.attrs["creator"] = getpass.getuser()
+    basis_field.attrs["date created"] = str(pd.Timestamp.today())
+    basis_field.attrs["domain"] = domain
+    return basis_field
+
+
+def quadtree_basis_from_weights(
+    weights: xr.DataArray,
+    start_date: str,
+    domain: str,
+    *,
+    nbasis: int = 100,
+    seed: int | None = None,
+) -> xr.DataArray:
+    """Create a quadtree basis field from precomputed 2D weights.
+
+    Args:
+        weights: Two-dimensional basis weight field.
+        start_date: Start date of the inversion period.
+        domain: Domain across which to calculate basis functions.
+        nbasis: Desired number of basis regions.
+        seed: Optional seed passed to ``scipy.optimize.dual_annealing``.
+
+    Returns:
+        Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
+        dimension, and integer region labels.
+    """
+    func = partial(quadtree_algorithm, nbasis=nbasis, seed=seed)
+    quad_basis = xr.apply_ufunc(func, weights.as_numpy())
+    return _finalise_generated_basis(quad_basis, start_date=start_date, domain=domain)
+
+
+def bucket_basis_from_weights(
+    weights: xr.DataArray,
+    start_date: str,
+    domain: str,
+    *,
+    nbasis: int = 100,
+    country_directory: str | None = None,
+) -> xr.DataArray:
+    """Create a legacy weighted bucket basis field from precomputed 2D weights.
+
+    This is a weight-first version of :func:`bucket_basis_function`. It still
+    delegates to the existing land/sea-aware weighted algorithm for
+    compatibility.
+
+    Args:
+        weights: Two-dimensional basis weight field.
+        start_date: Start date of the inversion period.
+        domain: Domain across which to calculate basis functions.
+        nbasis: Desired number of basis regions.
+        country_directory: Optional directory containing land/sea files.
+
+    Returns:
+        Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
+        dimension, and integer region labels.
+    """
+    weights = weights.as_numpy()
+    weights = weights / weights.max()
+    func = partial(
+        weighted_algorithm,
+        nregion=nbasis,
+        bucket=1,
+        domain=domain,
+        country_directory=country_directory,
+    )
+    bucket_basis = xr.apply_ufunc(func, weights)
+    return _finalise_generated_basis(bucket_basis, start_date=start_date, domain=domain)
+
+
+def region_constrained_basis_from_weights(
+    weights: xr.DataArray,
+    start_date: str,
+    domain: str,
+    *,
+    region_classes: xr.DataArray,
+    nbasis: NbasisAllocation = 100,
+    allocation: AllocationMode = "weight",
+    min_regions_per_class: int = 1,
+    split_acceptance: Literal["none", "contrast_score"] = "none",
+    contrast_contribution: xr.DataArray | None = None,
+    contrast_cell_weight: xr.DataArray | None = None,
+    min_contrast_delta_eig: float | None = None,
+    min_contrast_lambda: float | None = None,
+    contrast_tau: float | None = None,
+    contrast_sigma_design: float | None = None,
+    contrast_s_diag: xr.DataArray | None = None,
+) -> xr.DataArray:
+    """Create constrained basis labels from weights and region classes.
+
+    This is the weight-first adapter for the current ``region_constrained``
+    basis algorithm. Labels are generated independently within each non-null
+    region class.
+
+    Args:
+        weights: Two-dimensional basis weight field.
+        start_date: Start date of the inversion period.
+        domain: Domain across which to calculate basis functions.
+        region_classes: Two-dimensional class field on the same spatial grid as
+            ``weights``.
+        nbasis: Total number of basis regions, or class-local allocation
+            accepted by ``region_constrained_basis``.
+        allocation: Automatic allocation mode used when ``nbasis`` is an
+            integer. ``"weight"`` allocates by class total weight; ``"area"``
+            allocates by mapped cell count.
+        min_regions_per_class: Minimum automatic allocation for each non-empty
+            mapped class.
+        split_acceptance: Optional split-acceptance criterion. The default
+            ``"none"`` preserves existing behavior. ``"contrast_score"`` uses
+            a mass-preserving observation-space contrast gate.
+        contrast_contribution: Design contribution array for contrast scoring.
+        contrast_cell_weight: Optional prior flux or split-mass field used as
+            ``mu`` in contrast scoring. When omitted, the unnormalised input
+            weights are used as a split-mass proxy.
+        min_contrast_delta_eig: Optional minimum ``delta_eig`` threshold.
+        min_contrast_lambda: Optional minimum ``lambda`` threshold.
+        contrast_tau: Prior standard deviation of the split contrast
+            coefficient ``delta = alpha_A - alpha_B``.
+        contrast_sigma_design: Optional scalar design standard deviation,
+            equivalent to ``S = contrast_sigma_design**2 I``.
+        contrast_s_diag: Optional diagonal design covariance entries in the
+            same row space as ``contrast_contribution``.
+
+    Returns:
+        Basis field with globally unique integer labels that do not cross
+        ``region_classes`` values.
+    """
+    raw_weights = weights.as_numpy()
+    weights = _normalise_weights_by_max(raw_weights)
+    region_classes = region_classes.transpose(*weights.dims)
+    region_classes = region_classes.sel({dim: weights.coords[dim] for dim in weights.dims})
+    split_strategy = _region_constrained_split_strategy(
+        split_acceptance=split_acceptance,
+        contrast_contribution=contrast_contribution,
+        contrast_cell_weight=contrast_cell_weight if contrast_cell_weight is not None else raw_weights,
+        min_contrast_delta_eig=min_contrast_delta_eig,
+        min_contrast_lambda=min_contrast_lambda,
+        contrast_tau=contrast_tau,
+        contrast_sigma_design=contrast_sigma_design,
+        contrast_s_diag=contrast_s_diag,
+    )
+
+    constrained_basis = region_constrained_basis(
+        weights,
+        region_classes,
+        nbasis,
+        allocation=allocation,
+        min_regions_per_class=min_regions_per_class,
+        split_strategy=split_strategy,
+    )
+    return _finalise_generated_basis(constrained_basis, start_date=start_date, domain=domain)
+
+
 def quadtree_basis_function(
     fp_all: dict,
     start_date: str,
@@ -253,21 +454,8 @@ def quadtree_basis_function(
         Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
         dimension, and integer region labels.
     """
-    flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
-    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
-
-    # use xr.apply_ufunc to keep xarray coords
-    func = partial(quadtree_algorithm, nbasis=nbasis, seed=seed)
-    quad_basis = xr.apply_ufunc(func, fps)
-
-    quad_basis = quad_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
-    quad_basis = quad_basis.rename("basis")  # this will be used in merges
-
-    quad_basis.attrs["creator"] = getpass.getuser()
-    quad_basis.attrs["date created"] = str(pd.Timestamp.today())
-    quad_basis.attrs["domain"] = domain
-
-    return quad_basis
+    weights = basis_weights_from_fp_all(fp_all, emissions_name, abs_flux=abs_flux, mask=mask)
+    return quadtree_basis_from_weights(weights, start_date, domain, nbasis=nbasis, seed=seed)
 
 
 def bucket_basis_function(
@@ -305,24 +493,14 @@ def bucket_basis_function(
         Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
         dimension, and integer region labels.
     """
-    flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
-    fps = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
-    fps = fps / fps.max()
-
-    # use xr.apply_ufunc to keep xarray coords
-    func = partial(
-        weighted_algorithm, nregion=nbasis, bucket=1, domain=domain, country_directory=country_directory
+    weights = basis_weights_from_fp_all(fp_all, emissions_name, abs_flux=abs_flux, mask=mask)
+    return bucket_basis_from_weights(
+        weights,
+        start_date,
+        domain,
+        nbasis=nbasis,
+        country_directory=country_directory,
     )
-    bucket_basis = xr.apply_ufunc(func, fps)
-
-    bucket_basis = bucket_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
-    bucket_basis = bucket_basis.rename("basis")  # this will be used in merges
-
-    bucket_basis.attrs["creator"] = getpass.getuser()
-    bucket_basis.attrs["date created"] = str(pd.Timestamp.today())
-    bucket_basis.attrs["domain"] = domain
-
-    return bucket_basis
 
 
 def region_constrained_basis_function(
@@ -330,7 +508,7 @@ def region_constrained_basis_function(
     start_date: str,
     domain: str,
     emissions_name: list[str] | None = None,
-    nbasis: int = 100,
+    nbasis: NbasisAllocation = 100,
     country_directory: str | None = None,
     abs_flux: bool = False,
     mask: xr.DataArray | None = None,
@@ -409,43 +587,24 @@ def region_constrained_basis_function(
     if region_classes is None:
         raise ValueError("region_classes must be supplied for the region_constrained basis algorithm.")
 
-    flux, footprints = _flux_fp_from_fp_all(fp_all, emissions_name)
-    weights = _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
-    raw_weights = weights.copy()
-    max_weight = float(weights.max())
-    if max_weight > 0:
-        weights = weights / max_weight
-
-    region_classes = region_classes.transpose(*weights.dims)
-    region_classes = region_classes.sel({dim: weights.coords[dim] for dim in weights.dims})
-    split_strategy = _region_constrained_split_strategy(
+    weights = basis_weights_from_fp_all(fp_all, emissions_name, abs_flux=abs_flux, mask=mask)
+    return region_constrained_basis_from_weights(
+        weights,
+        start_date,
+        domain,
+        region_classes=region_classes,
+        nbasis=nbasis,
+        allocation=allocation,
+        min_regions_per_class=min_regions_per_class,
         split_acceptance=split_acceptance,
         contrast_contribution=contrast_contribution,
-        contrast_cell_weight=contrast_cell_weight if contrast_cell_weight is not None else raw_weights,
+        contrast_cell_weight=contrast_cell_weight,
         min_contrast_delta_eig=min_contrast_delta_eig,
         min_contrast_lambda=min_contrast_lambda,
         contrast_tau=contrast_tau,
         contrast_sigma_design=contrast_sigma_design,
         contrast_s_diag=contrast_s_diag,
     )
-
-    constrained_basis = region_constrained_basis(
-        weights,
-        region_classes,
-        nbasis,
-        allocation=allocation,
-        min_regions_per_class=min_regions_per_class,
-        split_strategy=split_strategy,
-    )
-
-    constrained_basis = constrained_basis.expand_dims({"time": [pd.to_datetime(start_date)]}, axis=-1)
-    constrained_basis = constrained_basis.rename("basis")
-
-    constrained_basis.attrs["creator"] = getpass.getuser()
-    constrained_basis.attrs["date created"] = str(pd.Timestamp.today())
-    constrained_basis.attrs["domain"] = domain
-
-    return constrained_basis
 
 
 def _region_constrained_split_strategy(
