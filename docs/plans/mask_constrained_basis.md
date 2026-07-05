@@ -32,11 +32,10 @@ part of #340.
 - Partition each mapped class independently, then offset labels globally so
   region labels never collide across classes.
 - Preserve unmapped cells consistently with label `0`.
-- Start with a prototype-inspired greedy axis-parallel repeated-bisection split
-  strategy rather than the current recursive weighted bucket splitter. Do not
-  implement inertial partitions yet, but keep the strategy boundary explicit so
-  an inertial split, quadtree-style split, recursive weighted split, or other
-  partitioning step can be substituted.
+- Keep greedy axis-parallel repeated-bisection as the default split strategy
+  rather than the legacy recursive weighted bucket splitter. Keep the strategy
+  boundary explicit so inertial, quadtree-style, recursive weighted, or other
+  partitioning steps can be substituted when they have tests and routing.
 - Document `nbasis` allocation. Initial target: support explicit per-class
   allocation plus automatic allocation proportional to class total weight, with a
   minimum for non-empty mapped classes.
@@ -141,10 +140,16 @@ be tested without committing to config syntax.
   explicit loop prevention and a reason that a later attempt could succeed.
   Fallback to a different split step or a more permissive split is also deferred
   until there is evidence that the extra behavior is needed.
-- Defer config-file routing, `basis_functions_wrapper` exposure, and RHIME
-  runner options for split stopping. The core policy is useful and testable at
-  the lower-level greedy strategy boundary, while public routing should wait for
-  the surrounding basis option schema to settle.
+- Current public routing is intentionally narrower than the algorithm layer.
+  Lower-level Python calls can pass split-stopping policies such as
+  `MinChildWeightShare`, `MinChildTargetWeightShare`,
+  `MaxChildPCAEccentricity`, or `AllSplitAcceptancePolicies` through
+  `GreedyAxisParallelSplitStrategy`. The higher-level basis wrappers currently
+  route only `split_acceptance="none"` and `split_acceptance="contrast_score"`.
+  `.ini`, `run_hbmcmc.py`, `run_rhime`, and `run-rhime` do not yet expose
+  parent-share or equal-target child-share thresholds as config options. Public
+  config routing for those policies should wait for the surrounding basis option
+  schema to settle.
 - Treat simulated annealing, precomputed multiscale weights, and observation-
   weighted definitions as future optimizer/weight-builder work. They are useful
   sources from `~/Documents/basis_functions`, but they should not block the
@@ -281,3 +286,8 @@ be tested without committing to config syntax.
   geometry. The narrow API adds `LatLonGridGeometry` as an opt-in geometry
   object for axis-parallel and inertial split steps, while keeping weights,
   split stopping, allocation, and public config routing unchanged.
+- 2026-07-05: Documented OGI-060 split-stopping semantics in the user-facing
+  basis notes. The docs now state that parent-relative and equal-target
+  thresholds are not interchangeable, that requested region counts become upper
+  targets when stopping is enabled, and that only `"none"` and
+  `"contrast_score"` are currently routed through the higher-level wrappers.
