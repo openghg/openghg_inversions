@@ -18,6 +18,9 @@ part of #340.
   user-facing region-configuration notes, and focused basis docstring cleanup.
 - `codex/449-state-vector-groups-design`: design-only branch for state-vector
   grouping, inner/outer layout, grouped priors, and layered partitions.
+- `codex/449-layered-region-classes`: local follow-up adding a pure helper for
+  intersecting multiple aligned region-class layers into composite labels. Not
+  pushed.
 
 ## Design Notes
 
@@ -254,6 +257,10 @@ be tested without committing to config syntax.
   (`basis_group`, `basis_partition`, `region_in_partition`) so inner/outer,
   land/sea, country groups, and layered masks can share one state axis while
   retaining enough metadata for grouped priors and postprocessing.
+- 2026-06-02: Started `codex/449-layered-region-classes` from `origin/devel`.
+  This adds a small lattice-style helper for crossing loaded masks such as
+  land/sea by inner/outer while keeping file loading and runner configuration
+  outside the algorithm.
 - 2026-06-21: Added greedy split stopping through a lower-level
   `SplitAcceptancePolicy` hook and `MinChildWeightShare` policy. Rejected
   splits freeze the selected parent partition, so the requested class-local

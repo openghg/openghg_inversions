@@ -24,6 +24,7 @@ from ._constrained import (
     SplitStrategy,
     TargetSplitAcceptancePolicy,
     allocate_nbasis_by_class,
+    intersect_region_class_layers,
     region_constrained_basis,
 )
 from ._quadtree import get_quadtree_basis as quadtree_algorithm
@@ -49,6 +50,7 @@ __all__ = [
     "TargetSplitAcceptancePolicy",
     "allocate_nbasis_by_class",
     "contrast_tau_from_multiplier_cv",
+    "intersect_region_class_layers",
     "quadtree_algorithm",
     "region_constrained_basis",
     "split_contrast_score",
