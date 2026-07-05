@@ -214,6 +214,85 @@ def _mean_fp_times_mean_flux(
     return mean_fp * mean_flux
 
 
+def paired_abs_response_weights(
+    flux: xr.DataArray,
+    footprints: list[xr.DataArray],
+    *,
+    mask: xr.DataArray | None = None,
+) -> xr.DataArray:
+    """Build weights from retained footprint observations paired with prior flux.
+
+    Each retained footprint time is multiplied by the prior flux at the same
+    timestamp, and absolute responses are averaged over retained observations:
+    ``mean_o(abs(fp_o * flux_at_o))``. This helper is intentionally pure and
+    lower-level; callers are responsible for passing footprints after any
+    observation filters have been applied.
+
+    Args:
+        flux: Prior flux field with ``time`` plus spatial dimensions.
+        footprints: Retained footprint fields for each site.
+        mask: Optional Boolean spatial mask. When supplied, weights outside the
+            mask are dropped from the returned field.
+
+    Returns:
+        Two-dimensional response weight field with spatial coordinates
+        preserved.
+
+    Raises:
+        ValueError: If no footprints are supplied, required ``time`` dimensions
+            are absent, or a retained footprint time cannot be paired with a
+            flux time. Also raised when paired arrays or masks do not share
+            exact coordinates.
+    """
+    if "time" not in flux.dims:
+        raise ValueError("flux must have a time dimension for paired response weights.")
+    if not footprints:
+        raise ValueError("at least one retained footprint is required for paired response weights.")
+
+    response_sums: list[xr.DataArray] = []
+    n_measure = 0
+    flux_times = flux.get_index("time")
+
+    for footprint in footprints:
+        if "time" not in footprint.dims:
+            raise ValueError("footprints must have a time dimension for paired response weights.")
+        missing_times = footprint.get_index("time").difference(flux_times)
+        if not missing_times.empty:
+            raise ValueError(
+                "footprint times must be present in flux time coordinates for paired response weights."
+            )
+
+        paired_flux = flux.sel(time=footprint.time)
+        try:
+            footprint, paired_flux = xr.align(footprint, paired_flux, join="exact")
+        except xr.AlignmentError as exc:
+            raise ValueError(
+                "footprints and flux must share exact time and spatial coordinates for paired response weights."
+            ) from exc
+        response_sums.append(abs(footprint * paired_flux).sum("time"))
+        n_measure += footprint.sizes["time"]
+
+    if n_measure == 0:
+        raise ValueError("at least one retained footprint time is required for paired response weights.")
+
+    try:
+        response_sums = list(xr.align(*response_sums, join="exact"))
+    except xr.AlignmentError as exc:
+        raise ValueError(
+            "retained footprints must share exact spatial coordinates for paired response weights."
+        ) from exc
+    weights = cast(xr.DataArray, sum(response_sums)) / n_measure
+
+    if mask is not None:
+        try:
+            weights, mask = xr.align(weights, mask, join="exact")
+        except xr.AlignmentError as exc:
+            raise ValueError("mask must share exact spatial coordinates with paired response weights.") from exc
+        return weights.where(mask, drop=True)
+
+    return weights
+
+
 def basis_weights_from_fp_all(
     fp_all: dict,
     emissions_name: list[str] | None = None,
