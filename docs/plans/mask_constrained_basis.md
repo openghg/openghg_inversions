@@ -21,6 +21,9 @@ part of #340.
 - `codex/449-layered-region-classes`: local follow-up adding a pure helper for
   intersecting multiple aligned region-class layers into composite labels. Not
   pushed.
+- `codex/449-weight-first-basis`: additive interface cleanup that exposes
+  weight-first generated-basis helpers and keeps the legacy `fp_all` functions
+  as adapters.
 
 ## Design Notes
 
@@ -261,6 +264,11 @@ be tested without committing to config syntax.
   This adds a small lattice-style helper for crossing loaded masks such as
   land/sea by inner/outer while keeping file loading and runner configuration
   outside the algorithm.
+- 2026-06-02: Started `codex/449-weight-first-basis` from `origin/devel`.
+  Extracted `basis_weights_from_fp_all` and weight-first generated-basis helpers
+  for quadtree, weighted bucket, and region-constrained bases. The existing
+  public `fp_all` functions now delegate to those helpers, so callers can start
+  moving toward explicit weight fields without losing the legacy adapter path.
 - 2026-06-21: Added greedy split stopping through a lower-level
   `SplitAcceptancePolicy` hook and `MinChildWeightShare` policy. Rejected
   splits freeze the selected parent partition, so the requested class-local
