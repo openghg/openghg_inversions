@@ -457,6 +457,29 @@ are not the same strings as the OpenGHG source values.</p>
 </pre></div>
 </div>
 </section>
+<section id="generated-basis-functions">
+<h2>Generated Basis Functions<a class="headerlink" href="#generated-basis-functions" title="Link to this heading">#</a></h2>
+<p>RHIME can load saved flux basis functions with <code class="docutils literal notranslate"><span class="pre">fp_basis_case</span></code> or generate a
+basis with <code class="docutils literal notranslate"><span class="pre">basis_algorithm</span></code> and <code class="docutils literal notranslate"><span class="pre">nbasis</span></code>. The legacy generated-basis
+choices exposed through RHIME config are still <code class="docutils literal notranslate"><span class="pre">&quot;quadtree&quot;</span></code> and
+<code class="docutils literal notranslate"><span class="pre">&quot;weighted&quot;</span></code>.</p>
+<p>The lower-level Python basis API also supports <code class="docutils literal notranslate"><span class="pre">&quot;region_constrained&quot;</span></code> when a
+caller supplies an already loaded <code class="docutils literal notranslate"><span class="pre">region_classes</span></code> <code class="docutils literal notranslate"><span class="pre">DataArray</span></code>. That path
+keeps generated labels from crossing land/sea, country, inner/outer, or other
+class boundaries, but RHIME config and <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> do not yet load
+<code class="docutils literal notranslate"><span class="pre">region_classes</span></code> from files. For RHIME runs that need these masks today,
+build and save the basis through the Python basis API, then load it as a saved
+basis case.</p>
+<p>Region-constrained algorithms have split-stopping policies at the lower-level
+strategy boundary. <code class="docutils literal notranslate"><span class="pre">MinChildWeightShare</span></code> is a parent-relative balance guard:
+it compares the lightest proposed child with the current parent partition.
+<code class="docutils literal notranslate"><span class="pre">MinChildTargetWeightShare</span></code> is an equal-target low-weight guard: it compares
+the lightest proposed child with <code class="docutils literal notranslate"><span class="pre">weights.sum()</span> <span class="pre">/</span> <span class="pre">target_regions</span></code> for the
+class/source-local field being partitioned. Thresholds such as <code class="docutils literal notranslate"><span class="pre">0.1</span></code> mean
+different things for those policies, and generated region counts become upper
+targets when split stopping rejects remaining candidates. These child-share
+policies are not currently routed through RHIME config options.</p>
+</section>
 <section id="output-formats">
 <h2>Output Formats<a class="headerlink" href="#output-formats" title="Link to this heading">#</a></h2>
 <p>Standard single-sector RHIME supports <code class="docutils literal notranslate"><span class="pre">inv_out</span></code>, <code class="docutils literal notranslate"><span class="pre">basic</span></code>, <code class="docutils literal notranslate"><span class="pre">paris</span></code>, and
@@ -533,6 +556,7 @@ wrapper around <code class="docutils literal notranslate"><span class="pre">run_
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#terminology">Terminology</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#python-api">Python API</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#config-files">Config Files</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#generated-basis-functions">Generated Basis Functions</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#output-formats">Output Formats</a></li>
 </ul>
   </nav></div>

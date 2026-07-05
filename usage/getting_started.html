@@ -434,6 +434,19 @@ region-class masks, and keeps labels from crossing those classes. The
 current <code class="docutils literal notranslate"><span class="pre">.ini</span></code>/<code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code> route does not yet load
 <code class="docutils literal notranslate"><span class="pre">region_classes</span></code> from a file, so use a saved basis file or the Python
 wrapper for this case.</p></li>
+<li><p>region-constrained splitting can optionally use
+<code class="docutils literal notranslate"><span class="pre">split_acceptance=&quot;contrast_score&quot;</span></code> with a design contribution array.
+This uses a fixed design covariance <code class="docutils literal notranslate"><span class="pre">S</span></code> and a prior split-contrast
+standard deviation <code class="docutils literal notranslate"><span class="pre">tau</span></code>; the default <code class="docutils literal notranslate"><span class="pre">tau=1</span></code>, <code class="docutils literal notranslate"><span class="pre">S=I</span></code> is only an
+uncalibrated ranking/debugging score, not calibrated expected information
+gain. Do not build this score from observed mole fractions or residuals.</p></li>
+<li><p>lower-level region-constrained algorithms also support split-stopping
+policies. <code class="docutils literal notranslate"><span class="pre">MinChildWeightShare</span></code> is a parent-relative balance guard,
+while <code class="docutils literal notranslate"><span class="pre">MinChildTargetWeightShare</span></code> rejects children below a share of the
+class-local equal-target region weight, <code class="docutils literal notranslate"><span class="pre">weights.sum()</span> <span class="pre">/</span> <span class="pre">target_regions</span></code>.
+Their thresholds are not interchangeable; with stopping enabled,
+<code class="docutils literal notranslate"><span class="pre">nbasis</span></code> is an upper target. These child-share policies are not yet
+routed through <code class="docutils literal notranslate"><span class="pre">.ini</span></code>, <code class="docutils literal notranslate"><span class="pre">run_hbmcmc.py</span></code>, or RHIME config options.</p></li>
 <li><p>basis functions for the boundary conditions have a similar format.
 Default location <code class="docutils literal notranslate"><span class="pre">openghg_inversions/bc_basis_functions</span></code></p></li>
 </ul>
@@ -662,7 +675,7 @@ well.)</p></li>
 <span class="c1">; Input values to extract the basis cases to use within the inversion for boundary conditions and emissions</span>
 <span class="c1">; basis_algorithm (str): Choice of basis function algorithm to use. One of &quot;quadtree&quot; or &quot;weighted&quot;.</span>
 <span class="c1">; The Python basis API also supports &quot;region_constrained&quot; when the caller supplies a region_classes DataArray;</span>
-<span class="c1">; this .ini route does not currently load region_classes from file.</span>
+<span class="c1">; this .ini route does not currently load region_classes from file or route child-share split-stopping policies.</span>
 <span class="c1">; bc_basis_case (str): Boundary conditions basis, defaults to &quot;NESW&quot; (looks for file format {bc_basis_case}_{domain}_*.nc)</span>
 <span class="c1">; bc_basis_directory (str/None): Directory for bc_basis functions. If None provided, creates new folder in openghg_inversions expecting to find bc_basis_function files there.</span>
 <span class="c1">; fp_basis_case (str/None): Emissions bases:</span>
