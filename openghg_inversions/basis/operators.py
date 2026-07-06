@@ -51,8 +51,9 @@ Notes
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, ClassVar, Literal, cast
+from typing import Any, ClassVar, Literal, TypeVar, cast
 from typing_extensions import Self
 
 import numpy as np
@@ -65,10 +66,7 @@ from openghg_inversions.array_ops import (
     get_xr_dummies,
 )
 from openghg_inversions.basis.layout import (
-    BASIS_GROUP_COORD,
-    BASIS_LABEL_DIM,
-    BASIS_PARTITION_COORD,
-    REGION_IN_PARTITION_COORD,
+    BasisStateMetadata,
 )
 
 # ----------------------------
@@ -76,9 +74,10 @@ from openghg_inversions.basis.layout import (
 # ----------------------------
 
 _BASIS_OPERATOR_REGISTRY: dict[str, type[BasisOperator]] = {}
+BasisOperatorT = TypeVar("BasisOperatorT", bound="BasisOperator")
 
 
-def register_basis_operator(kind: str):
+def register_basis_operator(kind: str) -> Callable[[type[BasisOperatorT]], type[BasisOperatorT]]:
     """Registers a `BasisOperator` subclass for DataTree deserialisation.
 
     This decorator builds a small module-level registry mapping a stable `kind`
@@ -96,7 +95,7 @@ def register_basis_operator(kind: str):
         ValueError: If `kind` is already registered to a different class.
     """
 
-    def _decorator(cls: type[BasisOperator]) -> type[BasisOperator]:
+    def _decorator(cls: type[BasisOperatorT]) -> type[BasisOperatorT]:
         if kind in _BASIS_OPERATOR_REGISTRY and _BASIS_OPERATOR_REGISTRY[kind] is not cls:
             raise ValueError(
                 f"BasisOperator kind '{kind}' already registered with {_BASIS_OPERATOR_REGISTRY[kind]}"
@@ -364,7 +363,6 @@ def drop_singleton_time(da: xr.DataArray, *, name: str = "basis_flat") -> xr.Dat
 # at 0 (i.e. 0, 1, ..., N-1) or at 1 (i.e. 1, 2, ..., N), or "basis_values"
 # which will use whatever values are in the flat basis array values.
 RegionLabels = Literal["range0", "range1", "basis_values"]
-STATE_METADATA_COORDS = (BASIS_GROUP_COORD, BASIS_PARTITION_COORD, REGION_IN_PARTITION_COORD)
 
 
 @register_basis_operator("bucket")
@@ -381,7 +379,7 @@ class BucketBasisOperator(BasisOperator):
         meta: BasisMeta | None = None,
         state_dim: str | None = None,
         region_labels: RegionLabels = "range0",
-        state_metadata: xr.Dataset | None = None,
+        state_metadata: xr.Dataset | BasisStateMetadata | None = None,
         chunks: dict[str, int] | None = None,
     ) -> None:
         """Creates a single-source bucket basis operator.
@@ -419,17 +417,20 @@ class BucketBasisOperator(BasisOperator):
         mat = self._apply_region_labels_policy(mat, basis_value_labels=basis_value_labels)
 
         if state_metadata is not None:
-            mat = self._assign_state_metadata(
-                mat,
-                state_metadata,
+            state_metadata_on_state_dim = BasisStateMetadata.from_dataset(
+                state_metadata
+            ).on_state_dim(
+                state_dim=self.meta.state_dim,
+                state_coord=mat[self.meta.state_dim],
                 basis_value_labels=basis_value_labels,
             )
+            mat = state_metadata_on_state_dim.assign_to_matrix(mat, state_dim=self.meta.state_dim)
 
         # chunking
         mat = mat.chunk(chunks) if chunks is not None else mat.chunk()
 
         self._basis_matrix = mat
-        self._state_metadata = self._state_metadata_from_matrix(mat)
+        self._state_metadata = BasisStateMetadata.from_matrix(mat, state_dim=self.meta.state_dim)
 
     @property
     def meta(self) -> BasisMeta:
@@ -450,7 +451,9 @@ class BucketBasisOperator(BasisOperator):
             ``region_in_partition`` indexed by ``meta.state_dim``, or ``None``
             when no grouped metadata was supplied.
         """
-        return self._state_metadata
+        if self._state_metadata is None:
+            return None
+        return self._state_metadata.to_dataset()
 
     def _basis_value_labels(self, mat: xr.DataArray) -> np.ndarray:
         """Return raw basis labels in the dummy-column order.
@@ -525,129 +528,6 @@ class BucketBasisOperator(BasisOperator):
         # ordered by sorted unique labels. If that assumption changes, we must reindex.
         return mat.assign_coords({self.meta.state_dim: coord})
 
-    def _assign_state_metadata(
-        self,
-        mat: xr.DataArray,
-        state_metadata: xr.Dataset,
-        *,
-        basis_value_labels: np.ndarray,
-    ) -> xr.DataArray:
-        """Attach grouped metadata coordinates to the basis matrix.
-
-        Args:
-            mat: Basis matrix whose state coordinate already reflects the
-                configured ``region_labels`` policy.
-            state_metadata: Metadata dataset indexed either by raw
-                ``basis_label`` values or by the final state dimension.
-            basis_value_labels: Raw basis labels ordered to match ``mat`` state
-                columns before final state-coordinate relabeling.
-
-        Returns:
-            ``mat`` with grouped metadata attached as coordinates on
-            ``meta.state_dim``.
-
-        Raises:
-            ValueError: If required metadata variables are missing or not
-                one-dimensional on the state dimension.
-        """
-        metadata = self._metadata_on_state_dim(
-            state_metadata,
-            mat=mat,
-            basis_value_labels=basis_value_labels,
-        )
-        coords: dict[str, tuple[str, np.ndarray]] = {}
-        for name in STATE_METADATA_COORDS:
-            if name not in metadata:
-                raise ValueError(f"State metadata is missing required variable {name!r}.")
-            variable = metadata[name]
-            if variable.dims != (self.meta.state_dim,):
-                raise ValueError(
-                    f"State metadata variable {name!r} must have only dimension "
-                    f"{self.meta.state_dim!r}; got {variable.dims!r}."
-                )
-            coords[name] = (self.meta.state_dim, np.asarray(variable.values))
-        return mat.assign_coords(coords)
-
-    def _metadata_on_state_dim(
-        self,
-        state_metadata: xr.Dataset,
-        *,
-        mat: xr.DataArray,
-        basis_value_labels: np.ndarray,
-    ) -> xr.Dataset:
-        """Return metadata indexed in final state-coordinate order.
-
-        Args:
-            state_metadata: Metadata indexed by ``basis_label`` or by
-                ``meta.state_dim``.
-            mat: Basis matrix carrying the final operator state coordinate.
-            basis_value_labels: Raw basis labels ordered to match ``mat`` state
-                columns before final state-coordinate relabeling.
-
-        Returns:
-            Metadata dataset indexed by ``meta.state_dim`` and aligned to
-            ``mat``.
-
-        Raises:
-            ValueError: If metadata labels do not match basis labels, if
-                final-state metadata has the wrong length, or if the metadata
-                coordinate does not match the final operator state coordinate.
-        """
-        state_coord = mat[self.meta.state_dim]
-        if BASIS_LABEL_DIM in state_metadata.dims:
-            metadata_labels = np.asarray(state_metadata[BASIS_LABEL_DIM].values).astype(int)
-            expected_labels = np.asarray(basis_value_labels).astype(int)
-            if set(metadata_labels.tolist()) != set(expected_labels.tolist()):
-                raise ValueError(
-                    "State metadata basis_label values must match the basis labels; "
-                    f"got {metadata_labels.tolist()} and expected {expected_labels.tolist()}."
-                )
-            metadata = state_metadata.sel({BASIS_LABEL_DIM: expected_labels})
-            metadata = metadata.rename({BASIS_LABEL_DIM: self.meta.state_dim})
-        elif self.meta.state_dim in state_metadata.dims:
-            metadata = state_metadata.copy()
-            if metadata.sizes[self.meta.state_dim] != mat.sizes[self.meta.state_dim]:
-                raise ValueError(
-                    f"State metadata has {metadata.sizes[self.meta.state_dim]} entries on "
-                    f"{self.meta.state_dim!r}; expected {mat.sizes[self.meta.state_dim]}."
-                )
-            if self.meta.state_dim in metadata.coords and not np.array_equal(
-                metadata[self.meta.state_dim].values,
-                state_coord.values,
-            ):
-                raise ValueError(
-                    f"State metadata coordinate {self.meta.state_dim!r} does not match "
-                    "the final operator state coordinate."
-                )
-        else:
-            raise ValueError(
-                f"State metadata must be indexed by {BASIS_LABEL_DIM!r} or "
-                f"{self.meta.state_dim!r}."
-            )
-        return metadata.assign_coords({self.meta.state_dim: state_coord})
-
-    def _state_metadata_from_matrix(self, mat: xr.DataArray) -> xr.Dataset | None:
-        """Extract serialisable state metadata from basis-matrix coordinates.
-
-        Args:
-            mat: Basis matrix that may carry grouped metadata coordinates on
-                ``meta.state_dim``.
-
-        Returns:
-            Dataset containing grouped metadata coordinates indexed by
-            ``meta.state_dim``, or ``None`` when the matrix does not carry the
-            complete grouped metadata coordinate set.
-        """
-        if not all(name in mat.coords for name in STATE_METADATA_COORDS):
-            return None
-        return xr.Dataset(
-            data_vars={
-                name: (self.meta.state_dim, np.asarray(mat.coords[name].values))
-                for name in STATE_METADATA_COORDS
-            },
-            coords={self.meta.state_dim: np.asarray(mat[self.meta.state_dim].values)},
-        )
-
     # ---- DataTree IO ----
 
     def to_datatree(self) -> xr.DataTree:
@@ -669,8 +549,8 @@ class BucketBasisOperator(BasisOperator):
                 "region_labels": self.region_labels,
             }
         )
-        if self.state_metadata is not None:
-            dt["state_metadata"] = xr.DataTree(self.state_metadata)
+        if self._state_metadata is not None:
+            dt["state_metadata"] = xr.DataTree(self._state_metadata.to_dataset())
         return dt
 
     @classmethod

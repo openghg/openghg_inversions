@@ -7,6 +7,10 @@ algorithms decide how to split cells inside a mask or region class, while
 ``BasisLayout`` records how those partition-local outputs are assembled into the
 single state axis consumed by ``BucketBasisOperator``.
 
+``BasisLayout`` does not infer a catch-all remainder region. Callers that need
+one should pass it as an explicit ``BasisPartition`` so the semantic group and
+local region label are visible in the resulting state metadata.
+
 The current implementation is eager and in-memory. It is intended for small
 metadata/layout assembly steps after region masks and basis labels have already
 been loaded or generated. File loading, lazy execution, large-grid chunking, and
@@ -26,6 +30,7 @@ BASIS_LABEL_DIM = "basis_label"
 BASIS_GROUP_COORD = "basis_group"
 BASIS_PARTITION_COORD = "basis_partition"
 REGION_IN_PARTITION_COORD = "region_in_partition"
+STATE_METADATA_COORDS = (BASIS_GROUP_COORD, BASIS_PARTITION_COORD, REGION_IN_PARTITION_COORD)
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +70,172 @@ class BasisLayoutResult:
 
 
 @dataclass(frozen=True, slots=True)
+class BasisStateMetadata:
+    """Semantic coordinates describing a basis operator state axis.
+
+    The metadata may start indexed by raw ``basis_label`` values from a flat
+    basis layout or by the final operator state dimension. This value object
+    owns validation and alignment so operator classes do not need to know the
+    dataset schema beyond their state coordinate and raw basis-label order.
+
+    Attributes:
+        dataset: Dataset containing ``basis_group``, ``basis_partition``, and
+            ``region_in_partition`` variables indexed by either ``basis_label``
+            or a final state dimension.
+    """
+
+    dataset: xr.Dataset
+
+    @classmethod
+    def from_dataset(cls, dataset: xr.Dataset | BasisStateMetadata) -> BasisStateMetadata:
+        """Return ``dataset`` as a ``BasisStateMetadata`` instance.
+
+        Args:
+            dataset: Metadata dataset or an existing ``BasisStateMetadata``.
+
+        Returns:
+            ``dataset`` wrapped as ``BasisStateMetadata``.
+        """
+        if isinstance(dataset, BasisStateMetadata):
+            return dataset
+        return cls(dataset=dataset)
+
+    @classmethod
+    def from_matrix(cls, mat: xr.DataArray, *, state_dim: str) -> BasisStateMetadata | None:
+        """Extract complete basis state metadata from matrix coordinates.
+
+        Args:
+            mat: Basis matrix that may carry grouped metadata coordinates on the
+                state dimension.
+            state_dim: Name of the state dimension on ``mat``.
+
+        Returns:
+            Metadata indexed by ``state_dim`` if all grouped metadata
+            coordinates are present, otherwise ``None``.
+        """
+        if not all(name in mat.coords for name in STATE_METADATA_COORDS):
+            return None
+        dataset = xr.Dataset(
+            data_vars={
+                name: (state_dim, np.asarray(mat.coords[name].values))
+                for name in STATE_METADATA_COORDS
+            },
+            coords={state_dim: np.asarray(mat[state_dim].values)},
+        )
+        return cls(dataset=dataset)
+
+    def to_dataset(self) -> xr.Dataset:
+        """Return the metadata as an xarray dataset."""
+        return self.dataset
+
+    def on_state_dim(
+        self,
+        *,
+        state_dim: str,
+        state_coord: xr.DataArray,
+        basis_value_labels: Sequence[int] | np.ndarray,
+    ) -> BasisStateMetadata:
+        """Return metadata indexed by the final operator state dimension.
+
+        Args:
+            state_dim: Final state dimension name.
+            state_coord: Final state coordinate after the operator label policy
+                has been applied.
+            basis_value_labels: Raw basis labels ordered to match the operator
+                state columns before final relabeling.
+
+        Returns:
+            Metadata aligned to ``state_coord`` and indexed by ``state_dim``.
+
+        Raises:
+            ValueError: If metadata labels do not match basis labels, if raw
+                labels are duplicated, if final-state metadata has the wrong
+                length, or if required variables are missing.
+        """
+        dataset = self.dataset
+        self._validate_required_variables(dataset)
+
+        if BASIS_LABEL_DIM in dataset.dims:
+            metadata_labels = _unique_integer_values(
+                dataset[BASIS_LABEL_DIM].values,
+                name=BASIS_LABEL_DIM,
+            )
+            expected_labels = _unique_integer_values(basis_value_labels, name="basis labels")
+            if set(metadata_labels.tolist()) != set(expected_labels.tolist()):
+                raise ValueError(
+                    "State metadata basis_label values must match the basis labels; "
+                    f"got {metadata_labels.tolist()} and expected {expected_labels.tolist()}."
+                )
+            metadata = dataset.sel({BASIS_LABEL_DIM: expected_labels})
+            metadata = metadata.rename({BASIS_LABEL_DIM: state_dim})
+        elif state_dim in dataset.dims:
+            metadata = dataset.copy()
+            if metadata.sizes[state_dim] != state_coord.sizes[state_dim]:
+                raise ValueError(
+                    f"State metadata has {metadata.sizes[state_dim]} entries on "
+                    f"{state_dim!r}; expected {state_coord.sizes[state_dim]}."
+                )
+            if state_dim in metadata.coords and not np.array_equal(
+                metadata[state_dim].values,
+                state_coord.values,
+            ):
+                raise ValueError(
+                    f"State metadata coordinate {state_dim!r} does not match "
+                    "the final operator state coordinate."
+                )
+        else:
+            raise ValueError(
+                f"State metadata must be indexed by {BASIS_LABEL_DIM!r} or {state_dim!r}."
+            )
+
+        metadata = metadata.assign_coords({state_dim: state_coord})
+        for name in STATE_METADATA_COORDS:
+            variable = metadata[name]
+            if variable.dims != (state_dim,):
+                raise ValueError(
+                    f"State metadata variable {name!r} must have only dimension "
+                    f"{state_dim!r}; got {variable.dims!r}."
+                )
+        return BasisStateMetadata(dataset=metadata)
+
+    def assign_to_matrix(self, mat: xr.DataArray, *, state_dim: str) -> xr.DataArray:
+        """Attach metadata variables as coordinates on a basis matrix.
+
+        Args:
+            mat: Basis matrix whose state coordinate matches this metadata.
+            state_dim: State dimension used by ``mat`` and this metadata.
+
+        Returns:
+            ``mat`` with grouped metadata coordinates attached.
+
+        Raises:
+            ValueError: If this metadata is not already indexed by
+                ``state_dim`` or required variables are malformed.
+        """
+        self._validate_required_variables(self.dataset)
+        if state_dim not in self.dataset.dims:
+            raise ValueError(f"State metadata must be indexed by {state_dim!r}.")
+
+        coords: dict[str, tuple[str, np.ndarray]] = {}
+        for name in STATE_METADATA_COORDS:
+            variable = self.dataset[name]
+            if variable.dims != (state_dim,):
+                raise ValueError(
+                    f"State metadata variable {name!r} must have only dimension "
+                    f"{state_dim!r}; got {variable.dims!r}."
+                )
+            coords[name] = (state_dim, np.asarray(variable.values))
+        return mat.assign_coords(coords)
+
+    @staticmethod
+    def _validate_required_variables(dataset: xr.Dataset) -> None:
+        """Raise if the standard grouped metadata variables are incomplete."""
+        for name in STATE_METADATA_COORDS:
+            if name not in dataset:
+                raise ValueError(f"State metadata is missing required variable {name!r}.")
+
+
+@dataclass(frozen=True, slots=True)
 class BasisLayout:
     """Combine disjoint basis partitions into one flat label map.
 
@@ -94,9 +265,9 @@ class BasisLayout:
             name: Name to assign to the returned flat-basis DataArray.
 
         Returns:
-            A combined basis map plus a metadata dataset indexed by
-            ``basis_label``. ``BucketBasisOperator`` maps that metadata onto the
-            final state coordinate after its configured label policy is applied.
+            A combined basis map plus metadata indexed by ``basis_label``.
+            ``BucketBasisOperator`` maps that metadata onto the final state
+            coordinate after its configured label policy is applied.
 
         Raises:
             ValueError: If partitions are empty, overlap, contain no mapped
@@ -218,3 +389,35 @@ def _positive_integer_labels(values: np.ndarray, partition_name: str) -> np.ndar
     if not np.all(values == np.floor(values)):
         raise ValueError(f"Basis partition {partition_name!r} labels must be integer-valued.")
     return np.unique(values.astype(int))
+
+
+def _unique_integer_values(values: Sequence[int] | np.ndarray, *, name: str) -> np.ndarray:
+    """Return integer values after checking uniqueness.
+
+    Args:
+        values: Values expected to be integer-valued.
+        name: Name used in validation error messages.
+
+    Returns:
+        Integer values in their original order.
+
+    Raises:
+        ValueError: If values are not finite integers or contain duplicates.
+    """
+    raw_values = np.asarray(values)
+    if not np.issubdtype(raw_values.dtype, np.number):
+        raise ValueError(f"{name} values must be numeric integer values.")
+    try:
+        numeric_values = raw_values.astype(float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} values must be integer-valued.") from exc
+
+    if not np.all(np.isfinite(numeric_values)) or not np.all(
+        numeric_values == np.floor(numeric_values)
+    ):
+        raise ValueError(f"{name} values must be integer-valued.")
+
+    integer_values = numeric_values.astype(int)
+    if len(np.unique(integer_values)) != len(integer_values):
+        raise ValueError(f"{name} values must be unique; got {integer_values.tolist()}.")
+    return integer_values

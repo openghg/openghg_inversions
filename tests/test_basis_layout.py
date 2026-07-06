@@ -11,7 +11,7 @@ from openghg_inversions.basis.layout import (
     BasisLayout,
     BasisPartition,
 )
-from openghg_inversions.basis.operators import BucketBasisOperator
+from openghg_inversions.basis.operators import BasisOperator, BucketBasisOperator
 
 
 def _basis_grid(values: list[list[int]], *, name: str = "basis") -> xr.DataArray:
@@ -60,6 +60,43 @@ def test_basis_layout_combines_disjoint_partitions_with_metadata():
 
     xr.testing.assert_identical(result.basis_flat, expected_basis)
     xr.testing.assert_identical(result.state_metadata, expected_metadata)
+
+
+def test_basis_layout_requires_explicit_remainder_partition():
+    """Layouts do not synthesize an implicit remainder partition."""
+    inner = _basis_grid([[1, 2], [0, 0]], name="inner")
+    layout = BasisLayout(
+        partitions=(BasisPartition(name="generated_inner", labels=inner, group="inner"),),
+        state_dim="region",
+    )
+
+    with pytest.raises(ValueError, match="unmapped"):
+        layout.to_flat_basis()
+
+
+def test_basis_layout_preserves_explicit_remainder_partition_metadata():
+    """A caller-provided remainder partition is recorded like any partition."""
+    inner = _basis_grid([[1, 2], [0, 0]], name="inner")
+    remainder = _basis_grid([[0, 0], [1, 1]], name="remainder")
+
+    result = BasisLayout(
+        partitions=(
+            BasisPartition(name="generated_inner", labels=inner, group="inner"),
+            BasisPartition(name="explicit_remainder", labels=remainder, group="remainder"),
+        ),
+        state_dim="region",
+    ).to_flat_basis()
+    metadata = result.state_metadata
+
+    xr.testing.assert_identical(result.basis_flat, _basis_grid([[1, 2], [3, 3]]))
+    assert metadata[BASIS_GROUP_COORD].values.tolist() == ["inner", "inner", "remainder"]
+    assert metadata[BASIS_PARTITION_COORD].values.tolist() == [
+        "generated_inner",
+        "generated_inner",
+        "explicit_remainder",
+    ]
+    assert metadata[REGION_IN_PARTITION_COORD].values.tolist() == [1, 2, 1]
+    assert metadata[BASIS_LABEL_DIM].values.tolist() == [1, 2, 3]
 
 
 def test_basis_layout_rejects_overlapping_partitions():
@@ -195,6 +232,51 @@ def test_bucket_operator_rejects_mismatched_raw_label_metadata():
         )
 
 
+def test_bucket_operator_rejects_duplicate_raw_label_metadata():
+    """Raw-label metadata must identify each basis label exactly once."""
+    basis = _basis_grid([[10, 20], [10, 20]])
+    metadata = xr.Dataset(
+        data_vars={
+            BASIS_GROUP_COORD: (BASIS_LABEL_DIM, ["outer-a", "outer-b", "inner"]),
+            BASIS_PARTITION_COORD: (
+                BASIS_LABEL_DIM,
+                ["fixed_outer_a", "fixed_outer_b", "generated_inner"],
+            ),
+            REGION_IN_PARTITION_COORD: (BASIS_LABEL_DIM, [10, 10, 1]),
+        },
+        coords={BASIS_LABEL_DIM: [10, 10, 20]},
+    )
+
+    with pytest.raises(ValueError, match="basis_label.*unique"):
+        BucketBasisOperator(
+            basis_flat=basis,
+            state_dim="region",
+            region_labels="range0",
+            state_metadata=metadata,
+        )
+
+
+def test_bucket_operator_rejects_non_numeric_raw_label_metadata():
+    """Raw basis-label coordinates must be numeric before state alignment."""
+    basis = _basis_grid([[10, 20], [10, 20]])
+    metadata = xr.Dataset(
+        data_vars={
+            BASIS_GROUP_COORD: (BASIS_LABEL_DIM, ["outer", "inner"]),
+            BASIS_PARTITION_COORD: (BASIS_LABEL_DIM, ["fixed_outer_10", "generated_inner"]),
+            REGION_IN_PARTITION_COORD: (BASIS_LABEL_DIM, [10, 1]),
+        },
+        coords={BASIS_LABEL_DIM: ["10", "20"]},
+    )
+
+    with pytest.raises(ValueError, match="basis_label.*numeric"):
+        BucketBasisOperator(
+            basis_flat=basis,
+            state_dim="region",
+            region_labels="range0",
+            state_metadata=metadata,
+        )
+
+
 def test_bucket_operator_rejects_mismatched_final_state_metadata():
     """Metadata already indexed by final state must match the final state coordinate."""
     basis = _basis_grid([[10, 20], [10, 20]])
@@ -227,9 +309,16 @@ def test_bucket_operator_datatree_roundtrip_preserves_state_metadata():
     )
 
     restored = BucketBasisOperator.from_datatree(operator.to_datatree())
+    decoded = BasisOperator.decode_datatree(operator.to_datatree())
 
     xr.testing.assert_identical(restored.basis_matrix, operator.basis_matrix)
+    assert restored.state_metadata is not None
+    assert operator.state_metadata is not None
     xr.testing.assert_identical(restored.state_metadata, operator.state_metadata)
+    assert isinstance(decoded, BucketBasisOperator)
+    assert decoded.state_metadata is not None
+    xr.testing.assert_identical(decoded.basis_matrix, operator.basis_matrix)
+    xr.testing.assert_identical(decoded.state_metadata, operator.state_metadata)
 
 
 def test_basis_functions_save_load_preserves_state_metadata(tmp_path):
@@ -249,5 +338,20 @@ def test_basis_functions_save_load_preserves_state_metadata(tmp_path):
     output_file = tmp_path / "basis.nc"
     basis_functions.save(output_file)
     restored = BasisFunctions.load(output_file)
+    restored_operator = restored.operator
+    original_operator = basis_functions.operator
 
-    xr.testing.assert_identical(restored.operator.basis_matrix, basis_functions.operator.basis_matrix)
+    xr.testing.assert_identical(restored_operator.basis_matrix, original_operator.basis_matrix)
+    assert isinstance(restored_operator, BucketBasisOperator)
+    assert isinstance(original_operator, BucketBasisOperator)
+    assert restored_operator.state_metadata is not None
+    assert original_operator.state_metadata is not None
+    xr.testing.assert_identical(
+        restored_operator.state_metadata,
+        original_operator.state_metadata,
+    )
+    for coord_name in (BASIS_GROUP_COORD, BASIS_PARTITION_COORD, REGION_IN_PARTITION_COORD):
+        xr.testing.assert_identical(
+            restored_operator.basis_matrix[coord_name],
+            original_operator.basis_matrix[coord_name],
+        )
