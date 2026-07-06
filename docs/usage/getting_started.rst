@@ -90,6 +90,19 @@ Data not stored in OpenGHG
     current ``.ini``/``run_hbmcmc.py`` route does not yet load
     ``region_classes`` from a file, so use a saved basis file or the Python
     wrapper for this case.
+  - region-constrained splitting can optionally use
+    ``split_acceptance="contrast_score"`` with a design contribution array.
+    This uses a fixed design covariance ``S`` and a prior split-contrast
+    standard deviation ``tau``; the default ``tau=1``, ``S=I`` is only an
+    uncalibrated ranking/debugging score, not calibrated expected information
+    gain. Do not build this score from observed mole fractions or residuals.
+  - lower-level region-constrained algorithms also support split-stopping
+    policies. ``MinChildWeightShare`` is a parent-relative balance guard,
+    while ``MinChildTargetWeightShare`` rejects children below a share of the
+    class-local equal-target region weight, ``weights.sum() / target_regions``.
+    Their thresholds are not interchangeable; with stopping enabled,
+    ``nbasis`` is an upper target. These child-share policies are not yet
+    routed through ``.ini``, ``run_hbmcmc.py``, or RHIME config options.
   - basis functions for the boundary conditions have a similar format.
     Default location ``openghg_inversions/bc_basis_functions``
 
@@ -319,7 +332,7 @@ The following file, ``my_hbmcmc_inputs.ini`` can be used to run an
    ; Input values to extract the basis cases to use within the inversion for boundary conditions and emissions
    ; basis_algorithm (str): Choice of basis function algorithm to use. One of "quadtree" or "weighted".
    ; The Python basis API also supports "region_constrained" when the caller supplies a region_classes DataArray;
-   ; this .ini route does not currently load region_classes from file.
+   ; this .ini route does not currently load region_classes from file or route child-share split-stopping policies.
    ; bc_basis_case (str): Boundary conditions basis, defaults to "NESW" (looks for file format {bc_basis_case}_{domain}_*.nc)
    ; bc_basis_directory (str/None): Directory for bc_basis functions. If None provided, creates new folder in openghg_inversions expecting to find bc_basis_function files there.
    ; fp_basis_case (str/None): Emissions bases:

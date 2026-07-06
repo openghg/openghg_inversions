@@ -74,6 +74,7 @@ NOTE: flux and boundary conditions data usually has a specific *domain*, but it 
     -   basis functions for fluxes can be created on the fly with the `quadtree` or `weighted` algorithms. You can also read in pre-defined basis functions. Default location: `openghg_inversions/basis_functions`
     -   region-constrained basis generation is available through the Python basis API when the caller supplies an already loaded `region_classes` `DataArray`. This is intended for land/sea, country, or other region-class masks, and keeps labels from crossing those classes. The current `.ini`/`run_hbmcmc.py` route does not yet load `region_classes` from a file, so use a saved basis file or the Python wrapper for this case.
     -   region-constrained splitting can optionally use `split_acceptance="contrast_score"` with a design contribution array. This uses a fixed design covariance `S` and a prior split-contrast standard deviation `tau`; the default `tau=1`, `S=I` is only an uncalibrated ranking/debugging score, not calibrated expected information gain. Do not build this score from observed mole fractions or residuals.
+    -   lower-level region-constrained algorithms also support split-stopping policies. `MinChildWeightShare` is a parent-relative balance guard, while `MinChildTargetWeightShare` rejects children below a share of the class-local equal-target region weight, `weights.sum() / target_regions`. Their thresholds are not interchangeable; with stopping enabled, `nbasis` is an upper target. These child-share policies are not yet routed through `.ini`, `run_hbmcmc.py`, or RHIME config options.
     -   basis functions for the boundary conditions have a similar format. Default location `openghg_inversions/bc_basis_functions`
 
 Summary
@@ -259,7 +260,7 @@ met_model = 'UKV'  ; or None if not specified, check the metadata for your footp
 ;   - nbasis - Number of basis functions to use for quadtree derived basis function (rounded to %4)
 ; Region-constrained basis functions are available through the Python basis API
 ; when a caller supplies region_classes. This .ini route does not currently load
-; region_classes from file.
+; region_classes from file or route child-share split-stopping policies.
 
 bc_basis_case  = "NESW"
 bc_basis_directory = "/group/chemistry/acrg/LPDM/bc_basis_functions/"  ; LPDM/bc_basis_functions is default
