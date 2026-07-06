@@ -1,4 +1,17 @@
-"""Helpers for combining partition-local basis labels into one state axis."""
+"""Grouped basis layout helpers.
+
+This module contains the small internal representation used to combine
+partition-local basis labels into one flat basis map while preserving semantic
+state metadata. It is intentionally separate from basis-generation algorithms:
+algorithms decide how to split cells inside a mask or region class, while
+``BasisLayout`` records how those partition-local outputs are assembled into the
+single state axis consumed by ``BucketBasisOperator``.
+
+The current implementation is eager and in-memory. It is intended for small
+metadata/layout assembly steps after region masks and basis labels have already
+been loaded or generated. File loading, lazy execution, large-grid chunking, and
+public RHIME configuration are handled outside this module.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +34,14 @@ class BasisPartition:
 
     Positive integer values in ``labels`` are treated as local region labels.
     Non-positive values and NaNs are treated as cells outside this partition.
+
+    Attributes:
+        name: Stable partition name used in ``basis_partition`` metadata.
+        labels: Partition-local label array. Positive integer values identify
+            regions inside this partition.
+        group: Semantic group name used in ``basis_group`` metadata.
+        attrs: Optional partition metadata reserved for future callers. These
+            attrs are not currently serialized into the layout result.
     """
 
     name: str
@@ -31,7 +52,13 @@ class BasisPartition:
 
 @dataclass(frozen=True, slots=True)
 class BasisLayoutResult:
-    """Combined flat basis labels plus raw-label keyed state metadata."""
+    """Combined flat basis labels plus raw-label keyed state metadata.
+
+    Attributes:
+        basis_flat: Positive integer flat basis map covering every grid cell.
+        state_metadata: Dataset indexed by ``basis_label`` with
+            ``basis_group``, ``basis_partition``, and ``region_in_partition``.
+    """
 
     basis_flat: xr.DataArray
     state_metadata: xr.Dataset
@@ -45,6 +72,13 @@ class BasisLayout:
     label arrays are materialized as NumPy arrays while building the combined
     map. File loading, lazy execution, and large-grid chunking policy remain
     outside this small metadata/layout boundary.
+
+    Attributes:
+        partitions: Ordered partition definitions to combine. Partitions must
+            cover disjoint grid cells and the combined layout must cover the
+            full grid.
+        state_dim: Name of the downstream state dimension that will eventually
+            receive the metadata coordinates.
     """
 
     partitions: Sequence[BasisPartition]
@@ -55,6 +89,9 @@ class BasisLayout:
 
         This method materializes partition labels and the combined map in
         memory.
+
+        Args:
+            name: Name to assign to the returned flat-basis DataArray.
 
         Returns:
             A combined basis map plus a metadata dataset indexed by
@@ -124,7 +161,19 @@ class BasisLayout:
 
 
 def _align_partition_labels(labels: xr.DataArray, template: xr.DataArray) -> xr.DataArray:
-    """Return labels transposed to the template grid after exact coordinate checks."""
+    """Return labels transposed to the template grid.
+
+    Args:
+        labels: Partition label array to validate and transpose.
+        template: First partition label array whose dimensions and coordinates
+            define the layout grid.
+
+    Returns:
+        ``labels`` transposed into ``template`` dimension order.
+
+    Raises:
+        ValueError: If dimensions differ or coordinates are not exactly aligned.
+    """
     if set(labels.dims) != set(template.dims):
         raise ValueError(
             f"Basis partition dims {labels.dims!r} do not match template dims {template.dims!r}."
@@ -135,7 +184,18 @@ def _align_partition_labels(labels: xr.DataArray, template: xr.DataArray) -> xr.
 
 
 def _numeric_label_values(labels: xr.DataArray, partition_name: str) -> np.ndarray:
-    """Return label values as float for NaN-aware validation."""
+    """Return numeric label values as floats for NaN-aware validation.
+
+    Args:
+        labels: Partition label array to materialize.
+        partition_name: Partition name used in validation error messages.
+
+    Returns:
+        Label values as a floating-point NumPy array.
+
+    Raises:
+        TypeError: If ``labels`` is not numeric.
+    """
     values = np.asarray(labels.values)
     if not np.issubdtype(values.dtype, np.number):
         raise TypeError(f"Basis partition {partition_name!r} labels must be numeric.")
@@ -143,7 +203,18 @@ def _numeric_label_values(labels: xr.DataArray, partition_name: str) -> np.ndarr
 
 
 def _positive_integer_labels(values: np.ndarray, partition_name: str) -> np.ndarray:
-    """Return sorted unique positive integer labels, validating integrality."""
+    """Return sorted unique positive integer labels.
+
+    Args:
+        values: Positive mapped label values for one partition.
+        partition_name: Partition name used in validation error messages.
+
+    Returns:
+        Sorted unique integer label values.
+
+    Raises:
+        ValueError: If any mapped label value is not integer-valued.
+    """
     if not np.all(values == np.floor(values)):
         raise ValueError(f"Basis partition {partition_name!r} labels must be integer-valued.")
     return np.unique(values.astype(int))

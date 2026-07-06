@@ -443,11 +443,30 @@ class BucketBasisOperator(BasisOperator):
 
     @property
     def state_metadata(self) -> xr.Dataset | None:
-        """Semantic metadata coordinates carried on the state dimension."""
+        """Semantic metadata coordinates carried on the state dimension.
+
+        Returns:
+            Dataset containing ``basis_group``, ``basis_partition``, and
+            ``region_in_partition`` indexed by ``meta.state_dim``, or ``None``
+            when no grouped metadata was supplied.
+        """
         return self._state_metadata
 
     def _basis_value_labels(self, mat: xr.DataArray) -> np.ndarray:
-        """Return raw basis labels in the dummy-column order."""
+        """Return raw basis labels in the dummy-column order.
+
+        Args:
+            mat: Dummy matrix returned by ``get_xr_dummies`` before or after
+                state-coordinate relabeling.
+
+        Returns:
+            Raw non-negative or positive basis labels ordered to match the dummy
+            matrix state columns.
+
+        Raises:
+            ValueError: If the flat basis labels do not form a supported
+                zero-based or one-based label set.
+        """
         labels = np.unique(self.basis_flat.values.astype(int))
         positive_labels = labels[labels > 0]
         non_negative_labels = labels[labels >= 0]
@@ -472,9 +491,16 @@ class BucketBasisOperator(BasisOperator):
 
         Args:
             mat: Dummy matrix returned by `get_xr_dummies`.
+            basis_value_labels: Optional raw basis labels ordered to match the
+                dummy matrix columns. If omitted, they are computed from
+                ``basis_flat``.
 
         Returns:
             `mat` with an updated state coordinate.
+
+        Raises:
+            ValueError: If ``region_labels`` is unknown or the flat basis labels
+                do not form a supported label set.
 
         Notes:
             This assumes `get_xr_dummies` orders categories in ascending order
@@ -506,7 +532,24 @@ class BucketBasisOperator(BasisOperator):
         *,
         basis_value_labels: np.ndarray,
     ) -> xr.DataArray:
-        """Attach metadata coordinates after final state labels are known."""
+        """Attach grouped metadata coordinates to the basis matrix.
+
+        Args:
+            mat: Basis matrix whose state coordinate already reflects the
+                configured ``region_labels`` policy.
+            state_metadata: Metadata dataset indexed either by raw
+                ``basis_label`` values or by the final state dimension.
+            basis_value_labels: Raw basis labels ordered to match ``mat`` state
+                columns before final state-coordinate relabeling.
+
+        Returns:
+            ``mat`` with grouped metadata attached as coordinates on
+            ``meta.state_dim``.
+
+        Raises:
+            ValueError: If required metadata variables are missing or not
+                one-dimensional on the state dimension.
+        """
         metadata = self._metadata_on_state_dim(
             state_metadata,
             mat=mat,
@@ -532,7 +575,24 @@ class BucketBasisOperator(BasisOperator):
         mat: xr.DataArray,
         basis_value_labels: np.ndarray,
     ) -> xr.Dataset:
-        """Return metadata indexed in final state-coordinate order."""
+        """Return metadata indexed in final state-coordinate order.
+
+        Args:
+            state_metadata: Metadata indexed by ``basis_label`` or by
+                ``meta.state_dim``.
+            mat: Basis matrix carrying the final operator state coordinate.
+            basis_value_labels: Raw basis labels ordered to match ``mat`` state
+                columns before final state-coordinate relabeling.
+
+        Returns:
+            Metadata dataset indexed by ``meta.state_dim`` and aligned to
+            ``mat``.
+
+        Raises:
+            ValueError: If metadata labels do not match basis labels, if
+                final-state metadata has the wrong length, or if the metadata
+                coordinate does not match the final operator state coordinate.
+        """
         state_coord = mat[self.meta.state_dim]
         if BASIS_LABEL_DIM in state_metadata.dims:
             metadata_labels = np.asarray(state_metadata[BASIS_LABEL_DIM].values).astype(int)
@@ -567,7 +627,17 @@ class BucketBasisOperator(BasisOperator):
         return metadata.assign_coords({self.meta.state_dim: state_coord})
 
     def _state_metadata_from_matrix(self, mat: xr.DataArray) -> xr.Dataset | None:
-        """Extract serialisable state metadata from basis-matrix coordinates."""
+        """Extract serialisable state metadata from basis-matrix coordinates.
+
+        Args:
+            mat: Basis matrix that may carry grouped metadata coordinates on
+                ``meta.state_dim``.
+
+        Returns:
+            Dataset containing grouped metadata coordinates indexed by
+            ``meta.state_dim``, or ``None`` when the matrix does not carry the
+            complete grouped metadata coordinate set.
+        """
         if not all(name in mat.coords for name in STATE_METADATA_COORDS):
             return None
         return xr.Dataset(
