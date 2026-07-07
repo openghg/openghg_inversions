@@ -351,8 +351,17 @@ def inferpymc(
 
         if Hx_inner is not None:
             hx_inner = pm.Data("hx_inner", Hx_inner.T, dims=("nmeasure", "nx_inner"))
-            x_inner = parse_prior("x_inner", xprior, dims="nx_inner")
-            step1_vars.append(x_inner)
+            if reparameterise_log_normal and xprior["pdf"] == "lognormal":
+                x_inner0 = pm.Normal("x_inner0", 0, 1, dims="nx_inner")
+                x_inner = pm.Deterministic(
+                    "x_inner",
+                    pt.exp(xprior["mu"] + xprior["sigma"] * x_inner0),
+                    dims="nx_inner",
+                )
+                step1_vars.append(x_inner0)
+            else:
+                x_inner = parse_prior("x_inner", xprior, dims="nx_inner")
+                step1_vars.append(x_inner)
             regional_mu = regional_mu + pt.dot(hx_inner, x_inner)
             mu = pm.Deterministic(
                 "mu",

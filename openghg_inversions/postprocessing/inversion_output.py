@@ -181,6 +181,19 @@ def _nmeasure_to_site_time(
     return result
 
 
+def _drop_singleton_basis_time(basis: xr.DataArray, *, label: str) -> xr.DataArray:
+    """Remove singleton basis time dimensions before multiplying by flux priors."""
+    for dim in ("time", "flux_time"):
+        if dim in basis.dims and basis.sizes[dim] <= 1:
+            print(
+                "DIAGNOSTIC flux_output_basis_time | "
+                f"label={label} action=drop_singleton dim={dim} size={basis.sizes[dim]}",
+                flush=True,
+            )
+            return basis.squeeze(dim, drop=True)
+    return basis
+
+
 @dataclass
 class InversionOutput:
     """Outputs of inversion needed for post-processing."""
@@ -223,6 +236,8 @@ class InversionOutput:
         # change "time" dim of flux to "flux_time" to avoid NaNs when merging with obs times
         self.flux = self.flux.rename(time="flux_time")
 
+        self.basis = _drop_singleton_basis_time(self.basis, label="outer")
+
         # align basis with flux; this is necessary due to an issue with sparse matrices
         self.basis = align_sparse_lat_lon(self.basis, self.flux)
 
@@ -240,6 +255,7 @@ class InversionOutput:
                 self.inner_flux = self.inner_flux.expand_dims(time=[self.start_time])
             self.inner_flux = self.inner_flux.rename(time="flux_time")
             if self.inner_basis is not None:
+                self.inner_basis = _drop_singleton_basis_time(self.inner_basis, label="inner")
                 if "time" in self.inner_basis.dims:
                     self.inner_basis = self.inner_basis.rename(time="flux_time")
                 elif "time" in self.inner_basis.coords:

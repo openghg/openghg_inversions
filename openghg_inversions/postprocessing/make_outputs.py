@@ -60,17 +60,6 @@ def make_flux_outputs(
     stats_args["chunk_dim"] = "nx"
     stats_ds = calculate_stats(trace, **stats_args)
 
-    if "x_prior" in trace.data_vars:
-        print(
-            f"DEBUGOUT: Flux path trace mean x_prior={float(trace['x_prior'].mean().values):.6f}",
-            flush=True,
-        )
-    if "x_posterior" in trace.data_vars:
-        print(
-            f"DEBUGOUT: Flux path trace mean x_posterior={float(trace['x_posterior'].mean().values):.6f}",
-            flush=True,
-        )
-
     if report_flux_on_inversion_grid:
         agg_flux = (
             (inv_out.basis * inv_out.flux).sum(["lat", "lon"]) / inv_out.basis.sum(["lat", "lon"])
@@ -88,17 +77,6 @@ def make_flux_outputs(
             flux_stats[dv].attrs["units"] = inv_out.flux.attrs.get("units", "mol/m2/s")
 
     flux_stats = rename_by_replacement(flux_stats, "x", "flux")
-
-    if "flux_prior" in flux_stats.data_vars:
-        print(
-            f"DEBUGOUT: Flux path map mean flux_prior={float(flux_stats['flux_prior'].mean().values):.6e}",
-            flush=True,
-        )
-    if "flux_posterior" in flux_stats.data_vars:
-        print(
-            f"DEBUGOUT: Flux path map mean flux_posterior={float(flux_stats['flux_posterior'].mean().values):.6e}",
-            flush=True,
-        )
 
     if include_scale_factors:
         scale_factor_stats = sparse_xr_dot(inv_out.basis, stats_ds)
@@ -256,17 +234,6 @@ def make_concentration_outputs(
     stats_args["chunk_size"] = 1
 
     conc_stats = calculate_stats(trace, **stats_args)
-
-    if "y_prior" in conc_stats.data_vars:
-        print(
-            f"DEBUGOUT: Conc path mean y_prior={float(conc_stats['y_prior'].mean().values):.6f}",
-            flush=True,
-        )
-    if "y_posterior" in conc_stats.data_vars:
-        print(
-            f"DEBUGOUT: Conc path mean y_posterior={float(conc_stats['y_posterior'].mean().values):.6f}",
-            flush=True,
-        )
 
     return conc_stats
 

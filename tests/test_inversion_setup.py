@@ -75,6 +75,59 @@ def test_make_inv_inputs_with_empty_root_datatree():
     assert mcmc_args["Hbc"].shape == (4, 3)
 
 
+def test_make_inv_inputs_reports_dropna_losses(capsys):
+    time = pd.date_range("2019-01-01", periods=3)
+    h_values = np.ones((2, 3))
+    h_values[0, 1] = np.nan
+
+    fp_data = {
+        "TAC": xr.Dataset(
+            {
+                "H": xr.DataArray(h_values, dims=["region", "time"], coords={"time": time}),
+                "H_bc": xr.DataArray(np.ones((4, 3)), dims=["bc_region", "time"], coords={"time": time}),
+                "mf": xr.DataArray(np.array([1.0, 2.0, 3.0]), dims=["time"], coords={"time": time}),
+                "mf_error": xr.DataArray(np.ones(3) * 0.1, dims=["time"], coords={"time": time}),
+                "mf_repeatability": xr.DataArray(np.ones(3) * 0.05, dims=["time"], coords={"time": time}),
+                "mf_variability": xr.DataArray(np.ones(3) * 0.02, dims=["time"], coords={"time": time}),
+            },
+            attrs={"inlet": "185m", "platform": "site"},
+        )
+    }
+
+    make_inv_inputs(
+        fp_data=fp_data,
+        sites=["TAC"],
+        dropped_sites=[],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        use_bc=True,
+        bc_freq=None,
+        sigma_freq=None,
+        xprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+        bcprior={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+        sigprior={"pdf": "uniform", "lower": 0.1, "upper": 3.0},
+        nit=20,
+        burn=2,
+        tune=5,
+        nchain=1,
+        sigma_per_site=True,
+        offsetprior={"pdf": "normal", "mu": 0.0, "sigma": 1.0},
+        add_offset=False,
+        verbose=False,
+        min_error=0.0,
+        calculate_min_error=None,
+        min_error_options=None,
+        offset_args=None,
+        power=1.99,
+    )
+
+    output = capsys.readouterr().out
+    assert "make_inv_inputs dropped 1 obs at site TAC" in output
+    assert "due to NaNs in ['H', 'H_bc', 'mf', 'mf_error']" in output
+    assert "Remaining obs: 2" in output
+    assert "NaN time counts before drop: {'H': 1, 'H_bc': 0, 'mf': 0, 'mf_error': 0}" in output
+
+
 def test_monthly_bcs_reads_standard_child_hbc():
     time = pd.date_range("2019-01-01", periods=6, freq="15D")
     hbc_vals = np.ones((4, len(time)))
