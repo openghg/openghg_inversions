@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenGHG Live Dashboard Architecture Options</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #18202a;
+      background: #f7f8fb;
+    }
+    header {
+      padding: 24px 32px;
+      background: #18202a;
+      color: #fff;
+    }
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    section {
+      margin: 0 0 28px;
+      padding: 20px;
+      background: #fff;
+      border: 1px solid #dde3ea;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    h1, h2 {
+      margin: 0 0 12px;
+    }
+    p {
+      line-height: 1.5;
+    }
+    .note {
+      padding: 12px 14px;
+      background: #edf8e9;
+      border-left: 4px solid #3a7d44;
+      margin: 12px 0 0;
+    }
+    .mermaid {
+      min-width: 900px;
+    }
+    code {
+      background: #eef1f5;
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>OpenGHG Live Dashboard Architecture Options</h1>
+    <p>Prototype flows for JASMIN-hosted model pipelines feeding an AWS Amplify dashboard.</p>
+  </header>
+  <main>
+    <section>
+      <h2>Recommended Starting Point</h2>
+      <p class="note">Start with Option 1: JASMIN + OpenGHG post-processing + S3 artefact publishing + Amplify polling. It is the lowest-budget path and can evolve into the event-driven options later.</p>
+    </section>
+
+    <section>
+      <h2>Option 1: Low-Budget S3 Polling</h2>
+      <pre class="mermaid">
+flowchart LR
+    subgraph JASMIN[JASMIN HPC Workspace]
+        SCHED[Scheduler\ncron -> sbatch\nor Slurm job array]
+        subgraph MODELS[Three Model Pipelines]
+            M1[Model A\nOpenGHG inputs]
+            M2[Model B\nOpenGHG inputs]
+            M3[Model C\nOpenGHG inputs]
+        end
+        OGHG[OpenGHG Object Stores\nobs, footprints, flux, BCs]
+        POST[OpenGHG Normalisation\nstandard units, coords,\nmetadata, provenance]
+        QC[QC + Validation\nschema checks\nmissing vars\nrange checks]
+        PUB[Dashboard Publisher\nNetCDF/Zarr/Parquet/GeoJSON\nmanifest.json]
+        SYNC[Transfer Step\naws s3 sync or rclone\nleast-privilege IAM]
+    end
+    subgraph AWS[AWS Low-Cost Data Plane]
+        S3[(S3 dashboard bucket\nruns/&lt;run_id&gt;/products\nruns/&lt;run_id&gt;/manifest.json\nlatest.json)]
+        CF[CloudFront or Amplify CDN\ncache latest.json lightly]
+    end
+    subgraph FRONTEND[AWS Amplify Hosted Dashboard]
+        APP[React/Vue/Svelte/Next SPA]
+        POLL[Poll latest.json\n30-120 sec interval]
+        FETCH[Fetch products\nlazy load by variable/time/domain]
+        VIEW[Maps, charts, tables,\nrun comparison, status badges]
+    end
+    SCHED --> M1
+    SCHED --> M2
+    SCHED --> M3
+    OGHG --> M1
+    OGHG --> M2
+    OGHG --> M3
+    M1 --> POST
+    M2 --> POST
+    M3 --> POST
+    POST --> QC
+    QC --> PUB
+    PUB --> SYNC
+    SYNC --> S3
+    S3 --> CF
+    CF --> POLL
+    APP --> POLL
+    POLL --> FETCH
+    FETCH --> VIEW
+      </pre>
+    </section>
+
+    <section>
+      <h2>Option 2: Event-Driven Push</h2>
+      <pre class="mermaid">
+flowchart LR
+    subgraph JASMIN[JASMIN HPC Workspace]
+        SCHED[Slurm/Cron/Cylc]
+        MODELS[Model A/B/C\nOpenGHG-based pipelines]
+        POST[OpenGHG output normaliser]
+        PUB[Publisher\nwrites products + manifest]
+        UPLOAD[Upload to S3]
+    end
+    subgraph AWS[AWS Serverless Backend]
+        S3[(S3 run artefacts)]
+        EVT[S3 Event Notification\nObjectCreated manifest.json]
+        LAMBDA[Lambda ingest function\nvalidate manifest\nupdate index]
+        DDB[(DynamoDB run index\nlatest, status, metadata)]
+        APPSYNC[AppSync GraphQL\nsubscriptions/WebSocket]
+    end
+    subgraph AMPLIFY[AWS Amplify Dashboard]
+        APP[Amplify hosted frontend]
+        SUB[Subscribe to run updates]
+        READ[Query run index\nfetch products from S3]
+        UI[Live dashboard views]
+    end
+    SCHED --> MODELS --> POST --> PUB --> UPLOAD --> S3
+    S3 --> EVT --> LAMBDA
+    LAMBDA --> DDB
+    LAMBDA --> APPSYNC
+    APP --> SUB --> APPSYNC
+    APP --> READ --> DDB
+    READ --> S3
+    SUB --> UI
+    READ --> UI
+      </pre>
+    </section>
+
+    <section>
+      <h2>Option 3: Queue-Backed Robust Ingestion</h2>
+      <pre class="mermaid">
+flowchart TB
+    subgraph JASMIN[JASMIN HPC Workspace]
+        SCHED[Orchestrator\ncron + sbatch\nor Cylc/Nextflow/Snakemake]
+        M1[Model A]
+        M2[Model B]
+        M3[Model C]
+        OGHG[OpenGHG stores and APIs]
+        NORMALISE[OpenGHG common output contract]
+        MANIFEST[Create run manifest\nQC + provenance]
+        TRANSFER[Upload products and manifest]
+    end
+    subgraph AWS[AWS Ingestion Plane]
+        S3[(S3 landing bucket)]
+        EVENT[EventBridge or S3 events]
+        QUEUE[SQS queue\nretry buffer]
+        DLQ[SQS dead-letter queue]
+        WORKER[Lambda worker\nor ECS Fargate task\nfor heavier transforms]
+        INDEX[(DynamoDB/OpenSearch index)]
+        TILE[Optional tile builder\nCOG/PMTiles/GeoJSON summaries]
+        API[API Gateway or AppSync API]
+    end
+    subgraph DASH[Amplify Dashboard]
+        FRONT[Frontend]
+        STATUS[Run status panel]
+        DATA[Fetch indexed metadata\nand S3 products]
+    end
+    SCHED --> M1
+    SCHED --> M2
+    SCHED --> M3
+    OGHG --> M1
+    OGHG --> M2
+    OGHG --> M3
+    M1 --> NORMALISE
+    M2 --> NORMALISE
+    M3 --> NORMALISE
+    NORMALISE --> MANIFEST --> TRANSFER --> S3
+    S3 --> EVENT --> QUEUE --> WORKER
+    QUEUE --> DLQ
+    WORKER --> INDEX
+    WORKER --> TILE --> S3
+    INDEX --> API
+    S3 --> API
+    FRONT --> API --> STATUS
+    FRONT --> DATA
+    DATA --> S3
+      </pre>
+    </section>
+
+    <section>
+      <h2>Option 4: GitOps / Amplify Rebuild</h2>
+      <pre class="mermaid">
+flowchart LR
+    subgraph JASMIN[JASMIN HPC Workspace]
+        MODELS[Model A/B/C\nOpenGHG pipelines]
+        EXPORT[Export small dashboard JSON\nor static site data bundle]
+        BOT[GitHub deploy token\ncommit data bundle]
+    end
+    subgraph GITHUB[GitHub]
+        REPO[(Dashboard repository)]
+        ACTIONS[Optional GitHub Actions\nschema check]
+    end
+    subgraph AWS[AWS Amplify Hosting]
+        AMPLIFY[Amplify connected branch]
+        BUILD[Amplify build]
+        CDN[Amplify CDN deploy]
+    end
+    subgraph USER[Users]
+        UI[Dashboard loads latest deployed build]
+    end
+    MODELS --> EXPORT --> BOT --> REPO
+    REPO --> ACTIONS --> AMPLIFY
+    REPO --> AMPLIFY
+    AMPLIFY --> BUILD --> CDN --> UI
+      </pre>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      securityLevel: "loose",
+      theme: "default",
+      flowchart: { htmlLabels: true, curve: "basis" }
+    });
+  </script>
+</body>
+</html>
