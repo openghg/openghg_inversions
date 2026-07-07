@@ -33,7 +33,49 @@ def _time_mask(mask: xr.DataArray, filter_name: str) -> xr.DataArray:
     if extra_dims:
         mask = mask.any(dim=extra_dims)
     return mask
-    
+
+
+def _count_true(mask: xr.DataArray) -> int:
+    return int(mask.sum().compute())
+
+
+def _parse_filter_spec(filt: str | dict) -> tuple[str, dict]:
+    """Return filter name and keyword arguments from a filter spec."""
+    if isinstance(filt, str):
+        return filt, {}
+
+    if "name" in filt:
+        params = dict(filt)
+        name = params.pop("name")
+        return name, params
+
+    if len(filt) == 1:
+        name, params = next(iter(filt.items()))
+        return name, params or {}
+
+    raise ValueError(
+        "Filter dictionaries must be either {'name': <filter>, ...kwargs} "
+        "or {<filter>: {...kwargs}}."
+    )
+
+
+def _zero_entirely_missing_time_vars(dataset: xr.Dataset) -> xr.Dataset:
+    """Replace variables that are entirely missing on time with zero."""
+    updated = dataset
+    for name, data_var in dataset.data_vars.items():
+        if "time" not in data_var.dims:
+            continue
+        if bool(data_var.isnull().all().compute()):
+            print(
+                "DIAGNOSTIC zero_fill | "
+                f"stage=filter_inner_alignment variable={name} "
+                f"reason=entire_time_variable_missing size={data_var.size}",
+                flush=True,
+            )
+            updated = updated.assign({name: data_var.fillna(0.0)})
+    return updated
+
+
 def register_filter(filt: Callable) -> Callable:
     """Decorator function to register filters.
 
@@ -75,7 +117,7 @@ def list_filters() -> None:
 
 def filtering(
     datasets_in: dict,
-    filters: str | None | dict[str, list[str | None]] | list[str | None],
+    filters: str | dict | None | dict[str, list[str | dict | None]] | list[str | dict | None],
     keep_missing: bool = False,
 ) -> dict:
     """Applies time filtering to all datasets in `datasets_in`.
@@ -101,7 +143,8 @@ def filtering(
         datasets_in: dictionary of datasets containing output from ModelScenario.footprints_merge().
         filters: filters to apply to the datasets. Either a list of filters, which will be applied to every site,
             or a dictionary of lists of the form  {<site code>: [filter1, filter2, ...]}, with specific filters to
-            be applied at each site. Use the `list_filters` function to list available filters.
+            be applied at each site. Filter entries can be strings, {"name": <filter>, ...kwargs},
+            or {<filter>: {...kwargs}}. Use the `list_filters` function to list available filters.
         keep_missing: if True, drop missing data
 
     Returns:
@@ -141,6 +184,9 @@ def filtering(
     for site in filters:
         if filters[site] is not None and site in sites:
             for filt in filters[site]:
+                if filt is None:
+                    continue
+                filt_name, filt_kwargs = _parse_filter_spec(filt)
                 
                 site_entry = datasets[site]
 
@@ -149,22 +195,38 @@ def filtering(
                     outer_ds = site_entry["standard"].ds if "standard" in site_entry.children else site_entry.ds
                     n_nofilter = outer_ds.time.values.shape[0]
 
-                    filtered_outer = filtering_functions[filt](outer_ds, keep_missing=keep_missing)
+                    filtered_outer = filtering_functions[filt_name](
+                        outer_ds, keep_missing=keep_missing, **filt_kwargs
+                    )
 
                     n_filter = filtered_outer.time.values.shape[0]
                     n_dropped = n_nofilter - n_filter
                     perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
-                    print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
+                    print(f"{filt_name} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
 
                     # Rebuild DataTree preserving the standard/inner layout.
                     standard_key = "/standard" if "standard" in site_entry.children else "/"
                     dt_dict = {standard_key: filtered_outer}
                     if "inner" in site_entry.children:
                         inner_ds = site_entry["inner"].ds
-                        # Keep inner time axis aligned with the (now filtered) outer time axis
-                        dt_dict["/inner"] = inner_ds.reindex(
-                            time=filtered_outer.time, fill_value=0.0
+                        exact_matches = int(filtered_outer.time.isin(inner_ds.time).sum().compute())
+                        # Keep inner time axis aligned with the (now filtered)
+                        # outer time axis using nearest values, falling back
+                        # to zero only when no nearest value exists.
+                        try:
+                            filtered_inner = inner_ds.reindex(time=filtered_outer.time, method="nearest")
+                            align_method = "nearest"
+                        except ValueError:
+                            filtered_inner = inner_ds.reindex(time=filtered_outer.time, fill_value=0.0)
+                            align_method = "zero-fill"
+                        print(
+                            "DIAGNOSTIC filter_inner_alignment | "
+                            f"site={site} filter={filt_name} outer_times={n_filter} "
+                            f"inner_times={inner_ds.sizes.get('time', 0)} exact_matches={exact_matches} "
+                            f"outer_without_exact_inner={n_filter - exact_matches} method={align_method}",
+                            flush=True,
                         )
+                        dt_dict["/inner"] = _zero_entirely_missing_time_vars(filtered_inner)
                     datasets[site] = xr.DataTree.from_dict(dt_dict)
 
                     if n_filter == 0:
@@ -174,12 +236,14 @@ def filtering(
                 else:
                     n_nofilter = datasets[site].time.values.shape[0]
 
-                    datasets[site] = filtering_functions[filt](datasets[site], keep_missing=keep_missing)
+                    datasets[site] = filtering_functions[filt_name](
+                        datasets[site], keep_missing=keep_missing, **filt_kwargs
+                    )
 
                     n_filter = datasets[site].time.values.shape[0]
                     n_dropped = n_nofilter - n_filter
                     perc_dropped = np.round(n_dropped / n_nofilter * 100, 2)
-                    print(f"{filt} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
+                    print(f"{filt_name} filter removed {n_dropped} ({perc_dropped} %) obs at site {site}")
                     if n_filter == 0: break # no values left, so we won't apply remaining filters
 
     return datasets
@@ -411,6 +475,8 @@ def pblh_min(dataset: xr.Dataset, pblh_threshold: float = 200.0, keep_missing: b
     pblh_da = dataset.PBLH if "PBLH" in dataset.data_vars else dataset.atmosphere_boundary_layer_thickness
 
     filt = _time_mask(pblh_da > pblh_threshold, "pblh_min")
+    missing = _time_mask(pblh_da.isnull(), "pblh_min")
+    below_or_equal = _time_mask((pblh_da <= pblh_threshold) & pblh_da.notnull(), "pblh_min")
 
     # Some inputs can include extra dimensions; collapse to a per-time mask.
     if "time" not in filt.dims:
@@ -418,6 +484,16 @@ def pblh_min(dataset: xr.Dataset, pblh_threshold: float = 200.0, keep_missing: b
     extra_dims = [dim for dim in filt.dims if dim != "time"]
     if extra_dims:
         filt = filt.any(dim=extra_dims)
+
+    total = int(filt.sizes["time"])
+    kept = _count_true(filt)
+    print(
+        "DIAGNOSTIC filter_pblh_min | "
+        f"threshold={pblh_threshold} total={total} kept={kept} "
+        f"removed={total - kept} below_or_equal={_count_true(below_or_equal)} "
+        f"missing={_count_true(missing)} keep_missing={keep_missing}",
+        flush=True,
+    )
 
     drop = not keep_missing
     return dataset.where(filt.compute(), drop=drop)

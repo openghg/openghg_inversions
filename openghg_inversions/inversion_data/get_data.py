@@ -198,7 +198,50 @@ def _inner_extent_mask_to_grid(inner_data: xr.Dataset, lat: xr.DataArray, lon: x
     return (lat_mask & lon_mask).broadcast_like(xr.DataArray(np.zeros((lat.size, lon.size)), coords={"lat": lat, "lon": lon}, dims=("lat", "lon")))
 
 
-def _apply_inner_mask_on_standard_domain(standard_footprint_data: xr.Dataset, inner_footprint_data: xr.Dataset):
+def _safe_count(da: xr.DataArray) -> int:
+    return int(da.sum().compute())
+
+
+def _as_dataset(data) -> xr.Dataset | None:
+    if isinstance(data, xr.Dataset):
+        return data
+    if hasattr(data, "data") and isinstance(data.data, xr.Dataset):
+        return data.data
+    return None
+
+
+def _print_time_count(stage: str, site: str, data, **extra) -> None:
+    ds = _as_dataset(data)
+    if ds is None or "time" not in ds.sizes:
+        return
+
+    ntime = int(ds.sizes["time"])
+    first_time = str(ds.time.values[0]) if ntime else "NA"
+    last_time = str(ds.time.values[-1]) if ntime else "NA"
+    extra_text = " ".join(f"{key}={value}" for key, value in extra.items() if value is not None)
+    print(
+        "DIAGNOSTIC data_counts | "
+        f"stage={stage} site={site} times={ntime} first_time={first_time} last_time={last_time} "
+        f"{extra_text}".rstrip(),
+        flush=True,
+    )
+
+
+def _print_scenario_counts(site: str, scenario) -> None:
+    if isinstance(scenario, xr.DataTree):
+        if "standard" in scenario.children:
+            _print_time_count("scenario_standard_merged", site, scenario["standard"].ds)
+        if "inner" in scenario.children:
+            _print_time_count("scenario_inner_merged", site, scenario["inner"].ds)
+    else:
+        _print_time_count("scenario_standard_merged", site, scenario)
+
+
+def _apply_inner_mask_on_standard_domain(
+    standard_footprint_data: xr.Dataset,
+    inner_footprint_data: xr.Dataset,
+    site: str | None = None,
+):
     """Mask standard-domain footprint values over the full inner-domain extent.
 
     Args:
@@ -222,13 +265,22 @@ def _apply_inner_mask_on_standard_domain(standard_footprint_data: xr.Dataset, in
         lon=fp_standard.lon,
     )
 
+    masked_nonzero = _safe_count((fp_standard["fp"].where(inner_on_standard).fillna(0.0) != 0.0))
+    masked_cells = _safe_count(inner_on_standard)
     fp_standard["fp"] = fp_standard["fp"].where(~inner_on_standard, other=0.0)
+    print(
+        "DIAGNOSTIC zero_introduced | "
+        f"target=standard_footprint site={site or 'unknown'} masked_cells={masked_cells} "
+        f"nonzero_values_zeroed={masked_nonzero}",
+        flush=True,
+    )
     return fp_standard
 
 
 def _apply_inner_mask_on_standard_flux(
     standard_flux_dict: dict,
     inner_footprint_data: xr.Dataset,
+    site: str | None = None,
 ) -> dict:
     """Mask standard-domain flux values over the full inner-domain extent.
 
@@ -245,12 +297,13 @@ def _apply_inner_mask_on_standard_flux(
     first_flux = next(iter(standard_flux_dict.values())).data.flux
     inner_on_flux = _inner_extent_mask_to_grid(inner_footprint_data, lat=first_flux.lat, lon=first_flux.lon)
 
-    return _apply_boolean_mask_on_standard_flux(standard_flux_dict, inner_on_flux)
+    return _apply_boolean_mask_on_standard_flux(standard_flux_dict, inner_on_flux, context=f"site={site or 'unknown'}")
 
 
 def _apply_boolean_mask_on_standard_flux(
     standard_flux_dict: dict,
     mask_on_standard_grid: xr.DataArray,
+    context: str = "",
 ) -> dict:
     """Apply a precomputed boolean mask to all standard-domain flux sources.
 
@@ -271,13 +324,71 @@ def _apply_boolean_mask_on_standard_flux(
             lon=flux_da.lon,
         )
 
+        masked_nonzero = _safe_count((flux_da.where(mask_for_flux).fillna(0.0) != 0.0))
+        masked_cells = _safe_count(mask_for_flux)
         masked_flux = flux_da.where(~mask_for_flux, other=0.0)
         masked_ds = flux_data.data.copy()
         masked_ds["flux"] = masked_flux
         masked_flux_dict[source] = type(flux_data)(data=masked_ds, metadata=flux_data.metadata)
+        print(
+            "DIAGNOSTIC zero_introduced | "
+            f"target=standard_flux source={source} {context} masked_cells={masked_cells} "
+            f"nonzero_values_zeroed={masked_nonzero}",
+            flush=True,
+        )
 
     return masked_flux_dict
-    
+
+
+def _fill_inner_flux_missing_with_nearest(inner_flux_dict: dict) -> dict:
+    """Fill missing native inner flux values with nearest values, or zero if all missing."""
+    filled_flux_dict = {}
+    fill_dims = ("time", "lat", "lon")
+
+    for source, flux_data in inner_flux_dict.items():
+        flux_ds = flux_data.data
+        if "flux" not in flux_ds:
+            filled_flux_dict[source] = flux_data
+            continue
+
+        flux = flux_ds["flux"]
+        missing_before = _safe_count(flux.isnull())
+        if missing_before == 0:
+            filled_flux_dict[source] = flux_data
+            continue
+
+        if bool(flux.isnull().all().compute()):
+            filled_flux = flux.fillna(0.0)
+            fill_method = "all_missing_to_zero"
+        else:
+            filled_flux = flux
+            for dim in fill_dims:
+                if dim in filled_flux.dims and filled_flux.sizes.get(dim, 0) > 1:
+                    if bool(filled_flux.isnull().any().compute()):
+                        filled_flux = filled_flux.interpolate_na(
+                            dim=dim,
+                            method="nearest",
+                            fill_value="extrapolate",
+                        )
+
+            # Any remaining holes have no nearest neighbour along the available
+            # flux dimensions, so treat them as no inner flux contribution.
+            filled_flux = filled_flux.fillna(0.0)
+            fill_method = "nearest_then_zero"
+
+        missing_after = _safe_count(filled_flux.isnull())
+        zero_after = _safe_count(filled_flux == 0.0)
+        print(
+            "DIAGNOSTIC zero_introduced | "
+            f"target=inner_flux source={source} fill_method={fill_method} "
+            f"missing_before={missing_before} missing_after={missing_after} zero_values_after={zero_after}",
+            flush=True,
+        )
+        filled_ds = flux_ds.assign({"flux": filled_flux})
+        filled_flux_dict[source] = type(flux_data)(data=filled_ds, metadata=flux_data.metadata)
+
+    return filled_flux_dict
+
 
 def data_processing_surface_notracer(
     species: str,
@@ -412,6 +523,7 @@ def data_processing_surface_notracer(
             end_date=end_date,  
             store=inner_emissions_store,
         )
+        inner_flux_dict = _fill_inner_flux_missing_with_nearest(inner_flux_dict)
         fp_all[".inner_flux"] = inner_flux_dict
 
     # Get BC data
@@ -475,6 +587,13 @@ def data_processing_surface_notracer(
         if site_data is None:
             print(f"No obs. found, continuing model run without {site}.\n")
             continue
+        _print_time_count(
+            "obs_retrieved",
+            site,
+            site_data,
+            inlet=inlet[i],
+            averaging_period=avg_period,
+        )
 
         # Get footprints data
 
@@ -498,6 +617,13 @@ def data_processing_surface_notracer(
                 f"Check these values.\nContinuing model run without {site}.\n",
             )
             continue  # skip this site
+        _print_time_count(
+            "standard_footprint_retrieved",
+            site,
+            standard_footprint_data,
+            fp_height=fp_height[i],
+            domain=domain,
+        )
         inner_footprint_data = None
         standard_flux_for_site = flux_dict
         if inner_domain is not None:
@@ -522,14 +648,23 @@ def data_processing_surface_notracer(
                     f"Check these values.\nContinuing model run without {site}.Jai\n",
                 )
                 continue  # skip this site
+            _print_time_count(
+                "inner_footprint_retrieved",
+                site,
+                inner_footprint_data,
+                fp_height=fp_height[i],
+                domain=f"{domain}-{inner_domain}",
+            )
             # Mask the standard domain fp_x_flux with the inner domain mask BEFORE storing in DataTree
             standard_footprint_data.data = _apply_inner_mask_on_standard_domain(
                 standard_footprint_data=standard_footprint_data.data,
                 inner_footprint_data=inner_footprint_data.data,
+                site=site,
             )
             standard_flux_for_site = _apply_inner_mask_on_standard_flux(
                 standard_flux_dict=flux_dict,
                 inner_footprint_data=inner_footprint_data.data,
+                site=site,
             )
 
             first_flux = next(iter(flux_dict.values())).data.flux
@@ -550,10 +685,11 @@ def data_processing_surface_notracer(
             platform=platform[i], max_level=max_level[i], averaging_period=averaging_period[i]
         )
         fp_all[site] = scenario_combined
+        _print_scenario_counts(site, scenario_combined)
 
         # scenario_combined returns a datatree. The standard_domain scenario is stored at the root, and any inner domain scenario is stored at "/{inner_domain}". Here we take the root scenario to store the calibration scale and units, since these should be the same for the inner domain scenario. If inner domain scenario is None the root scenario is the only scenario, so this will still work.
 
-        root_ds = scenario_combined["standard"].ds
+        root_ds = scenario_combined["standard"].ds if isinstance(scenario_combined, xr.DataTree) else scenario_combined
         units[site] = root_ds.mf.attrs.get("units")
 
         if "satellite" not in platform:
@@ -566,6 +702,7 @@ def data_processing_surface_notracer(
         fp_all[".flux"] = _apply_boolean_mask_on_standard_flux(
             standard_flux_dict=flux_dict,
             mask_on_standard_grid=standard_flux_inner_mask_union,
+            context="all_sites_union",
         )
 
     if len(site_indices_to_keep) == 0:

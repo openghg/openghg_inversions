@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
-from openghg.dataobjects import ObsData
+from openghg.dataobjects import FluxData, ObsData
 from openghg.retrieve import get_obs_surface
 from openghg.types import SearchError
 
@@ -22,6 +22,7 @@ from openghg_inversions.inversion_data.serialise import (
 from openghg_inversions.inversion_data.get_data import (
     data_processing_surface_notracer,
     add_obs_error,
+    _fill_inner_flux_missing_with_nearest,
 )
 from openghg_inversions.inversion_data.getters import get_flux_data
 
@@ -127,6 +128,34 @@ def test_datatree_scenarios_preserved_in_serialisation_roundtrip():
 
 def test_inner_scenario_time_alignment_uses_nearest_with_tolerance():
     outer_time = pd.to_datetime(["2019-01-01 00:00", "2019-01-01 01:00", "2019-01-01 02:00"])
+    inner_time = pd.to_datetime(["2019-01-01 00:29", "2019-01-01 01:29", "2019-01-01 02:29"])
+
+    scenario_combined = xr.Dataset(coords={"time": outer_time})
+    inner_domain_merged = xr.Dataset(
+        {"fp_x_flux": xr.DataArray([1.0, 2.0, 3.0], dims=["time"], coords={"time": inner_time})}
+    )
+
+    aligned = align_inner_to_outer_time(
+        inner_domain_merged=inner_domain_merged,
+        scenario_combined=scenario_combined,
+        averaging_period="1h",
+    )
+
+    np.testing.assert_allclose(aligned["fp_x_flux"].values, [1.0, 2.0, 3.0])
+
+    exact = align_inner_to_outer_time(
+        inner_domain_merged=xr.Dataset(
+            {"fp_x_flux": xr.DataArray([1.0, 2.0, 3.0], dims=["time"], coords={"time": outer_time})}
+        ),
+        scenario_combined=scenario_combined,
+        averaging_period=None,
+    )
+
+    np.testing.assert_allclose(exact["fp_x_flux"].values, [1.0, 2.0, 3.0])
+
+
+def test_inner_scenario_time_alignment_uses_nearest_for_missing_inner_times():
+    outer_time = pd.to_datetime(["2019-01-01 00:00", "2019-01-01 01:00", "2019-01-01 02:00"])
     inner_time = pd.to_datetime(["2019-01-01 00:29", "2019-01-01 01:31"])
 
     scenario_combined = xr.Dataset(coords={"time": outer_time})
@@ -140,7 +169,7 @@ def test_inner_scenario_time_alignment_uses_nearest_with_tolerance():
         averaging_period="1h",
     )
 
-    np.testing.assert_allclose(aligned["fp_x_flux"].values, [1.0, 0.0, 2.0])
+    np.testing.assert_allclose(aligned["fp_x_flux"].values, [1.0, 2.0, 2.0])
 
     exact_only = align_inner_to_outer_time(
         inner_domain_merged=inner_domain_merged,
@@ -148,7 +177,49 @@ def test_inner_scenario_time_alignment_uses_nearest_with_tolerance():
         averaging_period=None,
     )
 
-    np.testing.assert_allclose(exact_only["fp_x_flux"].values, [0.0, 0.0, 0.0])
+    np.testing.assert_allclose(exact_only["fp_x_flux"].values, [1.0, 2.0, 2.0])
+
+
+def test_inner_scenario_time_alignment_zero_fills_entirely_missing_variable():
+    outer_time = pd.to_datetime(["2019-01-01 00:00", "2019-01-01 01:00"])
+    inner_time = pd.to_datetime(["2019-01-01 00:30"])
+
+    aligned = align_inner_to_outer_time(
+        inner_domain_merged=xr.Dataset(
+            {"fp_x_flux": xr.DataArray([np.nan], dims=["time"], coords={"time": inner_time})}
+        ),
+        scenario_combined=xr.Dataset(coords={"time": outer_time}),
+        averaging_period="1h",
+    )
+
+    np.testing.assert_allclose(aligned["fp_x_flux"].values, [0.0, 0.0])
+
+
+def test_inner_flux_missing_values_fill_with_nearest_then_zero():
+    time = pd.date_range("2020-01-01", periods=5)
+    flux = xr.DataArray(
+        [np.nan, 1.0, np.nan, 3.0, np.nan],
+        dims=("time",),
+        coords={"time": time},
+        name="flux",
+    )
+    flux_dict = {"total": FluxData(data=xr.Dataset({"flux": flux}), metadata={"source": "test"})}
+
+    filled = _fill_inner_flux_missing_with_nearest(flux_dict)["total"].data["flux"]
+
+    np.testing.assert_allclose(filled.values, [1.0, 1.0, 1.0, 3.0, 3.0])
+
+    all_missing = xr.DataArray(
+        [np.nan, np.nan],
+        dims=("time",),
+        coords={"time": pd.date_range("2020-02-01", periods=2)},
+        name="flux",
+    )
+    all_missing_dict = {"total": FluxData(data=xr.Dataset({"flux": all_missing}), metadata={"source": "test"})}
+
+    filled_all_missing = _fill_inner_flux_missing_with_nearest(all_missing_dict)["total"].data["flux"]
+
+    np.testing.assert_allclose(filled_all_missing.values, [0.0, 0.0])
 
 
 def test_missing_data_at_one_site(tac_ch4_data_args):
