@@ -244,6 +244,45 @@ TODO: complete this part
 - `Yerror_repeatablity`: obs. repeatability. If repeatability isn't available for some sites, then this is filled with zeros.
 - `Yerror_variability`: obs. variability.
 
+### Publishing outputs to a live dashboard
+
+Post-processed inversion outputs can be published to a dashboard handoff directory at the end of a run.
+The publisher writes NetCDF products under `runs/<run_id>/products/`, a `manifest.json` for that run, and
+an atomic `latest.json` pointer that a dashboard can watch for updates.
+
+From Python or an INI file, set:
+
+```python
+dashboard_publish = True
+```
+
+This publishes to `<outputpath>/dashboard`. You can also pass a directory:
+
+```python
+dashboard_publish = "/path/to/dashboard/handoff"
+```
+
+For production dashboards, pass a dictionary:
+
+```python
+dashboard_publish = {
+    "output_dir": "/path/to/dashboard/handoff",
+    "run_id": "ch4-europe-2019-01",
+    "webhook_url": "https://dashboard.example.org/api/inversions/refresh",
+    "overwrite": True,
+}
+```
+
+The runner exposes the same behaviour:
+
+```bash
+python openghg_inversions/hbmcmc/run_hbmcmc.py 2019-01-01 2019-02-01 \
+  -c example.ini \
+  --dashboard-publish /path/to/dashboard/handoff \
+  --dashboard-webhook https://dashboard.example.org/api/inversions/refresh
+```
+
+Dashboard publication is supported for `output_format = "paris"`, `"basic"`, and `"hbmcmc"`.
 
 
 ## Contributing
