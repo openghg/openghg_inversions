@@ -84,7 +84,9 @@ def extend_abbrs(x: str) -> str:
 
     # add extension pattern to all but last part
     extended_parts = [convert_abbr(p) for p in parts[:-1] if p]
-    return drop_extra_whitespace(r" ".join(extended_parts) + ' ' + parts[-1]).strip()  # last part would typically have its own whitespace
+    return drop_extra_whitespace(
+        r" ".join(extended_parts) + " " + parts[-1]
+    ).strip()  # last part would typically have its own whitespace
 
 
 # ISO country code info
@@ -110,9 +112,12 @@ def iso3to2(alpha3: str) -> str:
 
 # CONVERSION FUNCTIONS
 def to_string(x: Any) -> str:
-    """Convert to string, decoding if x is bytes."""
+    """Convert to string, decoding if x is bytes-like."""
     if isinstance(x, bytes):
         return x.decode("utf-8")
+    decode = getattr(x, "decode", None)
+    if callable(decode):
+        return str(decode("utf-8"))
     return str(x)
 
 
@@ -161,9 +166,9 @@ def get_country_code(
 
     if preprocess(x) in ("ocean", "sea", "land"):
         return x
-    
+
     # hard-code a few exceptions for the EASTASIA names in UKMO files
-    if x in ['NE', 'NW', 'SE', 'SW']:
+    if x in ["NE", "NW", "SE", "SW"]:
         return x
 
     # first try to match long names, ignoring "The " at the beginning of a name
@@ -225,8 +230,10 @@ class CountryInfo:
     test equality. (This also works if comparing a `CountryInfo` object to a string.)
     """
 
-    def __init__(self, country_name: str | CountryInfo) -> None:
-        self.input_name = country_name if isinstance(country_name, str) else country_name.input_name
+    def __init__(self, country_name: Any) -> None:
+        self.input_name = (
+            country_name.input_name if isinstance(country_name, CountryInfo) else to_string(country_name)
+        )
 
         iso3166 = get_iso3166_codes()
 

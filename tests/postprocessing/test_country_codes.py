@@ -1,5 +1,6 @@
 import re
 
+import numpy as np
 import pytest
 
 from openghg_inversions.postprocessing._country_codes import (
@@ -89,6 +90,13 @@ def test_country_info_list_modes(country_code, expected):
 
     # convert to list to get list of strings according to country_code
     assert list(country_list) == expected
+
+
+def test_country_info_list_decodes_numpy_bytes_labels():
+    """Country labels loaded as numpy bytes are decoded before code lookup."""
+    country_list = CountryInfoList([np.bytes_("China"), np.bytes_("Ocean")], country_code="alpha3")
+
+    assert list(country_list) == ["CHN", "Ocean"]
 
 
 def test_country_info_list_extend():
