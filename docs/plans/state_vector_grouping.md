@@ -167,12 +167,22 @@ masks. It also makes problematic pieces visible before optimization.
 6. Add grouped prior support in RHIME model construction while preserving a full
    ordered `x` state vector.
 
+## Fixed Outer Regions Decision
+
+See `docs/plans/fixed_outer_regions_grouping.md` for the InTEM fixed-outer
+policy. The short version is:
+
+- keep `fixed_outer_regions_basis` as the legacy compatibility route;
+- expose fixed outer regions in grouped RHIME layouts as explicit partitions;
+- allocate one basis region to each fixed outer class;
+- allocate the requested generated regions to the inner class;
+- use grouped state metadata, not raw label offsets, to identify inner and outer
+  states.
+
 ## Open Questions
 
 - Should `basis_group` be a required coordinate for all generated bases, with a
   default value like `"emissions"`, or only present for grouped layouts?
-- Should InTEM outer regions preserve their familiar fixed labels as
-  `region_in_partition`, `basis_partition`, or a dedicated coordinate?
 - How should disconnected pieces with the same country or group be represented:
   one semantic group with multiple partitions, or separate partitions with a
   shared group?

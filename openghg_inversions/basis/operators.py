@@ -51,8 +51,9 @@ Notes
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, ClassVar, Literal, cast
+from typing import Any, ClassVar, Literal, TypeVar, cast
 from typing_extensions import Self
 
 import numpy as np
@@ -64,15 +65,19 @@ from openghg_inversions.array_ops import (
     force_align,
     get_xr_dummies,
 )
+from openghg_inversions.basis.layout import (
+    BasisStateMetadata,
+)
 
 # ----------------------------
 # Registry
 # ----------------------------
 
 _BASIS_OPERATOR_REGISTRY: dict[str, type[BasisOperator]] = {}
+BasisOperatorT = TypeVar("BasisOperatorT", bound="BasisOperator")
 
 
-def register_basis_operator(kind: str):
+def register_basis_operator(kind: str) -> Callable[[type[BasisOperatorT]], type[BasisOperatorT]]:
     """Registers a `BasisOperator` subclass for DataTree deserialisation.
 
     This decorator builds a small module-level registry mapping a stable `kind`
@@ -90,7 +95,7 @@ def register_basis_operator(kind: str):
         ValueError: If `kind` is already registered to a different class.
     """
 
-    def _decorator(cls: type[BasisOperator]) -> type[BasisOperator]:
+    def _decorator(cls: type[BasisOperatorT]) -> type[BasisOperatorT]:
         if kind in _BASIS_OPERATOR_REGISTRY and _BASIS_OPERATOR_REGISTRY[kind] is not cls:
             raise ValueError(
                 f"BasisOperator kind '{kind}' already registered with {_BASIS_OPERATOR_REGISTRY[kind]}"
@@ -374,6 +379,7 @@ class BucketBasisOperator(BasisOperator):
         meta: BasisMeta | None = None,
         state_dim: str | None = None,
         region_labels: RegionLabels = "range0",
+        state_metadata: xr.Dataset | BasisStateMetadata | None = None,
         chunks: dict[str, int] | None = None,
     ) -> None:
         """Creates a single-source bucket basis operator.
@@ -387,6 +393,8 @@ class BucketBasisOperator(BasisOperator):
                 - `"range0"`: `0..N-1` (legacy-friendly)
                 - `"range1"`: `1..N`
                 - `"basis_values"`: use the ordered non-negative labels found in `basis_flat`.
+            state_metadata: Optional metadata for the state axis. Metadata may be
+                indexed by raw ``basis_label`` values or by the final state dimension.
             chunks: Optional chunking to apply to the basis matrix.
         """
         meta = meta or BasisMeta()
@@ -403,14 +411,26 @@ class BucketBasisOperator(BasisOperator):
         # create dummy matrix (grid -> state)
         # cat_dim name must match meta.state_dim
         mat = get_xr_dummies(self.basis_flat, cat_dim=self.meta.state_dim)
+        basis_value_labels = self._basis_value_labels(mat)
 
         # optionally override state coordinate policy
-        mat = self._apply_region_labels_policy(mat)
+        mat = self._apply_region_labels_policy(mat, basis_value_labels=basis_value_labels)
+
+        if state_metadata is not None:
+            state_metadata_on_state_dim = BasisStateMetadata.from_dataset(
+                state_metadata
+            ).on_state_dim(
+                state_dim=self.meta.state_dim,
+                state_coord=mat[self.meta.state_dim],
+                basis_value_labels=basis_value_labels,
+            )
+            mat = state_metadata_on_state_dim.assign_to_matrix(mat, state_dim=self.meta.state_dim)
 
         # chunking
         mat = mat.chunk(chunks) if chunks is not None else mat.chunk()
 
         self._basis_matrix = mat
+        self._state_metadata = BasisStateMetadata.from_matrix(mat, state_dim=self.meta.state_dim)
 
     @property
     def meta(self) -> BasisMeta:
@@ -422,20 +442,33 @@ class BucketBasisOperator(BasisOperator):
         """Basis matrix."""
         return self._basis_matrix
 
-    def _apply_region_labels_policy(self, mat: xr.DataArray) -> xr.DataArray:
-        """Applies the configured `region_labels` policy to the state coordinate.
-
-        Args:
-            mat: Dummy matrix returned by `get_xr_dummies`.
+    @property
+    def state_metadata(self) -> xr.Dataset | None:
+        """Semantic metadata coordinates carried on the state dimension.
 
         Returns:
-            `mat` with an updated state coordinate.
+            Dataset containing ``basis_group``, ``basis_partition``, and
+            ``region_in_partition`` indexed by ``meta.state_dim``, or ``None``
+            when no grouped metadata was supplied.
+        """
+        if self._state_metadata is None:
+            return None
+        return self._state_metadata.to_dataset()
 
-        Notes:
-            This assumes `get_xr_dummies` orders categories in ascending order
-            of the unique labels in `basis_flat`. Both one-based basis labels
-            (`1..N`) and zero-based legacy output labels (`0..N-1`) are
-            accepted.
+    def _basis_value_labels(self, mat: xr.DataArray) -> np.ndarray:
+        """Return raw basis labels in the dummy-column order.
+
+        Args:
+            mat: Dummy matrix returned by ``get_xr_dummies`` before or after
+                state-coordinate relabeling.
+
+        Returns:
+            Raw non-negative or positive basis labels ordered to match the dummy
+            matrix state columns.
+
+        Raises:
+            ValueError: If the flat basis labels do not form a supported
+                zero-based or one-based label set.
         """
         labels = np.unique(self.basis_flat.values.astype(int))
         positive_labels = labels[labels > 0]
@@ -443,14 +476,44 @@ class BucketBasisOperator(BasisOperator):
         n = mat.sizes[self.meta.state_dim]
 
         if len(positive_labels) == n:
-            basis_value_labels = positive_labels
-        elif len(non_negative_labels) == n:
-            basis_value_labels = non_negative_labels
-        else:
-            raise ValueError(
-                "Basis labels must be one-based positive values or zero-based non-negative values; "
-                f"got labels {labels.tolist()} for {n} dummy columns."
-            )
+            return positive_labels.astype(int)
+        if len(non_negative_labels) == n:
+            return non_negative_labels.astype(int)
+        raise ValueError(
+            "Basis labels must be one-based positive values or zero-based non-negative values; "
+            f"got labels {labels.tolist()} for {n} dummy columns."
+        )
+
+    def _apply_region_labels_policy(
+        self,
+        mat: xr.DataArray,
+        *,
+        basis_value_labels: np.ndarray | None = None,
+    ) -> xr.DataArray:
+        """Applies the configured `region_labels` policy to the state coordinate.
+
+        Args:
+            mat: Dummy matrix returned by `get_xr_dummies`.
+            basis_value_labels: Optional raw basis labels ordered to match the
+                dummy matrix columns. If omitted, they are computed from
+                ``basis_flat``.
+
+        Returns:
+            `mat` with an updated state coordinate.
+
+        Raises:
+            ValueError: If ``region_labels`` is unknown or the flat basis labels
+                do not form a supported label set.
+
+        Notes:
+            This assumes `get_xr_dummies` orders categories in ascending order
+            of the unique labels in `basis_flat`. Both one-based basis labels
+            (`1..N`) and zero-based legacy output labels (`0..N-1`) are
+            accepted.
+        """
+        if basis_value_labels is None:
+            basis_value_labels = self._basis_value_labels(mat)
+        n = mat.sizes[self.meta.state_dim]
 
         if self.region_labels == "range0":
             coord = np.arange(n, dtype=int)
@@ -486,6 +549,8 @@ class BucketBasisOperator(BasisOperator):
                 "region_labels": self.region_labels,
             }
         )
+        if self._state_metadata is not None:
+            dt["state_metadata"] = xr.DataTree(self._state_metadata.to_dataset())
         return dt
 
     @classmethod
@@ -501,6 +566,7 @@ class BucketBasisOperator(BasisOperator):
         ds = dt.to_dataset()
 
         basis_flat = ds["basis_flat"]
+        state_metadata = dt["state_metadata"].to_dataset() if "state_metadata" in dt else None
         meta = BasisMeta(
             grid_dims=tuple(dt.attrs.get("grid_dims", ("lat", "lon"))),
             state_dim=str(dt.attrs.get("state_dim", "state")),
@@ -511,6 +577,7 @@ class BucketBasisOperator(BasisOperator):
             basis_flat=basis_flat,
             meta=meta,
             region_labels=region_labels,  # type: ignore[arg-type]
+            state_metadata=state_metadata,
         )
 
 
