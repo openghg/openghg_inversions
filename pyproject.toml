@@ -6,17 +6,23 @@ build-backend = "setuptools.build_meta"
 name = "openghg_inversions"
 version = "0.6.0"
 
-authors = [{name = "Eric Saboya", email = "eric.saboya@bristol.ac.uk"}]
-maintainers = [{name = "Brendan Murphy", email = "brendan.murphy@bristol.ac.uk"}]
+authors = [
+  {name = "OpenGHG Inversions contributors"},
+]
+
+maintainers = [
+  {name = "Brendan Murphy", email = "brendan.murphy@bristol.ac.uk"},
+]
+description = "Regional hierarchical atmospheric inversion modelling software"
+
 license = {file = "LICENSE"}
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-description = "OpenGHG Inversions"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "numpy>=2.0",
     # Explicit lower bound: prevents uv backtracking to numba 0.53 / llvmlite 0.36
@@ -27,7 +33,7 @@ dependencies = [
     "xarray>=2025.06.0",
     "pandas<3.0",
     "matplotlib",
-    "scipy", 
+    "scipy",
     "openghg",
     "sparse",
     "flox",
@@ -41,16 +47,71 @@ jupyter = [
 ]
 dev = [
   "pytest",
+  "pytest-xdist",
   "ruff",
+  "pyright",
+  "mypy",
 ]
 
 [dependency-groups]
-# UV only depedency groups; just mirror some extras
+# UV only dependency groups; just mirror some extras
 uv_dev = ["openghg_inversions[jupyter,dev]"]
 
 [project.urls]
 "Home" = "https://github.com/openghg/openghg_inversions"
 "Bug Tracker" = "https://github.com/openghg/openghg_inversions/issues"
+"DOI" = "https://doi.org/10.5281/zenodo.10650595"
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-64", "osx-arm64"]
+
+[tool.pixi.dependencies]
+# Use the CI Python version for the reproducible Pixi development environment.
+python = "3.11.*"
+pip = "*"
+
+# Keep the compiled scientific and HDF5/NetCDF stack on conda-forge. These
+# entries override matching PyPI dependencies from this project and OpenGHG.
+numpy = ">=2.0"
+numba = ">=0.59"
+pymc = "*"
+pytensor = "*"
+arviz = "*"
+xarray = ">=2025.06.0"
+pandas = "<3.0"
+matplotlib = "*"
+scipy = "*"
+sparse = "*"
+flox = "*"
+opt_einsum = "*"
+zarr = "==2.18.3"
+numcodecs = "<0.16"
+hdf5 = "*"
+h5netcdf = ">=1.0.0,<=1.8.1"
+h5py = "<3.15"
+netcdf4 = ">=1.6.0,<=1.7.2"
+pytest = ">=9.1.1,<10"
+ipykernel = ">=7.3.0,<8"
+
+[tool.pixi.pypi-dependencies]
+openghg_inversions = { path = ".", editable = true }
+
+[tool.pixi.environments]
+default = { features = [], solve-group = "default" }
+dev = { features = ["dev", "jupyter"], solve-group = "default" }
+
+[tool.pixi.feature.dev.tasks]
+test = "pytest"
+test-xdist = "pytest -n 2 --dist=loadscope tests"
+country-file-smoke = "pytest -s tests/postprocessing/test_country_file_smoke.py"
+lint = "ruff check ."
+typecheck = "pyright"
+tox = "tox -p"
+
+[tool.pixi.feature.dev.pypi-dependencies]
+tox = ">=4.24"
+tox-uv = "*"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -62,16 +123,22 @@ openghg_inversions = [
     "basis/algorithms/*.nc", 
     "postprocessing/*.cdl",
     "postprocessing/*.json",
+    "config/templates/*.ini",
     "hbmcmc/config/*.ini"
 ]
 
 [tool.uv]
 default-groups = ["uv_dev"]
 
-[tool.black]
+[tool.ruff]
 line-length = 110
-target-version = ["py310"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
 testpaths = ["tests"]
+markers = [
+  "create_frozen: tests that generate/update frozen regression outputs (not run by default)",
+  "country_file_smoke: optional real country-file HDF5 backend smoke tests",
+  "slow: tests that take a long time",
+]
+addopts = "-m 'not create_frozen and not slow'"
