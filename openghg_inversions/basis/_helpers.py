@@ -20,6 +20,35 @@ def _inner_extent_mask_to_grid(inner_data: xr.Dataset, lat: xr.DataArray, lon: x
     return (lat_mask & lon_mask).broadcast_like(target)
 
 
+def _check_basis_covers_sensitivity(
+    *,
+    basis_func: xr.DataArray,
+    fp_x_flux: xr.DataArray,
+    label: str,
+) -> None:
+    """Reject basis value 0 where there is non-zero footprint sensitivity."""
+    basis_check = basis_func.squeeze("time") if basis_func.sizes.get("time", 0) == 1 else basis_func
+    _, basis_check = xr.align(fp_x_flux.isel(time=0), basis_check, join="override")
+    zero_basis = basis_check == 0
+    zero_count = int(zero_basis.sum().compute())
+
+    if zero_count:
+        print(f"{label} basis contains {zero_count} grid cells with basis value 0.")
+
+    active_on_zero_basis = fp_x_flux.where(zero_basis).fillna(0.0) != 0.0
+    active_times = active_on_zero_basis.any(dim=[dim for dim in active_on_zero_basis.dims if dim != "time"])
+    active_times = active_times.compute()
+
+    if bool(active_times.any()):
+        missing_index = fp_x_flux.time.where(active_times, drop=True).to_index()
+        missing_preview = ", ".join(str(t) for t in missing_index[:5])
+        extra = "" if missing_index.size <= 5 else f", ... ({missing_index.size} total)"
+        raise ValueError(
+            f"{label} basis has value 0 in cells with non-zero footprint sensitivity for: "
+            f"{missing_preview}{extra}. This would leave sensitivity outside the inversion basis."
+        )
+
+
 def fp_sensitivity(
     fp_and_data: dict,
     basis_func: xr.DataArray | dict[str, xr.DataArray],
@@ -124,6 +153,11 @@ def fp_sensitivity(
                 root_ds = root_ds.assign({fp_x_flux_name: fp_x_flux_outer})
 
             # Compute outer H from the (already masked) fp_x_flux
+            _check_basis_covers_sensitivity(
+                basis_func=basis_func,
+                fp_x_flux=fp_x_flux_outer,
+                label=f"{site} standard",
+            )
             sensitivity = apply_fp_basis_functions(
                 fp_x_flux=fp_x_flux_outer,
                 basis_func=basis_func,
@@ -135,6 +169,11 @@ def fp_sensitivity(
                     raise ValueError("Inner-domain data exists but no inner basis function was provided.")
 
                 inner_fp_x_flux = entry["inner"].ds[fp_x_flux_name]
+                _check_basis_covers_sensitivity(
+                    basis_func=inner_basis_func,
+                    fp_x_flux=inner_fp_x_flux,
+                    label=f"{site} inner",
+                )
                 H_inner = apply_fp_basis_functions(
                     fp_x_flux=inner_fp_x_flux,
                     basis_func=inner_basis_func,
@@ -159,6 +198,11 @@ def fp_sensitivity(
                 )
 
             # Legacy: plain xr.Dataset path — unchanged
+            _check_basis_covers_sensitivity(
+                basis_func=basis_func,
+                fp_x_flux=entry[fp_x_flux_name],
+                label=f"{site} standard",
+            )
             sensitivity = apply_fp_basis_functions(
                 fp_x_flux=entry[fp_x_flux_name],
                 basis_func=basis_func,
@@ -213,6 +257,19 @@ def apply_fp_basis_functions(
     # add squeeze just in case this function is used directly
     if "time" in basis_func.dims and basis_func.sizes["time"] <= 1:
         basis_func = basis_func.squeeze("time")
+
+    if "time" in fp_x_flux.dims:
+        non_time_dims = [dim for dim in fp_x_flux.dims if dim != "time"]
+        missing_times = fp_x_flux.isnull().all(dim=non_time_dims) if non_time_dims else fp_x_flux.isnull()
+        missing_times = missing_times.compute()
+        if bool(missing_times.any()):
+            missing_index = fp_x_flux.time.where(missing_times, drop=True).to_index()
+            missing_preview = ", ".join(str(t) for t in missing_index[:5])
+            extra = "" if missing_index.size <= 5 else f", ... ({missing_index.size} total)"
+            raise ValueError(
+                "Footprint sensitivity input is entirely missing for one or more observation times: "
+                f"{missing_preview}{extra}. Refusing to convert missing footprint data to zero sensitivity."
+            )
 
     _, basis_aligned = xr.align(fp_x_flux.isel(time=0), basis_func, join="override")
     basis_mat = get_xr_dummies(basis_aligned, cat_dim="region")
