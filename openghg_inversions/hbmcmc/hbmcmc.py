@@ -61,6 +61,94 @@ def update_log_normal_prior(prior):
             del prior["mean"]
 
 
+def _time_nan_counts(ds: xr.Dataset, variables: list[str]) -> dict[str, int]:
+    """Count times removed by a dropna-style NaN check for each variable."""
+    counts = {}
+    for var in variables:
+        data_var = ds[var]
+        non_time_dims = [dim for dim in data_var.dims if dim != "time"]
+        missing = data_var.isnull().any(dim=non_time_dims) if non_time_dims else data_var.isnull()
+        counts[var] = int(missing.sum().compute())
+    return counts
+
+
+def _time_all_zero_count(data_var: xr.DataArray) -> int:
+    """Count time points where a variable is zero over all non-time dimensions."""
+    non_time_dims = [dim for dim in data_var.dims if dim != "time"]
+    is_zero = data_var.fillna(0.0) == 0.0
+    if non_time_dims:
+        is_zero = is_zero.all(dim=non_time_dims)
+    return int(is_zero.sum().compute())
+
+
+def _time_abs_sum(data_var: xr.DataArray | np.ndarray) -> np.ndarray:
+    """Return absolute summed sensitivity per observation time."""
+    if isinstance(data_var, xr.DataArray):
+        values = np.asarray(data_var.fillna(0.0).values)
+        if "time" in data_var.dims:
+            time_axis = data_var.get_axis_num("time")
+            values = np.moveaxis(values, time_axis, -1)
+    else:
+        values = np.asarray(data_var)
+
+    if values.ndim == 1:
+        return np.abs(values)
+
+    return np.nansum(np.abs(values.reshape((-1, values.shape[-1]))), axis=0)
+
+
+def _nanpercentile(values: np.ndarray, percentile: float) -> float:
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return np.nan
+    return float(np.nanpercentile(finite, percentile))
+
+
+def _print_nested_sensitivity_balance(
+    *,
+    label: str,
+    outer_sensitivity: xr.DataArray | np.ndarray,
+    inner_sensitivity: xr.DataArray | np.ndarray,
+) -> None:
+    """Print compact diagnostics for outer/inner sensitivity identifiability."""
+    outer_strength = _time_abs_sum(outer_sensitivity)
+    inner_strength = _time_abs_sum(inner_sensitivity)
+    if outer_strength.size != inner_strength.size:
+        print(
+            "DIAGNOSTIC nested_sensitivity_balance | "
+            f"label={label} status=skipped reason=length_mismatch "
+            f"outer_obs={outer_strength.size} inner_obs={inner_strength.size}",
+            flush=True,
+        )
+        return
+
+    total_strength = outer_strength + inner_strength
+    valid = total_strength > 0
+    inner_fraction = np.divide(
+        inner_strength,
+        total_strength,
+        out=np.full(total_strength.shape, np.nan, dtype=float),
+        where=valid,
+    )
+
+    outer_active = outer_strength > 0
+    inner_active = inner_strength > 0
+    print(
+        "DIAGNOSTIC nested_sensitivity_balance | "
+        f"label={label} obs={outer_strength.size} "
+        f"outer_active_obs={int(outer_active.sum())} "
+        f"inner_active_obs={int(inner_active.sum())} "
+        f"both_active_obs={int((outer_active & inner_active).sum())} "
+        f"zero_total_obs={int((~valid).sum())} "
+        f"inner_fraction_median={_nanpercentile(inner_fraction, 50):.3f} "
+        f"inner_fraction_p10={_nanpercentile(inner_fraction, 10):.3f} "
+        f"inner_fraction_p90={_nanpercentile(inner_fraction, 90):.3f} "
+        f"outer_strength_median={_nanpercentile(outer_strength, 50):.6e} "
+        f"inner_strength_median={_nanpercentile(inner_strength, 50):.6e}",
+        flush=True,
+    )
+
+
 def make_inv_inputs(
     *,
     fp_data,
@@ -173,11 +261,40 @@ def make_inv_inputs(
 
         # pymc doesn't like NaNs, so drop them for the variables used below
         # DataTree doesn't support dropna; use sel with valid time indices instead
+        ds_before_dropna = _outer_ds(fp_data[site])
+        n_before_dropna = ds_before_dropna.sizes["time"]
+        nan_counts = _time_nan_counts(ds_before_dropna, drop_vars)
+        if "H" in ds_before_dropna.data_vars:
+            print(
+                "DIAGNOSTIC zero_sensitivity | "
+                f"target=H site={site} total_obs={n_before_dropna} "
+                f"all_zero_obs={_time_all_zero_count(ds_before_dropna['H'])}",
+                flush=True,
+            )
+        if (
+            isinstance(fp_data[site], xr.DataTree)
+            and "inner" in fp_data[site].children
+            and "H_inner" in fp_data[site]["inner"].ds.data_vars
+        ):
+            h_inner_before = fp_data[site]["inner"].ds["H_inner"]
+            print(
+                "DIAGNOSTIC zero_sensitivity | "
+                f"target=H_inner site={site} total_obs={h_inner_before.sizes.get('time', 0)} "
+                f"all_zero_obs={_time_all_zero_count(h_inner_before)}",
+                flush=True,
+            )
         if isinstance(fp_data[site], xr.DataTree):
             valid_times = _outer_ds(fp_data[site]).dropna("time", subset=drop_vars).time
             fp_data[site] = fp_data[site].sel(time=valid_times)
         else:
             fp_data[site] = fp_data[site].dropna("time", subset=drop_vars)
+        n_after_dropna = _outer_ds(fp_data[site]).sizes["time"]
+        if n_after_dropna < n_before_dropna:
+            print(
+                f"make_inv_inputs dropped {n_before_dropna - n_after_dropna} obs at site {site} "
+                f"due to NaNs in {drop_vars}. Remaining obs: {n_after_dropna}. "
+                f"NaN time counts before drop: {nan_counts}"
+            )
 
         # repeatability/variability chosen/combined into mf_error in `get_data.py`
         ds = _outer_ds(fp_data[site])
@@ -203,11 +320,50 @@ def make_inv_inputs(
         Hx = ds["H"].values if si == 0 else np.hstack((Hx, ds["H"].values))
 
         if has_inner and isinstance(fp_data[site], xr.DataTree) and "inner" in fp_data[site].children:
-            h_inner = fp_data[site]["inner"].ds["H_inner"].values
+            h_inner_da = fp_data[site]["inner"].ds["H_inner"]
+            if h_inner_da.sizes.get("time") != ds.sizes.get("time"):
+                raise ValueError(
+                    f"Inner sensitivity time dimension for {site} does not match observations after filtering: "
+                    f"H_inner has {h_inner_da.sizes.get('time')} times, standard data has {ds.sizes.get('time')}."
+                )
+            if not np.array_equal(h_inner_da.time.values, ds.time.values):
+                raise ValueError(
+                    f"Inner sensitivity times for {site} are not aligned with the standard observation times."
+                )
+            _print_nested_sensitivity_balance(
+                label=site,
+                outer_sensitivity=ds["H"],
+                inner_sensitivity=h_inner_da,
+            )
+            h_inner = h_inner_da.values
             Hx_inner = h_inner if Hx_inner is None else np.hstack((Hx_inner, h_inner))
 
     if np.isnan(Hx).any():
         warnings.warn(f"Hx matrix contains {np.isnan(Hx).flatten().sum()} NaN values")
+    if Hx.shape[1] != len(Y):
+        raise ValueError(
+            f"Sensitivity matrix H has {Hx.shape[1]} measurement columns, but Y has {len(Y)} observations."
+        )
+    if Hx_inner is not None:
+        if Hx_inner.shape[1] != len(Y):
+            raise ValueError(
+                "Inner sensitivity matrix H_inner has "
+                f"{Hx_inner.shape[1]} measurement columns, but Y has {len(Y)} observations."
+            )
+        if np.isnan(Hx_inner).any():
+            raise ValueError(f"H_inner matrix contains {np.isnan(Hx_inner).flatten().sum()} NaN values")
+        _print_nested_sensitivity_balance(
+            label="all_sites",
+            outer_sensitivity=Hx,
+            inner_sensitivity=Hx_inner,
+        )
+
+    print(
+        "DIAGNOSTIC sensitivity_matrix | "
+        f"H_shape={Hx.shape} H_inner_shape={None if Hx_inner is None else Hx_inner.shape} "
+        f"Y_len={len(Y)} sites={sites}",
+        flush=True,
+    )
 
     # Calculate min error
     if calculate_min_error is not None:
@@ -283,8 +439,27 @@ def make_inv_inputs(
         mcmc_args["Hbc"] = Hbc
         mcmc_args["bcprior"] = bcprior
         mcmc_args["use_bc"] = True
+        bc_params = int(Hbc.shape[0]) if Hbc.ndim > 1 else int(Hbc.size > 0)
     else:
         mcmc_args["use_bc"] = False
+        bc_params = 0
+
+    outer_flux_params = int(Hx.shape[0])
+    inner_flux_params = int(Hx_inner.shape[0]) if Hx_inner is not None else 0
+    outer_active_flux_params = int((np.nansum(np.abs(Hx), axis=1) > 0).sum())
+    inner_active_flux_params = (
+        int((np.nansum(np.abs(Hx_inner), axis=1) > 0).sum()) if Hx_inner is not None else 0
+    )
+    linear_params = outer_flux_params + inner_flux_params + bc_params
+    obs_per_linear_param = len(Y) / linear_params if linear_params else np.nan
+    print(
+        "DIAGNOSTIC inversion_dimensions | "
+        f"obs={len(Y)} outer_flux_params={outer_flux_params} inner_flux_params={inner_flux_params} "
+        f"outer_active_flux_params={outer_active_flux_params} inner_active_flux_params={inner_active_flux_params} "
+        f"bc_params={bc_params} linear_params={linear_params} "
+        f"obs_per_linear_param={obs_per_linear_param:.3f}",
+        flush=True,
+    )
 
     post_process_args = {
         "Ytime": Ytime,
@@ -347,6 +522,7 @@ def fixedbasisMCMC(
     nchain: int = 2,
     filters: None | list | dict[str, list[str] | None] = None,
     fix_basis_outer_regions: bool = False,
+    outer_region_definition_file: str | Path | None = None,
     averaging_error: bool = True,
     bc_freq: str | None = None,
     sigma_freq: str | None = None,
@@ -422,8 +598,10 @@ def fixedbasisMCMC(
             basis function. This will optimise to closest value that fits with
             quadtree splitting algorithm, i.e. nbasis % 4 = 1.
         inner_nbasis: Number of basis functions to use for the inner domain.
-            If not set, uses `nbasis`. Increase this for finer 6 km
-            `*_inversion_grid` PARIS maps without changing the outer basis.
+            If not set for inner-domain inversions, `nbasis` is treated as the
+            total outer+inner basis budget and split by a damped, bounded
+            inner/outer fp_x_flux sensitivity ratio. Set explicitly to override
+            that split.
         xprior: Dictionary containing information about the prior PDF for emissions.
             The entry "pdf" is the name of the analytical PDF used, see
             https://docs.pymc.io/api/distributions/continuous.html for PDFs
@@ -449,8 +627,14 @@ def fixedbasisMCMC(
         filters: List of filters to apply to all sites, or dictionary with sites as keys
             and a list of filters for each site, e.g. filters = {"MHD": ["pblh_inlet_diff",
             "pblh_min"], "JFJ": None}.
-        fix_basis_outer_regions: When set to True uses InTEM regions to derive basis functions for inner region.
-            Default False.
+        fix_basis_outer_regions: When set to True uses an InTEM region-definition file for
+            the fixed outer-region part of the standard-domain basis, while the remaining
+            standard-domain active region is fit using the selected basis algorithm.
+        outer_region_definition_file: Optional InTEM outer-region definition file to use when
+            `fix_basis_outer_regions` is True. Leave unset for the standard 25 km default
+            `outer_region_definition_<domain>.nc`; set to the EUHROB file for the merged
+            6 km inner/outer inversion.
+            Default None.
         averaging_error: Adds the variability in the averaging period to the measurement
             error if set to True.
         bc_freq: The perdiod over which the baseline is estimated. Set to "monthly"
@@ -653,6 +837,7 @@ def fixedbasisMCMC(
         basis_directory=basis_directory,
         bc_basis_directory=bc_basis_directory,
         country_directory=country_directory,
+        outer_region_definition_file=outer_region_definition_file,
         fp_all=fp_all,
         use_bc=use_bc,
         species=species,
@@ -868,7 +1053,10 @@ def fixedbasisMCMC(
     if paris_postprocessing:
         from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename
 
-        from openghg_inversions.postprocessing.make_paris_outputs import make_paris_outputs
+        from openghg_inversions.postprocessing.make_paris_outputs import (
+            make_paris_outputs,
+            nested_inner_domain_label,
+        )
 
         inv_out = make_inv_out_for_fixed_basis_mcmc(**inv_out_args)
 
@@ -876,12 +1064,13 @@ def fixedbasisMCMC(
         if not averaging_period[0]:
             logging.info("Default obs averaging period %s used in PARIS post-processing.", obs_avg_period)
         paris_postprocessing_kwargs = paris_postprocessing_kwargs or {}
-       # make_paris_outputs now always returns (flux_outs, inner_flux_outs, conc_outs)
+        # make_paris_outputs now always returns (flux_outs, inner_flux_outs, conc_outs)
         # inner_flux_outs is None when no inner domain was used
         flux_outs, inner_flux_outs, conc_outs = make_paris_outputs(
             inv_out,
             country_file=country_file,
             domain=domain,
+            inner_domain=inner_domain,
             obs_avg_period=obs_avg_period,
             **paris_postprocessing_kwargs,
         )
@@ -905,7 +1094,7 @@ def fixedbasisMCMC(
         logging.info("PARIS concentration outputs saved to", conc_output_filename)
         logging.info("PARIS flux outputs saved to", flux_output_filename)
         if inner_flux_outs is not None:
-            nested_domain = f"{domain}-{inner_domain}" if inner_domain is not None else domain
+            nested_domain = nested_inner_domain_label(domain, inner_domain)
             inner_flux_output_filename = define_output_filename(
                 outputpath,
                 species,

@@ -9,6 +9,72 @@ from ._functions import basis_functions, fixed_outer_regions_basis, basis
 from ._helpers import fp_sensitivity, bc_sensitivity
 
 
+def _nested_domain(domain: str, inner_domain: str) -> str:
+    return f"{domain}-{inner_domain}"
+
+
+def _fp_x_flux_variable(dataset: xr.Dataset) -> str:
+    if "fp_x_flux" in dataset.data_vars:
+        return "fp_x_flux"
+    if "fp_x_flux_sectoral" in dataset.data_vars:
+        return "fp_x_flux_sectoral"
+    raise ValueError("Could not find fp_x_flux or fp_x_flux_sectoral in merged scenario data.")
+
+
+def _total_fp_x_flux_sensitivity(data_array: xr.DataArray) -> float:
+    """Return total fp_x_flux sensitivity magnitude."""
+    return float(abs(data_array).fillna(0.0).sum().compute().values)
+
+
+def _auto_distribute_nested_nbasis(fp_all: dict, total_nbasis: int) -> tuple[int, int]:
+    """Split a total nested basis budget using a damped fp_x_flux sensitivity ratio."""
+    if total_nbasis < 2:
+        raise ValueError("Nested auto basis distribution requires nbasis >= 2.")
+
+    outer_total = 0.0
+    inner_total = 0.0
+
+    for site, site_entry in fp_all.items():
+        if site.startswith(".") or not isinstance(site_entry, xr.DataTree):
+            continue
+        if "standard" not in site_entry.children or "inner" not in site_entry.children:
+            continue
+
+        standard_ds = site_entry["standard"].ds
+        inner_ds = site_entry["inner"].ds
+        outer_total += _total_fp_x_flux_sensitivity(standard_ds[_fp_x_flux_variable(standard_ds)])
+        inner_total += _total_fp_x_flux_sensitivity(inner_ds[_fp_x_flux_variable(inner_ds)])
+
+    raw_total = outer_total + inner_total
+    if raw_total > 0.0:
+        raw_inner_share = inner_total / raw_total
+    else:
+        raw_inner_share = 0.5
+
+    damped_outer_total = outer_total ** 0.5
+    damped_inner_total = inner_total ** 0.5
+    damped_total = damped_outer_total + damped_inner_total
+    if damped_total > 0.0:
+        damped_inner_share = damped_inner_total / damped_total
+    else:
+        damped_inner_share = 0.5
+
+    inner_share = min(0.60, max(0.35, damped_inner_share))
+
+    inner_nbasis = max(1, min(total_nbasis - 1, int(round(total_nbasis * inner_share))))
+    outer_nbasis = total_nbasis - inner_nbasis
+
+    print(
+        "DIAGNOSTIC basis_budget | "
+        f"mode=auto_damped total_nbasis={total_nbasis} outer_nbasis={outer_nbasis} inner_nbasis={inner_nbasis} "
+        f"outer_fp_x_flux_total={outer_total:.6e} inner_fp_x_flux_total={inner_total:.6e} "
+        f"raw_inner_share={raw_inner_share:.3f} damped_inner_share={damped_inner_share:.3f} "
+        f"bounded_inner_share={inner_share:.3f}",
+        flush=True,
+    )
+    return outer_nbasis, inner_nbasis
+
+
 def basis_functions_wrapper(
     fp_all: dict,
     species: str,
@@ -24,6 +90,7 @@ def basis_functions_wrapper(
     basis_directory: str | None = None,
     bc_basis_directory: str | None = None,
     country_directory: str | None = None,
+    outer_region_definition_file: str | Path | None = None,
     outputname: str | None = None,
     output_path: str | None = None,
     inner_domain: str | None = None,
@@ -67,6 +134,10 @@ def basis_functions_wrapper(
       basis_directory (str, optional):
         Directory containing the basis function if not default.
         Default None
+      outer_region_definition_file (str/Path, optional):
+        InTEM outer-region definition file to use when `fix_outer_regions`
+        is True. If None, the default `outer_region_definition_<domain>.nc`
+        lookup is used.
       bc_basis_directory (str, optional):
         Directory containing the boundary condition basis functions
         (e.g. files starting with "NESW")
@@ -78,8 +149,9 @@ def basis_functions_wrapper(
         Passed to `outputdir` argument of `quadtreebasisfunction`. Used for testing.
         Default None
       inner_nbasis (int, optional):
-        Number of basis regions to use for the inner domain. If not set, uses
-        `nbasis` for both outer and inner domains.
+        Number of basis regions to use for the inner domain. If not set for
+        nested inversions, `nbasis` is treated as the total outer+inner basis
+        budget and split by a damped, bounded inner/outer fp_x_flux sensitivity ratio.
 
     Returns:
       fp_data (dict):
@@ -107,14 +179,47 @@ def basis_functions_wrapper(
     elif fix_outer_regions is True:
         print("Using fixed outer regions for basis functions.")
         try:
+            if inner_domain is not None:
+                if inner_nbasis is None:
+                    nbasis, inner_nbasis = _auto_distribute_nested_nbasis(fp_all, nbasis)
+                else:
+                    print(
+                        "DIAGNOSTIC basis_budget | "
+                        f"mode=explicit outer_nbasis={nbasis} inner_nbasis={inner_nbasis}",
+                        flush=True,
+                    )
+
+                basis_function = basis_functions[basis_algorithm]
+                inner_basis_data_array = basis_function.algorithm(
+                    fp_all=fp_all,
+                    start_date=start_date,
+                    domain=_nested_domain(domain, inner_domain),
+                    emissions_name=emissions_name,
+                    nbasis=inner_nbasis,
+                    country_directory=country_directory,
+                    scenario="inner",
+                )
+                print(
+                    f"Using {basis_function.description} to derive inner-domain basis functions."
+                )
+
             basis_data_array = fixed_outer_regions_basis(
-                fp_all, start_date, basis_algorithm, domain, emissions_name, nbasis, country_directory
+                fp_all,
+                start_date,
+                basis_algorithm,
+                domain,
+                emissions_name,
+                nbasis,
+                country_directory,
+                region_definition_file=outer_region_definition_file,
             )
         except KeyError as e:
             raise ValueError(
                 "Basis algorithm not recognised. Please use either 'quadtree' or 'weighted', or input a basis function file"
             ) from e
-        print(f"Using InTEM regions with {basis_algorithm} to derive basis functions for inner region.")
+        print(
+            f"Using InTEM regions with {basis_algorithm} to derive standard-domain fixed-region basis functions."
+        )
 
     else:
         try:
@@ -126,7 +231,14 @@ def basis_functions_wrapper(
         print(f"Using {basis_function.description} to derive basis functions.")
 
         if inner_domain is not None:
-            inner_nbasis = inner_nbasis or nbasis
+            if inner_nbasis is None:
+                nbasis, inner_nbasis = _auto_distribute_nested_nbasis(fp_all, nbasis)
+            else:
+                print(
+                    "DIAGNOSTIC basis_budget | "
+                    f"mode=explicit outer_nbasis={nbasis} inner_nbasis={inner_nbasis}",
+                    flush=True,
+                )
             inner_basis_data_array = basis_function.algorithm(
                 fp_all=fp_all,
                 start_date=start_date,

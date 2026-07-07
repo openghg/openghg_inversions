@@ -160,20 +160,40 @@ def _flux_fp_from_fp_all(
     flux = cast(xr.DataArray, flux)
 
     footprints = []
+    footprint_sources: dict[str, int] = {}
     for k, v in fp_all.items():
         if k.startswith("."):
             continue
 
-        # Need to discuss this further
-        # fp_x_flux is guaranteed to be on the
-        # EUROPE grid (it comes from the standard scenario). Raw .fp may be
-        # on the 6km grid if OpenGHG snapped it to the footprint resolution.
         if scenario == "inner" and isinstance(v, xr.DataTree) and "inner" in v.children:
-            fp = v["inner"].ds["fp_x_flux"]
+            inner_ds = v["inner"].ds
+            if "fp" in inner_ds:
+                fp = inner_ds["fp"]
+                source = "inner.fp"
+            elif "fp_x_flux" in inner_ds:
+                fp = inner_ds["fp_x_flux"]
+                source = "inner.fp_x_flux"
+            else:
+                raise ValueError("Could not find fp or fp_x_flux in inner scenario data.")
+        elif isinstance(v, xr.DataTree):
+            scenario_ds = v[scenario].ds
+            if "fp" in scenario_ds:
+                fp = scenario_ds["fp"]
+                source = f"{scenario}.fp"
+            elif "fp_x_flux" in scenario_ds:
+                fp = scenario_ds["fp_x_flux"]
+                source = f"{scenario}.fp_x_flux"
+            else:
+                raise ValueError(f"Could not find fp or fp_x_flux in {scenario} scenario data.")
+        elif "fp" in v:
+            fp = v["fp"]
+            source = "dataset.fp"
         elif "fp_x_flux" in v:
             fp = v["fp_x_flux"]
+            source = "dataset.fp_x_flux"
         else:
-            fp = v[scenario].ds.fp
+            raise ValueError("Could not find fp or fp_x_flux in merged scenario data.")
+        footprint_sources[source] = footprint_sources.get(source, 0) + 1
 
         # if grid still doesn't match flux, regrid to flux grid
         if fp.sizes.get("lat") != flux.sizes.get("lat") or fp.sizes.get("lon") != flux.sizes.get("lon"):
@@ -181,6 +201,12 @@ def _flux_fp_from_fp_all(
             fp = fp.assign_coords(lat=flux.lat, lon=flux.lon)
 
         footprints.append(fp)
+
+    print(
+        "DIAGNOSTIC basis_input | "
+        f"scenario={scenario} flux_key={flux_key} footprint_sources={footprint_sources}",
+        flush=True,
+    )
 
     return flux, footprints
 
@@ -379,7 +405,8 @@ def fixed_outer_regions_basis(
     nbasis: int = 100,
     country_directory: str | None = None,
     abs_flux: bool = False,
-    scenario: str = "standard"
+    scenario: str = "standard",
+    region_definition_file: str | Path | None = None,
 ) -> xr.DataArray:
     """Fix outer region of basis functions to InTEM regions, and fit the inner regions using `basis_algorithm`.
 
@@ -404,12 +431,24 @@ def fixed_outer_regions_basis(
       abs_flux:
         When set to True uses absolute values of a flux array
         Default False
+      region_definition_file:
+        Optional InTEM region-definition filename or path. If relative, this is
+        resolved within `country_directory` when supplied, otherwise alongside
+        this module's bundled basis files.
 
     Returns:
         basis (xarray.DataArray) :
           Array with lat/lon dimensions and basis regions encoded by integers.
     """
-    if country_directory is None:
+    if region_definition_file is not None:
+        intem_regions_path = Path(region_definition_file)
+        if not intem_regions_path.is_absolute():
+            intem_regions_base = (
+                Path(country_directory) if country_directory is not None else Path(__file__).parent
+            )
+            intem_regions_path = intem_regions_base / intem_regions_path
+        logger.warning(f"Loading InTEM region file for domain {domain} from {intem_regions_path}.")
+    elif country_directory is None:
         logger.warning(f"Loading default land-sea file for domain {domain}.")
         intem_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
     else:

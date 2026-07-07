@@ -191,8 +191,12 @@ Arguments affecting the inverse model:
 - `use_bc`: defaults to `True`. If `False`, no boundary conditions will be used in the inversion. This implicitly assumes that contributions from the boundary have been subtracted from the observations.
 - `fix_basis_outer_regions`:
   - Default value is `False`
-  - If `True`, the "outer regions" of the (`EUROPE`) domain use basis regions specified by a file provided by the Met Office (from their "InTem" model), and the "inner region", which includes the UK, is fit using our basis algorithms.
+  - If `True`, the fixed outer-region part of the standard-domain basis uses regions specified by a file provided by the Met Office (from their "InTem" model), and the remaining active standard-domain region is fit using the selected basis algorithm.
   - This option is only available for the `EUROPE` domain currently.
+- `outer_region_definition_file`:
+  - Default value is `None`, which uses the standard fixed outer-region file for the selected domain, e.g. `outer_region_definition_EUROPE.nc`.
+  - Set this when a run needs a different fixed outer-region definition. For the merged 6 km inner/outer EUROPE setup, set it to the EUHROB file path, e.g. `openghg_inversions/basis/intem_region_definition_EUHROB.nc`.
+  - This file only controls the standard-domain fixed outer-region basis. If `inner_domain = "6km"` is also set, the 6 km inner-domain basis is still built directly using the selected `basis_algorithm` (`weighted` or `quadtree`).
 - `calculate_min_error`: calculate min_error (see below) on the fly using the "residual error method" or a method based on percentiles of observations. Available arguments:
   - `residual`: use "residual error method"
   - `percentile`: use method based on percentiles

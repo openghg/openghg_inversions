@@ -5,10 +5,13 @@ import xarray as xr
 
 from openghg_inversions.hbmcmc.hbmcmc import fixedbasisMCMC
 from openghg_inversions.postprocessing.inversion_output import InversionOutput, make_inv_out_for_fixed_basis_mcmc
-from openghg_inversions.postprocessing.make_outputs import basic_output
+from openghg_inversions.postprocessing.make_outputs import basic_output, make_flux_outputs
 from openghg_inversions.postprocessing.make_paris_outputs import (
+    _country_flux_uncertainty_diagnostics,
+    _fine_coord_over_outer_extent,
     make_paris_flux_outputs_from_rhime,
     make_paris_outputs,
+    nested_inner_domain_label,
     paris_flux_output,
 )
 
@@ -69,6 +72,52 @@ def test_rhime_flux_reprocessing_eastasia(eastasia_country_file, raw_data_path):
 
     assert "flux_total_prior" in paris_outs
     assert "flux_total_posterior" in paris_outs
+
+
+def test_country_flux_uncertainty_diagnostics_adds_summary_attr(capsys):
+    time = np.array([0.0, 31.0])
+    country = np.array(["GBR", "DEU"])
+    percentile = np.array([0.159, 0.841])
+    posterior = xr.DataArray(
+        [[10.0, 20.0], [12.0, 18.0]],
+        dims=["time", "country"],
+        coords={"time": time, "country": country},
+    )
+    prior = xr.DataArray(
+        [[11.0, 21.0], [11.0, 21.0]],
+        dims=["time", "country"],
+        coords={"time": time, "country": country},
+    )
+    posterior_percentile = xr.concat([posterior * 0.5, posterior * 1.5], dim="percentile").assign_coords(
+        percentile=percentile
+    )
+    prior_percentile = xr.concat([prior * 0.7, prior * 1.3], dim="percentile").assign_coords(
+        percentile=percentile
+    )
+    ds = xr.Dataset(
+        {
+            "country_flux_total_posterior": posterior,
+            "country_flux_total_prior": prior,
+            "percentile_country_flux_total_posterior": posterior_percentile,
+            "percentile_country_flux_total_prior": prior_percentile,
+        }
+    )
+
+    result = _country_flux_uncertainty_diagnostics(ds, label="outer")
+
+    captured = capsys.readouterr()
+    assert "DIAGNOSTIC country_flux_uncertainty" in captured.out
+    assert "outer_country_flux_uncertainty_diagnostic" in result.attrs
+    assert "percentile_order_violations=0" in result.attrs["outer_country_flux_uncertainty_diagnostic"]
+
+
+def test_fine_coord_over_outer_extent_uses_inner_resolution():
+    outer = xr.DataArray(np.array([0.0, 1.0, 2.0]), dims=["lat"], name="lat")
+    inner = xr.DataArray(np.array([0.25, 0.75, 1.25]), dims=["lat"], name="lat")
+
+    result = _fine_coord_over_outer_extent(outer, inner)
+
+    np.testing.assert_allclose(result.values, np.array([0.0, 0.5, 1.0, 1.5, 2.0]))
 
 
 def test_basic_outputs(inv_out, europe_country_file):
@@ -176,9 +225,9 @@ def test_nested_make_inv_out_uses_flux_grid_mask(tmp_path) -> None:
         coords={"lat": [10.0, 11.0], "lon": [10.0, 11.0]},
     )
     inner_basis = xr.DataArray(
-        np.ones((2, 2), dtype=int),
+        np.ones((3, 3), dtype=int),
         dims=["lat", "lon"],
-        coords={"lat": [10.0, 11.0], "lon": [10.0, 11.0]},
+        coords={"lat": [10.0, 10.5, 11.0], "lon": [10.0, 10.5, 11.0]},
     )
 
     outer_flux = xr.DataArray(
@@ -187,15 +236,15 @@ def test_nested_make_inv_out_uses_flux_grid_mask(tmp_path) -> None:
         coords={"time": [np.datetime64("2022-01-01")], "lat": [0.0, 0.5], "lon": [0.0, 0.5]},
     )
     inner_flux = xr.DataArray(
-        np.array([[[20.0, 30.0], [40.0, 50.0]]]),
+        np.array([[[20.0, 25.0, 30.0], [30.0, 35.0, 40.0], [40.0, 45.0, 50.0]]]),
         dims=["time", "lat", "lon"],
-        coords={"time": [np.datetime64("2022-01-01")], "lat": [0.0, 0.5], "lon": [0.0, 0.5]},
+        coords={"time": [np.datetime64("2022-01-01")], "lat": [0.0, 0.25, 0.5], "lon": [0.0, 0.25, 0.5]},
     )
 
     inner_fp = xr.DataArray(
-        np.array([[[0.0, 0.0], [0.0, 1.0]]]),
+        np.array([[[0.0, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, 0.0, 1.0]]]),
         dims=["time", "lat", "lon"],
-        coords={"time": [np.datetime64("2022-01-01")], "lat": [0.0, 0.5], "lon": [0.0, 0.5]},
+        coords={"time": [np.datetime64("2022-01-01")], "lat": [0.0, 0.25, 0.5], "lon": [0.0, 0.25, 0.5]},
     )
 
     mf = xr.DataArray(
@@ -275,16 +324,82 @@ def test_nested_make_inv_out_uses_flux_grid_mask(tmp_path) -> None:
     assert inv_out.flux.isel(flux_time=0).sel(lat=0.5, lon=0.5).item() == 0.0
     assert inv_out.flux.isel(flux_time=0).sel(lat=0.0, lon=0.0).item() == 0.0
 
-    flux_outs, inner_flux_outs = paris_flux_output(inv_out, country_file=country_file)
+    flux_outs, inner_flux_outs = paris_flux_output(inv_out, country_file=country_file, inner_domain="6km")
 
     assert inner_flux_outs is not None
+    assert nested_inner_domain_label("EUROPE", "6km") == "europe-6km"
+    assert inner_flux_outs.attrs["domain"] == "toy-6km"
+    assert inner_flux_outs.attrs["inner_domain"] == "toy-6km"
+    assert inner_flux_outs.attrs["spatial_resolution"] == "toy-6km"
     assert flux_outs.sizes["country"] == 2
     assert inner_flux_outs.sizes["country"] == 2
+    assert flux_outs.sizes["latitude"] == 2
+    assert flux_outs.sizes["longitude"] == 2
+    assert inner_flux_outs.sizes["latitude"] == 3
+    assert inner_flux_outs.sizes["longitude"] == 3
     assert bool(np.isfinite(flux_outs["flux_total_posterior"]).all())
     assert bool(np.isfinite(inner_flux_outs["flux_total_posterior"]).all())
     assert bool(np.isfinite(flux_outs["country_flux_total_posterior"]).all())
     assert bool(np.isfinite(inner_flux_outs["country_flux_total_posterior"]).all())
+    assert flux_outs["flux_total_posterior"].isel(time=0).sel(latitude=0.0, longitude=0.0).item() == 20.0
+    assert flux_outs["flux_total_posterior"].isel(time=0).sel(latitude=0.5, longitude=0.5).item() == 50.0
     xr.testing.assert_allclose(
         inner_flux_outs["flux_total_posterior_inversion_grid"],
         inner_flux_outs["flux_total_posterior"],
     )
+
+
+def test_flux_output_drops_singleton_basis_time_before_monthly_flux_alignment() -> None:
+    flux = xr.DataArray(
+        np.array([[[5.0]], [[7.0]]]),
+        dims=["time", "lat", "lon"],
+        coords={
+            "time": [np.datetime64("2022-02-01"), np.datetime64("2022-03-01")],
+            "lat": [0.0],
+            "lon": [0.0],
+        },
+    )
+    basis = xr.DataArray(
+        np.ones((1, 1, 1, 1), dtype=float),
+        dims=["time", "nx", "lat", "lon"],
+        coords={
+            "time": [np.datetime64("2022-01-01")],
+            "nx": [1],
+            "lat": [0.0],
+            "lon": [0.0],
+        },
+    )
+    trace = az.InferenceData(
+        posterior=xr.Dataset({"x": xr.DataArray([[2.0]], dims=["draw", "nx"], coords={"nx": [1]})}),
+        prior=xr.Dataset({"x": xr.DataArray([[1.0]], dims=["draw", "nx"], coords={"nx": [1]})}),
+    )
+    inv_out = InversionOutput(
+        obs=xr.DataArray(
+            [1800.0],
+            dims=["nmeasure"],
+            attrs={"units": "ppb", "long_name": "observed_mole_fraction"},
+        ),
+        obs_err=xr.DataArray([1.0], dims=["nmeasure"]),
+        obs_repeatability=xr.DataArray([1.0], dims=["nmeasure"]),
+        obs_variability=xr.DataArray([1.0], dims=["nmeasure"]),
+        flux=flux,
+        basis=basis,
+        trace=trace,
+        site_indicators=xr.DataArray([0], dims=["nmeasure"]),
+        times=xr.DataArray([np.datetime64("2022-02-01")], dims=["nmeasure"]),
+        start_date="2022-02-01",
+        end_date="2022-04-01",
+        species="ch4",
+        domain="EUROPE",
+    )
+
+    flux_outs = make_flux_outputs(
+        inv_out,
+        stats=["mean"],
+        report_flux_on_inversion_grid=False,
+        include_scale_factors=False,
+    )
+
+    assert flux_outs.sizes["flux_time"] == 2
+    assert bool(np.isfinite(flux_outs["flux_posterior_mean"]).all())
+    np.testing.assert_allclose(flux_outs["flux_posterior_mean"].values[:, 0, 0], [10.0, 14.0])

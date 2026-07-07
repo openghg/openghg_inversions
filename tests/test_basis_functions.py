@@ -1,10 +1,17 @@
 import numpy as np
 import pandas as pd
+import pytest
 import xarray as xr
 
 from openghg_inversions.basis._functions import basis, _flux_fp_from_fp_all, _mean_fp_times_mean_flux
 from openghg_inversions.basis import bucketbasisfunction, quadtreebasisfunction, fixed_outer_regions_basis
-from openghg_inversions.basis._helpers import fp_sensitivity, bc_sensitivity
+from openghg_inversions.basis.algorithms import weighted_algorithm
+from openghg_inversions.basis._wrapper import (
+    _auto_distribute_nested_nbasis,
+    basis_functions,
+    basis_functions_wrapper,
+)
+from openghg_inversions.basis._helpers import apply_fp_basis_functions, fp_sensitivity, bc_sensitivity
 from openghg_inversions.inversion_data import data_processing_surface_notracer
 
 from helpers import basis_function, footprint
@@ -38,6 +45,85 @@ def test_fp_x_flux(tac_ch4_data_args):
     mean_fp_flux3 = _mean_fp_times_mean_flux(flux3, fp3)
 
     xr.testing.assert_allclose(mean_fp_flux1, mean_fp_flux3)
+
+
+def test_inner_basis_input_prefers_raw_footprint():
+    class FluxEntry:
+        def __init__(self, flux):
+            self.data = xr.Dataset({"flux": flux})
+
+    time = pd.date_range("2019-01-01", periods=1)
+    lat = np.array([0.0, 1.0])
+    lon = np.array([0.0, 1.0])
+
+    flux = xr.DataArray(
+        np.ones((1, 2, 2), dtype=float),
+        dims=["time", "lat", "lon"],
+        coords={"time": time, "lat": lat, "lon": lon},
+        name="flux",
+    )
+    inner_fp = xr.DataArray(
+        np.full((1, 2, 2), 2.0, dtype=float),
+        dims=["time", "lat", "lon"],
+        coords={"time": time, "lat": lat, "lon": lon},
+        name="fp",
+    )
+    inner_fp_x_flux = xr.DataArray(
+        np.full((1, 2, 2), 9.0, dtype=float),
+        dims=["time", "lat", "lon"],
+        coords={"time": time, "lat": lat, "lon": lon},
+        name="fp_x_flux",
+    )
+    fp_all = {
+        ".inner_flux": {"EDGAR": FluxEntry(flux)},
+        "TAC": xr.DataTree.from_dict(
+            {
+                "/standard": xr.Dataset({"fp": inner_fp}),
+                "/inner": xr.Dataset({"fp": inner_fp, "fp_x_flux": inner_fp_x_flux}),
+            }
+        ),
+    }
+
+    _, footprints = _flux_fp_from_fp_all(fp_all, ["EDGAR"], scenario="inner")
+
+    xr.testing.assert_identical(footprints[0], inner_fp)
+
+
+def test_standard_basis_input_prefers_raw_footprint():
+    class FluxEntry:
+        def __init__(self, flux):
+            self.data = xr.Dataset({"flux": flux})
+
+    time = pd.date_range("2019-01-01", periods=1)
+    lat = np.array([0.0, 1.0])
+    lon = np.array([0.0, 1.0])
+
+    flux = xr.DataArray(
+        np.ones((1, 2, 2), dtype=float),
+        dims=["time", "lat", "lon"],
+        coords={"time": time, "lat": lat, "lon": lon},
+        name="flux",
+    )
+    standard_fp = xr.DataArray(
+        np.full((1, 2, 2), 3.0, dtype=float),
+        dims=["time", "lat", "lon"],
+        coords={"time": time, "lat": lat, "lon": lon},
+        name="fp",
+    )
+    standard_fp_x_flux = xr.DataArray(
+        np.full((1, 2, 2), 11.0, dtype=float),
+        dims=["time", "lat", "lon"],
+        coords={"time": time, "lat": lat, "lon": lon},
+        name="fp_x_flux",
+    )
+    fp_all = {
+        ".flux": {"EDGAR": FluxEntry(flux)},
+        "TAC": xr.Dataset({"fp": standard_fp, "fp_x_flux": standard_fp_x_flux}),
+    }
+
+    _, footprints = _flux_fp_from_fp_all(fp_all, ["EDGAR"])
+
+    xr.testing.assert_identical(footprints[0], standard_fp)
 
 
 
@@ -119,6 +205,116 @@ def test_fixed_outer_region_basis_function(tac_ch4_data_args, raw_data_path):
     xr.testing.assert_allclose(basis_func, basis_func_reloaded.basis)
 
 
+def test_inner_domain_fixed_outer_region_uses_explicit_definition_file(monkeypatch):
+    fixed_calls = []
+    algorithm_calls = []
+
+    def fake_fixed_outer_regions_basis(
+        fp_all,
+        start_date,
+        basis_algorithm,
+        domain,
+        emissions_name=None,
+        nbasis=100,
+        country_directory=None,
+        abs_flux=False,
+        scenario="standard",
+        region_definition_file=None,
+    ):
+        fixed_calls.append(
+            {
+                "domain": domain,
+                "nbasis": nbasis,
+                "scenario": scenario,
+                "region_definition_file": region_definition_file,
+            }
+        )
+        lat = np.array([0.0])
+        lon = np.array([0.0])
+        return xr.DataArray(
+            [[[1]]],
+            dims=["time", "lat", "lon"],
+            coords={"time": [pd.Timestamp(start_date)], "lat": lat, "lon": lon},
+            name="basis",
+        )
+
+    def fake_inner_algorithm(
+        fp_all,
+        start_date,
+        domain,
+        emissions_name=None,
+        nbasis=100,
+        country_directory=None,
+        scenario="standard",
+    ):
+        algorithm_calls.append(
+            {
+                "domain": domain,
+                "nbasis": nbasis,
+                "scenario": scenario,
+            }
+        )
+        lat = np.array([0.0])
+        lon = np.array([0.0])
+        return xr.DataArray(
+            [[[1]]],
+            dims=["time", "lat", "lon"],
+            coords={"time": [pd.Timestamp(start_date)], "lat": lat, "lon": lon},
+            name="basis",
+        )
+
+    def fake_fp_sensitivity(fp_all, basis_func, inner_basis_func=None):
+        return {
+            ".basis": basis_func,
+            ".basis_inner": inner_basis_func,
+        }
+
+    monkeypatch.setattr(
+        "openghg_inversions.basis._wrapper.fixed_outer_regions_basis",
+        fake_fixed_outer_regions_basis,
+    )
+    monkeypatch.setitem(
+        basis_functions,
+        "quadtree",
+        basis_functions["quadtree"]._replace(algorithm=fake_inner_algorithm),
+    )
+    monkeypatch.setattr("openghg_inversions.basis._wrapper.fp_sensitivity", fake_fp_sensitivity)
+
+    fp_all = {"TAC": xr.DataTree.from_dict({"/standard": xr.Dataset(), "/inner": xr.Dataset()})}
+
+    result = basis_functions_wrapper(
+        fp_all=fp_all,
+        species="ch4",
+        domain="EUROPE",
+        start_date="2019-01-01",
+        emissions_name=["edgar"],
+        nbasis=4,
+        inner_nbasis=2,
+        use_bc=False,
+        basis_algorithm="quadtree",
+        fix_outer_regions=True,
+        outer_region_definition_file="intem_region_definition_EUHROB.nc",
+        inner_domain="6km",
+    )
+
+    assert result[".basis_inner"] is not None
+    assert algorithm_calls == [
+        {
+            "domain": "EUROPE-6km",
+            "nbasis": 2,
+            "scenario": "inner",
+        }
+    ]
+    assert fixed_calls == [
+        {
+            "domain": "EUROPE",
+            "nbasis": 4,
+            "scenario": "standard",
+            "region_definition_file": "intem_region_definition_EUHROB.nc",
+        },
+    ]
+
+
 def test_fp_sensitivity_one_flux():
     """Test fp_sensitivity with one flux sector."""
     nlat, nlon = 10, 12
@@ -134,6 +330,36 @@ def test_fp_sensitivity_one_flux():
 
     # the footprint values at time 0 are 1, and at time 1 are 2
     np.testing.assert_allclose(2 * h.isel(time=0), h.isel(time=1))
+
+
+def test_auto_distribute_nested_nbasis_uses_inner_outer_sensitivity():
+    time = pd.date_range("2019-01-01", periods=2)
+    lat = np.array([0.0, 1.0])
+    lon = np.array([0.0, 1.0])
+
+    outer_fp = xr.DataArray(
+        np.ones((2, 2, 2), dtype=float),
+        coords=[lat, lon, time],
+        dims=["lat", "lon", "time"],
+    )
+    inner_fp = xr.DataArray(
+        np.ones((2, 2, 2), dtype=float) * 3.0,
+        coords=[lat, lon, time],
+        dims=["lat", "lon", "time"],
+    )
+    fp_all = {
+        "TAC": xr.DataTree.from_dict(
+            {
+                "/standard": xr.Dataset({"fp_x_flux": outer_fp}),
+                "/inner": xr.Dataset({"fp_x_flux": inner_fp}),
+            }
+        )
+    }
+
+    outer_nbasis, inner_nbasis = _auto_distribute_nested_nbasis(fp_all, total_nbasis=100)
+
+    assert outer_nbasis == 40
+    assert inner_nbasis == 60
 
 
 def test_fp_sensitivity_two_flux_sectors():
@@ -201,7 +427,7 @@ def test_fp_sensitivity_masks_outer_where_inner_has_extent():
     inner_vals[0, 0, :] = 2.0
 
     outer_fp = xr.DataArray(outer_vals, coords=[lat, lon, time], dims=["lat", "lon", "time"])
-    inner_fp = xr.DataArray(inner_vals, coords=[lat, lon, time], dims=["lat", "lon", "time"])
+    inner_fp = xr.DataArray(inner_vals, coords=[lat, lon, time], dims=["lat", "lon", "time"], name="fp_x_flux")
 
     basis = xr.DataArray(np.ones((2, 2), dtype=int), coords=[lat, lon], dims=["lat", "lon"])
     inner_basis = xr.DataArray(np.ones((2, 2), dtype=int), coords=[lat, lon], dims=["lat", "lon"])
@@ -219,10 +445,48 @@ def test_fp_sensitivity_masks_outer_where_inner_has_extent():
     result = fp_sensitivity(fp_and_data, basis, inner_basis_func=inner_basis)
 
     h_outer = result["TAC"]["standard"].ds["H"].squeeze("region")
+    inner_after = result["TAC"]["inner"].ds["fp_x_flux"]
+    h_inner = result["TAC"]["inner"].ds["H_inner"].squeeze("region")
 
     # The full inner-domain extent is masked out of the outer contribution,
     # even when only part of the inner footprint has non-zero sensitivity.
     np.testing.assert_allclose(h_outer.values, np.array([0.0, 0.0]))
+    xr.testing.assert_identical(inner_after, inner_fp)
+    np.testing.assert_allclose(h_inner.values, np.array([2.0, 2.0]))
+
+
+def test_fp_sensitivity_rejects_active_cells_outside_basis():
+    time = pd.date_range("2019-01-01", periods=2)
+    lat = np.array([0.0, 1.0])
+    lon = np.array([0.0, 1.0])
+
+    fp = xr.DataArray(np.ones((2, 2, 2)), coords=[lat, lon, time], dims=["lat", "lon", "time"])
+    basis = xr.DataArray([[0, 1], [1, 1]], coords=[lat, lon], dims=["lat", "lon"])
+    fp_and_data = {"TAC": xr.Dataset({"fp_x_flux": fp}), ".flux": {"a": 1}}
+
+    with pytest.raises(ValueError, match="basis has value 0 in cells with non-zero footprint sensitivity"):
+        fp_sensitivity(fp_and_data, basis)
+
+
+def test_weighted_basis_rejects_missing_inner_landsea_file():
+    grid = np.ones((2, 2))
+
+    with pytest.raises(FileNotFoundError, match="No default land-sea file found for domain EUROPE-6km"):
+        weighted_algorithm(grid=grid, nregion=2, domain="EUROPE-6km", country_directory=None)
+
+
+def test_apply_fp_basis_functions_rejects_missing_time_slice():
+    time = pd.date_range("2019-01-01", periods=2)
+    lat = np.array([0.0, 1.0])
+    lon = np.array([0.0, 1.0])
+    fp_values = np.ones((2, 2, 2), dtype=float)
+    fp_values[:, :, 1] = np.nan
+
+    fp = xr.DataArray(fp_values, coords=[lat, lon, time], dims=["lat", "lon", "time"])
+    basis = xr.DataArray(np.ones((2, 2), dtype=int), coords=[lat, lon], dims=["lat", "lon"])
+
+    with pytest.raises(ValueError, match="Refusing to convert missing footprint data to zero sensitivity"):
+        apply_fp_basis_functions(fp_x_flux=fp, basis_func=basis)
 
 
 def test_fp_sensitivity_preserves_empty_root_standard_child():
