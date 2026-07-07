@@ -36,12 +36,14 @@ from openghg_inversions.basis.basis_functions import (
     BASIS_ARTIFACT_SOURCE_ATTR,
     BasisFunctions,
     basis_functions_from_fp_all_flat_basis,
+    flux_from_fp_all,
 )
 from openghg_inversions.basis.operators import (
     BucketBasisOperator,
     MultiSourceBucketBasisOperator,
 )
 from openghg_inversions.basis._helpers import apply_fp_basis_functions, fp_sensitivity
+from openghg_inversions.flux_sanitization import NONFINITE_POLICY_ATTR, NONFINITE_POLICY_ZERO_FILL
 from openghg_inversions.inversion_data import data_processing_surface_notracer
 
 from helpers import basis_function, footprint
@@ -139,6 +141,45 @@ def test_basis_weights_from_fp_all_applies_abs_flux_and_mask():
 
     expected = flux.mean("time").where(mask, drop=True)
     xr.testing.assert_allclose(weights, expected)
+
+
+def test_flux_from_fp_all_sanitizes_nonfinite_single_source():
+    """Retained single-source flux replaces non-finite cells with zero."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux.copy()
+    flux.values[0, 0, 0] = np.nan
+    flux.values[1, 1, 1] = np.inf
+    fp_all[".flux"]["test-source"] = SimpleNamespace(data=xr.Dataset({"flux": flux}))
+
+    retained_flux = flux_from_fp_all(fp_all)
+
+    assert np.isfinite(retained_flux.values).all()
+    assert retained_flux.values[0, 0, 0] == 0.0
+    assert retained_flux.values[1, 1, 1] == 0.0
+    assert retained_flux.attrs[NONFINITE_POLICY_ATTR] == NONFINITE_POLICY_ZERO_FILL
+
+
+def test_flux_from_fp_all_sanitizes_nonfinite_multisource():
+    """Retained multisource flux replaces non-finite cells after source stacking."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    base_flux = fp_all[".flux"]["test-source"].data.flux
+    flux_a = base_flux.copy()
+    flux_b = (2.0 * base_flux).copy()
+    flux_a.values[0, 0, 0] = np.nan
+    flux_b.values[1, 1, 1] = -np.inf
+    fp_all[".flux"] = {
+        "a": SimpleNamespace(data=xr.Dataset({"flux": flux_a})),
+        "b": SimpleNamespace(data=xr.Dataset({"flux": flux_b})),
+    }
+    fp_all[".split_by_sectors"] = True
+
+    retained_flux = flux_from_fp_all(fp_all)
+
+    assert retained_flux.dims[0] == "source"
+    assert np.isfinite(retained_flux.values).all()
+    assert float(retained_flux.sel(source="a").isel(time=0, lat=0, lon=0)) == 0.0
+    assert float(retained_flux.sel(source="b").isel(time=1, lat=1, lon=1)) == 0.0
+    assert retained_flux.attrs[NONFINITE_POLICY_ATTR] == NONFINITE_POLICY_ZERO_FILL
 
 
 def _basis_weights_with_nonfinite_cells() -> xr.DataArray:
@@ -1156,6 +1197,7 @@ def test_basisfunctions_roundtrip_datatree_single_source():
 
     assert isinstance(bf2.operator, BucketBasisOperator)
     assert bf2.basis_artifact_source == "generated"
+    assert bf2.flux.attrs[NONFINITE_POLICY_ATTR] == NONFINITE_POLICY_ZERO_FILL
     xr.testing.assert_identical(bf2.flux, bf.flux)
     xr.testing.assert_identical(bf2.operator.basis_flat, bf.operator.basis_flat)
     xr.testing.assert_identical(bf2.operator.basis_matrix, bf.operator.basis_matrix)
@@ -1594,7 +1636,8 @@ def test_load_basis_functions_prefers_datatree_schema(tmp_path):
     assert isinstance(loaded, BasisFunctions)
     xr.testing.assert_identical(loaded.flat_basis(), bf.operator.basis_flat.rename("basis"))
     xr.testing.assert_identical(loaded.operator.basis_matrix, bf.operator.basis_matrix)
-    xr.testing.assert_identical(loaded.flux, current_flux)
+    xr.testing.assert_allclose(loaded.flux, current_flux)
+    assert loaded.flux.attrs[NONFINITE_POLICY_ATTR] == NONFINITE_POLICY_ZERO_FILL
 
 
 def test_datatree_basis_artifact_can_use_basisfunctions_state_labels(tmp_path):
@@ -1751,7 +1794,8 @@ def test_load_basis_functions_falls_back_to_legacy_flat(tmp_path):
     assert loaded.basis_artifact_path == str(saved_path)
     assert isinstance(loaded, BasisFunctions)
     xr.testing.assert_identical(loaded.operator.basis_matrix, expected.operator.basis_matrix)
-    xr.testing.assert_identical(loaded.flux, expected.flux)
+    xr.testing.assert_allclose(loaded.flux, flux)
+    assert loaded.flux.attrs[NONFINITE_POLICY_ATTR] == NONFINITE_POLICY_ZERO_FILL
 
 
 def test_basis_artifact_metadata_properties_accept_plain_keys():

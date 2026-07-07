@@ -32,6 +32,7 @@ from openghg_inversions.basis.operators import (
     MultiSourceBucketBasisOperator,
     RegionLabels,
 )
+from openghg_inversions.flux_sanitization import sanitize_flux_nonfinite
 
 BASIS_METADATA_ATTR_PREFIX = "openghg_inversions:"
 BASIS_ARTIFACT_SOURCE_ATTR = f"{BASIS_METADATA_ATTR_PREFIX}basis_artifact_source"
@@ -95,6 +96,7 @@ class FluxWeightedBasis:
 
         operator_cls = cast(Any, BucketBasisOperator)
         operator = operator_cls(basis_flat=basis_flat, **kwargs)
+        flux = sanitize_flux_nonfinite(flux, context="retained basis construction")
         return cls(operator=operator, flux=flux, metadata=dict(metadata or {}))
 
     @classmethod
@@ -127,10 +129,12 @@ class FluxWeightedBasis:
         if not isinstance(flux, xr.DataArray):
             flux = concat_data_arrays(flux, key_dim="source")
 
+        flux = sanitize_flux_nonfinite(flux, context="retained multisource basis construction")
         return cls(operator=operator, flux=flux, metadata=dict(metadata or {}))
 
     def with_flux(self, flux: xr.DataArray) -> Self:
         """Return a copy with the same operator and metadata but a different flux."""
+        flux = sanitize_flux_nonfinite(flux, context="retained basis flux replacement")
         return type(self)(operator=self.operator, flux=flux, metadata=dict(self.metadata))
 
     def with_metadata(self, metadata: Mapping[str, Any]) -> Self:
@@ -504,7 +508,7 @@ def flux_from_fp_all(fp_all: dict) -> xr.DataArray:
     else:
         flux = _combine_flux_sources_like_modelscenario(flux_arrays)
 
-    return flux
+    return sanitize_flux_nonfinite(flux, context="retained basis flux from fp_all")
 
 
 def _serialisable_basis_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:

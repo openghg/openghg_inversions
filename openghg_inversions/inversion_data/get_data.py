@@ -28,6 +28,7 @@ from openghg_inversions.inversion_data.getters import (
 )
 from openghg_inversions.inversion_data.scenario import merged_scenario_data
 from openghg_inversions.inversion_data.serialise import _save_merged_data
+from openghg_inversions.flux_sanitization import FluxNonFiniteCheck
 
 
 logger = logging.getLogger(__name__)
@@ -186,6 +187,7 @@ def data_processing_surface_notracer(
     merged_data_name: str | None = None,
     merged_data_dir: str | None = None,
     output_name: str | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> tuple[dict, list, list, list, list, list]:
     """Retrieve and prepare fixed-surface datasets from specified OpenGHG object stores.
 
@@ -221,6 +223,9 @@ def data_processing_surface_notracer(
         obs_store: Name of object store to retrieve observations data from.
         footprint_store: Name of object store to retrieve footprints data from.
         emissions_store: Name of object store to retrieve emissions data from.
+        flux_non_finite_check: Non-finite flux handling mode. ``"lazy"``
+            applies zero-fill lazily and records attrs; ``"count"`` computes
+            count metadata once and warns if non-finite values are present.
         split_by_sectors: If True, calculate sector-resolved ``fp_x_flux_sectoral`` in ModelScenario.
             If False (default), combine all flux sources into a single ``fp_x_flux`` pathway.
         averagingerror: Adds the variability in the averaging period to the measurement
@@ -270,6 +275,7 @@ def data_processing_surface_notracer(
         start_date=start_date,
         end_date=end_date,
         store=emissions_store,
+        flux_non_finite_check=flux_non_finite_check,
     )
     fp_all[".flux"] = flux_dict
     fp_all[".split_by_sectors"] = split_by_sectors
