@@ -29,7 +29,7 @@ from openghg_inversions.basis.basis_functions import (
 )
 from openghg_inversions.cli import main
 from openghg_inversions.flux_sanitization import (
-    NONFINITE_POLICY_ATTR,
+    FluxNonFiniteMetadata,
     NONFINITE_POLICY_ZERO_FILL,
     NonFiniteFluxWarning,
 )
@@ -76,6 +76,13 @@ def rhime_inv_inputs(mhd_and_tac_fp_data) -> xr.Dataset:
         min_error=0.0,
         start_date="2019-01-01",
     )
+
+
+def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMetadata:
+    """Return parsed non-finite flux metadata from an xarray object."""
+    metadata = FluxNonFiniteMetadata.from_attrs(data.attrs)
+    assert metadata is not None
+    return metadata
 
 
 @pytest.fixture
@@ -2581,6 +2588,7 @@ def test_multisector_flux_outputs_reconstruct_sector_and_total_flux() -> None:
     assert float(outputs["flux_total_posterior_mean"].item()) == 2.0
     assert float(outputs["flux_total_posterior_stdev"].item()) == 0.0
     assert float(outputs["flux_ff_posterior_stdev"].item()) > 0.0
+    assert _flux_nonfinite_metadata(outputs).policy == NONFINITE_POLICY_ZERO_FILL
 
 
 def test_multisector_flux_outputs_support_source_specific_basis(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2604,6 +2612,7 @@ def test_multisector_flux_outputs_support_source_specific_basis(monkeypatch: pyt
     assert "flux_total_posterior_mean" in outputs
     assert "flux_total_posterior_mode" in outputs
     assert float(outputs["flux_total_posterior_mean"].item()) == 2.0
+    assert _flux_nonfinite_metadata(outputs).policy == NONFINITE_POLICY_ZERO_FILL
 
 
 def test_modern_flux_outputs_use_retained_basis_operator(
@@ -2692,7 +2701,7 @@ def test_modern_flux_outputs_backfill_unsanitized_nonfinite_flux(
 
     assert "flux_posterior_mean" in outputs
     assert np.isfinite(outputs["flux_posterior_mean"].values).all()
-    assert outputs.attrs[NONFINITE_POLICY_ATTR] == NONFINITE_POLICY_ZERO_FILL
+    assert _flux_nonfinite_metadata(outputs).policy == NONFINITE_POLICY_ZERO_FILL
 
 
 def test_modern_paris_flux_outputs_use_retained_basis_operator(
@@ -2741,7 +2750,7 @@ def test_modern_paris_flux_outputs_backfill_unsanitized_nonfinite_flux(europe_co
 
     assert "flux_total_posterior" in flux_outputs
     assert np.isfinite(flux_outputs["flux_total_posterior"].values).all()
-    assert flux_outputs.attrs[NONFINITE_POLICY_ATTR] == NONFINITE_POLICY_ZERO_FILL
+    assert _flux_nonfinite_metadata(flux_outputs).policy == NONFINITE_POLICY_ZERO_FILL
 
 
 def test_observation_inputs_for_outputs_stay_dataset_based() -> None:
@@ -3050,6 +3059,7 @@ def test_latest_paris_flux_output_processes_multisector_total(
         expected_country.data.todense(),
         rtol=1e-6,
     )
+    assert _flux_nonfinite_metadata(flux_outputs).policy == NONFINITE_POLICY_ZERO_FILL
 
     flux_outputs.to_netcdf(tmp_path / "latest_multisector_flux.nc")
 

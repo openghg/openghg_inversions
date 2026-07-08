@@ -96,7 +96,7 @@ class FluxWeightedBasis:
 
         operator_cls = cast(Any, BucketBasisOperator)
         operator = operator_cls(basis_flat=basis_flat, **kwargs)
-        flux = sanitize_flux_nonfinite(flux, context="retained basis construction")
+        flux = sanitize_flux_nonfinite(flux, context="retained basis construction", trust_attrs=False)
         return cls(operator=operator, flux=flux, metadata=dict(metadata or {}))
 
     @classmethod
@@ -129,12 +129,16 @@ class FluxWeightedBasis:
         if not isinstance(flux, xr.DataArray):
             flux = concat_data_arrays(flux, key_dim="source")
 
-        flux = sanitize_flux_nonfinite(flux, context="retained multisource basis construction")
+        flux = sanitize_flux_nonfinite(
+            flux,
+            context="retained multisource basis construction",
+            trust_attrs=False,
+        )
         return cls(operator=operator, flux=flux, metadata=dict(metadata or {}))
 
     def with_flux(self, flux: xr.DataArray) -> Self:
         """Return a copy with the same operator and metadata but a different flux."""
-        flux = sanitize_flux_nonfinite(flux, context="retained basis flux replacement")
+        flux = sanitize_flux_nonfinite(flux, context="retained basis flux replacement", trust_attrs=False)
         return type(self)(operator=self.operator, flux=flux, metadata=dict(self.metadata))
 
     def with_metadata(self, metadata: Mapping[str, Any]) -> Self:
@@ -508,7 +512,7 @@ def flux_from_fp_all(fp_all: dict) -> xr.DataArray:
     else:
         flux = _combine_flux_sources_like_modelscenario(flux_arrays)
 
-    return sanitize_flux_nonfinite(flux, context="retained basis flux from fp_all")
+    return sanitize_flux_nonfinite(flux, context="retained basis flux from fp_all", trust_attrs=False)
 
 
 def _serialisable_basis_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
