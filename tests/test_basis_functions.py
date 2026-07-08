@@ -141,6 +141,218 @@ def test_basis_weights_from_fp_all_applies_abs_flux_and_mask():
     xr.testing.assert_allclose(weights, expected)
 
 
+def _basis_weights_with_nonfinite_cells() -> xr.DataArray:
+    """Build generated-basis weights with NaN and infinite cells."""
+    return xr.DataArray(
+        np.array([[np.nan, np.inf], [-np.inf, 4.0]]),
+        dims=("lat", "lon"),
+        coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]},
+        name="basis_weight",
+    )
+
+
+def test_quadtree_basis_from_weights_sanitizes_nonfinite_before_dispatch(monkeypatch):
+    """Quadtree adapter sends finite weights to the lower-level algorithm."""
+    weights = _basis_weights_with_nonfinite_cells()
+
+    def fake_quadtree_algorithm(grid: np.ndarray, nbasis: int, seed: int | None = None) -> np.ndarray:
+        """Assert non-finite cells were replaced with zero before dispatch."""
+        assert nbasis == 3
+        assert seed == 7
+        np.testing.assert_allclose(grid, np.array([[0.0, 0.0], [0.0, 4.0]]))
+        return np.arange(1, grid.size + 1).reshape(grid.shape)
+
+    monkeypatch.setattr(basis_module, "quadtree_algorithm", fake_quadtree_algorithm)
+
+    basis_func = quadtree_basis_from_weights(weights, "2019-01-01", "TEST", nbasis=3, seed=7)
+
+    assert basis_func.dims == ("lat", "lon", "time")
+    xr.testing.assert_equal(basis_func.lat, weights.lat)
+    xr.testing.assert_equal(basis_func.lon, weights.lon)
+    assert basis_func.attrs["domain"] == "TEST"
+
+
+def test_bucket_basis_from_weights_sanitizes_nonfinite_before_dispatch(monkeypatch):
+    """Weighted bucket adapter normalizes finite sanitized weights."""
+    weights = _basis_weights_with_nonfinite_cells()
+
+    def fake_weighted_algorithm(
+        grid: np.ndarray,
+        nregion: int,
+        bucket: float,
+        domain: str,
+        country_directory: str | None = None,
+    ) -> np.ndarray:
+        """Assert non-finite cells were replaced and normalized before dispatch."""
+        assert nregion == 4
+        assert bucket == 1
+        assert domain == "TEST"
+        assert country_directory == "/tmp/countries"
+        np.testing.assert_allclose(grid, np.array([[0.0, 0.0], [0.0, 1.0]]))
+        return np.arange(1, grid.size + 1).reshape(grid.shape)
+
+    monkeypatch.setattr(basis_module, "weighted_algorithm", fake_weighted_algorithm)
+
+    basis_func = bucket_basis_from_weights(
+        weights,
+        "2019-01-01",
+        "TEST",
+        nbasis=4,
+        country_directory="/tmp/countries",
+    )
+
+    assert basis_func.dims == ("lat", "lon", "time")
+    xr.testing.assert_equal(basis_func.lat, weights.lat)
+    xr.testing.assert_equal(basis_func.lon, weights.lon)
+    assert basis_func.attrs["domain"] == "TEST"
+
+
+def test_bucket_basis_from_weights_preserves_all_negative_normalization(monkeypatch):
+    """Weighted bucket adapter keeps legacy normalization by a negative maximum."""
+    weights = xr.DataArray(
+        np.array([[-4.0, -2.0], [-1.0, -3.0]]),
+        dims=("lat", "lon"),
+        coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]},
+    )
+
+    def fake_weighted_algorithm(
+        grid: np.ndarray,
+        nregion: int,
+        bucket: float,
+        domain: str,
+        country_directory: str | None = None,
+    ) -> np.ndarray:
+        """Assert all-negative weights are still divided by their maximum."""
+        del nregion, bucket, domain, country_directory
+        np.testing.assert_allclose(grid, np.array([[4.0, 2.0], [1.0, 3.0]]))
+        return np.arange(1, grid.size + 1).reshape(grid.shape)
+
+    monkeypatch.setattr(basis_module, "weighted_algorithm", fake_weighted_algorithm)
+
+    basis_func = bucket_basis_from_weights(weights, "2019-01-01", "TEST")
+
+    assert basis_func.dims == ("lat", "lon", "time")
+    assert basis_func.attrs["domain"] == "TEST"
+
+
+def test_region_constrained_basis_from_weights_sanitizes_nonfinite_before_dispatch(monkeypatch):
+    """Region-constrained adapter sends finite normalized weights to the algorithm."""
+    weights = _basis_weights_with_nonfinite_cells()
+    region_classes = xr.DataArray(
+        np.array([["west", "west"], ["east", "east"]], dtype=object),
+        dims=weights.dims,
+        coords=weights.coords,
+        name="region_class",
+    )
+
+    def fake_region_constrained_basis(
+        weights_arg: xr.DataArray,
+        region_classes_arg: xr.DataArray,
+        nbasis: int,
+        **kwargs,
+    ) -> xr.DataArray:
+        """Assert non-finite cells were replaced and normalized before dispatch."""
+        del kwargs
+        assert nbasis == 2
+        np.testing.assert_allclose(weights_arg.values, np.array([[0.0, 0.0], [0.0, 1.0]]))
+        xr.testing.assert_equal(region_classes_arg, region_classes)
+        return xr.ones_like(weights_arg, dtype=int)
+
+    monkeypatch.setattr(basis_module, "region_constrained_basis", fake_region_constrained_basis)
+
+    basis_func = region_constrained_basis_from_weights(
+        weights,
+        "2019-01-01",
+        "TEST",
+        region_classes=region_classes,
+        nbasis=2,
+    )
+
+    assert basis_func.dims == ("lat", "lon", "time")
+    xr.testing.assert_equal(basis_func.lat, weights.lat)
+    xr.testing.assert_equal(basis_func.lon, weights.lon)
+    assert basis_func.attrs["domain"] == "TEST"
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        quadtree_basis_from_weights,
+        bucket_basis_from_weights,
+    ],
+)
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        (np.zeros((2, 2)), "no non-zero finite values"),
+        (np.full((2, 2), np.nan), "no finite values"),
+    ],
+)
+def test_quadtree_and_bucket_basis_from_weights_reject_empty_sanitized_weights(factory, values, message):
+    """Quadtree and weighted bucket adapters reject empty sanitized weights."""
+    weights = xr.DataArray(
+        values,
+        dims=("lat", "lon"),
+        coords={"lat": [10.0, 20.0], "lon": [1.0, 2.0]},
+    )
+
+    with pytest.raises(ValueError, match=message):
+        factory(weights, "2019-01-01", "TEST")
+
+
+def test_region_constrained_basis_from_weights_all_zero_falls_back_to_area():
+    """Region-constrained all-zero finite weights keep the existing area fallback."""
+    _fp_all, region_classes = _tiny_region_constrained_fp_all()
+    weights = xr.zeros_like(region_classes, dtype=float)
+
+    basis_func = region_constrained_basis_from_weights(
+        weights,
+        "2020-01-01",
+        "TEST",
+        region_classes=region_classes,
+        nbasis=4,
+    )
+
+    assert basis_func.dims == ("lat", "lon", "time")
+    xr.testing.assert_equal(basis_func.lat, weights.lat)
+    xr.testing.assert_equal(basis_func.lon, weights.lon)
+    assert np.isfinite(basis_func.values).all()
+    labels = basis_func.squeeze("time", drop=True)
+    assert set(np.unique(labels.values)) == {1, 2, 3, 4}
+    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
+
+
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        (np.full((2, 2), np.nan), "no finite values"),
+        (np.full((2, 2), np.inf), "no finite values"),
+        (np.empty((0, 2)), "no finite values"),
+    ],
+)
+def test_region_constrained_basis_from_weights_rejects_no_finite_cells(values, message):
+    """Region-constrained rejects all-invalid weights instead of area-fallback labels."""
+    weights = xr.DataArray(
+        values,
+        dims=("lat", "lon"),
+        coords={"lat": np.arange(values.shape[0], dtype=float), "lon": [1.0, 2.0]},
+    )
+    region_classes = xr.DataArray(
+        np.full(values.shape, "class", dtype=object),
+        dims=weights.dims,
+        coords=weights.coords,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        region_constrained_basis_from_weights(
+            weights,
+            "2020-01-01",
+            "TEST",
+            region_classes=region_classes,
+            nbasis=2,
+        )
+
+
 def test_quadtree_basis_from_weights_matches_fp_all_adapter(monkeypatch):
     """Quadtree ``fp_all`` wrapper delegates to the weight-first helper."""
     fp_all = _simple_fp_all_for_basis_weights()
