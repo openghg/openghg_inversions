@@ -110,31 +110,20 @@ def test_sanitize_flux_nonfinite_json_metadata_survives_netcdf_roundtrip(tmp_pat
     assert loaded_metadata.total == 4
 
 
-def test_copy_flux_nonfinite_attrs_normalises_legacy_field_attrs() -> None:
-    """Legacy per-field metadata is read but copied as the canonical JSON attr."""
+def test_copy_flux_nonfinite_attrs_copies_json_metadata() -> None:
+    """Canonical JSON metadata is copied while preserving existing target attrs."""
     target = xr.Dataset(attrs={"title": "output"})
-    legacy_flux = xr.DataArray(
+    flux = xr.DataArray(
         [1.0],
-        attrs={
-            "openghg_inversions:non_finite_policy": "zero_fill",
-            "openghg_inversions:non_finite_fill_value": 0.0,
-            "openghg_inversions:non_finite_checked": "computed",
-            "openghg_inversions:non_finite_count": 2,
-            "openghg_inversions:non_finite_total": 10,
-            "openghg_inversions:non_finite_fraction": 0.2,
-        },
+        attrs={NONFINITE_METADATA_ATTR: FluxNonFiniteMetadata(context="copy test").to_json()},
     )
 
-    result = copy_flux_nonfinite_attrs(target, legacy_flux)
+    result = copy_flux_nonfinite_attrs(target, flux)
     metadata = _metadata(result)
 
     assert result.attrs["title"] == "output"
     assert metadata.policy == NONFINITE_POLICY_ZERO_FILL
-    assert metadata.checked == NONFINITE_CHECKED_COMPUTED
-    assert metadata.count == 2
-    assert metadata.total == 10
-    assert metadata.fraction == 0.2
-    assert "openghg_inversions:non_finite_policy" not in result.attrs
+    assert metadata.context == "copy test"
 
 
 def test_attrs_declare_zero_filled_nonfinite_accepts_json_metadata() -> None:

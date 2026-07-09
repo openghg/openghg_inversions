@@ -39,24 +39,6 @@ _UPSTREAM_POLICY_ATTRS = (
     "openghg:missing_value_policy",
     "openghg:non_finite_policy",
 )
-_LEGACY_NONFINITE_POLICY_ATTR = "openghg_inversions:non_finite_policy"
-_LEGACY_NONFINITE_FILL_VALUE_ATTR = "openghg_inversions:non_finite_fill_value"
-_LEGACY_NONFINITE_CHECKED_ATTR = "openghg_inversions:non_finite_checked"
-_LEGACY_NONFINITE_COUNT_ATTR = "openghg_inversions:non_finite_count"
-_LEGACY_NONFINITE_TOTAL_ATTR = "openghg_inversions:non_finite_total"
-_LEGACY_NONFINITE_FRACTION_ATTR = "openghg_inversions:non_finite_fraction"
-_LEGACY_NONFINITE_CONTEXT_ATTR = "openghg_inversions:non_finite_context"
-_LEGACY_NONFINITE_SOURCE_ATTR = "openghg_inversions:non_finite_source"
-_LEGACY_LOCAL_ATTRS = (
-    _LEGACY_NONFINITE_POLICY_ATTR,
-    _LEGACY_NONFINITE_FILL_VALUE_ATTR,
-    _LEGACY_NONFINITE_CHECKED_ATTR,
-    _LEGACY_NONFINITE_COUNT_ATTR,
-    _LEGACY_NONFINITE_TOTAL_ATTR,
-    _LEGACY_NONFINITE_FRACTION_ATTR,
-    _LEGACY_NONFINITE_CONTEXT_ATTR,
-    _LEGACY_NONFINITE_SOURCE_ATTR,
-)
 
 
 class NonFiniteFluxWarning(UserWarning):
@@ -105,28 +87,13 @@ class FluxNonFiniteMetadata:
             attrs: Attribute mapping from a DataArray or Dataset.
 
         Returns:
-            Parsed metadata when local JSON metadata or legacy per-field
-            metadata is present, otherwise ``None``.
+            Parsed metadata when local JSON metadata is present, otherwise
+            ``None``.
         """
         raw_metadata = attrs.get(NONFINITE_METADATA_ATTR)
         if raw_metadata is not None:
             return cls.from_json(raw_metadata)
-
-        legacy_policy = attrs.get(_LEGACY_NONFINITE_POLICY_ATTR)
-        if legacy_policy is None:
-            return None
-
-        return cls(
-            schema_version=1,
-            policy=str(legacy_policy),
-            fill_value=float(attrs.get(_LEGACY_NONFINITE_FILL_VALUE_ATTR, 0.0)),
-            checked=str(attrs.get(_LEGACY_NONFINITE_CHECKED_ATTR, NONFINITE_CHECKED_NOT_COUNTED)),
-            context=_optional_str(attrs.get(_LEGACY_NONFINITE_CONTEXT_ATTR)),
-            source=_optional_str(attrs.get(_LEGACY_NONFINITE_SOURCE_ATTR)),
-            count=_optional_int(attrs.get(_LEGACY_NONFINITE_COUNT_ATTR)),
-            total=_optional_int(attrs.get(_LEGACY_NONFINITE_TOTAL_ATTR)),
-            fraction=_optional_float(attrs.get(_LEGACY_NONFINITE_FRACTION_ATTR)),
-        )
+        return None
 
     @classmethod
     def from_json(cls, value: object) -> "FluxNonFiniteMetadata":
@@ -228,9 +195,9 @@ def attrs_declare_zero_filled_nonfinite(attrs: Mapping[Any, Any]) -> bool:
         attrs: Attribute mapping from a DataArray or Dataset.
 
     Returns:
-        ``True`` when local metadata, legacy local metadata, or recognised
-        upstream OpenGHG metadata declares that non-finite flux values have
-        already been zero-filled.
+        ``True`` when local JSON metadata or recognised upstream OpenGHG
+        metadata declares that non-finite flux values have already been
+        zero-filled.
     """
     local_metadata = FluxNonFiniteMetadata.from_attrs(attrs)
     if local_metadata is not None and local_metadata.declares_zero_fill():
@@ -327,8 +294,8 @@ def _with_nonfinite_attrs(
 
     Returns:
         A shallow copy of ``flux`` with JSON metadata attached under
-        ``NONFINITE_METADATA_ATTR``, stale legacy per-field attrs removed, and a
-        new CF-style ``history`` entry appended.
+        ``NONFINITE_METADATA_ATTR`` and a new CF-style ``history`` entry
+        appended.
     """
     result = flux.copy(deep=False)
     attrs = dict(flux.attrs)
@@ -341,8 +308,6 @@ def _with_nonfinite_attrs(
         fraction=fraction,
     )
     attrs[NONFINITE_METADATA_ATTR] = metadata.to_json()
-    for attr in _LEGACY_LOCAL_ATTRS:
-        attrs.pop(attr, None)
 
     _append_history(
         attrs,
@@ -511,8 +476,7 @@ def copy_flux_nonfinite_attrs(
 
     Returns:
         A shallow copy of ``target`` with local JSON non-finite metadata copied
-        from ``flux`` when present. Legacy local attrs are normalised to the
-        current JSON attr.
+        from ``flux`` when present.
     """
     result = target.copy(deep=False)
     result.attrs = dict(target.attrs)
