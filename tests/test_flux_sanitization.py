@@ -10,7 +10,6 @@ from openghg_inversions.flux_sanitization import (
     NONFINITE_POLICY_ZERO_FILL,
     FluxNonFiniteMetadata,
     NonFiniteFluxWarning,
-    attrs_declare_zero_filled_nonfinite,
     copy_flux_nonfinite_attrs,
     sanitize_flux_nonfinite,
 )
@@ -66,18 +65,19 @@ def test_sanitize_flux_nonfinite_is_idempotent_when_attrs_are_trusted() -> None:
     assert again is sanitized
 
 
-def test_sanitize_flux_nonfinite_count_audits_lazy_metadata() -> None:
-    """Count mode computes metadata even when lazy zero-fill attrs are present."""
+def test_sanitize_flux_nonfinite_count_does_not_invent_counts_after_lazy_fill() -> None:
+    """Count mode preserves lazy metadata when original non-finite values are gone."""
     sanitized = sanitize_flux_nonfinite(_nonfinite_flux(), context="unit test")
 
-    audited = sanitize_flux_nonfinite(sanitized, context="audit test", check="count")
+    with pytest.warns(NonFiniteFluxWarning, match="original non-finite count cannot be recovered"):
+        audited = sanitize_flux_nonfinite(sanitized, context="audit test", check="count")
     metadata = _metadata(audited)
 
-    assert audited is not sanitized
-    assert metadata.checked == NONFINITE_CHECKED_COMPUTED
-    assert metadata.count == 0
-    assert metadata.total == 4
-    assert metadata.fraction == 0.0
+    assert audited is sanitized
+    assert metadata.checked == NONFINITE_CHECKED_NOT_COUNTED
+    assert metadata.count is None
+    assert metadata.total is None
+    assert metadata.fraction is None
 
 
 def test_sanitize_flux_nonfinite_count_records_exact_metadata() -> None:
@@ -92,6 +92,16 @@ def test_sanitize_flux_nonfinite_count_records_exact_metadata() -> None:
     assert metadata.count == 3
     assert metadata.total == 4
     assert metadata.fraction == 0.75
+
+
+def test_sanitize_flux_nonfinite_count_metadata_is_idempotent() -> None:
+    """Repeated count mode trusts an exact audit without rescanning the data."""
+    sanitized = sanitize_flux_nonfinite(_nonfinite_flux(), context="audit test", check="count")
+
+    again = sanitize_flux_nonfinite(sanitized, context="second audit", check="count")
+
+    assert again is sanitized
+    assert _metadata(again).count == 3
 
 
 def test_sanitize_flux_nonfinite_json_metadata_survives_netcdf_roundtrip(tmp_path: Path) -> None:
@@ -124,10 +134,3 @@ def test_copy_flux_nonfinite_attrs_copies_json_metadata() -> None:
     assert result.attrs["title"] == "output"
     assert metadata.policy == NONFINITE_POLICY_ZERO_FILL
     assert metadata.context == "copy test"
-
-
-def test_attrs_declare_zero_filled_nonfinite_accepts_json_metadata() -> None:
-    """Trusted attrs include the canonical JSON metadata attr."""
-    metadata = FluxNonFiniteMetadata(context="unit test")
-
-    assert attrs_declare_zero_filled_nonfinite({NONFINITE_METADATA_ATTR: metadata.to_json()})

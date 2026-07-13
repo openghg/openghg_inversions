@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 import xarray as xr
 
 from openghg_inversions.array_ops import align_sparse_lat_lon, sparse_xr_dot
@@ -130,25 +128,6 @@ def _operator_region_flux_mean(basis_functions: BasisFunctions, flux: xr.DataArr
     return ((basis * flux).sum(grid_dims) / basis.sum(grid_dims)).fillna(0.0)
 
 
-def _sanitize_postprocessing_flux(flux: xr.DataArray, *, context: str) -> xr.DataArray:
-    """Apply the late fallback non-finite policy for old retained artifacts."""
-    return sanitize_flux_nonfinite(
-        flux,
-        context=context,
-        warn=True,
-    )
-
-
-def _with_flux_nonfinite_metadata(ds: xr.Dataset, flux: xr.DataArray) -> xr.Dataset:
-    """Propagate non-finite flux policy metadata onto output datasets."""
-    return cast(xr.Dataset, copy_flux_nonfinite_attrs(ds, flux))
-
-
-def _with_flux_nonfinite_dataarray_metadata(da: xr.DataArray, flux: xr.DataArray) -> xr.DataArray:
-    """Propagate non-finite flux policy metadata onto output arrays."""
-    return cast(xr.DataArray, copy_flux_nonfinite_attrs(da, flux))
-
-
 def reconstruct_flux_stats(
     basis_functions: BasisFunctions,
     flux: xr.DataArray,
@@ -156,14 +135,33 @@ def reconstruct_flux_stats(
     *,
     report_flux_on_inversion_grid: bool,
 ) -> xr.Dataset:
-    """Reconstruct gridded flux statistics with the retained basis operator."""
-    flux = _sanitize_postprocessing_flux(flux, context="operator-backed flux reconstruction")
+    """Reconstruct gridded flux statistics with the retained basis operator.
+
+    Args:
+        basis_functions: Retained basis operator and flux metadata.
+        flux: Prior flux used to weight or scale reconstructed statistics.
+        stats_ds: Statistics in basis-state space.
+        report_flux_on_inversion_grid: Report region-mean flux when ``True``;
+            otherwise interpolate with prior-flux weights.
+
+    Returns:
+        Reconstructed gridded statistics carrying non-finite policy metadata.
+
+    Warns:
+        NonFiniteFluxWarning: If old retained flux has no sanitation metadata
+            and the lazy zero-fill backstop is applied.
+    """
+    flux = sanitize_flux_nonfinite(
+        flux,
+        context="operator-backed flux reconstruction",
+        warn=True,
+    )
     if report_flux_on_inversion_grid:
         region_flux = _operator_region_flux_mean(basis_functions, flux)
         state = _to_operator_state_dim(stats_ds, basis_functions) * region_flux
-        return _with_flux_nonfinite_metadata(_interpolate_dataset(state, basis_functions, weights=None), flux)
+        return copy_flux_nonfinite_attrs(_interpolate_dataset(state, basis_functions, weights=None), flux)
 
-    return _with_flux_nonfinite_metadata(_interpolate_dataset(stats_ds, basis_functions, weights=flux), flux)
+    return copy_flux_nonfinite_attrs(_interpolate_dataset(stats_ds, basis_functions, weights=flux), flux)
 
 
 def reconstruct_scale_factor_stats(
@@ -183,12 +181,32 @@ def make_x_to_country_matrix(
     area_grid: xr.DataArray,
     sparse: bool = False,
 ) -> xr.DataArray:
-    """Construct a basis-state to country-total matrix."""
-    flux = _sanitize_postprocessing_flux(flux, context="operator-backed country flux reconstruction")
+    """Construct a basis-state to country-total matrix.
+
+    Args:
+        basis_functions: Retained basis operator used for reconstruction.
+        flux: Prior flux on the operator grid.
+        x_trace: Trace dataset providing the state-dimension convention.
+        country_matrix: Country masks aligned to the flux grid.
+        area_grid: Grid-cell areas used to form country totals.
+        sparse: Preserve sparse output when ``True``.
+
+    Returns:
+        State-to-country matrix carrying non-finite policy metadata.
+
+    Warns:
+        NonFiniteFluxWarning: If old retained flux has no sanitation metadata
+            and the lazy zero-fill backstop is applied.
+    """
+    flux = sanitize_flux_nonfinite(
+        flux,
+        context="operator-backed country flux reconstruction",
+        warn=True,
+    )
     trace_state_dim = _trace_state_dim(x_trace, basis_functions)
     basis = align_sparse_lat_lon(basis_functions.operator.basis_matrix, flux)
     basis = _from_operator_state_dim(basis, basis_functions, trace_state_dim)
     flux_x_basis = align_sparse_lat_lon(flux * basis, area_grid)
     result = sparse_xr_dot(country_matrix, area_grid * flux_x_basis)
     result = result if sparse else result.as_numpy()
-    return _with_flux_nonfinite_dataarray_metadata(result, flux)
+    return copy_flux_nonfinite_attrs(result, flux)

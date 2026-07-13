@@ -13,7 +13,7 @@ forward models that are not represented here.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -27,7 +27,7 @@ from openghg_inversions.basis import basis_functions_wrapper, make_basis_functio
 from openghg_inversions.basis._helpers import _legacy_multisource_h_if_needed, bc_sensitivity
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.filters import filtering
-from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_fp_all_fluxes
+from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
 from openghg_inversions.inversion_data.get_data import convert_to_list, data_processing_surface_notracer
 from openghg_inversions.inversion_data.serialise import load_merged_data
 from openghg_inversions.inversion_inputs import make_inv_inputs
@@ -362,12 +362,18 @@ def _prepare_merged_data(
     if not sites:
         raise ValueError("No sites remain after data gathering.")
 
-    sanitize_fp_all_fluxes(
-        fp_all,
-        context="merged inversion data preparation",
-        check=flux_non_finite_check,
-        warn=flux_non_finite_check == "count",
-    )
+    flux_entries = fp_all.get(".flux")
+    if isinstance(flux_entries, Mapping):
+        for source, flux_data in flux_entries.items():
+            data = getattr(flux_data, "data", None)
+            if isinstance(data, xr.Dataset) and "flux" in data:
+                data["flux"] = sanitize_flux_nonfinite(
+                    data["flux"],
+                    context="merged inversion data preparation",
+                    source=str(source),
+                    check=flux_non_finite_check,
+                    warn=flux_non_finite_check == "count",
+                )
 
     return _MergedInversionData(
         fp_all=fp_all,

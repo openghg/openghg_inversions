@@ -65,7 +65,26 @@ def get_flux_data(
     store: str | None = None,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> dict[str, FluxData]:
-    """Get flux data and add to dict."""
+    """Retrieve, normalize, and sanitize flux data for an inversion.
+
+    Args:
+        sources: OpenGHG flux source names.
+        species: Species associated with the requested flux.
+        domain: Model domain.
+        start_date: Inversion start date.
+        end_date: Inversion end date.
+        store: Optional OpenGHG object-store name.
+        flux_non_finite_check: ``"lazy"`` to apply zero-fill without counting,
+            or ``"count"`` to compute exact non-finite counts and warn when
+            replacements are made.
+
+    Returns:
+        Retrieved flux objects keyed by source. Each ``flux`` variable is cast
+        to ``float32`` and has the non-finite policy applied.
+
+    Raises:
+        SearchError: If no flux data can be found before the requested end date.
+    """
     flux_dict = {}
 
     for source in sources:

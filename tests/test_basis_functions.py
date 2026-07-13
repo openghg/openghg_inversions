@@ -45,6 +45,7 @@ from openghg_inversions.basis.operators import (
 from openghg_inversions.basis._helpers import apply_fp_basis_functions, fp_sensitivity
 from openghg_inversions.flux_sanitization import (
     FluxNonFiniteMetadata,
+    NONFINITE_CHECKED_COMPUTED,
     NONFINITE_POLICY_ZERO_FILL,
     sanitize_flux_nonfinite,
 )
@@ -214,6 +215,39 @@ def test_flux_from_fp_all_refreshes_source_stacked_metadata() -> None:
     assert metadata.policy == NONFINITE_POLICY_ZERO_FILL
     assert metadata.context == "retained basis flux from fp_all"
     assert metadata.source is None
+
+
+def test_flux_from_fp_all_preserves_single_source_count_metadata() -> None:
+    """A retained single source keeps an exact audit performed at ingestion."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    flux = fp_all[".flux"]["test-source"].data.flux.copy()
+    flux.values[0, 0, 0] = np.nan
+    sanitized = sanitize_flux_nonfinite(
+        flux,
+        context="OpenGHG flux retrieval",
+        source="test-source",
+        check="count",
+    )
+    fp_all[".flux"]["test-source"] = SimpleNamespace(data=xr.Dataset({"flux": sanitized}))
+
+    retained_flux = flux_from_fp_all(fp_all)
+    metadata = _flux_nonfinite_metadata(retained_flux)
+
+    assert metadata.checked == NONFINITE_CHECKED_COMPUTED
+    assert metadata.count == 1
+    assert metadata.context == "OpenGHG flux retrieval"
+
+
+def test_basis_constructor_does_not_resanitize_retained_flux() -> None:
+    """Constructing a basis from sanitized flux preserves its graph and history."""
+    fp_all = _simple_fp_all_for_basis_weights()
+    retained_flux = flux_from_fp_all(fp_all)
+    basis_flat = xr.ones_like(retained_flux.isel(time=0), dtype=int)
+
+    basis_functions = BasisFunctions.from_flat_basis(basis_flat=basis_flat, flux=retained_flux)
+
+    assert basis_functions.flux is retained_flux
+    assert basis_functions.flux.attrs["history"] == retained_flux.attrs["history"]
 
 
 def _basis_weights_with_nonfinite_cells() -> xr.DataArray:

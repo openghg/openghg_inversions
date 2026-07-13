@@ -2692,7 +2692,7 @@ def test_modern_flux_outputs_backfill_unsanitized_nonfinite_flux(
     basis_functions = _unsanitized_nonfinite_basis_functions_matching_country_grid(europe_country_file)
     inv_out = _modern_postprocessing_inv_out(europe_country_file, basis_functions=basis_functions)
 
-    with pytest.warns(NonFiniteFluxWarning, match="lazily replacing any non-finite values"):
+    with pytest.warns(NonFiniteFluxWarning, match="applying a lazy zero-fill guard"):
         outputs = make_flux_outputs(
             inv_out,
             include_scale_factors=False,
@@ -2745,7 +2745,7 @@ def test_modern_paris_flux_outputs_backfill_unsanitized_nonfinite_flux(europe_co
     basis_functions = _unsanitized_nonfinite_basis_functions_matching_country_grid(europe_country_file)
     inv_out = _modern_postprocessing_inv_out(europe_country_file, basis_functions=basis_functions)
 
-    with pytest.warns(NonFiniteFluxWarning, match="lazily replacing any non-finite values"):
+    with pytest.warns(NonFiniteFluxWarning, match="applying a lazy zero-fill guard"):
         flux_outputs = paris_flux_output(inv_out, country_file=europe_country_file)
 
     assert "flux_total_posterior" in flux_outputs

@@ -1,5 +1,6 @@
 import copy
 import logging
+from types import SimpleNamespace
 from unittest import mock
 
 import numpy as np
@@ -10,6 +11,8 @@ from openghg.retrieve import get_obs_surface
 from openghg.types import SearchError
 
 import openghg_inversions.inversion_data.get_data
+import openghg_inversions.inversion_data.getters as getters_module
+from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, NonFiniteFluxWarning
 from openghg_inversions.inversion_data.serialise import (
     fp_all_from_dataset,
     make_combined_scenario,
@@ -275,3 +278,33 @@ def test_flux_time_period_inference(end_date, time_period, tac_ch4_data_args):
 
     source = tac_ch4_data_args["emissions_name"][0]
     assert flux_data[source].data.flux.attrs["time_period"] == time_period
+
+
+def test_get_flux_data_count_mode_audits_original_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Retrieval count mode records exact NaN and infinity replacements once."""
+    flux = xr.DataArray(
+        np.array([[[1.0, np.nan], [np.inf, 2.0]]]),
+        dims=("time", "lat", "lon"),
+        coords={"time": [np.datetime64("2019-01-01")]},
+        name="flux",
+    )
+    flux_data = SimpleNamespace(data=xr.Dataset({"flux": flux}, attrs={"time_period": "1 year"}))
+    monkeypatch.setattr(getters_module, "adjust_flux_start_date", lambda *args: np.datetime64("2019-01-01"))
+    monkeypatch.setattr(getters_module, "get_flux", lambda **kwargs: flux_data)
+
+    with pytest.warns(NonFiniteFluxWarning, match="contains 2 non-finite values"):
+        result = get_flux_data(
+            sources=["test-source"],
+            species="co2",
+            domain="EUROPE",
+            start_date="2019-01-01",
+            end_date="2020-01-01",
+            flux_non_finite_check="count",
+        )
+
+    sanitized = result["test-source"].data["flux"]
+    metadata = FluxNonFiniteMetadata.from_attrs(sanitized.attrs)
+    assert metadata is not None
+    assert metadata.count == 2
+    assert metadata.total == 4
+    assert np.isfinite(sanitized.values).all()

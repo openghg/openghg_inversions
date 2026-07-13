@@ -7,7 +7,7 @@ import pandas as pd
 import xarray as xr
 
 from openghg_inversions.basis.basis_functions import BasisFunctions
-from openghg_inversions.flux_sanitization import FluxNonFiniteMetadata, copy_flux_nonfinite_attrs
+from openghg_inversions.flux_sanitization import copy_flux_nonfinite_attrs
 from openghg_inversions.postprocessing.countries import Countries, paris_regions_dict
 from openghg_inversions.postprocessing._basis_products import (
     add_basis_reconstruction_metadata,
@@ -342,8 +342,9 @@ def _set_multisector_flux_attrs(
 def _copy_first_flux_nonfinite_metadata(ds: xr.Dataset, sources: list[xr.Dataset]) -> xr.Dataset:
     """Copy the first available non-finite flux metadata from source datasets."""
     for source in sources:
-        if FluxNonFiniteMetadata.from_attrs(source.attrs) is not None:
-            return cast(xr.Dataset, copy_flux_nonfinite_attrs(ds, source))
+        result = copy_flux_nonfinite_attrs(ds, source)
+        if result is not ds:
+            return result
     return ds
 
 
@@ -376,8 +377,6 @@ def _multisector_flux_trace_parts(
         ],
         dim="sector",
     ).sum("sector")
-    total_flux_trace = _copy_first_flux_nonfinite_metadata(total_flux_trace, sector_flux_traces)
-
     return sectors, sector_flux_traces, total_flux_trace
 
 

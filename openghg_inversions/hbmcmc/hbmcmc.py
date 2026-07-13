@@ -664,7 +664,6 @@ def fixedbasisMCMC(
     paris_postprocessing: bool = False,
     paris_postprocessing_kwargs: dict | None = None,
     power: dict | float = 1.99,
-    flux_non_finite_check: Literal["lazy", "count"] = "lazy",
     return_basis_objects: bool = False,
     **kwargs,
 ) -> xr.Dataset | dict | InversionOutput:
@@ -794,17 +793,22 @@ def fixedbasisMCMC(
             - "mcmc_results": return the results of `fixedbasisMCMC` with no further processing
         paris_postprocessing_kwargs: Dict of kwargs to pass to `make_paris_outputs`.
         power: Power to raise pollution event size to if using pollution events from obs. Default is 1.99.
-        flux_non_finite_check: Non-finite flux handling mode. ``"lazy"``
-            applies zero-fill lazily and records attrs; ``"count"`` computes
-            count metadata once and warns if non-finite values are present.
         return_basis_objects: If True, include retained basis objects in ``output_format="mcmc_args"``
             debug output. Fixedbasis output modes that construct modern inversion output retain them
             internally regardless of this setting. They are not passed to ``inferpymc``.
+        flux_non_finite_check: Non-finite flux handling mode. ``"lazy"``
+            applies zero-fill lazily and records attrs; ``"count"`` computes
+            count metadata once and warns if non-finite values are present.
 
     Returns:
         xr.Dataset | dict: Results from the inversion in a Dataset if skip_post_processing==False,
             in a dictionary if True.
     """
+    flux_non_finite_check = cast(
+        Literal["lazy", "count"],
+        kwargs.pop("flux_non_finite_check", "lazy"),
+    )
+
     # Check if any observations are column based.
     if inlet is not None:
         is_column = any(i == "column" for i in inlet)

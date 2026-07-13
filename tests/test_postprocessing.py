@@ -204,6 +204,7 @@ def test_fixedbasisMCMC_uses_fixedbasis_preparation_contract_for_mcmc_args(monke
         outputname="contract",
         output_format="mcmc_args",
         return_basis_objects=True,
+        flux_non_finite_check="count",
         use_bc=False,
     )
 
@@ -211,6 +212,7 @@ def test_fixedbasisMCMC_uses_fixedbasis_preparation_contract_for_mcmc_args(monke
     assert captured_kwargs["split_by_sectors"] is False
     assert captured_kwargs["return_basis_objects"] is True
     assert captured_kwargs["merged_data_only"] is False
+    assert captured_kwargs["flux_non_finite_check"] == "count"
     assert isinstance(result, dict)
     assert result["inv_inputs"] is prepared.inv_inputs
     assert result["basis_objects"] is prepared.basis_objects
