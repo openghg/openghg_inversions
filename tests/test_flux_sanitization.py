@@ -1,5 +1,8 @@
-import numpy as np
 from pathlib import Path
+
+import dask.array as da
+from dask.callbacks import Callback
+import numpy as np
 import pytest
 import xarray as xr
 
@@ -54,6 +57,23 @@ def test_sanitize_flux_nonfinite_lazy_preserves_shape_dtype_and_attrs() -> None:
     assert metadata.context == "unit test"
     assert metadata.count is None
     assert "history" in sanitized.attrs
+
+
+def test_sanitize_flux_nonfinite_lazy_mask_is_dask_safe() -> None:
+    """Shape-preserving lazy masking builds no tasks and computes correctly."""
+    flux = _nonfinite_flux().chunk({"lat": 1, "lon": 2})
+    executed_tasks: list[object] = []
+
+    with Callback(pretask=lambda *args: executed_tasks.append(args[0])):
+        sanitized = sanitize_flux_nonfinite(flux, context="lazy dask test")
+
+    assert executed_tasks == []
+    assert isinstance(sanitized.data, da.Array)
+    assert sanitized.chunks == flux.chunks
+    np.testing.assert_allclose(
+        sanitized.compute().values,
+        np.array([[1.0, 0.0], [0.0, 0.0]], dtype=np.float32),
+    )
 
 
 def test_sanitize_flux_nonfinite_is_idempotent_when_attrs_are_trusted() -> None:
