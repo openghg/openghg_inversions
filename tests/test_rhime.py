@@ -28,6 +28,11 @@ from openghg_inversions.basis.basis_functions import (
     BasisFunctions,
 )
 from openghg_inversions.cli import main
+from openghg_inversions.flux_sanitization import (
+    FluxNonFiniteMetadata,
+    NONFINITE_POLICY_ZERO_FILL,
+    NonFiniteFluxWarning,
+)
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.basis.operators import BasisMeta, BasisOperator, BucketBasisOperator
@@ -71,6 +76,13 @@ def rhime_inv_inputs(mhd_and_tac_fp_data) -> xr.Dataset:
         min_error=0.0,
         start_date="2019-01-01",
     )
+
+
+def _flux_nonfinite_metadata(data: xr.DataArray | xr.Dataset) -> FluxNonFiniteMetadata:
+    """Return parsed non-finite flux metadata from an xarray object."""
+    metadata = FluxNonFiniteMetadata.from_attrs(data.attrs)
+    assert metadata is not None
+    return metadata
 
 
 @pytest.fixture
@@ -244,6 +256,20 @@ def _two_region_basis_functions_matching_country_grid(country_file: Path) -> Bas
         flux=flux,
         operator_kwargs={"state_dim": "region"},
         metadata={BASIS_ARTIFACT_SOURCE_ATTR: "two-region-test"},
+    )
+
+
+def _unsanitized_nonfinite_basis_functions_matching_country_grid(country_file: Path) -> BasisFunctions:
+    """Build an old-style basis artifact whose retained flux has non-finite values."""
+    basis_functions = _two_region_basis_functions_matching_country_grid(country_file)
+    flux = basis_functions.flux.copy()
+    flux.values[0, 0] = np.nan
+    flux.values[-1, -1] = np.inf
+    flux.attrs = {"units": "mol/m2/s"}
+    return type(basis_functions)(
+        operator=basis_functions.operator,
+        flux=flux,
+        metadata=dict(basis_functions.metadata),
     )
 
 
@@ -2562,6 +2588,7 @@ def test_multisector_flux_outputs_reconstruct_sector_and_total_flux() -> None:
     assert float(outputs["flux_total_posterior_mean"].item()) == 2.0
     assert float(outputs["flux_total_posterior_stdev"].item()) == 0.0
     assert float(outputs["flux_ff_posterior_stdev"].item()) > 0.0
+    assert _flux_nonfinite_metadata(outputs).policy == NONFINITE_POLICY_ZERO_FILL
 
 
 def test_multisector_flux_outputs_support_source_specific_basis(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2585,6 +2612,7 @@ def test_multisector_flux_outputs_support_source_specific_basis(monkeypatch: pyt
     assert "flux_total_posterior_mean" in outputs
     assert "flux_total_posterior_mode" in outputs
     assert float(outputs["flux_total_posterior_mean"].item()) == 2.0
+    assert _flux_nonfinite_metadata(outputs).policy == NONFINITE_POLICY_ZERO_FILL
 
 
 def test_modern_flux_outputs_use_retained_basis_operator(
@@ -2653,6 +2681,29 @@ def test_modern_operator_flux_and_country_outputs_run_on_nonuniform_basis(
     assert "country_posterior_mean" in modern_country
 
 
+@pytest.mark.parametrize("report_flux_on_inversion_grid", [False, True])
+def test_modern_flux_outputs_backfill_unsanitized_nonfinite_flux(
+    europe_country_file: Path,
+    report_flux_on_inversion_grid: bool,
+) -> None:
+    """Flux postprocessing zero-fills old retained flux artifacts with non-finite values."""
+    from openghg_inversions.postprocessing.make_outputs import make_flux_outputs
+
+    basis_functions = _unsanitized_nonfinite_basis_functions_matching_country_grid(europe_country_file)
+    inv_out = _modern_postprocessing_inv_out(europe_country_file, basis_functions=basis_functions)
+
+    with pytest.warns(NonFiniteFluxWarning, match="applying a lazy zero-fill guard"):
+        outputs = make_flux_outputs(
+            inv_out,
+            include_scale_factors=False,
+            report_flux_on_inversion_grid=report_flux_on_inversion_grid,
+        )
+
+    assert "flux_posterior_mean" in outputs
+    assert np.isfinite(outputs["flux_posterior_mean"].values).all()
+    assert _flux_nonfinite_metadata(outputs).policy == NONFINITE_POLICY_ZERO_FILL
+
+
 def test_modern_paris_flux_outputs_use_retained_basis_operator(
     monkeypatch: pytest.MonkeyPatch,
     europe_country_file: Path,
@@ -2685,6 +2736,21 @@ def test_modern_paris_flux_outputs_use_retained_basis_operator(
         assert flux_outputs[name].dtype == np.dtype("float32")
     assert operator.interpolate_calls
     assert operator.basis_matrix_accesses
+
+
+def test_modern_paris_flux_outputs_backfill_unsanitized_nonfinite_flux(europe_country_file: Path) -> None:
+    """PARIS flux output completes when old retained flux artifacts contain non-finite values."""
+    from openghg_inversions.postprocessing.make_paris_outputs import paris_flux_output
+
+    basis_functions = _unsanitized_nonfinite_basis_functions_matching_country_grid(europe_country_file)
+    inv_out = _modern_postprocessing_inv_out(europe_country_file, basis_functions=basis_functions)
+
+    with pytest.warns(NonFiniteFluxWarning, match="applying a lazy zero-fill guard"):
+        flux_outputs = paris_flux_output(inv_out, country_file=europe_country_file)
+
+    assert "flux_total_posterior" in flux_outputs
+    assert np.isfinite(flux_outputs["flux_total_posterior"].values).all()
+    assert _flux_nonfinite_metadata(flux_outputs).policy == NONFINITE_POLICY_ZERO_FILL
 
 
 def test_observation_inputs_for_outputs_stay_dataset_based() -> None:
@@ -2993,6 +3059,7 @@ def test_latest_paris_flux_output_processes_multisector_total(
         expected_country.data.todense(),
         rtol=1e-6,
     )
+    assert _flux_nonfinite_metadata(flux_outputs).policy == NONFINITE_POLICY_ZERO_FILL
 
     flux_outputs.to_netcdf(tmp_path / "latest_multisector_flux.nc")
 

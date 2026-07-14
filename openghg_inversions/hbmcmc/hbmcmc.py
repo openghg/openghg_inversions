@@ -796,11 +796,19 @@ def fixedbasisMCMC(
         return_basis_objects: If True, include retained basis objects in ``output_format="mcmc_args"``
             debug output. Fixedbasis output modes that construct modern inversion output retain them
             internally regardless of this setting. They are not passed to ``inferpymc``.
+        flux_non_finite_check: Non-finite flux handling mode. ``"lazy"``
+            applies zero-fill lazily and records attrs; ``"count"`` computes
+            count metadata once and warns if non-finite values are present.
 
     Returns:
         xr.Dataset | dict: Results from the inversion in a Dataset if skip_post_processing==False,
             in a dictionary if True.
     """
+    flux_non_finite_check = cast(
+        Literal["lazy", "count"],
+        kwargs.pop("flux_non_finite_check", "lazy"),
+    )
+
     # Check if any observations are column based.
     if inlet is not None:
         is_column = any(i == "column" for i in inlet)
@@ -875,6 +883,7 @@ def fixedbasisMCMC(
         min_error_options=min_error_options,
         return_basis_objects=return_basis_objects or needs_modern_inv_out,
         merged_data_only=output_format == "merged_data",
+        flux_non_finite_check=flux_non_finite_check,
     )
 
     if output_format == "merged_data":

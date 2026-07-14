@@ -13,7 +13,7 @@ forward models that are not represented here.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -27,6 +27,7 @@ from openghg_inversions.basis import basis_functions_wrapper, make_basis_functio
 from openghg_inversions.basis._helpers import _legacy_multisource_h_if_needed, bc_sensitivity
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.filters import filtering
+from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_flux_nonfinite
 from openghg_inversions.inversion_data.get_data import convert_to_list, data_processing_surface_notracer
 from openghg_inversions.inversion_data.serialise import load_merged_data
 from openghg_inversions.inversion_inputs import make_inv_inputs
@@ -275,6 +276,7 @@ def _prepare_merged_data(
     save_merged_data: bool = False,
     merged_data_dir: str | None = None,
     merged_data_name: str | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> _MergedInversionData:
     """Gather or reload merged data and align site metadata.
 
@@ -352,12 +354,26 @@ def _prepare_merged_data(
             merged_data_name=merged_data_name,
             merged_data_dir=merged_data_dir,
             output_name=output_name,
+            flux_non_finite_check=flux_non_finite_check,
         )
 
     if fp_all is None:
         raise RuntimeError("Data preparation did not create or load merged data.")
     if not sites:
         raise ValueError("No sites remain after data gathering.")
+
+    flux_entries = fp_all.get(".flux")
+    if isinstance(flux_entries, Mapping):
+        for source, flux_data in flux_entries.items():
+            data = getattr(flux_data, "data", None)
+            if isinstance(data, xr.Dataset) and "flux" in data:
+                data["flux"] = sanitize_flux_nonfinite(
+                    data["flux"],
+                    context="merged inversion data preparation",
+                    source=str(source),
+                    check=flux_non_finite_check,
+                    warn=flux_non_finite_check == "count",
+                )
 
     return _MergedInversionData(
         fp_all=fp_all,
@@ -523,6 +539,7 @@ def prepare_fixedbasis_inversion_data(
     min_error_options: dict | None = None,
     return_basis_objects: bool = False,
     merged_data_only: bool = False,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> FixedBasisPreparedData:
     """Prepare data for legacy fixedbasisMCMC and its output adapters."""
     merged = _prepare_merged_data(
@@ -557,6 +574,7 @@ def prepare_fixedbasis_inversion_data(
         save_merged_data=save_merged_data,
         merged_data_dir=merged_data_dir,
         merged_data_name=merged_data_name,
+        flux_non_finite_check=flux_non_finite_check,
     )
 
     if merged_data_only:
@@ -672,6 +690,7 @@ def prepare_rhime_inputs(
     basis_output_path: str | None = None,
     min_error: MinErrorConfig = 0.0,
     min_error_options: dict | None = None,
+    flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> RhimePreparedInputs:
     """Prepare modern RHIME inputs without exposing legacy fixedbasis containers.
 
@@ -691,6 +710,9 @@ def prepare_rhime_inputs(
         use_tracer: Unsupported placeholder for tracer inversions, where an
             additional species constrains the primary species through linked
             forward models.
+        flux_non_finite_check: Non-finite flux handling mode. ``"lazy"``
+            applies zero-fill lazily and records attrs; ``"count"`` computes
+            count metadata once and warns if non-finite values are present.
 
     Returns:
         Modern RHIME prepared inputs containing canonical ``inv_inputs`` and a
@@ -729,6 +751,7 @@ def prepare_rhime_inputs(
             save_merged_data=save_merged_data,
             merged_data_dir=merged_data_dir,
             merged_data_name=merged_data_name,
+            flux_non_finite_check=flux_non_finite_check,
         )
 
     with timed(
