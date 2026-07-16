@@ -36,21 +36,23 @@ This note distinguishes three statuses:
    SA runner before implementing joint MCMC. This is Phase 0 below.
 2. **Proposed:** retain SA as a useful optimizer and initializer. Do not describe
    its DoFS-like energy as a non-Gaussian posterior target.
-3. **Proposed:** make the first joint-inference demonstration fixed-region-count.
-   A paired split-and-merge proposal keeps the continuous dimension fixed and
-   avoids trans-dimensional bookkeeping while testing the important likelihood,
-   partition, and coefficient interactions.
-4. **Proposed:** investigate a tree-contrast product-space sampler next. It is a
+3. **Proposed:** make the first statistically exact demonstration fixed-count
+   and linear-Gaussian, with the continuous coefficients analytically collapsed.
+   This tests partition probabilities and DoFS-informed local proposals without
+   requiring NUTS adaptation or coefficient transport.
+4. **Proposed:** treat non-Gaussian fixed-count continuous sampling as a later
+   experiment, not as a prerequisite for the partition proof of concept.
+5. **Proposed:** investigate a tree-contrast product-space sampler next. It is a
    genuine fixed-dimensional alternative to RJMCMC when all potential node
    parameters and proper pseudo-priors are included in the augmented state.
-5. **Established:** storing a fixed indicator over all possible multiscale tiles
+6. **Established:** storing a fixed indicator over all possible multiscale tiles
    does not by itself avoid RJMCMC. If the mathematical continuous state is a
    packed vector whose dimension changes with the number of active tiles, the
    method is trans-dimensional regardless of how the indicator is stored.
-6. **Proposed:** use exact likelihood and prior terms for final partition
+7. **Proposed:** use exact likelihood and prior terms for final partition
    acceptance. DoFS, split-contrast, projected-flux, or Laplace scores may inform
    proposals, initialize chains, or provide a delayed-acceptance first stage.
-7. **Proposed:** represent land/ocean, country, inner/outer, and other hard
+8. **Proposed:** represent land/ocean, country, inner/outer, and other hard
    partitions as constraints and groups around the dyadic optimizer. Filtering
    of observations must occur before any data-dependent basis weights are built.
 
@@ -601,10 +603,82 @@ stationary distribution.
 
 ## Fixed-count joint inference
 
-**Proposed first joint sampler.** Keep \(K(P)=K\) constant by proposing a split
-in one part of the partition and a merge elsewhere. Store a continuous vector of
-fixed length \(K\), gather the active multiscale columns, and update the
-continuous parameters conditional on the current partition.
+Keep \(K(P)=K\) constant by proposing a split in one part of the partition and a
+merge elsewhere. There are two materially different fixed-count experiments.
+
+### Collapsed Gaussian fixed-count sampler
+
+**Proposed first exact partition sampler.** Suppose
+
+\[
+x_P\mid P \sim N(m_P,B_P),
+\qquad
+y\mid x_P,P \sim N(b+H_Px_P,R).
+\]
+
+For this benchmark, \(b\), \(m_P\), \(B_P\), and \(R\) are fixed model inputs.
+Estimating partition-specific nuisance parameters and then substituting their
+point estimates into the expression below would be an empirical-Bayes
+approximation, not the same collapsed posterior. Gaussian nuisance terms can be
+included by enlarging the Gaussian state and collapsing them jointly; unknown
+scales, truncations, and other non-Gaussian terms require separate treatment.
+
+Then
+
+\[
+y\mid P \sim N(b+H_Pm_P,S_P),
+\qquad
+S_P=R+H_PB_PH_P^T,
+\]
+
+with residual \(r_P=y-b-H_Pm_P\). The exact log marginal likelihood is
+
+\[
+\log p(y\mid P)
+=-\frac{1}{2}\left[
+n\log(2\pi)+\log|S_P|+r_P^TS_P^{-1}r_P
+\right].
+\]
+
+It should be evaluated by a Cholesky factor \(S_P=L_PL_P^T\), using
+\(2\sum_i\log(L_P)_{ii}\) for the log determinant and a triangular solve for
+the quadratic form. For the benchmark, require symmetric positive-definite
+\(R\) and proper \(B_P\), and report a diagnostic failure rather than silently
+adding arbitrary jitter.
+
+The fixed-count target is
+
+\[
+\pi_K(P)
+\propto
+p(y\mid P)p(P\mid K),
+\qquad P\in\mathcal P_K.
+\]
+
+This sampler has no continuous state during the partition update. It therefore
+needs neither NUTS nor a split/merge coefficient transform. Conditional Gaussian
+coefficient draws can be generated afterward when model-averaged coefficient or
+field summaries are required.
+
+The exact conditional moments are
+
+\[
+m_{P\mid y}
+=m_P+B_PH_P^TS_P^{-1}r_P,
+\qquad
+B_{P\mid y}
+=B_P-B_PH_P^TS_P^{-1}H_PB_P.
+\]
+
+This is the smallest statistically defensible route from the stochastic local
+search to posterior partition inference. It also supplies an exact oracle for
+testing later non-Gaussian methods.
+
+### Non-Gaussian fixed-count sampler
+
+For the intended lognormal model, retain a continuous vector of fixed length
+\(K\), gather the active multiscale columns, and update the continuous parameters
+conditional on the current partition.
 
 This is ordinary Metropolis-Hastings-within-Gibbs, not RJMCMC, because the
 continuous state remains in \(\mathbb{R}^K\). It still needs:
@@ -617,6 +691,288 @@ continuous state remains in \(\mathbb{R}^K\). It still needs:
 
 This experiment answers whether local partition moves and conditional NUTS mix
 adequately before variable dimension and pseudo-priors are introduced.
+
+### NUTS feasibility and deferred work
+
+Fixed dimension is sufficient for a valid conditional NUTS trajectory, but it
+does not give packed coefficient positions stable spatial meaning. PyMC's native
+compound sampler learns one step size and one metric per NUTS instance and
+chain. During warmup, all visited partitions feed those same adapters without a
+partition label. The resulting metric is either dominated by the partitions
+visited during warmup or is a generic compromise across their different
+conditional geometries.
+
+Once adaptation is frozen, a positive-definite but poorly matched metric affects
+efficiency rather than the invariant distribution. The practical risks are
+divergences, excessive tree depth, very small global step size, and failure to
+move after reaching a partition not represented during warmup.
+
+Any later conditional-NUTS experiment should therefore use:
+
+- canonical node IDs as region identity, with packed indices derived only for
+  computation;
+- exact agreement between coefficient packing and \(H_P\) column order;
+- prior-whitened log-coefficients;
+- identity or diagonal geometry before dense adaptation is considered;
+- structure moves active throughout discarded warmup;
+- several distinct valid initial partitions;
+- adaptation frozen for all retained draws;
+- diagnostics stratified by structural summaries rather than only by packed
+  coefficient index.
+
+PyMC has no built-in structure-indexed metric or step-size cache. A joint
+partition move that also transports affected coefficients requires a custom
+step or external orchestrator; the default compound assignment will not design
+that transport. External NUTS backends are not available when a separate
+discrete step is present, so this route would initially use native PyMC NUTS.
+
+This work is intentionally deferred. Elliptical slice sampling, pCN, or a simple
+fixed diagonal HMC kernel in prior-whitened coordinates are useful exact
+comparators for the lognormal model because they do not require one learned
+posterior metric to remain meaningful across partitions.
+
+## Hackathon proof of concept
+
+### Objective
+
+Demonstrate that the existing DoFS-guided stochastic local search (SLS) can
+become an exact posterior partition sampler under a transparent linear-Gaussian
+toy model.
+The DoFS calculation guides computation but does not replace the likelihood,
+coefficient prior, or partition prior.
+
+The minimum successful result is fixed \(K\). Variable \(K\) is a stretch goal
+that is unusually accessible in the collapsed Gaussian case because there is no
+variable-dimensional coefficient vector left in the sampled state.
+
+### Metropolized local search
+
+Let \(\mathcal N_K(P)\) be the unique fixed-count neighboring partitions
+obtained by one compatible split and one compatible merge. Enumerate neighbors
+as canonical partitions, not as move histories, because more than one history
+may otherwise produce the same proposed state.
+
+If the implementation first enumerates move paths rather than unique states,
+the proposal probability for \(P'\) is the sum over every path that produces
+\(P'\). Deduplicating states without summing their path probabilities would
+change the proposal law.
+
+For the linear-Gaussian model, define the full DoFS diagnostic
+
+\[
+D(P)=\operatorname{tr}\left[
+B_PH_P^TS_P^{-1}H_P
+\right].
+\]
+
+The neighbor score \(d(P,P')\) can be \(D(P')\), or equivalently
+\(D(P')-D(P)\) within a fixed current-state normalization. A prototype local
+split-contrast calculation may replace this only after it is shown to rank or
+reproduce the direct full-matrix change under the benchmark assumptions. Define
+the proposal with a uniform floor:
+
+\[
+q_\beta(P'\mid P)
+= \frac{\varepsilon}{|\mathcal N_K(P)|}
++ (1-\varepsilon)
+  \frac{\exp\{\beta d(P,P')\}}
+       {\sum_{Q\in\mathcal N_K(P)}\exp\{\beta d(P,Q)\}}.
+\]
+
+Use stable log-sum-exp evaluation. The floor protects irreducibility and avoids
+turning a heuristic zero into an impossible posterior transition. The exact MH
+acceptance probability is
+
+\[
+\alpha(P,P')
+= \min\left\{
+1,
+\frac{p(y\mid P')p(P'\mid K)q_\beta(P\mid P')}
+     {p(y\mid P )p(P \mid K)q_\beta(P'\mid P)}
+\right\}.
+\]
+
+This is a one-step Metropolized version of the local search. The DoFS score and
+proposal temperature \(\beta\) affect efficiency but not the target. Choose or
+tune \(\beta\) during pilot runs, then freeze it before retaining production
+draws. The reverse normalizer must be recomputed on \(\mathcal N_K(P')\).
+
+Include an explicit lazy/self-loop probability so aperiodicity does not depend
+on a rejection happening somewhere. For a fixed finite binary tree, valid
+remove-maximal-split/add-feasible-split exchanges should connect the fixed-count
+frontiers; verify this on every enumerated toy support because mixed split
+arities, hard masks, per-group count constraints, or score thresholds can break
+that argument.
+
+Do not use a long stochastic-search trajectory as one proposal in the first
+demo: its total forward and reverse path probabilities are harder to compute.
+The existing search remains valuable as an initializer. Exact delayed
+acceptance with a DoFS first stage is another future option, but it is not needed
+for the minimum demonstration.
+
+### Partition prior
+
+For the toy fixed-count target, begin with either:
+
+- a uniform prior over unique valid canonical \(K\)-leaf partitions; or
+- a stated depth-dependent tree prior conditioned on \(K\).
+
+A prior depending only on \(K\) is constant in the fixed-count experiment. A
+uniform distribution over split histories is not generally uniform over
+geometric partitions. The implementation must test that the fixed-count neighbor
+graph is connected for every demonstrated \(K\).
+
+The coefficient prior across partitions is a separate and consequential model
+choice. Using \(B_P=\tau_x^2I_K\) and a fixed prior mean is acceptable for the
+toy, but independent equal-variance region multipliers at every resolution do
+not generally induce the same fine-grid prior. Marginal likelihood, especially
+when \(K\) varies, can be dominated by this normalization. The demo must label
+the convention as a benchmark prior and compare its induced fine-grid mean and
+covariance across several partitions. A coherent later alternative is a
+tree-contrast prior or an explicitly induced fine-grid prior with documented
+mass/depth scaling.
+
+For the variable-count stretch goal, add an explicit \(p(K)\) or an unconditioned
+proper tree prior and use separate split and merge proposals with their complete
+candidate-count and direction probabilities. Because \(x_P\) remains collapsed,
+this is a discrete-space MH extension rather than RJMCMC.
+
+If fixed-count and variable-count kernels are mixed, use fixed mixture weights
+or include any state-dependent mixture normalization in the transition
+probability. State-dependent selection among individually invariant kernels is
+not automatically invariant.
+
+### Synthetic experiment
+
+Use a small canonical binary tree and completely synthetic arrays first:
+
+1. Construct smooth footprint-like rows over a small grid and a base flux field.
+2. Select a hidden valid partition and Gaussian region coefficients.
+3. Form \(H_P\) by summing fine-cell footprint-times-flux contributions within
+   each active region.
+4. Simulate \(y=H_Px_P+\epsilon\) with known \(R\).
+5. Use the same declared \(B_P\), \(R\), and aggregation convention in the DoFS
+   score and collapsed target.
+
+For any later OGI example, apply observation filtering before constructing the
+fine-grid or multiscale \(H\) and before computing DoFS proposal scores. A basis
+proposal influenced by observations that are later excluded is a different
+data-dependent procedure and can leak filtered information into the design.
+
+For a very small tree, enumerate all valid fixed-count partitions and normalize
+their exact posterior probabilities. This is the test oracle. The MCMC
+frequencies must agree with it within Monte Carlo error before scaling up.
+
+Construct the oracle independently of the sampler transition helpers. Build the
+full transition matrix and verify row normalization, pairwise detailed balance,
+\(\pi^TT=\pi^T\), graph connectivity, and agreement between its stationary
+distribution and the independently normalized target. Include unequal neighbor
+counts, duplicate move paths, extreme DoFS scores, nonzero prior means, and leaf
+ordering permutations in focused tests.
+
+Useful demo outputs are:
+
+- initial greedy partition, best local-search partition, posterior MAP
+  partition, and posterior cell-level split probabilities;
+- DoFS and collapsed log-posterior traces shown separately;
+- empirical versus exactly enumerated partition probabilities;
+- uniform-neighbor versus DoFS-informed proposal acceptance and partition ESS;
+- optional posterior \(K\) for the variable-count stretch goal.
+
+An OGI footprint/flux case is a follow-up only after the synthetic oracle works.
+The real-data route adds loading, filtering, covariance, and scientific-prior
+questions without strengthening the first correctness demonstration.
+
+### Initial states and poor local mixing
+
+The empirical observation that bucket, quadtree, or greedy construction gives a
+much better start than growth from one root is expected. Local split/merge moves
+must traverse a long, narrow graph from the root and can become trapped in a
+single high-score basin. An annealing schedule changes acceptance but not that
+graph.
+
+Use a portfolio of initial partitions drawn from the exact sampler's support:
+
+- one strong greedy or local-search result;
+- randomized greedy constructions;
+- random valid growth to \(K\);
+- compatible variants of existing basis algorithms.
+
+Starting from an optimized, even data-informed, state does not change the exact
+stationary distribution after convergence. Starting every chain from the same
+state does weaken multimodality diagnostics.
+
+If paired moves fail, add proposal kernels rather than tuning NUTS:
+
+- global split/merge pairing;
+- fixed-leaf-count subtree prune-and-regrow;
+- boundary relocation or tree rotations;
+- multiple-try selection with exact correction;
+- frozen independence proposals generated by randomized local searches;
+- tempering or SMC if separated modes remain.
+
+Moves do not need to be physically interpretable to be valid. Physical
+preferences belong in \(p(P\mid K)\); proposal moves belong in \(q\). A bit-level
+move is acceptable as a secondary kernel if it has a clear action on canonical
+partitions, computable reverse probability, and does not destroy connectivity.
+
+### Work that transfers to later methods
+
+| Work item | Product space | RJMCMC | Long-term value |
+| --- | --- | --- | --- |
+| Canonical tree, node IDs, masks, and exact-cover validation | direct reuse | direct reuse | high |
+| Multiscale \(H\), tile lookup, and label conversion | direct reuse | direct reuse | high |
+| Partition prior and canonical probability | direct reuse | direct reuse | high |
+| Neighbor enumeration and exact proposal probabilities | reuse for indicator moves | reuse for split/merge moves | high |
+| DoFS-informed proposal with uniform floor | reuse for structure proposals | reuse for structure proposals | high |
+| Greedy/local-search initialization portfolio | reuse for chain initialization | reuse for chain initialization | high |
+| Tiny exhaustive enumerator and detailed-balance tests | oracle for product-space marginals | oracle for RJ frequencies | high |
+| Collapsed Gaussian target | benchmark and possible conditional block | benchmark and proposal calibration | medium-high |
+| Fixed-count paired move | reuse directly at fixed count | split and merge pieces remain useful | medium-high |
+| Synthetic generator and posterior diagnostics | regression and calibration fixtures | regression and calibration fixtures | high |
+| Packed-coordinate NUTS adaptation experiments | little direct reuse | little direct reuse | low; defer |
+| Non-Gaussian coefficient transport | useful only for active-only product variants | direct RJ relevance | medium; defer until needed |
+
+This scope deliberately spends almost no time on the least transferable fixed-K
+work. A failed local partition kernel is still informative: the exact oracle can
+show whether failure is caused by poor traversal rather than an incorrect target,
+and the same state, prior, and proposal tests remain prerequisites for more
+elaborate methods.
+
+### One-day scope and stop conditions
+
+The minimum coherent implementation has four work packets:
+
+1. Extract only canonical tree/state and multiscale-column code needed by the
+   toy; defer Numba, masks, real data, and general public APIs.
+2. Implement the collapsed Gaussian target and exhaustive tiny-tree oracle.
+3. Implement uniform and DoFS-informed fixed-count MH over unique neighbors.
+4. Produce deterministic tests and the comparison plots listed above.
+
+On a canonical 4-by-4 toy tree, this is plausibly one focused implementation
+day: roughly one work block for state/enumeration, two for the Cholesky target
+and DoFS score, one for proposals/MH, two for transition-matrix tests, and one
+for the runnable comparison. This forecast assumes direct synthetic arrays and
+the minimal extraction of existing dyadic helpers. Real footprints, Numba,
+arbitrary split geometry, or PyMC integration would move it beyond the intended
+hackathon scope.
+
+The first three packets constitute the scientific result. Plot polish and
+variable \(K\) are secondary. If time remains, variable count requires a tree
+prior and split/merge proposal accounting, but not NUTS or RJ coefficient maps.
+
+Stop or narrow the demo if:
+
+- incremental and direct DoFS calculations disagree;
+- MCMC frequencies fail the exact tiny-tree oracle;
+- the fixed-count proposal graph is disconnected;
+- neighbor enumeration is already too expensive at the toy scale;
+- all chains remain in their initializer's basin under both uniform and informed
+  proposals.
+
+Even the last result is useful if exact enumeration confirms substantial mass in
+multiple basins: it gives direct evidence that local-move geometry, rather than
+NUTS tuning, is the next problem to solve.
 
 ## Product-space inference with pseudo-priors
 
@@ -880,17 +1236,35 @@ above. Do not add MCMC yet.
 The result is an optimizer and experimental basis generator, not posterior
 inference.
 
-### Phase 2: exact fixed-count joint sampler
+### Phase 2a: exact collapsed fixed-count sampler
 
-1. Implement paired split-and-merge proposals with exact proposal ratios.
+1. Implement paired split-and-merge neighbor enumeration with exact proposal
+   probabilities.
 2. Gather \(H_P\) into a fixed \(K\)-column operator.
-3. Update the fixed-length continuous state conditional on \(P\).
-4. Use the true non-Gaussian model target for partition acceptance.
-5. Use SA/contrast only for initialization or informed proposals.
-6. Validate against exhaustive enumeration on a tiny tree.
+3. Compute the exact collapsed Gaussian \(p(y\mid P)\).
+4. Compare uniform and DoFS-informed local proposals.
+5. Use stochastic local search only for initialization and proposal scores.
+6. Validate sampled partition frequencies against exhaustive enumeration.
 
-This phase establishes whether active-only conditional NUTS and local partition
-moves are viable without pseudo-prior complexity.
+This phase establishes the partition state, target, proposal, and local-mixing
+behavior without coefficient transport or NUTS. The hackathon proof of concept
+is a deliberately narrow slice through Phases 0, 1, and 2a rather than a
+requirement to finish all earlier productionization work first.
+
+### Phase 2b: non-Gaussian fixed-count sampler
+
+1. Add canonical node-keyed active coefficients and prior whitening.
+2. Implement a full-rank reversible proposal for coefficients affected by a
+   paired partition move.
+3. Compare elliptical slice sampling, pCN, fixed diagonal HMC, and conditional
+   native PyMC NUTS for the continuous block.
+4. Use the true non-Gaussian likelihood and prior for final acceptance.
+5. Diagnose partition switching before investing in structure-specific metrics
+   or additional NUTS adaptation machinery.
+
+This phase is optional evidence for the active-only non-Gaussian route. It is
+not a prerequisite for product-space or RJMCMC work if Phase 2a already exposes
+poor local partition traversal.
 
 ### Phase 3: tree-contrast product-space prototype
 
@@ -903,7 +1277,7 @@ moves are viable without pseudo-prior complexity.
 5. Compare full-vector, active-only, and cached-kernel execution strategies.
 6. Measure partition switching, active and inactive effective sample sizes,
    likelihood cost, and sensitivity to pseudo-prior calibration.
-7. Compare posterior results with exact enumeration and Phase 2 fixed-count
+7. Compare posterior results with exact enumeration and Phase 2a fixed-count
    results.
 
 ### Phase 4: scale-up and alternatives
