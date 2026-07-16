@@ -1,0 +1,1055 @@
+# Dyadic Basis Optimization and Partition Inference
+
+## Status and purpose
+
+This is a design and background note, not an implemented sampler contract. It
+collects the basis-partition work that is currently spread across repository
+branches, planning notes, IPython histories, and a private discussion transcript.
+Its first implementation milestone is to move the useful prototype code into
+this repository with synthetic tests. Subsequent work should refer to that public
+reference implementation rather than to private histories.
+
+The motivating problem is an atmospheric inverse model
+
+\[
+y = H_P x_P + \epsilon,
+\]
+
+where the basis partition \(P\) determines an aggregated emissions block of the
+sensitivity matrix, \(x_P\) contains the corresponding coefficients, and other
+blocks of the inverse problem can remain fixed. The immediate goal is a
+reproducible simulated-annealing (SA) demonstration over dyadic partitions. The
+longer-term goal is posterior inference over both the partition and continuous
+parameters, including non-Gaussian positive priors such as lognormal priors.
+
+This note distinguishes three statuses:
+
+- **Established**: a mathematical result, existing repository behavior, or
+  behavior observed directly in the prototype.
+- **Proposed**: the current implementation recommendation.
+- **Open**: a choice that needs a focused experiment or design decision.
+
+## Executive decisions
+
+1. **Proposed:** collect and test the dyadic data structures, multiscale
+   sensitivity construction, split/merge moves, Python and Numba bisection, and
+   SA runner before implementing joint MCMC. This is Phase 0 below.
+2. **Proposed:** retain SA as a useful optimizer and initializer. Do not describe
+   its DoFS-like energy as a non-Gaussian posterior target.
+3. **Proposed:** make the first joint-inference demonstration fixed-region-count.
+   A paired split-and-merge proposal keeps the continuous dimension fixed and
+   avoids trans-dimensional bookkeeping while testing the important likelihood,
+   partition, and coefficient interactions.
+4. **Proposed:** investigate a tree-contrast product-space sampler next. It is a
+   genuine fixed-dimensional alternative to RJMCMC when all potential node
+   parameters and proper pseudo-priors are included in the augmented state.
+5. **Established:** storing a fixed indicator over all possible multiscale tiles
+   does not by itself avoid RJMCMC. If the mathematical continuous state is a
+   packed vector whose dimension changes with the number of active tiles, the
+   method is trans-dimensional regardless of how the indicator is stored.
+6. **Proposed:** use exact likelihood and prior terms for final partition
+   acceptance. DoFS, split-contrast, projected-flux, or Laplace scores may inform
+   proposals, initialize chains, or provide a delayed-acceptance first stage.
+7. **Proposed:** represent land/ocean, country, inner/outer, and other hard
+   partitions as constraints and groups around the dyadic optimizer. Filtering
+   of observations must occur before any data-dependent basis weights are built.
+
+## Terminology and notation
+
+| Symbol | Meaning |
+| --- | --- |
+| \(y\) | retained observations after filtering |
+| \(G\) | fine-grid contribution/sensitivity matrix for the block being aggregated |
+| \(H_P\) | columns of \(G\) aggregated according to partition \(P\) |
+| \(x_P\) | active region coefficients for \(P\) |
+| \(P\) | a valid partition of the relevant grid cells |
+| \(A(P)\) | active leaf tiles under partition \(P\) |
+| \(R\) | observation-error covariance, or the appropriate effective covariance |
+| \(B_P\) | prior covariance in a linear-Gaussian approximation |
+| \(z\) | unconstrained continuous coordinates, often with \(x=\exp(z)\) |
+| \(q_P\) | proper pseudo-prior for parameters inactive under \(P\) |
+| \(K(P)\) | number of active regions or leaves |
+
+"Multiscale sensitivity" means pre-aggregated columns for candidate tiles. A
+"multiscale weight" is a score derived from those columns. These are not the
+same object and should not share an ambiguous array name.
+
+When hard classes are present, this note uses **superforest** for the collection
+of one predetermined dyadic tree per class or connected component. A valid
+global partition is a pruning of every tree in that superforest.
+
+## Current repository foundations
+
+The repository already contains most of the non-dynamic basis infrastructure:
+
+- `openghg_inversions/basis/algorithms/_constrained.py` defines class-constrained
+  partitioning, a `SplitStrategy`, a `PartitionStep`, axis-parallel splitting,
+  inertial splitting, physical grid geometry, and split-stopping policies.
+- `openghg_inversions/basis/algorithms/_contrast.py` defines observation-space
+  split-contrast scores and acceptance policies. This is directly related to the
+  tree-contrast formulation below.
+- `openghg_inversions/basis/layout.py` defines `BasisPartition`, `BasisLayout`,
+  and state metadata for grouped fixed layouts.
+- `openghg_inversions/basis/operators.py` and
+  `openghg_inversions/basis/basis_functions.py` construct and serialize fixed
+  basis operators.
+- `docs/plans/mask_constrained_basis.md` records land/sea, country, rectangle,
+  fixed-outer-region, layering, geometry, and partition-strategy decisions.
+- `docs/plans/state_vector_grouping.md` and
+  `docs/plans/fixed_outer_regions_grouping.md` describe grouped state-vector
+  metadata and inner/outer semantics.
+- `docs/plans/ogi_048_basis_algorithm_options.md` records real-footprint
+  comparisons and a held-out projected-flux compression score.
+
+These components produce and describe fixed layouts. They do not yet represent
+a partition as dynamic sampler state, retain all fine-grid contributions needed
+to rebuild \(H_P\), or sample over partitions.
+
+The existing RHIME model builders also assume a fixed state dimension. Dynamic
+partition inference should initially be a separate experimental subsystem and
+should not be inserted into the established basis wrappers or
+`fixedbasisMCMC` path.
+
+## Prototype source inventory
+
+The following paths are historical provenance, not intended dependencies. Phase
+0 must preserve the useful behavior in repository-owned code and tests.
+
+### Clean reference branch
+
+Branch `codex/basis-prototype-examples`, commit `b6ce565`, contains:
+
+- `openghg_inversions/basis/algorithms/_experimental_dyadic.py`;
+- `tests/test_experimental_dyadic_basis.py`.
+
+It provides three executable examples:
+
+1. a precomputed dyadic weight array plus threshold bisection;
+2. a small split/merge annealing scaffold;
+3. a Numba implementation of bisection.
+
+The tests pass and make this the best structural starting point. It should not
+be merged wholesale. Its energy is a toy objective, its fixed-temperature loop
+is a local stochastic search rather than a full annealing schedule, its merge
+enumeration is quadratic, and it does not account for asymmetric proposal
+probabilities. Most importantly, it pre-sums an already formed two-dimensional
+weight field, whereas the scientific prototype aggregates observation
+sensitivity before constructing its score.
+
+### Raw multiscale and SA history
+
+`~/Documents/basis_functions/basis_fn_ipython_hist_14aug.py` contains:
+
+- `make_multi`, which repeatedly sums adjacent values to build dyadic spatial
+  levels;
+- `make_weights`, which pads the spatial grid, constructs multiscale observation
+  sensitivities, and derives candidate-tile weights;
+- tile lookup, validity, split, merge, DoFS-change, and random-move helpers;
+- the dense active-tile indicator used by the original local search.
+
+The important scientific operation is
+
+\[
+h_v = \sum_{i \in v} G_{:,i},
+\]
+
+followed by a score based on \(h_v\), \(R\), and tile scale. It is generally
+incorrect to first construct fine-cell scalar weights \(w_i\) and then use
+\(\sum_{i\in v} w_i\), because
+
+\[
+\left(\sum_{i\in v} G_{:,i}\right)^2
+\ne
+\sum_{i\in v} G_{:,i}^2.
+\]
+
+The recorded call path appears to pass a transformed inverse-error array to
+`make_weights`; that convention must be resolved against the intended formula
+rather than copied mechanically.
+
+### Raw bisection, Numba, and optimization history
+
+`~/Documents/basis_functions/basis_fn_ipython_hist_17aug.py` contains repeated
+versions of:
+
+- `bucket_basis`, a non-recursive threshold/bisection partitioner;
+- `bucket_basis_opt`, a threshold search;
+- `simulated_annealing`, with later variants superseding earlier cells;
+- a Numba bisection kernel near the final useful block.
+
+The final Numba kernel has previously shown output parity with the Python
+version and a large warm-call speedup on a favorable synthetic full-split case.
+That is evidence that the kernel is worth preserving, not a general benchmark.
+The masked optimizer cells after it contain overwritten definitions and known
+errors and should not be copied as authoritative code.
+
+### Alternative partition steps
+
+`~/Documents/inversions/src/inversions/basis_algorithms.py` contains the cleaned
+prototype lineage for:
+
+- a small `NodeListPriorityQueue`;
+- greedy partitioning;
+- axis-parallel split steps;
+- inertial split steps.
+
+The repository version in `_constrained.py` is now the preferred implementation
+of those ideas. The raw file remains useful for provenance but does not need to
+be duplicated in the dyadic package.
+
+### Research notes and transcript
+
+- `~/Documents/basis_functions/basis_fns.org` contains contemporary notes about
+  the experiments.
+- `~/Dropbox/acrg_library/Bocquet_Bayesian design of control space for
+  optimal.pdf` is the local paper copy that inspired the prototype's DoFS and
+  multiscale-representation calculations. It is Bocquet, Wu, and Chevallier
+  (2011), Part I, cited publicly by DOI below. The most relevant locations are
+  Section 2.2.2 for the multiscale Jacobian, Section 4.1.2 and Equations (38)-(39)
+  for DFS by representation and tile, and Section 6 for tiling versus qtree
+  storage and optimization.
+- `~/Downloads/ChatGPT-Bayesian_model_selection.md` records the discussion that
+  motivated fixed indicators, product-space inference, collapsed alternatives,
+  and tree contrasts. This document supersedes that transcript as the project
+  design reference; claims from the transcript are not treated as references.
+
+## Phase 0: collect a public, tested reference implementation
+
+This phase is required before either the SA demo or MCMC work. Its purpose is to
+stop depending on private, stateful histories while retaining a traceable route
+back to their scientific intent.
+
+### Proposed location
+
+Use a provisional repository package such as
+`openghg_inversions/basis/experimental/dyadic/`, without re-exporting it from
+the public `openghg_inversions.basis` namespace. Add a runnable synthetic demo
+under `examples/basis/dyadic_sa_demo.py`. A package is preferable to putting all
+logic in an example because the reference implementation needs focused tests
+and will later supply the partition-inference subsystem.
+
+The package name and APIs are provisional. Each module should state the source
+prototype and the semantic differences from it.
+
+### Required code
+
+1. **Tree and tile representation**
+   - immutable tile bounds and level/depth;
+   - parent and child relations;
+   - canonical tile identifiers independent of dense-array offsets;
+   - valid active-leaf partitions and ancestry checks;
+   - conversion between a partition, a dense label map, and active tile IDs.
+2. **Multiscale sensitivity builder**
+   - under the RHIME multiplicative-coefficient convention, construct candidate
+     tile columns by summing fine-grid observation contributions first;
+   - support only the block selected for multiscale aggregation;
+   - preserve a clear observation, tile, and optional source layout;
+   - document memory cost and padding behavior;
+   - expose weight/score construction separately from column aggregation.
+3. **Reference partition algorithms**
+   - cleaned Python threshold bisection;
+   - parity-tested Numba bisection as an optional acceleration;
+   - adapters to current `PartitionStep` implementations where their partition
+     representation is compatible.
+4. **Local moves**
+   - enumerate valid split and merge candidates;
+   - apply and reverse a move without mutating the input state;
+   - return forward and reverse log proposal probabilities;
+   - support a paired split-and-merge fixed-count proposal;
+   - use the standard-library `heapq` pattern through a small priority-queue
+     wrapper where priority-based greedy initialization is needed.
+5. **SA runner**
+   - explicit initial state, objective, temperature schedule, and random seed;
+   - correct handling of asymmetric proposals when configured as a sampler;
+   - optimizer mode that clearly reports that it is not posterior inference;
+   - diagnostics for objective, accepted move, tile count, and best state;
+   - no unbounded history retention by default.
+6. **Synthetic tests and fixtures**
+   - no private data loading;
+   - tile-sum identities against direct fine-grid sums;
+   - valid-partition invariants after every move;
+   - split/merge round trips;
+   - Python/Numba parity;
+   - deterministic SA smoke test;
+   - exact forward-model equality between gathered multiscale columns and a
+     direct aggregation of the fine-grid matrix.
+
+### Provisional migration map
+
+The target names are deliberately descriptive rather than API commitments.
+
+| Historical source | Behavior to preserve | Proposed repository destination | Treatment |
+| --- | --- | --- | --- |
+| `hist_14aug.make_multi` and `np_sum_adj` | dyadic adjacent aggregation | `experimental/dyadic/multiscale.py` | re-express with explicit axes, shapes, and padding |
+| `hist_14aug.make_weights` | sum observation contributions, then score candidate tiles | `experimental/dyadic/multiscale.py` and `scores.py` | split aggregation from scoring; resolve the inverse-error convention |
+| `hist_14aug.make_dyadic_graph`, `get_shape`, `get_ell`, `get_slice` | node relationships and grid slices | `experimental/dyadic/tree.py` | replace implicit array offsets with stable node IDs |
+| `hist_14aug.get_tiles`, `get_basis_array`, `basis_valid` | active-tile decoding, labels, and validity | `experimental/dyadic/state.py` | make state immutable and validation explicit |
+| `hist_14aug.get_split`, `get_merge`, `get_move`, `apply_move` | local partition transitions | `experimental/dyadic/proposals.py` | return new state plus forward/reverse log proposal probabilities |
+| `hist_14aug.dof_change` | cheap local score delta | `experimental/dyadic/scores.py` | test against full recomputation and current `_contrast.py` |
+| `hist_17aug.bucket_basis` | non-recursive threshold bisection | `experimental/dyadic/bisection.py` | retain one cleaned reference definition |
+| final useful `hist_17aug` Numba kernel | accelerated bisection | `experimental/dyadic/_numba.py` | add only after Python semantics and parity tests are fixed |
+| `hist_17aug.simulated_annealing` and `ApplyStepCondition` | local stochastic partition search | `experimental/dyadic/annealing.py` | rewrite around explicit objective, schedule, RNG, and diagnostics |
+| branch `b6ce565` | clean data structures and smoke tests | all modules above | use as scaffold, not as the scientific score definition |
+| merged `_constrained.py` | greedy queue, mask constraints, axis and inertial steps | existing module | reuse or adapt; do not copy prototype implementations |
+| merged `_contrast.py` | mass-preserving observation contrast and design scores | existing module | reuse as the canonical split-contrast algebra |
+
+The first Phase 0 PR should include this table in a package-level provenance
+file with exact source line/commit references updated at extraction time. Once
+the extracted tests cover the intended behavior, later design documents and
+issues should link to repository symbols rather than the historical paths.
+
+### Explicit exclusions
+
+Do not initially copy:
+
+- notebook data-loading code or absolute paths;
+- earlier overwritten SA definitions;
+- the broken masked optimizer experiments;
+- the brute-force SciPy threshold wrapper unless a benchmark demonstrates a
+  need for it;
+- duplicate inertial or constrained split implementations;
+- an API coupled to `fp_all`;
+- a PyMC step method before the standalone transition kernel is validated.
+
+### Phase 0 deliverables
+
+- one importable experimental package in this repository;
+- one synthetic SA example with plots or tabular diagnostics;
+- focused tests runnable without atmospheric data;
+- a provenance table mapping each retained function to its prototype source;
+- a short benchmark separating compile time, warm Numba time, Python time,
+  memory use, and problem shape.
+
+## Dyadic representation and validity
+
+### Established prototype behavior
+
+The original state is a dense indicator over all candidate dyadic rectangles.
+An active indicator denotes a current basis tile. A valid partition covers each
+included grid cell exactly once and contains no active ancestor/descendant pair.
+Splits replace one active tile with children. Merges replace a complete sibling
+set with their parent.
+
+The indicator is useful for cheap lookup and serialization, but it should not be
+the sole source of validity. An immutable partition state with an active-leaf set
+makes invariants explicit, while a dense indicator can be derived for vectorized
+calculations or trace output.
+
+### Split orientation in two dimensions
+
+There is an important complication hidden by the word "tree". If every
+rectangle may split along either the x or y axis, there is not one unique binary
+tree unless the orientation is part of the node state. Different split orders
+can also create the same final rectangles, which can unintentionally multiply
+prior mass.
+
+The first demo should choose one of:
+
+- a canonical orientation rule, such as alternating axes or using a fixed tree;
+- an explicit node decision in `{stop, split_x, split_y}` with a canonical
+  representation of equivalent partitions;
+- a quadtree in which a split has a fixed set of children.
+
+**Proposed:** begin with a canonical binary tree for exact inference. Keep the
+more flexible x/y choice in optimizer experiments until duplicate
+representations and prior probabilities are defined.
+
+## Objectives and what they mean
+
+### Degrees of freedom for signal
+
+For a suitable linear-Gaussian model, the degrees of freedom for signal (DFS)
+can be written as the trace of the averaging-kernel operator. One equivalent
+form is
+
+\[
+\operatorname{DFS}(P)
+= \operatorname{tr}\left[
+B_P H_P^T (H_P B_P H_P^T + R)^{-1} H_P
+\right].
+\]
+
+This is a principled information criterion only when the likelihood, prior,
+covariance definitions, and aggregation-error treatment match its derivation.
+The prototype calculations were specifically inspired by Bocquet, Wu, and
+Chevallier's multiscale control-space design, rather than only by this generic
+fixed-representation formula.
+
+In their notation, Equation (38) rewrites the DFS score for an admissible
+representation \(\omega\) as
+
+\[
+J_\omega
+= \operatorname{tr}\left[
+\Pi_\omega B H^T(R+HBH^T)^{-1}H
+\right],
+\]
+
+where \(\Pi_\omega\) is the representation projector. The denominator uses the
+fine-grid innovation covariance because their scale-covariant aggregation-error
+construction makes \(R_\omega+H_\omega B_\omega H_\omega^T=R+HBH^T\). Equation
+(39) then associates a normalized DFS contribution with each candidate tile.
+This gives the precomputed tile scores used by the prototype a clear source.
+
+That formulation is not automatically identical to recomputing the generic DFS
+formula independently for every gathered \(H_P\). Equivalence depends on using
+the same prolongation, prior covariance, normalization, and aggregation-error
+model as the paper. Phase 0 must write down which of these assumptions the
+prototype retained before its incremental `dof_change` is treated as an exact
+score.
+
+The paper describes coarse-graining its multiscale Jacobian by averaging. For a
+RHIME multiplicative region coefficient, the corresponding observation column
+is normally the sum of fine-cell footprint-times-flux contributions in that
+region. These are compatible only after the coefficient and prolongation
+normalizations are specified. The public reference implementation should test
+the RHIME forward-model identity directly instead of copying either "sum" or
+"average" without that convention.
+
+The same paper is also the source for the multiscale memory tradeoff: for a
+dyadic 2D-plus-time tiling dictionary it reports up to eight times the finest-grid
+Jacobian storage, while its more restrictive quaternary-tree spatial dictionary
+requires at most eight-thirds. Those factors apply to that hierarchy and should
+not be presented as universal costs for every dyadic implementation.
+
+For lognormal or other non-Gaussian priors, a Gaussian DFS is not the true
+partition posterior and should not be presented as one. It remains useful as:
+
+- an SA objective for generating efficient initial partitions;
+- an informed split/merge proposal score;
+- a pseudo-prior calibration statistic;
+- a first-stage delayed-acceptance screen;
+- a diagnostic for comparison with earlier experiments.
+
+The original SA used a DoFS-like change plus a one-sided penalty when the region
+count exceeded a target. It generally operated as fixed-temperature local
+search unless the caller changed temperature. It did not include a Hastings
+ratio, so it was not an exact fixed-temperature MCMC kernel. Those properties
+are acceptable for an optimizer if they are explicit.
+
+### Split-contrast score
+
+The repository's `_contrast.py` expresses a candidate split as one new
+observation-space contrast. If parent \(G\) has children \(A\) and \(B\), with
+prior masses \(\mu_A\), \(\mu_B\), and \(\mu_G=\mu_A+\mu_B\), define
+
+\[
+f_\delta
+= \frac{\mu_B}{\mu_G}h_A
+- \frac{\mu_A}{\mu_G}h_B.
+\]
+
+For contrast prior scale \(\tau\) and design covariance \(S\),
+
+\[
+\lambda = \tau^2 f_\delta^T S^{-1} f_\delta,
+\qquad
+\operatorname{DFS}_{\mathrm{contrast}} = \frac{\lambda}{1+\lambda},
+\qquad
+\operatorname{EIG}_{\mathrm{contrast}} = \frac{1}{2}\log(1+\lambda).
+\]
+
+These formulas explain why a precomputed multiscale sensitivity array makes
+local split scoring cheap: the new direction can be constructed from a few
+child-column lookups. They describe the conditional scalar information in the
+new contrast. They equal the global change between the complete parent and
+split models only when \(S\) is the appropriate baseline marginal or conditional
+covariance and the added contrast is independent under the stated Gaussian
+prior. Calibration still requires a scientifically meaningful contrast prior
+and covariance. Without those conditions, the repository's `delta_dfs` and
+`delta_eig` fields are ranking proxies rather than global partition deltas.
+
+Under those Gaussian conditions, with an independent zero-mean contrast prior
+and residual \(r\) centered under the baseline model, the corresponding local
+log Bayes factor also contains a residual-dependent term:
+
+\[
+\log BF_{1,0}
+= -\frac{1}{2}\log(1+\lambda)
++ \frac{1}{2}
+  \frac{\tau^2(f_\delta^T S^{-1}r)^2}{1+\lambda}.
+\]
+
+The first term penalizes the additional contrast and the second rewards fit to
+the realized observations. This makes the conceptual difference precise:
+\(\lambda\), DFS, and expected information describe what the observing system
+could resolve under the specified Gaussian design, while a marginal likelihood
+or Bayes factor also responds to the observed data.
+
+### Predictive and compression scores
+
+The OGI-048 experiments compare held-out full-grid modeled observations with
+modeled observations obtained after replacing the prior flux by region means.
+This is a useful compression score. It does not use observed mole fractions and
+is not posterior predictive accuracy.
+
+Directly comparing prior modeled observations with all multiplicative basis
+coefficients set to one is uninformative: any complete basis preserves the sum
+exactly, so the error is zero. A region-mean projected-flux comparison avoids
+that identity and measures information lost by compression.
+
+Additional useful scores are:
+
+- temporal or site holdout projected-flux NRMSE for basis construction;
+- observed-\(y\) posterior predictive RMSE or log predictive density after an
+  inversion;
+- an outer holdout for comparing tuning rules or complexity priors;
+- positive-versus-negative flux preservation where signed fluxes matter.
+
+### When holdout data are required
+
+Bayesian inference over \(P\) and \(x_P\) may use all observations once through
+the joint posterior. This is not double use of the data, and holdout is not
+required for the posterior to be mathematically valid.
+
+Holdout or cross-fitting becomes important when:
+
+- observations are used to select a single partition \(P^*\), after which an
+  ordinary fixed-partition posterior is reported without accounting for
+  selection uncertainty;
+- a complexity penalty, proposal heuristic, or approximation is tuned and then
+  assessed on the same observations;
+- predictive performance is the evaluation target.
+
+If holdout data tune the partition and are also used to report performance, an
+outer holdout or nested scheme is needed. Conversely, DoFS and projected-prior
+scores can depend on the observation operator and error model without using the
+realized observed values \(y\); this differs from fitting the partition directly
+to residuals.
+
+## Joint Bayesian target
+
+The desired non-Gaussian target is
+
+\[
+p(P,x_P,\theta\mid y)
+\propto
+p(y\mid x_P,P,\theta)
+p(x_P\mid P,\theta)
+p(P\mid\theta)
+p(\theta),
+\]
+
+where \(\theta\) includes observation-error, prior, boundary-condition, and
+other model parameters. A prior on \(P\) replaces the SA region-count penalty.
+Possibilities include a leaf-count prior or a depth-dependent split prior.
+
+The inference method must preserve this target. Scores used only for proposal
+selection do not need to equal the target, provided their forward and reverse
+proposal probabilities appear in the Metropolis-Hastings ratio. Approximate
+targets require a correction step if exact posterior inference is claimed.
+
+### Inference choices are composable
+
+"Collapsed," "fixed-count," "product-space," and "RJMCMC" answer different
+questions. Collapsing describes whether continuous parameters are integrated
+out. Fixed or variable count describes the partition support. Product-space and
+RJMCMC describe how parameters across models are represented and moved.
+
+| Choice | Strength | Main limitation | Recommended use |
+| --- | --- | --- | --- |
+| SA optimization | cheap use of local scores; good initialization | not posterior inference | first scientific demo and chain initialization |
+| fixed-\(K\) sampling | fixed continuous dimension and controlled comparison | does not infer uncertainty in \(K\) | first exact joint sampler |
+| Gaussian collapsing | exact fast structure scores when conjugate | not directly available for lognormal coefficients | tiny oracle, Gaussian benchmark, or conditional block |
+| product space | globally fixed dimension and ordinary fixed-shape traces | memory, pseudo-priors, and inactive-variable geometry | preferred variable-\(K\) prototype after fixed-\(K\) |
+| RJMCMC | native packed variable-dimensional state | mappings, Jacobians, proposals, and ragged output | defer until product-space limitations are measured |
+
+For example, one can run collapsed fixed-\(K\) partition sampling, collapsed
+variable-\(K\) product-space sampling, or non-collapsed RJMCMC. The terms are
+not competing names for one decision.
+
+## Collapsed partition inference
+
+### Exact linear-Gaussian case
+
+With a Gaussian likelihood and conditionally Gaussian prior, coefficients can
+be integrated out:
+
+\[
+p(P\mid y) \propto p(y\mid P)p(P).
+\]
+
+This is not "basis selection only" in the sense of discarding coefficient
+uncertainty. The joint posterior factorizes as
+
+\[
+p(P,x_P\mid y)=p(P\mid y)p(x_P\mid P,y).
+\]
+
+One may sample \(P\) from its marginal posterior and then draw \(x_P\) from its
+conditional posterior. Model-averaged quantities follow from both draws.
+
+Using the same \(y\) in these two conditional operations is not double counting;
+it is ordinary probability factorization. The problematic workflow is selecting
+one \(P^*\) from \(y\), treating it as fixed, and reporting a conditional
+posterior as though no selection occurred.
+
+### Non-Gaussian case
+
+For lognormal \(x_P\), the coefficient integral is generally unavailable.
+Laplace integration can provide an approximate partition score, initializer, or
+proposal. It is not exact merely because the subsequent coefficient update uses
+NUTS. Exact alternatives include:
+
+- delayed acceptance with a final exact likelihood/prior correction;
+- an unbiased pseudo-marginal likelihood estimator;
+- direct joint sampling of partition and continuous state.
+
+The first two need separate numerical validation. In particular, plugging a
+biased approximate marginal likelihood directly into MH generally changes the
+stationary distribution.
+
+## Fixed-count joint inference
+
+**Proposed first joint sampler.** Keep \(K(P)=K\) constant by proposing a split
+in one part of the partition and a merge elsewhere. Store a continuous vector of
+fixed length \(K\), gather the active multiscale columns, and update the
+continuous parameters conditional on the current partition.
+
+This is ordinary Metropolis-Hastings-within-Gibbs, not RJMCMC, because the
+continuous state remains in \(\mathbb{R}^K\). It still needs:
+
+- a reversible pairing between old and proposed coefficients, or a proposal for
+  the proposed partition's coefficients;
+- forward and reverse probabilities for selecting split and merge candidates;
+- exact likelihood and prior evaluation;
+- tests that the gathered \(H_P\) is in the same order as \(x_P\).
+
+This experiment answers whether local partition moves and conditional NUTS mix
+adequately before variable dimension and pseudo-priors are introduced.
+
+## Product-space inference with pseudo-priors
+
+### Construction
+
+Let \(z\) contain coordinates for every potential tree node or split contrast.
+For partition \(P\), let \(z_A\) denote active coordinates and \(z_I\) inactive
+coordinates. A product-space target has the form
+
+\[
+\pi(P,z,\theta)
+\propto
+p(P)
+p(y\mid P,z_A,\theta)
+p(z_A\mid P,\theta)
+q_P(z_I\mid\theta)
+p(\theta),
+\]
+
+where \(q_P\) is a proper pseudo-prior that integrates to one. The full state
+dimension is fixed. The inactive variables are not multiplied by zero and then
+forgotten; their pseudo-prior densities are part of the augmented target and
+strongly affect switching efficiency.
+
+This is the Carlin-Chib product-space construction. Dellaportas, Forster, and
+Ntzoufras (2002), especially their discussion of Carlin-Chib and Metropolised
+Carlin-Chib methods, is an appropriate comparison reference. The foundational
+pseudo-prior reference is Carlin and Chib (1995).
+
+### Is it different from RJMCMC?
+
+Yes, if the complete parameter vector is fixed and proper pseudo-priors define
+the inactive coordinates. There is then no map between Euclidean spaces of
+different dimensions and no reversible-jump Jacobian.
+
+No, if the implementation keeps only a packed active vector whose length changes
+with \(K(P)\). A fixed-length indicator or multiscale matrix does not alter that
+mathematical dimension change. A sampler that constructs and destroys active
+coefficients must perform the equivalent of RJ dimension matching even if the
+bookkeeping is described differently.
+
+### Are there three Gibbs steps?
+
+There are naturally three update blocks, but they are not all necessarily Gibbs
+updates:
+
+1. **Inactive pseudo-prior refresh.** Draw selected inactive coordinates from
+   \(q_P\). This can be an exact Gibbs/direct draw when \(q_P\) is simple.
+2. **Partition update.** Propose a valid split/merge or tree decision and accept
+   it using the augmented target. This is normally MH. Original finite-model
+   Carlin-Chib can Gibbs-sample a model indicator when all model probabilities
+   can be enumerated; that is unrealistic for a large partition space.
+3. **Active continuous update.** Update active coefficients and shared
+   hyperparameters conditional on \(P\), potentially using NUTS.
+
+A practical order is inactive refresh, partition move, active update, so newly
+activated coordinates have plausible values. It is not necessary to refresh
+every inactive coordinate on every sweep. A proposal can draw only the
+coordinates required by a proposed split and include that draw in its proposal
+density.
+
+### PyMC feasibility
+
+PyMC supports compound step methods for fixed model graphs and can combine
+Metropolis-family updates with NUTS. That does not automatically provide
+dynamic active-only NUTS:
+
+- NUTS normally has a fixed compiled variable list and fixed point shapes;
+- applying NUTS to every potential tile may make the dimension and inactive
+  geometry unnecessarily large;
+- changing the set of NUTS variables with \(P\) likely requires custom sampler
+  orchestration, cached conditional kernels, or a fixed-count packed state;
+- changes in discrete structure can alter continuous geometry and make a single
+  globally adapted mass matrix inefficient. Once tuning is frozen, a mismatched
+  metric affects performance rather than invalidating a correctly
+  Metropolis-corrected NUTS kernel;
+- PyMC's external NUTS backends require a fully continuous model. An initial
+  mixed discrete/continuous product-space prototype would therefore need native
+  `nuts_sampler="pymc"` or framework-independent outer orchestration rather than
+  the NumPyro, BlackJAX, or nutpie routes.
+
+Therefore the initial fixed-count sampler should precede a PyMC product-space
+integration. The partition transition kernel should be framework-independent
+and tested before wrapping it as a PyMC step method.
+
+## Tree of split contrasts
+
+### Motivation
+
+A coefficient for every possible tile is redundant because parent and child
+coefficients describe overlapping common modes. A tree of contrasts instead
+stores:
+
+- one root/common coefficient;
+- one potential contrast \(\delta_v\) for each potential split;
+- partition decisions that activate an ancestry-closed subset of contrasts.
+
+This gives each split one explicit new degree of freedom and aligns directly
+with the cheap split-contrast calculation in `_contrast.py`.
+
+### Additive mass-preserving transform
+
+For parent \(G=A\cup B\), let \(\alpha_G\) be the parent coefficient and
+\(\delta=\alpha_A-\alpha_B\). Define
+
+\[
+\alpha_A
+= \alpha_G + \frac{\mu_B}{\mu_G}\delta,
+\qquad
+\alpha_B
+= \alpha_G - \frac{\mu_A}{\mu_G}\delta.
+\]
+
+Then
+
+\[
+\mu_A\alpha_A + \mu_B\alpha_B = \mu_G\alpha_G.
+\]
+
+The absolute Jacobian determinant of
+\((\alpha_G,\delta)\mapsto(\alpha_A,\alpha_B)\) is one. Swapping the child order
+changes the signs of \(\delta\) and \(f_\delta\), but does not change the scalar
+information scores.
+
+Activating \(\delta\) preserves the parent common mode while adding exactly the
+child contrast direction \(f_\delta\) defined earlier.
+
+### Positive/lognormal transform
+
+For positive multiplicative coefficients, write \(x=\exp(z)\) and let
+\(\delta=z_A-z_B\). An exact positive mass-preserving transform is
+
+\[
+x_B
+= \frac{\mu_G x_G}{\mu_A\exp(\delta)+\mu_B},
+\qquad
+x_A = \exp(\delta)x_B.
+\]
+
+This preserves \(\mu_Ax_A+\mu_Bx_B=\mu_Gx_G\) and gives a useful positive split
+coordinate. It does not preserve independent lognormal priors on the child
+coefficients: Gaussian root and contrast coordinates generally induce
+correlated, non-lognormal child marginals because of the normalizing
+denominator. The prior must be defined and evaluated in one parameterization
+rather than inferred from positivity alone.
+
+In a product-space parameterization all potential \(\delta_v\) already exist,
+so changing activation changes only the deterministic mapping to leaf
+coefficients. There is no dimension-changing Jacobian. In a packed
+trans-dimensional implementation, the same transform can serve as an RJMCMC
+dimension-matching map. For the map
+\((x_G,\delta)\mapsto(x_A,x_B)\), its absolute Jacobian
+\(x_Ax_B/x_G\) must be included.
+
+### Cheap DoFS and local Gaussian proposals
+
+Under a local Gaussian approximation, the new contrast has scalar information
+\(\lambda\) as defined above. Given residual \(r\), a Gaussian prior variance
+\(\tau^2\), and observation covariance \(R\), a local conditional approximation
+is
+
+\[
+V_\delta
+= \left(\tau^{-2}+f_\delta^T R^{-1}f_\delta\right)^{-1},
+\qquad
+m_\delta
+= V_\delta f_\delta^T R^{-1}r.
+\]
+
+This can initialize or propose a newly active contrast and can guide its
+pseudo-prior. For a non-Gaussian positive model it remains a local surrogate;
+the true non-Gaussian likelihood and prior must determine final acceptance.
+
+### Open contrast questions
+
+- What mass \(\mu\) should be preserved: area, prior flux, absolute flux, or a
+  group-specific quantity?
+- Should the prior be specified directly on tree contrasts or induced from a
+  desired prior on leaf coefficients?
+- How should contrast scales vary by depth, tile area, land/ocean class, or
+  inner/outer group?
+- Does the positive transform give adequate NUTS geometry near very small
+  coefficients?
+- How should x/y split orientation be encoded without duplicate partition
+  representations?
+
+## Masks, layers, and grouped state vectors
+
+Land/ocean, country, positive/negative flux, user rectangles, and inner/outer
+regions are not merely plotting metadata. They can define hard boundaries,
+different weight fields, different priors, and different posterior summaries.
+
+The current fixed-layout design should remain the external representation:
+
+- `BasisLayout` identifies partitions and groups;
+- xarray coordinates identify group, partition, and local region in retained
+  artifacts;
+- fixed InTEM outer regions remain a familiar compatibility option;
+- inner and outer generated regions can use different weights.
+
+Dynamic inference needs an additional immutable `PartitionState` with active
+tile IDs, decisions, and group-local topology. It should not mutate
+`BasisLayout` on every MCMC transition. A sampled or selected partition can be
+converted to `BasisLayout` for output, plotting, or a subsequent fixed-basis
+inversion.
+
+**Proposed initial scope:** run one independent dyadic tree per hard class or
+group. Allocate or infer complexity within each group and combine their active
+columns in a stable group order. This avoids tiles crossing land/ocean or
+inner/outer boundaries. Layer intersections and disconnected components should
+be resolved before tree construction and flagged when they produce tiny or
+pathological parts.
+
+## Filtering and data flow
+
+The current compatibility weight in `_functions.py` multiplies temporal mean
+flux by the measurement-weighted mean footprint. Absolute flux is optional and
+off by default. A scientifically common alternative is to form time-resolved
+footprint-times-flux contributions, often using absolute flux, and then average
+over retained sites and times. These definitions are not generally equivalent
+and should be named separately. Under either data-dependent definition, if
+observations are filtered after the calculation, rejected observations influence
+the basis even though they do not enter the inversion.
+
+**Required ordering:** load data, apply all observation filters, construct the
+fine-grid contribution matrix from retained observations, then build multiscale
+columns and weights. Any train/holdout split must occur before basis fitting for
+the corresponding evaluation.
+
+The prepared experimental input should contain at least:
+
+- retained \(y\), uncertainty/covariance inputs, and observation coordinates;
+- the unreduced fine-grid contribution block \(G\);
+- fixed design blocks such as boundary conditions;
+- grid coordinates, cell area, and hard region classes;
+- source/group metadata;
+- a record of filtering and any train/holdout membership.
+
+This is intentionally lower level than `fp_all`. Weight builders can adapt
+footprints and flux into \(G\), but the partition algorithms should consume
+NumPy arrays and explicit metadata.
+
+## Proposed implementation sequence
+
+### Phase 0: public code consolidation
+
+Implement the package, demo, tests, provenance table, and benchmark described
+above. Do not add MCMC yet.
+
+### Phase 1: scientifically faithful SA demo
+
+1. Build multiscale observation columns with the raw prototype's sum-then-score
+   semantics.
+2. Initialize with the current greedy or bisection partitioner.
+3. Offer explicit objective components: Gaussian DFS/contrast proxy, projected
+   flux compression, and complexity prior/penalty.
+4. Add a real cooling schedule and best-state tracking.
+5. Compare against direct recomputation on small problems.
+6. Demonstrate optional hard land/ocean and inner/outer classes.
+
+The result is an optimizer and experimental basis generator, not posterior
+inference.
+
+### Phase 2: exact fixed-count joint sampler
+
+1. Implement paired split-and-merge proposals with exact proposal ratios.
+2. Gather \(H_P\) into a fixed \(K\)-column operator.
+3. Update the fixed-length continuous state conditional on \(P\).
+4. Use the true non-Gaussian model target for partition acceptance.
+5. Use SA/contrast only for initialization or informed proposals.
+6. Validate against exhaustive enumeration on a tiny tree.
+
+This phase establishes whether active-only conditional NUTS and local partition
+moves are viable without pseudo-prior complexity.
+
+### Phase 3: tree-contrast product-space prototype
+
+1. Build a tiny variable-count enumerator that provides exact partition
+   probabilities for the chosen tree and priors.
+2. Choose a canonical tree and define the full contrast coordinate set.
+3. Specify proper pseudo-priors, initially from local Gaussian approximations.
+4. Implement inactive refresh, partition MH, and active continuous update as
+   separate framework-independent blocks.
+5. Compare full-vector, active-only, and cached-kernel execution strategies.
+6. Measure partition switching, active and inactive effective sample sizes,
+   likelihood cost, and sensitivity to pseudo-prior calibration.
+7. Compare posterior results with exact enumeration and Phase 2 fixed-count
+   results.
+
+### Phase 4: scale-up and alternatives
+
+Only after Phases 2 and 3:
+
+- scale variable-count inference to realistic trees and assess alternative
+  partition and leaf-count priors;
+- compare product-space with a direct RJMCMC split/merge implementation;
+- evaluate delayed acceptance using DFS, contrast, or Laplace surrogates;
+- investigate SMC or parallel tempering for multimodal partitions;
+- consider pseudo-marginal methods only if an unbiased useful estimator exists;
+- support multiple independently optimized groups and time-varying partitions.
+
+## Validation requirements
+
+### Deterministic and algebraic tests
+
+- every valid partition covers each included cell exactly once;
+- no active node has an active ancestor or descendant;
+- every split has a valid inverse merge;
+- proposal probabilities normalize on tiny states;
+- additive and positive contrast transforms preserve their stated mass;
+- gathered multiscale columns equal direct fine-grid aggregation;
+- Python and Numba kernels agree over random small arrays;
+- label and grouped-layout conversion preserves stable ordering.
+
+### MCMC correctness tests
+
+- detailed balance for every transition on a tiny enumerated state space;
+- sampled partition frequencies agree with exact probabilities in a conjugate
+  toy model;
+- fixed-partition continuous results agree with the ordinary model;
+- product-space marginal probabilities are invariant to normalized
+  pseudo-priors, within Monte Carlo error;
+- simulation-based calibration or posterior coverage for a small generated
+  problem;
+- checkpoint/restart reproduces the transition stream from saved RNG state.
+
+### Scientific evaluation
+
+- train/holdout projected-flux compression from OGI-048;
+- posterior predictive performance on an outer holdout;
+- DFS or expected-information diagnostics under their calibrated Gaussian
+  assumptions;
+- sensitivity to complexity priors, pseudo-priors, tree orientation, and group
+  boundaries;
+- land/ocean and inner/outer posterior summaries using group metadata;
+- runtime and memory scaling in observations, fine cells, possible tiles, and
+  active tiles.
+
+## Risks and exactness boundaries
+
+- A toy pre-summed weight tree is not a faithful replacement for multiscale
+  observation columns.
+- A fixed indicator does not make a packed variable-length coefficient state
+  fixed-dimensional.
+- An uncorrected Laplace, DoFS, or projected-flux acceptance rule targets an
+  approximation, not the desired posterior.
+- Poor pseudo-priors can make a formally correct product-space chain practically
+  immobile.
+- Applying NUTS to all potential inactive coordinates may remove the intended
+  computational advantage.
+- Reusing one adapted NUTS geometry across substantially different partitions
+  may mix poorly even when the compound chain is valid.
+- Allowing arbitrary x/y split histories can assign unintended multiplicity to
+  equivalent partitions.
+- Dynamic ragged region coordinates do not fit ordinary xarray traces. Store
+  fixed node decisions/contrasts or cell-level reconstructed fields during
+  sampling, and convert selected partitions to fixed layouts afterward.
+- Data filtering after basis construction leaks excluded observations into the
+  basis design.
+
+## Open design questions
+
+1. Is the first exact demonstration fixed \(K\) only, or should a tiny conjugate
+   variable-\(K\) enumerator be built alongside it as a test oracle?
+2. Which canonical dyadic tree best matches the useful partitions: alternating
+   binary axes, geometry-chosen axes recorded in the state, or quadtree splits?
+3. What is the intended formula and convention for the prototype's inverse-error
+   input to `make_weights`?
+4. Should multiscale columns be stored densely, chunked by observation/tile, or
+   generated through prefix sums and an operator interface?
+5. Which variables define \(\mu\) and the contrast prior at each split?
+6. Can group-specific trees share a total complexity prior while retaining
+   independent weights and priors?
+7. Is a custom PyMC step method sufficient, or should partition inference use a
+   framework-independent outer sampler that calls cached PyMC conditional
+   kernels?
+8. Which pseudo-prior family gives acceptable switching for lognormal contrasts?
+9. Should the first delayed-acceptance experiment use the existing contrast
+   score, a Laplace approximation, or both?
+10. What trace representation is needed for posterior maps, group summaries,
+    and model averaging without a ragged `region` dimension?
+
+## References
+
+### Statistical and inverse-problem references
+
+- Andrieu, C. and Roberts, G. O. (2009). "The pseudo-marginal approach for
+  efficient Monte Carlo computations." *The Annals of Statistics*, 37(2),
+  697-725. <https://doi.org/10.1214/07-AOS574>.
+- Bocquet, M., Wu, L., and Chevallier, F. (2011). "Bayesian design of control
+  space for optimal assimilation of observations. Part I: Consistent multiscale
+  formalism." *Quarterly Journal of the Royal Meteorological Society*, 137(658),
+  1340-1356. <https://doi.org/10.1002/qj.837>.
+- Carlin, B. P. and Chib, S. (1995). "Bayesian Model Choice Via Markov Chain
+  Monte Carlo Methods." *Journal of the Royal Statistical Society: Series B*,
+  57(3), 473-484. <https://doi.org/10.1111/j.2517-6161.1995.tb02042.x>.
+- Christen, J. A. and Fox, C. (2005). "Markov chain Monte Carlo Using an
+  Approximation." *Journal of Computational and Graphical Statistics*, 14(4),
+  795-810. <https://doi.org/10.1198/106186005X76983>.
+- Dellaportas, P., Forster, J. J., and Ntzoufras, I. (2002). "On Bayesian model
+  and variable selection using MCMC." *Statistics and Computing*, 12(1), 27-36.
+  <https://doi.org/10.1023/A:1013164120801>.
+- Godsill, S. J. (2001). "On the Relationship Between Markov Chain Monte Carlo
+  Methods for Model Uncertainty." *Journal of Computational and Graphical
+  Statistics*, 10(2), 230-248.
+  <https://doi.org/10.1198/10618600152627924>.
+- Green, P. J. (1995). "Reversible jump Markov chain Monte Carlo computation and
+  Bayesian model determination." *Biometrika*, 82(4), 711-732.
+  <https://doi.org/10.1093/biomet/82.4.711>.
+
+The Dellaportas citation is sometimes reported incorrectly as volume 16, pages
+57-68. The verified 2002 article is volume 12(1), pages 27-36. Volume 16,
+pages 57-68 corresponds to a different Dellaportas paper.
+
+### Software reference
+
+- PyMC, "Compound Steps in Sampling." The example documents fixed-graph
+  Metropolis-within-Gibbs combinations and cautions about changing continuous
+  geometry when discrete and NUTS updates are mixed:
+  <https://www.pymc.io/projects/examples/en/stable/howto/sampling_compound_step.html>.
+- PyMC, `pymc.sample` API. This records the current native and external NUTS
+  sampler options and the continuous-model restriction on external samplers:
+  <https://www.pymc.io/projects/docs/en/stable/api/generated/pymc.sample.html>.
+
+### Repository reference points
+
+- `docs/plans/mask_constrained_basis.md`
+- `docs/plans/state_vector_grouping.md`
+- `docs/plans/fixed_outer_regions_grouping.md`
+- `docs/plans/ogi_048_basis_algorithm_options.md`
+- `openghg_inversions/basis/algorithms/_constrained.py`
+- `openghg_inversions/basis/algorithms/_contrast.py`
+- `openghg_inversions/basis/layout.py`
+- `openghg_inversions/basis/operators.py`
+- `openghg_inversions/basis/basis_functions.py`
+- branch `codex/basis-prototype-examples`, commit `b6ce565`
