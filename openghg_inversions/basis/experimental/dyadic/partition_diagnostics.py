@@ -100,6 +100,28 @@ class GaussianPartitionDiagnostics:
         return build_partition_diagnostics(model, labels)
 
 
+@dataclass(frozen=True, slots=True)
+class GaussianPartitionObjectives:
+    """Named Gaussian representation criteria for one labelled partition.
+
+    Attributes:
+        dfs: Degrees of freedom for signal from Bocquet et al. Equation 38.
+        fisher: Base-error Fisher trace using ``diag(r_diag)``.
+        aggregation_aware_fisher: Fisher trace using the partition's effective
+            observation covariance, including aggregation error.
+        equation45: Squared prior-precision norm of the retained posterior-mean
+            increment. This convention omits the factor ``1/2``.
+        bayesian_information_gain: KL divergence from the projected posterior
+            to its projected prior, including the conventional factor ``1/2``.
+    """
+
+    dfs: float
+    fisher: float
+    aggregation_aware_fisher: float
+    equation45: float
+    bayesian_information_gain: float
+
+
 def build_partition_diagnostics(
     model: RHIMEGaussianMultiscale,
     labels: npt.ArrayLike,
@@ -191,19 +213,12 @@ def build_partition_diagnostics(
         error_type=ArithmeticError,
     )
 
-    innovation = _finite_float_array(model.innovation_covariance, name="model.innovation_covariance")
-    if innovation.shape != (observations, observations):
-        raise ValueError("model.innovation_covariance shape must match its observation count.")
+    innovation, innovation_cholesky = _validated_model_innovation(model, observations=observations)
     reconstructed_innovation = effective_observation_covariance + reduced_signal_covariance
     closure_scale = max(1.0, float(np.max(np.abs(innovation))))
     if not np.allclose(reconstructed_innovation, innovation, rtol=1e-10, atol=1e-12 * closure_scale):
         raise ArithmeticError("partition covariances do not close to the model innovation covariance.")
 
-    innovation_cholesky = _positive_definite_cholesky(
-        innovation,
-        name="model innovation covariance",
-        error_type=ArithmeticError,
-    )
     solved_signal = _cholesky_solve(innovation_cholesky, reduced_signal_covariance)
     dfs = float(np.trace(solved_signal))
     dfs_tolerance = 1e-10 * max(1.0, abs(model.full_grid_dfs))
@@ -235,6 +250,101 @@ def build_partition_diagnostics(
         effective_observation_covariance=effective_observation_covariance,
         dfs=dfs,
     )
+
+
+def gaussian_partition_objectives(
+    model: RHIMEGaussianMultiscale,
+    partition: GaussianPartitionDiagnostics,
+    innovations: npt.ArrayLike,
+) -> GaussianPartitionObjectives:
+    """Evaluate DFS, Fisher, Equation 45, and Bayesian KL consistently.
+
+    The innovation vector must be centered on the native prior prediction. The
+    projected posterior is the exact Gaussian restriction induced by the source
+    model, so all criteria use the same partition-invariant innovation
+    covariance. The Bayesian information gain is evaluated eigenwise from the
+    prior-whitened averaging kernel to retain weak covariance information and
+    avoid determinant cancellation between differently scaled regional
+    variances.
+
+    Args:
+        model: Source independent-relative-error Gaussian model.
+        partition: Labelled partition diagnostics constructed from ``model``.
+        innovations: Finite centered observation vector.
+
+    Returns:
+        Immutable named objective values with explicit normalization
+        conventions.
+
+    Raises:
+        TypeError: If ``model`` or ``partition`` has the wrong type.
+        ValueError: If arrays, dimensions, or the innovation vector are invalid
+            or if the partition does not match the model.
+        ArithmeticError: If an objective is non-finite or materially negative,
+            or an averaging-kernel mode is incompatible with a positive-
+            definite projected posterior covariance.
+    """
+    if not isinstance(model, RHIMEGaussianMultiscale):
+        raise TypeError("model must be an RHIMEGaussianMultiscale.")
+    if not isinstance(partition, GaussianPartitionDiagnostics):
+        raise TypeError("partition must be GaussianPartitionDiagnostics.")
+
+    regional_design, prior_variances, effective_covariance = _validated_partition_arrays(partition)
+    _, _, r_diag = _validated_model_arrays(model)
+    residual = _finite_float_array(innovations, name="innovations")
+    observations = regional_design.shape[0]
+    expected_shape = (observations, observations)
+    if residual.ndim != 1 or residual.shape[0] != observations:
+        raise ValueError("innovations must contain one value per observation.")
+    innovation, innovation_cholesky = _validated_model_innovation(model, observations=observations)
+    if effective_covariance.shape != expected_shape:
+        raise ValueError("model and partition covariance shapes must match their observation count.")
+    if r_diag.shape[0] != observations:
+        raise ValueError("model and partition observation counts must match.")
+    if not np.allclose(
+        effective_covariance + partition.reduced_signal_covariance,
+        innovation,
+        rtol=1e-10,
+        atol=1e-12 * max(1.0, float(np.max(np.abs(innovation)))),
+    ):
+        raise ValueError("partition covariance terms are incompatible with the source model.")
+
+    signal_covariance = partition.reduced_signal_covariance
+    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+        fisher = float(np.sum(np.diag(signal_covariance) / r_diag))
+    effective_cholesky = _positive_definite_cholesky(
+        effective_covariance,
+        name="partition effective observation covariance",
+        error_type=ArithmeticError,
+    )
+    aggregation_aware_fisher = float(np.trace(_cholesky_solve(effective_cholesky, signal_covariance)))
+
+    solved_residual = _cholesky_solve(innovation_cholesky, residual)
+    projected_linear_update = regional_design.T @ solved_residual
+    equation45 = float(np.sum(prior_variances * np.square(projected_linear_update)))
+
+    if prior_variances.size:
+        whitened_design = regional_design * np.sqrt(prior_variances)
+        solved_design = _cholesky_solve(innovation_cholesky, whitened_design)
+        averaging_kernel = _symmetrize(whitened_design.T @ solved_design)
+        covariance_information_gain = _covariance_kl_from_averaging_kernel(averaging_kernel)
+        bayesian_information_gain = covariance_information_gain + 0.5 * equation45
+    else:
+        bayesian_information_gain = 0.0
+
+    values = (
+        partition.dfs,
+        fisher,
+        aggregation_aware_fisher,
+        equation45,
+        bayesian_information_gain,
+    )
+    tolerance = 1e-10 * max(1.0, *(abs(value) for value in values))
+    if not all(np.isfinite(value) for value in values):
+        raise ArithmeticError("Gaussian partition objectives must be finite.")
+    if any(value < -tolerance for value in values):
+        raise ArithmeticError("Gaussian partition objectives must be non-negative.")
+    return GaussianPartitionObjectives(*(max(value, 0.0) for value in values))
 
 
 def gaussian_posterior_mean(
@@ -713,6 +823,95 @@ def _finite_float_array(values: npt.ArrayLike, *, name: str) -> np.ndarray:
     return array
 
 
+def _validated_model_innovation(
+    model: RHIMEGaussianMultiscale,
+    *,
+    observations: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the invariant covariance and its validated stored factor.
+
+    Args:
+        model: Source model containing the invariant innovation arrays.
+        observations: Required extent of both stored square arrays.
+
+    Returns:
+        Innovation covariance and its cached lower Cholesky factor.
+
+    Raises:
+        ValueError: If either array has the wrong shape or the cached factor is
+            not finite, lower triangular, positive on its diagonal, and a
+            factorization of the stored innovation covariance.
+    """
+    innovation = _finite_float_array(model.innovation_covariance, name="model.innovation_covariance")
+    cholesky = _finite_float_array(model.innovation_cholesky, name="model.innovation_cholesky")
+    expected_shape = (observations, observations)
+    if innovation.shape != expected_shape:
+        raise ValueError("model.innovation_covariance shape must match its observation count.")
+    if cholesky.shape != expected_shape:
+        raise ValueError("model.innovation_cholesky shape must match its observation count.")
+    triangular_tolerance = float(
+        64.0
+        * np.finfo(float).eps
+        * max(
+            1.0,
+            float(np.max(np.abs(cholesky), initial=0.0)),
+        )
+    )
+    if not np.allclose(cholesky, np.tril(cholesky), rtol=0.0, atol=triangular_tolerance):
+        raise ValueError("model.innovation_cholesky must be lower triangular.")
+    if np.any(np.diag(cholesky) <= 0.0):
+        raise ValueError("model.innovation_cholesky must have a positive diagonal.")
+    covariance_scale = float(max(1.0, np.max(np.abs(innovation), initial=0.0)))
+    if not np.allclose(
+        cholesky @ cholesky.T,
+        innovation,
+        rtol=1e-10,
+        atol=1e-12 * covariance_scale,
+    ):
+        raise ValueError(
+            "model.innovation_cholesky must factor model.innovation_covariance."
+        )
+    return innovation, cholesky
+
+
+def _covariance_kl_from_averaging_kernel(averaging_kernel: np.ndarray) -> float:
+    """Return covariance-only Gaussian KL from averaging-kernel eigenvalues.
+
+    Args:
+        averaging_kernel: Symmetric prior-whitened averaging kernel whose
+            eigenvalues are theoretically in the half-open interval ``[0, 1)``.
+
+    Returns:
+        Covariance KL with the conventional factor ``1/2``.
+
+    Raises:
+        ArithmeticError: If a mode is non-finite or outside the admissible
+            positive-definite Gaussian range beyond numerical roundoff.
+    """
+    eigenvalues = np.linalg.eigvalsh(averaging_kernel)
+    if not np.all(np.isfinite(eigenvalues)):
+        raise ArithmeticError("averaging-kernel eigenvalues must be finite.")
+    scale = max(1.0, float(np.max(np.abs(eigenvalues), initial=0.0)))
+    tolerance = 64.0 * np.finfo(float).eps * scale
+    if np.any(eigenvalues < -tolerance) or np.any(eigenvalues > 1.0 + tolerance):
+        raise ArithmeticError("averaging-kernel eigenvalues must lie in [0, 1).")
+    eigenvalues = np.clip(eigenvalues, 0.0, np.nextafter(1.0, 0.0))
+    return 0.5 * float(np.sum(_negative_log1p_minus_identity(eigenvalues)))
+
+
+def _negative_log1p_minus_identity(values: np.ndarray) -> np.ndarray:
+    """Evaluate ``-log1p(-x) - x`` without losing weak quadratic terms."""
+    result = np.empty_like(values)
+    small = values < 1e-4
+    small_values = values[small]
+    result[small] = np.square(small_values) * (
+        0.5 + small_values * (1.0 / 3.0 + small_values * (0.25 + small_values * (0.2 + small_values / 6.0)))
+    )
+    regular_values = values[~small]
+    result[~small] = -np.log1p(-regular_values) - regular_values
+    return result
+
+
 def _centered_scatter(
     native_design: np.ndarray,
     native_indices: np.ndarray,
@@ -808,7 +1007,9 @@ def _symmetrize(matrix: np.ndarray) -> np.ndarray:
 
 __all__ = [
     "GaussianPartitionDiagnostics",
+    "GaussianPartitionObjectives",
     "build_partition_diagnostics",
     "emissions_compression_quality",
+    "gaussian_partition_objectives",
     "gaussian_posterior_mean",
 ]

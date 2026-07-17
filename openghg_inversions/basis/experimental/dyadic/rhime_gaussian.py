@@ -23,10 +23,30 @@ from operator import index
 
 import numpy as np
 import numpy.typing as npt
+from scipy.linalg import solve_triangular
 
 from .multiscale import MultiscaleDesign, sum_coarsen_grid
 from .state import PartitionState
 from .tree import DyadicTree, NodeId
+
+
+@dataclass(frozen=True, slots=True)
+class NativePosteriorMarginals:
+    """Posterior marginal summaries for native relative-scaling anomalies.
+
+    Attributes:
+        mean_increment: Posterior mean increment on the native spatial grid.
+            The prior mean of the anomaly is zero.
+        marginal_variance: Diagonal of the native posterior covariance on the
+            spatial grid.
+        support: Boolean grid identifying native locations that contribute to
+            the observation design. Unsupported locations retain their prior
+            mean and variance.
+    """
+
+    mean_increment: np.ndarray
+    marginal_variance: np.ndarray
+    support: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -49,8 +69,14 @@ class RHIMEGaussianMultiscale:
             ``relative_prior_sd**2 * G G.T`` after excluding unsupported cells.
         innovation_covariance: Partition-invariant covariance
             ``diag(r_diag) + full_signal_covariance``.
+        innovation_cholesky: Cached lower Cholesky factor of
+            ``innovation_covariance``.
         tile_scores: Additive DFS contribution for every candidate node.
+        fisher_tile_scores: Additive base-error Fisher contribution for every
+            candidate node.
         full_grid_dfs: DFS of the supported native fine state.
+        full_grid_fisher: Base-error Fisher criterion for the supported native
+            fine state.
         relative_prior_sd: Common native relative-scaling prior standard
             deviation.
         r_diag: Positive diagonal of the non-aggregation observation covariance.
@@ -65,8 +91,11 @@ class RHIMEGaussianMultiscale:
     prior_variance_by_node: np.ndarray
     full_signal_covariance: np.ndarray
     innovation_covariance: np.ndarray
+    innovation_cholesky: np.ndarray
     tile_scores: np.ndarray
+    fisher_tile_scores: np.ndarray
     full_grid_dfs: float
+    full_grid_fisher: float
     relative_prior_sd: float
     r_diag: np.ndarray
     native_design: np.ndarray
@@ -187,6 +216,23 @@ class RHIMEGaussianMultiscale:
             raise ValueError("numerical failure produced a negative tile DFS score.")
         tile_scores = np.maximum(tile_scores, 0.0)
 
+        with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+            whitened_candidates = (
+                design.values
+                / np.sqrt(errors)[:, np.newaxis]
+                * np.sqrt(prior_variance_by_node)[np.newaxis, :]
+            )
+            fisher_tile_scores = np.sum(np.square(whitened_candidates), axis=0)
+            whitened_native = relative_sd * native_columns / np.sqrt(errors)[:, np.newaxis]
+            full_grid_fisher = float(np.sum(np.square(whitened_native)))
+        if not np.all(np.isfinite(fisher_tile_scores)) or not np.isfinite(full_grid_fisher):
+            raise ValueError("inputs must produce finite Fisher criteria.")
+        fisher_tolerance = 1e-12 * max(1.0, float(np.max(np.abs(fisher_tile_scores))))
+        if np.any(fisher_tile_scores < -fisher_tolerance) or full_grid_fisher < -fisher_tolerance:
+            raise ValueError("numerical failure produced a negative Fisher criterion.")
+        fisher_tile_scores = np.maximum(fisher_tile_scores, 0.0)
+        full_grid_fisher = max(full_grid_fisher, 0.0)
+
         solved_full_signal = _cholesky_solve(innovation_cholesky, full_signal_covariance)
         full_grid_dfs = float(np.trace(solved_full_signal))
         if full_grid_dfs < -1e-12:
@@ -199,7 +245,9 @@ class RHIMEGaussianMultiscale:
             prior_variance_by_node,
             full_signal_covariance,
             innovation_covariance,
+            innovation_cholesky,
             tile_scores,
+            fisher_tile_scores,
             errors,
             supported_design,
             support,
@@ -212,8 +260,11 @@ class RHIMEGaussianMultiscale:
             prior_variance_by_node=prior_variance_by_node,
             full_signal_covariance=full_signal_covariance,
             innovation_covariance=innovation_covariance,
+            innovation_cholesky=innovation_cholesky,
             tile_scores=tile_scores,
+            fisher_tile_scores=fisher_tile_scores,
             full_grid_dfs=full_grid_dfs,
+            full_grid_fisher=full_grid_fisher,
             relative_prior_sd=relative_sd,
             r_diag=errors,
             native_design=supported_design,
@@ -242,6 +293,206 @@ class RHIMEGaussianMultiscale:
         if value > self.full_grid_dfs + bound_tolerance:
             raise ArithmeticError("partition DFS exceeds full-grid DFS beyond numerical tolerance.")
         return value
+
+    def fisher_score(self, state: PartitionState) -> float:
+        """Return the additive base-error Fisher criterion for one partition.
+
+        This is Bocquet et al.'s weak-signal criterion using the declared base
+        observation covariance ``diag(r_diag)``. It does not include the
+        partition-dependent aggregation covariance used by the
+        aggregation-aware Fisher criterion.
+
+        Args:
+            state: Exact active frontier over ``design.tree``.
+
+        Returns:
+            Sum of precomputed active-node Fisher contributions.
+
+        Raises:
+            ValueError: If ``state`` is not valid for this model's tree.
+            ArithmeticError: If numerical error makes the partition criterion
+                exceed the native-grid criterion beyond roundoff.
+        """
+        state.validate(self.design.tree)
+        value = float(np.sum(self.fisher_tile_scores[list(state.ordered_active())]))
+        bound_tolerance = 1e-10 * max(1.0, abs(self.full_grid_fisher))
+        if value > self.full_grid_fisher + bound_tolerance:
+            raise ArithmeticError("partition Fisher criterion exceeds its native-grid bound.")
+        return value
+
+    def data_dependent_tile_scores(self, innovations: npt.ArrayLike) -> np.ndarray:
+        """Return additive Equation 45 scores for one realized innovation.
+
+        The input must already be centered on the native prior prediction. The
+        returned score omits the factor ``1/2`` used in some conventions and is
+
+        ``(s**2 / n_v) * (h_v.T @ S**-1 @ innovations)**2``.
+
+        Args:
+            innovations: Finite vector with one centered value per observation.
+
+        Returns:
+            Read-only non-negative score for every candidate tree node.
+
+        Raises:
+            ValueError: If ``innovations`` has an incompatible shape or
+                contains non-finite values.
+            ArithmeticError: If numerical error produces a negative or
+                non-finite score.
+        """
+        residual = self._validated_innovations(innovations)
+        solved_residual = _cholesky_solve(self.innovation_cholesky, residual)
+        projected_update = self.design.values.T @ solved_residual
+        with np.errstate(over="ignore", invalid="ignore"):
+            scores = self.prior_variance_by_node * np.square(projected_update)
+        if not np.all(np.isfinite(scores)) or np.any(scores < 0.0):
+            raise ArithmeticError("Equation 45 tile scores must be finite and non-negative.")
+        scores.setflags(write=False)
+        return scores
+
+    def data_dependent_score(
+        self,
+        state: PartitionState,
+        innovations: npt.ArrayLike,
+    ) -> float:
+        """Return the Equation 45 posterior-mean criterion for one partition.
+
+        Args:
+            state: Exact active frontier over ``design.tree``.
+            innovations: Finite observation vector centered on the native prior
+                prediction.
+
+        Returns:
+            Additive Equation 45 score without a factor ``1/2``.
+
+        Raises:
+            ValueError: If the state or innovation vector is invalid.
+            ArithmeticError: If the projected score exceeds its native-grid
+                bound beyond numerical roundoff.
+        """
+        state.validate(self.design.tree)
+        scores = self.data_dependent_tile_scores(innovations)
+        value = float(np.sum(scores[list(state.ordered_active())]))
+        full_value = self.full_grid_data_dependent_score(innovations)
+        bound_tolerance = 1e-10 * max(1.0, abs(full_value))
+        if value > full_value + bound_tolerance:
+            raise ArithmeticError("partition Equation 45 score exceeds its native-grid bound.")
+        return value
+
+    def full_grid_data_dependent_score(self, innovations: npt.ArrayLike) -> float:
+        """Return the native-grid Equation 45 score for one innovation vector.
+
+        Args:
+            innovations: Finite observation vector centered on the native prior
+                prediction.
+
+        Returns:
+            Squared prior-precision norm of the native posterior mean increment,
+            without a factor ``1/2``.
+
+        Raises:
+            ValueError: If ``innovations`` is invalid.
+            ArithmeticError: If the calculation is non-finite.
+        """
+        residual = self._validated_innovations(innovations)
+        solved_residual = _cholesky_solve(self.innovation_cholesky, residual)
+        native_updates = self.native_design.reshape(residual.size, -1).T @ solved_residual
+        with np.errstate(over="ignore", invalid="ignore"):
+            value = float(self.relative_prior_sd**2 * np.dot(native_updates, native_updates))
+        if not np.isfinite(value) or value < 0.0:
+            raise ArithmeticError("native-grid Equation 45 score must be finite and non-negative.")
+        return value
+
+    def native_posterior_marginals(
+        self,
+        innovations: npt.ArrayLike,
+        *,
+        chunk_size: int = 4096,
+    ) -> NativePosteriorMarginals:
+        """Compute native posterior means and marginal variances in chunks.
+
+        The native state is the relative-scaling anomaly with prior
+        ``N(0, s**2 I)``. Unsupported grid locations have zero design columns,
+        so they retain posterior mean zero and variance ``s**2``. Only the
+        diagonal of the posterior covariance is returned; cross-location
+        covariance must be queried through a separate operator or projected
+        calculation.
+
+        Args:
+            innovations: Finite observation vector centered on the native prior
+                prediction.
+            chunk_size: Positive maximum number of native design columns
+                transformed at once.
+
+        Returns:
+            Read-only posterior mean, marginal variance, and support grids.
+
+        Raises:
+            TypeError: If ``chunk_size`` is not an integer.
+            ValueError: If the innovations or chunk size are invalid.
+            ArithmeticError: If posterior variances are materially negative or
+                any output is non-finite.
+        """
+        residual = self._validated_innovations(innovations)
+        try:
+            chunk = index(chunk_size)
+        except TypeError as exc:
+            raise TypeError("chunk_size must be an integer.") from exc
+        if chunk < 1:
+            raise ValueError("chunk_size must be positive.")
+
+        solved_residual = _cholesky_solve(self.innovation_cholesky, residual)
+        flat_design = self.native_design.reshape(residual.size, -1)
+        prior_variance = self.relative_prior_sd**2
+        posterior_mean = prior_variance * (flat_design.T @ solved_residual)
+        posterior_variance = np.empty(flat_design.shape[1], dtype=float)
+
+        for start in range(0, flat_design.shape[1], chunk):
+            stop = min(start + chunk, flat_design.shape[1])
+            transformed = solve_triangular(
+                self.innovation_cholesky,
+                flat_design[:, start:stop],
+                lower=True,
+                check_finite=False,
+            )
+            posterior_variance[start:stop] = prior_variance - (
+                prior_variance**2 * np.sum(np.square(transformed), axis=0)
+            )
+
+        resolution_floor = 16.0 * np.finfo(float).eps * prior_variance
+        supported_flat = self.native_support.ravel()
+        if np.any(posterior_variance[supported_flat] <= resolution_floor):
+            posterior_variance = _native_posterior_variance_svd(
+                flat_design,
+                self.r_diag,
+                relative_prior_sd=self.relative_prior_sd,
+            )
+
+        variance_tolerance = 1e-10 * max(1.0, prior_variance)
+        if float(np.min(posterior_variance)) < -variance_tolerance:
+            raise ArithmeticError("native posterior marginal variance is materially negative.")
+        posterior_variance = np.maximum(posterior_variance, 0.0)
+        if not np.all(np.isfinite(posterior_mean)) or not np.all(np.isfinite(posterior_variance)):
+            raise ArithmeticError("native posterior marginals must be finite.")
+
+        spatial_shape = self.native_support.shape
+        mean_grid = posterior_mean.reshape(spatial_shape)
+        variance_grid = posterior_variance.reshape(spatial_shape)
+        support = self.native_support.copy()
+        for array in (mean_grid, variance_grid, support):
+            array.setflags(write=False)
+        return NativePosteriorMarginals(
+            mean_increment=mean_grid,
+            marginal_variance=variance_grid,
+            support=support,
+        )
+
+    def _validated_innovations(self, innovations: npt.ArrayLike) -> np.ndarray:
+        """Return a finite innovation vector matching the observation count."""
+        residual = _finite_float_array(innovations, name="innovations")
+        if residual.ndim != 1 or residual.shape[0] != self.native_design.shape[0]:
+            raise ValueError("innovations must contain one value per observation.")
+        return residual
 
     def reduced_design_and_variance(self, state: PartitionState) -> tuple[np.ndarray, np.ndarray]:
         """Gather supported active columns and diagonal regional variances.
@@ -442,8 +693,18 @@ def _positive_definite_cholesky(matrix: np.ndarray, *, name: str) -> np.ndarray:
 
 def _cholesky_solve(cholesky: np.ndarray, right_hand_side: np.ndarray) -> np.ndarray:
     """Solve a positive-definite system from its lower Cholesky factor."""
-    intermediate = np.linalg.solve(cholesky, right_hand_side)
-    return np.linalg.solve(cholesky.T, intermediate)
+    intermediate = solve_triangular(
+        cholesky,
+        right_hand_side,
+        lower=True,
+        check_finite=False,
+    )
+    return solve_triangular(
+        cholesky.T,
+        intermediate,
+        lower=False,
+        check_finite=False,
+    )
 
 
 def _centered_scatter(
@@ -494,6 +755,46 @@ def _centered_scatter(
     return scatter
 
 
+def _native_posterior_variance_svd(
+    native_design: np.ndarray,
+    r_diag: np.ndarray,
+    *,
+    relative_prior_sd: float,
+) -> np.ndarray:
+    """Return cancellation-resistant native marginal variances via thin SVD.
+
+    This fallback evaluates the diagonal of
+    ``s**2 (I + Z.T Z)**-1`` with
+    ``Z = diag(r_diag)**-1/2 @ (s * native_design)``. It is used only when the
+    faster observation-space subtraction approaches floating-point resolution
+    for at least one supported grid location.
+
+    Args:
+        native_design: Observation-by-native design matrix.
+        r_diag: Positive diagonal of the base observation covariance.
+        relative_prior_sd: Positive native relative-scaling prior standard
+            deviation ``s``.
+
+    Returns:
+        Posterior marginal variance for every native grid location.
+    """
+    whitened_design = (
+        relative_prior_sd * native_design / np.sqrt(r_diag)[:, np.newaxis]
+    )
+    _, singular_values, right_vectors_t = np.linalg.svd(
+        whitened_design,
+        full_matrices=False,
+    )
+    squared_right_vectors = np.square(right_vectors_t)
+    row_space_mass = np.sum(squared_right_vectors, axis=0)
+    unresolved_mass = np.maximum(1.0 - row_space_mass, 0.0)
+    informed_mass = np.sum(
+        squared_right_vectors / (1.0 + np.square(singular_values))[:, np.newaxis],
+        axis=0,
+    )
+    return relative_prior_sd**2 * (unresolved_mass + informed_mass)
+
+
 def _validate_positive_semidefinite(matrix: np.ndarray, *, name: str) -> None:
     """Raise when a symmetric covariance has a materially negative mode."""
     eigenvalues = np.linalg.eigvalsh(matrix)
@@ -507,4 +808,4 @@ def _symmetrize(matrix: np.ndarray) -> np.ndarray:
     return 0.5 * (matrix + matrix.T)
 
 
-__all__ = ["RHIMEGaussianMultiscale"]
+__all__ = ["NativePosteriorMarginals", "RHIMEGaussianMultiscale"]

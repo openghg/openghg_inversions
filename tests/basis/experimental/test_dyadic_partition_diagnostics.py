@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
+from decimal import Decimal, localcontext
 from typing import Any
 
 import numpy as np
@@ -12,6 +14,7 @@ from openghg_inversions.basis.experimental.dyadic.partition_diagnostics import (
     GaussianPartitionDiagnostics,
     build_partition_diagnostics,
     emissions_compression_quality,
+    gaussian_partition_objectives,
     gaussian_posterior_mean,
 )
 from openghg_inversions.basis.experimental.dyadic.rhime_gaussian import RHIMEGaussianMultiscale
@@ -53,6 +56,15 @@ def _posterior_model() -> RHIMEGaussianMultiscale:
         coarsen_factor=1,
         relative_prior_sd=0.7,
     )
+
+
+def _high_precision_diagonal_covariance_kl(scale: float, *, dimension: int) -> float:
+    """Return the analytic covariance KL for ``H = scale I`` and unit covariances."""
+    with localcontext() as context:
+        context.prec = 80
+        signal_ratio = Decimal(str(scale)) ** 2
+        mode = (Decimal(1) + signal_ratio).ln() - signal_ratio / (Decimal(1) + signal_ratio)
+        return float(Decimal(dimension) * mode / Decimal(2))
 
 
 def test_arbitrary_labels_match_dense_grouped_covariance_formulas() -> None:
@@ -200,6 +212,110 @@ def test_posterior_mean_matches_dense_solve_with_baselines_and_holdout() -> None
     np.testing.assert_allclose(posterior_mean, expected_posterior, atol=1e-13)
     np.testing.assert_allclose(predictions, design @ expected_posterior, atol=1e-13)
     assert predictions.shape == observations.shape
+
+
+def test_partition_objectives_match_dense_gaussian_formulas() -> None:
+    """Named representation criteria should match independent dense formulas."""
+    model = _posterior_model()
+    diagnostics = build_partition_diagnostics(model, [[1, 1], [2, 2]])
+    innovations = np.array([0.4, -0.2, 0.7, 0.1])
+    design = diagnostics.regional_design
+    prior = np.diag(diagnostics.prior_variances)
+    innovation = model.innovation_covariance
+    solved_residual = np.linalg.solve(innovation, innovations)
+    posterior_mean = prior @ design.T @ solved_residual
+    posterior_covariance = prior - (prior @ design.T @ np.linalg.solve(innovation, design) @ prior)
+    prior_sign, prior_logdet = np.linalg.slogdet(prior)
+    posterior_sign, posterior_logdet = np.linalg.slogdet(posterior_covariance)
+    expected_kl = 0.5 * (
+        prior_logdet
+        - posterior_logdet
+        - prior.shape[0]
+        + np.trace(np.linalg.solve(prior, posterior_covariance))
+        + posterior_mean @ np.linalg.solve(prior, posterior_mean)
+    )
+
+    objectives = gaussian_partition_objectives(model, diagnostics, innovations)
+
+    assert prior_sign == posterior_sign == 1.0
+    np.testing.assert_allclose(objectives.dfs, diagnostics.dfs, atol=1e-14)
+    np.testing.assert_allclose(
+        objectives.fisher,
+        np.trace(np.linalg.solve(np.diag(model.r_diag), diagnostics.reduced_signal_covariance)),
+        atol=1e-14,
+    )
+    np.testing.assert_allclose(
+        objectives.aggregation_aware_fisher,
+        np.trace(
+            np.linalg.solve(
+                diagnostics.effective_observation_covariance,
+                diagnostics.reduced_signal_covariance,
+            )
+        ),
+        atol=1e-14,
+    )
+    np.testing.assert_allclose(
+        objectives.equation45,
+        posterior_mean @ np.linalg.solve(prior, posterior_mean),
+        atol=1e-14,
+    )
+    np.testing.assert_allclose(objectives.bayesian_information_gain, expected_kl, atol=1e-14)
+
+
+def test_partition_bayesian_kl_retains_weak_covariance_information() -> None:
+    """Partition KL should retain weak covariance modes and converge toward zero."""
+    dimension = 2
+    scales = np.array([1e-4, 1e-6, 1e-8, 1e-10])
+    actual = []
+    for scale in scales:
+        native_design = (scale * np.eye(dimension)).reshape(dimension, 1, dimension)
+        model = RHIMEGaussianMultiscale.from_native_grid(
+            native_design,
+            np.ones((1, dimension)),
+            np.ones(dimension),
+            coarsen_factor=1,
+        )
+        partition = build_partition_diagnostics(model, np.arange(1, dimension + 1)[np.newaxis, :])
+        actual.append(
+            gaussian_partition_objectives(model, partition, np.zeros(dimension)).bayesian_information_gain
+        )
+
+    expected = np.array(
+        [_high_precision_diagonal_covariance_kl(scale, dimension=dimension) for scale in scales]
+    )
+    np.testing.assert_allclose(actual, expected, rtol=2e-12, atol=0.0)
+    assert np.all(np.asarray(actual) > 0.0)
+    assert np.all(np.diff(actual) < 0.0)
+
+
+def test_partition_objectives_prior_predictive_equation_45_equals_dfs() -> None:
+    """Cached predictive-factor directions should give expected Equation 45 equal to DFS."""
+    model = _posterior_model()
+    partition = build_partition_diagnostics(model, [[1, 1], [2, 2]])
+    expected_equation_45 = sum(
+        gaussian_partition_objectives(model, partition, model.innovation_cholesky[:, index]).equation45
+        for index in range(model.innovation_cholesky.shape[1])
+    )
+
+    assert expected_equation_45 == pytest.approx(partition.dfs, rel=2e-14, abs=2e-14)
+
+
+def test_partition_diagnostics_validate_cached_innovation_factor_shape() -> None:
+    """A malformed cached innovation factor should fail before it is reused."""
+    model = replace(_posterior_model(), innovation_cholesky=np.eye(3))
+
+    with pytest.raises(ValueError, match="innovation_cholesky shape"):
+        build_partition_diagnostics(model, [[1, 1], [2, 2]])
+
+
+def test_partition_diagnostics_validate_cached_innovation_factor_values() -> None:
+    """A structurally valid factor must reproduce the innovation covariance."""
+    original = _posterior_model()
+    observations = original.innovation_covariance.shape[0]
+    model = replace(original, innovation_cholesky=np.eye(observations))
+
+    with pytest.raises(ValueError, match="must factor model.innovation_covariance"):
+        build_partition_diagnostics(model, [[1, 1], [2, 2]])
 
 
 def test_emissions_compression_quality_has_required_invariances() -> None:

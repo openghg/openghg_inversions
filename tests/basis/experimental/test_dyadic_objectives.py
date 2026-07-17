@@ -31,7 +31,7 @@ def test_sum_then_square_differs_from_summing_cell_scores() -> None:
 
 
 def test_gaussian_dfs_formulas_agree() -> None:
-    """State-space and direct observation-space Gaussian formulas should agree."""
+    """State-space and observation-space formulas should agree at ordinary scale."""
     design = np.array([[1.0, 0.3], [-0.2, 1.4], [0.7, -0.5]])
     covariance = np.array([[1.8, 0.4], [0.4, 0.9]])
     r_diag = np.array([0.5, 1.2, 0.8])
@@ -41,6 +41,20 @@ def test_gaussian_dfs_formulas_agree() -> None:
 
     assert state_space == pytest.approx(observation_space, rel=1e-12, abs=1e-12)
     assert 0.0 <= state_space <= design.shape[1]
+
+
+@pytest.mark.parametrize("design_scale", [1e-2, 1e-4, 1e-6, 1e-8, 1e-10])
+def test_gaussian_dfs_retains_logarithmically_weak_signals(design_scale: float) -> None:
+    """Coefficient-space DFS should match the direct formula for weak signals."""
+    design = design_scale * np.array([[1.0, 0.3], [-0.2, 1.4], [0.7, -0.5]])
+    covariance = np.array([[1.8, 0.4], [0.4, 0.9]])
+    r_diag = np.array([0.5, 1.2, 0.8])
+
+    expected = direct_observation_space_dfs(design, covariance, r_diag)
+    actual = gaussian_dfs(design, covariance, r_diag)
+
+    assert expected > 0.0
+    assert actual == pytest.approx(expected, rel=1e-12, abs=0.0)
 
 
 def test_isotropic_observation_space_dfs_avoids_large_identity_matrix() -> None:

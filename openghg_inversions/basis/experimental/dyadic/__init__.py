@@ -1,9 +1,9 @@
 """Experimental canonical binary partitions for rectangular grids.
 
-This package provides a small, pure-NumPy representation of one deterministic
-binary tree, immutable active frontiers, partition objectives, local proposals,
-and a generic stochastic local-search runner. It is provisional and is not
-re-exported from :mod:`openghg_inversions.basis`.
+This package provides NumPy/SciPy reference implementations for one
+deterministic binary tree, immutable active frontiers, Gaussian projection and
+partition objectives, local proposals, and stochastic local search. It is
+provisional and is not re-exported from :mod:`openghg_inversions.basis`.
 """
 
 from .initializers import InitializationResult, greedy_partition, random_partition, threshold_partition
@@ -23,6 +23,23 @@ from .dynamic_programming import (
     additive_partition_frontier,
     optimal_additive_partition,
 )
+from .gaussian_projection import (
+    BocquetProjection,
+    GaussianPosterior,
+    GaussianProjectionAnalysis,
+    build_bocquet_projection,
+    equation_45_objective,
+    gaussian_projection_oracle,
+    native_gaussian_posterior,
+    projected_bayesian_information_gain,
+    projected_bayesian_kl,
+    projected_dfs,
+    projected_fisher_aggregation_aware,
+    projected_fisher_base_r,
+    reduced_gaussian_posterior,
+    restriction_for_prolongation,
+)
+from .grid_covariance import SeparableGridCovariance
 from .multiscale import CoarsenedGrid, MultiscaleDesign, direct_gather, sum_coarsen_grid
 from .objectives import (
     CovarianceBuilder,
@@ -35,8 +52,10 @@ from .objectives import (
 )
 from .partition_diagnostics import (
     GaussianPartitionDiagnostics,
+    GaussianPartitionObjectives,
     build_partition_diagnostics,
     emissions_compression_quality,
+    gaussian_partition_objectives,
     gaussian_posterior_mean,
 )
 from .proposals import (
@@ -52,7 +71,7 @@ from .proposals import (
     enumerate_split_moves,
     reverse_move,
 )
-from .rhime_gaussian import RHIMEGaussianMultiscale
+from .rhime_gaussian import NativePosteriorMarginals, RHIMEGaussianMultiscale
 from .search import (
     PiecewiseGeometricSchedule,
     SearchProposal,
@@ -66,6 +85,7 @@ from .tree import DyadicTree, NodeId, Tile
 
 __all__ = [
     "AdditivePartitionSolution",
+    "BocquetProjection",
     "CoarsenedGrid",
     "CovarianceBuilder",
     "DemoSearchConfig",
@@ -73,11 +93,15 @@ __all__ = [
     "DyadicTree",
     "GaussianDFSObjective",
     "GaussianPartitionDiagnostics",
+    "GaussianPartitionObjectives",
+    "GaussianPosterior",
+    "GaussianProjectionAnalysis",
     "InitializationResult",
     "IsotropicRegionCovariance",
     "MergeMove",
     "Move",
     "MultiscaleDesign",
+    "NativePosteriorMarginals",
     "NodeId",
     "PairedMove",
     "PairedNeighbor",
@@ -88,6 +112,7 @@ __all__ = [
     "SearchProposal",
     "SearchResult",
     "SearchStep",
+    "SeparableGridCovariance",
     "SplitMove",
     "TemperatureSchedule",
     "Tile",
@@ -96,6 +121,7 @@ __all__ = [
     "apply_move",
     "additive_partition_frontier",
     "build_partition_diagnostics",
+    "build_bocquet_projection",
     "direct_gather",
     "direct_observation_space_dfs",
     "enumerate_merge_moves",
@@ -103,14 +129,25 @@ __all__ = [
     "enumerate_paired_neighbors",
     "enumerate_split_moves",
     "emissions_compression_quality",
+    "equation_45_objective",
     "excess_region_penalty",
     "gaussian_dfs",
+    "gaussian_partition_objectives",
+    "gaussian_projection_oracle",
     "gaussian_posterior_mean",
     "isotropic_observation_space_dfs",
+    "native_gaussian_posterior",
     "greedy_partition",
     "optimal_additive_partition",
     "prototype_quadratic_tile_scores",
+    "projected_bayesian_information_gain",
+    "projected_bayesian_kl",
+    "projected_dfs",
+    "projected_fisher_aggregation_aware",
+    "projected_fisher_base_r",
     "random_partition",
+    "reduced_gaussian_posterior",
+    "restriction_for_prolongation",
     "reverse_move",
     "run_fixed_count_dfs_search",
     "run_projected_variable_k_dfs_search",

@@ -119,10 +119,10 @@ class GaussianDFSObjective:
 def gaussian_dfs(H: npt.ArrayLike, B: npt.ArrayLike, r_diag: npt.ArrayLike) -> float:
     """Compute Gaussian DFS with stable coefficient-space Cholesky solves.
 
-    The evaluated identity is
-    ``K - tr(A^-1 B^-1)``, where
-    ``A = B^-1 + H.T R^-1 H`` and ``R = diag(r_diag)``.  Cholesky whitening by
-    ``B`` avoids explicitly forming either matrix inverse.
+    The evaluated identity is ``tr((I + G)^-1 G)``, where
+    ``G = L.T H.T R^-1 H L``, ``B = L L.T``, and ``R = diag(r_diag)``.
+    Cholesky whitening by ``B`` avoids explicitly forming either matrix inverse,
+    while tracing the solved gain avoids cancellation for weak signals.
 
     Args:
         H: Observation-by-state design matrix with shape ``(N, K)``.
@@ -144,10 +144,11 @@ def gaussian_dfs(H: npt.ArrayLike, B: npt.ArrayLike, r_diag: npt.ArrayLike) -> f
 
     covariance_cholesky = _positive_definite_cholesky(covariance, name="B")
     whitened_design = design @ covariance_cholesky
-    information = np.eye(design.shape[1]) + (whitened_design.T / errors[np.newaxis, :]) @ whitened_design
+    gain = (whitened_design.T / errors[np.newaxis, :]) @ whitened_design
+    information = np.eye(design.shape[1]) + gain
     information_cholesky = _positive_definite_cholesky(information, name="state information")
-    inverse_information = _cholesky_solve(information_cholesky, np.eye(design.shape[1]))
-    return float(design.shape[1] - np.trace(inverse_information))
+    averaging_kernel = _cholesky_solve(information_cholesky, gain)
+    return float(np.trace(averaging_kernel))
 
 
 def direct_observation_space_dfs(

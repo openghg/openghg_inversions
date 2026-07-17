@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 from openghg_inversions.basis.experimental.dyadic.rhime_gaussian import RHIMEGaussianMultiscale
@@ -116,6 +117,131 @@ def test_additive_score_equals_direct_dfs_with_full_effective_covariance() -> No
         - model.score(PartitionState.root(tree)),
         atol=1e-14,
     )
+
+
+def test_fisher_scores_match_direct_base_error_formula() -> None:
+    """Additive Fisher scores should use the declared base observation error."""
+    model = _model()
+    tree = model.design.tree
+    state = PartitionState.root(tree).split(tree, tree.root_id)
+    design, variances = model.reduced_design_and_variance(state)
+
+    direct = float(np.sum(variances * np.sum(np.square(design) / model.r_diag[:, None], axis=0)))
+    native_design = model.native_design.reshape(model.r_diag.size, -1)
+    direct_full = float(
+        model.relative_prior_sd**2
+        * np.sum(np.square(native_design) / model.r_diag[:, None])
+    )
+
+    np.testing.assert_allclose(model.fisher_score(state), direct, atol=1e-14)
+    np.testing.assert_allclose(model.full_grid_fisher, direct_full, atol=1e-14)
+    assert model.fisher_score(state) <= model.full_grid_fisher + 1e-12
+
+
+def test_fisher_whitening_avoids_finite_large_value_overflow() -> None:
+    """Fisher construction should divide by error scale before squaring."""
+    model = RHIMEGaussianMultiscale.from_native_grid(
+        np.array([[[1.0e155]]]),
+        np.ones((1, 1)),
+        np.array([1.0e308]),
+        coarsen_factor=1,
+        relative_prior_sd=1.0e-2,
+    )
+    state = PartitionState.root(model.design.tree)
+
+    np.testing.assert_allclose(model.fisher_score(state), 1.0e-2, rtol=1e-14)
+    np.testing.assert_allclose(model.full_grid_fisher, 1.0e-2, rtol=1e-14)
+
+
+def test_data_dependent_scores_match_equation_45_and_native_bound() -> None:
+    """Equation 45 scores should retain the projected posterior-mean update."""
+    model = _model()
+    tree = model.design.tree
+    state = PartitionState.root(tree).split(tree, tree.root_id)
+    innovations = np.array([0.8, -0.3, 1.1])
+    solved = np.linalg.solve(model.innovation_covariance, innovations)
+
+    expected_tiles = model.prior_variance_by_node * np.square(model.design.values.T @ solved)
+    native_design = model.native_design.reshape(innovations.size, -1)
+    expected_full = model.relative_prior_sd**2 * np.sum(np.square(native_design.T @ solved))
+
+    tile_scores = model.data_dependent_tile_scores(innovations)
+    np.testing.assert_allclose(tile_scores, expected_tiles, atol=1e-14)
+    np.testing.assert_allclose(
+        model.data_dependent_score(state, innovations),
+        np.sum(expected_tiles[list(state.ordered_active())]),
+        atol=1e-14,
+    )
+    np.testing.assert_allclose(
+        model.full_grid_data_dependent_score(innovations),
+        expected_full,
+        atol=1e-14,
+    )
+    assert model.data_dependent_score(state, innovations) <= expected_full + 1e-12
+    assert not tile_scores.flags.writeable
+
+
+def test_native_posterior_marginals_match_dense_conditioning() -> None:
+    """Chunked native posterior marginals should match a dense Gaussian oracle."""
+    model = _model()
+    innovations = np.array([0.8, -0.3, 1.1])
+    native_design = model.native_design.reshape(innovations.size, -1)
+    prior_covariance = model.relative_prior_sd**2 * np.eye(native_design.shape[1])
+    solved_design = np.linalg.solve(model.innovation_covariance, native_design)
+    expected_mean = prior_covariance @ native_design.T @ np.linalg.solve(
+        model.innovation_covariance,
+        innovations,
+    )
+    expected_covariance = prior_covariance - (
+        prior_covariance @ native_design.T @ solved_design @ prior_covariance
+    )
+
+    posterior = model.native_posterior_marginals(innovations, chunk_size=2)
+
+    np.testing.assert_allclose(posterior.mean_increment.ravel(), expected_mean, atol=1e-14)
+    np.testing.assert_allclose(
+        posterior.marginal_variance.ravel(),
+        np.diag(expected_covariance),
+        atol=1e-14,
+    )
+    np.testing.assert_array_equal(posterior.support, model.native_support)
+    assert not posterior.mean_increment.flags.writeable
+    assert not posterior.marginal_variance.flags.writeable
+    assert not posterior.support.flags.writeable
+
+
+def test_native_posterior_retains_prior_at_unsupported_locations() -> None:
+    """A zero-design unsupported location should keep its prior marginal."""
+    model = RHIMEGaussianMultiscale.from_native_grid(
+        np.array([[[1.0, 0.0]], [[-0.4, 0.0]]]),
+        np.array([[2.0, 0.0]]),
+        np.array([0.7, 1.1]),
+        coarsen_factor=1,
+        relative_prior_sd=0.6,
+    )
+
+    posterior = model.native_posterior_marginals([0.5, -0.2], chunk_size=1)
+
+    assert posterior.mean_increment[0, 1] == 0.0
+    np.testing.assert_allclose(posterior.marginal_variance[0, 1], 0.6**2, atol=1e-14)
+    assert not posterior.support[0, 1]
+
+
+def test_native_posterior_variance_remains_positive_under_strong_information() -> None:
+    """The SVD fallback should resolve posterior variance below subtraction precision."""
+    model = RHIMEGaussianMultiscale.from_native_grid(
+        np.ones((1, 1, 1)),
+        np.ones((1, 1)),
+        np.array([1.0e-16]),
+        coarsen_factor=1,
+        relative_prior_sd=1.0,
+    )
+
+    posterior = model.native_posterior_marginals([0.2])
+
+    expected = 1.0 / (1.0 + 1.0e16)
+    assert posterior.marginal_variance[0, 0] > 0.0
+    np.testing.assert_allclose(posterior.marginal_variance[0, 0], expected, rtol=1e-14)
 
 
 def test_aggregation_covariance_avoids_large_matrix_subtraction_cancellation() -> None:
@@ -290,3 +416,41 @@ def test_state_and_split_validation_errors_are_preserved() -> None:
         model.split_gain(tree.leaf_ids[0])
     with pytest.raises(KeyError, match="Unknown"):
         model.split_gain(999)
+
+
+@pytest.mark.parametrize(
+    ("innovations", "message"),
+    [
+        ([1.0, 2.0], "one value per observation"),
+        ([1.0, np.nan, 2.0], "finite"),
+        ([[1.0, 2.0, 3.0]], "one value per observation"),
+    ],
+)
+def test_innovation_dependent_methods_reject_invalid_vectors(
+    innovations: npt.ArrayLike,
+    message: str,
+) -> None:
+    """Observation-dependent scores and posterior summaries should validate input."""
+    model = _model()
+
+    with pytest.raises(ValueError, match=message):
+        model.data_dependent_tile_scores(innovations)
+    with pytest.raises(ValueError, match=message):
+        model.native_posterior_marginals(innovations)
+
+
+@pytest.mark.parametrize(
+    ("chunk_size", "error", "message"),
+    [
+        (0, ValueError, "positive"),
+        (1.5, TypeError, "integer"),
+    ],
+)
+def test_native_posterior_rejects_invalid_chunk_sizes(
+    chunk_size: Any,
+    error: type[Exception],
+    message: str,
+) -> None:
+    """Native posterior chunk sizes should be positive integers."""
+    with pytest.raises(error, match=message):
+        _model().native_posterior_marginals([0.1, 0.2, 0.3], chunk_size=chunk_size)
