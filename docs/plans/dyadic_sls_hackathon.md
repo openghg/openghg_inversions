@@ -65,6 +65,20 @@ must call this an equal-region-multiplier-uncertainty benchmark. The value of
 defaults. Sensitivity to at least two plausible \(\tau\) values should be
 reported before making scientific claims.
 
+This benchmark does not preserve the covariance transformation used by
+Bocquet, Wu, and Chevallier. Their scale-consistent representation starts from
+a fine-grid covariance \(B\) and projects it for each partition:
+
+\[
+B_P=PBP^T,
+\]
+
+where \(P\) denotes the representation projection. Reusing one numerical
+covariance form for every \(P\) breaks that assumption. Keep \(B_P\)
+construction behind an explicit partition-dependent callable from the first
+implementation so a projected covariance can be substituted later without
+rewriting the objective or search loop.
+
 At fixed \(K\), SLS accepts improvements and may accept losses using
 
 \[
@@ -275,7 +289,8 @@ Responsibilities:
   ordering, split/merge application, label and boundary rendering data.
 - `multiscale.py`: sum-preserving coarsening, candidate observation columns,
   active-column gathering, and direct-aggregation parity helpers.
-- `objectives.py`: full Gaussian DFS, prototype quadratic score, and structured
+- `objectives.py`: full Gaussian DFS, explicit partition-dependent covariance
+  construction, prototype quadratic score, and structured
   objective/diagnostic results.
 - `initializers.py`: canonical greedy, threshold/bucket, random, and optional
   quadtree-style starts.

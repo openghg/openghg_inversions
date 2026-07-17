@@ -836,6 +836,21 @@ covariance across several partitions. A coherent later alternative is a
 tree-contrast prior or an explicitly induced fine-grid prior with documented
 mass/depth scaling.
 
+This benchmark also differs from the scale-consistent construction in Bocquet,
+Wu, and Chevallier. In that construction the covariance belongs first to the
+fine representation and transforms with the representation projection (using
+\(P\) for that projection by an abuse of notation):
+
+\[
+B_P=PBP^T.
+\]
+
+Using the same numerical \(B_P\) for every partition breaks that transformation
+rule. Phase 0 should therefore accept covariance construction as an explicit
+partition-dependent operation even if the first proof of concept supplies
+\(\tau_x^2I_K\). A Bocquet-faithful projected covariance can then replace the
+benchmark without changing partition state or search control flow.
+
 For the variable-count stretch goal, add an explicit \(p(K)\) or an unconditioned
 proper tree prior and use separate split and merge proposals with their complete
 candidate-count and direction probabilities. Because \(x_P\) remains collapsed,
