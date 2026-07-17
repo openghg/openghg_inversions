@@ -98,17 +98,30 @@ from .search import (
 )
 from .state import PartitionState
 from .tree import DyadicTree, NodeId, Tile
+from .transformed_product_space import (
+    AdditiveCoefficientTransform,
+    ContrastAuxiliaryProposal,
+    ContrastSwap,
+    GaussianContrastProposal,
+    TransportedProductSpaceTransition,
+    swap_contrast_coordinate,
+    transported_partition_metropolis_step,
+)
 
 __all__ = [
     "AdditivePartitionSolution",
+    "AdditiveCoefficientTransform",
     "BocquetProjection",
     "CoarsenedGrid",
+    "ContrastAuxiliaryProposal",
+    "ContrastSwap",
     "CovarianceBuilder",
     "DemoSearchConfig",
     "DemoSearchRun",
     "DyadicTree",
     "GaussianDFSObjective",
     "GaussianConditional",
+    "GaussianContrastProposal",
     "GaussianPartitionDiagnostics",
     "GaussianPartitionObjectives",
     "GaussianPosterior",
@@ -141,6 +154,7 @@ __all__ = [
     "TemperatureSchedule",
     "Tile",
     "TreeContrastLayout",
+    "TransportedProductSpaceTransition",
     "VariableKSearchConfig",
     "VariableKSearchRun",
     "apply_move",
@@ -182,5 +196,7 @@ __all__ = [
     "run_variable_k_dfs_search",
     "stochastic_local_search",
     "sum_coarsen_grid",
+    "swap_contrast_coordinate",
     "threshold_partition",
+    "transported_partition_metropolis_step",
 ]
