@@ -62,6 +62,7 @@ def test_render_search_gif_writes_nonempty_animation(tmp_path: Path) -> None:
             best_score=1.25,
             temperature=1.0,
             accepted=False,
+            cellwise_isotropic_dfs=3.0,
         ),
         SLSVisualizationFrame(
             state=best_state,
@@ -70,11 +71,21 @@ def test_render_search_gif_writes_nonempty_animation(tmp_path: Path) -> None:
             best_score=2.5,
             temperature=0.1,
             accepted=True,
+            cellwise_isotropic_dfs=3.0,
         ),
     )
     output_path = tmp_path / "search.gif"
 
-    result = render_search_gif(background, tree, frames, output_path, fps=2, dpi=60)
+    result = render_search_gif(
+        background,
+        tree,
+        frames,
+        output_path,
+        score_label="Penalized utility",
+        show_region_count=True,
+        fps=2,
+        dpi=60,
+    )
 
     assert result == output_path
     assert output_path.is_file()

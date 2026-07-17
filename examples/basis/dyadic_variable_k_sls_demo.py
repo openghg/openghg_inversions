@@ -58,8 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-regions", type=int, default=80)
     parser.add_argument("--penalty", type=float, default=0.03)
     parser.add_argument("--paired-move-probability", type=float, default=0.2)
-    parser.add_argument("--iterations", type=int, default=600)
-    parser.add_argument("--pilot-proposals", type=int, default=150)
+    parser.add_argument("--initial-loss-acceptance", type=float, default=0.5)
+    parser.add_argument("--final-loss-acceptance", type=float, default=0.01)
+    parser.add_argument("--hold-fraction", type=float, default=0.05)
+    parser.add_argument("--polish-fraction", type=float, default=0.2)
+    parser.add_argument("--iterations", type=int, default=2000)
+    parser.add_argument("--pilot-proposals", type=int, default=300)
     parser.add_argument("--tau", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=20260717)
     parser.add_argument("--record-every", type=int, default=5)
@@ -90,6 +94,10 @@ def main(argv: list[str] | None = None) -> int:
         max_regions=args.max_regions,
         penalty_per_extra_region=args.penalty,
         paired_move_probability=args.paired_move_probability,
+        initial_loss_acceptance=args.initial_loss_acceptance,
+        final_loss_acceptance=args.final_loss_acceptance,
+        hold_fraction=args.hold_fraction,
+        polish_fraction=args.polish_fraction,
         iterations=args.iterations,
         pilot_proposals=args.pilot_proposals,
         tau=args.tau,
@@ -110,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     args.output_directory.mkdir(parents=True, exist_ok=True)
     prefix = args.output_directory / f"tac_mhd_{args.data_period}_variable_k"
     background = _design_background(coarsened.values, r_diag)
-    frames = _visualization_frames(run, objective, max_frames=args.max_frames)
+    frames = _visualization_frames(run, max_frames=args.max_frames)
     render_partition_comparison(
         background,
         run.tree,
@@ -130,9 +138,12 @@ def main(argv: list[str] | None = None) -> int:
             prefix.with_suffix(".gif"),
             background_label="Weighted sensitivity magnitude",
             title=(
-                "Variable-K dyadic SLS: Gaussian DFS "
+                "Variable-K dyadic SLS: penalized utility and K "
                 f"(penalty={config.penalty_per_extra_region:g} above K={config.free_regions})"
             ),
+            score_label="Penalized utility",
+            score_axis_label="Objective / reference value",
+            show_region_count=True,
             fps=args.fps,
         )
 
@@ -154,7 +165,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"Gaussian benchmark DFS: {run.initial_dfs:.6g} -> {run.best_dfs:.6g}; "
         f"K: {len(run.initial_state.active)} -> {len(run.result.best_state.active)}; "
-        f"best utility={run.result.best_score:.6g}; output={args.output_directory}"
+        f"best utility={run.result.best_score:.6g}; "
+        f"cellwise-I DFS={run.cellwise_isotropic_dfs:.6g}; output={args.output_directory}"
     )
     return 0
 
@@ -188,44 +200,41 @@ def _design_background(contributions: np.ndarray, r_diag: np.ndarray) -> np.ndar
 
 def _visualization_frames(
     run: VariableKSearchRun,
-    objective: GaussianDFSObjective,
     *,
     max_frames: int,
 ) -> tuple[SLSVisualizationFrame, ...]:
-    """Convert variable-count utility steps to DFS-labelled animation frames.
+    """Convert variable-count search steps to utility-labelled animation frames.
 
     Args:
         run: Completed variable-count search.
-        objective: Unpenalized Gaussian DFS evaluator.
         max_frames: Maximum number of frames including the initializer.
 
     Returns:
-        Selected frames whose plotted scores are DFS rather than utility.
+        Selected frames whose plotted scores match the accepted utility.
     """
     if max_frames < 2:
         raise ValueError("max_frames must be at least 2.")
-    best_dfs = run.initial_dfs
     frames = [
         SLSVisualizationFrame(
             state=run.initial_state,
             iteration=0,
-            current_score=run.initial_dfs,
-            best_score=run.initial_dfs,
+            current_score=run.result.initial_score,
+            best_score=run.result.initial_score,
             temperature=run.schedule.initial_temperature,
             accepted=False,
+            cellwise_isotropic_dfs=run.cellwise_isotropic_dfs,
         )
     ]
     for step in run.result.trace:
-        current_dfs = objective(step.current_state, run.design)
-        best_dfs = max(best_dfs, current_dfs)
         frames.append(
             SLSVisualizationFrame(
                 state=step.current_state,
                 iteration=step.iteration + 1,
-                current_score=current_dfs,
-                best_score=best_dfs,
+                current_score=step.current_score,
+                best_score=step.best_score,
                 temperature=step.temperature,
                 accepted=step.accepted,
+                cellwise_isotropic_dfs=run.cellwise_isotropic_dfs,
             )
         )
     if len(frames) <= max_frames:
@@ -294,6 +303,43 @@ def _move_fields(move: SplitMove | MergeMove | PairedMove) -> tuple[str, int | s
     if isinstance(move, MergeMove):
         return "merge", move.parent_id, ""
     return "paired", move.merge_parent_id, move.split_node_id
+
+
+def _accepted_loss_summary(run: VariableKSearchRun) -> dict[str, float | int]:
+    """Summarize downhill moves accepted by the temperature schedule.
+
+    Args:
+        run: Completed variable-count search whose trace records every accepted
+            move.
+
+    Returns:
+        Counts and quantiles for positive utility losses, plus the observed
+        active-region range.
+    """
+    current_utility = run.result.initial_score
+    accepted_losses: list[float] = []
+    region_counts = [len(run.initial_state.active)]
+    for step in run.result.trace:
+        region_counts.append(len(step.current_state.active))
+        if not step.accepted:
+            continue
+        loss = current_utility - step.current_score
+        if loss > 0.0:
+            accepted_losses.append(loss)
+        current_utility = step.current_score
+
+    loss_values = np.asarray(accepted_losses, dtype=np.float64)
+    return {
+        "accepted_downhill_moves": len(accepted_losses),
+        "accepted_downhill_fraction": (
+            len(accepted_losses) / run.result.accepted_moves if run.result.accepted_moves else 0.0
+        ),
+        "median_accepted_loss": float(np.median(loss_values)) if loss_values.size else 0.0,
+        "p95_accepted_loss": float(np.quantile(loss_values, 0.95)) if loss_values.size else 0.0,
+        "largest_accepted_loss": float(loss_values.max()) if loss_values.size else 0.0,
+        "minimum_regions_visited": min(region_counts),
+        "maximum_regions_visited": max(region_counts),
+    }
 
 
 def _error_dominance_summary(
@@ -410,7 +456,19 @@ def _write_manifest(
             "penalty": excess_region_penalty(best_k, run.config),
             "utility": run.result.best_score,
         },
+        "cellwise_isotropic_reference": {
+            "regions": len(run.tree.leaf_ids),
+            "dfs": run.cellwise_isotropic_dfs,
+            "covariance": "tau**2 * I over coarsened grid cells",
+            "bocquet_consistent": False,
+            "comparable_upper_bound": False,
+            "note": (
+                "Regional tau**2 * I is not projected from this cell prior, so reduced DFS can exceed "
+                "this diagnostic."
+            ),
+        },
         "accepted_moves": run.result.accepted_moves,
+        "acceptance_diagnostics": _accepted_loss_summary(run),
         "evaluated_moves": run.result.evaluated_moves,
         "pilot_positive_losses": len(run.pilot_losses),
         "initial_temperature": run.schedule.initial_temperature,

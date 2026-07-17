@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from math import exp
+
 import numpy as np
 import pytest
 
@@ -106,6 +108,7 @@ def test_variable_k_runner_replays_and_uses_unpaired_moves() -> None:
     )
     assert first.result.best_score >= first.result.initial_score
     assert first.best_dfs >= 0.0
+    assert first.cellwise_isotropic_dfs >= 0.0
     assert all(isinstance(step.move, (SplitMove, MergeMove)) for step in first.result.trace)
     assert any(len(step.current_state.active) != config.initial_regions for step in first.result.trace)
     first.result.best_state.validate(first.tree)
@@ -122,6 +125,24 @@ def test_excess_region_penalty_has_a_free_region_threshold() -> None:
         excess_region_penalty(-1, config)
 
 
+def test_variable_k_temperature_targets_representative_loss_acceptance() -> None:
+    """Schedule calibration should match configured representative-loss probabilities."""
+    representative_loss = 4.0
+    schedule = demo_runner._schedule_from_losses(
+        (2.0, representative_loss, 6.0),
+        reference_score=10.0,
+        initial_loss_acceptance=0.5,
+        final_loss_acceptance=0.02,
+        hold_fraction=0.05,
+        polish_fraction=0.2,
+    )
+
+    assert exp(-representative_loss / schedule.initial_temperature) == pytest.approx(0.5)
+    assert exp(-representative_loss / schedule.final_temperature) == pytest.approx(0.02)
+    assert schedule.hold_fraction == 0.05
+    assert schedule.polish_fraction == 0.2
+
+
 def test_demo_runner_rejects_invalid_inputs_and_configuration() -> None:
     """Malformed grids, variances, and impossible K values should fail clearly."""
     with pytest.raises(ValueError, match="target_regions"):
@@ -130,6 +151,10 @@ def test_demo_runner_rejects_invalid_inputs_and_configuration() -> None:
         VariableKSearchConfig(initial_regions=1, min_regions=2)
     with pytest.raises(ValueError, match="penalty_per_extra_region"):
         VariableKSearchConfig(penalty_per_extra_region=-0.1)
+    with pytest.raises(ValueError, match="loss acceptance probabilities"):
+        VariableKSearchConfig(initial_loss_acceptance=0.2, final_loss_acceptance=0.3)
+    with pytest.raises(ValueError, match="hold_fraction and polish_fraction"):
+        VariableKSearchConfig(hold_fraction=0.6, polish_fraction=0.5)
     with pytest.raises(ValueError, match="contribution_grid"):
         run_fixed_count_dfs_search(np.ones((2, 3)), np.ones(2), DemoSearchConfig(target_regions=2))
     with pytest.raises(ValueError, match="r_diag"):

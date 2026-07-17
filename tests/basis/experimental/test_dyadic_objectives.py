@@ -11,6 +11,7 @@ from openghg_inversions.basis.experimental.dyadic.objectives import (
     IsotropicRegionCovariance,
     direct_observation_space_dfs,
     gaussian_dfs,
+    isotropic_observation_space_dfs,
     prototype_quadratic_tile_scores,
 )
 from openghg_inversions.basis.experimental.dyadic.state import PartitionState
@@ -40,6 +41,18 @@ def test_gaussian_dfs_formulas_agree() -> None:
 
     assert state_space == pytest.approx(observation_space, rel=1e-12, abs=1e-12)
     assert 0.0 <= state_space <= design.shape[1]
+
+
+def test_isotropic_observation_space_dfs_avoids_large_identity_matrix() -> None:
+    """Specialized isotropic DFS should match the general observation-space formula."""
+    design = np.array([[1.0, 0.3, -0.4], [-0.2, 1.4, 0.6]])
+    r_diag = np.array([0.5, 1.2])
+    tau = 1.7
+
+    expected = direct_observation_space_dfs(design, tau**2 * np.eye(3), r_diag)
+    actual = isotropic_observation_space_dfs(design, r_diag, tau)
+
+    assert actual == pytest.approx(expected, rel=1e-12, abs=1e-12)
 
 
 def test_gaussian_dfs_is_invariant_to_state_permutation() -> None:

@@ -23,6 +23,7 @@ from .objectives import (
     IsotropicRegionCovariance,
     direct_observation_space_dfs,
     gaussian_dfs,
+    isotropic_observation_space_dfs,
     prototype_quadratic_tile_scores,
 )
 from .proposals import (
@@ -83,6 +84,7 @@ __all__ = [
     "enumerate_split_moves",
     "excess_region_penalty",
     "gaussian_dfs",
+    "isotropic_observation_space_dfs",
     "greedy_partition",
     "prototype_quadratic_tile_scores",
     "random_partition",

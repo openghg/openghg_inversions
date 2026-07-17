@@ -1,10 +1,27 @@
 {
-  "accepted_moves": 366,
+  "acceptance_diagnostics": {
+    "accepted_downhill_fraction": 0.48975188781014023,
+    "accepted_downhill_moves": 454,
+    "largest_accepted_loss": 0.06726983374096474,
+    "maximum_regions_visited": 35,
+    "median_accepted_loss": 3.3395481757736434e-07,
+    "minimum_regions_visited": 24,
+    "p95_accepted_loss": 0.030000006601407846
+  },
+  "accepted_moves": 927,
   "best_utility_state": {
-    "dfs": 5.8968695573817485,
+    "dfs": 5.926012899093983,
     "penalty": 0.0,
-    "regions": 31,
-    "utility": 5.8968695573817485
+    "regions": 25,
+    "utility": 5.926012899093983
+  },
+  "cellwise_isotropic_reference": {
+    "bocquet_consistent": false,
+    "comparable_upper_bound": false,
+    "covariance": "tau**2 * I over coarsened grid cells",
+    "dfs": 4.942027361609498,
+    "note": "Regional tau**2 * I is not projected from this cell prior, so reduced DFS can exceed this diagnostic.",
+    "regions": 1813
   },
   "coarsen": 8,
   "coarsened_shape": [
@@ -13,14 +30,18 @@
     49
   ],
   "config": {
+    "final_loss_acceptance": 0.01,
     "free_regions": 32,
+    "hold_fraction": 0.05,
+    "initial_loss_acceptance": 0.5,
     "initial_regions": 24,
-    "iterations": 600,
+    "iterations": 2000,
     "max_regions": 80,
     "min_regions": 2,
     "paired_move_probability": 0.2,
     "penalty_per_extra_region": 0.03,
-    "pilot_proposals": 150,
+    "pilot_proposals": 300,
+    "polish_fraction": 0.2,
     "record_every": 5,
     "seed": 20260717,
     "tau": 1.0
@@ -31,13 +52,13 @@
     "required_future_transform": "B_P = P B P.T"
   },
   "data_period": "week",
-  "evaluated_moves": 600,
+  "evaluated_moves": 2000,
   "final": {
-    "dfs": 5.877282107494294,
-    "regions": 21,
-    "utility": 5.877282107494294
+    "dfs": 5.926012899093983,
+    "regions": 25,
+    "utility": 5.926012899093983
   },
-  "final_temperature": 0.004642546204715804,
+  "final_temperature": 0.00528541606124464,
   "generation_argv": [
     "/Users/bm13805/.codex/worktrees/a246/openghg_inversions/examples/basis/dyadic_variable_k_sls_demo.py",
     "--data-period",
@@ -51,7 +72,7 @@
     "regions": 24,
     "utility": 5.8787660714385055
   },
-  "initial_temperature": 0.09581148656599305,
+  "initial_temperature": 0.03511554421403495,
   "method": "variable-count stochastic local search",
   "native_shape": [
     333,
@@ -86,7 +107,7 @@
   },
   "observations": 333,
   "penalty_is_log_prior": false,
-  "pilot_positive_losses": 111,
+  "pilot_positive_losses": 234,
   "posterior_sampler": false,
-  "search_seconds": 0.8309864583425224
+  "search_seconds": 2.4668450001627207
 }

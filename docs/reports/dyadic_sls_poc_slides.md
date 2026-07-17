@@ -112,18 +112,19 @@ Site-only values are separate recomputations and are not additive contributions 
 
 - 165 MHD + 168 TAC aligned hourly rows; no missing-hour imputation
 - contributions: \(333\times293\times391\rightarrow333\times37\times49\) at factor 8
-- start: \(K=24\), DFS \(=5.8787660714\)
-- best utility state: \(K=31\), DFS/utility \(=5.8968695574\), zero penalty
-- final search state: \(K=21\), DFS \(=5.8772821075\)
-- 600 evaluations; 366 accepted; about 1 s excluding rendering
+- start: \(K=24\), DFS/utility \(=5.8787660714\)
+- best and final: \(K=25\), DFS/utility \(=5.9260128991\), zero penalty
+- 2,000 evaluations; 927 accepted; 2.36 s excluding rendering
 
 \[
 U(P)=D(P)-\lambda\max\{0,K(P)-32\}.
 \]
 
-The run uses independent split/merge plus 20% paired moves. Because the reported best state is below the free threshold, its penalty is zero. Here \(\lambda=0.03\) shapes exploration above \(K=32\); it is **not a prior, posterior, or proof that \(K=31\) is optimal**.
+The run uses independent split/merge plus 20% paired moves. Because the reported best state is below the free threshold, its penalty is zero. Here \(\lambda=0.03\) shapes exploration above \(K=32\); it is **not a prior, posterior, or proof that \(K=25\) is optimal**.
 
-A same-seed sensitivity check gave a non-monotone response in \(K\) and DFS across \(\lambda\), showing that the finite stochastic path and temperature calibration dominate; \(\lambda\) does not provide a stable estimate of \(K\).
+The schedule uses 300 pilot proposals, targets median-loss acceptance of 0.5 initially and 0.01 at the end, holds the initial temperature for 5%, and reserves the final 20% (400 iterations) for zero-temperature greedy polishing.
+
+The search visited \(K=24\)–35. Of 927 accepted moves, 454 were downhill (48.98%); accepted losses had median \(3.34\times10^{-7}\), 95th percentile \(0.0300000\), and maximum \(0.0672698\). Many accepted downhill moves were therefore numerically tiny. The GIF and trace now show current/best penalized utility, \(K\), and **cellwise-I DFS (not bound)**.
 
 Hourly error benchmark:
 
@@ -131,7 +132,7 @@ Hourly error benchmark:
 - TAC uses pooled variability; zero pooled variability is replaced by the site median.
 - The percentile minimum-error floor is selected for every row: MHD 165/165, floor 43.210 ppb versus observed hourly errors 1.485–26.063 ppb; TAC 168/168, floor 42.863 ppb versus 0.467–16.360 ppb.
 
-Therefore the detailed hourly error differences do not affect \(R\) in this selected benchmark. The fixed covariance remains non-production. The GIF and trace track persistent best DFS separately from best utility.
+Therefore the detailed hourly error differences do not affect \(R\) in this selected benchmark. The fixed covariance remains non-production.
 
 *Source: `tac_mhd_week_variable_k_summary.png`, `tac_mhd_week_variable_k_manifest.json`.*
 
@@ -147,15 +148,17 @@ B_P=\tau^2 I_K
 
 The same isotropic regional covariance is used for every partition.
 
+**Cellwise-I DFS (not bound)** is \(4.9420273616\): all 1,813 coarsened cells receive independent \(\tau^2I\) cell covariance. Reduced partitions instead use \(\tau^2I\) per region with summed design columns; their signal covariance contains cross-cell terms. The resulting priors are incomparable, so the lower cellwise-I value is neither a bound nor a maximum.
+
 ## Scale-consistent target
 
 \[
 B_P=PBP^T
 \]
 
-Start from a fine-grid covariance (B) and project it for each partition. Reusing one numerical (B_P) breaks the Bocquet construction's transformation assumption.
+Start from a fine-grid covariance \(B\) and project it for each partition. Reusing one numerical \(B_P\) breaks the Bocquet construction's transformation assumption.
 
-The implementation already accepts a partition-dependent covariance builder; the search machinery need not change.
+This reversal is direct evidence that \(B_P=PBP^T\), consistent projection/prolongation, and consistent normalization are required before a meaningful no-reduction upper reference or retained-information ratio exists. The implementation already accepts a partition-dependent covariance builder; the search machinery need not change.
 
 *Method: `objectives.py`; covariance design inspired by Bocquet, Wu & Chevallier.*
 
@@ -173,8 +176,8 @@ The implementation already accepts a partition-dependent covariance builder; the
 
 ## Next experiments
 
-1. **Land/sea:** diagnose boundary crossing and test an explicit constraint.
-2. **Prior consistency:** implement \(B_P=PBP^T\) and compare conclusions.
+1. **Prior consistency:** implement \(B_P=PBP^T\) before comparing retained-information ratios.
+2. **Land/sea:** diagnose boundary crossing and test an explicit constraint.
 3. **Search robustness:** use multiple seeds, longer runs, and decouple schedule calibration from utility.
 4. **Posterior integration:** only after the optimisation benchmark is understood.
 
@@ -184,6 +187,6 @@ The implementation already accepts a partition-dependent covariance builder; the
 
 # Takeaway
 
-**The design-score gain persisted on a larger, variable-\(K\), full-week run, but the selected \(K\) remained unstable.**
+**The longer full-week search improved the benchmark and finished at \(K=25\), but cellwise-I DFS is not a bound under dimension-dependent \(\tau^2I\).**
 
-The next tests are search robustness, projected-prior consistency, land/sea treatment, and posterior integration.
+Projected-prior consistency now comes before retained-information claims; search robustness, land/sea treatment, and posterior integration follow.

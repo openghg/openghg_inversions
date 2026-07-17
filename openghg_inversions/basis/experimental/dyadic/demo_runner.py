@@ -17,7 +17,12 @@ import numpy.typing as npt
 
 from .initializers import greedy_partition
 from .multiscale import MultiscaleDesign
-from .objectives import GaussianDFSObjective, IsotropicRegionCovariance, prototype_quadratic_tile_scores
+from .objectives import (
+    GaussianDFSObjective,
+    IsotropicRegionCovariance,
+    isotropic_observation_space_dfs,
+    prototype_quadratic_tile_scores,
+)
 from .proposals import (
     Move,
     PairedMove,
@@ -79,6 +84,12 @@ class VariableKSearchConfig:
             ``free_regions``.
         paired_move_probability: Probability assigned to a fixed-count paired
             move when split, merge, and paired move types are all available.
+        initial_loss_acceptance: Target acceptance probability for a
+            representative pilot loss at the initial temperature.
+        final_loss_acceptance: Target acceptance probability for the same loss
+            at the end of geometric cooling.
+        hold_fraction: Fraction of iterations at the initial temperature.
+        polish_fraction: Fraction of iterations at zero temperature.
         iterations: Number of stochastic local-search proposals.
         pilot_proposals: Number of local utility losses used to calibrate the
             temperature schedule.
@@ -100,6 +111,10 @@ class VariableKSearchConfig:
     tau: float = 1.0
     seed: int = 20260717
     record_every: int = 5
+    initial_loss_acceptance: float = 0.8
+    final_loss_acceptance: float = 0.01
+    hold_fraction: float = 0.1
+    polish_fraction: float = 0.1
 
     def __post_init__(self) -> None:
         """Validate variable-count search configuration."""
@@ -113,6 +128,17 @@ class VariableKSearchConfig:
             raise ValueError("penalty_per_extra_region must be finite and non-negative.")
         if not 0.0 <= self.paired_move_probability <= 1.0:
             raise ValueError("paired_move_probability must lie in [0, 1].")
+        if not 0.0 < self.final_loss_acceptance <= self.initial_loss_acceptance < 1.0:
+            raise ValueError(
+                "loss acceptance probabilities must satisfy "
+                "0 < final_loss_acceptance <= initial_loss_acceptance < 1."
+            )
+        if not 0.0 <= self.hold_fraction < 1.0:
+            raise ValueError("hold_fraction must lie in [0, 1).")
+        if not 0.0 <= self.polish_fraction < 1.0:
+            raise ValueError("polish_fraction must lie in [0, 1).")
+        if self.hold_fraction + self.polish_fraction >= 1.0:
+            raise ValueError("hold_fraction and polish_fraction must sum to less than 1.")
         if self.iterations < 1:
             raise ValueError("iterations must be positive.")
         if self.pilot_proposals < 1:
@@ -161,6 +187,9 @@ class VariableKSearchRun:
         initial_dfs: Unpenalized Gaussian DFS at the initializer.
         final_dfs: Unpenalized Gaussian DFS at the final state.
         best_dfs: Unpenalized Gaussian DFS at the best-utility state.
+        cellwise_isotropic_dfs: DFS for all coarsened cells under an independent
+            isotropic cell prior. This is not an upper bound for partition DFS
+            because the current regional prior is not projected from it.
     """
 
     config: VariableKSearchConfig
@@ -173,6 +202,7 @@ class VariableKSearchRun:
     initial_dfs: float
     final_dfs: float
     best_dfs: float
+    cellwise_isotropic_dfs: float
 
 
 def run_fixed_count_dfs_search(
@@ -296,6 +326,11 @@ def run_variable_k_dfs_search(
         raise ValueError("max_regions exceeds the number of grid cells.")
 
     design = MultiscaleDesign.from_grid(grid, tree)
+    cellwise_isotropic_dfs = isotropic_observation_space_dfs(
+        design.H[:, tree.leaf_ids],
+        variances,
+        config.tau,
+    )
     support = MultiscaleDesign.from_grid(cell_support[np.newaxis, :, :], tree).H[0]
     proxy_scores = prototype_quadratic_tile_scores(design.H, 1.0 / variances, support)
 
@@ -331,7 +366,14 @@ def run_variable_k_dfs_search(
         config.pilot_proposals,
         rng,
     )
-    schedule = _schedule_from_losses(pilot_losses, initial_utility)
+    schedule = _schedule_from_losses(
+        pilot_losses,
+        initial_utility,
+        initial_loss_acceptance=config.initial_loss_acceptance,
+        final_loss_acceptance=config.final_loss_acceptance,
+        hold_fraction=config.hold_fraction,
+        polish_fraction=config.polish_fraction,
+    )
     result = stochastic_local_search(
         initial_state,
         objective=utility,
@@ -352,6 +394,7 @@ def run_variable_k_dfs_search(
         initial_dfs=dfs(initial_state),
         final_dfs=dfs(result.final_state),
         best_dfs=dfs(result.best_state),
+        cellwise_isotropic_dfs=cellwise_isotropic_dfs,
     )
 
 
@@ -528,26 +571,40 @@ def _pilot_variable_k_losses(
     return tuple(losses)
 
 
-def _schedule_from_losses(losses: tuple[float, ...], reference_score: float) -> PiecewiseGeometricSchedule:
-    """Calibrate 0.8-to-0.01 median-loss acceptance temperatures.
+def _schedule_from_losses(
+    losses: tuple[float, ...],
+    reference_score: float,
+    *,
+    initial_loss_acceptance: float = 0.8,
+    final_loss_acceptance: float = 0.01,
+    hold_fraction: float = 0.1,
+    polish_fraction: float = 0.1,
+) -> PiecewiseGeometricSchedule:
+    """Calibrate temperatures from representative-loss acceptance targets.
 
     Args:
         losses: Positive local objective losses from a discarded pilot.
         reference_score: Initial full objective, used only for a deterministic
             fallback when no sampled proposal loses score.
+        initial_loss_acceptance: Target initial acceptance probability for the
+            representative loss.
+        final_loss_acceptance: Target acceptance probability at the end of
+            geometric cooling.
+        hold_fraction: Fraction of iterations held at initial temperature.
+        polish_fraction: Fraction of iterations run at zero temperature.
 
     Returns:
-        Ten-percent hold, eighty-percent cooling, ten-percent polish schedule.
+        Calibrated hold, cooling, and zero-temperature polish schedule.
     """
     if losses:
         representative_loss = float(np.median(losses))
     else:
         representative_loss = max(abs(reference_score) * 1e-3, 1e-6)
     return PiecewiseGeometricSchedule(
-        initial_temperature=-representative_loss / log(0.8),
-        final_temperature=-representative_loss / log(0.01),
-        hold_fraction=0.1,
-        polish_fraction=0.1,
+        initial_temperature=-representative_loss / log(initial_loss_acceptance),
+        final_temperature=-representative_loss / log(final_loss_acceptance),
+        hold_fraction=hold_fraction,
+        polish_fraction=polish_fraction,
     )
 
 

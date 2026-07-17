@@ -1,10 +1,27 @@
 {
-  "accepted_moves": 333,
+  "acceptance_diagnostics": {
+    "accepted_downhill_fraction": 0.5,
+    "accepted_downhill_moves": 358,
+    "largest_accepted_loss": 0.04394019011035155,
+    "maximum_regions_visited": 37,
+    "median_accepted_loss": 4.074366047213118e-05,
+    "minimum_regions_visited": 24,
+    "p95_accepted_loss": 0.03000001185545744
+  },
+  "accepted_moves": 716,
   "best_utility_state": {
-    "dfs": 6.707307680739341,
+    "dfs": 6.707450625923343,
     "penalty": 0.0,
-    "regions": 31,
-    "utility": 6.707307680739341
+    "regions": 32,
+    "utility": 6.707450625923343
+  },
+  "cellwise_isotropic_reference": {
+    "bocquet_consistent": false,
+    "comparable_upper_bound": false,
+    "covariance": "tau**2 * I over coarsened grid cells",
+    "dfs": 6.263001345088303,
+    "note": "Regional tau**2 * I is not projected from this cell prior, so reduced DFS can exceed this diagnostic.",
+    "regions": 1813
   },
   "coarsen": 8,
   "coarsened_shape": [
@@ -13,14 +30,18 @@
     49
   ],
   "config": {
+    "final_loss_acceptance": 0.01,
     "free_regions": 32,
+    "hold_fraction": 0.05,
+    "initial_loss_acceptance": 0.5,
     "initial_regions": 24,
-    "iterations": 600,
+    "iterations": 2000,
     "max_regions": 80,
     "min_regions": 2,
     "paired_move_probability": 0.2,
     "penalty_per_extra_region": 0.03,
-    "pilot_proposals": 150,
+    "pilot_proposals": 300,
+    "polish_fraction": 0.2,
     "record_every": 5,
     "seed": 20260717,
     "tau": 1.0
@@ -31,11 +52,11 @@
     "required_future_transform": "B_P = P B P.T"
   },
   "data_period": "day",
-  "evaluated_moves": 600,
+  "evaluated_moves": 2000,
   "final": {
-    "dfs": 6.707307680739341,
-    "regions": 31,
-    "utility": 6.707307680739341
+    "dfs": 6.707450625923343,
+    "regions": 32,
+    "utility": 6.707450625923343
   },
   "final_temperature": 0.004207502480457988,
   "generation_argv": [
@@ -51,7 +72,7 @@
     "regions": 24,
     "utility": 6.654513426690464
   },
-  "initial_temperature": 0.08683318368986714,
+  "initial_temperature": 0.027954041398283308,
   "method": "variable-count stochastic local search",
   "native_shape": [
     47,
@@ -86,7 +107,7 @@
   },
   "observations": 47,
   "penalty_is_log_prior": false,
-  "pilot_positive_losses": 109,
+  "pilot_positive_losses": 221,
   "posterior_sampler": false,
-  "search_seconds": 0.8832111670635641
+  "search_seconds": 2.532496541272849
 }

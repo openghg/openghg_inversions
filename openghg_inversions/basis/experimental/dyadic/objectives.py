@@ -187,6 +187,51 @@ def direct_observation_space_dfs(
     return float(np.trace(averaging_kernel))
 
 
+def isotropic_observation_space_dfs(
+    H: npt.ArrayLike,
+    r_diag: npt.ArrayLike,
+    tau: float,
+) -> float:
+    """Compute DFS in observation space for isotropic state covariance.
+
+    This specializes :func:`direct_observation_space_dfs` to
+    ``B = tau**2 * I`` without materializing a potentially large state-space
+    identity matrix. It is useful for a cellwise no-dimension-reduction
+    diagnostic when the state dimension is much larger than the observation
+    dimension. It is only a comparable upper reference when reduced-space
+    design matrices and prior covariances are transformed consistently from
+    the same fine-grid model.
+
+    Args:
+        H: Observation-by-state design matrix with shape ``(N, K)``.
+        r_diag: Positive observation covariance diagonal with shape ``(N,)``.
+        tau: Positive finite prior standard deviation for each state element.
+
+    Returns:
+        Gaussian degrees of freedom for signal as a scalar.
+
+    Raises:
+        ValueError: If inputs are non-finite, dimensions are incompatible,
+            ``r_diag`` is not positive, or ``tau`` is not positive and finite.
+    """
+    design = _finite_float_array(H, name="H")
+    errors = _positive_vector(r_diag, name="r_diag")
+    if design.ndim != 2:
+        raise ValueError("H must be a two-dimensional observation-by-state matrix.")
+    if design.shape[0] == 0 or design.shape[1] == 0:
+        raise ValueError("H dimensions must both be non-empty.")
+    if design.shape[0] != errors.shape[0]:
+        raise ValueError("r_diag length must match H observations.")
+    if not np.isfinite(tau) or tau <= 0.0:
+        raise ValueError("tau must be positive and finite.")
+
+    projected_covariance = tau**2 * (design @ design.T)
+    innovation = projected_covariance + np.diag(errors)
+    innovation_cholesky = _positive_definite_cholesky(innovation, name="innovation covariance")
+    averaging_kernel = _cholesky_solve(innovation_cholesky, projected_covariance)
+    return float(np.trace(averaging_kernel))
+
+
 def prototype_quadratic_tile_scores(
     H: npt.ArrayLike,
     observation_precision: npt.ArrayLike,
