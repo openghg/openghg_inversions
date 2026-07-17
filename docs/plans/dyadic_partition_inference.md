@@ -9,6 +9,10 @@ Its first implementation milestone is to move the useful prototype code into
 this repository with synthetic tests. Subsequent work should refer to that public
 reference implementation rather than to private histories.
 
+The short-term execution checklist, local TAC/MHD data contract, demo artifacts,
+and hackathon stop conditions are maintained separately in
+`docs/plans/dyadic_sls_hackathon.md`.
+
 The motivating problem is an atmospheric inverse model
 
 \[
