@@ -13,6 +13,24 @@ progresses. It records work packets, decisions, commands, expected artifacts,
 acceptance criteria, and stop conditions. The first result is an optimizer and
 basis initializer, not posterior inference.
 
+### Implementation status
+
+As of 17 July 2026, Phase 0A is implemented on
+`codex/dyadic-sls-core`:
+
+- exact unpadded rectangular dyadic trees and immutable partition frontiers;
+- sum-preserving multiscale design columns and direct-sum parity checks;
+- full Gaussian DFS with a partition-dependent covariance-builder boundary;
+- explicitly labelled isotropic and historical quadratic benchmark scores;
+- greedy, random, and threshold initializers;
+- split, merge, and unique fixed-count paired proposals; and
+- seeded stochastic local search with a piecewise geometric schedule.
+
+The combined core gate is 49 focused tests plus Ruff and Pyright. The next
+branch owns the TAC/MHD adapter, real-data checks, run manifest, static figure,
+trace, and GIF. No production basis interface or `fixedbasisMCMC` code is
+touched.
+
 ## Demonstration objective
 
 Produce a runnable example that:
@@ -236,13 +254,12 @@ and verify that perturbing an excluded row cannot alter the result.
 ### Sum-preserving reduction
 
 The native grid is 293 by 391 cells. Coarsen contributions by spatial **sum**,
-never mean, before padding. The initial candidate is factor-4 coarsening,
-giving approximately 74 by 98 physical cells, padded to a 128 by 128 tree.
+never mean. The initial candidate is factor-4 coarsening, giving a 74 by 98
+grid. The implemented canonical tree supports this exact rectangle, so the POC
+does not pad to a power-of-two square.
 
 Carry a coarsened physical-support count or area field so:
 
-- padded cells do not contribute to scores;
-- padded-only leaves never count as scientific regions;
 - partially supported tiles use declared physical support in normalization;
 - rendering clips to the physical grid; and
 - direct fine-grid and coarsened total-contribution identities can be tested.
@@ -284,7 +301,7 @@ tests/basis/experimental/
 Responsibilities:
 
 - `tree.py`: tile/node IDs, bounds, parent/children, canonical orientation,
-  sibling checks, padding/support metadata.
+  sibling checks, and exact rectangular support.
 - `state.py`: immutable active frontier, exact-cover validation, stable
   ordering, split/merge application, label and boundary rendering data.
 - `multiscale.py`: sum-preserving coarsening, candidate observation columns,
@@ -347,7 +364,8 @@ where compatible rather than copied from `~/Documents/inversions`.
     controlled loss.
 14. Invalid variance/precision, support, coordinate, and shape inputs fail
     clearly.
-15. Padded cells do not alter scientific coverage or score normalization.
+15. Partial boundary blocks preserve their physical support and total design
+    contribution.
 
 ### Local integration tests
 
@@ -504,7 +522,7 @@ Stop and fix correctness rather than polishing output if:
 - any state fails exact-cover or ancestry invariants;
 - TAC/MHD coordinate or row alignment is ambiguous;
 - full DFS formulas disagree;
-- padded cells affect scientific coverage or score;
+- partial boundary blocks affect total design contribution incorrectly;
 - fixed-\(K\) moves cannot connect the demonstrated support; or
 - deterministic replay changes.
 
