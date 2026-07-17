@@ -50,6 +50,9 @@ class DemoDesignData:
     Attributes:
         G: Emissions sensitivity with shape ``(observation, lat, lon)`` in ppb
             per fine-cell multiplier.
+        prior_flux: Annual prior-flux field already included in ``G``, retained
+            so reduced Gaussian models can define scaling-factor support and
+            projection statistics on the native grid.
         y: Observed mole fractions in frozen observation order.
         error: Observation uncertainty used by the fixed demo benchmark.
         min_error: Lower bounds for model-measurement mismatch error.
@@ -63,6 +66,7 @@ class DemoDesignData:
     """
 
     G: npt.NDArray[np.floating]
+    prior_flux: npt.NDArray[np.floating]
     y: npt.NDArray[np.floating]
     error: npt.NDArray[np.floating]
     min_error: npt.NDArray[np.floating]
@@ -151,6 +155,7 @@ def load_tac_mhd_demo_data(data_directory: Path) -> DemoDesignData:
     sites = np.where(mhd_mask, "MHD", "TAC")
     return DemoDesignData(
         G=G,
+        prior_flux=flux,
         y=y,
         error=error,
         min_error=min_error,
@@ -277,6 +282,7 @@ def load_tac_mhd_week_demo_data(data_directory: Path) -> DemoDesignData:
     _require_positive(min_error, name="min_error")
     return DemoDesignData(
         G=G,
+        prior_flux=flux,
         y=y,
         error=error,
         min_error=min_error,

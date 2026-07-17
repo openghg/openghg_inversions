@@ -13,6 +13,12 @@ progresses. It records work packets, decisions, commands, expected artifacts,
 acceptance criteria, and stop conditions. The first result is an optimizer and
 basis initializer, not posterior inference.
 
+The follow-on projection-consistent Gaussian implementation, full-week run,
+and corrected native-grid DFS bound are tracked in
+`docs/plans/dyadic_projected_prior_poc.md`. Its derivation supersedes the
+equal-region isotropic covariance used by the first demonstration without
+changing that historical run.
+
 ### Implementation status
 
 As of 17 July 2026, Phase 0A is implemented on

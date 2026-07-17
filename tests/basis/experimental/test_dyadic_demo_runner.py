@@ -13,6 +13,7 @@ from openghg_inversions.basis.experimental.dyadic.demo_runner import (
     VariableKSearchConfig,
     excess_region_penalty,
     run_fixed_count_dfs_search,
+    run_projected_variable_k_dfs_search,
     run_variable_k_dfs_search,
 )
 from openghg_inversions.basis.experimental.dyadic.proposals import MergeMove, SplitMove
@@ -114,6 +115,59 @@ def test_variable_k_runner_replays_and_uses_unpaired_moves() -> None:
     first.result.best_state.validate(first.tree)
 
 
+def test_projected_variable_k_runner_replays_and_respects_native_dfs_bound() -> None:
+    """Projected search should replay and remain below no-reduction DFS."""
+    rng = np.random.default_rng(23)
+    flux = np.array(
+        [
+            [0.0, 1.0, 2.0, 0.5],
+            [0.0, 1.5, 0.7, 1.2],
+            [0.0, 0.3, 1.1, 2.5],
+            [0.0, 0.8, 0.6, 1.7],
+        ]
+    )
+    footprints = rng.uniform(0.0, 1.0, size=(6, *flux.shape))
+    grid = footprints * flux
+    variances = np.linspace(0.8, 1.3, grid.shape[0])
+    config = VariableKSearchConfig(
+        initial_regions=3,
+        free_regions=3,
+        min_regions=2,
+        max_regions=4,
+        penalty_per_extra_region=0.02,
+        paired_move_probability=0.2,
+        iterations=25,
+        pilot_proposals=10,
+        tau=0.7,
+        seed=81,
+        record_every=2,
+    )
+
+    first = run_projected_variable_k_dfs_search(
+        grid,
+        flux,
+        variances,
+        config,
+        coarsen_factor=2,
+    )
+    second = run_projected_variable_k_dfs_search(
+        grid,
+        flux,
+        variances,
+        config,
+        coarsen_factor=2,
+    )
+
+    assert first.result == second.result
+    assert first.pilot_losses == second.pilot_losses
+    assert first.model.design.tree.shape == (2, 2)
+    assert first.initial_dfs <= first.full_grid_dfs + 1e-12
+    assert first.final_dfs <= first.full_grid_dfs + 1e-12
+    assert first.best_dfs <= first.full_grid_dfs + 1e-12
+    assert first.result.best_score >= first.result.initial_score
+    first.result.best_state.validate(first.model.design.tree)
+
+
 def test_excess_region_penalty_has_a_free_region_threshold() -> None:
     """The variable-K penalty should remain zero through the configured free K."""
     config = VariableKSearchConfig(free_regions=6, penalty_per_extra_region=0.25)
@@ -168,3 +222,40 @@ def test_demo_runner_rejects_invalid_inputs_and_configuration() -> None:
             DemoSearchConfig(target_regions=2),
             support_grid=np.ones((3, 2)),
         )
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ["target_regions", "iterations", "pilot_proposals", "seed", "record_every"],
+)
+@pytest.mark.parametrize("invalid_value", [2.5, True])
+def test_fixed_count_integer_configuration_fields_are_strict(
+    field_name: str,
+    invalid_value: object,
+) -> None:
+    """Fixed-count integer fields should reject fractions and booleans."""
+    with pytest.raises(TypeError, match=field_name):
+        DemoSearchConfig(**{field_name: invalid_value})  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "initial_regions",
+        "free_regions",
+        "min_regions",
+        "max_regions",
+        "iterations",
+        "pilot_proposals",
+        "seed",
+        "record_every",
+    ],
+)
+@pytest.mark.parametrize("invalid_value", [2.5, True])
+def test_variable_count_integer_configuration_fields_are_strict(
+    field_name: str,
+    invalid_value: object,
+) -> None:
+    """Variable-count integer fields should reject fractions and booleans."""
+    with pytest.raises(TypeError, match=field_name):
+        VariableKSearchConfig(**{field_name: invalid_value})  # type: ignore[arg-type]

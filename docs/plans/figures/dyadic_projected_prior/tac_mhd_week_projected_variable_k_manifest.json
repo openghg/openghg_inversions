@@ -1,0 +1,84 @@
+{
+  "accepted_moves": 1054,
+  "base_observation_covariance": {
+    "description": "Hourly MHD repeatability-plus-variability and TAC pooled variability, with zero pooled TAC variability replaced by the full-week site median and a per-site median-minus-fifth-percentile minimum-mismatch floor. Using max(error, min_error) as a fixed covariance is a demo benchmark, not the production model-error likelihood.",
+    "kind": "fixed diagonal demo benchmark",
+    "maximum_variance": 1867.1154932791035,
+    "minimum_variance": 1837.2155456887403
+  },
+  "best_covariance_diagnostics": {
+    "aggregation_error_minimum_eigenvalue": 3.1840508451406617e-06,
+    "aggregation_error_trace": 9807.718664282267,
+    "innovation_closure_frobenius_error": 1.1256694532165447e-10,
+    "reduced_signal_trace": 2019.9734446642408
+  },
+  "best_utility_state": {
+    "dfs": 0.4791816735822501,
+    "effective_regions": 28,
+    "penalty": 0.0,
+    "regions": 28,
+    "utility": 0.4791816735822501
+  },
+  "coarsen": 8,
+  "config": {
+    "final_loss_acceptance": 0.01,
+    "free_regions": 32,
+    "hold_fraction": 0.05,
+    "initial_loss_acceptance": 0.5,
+    "initial_regions": 24,
+    "iterations": 2000,
+    "max_regions": 80,
+    "min_regions": 2,
+    "paired_move_probability": 0.2,
+    "penalty_per_extra_region": 0.03,
+    "pilot_proposals": 300,
+    "polish_fraction": 0.2,
+    "record_every": 5,
+    "seed": 20260717,
+    "tau": 1.0
+  },
+  "covariance": {
+    "aggregation_error_included": true,
+    "fine_prior": "B = relative_prior_sd**2 * diag(prior_flux**2)",
+    "projected_and_residual_independent": true,
+    "prolongation": "U = diag(prior_flux) A.T",
+    "regional_variance": "relative_prior_sd**2 / supported_native_cells_in_region",
+    "restriction": "(U.T B^-1 U)^-1 U.T B^-1"
+  },
+  "data_period": "week",
+  "evaluated_moves": 2000,
+  "final_temperature": 0.001644880403303681,
+  "flux_tolerance": 0.0,
+  "generation_argv": [
+    "/Users/bm13805/.codex/worktrees/a246/openghg_inversions/examples/basis/dyadic_projected_prior_sls_demo.py"
+  ],
+  "gif_written": true,
+  "initial": {
+    "dfs": 0.47818319250819363,
+    "effective_regions": 24,
+    "regions": 24,
+    "utility": 0.47818319250819363
+  },
+  "initial_temperature": 0.010928348848928307,
+  "method": "projection-consistent variable-count stochastic local search",
+  "native_grid_reference": {
+    "best_fraction": 0.13446113189754288,
+    "comparable_upper_bound": true,
+    "dfs": 3.5637188741455668
+  },
+  "native_shape": [
+    333,
+    293,
+    391
+  ],
+  "objective": "projected Gaussian DFS minus explicit excess-region penalty",
+  "observations": 333,
+  "pilot_positive_losses": 176,
+  "posterior_sampler": false,
+  "search_seconds": 2.7902682912535965,
+  "search_shape": [
+    37,
+    49
+  ],
+  "supported_native_cells": 110758
+}

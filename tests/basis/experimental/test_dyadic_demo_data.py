@@ -31,6 +31,8 @@ def test_load_tac_mhd_demo_data_reconstructs_frozen_row_design(demo_data: DemoDe
     """The adapter should preserve frozen rows and match frozen sensitivity totals."""
     assert demo_data.G.shape == (47, 293, 391)
     assert demo_data.G.dtype == np.float32
+    assert demo_data.prior_flux.shape == demo_data.G.shape[1:]
+    assert demo_data.prior_flux.dtype == np.float32
     assert demo_data.y.shape == demo_data.error.shape == demo_data.min_error.shape == (47,)
     assert np.count_nonzero(demo_data.sites == "MHD") == 23
     assert np.count_nonzero(demo_data.sites == "TAC") == 24
@@ -93,6 +95,8 @@ def test_load_tac_mhd_week_demo_data_aligns_all_available_hours(
     """The week adapter should retain exact site-major hours without imputation."""
     assert week_demo_data.G.shape == (333, 293, 391)
     assert week_demo_data.G.dtype == np.float32
+    assert week_demo_data.prior_flux.shape == week_demo_data.G.shape[1:]
+    assert week_demo_data.prior_flux.dtype == np.float32
     assert week_demo_data.y.shape == week_demo_data.error.shape == week_demo_data.min_error.shape == (333,)
     assert np.count_nonzero(week_demo_data.sites == "MHD") == 165
     assert np.count_nonzero(week_demo_data.sites == "TAC") == 168

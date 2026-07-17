@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from math import log
+from operator import index
 
 import numpy as np
 import numpy.typing as npt
@@ -30,6 +31,7 @@ from .proposals import (
     enumerate_merge_moves,
     enumerate_split_moves,
 )
+from .rhime_gaussian import RHIMEGaussianMultiscale
 from .search import PiecewiseGeometricSchedule, SearchProposal, SearchResult, stochastic_local_search
 from .state import PartitionState
 from .tree import DyadicTree
@@ -59,6 +61,8 @@ class DemoSearchConfig:
 
     def __post_init__(self) -> None:
         """Validate search configuration."""
+        for field_name in ("target_regions", "iterations", "pilot_proposals", "seed", "record_every"):
+            object.__setattr__(self, field_name, _integer_config_value(getattr(self, field_name), field_name))
         if self.target_regions < 2:
             raise ValueError("target_regions must be at least 2 for paired moves.")
         if self.iterations < 1:
@@ -69,6 +73,8 @@ class DemoSearchConfig:
             raise ValueError("tau must be positive and finite.")
         if self.record_every < 1:
             raise ValueError("record_every must be positive.")
+        if self.seed < 0:
+            raise ValueError("seed must be non-negative.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,8 +99,10 @@ class VariableKSearchConfig:
         iterations: Number of stochastic local-search proposals.
         pilot_proposals: Number of local utility losses used to calibrate the
             temperature schedule.
-        tau: Region-multiplier prior standard deviation for the benchmark-only
-            isotropic covariance.
+        tau: Prior standard deviation. The historical isotropic runner applies
+            it independently to every region; the projection-consistent RHIME
+            runner applies it to native relative scaling errors before
+            aggregation.
         seed: Random seed used for pilot proposals and search.
         record_every: Retain every Nth proposal in addition to accepted, best,
             and final proposals.
@@ -118,6 +126,17 @@ class VariableKSearchConfig:
 
     def __post_init__(self) -> None:
         """Validate variable-count search configuration."""
+        for field_name in (
+            "initial_regions",
+            "free_regions",
+            "min_regions",
+            "max_regions",
+            "iterations",
+            "pilot_proposals",
+            "seed",
+            "record_every",
+        ):
+            object.__setattr__(self, field_name, _integer_config_value(getattr(self, field_name), field_name))
         if self.min_regions < 1:
             raise ValueError("min_regions must be positive.")
         if not self.min_regions <= self.initial_regions <= self.max_regions:
@@ -147,6 +166,8 @@ class VariableKSearchConfig:
             raise ValueError("tau must be positive and finite.")
         if self.record_every < 1:
             raise ValueError("record_every must be positive.")
+        if self.seed < 0:
+            raise ValueError("seed must be non-negative.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +224,38 @@ class VariableKSearchRun:
     final_dfs: float
     best_dfs: float
     cellwise_isotropic_dfs: float
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectedVariableKSearchRun:
+    """State and diagnostics from a projection-consistent variable-K search.
+
+    Attributes:
+        config: Frozen variable-count configuration. ``config.tau`` is the
+            common native relative-scaling prior standard deviation.
+        model: Precomputed RHIME Gaussian multiscale model.
+        initial_state: Projection-informed greedy initializer.
+        result: Search result whose scores are penalized utilities.
+        schedule: Calibrated temperature schedule.
+        pilot_losses: Positive utility losses observed during calibration.
+        initial_dfs: Unpenalized projected Gaussian DFS at the initializer.
+        final_dfs: Unpenalized projected Gaussian DFS at the final state.
+        best_dfs: Unpenalized projected Gaussian DFS at the best-utility state.
+        full_grid_dfs: DFS of the supported native grid without dimension
+            reduction. This is an upper bound for every valid partition under
+            the same fine-grid prior and observation covariance.
+    """
+
+    config: VariableKSearchConfig
+    model: RHIMEGaussianMultiscale
+    initial_state: PartitionState
+    result: SearchResult[PartitionState, Move]
+    schedule: PiecewiseGeometricSchedule
+    pilot_losses: tuple[float, ...]
+    initial_dfs: float
+    final_dfs: float
+    best_dfs: float
+    full_grid_dfs: float
 
 
 def run_fixed_count_dfs_search(
@@ -395,6 +448,118 @@ def run_variable_k_dfs_search(
         final_dfs=dfs(result.final_state),
         best_dfs=dfs(result.best_state),
         cellwise_isotropic_dfs=cellwise_isotropic_dfs,
+    )
+
+
+def run_projected_variable_k_dfs_search(
+    native_contribution_grid: npt.ArrayLike,
+    prior_flux: npt.ArrayLike,
+    r_diag: npt.ArrayLike,
+    config: VariableKSearchConfig,
+    *,
+    coarsen_factor: int = 1,
+    flux_tolerance: float = 0.0,
+) -> ProjectedVariableKSearchRun:
+    """Run variable-K SLS with Bocquet-consistent Gaussian aggregation.
+
+    RHIME's contribution grid already contains footprint multiplied by prior
+    flux. This runner preserves its summed regional columns and uses the
+    prior-precision-weighted left inverse of that prolongation. For independent
+    native relative-scaling errors, the regional prior variance is therefore
+    ``config.tau**2 / n_supported_cells``. Unresolved fine-grid variability is
+    included as aggregation error in the effective observation covariance.
+
+    Args:
+        native_contribution_grid: Native RHIME contributions with shape
+            ``(observation, row, column)``. Values already include prior flux.
+        prior_flux: Native prior-flux field with shape ``(row, column)``.
+        r_diag: Positive diagonal of the base observation covariance ``R``.
+        config: Variable-count search configuration. ``config.tau`` is the
+            common native relative-scaling prior standard deviation.
+        coarsen_factor: Positive square block width used only to define the
+            dyadic search grid. Full signal covariance is computed before
+            coarsening.
+        flux_tolerance: Non-negative absolute threshold defining cells with
+            nonzero prior-flux support.
+
+    Returns:
+        Search result, exact projected DFS diagnostics, and the native-grid DFS
+        upper bound under the same Gaussian model.
+
+    Raises:
+        ValueError: If model inputs or configured region bounds are invalid.
+
+    Notes:
+        Search utility is projected Gaussian DFS minus the configured soft
+        complexity penalty. It remains an optimizer criterion, not a posterior
+        density or Metropolis-Hastings transition.
+    """
+    model = RHIMEGaussianMultiscale.from_native_grid(
+        native_contribution_grid,
+        prior_flux,
+        r_diag,
+        coarsen_factor=coarsen_factor,
+        relative_prior_sd=config.tau,
+        flux_tolerance=flux_tolerance,
+    )
+    tree = model.design.tree
+    if config.max_regions > len(tree.leaf_ids):
+        raise ValueError("max_regions exceeds the number of coarsened grid cells.")
+
+    initial_state = greedy_partition(tree, config.initial_regions, model.split_gain).state
+
+    def dfs(state: PartitionState) -> float:
+        """Evaluate unpenalized projection-consistent DFS."""
+        return model.score(state)
+
+    def utility(state: PartitionState) -> float:
+        """Evaluate DFS minus the configured structural-region penalty."""
+        return dfs(state) - excess_region_penalty(len(state.active), config)
+
+    def propose(
+        state: PartitionState, rng: np.random.Generator
+    ) -> SearchProposal[PartitionState, Move] | None:
+        """Sample one valid split, merge, or paired optimization move."""
+        return _sample_variable_k_proposal(tree, state, config, rng)
+
+    rng = np.random.default_rng(config.seed)
+    initial_utility = utility(initial_state)
+    pilot_losses = _pilot_variable_k_losses(
+        initial_state,
+        initial_utility,
+        utility,
+        propose,
+        config.pilot_proposals,
+        rng,
+    )
+    schedule = _schedule_from_losses(
+        pilot_losses,
+        initial_utility,
+        initial_loss_acceptance=config.initial_loss_acceptance,
+        final_loss_acceptance=config.final_loss_acceptance,
+        hold_fraction=config.hold_fraction,
+        polish_fraction=config.polish_fraction,
+    )
+    result = stochastic_local_search(
+        initial_state,
+        objective=utility,
+        propose=propose,
+        schedule=schedule,
+        iterations=config.iterations,
+        rng=rng,
+        record_every=config.record_every,
+    )
+    return ProjectedVariableKSearchRun(
+        config=config,
+        model=model,
+        initial_state=initial_state,
+        result=result,
+        schedule=schedule,
+        pilot_losses=pilot_losses,
+        initial_dfs=dfs(initial_state),
+        final_dfs=dfs(result.final_state),
+        best_dfs=dfs(result.best_state),
+        full_grid_dfs=model.full_grid_dfs,
     )
 
 
@@ -618,6 +783,16 @@ def _validated_grid(values: npt.ArrayLike) -> np.ndarray:
     return grid
 
 
+def _integer_config_value(value: int, name: str) -> int:
+    """Normalize one integer configuration field while rejecting booleans."""
+    if isinstance(value, bool):
+        raise TypeError(f"{name} must be an integer, not a boolean.")
+    try:
+        return index(value)
+    except TypeError as exc:
+        raise TypeError(f"{name} must be an integer.") from exc
+
+
 def _validated_variances(values: npt.ArrayLike, *, observations: int) -> np.ndarray:
     """Return positive finite variances matching the observation count."""
     variances = np.asarray(values, dtype=float)
@@ -643,9 +818,11 @@ def _validated_support(values: npt.ArrayLike | None, *, shape: tuple[int, int]) 
 __all__ = [
     "DemoSearchConfig",
     "DemoSearchRun",
+    "ProjectedVariableKSearchRun",
     "VariableKSearchConfig",
     "VariableKSearchRun",
     "excess_region_penalty",
     "run_fixed_count_dfs_search",
+    "run_projected_variable_k_dfs_search",
     "run_variable_k_dfs_search",
 ]

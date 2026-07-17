@@ -10,10 +10,12 @@ from .initializers import InitializationResult, greedy_partition, random_partiti
 from .demo_runner import (
     DemoSearchConfig,
     DemoSearchRun,
+    ProjectedVariableKSearchRun,
     VariableKSearchConfig,
     VariableKSearchRun,
     excess_region_penalty,
     run_fixed_count_dfs_search,
+    run_projected_variable_k_dfs_search,
     run_variable_k_dfs_search,
 )
 from .multiscale import CoarsenedGrid, MultiscaleDesign, direct_gather, sum_coarsen_grid
@@ -39,6 +41,7 @@ from .proposals import (
     enumerate_split_moves,
     reverse_move,
 )
+from .rhime_gaussian import RHIMEGaussianMultiscale
 from .search import (
     PiecewiseGeometricSchedule,
     SearchProposal,
@@ -67,6 +70,8 @@ __all__ = [
     "PairedNeighbor",
     "PartitionState",
     "PiecewiseGeometricSchedule",
+    "ProjectedVariableKSearchRun",
+    "RHIMEGaussianMultiscale",
     "SearchProposal",
     "SearchResult",
     "SearchStep",
@@ -90,6 +95,7 @@ __all__ = [
     "random_partition",
     "reverse_move",
     "run_fixed_count_dfs_search",
+    "run_projected_variable_k_dfs_search",
     "run_variable_k_dfs_search",
     "stochastic_local_search",
     "sum_coarsen_grid",

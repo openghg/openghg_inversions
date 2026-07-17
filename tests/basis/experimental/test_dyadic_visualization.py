@@ -63,6 +63,7 @@ def test_render_search_gif_writes_nonempty_animation(tmp_path: Path) -> None:
             temperature=1.0,
             accepted=False,
             cellwise_isotropic_dfs=3.0,
+            full_grid_dfs=3.5,
         ),
         SLSVisualizationFrame(
             state=best_state,
@@ -72,6 +73,7 @@ def test_render_search_gif_writes_nonempty_animation(tmp_path: Path) -> None:
             temperature=0.1,
             accepted=True,
             cellwise_isotropic_dfs=3.0,
+            full_grid_dfs=3.5,
         ),
     )
     output_path = tmp_path / "search.gif"
@@ -103,3 +105,15 @@ def test_render_search_gif_rejects_unordered_frames(tmp_path: Path) -> None:
 
     with np.testing.assert_raises_regex(ValueError, "strictly increasing"):
         render_search_gif(np.ones(tree.shape), tree, frames, tmp_path / "unordered.gif")
+
+
+def test_render_search_gif_rejects_changing_fixed_reference(tmp_path: Path) -> None:
+    """Animation should reject a no-reduction reference that changes by frame."""
+    tree, initial_state, best_state = _example_states()
+    frames = (
+        SLSVisualizationFrame(initial_state, 0, 1.0, 1.0, 0.5, True, full_grid_dfs=3.0),
+        SLSVisualizationFrame(best_state, 1, 1.1, 1.1, 0.4, True, full_grid_dfs=3.1),
+    )
+
+    with np.testing.assert_raises_regex(ValueError, "full_grid_dfs must have one fixed value"):
+        render_search_gif(np.ones(tree.shape), tree, frames, tmp_path / "changing.gif")

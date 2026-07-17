@@ -43,6 +43,9 @@ class SLSVisualizationFrame:
         cellwise_isotropic_dfs: Optional fixed DFS reference for an independent
             isotropic prior over all grid cells. It is not an upper bound when
             regional covariance is not projected from the cell prior.
+        full_grid_dfs: Optional no-dimension-reduction DFS under the same
+            projected fine-grid prior and observation covariance. This is an
+            upper bound for projection-consistent partition DFS.
         temperature: Non-negative stochastic-local-search temperature.
         accepted: Whether the proposal evaluated at this iteration was accepted.
     """
@@ -54,6 +57,7 @@ class SLSVisualizationFrame:
     temperature: float
     accepted: bool
     cellwise_isotropic_dfs: float | None = None
+    full_grid_dfs: float | None = None
 
     def __post_init__(self) -> None:
         """Validate scalar frame diagnostics."""
@@ -67,6 +71,8 @@ class SLSVisualizationFrame:
             raise ValueError("best_score must not be smaller than current_score.")
         if self.cellwise_isotropic_dfs is not None and not np.isfinite(self.cellwise_isotropic_dfs):
             raise ValueError("cellwise_isotropic_dfs must be finite when provided.")
+        if self.full_grid_dfs is not None and not np.isfinite(self.full_grid_dfs):
+            raise ValueError("full_grid_dfs must be finite when provided.")
         if not np.isfinite(self.temperature) or self.temperature < 0.0:
             raise ValueError("temperature must be finite and non-negative.")
 
@@ -87,6 +93,7 @@ def render_partition_comparison(
     *,
     background_label: str = "Fixed sensitivity background",
     title: str = "Dyadic SLS partition comparison",
+    score_label: str = _SCORE_NAME,
     dpi: int = 150,
 ) -> Path:
     """Render initial and best partitions over the same fixed background.
@@ -101,6 +108,7 @@ def render_partition_comparison(
         output_path: Caller-selected image output path.
         background_label: Colour-bar label for the fixed background field.
         title: Figure title.
+        score_label: Label for the scalar shown below each panel title.
         dpi: Positive output resolution in dots per inch.
 
     Returns:
@@ -127,7 +135,7 @@ def render_partition_comparison(
         for axis, state, panel_name, score in panels:
             image = _draw_background(axis, values)
             _draw_partition(axis, state, tree)
-            axis.set_title(f"{panel_name}: K={len(state.active)}\n{_SCORE_NAME}={score:.4g}")
+            axis.set_title(f"{panel_name}: K={len(state.active)}\n{score_label}={score:.4g}")
         if image is not None:
             figure.colorbar(image, ax=axes, shrink=0.82, label=background_label)
         figure.suptitle(title)
@@ -220,9 +228,20 @@ def render_search_gif(
             if frame_records[0].cellwise_isotropic_dfs is not None
             else None
         )
+        full_grid_dfs = (
+            np.asarray([frame.full_grid_dfs for frame in frame_records], dtype=np.float64)
+            if frame_records[0].full_grid_dfs is not None
+            else None
+        )
+        full_grid_dfs_is_near = full_grid_dfs is not None and _reference_is_near_scores(
+            current_scores,
+            best_scores,
+            float(full_grid_dfs[0]),
+        )
         (current_line,) = score_axis.plot([], [], color="tab:blue", linewidth=1.5, label="Current")
         (best_line,) = score_axis.plot([], [], color="tab:red", linewidth=1.8, label="Best")
         cellwise_isotropic_dfs_line = None
+        full_grid_dfs_line = None
         _configure_score_axis(
             score_axis,
             iterations,
@@ -230,6 +249,7 @@ def render_search_gif(
             best_scores,
             score_axis_label or score_label,
             cellwise_isotropic_dfs=cellwise_isotropic_dfs,
+            full_grid_dfs=full_grid_dfs if full_grid_dfs_is_near else None,
         )
         region_axis = None
         region_line = None
@@ -243,6 +263,27 @@ def render_search_gif(
                 label="Cellwise-I DFS (not bound)",
             )
             legend_handles.append(cellwise_isotropic_dfs_line)
+        if full_grid_dfs_is_near and full_grid_dfs is not None:
+            full_grid_dfs_line = score_axis.axhline(
+                float(full_grid_dfs[0]),
+                color="tab:green",
+                linewidth=1.5,
+                linestyle=":",
+                label="Native-grid DFS upper bound",
+            )
+            legend_handles.append(full_grid_dfs_line)
+        elif full_grid_dfs is not None:
+            score_axis.text(
+                0.98,
+                0.98,
+                f"Native-grid DFS upper bound: {float(full_grid_dfs[0]):.4g}\n(outside plotted range)",
+                transform=score_axis.transAxes,
+                ha="right",
+                va="top",
+                fontsize=8,
+                color="tab:green",
+                bbox={"facecolor": "white", "edgecolor": "tab:green", "alpha": 0.9, "pad": 3.0},
+            )
         if show_region_count:
             region_axis = score_axis.twinx()
             (region_line,) = region_axis.plot(
@@ -330,6 +371,23 @@ def _validate_frames(frames: tuple[SLSVisualizationFrame, ...], tree: DyadicTree
     has_cellwise_isotropic_dfs = [frame.cellwise_isotropic_dfs is not None for frame in frames]
     if any(has_cellwise_isotropic_dfs) and not all(has_cellwise_isotropic_dfs):
         raise ValueError("cellwise_isotropic_dfs must be provided for every frame or no frames.")
+    if all(has_cellwise_isotropic_dfs):
+        _validate_fixed_reference(
+            [
+                float(frame.cellwise_isotropic_dfs)
+                for frame in frames
+                if frame.cellwise_isotropic_dfs is not None
+            ],
+            name="cellwise_isotropic_dfs",
+        )
+    has_full_grid_dfs = [frame.full_grid_dfs is not None for frame in frames]
+    if any(has_full_grid_dfs) and not all(has_full_grid_dfs):
+        raise ValueError("full_grid_dfs must be provided for every frame or no frames.")
+    if all(has_full_grid_dfs):
+        _validate_fixed_reference(
+            [float(frame.full_grid_dfs) for frame in frames if frame.full_grid_dfs is not None],
+            name="full_grid_dfs",
+        )
 
 
 def _finite_score(score: float, name: str) -> float:
@@ -338,6 +396,14 @@ def _finite_score(score: float, name: str) -> float:
     if not np.isfinite(value):
         raise ValueError(f"{name} must be finite.")
     return value
+
+
+def _validate_fixed_reference(values: list[float], *, name: str) -> None:
+    """Require a purported fixed frame reference to remain numerically equal."""
+    reference = values[0]
+    tolerance = 1e-12 * max(1.0, abs(reference))
+    if not np.allclose(values, reference, rtol=1e-12, atol=tolerance):
+        raise ValueError(f"{name} must have one fixed value across all frames.")
 
 
 def _validate_dpi(dpi: int) -> None:
@@ -413,6 +479,7 @@ def _configure_score_axis(
     axis_label: str,
     *,
     cellwise_isotropic_dfs: np.ndarray | None = None,
+    full_grid_dfs: np.ndarray | None = None,
 ) -> None:
     """Configure fixed limits and labels for an animated score axis.
 
@@ -424,15 +491,17 @@ def _configure_score_axis(
         axis_label: Label for the plotted score/reference scale.
         cellwise_isotropic_dfs: Optional independent-cell isotropic DFS
             reference plotted on the same scale.
+        full_grid_dfs: Optional native-grid DFS upper bound plotted on the same
+            scale.
     """
     x_min = float(iterations[0])
     x_max = float(iterations[-1])
     x_padding = max((x_max - x_min) * 0.03, 0.5)
-    score_arrays = (
-        (current_scores, best_scores)
-        if cellwise_isotropic_dfs is None
-        else (current_scores, best_scores, cellwise_isotropic_dfs)
-    )
+    score_arrays = [current_scores, best_scores]
+    if cellwise_isotropic_dfs is not None:
+        score_arrays.append(cellwise_isotropic_dfs)
+    if full_grid_dfs is not None:
+        score_arrays.append(full_grid_dfs)
     all_scores = np.concatenate(score_arrays)
     y_min = float(all_scores.min())
     y_max = float(all_scores.max())
@@ -460,6 +529,19 @@ def _configure_region_axis(axis: Axes, region_counts: np.ndarray) -> None:
     axis.tick_params(axis="y", colors="0.3")
 
 
+def _reference_is_near_scores(
+    current_scores: np.ndarray,
+    best_scores: np.ndarray,
+    reference: float,
+) -> bool:
+    """Return whether a fixed reference can share a readable linear score axis."""
+    score_min = float(min(current_scores.min(), best_scores.min()))
+    score_max = float(max(current_scores.max(), best_scores.max()))
+    score_span = score_max - score_min
+    display_scale = max(score_span, max(abs(score_min), abs(score_max), 1.0) * 0.02)
+    return score_min - 4.0 * display_scale <= reference <= score_max + 4.0 * display_scale
+
+
 def _diagnostic_text(frame: SLSVisualizationFrame, score_label: str) -> str:
     """Format one frame's diagnostics for display without hidden semantics."""
     text = (
@@ -472,6 +554,8 @@ def _diagnostic_text(frame: SLSVisualizationFrame, score_label: str) -> str:
     )
     if frame.cellwise_isotropic_dfs is not None:
         text += f"\nCellwise-I DFS (not bound): {frame.cellwise_isotropic_dfs:.4g}"
+    if frame.full_grid_dfs is not None:
+        text += f"\nNative-grid DFS upper bound: {frame.full_grid_dfs:.4g}"
     return text
 
 
