@@ -18,6 +18,11 @@ from .demo_runner import (
     run_projected_variable_k_dfs_search,
     run_variable_k_dfs_search,
 )
+from .dynamic_programming import (
+    AdditivePartitionSolution,
+    additive_partition_frontier,
+    optimal_additive_partition,
+)
 from .multiscale import CoarsenedGrid, MultiscaleDesign, direct_gather, sum_coarsen_grid
 from .objectives import (
     CovarianceBuilder,
@@ -27,6 +32,12 @@ from .objectives import (
     gaussian_dfs,
     isotropic_observation_space_dfs,
     prototype_quadratic_tile_scores,
+)
+from .partition_diagnostics import (
+    GaussianPartitionDiagnostics,
+    build_partition_diagnostics,
+    emissions_compression_quality,
+    gaussian_posterior_mean,
 )
 from .proposals import (
     MergeMove,
@@ -54,12 +65,14 @@ from .state import PartitionState
 from .tree import DyadicTree, NodeId, Tile
 
 __all__ = [
+    "AdditivePartitionSolution",
     "CoarsenedGrid",
     "CovarianceBuilder",
     "DemoSearchConfig",
     "DemoSearchRun",
     "DyadicTree",
     "GaussianDFSObjective",
+    "GaussianPartitionDiagnostics",
     "InitializationResult",
     "IsotropicRegionCovariance",
     "MergeMove",
@@ -81,16 +94,21 @@ __all__ = [
     "VariableKSearchConfig",
     "VariableKSearchRun",
     "apply_move",
+    "additive_partition_frontier",
+    "build_partition_diagnostics",
     "direct_gather",
     "direct_observation_space_dfs",
     "enumerate_merge_moves",
     "enumerate_paired_moves",
     "enumerate_paired_neighbors",
     "enumerate_split_moves",
+    "emissions_compression_quality",
     "excess_region_penalty",
     "gaussian_dfs",
+    "gaussian_posterior_mean",
     "isotropic_observation_space_dfs",
     "greedy_partition",
+    "optimal_additive_partition",
     "prototype_quadratic_tile_scores",
     "random_partition",
     "reverse_move",
