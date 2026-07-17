@@ -1,0 +1,129 @@
+{
+  "block_widths_native_cells": [
+    8,
+    4,
+    2
+  ],
+  "buffer_hours_before_and_after": 24.0,
+  "candidate_statuses": [
+    "completed",
+    "omitted_fine_dp_limit"
+  ],
+  "comparison": {
+    "algorithms": [
+      "axis_parallel_no_mask",
+      "quadtree_no_mask"
+    ],
+    "block_width": 4,
+    "construction_objective": "search-grid sums of training native-cell DFS; differs from the projected dyadic objective",
+    "region_counts": [
+      64,
+      250
+    ]
+  },
+  "dynamic_programming": {
+    "coarse_block_width_threshold": 8,
+    "fine_dp_max_regions": 64,
+    "one_frontier_call_per_fold_width_or_thinning_phase": true
+  },
+  "input_provenance": {
+    "data_directory_argument": "tests/data",
+    "fixture_sha256": {
+      "flux_total_ch4_europe_edgar7_2019-01-01_2019-12-31_data.nc": "48fe26f6914e5a92c43eab299e2b5da708b78a6e72af9e8a06572d4914e01c3f",
+      "footprints_mhd_europe_name_10m_2019-01-01_2019-01-07_data.nc": "f617c410a2f53a20b9ba3ea789151b56d25c9dd149ecba88d507cd421e7b7122",
+      "footprints_tac_europe_name_185m_2019-01-01_2019-01-07_data.nc": "8405cf1ff3e3d4a3931ce79e36df307c23b71de397846b2b27087fe15d9f3db8",
+      "obs_mhd_ch4_10m_2019-01-01_2019-01-07_data.nc": "b0f4a86e6062de129de3b0b4e2ef407c1841926d10ce503dfb994702075c6936",
+      "obs_tac_ch4_185m_2019-01-01_2019-02-01_data.nc": "49de6aa729ed553d32a7069d718428d49f9af8262317b011a1c27316c1fa3420"
+    }
+  },
+  "main_folds": [
+    {
+      "fold_id": "fold_2019-01-02",
+      "holdout_start": "2019-01-02T00:00:00.000000000",
+      "holdout_stop": "2019-01-03T00:00:00.000000000"
+    },
+    {
+      "fold_id": "fold_2019-01-03",
+      "holdout_start": "2019-01-03T00:00:00.000000000",
+      "holdout_stop": "2019-01-04T00:00:00.000000000"
+    },
+    {
+      "fold_id": "fold_2019-01-04",
+      "holdout_start": "2019-01-04T00:00:00.000000000",
+      "holdout_stop": "2019-01-05T00:00:00.000000000"
+    },
+    {
+      "fold_id": "fold_2019-01-05",
+      "holdout_start": "2019-01-05T00:00:00.000000000",
+      "holdout_stop": "2019-01-06T00:00:00.000000000"
+    },
+    {
+      "fold_id": "fold_2019-01-06",
+      "holdout_start": "2019-01-06T00:00:00.000000000",
+      "holdout_stop": "2019-01-07T00:00:00.000000000"
+    }
+  ],
+  "method": "emissions-only blocked temporal cross-validation",
+  "model_error_ppb": 5.0,
+  "observation_use": {
+    "error_weights_include_observed_within_hour_variability": true,
+    "interpretation": "no response-residual scoring; observed concentrations enter indirectly through fixed variability-based uncertainty weights",
+    "uses_mole_fraction_targets_or_residuals": false
+  },
+  "outputs": {
+    "candidate_csv": "emissions_holdout_sweep.csv",
+    "figure_png": "emissions_holdout_sweep.png",
+    "report_markdown": "emissions_holdout_sweep.md",
+    "resolution_csv": "coarsening_resolution.csv"
+  },
+  "region_counts": [
+    16,
+    31,
+    64,
+    250
+  ],
+  "relative_prior_sd": 0.5,
+  "seed": 20260717,
+  "source_provenance": {
+    "examples/basis/dyadic_resolution_sweep.py": "63517613bbcafffd39e264abbd2cd0c90c6ea4e3addeabc1b1c854857e96397f",
+    "openghg_inversions/basis/algorithms/__init__.py": "00aba7b395179dfe44485cc05c912a3f64336b82d6a2dfbea72bfd7277461e0d",
+    "openghg_inversions/basis/algorithms/_constrained.py": "ca80c64eecadf9a7aa03367965654ae10ed0a172c3f6362a10edf39e69f228e9",
+    "openghg_inversions/basis/algorithms/_quadtree.py": "b09e9429c5b680d5832cfcf803932007a90aef2ce3d9445c56d10b37122d4de8",
+    "openghg_inversions/basis/experimental/dyadic/__init__.py": "c3896cdbc0a351c6b46809a9efbfa6e3a986de8271dd955c6555a117efd367a5",
+    "openghg_inversions/basis/experimental/dyadic/demo_data.py": "dee7442dbfe914fad11d02dd00ef4888d1b9c421f1dbba43f712f79d8050d53b",
+    "openghg_inversions/basis/experimental/dyadic/demo_runner.py": "a8c19f47718a8d22264418fdf3eb0cf69b3eaf63660aecbf13a3f14d6b608ae5",
+    "openghg_inversions/basis/experimental/dyadic/dynamic_programming.py": "5b79099d4ef918a95015dc616d0cdbc5b402c84a3652650547ee3d48d7c11259",
+    "openghg_inversions/basis/experimental/dyadic/initializers.py": "40dc53b427beecad168187389d2a8f843f01610252492226d6350cd2a98ffc0f",
+    "openghg_inversions/basis/experimental/dyadic/multiscale.py": "600de984a1bb3804ed6c734b48e93373f1b0a57583b6e34a4c1881d36c4d9d5f",
+    "openghg_inversions/basis/experimental/dyadic/objectives.py": "eb5279c6946c734a09981cf98e74bf3045be96ea585cec0dd747ba6bcfde2365",
+    "openghg_inversions/basis/experimental/dyadic/partition_diagnostics.py": "7df3158cc75a251a2a255615605a3c9718bc51de17c1471d8dc8575f951bd14d",
+    "openghg_inversions/basis/experimental/dyadic/proposals.py": "8e96eccd79b28fcb8d1e95c192ac3d743c3ae5199626a4d17f777e20c3d3623d",
+    "openghg_inversions/basis/experimental/dyadic/rhime_gaussian.py": "80db4c50ebedb4387bc113a9d90c9e0a37ef6a73e263f9444c246b10d814a590",
+    "openghg_inversions/basis/experimental/dyadic/search.py": "7afcc74de1f0f2ce241e509031b5518d354ff63c1b2eebc0eea01332eeb741a4",
+    "openghg_inversions/basis/experimental/dyadic/state.py": "803fe7991356ac474fa2d4c66b96a8674b799bff6b7343381bb4ee832c0c03c0",
+    "openghg_inversions/basis/experimental/dyadic/sweep_diagnostics.py": "a569d3e7731954f4c552cc8569f02ac8ed5ac7b16b5733905caaed4829a14464",
+    "openghg_inversions/basis/experimental/dyadic/tree.py": "e0a733b80629ec239a383bd9eeb5ec51f730df270c24c1faa9ff718dbab9535d",
+    "openghg_inversions/basis/experimental/dyadic/visualization.py": "afdae657c9821dc1f5216633c530a966e0835069d33bee87186e826407dea33c"
+  },
+  "thinning_robustness": {
+    "block_width": 4,
+    "holdout_day": "2019-01-04",
+    "holdout_remains_complete_hourly_day": true,
+    "interpretation": "training-thinning robustness; not a simulation of correlation",
+    "phase_offsets_hours": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "region_counts": [
+      64,
+      250
+    ],
+    "training_stride_hours": 6
+  },
+  "timing_note": "wall-clock timings are diagnostic and machine dependent",
+  "uses_boundary_condition_sensitivity": false
+}

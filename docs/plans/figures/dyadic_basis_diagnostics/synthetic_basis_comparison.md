@@ -2,7 +2,7 @@
 
 ## Scope
 
-This is a controlled analytic Gaussian inversion, not a fit to the stored real observations. The real-data consistency gate fails because the frozen prior emissions plus boundary contribution leave residuals far larger than the supplied errors. Synthetic observations use the same emissions and boundary sensitivity matrices, so the baseline is explicit and internally consistent.
+This is a controlled analytic Gaussian inversion, not a fit to the stored real observations. The frozen boundary contribution is known to be corrupted, especially for late TAC rows, so its large real-data residual is a fixture diagnostic rather than an observation-data quality test. Synthetic observations use the same emissions and boundary sensitivity matrices, so the baseline is explicit and internally consistent.
 
 The search block width is 8 native cells along each spatial axis. That is grid coarsening; it is unrelated to the up-to-eightfold storage bound for a fully precomputed space-time multiscale Jacobian.
 

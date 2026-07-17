@@ -7,8 +7,8 @@ coefficients, and seeded Gaussian noise, so the analytic posterior can test
 the basis without asking emissions to explain a missing atmospheric baseline.
 
 This remains an experimental diagnostic.  It does not run production RHIME,
-modify ``fixedbasisMCMC``, or claim that the frozen real observations and
-boundary contribution are mutually consistent.
+modify ``fixedbasisMCMC``, or treat the known-corrupted frozen boundary
+contribution as evidence about the validity of the observations themselves.
 """
 
 from __future__ import annotations
@@ -666,7 +666,11 @@ def _real_data_consistency(data: DemoDesignData, boundary_design: np.ndarray) ->
         "residual_min_ppb": float(residual.min()),
         "residual_max_ppb": float(residual.max()),
         "residual_rmse_ppb": float(np.sqrt(np.mean(np.square(residual)))),
-        "interpretation": "fails real-data inversion gate; synthetic data only",
+        "interpretation": "frozen boundary fixture is unsuitable for a real-data inversion diagnostic",
+        "fixture_status": (
+            "the frozen boundary contribution is known to be corrupted, especially for late TAC rows; "
+            "this residual is not an observation-data quality test"
+        ),
     }
 
 
@@ -695,7 +699,7 @@ def _write_csv(path: Path, rows: list[dict[str, object]]) -> None:
     """Write comparison rows with a stable union of fields."""
     fieldnames = list(rows[0])
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -754,9 +758,10 @@ def _write_report(
         "## Scope",
         "",
         "This is a controlled analytic Gaussian inversion, not a fit to the stored real observations. "
-        "The real-data consistency gate fails because the frozen prior emissions plus boundary contribution "
-        "leave residuals far larger than the supplied errors. Synthetic observations use the same emissions "
-        "and boundary sensitivity matrices, so the baseline is explicit and internally consistent.",
+        "The frozen boundary contribution is known to be corrupted, especially for late TAC rows, so its "
+        "large real-data residual is a fixture diagnostic rather than an observation-data quality test. "
+        "Synthetic observations use the same emissions and boundary sensitivity matrices, so the baseline "
+        "is explicit and internally consistent.",
         "",
         f"The search block width is {manifest['search_block_width_native_cells']} native cells along each spatial axis. "
         "That is grid coarsening; it is unrelated to the up-to-eightfold storage bound for a fully precomputed "

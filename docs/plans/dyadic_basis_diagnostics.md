@@ -146,19 +146,33 @@ posterior means remain at the prior. Total modeled-mole-fraction RMSE is
 therefore dominated by boundary extrapolation. Emissions RMSE and compression
 quality must remain separate from total RMSE.
 
-## Real-data consistency gate
+## Frozen boundary-fixture diagnostic
 
-The stored one-day real observations should not yet be inverted in this
-experiment. At unit emissions and boundary coefficients:
+The stored one-day real observations should not be combined with the frozen
+boundary contribution in this experiment because that boundary fixture is
+known to be corrupted, especially for late TAC rows. At unit emissions and
+boundary coefficients:
 
 - prior emissions range from about 2.8 to 49.7 ppb;
 - prior boundary contribution ranges from about 95.9 to 1772.0 ppb; and
 - the observation-minus-prior residual ranges from about 128.5 to 1846.0 ppb,
   with RMSE about 589 ppb.
 
-This is far beyond the stored observation errors and floors. The late-TAC
-boundary collapse needs to be understood before using these rows for a real
-posterior or observation holdout score.
+This is far beyond the stored observation errors and floors, but it is not
+evidence that the observations themselves are invalid. It shows that the
+frozen boundary contribution cannot support a real posterior or total
+observation holdout score.
+
+A bounded MHD-only diagnostic could estimate a constant marine baseline from
+western winds. [ICOS describes 180--300 degrees as Mace Head's broad North
+Atlantic clean sector](https://icos-atc.lsce.ipsl.fr/panelboard/MHD/), while a
+[methane mass-balance study used 240--300 degrees plus trajectory
+screening](https://acp.copernicus.org/articles/19/3043/2019/acp-19-3043-2019.html).
+In this fixture both sectors select the same 16 first-day MHD hours and give a
+mean of about 1933.9 ppb. This is suitable only as an explicitly rough
+diagnostic constant, not a replacement for time-varying boundary conditions.
+Emissions-only holdout compression does not require any baseline and remains
+the preferred next experiment.
 
 ## Scale and performance check
 
@@ -183,19 +197,83 @@ this additive Gaussian objective is both easier and much faster to solve
 exactly. SLS performance becomes the relevant research target only for a
 non-additive score or constraints that break the tree recurrence.
 
+## Completed resolution and holdout experiment
+
+Run:
+
+```console
+python examples/basis/dyadic_resolution_sweep.py
+```
+
+The experiment uses the full-week emissions sensitivities without fitting or
+scoring observed mole-fraction targets and without boundary conditions. The
+fixed observation-error weights do include within-hour variability estimated
+from observed mole fractions, so this is not complete statistical independence
+from concentration measurements. Five folds hold out January 2 through 6 in
+turn at both TAC and MHD, and remove a 24-hour buffer from either side of the
+training set. It compares fixed \(K=16,31,64,250\) at native-cell block widths
+8, 4, and 2. Exact DP is capped at \(K=64\) on the finer grids; the greedy
+search still reaches \(K=250\). A bounded comparison also evaluates the
+no-mask axis-parallel and quadtree algorithms at width 4 and \(K=64,250\).
+
+The all-leaf representation ceiling is the clearest result. Median training
+native-grid DFS retained is about 0.10 at width 8, 0.25 at width 4, and 0.52 at
+width 2. Median holdout compression at the corresponding all-leaf partitions
+is about 0.16, 0.37, and 0.61. Thus the original 8x8-block grid is not merely a
+runtime approximation: it excludes most of the native-grid information from
+the partition dictionary. Increasing from \(K=64\) to 250 at width 8 has
+essentially no effect because the available representation has already
+saturated.
+
+Single-cell influence is material. Across the five unthinned folds, the most
+influential native cell contributes about 3.8--7.1% of native DFS and the ten
+most influential cells contribute about 30--39%. Such cells cannot be isolated
+inside an ordinary 8x8 leaf. The generated cell-DFS map and CSV retain the
+native coordinates of the largest cell for each fold.
+
+Greedy splitting is usually close to exact DP on its training objective, but
+the oracle does not always have the best holdout compression. At low \(K\) on
+the finer grids, exact DP can select a training-optimal dictionary that
+generalizes worse than greedy splitting. The DP result is therefore a useful
+optimizer-loss reference, not an independent validation score. DP gaps are
+reported only for algorithms in the same dyadic dictionary.
+
+For the central fold, thinning training rows to every sixth hour across all six
+wall-clock phases changes held-out compression very little. This supports the
+spatial conclusions against one simple reduction in closely spaced data. It
+does not simulate temporal correlation: it reduces repeated information while
+leaving the diagonal likelihood unchanged. Explicit non-diagonal covariance
+remains a separate model extension.
+
+Artifacts are in `docs/plans/figures/dyadic_resolution_sweep/`. Candidate and
+resolution CSVs include both per-fold compression and the weighted covariance
+traces used to pool compression across folds. The report gives median/range and
+pooled summaries separately. The manifest records hashes for every input
+fixture and local source file used by the experiment.
+
 ## Next experiments
 
-1. Add a fixed \(K\) sweep over 16, 31, 64, and 250. Report actual/effective
-   \(K\), DP gap, compression, and runtime.
-2. Repeat at search block widths 8, 4, and 2 to separate representation loss
-   from optimizer loss.
-3. Add the axis-parallel constrained/greedy basis to the arbitrary-label
-   comparison, followed by bucket only when its land/sea inputs are explicit.
-4. Use the week fixture for emissions-only blocked compression scores. This
-   score does not require observed mole fraction or a baseline.
-5. Diagnose and reconstruct valid boundary contributions before fitting the
-   stored real observations or reporting total holdout prediction.
-6. Keep diagonal observation-plus-fixed-mismatch sensitivity as the bounded
-   extension of existing models. Defer correlated error until the basis
-   experiment demonstrates a need that thinning and blocked holdouts cannot
-   expose.
+1. Test adaptive native-cell refinement around high-influence cells. A width-1
+   global tree is the clean reference, but a mixed-resolution tree is more
+   likely to be computationally useful.
+2. Repeat selected width-2 and adaptive cases after removing or capping the
+   highest-influence cells. This distinguishes broad resolution gain from a
+   small number of dominant receptors/grid cells.
+3. Add observation-error and fixed model-mismatch sensitivity to the blocked
+   compression sweep. Keep `mf_error` visible and report the additive model
+   error separately.
+4. Compare six-hour bin averages with the existing six-hour phase thinning.
+   Aggregation can reduce short-lag dependence and gives each time block a
+   different sensitivity row, but it is a robustness approximation rather
+   than a simulation or estimate of non-diagonal temporal covariance.
+5. Use explicit land/sea or country masks in a separate partition-dictionary
+   experiment. The no-mask axis-parallel comparison is not evidence about the
+   value of physical constraints.
+6. Replace full active-node tuples with compact DP backpointers before running
+   exact \(K=250\) frontiers on width 4 or 2.
+7. Diagnose and reconstruct valid boundary contributions only before fitting
+   stored real observations or reporting total holdout prediction. The rough
+   MHD western-wind constant is sufficient as a bounded diagnostic fallback.
+8. Defer explicit temporal covariance until the emissions-only spatial tests
+   need it or an inversion-quality synthetic experiment demonstrates a failure
+   that blocked holdouts and thinning cannot diagnose.
