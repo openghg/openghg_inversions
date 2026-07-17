@@ -7,6 +7,7 @@ re-exported from :mod:`openghg_inversions.basis`.
 """
 
 from .initializers import InitializationResult, greedy_partition, random_partition, threshold_partition
+from .demo_runner import DemoSearchConfig, DemoSearchRun, run_fixed_count_dfs_search
 from .multiscale import CoarsenedGrid, MultiscaleDesign, direct_gather, sum_coarsen_grid
 from .objectives import (
     CovarianceBuilder,
@@ -43,6 +44,8 @@ from .tree import DyadicTree, NodeId, Tile
 __all__ = [
     "CoarsenedGrid",
     "CovarianceBuilder",
+    "DemoSearchConfig",
+    "DemoSearchRun",
     "DyadicTree",
     "GaussianDFSObjective",
     "InitializationResult",
@@ -73,6 +76,7 @@ __all__ = [
     "prototype_quadratic_tile_scores",
     "random_partition",
     "reverse_move",
+    "run_fixed_count_dfs_search",
     "stochastic_local_search",
     "sum_coarsen_grid",
     "threshold_partition",
