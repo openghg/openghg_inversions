@@ -17,9 +17,10 @@ As of 2026-07-17, the exact Gaussian projection oracle, independent-prior
 native posterior summaries, DFS/Fisher/Equation 45 objectives, exact additive
 dynamic programs, land/ocean and rectangular comparisons, and a
 native-resolution semi-synthetic TAC/MHD report are implemented on the
-experimental branch. The next implementation work is the full TAC/MHD
-correlated-prior run and repeated-realization assessment; joint partition MCMC
-remains a later phase.
+experimental branch. The Bocquet projection line is paused. The next partition
+inference work is OGI-062 through OGI-065: this reference update, a tiny exact
+fixed-contrast product-space kernel, a native PyMC adapter, and separately
+reviewed transported split/merge proposals.
 
 The next native-resolution Gaussian validation is specified separately in
 `docs/plans/bocquet_projection_validation.md`.
@@ -83,6 +84,13 @@ This note distinguishes three statuses:
     experiment, with DFS and Fisher retained as comparators. Predeclare the
     dictionary and loss, label the result as adaptive posterior compression, and
     use held-out sites or times for predictive assessment.
+11. **Proposed:** generate observations from the declared product-space model
+    for the first joint-inference demonstration. Use fixed InTEM outer regions
+    to restrict the dynamic tree to an inner domain, and give always-active
+    outer coefficients a separate prior group.
+12. **Proposed:** use a fixed root-plus-contrast state as the correctness
+    baseline. Add RJMCMC-like coefficient transport only as a later proposal
+    improvement, without changing the augmented target.
 
 ## Terminology and notation
 
@@ -1100,24 +1108,226 @@ For partition \(P\), let \(z_A\) denote active coordinates and \(z_I\) inactive
 coordinates. A product-space target has the form
 
 \[
-\pi(P,z,\theta)
+\widetilde\pi(P,z_A,z_I,\theta\mid y)
 \propto
 p(P)
 p(y\mid P,z_A,\theta)
 p(z_A\mid P,\theta)
-q_P(z_I\mid\theta)
+q_P(z_I\mid z_A,\theta)
 p(\theta),
 \]
 
-where \(q_P\) is a proper pseudo-prior that integrates to one. The full state
-dimension is fixed. The inactive variables are not multiplied by zero and then
-forgotten; their pseudo-prior densities are part of the augmented target and
-strongly affect switching efficiency.
+where \(q_P\) is a proper conditional pseudo-prior satisfying
+
+\[
+\int q_P(z_I\mid z_A,\theta)\,dz_I=1
+\]
+
+for every admissible \(P,z_A,\theta\). Integrating out the inactive coordinates
+therefore gives the desired posterior over \((P,z_A,\theta)\). Proper
+normalization, including constants that depend on \(P\), is essential: an
+unknown partition-dependent constant in \(q_P\) would change posterior
+partition probabilities.
+
+The full state dimension is fixed. Inactive variables are not multiplied by
+zero and then omitted from the probability model; their pseudo-prior densities
+are part of the augmented target and strongly affect switching efficiency. The
+pseudo-priors do not change the exact marginal posterior when normalized, but
+poor choices can make transitions between partitions practically impossible.
 
 This is the Carlin-Chib product-space construction. Dellaportas, Forster, and
 Ntzoufras (2002), especially their discussion of Carlin-Chib and Metropolised
 Carlin-Chib methods, is an appropriate comparison reference. The foundational
 pseudo-prior reference is Carlin and Chib (1995).
+
+### Finite-model Carlin-Chib form
+
+For models \(m=1,\ldots,M\), let \(\beta_k\) be the parameter block associated
+with model \(k\), and let \(\psi_k\) be the common pseudo-prior used whenever
+that block is inactive. The augmented target is
+
+\[
+\widetilde\pi(m,\beta_{1:M}\mid y)
+\propto
+p(m)
+p(y\mid m,\beta_m)
+p(\beta_m\mid m)
+\prod_{k\ne m}\psi_k(\beta_k).
+\]
+
+Ordinary Carlin-Chib refreshes inactive blocks and Gibbs-samples \(m\) from all
+\(M\) conditional model weights. This becomes expensive when the model space is
+large, as it is for tree partitions.
+
+Dellaportas, Forster, and Ntzoufras instead propose one model
+\(m'\sim j(m,m')\). Their hybrid algorithm updates the current block from its
+within-model posterior, draws only the proposed block
+\(\beta_{m'}\sim\psi_{m'}\), and accepts the model switch with their equation
+(6):
+
+\[
+\alpha(m,m')
+=
+1\wedge
+\frac{
+p(y\mid m',\beta_{m'})
+p(\beta_{m'}\mid m')
+p(m')
+\psi_m(\beta_m)
+j(m',m)
+}{
+p(y\mid m,\beta_m)
+p(\beta_m\mid m)
+p(m)
+\psi_{m'}(\beta_{m'})
+j(m,m')
+}.
+\]
+
+The important computational statement is that only the proposed block is
+**sampled** from a pseudo-prior and only the current/proposed model pair is
+considered. Both the proposed pseudo-prior density
+\(\psi_{m'}(\beta_{m'})\) and the reverse density
+\(\psi_m(\beta_m)\) still appear in the acceptance ratio, although the latter
+can be retained with the current state. All unrelated pseudo-prior factors
+cancel. Dellaportas et al. describe this update as an independence sampler and
+contrast it with current-dependent reversible-jump transformations.
+
+The direct tree analogue requires a common, factorized pseudo-prior, initially
+
+\[
+q_P(z_I)=\prod_{v\in I(P)}\psi_v(z_v),
+\]
+
+where each normalized \(\psi_v\) is independent of the partition in which
+coordinate \(v\) is inactive. Unchanged factors then cancel in a local
+split/merge ratio. If pseudo-priors depend jointly on the complete inactive set
+or on \(P\) in some other way, the implementation must evaluate the full
+\(q_{P'}/q_P\) ratio. Moreover, the original finite-model construction stores a
+complete block for each model, whereas this design shares one global contrast
+vector across partitions. Candidate-only local refreshes should therefore be
+called **Dellaportas-inspired** unless they implement the complete-block update
+under the stated common pseudo-prior assumptions.
+
+For a fixed global coordinate vector and a partition-only proposal
+\(P\rightarrow P'\), the corresponding acceptance probability is
+
+\[
+\alpha(P,P')
+=
+1\wedge
+\frac{
+G_{P'}(z_{A(P')},\theta)
+q_{P'}(z_{I(P')}\mid z_{A(P')},\theta)
+j(P',P)
+}{
+G_P(z_{A(P)},\theta)
+q_P(z_{I(P)}\mid z_{A(P)},\theta)
+j(P,P')
+},
+\]
+
+where
+
+\[
+G_P(z_A,\theta)
+=p(P)p(\theta)p(y\mid P,z_A,\theta)p(z_A\mid P,\theta).
+\]
+
+There is no proposal Jacobian when \(z\) is unchanged because this is ordinary
+MH on one fixed-dimensional state space.
+
+### Fixed contrast state versus transported coefficient state
+
+These are two different ways to use the same parent/child split equations. The
+difference is the permanent MCMC state, not the visual basis partition.
+
+| Property | Fixed contrast state | Transported coefficient state |
+| --- | --- | --- |
+| Permanent continuous state | one root coordinate plus every potential tree contrast | coefficients attached to the currently active regions, plus explicit reverse auxiliaries or inactive storage |
+| Dimension | fixed for every partition | packed active dimension changes, or a fixed container is transformed during a move |
+| Split operation | changes which existing contrasts the decoder uses | maps parent coefficient and auxiliary variables to child coefficients |
+| Merge operation | deactivates a contrast; its value remains in the state under its pseudo-prior | maps child coefficients back to a parent and recoverable reverse auxiliaries |
+| Proposal Jacobian | none if stored coordinates do not change | required for a non-volume-preserving transformation |
+| Primary advantage | simplest exact product-space target and fixed-shape trace | current-dependent proposals can place new active coefficients near plausible values |
+| Primary cost | NUTS or another continuous kernel sees all potential contrasts | reversible bookkeeping, proposal densities, and Jacobians are harder to verify |
+
+In the **fixed contrast state**, a state might be written
+
+\[
+s=(P,z_0,\delta_1,\ldots,\delta_J,\theta),
+\]
+
+where every potential split contrast exists at every iteration. The partition
+selects an ancestry-consistent subset and a deterministic decoder constructs
+the active region coefficients. A split activates an existing \(\delta_v\); a
+merge makes it inactive again. The parent/child equations are a change of
+coordinates used during decoding, not a proposal that changes the stored
+state. No proposal Jacobian is added merely because the decoder contains a
+nonlinear transformation. A prior specified on decoded leaf coefficients may,
+however, require its own ordinary change-of-variables term; that is a property
+of the target density and must not be confused with a proposal Jacobian.
+
+In the **transported coefficient state**, the proposal itself changes stored
+continuous values. A split draws or consumes an auxiliary \(u\) and applies an
+invertible map
+
+\[
+(z_A',z_I',u')=T_{P\rightarrow P'}(z_A,z_I,u).
+\]
+
+The acceptance probability is
+
+\[
+\alpha_T
+=
+1\wedge
+\frac{
+\widetilde\pi(P',z_A',z_I',\theta\mid y)
+j(P',P)
+g_{P'\rightarrow P}(u'\mid z_A',z_I')
+}{
+\widetilde\pi(P,z_A,z_I,\theta\mid y)
+j(P,P')
+g_{P\rightarrow P'}(u\mid z_A,z_I)
+}
+\left|
+\det\frac{\partial(z_A',z_I',u')}{\partial(z_A,z_I,u)}
+\right|.
+\]
+
+This is a transformed product-space MH move. If inactive coordinates are
+collapsed out and only the packed active vector is retained, the same
+construction is ordinary RJMCMC. If a proposal overwrites inactive coordinates,
+their previous values must be recoverable as reverse auxiliaries or accounted
+for in explicit forward and reverse proposal densities. Discarding them is not
+reversible.
+
+### Transformations and pseudo-priors
+
+An invertible transformation can construct a useful pseudo-prior from a simple
+base draw, but the transformation is not itself a probability density. If
+
+\[
+u\sim g(u),\qquad z_I=T(z_A,u),
+\]
+
+then the induced conditional pseudo-prior is the push-forward density
+
+\[
+q_P(z_I\mid z_A)
+=
+g\!\left(T^{-1}(z_A,z_I)\right)
+\left|
+\det\frac{\partial T^{-1}(z_A,z_I)}{\partial z_I}
+\right|.
+\]
+
+The first prototype should normally store the base contrast \(u\) directly and
+give it a simple normalized pseudo-prior. This makes the decoder explicit and
+usually avoids an additional Jacobian in the partition proposal. A later
+transported proposal can reuse the same split geometry to improve switching,
+while retaining the fixed-state implementation as a correctness baseline.
 
 ### Is it different from RJMCMC?
 
@@ -1148,8 +1358,11 @@ updates:
 A practical order is inactive refresh, partition move, active update, so newly
 activated coordinates have plausible values. It is not necessary to refresh
 every inactive coordinate on every sweep. A proposal can draw only the
-coordinates required by a proposed split and include that draw in its proposal
-density.
+coordinates required by a proposed split. In a Dellaportas-style candidate
+refresh, the refreshed inactive coordinate remains part of the augmented state
+even if the subsequent partition switch is rejected. Alternatively, one joint
+MH proposal can include the draw through explicit forward and reverse proposal
+densities.
 
 ### PyMC feasibility
 
@@ -1166,14 +1379,41 @@ dynamic active-only NUTS:
   globally adapted mass matrix inefficient. Once tuning is frozen, a mismatched
   metric affects performance rather than invalidating a correctly
   Metropolis-corrected NUTS kernel;
-- PyMC's external NUTS backends require a fully continuous model. An initial
-  mixed discrete/continuous product-space prototype would therefore need native
-  `nuts_sampler="pymc"` or framework-independent outer orchestration rather than
-  the NumPyro, BlackJAX, or nutpie routes.
+- PyMC's external NUTS backends use an exclusive full-model NUTS path and require
+  a fully continuous model. They cannot be composed with this mixed Python step
+  sequence. An initial mixed discrete/continuous product-space prototype would
+  therefore need native `nuts_sampler="pymc"` or framework-independent outer
+  orchestration rather than the NumPyro, BlackJAX, or nutpie routes.
 
-Therefore the initial fixed-count sampler should precede a PyMC product-space
-integration. The partition transition kernel should be framework-independent
-and tested before wrapping it as a PyMC step method.
+The concrete PyMC design is:
+
+1. represent \(P\), the complete fixed-shape contrast vector \(z\), and
+   continuous hyperparameters in one static PyTensor graph;
+2. implement the partition transition as an explicitly instantiated blocked
+   step method that receives and returns a complete PyMC point;
+3. explicitly instantiate native `pm.NUTS` for \(z\) and continuous
+   hyperparameters; and
+4. run the partition step followed by NUTS in a `CompoundStep`.
+
+For a structure-only move, the custom step owns only \(P\) and NUTS owns \(z\),
+which follows the documented compound-step boundary. A transported move changes
+both \(P\) and selected entries of \(z\). PyMC 5.25 and 5.26 do not currently
+reject explicitly overlapping step assignments, and a local 5.25.1 smoke test
+successfully ran a custom joint \((P,z)\) step followed by NUTS on \(z\).
+Automatic assignment will not create this overlap; both steps must be
+instantiated explicitly. This is implementation-level, version-pinned behavior,
+not a documented stability guarantee. The experimental adapter must therefore
+pin supported PyMC versions and have focused smoke, serialization,
+tuning-shutdown, and step-order tests.
+
+A single NUTS mass matrix is adapted across the partitions visited during
+warmup. Prior-whitened root/contrast coordinates and simple inactive
+pseudo-priors should make this geometry less partition-specific. Once warmup is
+over and adaptation is frozen, a poorly matched metric affects efficiency, not
+the invariance of correctly implemented component kernels. The first
+framework-independent product-space kernel should still precede the PyMC
+adapter so exact enumeration can distinguish target errors from NUTS tuning
+problems.
 
 ## Tree of split contrasts
 
@@ -1303,6 +1543,230 @@ inner/outer boundaries. Layer intersections and disconnected components should
 be resolved before tree construction and flagged when they produce tiny or
 pathological parts.
 
+## Synthetic inner/outer proof of concept
+
+### Why use synthetic observations
+
+The first product-space experiment should generate observations from the same
+declared forward model used for inference. It then needs no boundary-condition
+product and avoids interpreting a corrupted or incomplete stored observation
+baseline. The synthetic response is an anomaly relative to zero by definition:
+
+\[
+y
+=
+H_{\mathrm{inner},P_{\mathrm{true}}}x_{\mathrm{inner,true}}
++H_{\mathrm{outer}}x_{\mathrm{outer,true}}
++\epsilon,
+\qquad
+\epsilon\sim\mathcal N(0,R).
+\]
+
+This does not assert that real atmospheric observations have zero boundary
+contribution. A later real-observation experiment must supply a valid baseline
+or boundary-condition block. The synthetic experiment isolates partition
+inference from that unrelated data dependency.
+
+The first exact experiment is an explicitly regional Gaussian model, not the
+exact Bocquet coarsening of one native Gaussian prior. Its partition changes the
+regional prior/likelihood model and can therefore have a nontrivial
+\(p(P\mid y)\). This distinction must remain explicit when results are reported.
+
+### InTEM geometry
+
+Use an InTEM outer-region definition to separate the domain:
+
+- the maximum InTEM label is the dynamic inner region, following the existing
+  compatibility convention;
+- every other InTEM label contributes one fixed outer basis column;
+- only the inner region receives a dyadic tree and variable partition \(P\);
+- the first prototype may keep land and ocean mixed within each fixed outer
+  label to minimize the always-active state dimension;
+- a later comparison can intersect inner and outer labels with land/ocean
+  classes.
+
+The packaged EUROPE map has labels `0` through `6`, with `6` as its original
+inner region. The local `verification-games` checkout at commit `c0c9bcc` also
+contains a reproducible CTE-HR/PARIS adaptation that keeps outer labels `0`
+through `6` and assigns `7` to a smaller inner rectangle. The adapted geometry
+is an external experimental precedent and is preferred for the realistic proof
+of concept because it more directly limits the dynamic domain. Its construction
+must be ported or vendored with provenance rather than imported from a private
+checkout at runtime. The tiny exact oracle uses a generated mask and depends on
+neither file.
+
+This gives a small dynamic domain without treating the omitted domain as known
+zero flux. It also matches the grouped interpretation in
+`docs/plans/fixed_outer_regions_grouping.md`: fixed outer labels are explicit
+state-vector components, not a mask applied after inner optimization.
+
+### Separate inner and outer priors
+
+Write the complete design as
+
+\[
+H_P=\left[H_{\mathrm{inner},P}\;H_{\mathrm{outer}}\right],
+\qquad
+x_P=
+\begin{bmatrix}
+x_{\mathrm{inner},P}\\
+x_{\mathrm{outer}}
+\end{bmatrix}.
+\]
+
+The baseline Gaussian proof of concept should use distinct prior groups:
+
+\[
+x_{\mathrm{inner},P}
+\sim
+\mathcal N(\boldsymbol 1,B_{\mathrm{inner},P}),
+\qquad
+x_{\mathrm{outer}}
+\sim
+\mathcal N(\boldsymbol 1,B_{\mathrm{outer}}).
+\]
+
+The blocks can initially be independent and diagonal, with separate scales
+\(\sigma_{\mathrm{inner}}\) and \(\sigma_{\mathrm{outer}}\). The
+The local `verification-games` calibration prototype at commit `c0c9bcc` already
+records this distinction, using provisional scaling-factor standard deviations
+of `1.0` for inner states and `0.5` for fixed outer states. Those values are
+external implementation precedents, not calibrated defaults or behavior
+provided by this repository; both must be declared and tested for sensitivity.
+
+For the first proof of concept, define the primitive inner prior directly in
+root/contrast space. Let \(a=x-1\) be a scaling-factor anomaly, let \(n_G\) be
+the number of finest search grid cells under node \(G\), and let
+\(G=L\cup R\). Use
+
+\[
+a_{\mathrm{root}}
+\sim
+\mathcal N(0,\tau_{\mathrm{inner}}^2/n_{\mathrm{root}}),
+\qquad
+\delta_G
+\sim
+\mathcal N\!\left(
+0,
+\tau_{\mathrm{inner}}^2
+\left(\frac{1}{n_L}+\frac{1}{n_R}\right)
+\right).
+\]
+
+For each partition, let \(T_P\) decode the active root/contrast vector into
+active regional anomalies. Then
+
+\[
+x_{\mathrm{inner},P}=\boldsymbol 1+T_Pz_A,
+\qquad
+B_{\mathrm{inner},P}=T_PB_{z,A(P)}T_P^T.
+\]
+
+This choice induces independent active-region means with variance
+\(\tau_{\mathrm{inner}}^2/n_G\) under the grid-cell-count mass convention. It
+also ensures that the product-space target and analytically integrated Gaussian
+oracle use exactly the same prior. Each inactive contrast initially uses the
+same normalized Gaussian as its pseudo-prior. A later physical-mass convention
+can replace grid-cell counts, but it must redefine both \(T_P\) and the contrast
+prior together.
+
+A separate outer prior is not a mathematical requirement for product-space
+sampling, but it is the appropriate initial model. Outer states aggregate much
+larger and differently supported regions, are always active, and should not
+inherit a contrast-depth prior intended for dynamic inner splits. Keeping them
+in a distinct block also prevents inner pseudo-prior or partition changes from
+silently changing their prior semantics. In the later positive model, each
+block can use a lognormal scaling prior with moments matched to its declared
+mean and standard deviation.
+
+Outer coefficients are ordinary always-active model parameters, not
+pseudo-prior coordinates. Only inactive inner contrasts receive pseudo-priors.
+The augmented target therefore factors as
+
+\[
+\begin{aligned}
+\widetilde\pi(
+P,z_{A},z_I,x_{\mathrm{outer}},
+\theta_y,\theta_{\mathrm{in}},\theta_{\mathrm{out}},\theta_P
+\mid y)
+\propto{}&
+p(y\mid P,z_A,x_{\mathrm{outer}},\theta_y)
+p(z_A\mid P,\theta_{\mathrm{in}})
+q_P(z_I\mid z_A,\theta_{\mathrm{in}})\\
+&\times
+p(x_{\mathrm{outer}}\mid\theta_{\mathrm{out}})
+p(P\mid\theta_P)
+p(\theta_y)p(\theta_{\mathrm{in}})
+p(\theta_{\mathrm{out}})p(\theta_P).
+\end{aligned}
+\]
+
+### Two validation scales
+
+1. **Exact tiny-tree oracle.** Use a synthetic `1 x 3` inner grid, two fixed
+   outer columns, a small number of observations, and diagonal \(R\). Its three
+   canonical partitions form a path with proposal degrees `1, 2, 1`, making it
+   the smallest case that detects an omitted or incorrectly signed Hastings
+   correction. Enumerate every valid inner partition and integrate the Gaussian
+   coefficients analytically. Retain a `2 x 2` five-partition case as the first
+   branched-tree check. These are the correctness oracles for transition
+   probabilities and sampled partition frequencies.
+2. **TAC/MHD-shaped synthetic experiment.** Reuse retained TAC/MHD footprint
+   times prior-flux sensitivities where available, but draw coefficients and
+   observations from the declared model. Apply the InTEM split before building
+   the candidate tree, keep fixed outer columns, and optimize/sample only the
+   inner tree. The preferred exact scientific oracle aggregates the adapted
+   inner rectangle to a `4 x 4` macro grid: one root plus 15 possible split
+   contrasts, seven fixed mixed outer coefficients, and 23 continuous
+   coordinates in total. That canonical 16-leaf binary tree has 677 valid
+   prunings, which can still be enumerated exactly. A proposed deterministic
+   observation selection is 32 fitting observations and 16 held-out
+   observations, balanced between TAC and MHD. This checks realistic geometry
+   and design-matrix scaling without requiring real observations or boundary
+   conditions.
+
+Use a recursive split/stop partition prior for the scientific oracle, initially
+with split probability \(\rho=0.5\) and sensitivity runs at \(0.25\) and
+\(0.75\). This defines prior mass on canonical tree frontiers rather than on
+split histories. If \(S(P)\) is the set of split internal nodes and \(U(P)\)
+is the set of unsplit but splittable frontier nodes, its probability mass is
+
+\[
+p(P\mid\rho)
+=
+\prod_{v\in S(P)}\rho_v
+\prod_{v\in U(P)}(1-\rho_v).
+\]
+
+Forced terminal tree leaves contribute no stop factor, equivalently
+\(\rho_v=0\) there. This recursion normalizes over the 677 canonical
+frontiers. Retain a comparator with \(p(K)=1/16\) and
+\(p(P\mid K)=1/N_K\), where \(N_K\) is the number of canonical frontiers with
+\(K\) leaves. That comparator separates an intended prior on region count from
+the combinatorial multiplicity of partitions. After analytically integrating
+the always-active outer block and active inner coefficients,
+
+\[
+y\mid P
+\sim
+\mathcal N\!\left(
+H_P\boldsymbol 1,
+R
++H_{\mathrm{inner},P}B_{\mathrm{inner},P}
+ H_{\mathrm{inner},P}^{T}
++H_{\mathrm{outer}}B_{\mathrm{outer}}H_{\mathrm{outer}}^{T}
+\right),
+\]
+
+so all 677 normalized partition probabilities are available as a scientific
+oracle as well as the smaller transition-matrix oracle.
+
+The generated artifact must record the true partition, true inner and outer
+coefficients, the prior groups and scales, \(R\), random seed, and whether
+land/ocean classes were applied. Validation should cover partition frequencies,
+posterior recovery of inner and outer coefficients, posterior predictions,
+coverage over repeated synthetic draws, and sensitivity to pseudo-prior scale.
+
 ## Filtering and data flow
 
 The current compatibility weight in `_functions.py` multiplies temporal mean
@@ -1397,17 +1861,46 @@ poor local partition traversal.
 
 ### Phase 3: tree-contrast product-space prototype
 
-1. Build a tiny variable-count enumerator that provides exact partition
-   probabilities for the chosen tree and priors.
-2. Choose a canonical tree and define the full contrast coordinate set.
-3. Specify proper pseudo-priors, initially from local Gaussian approximations.
-4. Implement inactive refresh, partition MH, and active continuous update as
-   separate framework-independent blocks.
-5. Compare full-vector, active-only, and cached-kernel execution strategies.
-6. Measure partition switching, active and inactive effective sample sizes,
-   likelihood cost, and sensitivity to pseudo-prior calibration.
-7. Compare posterior results with exact enumeration and Phase 2a fixed-count
-   results.
+This phase is split into independently reviewable tracker tasks so the exact
+target does not become entangled with PyMC integration or coefficient
+transport:
+
+1. **OGI-062, reference:** specify the augmented target, pseudo-prior
+   normalization, state representation, inner/outer synthetic model, and PyMC
+   boundary in this document.
+2. **OGI-063, framework-independent fixed-contrast kernel:**
+   - build a tiny variable-count enumerator that provides exact partition
+     probabilities for the chosen tree and priors;
+   - choose a canonical tree and define one root plus the complete contrast
+     coordinate set;
+   - specify proper factorized Gaussian pseudo-priors;
+   - implement inactive refresh and structure-only partition MH as separate
+     kernels;
+   - add the synthetic inner/outer Gaussian design with fixed outer columns;
+   - verify detailed balance and sampled partition frequencies against exact
+     enumeration.
+3. **OGI-064, native PyMC adapter:**
+   - represent the same target in one static PyTensor graph;
+   - wrap the verified partition kernel in a blocked step method;
+   - update whitened contrasts, outer coefficients, and continuous
+     hyperparameters with native PyMC NUTS;
+   - verify step ordering, tuning shutdown, fixed trace shapes, serialization,
+     and agreement with the framework-independent oracle.
+4. **OGI-065, transported proposals:**
+   - add candidate-only Dellaportas-inspired pseudo-prior refreshes under the
+     documented common-factor assumptions;
+   - implement reversible split/merge coefficient transport with explicit
+     forward and reverse auxiliaries;
+   - test inverse maps, numerical and analytic Jacobians, and log-ratio
+     antisymmetry;
+   - compare switching efficiency with the fixed-contrast structure-only
+     baseline without changing the target distribution.
+
+After those increments, compare full-vector, active-only, and cached-kernel
+execution strategies. Measure partition switching, active and inactive
+effective sample sizes, likelihood cost, and sensitivity to pseudo-prior
+calibration. Compare posterior results with exact enumeration and Phase 2a
+fixed-count results.
 
 ### Phase 4: scale-up and alternatives
 
@@ -1425,11 +1918,13 @@ Only after Phases 2 and 3:
 
 ### Deterministic and algebraic tests
 
-- every valid partition covers each included cell exactly once;
+- every valid partition covers each included grid cell exactly once;
 - no active node has an active ancestor or descendant;
 - every split has a valid inverse merge;
 - proposal probabilities normalize on tiny states;
 - additive and positive contrast transforms preserve their stated mass;
+- every transported map has an exact inverse and its analytic Jacobian agrees
+  with numerical differentiation;
 - gathered multiscale columns equal direct fine-grid aggregation;
 - Python and Numba kernels agree over random small arrays;
 - label and grouped-layout conversion preserves stable ordering.
@@ -1442,6 +1937,10 @@ Only after Phases 2 and 3:
 - fixed-partition continuous results agree with the ordinary model;
 - product-space marginal probabilities are invariant to normalized
   pseudo-priors, within Monte Carlo error;
+- fixed outer coefficients remain always active and retain their declared prior
+  group under every inner partition;
+- the PyMC compound sampler agrees with the framework-independent tiny-tree
+  oracle and preserves the documented partition-step/NUTS order;
 - simulation-based calibration or posterior coverage for a small generated
   problem;
 - checkpoint/restart reproduces the transition stream from saved RNG state.
@@ -1455,6 +1954,8 @@ Only after Phases 2 and 3:
 - sensitivity to complexity priors, pseudo-priors, tree orientation, and group
   boundaries;
 - land/ocean and inner/outer posterior summaries using group metadata;
+- repeated synthetic coverage for separately-prior inner and fixed outer
+  coefficients;
 - runtime and memory scaling in observations, fine cells, possible tiles, and
   active tiles.
 
@@ -1509,6 +2010,11 @@ Only after Phases 2 and 3:
     held-out predictive assessment?
 13. Does a fixed-count experiment constrain tree leaves, effective supported
     coefficient dimension, or an information target such as retained DFS?
+14. Should the first realistic product-space experiment use the packaged InTEM
+    map or the CTE-HR/PARIS-adapted InTEM map currently used in
+    `verification-games`? The tiny exact oracle must not depend on either file.
+15. Should outer coefficients stay independent in the first Gaussian model, or
+    should a later experiment add an explicitly declared outer covariance?
 
 ## References
 
@@ -1551,6 +2057,10 @@ pages 57-68 corresponds to a different Dellaportas paper.
 - PyMC, `pymc.sample` API. This records the current native and external NUTS
   sampler options and the continuous-model restriction on external samplers:
   <https://www.pymc.io/projects/docs/en/stable/api/generated/pymc.sample.html>.
+- PyMC, "Using a custom step method for sampling from locally conjugate
+  posterior distributions." This demonstrates direct `BlockedStep`
+  implementation inside compound sampling:
+  <https://www.pymc.io/projects/examples/en/latest/samplers/sampling_conjugate_step.html>.
 
 ### Repository reference points
 
@@ -1563,4 +2073,10 @@ pages 57-68 corresponds to a different Dellaportas paper.
 - `openghg_inversions/basis/layout.py`
 - `openghg_inversions/basis/operators.py`
 - `openghg_inversions/basis/basis_functions.py`
+- `verification-games/src/verification_games/rhime_calibration/basis.py`
+  for the experimental fixed InTEM outer/dynamic inner construction
+- `verification-games/src/verification_games/rhime_calibration/config.py`
+  for the provisional separate inner and outer prior scales
+- `verification-games/src/verification_games/rhime_calibration/analytic.py`
+  for the existing analytic Gaussian inversion machinery
 - branch `codex/basis-prototype-examples`, commit `b6ce565`
