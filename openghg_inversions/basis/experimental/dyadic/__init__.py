@@ -7,7 +7,15 @@ re-exported from :mod:`openghg_inversions.basis`.
 """
 
 from .initializers import InitializationResult, greedy_partition, random_partition, threshold_partition
-from .demo_runner import DemoSearchConfig, DemoSearchRun, run_fixed_count_dfs_search
+from .demo_runner import (
+    DemoSearchConfig,
+    DemoSearchRun,
+    VariableKSearchConfig,
+    VariableKSearchRun,
+    excess_region_penalty,
+    run_fixed_count_dfs_search,
+    run_variable_k_dfs_search,
+)
 from .multiscale import CoarsenedGrid, MultiscaleDesign, direct_gather, sum_coarsen_grid
 from .objectives import (
     CovarianceBuilder,
@@ -64,6 +72,8 @@ __all__ = [
     "SplitMove",
     "TemperatureSchedule",
     "Tile",
+    "VariableKSearchConfig",
+    "VariableKSearchRun",
     "apply_move",
     "direct_gather",
     "direct_observation_space_dfs",
@@ -71,12 +81,14 @@ __all__ = [
     "enumerate_paired_moves",
     "enumerate_paired_neighbors",
     "enumerate_split_moves",
+    "excess_region_penalty",
     "gaussian_dfs",
     "greedy_partition",
     "prototype_quadratic_tile_scores",
     "random_partition",
     "reverse_move",
     "run_fixed_count_dfs_search",
+    "run_variable_k_dfs_search",
     "stochastic_local_search",
     "sum_coarsen_grid",
     "threshold_partition",

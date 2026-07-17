@@ -1,0 +1,92 @@
+{
+  "accepted_moves": 366,
+  "best_utility_state": {
+    "dfs": 5.8968695573817485,
+    "penalty": 0.0,
+    "regions": 31,
+    "utility": 5.8968695573817485
+  },
+  "coarsen": 8,
+  "coarsened_shape": [
+    333,
+    37,
+    49
+  ],
+  "config": {
+    "free_regions": 32,
+    "initial_regions": 24,
+    "iterations": 600,
+    "max_regions": 80,
+    "min_regions": 2,
+    "paired_move_probability": 0.2,
+    "penalty_per_extra_region": 0.03,
+    "pilot_proposals": 150,
+    "record_every": 5,
+    "seed": 20260717,
+    "tau": 1.0
+  },
+  "covariance": {
+    "bocquet_consistent": false,
+    "kind": "isotropic region benchmark",
+    "required_future_transform": "B_P = P B P.T"
+  },
+  "data_period": "week",
+  "evaluated_moves": 600,
+  "final": {
+    "dfs": 5.877282107494294,
+    "regions": 21,
+    "utility": 5.877282107494294
+  },
+  "final_temperature": 0.004642546204715804,
+  "generation_argv": [
+    "/Users/bm13805/.codex/worktrees/a246/openghg_inversions/examples/basis/dyadic_variable_k_sls_demo.py",
+    "--data-period",
+    "week",
+    "--output-directory",
+    "docs/plans/figures/dyadic_variable_k_week"
+  ],
+  "gif_written": true,
+  "initial": {
+    "dfs": 5.8787660714385055,
+    "regions": 24,
+    "utility": 5.8787660714385055
+  },
+  "initial_temperature": 0.09581148656599305,
+  "method": "variable-count stochastic local search",
+  "native_shape": [
+    333,
+    293,
+    391
+  ],
+  "objective": "Gaussian benchmark DFS minus explicit excess-region penalty",
+  "observation_covariance": "Hourly MHD repeatability-plus-variability and TAC pooled variability, with zero pooled TAC variability replaced by the full-week site median and a per-site median-minus-fifth-percentile minimum-mismatch floor. Using max(error, min_error) as a fixed covariance is a demo benchmark, not the production model-error likelihood.",
+  "observation_error_diagnostics": {
+    "MHD": {
+      "effective_error_max": 43.210131835937545,
+      "effective_error_min": 43.210131835937545,
+      "floor_selected_fraction": 1.0,
+      "floor_selected_rows": 165,
+      "minimum_error_max": 43.210131835937545,
+      "minimum_error_min": 43.210131835937545,
+      "observation_error_max": 26.06278471281485,
+      "observation_error_min": 1.4852390144832202,
+      "rows": 165
+    },
+    "TAC": {
+      "effective_error_max": 42.86275242782176,
+      "effective_error_min": 42.86275242782176,
+      "floor_selected_fraction": 1.0,
+      "floor_selected_rows": 168,
+      "minimum_error_max": 42.86275242782176,
+      "minimum_error_min": 42.86275242782176,
+      "observation_error_max": 16.3598897381836,
+      "observation_error_min": 0.467345609013161,
+      "rows": 168
+    }
+  },
+  "observations": 333,
+  "penalty_is_log_prior": false,
+  "pilot_positive_losses": 111,
+  "posterior_sampler": false,
+  "search_seconds": 0.8309864583425224
+}

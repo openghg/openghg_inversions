@@ -1,4 +1,4 @@
-"""Scientific orchestration for the experimental fixed-count dyadic SLS demo.
+"""Scientific orchestration for experimental fixed- and variable-count SLS.
 
 The historical quadratic tile score is used only to construct a useful greedy
 initializer. The stochastic local search itself maximizes full Gaussian DFS
@@ -18,7 +18,13 @@ import numpy.typing as npt
 from .initializers import greedy_partition
 from .multiscale import MultiscaleDesign
 from .objectives import GaussianDFSObjective, IsotropicRegionCovariance, prototype_quadratic_tile_scores
-from .proposals import PairedMove, apply_move, enumerate_merge_moves, enumerate_split_moves
+from .proposals import (
+    Move,
+    PairedMove,
+    apply_move,
+    enumerate_merge_moves,
+    enumerate_split_moves,
+)
 from .search import PiecewiseGeometricSchedule, SearchProposal, SearchResult, stochastic_local_search
 from .state import PartitionState
 from .tree import DyadicTree
@@ -61,6 +67,63 @@ class DemoSearchConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class VariableKSearchConfig:
+    """Configuration for a variable-count Gaussian DFS search.
+
+    Args:
+        initial_regions: Number of regions in the proxy-greedy initializer.
+        free_regions: Region count below which no complexity penalty applies.
+        min_regions: Hard lower bound on active regions.
+        max_regions: Hard upper bound on active regions.
+        penalty_per_extra_region: Utility penalty for every region above
+            ``free_regions``.
+        paired_move_probability: Probability assigned to a fixed-count paired
+            move when split, merge, and paired move types are all available.
+        iterations: Number of stochastic local-search proposals.
+        pilot_proposals: Number of local utility losses used to calibrate the
+            temperature schedule.
+        tau: Region-multiplier prior standard deviation for the benchmark-only
+            isotropic covariance.
+        seed: Random seed used for pilot proposals and search.
+        record_every: Retain every Nth proposal in addition to accepted, best,
+            and final proposals.
+    """
+
+    initial_regions: int = 24
+    free_regions: int = 32
+    min_regions: int = 2
+    max_regions: int = 96
+    penalty_per_extra_region: float = 0.02
+    paired_move_probability: float = 0.2
+    iterations: int = 600
+    pilot_proposals: int = 150
+    tau: float = 1.0
+    seed: int = 20260717
+    record_every: int = 5
+
+    def __post_init__(self) -> None:
+        """Validate variable-count search configuration."""
+        if self.min_regions < 1:
+            raise ValueError("min_regions must be positive.")
+        if not self.min_regions <= self.initial_regions <= self.max_regions:
+            raise ValueError("initial_regions must lie between min_regions and max_regions.")
+        if self.free_regions < 0:
+            raise ValueError("free_regions must be non-negative.")
+        if not np.isfinite(self.penalty_per_extra_region) or self.penalty_per_extra_region < 0.0:
+            raise ValueError("penalty_per_extra_region must be finite and non-negative.")
+        if not 0.0 <= self.paired_move_probability <= 1.0:
+            raise ValueError("paired_move_probability must lie in [0, 1].")
+        if self.iterations < 1:
+            raise ValueError("iterations must be positive.")
+        if self.pilot_proposals < 1:
+            raise ValueError("pilot_proposals must be positive.")
+        if not np.isfinite(self.tau) or self.tau <= 0.0:
+            raise ValueError("tau must be positive and finite.")
+        if self.record_every < 1:
+            raise ValueError("record_every must be positive.")
+
+
+@dataclass(frozen=True, slots=True)
 class DemoSearchRun:
     """Reusable state and diagnostics from one fixed-count search run.
 
@@ -81,6 +144,35 @@ class DemoSearchRun:
     result: SearchResult[PartitionState, PairedMove]
     schedule: PiecewiseGeometricSchedule
     pilot_losses: tuple[float, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class VariableKSearchRun:
+    """State and diagnostics from one variable-count search.
+
+    Attributes:
+        config: Frozen variable-count configuration.
+        tree: Canonical tree over the supplied design grid.
+        design: Precomputed candidate observation columns.
+        initial_state: Proxy-informed greedy initializer.
+        result: Search result whose scores are penalized utilities.
+        schedule: Calibrated temperature schedule.
+        pilot_losses: Positive utility losses observed during calibration.
+        initial_dfs: Unpenalized Gaussian DFS at the initializer.
+        final_dfs: Unpenalized Gaussian DFS at the final state.
+        best_dfs: Unpenalized Gaussian DFS at the best-utility state.
+    """
+
+    config: VariableKSearchConfig
+    tree: DyadicTree
+    design: MultiscaleDesign
+    initial_state: PartitionState
+    result: SearchResult[PartitionState, Move]
+    schedule: PiecewiseGeometricSchedule
+    pilot_losses: tuple[float, ...]
+    initial_dfs: float
+    final_dfs: float
+    best_dfs: float
 
 
 def run_fixed_count_dfs_search(
@@ -168,6 +260,119 @@ def run_fixed_count_dfs_search(
     )
 
 
+def run_variable_k_dfs_search(
+    contribution_grid: npt.ArrayLike,
+    r_diag: npt.ArrayLike,
+    config: VariableKSearchConfig,
+    *,
+    support_grid: npt.ArrayLike | None = None,
+) -> VariableKSearchRun:
+    """Run split/merge SLS with an explicit soft penalty above a free K.
+
+    Args:
+        contribution_grid: Observation contributions with shape
+            ``(observation, row, column)``.
+        r_diag: Positive diagonal of observation covariance ``R``.
+        config: Variable-count search configuration.
+        support_grid: Optional positive physical support for each spatial cell.
+            Defaults to one per input cell.
+
+    Returns:
+        Variable-count search state and separate DFS/utility diagnostics.
+
+    Raises:
+        ValueError: If inputs or configured region bounds are invalid.
+
+    Notes:
+        Search utility is Gaussian DFS minus a soft complexity penalty. It is
+        an optimization criterion, not a log posterior or a prior on ``K``.
+    """
+    grid = _validated_grid(contribution_grid)
+    variances = _validated_variances(r_diag, observations=grid.shape[0])
+    spatial_shape = (grid.shape[1], grid.shape[2])
+    cell_support = _validated_support(support_grid, shape=spatial_shape)
+    tree = DyadicTree.from_shape(spatial_shape)
+    if config.max_regions > len(tree.leaf_ids):
+        raise ValueError("max_regions exceeds the number of grid cells.")
+
+    design = MultiscaleDesign.from_grid(grid, tree)
+    support = MultiscaleDesign.from_grid(cell_support[np.newaxis, :, :], tree).H[0]
+    proxy_scores = prototype_quadratic_tile_scores(design.H, 1.0 / variances, support)
+
+    def split_gain(node_id: int) -> float:
+        """Return the historical proxy improvement from splitting one node."""
+        children = tree.children(node_id)
+        return float(proxy_scores[list(children)].sum() - proxy_scores[node_id])
+
+    initial_state = greedy_partition(tree, config.initial_regions, split_gain).state
+    objective = GaussianDFSObjective(variances, IsotropicRegionCovariance(config.tau))
+
+    def dfs(state: PartitionState) -> float:
+        """Evaluate unpenalized Gaussian DFS for one partition."""
+        return objective(state, design)
+
+    def utility(state: PartitionState) -> float:
+        """Evaluate DFS minus the configured excess-region penalty."""
+        return dfs(state) - excess_region_penalty(len(state.active), config)
+
+    def propose(
+        state: PartitionState, rng: np.random.Generator
+    ) -> SearchProposal[PartitionState, Move] | None:
+        """Sample one valid split, merge, or paired optimization move."""
+        return _sample_variable_k_proposal(tree, state, config, rng)
+
+    rng = np.random.default_rng(config.seed)
+    initial_utility = utility(initial_state)
+    pilot_losses = _pilot_variable_k_losses(
+        initial_state,
+        initial_utility,
+        utility,
+        propose,
+        config.pilot_proposals,
+        rng,
+    )
+    schedule = _schedule_from_losses(pilot_losses, initial_utility)
+    result = stochastic_local_search(
+        initial_state,
+        objective=utility,
+        propose=propose,
+        schedule=schedule,
+        iterations=config.iterations,
+        rng=rng,
+        record_every=config.record_every,
+    )
+    return VariableKSearchRun(
+        config=config,
+        tree=tree,
+        design=design,
+        initial_state=initial_state,
+        result=result,
+        schedule=schedule,
+        pilot_losses=pilot_losses,
+        initial_dfs=dfs(initial_state),
+        final_dfs=dfs(result.final_state),
+        best_dfs=dfs(result.best_state),
+    )
+
+
+def excess_region_penalty(region_count: int, config: VariableKSearchConfig) -> float:
+    """Return the soft utility penalty for regions above ``free_regions``.
+
+    Args:
+        region_count: Number of active regions in a candidate partition.
+        config: Variable-count configuration defining the free count and slope.
+
+    Returns:
+        Non-negative linear complexity penalty.
+
+    Raises:
+        ValueError: If ``region_count`` is negative.
+    """
+    if region_count < 0:
+        raise ValueError("region_count must be non-negative.")
+    return config.penalty_per_extra_region * max(0, region_count - config.free_regions)
+
+
 def _sample_paired_proposal(
     tree: DyadicTree,
     state: PartitionState,
@@ -200,6 +405,62 @@ def _sample_paired_proposal(
     return None
 
 
+def _sample_variable_k_proposal(
+    tree: DyadicTree,
+    state: PartitionState,
+    config: VariableKSearchConfig,
+    rng: np.random.Generator,
+) -> SearchProposal[PartitionState, Move] | None:
+    """Sample a split, merge, or paired move within configured K bounds.
+
+    Args:
+        tree: Canonical tree defining local moves.
+        state: Current variable-count partition.
+        config: Bounds and paired-move probability.
+        rng: Caller-owned random generator.
+
+    Returns:
+        One valid proposal, or ``None`` if no configured move is available.
+
+    Notes:
+        Move-type weights control optimizer exploration only. They are not
+        Hastings probabilities for posterior MCMC.
+    """
+    region_count = len(state.active)
+    split_moves = enumerate_split_moves(tree, state) if region_count < config.max_regions else ()
+    merge_moves = enumerate_merge_moves(tree, state) if region_count > config.min_regions else ()
+    paired_proposal = _sample_paired_proposal(tree, state, rng)
+
+    single_weight = (1.0 - config.paired_move_probability) / 2.0
+    choices: list[tuple[str, float]] = []
+    if split_moves:
+        choices.append(("split", single_weight))
+    if merge_moves:
+        choices.append(("merge", single_weight))
+    if paired_proposal is not None:
+        choices.append(("paired", config.paired_move_probability))
+    if not choices:
+        return None
+
+    weights = np.asarray([weight for _, weight in choices], dtype=float)
+    if float(weights.sum()) == 0.0:
+        weights = np.ones(len(choices), dtype=float)
+    weights /= weights.sum()
+    choice = choices[int(rng.choice(len(choices), p=weights))][0]
+
+    if choice == "split":
+        move: Move = split_moves[int(rng.integers(len(split_moves)))]
+        return SearchProposal(apply_move(tree, state, move), move)
+    if choice == "merge":
+        move = merge_moves[int(rng.integers(len(merge_moves)))]
+        return SearchProposal(apply_move(tree, state, move), move)
+
+    if paired_proposal is None:  # pragma: no cover - excluded from choices above.
+        return None
+    move = paired_proposal.move
+    return SearchProposal(paired_proposal.state, move)
+
+
 def _pilot_local_losses(
     tree: DyadicTree,
     state: PartitionState,
@@ -227,6 +488,41 @@ def _pilot_local_losses(
         if proposal is None:
             break
         loss = state_score - float(score(proposal.state))
+        if loss > 0.0:
+            losses.append(loss)
+    return tuple(losses)
+
+
+def _pilot_variable_k_losses(
+    state: PartitionState,
+    state_utility: float,
+    utility: Callable[[PartitionState], float],
+    propose: Callable[
+        [PartitionState, np.random.Generator],
+        SearchProposal[PartitionState, Move] | None,
+    ],
+    proposals: int,
+    rng: np.random.Generator,
+) -> tuple[float, ...]:
+    """Collect positive utility losses from variable-count proposals.
+
+    Args:
+        state: Initial partition around which proposals are sampled.
+        state_utility: Penalized utility of ``state``.
+        utility: Callable returning penalized search utility.
+        propose: Variable-count proposal sampler.
+        proposals: Maximum number of candidates to evaluate.
+        rng: Caller-owned random generator.
+
+    Returns:
+        Positive utility losses in evaluation order.
+    """
+    losses: list[float] = []
+    for _ in range(proposals):
+        proposal = propose(state, rng)
+        if proposal is None:
+            break
+        loss = state_utility - float(utility(proposal.state))
         if loss > 0.0:
             losses.append(loss)
     return tuple(losses)
@@ -287,4 +583,12 @@ def _validated_support(values: npt.ArrayLike | None, *, shape: tuple[int, int]) 
     return support
 
 
-__all__ = ["DemoSearchConfig", "DemoSearchRun", "run_fixed_count_dfs_search"]
+__all__ = [
+    "DemoSearchConfig",
+    "DemoSearchRun",
+    "VariableKSearchConfig",
+    "VariableKSearchRun",
+    "excess_region_penalty",
+    "run_fixed_count_dfs_search",
+    "run_variable_k_dfs_search",
+]
