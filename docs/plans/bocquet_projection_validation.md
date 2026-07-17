@@ -21,6 +21,42 @@ observation anomalies. It should establish that:
 This work remains experimental. It must not change production RHIME or
 `fixedbasisMCMC`.
 
+## Implementation status (2026-07-17)
+
+Completed on the experimental branch:
+
+- a dense NumPy oracle for general positive-definite \(B\), non-diagonal
+  \(R\), nonzero prior means, arbitrary full-row-rank restrictions, and fixed
+  regional prolongations;
+- exact direct-versus-projected posterior mean/covariance tests, innovation
+  closure, residual independence, and positive-semidefinite unresolved
+  covariance checks;
+- stable weak-signal DFS, additive DFS/Fisher/Equation 45 dyadic node scores,
+  and exact fixed-count dynamic programming for each additive objective;
+- chunked native posterior mean and marginal-variance maps for the current
+  independent-relative-error model;
+- named partition-level DFS, base-error Fisher, aggregation-aware Fisher,
+  Equation 45, and projected Bayesian-information diagnostics;
+- a native-resolution semi-synthetic TAC/MHD report comparing root,
+  land/ocean, rectangular inner/outer, and three fixed-count adaptive
+  partitions at
+  `docs/plans/figures/bocquet_projection_validation/`; and
+- a matrix-free separable exponential covariance operator with optional
+  land/ocean class blocking, ported with provenance for the first correlated
+  prior experiment.
+
+Still to do:
+
+- run and profile the correlated-prior operator in a TAC/MHD inversion rather
+  than only its exact small-grid parity tests;
+- repeat the data-adaptive experiment across synthetic realizations and report
+  partition stability and training-versus-holdout optimism; and
+- add country/region masks when an aligned public fixture is chosen.
+
+The mixed-resolution block reconstruction below is deliberately deferred. The
+native posterior API retains chunked output so the experiment can be resumed
+without changing the current interfaces.
+
 ## Statistical model
 
 Use one native linear-Gaussian model throughout:
@@ -56,6 +92,23 @@ B_{c,\Gamma}=B-\Lambda_\Gamma B_\Gamma\Lambda_\Gamma^T,
 \qquad
 R_\Gamma=R+HB_{c,\Gamma}H^T.
 \]
+
+For a nonzero native prior mean, the exact reduced likelihood includes an
+offset as well as the transformed design and covariance:
+
+\[
+y\mid\alpha
+\sim
+\mathcal N\!\left(
+H\mu+H\Lambda_\Gamma(\alpha-\Gamma\mu),
+R_\Gamma
+\right).
+\]
+
+Equivalently, its affine intercept is
+\(H(\mu-\Lambda_\Gamma\Gamma\mu)\). Omitting this term is valid only for a
+centered anomaly model or a compatible prior mean, and would otherwise break
+the direct-versus-projected posterior check.
 
 The direct reduced inversion must reproduce
 
@@ -147,7 +200,12 @@ This native result is the oracle for all reduced analyses. The main performance
 measure is wall time and peak memory for the common observation-space
 factorization and for each output block.
 
-## Experiment 3: mixed-resolution block consistency
+## Experiment 3: mixed-resolution block consistency (optional)
+
+This is currently lower priority than the projection oracle, native TAC/MHD
+reference, and objective comparisons. The native posterior implementation
+should retain a block/chunk interface so this experiment remains possible, but
+the first proof of concept need not produce stitched block analyses.
 
 Partition the spatial output into native-resolution blocks, initially
 \(32\times32\) grid locations with smaller edge blocks.
@@ -205,13 +263,20 @@ dependence:
 
 1. Select \(P\) on training blocks.
 2. Report its training Equation 45 value.
-3. Evaluate held-out predictive log density, standardized residuals, and
-   compression error.
+3. Evaluate held-out retained-update, projected-KL, and compression metrics.
 4. Compare with a prespecified partition and data-independent DFS/Fisher
    selections.
 5. Repeat across semi-synthetic realizations to measure partition stability,
    interval coverage for prespecified functionals, and training-versus-holdout
    optimism.
+
+With the exact aggregation covariance, the conditional predictive distribution
+of held-out observations given training observations is inherited from the same
+native Gaussian model and is therefore partition-invariant. Held-out predictive
+log density and standardized residuals remain useful covariance-closure checks,
+but they cannot rank exact representations. They become discriminating model
+checks only on the separate reduced-model track where the unresolved complement
+is omitted or approximated.
 
 Cross-fitting evaluates the adaptive pipeline but does not automatically
 produce one calibrated posterior because different folds can select different

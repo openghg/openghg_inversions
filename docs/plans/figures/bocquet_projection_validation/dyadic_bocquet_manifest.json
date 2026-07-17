@@ -1,0 +1,146 @@
+{
+  "artifacts": {
+    "manifest_json": "dyadic_bocquet_manifest.json",
+    "metrics_csv": "dyadic_bocquet_metrics.csv",
+    "report_markdown": "dyadic_bocquet_report.md",
+    "summary_png": "dyadic_bocquet_summary.png"
+  },
+  "centered_innovation": {
+    "explicit_model_error_ppb": 5.0,
+    "formula": "innovation = G @ relative_truth + epsilon",
+    "noise": "epsilon ~ N(0, R)",
+    "noiseless_rms_ppb": 10.557085069802453,
+    "r_diag_formula": "data.error**2 + explicit_model_error_ppb**2",
+    "realized_innovation_rms_ppb": 12.752491762314033,
+    "stored_boundary_contribution_used": false,
+    "stored_real_mole_fraction_values_used": false
+  },
+  "experimental_only": true,
+  "holdout": {
+    "duration_hours": 24,
+    "holdout_rows": 46,
+    "holdout_sites": {
+      "MHD": 22,
+      "TAC": 24
+    },
+    "kind": "final_contiguous_wall_clock_block",
+    "start_inclusive": "2019-01-07T00",
+    "stop_exclusive": "2019-01-08T00",
+    "training_rows": 287,
+    "training_sites": {
+      "MHD": 143,
+      "TAC": 144
+    }
+  },
+  "input_provenance": {
+    "fixture_error_description": "Hourly MHD repeatability-plus-variability and TAC pooled variability, with zero pooled TAC variability replaced by the full-week site median and a per-site median-minus-fifth-percentile minimum-mismatch floor. Using max(error, min_error) as a fixed covariance is a demo benchmark, not the production model-error likelihood.",
+    "fixture_sha256": {
+      "flux_total_ch4_europe_edgar7_2019-01-01_2019-12-31_data.nc": "48fe26f6914e5a92c43eab299e2b5da708b78a6e72af9e8a06572d4914e01c3f",
+      "footprints_mhd_europe_name_10m_2019-01-01_2019-01-07_data.nc": "f617c410a2f53a20b9ba3ea789151b56d25c9dd149ecba88d507cd421e7b7122",
+      "footprints_tac_europe_name_185m_2019-01-01_2019-01-07_data.nc": "8405cf1ff3e3d4a3931ce79e36df307c23b71de397846b2b27087fe15d9f3db8",
+      "obs_mhd_ch4_10m_2019-01-01_2019-01-07_data.nc": "b0f4a86e6062de129de3b0b4e2ef407c1841926d10ce503dfb994702075c6936",
+      "obs_tac_ch4_185m_2019-01-01_2019-02-01_data.nc": "49de6aa729ed553d32a7069d718428d49f9af8262317b011a1c27316c1fa3420"
+    },
+    "land_ocean_sha256": "097c41e258555a36dd4270afe180b0a76db7dbcff4c76b59811c0770717633d1",
+    "source_sha256": {
+      "examples/basis/dyadic_bocquet_validation.py": "fd0074566523c0cd61558a91bfcaf0d5d207ad189cf0274db3094dea552bd5f4"
+    }
+  },
+  "land_ocean_mask": {
+    "coordinates_required_to_match_exactly": true,
+    "meaning": {
+      "0": "ocean",
+      "1": "land"
+    },
+    "path": "openghg_inversions/basis/algorithms/country-EUROPE-UKMO-landsea-2023.nc",
+    "variable": "country"
+  },
+  "native_bounds": {
+    "all_rows": {
+      "dfs": 14.06496366631465,
+      "equation45": 67.53008783345436,
+      "fisher": 74.11568603361354
+    },
+    "holdout": {
+      "dfs": 1.9724816805608123,
+      "equation45": 9.83399981779338,
+      "fisher": 3.5691172255765258
+    },
+    "training": {
+      "dfs": 12.773020571671044,
+      "equation45": 64.29659659949613,
+      "fisher": 70.5465688080371
+    }
+  },
+  "native_bounds_note": "Bounds are reported for the three additive DP selection objectives only. Aggregation-aware Fisher and Bayesian information gain are evaluation metrics, not scalar-node DP objectives in this report.",
+  "objective_conventions": {
+    "aggregation_aware_fisher": "Fisher trace using R plus aggregation covariance",
+    "bayesian_information_gain": "projected-posterior KL to projected prior; includes factor one half",
+    "dfs": "Bocquet Equation 38 degrees of freedom for signal",
+    "equation45": "squared prior-precision posterior-mean norm; no factor one half",
+    "fisher": "base-error Fisher trace using diagonal R"
+  },
+  "partition_selection": {
+    "candidate_order": [
+      "root",
+      "land_ocean",
+      "rectangular_inner_outer",
+      "dyadic_dfs",
+      "dyadic_fisher",
+      "dyadic_equation45"
+    ],
+    "dynamic_program_objectives": [
+      "dfs",
+      "base_error_fisher",
+      "equation45"
+    ],
+    "target_regions_for_each_exact_dp": 32,
+    "uses_training_rows_only": true
+  },
+  "period": "week",
+  "posterior_maps": {
+    "chunk_size": 4096,
+    "conditioning_rows": "all training and holdout rows",
+    "mean": "native relative-scaling posterior mean increment",
+    "sd": "native relative-scaling posterior marginal standard deviation"
+  },
+  "rectangle": {
+    "lat_max": 60.0,
+    "lat_min": 45.0,
+    "lon_max": 15.0,
+    "lon_min": -15.0
+  },
+  "search_resolution": {
+    "coarsen_factor": 1,
+    "coarsened_fixed_mask_rule": null,
+    "default_is_native": true,
+    "implicit_coarsening": false,
+    "mode": "native_grid",
+    "native_grid_shape": [
+      293,
+      391
+    ],
+    "search_grid_shape": [
+      293,
+      391
+    ]
+  },
+  "seed": 20260717,
+  "timings_seconds": {
+    "build_all_row_model": 3.5242604999803007,
+    "build_holdout_model": 1.440921500325203,
+    "build_training_model": 3.237845417112112,
+    "evaluate_holdout": 0.4927323330193758,
+    "evaluate_training": 1.3445747499354184,
+    "load_data": 0.8125088331289589,
+    "native_posterior": 0.12757600005716085,
+    "total_before_report": 19.397981625050306,
+    "write_figure": 1.1385227502323687
+  },
+  "truth": {
+    "mode": "smooth",
+    "prior_mean": 0.0,
+    "relative_prior_sd": 0.5,
+    "supported_rms": 0.49999999999999994
+  }
+}

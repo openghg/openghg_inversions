@@ -13,9 +13,19 @@ The short-term execution checklist, local TAC/MHD data contract, demo artifacts,
 and hackathon stop conditions are maintained separately in
 `docs/plans/dyadic_sls_hackathon.md`.
 
-The next native-resolution Gaussian validation, including the blockwise
-projection-consistency experiment, is specified separately in
+As of 2026-07-17, the exact Gaussian projection oracle, independent-prior
+native posterior summaries, DFS/Fisher/Equation 45 objectives, exact additive
+dynamic programs, land/ocean and rectangular comparisons, and a
+native-resolution semi-synthetic TAC/MHD report are implemented on the
+experimental branch. The next implementation work is the full TAC/MHD
+correlated-prior run and repeated-realization assessment; joint partition MCMC
+remains a later phase.
+
+The next native-resolution Gaussian validation is specified separately in
 `docs/plans/bocquet_projection_validation.md`.
+Its blockwise projection-consistency experiment is optional; the immediate
+priority is the exact projection oracle, TAC/MHD reference analysis, and
+comparison of requested and adaptive representations.
 
 The motivating problem is an atmospheric inverse model
 

@@ -1138,8 +1138,21 @@ A focused implementation test set should include:
   blocks, and direct-gather parity.
 - `openghg_inversions/basis/experimental/dyadic/rhime_gaussian.py`:
   experimental native-signal covariance, \(s^2/n_k\) regional variances,
-  invariant innovation covariance, additive node DFS, full-grid bound, and
-  aggregation covariance.
+  invariant innovation covariance, additive node DFS/Fisher/Equation 45
+  scores, full-grid bounds, aggregation covariance, and chunked native
+  posterior marginals.
+- `openghg_inversions/basis/experimental/dyadic/gaussian_projection.py`:
+  dense correctness oracle for non-diagonal \(B\) and \(R\), general
+  full-row-rank restrictions, fixed regional prolongations, exact reduced
+  likelihood offsets, direct-versus-projected posterior parity, and named
+  representation objectives.
+- `openghg_inversions/basis/experimental/dyadic/partition_diagnostics.py`:
+  arbitrary labelled-region covariance construction and consistent DFS,
+  base-error Fisher, aggregation-aware Fisher, Equation 45, and projected
+  Bayesian-information diagnostics.
+- `openghg_inversions/basis/experimental/dyadic/grid_covariance.py`:
+  matrix-free application of a separable exponential native-grid covariance,
+  including optional land/ocean class blocking and projected covariance.
 - `openghg_inversions/basis/experimental/dyadic/objectives.py`:
   generic Gaussian DFS and the explicitly provisional isotropic-region and
   historical quadratic benchmark objectives.
@@ -1149,6 +1162,9 @@ A focused implementation test set should include:
 - `docs/plans/dyadic_partition_inference.md`, especially *Objectives and what
   they mean*, *Hackathon proof of concept*, *Validation requirements*, and
   *Risks and exactness boundaries*.
+- `docs/plans/bocquet_projection_validation.md`:
+  operational sequence for the dense oracle, TAC/MHD native reference,
+  requested/adaptive representation comparison, and deferred blockwise test.
 - `docs/plans/dyadic_sls_hackathon.md` and
   `docs/reports/dyadic_sls_poc_slides.md`:
   provenance for the factor-8 demonstration and the provisional covariance
