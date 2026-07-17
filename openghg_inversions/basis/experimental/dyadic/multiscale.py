@@ -149,8 +149,10 @@ class MultiscaleDesign:
             Matrix with shape ``(observation, active_region)``.
 
         Raises:
-            ValueError: If an active node ID is outside the candidate matrix.
+            ValueError: If ``state`` is not an exact frontier for this design's
+                tree or an active node ID is outside the candidate matrix.
         """
+        state.validate(self.tree)
         active = state.ordered_active()
         if any(node_id < 0 or node_id >= self.values.shape[1] for node_id in active):
             raise ValueError("state contains a node ID outside the design.")

@@ -90,5 +90,15 @@ def test_gather_rejects_unknown_node_id() -> None:
     tree = DyadicTree.from_shape((2, 2))
     design = MultiscaleDesign.from_grid(np.ones((1, 2, 2)), tree)
 
-    with pytest.raises(ValueError, match="outside"):
+    with pytest.raises(ValueError, match="not in the tree"):
         design.gather(PartitionState(frozenset({7})))
+
+
+def test_gather_rejects_overlapping_non_frontier_state() -> None:
+    """Gathering should reject overlapping root and descendant columns."""
+    tree = DyadicTree.from_shape((2, 2))
+    design = MultiscaleDesign.from_grid(np.ones((1, 2, 2)), tree)
+    child_id = tree.children(tree.root_id)[0]
+
+    with pytest.raises(ValueError, match="ancestor and descendant"):
+        design.gather(PartitionState(frozenset({tree.root_id, child_id})))
