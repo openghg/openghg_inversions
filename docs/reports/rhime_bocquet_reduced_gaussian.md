@@ -438,7 +438,9 @@ No native \(M\times M\) covariance is needed. For \(N\) observations, all
 quantities above can be formed as \(N\times N\) matrices from native and
 region-summed observation columns.
 
-## 6. DFS, additive node scores, and the fine-grid bound
+## 6. Representation objectives and lifted posterior approximations
+
+### 6.1 DFS, additive node scores, and the fine-grid bound
 
 Set the invariant innovation covariance
 
@@ -503,10 +505,371 @@ The exact decomposition is
 \]
 
 The second term is the information left in unresolved native contrasts. It is
-nonnegative and vanishes for the supported native-cell partition. If the search
-dictionary has factor-8 spatial leaves, the native-cell partition is not
+nonnegative and vanishes for the supported native-grid partition. If the search
+dictionary has factor-8 spatial leaves, the native-grid partition is not
 reachable; the native full-grid value remains a bound, not an attainable search
 state.
+
+### 6.2 Exact projected posterior versus a lifted approximation
+
+Bocquet et al.'s Equations 29--31 establish that an analysis performed in a
+representation is the exact restriction of the native analysis. In the notation
+of Section 2, if
+
+\[
+p(\delta x\mid y)=\mathcal N(m_a,P_a),
+\qquad
+\alpha=\Gamma\delta x,
+\]
+
+then
+
+\[
+p(\alpha\mid y)
+=\mathcal N(\Gamma m_a,\Gamma P_a\Gamma^T).
+\]
+
+Equivalently, their Equation 31 is the pushforward identity
+
+\[
+p(\alpha\mid y)
+=\int \delta(\alpha-\Gamma\delta x)\,
+p(\delta x\mid y)\,d\delta x.
+\]
+
+This identity means that country totals, regional averages, or any other
+declared linear summaries can be inferred directly and will agree with applying
+the same restriction to a native-grid Gaussian inversion. It does not recover
+the posterior update in directions discarded by \(\Gamma\).
+
+The identity requires the paper's declared base-error model plus the exact
+aggregation error in Equations 23--24. Additional scale-dependent model error
+must be modelled explicitly; otherwise the innovation identity in Equation 27
+and the exact pushforward result need not hold.
+
+To compare representations of different dimensions as distributions in one
+common space, each projected posterior must be lifted back to the native state
+space. The natural Bocquet-compatible lift is
+
+\[
+q_\Gamma(\delta x\mid y)
+=\int p(\delta x\mid\alpha)\,p(\alpha\mid y)\,d\alpha,
+\]
+
+where \(p(\delta x\mid\alpha)\) is the **prior** conditional distribution. Its
+mean and covariance are
+
+\[
+m_\Gamma=\Lambda\,\mathbb E[\alpha\mid y],
+\qquad
+P_\Gamma=B_c+\Lambda\operatorname{Cov}(\alpha\mid y)\Lambda^T.
+\]
+
+This lifted approximation updates the selected summaries while leaving the
+conditional unresolved contrasts at their prior distribution. It provides a
+precise approximation-class interpretation of the candidate representations.
+Within the class of native distributions that retain this prior conditional,
+it is the forward-KL projection of the full posterior. Reverse KL does not in
+general select the same approximation.
+
+The KL chain rule gives
+
+\[
+\begin{aligned}
+D_{\mathrm{KL}}\!\left[p(\delta x\mid y)\,\|\,p(\delta x)\right]
+={}&D_{\mathrm{KL}}\!\left[p(\alpha\mid y)\,\|\,p(\alpha)\right]\\
+&+\mathbb E_{p(\alpha\mid y)}
+D_{\mathrm{KL}}\!\left[
+p(\delta x\mid\alpha,y)\,\|\,p(\delta x\mid\alpha)
+\right].
+\end{aligned}
+\]
+
+The second term is also the forward KL divergence from the full posterior to
+the prior-conditionally lifted approximation. Therefore
+
+\[
+\boxed{
+D_{\mathrm{KL}}\!\left[p(\delta x\mid y)\,\|\,q_\Gamma(\delta x\mid y)\right]
+=K_{\mathrm{full}}^{\mathrm{Bayes}}-K_\Gamma^{\mathrm{Bayes}}
+}.
+\]
+
+Maximizing the projected Bayesian information gain is consequently equivalent
+to choosing the member of this approximation class nearest to the full
+posterior in forward KL divergence. Averaging over possible observations gives
+the corresponding mutual-information identity
+
+\[
+\mathbb E_y D_{\mathrm{KL}}(p\|q_\Gamma)
+=I(\delta x;y)-I(\alpha;y).
+\]
+
+Two other lifts do not define the same useful comparison. A deterministic
+rank-\(K\) prolongation is singular in native space, so its KL divergence from a
+full-rank posterior is normally infinite. Using the exact posterior conditional
+\(p(\delta x\mid\alpha,y)\) instead of the prior conditional reconstructs the
+full posterior for every \(\Gamma\), leaving every representation at distance
+zero.
+
+This lifted-posterior identity is a consequence of Bocquet et al.'s exact
+coarse-analysis identities and the KL chain rule. The paper does not present it
+as a separate hypothesis-class theorem.
+
+### 6.3 Relation of the objectives to Bocquet et al.'s equations
+
+The paper's criteria are different summaries of how much of the native update
+is represented by \(\Pi_\omega=\Gamma_\omega^\dagger\Gamma_\omega\):
+
+| Objective | Paper equations | Approximation interpretation |
+| --- | --- | --- |
+| Fisher | 33--36 | Prior-normalized sensitivity; Equation 36 is the weak-signal or inflated-\(R\) limit of DFS and is additive under Equation 50 |
+| Aggregation-aware Fisher | 37 | Uses the partition-dependent \(R_\omega^{-1}\); nonlinear in \(\Pi_\omega\) and not a scalar-node DP objective |
+| DFS | 38--39 | Trace of captured posterior uncertainty reduction; Equation 39 localizes it to a tile |
+| Bayesian relative entropy | 40 and expected form 42 | Prior-to-posterior KL information; its representation-specific form gives the closest-lifted-posterior criterion above, but is not generally additive |
+| Data-dependent mean criterion | 41 and representation forms 44--45 | Squared prior-weighted posterior-mean update captured by the representation |
+| Expected data-dependent criterion | 43 | One-half of DFS under the declared prior-predictive distribution |
+
+For the data-dependent criterion, set
+
+\[
+\delta m
+=BH^TS^{-1}y,
+\]
+
+where \(y\) is already centered on the native prior prediction. Equation 41 is
+
+\[
+K_\sigma=\frac12\|\delta m\|_{B^{-1}}^2,
+\]
+
+and Equation 45 is, apart from the paper's normalization convention,
+
+\[
+J_\omega=\|\Pi_\omega\delta m\|_{B^{-1}}^2.
+\]
+
+Because \(\Pi_\omega\) is an orthogonal projector in the \(B^{-1}\) metric,
+maximizing Equation 45 minimizes the squared \(B^{-1}\)-norm of the
+posterior-mean update omitted by the representation. This is the mean-only
+analogue of the full KL approximation result; it deliberately omits the
+covariance terms in Equation 40.
+
+Equation 38 can similarly be written in prior-whitened coordinates as
+
+\[
+J_\omega=\operatorname{tr}(\widetilde\Pi_\omega\mathcal A),
+\qquad
+\mathcal A
+=B^{1/2}H^TS^{-1}HB^{1/2}.
+\]
+
+The difference from native DFS is
+
+\[
+\operatorname{DFS}_{\mathrm{full}}-J_\omega
+=\operatorname{tr}[(I-\widetilde\Pi_\omega)\mathcal A],
+\]
+
+a trace measure of the uncertainty reduction omitted by the representation.
+It is a useful approximation loss, but not itself a probability-distribution
+distance.
+
+If \(\lambda_i\) are eigenvalues of the prior-whitened Fisher matrix
+\(B^{1/2}H^TR^{-1}HB^{1/2}\), the unrestricted criteria weight an observable
+mode as
+
+\[
+\text{Fisher: }\lambda_i,
+\qquad
+\text{DFS: }\frac{\lambda_i}{1+\lambda_i},
+\qquad
+\text{expected Bayesian KL: }\frac12\log(1+\lambda_i).
+\]
+
+They favor similar directions but value already well-resolved directions
+differently. Under a constrained aggregation dictionary they can therefore
+rank partitions differently and should all be retained as explicit,
+separately named experiments.
+
+### 6.4 Using the realized observations to choose a representation
+
+Equation 45 is intentionally data-dependent. Using it to choose \(P\) is not
+automatically incoherent, but the inferential claim must match the role of the
+selection:
+
+- If \(P(y)\) is a predeclared **posterior-compression action**, then selecting
+  it from \(y\) and reporting the exact posterior of the selected linear
+  summary is a coherent Bayesian decision. Conditional on the observed data,
+  \(P(y)\) is known and Equations 29--31 still give the exact posterior of that
+  selected summary.
+- The same result is not independent evidence that the selected geography is
+  scientifically special, nor is its training score an out-of-sample
+  performance estimate. Region boundaries and reported contrasts were chosen
+  adaptively.
+- If the selected partition is instead treated as a fixed generative model and
+  its selection is omitted from the uncertainty calculation, posterior
+  uncertainty can be understated and noise-specific refinements can be
+  overinterpreted. This is especially relevant when the practical model is
+  only approximately scale-consistent.
+- If \(P\) is intended to be an uncertain scientific parameter, Equation 45 is
+  a utility, not \(p(P\mid y)\). A prior and a genuinely
+  partition-dependent likelihood are required for posterior inference over
+  \(P\).
+
+For every fixed candidate, Equation 43 gives the prior-predictive expectation
+of the data-dependent score. Selection changes that expectation:
+
+\[
+\mathbb E\left[J_{\widehat P}(y)\right]
+=\mathbb E\left[\max_P J_P(y)\right]
+\geq \max_P\mathbb E[J_P(y)].
+\]
+
+The selected training score is therefore optimistically biased, with greater
+potential optimism for a larger or more flexible partition dictionary. The
+analysis increment used by Equation 45 contains not only source signal but also
+realized observation error, prior-mean mismatch, transport error, and any
+misspecification of \(H\), \(B\), or \(R\).
+
+Bocquet et al. explicitly call attention to the possible "inversion crime" of
+building an adaptive representation from the same observations used in the
+inversion. For the experimental posterior-compression interpretation, the
+minimum defensible protocol is:
+
+1. Declare the representation dictionary, \(K\), covariance assumptions, and
+   Equation 45 objective before inspecting results.
+2. Label the selected partition as data-adaptive posterior compression, not a
+   posterior draw or a discovered physical boundary.
+3. Report Equation 45 on the fitting observations, but use held-out sites or
+   times for predictive or compression assessment.
+4. Compare with data-independent DFS from Equation 38 and Fisher from Equation
+   36 so the effect of the realized innovation is visible.
+5. Use cross-fitting or a design/inference split when repeated-sampling
+   calibration or confirmatory claims matter. If tuning choices are compared,
+   reserve an outer holdout for final evaluation.
+
+A final descriptive inversion may refit with all observations after the
+selection rule is frozen, but its intervals do not become selection-adjusted
+merely because a holdout was used during development.
+
+### 6.5 Dynamic programming and correlated geographic aggregation
+
+Equation 45 is linear in \(\Pi_\omega\). Under the assumptions leading to
+Equations 50--51, the projector is a sum of orthogonal tile projectors and
+
+\[
+J_\omega=\sum_{t\in\omega}\epsilon_t.
+\]
+
+Equation 64 makes the data-dependent matrix rank one. With
+\(u=B^{1/2}H^TS^{-1}y\), a tile represented by \(v_t\) has score
+
+\[
+\epsilon_t=\frac{(v_t^Tu)^2}{v_t^Tv_t}.
+\]
+
+An exact fixed-\(K\) dynamic program is therefore available for a recursive
+dyadic or quadtree dictionary:
+
+\[
+F(t,1)=\epsilon_t,
+\qquad
+F(t,k)=
+\max_{k_1+\cdots+k_m=k}\sum_{j=1}^m F(c_j,k_j).
+\]
+
+A variable-count utility can be obtained by maximizing
+\(F(\mathrm{root},K)-g(K)\). This is an optimization over a declared utility,
+not Bayesian inference of \(K\) under the exact scale-consistent Gaussian
+model. Equation 63 explains why the positive-semidefinite trace objectives are
+otherwise monotone as the representation is refined.
+
+The dynamic program is globally exact only within its declared recursive
+dictionary. The current repository implementation uses one canonical binary
+tree; it is not an optimizer over every general tiling considered by Bocquet et
+al. A full fixed-count frontier can be computed once and combined afterward
+with any penalty depending only on \(K\). Full Bayesian KL, held-out objectives,
+and dense-covariance objectives are not made additive merely by using the same
+tree.
+
+Linearity in \(\Pi_\omega\) alone is not sufficient for this dynamic program.
+The additive tile expansion also requires the orthogonality assumptions behind
+Equation 50. Bocquet et al. accept a whitening redefinition in Equations 15--19
+and 47--48 to recover this structure for correlated \(B\). They note that the
+resulting coordinates are statistically independent linear combinations, not
+literal geographic aggregates.
+
+Retaining correlated \(B\) and geographic regions is mathematically possible,
+but it creates global coupling. There are two exact conventions:
+
+1. Preserve a piecewise-regional prolongation \(U\). Then
+
+   \[
+   \Gamma_U=(U^TB^{-1}U)^{-1}U^TB^{-1},
+   \qquad
+   B_P=(U^TB^{-1}U)^{-1}.
+   \]
+
+   The forward columns remain geographic region sums, but the selected
+   coefficients are generalized least-squares regional amplitudes rather than
+   literal arithmetic totals.
+2. Preserve a literal area- or flux-weighted restriction \(\Gamma\). Then
+
+   \[
+   \Lambda=B\Gamma^T(\Gamma B\Gamma^T)^{-1}.
+   \]
+
+   The selected coefficients retain their literal aggregate meaning, but the
+   Bayesian prolongation and \(H\Lambda\) are generally nonlocal rather than
+   simple region sums.
+
+For the second convention, the data-dependent score can be evaluated as
+
+\[
+J_\Gamma
+=(\Gamma\delta m)^T(\Gamma B\Gamma^T)^{-1}(\Gamma\delta m).
+\]
+
+This displays both the literal projected analysis increment and the dense
+reduced covariance that couples all selected regions.
+
+In either convention, the reduced covariance is normally dense. A partition
+evaluation requires construction and factorization of a \(K\times K\) matrix,
+and changing one region can change the score assigned to every other region.
+The scalar-node dynamic program is therefore unavailable. A single
+factorization at \(K\) around 250 is modest; repeating the construction and
+factorization for thousands of candidate partitions may dominate the search.
+Sparse native precision, compactly supported covariance, separable operators,
+cached pairwise tile interactions, and incremental Cholesky updates could make
+this practical, but each requires a separate correctness and performance
+study. Stochastic search remains the straightforward exact-objective fallback.
+
+### 6.6 Region count, coefficient dimension, and information dimension
+
+Three quantities must remain separate:
+
+\[
+K_{\mathrm{tree}}=|P|,
+\qquad
+K_{\mathrm{eff}}
+=\#\{\text{active regions with supported native grid locations}\},
+\qquad
+\operatorname{DFS}(P).
+\]
+
+The paper uses \(N\) for tile count, \(N_{\mathrm{fg}}\) for native grid size,
+and \(p\) for observation count. Repository \(K_{\mathrm{tree}}\) corresponds
+to the paper's \(N\) only when every active region has support. Under the
+current disjoint construction, \(K_{\mathrm{eff}}\) is the reduced coefficient
+dimension and the rank of the supported prolongation. DFS is an information
+dimension bounded by both the observation rank and \(K_{\mathrm{eff}}\); it is
+not a region count.
+
+The current DP constrains tree leaves, while diagnostics may report effective
+supported regions. Unsupported leaves must be pruned or both counts must be
+reported. Under whitening, \(K\) counts retained statistical coordinates, not
+literal geographic regions.
 
 ## 7. Four distinct modelling choices
 
@@ -606,10 +969,12 @@ For a symmetric positive-definite correlated \(B\), the general formulas for
 \(B_P\) is generally dense, so
 \(C_P=H_PB_PH_P^T\) no longer decomposes into independent node scores. The
 current additive search objective is therefore specific to a covariance whose
-weighted regional coefficients are independent. Bocquet et al. discuss a
-whitened restriction for reducing the correlated case (their Equations
-15--19); that changes tile interpretation and is a later design problem, not a
-drop-in extension.
+weighted regional coefficients are independent. Section 6.5 records the two
+exact ways to retain geographic regions, their different coefficient
+semantics, and their global computational coupling. Bocquet et al.'s whitened
+restriction in Equations 15--19 and 47--48 restores additive optimization by
+changing the tile interpretation; it is a computationally useful alternative,
+not a mathematical requirement for exact Gaussian projection.
 
 If \(B\) is singular rather than positive definite, all inverses above require
 an explicitly declared supported subspace or generalized-inverse convention.
@@ -661,8 +1026,12 @@ touch `openghg_inversions/rhime/runner.py`, the production RHIME model, or
 
 ### Phase B: experimental search and evidence
 
-Use the additive score in fixed- and variable-count dyadic searches, while
-reporting separately:
+Compare the data-independent DFS, Fisher, and data-dependent Equation 45
+objectives. Use exact dynamic programming whenever Equation 50 gives additive
+tile scores, and use the DP result as the fixed-count reference for stochastic
+search. For Equation 45, record the observations used to select the partition
+and reserve independent sites or times for predictive evaluation. Report
+separately:
 
 - partition DFS and native full-grid DFS;
 - unresolved DFS and the exact decomposition residual;
@@ -670,6 +1039,18 @@ reporting separately:
 - coarsening factor and inaccessible within-leaf information;
 - support threshold, units, source/sign handling, and base \(R\); and
 - sensitivity to plausible \(s\), support, and coarsening choices.
+
+Use repeated semi-synthetic inversions to measure selection effects. Compare a
+prespecified partition, data-independent DFS selection, same-data Equation 45
+selection, and blocked holdout or cross-fitted Equation 45 selection. Evaluate
+common prespecified native-grid or large-region functionals, not only the
+adaptively selected regions. Record coverage, bias, held-out log predictive
+density, partition stability, training-versus-holdout optimism, and sensitivity
+to misspecified prior means, \(B\), \(R\), and transport.
+
+The exact scale-consistent Gaussian likelihood is partition-invariant. Region
+count and representation are therefore optimization or reporting decisions in
+this model, not parameters learned through a nontrivial \(p(P,K\mid y)\).
 
 The historical isotropic-region objective in `objectives.py` remains a labelled
 benchmark and must not be compared as though it used the same fine prior.
@@ -797,6 +1178,14 @@ A focused implementation test set should include:
      of coarse and fine Gaussian analyses.
    - Section 4.1.2, printed p. 1346 / PDF p. 7, Equations 38--39: DFS under the
      invariant innovation covariance and tile-level contributions.
+   - Sections 4.1.1--4.1.3, printed pp. 1346--1347 / PDF pp. 7--8, Equations
+     33--45: Fisher, DFS, Bayesian relative entropy, and data-dependent
+     representation objectives.
+   - Sections 4.2--4.3, printed pp. 1347--1348 / PDF pp. 8--9, Equations
+     47--51: correlated-prior whitening and additive tile energies.
+   - Sections 5.3 and 6.1, printed pp. 1350--1352 / PDF pp. 11--13, Equations
+     62--64: region-count marginal utility, monotonicity, and the rank-one
+     data-dependent objective.
 
 2. Bishop, C. M. (2006), *Pattern Recognition and Machine Learning*, Section
    2.3, “The Gaussian Distribution.”

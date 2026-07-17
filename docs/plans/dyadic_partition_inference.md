@@ -13,6 +13,10 @@ The short-term execution checklist, local TAC/MHD data contract, demo artifacts,
 and hackathon stop conditions are maintained separately in
 `docs/plans/dyadic_sls_hackathon.md`.
 
+The next native-resolution Gaussian validation, including the blockwise
+projection-consistency experiment, is specified separately in
+`docs/plans/bocquet_projection_validation.md`.
+
 The motivating problem is an atmospheric inverse model
 
 \[
@@ -40,25 +44,35 @@ This note distinguishes three statuses:
    SA runner before implementing joint MCMC. This is Phase 0 below.
 2. **Proposed:** retain SA as a useful optimizer and initializer. Do not describe
    its DoFS-like energy as a non-Gaussian posterior target.
-3. **Proposed:** make the first statistically exact demonstration fixed-count
-   and linear-Gaussian, with the continuous coefficients analytically collapsed.
-   This tests partition probabilities and DoFS-informed local proposals without
-   requiring NUTS adaptation or coefficient transport.
-4. **Proposed:** treat non-Gaussian fixed-count continuous sampling as a later
+3. **Proposed:** make the first statistically exact Gaussian demonstration an
+   exact Bocquet-consistent posterior-compression experiment. Compare projected
+   analyses with restrictions of the native analysis and optimize fixed-count
+   representations with DFS, Fisher, and the data-dependent Equation 45
+   criterion. Do not describe this as posterior inference over \(P\): the exact
+   scale-consistent Gaussian likelihood is partition-invariant.
+4. **Proposed:** treat a collapsed Gaussian sampler over partition probabilities
+   as a separate reduced-model experiment. It requires a model in which \(P\)
+   genuinely changes the prior or likelihood; it is not obtained by merely
+   reparameterizing one native Gaussian model exactly.
+5. **Proposed:** treat non-Gaussian fixed-count continuous sampling as a later
    experiment, not as a prerequisite for the partition proof of concept.
-5. **Proposed:** investigate a tree-contrast product-space sampler next. It is a
+6. **Proposed:** investigate a tree-contrast product-space sampler next. It is a
    genuine fixed-dimensional alternative to RJMCMC when all potential node
    parameters and proper pseudo-priors are included in the augmented state.
-6. **Established:** storing a fixed indicator over all possible multiscale tiles
+7. **Established:** storing a fixed indicator over all possible multiscale tiles
    does not by itself avoid RJMCMC. If the mathematical continuous state is a
    packed vector whose dimension changes with the number of active tiles, the
    method is trans-dimensional regardless of how the indicator is stored.
-7. **Proposed:** use exact likelihood and prior terms for final partition
+8. **Proposed:** use exact likelihood and prior terms for final partition
    acceptance. DoFS, split-contrast, projected-flux, or Laplace scores may inform
    proposals, initialize chains, or provide a delayed-acceptance first stage.
-8. **Proposed:** represent land/ocean, country, inner/outer, and other hard
+9. **Proposed:** represent land/ocean, country, inner/outer, and other hard
    partitions as constraints and groups around the dyadic optimizer. Filtering
    of observations must occur before any data-dependent basis weights are built.
+10. **Proposed:** use Equation 45 as the primary data-dependent compression
+    experiment, with DFS and Fisher retained as comparators. Predeclare the
+    dictionary and loss, label the result as adaptive posterior compression, and
+    use held-out sites or times for predictive assessment.
 
 ## Terminology and notation
 
@@ -75,6 +89,8 @@ This note distinguishes three statuses:
 | \(z\) | unconstrained continuous coordinates, often with \(x=\exp(z)\) |
 | \(q_P\) | proper pseudo-prior for parameters inactive under \(P\) |
 | \(K(P)\) | number of active regions or leaves |
+| \(K_{\mathrm{tree}}\) | number of active tree leaves, including any unsupported leaves not yet pruned |
+| \(K_{\mathrm{eff}}\) | number of supported active coefficient directions; not DFS |
 
 "Multiscale sensitivity" means pre-aggregated columns for candidate tiles. A
 "multiscale weight" is a score derived from those columns. These are not the
@@ -404,6 +420,34 @@ model as the paper. Phase 0 must write down which of these assumptions the
 prototype retained before its incremental `dof_change` is treated as an exact
 score.
 
+The exact projected posterior should also be distinguished from its native-space
+lift. Equations (29)--(31) show that the posterior in any representation is the
+exact restriction of the native posterior. If the projected posterior is lifted
+with the **prior** conditional distribution for unresolved contrasts, the
+resulting native-space distribution is an approximation. By the KL chain rule,
+maximizing projected Bayesian information gain minimizes the forward KL
+divergence from the full posterior to this lifted approximation. The
+data-dependent Equation (45) is the corresponding mean-only objective: it
+maximizes the squared \(B^{-1}\)-norm of the captured posterior-mean update.
+The full derivation and equation map are recorded in
+`docs/reports/rhime_bocquet_reduced_gaussian.md`.
+
+Under Equations (50)--(51), the data-dependent objective has additive tile
+scores and an exact fixed-count dynamic program over a recursive tree. The
+rank-one form appears in Equation (64). This additivity holds for diagonal or
+appropriately whitened prior covariance. Dense correlated \(B\) with retained
+geographic region semantics is exact but globally coupled: the reduced
+covariance is dense and a local split can alter all regional scores. That case
+requires full-objective stochastic search or more specialized matrix updates,
+not the scalar-node DP.
+
+This DP statement does not apply to every criterion in Section 4. Equation 37's
+aggregation-aware Fisher criterion is nonlinear through \(R_\omega^{-1}\), and
+the full Bayesian KL in Equations (40) and (42) contains a log determinant.
+Neither is a scalar-node additive objective. The current DP is exact only for a
+declared additive trace objective within its one canonical binary-tree
+dictionary.
+
 The paper describes coarse-graining its multiscale Jacobian by averaging. For a
 RHIME multiplicative region coefficient, the corresponding observation column
 is normally the sum of fine-cell footprint-times-flux contributions in that
@@ -523,6 +567,31 @@ scores can depend on the observation operator and error model without using the
 realized observed values \(y\); this differs from fitting the partition directly
 to residuals.
 
+Equation (45) occupies an intermediate decision-theoretic case. If a
+predeclared rule chooses \(P(y)\) as a posterior-compression action, the exact
+posterior of the selected linear summary remains coherent conditional on the
+observed data. However, the selected geography is adaptive, its training score
+is optimistic as an evaluation statistic, and ordinary intervals do not become
+selection-adjusted for confirmatory claims. Bocquet et al. describe the risk of
+using the same observations to construct and invert on an adaptive grid as a
+possible "inversion crime." For the POC, report the training Equation 45 score,
+evaluate prediction or compression on held-out sites or times, and compare with
+the data-independent DFS and Fisher selections. Use cross-fitting or an outer
+holdout if tuning rules are themselves compared.
+
+For a fixed candidate, the expected Equation 45 score is one-half its DFS, but
+after selection
+
+\[
+\mathbb E[J_{\widehat P}(y)]
+=\mathbb E[\max_P J_P(y)]
+\geq\max_P\mathbb E[J_P(y)].
+\]
+
+The selected training value is therefore optimistic. Cross-fitting is useful
+for evaluating the adaptive pipeline and its stability, but fold-specific
+partitions do not automatically combine into one calibrated posterior.
+
 ## Joint Bayesian target
 
 The desired non-Gaussian target is
@@ -555,7 +624,7 @@ RJMCMC describe how parameters across models are represented and moved.
 | Choice | Strength | Main limitation | Recommended use |
 | --- | --- | --- | --- |
 | SA optimization | cheap use of local scores; good initialization | not posterior inference | first scientific demo and chain initialization |
-| fixed-\(K\) sampling | fixed continuous dimension and controlled comparison | does not infer uncertainty in \(K\) | first exact joint sampler |
+| fixed-\(K\) sampling | fixed continuous dimension and controlled comparison | does not infer uncertainty in \(K\) | first exact joint sampler for a declared partition-dependent model |
 | Gaussian collapsing | exact fast structure scores when conjugate | not directly available for lognormal coefficients | tiny oracle, Gaussian benchmark, or conditional block |
 | product space | globally fixed dimension and ordinary fixed-shape traces | memory, pseudo-priors, and inactive-variable geometry | preferred variable-\(K\) prototype after fixed-\(K\) |
 | RJMCMC | native packed variable-dimensional state | mappings, Jacobians, proposals, and ragged output | defer until product-space limitations are measured |
@@ -566,7 +635,7 @@ not competing names for one decision.
 
 ## Collapsed partition inference
 
-### Exact linear-Gaussian case
+### Partition-dependent linear-Gaussian case
 
 With a Gaussian likelihood and conditionally Gaussian prior, coefficients can
 be integrated out:
@@ -574,6 +643,18 @@ be integrated out:
 \[
 p(P\mid y) \propto p(y\mid P)p(P).
 \]
+
+This posterior is nontrivial only when \(P\) genuinely changes the statistical
+model. In the exact Bocquet construction, the projected prior and aggregation
+residual are both induced from one native Gaussian model and
+
+\[
+p(y\mid P)=\mathcal N(y;H\mu,R+HBH^T)
+\]
+
+is partition-invariant. The formulas below therefore describe a separate
+reduced-model or non-Gaussian model-selection track, not posterior inference over
+exact Bocquet representations.
 
 This is not "basis selection only" in the sense of discarding coefficient
 uncertainty. The joint posterior factorizes as
@@ -612,7 +693,8 @@ merge elsewhere. There are two materially different fixed-count experiments.
 
 ### Collapsed Gaussian fixed-count sampler
 
-**Proposed first exact partition sampler.** Suppose
+**Proposed first exact partition sampler for a declared partition-dependent
+benchmark.** Suppose
 
 \[
 x_P\mid P \sim N(m_P,B_P),
@@ -739,11 +821,17 @@ posterior metric to remain meaningful across partitions.
 
 ### Objective
 
-Demonstrate that the existing DoFS-guided stochastic local search (SLS) can
-become an exact posterior partition sampler under a transparent linear-Gaussian
-toy model.
-The DoFS calculation guides computation but does not replace the likelihood,
-coefficient prior, or partition prior.
+Keep two claims separate:
+
+1. Under the exact Bocquet model, demonstrate adaptive posterior compression by
+   optimizing Equation 45 and comparing it with DFS and Fisher selections.
+2. Under a transparent but genuinely partition-dependent linear-Gaussian toy
+   model, demonstrate that the existing DoFS-guided stochastic local search
+   machinery can become an exact posterior partition sampler.
+
+For the second claim, DoFS guides computation but does not replace the
+likelihood, coefficient prior, or partition prior. It must not be presented as
+sampling \(P\) under the exact Bocquet projection model.
 
 The minimum successful result is fixed \(K\). Variable \(K\) is a stretch goal
 that is unusually accessible in the collapsed Gaussian case because there is no
@@ -1241,21 +1329,33 @@ NumPy arrays and explicit metadata.
 Implement the package, demo, tests, provenance table, and benchmark described
 above. Do not add MCMC yet.
 
-### Phase 1: scientifically faithful SA demo
+### Phase 1: scientifically faithful representation-optimization demo
 
-1. Build multiscale observation columns with the raw prototype's sum-then-score
-   semantics.
+1. Build multiscale observation columns with the exact declared restriction,
+   prolongation, prior, and aggregation-error semantics.
 2. Initialize with the current greedy or bisection partitioner.
-3. Offer explicit objective components: Gaussian DFS/contrast proxy, projected
-   flux compression, and complexity prior/penalty.
-4. Add a real cooling schedule and best-state tracking.
-5. Compare against direct recomputation on small problems.
-6. Demonstrate optional hard land/ocean and inner/outer classes.
+3. Optimize Equation 45 as adaptive posterior compression, and compare its
+   partition with DFS, Fisher, and projected-flux compression objectives.
+4. Use exact fixed-count DP as the oracle whenever the tile score is additive;
+   retain SLS for richer dictionaries and dense correlated objectives.
+5. Record fitting observations separately from held-out predictive or
+   compression evaluation.
+6. Add a real cooling schedule and best-state tracking where SLS remains
+   necessary.
+7. Compare against direct recomputation on small problems.
+8. Demonstrate optional hard land/ocean and inner/outer classes.
 
 The result is an optimizer and experimental basis generator, not posterior
 inference.
 
-### Phase 2a: exact collapsed fixed-count sampler
+### Phase 2a: collapsed fixed-count sampler for a partition-dependent model
+
+This is not a sampler for the exact Bocquet projection model. In that model,
+integrating the projected coefficients and exact aggregation residual recovers
+the same native innovation distribution for every \(P\), so
+\(p(P\mid y)=p(P)\). Before this phase, define and name a reduced model in which
+\(P\) genuinely changes the likelihood or prior, such as an explicitly
+low-rank regional field model.
 
 1. Implement paired split-and-merge neighbor enumeration with exact proposal
    probabilities.
@@ -1365,7 +1465,7 @@ Only after Phases 2 and 3:
 - Allowing arbitrary x/y split histories can assign unintended multiplicity to
   equivalent partitions.
 - Dynamic ragged region coordinates do not fit ordinary xarray traces. Store
-  fixed node decisions/contrasts or cell-level reconstructed fields during
+  fixed node decisions/contrasts or grid-level reconstructed fields during
   sampling, and convert selected partitions to fixed layouts afterward.
 - Data filtering after basis construction leaks excluded observations into the
   basis design.
@@ -1391,6 +1491,14 @@ Only after Phases 2 and 3:
    score, a Laplace approximation, or both?
 10. What trace representation is needed for posterior maps, group summaries,
     and model averaging without a ragged `region` dimension?
+11. For dense correlated \(B\), should the first exact geographic experiment
+    preserve the piecewise-regional prolongation or preserve literal aggregate
+    restriction semantics?
+12. Is Equation 45 evaluated with a strict design/inference split, cross-fitting,
+    or as an explicitly descriptive posterior-compression action followed by
+    held-out predictive assessment?
+13. Does a fixed-count experiment constrain tree leaves, effective supported
+    coefficient dimension, or an information target such as retained DFS?
 
 ## References
 
