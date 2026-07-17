@@ -17,7 +17,7 @@ The implementation and a full-week TAC/MHD run are complete on the
 `codex/dyadic-projected-prior` branch:
 
 - 333 aligned hourly TAC/MHD observation rows;
-- native grid `(293, 391)` and factor-8 dyadic search grid `(37, 49)`;
+- native grid `(293, 391)` and 8x8-block dyadic search grid `(37, 49)`;
 - 110,758 nonzero-prior-flux native cells;
 - greedy exact-DFS initializer at `K=24`;
 - 2,000 variable-count local-search proposals;
@@ -131,6 +131,9 @@ and prompted fixes for cancellation-prone covariance subtraction, strict
 integer configuration, invalid-frontier gathering, fixed-reference plotting,
 and best-utility labelling. Focused branch verification is complete; commit
 and push remain.
+
+The follow-on optimizer, quadtree, covariance, and synthetic-inversion
+diagnostics are tracked separately in `docs/plans/dyadic_basis_diagnostics.md`.
 
 ## Stop conditions and deferred work
 

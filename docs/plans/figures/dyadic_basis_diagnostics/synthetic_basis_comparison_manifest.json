@@ -1,0 +1,359 @@
+{
+  "baseline_holdout": {
+    "boundary_coefficients": 32,
+    "used_by_holdout": 8,
+    "used_by_holdout_but_unseen_in_training": 8
+  },
+  "baseline_prior": {
+    "mean": "one for every frozen boundary coefficient",
+    "standard_deviation": 0.05
+  },
+  "covariance_runs": {
+    "observation_only": {
+      "all_rows_native_dfs": 6.83215892748501,
+      "candidates": {
+        "dyadic_exact_dp": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.6204780606199913,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "partition selection only; shared Gaussian model excluded",
+          "training_dfs": 0.5059166348062938,
+          "wall_seconds": 0.07722091721370816
+        },
+        "dyadic_greedy": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.6175863087846521,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "partition selection only; shared Gaussian model excluded",
+          "training_dfs": 0.5031224581444022,
+          "wall_seconds": 0.001428334042429924
+        },
+        "dyadic_sls_p10": {
+          "accepted_moves": 619,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.6175863087846521,
+          "effective_regions": 31,
+          "initial_temperature": 0.002083601793358931,
+          "requested_regions": 31,
+          "timing_scope": "Gaussian model rebuild, greedy initializer, pilot, and SLS",
+          "training_dfs": 0.5031224581444022,
+          "wall_seconds": 1.7310873330570757
+        },
+        "dyadic_sls_p50": {
+          "accepted_moves": 745,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.6204780606199913,
+          "effective_regions": 31,
+          "initial_temperature": 0.006921575335916726,
+          "requested_regions": 31,
+          "timing_scope": "Gaussian model rebuild, greedy initializer, pilot, and SLS",
+          "training_dfs": 0.5059166348062938,
+          "wall_seconds": 1.7131067919544876
+        },
+        "existing_quadtree": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.4278024873093049,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "quadtree threshold optimization only; coarse proxy construction excluded",
+          "training_dfs": 0.34139434976319055,
+          "wall_seconds": 0.10858329199254513
+        }
+      },
+      "training_native_dfs": 5.425198465662734
+    },
+    "observation_plus_10ppb": {
+      "all_rows_native_dfs": 1.0059207188859762,
+      "candidates": {
+        "dyadic_exact_dp": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.12845418813147785,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "partition selection only; shared Gaussian model excluded",
+          "training_dfs": 0.11803248491131073,
+          "wall_seconds": 0.028716416098177433
+        },
+        "dyadic_greedy": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.12841375577186928,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "partition selection only; shared Gaussian model excluded",
+          "training_dfs": 0.11802277576465879,
+          "wall_seconds": 0.0012659579515457153
+        },
+        "dyadic_sls_p10": {
+          "accepted_moves": 604,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.12841375577186928,
+          "effective_regions": 31,
+          "initial_temperature": 0.00036830903602220994,
+          "requested_regions": 31,
+          "timing_scope": "Gaussian model rebuild, greedy initializer, pilot, and SLS",
+          "training_dfs": 0.11802277576465879,
+          "wall_seconds": 1.6976499170996249
+        },
+        "dyadic_sls_p50": {
+          "accepted_moves": 690,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.12841375577186928,
+          "effective_regions": 31,
+          "initial_temperature": 0.0012234961343630607,
+          "requested_regions": 31,
+          "timing_scope": "Gaussian model rebuild, greedy initializer, pilot, and SLS",
+          "training_dfs": 0.11802277576465879,
+          "wall_seconds": 1.7020449582487345
+        },
+        "existing_quadtree": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.0874827763517618,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "quadtree threshold optimization only; coarse proxy construction excluded",
+          "training_dfs": 0.07911394317792889,
+          "wall_seconds": 0.10361404065042734
+        }
+      },
+      "training_native_dfs": 0.8801837625398198
+    },
+    "observation_plus_20ppb": {
+      "all_rows_native_dfs": 0.3199913949983951,
+      "candidates": {
+        "dyadic_exact_dp": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.0422433877481517,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "partition selection only; shared Gaussian model excluded",
+          "training_dfs": 0.03888711575977357,
+          "wall_seconds": 0.028457667212933302
+        },
+        "dyadic_greedy": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.04222786916753619,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "partition selection only; shared Gaussian model excluded",
+          "training_dfs": 0.03888290829493833,
+          "wall_seconds": 0.0012799589894711971
+        },
+        "dyadic_sls_p10": {
+          "accepted_moves": 602,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.04222786916753619,
+          "effective_regions": 31,
+          "initial_temperature": 0.0001178688401043557,
+          "requested_regions": 31,
+          "timing_scope": "Gaussian model rebuild, greedy initializer, pilot, and SLS",
+          "training_dfs": 0.03888290829493833,
+          "wall_seconds": 1.7447425839491189
+        },
+        "dyadic_sls_p50": {
+          "accepted_moves": 702,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.04222786916753619,
+          "effective_regions": 31,
+          "initial_temperature": 0.00039155181145444543,
+          "requested_regions": 31,
+          "timing_scope": "Gaussian model rebuild, greedy initializer, pilot, and SLS",
+          "training_dfs": 0.03888290829493833,
+          "wall_seconds": 1.7518878751434386
+        },
+        "existing_quadtree": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.028627403811472295,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "quadtree threshold optimization only; coarse proxy construction excluded",
+          "training_dfs": 0.025930759243639422,
+          "wall_seconds": 0.1014639581553638
+        }
+      },
+      "training_native_dfs": 0.28154349091955855
+    },
+    "observation_plus_5ppb": {
+      "all_rows_native_dfs": 2.3476048258179616,
+      "candidates": {
+        "dyadic_exact_dp": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.277131465338318,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "partition selection only; shared Gaussian model excluded",
+          "training_dfs": 0.2522264456257212,
+          "wall_seconds": 0.02945616701617837
+        },
+        "dyadic_greedy": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.2770800183545033,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "partition selection only; shared Gaussian model excluded",
+          "training_dfs": 0.25222320782408947,
+          "wall_seconds": 0.0013381247408688068
+        },
+        "dyadic_sls_p10": {
+          "accepted_moves": 603,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.2770800183545033,
+          "effective_regions": 31,
+          "initial_temperature": 0.0008377339045435929,
+          "requested_regions": 31,
+          "timing_scope": "Gaussian model rebuild, greedy initializer, pilot, and SLS",
+          "training_dfs": 0.25222320782408947,
+          "wall_seconds": 1.731120957992971
+        },
+        "dyadic_sls_p50": {
+          "accepted_moves": 667,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.2770800183545033,
+          "effective_regions": 31,
+          "initial_temperature": 0.002782891793543049,
+          "requested_regions": 31,
+          "timing_scope": "Gaussian model rebuild, greedy initializer, pilot, and SLS",
+          "training_dfs": 0.25222320782408947,
+          "wall_seconds": 1.700413125101477
+        },
+        "existing_quadtree": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.19059419601264996,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "quadtree threshold optimization only; coarse proxy construction excluded",
+          "training_dfs": 0.17079705330160547,
+          "wall_seconds": 0.10386958392336965
+        }
+      },
+      "training_native_dfs": 2.0239703942284266
+    },
+    "training_percentile_floor": {
+      "all_rows_native_dfs": 2.244315279775404,
+      "candidates": {
+        "dyadic_exact_dp": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.29752043604800943,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "partition selection only; shared Gaussian model excluded",
+          "training_dfs": 0.25809590435158336,
+          "wall_seconds": 0.028203832916915417
+        },
+        "dyadic_greedy": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.29752043604800943,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "partition selection only; shared Gaussian model excluded",
+          "training_dfs": 0.25809590435158336,
+          "wall_seconds": 0.0012596668675541878
+        },
+        "dyadic_sls_p10": {
+          "accepted_moves": 620,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.29752043604800943,
+          "effective_regions": 31,
+          "initial_temperature": 0.0009873611696528876,
+          "requested_regions": 31,
+          "timing_scope": "Gaussian model rebuild, greedy initializer, pilot, and SLS",
+          "training_dfs": 0.25809590435158336,
+          "wall_seconds": 1.7269313340075314
+        },
+        "dyadic_sls_p50": {
+          "accepted_moves": 714,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.29752043604800943,
+          "effective_regions": 31,
+          "initial_temperature": 0.003279942809270774,
+          "requested_regions": 31,
+          "timing_scope": "Gaussian model rebuild, greedy initializer, pilot, and SLS",
+          "training_dfs": 0.25809590435158336,
+          "wall_seconds": 1.7233872078359127
+        },
+        "existing_quadtree": {
+          "accepted_moves": null,
+          "actual_regions": 31,
+          "all_rows_dfs": 0.20206994855605984,
+          "effective_regions": 31,
+          "initial_temperature": null,
+          "requested_regions": 31,
+          "timing_scope": "quadtree threshold optimization only; coarse proxy construction excluded",
+          "training_dfs": 0.1773015897130031,
+          "wall_seconds": 0.10184837505221367
+        }
+      },
+      "training_native_dfs": 1.8679684847016849
+    }
+  },
+  "covariance_variants": {
+    "observation_only": "error**2",
+    "observation_plus_Nppb": "error**2 + N**2 for N in {5, 10, 20}",
+    "training_percentile_floor": "max(error, training-site median minus training-site fifth percentile)**2"
+  },
+  "fixtures": {
+    "boundary_design": "tests/data/frozen_mhd_tac_make_inv_inputs_hbmcmc.npz:mcmc__Hbc",
+    "emissions_and_observations": "tests/data reconstructed by load_tac_mhd_demo_data"
+  },
+  "holdout_observations": 12,
+  "holdout_start": "2019-01-01T12:00:00.000000000",
+  "holdout_stop": "2019-01-01T17:00:00.000000000",
+  "iterations": 2000,
+  "method": "training-only basis construction plus analytic synthetic Gaussian inversion",
+  "pilot_proposals": 300,
+  "real_data_consistency": {
+    "interpretation": "fails real-data inversion gate; synthetic data only",
+    "prior_boundary_max_ppb": 1772.0421314239502,
+    "prior_boundary_min_ppb": 95.94013972580433,
+    "prior_emissions_max_ppb": 49.68858337402344,
+    "prior_emissions_min_ppb": 2.763902187347412,
+    "residual_max_ppb": 1846.0050565033937,
+    "residual_min_ppb": 128.49778366088867,
+    "residual_rmse_ppb": 589.2181673064788
+  },
+  "relative_prior_sd": 0.5,
+  "search_block_is_grid_coarsening": true,
+  "search_block_width_native_cells": 8,
+  "seed": 20260717,
+  "synthetic_noise_covariance": "observation_plus_5ppb",
+  "synthetic_truth_cases": [
+    "null",
+    "model_draw",
+    "smooth"
+  ],
+  "target_regions": 31,
+  "training_observations": 35,
+  "training_percentile_floors_ppb": {
+    "MHD": 9.483789062499909,
+    "TAC": 4.208475287073952
+  }
+}
