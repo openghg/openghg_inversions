@@ -26,10 +26,36 @@ As of 17 July 2026, Phase 0A is implemented on
 - split, merge, and unique fixed-count paired proposals; and
 - seeded stochastic local search with a piecewise geometric schedule.
 
-The combined core gate is 49 focused tests plus Ruff and Pyright. The next
-branch owns the TAC/MHD adapter, real-data checks, run manifest, static figure,
-trace, and GIF. No production basis interface or `fixedbasisMCMC` code is
-touched.
+The combined core gate is 49 focused tests plus Ruff and Pyright. The stacked
+demo branch adds the TAC/MHD adapter, real-data checks, run manifest, static
+figure, trace, and GIF. No production basis interface or `fixedbasisMCMC` code
+is touched.
+
+### First executed TAC/MHD result
+
+The stacked `codex/dyadic-sls-demo` branch now contains a reproducible local
+run using the committed one-day TAC/MHD fixture:
+
+- sum-preserving factor-8 coarsening: `(47, 293, 391)` to `(47, 37, 49)`;
+- fixed `K=32`, seed `20260717`, 100 discarded pilot proposals, and 300 SLS
+  evaluations;
+- fixed benchmark covariance `diag(max(error, min_error)**2)`, where
+  `min_error` supplies a minimum-mismatch floor rather than the inferred
+  production total-error process and may understate production total error;
+- fine-cell support counts propagated through partial coarsening blocks and
+  aggregated for the proxy initializer;
+- explicitly benchmark-only isotropic region covariance with `tau=1`; and
+- Gaussian benchmark DFS improvement from `6.6213868511` to `6.6969787847`.
+
+Separate diagnostic recomputations also improved for MHD (`2.2306430146` to
+`2.2599799610`) and TAC (`4.7197859243` to `4.7464773740`). These site scores
+are not additive contributions to combined DFS. The result demonstrates that
+the extracted stochastic search can improve its proxy-informed initializer; it
+does not establish posterior validity or resolve the covariance-projection
+limitation.
+
+Recorded artifacts live in `docs/plans/figures/dyadic_sls/`: the manifest,
+bounded CSV trace, static initial/best comparison, and 120-frame GIF.
 
 ## Demonstration objective
 
@@ -244,8 +270,9 @@ For the first covariance benchmark, compare and declare one of:
 - \(R=\operatorname{diag}(\mathrm{error}^2)\); or
 - \(R=\operatorname{diag}(\max(\mathrm{error},\mathrm{min\_error})^2)\).
 
-The second is a conservative fixed-covariance approximation. Neither is the
-same as RHIME's inferred model-error process.
+The second is a fixed minimum-mismatch-floor benchmark. It is not the same as
+RHIME's inferred model-error process and may understate production total error;
+"conservative observation covariance" is therefore not an appropriate label.
 
 The first one-day demo should apply no additional scientific filter. If filters
 are added later, build the row mask before \(G\), multiscale columns, or scores,

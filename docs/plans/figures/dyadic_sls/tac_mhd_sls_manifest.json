@@ -1,0 +1,52 @@
+{
+  "accepted_moves": 154,
+  "best_dfs": 6.696978784658953,
+  "coarsen": 8,
+  "coarsened_shape": [
+    47,
+    37,
+    49
+  ],
+  "config": {
+    "iterations": 300,
+    "pilot_proposals": 100,
+    "record_every": 5,
+    "seed": 20260717,
+    "target_regions": 32,
+    "tau": 1.0
+  },
+  "covariance": {
+    "bocquet_consistent": false,
+    "kind": "isotropic region benchmark",
+    "required_future_transform": "B_P = P B P.T",
+    "tau": 1.0
+  },
+  "data_seconds": 0.49230420822277665,
+  "evaluated_moves": 300,
+  "final_dfs": 6.696978784658953,
+  "final_temperature": 0.004487662471580215,
+  "gif_written": true,
+  "initial_dfs": 6.621386851076132,
+  "initial_temperature": 0.0926150421877901,
+  "method": "fixed-count stochastic local search",
+  "native_shape": [
+    47,
+    293,
+    391
+  ],
+  "objective": "Gaussian benchmark DFS",
+  "observation_covariance": "fixed benchmark diag(max(error, min_error)**2); min_error is a minimum-mismatch floor, not the inferred production total-error process",
+  "pilot_positive_losses": 62,
+  "posterior_sampler": false,
+  "search_seconds": 0.3248295830562711,
+  "site_diagnostics": {
+    "MHD": {
+      "best_dfs": 2.259979961017759,
+      "initial_dfs": 2.2306430145544383
+    },
+    "TAC": {
+      "best_dfs": 4.746477374016045,
+      "initial_dfs": 4.7197859243372875
+    }
+  }
+}
