@@ -429,7 +429,7 @@ R_P+C_P
 
 is invariant to the partition. This is the RHIME form of Bocquet et al.'s
 innovation-statistics identity. It is a useful numerical closure diagnostic
-when (C_P) and (C_{\mathrm{agg}}) are constructed independently, but it is
+when \(C_P\) and \(C_{\mathrm{agg}}\) are constructed independently, but it is
 not by itself a scientific oracle: defining aggregation error by subtraction
 would make the identity tautological, and even independent code paths cannot
 validate an incorrectly specified prior model.
