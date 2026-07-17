@@ -6,7 +6,7 @@ partition objectives, local proposals, and stochastic local search. It is
 provisional and is not re-exported from :mod:`openghg_inversions.basis`.
 """
 
-from .initializers import InitializationResult, greedy_partition, random_partition, threshold_partition
+from .contrast import TreeContrastLayout
 from .demo_runner import (
     DemoSearchConfig,
     DemoSearchRun,
@@ -22,6 +22,12 @@ from .dynamic_programming import (
     AdditivePartitionSolution,
     additive_partition_frontier,
     optimal_additive_partition,
+)
+from .enumeration import enumerate_partitions
+from .gaussian_product_space import (
+    GaussianConditional,
+    GaussianProductSpaceTarget,
+    PartitionLogPrior,
 )
 from .gaussian_projection import (
     BocquetProjection,
@@ -40,6 +46,7 @@ from .gaussian_projection import (
     restriction_for_prolongation,
 )
 from .grid_covariance import SeparableGridCovariance
+from .initializers import InitializationResult, greedy_partition, random_partition, threshold_partition
 from .multiscale import CoarsenedGrid, MultiscaleDesign, direct_gather, sum_coarsen_grid
 from .objectives import (
     CovarianceBuilder,
@@ -71,6 +78,15 @@ from .proposals import (
     enumerate_split_moves,
     reverse_move,
 )
+from .product_space import (
+    LogAugmentedDensity,
+    PartitionMove,
+    PartitionNeighbor,
+    ProductSpaceState,
+    ProductSpaceTransition,
+    enumerate_partition_neighbors,
+    partition_metropolis_step,
+)
 from .rhime_gaussian import NativePosteriorMarginals, RHIMEGaussianMultiscale
 from .search import (
     PiecewiseGeometricSchedule,
@@ -92,12 +108,15 @@ __all__ = [
     "DemoSearchRun",
     "DyadicTree",
     "GaussianDFSObjective",
+    "GaussianConditional",
     "GaussianPartitionDiagnostics",
     "GaussianPartitionObjectives",
     "GaussianPosterior",
     "GaussianProjectionAnalysis",
+    "GaussianProductSpaceTarget",
     "InitializationResult",
     "IsotropicRegionCovariance",
+    "LogAugmentedDensity",
     "MergeMove",
     "Move",
     "MultiscaleDesign",
@@ -105,9 +124,14 @@ __all__ = [
     "NodeId",
     "PairedMove",
     "PairedNeighbor",
+    "PartitionLogPrior",
+    "PartitionMove",
+    "PartitionNeighbor",
     "PartitionState",
     "PiecewiseGeometricSchedule",
     "ProjectedVariableKSearchRun",
+    "ProductSpaceState",
+    "ProductSpaceTransition",
     "RHIMEGaussianMultiscale",
     "SearchProposal",
     "SearchResult",
@@ -116,6 +140,7 @@ __all__ = [
     "SplitMove",
     "TemperatureSchedule",
     "Tile",
+    "TreeContrastLayout",
     "VariableKSearchConfig",
     "VariableKSearchRun",
     "apply_move",
@@ -125,6 +150,8 @@ __all__ = [
     "direct_gather",
     "direct_observation_space_dfs",
     "enumerate_merge_moves",
+    "enumerate_partition_neighbors",
+    "enumerate_partitions",
     "enumerate_paired_moves",
     "enumerate_paired_neighbors",
     "enumerate_split_moves",
@@ -139,6 +166,7 @@ __all__ = [
     "native_gaussian_posterior",
     "greedy_partition",
     "optimal_additive_partition",
+    "partition_metropolis_step",
     "prototype_quadratic_tile_scores",
     "projected_bayesian_information_gain",
     "projected_bayesian_kl",
