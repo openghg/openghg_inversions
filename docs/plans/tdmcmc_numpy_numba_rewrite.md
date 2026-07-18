@@ -86,7 +86,7 @@ will be introduced only behind equivalence tests.
 | 2026-07-18 | Derive acceptance from normalized targets/proposals when a printed paper equation is inconsistent. | The paper appears to omit a lognormal `1/x` ratio in Eq. (31), prints a questionable determinant power in Eq. (33), and does not define discrete boundary handling for Gaussian nucleus moves. |
 | 2026-07-18 | Treat the checked legacy deterministic RJMCMC scheduler as incorrect and replace separate birth/death steps with two 50/50 mixed structural steps per cycle. | All five inspected Fortran drivers execute separate modulo-scheduled one-way structural steps. A finite fixed-coefficient counterexample to that scheduler design is not posterior-invariant, while the equal-probability mixture is and retains the first rewrite's aggregate structural-attempt frequency. |
 | 2026-07-18 | Add an emissions-only, test-data-backed pseudo-data benchmark before archived paper data are recovered. | The repository contains EDGAR7/UKGHG flux and one week of hourly TAC/MHD NAME footprints on the paper's native EUROPE grid. A 56-longitude by 48-latitude crop can exercise the real forward operator while fixed outer emissions are subtracted exactly and the known-corrupt boundary-condition files remain unopened. The 56 six-hour observations support prediction validation, not a claim of native-grid or posterior-`k` recovery. |
-| 2026-07-18 | Prefer `dimension-up` and `dimension-down` in user-facing discussion of reversible dimension changes. | These names describe the actual change without implying a binary geometric split/merge. Literature quotations and current internal API identifiers remain unchanged until a separate compatibility-preserving rename is justified. |
+| 2026-07-18 | Split the replayable NAME/EDGAR checkerboard workflow into a root `examples/tdmcmc` script plus focused regression tests. | Recent draft PRs #502 and #506 establish this pattern for the other model-selection experiments. Data paths, crop policy, pseudo-data construction, comparators, CLI controls, and reporting are example concerns; exact accounting, a cheap smoke path, and the optional slow comparison remain tests. A new package module is deferred until a second consumer establishes a stable reusable boundary. |
 
 ## Validation gates
 
@@ -242,6 +242,13 @@ proposal. Full hierarchical error and boundary blocks remain deferred.
 - The expanded focused suite passes all 166 tests, including all three slow
   seeded recovery/comparison cases; Ruff formatting/checks and Pyright also
   pass.
+- Reviewed the 523-line data-backed checkerboard against draft PRs #502 and
+  #506. It is a complete scientific workflow hidden in pytest, so the next
+  organizational change should move its experiment-specific orchestration to
+  `examples/tdmcmc/lunt_name_edgar_checkerboard.py`, add a replayable CLI and
+  machine-readable provenance/results, and leave a much smaller test module
+  that imports the example. The move should preserve current numerical behavior
+  and should not create a new supported package API.
 
 ## Open questions
 
