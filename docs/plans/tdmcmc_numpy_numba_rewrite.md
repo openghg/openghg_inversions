@@ -7,6 +7,11 @@ implementation of the legacy ACRG trans-dimensional MCMC sampler. Integrate
 the numerical engine with OpenGHG Inversions through explicit input and output
 adapters rather than coupling it directly to PyMC.
 
+The primary scientific target is now the Lunt et al. (2016) paper model. Its
+model, equations, reproduction profiles, and known inconsistencies are recorded
+in [tdmcmc_lunt2016_background.md](tdmcmc_lunt2016_background.md). Current RHIME
+is retained as a distinct secondary integration profile.
+
 The first slice deliberately covers only the spatial, single-sector,
 uncorrelated Gaussian problem. Correlated errors, temporal partitions,
 multiple trans-dimensional sectors, and parallel tempering remain follow-up
@@ -76,6 +81,9 @@ will be introduced only behind equivalence tests.
 | 2026-07-18 | Use a uniform global unoccupied-cell nucleus move in the first slice. | Its forward and reverse probabilities are exactly auditable. The legacy floored-Gaussian local move is deferred until its discrete boundary mass is represented explicitly. |
 | 2026-07-18 | Repeat coefficient, birth, death, and global-move attempts on a fixed schedule. | Birth/death attempt probabilities remain equal at dimension boundaries; impossible attempts are recorded as self-transitions rather than silently renormalised. |
 | 2026-07-18 | Preserve the filtered `fp_x_flux` field as the initial RHIME integration seam. | Current prepared datasets retain the fine-grid contribution field, so the rewrite need not alter fixed-basis production preparation in its first integration experiment. |
+| 2026-07-18 | Use Lunt et al. (2016) as the primary scientific specification and current RHIME as a separate integration profile. | The paper closely matches the legacy code, while RHIME has materially different priors and model-error structure. Keeping profiles distinct avoids an undocumented hybrid target. |
+| 2026-07-18 | Reproduce the Sect. 4 pseudo-data model before the full Sect. 5 hierarchy. | The pseudo-data case isolates spatial RJMCMC with fixed independent 5 ppb error and can validate model selection before adding correlated error and fixed boundary blocks. |
+| 2026-07-18 | Derive acceptance from normalized targets/proposals when a printed paper equation is inconsistent. | The paper appears to omit a lognormal `1/x` ratio in Eq. (31), prints a questionable determinant power in Eq. (33), and does not define discrete boundary handling for Gaussian nucleus moves. |
 
 ## Validation gates
 
@@ -84,7 +92,8 @@ will be introduced only behind equivalence tests.
 - [x] Log-likelihood and prior terms agree with independent formulas.
 - [x] Birth/death proposal pairs expose complete forward and reverse terms.
 - [x] The first global move reports normalized symmetric probabilities; the
-  legacy local boundary proposal remains deferred.
+  corrected local discrete-Gaussian move reports separately normalized forward
+  and reverse probabilities at finite-grid boundaries.
 - [ ] Tiny enumerable targets satisfy edgewise detailed balance.
 - [x] Forced birth/death pairs satisfy pointwise detailed balance.
 - [x] NumPy and Numba kernels agree for deterministic and randomised states.
@@ -92,6 +101,8 @@ will be introduced only behind equivalence tests.
 - [x] A small synthetic lognormal inversion recovers expected structure.
 - [x] Filtered RHIME-style `fp_x_flux` inputs preserve longitude-fast grid
   ordering and observation alignment.
+- [x] Retained traces reconstruct on the native grid with posterior
+  mean/quantiles and posterior-mean prediction RMSE.
 - [x] Focused tests, Ruff checks, formatting checks, and configured type checks pass.
 
 ## Planned stages
@@ -110,6 +121,11 @@ will be introduced only behind equivalence tests.
 Stages 1--5 now have a working first implementation. Stage 6 has a minimal
 prepared-dataset adapter, while production runner and output integration in
 stages 6--7 remain follow-up work.
+
+The next implementation stage is paper-specific: native-grid posterior
+projection and a normalized local discrete-Gaussian nucleus move, followed by
+an exact finite transition-matrix oracle. Full hierarchical error and boundary
+blocks are deferred until those gates pass.
 
 ## Progress log
 
@@ -143,6 +159,14 @@ stages 6--7 remain follow-up work.
 - Confirmed Homebrew GNU Fortran 15.2 is installed and successfully compiled
   the legacy uncorrelated source to an object file. No Fortran compiler or Pixi
   environment is required by the new test suite.
+- Reviewed the Lunt et al. (2016) main paper and supplement visually and through
+  full text extraction. Added the paper-first background/specification note,
+  two explicit reproduction profiles, equation-audit findings, and a server
+  data-recovery checklist.
+- Added a normalized discrete-Gaussian local nucleus move with exact finite-grid
+  forward/reverse normalization and pointwise balance tests.
+- Added paper-defined native-grid trace reconstruction, saved-row burn-in and
+  thinning selection, posterior mean/quantiles, and comparison-vector RMSE.
 
 ## Open questions
 

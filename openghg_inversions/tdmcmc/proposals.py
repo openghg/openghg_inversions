@@ -505,6 +505,127 @@ def propose_global_move(
     )
 
 
+def _local_move_log_probability(
+    problem: TransDimensionalProblem,
+    active_nuclei: np.ndarray,
+    *,
+    origin: int,
+    destination: int,
+    proposal_scale: float,
+) -> float:
+    """Return the normalized log probability of one local nucleus move.
+
+    Args:
+        problem: Target distribution and fine-grid coordinates.
+        active_nuclei: Nuclei occupied before the proposed move.
+        origin: Grid cell containing the selected nucleus.
+        destination: Currently unoccupied destination grid cell.
+        proposal_scale: Positive Gaussian distance scale in coordinate units.
+
+    Returns:
+        Joint log probability of selecting the nucleus uniformly and selecting
+        ``destination`` from the normalized discrete Gaussian kernel.
+    """
+    available = np.ones(problem.ncell, dtype=bool)
+    available[active_nuclei] = False
+    destinations = np.flatnonzero(available)
+    differences = (problem.grid_coordinates[destinations] - problem.grid_coordinates[origin]) / proposal_scale
+    squared_distances = np.einsum("ij,ij->i", differences, differences)
+    log_weights = -0.5 * squared_distances
+    maximum = float(np.max(log_weights))
+    log_normalizer = maximum + math.log(float(np.exp(log_weights - maximum).sum()))
+    destination_offset = int(np.flatnonzero(destinations == destination)[0])
+    return -math.log(active_nuclei.size) + float(log_weights[destination_offset]) - log_normalizer
+
+
+def propose_local_move(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+    *,
+    move_position: int,
+    new_nucleus: int,
+    proposal_scale: float,
+    backend: Backend = "numpy",
+) -> TransitionTerms:
+    """Move one selected nucleus using a discrete Gaussian location kernel.
+
+    Conditional on choosing one of the ``k`` active nuclei uniformly, every
+    currently unoccupied fine-grid cell is a possible destination. Its weight
+    is proportional to ``exp(-distance_squared / (2 * proposal_scale**2))``.
+    The coefficient moves with its nucleus. Because the available destination
+    set changes after the move, the reverse normalization is recomputed from
+    the candidate state rather than assumed to equal the forward normalization.
+
+    Args:
+        problem: Target distribution and fine-grid numerical inputs.
+        state: Immutable source state.
+        move_position: Zero-based active nucleus position selected uniformly.
+        new_nucleus: Explicit currently unoccupied destination grid cell.
+        proposal_scale: Positive Gaussian distance scale in coordinate units.
+        backend: State-building implementation for candidate caches.
+
+    Returns:
+        Complete local-move accounting with exact normalized forward and reverse
+        log probabilities. Invalid positions, grid cells, or occupied
+        destinations produce invalid self-transitions.
+
+    Raises:
+        TypeError: If ``problem`` or ``state`` has the wrong type.
+        ValueError: If the problem/state contract, proposal scale, or backend
+            is malformed.
+    """
+    _validate_backend(backend)
+    _validate_problem_state(problem, state)
+    proposal_scale = _validate_proposal_scale(proposal_scale, name="proposal_scale")
+    position = _active_position(move_position, k=state.k)
+    if position is None:
+        return _invalid_transition(
+            state,
+            move="local_move",
+            reason="move_position must select an active nucleus.",
+        )
+    cell = _grid_cell(new_nucleus, ncell=problem.ncell)
+    if cell is None:
+        return _invalid_transition(
+            state,
+            move="local_move",
+            reason="new_nucleus must identify a fine-grid cell.",
+        )
+    if np.any(state.active_nuclei == cell):
+        return _invalid_transition(
+            state,
+            move="local_move",
+            reason="new_nucleus must be unoccupied.",
+        )
+
+    old_nucleus = int(state.active_nuclei[position])
+    nuclei = np.array(state.active_nuclei, copy=True)
+    coefficients = np.array(state.active_coefficients, copy=True)
+    nuclei[position] = cell
+    candidate = build_state(problem, nuclei, coefficients, backend=backend)
+    log_q_forward = _local_move_log_probability(
+        problem,
+        state.active_nuclei,
+        origin=old_nucleus,
+        destination=cell,
+        proposal_scale=proposal_scale,
+    )
+    log_q_reverse = _local_move_log_probability(
+        problem,
+        candidate.active_nuclei,
+        origin=cell,
+        destination=old_nucleus,
+        proposal_scale=proposal_scale,
+    )
+    return _valid_transition(
+        state,
+        candidate,
+        log_q_forward=log_q_forward,
+        log_q_reverse=log_q_reverse,
+        move="local_move",
+    )
+
+
 def accept_or_reject(
     state: TransDimensionalState,
     transition: TransitionTerms,
@@ -547,4 +668,5 @@ __all__ = [
     "propose_coefficient",
     "propose_death",
     "propose_global_move",
+    "propose_local_move",
 ]

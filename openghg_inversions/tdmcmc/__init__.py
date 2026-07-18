@@ -31,6 +31,14 @@ from openghg_inversions.tdmcmc.proposals import (
     propose_coefficient,
     propose_death,
     propose_global_move,
+    propose_local_move,
+)
+from openghg_inversions.tdmcmc.postprocessing import (
+    DEFAULT_QUANTILES,
+    FineGridPosteriorSummary,
+    posterior_mean_prediction,
+    reconstruct_fine_grid_samples,
+    summarize_fine_grid_posterior,
 )
 from openghg_inversions.tdmcmc.rhime_adapter import problem_from_rhime_inputs
 from openghg_inversions.tdmcmc.sampling import (
@@ -44,6 +52,8 @@ __all__ = [
     "TransDimensionalProblem",
     "TransDimensionalState",
     "TransitionTerms",
+    "DEFAULT_QUANTILES",
+    "FineGridPosteriorSummary",
     "SamplerConfig",
     "SamplingResult",
     "SamplingTrace",
@@ -61,8 +71,12 @@ __all__ = [
     "propose_coefficient",
     "propose_death",
     "propose_global_move",
+    "propose_local_move",
+    "posterior_mean_prediction",
     "problem_from_rhime_inputs",
+    "reconstruct_fine_grid_samples",
     "sample",
+    "summarize_fine_grid_posterior",
     "uniform_log_k_prior",
     "uniform_nucleus_set_log_prior",
 ]
