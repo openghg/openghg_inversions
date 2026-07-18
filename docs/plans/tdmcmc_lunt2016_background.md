@@ -170,14 +170,57 @@ categorical kernel and include its forward/reverse normalization explicitly.
 
 The literal deterministic birth-then-death schedule is not retained. A birth-only
 step cannot be reversed within its own transition kernel, and likewise for a
-death-only step. An exact seven-state enumeration confirmed that a deterministic
-birth-then-death composition does not preserve the declared target. The rewrite
-therefore uses a 50/50 birth/death mixture at each structural slot; the equal
-move-type probabilities cancel in the acceptance ratio. Two structural slots
+death-only step. A seven-state fixed-coefficient counterexample confirmed that
+a deterministic birth-then-death composition need not preserve the declared
+target. The rewrite therefore uses a 50/50 birth/death mixture at each
+structural slot; the equal move-type probabilities cancel in the acceptance
+ratio. Two structural slots
 per four-step cycle preserve the first rewrite's aggregate structural-attempt
 frequency. When the hyperparameter step is added, the declared schedule profile
 must be revisited. Unavailable boundary draws remain explicit self-transitions
 rather than renormalizing the mixture.
+
+## Legacy scheduler correctness finding
+
+The checked legacy RJMCMC implementation is not a correct general sampler for
+its stated posterior with respect to its executed structural schedule. This is
+a posterior-invariance failure, not merely the absence of detailed balance.
+
+All five inspected Fortran drivers actively select proposal types with
+`modulo(it, n_moves)` while the alternative random-selection statements are
+commented out:
+
+- `acrg_hbtdmcmc_uncorr.f90`;
+- `acrg_hbtdmcmc_corr.f90`;
+- `acrg_hbtdmcmc_evencorr.f90`;
+- `rjmcmc_time_uncorr.f90`;
+- `rjmcmc_time_corr.f90`.
+
+In each RJMCMC path, birth and death are separate successive one-way steps. A
+birth-only kernel cannot reverse itself, nor can a death-only kernel. Systematic
+scan is valid when every component kernel preserves the target, but these
+structural components do not. A seven-state fixed-coefficient counterexample
+gives target mean `k=2.0109`; one literal birth-then-death composition changes
+it to `1.6883`, with total-variation error `0.3332`. The corrected
+`0.5 * birth + 0.5 * death` mixture preserves the same target to floating-point
+precision. One counterexample is sufficient to disprove the deterministic
+scheduler as a generally valid posterior sampler.
+
+Consequently, legacy RJMCMC outputs require revalidation. The most direct risk
+is bias in posterior `k` and nucleus partitions, with coupled effects possible
+for fluxes, intervals, predictions, and inferred hyperparameters. The finite
+example does not determine the magnitude or direction of bias in any historical
+production inversion, and good predictive fit would not establish posterior
+correctness. Fixed-dimensional runs with `rjmcmc=0` are not affected by this
+specific defect. Claims about individual paper results should also confirm the
+exact code provenance used for those runs.
+
+The rewrite intentionally corrects rather than reproduces this behavior. A
+permanent finite regression test covers the legacy counterexample and the
+stationarity of the mixed structural kernel. Remaining follow-up is to compare
+legacy-emulated and corrected schedules on larger synthetic cases, including
+saved-phase/thinning effects, and to validate the general continuous auxiliary
+coefficient proposal separately.
 
 ## Acceptance-equation audit
 
@@ -248,22 +291,58 @@ Before the archived inputs return, use two deliberately separate checks:
    after burn-in, and compare the posterior-mean grid and prediction with the
    all-ones prior baseline.
 
-The recovery gate asserts robust improvements (lower noise-free prediction
-RMSE, correct checkerboard contrast direction, and useful spatial correlation),
-not an exact sampled partition or a golden posterior `k` from one seed. The
-local profile uses `k` bounds 8--28 and starts at the 16 regular truth nuclei
-with all coefficients set to the prior mean; this geometry-informed start is
-another explicit difference from the paper. Calibration over seeds 481--485
-used 40,000 transitions, a 15,000-row burn cutoff, thinning by 10, and a
-local-move scale of 1.4. Posterior prediction RMSE was 2.25--4.71 versus an
-all-ones baseline of 15.29, spatial correlation was 0.65--0.95, and recovered
-high-minus-low contrast was 0.68--0.97. The CI thresholds deliberately leave
-substantial margin around those calibration runs.
+The slow gate uses three seeded comparison runs with 40,000 transitions, a
+15,000-row burn cutoff, thinning by 10, and a local-move scale of 1.4. Adaptive
+chains share a seeded non-oracle 16-nucleus start with all coefficients at the
+prior mean. Assertions cover broad improvement over the prior, fixed versus
+variable `k` behavior, and oracle-versus-random fixed-layout ordering; they do
+not require an exact partition, golden posterior `k`, or ranking between the
+two adaptive methods.
 
 This is a mechanics/recovery benchmark, not a miniature scientific
 reproduction. It replaces NAME/EDGAR sensitivities with synthetic smooth
 kernels, uses 64 rather than 2688 native cells, and cannot be compared directly
 with the paper's posterior `k` or ppb RMSE values.
+
+### Fair fixed-basis and adaptive comparison
+
+The local comparison holds the observations, sensitivities, 5 ppb error,
+lognormal coefficient prior, coefficient proposal scale, retained-row logic,
+and coefficient proposal opportunities fixed. Every method receives 10,000
+coefficient proposals. The movable fixed-`k` and trans-dimensional chains also
+receive 10,000 location proposals. Both schedule 20,000 structural attempts,
+but those attempts are boundary self-transitions for fixed `k` and can change
+dimension only in the trans-dimensional chain. Both adaptive-geometry methods
+start from the same seeded non-oracle 16-nucleus layout with all-one
+coefficients.
+
+The fixed-basis comparator is coefficient-only Metropolis-Hastings using the
+same normalized target terms, not RHIME/PyMC. The oracle case is deliberately
+given the true layout and is a lower-bound reference. Three random fixed layouts
+are independent model replicates and are summarized separately rather than
+pooled as posterior samples.
+
+Results across three seeded runs are median `[range]`:
+
+| Method | Prediction RMSE | Grid RMSE | Spatial correlation | High-low contrast |
+| --- | ---: | ---: | ---: | ---: |
+| All-ones prior | 15.293 | - | - | - |
+| Oracle fixed truth layout | 2.045 `[1.980, 2.050]` | 0.058 `[0.054, 0.068]` | 0.994 `[0.993, 0.995]` | 1.025 `[1.013, 1.048]` |
+| Movable fixed `k=16` | 4.213 `[2.798, 4.535]` | 0.298 `[0.216, 0.322]` | 0.831 `[0.804, 0.907]` | 0.868 `[0.842, 0.912]` |
+| Random fixed `k=16` layouts | 10.155 `[9.848, 12.052]` | 0.482 `[0.478, 0.589]` | 0.415 `[0.272, 0.461]` | 0.302 `[0.259, 0.376]` |
+| Trans-dimensional `k=8..28` | 3.523 `[2.477, 6.152]` | 0.425 `[0.155, 0.438]` | 0.679 `[0.602, 0.953]` | 0.786 `[0.539, 0.964]` |
+
+The oracle behaves as expected, and arbitrary fixed layouts lose substantial
+information. Both adaptive methods improve strongly on the prior and visit the
+declared geometry space; the trans-dimensional chains visit multiple `k`
+values. The short benchmark does not establish convergence or superiority of
+one adaptive method over the other. In particular, its median prediction RMSE
+favours the trans-dimensional runs while its median grid metrics are mixed.
+
+Runtime is intentionally not compared. The reference fixed-layout helper still
+rebuilds full Voronoi state, whereas a standard fixed-basis inversion would
+pre-aggregate its design matrix. A fair production timing comparison requires
+that optimized fixed-design path and matched convergence diagnostics.
 
 ## Reproduction profile B: Lunt2016-real
 

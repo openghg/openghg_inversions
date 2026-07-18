@@ -84,7 +84,7 @@ will be introduced only behind equivalence tests.
 | 2026-07-18 | Use Lunt et al. (2016) as the primary scientific specification and current RHIME as a separate integration profile. | The paper closely matches the legacy code, while RHIME has materially different priors and model-error structure. Keeping profiles distinct avoids an undocumented hybrid target. |
 | 2026-07-18 | Reproduce the Sect. 4 pseudo-data model before the full Sect. 5 hierarchy. | The pseudo-data case isolates spatial RJMCMC with fixed independent 5 ppb error and can validate model selection before adding correlated error and fixed boundary blocks. |
 | 2026-07-18 | Derive acceptance from normalized targets/proposals when a printed paper equation is inconsistent. | The paper appears to omit a lognormal `1/x` ratio in Eq. (31), prints a questionable determinant power in Eq. (33), and does not define discrete boundary handling for Gaussian nucleus moves. |
-| 2026-07-18 | Replace separate deterministic birth/death steps with two 50/50 mixed structural steps per cycle. | A birth-only or death-only kernel cannot reverse itself. Exact finite enumeration showed that their deterministic composition does not preserve the target, while the equal-probability mixture does and retains the first rewrite's aggregate structural-attempt frequency. |
+| 2026-07-18 | Treat the checked legacy deterministic RJMCMC scheduler as incorrect and replace separate birth/death steps with two 50/50 mixed structural steps per cycle. | All five inspected Fortran drivers execute separate modulo-scheduled one-way structural steps. A finite fixed-coefficient counterexample to that scheduler design is not posterior-invariant, while the equal-probability mixture is and retains the first rewrite's aggregate structural-attempt frequency. |
 
 ## Validation gates
 
@@ -105,8 +105,12 @@ will be introduced only behind equivalence tests.
 - [x] NumPy and Numba kernels agree for deterministic and randomised states.
 - [x] Fixed-seed sampling is reproducible.
 - [x] A small synthetic lognormal inversion recovers expected structure.
-- [x] Calibration of the `8 x 8` checkerboard smoke benchmark across five seeds
-  improves noise-free prediction, spatial correlation, and high/low contrast.
+- [x] Three seeded `8 x 8` checkerboard comparison runs improve noise-free
+  prediction, spatial correlation, and high/low contrast for the declared
+  oracle and adaptive variants.
+- [x] A matched-proposal checkerboard comparison covers an oracle fixed layout,
+  independent random fixed layouts, movable fixed `k=16`, and
+  trans-dimensional `k=8..28` without asserting adaptive-method superiority.
 - [x] Filtered RHIME-style `fp_x_flux` inputs preserve longitude-fast grid
   ordering and observation alignment.
 - [x] Retained traces reconstruct on the native grid with posterior
@@ -185,15 +189,24 @@ proposal. Full hierarchical error and boundary blocks remain deferred.
   fixed-coefficient unit-density proposal. It validates the trans-dimensional
   combinatorics and boundaries while explicitly excluding general continuous
   auxiliary integration.
-- Used that oracle to identify and correct the non-invariant deterministic
-  birth-then-death schedule. Each of the two structural slots now uses an equal
-  birth/death mixture, with unavailable boundary draws retained as self-mass.
+- Used a fixed-coefficient counterexample to identify and correct the
+  non-invariant deterministic birth-then-death scheduler design. Each of the
+  two structural slots now uses an equal birth/death mixture, with unavailable
+  boundary draws retained as self-mass.
+- Confirmed the same active modulo scheduler, with random selection commented
+  out, in all five spatial/temporal correlated/uncorrelated legacy Fortran
+  drivers. Recorded the bounded conclusion that legacy RJMCMC outputs require
+  revalidation; fixed-dimensional runs are unaffected by this specific defect.
 - Added paper-defined native-grid trace reconstruction, saved-row burn-in and
   thinning selection, posterior mean/quantiles, and comparison-vector RMSE.
 - Added and calibrated an `8 x 8` Lunt-inspired checkerboard benchmark with
   smooth prior-flux-weighted sensitivities, independent 5 ppb noise, exact
   native-grid reconstruction, and robust seeded Numba recovery assertions.
-- The expanded focused suite passes all 163 tests, including both slow seeded
+- Replaced its truth-informed adaptive start with a shared seeded non-oracle
+  layout and added matched coefficient-opportunity comparisons against oracle,
+  random fixed-basis, and movable fixed-`k` alternatives. The fixed-basis
+  helper is explicitly not presented as a production RHIME/PyMC timing result.
+- The expanded focused suite passes all 164 tests, including both slow seeded
   recovery cases; Ruff formatting/checks and Pyright also pass.
 
 ## Open questions

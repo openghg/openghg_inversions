@@ -14,23 +14,27 @@ deliberately synthetic or reduced:
   paper mask, which is not locally available;
 - sensitivity magnitudes are arbitrary ppb-like amplitudes, not NAME units;
 - ``k`` spans 8--28 and starts at 16 instead of spanning 5--500 and starting
-  at 40; the local start uses the regular checkerboard nucleus layout with all
-  coefficients set to the prior mean, rather than paper-era random nuclei;
+  at 40; adaptive-geometry chains share one seeded non-oracle nucleus layout
+  with all coefficients at the prior mean, rather than paper-era random nuclei;
 - the local run uses 40,000 transitions, a 15,000-row burn cutoff, thinning by
-  10, and one seeded chain, not a paper-era production/convergence run;
+  10, and three seeded comparator runs, not a paper-era production/convergence
+  analysis;
 - the current four-slot non-hierarchical sampler, with two invariant 50/50
   birth/death slots and a corrected finite-grid local move, replaces the exact
   historical proposal implementation.
 
 Consequently, posterior ``k`` and published RMSE values are intentionally not
-asserted. The slow seeded recovery smoke test only requires improvement relative
-to the all-ones prior, the correct checkerboard contrast direction, and positive
-spatial correlation with the known native-grid truth.
+asserted. The slow seeded benchmark compares the trans-dimensional chain with
+an oracle fixed partition, a movable fixed-``k`` partition, and several random
+fixed partitions. It is a local implementation comparison, not evidence that
+trans-dimensional inference outperforms a production RHIME or PyMC inversion.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from math import log
+from time import perf_counter
 
 import numpy as np
 from numpy.typing import NDArray
@@ -43,6 +47,7 @@ from openghg_inversions.tdmcmc.core import (
     uniform_log_k_prior,
 )
 from openghg_inversions.tdmcmc.postprocessing import summarize_fine_grid_posterior
+from openghg_inversions.tdmcmc.proposals import accept_or_reject, propose_coefficient
 from openghg_inversions.tdmcmc.sampling import SamplerConfig, SamplingTrace, sample
 
 FloatArray = NDArray[np.float64]
@@ -54,7 +59,15 @@ _TRUTH_NUCLEI = np.array(
     [0, 2, 4, 6, 16, 18, 20, 22, 32, 34, 36, 38, 48, 50, 52, 54],
     dtype=np.int64,
 )
-_INITIAL_NUCLEI = _TRUTH_NUCLEI.copy()
+_INITIAL_NUCLEI = np.array(
+    [4, 7, 8, 9, 10, 13, 14, 18, 24, 30, 37, 39, 49, 55, 57, 59],
+    dtype=np.int64,
+)
+_BENCHMARK_ITERATIONS = 40_000
+_BENCHMARK_START = 15_000
+_BENCHMARK_THIN = 10
+_BENCHMARK_SEEDS = (481, 917, 1601)
+_RANDOM_LAYOUT_SEEDS = (2401, 2402, 2403)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +79,18 @@ class LuntCheckerboardCase:
     noise: FloatArray
     noiseless_observations: FloatArray
     footprint_amplitudes: FloatArray
+
+
+@dataclass(frozen=True, slots=True)
+class _BenchmarkMetrics:
+    """Scientific recovery metrics and elapsed time for one seeded chain."""
+
+    prediction_rmse: float
+    grid_rmse: float
+    spatial_correlation: float
+    contrast: float
+    runtime_seconds: float
+    visited_k: tuple[int, ...]
 
 
 def _checkerboard_truth() -> FloatArray:
@@ -155,6 +180,150 @@ def _single_state_trace(state: TransDimensionalState) -> SamplingTrace:
     )
 
 
+def _fixed_k_problem(case: LuntCheckerboardCase) -> TransDimensionalProblem:
+    """Return the same target inputs conditioned on exactly sixteen regions."""
+    return replace(
+        case.problem,
+        k_min=_TRUTH_NUCLEI.size,
+        k_max=_TRUTH_NUCLEI.size,
+        log_k_prior=uniform_log_k_prior(_TRUTH_NUCLEI.size, _TRUTH_NUCLEI.size),
+    )
+
+
+def _sample_fixed_nuclei_coefficients(
+    problem: TransDimensionalProblem,
+    nuclei: NDArray[np.int64],
+    *,
+    seed: int,
+    iterations: int = _BENCHMARK_ITERATIONS,
+    proposal_sd: float = 0.1,
+) -> tuple[SamplingTrace, float]:
+    """Run seeded coefficient-only MH while holding a supplied partition fixed.
+
+    This intentionally small test helper uses the production coefficient
+    proposal and accept/reject functions, so its normalized Gaussian likelihood
+    and lognormal coefficient prior are exactly those used by the full sampler.
+    It attempts a coefficient update in every fourth trace slot and holds the
+    other slots fixed. Thus 40,000 saved transitions provide the same 10,000
+    coefficient opportunities and retained-row logic as a full four-slot run;
+    the wall-clock timings are not comparable with production implementations.
+    """
+    if iterations % 4:
+        raise ValueError("iterations must contain complete four-slot budgets.")
+    rng = np.random.default_rng(seed)
+    state = build_state(problem, nuclei, np.ones(nuclei.size), backend="numba")
+    k_trace = np.full(iterations + 1, state.k, dtype=np.int64)
+    nuclei_trace = np.repeat(state.nuclei[np.newaxis, :], iterations + 1, axis=0)
+    coefficient_trace = np.empty((iterations + 1, problem.k_max), dtype=np.float64)
+    log_target_trace = np.empty(iterations + 1, dtype=np.float64)
+    moves = np.full(iterations, "fixed", dtype="U16")
+    accepted = np.zeros(iterations, dtype=np.bool_)
+    log_acceptance_ratio = np.empty(iterations, dtype=np.float64)
+    coefficient_trace[0] = state.coefficients
+    log_target_trace[0] = state.log_target
+
+    started = perf_counter()
+    for iteration in range(iterations):
+        if iteration % 4 == 0:
+            position = int(rng.integers(state.k))
+            transition = propose_coefficient(
+                problem,
+                state,
+                coefficient_position=position,
+                proposed_coefficient=float(
+                    state.active_coefficients[position] + rng.normal(scale=proposal_sd)
+                ),
+                proposal_stdev=proposal_sd,
+                backend="numba",
+            )
+            uniform = float(rng.random())
+            next_state = accept_or_reject(
+                state,
+                transition,
+                log_uniform=log(uniform) if uniform > 0.0 else -np.inf,
+            )
+            accepted[iteration] = transition.valid and next_state is transition.candidate
+            log_acceptance_ratio[iteration] = transition.log_acceptance_ratio
+            moves[iteration] = "coefficient"
+            state = next_state
+        else:
+            log_acceptance_ratio[iteration] = -np.inf
+        coefficient_trace[iteration + 1] = state.coefficients
+        log_target_trace[iteration + 1] = state.log_target
+    runtime_seconds = perf_counter() - started
+
+    return (
+        SamplingTrace(
+            k=k_trace,
+            nuclei=nuclei_trace,
+            coefficients=coefficient_trace,
+            log_target=log_target_trace,
+            moves=moves,
+            accepted=accepted,
+            log_acceptance_ratio=log_acceptance_ratio,
+        ),
+        runtime_seconds,
+    )
+
+
+def _summarize_benchmark(
+    case: LuntCheckerboardCase,
+    problem: TransDimensionalProblem,
+    trace: SamplingTrace,
+    runtime_seconds: float,
+) -> _BenchmarkMetrics:
+    """Calculate common prediction and native-grid metrics for one trace."""
+    summary = summarize_fine_grid_posterior(
+        problem,
+        trace,
+        case.noiseless_observations,
+        start=_BENCHMARK_START,
+        thin=_BENCHMARK_THIN,
+        backend="numba",
+    )
+    low_mean = float(np.mean(summary.mean[case.truth == 0.5]))
+    high_mean = float(np.mean(summary.mean[case.truth == 1.5]))
+    return _BenchmarkMetrics(
+        prediction_rmse=summary.rmse,
+        grid_rmse=float(np.sqrt(np.mean(np.square(summary.mean - case.truth)))),
+        spatial_correlation=float(np.corrcoef(summary.mean, case.truth)[0, 1]),
+        contrast=high_mean - low_mean,
+        runtime_seconds=runtime_seconds,
+        visited_k=tuple(int(value) for value in np.unique(trace.k)),
+    )
+
+
+def _run_full_sampler_benchmark(
+    case: LuntCheckerboardCase,
+    problem: TransDimensionalProblem,
+    *,
+    seed: int,
+) -> _BenchmarkMetrics:
+    """Run the common full sampler configuration and summarize recovery."""
+    initial_state = build_state(
+        problem,
+        _INITIAL_NUCLEI,
+        np.ones(_INITIAL_NUCLEI.size),
+        backend="numba",
+    )
+    started = perf_counter()
+    result = sample(
+        problem,
+        initial_state,
+        SamplerConfig(
+            iterations=_BENCHMARK_ITERATIONS,
+            coefficient_proposal_sd=0.1,
+            birth_proposal_sd=0.35,
+            seed=seed,
+            backend="numba",
+            nucleus_move="local",
+            local_move_scale=1.4,
+        ),
+    )
+    runtime_seconds = perf_counter() - started
+    return _summarize_benchmark(case, problem, result.trace, runtime_seconds)
+
+
 def test_checkerboard_problem_has_paper_like_declared_structure() -> None:
     """The local case should close its grid, smooth design, prior, and noise contracts."""
     case = _build_lunt_checkerboard_case()
@@ -204,44 +373,77 @@ def test_true_voronoi_state_and_native_grid_reconstruction_close() -> None:
 
 
 @pytest.mark.slow
-def test_seeded_numba_sampler_recovers_checkerboard_signal() -> None:
-    """A local-move chain should improve prediction and recover spatial contrast."""
+def test_fair_fixed_and_trans_dimensional_checkerboard_comparison() -> None:
+    """Seeded alternatives should show the expected oracle-to-random ordering.
+
+    The oracle is advantaged by knowing the true partition. The movable fixed-k
+    and trans-dimensional chains instead share one seeded non-oracle partition
+    with all-one coefficients. Random fixed layouts measure sensitivity to a
+    deliberately misspecified partition. This test is not a comparison with a
+    full production RHIME/PyMC inversion: its fixed-basis comparator is only
+    coefficient-only MH, and the reference implementations rebuild complete
+    states rather than representing production runtime.
+    """
     case = _build_lunt_checkerboard_case()
-    initial_state = build_state(
-        case.problem,
-        _INITIAL_NUCLEI,
-        np.ones(_INITIAL_NUCLEI.size),
-        backend="numba",
-    )
-    result = sample(
-        case.problem,
-        initial_state,
-        SamplerConfig(
-            iterations=40_000,
-            coefficient_proposal_sd=0.1,
-            birth_proposal_sd=0.35,
-            seed=481,
-            backend="numba",
-            nucleus_move="local",
-            local_move_scale=1.4,
-        ),
-    )
-    summary = summarize_fine_grid_posterior(
-        case.problem,
-        result.trace,
-        case.noiseless_observations,
-        start=15_000,
-        thin=10,
-        backend="numba",
-    )
+    fixed_problem = _fixed_k_problem(case)
+
+    oracle_metrics: list[_BenchmarkMetrics] = []
+    movable_fixed_k_metrics: list[_BenchmarkMetrics] = []
+    random_fixed_metrics: list[_BenchmarkMetrics] = []
+    trans_dimensional_metrics: list[_BenchmarkMetrics] = []
+    for chain_seed, layout_seed in zip(_BENCHMARK_SEEDS, _RANDOM_LAYOUT_SEEDS, strict=True):
+        oracle_trace, oracle_runtime = _sample_fixed_nuclei_coefficients(
+            fixed_problem,
+            _TRUTH_NUCLEI,
+            seed=chain_seed,
+        )
+        oracle_metrics.append(_summarize_benchmark(case, fixed_problem, oracle_trace, oracle_runtime))
+
+        random_nuclei = np.sort(
+            np.random.default_rng(layout_seed).choice(
+                case.problem.n_grid_cells,
+                size=_TRUTH_NUCLEI.size,
+                replace=False,
+            )
+        ).astype(np.int64)
+        random_trace, random_runtime = _sample_fixed_nuclei_coefficients(
+            fixed_problem,
+            random_nuclei,
+            seed=chain_seed,
+        )
+        random_fixed_metrics.append(_summarize_benchmark(case, fixed_problem, random_trace, random_runtime))
+
+        movable_fixed_k_metrics.append(_run_full_sampler_benchmark(case, fixed_problem, seed=chain_seed))
+        trans_dimensional_metrics.append(_run_full_sampler_benchmark(case, case.problem, seed=chain_seed))
 
     prior_prediction = case.problem.sensitivities @ np.ones(case.problem.n_grid_cells)
     prior_rmse = float(np.sqrt(np.mean(np.square(prior_prediction - case.noiseless_observations))))
-    spatial_correlation = float(np.corrcoef(summary.mean, case.truth)[0, 1])
-    low_mean = float(np.mean(summary.mean[case.truth == 0.5]))
-    high_mean = float(np.mean(summary.mean[case.truth == 1.5]))
+    oracle_prediction_rmse = np.array([metric.prediction_rmse for metric in oracle_metrics])
+    movable_prediction_rmse = np.array([metric.prediction_rmse for metric in movable_fixed_k_metrics])
+    random_prediction_rmse = np.array([metric.prediction_rmse for metric in random_fixed_metrics])
+    trans_dimensional_prediction_rmse = np.array(
+        [metric.prediction_rmse for metric in trans_dimensional_metrics]
+    )
+    # Knowing the correct partition is an oracle advantage. Random layouts are
+    # independent replicates rather than pooled draws, and their median should
+    # be worse than the oracle fixed basis.
+    assert np.median(random_prediction_rmse) > np.median(oracle_prediction_rmse)
 
-    assert summary.trace_rows.size == 2_501
-    assert summary.rmse < 0.4 * prior_rmse
-    assert spatial_correlation > 0.6
-    assert high_mean - low_mean > 0.55
+    for metrics in (oracle_metrics, movable_fixed_k_metrics, trans_dimensional_metrics):
+        assert max(metric.prediction_rmse for metric in metrics) < 0.5 * prior_rmse
+        assert min(metric.spatial_correlation for metric in metrics) > 0.55
+        assert min(metric.contrast for metric in metrics) > 0.5
+
+    assert all(metric.visited_k == (16,) for metric in oracle_metrics)
+    assert all(metric.visited_k == (16,) for metric in random_fixed_metrics)
+    assert all(metric.visited_k == (16,) for metric in movable_fixed_k_metrics)
+    assert all(len(metric.visited_k) > 1 for metric in trans_dimensional_metrics)
+
+    # Guard broad calibrated ranges without asserting which adaptive method is
+    # superior: that conclusion would require a production-quality fixed-basis
+    # comparator and considerably longer convergence diagnostics.
+    assert np.all((1.5 < oracle_prediction_rmse) & (oracle_prediction_rmse < 2.5))
+    assert np.all((2.0 < movable_prediction_rmse) & (movable_prediction_rmse < 5.0))
+    assert np.all((2.0 < trans_dimensional_prediction_rmse) & (trans_dimensional_prediction_rmse < 7.0))
+    assert all(metric.grid_rmse < 0.4 for metric in movable_fixed_k_metrics)
+    assert all(metric.grid_rmse < 0.5 for metric in trans_dimensional_metrics)
