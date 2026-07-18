@@ -222,6 +222,31 @@ The archived data are not currently available locally. Until the server is
 available, the implementation gate is a scaled-down synthetic case with the
 same declared equations, not a claim of paper reproduction.
 
+### Provisional local checkerboard benchmark
+
+Before the archived inputs return, use two deliberately separate checks:
+
+1. A fast structural test on an `8 x 8` grid with a `4 x 4` checkerboard of
+   `2 x 2` blocks, alternating scalings `0.5` and `1.5`. It should verify the
+   declared truth partition, prior-flux-weighted forward calculation, seeded
+   independent noise, native-grid reconstruction, and noise-free RMSE formula.
+2. A slow seeded recovery benchmark on the same grid using spatially smooth,
+   positive synthetic footprint rows and the paper's arithmetic lognormal
+   prior moments `(mean=1, sd=1)`. Use the local nucleus move, retain draws only
+   after burn-in, and compare the posterior-mean grid and prediction with the
+   all-ones prior baseline.
+
+The recovery gate should assert robust improvements (lower noise-free
+prediction RMSE, correct checkerboard contrast direction, and useful spatial
+correlation), not an exact sampled partition or a golden posterior `k` from one
+seed. Exact thresholds, iteration count, and proposal scales must be calibrated
+across several fixed seeds before becoming CI assertions.
+
+This is a mechanics/recovery benchmark, not a miniature scientific
+reproduction. It replaces NAME/EDGAR sensitivities with synthetic smooth
+kernels, uses 64 rather than 2688 native cells, and cannot be compared directly
+with the paper's posterior `k` or ppb RMSE values.
+
 ## Reproduction profile B: Lunt2016-real
 
 Main-paper Sect. 5.1, PDF pp. 13-14 / printed pp. 3225-3226, plus Supplement S1:
