@@ -1,10 +1,12 @@
-"""Deterministic-schedule reference sampler for spatial trans-dimensional MCMC.
+"""Seeded four-slot reference sampler for spatial trans-dimensional MCMC.
 
-The single-chain driver repeats coefficient, birth, death, and configurable
-nucleus moves using a seeded NumPy generator. State traces include the initial
-state at row zero, while transition diagnostics describe each attempted move
-from row ``i`` to row ``i + 1``. This reference driver does not yet provide
-burn-in management, parallel chains, or parallel tempering.
+The single-chain driver repeats a coefficient slot, two identical mixed
+birth/death slots, and a configurable nucleus-location slot using a seeded
+NumPy generator. Each dimension slot selects birth or death independently with
+equal probability. State traces include the initial state at row zero, while
+transition diagnostics describe each attempted move from row ``i`` to row
+``i + 1``. This reference driver does not yet provide burn-in management,
+parallel chains, or parallel tempering.
 """
 
 from __future__ import annotations
@@ -35,6 +37,9 @@ from openghg_inversions.tdmcmc.proposals import (
 @dataclass(frozen=True, slots=True)
 class SamplerConfig:
     """Configuration for the first single-chain reference sampler.
+
+    Every four transitions contain one coefficient proposal, two independent
+    equal-probability birth/death proposals, and one nucleus-location proposal.
 
     Args:
         iterations: Number of attempted transitions.
@@ -97,7 +102,9 @@ class SamplingTrace:
             ``(iterations + 1,)``.
         moves: Proposal name for each attempted transition, with shape
             ``(iterations,)``. Entry ``i`` describes the move from state row
-            ``i`` to row ``i + 1``.
+            ``i`` to row ``i + 1``. Mixed dimension slots record the selected
+            proposal label, ``"birth"`` or ``"death"``, rather than a generic
+            dimension-slot label.
         accepted: Whether each attempted transition changed the chain state,
             with shape ``(iterations,)``.
         log_acceptance_ratio: Untruncated log Metropolis-Hastings ratio for
@@ -159,7 +166,10 @@ def _draw_transition(
     rng: np.random.Generator,
     move: str,
 ) -> TransitionTerms:
-    """Draw explicit proposal values and construct one deterministic transition."""
+    """Draw explicit proposal values and construct one seeded transition."""
+    if move == "dimension":
+        move = "birth" if rng.random() < 0.5 else "death"
+
     if move == "coefficient":
         position = int(rng.integers(state.k))
         value = float(state.active_coefficients[position] + rng.normal(scale=config.coefficient_proposal_sd))
@@ -239,12 +249,14 @@ def sample(
 ) -> SamplingResult:
     """Run the first auditable single-chain spatial RJMCMC implementation.
 
-    The schedule repeats coefficient, birth, death, and nucleus moves. Nucleus
-    moves are globally uniform by default; setting ``nucleus_move="local"``
-    uses a normalized discrete-Gaussian destination kernel instead.
-    Impossible boundary proposals are retained as explicit self-transitions, so
-    birth and death attempt probabilities remain equal without hidden boundary
-    renormalisation.
+    The four-slot schedule repeats a coefficient move, two identical dimension
+    moves, and a nucleus move. Each dimension slot independently chooses birth
+    or death with probability one half, making it an invariant paired RJ
+    kernel. The equal move-type probabilities cancel from the reported
+    Metropolis-Hastings ratio. Nucleus moves are globally uniform by default;
+    setting ``nucleus_move="local"`` uses a normalized discrete-Gaussian
+    destination kernel instead. Impossible boundary proposals remain explicit
+    self-transitions rather than renormalizing the birth/death selection.
 
     Args:
         problem: Immutable target and fine-grid numerical inputs.
@@ -279,7 +291,7 @@ def sample(
     coefficient_trace[0] = state.coefficients
     log_target_trace[0] = state.log_target
     nucleus_move = "global_move" if config.nucleus_move == "global" else "local_move"
-    schedule = ("coefficient", "birth", "death", nucleus_move)
+    schedule = ("coefficient", "dimension", "dimension", nucleus_move)
 
     for iteration in range(config.iterations):
         move = schedule[iteration % len(schedule)]

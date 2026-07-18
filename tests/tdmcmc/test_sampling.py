@@ -1,4 +1,4 @@
-"""Focused tests for the first deterministic-schedule TDMCMC sampler."""
+"""Focused tests for the first seeded four-slot TDMCMC sampler."""
 
 from __future__ import annotations
 
@@ -76,6 +76,14 @@ def _assert_state_matches_trace_row(
     assert state.log_target == pytest.approx(result.trace.log_target[row], rel=0.0, abs=1e-12)
 
 
+def _assert_four_slot_move_pattern(moves: np.ndarray, *, nucleus_move: str) -> None:
+    """Check fixed slot roles while allowing independent dimension-move draws."""
+    np.testing.assert_array_equal(moves[0::4], "coefficient")
+    assert np.all(np.isin(moves[1::4], ["birth", "death"]))
+    assert np.all(np.isin(moves[2::4], ["birth", "death"]))
+    np.testing.assert_array_equal(moves[3::4], nucleus_move)
+
+
 def test_fixed_seed_replays_the_complete_sampler_trace() -> None:
     """The same seed and initial state should reproduce every attempted transition."""
     problem = _problem()
@@ -91,11 +99,33 @@ def test_fixed_seed_replays_the_complete_sampler_trace() -> None:
     second = sample(problem, initial, config)
 
     _assert_results_equal(first, second)
-    np.testing.assert_array_equal(
-        first.trace.moves,
-        np.tile(["coefficient", "birth", "death", "global_move"], 6),
-    )
+    _assert_four_slot_move_pattern(first.trace.moves, nucleus_move="global_move")
     assert 0.0 <= first.trace.acceptance_rate <= 1.0
+
+
+@pytest.mark.parametrize(("seed", "expected_move"), [(0, "death"), (2, "birth")])
+def test_dimension_slot_uses_seeded_equal_probability_choice(
+    seed: int,
+    expected_move: str,
+) -> None:
+    """A dimension slot should map a seeded uniform draw to birth or death."""
+    problem = _problem()
+    initial = build_state(problem, [0, 3], [0.8, 1.2])
+    config = SamplerConfig(
+        iterations=1,
+        coefficient_proposal_sd=0.15,
+        birth_proposal_sd=0.25,
+    )
+
+    transition = _draw_transition(
+        problem,
+        initial,
+        config,
+        np.random.default_rng(seed),
+        "dimension",
+    )
+
+    assert transition.move == expected_move
 
 
 def test_default_global_mode_matches_explicit_global_configuration() -> None:
@@ -171,10 +201,7 @@ def test_fixed_seed_replays_local_nucleus_moves() -> None:
     second = sample(problem, initial, config)
 
     _assert_results_equal(first, second)
-    np.testing.assert_array_equal(
-        first.trace.moves,
-        np.tile(["coefficient", "birth", "death", "local_move"], 6),
-    )
+    _assert_four_slot_move_pattern(first.trace.moves, nucleus_move="local_move")
 
 
 def test_local_sampler_has_numpy_numba_backend_parity() -> None:
@@ -230,10 +257,7 @@ def test_fixed_k_sampler_records_birth_and_death_boundary_self_transitions() -> 
     result = sample(problem, initial, config)
 
     np.testing.assert_array_equal(result.trace.k, np.ones(5, dtype=np.int64))
-    np.testing.assert_array_equal(
-        result.trace.moves,
-        ["coefficient", "birth", "death", "global_move"],
-    )
+    _assert_four_slot_move_pattern(result.trace.moves, nucleus_move="global_move")
     np.testing.assert_array_equal(result.trace.accepted[1:3], [False, False])
     np.testing.assert_array_equal(result.trace.log_acceptance_ratio[1:3], [-np.inf, -np.inf])
     np.testing.assert_array_equal(result.trace.nuclei[1], result.trace.nuclei[2])
