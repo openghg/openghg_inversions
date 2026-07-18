@@ -168,8 +168,16 @@ this symmetric, but does not define rounding, truncation, or rejection at the
 finite-grid boundary. The rewrite will use a normalized discrete-Gaussian
 categorical kernel and include its forward/reverse normalization explicitly.
 
-Impossible birth/death attempts at dimension boundaries remain scheduled
-self-transitions. This avoids silently changing the birth/death move-type ratio.
+The literal deterministic birth-then-death schedule is not retained. A birth-only
+step cannot be reversed within its own transition kernel, and likewise for a
+death-only step. An exact seven-state enumeration confirmed that a deterministic
+birth-then-death composition does not preserve the declared target. The rewrite
+therefore uses a 50/50 birth/death mixture at each structural slot; the equal
+move-type probabilities cancel in the acceptance ratio. Two structural slots
+per four-step cycle preserve the first rewrite's aggregate structural-attempt
+frequency. When the hyperparameter step is added, the declared schedule profile
+must be revisited. Unavailable boundary draws remain explicit self-transitions
+rather than renormalizing the mixture.
 
 ## Acceptance-equation audit
 
@@ -189,6 +197,10 @@ formula is internally inconsistent:
 - A linear-Gaussian birth proposal can generate a nonpositive scaling. The
   rewrite treats it as a zero-target rejected proposal.
 - Discrete finite-grid moves are not automatically symmetric at boundaries.
+- Algorithm 1's deterministic birth and death steps are not individually
+  target-invariant. The rewrite uses reversible mixed structural steps while
+  retaining the paper's proposal densities and the first rewrite's aggregate
+  structural-attempt frequency.
 
 Birth and death Eqs. (35)-(36) are recovered algebraically by the current
 normalized target when the `p(c|k)` and location/count proposal factors are
@@ -222,7 +234,7 @@ The archived data are not currently available locally. Until the server is
 available, the implementation gate is a scaled-down synthetic case with the
 same declared equations, not a claim of paper reproduction.
 
-### Provisional local checkerboard benchmark
+### Local checkerboard benchmark
 
 Before the archived inputs return, use two deliberately separate checks:
 
@@ -236,11 +248,17 @@ Before the archived inputs return, use two deliberately separate checks:
    after burn-in, and compare the posterior-mean grid and prediction with the
    all-ones prior baseline.
 
-The recovery gate should assert robust improvements (lower noise-free
-prediction RMSE, correct checkerboard contrast direction, and useful spatial
-correlation), not an exact sampled partition or a golden posterior `k` from one
-seed. Exact thresholds, iteration count, and proposal scales must be calibrated
-across several fixed seeds before becoming CI assertions.
+The recovery gate asserts robust improvements (lower noise-free prediction
+RMSE, correct checkerboard contrast direction, and useful spatial correlation),
+not an exact sampled partition or a golden posterior `k` from one seed. The
+local profile uses `k` bounds 8--28 and starts at the 16 regular truth nuclei
+with all coefficients set to the prior mean; this geometry-informed start is
+another explicit difference from the paper. Calibration over seeds 481--485
+used 40,000 transitions, a 15,000-row burn cutoff, thinning by 10, and a
+local-move scale of 1.4. Posterior prediction RMSE was 2.25--4.71 versus an
+all-ones baseline of 15.29, spatial correlation was 0.65--0.95, and recovered
+high-minus-low contrast was 0.68--0.97. The CI thresholds deliberately leave
+substantial margin around those calibration runs.
 
 This is a mechanics/recovery benchmark, not a miniature scientific
 reproduction. It replaces NAME/EDGAR sensitivities with synthetic smooth
@@ -286,28 +304,30 @@ Already implemented:
 - coefficient, birth, death, globally symmetric move, and normalized local
   discrete-Gaussian move proposals;
 - explicit proposal and target terms with pointwise birth/death balance tests;
-- deterministic proposal schedule without the hyperparameter slot, with a
-  backwards-compatible global move or paper-style local move selection;
+- a fixed outer schedule of coefficient, two reversible 50/50 birth/death
+  mixture steps, and a configurable global or paper-style local nucleus move;
 - NumPy/Numba parity and fixed-seed replay;
 - filtered RHIME `fp_x_flux` adapter;
 - per-draw native-grid reconstruction, posterior mean/quantiles, retained-row
   selection, posterior-mean prediction, and comparison-vector RMSE;
 - an independently enumerated fixed-`k`, fixed-coefficient location kernel that
   verifies proposal row normalization, self-transition mass, detailed balance,
-  and stationarity on an irregular finite grid.
+  and stationarity on an irregular finite grid;
+- an exact seven-state mixed-`k` birth/death subkernel that verifies nucleus-set
+  combinatorics, move-count factors, mixture boundary self-mass, detailed
+  balance, and stationarity at a special fixed coefficient/proposal density.
 
 Next paper-first gaps:
 
-1. a mixed-move finite transition oracle extending the completed location-only
-   oracle to trans-dimensional birth/death accounting;
+1. validation of the general continuous birth/death auxiliary proposal beyond
+   the completed special fixed-coefficient finite oracle;
 2. paper profile/configuration object and provenance metadata;
-3. paper-like two-dimensional checkerboard benchmark;
-4. sampler-side retained-draw/checkpoint output (postprocessing already accepts
+3. sampler-side retained-draw/checkpoint output (postprocessing already accepts
    saved-row burn-in and thinning selections);
-5. dimension-dependent emissions hyperparameters and their proposal cycle;
-6. composite predictor with fixed outer emissions and boundary blocks;
-7. grouped/site-block `sigma_y` and AR(1) `tau` likelihood;
-8. real-data preparation and comparison once archived inputs are available.
+4. dimension-dependent emissions hyperparameters and their proposal cycle;
+5. composite predictor with fixed outer emissions and boundary blocks;
+6. grouped/site-block `sigma_y` and AR(1) `tau` likelihood;
+7. real-data preparation and comparison once archived inputs are available.
 
 Temporal partitions, multisector inference, and parallel tempering are not part
 of the Lunt (2016) reproduction milestone. The main paper describes parallel

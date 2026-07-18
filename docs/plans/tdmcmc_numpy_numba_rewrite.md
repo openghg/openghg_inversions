@@ -79,11 +79,12 @@ will be introduced only behind equivalence tests.
 | 2026-07-18 | Represent nuclei as a sorted subset of flattened fine-grid indices. | Canonical ordering removes label multiplicity and makes the conditional partition prior explicit as `1 / comb(n_grid, k)`. |
 | 2026-07-18 | Declare the prior over `k` in the numerical problem rather than relying on implicit cancellation. | Trans-dimensional normalising constants and count priors must remain visible to detailed-balance tests. |
 | 2026-07-18 | Use a uniform global unoccupied-cell nucleus move in the first slice. | Its forward and reverse probabilities are exactly auditable. The legacy floored-Gaussian local move is deferred until its discrete boundary mass is represented explicitly. |
-| 2026-07-18 | Repeat coefficient, birth, death, and global-move attempts on a fixed schedule. | Birth/death attempt probabilities remain equal at dimension boundaries; impossible attempts are recorded as self-transitions rather than silently renormalised. |
+| 2026-07-18 | Initially repeat coefficient, birth, death, and global-move attempts on a fixed schedule (superseded below). | This preserved nominal attempt counts and boundary self-transitions, but finite enumeration later showed that separate one-way birth/death kernels are not individually invariant. |
 | 2026-07-18 | Preserve the filtered `fp_x_flux` field as the initial RHIME integration seam. | Current prepared datasets retain the fine-grid contribution field, so the rewrite need not alter fixed-basis production preparation in its first integration experiment. |
 | 2026-07-18 | Use Lunt et al. (2016) as the primary scientific specification and current RHIME as a separate integration profile. | The paper closely matches the legacy code, while RHIME has materially different priors and model-error structure. Keeping profiles distinct avoids an undocumented hybrid target. |
 | 2026-07-18 | Reproduce the Sect. 4 pseudo-data model before the full Sect. 5 hierarchy. | The pseudo-data case isolates spatial RJMCMC with fixed independent 5 ppb error and can validate model selection before adding correlated error and fixed boundary blocks. |
 | 2026-07-18 | Derive acceptance from normalized targets/proposals when a printed paper equation is inconsistent. | The paper appears to omit a lognormal `1/x` ratio in Eq. (31), prints a questionable determinant power in Eq. (33), and does not define discrete boundary handling for Gaussian nucleus moves. |
+| 2026-07-18 | Replace separate deterministic birth/death steps with two 50/50 mixed structural steps per cycle. | A birth-only or death-only kernel cannot reverse itself. Exact finite enumeration showed that their deterministic composition does not preserve the target, while the equal-probability mixture does and retains the first rewrite's aggregate structural-attempt frequency. |
 
 ## Validation gates
 
@@ -96,11 +97,16 @@ will be introduced only behind equivalence tests.
   and reverse probabilities at finite-grid boundaries.
 - [x] A tiny enumerable fixed-`k`, fixed-coefficient location target satisfies
   proposal normalization, rejection self-mass, edgewise detailed balance, and
-  stationarity. A mixed trans-dimensional oracle remains follow-up work.
+  stationarity.
+- [x] A seven-state mixed-`k` fixed-coefficient birth/death subkernel satisfies
+  count-factor accounting, mixture boundary self-mass, detailed balance, and
+  stationarity. General continuous auxiliary integration remains follow-up.
 - [x] Forced birth/death pairs satisfy pointwise detailed balance.
 - [x] NumPy and Numba kernels agree for deterministic and randomised states.
 - [x] Fixed-seed sampling is reproducible.
 - [x] A small synthetic lognormal inversion recovers expected structure.
+- [x] Calibration of the `8 x 8` checkerboard smoke benchmark across five seeds
+  improves noise-free prediction, spatial correlation, and high/low contrast.
 - [x] Filtered RHIME-style `fp_x_flux` inputs preserve longitude-fast grid
   ordering and observation alignment.
 - [x] Retained traces reconstruct on the native grid with posterior
@@ -125,11 +131,11 @@ prepared-dataset adapter, while production runner and output integration in
 stages 6--7 remain follow-up work.
 
 The first paper-specific mechanics are now implemented: native-grid posterior
-projection, an opt-in normalized local discrete-Gaussian sampler move, and an
-exact finite location-kernel oracle. The next target is a paper-like
-two-dimensional checkerboard benchmark, followed by mixed trans-dimensional
-kernel enumeration. Full hierarchical error and boundary blocks remain
-deferred until those gates pass.
+projection, an opt-in normalized local discrete-Gaussian sampler move, a
+calibrated two-dimensional checkerboard recovery benchmark, and exact finite
+location and special birth/death subkernel oracles. Next are declared paper
+profile metadata and validation of the general continuous birth/death auxiliary
+proposal. Full hierarchical error and boundary blocks remain deferred.
 
 ## Progress log
 
@@ -146,7 +152,8 @@ deferred until those gates pass.
   `p(k)` and `p(nuclei | k)` terms for the first implementation.
 - Added the `openghg_inversions.tdmcmc` package with immutable numerical
   problem/state types, normalized target components, NumPy and Numba kernels,
-  deterministic proposal accounting, and a fixed-schedule seeded sampler.
+  deterministic proposal accounting, and a seeded sampler with a fixed outer
+  schedule and reversible mixed structural steps.
 - Added a filtered RHIME-input adapter that extracts and flattens
   `fp_x_flux(nmeasure, lat, lon)` without using the already reduced fixed-basis
   `H`.
@@ -174,10 +181,20 @@ deferred until those gates pass.
 - Added an independent 12-state location-kernel oracle that verifies stochastic
   rows, rejection self-mass, detailed balance, and stationarity; it explicitly
   excludes continuous coefficient and birth/death kernels.
+- Added an exact seven-state mixed-`k` birth/death oracle at a special
+  fixed-coefficient unit-density proposal. It validates the trans-dimensional
+  combinatorics and boundaries while explicitly excluding general continuous
+  auxiliary integration.
+- Used that oracle to identify and correct the non-invariant deterministic
+  birth-then-death schedule. Each of the two structural slots now uses an equal
+  birth/death mixture, with unavailable boundary draws retained as self-mass.
 - Added paper-defined native-grid trace reconstruction, saved-row burn-in and
   thinning selection, posterior mean/quantiles, and comparison-vector RMSE.
-- The expanded focused suite passes all 157 tests, including the slow seeded
-  recovery case; Ruff formatting/checks and Pyright also pass.
+- Added and calibrated an `8 x 8` Lunt-inspired checkerboard benchmark with
+  smooth prior-flux-weighted sensitivities, independent 5 ppb noise, exact
+  native-grid reconstruction, and robust seeded Numba recovery assertions.
+- The expanded focused suite passes all 163 tests, including both slow seeded
+  recovery cases; Ruff formatting/checks and Pyright also pass.
 
 ## Open questions
 
