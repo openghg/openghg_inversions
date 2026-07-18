@@ -85,6 +85,8 @@ will be introduced only behind equivalence tests.
 | 2026-07-18 | Reproduce the Sect. 4 pseudo-data model before the full Sect. 5 hierarchy. | The pseudo-data case isolates spatial RJMCMC with fixed independent 5 ppb error and can validate model selection before adding correlated error and fixed boundary blocks. |
 | 2026-07-18 | Derive acceptance from normalized targets/proposals when a printed paper equation is inconsistent. | The paper appears to omit a lognormal `1/x` ratio in Eq. (31), prints a questionable determinant power in Eq. (33), and does not define discrete boundary handling for Gaussian nucleus moves. |
 | 2026-07-18 | Treat the checked legacy deterministic RJMCMC scheduler as incorrect and replace separate birth/death steps with two 50/50 mixed structural steps per cycle. | All five inspected Fortran drivers execute separate modulo-scheduled one-way structural steps. A finite fixed-coefficient counterexample to that scheduler design is not posterior-invariant, while the equal-probability mixture is and retains the first rewrite's aggregate structural-attempt frequency. |
+| 2026-07-18 | Add an emissions-only, test-data-backed pseudo-data benchmark before archived paper data are recovered. | The repository contains EDGAR7/UKGHG flux and one week of hourly TAC/MHD NAME footprints on the paper's native EUROPE grid. A 56-longitude by 48-latitude crop can exercise the real forward operator while fixed outer emissions are subtracted exactly and the known-corrupt boundary-condition files remain unopened. The 56 six-hour observations support prediction validation, not a claim of native-grid or posterior-`k` recovery. |
+| 2026-07-18 | Prefer `dimension-up` and `dimension-down` in user-facing discussion of reversible dimension changes. | These names describe the actual change without implying a binary geometric split/merge. Literature quotations and current internal API identifiers remain unchanged until a separate compatibility-preserving rename is justified. |
 
 ## Validation gates
 
@@ -111,6 +113,10 @@ will be introduced only behind equivalence tests.
 - [x] A matched-proposal checkerboard comparison covers an oracle fixed layout,
   independent random fixed layouts, movable fixed `k=16`, and
   trans-dimensional `k=8..28` without asserting adaptive-method superiority.
+- [x] A test-data-backed checkerboard uses raw EDGAR/NAME inputs, verifies the
+  fixed outer-emissions accounting independently of boundary conditions, and
+  improves noise-free prediction without asserting field recovery from its
+  data-limited two-site design.
 - [x] Filtered RHIME-style `fp_x_flux` inputs preserve longitude-fast grid
   ordering and observation alignment.
 - [x] Retained traces reconstruct on the native grid with posterior
@@ -206,8 +212,36 @@ proposal. Full hierarchical error and boundary blocks remain deferred.
   layout and added matched coefficient-opportunity comparisons against oracle,
   random fixed-basis, and movable fixed-`k` alternatives. The fixed-basis
   helper is explicitly not presented as a production RHIME/PyMC timing result.
-- The expanded focused suite passes all 164 tests, including both slow seeded
-  recovery cases; Ruff formatting/checks and Pyright also pass.
+- Mapped the repository's raw EDGAR7/UKGHG flux and TAC/MHD NAME footprint
+  fixtures for a second, paper-shaped checkerboard. The paper reports grid
+  sizes longitude-first, so its `56 x 48` pseudo domain is represented locally
+  as `56 lon x 48 lat`, using `lon[244:300]` and `lat[157:205]`. The resulting
+  56 six-hour rows have an all-ones versus checkerboard prediction RMSE of
+  6.57 ppb at fixed 5 ppb error, but the sixteen-column oracle design is ill
+  conditioned and several blocks are effectively unseen. Prediction is
+  therefore the primary validation metric; unweighted field recovery is only
+  diagnostic.
+- Confirmed that the packaged EUROPE InTEM map supplies six outer labels around
+  a much larger `183 x 128` inner rectangle. The paper-shaped crop lies wholly
+  inside that inner class, so adapting the map gives six fixed outer blocks plus
+  one fixed remainder around the crop. With all seven coefficients fixed at
+  one, their contribution is exactly a known offset. Inferring fixed outer
+  coefficients remains a composite-predictor follow-up; corrupted boundary
+  files are not part of this benchmark.
+- Added the raw NAME/EDGAR checkerboard as a structural test and a seeded slow
+  prediction benchmark. The structural path builds a canonical RHIME-style
+  fine-grid dataset, passes it through `problem_from_rhime_inputs`, and closes
+  the seven-column InTEM fixed-offset decomposition to `1.7e-13` ppb. In the
+  slow run the all-ones prior prediction RMSE is 6.57 ppb, the oracle fixed
+  sixteen-block inversion reaches 1.51 ppb, a non-oracle sensitivity-weighted
+  sixteen-region quadtree reaches 1.73 ppb, and the trans-dimensional
+  `k=5..100` run initialized at `k=40` reaches 1.69 ppb. Each receives 5,000
+  coefficient-proposal slots. The trans-dimensional visited range (`k=6..88`)
+  is reported only as a mixing diagnostic, not recovery of the paper's
+  posterior `k`.
+- The expanded focused suite passes all 166 tests, including all three slow
+  seeded recovery/comparison cases; Ruff formatting/checks and Pyright also
+  pass.
 
 ## Open questions
 

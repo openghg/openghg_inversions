@@ -254,7 +254,8 @@ retained explicitly and allowed to cancel.
 Main-paper Sect. 4, PDF pp. 10-12 / printed pp. 3222-3224:
 
 - EDGAR anthropogenic methane prior regridded to NAME resolution;
-- inner domain `56 x 48` native cells;
+- inner domain `56 x 48` native cells, written consistently with the paper's
+  longitude-first `391 x 293` full-domain convention;
 - checkerboard truth with scalings `0.5` and `1.5`, prior scaling `1`;
 - four sites: TTA, MHD, TAC, RGL;
 - May-June 2014, 6-hour averages, 942 observations;
@@ -273,9 +274,10 @@ Paper validation targets:
 - correct 16-region layout RMSE about 0.6 ppb;
 - random fixed layouts near the posterior mean `k` give about 6 ppb RMSE.
 
-The archived data are not currently available locally. Until the server is
-available, the implementation gate is a scaled-down synthetic case with the
-same declared equations, not a claim of paper reproduction.
+The archived paper inputs are not currently available locally. Until the server
+is available, the implementation gates are a scaled-down analytic case and a
+test-data-backed NAME/EDGAR substitute with the same declared equations. Neither
+is a claim of paper reproduction.
 
 ### Local checkerboard benchmark
 
@@ -343,6 +345,75 @@ Runtime is intentionally not compared. The reference fixed-layout helper still
 rebuilds full Voronoi state, whereas a standard fixed-basis inversion would
 pre-aggregate its design matrix. A fair production timing comparison requires
 that optimized fixed-design path and matched convergence diagnostics.
+
+### Test-data-backed NAME/EDGAR checkerboard
+
+The repository contains enough raw emissions-side test data for a second
+benchmark that is closer to the paper's forward model without using any
+archived observations or boundary-condition products:
+
+- `flux_total_ch4_europe_edgar7_2019-01-01_2019-12-31_data.nc` contains one
+  EDGAR7/UKGHG methane flux field on the `293 lat x 391 lon` EUROPE grid;
+- the TAC and MHD NAME files each contain 168 hourly footprints for 1--7
+  January 2019 on that grid;
+- consecutive six-hour means give 28 rows per site and 56 rows in total;
+- `lat[157:205]`, `lon[244:300]` defines a `48 lat x 56 lon` NWEU crop spanning
+  47.467--58.465 degrees north and -12.012--7.348 degrees east. It contains the
+  TAC/MHD sites and the locations of the unavailable RGL/TTA paper sites;
+- a regular `4 x 4` truth uses `12 lat x 14 lon` blocks with alternating
+  scalings `0.5` and `1.5`.
+
+The native contribution matrix is calculated positionally as
+
+\[
+G_{tg}=fp_{tg}\,F_g\,10^9,
+\]
+
+where the factor converts mole fraction to ppb. The raw flux and footprint
+coordinate values differ by up to about `7.6e-6` degrees. Ordinary labelled
+xarray multiplication silently intersects only part of the grid, so the loader
+must first validate equal shapes and numerically close coordinates and then
+multiply by position or explicitly override alignment.
+
+The pseudo-observation contract is
+
+\[
+y_{\mathrm{full}}=b_{\mathrm{outer}}+G_{\mathrm{inner}}x_{\mathrm{truth}}
++\epsilon,\qquad
+y_{\mathrm{inversion}}=y_{\mathrm{full}}-b_{\mathrm{outer}},
+\]
+
+with independent `epsilon ~ Normal(0, 5 ppb)`. The fixed outer contribution is
+computed from the same NAME footprints and EDGAR field at scaling one. No
+observed mole fractions, boundary curtains, `bc_mod`, or boundary-condition
+file enters the calculation.
+
+The packaged EUROPE InTEM map is useful as an accounting layout but is not the
+paper mask. It has labels zero through five for six fixed outer regions and a
+`183 x 128` maximum-label inner rectangle. The `48 x 56` pseudo crop lies
+inside that inner class, leaving a seventh fixed remainder between the crop and
+the InTEM outer regions. Aggregating those seven fixed blocks and setting their
+coefficients to one must equal `b_outer`; jointly inferring their coefficients
+requires the planned composite-predictor extension.
+
+This substitute is deliberately limited. It uses two rather than four sites,
+one January 2019 week rather than May--June 2014, 56 rather than 942 rows, and
+EDGAR7 with UKGHG replacement rather than the paper's EDGAR version. The
+all-ones versus truth noise-free prediction RMSE is 6.57 ppb, but the oracle
+sixteen-block design is ill conditioned and several edge blocks are nearly
+unseen. Assertions should therefore emphasize noise-free prediction RMSE,
+including site-specific diagnostics. Unweighted grid RMSE, spatial correlation,
+contrast, and sampled `k` are diagnostics only and must not be compared with
+the paper's reported field or posterior-`k` results.
+
+The first seeded 20,000-transition gate gives prediction RMSEs of 6.57 ppb for
+the all-ones prior, 1.51 ppb for a fixed inversion given the true sixteen
+rectangles, 1.73 ppb for a non-oracle sixteen-region sensitivity-weighted
+quadtree basis, and 1.69 ppb for the trans-dimensional inversion. Each sampler
+receives 5,000 coefficient-proposal slots. The trans-dimensional run uses
+uniform `k=5..100`, starts at `k=40`, and visits `k=6..88`; that broad range is
+a mixing observation only. It is not evidence for a preferred dimension.
+Movable fixed-`k` and random-layout controls remain useful follow-up comparisons.
 
 ## Reproduction profile B: Lunt2016-real
 
