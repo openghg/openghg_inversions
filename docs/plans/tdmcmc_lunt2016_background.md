@@ -261,15 +261,20 @@ Already implemented:
 - coefficient, birth, death, globally symmetric move, and normalized local
   discrete-Gaussian move proposals;
 - explicit proposal and target terms with pointwise birth/death balance tests;
-- deterministic proposal schedule without the hyperparameter slot;
+- deterministic proposal schedule without the hyperparameter slot, with a
+  backwards-compatible global move or paper-style local move selection;
 - NumPy/Numba parity and fixed-seed replay;
 - filtered RHIME `fp_x_flux` adapter;
 - per-draw native-grid reconstruction, posterior mean/quantiles, retained-row
-  selection, posterior-mean prediction, and comparison-vector RMSE.
+  selection, posterior-mean prediction, and comparison-vector RMSE;
+- an independently enumerated fixed-`k`, fixed-coefficient location kernel that
+  verifies proposal row normalization, self-transition mass, detailed balance,
+  and stationarity on an irregular finite grid.
 
 Next paper-first gaps:
 
-1. exact finite transition-matrix oracle;
+1. a mixed-move finite transition oracle extending the completed location-only
+   oracle to trans-dimensional birth/death accounting;
 2. paper profile/configuration object and provenance metadata;
 3. paper-like two-dimensional checkerboard benchmark;
 4. sampler-side retained-draw/checkpoint output (postprocessing already accepts

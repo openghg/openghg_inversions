@@ -1,16 +1,17 @@
 """Deterministic-schedule reference sampler for spatial trans-dimensional MCMC.
 
-The single-chain driver repeats coefficient, birth, death, and global nucleus
-moves using a seeded NumPy generator. State traces include the initial state at
-row zero, while transition diagnostics describe each attempted move from row
-``i`` to row ``i + 1``. This reference driver does not yet provide burn-in
-management, parallel chains, or parallel tempering.
+The single-chain driver repeats coefficient, birth, death, and configurable
+nucleus moves using a seeded NumPy generator. State traces include the initial
+state at row zero, while transition diagnostics describe each attempted move
+from row ``i`` to row ``i + 1``. This reference driver does not yet provide
+burn-in management, parallel chains, or parallel tempering.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite, log
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -27,6 +28,7 @@ from openghg_inversions.tdmcmc.proposals import (
     propose_coefficient,
     propose_death,
     propose_global_move,
+    propose_local_move,
 )
 
 
@@ -40,9 +42,14 @@ class SamplerConfig:
         birth_proposal_sd: Gaussian auxiliary-coefficient scale for birth/death.
         seed: Seed passed to :func:`numpy.random.default_rng`.
         backend: State-recomputation backend used by every candidate.
+        nucleus_move: Whether the fourth schedule step proposes a globally
+            uniform or local discrete-Gaussian nucleus destination.
+        local_move_scale: Gaussian distance scale in grid-coordinate units.
+            Required when ``nucleus_move`` is ``"local"``.
 
     Raises:
-        ValueError: If iterations, proposal scales, or backend are malformed.
+        ValueError: If iterations, proposal scales, move mode, or backend are
+            malformed.
     """
 
     iterations: int
@@ -50,6 +57,8 @@ class SamplerConfig:
     birth_proposal_sd: float
     seed: int | None = None
     backend: Backend = "numpy"
+    nucleus_move: Literal["global", "local"] = "global"
+    local_move_scale: float | None = None
 
     def __post_init__(self) -> None:
         """Reject malformed sampler settings before allocating a trace."""
@@ -62,6 +71,15 @@ class SamplerConfig:
             object.__setattr__(self, name, value)
         if self.backend not in ("numpy", "numba"):
             raise ValueError("backend must be 'numpy' or 'numba'.")
+        if self.nucleus_move not in ("global", "local"):
+            raise ValueError("nucleus_move must be 'global' or 'local'.")
+        if self.local_move_scale is not None:
+            local_move_scale = float(self.local_move_scale)
+            if not isfinite(local_move_scale) or local_move_scale <= 0.0:
+                raise ValueError("local_move_scale must be finite and positive.")
+            object.__setattr__(self, "local_move_scale", local_move_scale)
+        if self.nucleus_move == "local" and self.local_move_scale is None:
+            raise ValueError("local_move_scale is required for local nucleus moves.")
 
 
 @dataclass(frozen=True)
@@ -188,6 +206,29 @@ def _draw_transition(
             backend=config.backend,
         )
 
+    if move == "local_move":
+        scale = config.local_move_scale
+        if scale is None:  # guarded by SamplerConfig; keeps type narrowing local
+            raise ValueError("local_move_scale is required for local nucleus moves.")
+        position = int(rng.integers(state.k))
+        empty = _empty_cells(problem, state)
+        if empty.size:
+            origin = int(state.active_nuclei[position])
+            differences = (problem.grid_coordinates[empty] - problem.grid_coordinates[origin]) / scale
+            log_weights = -0.5 * np.einsum("ij,ij->i", differences, differences)
+            weights = np.exp(log_weights - np.max(log_weights))
+            cell = int(rng.choice(empty, p=weights / weights.sum()))
+        else:
+            cell = int(state.active_nuclei[position])
+        return propose_local_move(
+            problem,
+            state,
+            move_position=position,
+            new_nucleus=cell,
+            proposal_scale=scale,
+            backend=config.backend,
+        )
+
     raise ValueError(f"Unknown proposal move {move!r}.")
 
 
@@ -198,7 +239,9 @@ def sample(
 ) -> SamplingResult:
     """Run the first auditable single-chain spatial RJMCMC implementation.
 
-    The schedule repeats coefficient, birth, death, and global nucleus moves.
+    The schedule repeats coefficient, birth, death, and nucleus moves. Nucleus
+    moves are globally uniform by default; setting ``nucleus_move="local"``
+    uses a normalized discrete-Gaussian destination kernel instead.
     Impossible boundary proposals are retained as explicit self-transitions, so
     birth and death attempt probabilities remain equal without hidden boundary
     renormalisation.
@@ -235,7 +278,8 @@ def sample(
     nuclei_trace[0] = state.nuclei
     coefficient_trace[0] = state.coefficients
     log_target_trace[0] = state.log_target
-    schedule = ("coefficient", "birth", "death", "global_move")
+    nucleus_move = "global_move" if config.nucleus_move == "global" else "local_move"
+    schedule = ("coefficient", "birth", "death", nucleus_move)
 
     for iteration in range(config.iterations):
         move = schedule[iteration % len(schedule)]

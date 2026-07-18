@@ -11,7 +11,13 @@ from openghg_inversions.tdmcmc.core import (
     build_state,
     uniform_log_k_prior,
 )
-from openghg_inversions.tdmcmc.sampling import SamplerConfig, SamplingResult, sample
+from openghg_inversions.tdmcmc.proposals import propose_local_move
+from openghg_inversions.tdmcmc.sampling import (
+    SamplerConfig,
+    SamplingResult,
+    _draw_transition,
+    sample,
+)
 
 
 def _problem(*, k_min: int = 1, k_max: int = 3) -> TransDimensionalProblem:
@@ -92,6 +98,124 @@ def test_fixed_seed_replays_the_complete_sampler_trace() -> None:
     assert 0.0 <= first.trace.acceptance_rate <= 1.0
 
 
+def test_default_global_mode_matches_explicit_global_configuration() -> None:
+    """Adding the local option should not change default fixed-seed replay."""
+    problem = _problem()
+    initial = build_state(problem, [0, 3], [0.8, 1.2])
+    common = {
+        "iterations": 24,
+        "coefficient_proposal_sd": 0.15,
+        "birth_proposal_sd": 0.25,
+        "seed": 481,
+    }
+
+    default = sample(problem, initial, SamplerConfig(**common))
+    explicit = sample(problem, initial, SamplerConfig(**common, nucleus_move="global"))
+
+    _assert_results_equal(default, explicit)
+
+
+def test_local_destination_draw_uses_normalized_coordinate_distance_weights() -> None:
+    """The sampler should draw from the exact discrete-Gaussian cell weights."""
+    problem = _problem()
+    initial = build_state(problem, [0, 3], [0.8, 1.2])
+    config = SamplerConfig(
+        iterations=1,
+        coefficient_proposal_sd=0.15,
+        birth_proposal_sd=0.25,
+        seed=52,
+        nucleus_move="local",
+        local_move_scale=0.7,
+    )
+    actual_rng = np.random.default_rng(config.seed)
+    expected_rng = np.random.default_rng(config.seed)
+
+    position = int(expected_rng.integers(initial.k))
+    empty = np.array([1, 2], dtype=np.int64)
+    origin = int(initial.active_nuclei[position])
+    differences = (problem.grid_coordinates[empty] - problem.grid_coordinates[origin]) / 0.7
+    log_weights = -0.5 * np.einsum("ij,ij->i", differences, differences)
+    weights = np.exp(log_weights - np.max(log_weights))
+    cell = int(expected_rng.choice(empty, p=weights / weights.sum()))
+    expected = propose_local_move(
+        problem,
+        initial,
+        move_position=position,
+        new_nucleus=cell,
+        proposal_scale=0.7,
+    )
+
+    actual = _draw_transition(problem, initial, config, actual_rng, "local_move")
+
+    assert actual.move == "local_move"
+    assert actual.log_q_forward == pytest.approx(expected.log_q_forward)
+    assert actual.log_q_reverse == pytest.approx(expected.log_q_reverse)
+    np.testing.assert_array_equal(actual.candidate.nuclei, expected.candidate.nuclei)
+    np.testing.assert_array_equal(actual.candidate.coefficients, expected.candidate.coefficients)
+
+
+def test_fixed_seed_replays_local_nucleus_moves() -> None:
+    """Local mode should replay the complete trace under a fixed seed."""
+    problem = _problem()
+    initial = build_state(problem, [0, 3], [0.8, 1.2])
+    config = SamplerConfig(
+        iterations=24,
+        coefficient_proposal_sd=0.15,
+        birth_proposal_sd=0.25,
+        seed=481,
+        nucleus_move="local",
+        local_move_scale=0.8,
+    )
+
+    first = sample(problem, initial, config)
+    second = sample(problem, initial, config)
+
+    _assert_results_equal(first, second)
+    np.testing.assert_array_equal(
+        first.trace.moves,
+        np.tile(["coefficient", "birth", "death", "local_move"], 6),
+    )
+
+
+def test_local_sampler_has_numpy_numba_backend_parity() -> None:
+    """Both state builders should follow the same seeded local-move chain."""
+    problem = _problem()
+    numpy_initial = build_state(problem, [0, 3], [0.8, 1.2], backend="numpy")
+    numba_initial = build_state(problem, [0, 3], [0.8, 1.2], backend="numba")
+    common = {
+        "iterations": 24,
+        "coefficient_proposal_sd": 0.15,
+        "birth_proposal_sd": 0.25,
+        "seed": 901,
+        "nucleus_move": "local",
+        "local_move_scale": 0.8,
+    }
+
+    numpy_result = sample(problem, numpy_initial, SamplerConfig(**common, backend="numpy"))
+    numba_result = sample(problem, numba_initial, SamplerConfig(**common, backend="numba"))
+
+    for numpy_array, numba_array in (
+        (numpy_result.trace.k, numba_result.trace.k),
+        (numpy_result.trace.nuclei, numba_result.trace.nuclei),
+        (numpy_result.trace.coefficients, numba_result.trace.coefficients),
+        (numpy_result.trace.moves, numba_result.trace.moves),
+        (numpy_result.trace.accepted, numba_result.trace.accepted),
+    ):
+        np.testing.assert_array_equal(numpy_array, numba_array)
+    np.testing.assert_allclose(
+        numpy_result.trace.log_acceptance_ratio,
+        numba_result.trace.log_acceptance_ratio,
+        rtol=0.0,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        numpy_result.trace.log_target,
+        numba_result.trace.log_target,
+        rtol=0.0,
+        atol=1e-12,
+    )
+
+
 def test_fixed_k_sampler_records_birth_and_death_boundary_self_transitions() -> None:
     """Impossible structural moves should remain explicit rejected attempts."""
     problem = _problem(k_min=1, k_max=1)
@@ -158,6 +282,11 @@ def test_trace_padding_and_cached_targets_reconstruct(backend: str) -> None:
         {"birth_proposal_sd": -1.0},
         {"birth_proposal_sd": np.nan},
         {"backend": "jax"},
+        {"nucleus_move": "nearby"},
+        {"nucleus_move": "local"},
+        {"nucleus_move": "local", "local_move_scale": 0.0},
+        {"nucleus_move": "local", "local_move_scale": np.inf},
+        {"nucleus_move": "local", "local_move_scale": np.nan},
     ],
 )
 def test_sampler_config_rejects_invalid_values(kwargs: dict[str, object]) -> None:

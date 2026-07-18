@@ -94,7 +94,9 @@ will be introduced only behind equivalence tests.
 - [x] The first global move reports normalized symmetric probabilities; the
   corrected local discrete-Gaussian move reports separately normalized forward
   and reverse probabilities at finite-grid boundaries.
-- [ ] Tiny enumerable targets satisfy edgewise detailed balance.
+- [x] A tiny enumerable fixed-`k`, fixed-coefficient location target satisfies
+  proposal normalization, rejection self-mass, edgewise detailed balance, and
+  stationarity. A mixed trans-dimensional oracle remains follow-up work.
 - [x] Forced birth/death pairs satisfy pointwise detailed balance.
 - [x] NumPy and Numba kernels agree for deterministic and randomised states.
 - [x] Fixed-seed sampling is reproducible.
@@ -122,10 +124,12 @@ Stages 1--5 now have a working first implementation. Stage 6 has a minimal
 prepared-dataset adapter, while production runner and output integration in
 stages 6--7 remain follow-up work.
 
-The next implementation stage is paper-specific: native-grid posterior
-projection and a normalized local discrete-Gaussian nucleus move, followed by
-an exact finite transition-matrix oracle. Full hierarchical error and boundary
-blocks are deferred until those gates pass.
+The first paper-specific mechanics are now implemented: native-grid posterior
+projection, an opt-in normalized local discrete-Gaussian sampler move, and an
+exact finite location-kernel oracle. The next target is a paper-like
+two-dimensional checkerboard benchmark, followed by mixed trans-dimensional
+kernel enumeration. Full hierarchical error and boundary blocks remain
+deferred until those gates pass.
 
 ## Progress log
 
@@ -165,8 +169,15 @@ blocks are deferred until those gates pass.
   data-recovery checklist.
 - Added a normalized discrete-Gaussian local nucleus move with exact finite-grid
   forward/reverse normalization and pointwise balance tests.
+- Added an opt-in paper-style local-move sampler mode while preserving the
+  existing global-move fixed-seed path as the default.
+- Added an independent 12-state location-kernel oracle that verifies stochastic
+  rows, rejection self-mass, detailed balance, and stationarity; it explicitly
+  excludes continuous coefficient and birth/death kernels.
 - Added paper-defined native-grid trace reconstruction, saved-row burn-in and
   thinning selection, posterior mean/quantiles, and comparison-vector RMSE.
+- The expanded focused suite passes all 157 tests, including the slow seeded
+  recovery case; Ruff formatting/checks and Pyright also pass.
 
 ## Open questions
 
