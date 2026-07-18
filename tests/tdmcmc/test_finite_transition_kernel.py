@@ -15,6 +15,7 @@ from math import exp, log, pi, sqrt
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 
 from openghg_inversions.tdmcmc.core import (
     TransDimensionalProblem,
@@ -288,6 +289,149 @@ def _nucleus_key(state: TransDimensionalState) -> tuple[int, ...]:
     return tuple(int(nucleus) for nucleus in state.active_nuclei)
 
 
+def _enumerated_dimension_direction(
+    problem: TransDimensionalProblem,
+    states: list[TransDimensionalState],
+    *,
+    move: str,
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+    """Enumerate a conditionally selected birth-only or death-only matrix."""
+    if move not in ("birth", "death"):
+        raise ValueError("move must be 'birth' or 'death'.")
+    keys = [_nucleus_key(state) for state in states]
+    indices = {key: index for index, key in enumerate(keys)}
+    transition_matrix = np.zeros((len(states), len(states)), dtype=np.float64)
+    rejected_mass = np.zeros(len(states), dtype=np.float64)
+    invalid_boundary_mass = np.zeros(len(states), dtype=np.float64)
+
+    for source_index, source in enumerate(states):
+        source_key = keys[source_index]
+        occupied = set(source_key)
+
+        if move == "birth":
+            if source.k == problem.k_max:
+                invalid_transition = propose_birth(
+                    problem,
+                    source,
+                    new_nucleus=0,
+                    proposed_coefficient=1.0,
+                    proposal_stdev=_UNIT_DENSITY_PROPOSAL_SD,
+                )
+                assert not invalid_transition.valid
+                assert invalid_transition.candidate is source
+                invalid_boundary_mass[source_index] = 1.0
+            else:
+                forward_probability = 1.0 / (problem.ncell - source.k)
+                reverse_probability = 1.0 / (source.k + 1)
+                for destination in range(problem.ncell):
+                    if destination in occupied:
+                        continue
+                    transition = propose_birth(
+                        problem,
+                        source,
+                        new_nucleus=destination,
+                        proposed_coefficient=1.0,
+                        proposal_stdev=_UNIT_DENSITY_PROPOSAL_SD,
+                    )
+                    candidate_index = indices[_nucleus_key(transition.candidate)]
+                    log_alpha = min(
+                        0.0,
+                        transition.candidate.log_target
+                        - source.log_target
+                        + log(reverse_probability)
+                        - log(forward_probability),
+                    )
+                    acceptance_probability = exp(log_alpha)
+
+                    assert transition.valid
+                    assert exp(transition.log_q_forward) == pytest.approx(
+                        forward_probability,
+                        rel=0.0,
+                        abs=2e-15,
+                    )
+                    assert exp(transition.log_q_reverse) == pytest.approx(
+                        reverse_probability,
+                        rel=0.0,
+                        abs=2e-15,
+                    )
+                    assert min(0.0, transition.log_acceptance_ratio) == pytest.approx(
+                        log_alpha,
+                        rel=0.0,
+                        abs=2e-15,
+                    )
+
+                    transition_matrix[source_index, candidate_index] += (
+                        forward_probability * acceptance_probability
+                    )
+                    rejected_mass[source_index] += forward_probability * (1.0 - acceptance_probability)
+        elif source.k == problem.k_min:
+            invalid_transition = propose_death(
+                problem,
+                source,
+                remove_position=0,
+                proposal_stdev=_UNIT_DENSITY_PROPOSAL_SD,
+            )
+            assert not invalid_transition.valid
+            assert invalid_transition.candidate is source
+            invalid_boundary_mass[source_index] = 1.0
+        else:
+            forward_probability = 1.0 / source.k
+            reverse_probability = 1.0 / (problem.ncell - (source.k - 1))
+            for position in range(source.k):
+                transition = propose_death(
+                    problem,
+                    source,
+                    remove_position=position,
+                    proposal_stdev=_UNIT_DENSITY_PROPOSAL_SD,
+                )
+                candidate_index = indices[_nucleus_key(transition.candidate)]
+                log_alpha = min(
+                    0.0,
+                    transition.candidate.log_target
+                    - source.log_target
+                    + log(reverse_probability)
+                    - log(forward_probability),
+                )
+                acceptance_probability = exp(log_alpha)
+
+                assert transition.valid
+                assert exp(transition.log_q_forward) == pytest.approx(
+                    forward_probability,
+                    rel=0.0,
+                    abs=2e-15,
+                )
+                assert exp(transition.log_q_reverse) == pytest.approx(
+                    reverse_probability,
+                    rel=0.0,
+                    abs=2e-15,
+                )
+                assert min(0.0, transition.log_acceptance_ratio) == pytest.approx(
+                    log_alpha,
+                    rel=0.0,
+                    abs=2e-15,
+                )
+
+                transition_matrix[source_index, candidate_index] += (
+                    forward_probability * acceptance_probability
+                )
+                rejected_mass[source_index] += forward_probability * (1.0 - acceptance_probability)
+
+        transition_matrix[source_index, source_index] += (
+            rejected_mass[source_index] + invalid_boundary_mass[source_index]
+        )
+
+    np.testing.assert_allclose(transition_matrix.sum(axis=1), 1.0, rtol=0.0, atol=2e-15)
+    assert np.all(transition_matrix >= 0.0)
+    return transition_matrix, rejected_mass, invalid_boundary_mass
+
+
+def _target_probability(states: list[TransDimensionalState]) -> NDArray[np.float64]:
+    """Normalize the declared target over an enumerated state list."""
+    log_target = np.array([state.log_target for state in states])
+    target_probability = np.exp(log_target - np.max(log_target))
+    return target_probability / target_probability.sum()
+
+
 def test_exact_mixed_k_birth_death_kernel_is_reversible_and_stationary(
     mixed_k_problem: TransDimensionalProblem,
 ) -> None:
@@ -299,176 +443,22 @@ def test_exact_mixed_k_birth_death_kernel_is_reversible_and_stationary(
     coincide with a declared discrete subset kernel; it does not test the
     general continuous Gaussian auxiliary proposal by integration.
     """
-    problem = mixed_k_problem
-    states = _enumerate_nucleus_subsets(problem)
-    keys = [_nucleus_key(state) for state in states]
-    indices = {key: index for index, key in enumerate(keys)}
+    states = _enumerate_nucleus_subsets(mixed_k_problem)
     assert len(states) == 7
+    birth_matrix, birth_rejected, birth_invalid = _enumerated_dimension_direction(
+        mixed_k_problem,
+        states,
+        move="birth",
+    )
+    death_matrix, death_rejected, death_invalid = _enumerated_dimension_direction(
+        mixed_k_problem,
+        states,
+        move="death",
+    )
+    transition_matrix = 0.5 * (birth_matrix + death_matrix)
+    rejected_mass = 0.5 * (birth_rejected + death_rejected)
+    invalid_boundary_mass = 0.5 * (birth_invalid + death_invalid)
 
-    transition_matrix = np.zeros((len(states), len(states)), dtype=np.float64)
-    rejected_mass = np.zeros(len(states), dtype=np.float64)
-    invalid_boundary_mass = np.zeros(len(states), dtype=np.float64)
-    move_probability = 0.5
-
-    for source_index, source in enumerate(states):
-        source_key = keys[source_index]
-        occupied = set(source_key)
-
-        if source.k == problem.k_max:
-            invalid_birth = propose_birth(
-                problem,
-                source,
-                new_nucleus=0,
-                proposed_coefficient=1.0,
-                proposal_stdev=_UNIT_DENSITY_PROPOSAL_SD,
-            )
-            assert not invalid_birth.valid
-            assert invalid_birth.candidate is source
-            invalid_boundary_mass[source_index] += move_probability
-        else:
-            birth_probability = move_probability / (problem.ncell - source.k)
-            for destination in range(problem.ncell):
-                if destination in occupied:
-                    continue
-                transition = propose_birth(
-                    problem,
-                    source,
-                    new_nucleus=destination,
-                    proposed_coefficient=1.0,
-                    proposal_stdev=_UNIT_DENSITY_PROPOSAL_SD,
-                )
-                candidate_key = _nucleus_key(transition.candidate)
-                candidate_index = indices[candidate_key]
-                reverse_probability = move_probability / (source.k + 1)
-                expected_conditional_forward = 1.0 / (problem.ncell - source.k)
-                expected_conditional_reverse = 1.0 / (source.k + 1)
-                log_alpha = min(
-                    0.0,
-                    transition.candidate.log_target
-                    - source.log_target
-                    + log(reverse_probability)
-                    - log(birth_probability),
-                )
-                acceptance_probability = exp(log_alpha)
-
-                assert transition.valid
-                assert transition.log_q_forward == pytest.approx(
-                    -log(problem.ncell - source.k),
-                    rel=0.0,
-                    abs=2e-15,
-                )
-                assert transition.log_q_reverse == pytest.approx(
-                    -log(source.k + 1),
-                    rel=0.0,
-                    abs=2e-15,
-                )
-                assert exp(transition.log_q_forward) == pytest.approx(
-                    expected_conditional_forward,
-                    rel=0.0,
-                    abs=2e-15,
-                )
-                assert exp(transition.log_q_reverse) == pytest.approx(
-                    expected_conditional_reverse,
-                    rel=0.0,
-                    abs=2e-15,
-                )
-                assert birth_probability == pytest.approx(
-                    move_probability * exp(transition.log_q_forward),
-                    rel=0.0,
-                    abs=2e-15,
-                )
-                assert reverse_probability == pytest.approx(
-                    move_probability * exp(transition.log_q_reverse),
-                    rel=0.0,
-                    abs=2e-15,
-                )
-                assert min(0.0, transition.log_acceptance_ratio) == pytest.approx(
-                    log_alpha,
-                    rel=0.0,
-                    abs=2e-15,
-                )
-
-                transition_matrix[source_index, candidate_index] += birth_probability * acceptance_probability
-                rejected_mass[source_index] += birth_probability * (1.0 - acceptance_probability)
-
-        if source.k == problem.k_min:
-            invalid_death = propose_death(
-                problem,
-                source,
-                remove_position=0,
-                proposal_stdev=_UNIT_DENSITY_PROPOSAL_SD,
-            )
-            assert not invalid_death.valid
-            assert invalid_death.candidate is source
-            invalid_boundary_mass[source_index] += move_probability
-        else:
-            death_probability = move_probability / source.k
-            for position in range(source.k):
-                transition = propose_death(
-                    problem,
-                    source,
-                    remove_position=position,
-                    proposal_stdev=_UNIT_DENSITY_PROPOSAL_SD,
-                )
-                candidate_key = _nucleus_key(transition.candidate)
-                candidate_index = indices[candidate_key]
-                reverse_probability = move_probability / (problem.ncell - (source.k - 1))
-                expected_conditional_forward = 1.0 / source.k
-                expected_conditional_reverse = 1.0 / (problem.ncell - (source.k - 1))
-                log_alpha = min(
-                    0.0,
-                    transition.candidate.log_target
-                    - source.log_target
-                    + log(reverse_probability)
-                    - log(death_probability),
-                )
-                acceptance_probability = exp(log_alpha)
-
-                assert transition.valid
-                assert transition.log_q_forward == pytest.approx(
-                    -log(source.k),
-                    rel=0.0,
-                    abs=2e-15,
-                )
-                assert transition.log_q_reverse == pytest.approx(
-                    -log(problem.ncell - (source.k - 1)),
-                    rel=0.0,
-                    abs=2e-15,
-                )
-                assert exp(transition.log_q_forward) == pytest.approx(
-                    expected_conditional_forward,
-                    rel=0.0,
-                    abs=2e-15,
-                )
-                assert exp(transition.log_q_reverse) == pytest.approx(
-                    expected_conditional_reverse,
-                    rel=0.0,
-                    abs=2e-15,
-                )
-                assert death_probability == pytest.approx(
-                    move_probability * exp(transition.log_q_forward),
-                    rel=0.0,
-                    abs=2e-15,
-                )
-                assert reverse_probability == pytest.approx(
-                    move_probability * exp(transition.log_q_reverse),
-                    rel=0.0,
-                    abs=2e-15,
-                )
-                assert min(0.0, transition.log_acceptance_ratio) == pytest.approx(
-                    log_alpha,
-                    rel=0.0,
-                    abs=2e-15,
-                )
-
-                transition_matrix[source_index, candidate_index] += death_probability * acceptance_probability
-                rejected_mass[source_index] += death_probability * (1.0 - acceptance_probability)
-
-        transition_matrix[source_index, source_index] += (
-            rejected_mass[source_index] + invalid_boundary_mass[source_index]
-        )
-
-    np.testing.assert_allclose(transition_matrix.sum(axis=1), 1.0, rtol=0.0, atol=2e-15)
     np.testing.assert_allclose(
         np.diag(transition_matrix),
         rejected_mass + invalid_boundary_mass,
@@ -476,17 +466,20 @@ def test_exact_mixed_k_birth_death_kernel_is_reversible_and_stationary(
         atol=1e-15,
     )
     np.testing.assert_allclose(
-        invalid_boundary_mass[[index for index, state in enumerate(states) if state.k in (1, 3)]],
+        invalid_boundary_mass[
+            [
+                index
+                for index, state in enumerate(states)
+                if state.k in (mixed_k_problem.k_min, mixed_k_problem.k_max)
+            ]
+        ],
         0.5,
         rtol=0.0,
         atol=0.0,
     )
     assert np.all(invalid_boundary_mass[[index for index, state in enumerate(states) if state.k == 2]] == 0.0)
-    assert np.all(transition_matrix >= 0.0)
 
-    log_target = np.array([state.log_target for state in states])
-    target_probability = np.exp(log_target - np.max(log_target))
-    target_probability /= target_probability.sum()
+    target_probability = _target_probability(states)
     stationary_probability = target_probability @ transition_matrix
     probability_flux = target_probability[:, np.newaxis] * transition_matrix
 
@@ -502,3 +495,39 @@ def test_exact_mixed_k_birth_death_kernel_is_reversible_and_stationary(
         rtol=2e-13,
         atol=2e-15,
     )
+
+
+def test_legacy_deterministic_birth_then_death_is_not_stationary(
+    mixed_k_problem: TransDimensionalProblem,
+) -> None:
+    """A finite counterexample disproves the legacy scheduler's general validity.
+
+    The diagnostic direction and magnitude belong only to this special target;
+    they do not estimate the bias in any production inversion.
+    """
+    states = _enumerate_nucleus_subsets(mixed_k_problem)
+    birth_matrix, _, _ = _enumerated_dimension_direction(
+        mixed_k_problem,
+        states,
+        move="birth",
+    )
+    death_matrix, _, _ = _enumerated_dimension_direction(
+        mixed_k_problem,
+        states,
+        move="death",
+    )
+    target_probability = _target_probability(states)
+    legacy_probability = target_probability @ birth_matrix @ death_matrix
+    k_values = np.array([state.k for state in states], dtype=np.float64)
+    target_mean_k = float(target_probability @ k_values)
+    legacy_mean_k = float(legacy_probability @ k_values)
+    total_variation = 0.5 * float(np.abs(legacy_probability - target_probability).sum())
+    maximum_error = float(np.max(np.abs(legacy_probability - target_probability)))
+
+    assert target_mean_k == pytest.approx(2.0109085412733863, rel=1e-10)
+    assert legacy_mean_k == pytest.approx(1.6883364491025823, rel=1e-10)
+    assert total_variation == pytest.approx(0.3332157829544389, rel=1e-10)
+    assert maximum_error == pytest.approx(0.3278939375626214, rel=1e-10)
+    assert abs(legacy_mean_k - target_mean_k) > 0.3
+    assert total_variation > 0.3
+    assert maximum_error > 0.3
