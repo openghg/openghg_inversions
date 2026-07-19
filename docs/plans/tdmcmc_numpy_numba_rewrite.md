@@ -88,6 +88,10 @@ will be introduced only behind equivalence tests.
 | 2026-07-18 | Add an emissions-only, test-data-backed pseudo-data benchmark before archived paper data are recovered. | The repository contains EDGAR7/UKGHG flux and one week of hourly TAC/MHD NAME footprints on the paper's native EUROPE grid. A 56-longitude by 48-latitude crop can exercise the real forward operator while fixed outer emissions are subtracted exactly and the known-corrupt boundary-condition files remain unopened. The 56 six-hour observations support prediction validation, not a claim of native-grid or posterior-`k` recovery. |
 | 2026-07-18 | Split the replayable NAME/EDGAR checkerboard workflow into a root example script plus focused regression tests. | Recent draft PRs #502 and #506 establish this pattern for the other model-selection experiments. Data paths, crop policy, pseudo-data construction, comparators, CLI controls, and reporting are example concerns; exact accounting, a cheap smoke path, and the optional slow comparison remain tests. The directory was subsequently named `examples/rjmcmc` when the experimental package namespace was decided. A new package module is deferred until a second consumer establishes a stable reusable boundary. |
 | 2026-07-19 | Publish the implementation under an explicitly experimental RJMCMC namespace rather than treating `tdmcmc` as a supported top-level API. | The implementation is specifically reversible-jump MCMC, while trans-dimensional MCMC is a broader family. An `experimental` namespace communicates stability without an import-time warning that would pollute tests, notebooks, documentation builds, and downstream `-W error` use. Example-specific orchestration remains outside the package. |
+| 2026-07-19 | Model known offsets and always-active linear predictors separately from the variable Voronoi field. | This supports fixed boundary offsets and jointly inferred InTEM outer-region coefficients without assigning them artificial nuclei or allowing structural moves to remove them. |
+| 2026-07-19 | Add a fifth coefficient-update slot only when an inferred fixed predictor block is present. | The four-slot no-block schedule and its seeded traces remain unchanged; fixed-block runs alternate dynamic and fixed coefficient opportunities around the two reversible structural slots and one nucleus slot. |
+| 2026-07-19 | Define retention by global completed-transition number and carry the complete PCG64 and schedule state across segments. | Split execution must be exactly equivalent to an uninterrupted chain, including at schedule and thinning boundaries, and a resumed segment must not duplicate its incoming state. |
+| 2026-07-19 | Infer all seven test-data-backed outer-emissions coefficients in every fair checkerboard comparator. | The oracle and non-oracle fixed inner layouts and the trans-dimensional inner field now share the same outer design, priors, proposal scale, observation vector, and total-prediction metric. Boundary-condition fixtures remain excluded. |
 
 ## Current offline work queue
 
@@ -95,28 +99,33 @@ The archived paper inputs are expected to remain unavailable for several days.
 That blocks only the faithful-data reproduction stage; it does not block the
 following correctness and integration work. Items are ordered by dependency.
 
-1. Add an independent continuous-coefficient structural-kernel oracle. Combine
-   varied pointwise forward/reverse flux properties with a tiny numerical
-   integration or converged discretisation that includes the invalid negative
-   Gaussian proposal mass as a self-transition.
-2. Move the NAME/EDGAR benchmark orchestration into
+1. **Completed:** add an independent continuous-coefficient structural-kernel
+   oracle, combining varied pointwise forward/reverse flux properties with
+   numerical quadrature that includes invalid negative Gaussian proposal mass
+   as a self-transition.
+2. **Completed:** move the NAME/EDGAR benchmark orchestration into
    `examples/rjmcmc/lunt_name_edgar_checkerboard.py`, leaving focused accounting,
    adapter-ordering, no-boundary-condition, comparator, and smoke contracts in
    pytest.
-3. Introduce immutable, validated run-profile and provenance primitives. Do not
-   silently invent paper settings that have not been confirmed, and keep the
-   manifest compatible with future retained-draw and checkpoint output.
-4. **Completed:** renamed the package to
-   `openghg_inversions.experimental.rjmcmc` after the concurrent test/example
-   work was integrated and updated imports atomically. No compatibility shim
-   or import-time warning was retained because this branch has not been
-   released.
-5. Extend the forward model with an always-active fixed block so InTEM outer
-   emissions coefficients can be inferred jointly with the variable inner
-   regions. Continue to exclude the known-corrupt boundary-condition fixture.
-6. Add retained-draw collection and exact restart state before attempting
-   expensive chains. Hierarchical emissions/error parameters and site-block
-   temporal correlation follow behind those correctness and output gates.
+3. **Completed:** introduce immutable, validated run-profile and provenance
+   primitives without silently inventing unconfirmed paper settings.
+4. **Completed:** rename the package to
+   `openghg_inversions.experimental.rjmcmc` and update imports atomically. No
+   compatibility shim or import-time warning was retained because this branch
+   has not been released.
+5. **Completed:** extend the forward model, RHIME-style adapter, sampler, and
+   prediction summaries with an always-active fixed block. The NAME/EDGAR
+   example now jointly infers seven InTEM outer-emissions coefficients for all
+   three comparator methods while excluding the corrupt boundary-condition
+   fixture.
+6. **Completed in memory; durable format in progress:** collect retained draws
+   on a global transition clock and support exact split-chain continuation with
+   preserved PCG64, schedule, retention, kernel, and fixed-block state.
+7. Add a strict, atomic checkpoint file and an xarray retained-trace export
+   before attempting expensive or production-connected chains.
+8. Design and validate dimension-dependent emissions hyperparameters, followed
+   by grouped/site-block error scales and the correlated likelihood. Do not
+   invent the still-unconfirmed Lunt prior bounds or proposal scales.
 
 This repository does not currently contain an agent-tracker configuration, so
 the queue, ownership, decisions, and evidence are recorded in this planning
@@ -136,7 +145,10 @@ document and in small commits on the draft branch.
   stationarity.
 - [x] A seven-state mixed-`k` fixed-coefficient birth/death subkernel satisfies
   count-factor accounting, mixture boundary self-mass, detailed balance, and
-  stationarity. General continuous auxiliary integration remains follow-up.
+  stationarity.
+- [x] Continuous auxiliary-coefficient structural proposals satisfy varied
+  pointwise forward/reverse flux checks and independent two-cell quadrature,
+  including negative-proposal self-mass.
 - [x] Forced birth/death pairs satisfy pointwise detailed balance.
 - [x] NumPy and Numba kernels agree for deterministic and randomised states.
 - [x] Fixed-seed sampling is reproducible.
@@ -153,6 +165,11 @@ document and in small commits on the draft branch.
   data-limited two-site design.
 - [x] Filtered RHIME-style `fp_x_flux` inputs preserve longitude-fast grid
   ordering and observation alignment.
+- [x] Explicit fixed predictors preserve observation ordering, are sampled in
+  a separate schedule slot, and contribute correctly to likelihood, priors,
+  total prediction, summaries, and exact continuation.
+- [x] Split retained chains exactly reproduce uninterrupted chains across
+  non-aligned schedule and thinning boundaries.
 - [x] Retained traces reconstruct on the native grid with posterior
   mean/quantiles and posterior-mean prediction RMSE.
 - [x] Focused tests, Ruff checks, formatting checks, and configured type checks pass.
@@ -175,11 +192,11 @@ prepared-dataset adapter, while production runner and output integration in
 stages 6--7 remain follow-up work.
 
 The first paper-specific mechanics are now implemented: native-grid posterior
-projection, an opt-in normalized local discrete-Gaussian sampler move, a
-calibrated two-dimensional checkerboard recovery benchmark, and exact finite
-location and special birth/death subkernel oracles. Next are declared paper
-profile metadata and validation of the general continuous birth/death auxiliary
-proposal. Full hierarchical error and boundary blocks remain deferred.
+projection, an opt-in normalized local discrete-Gaussian sampler move,
+continuous and finite structural-kernel oracles, declared run profiles, exact
+retention/continuation, and joint dynamic-inner/fixed-outer prediction. Durable
+checkpoint files and retained-trace interchange are the current output gates.
+Full hierarchical emissions and correlated-error blocks remain deferred.
 
 ## Progress log
 
@@ -195,6 +212,24 @@ proposal. Full hierarchical error and boundary blocks remain deferred.
   `openghg_inversions.experimental.rjmcmc`, moved its focused suite to
   `tests/experimental/rjmcmc`, and updated the example and internal imports.
   The unreleased former namespace has no compatibility shim or import warning.
+- Added independent continuous-coefficient balance validation: 64 varied
+  pointwise forward/reverse checks plus three two-cell quadrature cases with up
+  to 45.45% invalid negative-Gaussian proposal self-mass. No rewrite defect was
+  found by these checks.
+- Added immutable run profiles and canonical provenance manifests with explicit
+  target settings, sampler settings, retention, seed, and code/input hashes.
+- Added global-clock retained-draw collection and exact in-memory continuation.
+  Checkpoints retain the PCG64 state, kernel and schedule identity, retention
+  phase, transition count, and fixed predictor coefficients.
+- Added an always-active predictor block throughout the numerical problem,
+  proposal accounting, sampler, RHIME-style input adapter, and posterior
+  prediction summaries. Runs without this block preserve the original seeded
+  four-slot schedule exactly.
+- Converted the NAME/EDGAR example from subtracting an assumed-known outer
+  contribution to jointly inferring the seven InTEM outer-emissions factors.
+  Oracle, non-oracle fixed, and trans-dimensional inner methods now use the same
+  observations, outer design and priors, proposal opportunities, and total
+  prediction RMSE. The corrupt boundary-condition fixture is still never read.
 
 ### 2026-07-18
 

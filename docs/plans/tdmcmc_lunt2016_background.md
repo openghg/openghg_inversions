@@ -375,7 +375,7 @@ xarray multiplication silently intersects only part of the grid, so the loader
 must first validate equal shapes and numerically close coordinates and then
 multiply by position or explicitly override alignment.
 
-The pseudo-observation contract is
+The first pseudo-observation accounting contract was
 
 \[
 y_{\mathrm{full}}=b_{\mathrm{outer}}+G_{\mathrm{inner}}x_{\mathrm{truth}}
@@ -383,10 +383,12 @@ y_{\mathrm{full}}=b_{\mathrm{outer}}+G_{\mathrm{inner}}x_{\mathrm{truth}}
 y_{\mathrm{inversion}}=y_{\mathrm{full}}-b_{\mathrm{outer}},
 \]
 
-with independent `epsilon ~ Normal(0, 5 ppb)`. The fixed outer contribution is
-computed from the same NAME footprints and EDGAR field at scaling one. No
-observed mole fractions, boundary curtains, `bc_mod`, or boundary-condition
-file enters the calculation.
+with independent `epsilon ~ Normal(0, 5 ppb)`. This subtraction was useful for
+validating the decomposition. The current benchmark instead fits `y_full`
+directly and includes the seven-column outer-emissions design as an
+always-active inferred predictor with unit prior means. No observed mole
+fractions, boundary curtains, `bc_mod`, or boundary-condition file enters the
+calculation.
 
 The packaged EUROPE InTEM map is useful as an accounting layout but is not the
 paper mask. It has labels zero through five for six fixed outer regions and a
@@ -394,7 +396,7 @@ paper mask. It has labels zero through five for six fixed outer regions and a
 inside that inner class, leaving a seventh fixed remainder between the crop and
 the InTEM outer regions. Aggregating those seven fixed blocks and setting their
 coefficients to one must equal `b_outer`; jointly inferring their coefficients
-requires the planned composite-predictor extension.
+is now handled by the experimental composite predictor.
 
 This substitute is deliberately limited. It uses two rather than four sites,
 one January 2019 week rather than May--June 2014, 56 rather than 942 rows, and
@@ -406,14 +408,17 @@ including site-specific diagnostics. Unweighted grid RMSE, spatial correlation,
 contrast, and sampled `k` are diagnostics only and must not be compared with
 the paper's reported field or posterior-`k` results.
 
-The first seeded 20,000-transition gate gives prediction RMSEs of 6.57 ppb for
-the all-ones prior, 1.51 ppb for a fixed inversion given the true sixteen
-rectangles, 1.73 ppb for a non-oracle sixteen-region sensitivity-weighted
-quadtree basis, and 1.69 ppb for the trans-dimensional inversion. Each sampler
-receives 5,000 coefficient-proposal slots. The trans-dimensional run uses
-uniform `k=5..100`, starts at `k=40`, and visits `k=6..88`; that broad range is
-a mixing observation only. It is not evidence for a preferred dimension.
-Movable fixed-`k` and random-layout controls remain useful follow-up comparisons.
+The original seeded 20,000-transition subtraction gate gave prediction RMSEs
+of 6.57 ppb for the all-ones prior, 1.51 ppb for a fixed inversion given the
+true sixteen rectangles, 1.73 ppb for a non-oracle sixteen-region
+sensitivity-weighted quadtree basis, and 1.69 ppb for the trans-dimensional
+inversion. The current joint-inner/outer implementation uses a five-slot
+schedule and therefore gives each method 4,000 dynamic and 4,000 fixed
+coefficient opportunities in 20,000 transitions. Its calibrated long-run
+results must be regenerated before quoting replacement RMSEs. Sampled `k`
+remains a mixing/posterior diagnostic governed by its declared prior, not a
+field-recovery score. Movable fixed-`k` and random-layout controls remain useful
+follow-up comparisons.
 
 ## Reproduction profile B: Lunt2016-real
 
@@ -454,10 +459,15 @@ Already implemented:
 - coefficient, birth, death, globally symmetric move, and normalized local
   discrete-Gaussian move proposals;
 - explicit proposal and target terms with pointwise birth/death balance tests;
+- continuous auxiliary-coefficient balance validation by varied pointwise
+  checks and independent numerical quadrature including invalid proposal mass;
 - a fixed outer schedule of coefficient, two reversible 50/50 birth/death
   mixture steps, and a configurable global or paper-style local nucleus move;
 - NumPy/Numba parity and fixed-seed replay;
-- filtered RHIME `fp_x_flux` adapter;
+- filtered RHIME `fp_x_flux` adapter with explicit fixed design/offset inputs;
+- an always-active fixed predictor whose coefficients have lognormal priors and
+  a separate proposal slot when present;
+- globally phased retained-draw collection and exact in-memory continuation;
 - per-draw native-grid reconstruction, posterior mean/quantiles, retained-row
   selection, posterior-mean prediction, and comparison-vector RMSE;
 - an independently enumerated fixed-`k`, fixed-coefficient location kernel that
@@ -465,19 +475,17 @@ Already implemented:
   and stationarity on an irregular finite grid;
 - an exact seven-state mixed-`k` birth/death subkernel that verifies nucleus-set
   combinatorics, move-count factors, mixture boundary self-mass, detailed
-  balance, and stationarity at a special fixed coefficient/proposal density.
+  balance, and stationarity at a special fixed coefficient/proposal density;
+- total-prediction summaries that separate dynamic-inner, fixed-block, and
+  fixed-offset contributions.
 
 Next paper-first gaps:
 
-1. validation of the general continuous birth/death auxiliary proposal beyond
-   the completed special fixed-coefficient finite oracle;
-2. paper profile/configuration object and provenance metadata;
-3. sampler-side retained-draw/checkpoint output (postprocessing already accepts
-   saved-row burn-in and thinning selections);
-4. dimension-dependent emissions hyperparameters and their proposal cycle;
-5. composite predictor with fixed outer emissions and boundary blocks;
-6. grouped/site-block `sigma_y` and AR(1) `tau` likelihood;
-7. real-data preparation and comparison once archived inputs are available.
+1. strict durable checkpoint serialization and retained-trace xarray export;
+2. dimension-dependent emissions hyperparameters and their proposal cycle;
+3. fixed boundary-curtain design inputs once reliable data are available;
+4. grouped/site-block `sigma_y` and AR(1) `tau` likelihood;
+5. real-data preparation and comparison once archived inputs are available.
 
 Temporal partitions, multisector inference, and parallel tempering are not part
 of the Lunt (2016) reproduction milestone. The main paper describes parallel
