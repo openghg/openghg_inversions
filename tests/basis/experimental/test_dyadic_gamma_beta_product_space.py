@@ -125,6 +125,7 @@ def test_builder_accepts_vector_standard_deviations_and_freezes_arrays() -> None
     np.testing.assert_array_equal(target.observation_covariance, np.diag([0.25, 4.0]))
     assert not target.observations.flags.writeable
     assert not target.node_design.flags.writeable
+    assert not target._observation_cholesky.flags.writeable
 
 
 def test_target_rejects_invalid_covariance_and_observation_counts() -> None:

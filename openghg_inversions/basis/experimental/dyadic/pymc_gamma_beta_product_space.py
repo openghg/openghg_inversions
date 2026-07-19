@@ -501,12 +501,23 @@ def build_pymc_gamma_beta_product_space_model(
             + pt.as_tensor_variable(_model_float(target.node_design))
             @ (node_scalings * active_node_mask),
         )
-        pm.MvNormal(
-            "observations",
-            mu=prediction,
-            cov=_model_float(target.observation_covariance),
-            observed=_model_float(target.observations),
+        observation_sd = _diagonal_standard_deviations(
+            target.observation_covariance
         )
+        if observation_sd is None:
+            pm.MvNormal(
+                "observations",
+                mu=prediction,
+                cov=_model_float(target.observation_covariance),
+                observed=_model_float(target.observations),
+            )
+        else:
+            pm.Normal(
+                "observations",
+                mu=prediction,
+                sigma=_model_float(observation_sd),
+                observed=_model_float(target.observations),
+            )
 
     return PyMCGammaBetaProductSpaceModel(
         model=model,
@@ -558,6 +569,16 @@ def _finite_vector(values: npt.ArrayLike, *, name: str) -> npt.NDArray[np.float6
 def _model_float(values: npt.ArrayLike | float) -> npt.NDArray[np.floating[Any]]:
     """Cast numeric constants to the configured PyTensor floating dtype."""
     return np.asarray(values, dtype=config.floatX)
+
+
+def _diagonal_standard_deviations(
+    covariance: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64] | None:
+    """Return diagonal standard deviations, or ``None`` for full covariance."""
+    diagonal = np.diag(covariance)
+    if not np.array_equal(covariance, np.diag(diagonal)):
+        return None
+    return np.sqrt(diagonal)
 
 
 __all__ = [

@@ -15,7 +15,7 @@ RHIME inversion entry points.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 
 import numpy as np
@@ -46,6 +46,11 @@ class GammaBetaProductSpaceTarget:
     observation_covariance: npt.NDArray[np.float64]
     coordinate_layout: GammaBetaCoordinateLayout
     node_design: npt.NDArray[np.float64]
+    _observation_cholesky: npt.NDArray[np.float64] = field(
+        init=False,
+        repr=False,
+    )
+    _observation_log_determinant: float = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Validate and freeze the complete numerical target."""
@@ -79,7 +84,7 @@ class GammaBetaProductSpaceTarget:
         if not np.allclose(covariance, covariance.T, rtol=1.0e-12, atol=1.0e-12):
             raise ValueError("observation_covariance must be symmetric.")
         try:
-            np.linalg.cholesky(covariance)
+            cholesky = np.linalg.cholesky(covariance)
         except np.linalg.LinAlgError as error:
             raise ValueError(
                 "observation_covariance must be positive definite."
@@ -102,6 +107,14 @@ class GammaBetaProductSpaceTarget:
             frozen = values.copy()
             frozen.setflags(write=False)
             object.__setattr__(self, name, frozen)
+        frozen_cholesky = cholesky.copy()
+        frozen_cholesky.setflags(write=False)
+        object.__setattr__(self, "_observation_cholesky", frozen_cholesky)
+        object.__setattr__(
+            self,
+            "_observation_log_determinant",
+            2.0 * float(np.log(np.diag(cholesky)).sum()),
+        )
 
     @classmethod
     def from_grid(
@@ -232,14 +245,12 @@ class GammaBetaProductSpaceTarget:
             split_fractions,
         )
         residual = self.observations - prediction
-        cholesky = np.linalg.cholesky(self.observation_covariance)
-        whitened = np.linalg.solve(cholesky, residual)
-        log_determinant = 2.0 * float(np.log(np.diag(cholesky)).sum())
+        whitened = np.linalg.solve(self._observation_cholesky, residual)
         return float(
             -0.5
             * (
                 observations_size_log_two_pi(self.observations.size)
-                + log_determinant
+                + self._observation_log_determinant
                 + whitened @ whitened
             )
         )

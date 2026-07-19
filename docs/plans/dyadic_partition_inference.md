@@ -1970,6 +1970,13 @@ poor local partition traversal.
     too permissive at this observation count, demonstrating that complexity
     prior design is substantive rather than sampler tuning. See
     `docs/reports/dyadic_gamma_beta_intem_product_space_recovery.md`.
+11. **Validated and optimized the reusable sampler path:** diagonal residual
+    covariance now uses independent PyMC Normal observations while correlated
+    covariance retains MvNormal; the NumPy oracle caches its Cholesky factor;
+    and a 10,000-draw prior-only structural chain recovers the exact normalized
+    probabilities of all five partitions in a depth-two tree. This tests the
+    split/merge Hastings correction over a complete partition graph rather than
+    only checking individual proposals.
 
 ### Phase 4: scale-up and alternatives
 

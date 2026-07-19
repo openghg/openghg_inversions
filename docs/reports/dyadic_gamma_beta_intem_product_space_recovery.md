@@ -46,6 +46,12 @@ The latent full-grid field RMSE is 0.0802, slightly below the fixed true value
 0.0878. This aggregate includes large outer areas whose true scaling is one;
 the inner-land RMSE is the more discriminating spatial metric.
 
+Separately, a prior-only depth-two tree test runs the same custom structural
+step over all five possible partitions. Ten thousand retained updates recover
+every exact partition probability within 0.025 absolute error. This verifies
+the local proposal and asymmetric Hastings correction independently of this
+benchmark's favorable planted signal.
+
 ## Why the K prior matters
 
 With the same 100-region forest and a uniform marginal prior over K=11 through
@@ -95,8 +101,10 @@ and posterior field reconstruction account for the remainder.
 - Inactive Beta coordinates are updated by NUTS even when their splits are not
   active. The 100-region case is practical, but scaling should be measured
   before moving to substantially larger forests or time-varying partitions.
+- Independent observation errors use a vectorized Normal likelihood. A full
+  residual covariance remains supported through MvNormal but has not been
+  performance-tested at this forest size.
 - At a 32-inner-region sensitivity-weighted budget, ocean receives only its
   disconnected-component minimum and is separated but not further refined.
   The 100-region forest provides a larger dictionary, but posterior group-wise
   K and land/ocean split diagnostics should be added explicitly.
-

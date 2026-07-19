@@ -32,7 +32,10 @@ pytestmark = pytest.mark.filterwarnings(
 )
 
 
-def _case() -> tuple[
+def _case(
+    *,
+    correlated_observation_errors: bool = True,
+) -> tuple[
     GammaBetaProductSpaceTarget,
     GammaBetaPartitionLayout,
     GammaBetaRegionCountPrior,
@@ -56,6 +59,11 @@ def _case() -> tuple[
         ],
         require_full_coverage=True,
     )
+    covariance = (
+        np.array([[0.25, 0.05], [0.05, 0.5]])
+        if correlated_observation_errors
+        else np.diag([0.25, 0.5])
+    )
     target = GammaBetaProductSpaceTarget.from_grid(
         observations=np.array([3.0, -0.5]),
         observation_mean=np.array([0.2, -0.1]),
@@ -67,7 +75,7 @@ def _case() -> tuple[
         ),
         forest=forest,
         kappa_strategy=DepthKappaStrategy(base_kappa=4.0),
-        observation_covariance=np.array([[0.25, 0.05], [0.05, 0.5]]),
+        observation_covariance=covariance,
     )
     layout = GammaBetaPartitionLayout.from_forest(forest)
     prior = GammaBetaRegionCountPrior.uniform_k(layout)
@@ -127,6 +135,35 @@ def test_symbolic_prediction_and_likelihood_match_numpy_for_each_partition() -> 
             target.log_likelihood(active, group_roots, fractions),
             abs=2.0e-5,
         )
+
+
+def test_symbolic_diagonal_likelihood_matches_numpy_oracle() -> None:
+    """Independent Normal observations should retain the normalized density."""
+    target, layout, prior = _case(correlated_observation_errors=False)
+    adapter = build_pymc_gamma_beta_product_space_model(target, prior)
+    likelihood = adapter.model.compile_logp(vars=adapter.model.observed_RVs)
+    roots = np.array([1.2])
+    fractions = np.array([0.35])
+    point = adapter.model.initial_point()
+    point["split_mask"] = np.array(
+        [1],
+        dtype=point["split_mask"].dtype,
+    )
+    point["stochastic_group_root_scalings_log__"] = np.log(roots).astype(
+        point["stochastic_group_root_scalings_log__"].dtype
+    )
+    point["split_fractions_logodds__"] = _logit(fractions).astype(
+        point["split_fractions_logodds__"].dtype
+    )
+
+    assert float(likelihood(point)) == pytest.approx(
+        target.log_likelihood(
+            layout.active_node_ids(np.array([1])),
+            np.array([roots[0], 1.0]),
+            fractions,
+        ),
+        abs=2.0e-5,
+    )
 
 
 def test_symbolic_canonical_gate_matches_forest_codec() -> None:
@@ -274,6 +311,68 @@ def test_custom_step_uses_asymmetric_neighbor_hastings_correction() -> None:
         math.log(3.0 / reverse_degree),
         abs=2.0e-6,
     )
+
+
+@pytest.mark.slow
+def test_partition_step_recovers_exact_prior_only_distribution() -> None:
+    """A long local chain should recover the exact five-partition prior."""
+    forest = GammaBetaForest.from_groups(
+        np.ones((1, 4)),
+        [
+            GammaBetaGroupSpec(
+                "inner",
+                np.ones((1, 4), dtype=bool),
+                root_variance=0.25,
+                max_depth=2,
+            )
+        ],
+        require_full_coverage=True,
+    )
+    target = GammaBetaProductSpaceTarget.from_grid(
+        observations=np.zeros(1),
+        finest_grid_design=np.zeros((1, 1, 4)),
+        forest=forest,
+        kappa_strategy=DepthKappaStrategy(),
+    )
+    layout = GammaBetaPartitionLayout.from_forest(forest)
+    prior = GammaBetaRegionCountPrior.from_marginal_probabilities(
+        layout,
+        {
+            region_count: partition_count
+            for region_count, partition_count in enumerate(layout.partition_counts_by_k)
+            if partition_count
+        },
+    )
+    adapter = build_pymc_gamma_beta_product_space_model(target, prior)
+    with adapter.model:
+        step = GammaBetaSplitMaskStep(
+            adapter.split_mask,
+            layout=layout,
+            model=adapter.model,
+            rng=20260719,
+        )
+    point = adapter.model.initial_point()
+    canonical_masks: dict[tuple[int, ...], np.ndarray] = {}
+    for bits in product((0, 1), repeat=layout.split_count):
+        try:
+            mask = layout.canonical_split_mask(bits)
+        except ValueError:
+            continue
+        canonical_masks[tuple(int(value) for value in mask)] = mask
+    counts = {mask: 0 for mask in canonical_masks}
+
+    for draw in range(12_000):
+        point, _ = step.step(point)
+        if draw >= 2_000:
+            counts[tuple(int(value) for value in point["split_mask"])] += 1
+
+    assert len(canonical_masks) == 5
+    for key, mask in canonical_masks.items():
+        sampled_probability = counts[key] / 10_000
+        assert sampled_probability == pytest.approx(
+            math.exp(prior(mask)),
+            abs=0.025,
+        )
 
 
 def test_step_factory_assigns_mask_before_native_nuts() -> None:
