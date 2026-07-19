@@ -20,6 +20,7 @@ from numbers import Integral
 from string import hexdigits
 from typing import ClassVar, TypeAlias
 
+from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
 from openghg_inversions.experimental.rjmcmc.sampling import SamplerConfig
 
 JsonScalar: TypeAlias = str | int | float | bool | None
@@ -129,33 +130,6 @@ class TargetSettings:
 
 
 @dataclass(frozen=True, slots=True)
-class RetentionSettings:
-    """Declare how saved states will be selected from a complete chain.
-
-    Args:
-        warmup_transitions: Number of attempted transitions before the first
-            retained state. Because trace row zero is the initial state, this is
-            also the first retained saved-state row index.
-        thin: Positive transition interval between retained states.
-
-    Raises:
-        ValueError: If either setting is malformed.
-    """
-
-    warmup_transitions: int = 0
-    thin: int = 1
-
-    def __post_init__(self) -> None:
-        """Validate non-negative warmup and positive thinning."""
-        warmup = _non_negative_integer(self.warmup_transitions, name="warmup_transitions")
-        thin = _non_negative_integer(self.thin, name="thin")
-        if thin < 1:
-            raise ValueError("thin must be a positive integer.")
-        object.__setattr__(self, "warmup_transitions", warmup)
-        object.__setattr__(self, "thin", thin)
-
-
-@dataclass(frozen=True, slots=True)
 class InputReference:
     """Stable provenance for one external run input without embedding its data.
 
@@ -242,7 +216,7 @@ class RunProfile:
         name: Stable human-readable profile identifier.
         target: Scalar prior and likelihood-model settings.
         sampler: Complete transition schedule and random-number settings.
-        retention: Warmup and thinning declaration for future retained output.
+        retention: Collection-time warmup and thinning declaration.
         provenance: Source revision and external input identities.
 
     Raises:

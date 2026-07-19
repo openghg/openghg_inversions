@@ -190,6 +190,15 @@ def test_retention_settings_reject_malformed_values(kwargs: dict[str, object]) -
         RetentionSettings(**kwargs)  # type: ignore[arg-type]
 
 
+def test_retention_settings_select_global_transition_phase() -> None:
+    """Warmup and thinning should select completed transitions globally."""
+    retention = RetentionSettings(warmup_transitions=5, thin=4)
+
+    retained = [transition for transition in range(23) if retention.retains(transition)]
+
+    assert retained == [5, 9, 13, 17, 21]
+
+
 @pytest.mark.parametrize(
     ("kwargs", "match"),
     [

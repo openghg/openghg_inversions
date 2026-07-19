@@ -2,16 +2,18 @@
 
 The single-chain driver repeats a coefficient slot, two identical mixed
 birth/death slots, and a configurable nucleus-location slot using a seeded
-NumPy generator. Each dimension slot selects birth or death independently with
-equal probability. State traces include the initial state at row zero, while
-transition diagnostics describe each attempted move from row ``i`` to row
-``i + 1``. This reference driver does not yet provide burn-in management,
-parallel chains, or parallel tempering.
+NumPy PCG64 generator. Each dimension slot selects birth or death independently
+with equal probability. By default, state traces include the initial state and
+every subsequent state. Optional collection-time retention saves a global
+warmup/thinning subsequence while preserving diagnostics for every attempted
+transition. In-memory checkpoints preserve the random stream, schedule phase,
+and retention phase for exact continuation. Durable serialization, parallel
+chains, and parallel tempering are not yet provided.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isfinite, log
 from typing import Literal
 
@@ -32,6 +34,9 @@ from openghg_inversions.experimental.rjmcmc.proposals import (
     propose_global_move,
     propose_local_move,
 )
+from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
+
+SCHEDULE_ID = "four_slot_coefficient_dimension_dimension_nucleus_v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,28 +92,132 @@ class SamplerConfig:
             raise ValueError("local_move_scale is required for local nucleus moves.")
 
 
-@dataclass(frozen=True)
-class SamplingTrace:
-    """Fixed-capacity trace and transition diagnostics from one chain.
+@dataclass(frozen=True, slots=True)
+class KernelSettings:
+    """Immutable settings that define the transition kernel.
+
+    Unlike :class:`SamplerConfig`, these settings exclude the segment length
+    and initial seed. A checkpoint owns them so continuation cannot silently
+    change the kernel midway through a chain.
+    """
+
+    coefficient_proposal_sd: float
+    birth_proposal_sd: float
+    backend: Backend
+    nucleus_move: Literal["global", "local"]
+    local_move_scale: float | None
+
+    @classmethod
+    def from_config(cls, config: SamplerConfig) -> KernelSettings:
+        """Extract immutable kernel settings from a sampler configuration."""
+        return cls(
+            coefficient_proposal_sd=config.coefficient_proposal_sd,
+            birth_proposal_sd=config.birth_proposal_sd,
+            backend=config.backend,
+            nucleus_move=config.nucleus_move,
+            local_move_scale=config.local_move_scale,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PCG64State:
+    """Immutable exact state of NumPy's PCG64 bit generator."""
+
+    state: int
+    increment: int
+    has_uint32: int
+    uinteger: int
+    algorithm: str = "PCG64"
+
+    @classmethod
+    def from_generator(cls, rng: np.random.Generator) -> PCG64State:
+        """Capture an explicit PCG64 generator state without mutable mappings."""
+        bit_generator = rng.bit_generator
+        if not isinstance(bit_generator, np.random.PCG64):
+            raise TypeError("RJMCMC continuation requires a NumPy PCG64 generator.")
+        raw = bit_generator.state
+        nested = raw["state"]
+        if not isinstance(nested, dict):
+            raise TypeError("Unexpected PCG64 state representation.")
+        return cls(
+            state=int(nested["state"]),
+            increment=int(nested["inc"]),
+            has_uint32=int(raw["has_uint32"]),
+            uinteger=int(raw["uinteger"]),
+        )
+
+    def generator(self) -> np.random.Generator:
+        """Restore a new generator at exactly this state."""
+        if self.algorithm != "PCG64":
+            raise ValueError(f"Unsupported checkpoint RNG algorithm {self.algorithm!r}.")
+        bit_generator = np.random.PCG64()
+        bit_generator.state = {
+            "bit_generator": self.algorithm,
+            "state": {"state": self.state, "inc": self.increment},
+            "has_uint32": self.has_uint32,
+            "uinteger": self.uinteger,
+        }
+        return np.random.Generator(bit_generator)
+
+
+@dataclass(frozen=True, slots=True)
+class SamplerCheckpoint:
+    """Exact in-memory continuation state at a transition boundary.
+
+    The checkpoint deliberately excludes a durable problem fingerprint and
+    serialization schema. Those are required before persisted checkpoints can
+    safely be loaded against scientific inputs, but are outside this in-memory
+    continuation stage.
 
     Attributes:
-        k: Active-region count at every saved state, with shape
-            ``(iterations + 1,)``. Row zero is the initial state.
+        problem: Exact in-memory problem object used by this chain. Continuation
+            rejects an equal-but-distinct object until durable fingerprints are
+            implemented.
+        state: Fully cached state after ``transitions_completed`` transitions.
+        rng_state: Exact explicit PCG64 state for the next random draw.
+        transitions_completed: Global number of attempted transitions.
+        kernel_settings: Immutable transition-kernel settings.
+        retention: Immutable collection-time retention phase.
+        schedule_id: Identifier for the global transition schedule.
+    """
+
+    problem: TransDimensionalProblem
+    state: TransDimensionalState
+    rng_state: PCG64State
+    transitions_completed: int
+    kernel_settings: KernelSettings
+    retention: RetentionSettings
+    schedule_id: str = SCHEDULE_ID
+
+
+@dataclass(frozen=True)
+class SamplingTrace:
+    """Fixed-capacity retained states and segment transition diagnostics.
+
+    Attributes:
+        k: Active-region count at every retained state. With default retention,
+            shape is ``(iterations + 1,)`` and row zero is the initial state.
         nuclei: Padded nucleus indices with shape
-            ``(iterations + 1, k_max)``.
+            ``(n_retained, k_max)``.
         coefficients: Padded region coefficients with shape
-            ``(iterations + 1, k_max)``.
+            ``(n_retained, k_max)``.
         log_target: Normalized log target at every saved state, with shape
-            ``(iterations + 1,)``.
+            ``(n_retained,)``.
         moves: Proposal name for each attempted transition, with shape
-            ``(iterations,)``. Entry ``i`` describes the move from state row
-            ``i`` to row ``i + 1``. Mixed dimension slots record the selected
-            proposal label, ``"birth"`` or ``"death"``, rather than a generic
-            dimension-slot label.
+            ``(iterations,)``. Entry ``i`` describes segment transition ``i``;
+            it need not align with retained-state rows. Mixed dimension slots
+            record the selected proposal label, ``"birth"`` or ``"death"``,
+            rather than a generic dimension-slot label. Diagnostics always
+            describe the transitions attempted in this sampling segment,
+            including transitions whose resulting states were not retained.
         accepted: Whether each attempted transition changed the chain state,
             with shape ``(iterations,)``.
         log_acceptance_ratio: Untruncated log Metropolis-Hastings ratio for
             each attempted transition, with shape ``(iterations,)``.
+        state_transition: Global completed-transition number for each retained
+            state. It can be empty when a segment contains no retained states.
+            A missing value in a manually constructed legacy trace defaults to
+            consecutive indices starting at zero.
     """
 
     k: NDArray[np.int64]
@@ -118,6 +227,16 @@ class SamplingTrace:
     moves: NDArray[np.str_]
     accepted: NDArray[np.bool_]
     log_acceptance_ratio: NDArray[np.float64]
+    state_transition: NDArray[np.int64] = field(default_factory=lambda: np.empty(0, dtype=np.int64))
+
+    def __post_init__(self) -> None:
+        """Supply legacy consecutive indices when callers omit them."""
+        transition = np.asarray(self.state_transition, dtype=np.int64)
+        if transition.size == 0 and self.k.size:
+            transition = np.arange(self.k.size, dtype=np.int64)
+            object.__setattr__(self, "state_transition", transition)
+            return
+        object.__setattr__(self, "state_transition", transition)
 
     @property
     def acceptance_rate(self) -> float:
@@ -127,16 +246,19 @@ class SamplingTrace:
 
 @dataclass(frozen=True)
 class SamplingResult:
-    """Reference sampler output containing the trace and final cached state.
+    """Reference sampler output, final cached state, and continuation state.
 
     Attributes:
         trace: Fixed-capacity states and transition diagnostics for the chain.
         final_state: Fully cached final state corresponding to the last trace
-            row.
+            row under default retention. It remains available even when a
+            retained trace is empty.
+        checkpoint: Exact in-memory continuation state after the segment.
     """
 
     trace: SamplingTrace
     final_state: TransDimensionalState
+    checkpoint: SamplerCheckpoint
 
 
 def _empty_cells(problem: TransDimensionalProblem, state: TransDimensionalState) -> NDArray[np.int64]:
@@ -162,7 +284,7 @@ def _nearest_parent_coefficient(
 def _draw_transition(
     problem: TransDimensionalProblem,
     state: TransDimensionalState,
-    config: SamplerConfig,
+    config: SamplerConfig | KernelSettings,
     rng: np.random.Generator,
     move: str,
 ) -> TransitionTerms:
@@ -242,12 +364,130 @@ def _draw_transition(
     raise ValueError(f"Unknown proposal move {move!r}.")
 
 
+def _validate_start_state(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+) -> None:
+    """Validate the state invariants required before a sampling segment."""
+    if state.capacity != problem.k_max:
+        raise ValueError("initial_state capacity must equal problem.k_max.")
+    if not np.isfinite(state.log_target):
+        raise ValueError("initial_state must have finite target density.")
+
+
+def _retained_transition_numbers(
+    *,
+    transitions_completed: int,
+    iterations: int,
+    retention: RetentionSettings,
+    include_initial: bool,
+) -> NDArray[np.int64]:
+    """Return global transition numbers retained by one sampling segment."""
+    lower = transitions_completed if include_initial else transitions_completed + 1
+    upper = transitions_completed + iterations
+    first = max(lower, retention.warmup_transitions)
+    phase_adjustment = (-(first - retention.warmup_transitions)) % retention.thin
+    first += phase_adjustment
+    if first > upper:
+        return np.empty(0, dtype=np.int64)
+    return np.arange(first, upper + 1, retention.thin, dtype=np.int64)
+
+
+def _run_segment(
+    problem: TransDimensionalProblem,
+    initial_state: TransDimensionalState,
+    *,
+    kernel_settings: KernelSettings,
+    retention: RetentionSettings,
+    rng: np.random.Generator,
+    transitions_completed: int,
+    iterations: int,
+    include_initial: bool,
+) -> SamplingResult:
+    """Run one segment using global schedule and retention phases."""
+    _validate_start_state(problem, initial_state)
+    state_transition = _retained_transition_numbers(
+        transitions_completed=transitions_completed,
+        iterations=iterations,
+        retention=retention,
+        include_initial=include_initial,
+    )
+    n_retained = int(state_transition.size)
+    capacity = problem.k_max
+    k_trace = np.empty(n_retained, dtype=np.int64)
+    nuclei_trace = np.empty((n_retained, capacity), dtype=np.int64)
+    coefficient_trace = np.empty((n_retained, capacity), dtype=np.float64)
+    log_target_trace = np.empty(n_retained, dtype=np.float64)
+    moves = np.empty(iterations, dtype="U16")
+    accepted = np.zeros(iterations, dtype=np.bool_)
+    log_acceptance_ratio = np.empty(iterations, dtype=np.float64)
+
+    state = initial_state
+    retained_position = 0
+
+    def retain(current_state: TransDimensionalState) -> None:
+        """Copy one cached state into the next fixed-capacity retained row."""
+        nonlocal retained_position
+        k_trace[retained_position] = current_state.k
+        nuclei_trace[retained_position] = current_state.nuclei
+        coefficient_trace[retained_position] = current_state.coefficients
+        log_target_trace[retained_position] = current_state.log_target
+        retained_position += 1
+
+    if include_initial and n_retained and state_transition[0] == transitions_completed:
+        retain(state)
+
+    nucleus_move = "global_move" if kernel_settings.nucleus_move == "global" else "local_move"
+    schedule = ("coefficient", "dimension", "dimension", nucleus_move)
+
+    for iteration in range(iterations):
+        global_transition = transitions_completed + iteration
+        move = schedule[global_transition % len(schedule)]
+        transition = _draw_transition(problem, state, kernel_settings, rng, move)
+        uniform = float(rng.random())
+        log_uniform = log(uniform) if uniform > 0.0 else -np.inf
+        next_state = accept_or_reject(state, transition, log_uniform=log_uniform)
+        accepted[iteration] = transition.valid and next_state is transition.candidate
+        moves[iteration] = transition.move
+        log_acceptance_ratio[iteration] = transition.log_acceptance_ratio
+        state = next_state
+
+        completed = global_transition + 1
+        if retained_position < n_retained and state_transition[retained_position] == completed:
+            retain(state)
+
+    total_transitions = transitions_completed + iterations
+    checkpoint = SamplerCheckpoint(
+        problem=problem,
+        state=state,
+        rng_state=PCG64State.from_generator(rng),
+        transitions_completed=total_transitions,
+        kernel_settings=kernel_settings,
+        retention=retention,
+    )
+    return SamplingResult(
+        trace=SamplingTrace(
+            k=k_trace,
+            nuclei=nuclei_trace,
+            coefficients=coefficient_trace,
+            log_target=log_target_trace,
+            moves=moves,
+            accepted=accepted,
+            log_acceptance_ratio=log_acceptance_ratio,
+            state_transition=state_transition,
+        ),
+        final_state=state,
+        checkpoint=checkpoint,
+    )
+
+
 def sample(
     problem: TransDimensionalProblem,
     initial_state: TransDimensionalState,
     config: SamplerConfig,
+    retention: RetentionSettings | None = None,
 ) -> SamplingResult:
-    """Run the first auditable single-chain spatial RJMCMC implementation.
+    """Run an auditable single-chain spatial RJMCMC segment from transition zero.
 
     The four-slot schedule repeats a coefficient move, two identical dimension
     moves, and a nucleus move. Each dimension slot independently chooses birth
@@ -258,68 +498,96 @@ def sample(
     destination kernel instead. Impossible boundary proposals remain explicit
     self-transitions rather than renormalizing the birth/death selection.
 
+    Omitting ``retention`` preserves the original behavior exactly: the initial
+    state and every subsequent state are saved. Collection-time retention does
+    not alter the random stream or transition diagnostics.
+
     Args:
         problem: Immutable target and fine-grid numerical inputs.
         initial_state: Complete initial state compatible with ``problem``.
         config: Transition count, scales, seed, and numerical backend.
+        retention: Optional global warmup and thinning policy.
 
     Returns:
-        Fixed-capacity trace and the final fully cached sampler state.
+        Retained fixed-capacity states, all segment diagnostics, the final
+        cached state, and an exact in-memory continuation checkpoint.
 
     Raises:
         ValueError: If the initial state capacity is incompatible with the
             problem or its target density is not finite.
     """
-    if initial_state.capacity != problem.k_max:
-        raise ValueError("initial_state capacity must equal problem.k_max.")
-    if not np.isfinite(initial_state.log_target):
-        raise ValueError("initial_state must have finite target density.")
-
-    rng = np.random.default_rng(config.seed)
-    capacity = problem.k_max
-    k_trace = np.empty(config.iterations + 1, dtype=np.int64)
-    nuclei_trace = np.empty((config.iterations + 1, capacity), dtype=np.int64)
-    coefficient_trace = np.empty((config.iterations + 1, capacity), dtype=np.float64)
-    log_target_trace = np.empty(config.iterations + 1, dtype=np.float64)
-    moves = np.empty(config.iterations, dtype="U16")
-    accepted = np.zeros(config.iterations, dtype=np.bool_)
-    log_acceptance_ratio = np.empty(config.iterations, dtype=np.float64)
-
-    state = initial_state
-    k_trace[0] = state.k
-    nuclei_trace[0] = state.nuclei
-    coefficient_trace[0] = state.coefficients
-    log_target_trace[0] = state.log_target
-    nucleus_move = "global_move" if config.nucleus_move == "global" else "local_move"
-    schedule = ("coefficient", "dimension", "dimension", nucleus_move)
-
-    for iteration in range(config.iterations):
-        move = schedule[iteration % len(schedule)]
-        transition = _draw_transition(problem, state, config, rng, move)
-        uniform = float(rng.random())
-        log_uniform = log(uniform) if uniform > 0.0 else -np.inf
-        next_state = accept_or_reject(state, transition, log_uniform=log_uniform)
-        accepted[iteration] = transition.valid and next_state is transition.candidate
-        moves[iteration] = transition.move
-        log_acceptance_ratio[iteration] = transition.log_acceptance_ratio
-        state = next_state
-        k_trace[iteration + 1] = state.k
-        nuclei_trace[iteration + 1] = state.nuclei
-        coefficient_trace[iteration + 1] = state.coefficients
-        log_target_trace[iteration + 1] = state.log_target
-
-    return SamplingResult(
-        trace=SamplingTrace(
-            k=k_trace,
-            nuclei=nuclei_trace,
-            coefficients=coefficient_trace,
-            log_target=log_target_trace,
-            moves=moves,
-            accepted=accepted,
-            log_acceptance_ratio=log_acceptance_ratio,
-        ),
-        final_state=state,
+    retention_settings = RetentionSettings() if retention is None else retention
+    if not isinstance(retention_settings, RetentionSettings):
+        raise TypeError("retention must be a RetentionSettings instance or None.")
+    rng = np.random.Generator(np.random.PCG64(config.seed))
+    return _run_segment(
+        problem,
+        initial_state,
+        kernel_settings=KernelSettings.from_config(config),
+        retention=retention_settings,
+        rng=rng,
+        transitions_completed=0,
+        iterations=config.iterations,
+        include_initial=True,
     )
 
 
-__all__ = ["SamplerConfig", "SamplingResult", "SamplingTrace", "sample"]
+def continue_sample(
+    problem: TransDimensionalProblem,
+    checkpoint: SamplerCheckpoint,
+    *,
+    iterations: int,
+) -> SamplingResult:
+    """Continue a chain exactly from an in-memory transition boundary.
+
+    Kernel settings, schedule identity, random state, and retention policy all
+    come from ``checkpoint``. The incoming boundary state is never retained a
+    second time, even when it lies on the retention phase.
+
+    Args:
+        problem: The same immutable numerical target used by the original run.
+            Durable problem identity checks are deferred until checkpoint
+            serialization is implemented.
+        checkpoint: Exact result checkpoint from an earlier segment.
+        iterations: Positive number of additional attempted transitions.
+
+    Returns:
+        Results for only the newly attempted segment and a new checkpoint.
+
+    Raises:
+        TypeError: If ``checkpoint`` has the wrong type.
+        ValueError: If the segment length or schedule identity is invalid.
+    """
+    if not isinstance(checkpoint, SamplerCheckpoint):
+        raise TypeError("checkpoint must be a SamplerCheckpoint instance.")
+    if isinstance(iterations, bool) or not isinstance(iterations, (int, np.integer)) or iterations < 1:
+        raise ValueError("iterations must be a positive integer.")
+    if checkpoint.schedule_id != SCHEDULE_ID:
+        raise ValueError(f"Unsupported sampler schedule {checkpoint.schedule_id!r}.")
+    if checkpoint.transitions_completed < 0:
+        raise ValueError("checkpoint transitions_completed must be non-negative.")
+    if problem is not checkpoint.problem:
+        raise ValueError("continuation requires the exact in-memory problem object.")
+    return _run_segment(
+        problem,
+        checkpoint.state,
+        kernel_settings=checkpoint.kernel_settings,
+        retention=checkpoint.retention,
+        rng=checkpoint.rng_state.generator(),
+        transitions_completed=checkpoint.transitions_completed,
+        iterations=int(iterations),
+        include_initial=False,
+    )
+
+
+__all__ = [
+    "KernelSettings",
+    "PCG64State",
+    "SCHEDULE_ID",
+    "SamplerCheckpoint",
+    "SamplerConfig",
+    "SamplingResult",
+    "SamplingTrace",
+    "continue_sample",
+    "sample",
+]
