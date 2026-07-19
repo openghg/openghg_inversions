@@ -27,13 +27,15 @@ from time import perf_counter
 
 import numpy as np
 
-from openghg_inversions.basis.experimental.dyadic.enumeration import count_partitions_by_region
 from openghg_inversions.basis.experimental.dyadic.gaussian_product_space import (
     GaussianProductSpaceTarget,
 )
 from openghg_inversions.basis.experimental.dyadic.gaussian_product_space_sampler import (
     sample_collapsed_gaussian_product_space,
     sample_gaussian_product_space,
+)
+from openghg_inversions.basis.experimental.dyadic.partition_prior import (
+    RegionCountPartitionPrior,
 )
 from openghg_inversions.basis.experimental.dyadic.product_space import ProductSpaceState
 from openghg_inversions.basis.experimental.dyadic.state import PartitionState
@@ -215,15 +217,11 @@ def build_checkerboard_case(
     coarse_partition = regular_depth_partition(tree, 3)
     wrong_partition = irregular_same_count_partition(tree, coarse_partition)
     truth_partition = regular_depth_partition(tree, 4)
-    partition_counts = count_partitions_by_region(tree, max_regions=maximum_regions)
-    log_k_probability = -math.log(maximum_regions - minimum_regions + 1)
-
-    def partition_log_prior(partition: PartitionState) -> float:
-        """Assign uniform marginal mass to K and equal mass conditional on K."""
-        region_count = len(partition.active)
-        if not minimum_regions <= region_count <= maximum_regions:
-            return -math.inf
-        return log_k_probability - math.log(partition_counts[region_count])
+    partition_prior = RegionCountPartitionPrior.uniform_k(
+        tree,
+        minimum_regions=minimum_regions,
+        maximum_regions=maximum_regions,
+    )
 
     target = GaussianProductSpaceTarget.from_grid(
         observations=observations[:_TRAIN_OBSERVATIONS],
@@ -233,7 +231,7 @@ def build_checkerboard_case(
         observation_covariance=np.eye(_TRAIN_OBSERVATIONS) * _OBSERVATION_SD**2,
         inner_prior_scale=1.0,
         inactive_pseudo_prior_scale=1.0,
-        partition_log_prior=partition_log_prior,
+        partition_log_prior=partition_prior,
     )
     return CheckerboardCase(
         tree=tree,

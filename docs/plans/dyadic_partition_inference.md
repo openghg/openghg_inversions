@@ -1154,9 +1154,9 @@ every inactive coordinate on every sweep. A proposal can draw only the
 coordinates required by a proposed split and include that draw in its proposal
 density.
 
-### Why the current PyMC prototype enumerates partitions
+### Catalogue and split-mask PyMC prototypes
 
-The current `DyadicPartitionStep` is a small exact reference implementation,
+The original `DyadicPartitionStep` is a small exact reference implementation,
 not the intended scalable transition. It represents (P) as one categorical
 integer indexing a catalogue of every valid frontier of a complete dyadic tree.
 For each catalogue entry, model construction precomputes its partition prior,
@@ -1196,6 +1196,16 @@ all proposal paths reaching the same destination must be combined in (q).
 
 The exhaustive catalogue should remain only as a tiny-tree correctness oracle
 for detailed balance and marginal partition-frequency tests.
+
+**2026-07-19 implementation update:** the scalable representation described
+above is now implemented in `pymc_split_mask_product_space.py`. A canonical
+ancestry-closed Bernoulli split mask replaces the partition index, and one
+static finest-grid contrast design replaces the partition-indexed design
+tensor. `DyadicSplitMaskStep` generates local neighbors on demand and applies
+the exact reverse-degree Hastings correction. A normalized
+`RegionCountPartitionPrior` supplies the same `p(P)=p(K)/N_K` lookup to NumPy
+and PyTensor without enumerating P. The catalogue adapter is unchanged and is
+still used as a tiny exact oracle.
 
 ### PyMC feasibility
 
@@ -1919,7 +1929,9 @@ poor local partition traversal.
 4. **Implemented for the Gaussian target:** implement inactive refresh,
    partition MH, and active continuous update as
    separate framework-independent blocks.
-5. **Open:** compare full-vector, active-only, and cached-kernel execution strategies.
+5. **Partly implemented:** full-vector native PyMC NUTS now works with the
+   non-enumerating split mask. Active-only and cached-kernel strategies remain
+   open.
 6. **In progress:** measure partition switching, active and inactive effective sample sizes,
    likelihood cost, and sensitivity to pseudo-prior calibration.
 7. **In progress:** compare posterior results with exact enumeration and fixed
@@ -1932,6 +1944,14 @@ poor local partition traversal.
    exact K distribution, truth-partition probability, and predictive metrics
    within declared tolerances. See
    `docs/reports/dyadic_intem_product_space_recovery.md`.
+8. **Implemented for the 4 by 4 Gaussian InTEM case:** a native PyMC compound
+   chain with local split-mask MH and NUTS directly reproduces the exact latent
+   posterior predictions, beats wrong fixed K/P comparators, and is
+   non-inferior to the true-P fixed oracle. The declared 20,000-draw run has no
+   divergences at `target_accept=0.95`; its K and full-P total-variation
+   distances are 0.0426 and 0.0708. The same model constructs on an 8 by 8 tree
+   without a partition catalogue. Gamma-Beta integration remains a separate
+   positive-model implementation step.
 
 ### Phase 4: scale-up and alternatives
 

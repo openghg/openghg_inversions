@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from itertools import product
 from typing import Any
 
 import numpy as np
@@ -108,6 +109,32 @@ def test_model_rejects_noncanonical_mask_in_symbolic_density() -> None:
     point["split_mask"] = np.array([0, 1], dtype=point["split_mask"].dtype)
 
     assert float(logp(point)) == -np.inf
+
+
+def test_symbolic_canonical_gate_matches_codec_for_every_two_by_two_mask() -> None:
+    """The graph and NumPy codec should accept exactly the same bit patterns."""
+    tree = DyadicTree.from_shape((2, 2))
+    prior = RegionCountPartitionPrior.uniform_k(tree)
+    target = GaussianProductSpaceTarget.from_grid(
+        observations=np.zeros(1),
+        inner_grid_design=np.ones((1, 2, 2)),
+        tree=tree,
+        observation_covariance=np.eye(1),
+        partition_log_prior=prior,
+    )
+    adapter = build_pymc_split_mask_product_space_model(target)
+    logp = adapter.model.compile_logp()
+    point = adapter.model.initial_point()
+
+    for bits in product((0, 1), repeat=3):
+        mask = np.asarray(bits, dtype=np.bool_)
+        point["split_mask"] = mask.astype(point["split_mask"].dtype)
+        try:
+            target.contrast_layout.partition_from_split_mask(mask)
+        except ValueError:
+            assert float(logp(point)) == -np.inf
+        else:
+            assert np.isfinite(float(logp(point)))
 
 
 def test_split_mask_step_changes_only_partition_and_preserves_canonical_mask() -> None:

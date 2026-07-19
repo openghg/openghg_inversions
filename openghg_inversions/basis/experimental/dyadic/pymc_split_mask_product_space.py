@@ -321,7 +321,6 @@ class PyMCSplitMaskProductSpaceModel:
 def build_pymc_split_mask_product_space_model(
     target: GaussianProductSpaceTarget,
     *,
-    partition_prior: RegionCountPartitionPrior | None = None,
     initial_partition: PartitionState | None = None,
 ) -> PyMCSplitMaskProductSpaceModel:
     """Build a non-enumerating fixed-shape PyMC product-space model.
@@ -334,8 +333,6 @@ def build_pymc_split_mask_product_space_model(
 
     Args:
         target: Validated Gaussian reference target.
-        partition_prior: Symbolic region-count prior. When omitted,
-            ``target.partition_log_prior`` must already be such an object.
         initial_partition: Optional valid positive-mass initial frontier. The
             default is a deterministic frontier at the smallest supported K.
 
@@ -361,10 +358,10 @@ def build_pymc_split_mask_product_space_model(
     if not target.contrast_layout.split_node_ids:
         raise ValueError("The split-mask PyMC adapter requires at least two finest grid cells.")
 
-    prior = target.partition_log_prior if partition_prior is None else partition_prior
+    prior = target.partition_log_prior
     if not isinstance(prior, RegionCountPartitionPrior):
         raise TypeError(
-            "partition_prior must be a RegionCountPartitionPrior; arbitrary "
+            "target.partition_log_prior must be a RegionCountPartitionPrior; arbitrary "
             "Python callbacks cannot be represented symbolically."
         )
     if prior.tree != target.tree:

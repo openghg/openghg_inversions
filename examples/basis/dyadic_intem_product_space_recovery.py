@@ -30,6 +30,8 @@ from dataclasses import asdict, dataclass
 from importlib.resources import as_file, files
 import json
 import math
+from time import perf_counter
+from typing import Any
 
 import numpy as np
 from scipy.linalg import cho_factor, cho_solve
@@ -45,6 +47,9 @@ from openghg_inversions.basis.experimental.dyadic.gaussian_product_space_sampler
     sample_gaussian_product_space,
 )
 from openghg_inversions.basis.experimental.dyadic.multiscale import MultiscaleDesign
+from openghg_inversions.basis.experimental.dyadic.partition_prior import (
+    RegionCountPartitionPrior,
+)
 from openghg_inversions.basis.experimental.dyadic.state import PartitionState
 from openghg_inversions.basis.experimental.dyadic.tree import DyadicTree
 
@@ -268,8 +273,10 @@ class SampledPartitionDiagnostics:
         draws: Number of retained partitions.
         warmup: Number of discarded transition cycles.
         partition_acceptance_rate: Overall retained structural acceptance.
-        split_acceptance_rate: Acceptance among retained split proposals.
-        merge_acceptance_rate: Acceptance among retained merge proposals.
+        split_acceptance_rate: Acceptance among retained split proposals, or
+            ``None`` when no split was proposed.
+        merge_acceptance_rate: Acceptance among retained merge proposals, or
+            ``None`` when no merge was proposed.
         unique_partitions: Number of distinct retained frontiers.
         sampled_expected_k: Empirical posterior mean region count.
         exact_expected_k: Exact 677-component posterior mean region count.
@@ -279,6 +286,14 @@ class SampledPartitionDiagnostics:
             and exact probabilities over all 677 partitions.
         sampled_truth_probability: Retained frequency of the declared truth P.
         exact_truth_probability: Exact posterior probability of the truth P.
+        basis_region_count_bulk_ess: Bulk effective sample size for K.
+        basis_region_count_mcse: Monte Carlo standard error for mean K.
+        truth_partition_indicator_bulk_ess: Bulk effective sample size for the
+            indicator that P equals the declared truth.
+        truth_partition_probability_mcse: Monte Carlo standard error for the
+            sampled truth-partition probability.
+        minimum_inner_coordinate_bulk_ess: Smallest bulk effective sample size
+            among permanent inner coordinates.
         sampled_mixture: Recovery metrics after weighting exact conditional
             Gaussian components by sampled partition frequencies.
     """
@@ -305,6 +320,76 @@ class SampledRecoveryBenchmark:
 
     exact: IntemRecoveryBenchmark
     sampled: SampledPartitionDiagnostics
+
+    def as_dict(self) -> dict[str, object]:
+        """Return a JSON-serializable exact and sampled summary."""
+        return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class PyMCSampledPartitionDiagnostics:
+    """Direct posterior and structural diagnostics from mask MH plus NUTS.
+
+    Attributes:
+        draws: Number of retained compound-step draws.
+        warmup: Number of discarded PyMC tuning draws.
+        runtime_seconds: Wall time for model/step construction and sampling.
+        partition_acceptance_rate: Overall retained structural acceptance.
+        split_acceptance_rate: Acceptance among retained split proposals.
+        merge_acceptance_rate: Acceptance among retained merge proposals.
+        nuts_acceptance_rate: Mean NUTS acceptance statistic.
+        divergence_count: Number of retained NUTS divergences.
+        unique_partitions: Number of distinct retained frontiers.
+        sampled_expected_k: Empirical posterior mean region count.
+        exact_expected_k: Exact 677-component posterior mean region count.
+        k_total_variation_distance: Total variation between sampled and exact K.
+        partition_total_variation_distance: Total variation over all frontiers.
+        sampled_truth_probability: Retained frequency of the declared truth P.
+        exact_truth_probability: Exact posterior probability of the truth P.
+        sampled_posterior: Direct Monte Carlo recovery and holdout metrics.
+        beats_wrong_fixed_k4: Whether sampled holdout RMSE is below the wrong K4
+            fixed-partition result.
+        beats_underfit_fixed_k2: Whether sampled holdout RMSE is below the
+            underfit fixed-partition result.
+        oracle_log_score_difference_per_observation: Sampled minus true-fixed
+            joint holdout log density divided by holdout row count.
+        oracle_log_score_noninferior: Whether that difference is at least
+            negative 0.05 nat per holdout row.
+    """
+
+    draws: int
+    warmup: int
+    runtime_seconds: float
+    partition_acceptance_rate: float
+    split_acceptance_rate: float | None
+    merge_acceptance_rate: float | None
+    nuts_acceptance_rate: float
+    divergence_count: int
+    unique_partitions: int
+    sampled_expected_k: float
+    exact_expected_k: float
+    k_total_variation_distance: float
+    partition_total_variation_distance: float
+    sampled_truth_probability: float
+    exact_truth_probability: float
+    basis_region_count_bulk_ess: float
+    basis_region_count_mcse: float
+    truth_partition_indicator_bulk_ess: float
+    truth_partition_probability_mcse: float
+    minimum_inner_coordinate_bulk_ess: float
+    sampled_posterior: ExactRecoveryMetrics
+    beats_wrong_fixed_k4: bool
+    beats_underfit_fixed_k2: bool
+    oracle_log_score_difference_per_observation: float
+    oracle_log_score_noninferior: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PyMCSampledRecoveryBenchmark:
+    """Exact oracle and one non-enumerating PyMC compound-chain comparison."""
+
+    exact: IntemRecoveryBenchmark
+    sampled: PyMCSampledPartitionDiagnostics
 
     def as_dict(self) -> dict[str, object]:
         """Return a JSON-serializable exact and sampled summary."""
@@ -469,14 +554,11 @@ def build_recovery_case(*, seed: int = 20260719) -> IntemRecoveryCase:
     holdout = slice(_TRAIN_ROW_COUNT, _ROW_COUNT)
     train_covariance = np.eye(_TRAIN_ROW_COUNT) * _OBSERVATION_ERROR_SD**2
     holdout_covariance = np.eye(_HOLDOUT_ROW_COUNT) * _OBSERVATION_ERROR_SD**2
-    log_k_probability = -math.log(_MAXIMUM_REGIONS - _MINIMUM_REGIONS + 1)
-
-    def partition_log_prior(partition: PartitionState) -> float:
-        """Return log p(P)=log p(K)-log N_K from exact counts."""
-        region_count = len(partition.active)
-        if not _MINIMUM_REGIONS <= region_count <= _MAXIMUM_REGIONS:
-            return -math.inf
-        return log_k_probability - math.log(partition_counts[region_count])
+    partition_prior = RegionCountPartitionPrior.uniform_k(
+        tree,
+        minimum_regions=_MINIMUM_REGIONS,
+        maximum_regions=_MAXIMUM_REGIONS,
+    )
 
     target = GaussianProductSpaceTarget.from_grid(
         observations=observations[train],
@@ -488,7 +570,7 @@ def build_recovery_case(*, seed: int = 20260719) -> IntemRecoveryCase:
         inactive_pseudo_prior_scale=1.0,
         outer_design=outer_design[train],
         outer_prior_covariance=np.eye(len(_OUTER_LABELS)) * _OUTER_PRIOR_SD**2,
-        partition_log_prior=partition_log_prior,
+        partition_log_prior=partition_prior,
     )
     return IntemRecoveryCase(
         rectangle=rectangle,
@@ -707,6 +789,372 @@ def run_sampled_benchmark(
         sampler=sampler,
         seed=sampler_seed,
     )
+
+
+def sample_pymc_recovery_case(
+    case: IntemRecoveryCase,
+    *,
+    draws: int = 20_000,
+    warmup: int = 3_000,
+    seed: int = 481,
+    target_accept: float = 0.95,
+) -> PyMCSampledRecoveryBenchmark:
+    """Run non-enumerating split-mask MH and native NUTS on the InTEM case.
+
+    Unlike :func:`sample_recovery_case`, recovery metrics are calculated from
+    the sampled continuous coefficients as well as the sampled partitions.
+    The joint holdout log density is a Monte Carlo posterior-predictive
+    estimate using the known Gaussian observation covariance.
+
+    Args:
+        case: Matched synthetic InTEM recovery case.
+        draws: Positive retained compound-step draw count.
+        warmup: Non-negative discarded PyMC tuning draw count.
+        seed: Shared PyMC and structural-step random seed.
+        target_accept: Native NUTS target acceptance probability.
+
+    Returns:
+        Exact fixed/latent oracle and direct PyMC chain diagnostics.
+    """
+    import pymc as pm
+
+    from openghg_inversions.basis.experimental.dyadic.pymc_split_mask_product_space import (
+        build_pymc_split_mask_product_space_model,
+    )
+
+    start = perf_counter()
+    adapter = build_pymc_split_mask_product_space_model(
+        case.target,
+        initial_partition=case.wrong_partition,
+    )
+    steps = adapter.step_methods(
+        partition_rng=seed,
+        nuts_kwargs={"target_accept": target_accept},
+    )
+    with adapter.model:
+        trace: Any = pm.sample(
+            draws=draws,
+            tune=warmup,
+            chains=1,
+            cores=1,
+            step=list(steps),
+            random_seed=seed,
+            progressbar=False,
+            compute_convergence_checks=False,
+            return_inferencedata=True,
+        )
+    runtime = perf_counter() - start
+    return PyMCSampledRecoveryBenchmark(
+        exact=evaluate_recovery_case(case),
+        sampled=_pymc_sampled_diagnostics(
+            case,
+            trace,
+            draws=draws,
+            warmup=warmup,
+            runtime_seconds=runtime,
+        ),
+    )
+
+
+def run_pymc_sampled_benchmark(
+    *,
+    data_seed: int = 20260719,
+    draws: int = 20_000,
+    warmup: int = 3_000,
+    sampler_seed: int = 481,
+    target_accept: float = 0.95,
+) -> PyMCSampledRecoveryBenchmark:
+    """Build the recovery case and run one PyMC compound-chain comparison.
+
+    Args:
+        data_seed: Synthetic observation-error seed.
+        draws: Retained compound-step draw count.
+        warmup: Discarded PyMC tuning draw count.
+        sampler_seed: Shared PyMC and structural-step seed.
+        target_accept: Native NUTS target acceptance probability.
+
+    Returns:
+        Exact oracle and direct PyMC chain diagnostics.
+    """
+    return sample_pymc_recovery_case(
+        build_recovery_case(seed=data_seed),
+        draws=draws,
+        warmup=warmup,
+        seed=sampler_seed,
+        target_accept=target_accept,
+    )
+
+
+def _pymc_sampled_diagnostics(
+    case: IntemRecoveryCase,
+    trace: Any,
+    *,
+    draws: int,
+    warmup: int,
+    runtime_seconds: float,
+) -> PyMCSampledPartitionDiagnostics:
+    """Evaluate one retained PyMC trace against the exact recovery oracle.
+
+    Args:
+        case: Matched synthetic recovery inputs and exact partition catalogue.
+        trace: PyMC ``InferenceData`` containing split-mask and coefficient
+            posterior draws.
+        draws: Declared retained draw count.
+        warmup: Declared discarded tuning count.
+        runtime_seconds: Measured model-construction and sampling wall time.
+
+    Returns:
+        Direct continuous-posterior and structural-fidelity diagnostics.
+    """
+    split_count = len(case.target.contrast_layout.split_node_ids)
+    masks = np.asarray(trace.posterior["split_mask"]).reshape(-1, split_count).astype(np.bool_)
+    inner_coordinates = np.asarray(trace.posterior["inner_coordinates"]).reshape(
+        -1,
+        case.target.contrast_layout.coordinate_count,
+    )
+    outer_coefficients = np.asarray(trace.posterior["outer_coefficients"]).reshape(
+        -1,
+        len(case.outer_labels),
+    )
+    if masks.shape[0] != draws:
+        raise ValueError("PyMC trace retained draw count does not match draws.")
+
+    coordinate_masks = np.column_stack(
+        (np.ones(masks.shape[0], dtype=np.bool_), masks)
+    )
+    decoder = case.target.contrast_layout.finest_grid_decoder()
+    inner_fields = _leaf_values_to_grid(
+        case.tree,
+        (inner_coordinates * coordinate_masks) @ decoder.T,
+    )
+    predictions = (
+        case.holdout_observation_mean[None, :]
+        + np.einsum(
+            "drc,nrc->nd",
+            case.holdout_inner_design,
+            inner_fields,
+            optimize=True,
+        )
+        + outer_coefficients @ case.holdout_outer_design.T
+    )
+    posterior_metrics = ExactRecoveryMetrics(
+        holdout_log_predictive_density=_monte_carlo_holdout_log_density(
+            case,
+            predictions,
+        ),
+        noiseless_holdout_rmse=_rmse(predictions.mean(axis=0), case.holdout_noiseless),
+        field_rmse=_rmse(inner_fields.mean(axis=0), case.inner_truth),
+        outer_coefficient_rmse=_rmse(outer_coefficients.mean(axis=0), case.outer_truth),
+        expected_inner_regions=float(1.0 + masks.sum(axis=1).mean()),
+    )
+
+    sampled_partitions = tuple(
+        case.target.contrast_layout.partition_from_split_mask(mask) for mask in masks
+    )
+    partition_indices = {partition: index for index, partition in enumerate(case.partitions)}
+    sampled_counts = np.bincount(
+        [partition_indices[partition] for partition in sampled_partitions],
+        minlength=len(case.partitions),
+    )
+    sampled_weights = sampled_counts / sampled_counts.sum()
+    _, exact_weights = _components_and_posterior_weights(case)
+    region_counts = np.array([len(partition.active) for partition in case.partitions], dtype=int)
+    exact_by_k = np.bincount(
+        region_counts,
+        weights=exact_weights,
+        minlength=case.maximum_regions + 1,
+    )
+    sampled_by_k = np.bincount(
+        region_counts,
+        weights=sampled_weights,
+        minlength=case.maximum_regions + 1,
+    )
+
+    accepted = np.asarray(trace.sample_stats["accepted"]).reshape(-1).astype(np.bool_)
+    proposed_split = np.asarray(trace.sample_stats["proposed_split"]).reshape(-1).astype(np.bool_)
+    basis_region_count = 1 + masks.sum(axis=1)
+    truth_indicator = np.fromiter(
+        (partition == case.truth_partition for partition in sampled_partitions),
+        dtype=np.float64,
+        count=len(sampled_partitions),
+    )
+    k_ess, k_mcse = _bulk_ess_and_mean_mcse(basis_region_count)
+    truth_ess, truth_mcse = _bulk_ess_and_mean_mcse(truth_indicator)
+    minimum_inner_ess = _minimum_bulk_ess(inner_coordinates)
+    exact = evaluate_recovery_case(case)
+    truth_index = partition_indices[case.truth_partition]
+    oracle_difference = (
+        posterior_metrics.holdout_log_predictive_density
+        - exact.fixed_truth.holdout_log_predictive_density
+    ) / case.holdout_observations.size
+    return PyMCSampledPartitionDiagnostics(
+        draws=draws,
+        warmup=warmup,
+        runtime_seconds=runtime_seconds,
+        partition_acceptance_rate=float(accepted.mean()),
+        split_acceptance_rate=_conditional_acceptance_rate(accepted, proposed_split),
+        merge_acceptance_rate=_conditional_acceptance_rate(accepted, ~proposed_split),
+        nuts_acceptance_rate=float(np.asarray(trace.sample_stats["acceptance_rate"]).mean()),
+        divergence_count=int(np.asarray(trace.sample_stats["diverging"]).sum()),
+        unique_partitions=int(np.count_nonzero(sampled_counts)),
+        sampled_expected_k=posterior_metrics.expected_inner_regions,
+        exact_expected_k=exact.diagnostics.posterior_expected_k,
+        k_total_variation_distance=float(0.5 * np.abs(sampled_by_k - exact_by_k).sum()),
+        partition_total_variation_distance=float(
+            0.5 * np.abs(sampled_weights - exact_weights).sum()
+        ),
+        sampled_truth_probability=float(sampled_weights[truth_index]),
+        exact_truth_probability=exact.diagnostics.truth_partition_probability,
+        basis_region_count_bulk_ess=k_ess,
+        basis_region_count_mcse=k_mcse,
+        truth_partition_indicator_bulk_ess=truth_ess,
+        truth_partition_probability_mcse=truth_mcse,
+        minimum_inner_coordinate_bulk_ess=minimum_inner_ess,
+        sampled_posterior=posterior_metrics,
+        beats_wrong_fixed_k4=(
+            posterior_metrics.noiseless_holdout_rmse
+            < exact.fixed_wrong_k4.noiseless_holdout_rmse
+        ),
+        beats_underfit_fixed_k2=(
+            posterior_metrics.noiseless_holdout_rmse
+            < exact.fixed_underfit.noiseless_holdout_rmse
+        ),
+        oracle_log_score_difference_per_observation=oracle_difference,
+        oracle_log_score_noninferior=oracle_difference >= -0.05,
+    )
+
+
+def _monte_carlo_holdout_log_density(
+    case: IntemRecoveryCase,
+    predictions: np.ndarray,
+) -> float:
+    """Estimate joint holdout posterior density from conditional mean draws.
+
+    Args:
+        case: Recovery case supplying held-out observations and covariance.
+        predictions: Conditional holdout means with shape
+            ``(posterior_draw, holdout_observation)``.
+
+    Returns:
+        Log of the equally weighted Gaussian posterior-predictive mixture.
+    """
+    residual = case.holdout_observations[None, :] - predictions
+    cholesky = np.linalg.cholesky(case.holdout_observation_covariance)
+    whitened = np.linalg.solve(cholesky, residual.T).T
+    log_determinant = 2.0 * np.log(np.diag(cholesky)).sum()
+    log_density = -0.5 * (
+        case.holdout_observations.size * math.log(2.0 * math.pi)
+        + log_determinant
+        + np.einsum("ij,ij->i", whitened, whitened)
+    )
+    maximum = float(log_density.max())
+    return maximum + math.log(float(np.exp(log_density - maximum).mean()))
+
+
+def _conditional_acceptance_rate(
+    accepted: np.ndarray,
+    selected: np.ndarray,
+) -> float | None:
+    """Return acceptance over selected proposals or ``None`` when absent.
+
+    Args:
+        accepted: Boolean acceptance indicators.
+        selected: Boolean indicators for one proposal class.
+
+    Returns:
+        Conditional acceptance probability, or ``None`` when ``selected`` has
+        no true values.
+    """
+    if not selected.any():
+        return None
+    return float(accepted[selected].mean())
+
+
+def _bulk_ess_and_mean_mcse(values: np.ndarray) -> tuple[float, float]:
+    """Return ArviZ bulk ESS and mean MCSE for one scalar chain.
+
+    Args:
+        values: One-dimensional retained draws.
+
+    Returns:
+        Bulk effective sample size and Monte Carlo standard error.
+    """
+    import arviz as az
+
+    samples = xr.DataArray(
+        np.asarray(values, dtype=float).reshape(1, -1),
+        dims=("chain", "draw"),
+    )
+    return (
+        float(_arviz_values(az.ess(samples, method="bulk")).squeeze()),
+        float(_arviz_values(az.mcse(samples, method="mean")).squeeze()),
+    )
+
+
+def _minimum_bulk_ess(values: np.ndarray) -> float:
+    """Return the smallest ArviZ bulk ESS among vector coordinates.
+
+    Args:
+        values: Retained draws with shape ``(draw, coordinate)``.
+
+    Returns:
+        Minimum coordinate-wise bulk effective sample size.
+    """
+    import arviz as az
+
+    samples = xr.DataArray(
+        np.asarray(values, dtype=float)[None, :, :],
+        dims=("chain", "draw", "coordinate"),
+    )
+    return float(_arviz_values(az.ess(samples, method="bulk")).min())
+
+
+def _arviz_values(result: xr.DataArray | xr.Dataset) -> np.ndarray:
+    """Return numeric values from an ArviZ xarray result.
+
+    Args:
+        result: DataArray or one/more-variable Dataset returned by ArviZ.
+
+    Returns:
+        NumPy values with a leading dataset-variable axis when needed.
+    """
+    if isinstance(result, xr.Dataset):
+        return np.asarray(result.to_array())
+    return np.asarray(result)
+
+
+def _leaf_values_to_grid(
+    tree: DyadicTree,
+    leaf_values: np.ndarray,
+) -> np.ndarray:
+    """Scatter depth-first leaf values onto row-major grid coordinates.
+
+    Args:
+        tree: Tree whose :attr:`DyadicTree.leaf_ids` order defines the final
+            axis of ``leaf_values``.
+        leaf_values: Values with shape ``(sample, finest_grid_cell)``.
+
+    Returns:
+        Values with shape ``(sample, row, column)`` in geographic grid order.
+
+    Raises:
+        ValueError: If the input is not a finite matrix with one value per
+            finest grid cell.
+    """
+    values = np.asarray(leaf_values, dtype=float)
+    expected_shape = (values.shape[0], len(tree.leaf_ids)) if values.ndim == 2 else None
+    if values.ndim != 2 or values.shape != expected_shape:
+        raise ValueError(
+            f"leaf_values must have shape (sample, {len(tree.leaf_ids)})."
+        )
+    if not np.all(np.isfinite(values)):
+        raise ValueError("leaf_values must contain only finite values.")
+
+    grid = np.empty((values.shape[0], *tree.shape), dtype=float)
+    for leaf_index, node_id in enumerate(tree.leaf_ids):
+        tile = tree.tile(node_id)
+        grid[:, tile.row_start, tile.col_start] = values[:, leaf_index]
+    return grid
 
 
 def _declared_partitions(
@@ -999,10 +1447,15 @@ def _parse_args() -> argparse.Namespace:
     """Parse command-line controls for the exact benchmark."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=int, default=20260719)
-    parser.add_argument("--sampler", choices=("exact", "augmented", "collapsed"), default="exact")
+    parser.add_argument(
+        "--sampler",
+        choices=("exact", "augmented", "collapsed", "pymc"),
+        default="exact",
+    )
     parser.add_argument("--draws", type=int, default=20_000)
     parser.add_argument("--warmup", type=int, default=2_000)
     parser.add_argument("--sampler-seed", type=int, default=481)
+    parser.add_argument("--target-accept", type=float, default=0.95)
     return parser.parse_args()
 
 
@@ -1011,6 +1464,14 @@ def main() -> None:
     args = _parse_args()
     if args.sampler == "exact":
         result = run_benchmark(seed=args.seed)
+    elif args.sampler == "pymc":
+        result = run_pymc_sampled_benchmark(
+            data_seed=args.seed,
+            draws=args.draws,
+            warmup=args.warmup,
+            sampler_seed=args.sampler_seed,
+            target_accept=args.target_accept,
+        )
     else:
         result = run_sampled_benchmark(
             data_seed=args.seed,

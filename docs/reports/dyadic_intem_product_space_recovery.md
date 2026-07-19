@@ -101,7 +101,53 @@ This completes the analytic Gaussian proof of concept end to end: latent K/P
 beats the matched wrong fixed basis, is non-inferior to the true-partition
 oracle, and can be sampled without global partition enumeration.
 
-The next statistical step is repeated synthetic realizations and
-prior-predictive calibration. The next implementation step is to retain this
-validated structural kernel while replacing the exact Gaussian continuous
-refresh with the positive Gamma-Beta target.
+## Native PyMC split-mask and NUTS result
+
+The same target now has a non-enumerating native PyMC implementation. The
+partition is a canonical 15-bit ancestry-closed split mask; the likelihood uses
+one static 32 by 16 contrast design rather than a 677-partition catalogue.
+Local split/merge MH updates the mask first and native PyMC NUTS then updates
+all 16 permanent inner coordinates plus the seven outer coefficients.
+
+Reproduce the declared chain with:
+
+```bash
+HOME=/tmp MPLCONFIGDIR=/tmp .venv/bin/python \
+  examples/basis/dyadic_intem_product_space_recovery.py \
+  --sampler pymc --draws 20000 --warmup 3000 \
+  --sampler-seed 481 --target-accept 0.95
+```
+
+| Diagnostic | exact latent mixture | PyMC split-mask plus NUTS |
+| --- | ---: | ---: |
+| expected K | 4.7998 | 4.9277 |
+| truth-P probability | 0.5681 | 0.5344 |
+| holdout log density | 24.4801 | 24.4859 |
+| noiseless holdout RMSE | 0.04424 | 0.04402 |
+| field RMSE | 0.04756 | 0.04820 |
+| outer RMSE | 0.12870 | 0.12816 |
+
+The K total-variation distance is 0.0426 and the full-P distance is 0.0708.
+Structural acceptance is 0.149. The run took 37.2 seconds for 3,000 tuning
+and 20,000 retained compound draws and reported no NUTS divergences. Its
+holdout mean beats the wrong fixed K=4 and underfit fixed K=2 inversions. Its
+log score differs from the true-P fixed oracle by -0.0034 nat per holdout row,
+inside the predeclared -0.05 non-inferiority threshold.
+
+The machine-readable result also records bulk ESS and MCSE for K and the
+truth-partition indicator, plus the minimum bulk ESS among permanent inner
+coordinates. These do not replace replicated chains, but make autocorrelation
+visible beside raw TV distances and acceptance rates.
+
+An earlier evaluator incorrectly reshaped depth-first leaf order directly into
+row-major grid order. A regression now scatters every leaf by its stored grid
+coordinates. The corrected sampled inner means agree with the analytic
+Gaussian means; the error was in geographic reconstruction, not NUTS or the
+static contrast design.
+
+This is still one easy synthetic realization and one chain. Repeated
+prior-predictive realizations, multi-chain diagnostics, and sensitivity to the
+shared NUTS metric remain appropriate validation. The next implementation step
+is to reuse the validated structural representation in a separate positive
+Gamma-Beta model rather than generalize the Gaussian contrast classes until
+both concrete models exist.

@@ -16,6 +16,10 @@ import pytest
 
 from openghg_inversions.basis.experimental.dyadic.multiscale import MultiscaleDesign
 
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:You are creating a TensorVariable with float64 dtype:UserWarning"
+)
+
 
 @pytest.fixture(scope="module")
 def benchmark_module() -> Iterator[ModuleType]:
@@ -65,6 +69,88 @@ def test_truth_is_representable_by_regular_k4_quadrants(
     assert np.max(np.abs(case.truth_coordinates[list(active_indices)])) <= 0.5
     assert np.unique(case.inner_truth).size == 4
     np.testing.assert_allclose(reconstructed, case.inner_truth, rtol=0.0, atol=1e-15)
+
+
+def test_depth_first_leaf_values_are_scattered_to_grid_order(
+    benchmark_module: ModuleType,
+    recovery_case: Any,
+) -> None:
+    """Leaf-order vectors should not be reshaped as row-major grid values."""
+    tree = recovery_case.tree
+    leaf_values = np.asarray([tree.leaf_ids], dtype=float)
+    expected = np.empty((1, *tree.shape), dtype=float)
+    for leaf_index, node_id in enumerate(tree.leaf_ids):
+        tile = tree.tile(node_id)
+        expected[:, tile.row_start, tile.col_start] = leaf_values[:, leaf_index]
+
+    actual = benchmark_module._leaf_values_to_grid(tree, leaf_values)
+
+    np.testing.assert_array_equal(actual, expected)
+    assert not np.array_equal(actual, leaf_values.reshape(1, *tree.shape))
+
+
+def test_monte_carlo_holdout_density_matches_explicit_gaussian_mixtures(
+    benchmark_module: ModuleType,
+    recovery_case: Any,
+) -> None:
+    """One- and two-component holdout mixtures should match direct logpdfs."""
+    case = recovery_case
+    first = case.holdout_observations - 0.01
+    second = case.holdout_observations + 0.02
+    first_logp = benchmark_module._multivariate_normal_logpdf(
+        case.holdout_observations,
+        first,
+        case.holdout_observation_covariance,
+    )
+    second_logp = benchmark_module._multivariate_normal_logpdf(
+        case.holdout_observations,
+        second,
+        case.holdout_observation_covariance,
+    )
+    maximum = max(first_logp, second_logp)
+    expected_mixture = maximum + math.log(
+        (math.exp(first_logp - maximum) + math.exp(second_logp - maximum)) / 2.0
+    )
+
+    assert benchmark_module._monte_carlo_holdout_log_density(
+        case,
+        first[None, :],
+    ) == pytest.approx(first_logp)
+    assert benchmark_module._monte_carlo_holdout_log_density(
+        case,
+        np.stack((first, second)),
+    ) == pytest.approx(expected_mixture)
+
+
+def test_conditional_acceptance_rate_returns_none_for_absent_move_type(
+    benchmark_module: ModuleType,
+) -> None:
+    """Missing split or merge proposals should not serialize as NaN."""
+    accepted = np.array([True, False, True])
+
+    assert benchmark_module._conditional_acceptance_rate(
+        accepted,
+        np.array([True, True, False]),
+    ) == pytest.approx(0.5)
+    assert benchmark_module._conditional_acceptance_rate(
+        accepted,
+        np.zeros(3, dtype=bool),
+    ) is None
+
+
+def test_effective_sample_helpers_normalize_arviz_dataset_results(
+    benchmark_module: ModuleType,
+) -> None:
+    """ESS and MCSE helpers should return finite Python scalars."""
+    draws = np.random.default_rng(4).normal(size=1_000)
+    ess, mcse = benchmark_module._bulk_ess_and_mean_mcse(draws)
+    minimum_ess = benchmark_module._minimum_bulk_ess(
+        np.column_stack((draws, np.roll(draws, 1)))
+    )
+
+    assert math.isfinite(ess) and ess > 1.0
+    assert math.isfinite(mcse) and mcse > 0.0
+    assert math.isfinite(minimum_ess) and minimum_ess > 1.0
 
 
 def test_training_target_excludes_all_holdout_rows(recovery_case: Any) -> None:
@@ -213,6 +299,49 @@ def test_long_local_chain_matches_exact_k_and_predictive_oracle(
         result.sampled.sampled_mixture.holdout_log_predictive_density
         - result.exact.latent_677_partition_mixture.holdout_log_predictive_density
     ) < 0.5
+
+
+@pytest.mark.slow
+def test_pymc_split_mask_and_nuts_chain_matches_fixed_and_latent_oracles(
+    benchmark_module: ModuleType,
+    recovery_case: Any,
+) -> None:
+    """The full PyMC chain should recover P and direct posterior predictions."""
+    result = benchmark_module.sample_pymc_recovery_case(
+        recovery_case,
+        draws=20_000,
+        warmup=3_000,
+        seed=481,
+        target_accept=0.95,
+    )
+
+    assert result.sampled.divergence_count / result.sampled.draws < 0.005
+    assert result.sampled.k_total_variation_distance < 0.08
+    assert result.sampled.partition_total_variation_distance < 0.12
+    assert abs(
+        result.sampled.sampled_truth_probability
+        - result.sampled.exact_truth_probability
+    ) < 0.08
+    assert result.sampled.beats_wrong_fixed_k4
+    assert result.sampled.beats_underfit_fixed_k2
+    assert result.sampled.oracle_log_score_noninferior
+    assert result.sampled.basis_region_count_bulk_ess > 1.0
+    assert result.sampled.basis_region_count_mcse > 0.0
+    assert result.sampled.truth_partition_indicator_bulk_ess > 1.0
+    assert result.sampled.truth_partition_probability_mcse > 0.0
+    assert result.sampled.minimum_inner_coordinate_bulk_ess > 1.0
+    assert abs(
+        result.sampled.sampled_posterior.holdout_log_predictive_density
+        - result.exact.latent_677_partition_mixture.holdout_log_predictive_density
+    ) < 0.5
+    assert abs(
+        result.sampled.sampled_posterior.noiseless_holdout_rmse
+        - result.exact.latent_677_partition_mixture.noiseless_holdout_rmse
+    ) < 0.02
+    assert abs(
+        result.sampled.sampled_posterior.field_rmse
+        - result.exact.latent_677_partition_mixture.field_rmse
+    ) < 0.02
 
 
 def _floating_values(value: object) -> Iterator[float]:
