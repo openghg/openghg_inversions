@@ -6,7 +6,10 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.experimental.rjmcmc.rhime_adapter import problem_from_rhime_inputs
+from openghg_inversions.experimental.rjmcmc.rhime_adapter import (
+    _align_nmeasure_exact,
+    problem_from_rhime_inputs,
+)
 
 
 def _shuffled_input_dataset() -> xr.Dataset:
@@ -86,6 +89,9 @@ def test_adapter_transposes_flattens_and_aligns_exactly() -> None:
     assert problem.k_max == 3
     assert problem.coefficient_prior_mean == 1.0
     assert problem.coefficient_prior_sd == 0.5
+    assert problem.fixed_block is None
+    assert problem.fixed_offset is not None
+    np.testing.assert_array_equal(problem.fixed_offset, np.zeros(2))
 
 
 def test_adapter_preserves_custom_names_and_k_prior() -> None:
@@ -110,6 +116,201 @@ def test_adapter_preserves_custom_names_and_k_prior() -> None:
     np.testing.assert_array_equal(problem.log_k_prior, log_k_prior)
     assert problem.coefficient_prior_mean == 1.2
     assert problem.coefficient_prior_sd == 0.3
+
+
+def test_adapter_transposes_fixed_design_and_broadcasts_scalar_priors() -> None:
+    """An explicit fixed design should become measurement-major core arrays."""
+    dataset = _shuffled_input_dataset()
+    fixed_design = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+    dataset["outer_design"] = xr.DataArray(
+        fixed_design,
+        dims=("outer_region", "nmeasure"),
+        coords={
+            "outer_region": ["north", "south", "west"],
+            "nmeasure": dataset.coords["nmeasure"],
+        },
+    )
+
+    problem = problem_from_rhime_inputs(
+        dataset,
+        **_adapter_kwargs(),  # type: ignore[arg-type]
+        fixed_design_name="outer_design",
+        fixed_coefficient_prior_mean=1.5,
+        fixed_coefficient_prior_sd=0.25,
+    )
+
+    assert problem.fixed_block is not None
+    np.testing.assert_array_equal(problem.fixed_block.design, fixed_design.T)
+    np.testing.assert_array_equal(problem.fixed_block.coefficient_prior_mean, [1.5, 1.5, 1.5])
+    np.testing.assert_array_equal(problem.fixed_block.coefficient_prior_sd, [0.25, 0.25, 0.25])
+
+
+def test_adapter_accepts_per_column_fixed_priors() -> None:
+    """Fixed prior vectors should preserve their declared column order."""
+    dataset = _shuffled_input_dataset()
+    dataset["outer_design"] = xr.DataArray(
+        np.arange(1.0, 5.0).reshape(2, 2),
+        dims=("nmeasure", "outer_region"),
+        coords={"nmeasure": dataset.coords["nmeasure"], "outer_region": ["a", "b"]},
+    )
+
+    problem = problem_from_rhime_inputs(
+        dataset,
+        **_adapter_kwargs(),  # type: ignore[arg-type]
+        fixed_design_name="outer_design",
+        fixed_coefficient_prior_mean=[1.0, 2.0],
+        fixed_coefficient_prior_sd=np.array([0.2, 0.4]),
+    )
+
+    assert problem.fixed_block is not None
+    np.testing.assert_array_equal(problem.fixed_block.coefficient_prior_mean, [1.0, 2.0])
+    np.testing.assert_array_equal(problem.fixed_block.coefficient_prior_sd, [0.2, 0.4])
+
+
+def test_adapter_accepts_offset_without_a_fixed_design() -> None:
+    """A selected offset should not require or create fixed coefficients."""
+    dataset = _shuffled_input_dataset()
+    dataset["baseline"] = xr.DataArray(
+        [0.25, -0.5],
+        dims="nmeasure",
+        coords={"nmeasure": dataset.coords["nmeasure"]},
+    )
+
+    problem = problem_from_rhime_inputs(
+        dataset,
+        **_adapter_kwargs(),  # type: ignore[arg-type]
+        fixed_offset_name="baseline",
+    )
+
+    assert problem.fixed_block is None
+    assert problem.fixed_offset is not None
+    np.testing.assert_array_equal(problem.fixed_offset, [0.25, -0.5])
+
+
+def test_nmeasure_alignment_rejects_coordinate_order_mismatch() -> None:
+    """Optional arrays must preserve the filtered measurement index and order."""
+    sensitivity = xr.DataArray(
+        np.ones((2, 1, 1)),
+        dims=("nmeasure", "lat", "lon"),
+        coords={"nmeasure": ["first", "second"], "lat": [50.0], "lon": [0.0]},
+    )
+    fixed_design = xr.DataArray(
+        np.ones((2, 1)),
+        dims=("nmeasure", "outer_region"),
+        coords={"nmeasure": ["second", "first"], "outer_region": ["outer"]},
+    )
+
+    with pytest.raises(ValueError, match="align exactly.*nmeasure"):
+        _align_nmeasure_exact(sensitivity, fixed_design, "outer_design")
+
+
+@pytest.mark.parametrize(
+    "design",
+    [
+        xr.DataArray(np.ones(2), dims="nmeasure"),
+        xr.DataArray(np.ones((2, 1, 1)), dims=("nmeasure", "sector", "region")),
+        xr.DataArray(np.ones((2, 1)), dims=("time", "outer_region")),
+    ],
+    ids=("one-dimensional", "three-dimensional", "missing-nmeasure"),
+)
+def test_adapter_rejects_malformed_fixed_design_dimensions(design: xr.DataArray) -> None:
+    """A fixed design must contain exactly one measurement and one column axis."""
+    dataset = _shuffled_input_dataset()
+    dataset["outer_design"] = design
+
+    with pytest.raises(ValueError, match="exactly two dimensions including 'nmeasure'"):
+        problem_from_rhime_inputs(
+            dataset,
+            **_adapter_kwargs(),  # type: ignore[arg-type]
+            fixed_design_name="outer_design",
+            fixed_coefficient_prior_mean=1.0,
+            fixed_coefficient_prior_sd=0.2,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mean", "standard_deviation", "message"),
+    [
+        (None, 0.2, "requires both"),
+        (1.0, None, "requires both"),
+        ([1.0, 2.0, 3.0], 0.2, "one value per"),
+        (1.0, [0.2, np.nan], "finite"),
+    ],
+    ids=("missing-mean", "missing-sd", "wrong-length", "nonfinite-sd"),
+)
+def test_adapter_rejects_malformed_fixed_prior_moments(
+    mean: object,
+    standard_deviation: object,
+    message: str,
+) -> None:
+    """An explicit fixed design requires valid scalar or per-column priors."""
+    dataset = _shuffled_input_dataset()
+    dataset["outer_design"] = xr.DataArray(
+        np.ones((2, 2)),
+        dims=("nmeasure", "outer_region"),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        problem_from_rhime_inputs(
+            dataset,
+            **_adapter_kwargs(),  # type: ignore[arg-type]
+            fixed_design_name="outer_design",
+            fixed_coefficient_prior_mean=mean,  # type: ignore[arg-type]
+            fixed_coefficient_prior_sd=standard_deviation,  # type: ignore[arg-type]
+        )
+
+
+def test_adapter_rejects_fixed_priors_without_a_design_name() -> None:
+    """Fixed priors must not cause an implicit search for a design variable."""
+    with pytest.raises(ValueError, match="require an explicit fixed_design_name"):
+        problem_from_rhime_inputs(
+            _shuffled_input_dataset(),
+            **_adapter_kwargs(),  # type: ignore[arg-type]
+            fixed_coefficient_prior_mean=1.0,
+            fixed_coefficient_prior_sd=0.2,
+        )
+
+
+@pytest.mark.parametrize("name", ["outer_design", "baseline"])
+def test_adapter_rejects_nonfinite_optional_prediction_inputs(name: str) -> None:
+    """Selected fixed-design and offset variables must contain finite values."""
+    dataset = _shuffled_input_dataset()
+    if name == "outer_design":
+        dataset[name] = xr.DataArray(
+            [[1.0], [np.nan]],
+            dims=("nmeasure", "outer_region"),
+        )
+        optional_kwargs: dict[str, object] = {
+            "fixed_design_name": name,
+            "fixed_coefficient_prior_mean": 1.0,
+            "fixed_coefficient_prior_sd": 0.2,
+        }
+    else:
+        dataset[name] = xr.DataArray([0.0, np.inf], dims="nmeasure")
+        optional_kwargs = {"fixed_offset_name": name}
+
+    with pytest.raises(ValueError, match=f"{name!r}.*finite"):
+        problem_from_rhime_inputs(
+            dataset,
+            **_adapter_kwargs(),  # type: ignore[arg-type]
+            **optional_kwargs,  # type: ignore[arg-type]
+        )
+
+
+def test_adapter_rejects_malformed_fixed_offset_dimensions() -> None:
+    """A selected fixed offset must be one-dimensional along nmeasure."""
+    dataset = _shuffled_input_dataset()
+    dataset["baseline"] = xr.DataArray(
+        np.ones((2, 1)),
+        dims=("nmeasure", "component"),
+    )
+
+    with pytest.raises(ValueError, match="'baseline'.*exactly dimensions"):
+        problem_from_rhime_inputs(
+            dataset,
+            **_adapter_kwargs(),  # type: ignore[arg-type]
+            fixed_offset_name="baseline",
+        )
 
 
 @pytest.mark.parametrize("name", ["fp_x_flux", "mf", "mf_error"])
