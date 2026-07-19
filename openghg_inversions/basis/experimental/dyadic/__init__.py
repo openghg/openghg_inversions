@@ -43,6 +43,10 @@ from .gaussian_product_space import (
     GaussianProductSpaceTarget,
     PartitionLogPrior,
 )
+from .gaussian_product_space_sampler import (
+    GaussianProductSpaceTrace,
+    sample_gaussian_product_space,
+)
 from .gamma_beta import (
     DepthKappaStrategy,
     GammaBetaChildMoments,
@@ -149,6 +153,7 @@ __all__ = [
     "GaussianPosterior",
     "GaussianProjectionAnalysis",
     "GaussianProductSpaceTarget",
+    "GaussianProductSpaceTrace",
     "InitializationResult",
     "IsotropicRegionCovariance",
     "KappaStrategy",
@@ -225,6 +230,7 @@ __all__ = [
     "run_fixed_count_dfs_search",
     "run_projected_variable_k_dfs_search",
     "run_variable_k_dfs_search",
+    "sample_gaussian_product_space",
     "separable_exponential_correlation",
     "stochastic_local_search",
     "sum_coarsen_grid",

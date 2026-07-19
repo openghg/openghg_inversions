@@ -9,9 +9,11 @@ from openghg_inversions.basis.experimental.dyadic.enumeration import enumerate_p
 from openghg_inversions.basis.experimental.dyadic.gaussian_product_space import (
     GaussianProductSpaceTarget,
 )
+from openghg_inversions.basis.experimental.dyadic.gaussian_product_space_sampler import (
+    sample_gaussian_product_space,
+)
 from openghg_inversions.basis.experimental.dyadic.product_space import (
     ProductSpaceState,
-    partition_metropolis_step,
 )
 from openghg_inversions.basis.experimental.dyadic.state import PartitionState
 from openghg_inversions.basis.experimental.dyadic.tree import DyadicTree
@@ -158,25 +160,75 @@ def test_gibbs_and_partition_mh_frequencies_match_exact_oracle(
     target, partitions = _target(observation=1.8, pseudo_prior_scale=pseudo_prior_scale)
     expected = target.partition_probabilities(partitions)
     rng = np.random.default_rng(20260717)
-    state = target.draw_conditional_state(partitions[0], rng)
-    counts = {partition: 0 for partition in partitions}
-    draws = 12_000
-    burn_in = 1_000
-
-    for draw in range(draws):
-        state = target.draw_conditional_state(state.partition, rng)
-        state = partition_metropolis_step(
-            target.tree,
-            state,
-            log_density=target.log_density,
-            rng=rng,
-        ).state
-        if draw >= burn_in:
-            counts[state.partition] += 1
-
-    observed = np.array([counts[partition] for partition in partitions], dtype=float)
+    trace = sample_gaussian_product_space(
+        target,
+        partitions[0],
+        draws=11_000,
+        warmup=1_000,
+        rng=rng,
+    )
+    observed = np.array([trace.partitions.count(partition) for partition in partitions], dtype=float)
     observed /= observed.sum()
     np.testing.assert_allclose(observed, list(expected.values()), atol=0.05)
+
+
+def test_blocked_sampler_returns_fixed_coordinate_trace_and_diagnostics() -> None:
+    """The reusable chain should retain fixed dimensions and local MH diagnostics."""
+    target, partitions = _target(observation=0.4)
+
+    trace = sample_gaussian_product_space(
+        target,
+        partitions[1],
+        draws=7,
+        warmup=4,
+        thinning=2,
+        partition_updates_per_draw=3,
+        rng=np.random.default_rng(41),
+    )
+
+    assert trace.draw_count == 7
+    assert trace.inner_coordinates.shape == (7, 3)
+    assert trace.outer_coefficients.shape == (7, 1)
+    assert trace.partition_accepted.shape == (7, 3)
+    assert trace.partition_log_acceptance_ratio.shape == (7, 3)
+    assert trace.region_counts.shape == (7,)
+    assert 0.0 <= trace.partition_acceptance_rate <= 1.0
+    assert trace.warmup_acceptance_rate is not None
+    assert 0.0 <= trace.warmup_acceptance_rate <= 1.0
+    assert trace.thinning == 2
+    np.testing.assert_array_equal(trace.state(-1).inner_coordinates, trace.inner_coordinates[-1])
+    assert not trace.inner_coordinates.flags.writeable
+    assert not trace.partition_accepted.flags.writeable
+
+
+@pytest.mark.parametrize(
+    ("keyword", "value", "exception", "message"),
+    [
+        ("draws", 0, ValueError, "draws"),
+        ("warmup", -1, ValueError, "warmup"),
+        ("thinning", True, TypeError, "thinning"),
+        ("partition_updates_per_draw", 0, ValueError, "partition_updates_per_draw"),
+    ],
+)
+def test_blocked_sampler_rejects_invalid_controls(
+    keyword: str,
+    value: object,
+    exception: type[Exception],
+    message: str,
+) -> None:
+    """Invalid draw, warmup, thinning, and update controls should fail early."""
+    target, partitions = _target()
+    arguments: dict[str, object] = {
+        "draws": 2,
+        "warmup": 0,
+        "thinning": 1,
+        "partition_updates_per_draw": 1,
+        "rng": np.random.default_rng(1),
+    }
+    arguments[keyword] = value
+
+    with pytest.raises(exception, match=message):
+        sample_gaussian_product_space(target, partitions[0], **arguments)  # type: ignore[arg-type]
 
 
 def test_zero_mass_partition_prior_is_supported() -> None:
