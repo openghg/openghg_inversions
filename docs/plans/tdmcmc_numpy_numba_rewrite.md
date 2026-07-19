@@ -92,6 +92,9 @@ will be introduced only behind equivalence tests.
 | 2026-07-19 | Add a fifth coefficient-update slot only when an inferred fixed predictor block is present. | The four-slot no-block schedule and its seeded traces remain unchanged; fixed-block runs alternate dynamic and fixed coefficient opportunities around the two reversible structural slots and one nucleus slot. |
 | 2026-07-19 | Define retention by global completed-transition number and carry the complete PCG64 and schedule state across segments. | Split execution must be exactly equivalent to an uninterrupted chain, including at schedule and thinning boundaries, and a resumed segment must not duplicate its incoming state. |
 | 2026-07-19 | Infer all seven test-data-backed outer-emissions coefficients in every fair checkerboard comparator. | The oracle and non-oracle fixed inner layouts and the trans-dimensional inner field now share the same outer design, priors, proposal scale, observation vector, and total-prediction metric. Boundary-condition fixtures remain excluded. |
+| 2026-07-19 | Use a strict atomic NPZ checkpoint for execution state and a separate xarray dataset for retained scientific draws. | Checkpoints must preserve exact PCG64, schedule, retention, problem identity, fixed/dynamic caches, and cache-construction backend; retained draws need labelled variable-capacity dimensions but should not be forced into the current fixed-basis `InversionOutput` contract. |
+| 2026-07-19 | Treat the Lunt per-region hierarchy as log-space Normal parameters, not arithmetic lognormal moments. | The paper's `mu_x` and `sigma_x` describe `log(x)`. Existing arithmetic mean/SD inputs remain the fixed-prior pseudo-data mode and must not be relabelled as the Lunt hierarchy. Numerical hyperprior bounds and proposal scales remain unavailable. |
+| 2026-07-19 | Do not copy a parent region's inferred hyperparameter pair in an upward structural proposal. | The paper does not specify how the new dimension-dependent pair is proposed. Legacy parent copying lies on an equality submanifold and lacks a valid reverse density after the pairs evolve independently. The planned auditable completion draws the new pair from its normalized bounded hyperprior. |
 
 ## Current offline work queue
 
@@ -118,14 +121,21 @@ following correctness and integration work. Items are ordered by dependency.
    example now jointly infers seven InTEM outer-emissions coefficients for all
    three comparator methods while excluding the corrupt boundary-condition
    fixture.
-6. **Completed in memory; durable format in progress:** collect retained draws
+6. **Completed:** collect retained draws
    on a global transition clock and support exact split-chain continuation with
-   preserved PCG64, schedule, retention, kernel, and fixed-block state.
-7. Add a strict, atomic checkpoint file and an xarray retained-trace export
-   before attempting expensive or production-connected chains.
-8. Design and validate dimension-dependent emissions hyperparameters, followed
-   by grouped/site-block error scales and the correlated likelihood. Do not
-   invent the still-unconfirmed Lunt prior bounds or proposal scales.
+   preserved PCG64, schedule, retention, kernel, and fixed-block state. A strict
+   atomic checkpoint validates exact problem/manifest fingerprints and every
+   stored cache before continuation.
+7. **Completed:** add an xarray retained-trace export with global transition,
+   padded region-slot, active-mask, and separate fixed-parameter coordinates.
+8. **Design completed; implementation gated:** add opt-in per-region log-space
+   emissions hyperparameters, first as target/state primitives and only later
+   as structural and scheduled proposals. All bounds, initial values, and
+   proposal scales must be explicit synthetic settings until archived Lunt
+   configuration returns.
+9. Add grouped/site-block error scales and the correlated likelihood after the
+   hierarchy has independent target/proposal oracles. Do not implement the
+   questionable determinant ratio from the printed paper equation directly.
 
 This repository does not currently contain an agent-tracker configuration, so
 the queue, ownership, decisions, and evidence are recorded in this planning
@@ -170,8 +180,14 @@ document and in small commits on the draft branch.
   total prediction, summaries, and exact continuation.
 - [x] Split retained chains exactly reproduce uninterrupted chains across
   non-aligned schedule and thinning boundaries.
+- [x] Durable NumPy/Numba checkpoints round-trip dynamic-only and fixed-block
+  chains and reject altered targets, manifests, schemas, runtimes, arrays, and
+  unsafe pickle payloads.
 - [x] Retained traces reconstruct on the native grid with posterior
   mean/quantiles and posterior-mean prediction RMSE.
+- [x] Retained traces export to labelled xarray datasets without conflating
+  dynamic region slots, always-active parameters, and attempted-transition
+  diagnostics.
 - [x] Focused tests, Ruff checks, formatting checks, and configured type checks pass.
 
 ## Planned stages
@@ -194,9 +210,9 @@ stages 6--7 remain follow-up work.
 The first paper-specific mechanics are now implemented: native-grid posterior
 projection, an opt-in normalized local discrete-Gaussian sampler move,
 continuous and finite structural-kernel oracles, declared run profiles, exact
-retention/continuation, and joint dynamic-inner/fixed-outer prediction. Durable
-checkpoint files and retained-trace interchange are the current output gates.
-Full hierarchical emissions and correlated-error blocks remain deferred.
+durable continuation, labelled retained-trace interchange, and joint
+dynamic-inner/fixed-outer prediction. The next correctness gate is the opt-in
+per-region log-space hierarchy. Correlated-error blocks remain behind it.
 
 ## Progress log
 
@@ -230,6 +246,23 @@ Full hierarchical emissions and correlated-error blocks remain deferred.
   Oracle, non-oracle fixed, and trans-dimensional inner methods now use the same
   observations, outer design and priors, proposal opportunities, and total
   prediction RMSE. The corrupt boundary-condition fixture is still never read.
+- Added strict atomic checkpoint serialization with numeric arrays and UTF-8
+  canonical JSON only. It fingerprints the transformed numerical problem,
+  hashes every state array, preserves exact PCG64/kernel/schedule/retention
+  state, distinguishes the cache-construction backend from the configured
+  kernel backend, and independently rebuilds caches before restoring them.
+- Added an experimental xarray retained-trace boundary with global transition
+  coordinates, padded dynamic slots and an active mask, and a distinct
+  always-active parameter dimension. Attempted-transition diagnostics remain a
+  separate future output because they do not align one-for-one with retained
+  draws.
+- Re-audited the next Lunt hierarchy stage. The paper defines a separate
+  log-space Normal `(mu_x, sigma_x)` pair for every active region, not the
+  arithmetic lognormal moments used by the fixed-prior pseudo-data API. It does
+  not define how a new pair is generated in an upward structural move. The
+  legacy parent-copy rule is not a dimension-matched reversible proposal once
+  pairs vary independently; the planned reference completion samples the new
+  pair from its normalized bounded hyperprior.
 
 ### 2026-07-18
 

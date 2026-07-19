@@ -87,8 +87,15 @@ p(\theta_y).
 \]
 
 `theta_x` is dimension-dependent: each active emissions region has its own
-prior parameters. `theta_y` describes the data-space error model and is not
-dimension-dependent.
+prior parameters. In the paper these are directly the mean and standard
+deviation of `log(x_i)`, so
+
+\[
+\log x_i \sim \mathcal{N}(\mu_i,\sigma_i^2).
+\]
+
+They are not arithmetic-space moments of `x_i`. `theta_y` describes the
+data-space error model and is not dimension-dependent.
 
 ## Priors
 
@@ -161,6 +168,15 @@ additive Gaussian perturbation of the scaling in the pre-birth owning cell.
 Death selects a nucleus uniformly and is the reverse transformation. The paper
 sets the birth/death Jacobian to one. Proposal ratios are given in Eqs. (20)-(22),
 PDF p. 7 / printed p. 3219.
+
+The paper does not specify how the new region's dimension-dependent
+`(mu_i, sigma_i)` pair is generated during birth. The legacy code copies the
+parent's arithmetic-moment parameters, but after pairs can vary independently
+that rule proposes on an equality submanifold and supplies no valid reverse
+density for a general state. The planned reference completion instead draws
+the new log-space pair from its normalized bounded hyperprior; those proposal
+densities then cancel the new region's normalized hyperprior factors. This is
+an explicit implementation decision, not a recovered paper setting.
 
 The move proposal selects a nucleus and uses a Gaussian displacement centred on
 its current location while carrying the coefficient with it. The paper calls
@@ -244,6 +260,11 @@ formula is internally inconsistent:
   target-invariant. The rewrite uses reversible mixed structural steps while
   retaining the paper's proposal densities and the first rewrite's aggregate
   structural-attempt frequency.
+- The dimension-changing equations omit a proposal for the new region's
+  `(mu_i, sigma_i)` pair. Copying a parent pair is not a valid general
+  dimension-matching rule once these pairs are inferred independently. The
+  rewrite will draw the pair from its normalized hyperprior and test the full
+  forward/reverse flux before exposing a hierarchical sampler.
 
 Birth and death Eqs. (35)-(36) are recovered algebraically by the current
 normalized target when the `p(c|k)` and location/count proposal factors are
@@ -481,11 +502,17 @@ Already implemented:
 
 Next paper-first gaps:
 
-1. strict durable checkpoint serialization and retained-trace xarray export;
-2. dimension-dependent emissions hyperparameters and their proposal cycle;
-3. fixed boundary-curtain design inputs once reliable data are available;
-4. grouped/site-block `sigma_y` and AR(1) `tau` likelihood;
-5. real-data preparation and comparison once archived inputs are available.
+1. opt-in per-region log-space emissions hyperparameters and their fully
+   dimension-matched structural proposal cycle;
+2. fixed boundary-curtain design inputs once reliable data are available;
+3. grouped/site-block `sigma_y` and AR(1) `tau` likelihood;
+4. real-data preparation and comparison once archived inputs are available.
+
+The hierarchy implementation must require explicit bounded-uniform hyperprior
+bounds, initialized active pairs, and proposal scales. None should be labelled
+as a Lunt configuration until the archived settings return. The fixed-prior
+pseudo-data/checkerboard path continues to use declared arithmetic lognormal
+moments and must preserve its current seeded behavior.
 
 Temporal partitions, multisector inference, and parallel tempering are not part
 of the Lunt (2016) reproduction milestone. The main paper describes parallel
