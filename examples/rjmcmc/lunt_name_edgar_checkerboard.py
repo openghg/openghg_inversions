@@ -7,9 +7,10 @@ sites, and its hybrid UKGHG/EDGAR7 inventory differs from the paper inventory.
 
 The available boundary-condition test data are known to be corrupt and are
 deliberately never opened. Emissions outside the inversion window are instead
-treated as a known fixed contribution and subtracted. The packaged InTEM map
-resolves that contribution into labels 0 through 5 and the part of inner label
-6 outside the rectangular checkerboard crop.
+represented by seven always-active coefficients inferred jointly with the
+inner spatial field. The packaged InTEM map resolves those columns into labels
+0 through 5 and the part of inner label 6 outside the rectangular checkerboard
+crop.
 
 The 48 by 56 inner window and sixteen-block 0.5/1.5 checkerboard preserve the
 paper's principal spatial structure. Only 56 six-hour observations constrain
@@ -17,6 +18,8 @@ paper's principal spatial structure. Only 56 six-hour observations constrain
 command compares RJMCMC with a truth-informed oracle basis and a conventional
 non-oracle quadtree basis derived only from mean sensitivity. It prints a JSON
 summary, including input hashes and run settings, and writes no result files.
+Reported prediction RMSE compares the total posterior-mean inner-plus-outer
+signal with the total noiseless synthetic signal.
 """
 
 from __future__ import annotations
@@ -38,9 +41,13 @@ from openghg_inversions.experimental.rjmcmc.core import (
     build_state,
     uniform_log_k_prior,
 )
-from openghg_inversions.experimental.rjmcmc.postprocessing import summarize_fine_grid_posterior
+from openghg_inversions.experimental.rjmcmc.postprocessing import summarize_posterior_prediction
 from openghg_inversions.experimental.rjmcmc.rhime_adapter import problem_from_rhime_inputs
-from openghg_inversions.experimental.rjmcmc.sampling import SamplerConfig, sample
+from openghg_inversions.experimental.rjmcmc.sampling import (
+    FIXED_BLOCK_SCHEDULE_ID,
+    SamplerConfig,
+    sample,
+)
 
 FloatArray = NDArray[np.float64]
 
@@ -59,6 +66,7 @@ COORDINATE_ATOL = 2.0e-5
 DEFAULT_ITERATIONS = 20_000
 DEFAULT_START = 8_000
 DEFAULT_THIN = 10
+FIXED_COEFFICIENT_PROPOSAL_SD = 0.1
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +126,21 @@ class CheckerboardInputPaths:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class NameEdgarCheckerboardCase:
-    """Complete two-site NAME/EDGAR checkerboard inversion case."""
+    """Complete two-site NAME/EDGAR checkerboard inversion case.
+
+    Attributes:
+        problem: Joint inversion problem with a dynamic inner field and seven
+            always-active outer-emissions coefficients.
+        truth: Fine-grid truth for the dynamic inner checkerboard.
+        noise: Synthetic observation noise.
+        inner_noiseless: Truth prediction from the inner checkerboard alone.
+        fixed_outer: Truth contribution obtained by setting all seven outer
+            coefficients to one; it is not subtracted or held fixed in fits.
+        fixed_outer_regions: Seven-column InTEM outer-emissions design inferred
+            jointly with the inner field.
+        full_noiseless: Total inner-plus-outer noiseless truth prediction.
+        full_observations: Total noiseless prediction plus synthetic noise.
+    """
 
     problem: TransDimensionalProblem
     truth: FloatArray
@@ -137,10 +159,16 @@ class NameEdgarCheckerboardCase:
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkFit:
-    """Compact result from one fixed- or variable-dimension chain."""
+    """Compact result from one fixed- or variable-dimension inner chain.
+
+    ``prediction_rmse`` compares the total posterior-mean inner-plus-outer
+    prediction with the total noiseless truth. ``mean_fixed_coefficients``
+    contains the seven inferred InTEM outer-emissions posterior means.
+    """
 
     name: str
     prediction_rmse: float
+    mean_fixed_coefficients: tuple[float, ...]
     visited_k: tuple[int, ...]
     runtime_seconds: float
 
@@ -149,6 +177,7 @@ class BenchmarkFit:
         return {
             "name": self.name,
             "prediction_rmse": self.prediction_rmse,
+            "mean_fixed_coefficients": list(self.mean_fixed_coefficients),
             "visited_k": list(self.visited_k),
             "runtime_seconds": self.runtime_seconds,
         }
@@ -192,6 +221,8 @@ class CheckerboardBenchmarkSummary:
                 "sampling_seed": self.sampling_seed,
                 "initial_nucleus_seed": self.initial_seed,
                 "backend": "numba",
+                "fixed_coefficient_proposal_sd": FIXED_COEFFICIENT_PROPOSAL_SD,
+                "schedule_id": FIXED_BLOCK_SCHEDULE_ID,
             },
             "prior_prediction_rmse": self.prior_prediction_rmse,
             "fits": {
@@ -381,24 +412,28 @@ def build_name_edgar_checkerboard_case(
         size=inner_noiseless.size,
     )
     full_observations = full_noiseless + noise
-    inner_observations = full_observations - fixed_outer
 
     inv_inputs = xr.Dataset(
         {
             "fp_x_flux": (
                 ("nmeasure", "lat", "lon"),
-                sensitivities.reshape(inner_observations.size, *GRID_SHAPE),
+                sensitivities.reshape(full_observations.size, *GRID_SHAPE),
             ),
-            "mf": (("nmeasure",), inner_observations),
+            "mf": (("nmeasure",), full_observations),
             "mf_error": (
                 ("nmeasure",),
-                np.full(inner_observations.size, OBSERVATION_SD),
+                np.full(full_observations.size, OBSERVATION_SD),
+            ),
+            "fixed_outer_regions": (
+                ("nmeasure", "fixed_region"),
+                fixed_outer_regions,
             ),
         },
         coords={
-            "nmeasure": np.arange(inner_observations.size),
+            "nmeasure": np.arange(full_observations.size),
             "lat": np.arange(GRID_SHAPE[0]),
             "lon": np.arange(GRID_SHAPE[1]),
+            "fixed_region": np.arange(fixed_outer_regions.shape[1]),
         },
     )
     problem = problem_from_rhime_inputs(
@@ -407,6 +442,9 @@ def build_name_edgar_checkerboard_case(
         k_max=100,
         coefficient_prior_mean=1.0,
         coefficient_prior_sd=1.0,
+        fixed_design_name="fixed_outer_regions",
+        fixed_coefficient_prior_mean=1.0,
+        fixed_coefficient_prior_sd=1.0,
     )
     return NameEdgarCheckerboardCase(
         problem=problem,
@@ -435,7 +473,7 @@ def fixed_basis_problem(
     case: NameEdgarCheckerboardCase,
     labels: NDArray[np.int64],
 ) -> TransDimensionalProblem:
-    """Aggregate the fine design over one complete fixed-basis label field."""
+    """Fix the inner labels while preserving the inferred outer block."""
     if labels.shape != (case.problem.n_grid_cells,):
         raise ValueError("Fixed-basis labels must contain one value per grid cell.")
     unique_labels = np.unique(labels)
@@ -453,18 +491,20 @@ def fixed_basis_problem(
         log_k_prior=uniform_log_k_prior(region_count, region_count),
         coefficient_prior_mean=case.problem.coefficient_prior_mean,
         coefficient_prior_sd=case.problem.coefficient_prior_sd,
+        fixed_offset=case.problem.fixed_offset,
+        fixed_block=case.problem.fixed_block,
     )
 
 
 def oracle_fixed_problem(case: NameEdgarCheckerboardCase) -> TransDimensionalProblem:
-    """Aggregate the fine design into the sixteen known checkerboard blocks."""
+    """Use sixteen truth-informed inner blocks and infer the outer coefficients."""
     return fixed_basis_problem(case, block_labels())
 
 
 def quadtree_fixed_problem(
     case: NameEdgarCheckerboardCase,
 ) -> tuple[TransDimensionalProblem, NDArray[np.int64]]:
-    """Build a conventional sixteen-region basis from mean sensitivity only."""
+    """Use a non-oracle inner quadtree while inferring the outer coefficients."""
     weights = xr.DataArray(
         case.problem.sensitivities.mean(axis=0).reshape(GRID_SHAPE),
         dims=("lat", "lon"),
@@ -492,11 +532,12 @@ def _sample_problem(
     seed: int,
     name: str,
 ) -> tuple[FloatArray, BenchmarkFit]:
-    """Run one seeded chain and return its mean field and compact diagnostics."""
+    """Run one seeded chain and return its total mean prediction and diagnostics."""
     initial_state = build_state(
         problem,
         initial_nuclei,
         np.ones(initial_nuclei.size),
+        fixed_coefficients=np.ones(problem.n_fixed_coefficients),
         backend="numba",
     )
     started = perf_counter()
@@ -511,9 +552,10 @@ def _sample_problem(
             backend="numba",
             nucleus_move="local",
             local_move_scale=2.5,
+            fixed_coefficient_proposal_sd=FIXED_COEFFICIENT_PROPOSAL_SD,
         ),
     ).trace
-    summary = summarize_fine_grid_posterior(
+    summary = summarize_posterior_prediction(
         problem,
         trace,
         comparison=comparison,
@@ -521,13 +563,16 @@ def _sample_problem(
         thin=thin,
         backend="numba",
     )
+    if summary.rmse is None:
+        raise RuntimeError("A comparison vector is required for benchmark RMSE.")
     fit = BenchmarkFit(
         name=name,
         prediction_rmse=summary.rmse,
+        mean_fixed_coefficients=tuple(float(value) for value in summary.mean_fixed_coefficients),
         visited_k=tuple(int(value) for value in np.unique(trace.k)),
         runtime_seconds=perf_counter() - started,
     )
-    return summary.mean, fit
+    return summary.total_mean_prediction, fit
 
 
 def _file_provenance(path: Path) -> dict[str, object]:
@@ -552,7 +597,7 @@ def run_benchmark(
     sampling_seed: int = 1901,
     initial_seed: int = 1902,
 ) -> CheckerboardBenchmarkSummary:
-    """Run matched oracle, quadtree, and RJMCMC prediction comparisons."""
+    """Run matched joint fits and compare their total noiseless predictions."""
     if iterations < 1:
         raise ValueError("iterations must be positive.")
     if start < 0 or start > iterations:
@@ -564,7 +609,7 @@ def run_benchmark(
     _, oracle_fit = _sample_problem(
         oracle_problem,
         np.arange(16, dtype=np.int64),
-        case.inner_noiseless,
+        case.full_noiseless,
         iterations=iterations,
         start=start,
         thin=thin,
@@ -575,7 +620,7 @@ def run_benchmark(
     _, quadtree_fit = _sample_problem(
         quadtree_problem,
         np.arange(16, dtype=np.int64),
-        case.inner_noiseless,
+        case.full_noiseless,
         iterations=iterations,
         start=start,
         thin=thin,
@@ -592,7 +637,7 @@ def run_benchmark(
     _, rjmcmc_fit = _sample_problem(
         case.problem,
         initial_nuclei,
-        case.inner_noiseless,
+        case.full_noiseless,
         iterations=iterations,
         start=start,
         thin=thin,
@@ -600,8 +645,15 @@ def run_benchmark(
         name="variable-dimension Voronoi RJMCMC",
     )
 
-    prior_prediction = case.problem.sensitivities @ np.ones(case.problem.n_grid_cells)
-    prior_rmse = float(np.sqrt(np.mean(np.square(prior_prediction - case.inner_noiseless))))
+    fixed_offset = case.problem.fixed_offset
+    if fixed_offset is None:
+        raise RuntimeError("Validated RJMCMC problems must provide a fixed offset.")
+    prior_prediction = fixed_offset + case.problem.sensitivities @ np.ones(case.problem.n_grid_cells)
+    if case.problem.fixed_block is not None:
+        prior_prediction = prior_prediction + case.problem.fixed_block.design @ np.ones(
+            case.problem.n_fixed_coefficients
+        )
+    prior_rmse = float(np.sqrt(np.mean(np.square(prior_prediction - case.full_noiseless))))
     return CheckerboardBenchmarkSummary(
         observation_count=case.problem.n_observations,
         grid_shape=GRID_SHAPE,

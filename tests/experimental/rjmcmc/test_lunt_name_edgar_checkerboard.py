@@ -49,6 +49,8 @@ def test_name_edgar_checkerboard_closes_raw_data_accounting(
     assert case.problem.sensitivities.shape == (56, 48 * 56)
     assert (case.problem.k_min, case.problem.k_max) == (5, 100)
     assert case.fixed_outer_regions.shape == (56, 7)
+    assert case.problem.fixed_block is not None
+    assert case.problem.n_fixed_coefficients == 7
     np.testing.assert_array_equal(np.unique(case.crop_intem_labels), [6])
     np.testing.assert_array_equal(np.unique(case.truth), [0.5, 1.5])
     np.testing.assert_array_equal(
@@ -56,10 +58,10 @@ def test_name_edgar_checkerboard_closes_raw_data_accounting(
         np.repeat([[0.5] * 14 + [1.5] * 14], 12, axis=0),
     )
     np.testing.assert_allclose(
-        case.full_noiseless - case.fixed_outer,
-        case.inner_noiseless,
+        case.fixed_outer_regions @ np.ones(7),
+        case.fixed_outer,
         rtol=0.0,
-        atol=2.0e-14,
+        atol=3.0e-13,
     )
     np.testing.assert_allclose(
         case.problem.sensitivities @ case.truth,
@@ -75,14 +77,44 @@ def test_name_edgar_checkerboard_closes_raw_data_accounting(
     )
     assert np.all(np.any(case.fixed_outer_regions > 0.0, axis=0))
     np.testing.assert_allclose(
-        case.full_observations - case.fixed_outer,
-        case.problem.observations,
+        case.problem.fixed_block.design,
+        case.fixed_outer_regions,
         rtol=0.0,
-        atol=2.0e-14,
+        atol=0.0,
+    )
+    np.testing.assert_allclose(
+        case.problem.fixed_block.coefficient_prior_mean,
+        np.ones(7),
+        rtol=0.0,
+        atol=0.0,
+    )
+    np.testing.assert_allclose(
+        case.problem.fixed_block.coefficient_prior_sd,
+        np.ones(7),
+        rtol=0.0,
+        atol=0.0,
+    )
+    np.testing.assert_allclose(
+        case.problem.fixed_offset,
+        np.zeros(56),
+        rtol=0.0,
+        atol=0.0,
     )
     np.testing.assert_allclose(
         case.problem.observations,
-        case.inner_noiseless + case.noise,
+        case.full_observations,
+        rtol=0.0,
+        atol=0.0,
+    )
+    np.testing.assert_allclose(
+        case.full_noiseless,
+        case.problem.sensitivities @ case.truth + case.problem.fixed_block.design @ np.ones(7),
+        rtol=0.0,
+        atol=3.0e-13,
+    )
+    np.testing.assert_allclose(
+        case.problem.observations,
+        case.full_noiseless + case.noise,
         rtol=0.0,
         atol=2.0e-14,
     )
@@ -117,6 +149,7 @@ def test_builder_opens_only_declared_non_boundary_inputs(
     opened_paths: list[Path] = []
 
     def recording_open_dataset(path: Path, *args: object, **kwargs: object) -> xr.Dataset:
+        """Record each opened path before delegating to xarray."""
         opened_paths.append(Path(path))
         return real_open_dataset(path, *args, **kwargs)
 
@@ -128,11 +161,11 @@ def test_builder_opens_only_declared_non_boundary_inputs(
     assert not any("boundary" in str(path).lower() or "bc_" in path.name.lower() for path in opened_paths)
 
 
-def test_fixed_comparators_have_declared_sixteen_region_structure(
+def test_fixed_comparators_have_declared_dynamic_and_outer_blocks(
     example_module: ModuleType,
     checkerboard_case: Any,
 ) -> None:
-    """Both comparators should be fixed at K=16 with complete fine-grid labels."""
+    """Truth labels and non-oracle sensitivity labels should share the outer block."""
     oracle_labels = example_module.block_labels()
     oracle = example_module.oracle_fixed_problem(checkerboard_case)
     quadtree, quadtree_labels = example_module.quadtree_fixed_problem(checkerboard_case)
@@ -145,6 +178,24 @@ def test_fixed_comparators_have_declared_sixteen_region_structure(
     assert quadtree.sensitivities.shape == (56, 16)
     assert (oracle.k_min, oracle.k_max) == (16, 16)
     assert (quadtree.k_min, quadtree.k_max) == (16, 16)
+    assert oracle.fixed_block is checkerboard_case.problem.fixed_block
+    assert quadtree.fixed_block is checkerboard_case.problem.fixed_block
+    assert oracle.n_fixed_coefficients == 7
+    assert quadtree.n_fixed_coefficients == 7
+    np.testing.assert_allclose(oracle.fixed_offset, np.zeros(56), rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(quadtree.fixed_offset, np.zeros(56), rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(
+        oracle.fixed_block.design @ np.ones(7),
+        checkerboard_case.fixed_outer,
+        rtol=0.0,
+        atol=3.0e-13,
+    )
+    np.testing.assert_allclose(
+        quadtree.fixed_block.design @ np.ones(7),
+        checkerboard_case.fixed_outer,
+        rtol=0.0,
+        atol=3.0e-13,
+    )
     np.testing.assert_allclose(
         oracle.sensitivities,
         np.column_stack(
@@ -168,6 +219,7 @@ def test_main_prints_machine_readable_provenance_and_results(
     fit = example_module.BenchmarkFit(
         name="test fit",
         prediction_rmse=1.25,
+        mean_fixed_coefficients=(0.8, 0.9, 1.0, 1.1, 1.2, 1.0, 0.95),
         visited_k=(15, 16),
         runtime_seconds=0.5,
     )
@@ -214,6 +266,17 @@ def test_main_prints_machine_readable_provenance_and_results(
     assert output == summary.as_dict()
     assert output["scope"] == "implementation benchmark, not a paper reproduction"
     assert output["boundary_conditions"].startswith("excluded")
+    assert output["sampler"]["fixed_coefficient_proposal_sd"] == 0.1
+    assert output["sampler"]["schedule_id"].startswith("five_slot")
+    assert output["fits"]["rjmcmc"]["mean_fixed_coefficients"] == [
+        0.8,
+        0.9,
+        1.0,
+        1.1,
+        1.2,
+        1.0,
+        0.95,
+    ]
     assert output["inputs"] == [{"path": "flux.nc", "size_bytes": 10, "sha256": "abc"}]
     build_case.assert_called_once_with()
     run_benchmark.assert_called_once_with(
@@ -224,3 +287,36 @@ def test_main_prints_machine_readable_provenance_and_results(
         sampling_seed=17,
         initial_seed=18,
     )
+
+
+def test_short_real_cli_runs_all_three_joint_inversions(
+    example_module: ModuleType,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """All three real joint fits should report seven outer means and total RMSE."""
+    result = example_module.main(
+        [
+            "--iterations",
+            "5",
+            "--start",
+            "0",
+            "--thin",
+            "1",
+            "--sampling-seed",
+            "17",
+            "--initial-seed",
+            "18",
+            "--indent",
+            "0",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out)
+
+    assert result == 0
+    assert output["observations"]["count"] == 56
+    assert output["sampler"]["iterations"] == 5
+    assert output["sampler"]["schedule_id"].startswith("five_slot")
+    for fit in output["fits"].values():
+        assert len(fit["mean_fixed_coefficients"]) == 7
+        assert np.all(np.isfinite(fit["mean_fixed_coefficients"]))
+        assert fit["prediction_rmse"] >= 0.0
