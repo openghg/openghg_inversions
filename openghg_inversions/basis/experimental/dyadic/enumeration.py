@@ -63,6 +63,62 @@ def enumerate_partitions(
     )
 
 
+def count_partitions_by_region(
+    tree: DyadicTree,
+    *,
+    max_regions: int | None = None,
+) -> dict[int, int]:
+    """Count valid frontiers by region count without enumerating them.
+
+    The bottom-up recurrence counts the unsplit frontier at each node and all
+    pairs of child frontiers when that node is split.  Counts use arbitrary
+    precision Python integers, so the function remains exact when the total
+    number of partitions is too large to materialize.
+
+    Args:
+        tree: Complete canonical dyadic tree.
+        max_regions: Optional largest region count to return.  Defaults to the
+            number of grid-cell leaves.
+
+    Returns:
+        Exact positive partition count for every region count from one through
+        ``max_regions``.
+
+    Raises:
+        TypeError: If ``tree`` or ``max_regions`` has the wrong type.
+        ValueError: If the tree is non-canonical or ``max_regions`` is outside
+            the valid range.
+
+    Notes:
+        The recurrence requires quadratic work in ``max_regions`` per internal
+        node but does not construct any :class:`PartitionState` values.
+    """
+    _validate_tree(tree)
+    region_limit = _validate_region_count(max_regions, tree)
+    if region_limit is None:
+        region_limit = len(tree.leaf_ids)
+
+    subtree_counts: dict[NodeId, tuple[int, ...]] = {}
+    for tile in reversed(tree.nodes):
+        capacity = min(region_limit, tile.area)
+        counts = [0] * (capacity + 1)
+        counts[1] = 1
+        children = tree.children(tile.node_id)
+        if children:
+            left_counts = subtree_counts[children[0]]
+            right_counts = subtree_counts[children[1]]
+            for left_regions in range(1, len(left_counts)):
+                largest_right = min(len(right_counts) - 1, capacity - left_regions)
+                for right_regions in range(1, largest_right + 1):
+                    counts[left_regions + right_regions] += (
+                        left_counts[left_regions] * right_counts[right_regions]
+                    )
+        subtree_counts[tile.node_id] = tuple(counts)
+
+    root_counts = subtree_counts[tree.root_id]
+    return {region_count: root_counts[region_count] for region_count in range(1, region_limit + 1)}
+
+
 def _enumerate_subtree_frontiers(
     tree: DyadicTree,
     node_id: NodeId,
@@ -141,4 +197,4 @@ def _validate_region_count(region_count: int | None, tree: DyadicTree) -> int | 
     return normalized
 
 
-__all__ = ["enumerate_partitions"]
+__all__ = ["count_partitions_by_region", "enumerate_partitions"]

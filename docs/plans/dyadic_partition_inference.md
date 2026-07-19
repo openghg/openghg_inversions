@@ -13,13 +13,16 @@ The short-term execution checklist, local TAC/MHD data contract, demo artifacts,
 and hackathon stop conditions are maintained separately in
 `docs/plans/dyadic_sls_hackathon.md`.
 
-As of 2026-07-17, the exact Gaussian projection oracle, independent-prior
+As of 2026-07-19, the exact Gaussian projection oracle, independent-prior
 native posterior summaries, DFS/Fisher/Equation 45 objectives, exact additive
 dynamic programs, land/ocean and rectangular comparisons, and a
-native-resolution semi-synthetic TAC/MHD report are implemented on the
-experimental branch. The next implementation work is the full TAC/MHD
-correlated-prior run and repeated-realization assessment; joint partition MCMC
-remains a later phase.
+native-resolution semi-synthetic TAC/MHD report are implemented on experimental
+branches. Phase 3 now also has a permanent tree-contrast state, exact tiny-tree
+partition oracle, catalogue-backed PyMC reference, non-enumerating blocked
+Gaussian sampler, and an (8\times8) latent-K/P checkerboard benchmark. The
+benchmark beats predeclared wrong-P and underfit fixed baselines but over-refines
+and does not yet meet the provisional true-partition-oracle non-inferiority
+threshold. See `docs/reports/dyadic_product_space_checkerboard.md`.
 
 The next native-resolution Gaussian validation is specified separately in
 `docs/plans/bocquet_projection_validation.md`.
@@ -1901,17 +1904,21 @@ poor local partition traversal.
 
 ### Phase 3: tree-contrast product-space prototype
 
-1. Build a tiny variable-count enumerator that provides exact partition
+1. **Implemented:** build a tiny variable-count enumerator that provides exact partition
    probabilities for the chosen tree and priors.
-2. Choose a canonical tree and define the full contrast coordinate set.
-3. Specify proper pseudo-priors, initially from local Gaussian approximations.
-4. Implement inactive refresh, partition MH, and active continuous update as
+2. **Implemented:** choose a canonical tree and define the full contrast coordinate set.
+3. **Partly implemented:** specify normalized Gaussian pseudo-priors; local
+   Gaussian calibration for non-Gaussian targets remains open.
+4. **Implemented for the Gaussian target:** implement inactive refresh,
+   partition MH, and active continuous update as
    separate framework-independent blocks.
-5. Compare full-vector, active-only, and cached-kernel execution strategies.
-6. Measure partition switching, active and inactive effective sample sizes,
+5. **Open:** compare full-vector, active-only, and cached-kernel execution strategies.
+6. **In progress:** measure partition switching, active and inactive effective sample sizes,
    likelihood cost, and sensitivity to pseudo-prior calibration.
-7. Compare posterior results with exact enumeration and Phase 2a fixed-count
-   results.
+7. **In progress:** compare posterior results with exact enumeration and fixed
+   partitions. Tiny-tree frequencies match the exact oracle; the larger
+   checkerboard beats misspecified fixed partitions but requires replicated
+   assessment and an exact (4\times4) InTEM recovery benchmark.
 
 ### Phase 4: scale-up and alternatives
 

@@ -5,7 +5,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from openghg_inversions.basis.experimental.dyadic.enumeration import enumerate_partitions
+from openghg_inversions.basis.experimental.dyadic.enumeration import (
+    count_partitions_by_region,
+    enumerate_partitions,
+)
 from openghg_inversions.basis.experimental.dyadic.tree import DyadicTree
 
 
@@ -79,6 +82,31 @@ def test_four_by_four_reference_tree_has_677_partitions() -> None:
 
     assert len(states) == 677
     assert sum(len(enumerate_partitions(tree, region_count=count)) for count in range(1, 17)) == 677
+
+
+def test_dynamic_counts_match_four_by_four_enumeration() -> None:
+    """The counting recurrence should match exact tiny-tree enumeration by K."""
+    tree = DyadicTree.from_shape((4, 4))
+
+    counts = count_partitions_by_region(tree)
+
+    expected = {
+        region_count: len(enumerate_partitions(tree, region_count=region_count))
+        for region_count in range(1, 17)
+    }
+    assert counts == expected
+    assert sum(counts.values()) == 677
+
+
+def test_dynamic_counts_support_large_tree_without_materializing_partitions() -> None:
+    """An 8 by 8 tree should expose exact counts through a practical K limit."""
+    tree = DyadicTree.from_shape((8, 8))
+
+    counts = count_partitions_by_region(tree, max_regions=28)
+
+    assert tuple(counts) == tuple(range(1, 29))
+    assert counts[1] == 1
+    assert counts[16] > counts[8] > 0
 
 
 @pytest.mark.parametrize("region_count", [0, -1, 5])

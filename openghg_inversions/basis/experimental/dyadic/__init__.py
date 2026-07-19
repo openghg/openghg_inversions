@@ -37,7 +37,7 @@ from .dynamic_programming import (
     additive_partition_frontier,
     optimal_additive_partition,
 )
-from .enumeration import enumerate_partitions
+from .enumeration import count_partitions_by_region, enumerate_partitions
 from .gaussian_product_space import (
     GaussianConditional,
     GaussianProductSpaceTarget,
@@ -192,6 +192,7 @@ __all__ = [
     "build_partition_diagnostics",
     "build_bocquet_projection",
     "calibrate_group_root_variance",
+    "count_partitions_by_region",
     "direct_gather",
     "direct_observation_space_dfs",
     "enumerate_merge_moves",
