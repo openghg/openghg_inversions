@@ -75,6 +75,8 @@ def test_short_benchmark_exercises_latent_k_and_p(benchmark_module: Any) -> None
     assert result.latent.minimum_regions >= 8
     assert result.latent.maximum_regions <= 28
     assert 0.0 <= result.latent_partition_acceptance_rate <= 1.0
+    assert result.latent_split_acceptance_rate is not None
+    assert result.latent_merge_acceptance_rate is not None
     assert result.latent_warmup_acceptance_rate is not None
 
 

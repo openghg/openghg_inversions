@@ -191,6 +191,8 @@ def test_blocked_sampler_returns_fixed_coordinate_trace_and_diagnostics() -> Non
     assert trace.outer_coefficients.shape == (7, 1)
     assert trace.partition_accepted.shape == (7, 3)
     assert trace.partition_log_acceptance_ratio.shape == (7, 3)
+    assert trace.partition_move_kind.shape == (7, 3)
+    assert set(np.unique(trace.partition_move_kind)) <= {"split", "merge"}
     assert trace.region_counts.shape == (7,)
     assert 0.0 <= trace.partition_acceptance_rate <= 1.0
     assert trace.warmup_acceptance_rate is not None
@@ -199,6 +201,11 @@ def test_blocked_sampler_returns_fixed_coordinate_trace_and_diagnostics() -> Non
     np.testing.assert_array_equal(trace.state(-1).inner_coordinates, trace.inner_coordinates[-1])
     assert not trace.inner_coordinates.flags.writeable
     assert not trace.partition_accepted.flags.writeable
+    assert not trace.partition_move_kind.flags.writeable
+    assert trace.move_acceptance_rate("split") is not None
+    assert trace.move_acceptance_rate("merge") is not None
+    with pytest.raises(ValueError, match="split.*merge"):
+        trace.move_acceptance_rate("relocate")
 
 
 @pytest.mark.parametrize(
@@ -265,6 +272,9 @@ def test_zero_mass_partition_prior_is_supported() -> None:
     )
     assert np.all(np.isneginf(trace.partition_log_acceptance_ratio))
     assert trace.partition_acceptance_rate == 0.0
+    assert set(np.unique(trace.partition_move_kind)) == {"split"}
+    assert trace.move_acceptance_rate("split") == 0.0
+    assert trace.move_acceptance_rate("merge") is None
 
 
 @pytest.mark.parametrize(

@@ -82,6 +82,8 @@ class CheckerboardBenchmark:
     fixed_coarse: InversionMetrics
     latent: InversionMetrics
     latent_partition_acceptance_rate: float
+    latent_split_acceptance_rate: float | None
+    latent_merge_acceptance_rate: float | None
     latent_warmup_acceptance_rate: float | None
     latent_unique_partitions: int
     latent_runtime_seconds: float
@@ -383,6 +385,8 @@ def run_benchmark(
         fixed_coarse=fixed_coarse,
         latent=latent,
         latent_partition_acceptance_rate=latent_trace.partition_acceptance_rate,
+        latent_split_acceptance_rate=latent_trace.move_acceptance_rate("split"),
+        latent_merge_acceptance_rate=latent_trace.move_acceptance_rate("merge"),
         latent_warmup_acceptance_rate=latent_trace.warmup_acceptance_rate,
         latent_unique_partitions=len(set(latent_trace.partitions)),
         latent_runtime_seconds=latent_runtime,

@@ -21,6 +21,7 @@ import numpy as np
 
 from .gaussian_product_space import GaussianProductSpaceTarget
 from .product_space import ProductSpaceState, partition_metropolis_step
+from .proposals import MergeMove, SplitMove
 from .state import PartitionState
 
 
@@ -39,6 +40,9 @@ class GaussianProductSpaceTrace:
             dimension is ``partition_updates_per_draw``.
         partition_log_acceptance_ratio: Unclipped Metropolis-Hastings log ratios
             corresponding to :attr:`partition_accepted`.
+        partition_move_kind: Proposed structural move kind (``"split"``,
+            ``"merge"``, or ``"none"``) corresponding to each acceptance
+            indicator.
         warmup_acceptance_rate: Fraction of structural proposals accepted in
             the discarded warmup period, or ``None`` when ``warmup`` was zero.
         thinning: Number of complete transition cycles between retained draws.
@@ -49,6 +53,7 @@ class GaussianProductSpaceTrace:
     outer_coefficients: np.ndarray
     partition_accepted: np.ndarray
     partition_log_acceptance_ratio: np.ndarray
+    partition_move_kind: np.ndarray
     warmup_acceptance_rate: float | None
     thinning: int
 
@@ -72,10 +77,13 @@ class GaussianProductSpaceTrace:
             name="partition_log_acceptance_ratio",
             allow_negative_infinity=True,
         )
+        move_kind = _frozen_move_kind_matrix(self.partition_move_kind)
         if inner.shape[0] != draw_count or outer.shape[0] != draw_count:
             raise ValueError("coordinate arrays must have one row per retained partition.")
         if accepted.shape[0] != draw_count or log_ratio.shape != accepted.shape:
             raise ValueError("partition diagnostics must align with retained partitions.")
+        if move_kind.shape != accepted.shape:
+            raise ValueError("partition_move_kind must align with partition diagnostics.")
         if accepted.shape[1] < 1:
             raise ValueError("partition diagnostics must contain at least one update per draw.")
         if not np.all(np.isfinite(log_ratio) | np.isneginf(log_ratio)):
@@ -88,6 +96,7 @@ class GaussianProductSpaceTrace:
         object.__setattr__(self, "outer_coefficients", outer)
         object.__setattr__(self, "partition_accepted", accepted)
         object.__setattr__(self, "partition_log_acceptance_ratio", log_ratio)
+        object.__setattr__(self, "partition_move_kind", move_kind)
         object.__setattr__(self, "thinning", thinning)
 
     @property
@@ -110,6 +119,26 @@ class GaussianProductSpaceTrace:
     def partition_acceptance_rate(self) -> float:
         """Return the retained structural-proposal acceptance fraction."""
         return float(np.mean(self.partition_accepted))
+
+    def move_acceptance_rate(self, kind: str) -> float | None:
+        """Return the retained acceptance fraction for one move direction.
+
+        Args:
+            kind: Either ``"split"`` or ``"merge"``.
+
+        Returns:
+            Accepted fraction among retained proposals of that kind, or
+            ``None`` when no such proposal was retained.
+
+        Raises:
+            ValueError: If ``kind`` is not a structural move direction.
+        """
+        if kind not in {"split", "merge"}:
+            raise ValueError("kind must be 'split' or 'merge'.")
+        selected = self.partition_move_kind == kind
+        if not selected.any():
+            return None
+        return float(np.mean(self.partition_accepted[selected]))
 
     def state(self, draw: int) -> ProductSpaceState:
         """Reconstruct one retained product-space state.
@@ -192,6 +221,7 @@ def sample_gaussian_product_space(
     retained_outer: list[np.ndarray] = []
     retained_accepted: list[list[bool]] = []
     retained_log_ratios: list[list[float]] = []
+    retained_move_kinds: list[list[str]] = []
     warmup_acceptances = 0
     warmup_proposals = warmup_count * update_count
     total_cycles = warmup_count + draw_count * thin
@@ -199,6 +229,7 @@ def sample_gaussian_product_space(
     for cycle in range(total_cycles):
         cycle_accepted: list[bool] = []
         cycle_log_ratios: list[float] = []
+        cycle_move_kinds: list[str] = []
         for _ in range(update_count):
             transition = partition_metropolis_step(
                 target.tree,
@@ -208,6 +239,12 @@ def sample_gaussian_product_space(
             )
             cycle_accepted.append(transition.accepted)
             cycle_log_ratios.append(transition.log_acceptance_ratio)
+            if isinstance(transition.move, SplitMove):
+                cycle_move_kinds.append("split")
+            elif isinstance(transition.move, MergeMove):
+                cycle_move_kinds.append("merge")
+            else:
+                cycle_move_kinds.append("none")
             state = target.draw_conditional_state(transition.state.partition, rng)
 
         if cycle < warmup_count:
@@ -221,6 +258,7 @@ def sample_gaussian_product_space(
         retained_outer.append(state.outer_coefficients)
         retained_accepted.append(cycle_accepted)
         retained_log_ratios.append(cycle_log_ratios)
+        retained_move_kinds.append(cycle_move_kinds)
 
     warmup_rate = None if warmup_proposals == 0 else warmup_acceptances / warmup_proposals
     return GaussianProductSpaceTrace(
@@ -229,6 +267,7 @@ def sample_gaussian_product_space(
         outer_coefficients=np.asarray(retained_outer, dtype=float),
         partition_accepted=np.asarray(retained_accepted, dtype=bool),
         partition_log_acceptance_ratio=np.asarray(retained_log_ratios, dtype=float),
+        partition_move_kind=np.asarray(retained_move_kinds, dtype="U5"),
         warmup_acceptance_rate=warmup_rate,
         thinning=thin,
     )
@@ -279,6 +318,18 @@ def _frozen_matrix(
         if not np.all(valid):
             qualifier = "finite values or negative infinity" if allow_negative_infinity else "only finite values"
             raise ValueError(f"{name} must contain {qualifier}.")
+    result = array.copy()
+    result.setflags(write=False)
+    return result
+
+
+def _frozen_move_kind_matrix(values: np.ndarray) -> np.ndarray:
+    """Return a validated read-only matrix of structural move names."""
+    array = np.asarray(values, dtype="U5")
+    if array.ndim != 2:
+        raise ValueError("partition_move_kind must be two-dimensional.")
+    if not np.isin(array, ("split", "merge", "none")).all():
+        raise ValueError("partition_move_kind contains an unsupported move name.")
     result = array.copy()
     result.setflags(write=False)
     return result
