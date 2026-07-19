@@ -125,6 +125,113 @@ class TreeContrastLayout:
             pending.extend(children)
         return tuple(node_id for node_id in self.split_node_ids if node_id in active_splits)
 
+    def split_mask(self, partition: PartitionState) -> npt.NDArray[np.bool_]:
+        """Encode a partition as a fixed Boolean split mask.
+
+        An entry is true exactly when the partition frontier descends through
+        the corresponding node in :attr:`split_node_ids`. Valid masks are
+        ancestry closed: every true entry has true entries for all of its
+        splittable ancestors.
+
+        Args:
+            partition: Valid active frontier on :attr:`tree`.
+
+        Returns:
+            Boolean array with shape ``(len(split_node_ids),)`` in stable split
+            coordinate order.
+
+        Raises:
+            ValueError: If ``partition`` is not a valid frontier for
+                :attr:`tree`.
+        """
+        active_splits = set(self.active_split_ids(partition))
+        return np.fromiter(
+            (node_id in active_splits for node_id in self.split_node_ids),
+            dtype=np.bool_,
+            count=len(self.split_node_ids),
+        )
+
+    def partition_from_split_mask(self, split_mask: npt.ArrayLike) -> PartitionState:
+        """Reconstruct a partition from a canonical fixed split mask.
+
+        A true entry splits its node and descends to both children; a false
+        entry makes that node part of the active frontier. Descendant entries
+        below a false ancestor must also be false. Such noncanonical masks
+        would otherwise encode the same partition multiple ways and are
+        rejected.
+
+        Args:
+            split_mask: One-dimensional Boolean values ordered by
+                :attr:`split_node_ids`.
+
+        Returns:
+            Valid partition frontier represented uniquely by ``split_mask``.
+
+        Raises:
+            ValueError: If the mask has the wrong shape or dtype, or if a
+                descendant split is active below an inactive ancestor.
+        """
+        mask = self._validated_split_mask(split_mask)
+        split_by_node = dict(zip(self.split_node_ids, mask, strict=True))
+        active: set[NodeId] = set()
+        pending = [self.tree.root_id]
+
+        while pending:
+            node_id = pending.pop()
+            children = self.tree.children(node_id)
+            if children and split_by_node[node_id]:
+                pending.extend(children)
+            else:
+                active.add(node_id)
+
+        partition = PartitionState(active=frozenset(active))
+        canonical_mask = self.split_mask(partition)
+        if not np.array_equal(mask, canonical_mask):
+            raise ValueError(
+                "split_mask is noncanonical: a descendant split cannot be active below an inactive ancestor."
+            )
+        return partition
+
+    def region_count_from_split_mask(self, split_mask: npt.ArrayLike) -> int:
+        """Return partition size ``K`` derived from a canonical split mask.
+
+        Every active binary split replaces one frontier node with two children,
+        so the exact identity is ``K = 1 + sum(split_mask)``.
+
+        Args:
+            split_mask: Canonical Boolean values ordered by
+                :attr:`split_node_ids`.
+
+        Returns:
+            Number of active regions represented by the mask.
+
+        Raises:
+            ValueError: If the mask has the wrong shape or dtype, or is not
+                ancestry closed.
+        """
+        mask = self._validated_split_mask(split_mask)
+        self.partition_from_split_mask(mask)
+        return 1 + int(np.count_nonzero(mask))
+
+    def active_coordinate_mask(self, split_mask: npt.ArrayLike) -> npt.NDArray[np.bool_]:
+        """Prepend the always-active root to a canonical split mask.
+
+        Args:
+            split_mask: Canonical Boolean values ordered by
+                :attr:`split_node_ids`.
+
+        Returns:
+            Boolean array with shape ``(coordinate_count,)``. Coordinate zero
+            is always true and the remaining entries equal ``split_mask``.
+
+        Raises:
+            ValueError: If the mask has the wrong shape or dtype, or is not
+                ancestry closed.
+        """
+        mask = self._validated_split_mask(split_mask)
+        self.partition_from_split_mask(mask)
+        return np.concatenate((np.ones(1, dtype=np.bool_), mask))
+
     def active_coordinate_indices(self, partition: PartitionState) -> tuple[int, ...]:
         """Return the root and active-contrast coordinate indices."""
         return (0, *(self.contrast_index(node_id) for node_id in self.active_split_ids(partition)))
@@ -176,6 +283,56 @@ class TreeContrastLayout:
             pending.append((left_id, left_row))
 
         return np.vstack([rows_by_node[node_id] for node_id in partition.ordered_active()])
+
+    def finest_grid_decoder(self) -> npt.NDArray[np.float64]:
+        """Build the full static decoder on finest-grid cells.
+
+        Rows follow :attr:`DyadicTree.leaf_ids` and columns follow the permanent
+        root-and-split coordinate order. The root column is one everywhere and
+        every contrast column has zero cell-mass sum. Multiplying coordinates
+        by :meth:`active_coordinate_mask` before applying this decoder produces
+        the piecewise-constant finest-grid field for any valid partition.
+
+        Returns:
+            Square matrix with shape ``(finest_grid_cell, coordinate_count)``.
+        """
+        finest = PartitionState(active=frozenset(self.tree.leaf_ids))
+        return self.decoder(finest)
+
+    def full_contrast_design(self, finest_grid_design: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Transform finest-cell columns into one static contrast design.
+
+        The input columns must follow :attr:`DyadicTree.leaf_ids`. For a valid
+        split mask, a partition prediction can then be evaluated without a
+        partition catalogue as::
+
+            coordinate_mask = layout.active_coordinate_mask(split_mask)
+            prediction = full_design @ (coordinates * coordinate_mask)
+
+        Args:
+            finest_grid_design: Finite matrix with shape
+                ``(observation, finest_grid_cell)`` and columns in stable leaf
+                node order.
+
+        Returns:
+            Static matrix with shape ``(observation, coordinate_count)`` in
+            permanent root-and-split coordinate order.
+
+        Raises:
+            ValueError: If the design is complex, is not a two-dimensional
+                matrix with one column per finest-grid cell, or contains a
+                non-finite value.
+        """
+        source = np.asarray(finest_grid_design)
+        if np.iscomplexobj(source):
+            raise ValueError("finest_grid_design must be real-valued.")
+        values = np.asarray(source, dtype=float)
+        expected_shape = (values.shape[0], len(self.tree.leaf_ids)) if values.ndim == 2 else None
+        if values.ndim != 2 or values.shape != expected_shape:
+            raise ValueError(f"finest_grid_design must have shape (observation, {len(self.tree.leaf_ids)}).")
+        if not np.all(np.isfinite(values)):
+            raise ValueError("finest_grid_design must contain only finite values.")
+        return values @ self.finest_grid_decoder()
 
     def decode(self, partition: PartitionState, coordinates: npt.ArrayLike) -> np.ndarray:
         """Decode fixed coordinates into active-region mean anomalies.
@@ -243,6 +400,16 @@ class TreeContrastLayout:
         if not np.all(np.isfinite(result)) or np.any(result <= 0.0):
             raise ValueError("scale produces non-finite primitive variances.")
         return result
+
+    def _validated_split_mask(self, split_mask: npt.ArrayLike) -> npt.NDArray[np.bool_]:
+        """Return a copied Boolean split mask after shape and dtype checks."""
+        mask = np.asarray(split_mask)
+        expected_shape = (len(self.split_node_ids),)
+        if mask.shape != expected_shape:
+            raise ValueError(f"split_mask must have shape {expected_shape}.")
+        if mask.dtype.kind != "b":
+            raise ValueError("split_mask must contain Boolean values.")
+        return np.asarray(mask, dtype=np.bool_).copy()
 
 
 __all__ = ["TreeContrastLayout"]
