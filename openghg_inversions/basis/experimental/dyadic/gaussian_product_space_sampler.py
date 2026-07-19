@@ -70,6 +70,7 @@ class GaussianProductSpaceTrace:
         log_ratio = _frozen_matrix(
             self.partition_log_acceptance_ratio,
             name="partition_log_acceptance_ratio",
+            allow_negative_infinity=True,
         )
         if inner.shape[0] != draw_count or outer.shape[0] != draw_count:
             raise ValueError("coordinate arrays must have one row per retained partition.")
@@ -264,13 +265,20 @@ def _frozen_matrix(
     *,
     name: str,
     dtype: np.dtype[np.generic] | type[np.generic] = np.float64,
+    allow_negative_infinity: bool = False,
 ) -> np.ndarray:
-    """Return a copied finite two-dimensional read-only array."""
+    """Return a copied two-dimensional read-only array."""
     array = np.asarray(values, dtype=dtype)
     if array.ndim != 2:
         raise ValueError(f"{name} must be two-dimensional.")
-    if np.issubdtype(array.dtype, np.floating) and not np.all(np.isfinite(array)):
-        raise ValueError(f"{name} must contain only finite values.")
+    if np.issubdtype(array.dtype, np.floating):
+        floating_array = np.asarray(array, dtype=np.float64)
+        valid = np.isfinite(floating_array)
+        if allow_negative_infinity:
+            valid |= np.isneginf(floating_array)
+        if not np.all(valid):
+            qualifier = "finite values or negative infinity" if allow_negative_infinity else "only finite values"
+            raise ValueError(f"{name} must contain {qualifier}.")
     result = array.copy()
     result.setflags(write=False)
     return result

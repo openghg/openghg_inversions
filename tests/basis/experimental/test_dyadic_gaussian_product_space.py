@@ -257,6 +257,15 @@ def test_zero_mass_partition_prior_is_supported() -> None:
         partitions[2]: 0.0,
     }
 
+    trace = sample_gaussian_product_space(
+        constrained,
+        partitions[0],
+        draws=3,
+        rng=np.random.default_rng(8),
+    )
+    assert np.all(np.isneginf(trace.partition_log_acceptance_ratio))
+    assert trace.partition_acceptance_rate == 0.0
+
 
 @pytest.mark.parametrize(
     ("keyword", "value", "message"),
