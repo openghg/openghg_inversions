@@ -1,4 +1,4 @@
-"""Tests for fine-grid TD-MCMC posterior reconstruction and summaries."""
+"""Tests for experimental RJMCMC posterior reconstruction and summaries."""
 
 from __future__ import annotations
 
