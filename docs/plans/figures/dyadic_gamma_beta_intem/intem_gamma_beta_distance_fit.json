@@ -1,0 +1,25 @@
+{
+  "correlation_fit": {
+    "converged": true,
+    "length_scale_degrees": 12.918349463034275,
+    "pair_count": 30381,
+    "relative_rmse": 0.5959883747982638,
+    "rmse": 0.21407218335110187,
+    "target_model_correlation": 0.5749510799646774
+  },
+  "covariance_fit": {
+    "converged": true,
+    "length_scale_degrees": 6.5680071861910125,
+    "pair_count": 30381,
+    "relative_rmse": 0.39281065967703227,
+    "rmse": 2.078810077288593,
+    "target_model_correlation": 0.9206166902542567
+  },
+  "current_maximum_variance": 226.1849664895463,
+  "fit_group": "inner_land",
+  "group_scale_maximum_variance": 1.0,
+  "kernel": "exp(-abs(dlat)/ell) * exp(-abs(dlon)/ell)",
+  "projected_unit_grid_maximum_variance": 1.0,
+  "restriction": "expected-mass-weighted regional scaling average",
+  "same_sigma_maximum_variance": 226.18496648954627
+}

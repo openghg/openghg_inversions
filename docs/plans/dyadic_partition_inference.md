@@ -1151,6 +1151,49 @@ every inactive coordinate on every sweep. A proposal can draw only the
 coordinates required by a proposed split and include that draw in its proposal
 density.
 
+### Why the current PyMC prototype enumerates partitions
+
+The current `DyadicPartitionStep` is a small exact reference implementation,
+not the intended scalable transition. It represents (P) as one categorical
+integer indexing a catalogue of every valid frontier of a complete dyadic tree.
+For each catalogue entry, model construction precomputes its partition prior,
+local adjacency edges, region count, and likelihood-design row. The custom
+blocked step then proposes one precomputed neighboring index, evaluates the
+compiled joint density, and applies the asymmetric Hastings correction.
+
+The catalogue is therefore an implementation consequence of the scalar-index
+PyMC graph. It is not required by MH, product-space inference, or blocking. A
+nonempty variable-count catalogue closed under every split and merge is
+effectively the complete valid partition space, whose size grows
+exponentially. This representation is useful only for tiny trees where exact
+normalization and sampled-versus-exact checks are possible.
+
+The underlying proposal machinery is already local and SLS-like. From the
+current partition it enumerates only currently valid split and merge moves,
+samples a destination, constructs the reverse neighborhood on demand, and uses
+
+\[
+\log \alpha =
+\log \pi(P',z)-\log \pi(P,z)
++\log q(P\mid P')-\log q(P'\mid P).
+\]
+
+The framework-independent `partition_metropolis_step` does this without a
+global catalogue. Unlike SLS, it retains the forward/reverse proposal terms and
+targets the posterior rather than an annealed optimization score.
+
+A scalable PyMC adapter should use a fixed-size structural representation, such
+as an active-node mask or canonical internal split decisions, and generate
+neighbors on demand. The likelihood can use the existing multiscale design,
+which already stores one candidate observation column per tree node, together
+with the structural mask and fixed contrast coordinates. Native NUTS can then
+continue to update the continuous block. Weighted split/merge/paired move types
+are also valid, but their probabilities must be renormalized at boundaries and
+all proposal paths reaching the same destination must be combined in (q).
+
+The exhaustive catalogue should remain only as a tiny-tree correctness oracle
+for detailed balance and marginal partition-frequency tests.
+
 ### PyMC feasibility
 
 PyMC supports compound step methods for fixed model graphs and can combine
@@ -1275,6 +1318,467 @@ the true non-Gaussian likelihood and prior must determine final acceptance.
   coefficients?
 - How should x/y split orientation be encoded without duplicate partition
   representations?
+
+## Positive multiscale priors and similarity-space bases
+
+This section separates three objects that are easy to conflate:
+
+1. a **restriction** \(\Gamma\), which maps a native field to reduced
+   summaries;
+2. a **synthesis or prolongation basis** \(\Phi\), which maps reduced
+   coefficients back to the native grid; and
+3. a **prior**, which assigns a distribution to the coefficients and any
+   unresolved native variation.
+
+For example,
+
+\[
+\theta=\Gamma x,
+\qquad
+x=\mu+\Phi\beta+\epsilon,
+\qquad
+B_x=\Phi T\Phi^\mathsf{T}+B_\epsilon.
+\]
+
+A basis supplies covariance geometry only after \(T\), \(B_\epsilon\), and the
+scale of \(x\) have been declared. In particular, a restriction matrix need
+not have its transpose as the scientifically appropriate prolongation. Mass
+conservation, coefficient interpretation, and normalization have to be stated
+separately.
+
+### Gamma--Beta tree on additive flux
+
+An exact positive multiscale construction is easiest on additive flux mass.
+Let \(T_G\) be the total flux in a parent region \(G=A\cup B\), let
+\(\mu_G=\mu_A+\mu_B\) be its prior expected total, and define scaling factors
+
+\[
+x_G=\frac{T_G}{\mu_G},
+\qquad
+p=\frac{\mu_A}{\mu_G}.
+\]
+
+Draw a split fraction independently of the parent total,
+
+\[
+\rho_G\sim
+\operatorname{Beta}\!\left(\kappa_Gp,\kappa_G(1-p)\right),
+\]
+
+and define
+
+\[
+T_A=\rho_GT_G,
+\qquad
+T_B=(1-\rho_G)T_G,
+\]
+
+or, equivalently,
+
+\[
+x_A=x_G\frac{\rho_G}{p},
+\qquad
+x_B=x_G\frac{1-\rho_G}{1-p}.
+\]
+
+This is an exact nonlinear positive split: it conserves flux, keeps
+\(\operatorname{E}[x_A]=\operatorname{E}[x_B]=1\), and needs no linearization.
+If \(v_G=\operatorname{Var}(x_G)\), its second moments are
+
+\[
+\operatorname{Var}(x_A)
+=v_G+(1+v_G)\frac{1-p}{p(\kappa_G+1)},
+\]
+
+\[
+\operatorname{Var}(x_B)
+=v_G+(1+v_G)\frac{p}{(1-p)(\kappa_G+1)},
+\]
+
+and
+
+\[
+\operatorname{Cov}(x_A,x_B)
+=\frac{\kappa_Gv_G-1}{\kappa_G+1}.
+\]
+
+These equations give \(\kappa_G\) an interpretable role. Large \(\kappa_G\)
+shrinks a split towards the prior-flux allocation \(p\), so parent uncertainty
+is shared by both children. Small \(\kappa_G\) permits a large child contrast;
+conditional on a nearly fixed parent total, the children can be negatively
+correlated. A single phrase such as "larger \(\kappa\) means more correlation"
+is therefore incomplete: the induced covariance also depends on parent
+variance and the expected mass fraction.
+
+There are two related but distinct models:
+
+- **Strict gamma random measure.** If
+  \(T_G\sim\operatorname{Gamma}(\beta\mu_G,\beta)\) and the split uses
+  \(\kappa_G=\beta\mu_G\), then \(T_A\) and \(T_B\) are independent gamma
+  variables with shapes \(\beta\mu_A\) and \(\beta\mu_B\). Every coarsening is
+  projectively consistent. The price is restrictive covariance: disjoint
+  increments are independent, and the scaling-factor variance
+  \(1/(\beta\mu_G)\) increases as expected mass decreases.
+- **Flexible Gamma--Beta tree.** Give the root a mean-one gamma prior, then
+  choose \(\kappa_G\) by group, depth, geometry, or similarity. The resulting
+  tree remains a coherent top-down prior, and every coarse total is exactly the
+  sum of its descendants. It is no longer a strict gamma process: arbitrary
+  choices of \(\kappa_G\) do not leave every node with a gamma marginal or make
+  disjoint descendants independent.
+
+The second model is likely the more useful inversion prior. It separates
+uncertainty in a group's total from uncertainty in its spatial allocation and
+allows the fine-scale contrast variance to be regularized directly.
+
+### Hard groups and a practical \(\kappa\) simplification
+
+Land/ocean, inner/outer, source-sign, or country classes can be represented by
+independent roots and trees. No split may cross a hard class boundary. A
+minimal useful model would specify:
+
+- a mean-one gamma root scaling for each group, with a separately chosen root
+  variance;
+- \(p\) from prior expected flux within the two children, rather than from
+  grid-cell count;
+- \(\kappa_{g,d}\) by group \(g\) and tree depth \(d\); and
+- optional group-level or global positive multipliers when positive covariance
+  between group totals is scientifically required.
+
+This directly implements the proposed "covariance spread within classes"
+without first constructing a dense native covariance matrix. Shared ancestors
+create dependence within a class, while \(\kappa_{g,d}\) controls how quickly
+descendants can depart from their parent allocation.
+
+Similarity information can soften this model without immediately introducing
+overlapping state-vector elements. Let \(d_G\) measure the distance between
+aggregate feature vectors for children \(A\) and \(B\). One possible prior is
+
+\[
+\kappa_G
+=\kappa_{\min}
++(\kappa_{\max}-\kappa_{\min})
+\exp\!\left(-\frac{d_G^2}{2\ell^2}\right).
+\]
+
+Similar children then have a strongly shrunk contrast, while children that are
+different in the declared feature space may differ more. This is not a fuzzy
+partition: each grid cell still belongs to one leaf and all regional totals
+remain literal. It is a fuzzy **prior affinity** over possible contrasts. The
+similarity score could instead affect split probabilities or proposal weights,
+but using it in both places would need explicit justification to avoid counting
+the same prior information twice.
+
+### Other positive covariance constructions
+
+The main alternatives are useful for different reasons; none is simply
+"pre-whitened Gamma."
+
+| Construction | What it preserves | Covariance flexibility | Main cost |
+| --- | --- | --- | --- |
+| Strict gamma random measure | Gamma marginals, additive closure, exact Beta splits | Independent disjoint increments | Cannot express arbitrary spatial covariance |
+| Root Gamma plus flexible Beta tree | Positivity, exact sums, nested split/merge coordinates | Tree-structured dependence controlled by root variance and node \(\kappa\) | Node marginals are not generally Gamma |
+| Shared positive scales | Conditional Gamma--Beta algebra within groups | Positive covariance from common global or group multipliers | Only low-rank/block-like dependence unless many factors are added |
+| Non-negative gamma factors | Positivity, mean calibration, exact additive forward model | \(A\operatorname{diag}(v)A^\mathsf{T}\) for non-negative loading matrix \(A\) | Weighted sums are not generally Gamma; coefficients are factors, not region totals |
+| Gamma marginals with a copula | Chosen marginal tails and flexible dependence | Broad, including negative latent dependence | Aggregation and split conditionals lose Gamma--Beta closure |
+
+For example, with independent positive factors \(a_k\), non-negative
+loadings \(A_{ik}\), and \(T_i=\sum_kA_{ik}a_k\),
+
+\[
+\operatorname{Cov}(T)
+=A\operatorname{diag}\!\left(\operatorname{Var}(a_k)\right)A^\mathsf{T}.
+\]
+
+This is the positive analogue of a covariance factor. It is attractive for
+fuzzy classes, but the latent factors no longer have the interpretation of
+disjoint geographic totals.
+
+Ordinary Cholesky pre-whitening is specific to a Gaussian latent model. A
+linear transform of independent gamma variables generally changes their
+marginals and can violate positivity if the factor has negative entries. One
+can use a nonlinear transport, copula, or log-scale Gaussian field, but each is
+a new prior model rather than a covariance-only reparameterization of a gamma
+prior. For a Gamma--Beta tree, the natural independent coordinates are the root
+total and the node split fractions; log and logit transforms can provide
+unconstrained sampler coordinates without changing the generative model.
+
+### Turner--Jacob similarity space
+
+Turner and Jacob (2015) construct a feature vector for every native grid cell.
+Their methane example uses 14 weighted features, including latitude,
+longitude, an initial adjoint-derived scaling, and prior source-pattern fields.
+They describe these features as qualitative prior-error correlation criteria,
+then fit a Gaussian mixture model (GMM) in the feature space. The responsibility
+
+\[
+w_{ki}=\Pr(z_i=k\mid c_i)
+\]
+
+is the radial-basis weight associating native grid cell \(i\) with mixture
+component \(k\). Their matrix \(W\) is a soft **restriction**: a native grid
+cell can contribute to several reduced elements. They do not define a fitted
+native covariance \(W^\mathsf{T}TW\), nor do they establish that
+\(W^\mathsf{T}\) is a mass-conserving prolongation. In their experiment the
+native prior covariance remains diagonal; the similarity space is used to
+design the reduced representation.
+
+There is nevertheless a useful proposed reinterpretation. Let
+\(\Phi=W^\mathsf{T}\), declare reduced latent factors \(\beta\), and write
+
+\[
+\eta=\Phi\beta+\xi,
+\qquad
+\beta\sim N(0,T).
+\]
+
+Then
+
+\[
+\operatorname{Cov}(\eta)
+=\Phi T\Phi^\mathsf{T}+B_\xi.
+\]
+
+Two native grid cells are correlated when they load onto the same mixture
+components. This is a finite-rank, soft co-membership covariance. It is a
+generative extension motivated by Turner--Jacob, not a covariance model stated
+in that paper. The residual \(B_\xi\) is necessary if unresolved native-scale
+variation should remain possible.
+
+A positive mean-one version is also possible. If every row of \(\Phi\) sums to
+one, and independent factors \(a_k\) and residuals \(e_i\) have mean one, define
+
+\[
+x_i
+=\lambda\sum_k\Phi_{ik}a_k+(1-\lambda)e_i,
+\qquad 0\leq\lambda\leq1.
+\]
+
+For gamma-distributed \(a_k\) and \(e_i\), this gives \(x_i\geq0\),
+\(\operatorname{E}[x_i]=1\), and
+
+\[
+\operatorname{Cov}(x)
+=\lambda^2\Phi\operatorname{diag}(v_a)\Phi^\mathsf{T}
++(1-\lambda)^2\operatorname{diag}(v_e).
+\]
+
+The native scaling factors are weighted sums of gamma variables and are not
+generally gamma-distributed. That is not intrinsically a defect if positivity,
+mean, variance, and dependence are the actual requirements. It does mean this
+model is a positive factor model, not a Gamma--Dirichlet model of disjoint
+regional totals. Factor variances also need calibration because overlapping
+soft memberships reduce and spatially vary marginal variance.
+
+### Relation to the Lunt Voronoi model
+
+The Lunt et al. (2016) trans-dimensional model uses nuclei in geographic space
+and assigns each native grid cell to its nearest nucleus. If \(U\) is the
+resulting one-hot membership matrix and region coefficients are independent,
+then the basis and coefficient prior imply
+
+\[
+B_x=U\operatorname{diag}(\tau_k^2)U^\mathsf{T}.
+\]
+
+Prior errors are perfectly correlated within each Voronoi region and
+uncorrelated across regions unless an additional coefficient covariance is
+introduced. This is the precise sense in which the prior covariance is encoded
+jointly by the basis functions and their coefficient prior.
+
+A hard GMM is a related partition in similarity space. With equal spherical
+component covariance and equal mixture weights it reduces to a Voronoi-like
+nearest-centre rule in that space; a general GMM has quadratic boundaries. The
+Turner--Jacob responsibility basis is the fuzzy version, with overlapping
+membership instead of one-hot assignment. Similarity neighbours need not be
+geographically adjacent, so both hard and soft versions can produce
+disconnected geographic support.
+
+Sampling GMM centres, widths, mixture weights, and \(K\) would therefore be a
+soft similarity-space analogue of the old Voronoi RJMCMC. It is feasible in
+principle, but less local: changing one normalized mixture component can alter
+responsibilities over the whole domain. A fixed overcomplete RBF dictionary
+with activation indicators is a cleaner first product-space construction than
+refitting and renormalizing a GMM at every split or merge.
+
+### Recommended experimental order
+
+**First model: hard grouped Gamma--Beta tree.**
+
+1. Use separate roots for land/ocean or inner/outer groups.
+2. Use prior expected flux to define each split proportion \(p\).
+3. Choose root variances and \(\kappa_{g,d}\) explicitly.
+4. Validate the analytic moments above against prior simulation.
+5. Compare fixed-partition inference with direct native-grid simulation and
+   test whether split/merge transitions retain the declared prior.
+6. Add similarity-dependent \(\kappa_G\) only after the group/depth model is
+   understood.
+
+**Prototype status (2026-07-18):**
+
+- `openghg_inversions/basis/experimental/dyadic/gamma_beta.py` implements a
+  fixed masked forest, a pluggable `KappaStrategy`, the first
+  `DepthKappaStrategy`, analytic child moments, prior sampling, rendering, and
+  conservation diagnostics.
+- Disconnected components receive separate local Beta trees but share their
+  semantic land or ocean Gamma root scaling. This avoids imposing an arbitrary
+  Beta hierarchy between distant islands.
+- `examples/basis/dyadic_gamma_beta_intem_demo.py` retains six fixed InTEM
+  outer regions and refines the InTEM inner class independently over land and
+  ocean. Absolute prior flux times grid area defines Gamma--Beta conservation
+  mass. A separate standard basis weight, mean absolute footprint-times-flux
+  sensitivity from the TAC/MHD week fixture, controls topology.
+- The 250-region inner budget is allocated with
+  `allocate_nbasis_by_class(..., allocation="weight")`. A minimum of three
+  regions per class preserves the three disconnected ocean components. The
+  reference allocation is therefore 247 land regions and 3 ocean regions;
+  with the six fixed outer regions, the full layout has 256 terminal regions
+  and 245 Beta splits. There are 253 stochastic prior coordinates: one Gamma
+  root per semantic group plus the Beta splits. The three disconnected ocean
+  terminal supports share one ocean root scaling at this allocation, so the
+  terminal count should not be mistaken for an independent-coefficient count.
+  Weighted best-first refinement within each class reaches the geometric
+  targets and avoids spending resolution on Mediterranean mask geometry with
+  little sensitivity weight.
+- Median analytic sibling correlation rises from about 0.18 at depth zero to
+  about 0.98 at depths six and seven, while additive expected flux is conserved
+  to numerical precision. These depth summaries also depend on inherited
+  parent variance and expected-mass fractions, not only on kappa.
+- The smallest Beta shape is about 0.069, so small expected-mass leaves retain
+  heavy scaling-factor tails. Their expected-mass-weighted empirical mean error
+  is about 0.012 for 2,000 draws, despite a larger worst individual leaf
+  error. Minimum child mass or Beta-shape policies remain a design option; the
+  prototype does not add an arbitrary mass floor.
+- `GammaBetaSamples.analytic_leaf_covariance()` now realizes the exact induced
+  covariance of terminal-region scaling factors from root and split second
+  moments. It accumulates log second-moment multipliers rather than estimating
+  covariance from finite prior draws. The demo reports matrix heat maps and
+  geographic covariance/correlation maps for representative regions.
+- With the current depth policy capped at 128, leaf variances range from 0.25
+  to about 226 and the median off-diagonal inner-land correlation is only about
+  0.12. Large kappa makes a local split fraction rigid but does not by itself
+  imply uniformly small variance or strong terminal correlation: unequal mass
+  fractions, inherited variance, and repeated ancestry all matter. The three
+  unsplit ocean supports are perfectly correlated because they share one
+  semantic-group root, exposing a non-spatial prior assumption that should be
+  revisited before inference.
+- `covariance_fit.py` and the demonstration report now compare this exact prior
+  with a native-grid separable exponential covariance. The regional scaling
+  restriction uses expected-mass weights inside each exact terminal support,
+  and the matrix-free operator evaluates \(B_P=PBP^\mathsf{T}\). It therefore
+  integrates over irregular and disconnected support geometry rather than
+  using regional centroids. Fits use 30,381 unique off-diagonal inner-land
+  pairs. Holding the Gamma--Beta regional standard deviations fixed gives
+  \(\ell\approx6.57\) degrees and relative covariance error about 0.39;
+  fitting normalized regional correlation gives \(\ell\approx12.92\) degrees
+  and relative error about 0.60. The difference is expected: covariance least
+  squares weights a pair in proportion to \((\sigma_i\sigma_j)^2\), so extreme
+  variances dominate. The raw projected covariance starts from unit native-grid
+  variance; rescaling it to unit inner-region and 0.5 outer-region standard
+  deviations is a new prior rather than a better fit with the same marginals.
+- The distance fit is diagnostic, not a replacement prior. It cannot reproduce
+  semantic-group common modes, conservative tree contrasts, or ancestry. The
+  land-fitted scale is shown over ocean only as an extrapolation: the three
+  current ocean supports are identical random variables, so fitting them would
+  drive a pure exponential scale toward infinity. Projection now preserves
+  support geometry, but a physical follow-up should replace angular degrees
+  with a kilometre-based native-grid kernel before applying the same
+  restriction.
+- Concrete prior revisions to compare next are: independent component roots;
+  a group-level Dirichlet/Beta allocation above component roots; minimum Beta
+  shape or minimum expected-mass split rules; and kappa chosen from target
+  terminal moments or prior-feature similarity. Distance is only a geometric
+  baseline. Similarity features can encode stronger prior reasons for
+  covariance, but observation-derived features require filtering and a design
+  or holdout protocol.
+- This milestone is prior simulation only. It does not infer a partition,
+  construct a PyMC likelihood, or test similarity-dependent concentration.
+- The builder currently constructs a complete canonical tree for each
+  connected component before retaining the requested shallow masked nodes.
+  Lazy or depth-limited bounds traversal is a concrete performance follow-up
+  before applying the prototype to substantially larger grids.
+
+**UK aggregate-calibration milestone (2026-07-18):**
+
+- `calibration.py` computes exact moments of any non-negative additive
+  native-grid aggregate from the analytic terminal covariance. For terminal
+  weights $w$,
+
+  \[
+  E[T]=\sum_r w_r,
+  \qquad
+  \operatorname{Var}(T)=w^\mathsf{T}Cw.
+  \]
+
+  It also solves one group root variance analytically. At fixed topology and
+  split concentrations, aggregate variance is affine in root variance; a
+  target below the root-fixed split-contrast variance is explicitly
+  infeasible.
+- On the repository UK country mask, the original sensitivity-weighted prior
+  has 77.4% UK relative SD even when the inner-land root is fixed. Its original
+  root variance of one raises UK relative SD to 148.2%. Root tuning alone
+  therefore cannot reach the requested 20--50% range.
+- `MomentSplitConstraint` now evaluates minimum Beta shape and maximum exact
+  child scaling variance while the existing weighted priority queue selects a
+  terminal-region budget. An inadmissible candidate is skipped and the queue
+  continues. With `allow_fewer_regions=True`, requested $K$ is an upper
+  budget and the result can stop below it.
+- A reproducible controlled policy uses
+
+  ```text
+  kappa(d) = min(96, 40 * 1.5**d)
+  minimum Beta shape = 1
+  maximum child scaling variance = 9
+  ```
+
+  The sensitivity-weighted topology retains 238 of 250 requested inner
+  regions. Its root-fixed UK relative SD is 19.93%; exact root variances
+  0.000278 and 0.2023 give 20% and 50% UK relative SD respectively. Maximum
+  terminal scaling variance is 2.51 and 3.22 in those cases.
+- The demo also accepts flat topology weights. This means equal grid-cell
+  priority and area-based land/ocean allocation, while expected prior-flux
+  mass still defines the Gamma--Beta split proportions. The reference
+  allocation is 130 ocean and 120 land regions, and all 250 pass the controlled
+  constraints. Exact root variances 0.000439 and 0.2025 give the same 20% and
+  50% UK targets. The independent inner-ocean root variance remains fixed at
+  0.25 rather than being changed by UK calibration; maximum terminal scaling
+  variance is about 2.60 in both flat cases because the ocean state supplies
+  the largest marginal variance.
+- Flat topology does not make covariance a function of geographic distance.
+  The tree remains orientation-dependent, covariance depends on least-common
+  ancestors and expected-mass fractions, and hard masks alter effective depth.
+  The projected exponential fit is therefore a descriptive diagnostic. The
+  flat 20% and 50% cases fit correlation scales of about 4.20 and 38.7 degrees,
+  with target/model pair correlations only about 0.53. The shared land-root
+  common mode drives much of this change in apparent scale.
+- The executable calibration and report are
+  `examples/basis/dyadic_gamma_beta_calibration.py` and
+  `docs/plans/figures/dyadic_gamma_beta_calibration/gamma_beta_uk_calibration.md`.
+  The country file is an explicit experiment input; country-specific loading
+  has not been added to the generic prior API.
+- This calibration is not identifiable from one country total. The selected
+  base concentration, depth growth, cap, moment thresholds, and root variance
+  are one controlled construction, not a unique scientific fit. Follow-up
+  validation should include other country totals, sectors, land/ocean totals,
+  tail probabilities, and a physical-distance rather than angular kernel.
+
+**Second model: similarity-informed factors.**
+
+1. Implement and document a fixed Turner--Jacob-style feature builder.
+2. Compare hard GMM groups, soft positive gamma factors, and the
+   similarity-modulated Gamma--Beta tree on the same synthetic case.
+3. Include a native residual term and report marginal variance maps.
+4. If the adjoint-derived feature uses observations, fit it on design data and
+   evaluate on holdout data, or state explicitly that the result is
+   data-adaptive posterior compression rather than prior-only model selection.
+5. Only then test activation indicators or trans-dimensional moves over a fixed
+   RBF dictionary.
+
+The hard grouped tree is the preferred first implementation because it keeps
+literal regional totals, exact positive split/merge coordinates, and a local
+partition graph. The similarity-factor model is valuable, but it changes the
+meaning of the state vector: components are overlapping latent factors rather
+than partition totals. Output coordinates, posterior summaries, and group
+priors must reflect that distinction.
 
 ## Masks, layers, and grouped state vectors
 
@@ -1537,6 +2041,23 @@ Only after Phases 2 and 3:
 - Green, P. J. (1995). "Reversible jump Markov chain Monte Carlo computation and
   Bayesian model determination." *Biometrika*, 82(4), 711-732.
   <https://doi.org/10.1093/biomet/82.4.711>.
+- Feng, S. and Xu, F. (2011). "Gamma-Dirichlet Structure and Two Classes of
+  Measure-valued Processes." arXiv:1112.4557.
+  <https://arxiv.org/abs/1112.4557>.
+- Ferguson, T. S. (1973). "A Bayesian Analysis of Some Nonparametric Problems."
+  *The Annals of Statistics*, 1(2), 209-230.
+  <https://doi.org/10.1214/aos/1176342360>.
+- Lunt, M. F., Rigby, M., Ganesan, A. L., and Manning, A. J. (2016).
+  "Estimation of trace gas fluxes with objectively determined basis functions
+  using reversible-jump Markov chain Monte Carlo." *Geoscientific Model
+  Development*, 9, 3213-3229.
+  <https://doi.org/10.5194/gmd-9-3213-2016>.
+- Turner, A. J. and Jacob, D. J. (2015). "Balancing aggregation and smoothing
+  errors in inverse models." *Atmospheric Chemistry and Physics*, 15,
+  7039-7048. <https://doi.org/10.5194/acp-15-7039-2015>.
+- Wolpert, R. L. and Ickstadt, K. (1998). "Poisson/gamma random field models for
+  spatial statistics." *Biometrika*, 85(2), 251-267.
+  <https://doi.org/10.1093/biomet/85.2.251>.
 
 The Dellaportas citation is sometimes reported incorrectly as volume 16, pages
 57-68. The verified 2002 article is volume 12(1), pages 27-36. Volume 16,

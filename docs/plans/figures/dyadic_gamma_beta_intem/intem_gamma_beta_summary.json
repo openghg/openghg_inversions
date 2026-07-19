@@ -1,0 +1,88 @@
+{
+  "component_root_count": 11,
+  "depth_diagnostics": [
+    {
+      "depth": 0,
+      "kappa": 2.0,
+      "median_sibling_correlation": 0.17560409255462392,
+      "median_split_fraction_sd": 0.2524891384267272,
+      "split_count": 2
+    },
+    {
+      "depth": 1,
+      "kappa": 4.0,
+      "median_sibling_correlation": 0.48326031657417146,
+      "median_split_fraction_sd": 0.20795867400477672,
+      "split_count": 4
+    },
+    {
+      "depth": 2,
+      "kappa": 8.0,
+      "median_sibling_correlation": 0.6757335876673485,
+      "median_split_fraction_sd": 0.15353732170438264,
+      "split_count": 7
+    },
+    {
+      "depth": 3,
+      "kappa": 16.0,
+      "median_sibling_correlation": 0.8261022600403699,
+      "median_split_fraction_sd": 0.11657460812818025,
+      "split_count": 11
+    },
+    {
+      "depth": 4,
+      "kappa": 32.0,
+      "median_sibling_correlation": 0.9117884132771676,
+      "median_split_fraction_sd": 0.08389411582228187,
+      "split_count": 16
+    },
+    {
+      "depth": 5,
+      "kappa": 64.0,
+      "median_sibling_correlation": 0.9561898155235222,
+      "median_split_fraction_sd": 0.060985142146589365,
+      "split_count": 31
+    },
+    {
+      "depth": 6,
+      "kappa": 128.0,
+      "median_sibling_correlation": 0.9764215476451574,
+      "median_split_fraction_sd": 0.040640041604822416,
+      "split_count": 59
+    },
+    {
+      "depth": 7,
+      "kappa": 128.0,
+      "median_sibling_correlation": 0.9769953266311907,
+      "median_split_fraction_sd": 0.04202776406535984,
+      "split_count": 115
+    }
+  ],
+  "draws": 2000,
+  "expected_mass_weighted_leaf_mean_error": 0.012079770031740787,
+  "fixed_outer_region_count": 6,
+  "forest_node_count": 501,
+  "group_count": 8,
+  "inner_land_components": 2,
+  "inner_land_grid_cells": 11314,
+  "inner_land_partition_weight": 27.455367563071253,
+  "inner_land_regions": 247,
+  "inner_ocean_components": 3,
+  "inner_ocean_grid_cells": 12110,
+  "inner_ocean_partition_weight": 0.08381095902927335,
+  "inner_ocean_regions": 3,
+  "inner_region_budget": 250,
+  "internal_split_count": 245,
+  "leaf_count": 256,
+  "maximum_conservation_error": 1.1641532182693481e-10,
+  "maximum_kappa": 128.0,
+  "maximum_leaf_mean_error": 0.22688215002636292,
+  "maximum_leaf_variance": 226.1849664895463,
+  "median_inner_land_correlation": 0.12339043858141784,
+  "median_leaf_variance": 3.122072069709873,
+  "minimum_beta_shape": 0.06856168349635629,
+  "minimum_kappa": 2.0,
+  "minimum_leaf_variance": 0.25,
+  "stochastic_coordinate_count": 253,
+  "terminal_covariance_rank": 253
+}
