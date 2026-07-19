@@ -176,6 +176,87 @@ class FineGridPosteriorSummary:
         object.__setattr__(self, "rmse", rmse)
 
 
+@dataclass(frozen=True, slots=True)
+class PosteriorPredictionSummary:
+    """Immutable posterior-mean prediction components for retained states.
+
+    Attributes:
+        trace_rows: Indices of the retained trace rows used in the summary.
+        state_transition: Global completed-transition numbers corresponding to
+            ``trace_rows``.
+        mean_fixed_coefficients: Posterior means of the always-active fixed
+            coefficients. This is an empty vector when the problem has no
+            fixed block.
+        mean_dynamic_prediction: Observation-space posterior mean from the
+            reconstructed dynamic fine-grid field.
+        mean_fixed_prediction: Observation-space posterior mean from the
+            fixed offset and always-active fixed block.
+        total_mean_prediction: Sum of the mean dynamic and fixed predictions.
+        rmse: Root mean squared difference between ``total_mean_prediction``
+            and an optional comparison vector, or ``None`` when no comparison
+            was supplied.
+
+    All arrays are copied and made read-only during construction.
+    """
+
+    trace_rows: IntArray
+    state_transition: IntArray
+    mean_fixed_coefficients: FloatArray
+    mean_dynamic_prediction: FloatArray
+    mean_fixed_prediction: FloatArray
+    total_mean_prediction: FloatArray
+    rmse: float | None
+
+    def __post_init__(self) -> None:
+        """Validate component shapes and enforce array immutability."""
+        trace_rows = _readonly_int_array(self.trace_rows, name="trace_rows")
+        state_transition = _readonly_int_array(
+            self.state_transition,
+            name="state_transition",
+        )
+        mean_fixed_coefficients = _readonly_float_array(
+            self.mean_fixed_coefficients,
+            name="mean_fixed_coefficients",
+        )
+        mean_dynamic_prediction = _readonly_float_array(
+            self.mean_dynamic_prediction,
+            name="mean_dynamic_prediction",
+        )
+        mean_fixed_prediction = _readonly_float_array(
+            self.mean_fixed_prediction,
+            name="mean_fixed_prediction",
+        )
+        total_mean_prediction = _readonly_float_array(
+            self.total_mean_prediction,
+            name="total_mean_prediction",
+        )
+
+        if trace_rows.ndim != 1 or trace_rows.size == 0:
+            raise ValueError("trace_rows must be a non-empty one-dimensional array.")
+        if state_transition.shape != trace_rows.shape:
+            raise ValueError("state_transition must match trace_rows.")
+        if mean_fixed_coefficients.ndim != 1:
+            raise ValueError("mean_fixed_coefficients must be one-dimensional.")
+        if mean_dynamic_prediction.ndim != 1:
+            raise ValueError("mean_dynamic_prediction must be one-dimensional.")
+        if mean_fixed_prediction.shape != mean_dynamic_prediction.shape:
+            raise ValueError("mean_fixed_prediction must match mean_dynamic_prediction.")
+        if total_mean_prediction.shape != mean_dynamic_prediction.shape:
+            raise ValueError("total_mean_prediction must match mean_dynamic_prediction.")
+
+        rmse = None if self.rmse is None else float(self.rmse)
+        if rmse is not None and (not np.isfinite(rmse) or rmse < 0.0):
+            raise ValueError("rmse must be finite and non-negative when supplied.")
+
+        object.__setattr__(self, "trace_rows", trace_rows)
+        object.__setattr__(self, "state_transition", state_transition)
+        object.__setattr__(self, "mean_fixed_coefficients", mean_fixed_coefficients)
+        object.__setattr__(self, "mean_dynamic_prediction", mean_dynamic_prediction)
+        object.__setattr__(self, "mean_fixed_prediction", mean_fixed_prediction)
+        object.__setattr__(self, "total_mean_prediction", total_mean_prediction)
+        object.__setattr__(self, "rmse", rmse)
+
+
 def reconstruct_fine_grid_samples(
     problem: TransDimensionalProblem,
     trace: SamplingTrace,
@@ -310,10 +391,101 @@ def summarize_fine_grid_posterior(
     )
 
 
+def summarize_posterior_prediction(
+    problem: TransDimensionalProblem,
+    trace: SamplingTrace,
+    comparison: ArrayLike | None = None,
+    *,
+    start: int = 0,
+    thin: int = 1,
+    backend: Backend = "numpy",
+) -> PosteriorPredictionSummary:
+    """Summarize retained dynamic and fixed observation-space predictions.
+
+    The dynamic component is obtained by reconstructing each retained
+    Voronoi state on the native fine grid. The fixed component includes both
+    ``problem.fixed_offset`` and the retained posterior mean of the optional
+    fixed-block coefficients. Existing fine-grid reconstruction APIs remain
+    dynamic-only.
+
+    Args:
+        problem: Numerical problem containing dynamic and optional fixed
+            predictor blocks.
+        trace: Retained sampler states. Its fixed-coefficient rows must align
+            exactly with its dynamic retained-state rows.
+        comparison: Optional finite observation-space vector for total RMSE.
+        start: First retained state row to use, including row zero.
+        thin: Positive stride between selected retained state rows.
+        backend: Voronoi assignment implementation.
+
+    Returns:
+        Immutable posterior-mean dynamic, fixed, and total predictions.
+
+    Raises:
+        ValueError: If the trace is empty, retained fields are misaligned,
+            slicing is invalid, or the comparison vector is malformed.
+    """
+    dynamic_samples = reconstruct_fine_grid_samples(
+        problem,
+        trace,
+        start=start,
+        thin=thin,
+        backend=backend,
+    )
+    rows = _selected_rows(trace.k.size, start=start, thin=thin)
+
+    fixed_coefficients = _readonly_float_array(
+        trace.fixed_coefficients,
+        name="trace.fixed_coefficients",
+    )
+    expected_fixed_shape = (trace.k.size, problem.n_fixed_coefficients)
+    if fixed_coefficients.shape != expected_fixed_shape:
+        raise ValueError(f"trace.fixed_coefficients must have shape {expected_fixed_shape}.")
+
+    mean_dynamic_field = np.asarray(np.mean(dynamic_samples, axis=0), dtype=np.float64)
+    mean_dynamic_prediction = np.asarray(
+        problem.sensitivities @ mean_dynamic_field,
+        dtype=np.float64,
+    )
+
+    if problem.n_fixed_coefficients:
+        mean_fixed_coefficients = np.asarray(
+            np.mean(fixed_coefficients[rows], axis=0),
+            dtype=np.float64,
+        )
+    else:
+        mean_fixed_coefficients = np.empty(0, dtype=np.float64)
+
+    assert problem.fixed_offset is not None
+    mean_fixed_prediction = np.array(problem.fixed_offset, dtype=np.float64, copy=True)
+    if problem.fixed_block is not None:
+        mean_fixed_prediction += problem.fixed_block.design @ mean_fixed_coefficients
+    total_mean_prediction = mean_dynamic_prediction + mean_fixed_prediction
+
+    rmse: float | None = None
+    if comparison is not None:
+        observed = _readonly_float_array(comparison, name="comparison")
+        if observed.shape != (problem.n_observations,):
+            raise ValueError("comparison must have shape (n_observations,).")
+        rmse = sqrt(float(np.mean(np.square(total_mean_prediction - observed))))
+
+    return PosteriorPredictionSummary(
+        trace_rows=rows,
+        state_transition=trace.state_transition[rows],
+        mean_fixed_coefficients=mean_fixed_coefficients,
+        mean_dynamic_prediction=mean_dynamic_prediction,
+        mean_fixed_prediction=mean_fixed_prediction,
+        total_mean_prediction=total_mean_prediction,
+        rmse=rmse,
+    )
+
+
 __all__ = [
     "DEFAULT_QUANTILES",
     "FineGridPosteriorSummary",
+    "PosteriorPredictionSummary",
     "posterior_mean_prediction",
     "reconstruct_fine_grid_samples",
     "summarize_fine_grid_posterior",
+    "summarize_posterior_prediction",
 ]

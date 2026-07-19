@@ -38,9 +38,11 @@ from openghg_inversions.experimental.rjmcmc.proposals import (
 from openghg_inversions.experimental.rjmcmc.postprocessing import (
     DEFAULT_QUANTILES,
     FineGridPosteriorSummary,
+    PosteriorPredictionSummary,
     posterior_mean_prediction,
     reconstruct_fine_grid_samples,
     summarize_fine_grid_posterior,
+    summarize_posterior_prediction,
 )
 from openghg_inversions.experimental.rjmcmc.rhime_adapter import problem_from_rhime_inputs
 from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
@@ -64,6 +66,7 @@ __all__ = [
     "FixedDesignBlock",
     "KernelSettings",
     "PCG64State",
+    "PosteriorPredictionSummary",
     "RetentionSettings",
     "SCHEDULE_ID",
     "SamplerCheckpoint",
@@ -95,6 +98,7 @@ __all__ = [
     "reconstruct_fine_grid_samples",
     "sample",
     "summarize_fine_grid_posterior",
+    "summarize_posterior_prediction",
     "uniform_log_k_prior",
     "uniform_nucleus_set_log_prior",
 ]

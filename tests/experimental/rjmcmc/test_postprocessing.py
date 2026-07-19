@@ -8,12 +8,18 @@ from math import sqrt
 import numpy as np
 import pytest
 
-from openghg_inversions.experimental.rjmcmc.core import TransDimensionalProblem, uniform_log_k_prior
+from openghg_inversions.experimental.rjmcmc.core import (
+    FixedDesignBlock,
+    TransDimensionalProblem,
+    uniform_log_k_prior,
+)
 from openghg_inversions.experimental.rjmcmc.postprocessing import (
     FineGridPosteriorSummary,
+    PosteriorPredictionSummary,
     posterior_mean_prediction,
     reconstruct_fine_grid_samples,
     summarize_fine_grid_posterior,
+    summarize_posterior_prediction,
 )
 from openghg_inversions.experimental.rjmcmc.sampling import SamplingTrace
 
@@ -61,6 +67,42 @@ def _trace() -> SamplingTrace:
         moves=np.array(["birth", "global_move"]),
         accepted=np.ones(2, dtype=np.bool_),
         log_acceptance_ratio=np.zeros(2),
+    )
+
+
+def _fixed_problem() -> TransDimensionalProblem:
+    """Return the reconstruction problem with an offset and two fixed columns."""
+    problem = _problem()
+    return TransDimensionalProblem(
+        observations=problem.observations,
+        observation_sd=problem.observation_sd,
+        sensitivities=problem.sensitivities,
+        grid_coordinates=problem.grid_coordinates,
+        k_min=problem.k_min,
+        k_max=problem.k_max,
+        log_k_prior=problem.log_k_prior,
+        coefficient_prior_mean=problem.coefficient_prior_mean,
+        coefficient_prior_sd=problem.coefficient_prior_sd,
+        fixed_offset=np.array([0.25, -0.5]),
+        fixed_block=FixedDesignBlock(
+            design=np.array([[2.0, -1.0], [0.5, 3.0]]),
+            coefficient_prior_mean=np.ones(2),
+            coefficient_prior_sd=np.full(2, 0.5),
+        ),
+    )
+
+
+def _fixed_trace() -> SamplingTrace:
+    """Return the dynamic trace with two aligned fixed coefficients per row."""
+    return replace(
+        _trace(),
+        fixed_coefficients=np.array(
+            [
+                [1.0, 2.0],
+                [3.0, 4.0],
+                [5.0, 6.0],
+            ]
+        ),
     )
 
 
@@ -173,6 +215,106 @@ def test_posterior_mean_prediction_reports_nonzero_rmse() -> None:
     np.testing.assert_array_equal(predicted, [3.0, 10.5])
     assert rmse == pytest.approx(sqrt(2.5))
     assert not predicted.flags.writeable
+
+
+def test_fixed_aware_prediction_uses_aligned_retained_rows() -> None:
+    """Dynamic and fixed posterior means should use the same retained rows."""
+    summary = summarize_posterior_prediction(
+        _fixed_problem(),
+        _fixed_trace(),
+        comparison=np.array([8.0, 28.0]),
+        start=0,
+        thin=2,
+    )
+
+    assert isinstance(summary, PosteriorPredictionSummary)
+    np.testing.assert_array_equal(summary.trace_rows, [0, 2])
+    np.testing.assert_array_equal(summary.state_transition, [0, 2])
+    np.testing.assert_array_equal(summary.mean_fixed_coefficients, [3.0, 4.0])
+    np.testing.assert_array_equal(summary.mean_dynamic_prediction, [6.0, 14.25])
+    np.testing.assert_array_equal(summary.mean_fixed_prediction, [2.25, 13.0])
+    np.testing.assert_array_equal(summary.total_mean_prediction, [8.25, 27.25])
+    assert summary.rmse == pytest.approx(sqrt(0.3125))
+    for array in (
+        summary.trace_rows,
+        summary.state_transition,
+        summary.mean_fixed_coefficients,
+        summary.mean_dynamic_prediction,
+        summary.mean_fixed_prediction,
+        summary.total_mean_prediction,
+    ):
+        assert not array.flags.writeable
+
+
+def test_fixed_aware_prediction_preserves_no_block_dynamic_result() -> None:
+    """A no-block trace should preserve the dynamic result and add only its offset."""
+    problem = replace(_problem(), fixed_offset=np.array([0.5, -1.0]))
+    trace = _trace()
+    existing = summarize_fine_grid_posterior(problem, trace, comparison=np.zeros(2))
+
+    summary = summarize_posterior_prediction(problem, trace)
+
+    assert summary.mean_fixed_coefficients.shape == (0,)
+    np.testing.assert_array_equal(summary.mean_fixed_prediction, [0.5, -1.0])
+    np.testing.assert_array_equal(
+        summary.mean_dynamic_prediction,
+        existing.predicted_observations,
+    )
+    np.testing.assert_array_equal(
+        summary.total_mean_prediction,
+        existing.predicted_observations + np.array([0.5, -1.0]),
+    )
+    assert summary.rmse is None
+
+
+@pytest.mark.parametrize(
+    ("problem", "trace", "expected_shape"),
+    [
+        (_fixed_problem(), _trace(), "\\(3, 2\\)"),
+        (
+            _problem(),
+            replace(_trace(), fixed_coefficients=np.ones((3, 1))),
+            "\\(3, 0\\)",
+        ),
+    ],
+)
+def test_fixed_aware_prediction_rejects_misaligned_fixed_trace_shape(
+    problem: TransDimensionalProblem,
+    trace: SamplingTrace,
+    expected_shape: str,
+) -> None:
+    """Fixed trace columns must align exactly with retained rows and the problem."""
+    with pytest.raises(ValueError, match=expected_shape):
+        summarize_posterior_prediction(problem, trace)
+
+
+def test_fixed_aware_prediction_rejects_empty_retained_trace() -> None:
+    """A posterior mean is undefined when a segment retained no states."""
+    trace = SamplingTrace(
+        k=np.empty(0, dtype=np.int64),
+        nuclei=np.empty((0, 2), dtype=np.int64),
+        coefficients=np.empty((0, 2)),
+        fixed_coefficients=np.empty((0, 2)),
+        log_target=np.empty(0),
+        moves=np.empty(0, dtype="U16"),
+        accepted=np.empty(0, dtype=np.bool_),
+        log_acceptance_ratio=np.empty(0),
+    )
+
+    with pytest.raises(ValueError, match="non-empty"):
+        summarize_posterior_prediction(_fixed_problem(), trace)
+
+
+@pytest.mark.parametrize(
+    "comparison",
+    [np.ones(3), np.array([1.0, np.nan])],
+)
+def test_fixed_aware_prediction_rejects_malformed_comparison(
+    comparison: np.ndarray,
+) -> None:
+    """Optional comparison data must be finite and observation-aligned."""
+    with pytest.raises(ValueError, match="comparison"):
+        summarize_posterior_prediction(_fixed_problem(), _fixed_trace(), comparison)
 
 
 @pytest.mark.parametrize(
