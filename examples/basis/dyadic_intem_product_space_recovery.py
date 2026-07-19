@@ -40,6 +40,10 @@ from openghg_inversions.basis.experimental.dyadic.enumeration import enumerate_p
 from openghg_inversions.basis.experimental.dyadic.gaussian_product_space import (
     GaussianProductSpaceTarget,
 )
+from openghg_inversions.basis.experimental.dyadic.gaussian_product_space_sampler import (
+    sample_collapsed_gaussian_product_space,
+    sample_gaussian_product_space,
+)
 from openghg_inversions.basis.experimental.dyadic.multiscale import MultiscaleDesign
 from openghg_inversions.basis.experimental.dyadic.state import PartitionState
 from openghg_inversions.basis.experimental.dyadic.tree import DyadicTree
@@ -251,6 +255,59 @@ class IntemRecoveryBenchmark:
         Returns:
             Nested dictionary containing all metrics and diagnostics.
         """
+        return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class SampledPartitionDiagnostics:
+    """Local-chain fidelity and Rao-Blackwellized recovery diagnostics.
+
+    Attributes:
+        sampler: ``"augmented"`` product-space or ``"collapsed"`` marginal
+            Gaussian transition.
+        draws: Number of retained partitions.
+        warmup: Number of discarded transition cycles.
+        partition_acceptance_rate: Overall retained structural acceptance.
+        split_acceptance_rate: Acceptance among retained split proposals.
+        merge_acceptance_rate: Acceptance among retained merge proposals.
+        unique_partitions: Number of distinct retained frontiers.
+        sampled_expected_k: Empirical posterior mean region count.
+        exact_expected_k: Exact 677-component posterior mean region count.
+        k_total_variation_distance: Total variation between sampled and exact
+            marginal K distributions.
+        partition_total_variation_distance: Total variation between sampled
+            and exact probabilities over all 677 partitions.
+        sampled_truth_probability: Retained frequency of the declared truth P.
+        exact_truth_probability: Exact posterior probability of the truth P.
+        sampled_mixture: Recovery metrics after weighting exact conditional
+            Gaussian components by sampled partition frequencies.
+    """
+
+    sampler: str
+    draws: int
+    warmup: int
+    partition_acceptance_rate: float
+    split_acceptance_rate: float | None
+    merge_acceptance_rate: float | None
+    unique_partitions: int
+    sampled_expected_k: float
+    exact_expected_k: float
+    k_total_variation_distance: float
+    partition_total_variation_distance: float
+    sampled_truth_probability: float
+    exact_truth_probability: float
+    sampled_mixture: ExactRecoveryMetrics
+
+
+@dataclass(frozen=True, slots=True)
+class SampledRecoveryBenchmark:
+    """Exact oracle and one non-enumerating local-chain comparison."""
+
+    exact: IntemRecoveryBenchmark
+    sampled: SampledPartitionDiagnostics
+
+    def as_dict(self) -> dict[str, object]:
+        """Return a JSON-serializable exact and sampled summary."""
         return asdict(self)
 
 
@@ -476,17 +533,7 @@ def evaluate_recovery_case(case: IntemRecoveryCase) -> IntemRecoveryBenchmark:
         partition, and latent summaries are weighted by exact posterior
         partition probabilities.
     """
-    holdout_design = MultiscaleDesign.from_grid(case.holdout_inner_design, case.tree)
-    components = tuple(
-        _conditional_component(case, partition, holdout_design) for partition in case.partitions
-    )
-    log_partition_weights = np.array(
-        [component.log_partition_weight for component in components],
-        dtype=float,
-    )
-    maximum_log_weight = float(log_partition_weights.max())
-    posterior_weights = np.exp(log_partition_weights - maximum_log_weight)
-    posterior_weights /= posterior_weights.sum()
+    components, posterior_weights = _components_and_posterior_weights(case)
     partition_indices = {partition: index for index, partition in enumerate(case.partitions)}
     truth_index = partition_indices[case.truth_partition]
     wrong_index = partition_indices[case.wrong_partition]
@@ -552,6 +599,114 @@ def run_benchmark(*, seed: int = 20260719) -> IntemRecoveryBenchmark:
         Deterministic exact benchmark results for the requested seed.
     """
     return evaluate_recovery_case(build_recovery_case(seed=seed))
+
+
+def sample_recovery_case(
+    case: IntemRecoveryCase,
+    *,
+    draws: int = 20_000,
+    warmup: int = 2_000,
+    sampler: str = "augmented",
+    seed: int = 481,
+) -> SampledRecoveryBenchmark:
+    """Compare a non-enumerating local chain with the exact 677-state oracle.
+
+    Exact conditional Gaussian components are reused to Rao-Blackwellize the
+    sampled predictive and field metrics.  The local chain therefore needs to
+    approximate only the partition probabilities in this comparison.
+
+    Args:
+        case: Matched synthetic InTEM recovery case.
+        draws: Positive retained partition count.
+        warmup: Non-negative discarded transition cycles.
+        sampler: ``"augmented"`` product-space MH-within-Gibbs or
+            ``"collapsed"`` exact marginal Gaussian partition MH.
+        seed: Random seed for the local chain.
+
+    Returns:
+        Exact benchmark and sampled structural-fidelity diagnostics.
+
+    Raises:
+        ValueError: If ``sampler`` is unsupported.  Draw-control validation is
+            delegated to the selected reusable sampler.
+    """
+    if sampler not in {"augmented", "collapsed"}:
+        raise ValueError("sampler must be 'augmented' or 'collapsed'.")
+    sampler_function = (
+        sample_gaussian_product_space
+        if sampler == "augmented"
+        else sample_collapsed_gaussian_product_space
+    )
+    trace = sampler_function(
+        case.target,
+        case.wrong_partition,
+        draws=draws,
+        warmup=warmup,
+        rng=np.random.default_rng(seed),
+    )
+    components, exact_weights = _components_and_posterior_weights(case)
+    partition_indices = {partition: index for index, partition in enumerate(case.partitions)}
+    sampled_counts = np.zeros(len(case.partitions), dtype=np.int64)
+    for partition in trace.partitions:
+        sampled_counts[partition_indices[partition]] += 1
+    sampled_weights = sampled_counts / sampled_counts.sum()
+    region_counts = np.array([len(partition.active) for partition in case.partitions], dtype=int)
+    exact_by_k = np.bincount(region_counts, weights=exact_weights, minlength=case.maximum_regions + 1)
+    sampled_by_k = np.bincount(
+        region_counts,
+        weights=sampled_weights,
+        minlength=case.maximum_regions + 1,
+    )
+    truth_index = partition_indices[case.truth_partition]
+    exact = evaluate_recovery_case(case)
+    return SampledRecoveryBenchmark(
+        exact=exact,
+        sampled=SampledPartitionDiagnostics(
+            sampler=sampler,
+            draws=trace.draw_count,
+            warmup=warmup,
+            partition_acceptance_rate=trace.partition_acceptance_rate,
+            split_acceptance_rate=trace.move_acceptance_rate("split"),
+            merge_acceptance_rate=trace.move_acceptance_rate("merge"),
+            unique_partitions=len(set(trace.partitions)),
+            sampled_expected_k=float(sampled_weights @ region_counts),
+            exact_expected_k=exact.diagnostics.posterior_expected_k,
+            k_total_variation_distance=float(0.5 * np.abs(sampled_by_k - exact_by_k).sum()),
+            partition_total_variation_distance=float(0.5 * np.abs(sampled_weights - exact_weights).sum()),
+            sampled_truth_probability=float(sampled_weights[truth_index]),
+            exact_truth_probability=exact.diagnostics.truth_partition_probability,
+            sampled_mixture=_mixture_metrics(case, components, sampled_weights),
+        ),
+    )
+
+
+def run_sampled_benchmark(
+    *,
+    data_seed: int = 20260719,
+    draws: int = 20_000,
+    warmup: int = 2_000,
+    sampler: str = "augmented",
+    sampler_seed: int = 481,
+) -> SampledRecoveryBenchmark:
+    """Build the recovery case and run one exact-versus-local comparison.
+
+    Args:
+        data_seed: Synthetic observation-error seed.
+        draws: Retained local-chain partitions.
+        warmup: Discarded local-chain cycles.
+        sampler: ``"augmented"`` or ``"collapsed"`` transition.
+        sampler_seed: Random seed for partition sampling.
+
+    Returns:
+        Exact oracle and local-chain diagnostics.
+    """
+    return sample_recovery_case(
+        build_recovery_case(seed=data_seed),
+        draws=draws,
+        warmup=warmup,
+        sampler=sampler,
+        seed=sampler_seed,
+    )
 
 
 def _declared_partitions(
@@ -625,6 +780,24 @@ def _synthetic_designs(
         inner_design[row_index] = sensitivity[rectangle.row_slice, rectangle.column_slice]
         outer_design[row_index] = [float(sensitivity[outer_mask].sum()) for outer_mask in outer_masks]
     return inner_design, outer_design
+
+
+def _components_and_posterior_weights(
+    case: IntemRecoveryCase,
+) -> tuple[tuple[_GaussianComponent, ...], np.ndarray]:
+    """Return every conditional component and normalized exact P weights."""
+    holdout_design = MultiscaleDesign.from_grid(case.holdout_inner_design, case.tree)
+    components = tuple(
+        _conditional_component(case, partition, holdout_design) for partition in case.partitions
+    )
+    log_weights = np.array(
+        [component.log_partition_weight for component in components],
+        dtype=float,
+    )
+    maximum = float(log_weights.max())
+    weights = np.exp(log_weights - maximum)
+    weights /= weights.sum()
+    return components, weights
 
 
 def _conditional_component(
@@ -765,7 +938,8 @@ def _mixture_metrics(
             for component in components
         ]
     )
-    log_terms = np.log(weights) + component_log_densities
+    positive = weights > 0.0
+    log_terms = np.log(weights[positive]) + component_log_densities[positive]
     maximum = float(log_terms.max())
     log_predictive_density = maximum + math.log(float(np.exp(log_terms - maximum).sum()))
     region_counts = np.array([len(partition.active) for partition in case.partitions], dtype=float)
@@ -825,13 +999,27 @@ def _parse_args() -> argparse.Namespace:
     """Parse command-line controls for the exact benchmark."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=int, default=20260719)
+    parser.add_argument("--sampler", choices=("exact", "augmented", "collapsed"), default="exact")
+    parser.add_argument("--draws", type=int, default=20_000)
+    parser.add_argument("--warmup", type=int, default=2_000)
+    parser.add_argument("--sampler-seed", type=int, default=481)
     return parser.parse_args()
 
 
 def main() -> None:
     """Run the benchmark and print the complete JSON result."""
     args = _parse_args()
-    print(json.dumps(run_benchmark(seed=args.seed).as_dict(), indent=2, sort_keys=True))
+    if args.sampler == "exact":
+        result = run_benchmark(seed=args.seed)
+    else:
+        result = run_sampled_benchmark(
+            data_seed=args.seed,
+            draws=args.draws,
+            warmup=args.warmup,
+            sampler=args.sampler,
+            sampler_seed=args.sampler_seed,
+        )
+    print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

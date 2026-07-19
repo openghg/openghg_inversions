@@ -1928,8 +1928,10 @@ poor local partition traversal.
    assessment. An exact 4 by 4 InTEM inner/outer recovery benchmark now meets
    the proof-of-concept target: the latent mixture beats a wrong fixed K=4
    partition and is predictively non-inferior to the true-partition oracle.
-   See `docs/reports/dyadic_intem_product_space_recovery.md`. Local-chain
-   frequencies still need to be checked against this 677-partition oracle.
+   Augmented and collapsed non-enumerating local chains also reproduce its
+   exact K distribution, truth-partition probability, and predictive metrics
+   within declared tolerances. See
+   `docs/reports/dyadic_intem_product_space_recovery.md`.
 
 ### Phase 4: scale-up and alternatives
 

@@ -69,11 +69,39 @@ It is intentionally easy and should not be over-interpreted:
 - the true partition is strongly identified in one synthetic realization;
 - the observation covariance is known and diagonal;
 - continuous priors are Gaussian rather than the positive Gamma-Beta process;
-- the latent result is currently an exact enumerated mixture, not yet the
-  output of the non-enumerating local chain;
+- exact enumeration is available only because this inner grid is deliberately
+  small; the larger-grid chain must rely on convergence diagnostics instead;
 - repeated noise realizations and prior-predictive calibration remain open.
 
-The immediate implementation check is to run both augmented and collapsed local
-chains on this same target and compare sampled K/P frequencies and predictive
-metrics with the exact mixture. That directly validates the scalable sampler
-before replacing its Gaussian continuous update.
+## Non-enumerating chain validation
+
+Both reusable local chains were initialized at the wrong K=4 partition and run
+for 2,000 warmup cycles plus 20,000 retained draws. Neither transition used the
+partition catalogue; enumeration was used only to calculate exact diagnostics
+after sampling.
+
+| Diagnostic | exact | augmented product-space | collapsed Gaussian |
+| --- | ---: | ---: | ---: |
+| expected K | 4.7998 | 4.7536 | 4.8054 |
+| truth-P probability | 0.5681 | 0.5761 | 0.5702 |
+| K total variation | 0 | 0.0138 | 0.0048 |
+| full-P total variation | 0 | 0.0419 | 0.0409 |
+| holdout log density | 24.4801 | 24.4883 | 24.4895 |
+| noiseless holdout RMSE | 0.04424 | 0.04425 | 0.04418 |
+| structural acceptance | n/a | 0.1380 | 0.1714 |
+| unique retained P | n/a | 161 | 228 |
+
+The augmented split and merge acceptance rates were 0.102 and 0.214. The
+collapsed rates were 0.127 and 0.265. Despite the deliberately wrong starting
+geometry and moderate local acceptance, both chains recover exact K mass,
+truth-partition probability, and predictive performance within the predeclared
+tolerances.
+
+This completes the analytic Gaussian proof of concept end to end: latent K/P
+beats the matched wrong fixed basis, is non-inferior to the true-partition
+oracle, and can be sampled without global partition enumeration.
+
+The next statistical step is repeated synthetic realizations and
+prior-predictive calibration. The next implementation step is to retain this
+validated structural kernel while replacing the exact Gaussian continuous
+refresh with the positive Gamma-Beta target.

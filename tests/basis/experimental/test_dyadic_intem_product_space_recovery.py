@@ -166,6 +166,55 @@ def test_exact_results_are_deterministic_finite_and_recover_truth(
     assert first.fixed_truth.field_rmse < first.fixed_underfit.field_rmse
 
 
+@pytest.mark.parametrize("sampler", ["augmented", "collapsed"])
+def test_short_local_chain_uses_non_enumerating_partition_updates(
+    benchmark_module: ModuleType,
+    recovery_case: Any,
+    sampler: str,
+) -> None:
+    """Both local kernels should move and return finite oracle comparisons."""
+    result = benchmark_module.sample_recovery_case(
+        recovery_case,
+        draws=80,
+        warmup=40,
+        sampler=sampler,
+        seed=91,
+    )
+
+    assert result.sampled.sampler == sampler
+    assert result.sampled.draws == 80
+    assert result.sampled.unique_partitions > 1
+    assert 0.0 <= result.sampled.partition_acceptance_rate <= 1.0
+    assert math.isfinite(result.sampled.sampled_mixture.holdout_log_predictive_density)
+    assert result.sampled.exact_truth_probability == pytest.approx(
+        result.exact.diagnostics.truth_partition_probability
+    )
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("sampler", ["augmented", "collapsed"])
+def test_long_local_chain_matches_exact_k_and_predictive_oracle(
+    benchmark_module: ModuleType,
+    recovery_case: Any,
+    sampler: str,
+) -> None:
+    """Declared local chains should reproduce exact K mass and predictions."""
+    result = benchmark_module.sample_recovery_case(
+        recovery_case,
+        draws=20_000,
+        warmup=2_000,
+        sampler=sampler,
+        seed=481,
+    )
+
+    assert result.sampled.k_total_variation_distance < 0.05
+    assert abs(result.sampled.sampled_truth_probability - result.sampled.exact_truth_probability) < 0.05
+    assert abs(
+        result.sampled.sampled_mixture.holdout_log_predictive_density
+        - result.exact.latent_677_partition_mixture.holdout_log_predictive_density
+    ) < 0.5
+
+
 def _floating_values(value: object) -> Iterator[float]:
     """Yield every floating-point scalar nested in a benchmark dictionary."""
     if isinstance(value, float):
