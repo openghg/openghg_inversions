@@ -58,6 +58,56 @@ def uniform_log_k_prior(k_min: int, k_max: int) -> FloatArray:
 
 
 @dataclass(frozen=True)
+class FixedDesignBlock:
+    """Immutable always-active design columns and their coefficient priors.
+
+    Args:
+        design: Fixed design matrix with shape
+            ``(n_observations, n_fixed_coefficients)``.
+        coefficient_prior_mean: Positive arithmetic means of the independent
+            lognormal coefficient priors.
+        coefficient_prior_sd: Positive arithmetic standard deviations of the
+            independent lognormal coefficient priors.
+
+    Raises:
+        ValueError: If the design or prior-moment arrays have malformed shapes,
+            contain nonfinite values, or declare invalid lognormal moments.
+    """
+
+    design: FloatArray
+    coefficient_prior_mean: FloatArray
+    coefficient_prior_sd: FloatArray
+
+    def __post_init__(self) -> None:
+        """Own and validate the fixed design and its explicit prior moments."""
+        design = _readonly_float_array(self.design, name="fixed block design")
+        prior_mean = _readonly_float_array(
+            self.coefficient_prior_mean,
+            name="fixed coefficient_prior_mean",
+        )
+        prior_sd = _readonly_float_array(
+            self.coefficient_prior_sd,
+            name="fixed coefficient_prior_sd",
+        )
+        if design.ndim != 2 or design.shape[1] < 1:
+            raise ValueError("fixed block design must be two-dimensional with at least one column.")
+        expected_shape = (design.shape[1],)
+        if prior_mean.shape != expected_shape or prior_sd.shape != expected_shape:
+            raise ValueError("fixed coefficient prior moments must have one value per design column.")
+        if np.any(prior_mean <= 0.0) or np.any(prior_sd <= 0.0):
+            raise ValueError("fixed coefficient prior moments must be strictly positive.")
+
+        object.__setattr__(self, "design", design)
+        object.__setattr__(self, "coefficient_prior_mean", prior_mean)
+        object.__setattr__(self, "coefficient_prior_sd", prior_sd)
+
+    @property
+    def n_coefficients(self) -> int:
+        """Number of always-active coefficients represented by the block."""
+        return int(self.design.shape[1])
+
+
+@dataclass(frozen=True)
 class TransDimensionalProblem:
     """Immutable inputs and declared priors for a spatial Voronoi inversion.
 
@@ -73,6 +123,9 @@ class TransDimensionalProblem:
             ``k_min`` through ``k_max``.
         coefficient_prior_mean: Arithmetic mean of the lognormal coefficient prior.
         coefficient_prior_sd: Arithmetic standard deviation of that prior.
+        fixed_offset: Optional coefficient-independent prediction offset. ``None``
+            is normalized to a read-only zero vector.
+        fixed_block: Optional always-active design block and coefficient priors.
 
     Raises:
         ValueError: If array shapes, numerical supports, active-count bounds,
@@ -88,6 +141,8 @@ class TransDimensionalProblem:
     log_k_prior: FloatArray
     coefficient_prior_mean: float
     coefficient_prior_sd: float
+    fixed_offset: FloatArray | None = None
+    fixed_block: FixedDesignBlock | None = None
 
     def __post_init__(self) -> None:
         """Validate shapes, supports, and normalized prior probabilities."""
@@ -127,12 +182,26 @@ class TransDimensionalProblem:
         if not np.isfinite(self.coefficient_prior_sd) or self.coefficient_prior_sd <= 0.0:
             raise ValueError("coefficient_prior_sd must be finite and positive.")
 
+        if self.fixed_offset is None:
+            fixed_offset = np.zeros(observations.shape, dtype=np.float64)
+            fixed_offset.setflags(write=False)
+        else:
+            fixed_offset = _readonly_float_array(self.fixed_offset, name="fixed_offset")
+            if fixed_offset.shape != observations.shape:
+                raise ValueError("fixed_offset must have the same shape as observations.")
+        if self.fixed_block is not None:
+            if not isinstance(self.fixed_block, FixedDesignBlock):
+                raise TypeError("fixed_block must be a FixedDesignBlock or None.")
+            if self.fixed_block.design.shape[0] != observations.size:
+                raise ValueError("fixed block design must have one row per observation.")
+
         log_k_prior.setflags(write=False)
         object.__setattr__(self, "observations", observations)
         object.__setattr__(self, "observation_sd", observation_sd)
         object.__setattr__(self, "sensitivities", sensitivities)
         object.__setattr__(self, "grid_coordinates", coordinates)
         object.__setattr__(self, "log_k_prior", log_k_prior)
+        object.__setattr__(self, "fixed_offset", fixed_offset)
 
     @property
     def n_observations(self) -> int:
@@ -154,6 +223,11 @@ class TransDimensionalProblem:
         """Short numerical-kernel alias for :attr:`n_grid_cells`."""
         return self.n_grid_cells
 
+    @property
+    def n_fixed_coefficients(self) -> int:
+        """Number of always-active coefficients in the optional fixed block."""
+        return 0 if self.fixed_block is None else self.fixed_block.n_coefficients
+
 
 @dataclass(frozen=True)
 class TransDimensionalState:
@@ -172,11 +246,19 @@ class TransDimensionalState:
             shape ``(n_grid_cells,)``.
         design: Region-aggregated sensitivity matrix with shape
             ``(n_observations, k_max)``. Inactive columns equal zero.
-        prediction: Model prediction with shape ``(n_observations,)``.
+        fixed_coefficients: Always-active coefficients aligned with the fixed
+            block columns.
+        dynamic_prediction: Prediction from the Voronoi design and active
+            coefficients.
+        fixed_prediction: Prediction from the fixed offset and always-active
+            fixed block.
+        prediction: Total model prediction with shape ``(n_observations,)``.
         residual: Prediction minus observations, with shape
             ``(n_observations,)``.
         log_likelihood: Normalized independent-Gaussian log likelihood.
         log_coefficient_prior: Normalized active-coefficient log prior.
+        log_fixed_coefficient_prior: Normalized always-active coefficient log
+            prior, or zero when there is no fixed block.
         log_k_prior: Declared log probability of the active-region count.
         log_nucleus_prior: Conditional log probability of the active nucleus
             set given ``k``.
@@ -187,10 +269,14 @@ class TransDimensionalState:
     coefficients: FloatArray
     labels: IntArray
     design: FloatArray
+    fixed_coefficients: FloatArray
+    dynamic_prediction: FloatArray
+    fixed_prediction: FloatArray
     prediction: FloatArray
     residual: FloatArray
     log_likelihood: float
     log_coefficient_prior: float
+    log_fixed_coefficient_prior: float
     log_k_prior: float
     log_nucleus_prior: float
 
@@ -203,7 +289,11 @@ class TransDimensionalState:
     def log_target(self) -> float:
         """Return the complete normalized log target for this state."""
         return float(
-            self.log_likelihood + self.log_coefficient_prior + self.log_k_prior + self.log_nucleus_prior
+            self.log_likelihood
+            + self.log_coefficient_prior
+            + self.log_fixed_coefficient_prior
+            + self.log_k_prior
+            + self.log_nucleus_prior
         )
 
     @property
@@ -471,6 +561,7 @@ def build_state(
     active_nuclei: ArrayLike,
     active_coefficients: ArrayLike,
     *,
+    fixed_coefficients: ArrayLike | None = None,
     backend: Backend = "numpy",
 ) -> TransDimensionalState:
     """Build and validate a complete sampler state from its active values.
@@ -481,6 +572,9 @@ def build_state(
         active_coefficients: Finite coefficients paired with the supplied
             nuclei. Nonpositive active values produce a state with negative
             infinite coefficient-prior density and log target.
+        fixed_coefficients: Explicit finite coefficients for the optional
+            always-active fixed block. Required exactly when that block is
+            nonempty. Nonpositive values produce negative infinite prior density.
         backend: Numerical kernels used to derive labels and target caches.
 
     Returns:
@@ -506,6 +600,20 @@ def build_state(
     if not np.all(np.isfinite(supplied_coefficients)):
         raise ValueError("Active coefficients must be finite.")
 
+    if fixed_coefficients is None:
+        supplied_fixed_coefficients = np.empty(0, dtype=np.float64)
+        if problem.n_fixed_coefficients:
+            raise ValueError("fixed_coefficients are required when the problem has a fixed block.")
+    else:
+        supplied_fixed_coefficients = np.asarray(fixed_coefficients, dtype=np.float64)
+        if supplied_fixed_coefficients.ndim != 1:
+            raise ValueError("fixed_coefficients must be one-dimensional.")
+        if supplied_fixed_coefficients.shape != (problem.n_fixed_coefficients,):
+            raise ValueError("fixed_coefficients must have one value per fixed block column.")
+        if not np.all(np.isfinite(supplied_fixed_coefficients)):
+            raise ValueError("fixed_coefficients must be finite.")
+    owned_fixed_coefficients = np.array(supplied_fixed_coefficients, dtype=np.float64, copy=True)
+
     order = np.argsort(supplied_nuclei, kind="stable")
     sorted_nuclei = supplied_nuclei[order]
     sorted_coefficients = supplied_coefficients[order]
@@ -523,7 +631,11 @@ def build_state(
     else:
         raise ValueError("backend must be 'numpy' or 'numba'.")
 
-    prediction = design[:, :k] @ coefficients[:k]
+    dynamic_prediction = design[:, :k] @ coefficients[:k]
+    fixed_prediction = np.array(problem.fixed_offset, dtype=np.float64, copy=True)
+    if problem.fixed_block is not None:
+        fixed_prediction += problem.fixed_block.design @ owned_fixed_coefficients
+    prediction = dynamic_prediction + fixed_prediction
     residual = prediction - problem.observations
     if backend == "numpy":
         log_likelihood = gaussian_log_likelihood_numpy(residual, problem.observation_sd)
@@ -533,6 +645,18 @@ def build_state(
             problem.coefficient_prior_mean,
             problem.coefficient_prior_sd,
         )
+        if problem.fixed_block is None:
+            log_fixed_coefficient_prior = 0.0
+        else:
+            log_fixed_coefficient_prior = sum(
+                lognormal_coefficient_log_prior_numpy(
+                    owned_fixed_coefficients[index : index + 1],
+                    1,
+                    float(problem.fixed_block.coefficient_prior_mean[index]),
+                    float(problem.fixed_block.coefficient_prior_sd[index]),
+                )
+                for index in range(problem.n_fixed_coefficients)
+            )
     else:
         log_likelihood = gaussian_log_likelihood_numba(residual, problem.observation_sd)
         log_coefficient_prior = lognormal_coefficient_log_prior_numba(
@@ -541,8 +665,30 @@ def build_state(
             problem.coefficient_prior_mean,
             problem.coefficient_prior_sd,
         )
+        if problem.fixed_block is None:
+            log_fixed_coefficient_prior = 0.0
+        else:
+            log_fixed_coefficient_prior = sum(
+                lognormal_coefficient_log_prior_numba(
+                    owned_fixed_coefficients[index : index + 1],
+                    1,
+                    float(problem.fixed_block.coefficient_prior_mean[index]),
+                    float(problem.fixed_block.coefficient_prior_sd[index]),
+                )
+                for index in range(problem.n_fixed_coefficients)
+            )
 
-    for array in (nuclei, coefficients, labels, design, prediction, residual):
+    for array in (
+        nuclei,
+        coefficients,
+        labels,
+        design,
+        owned_fixed_coefficients,
+        dynamic_prediction,
+        fixed_prediction,
+        prediction,
+        residual,
+    ):
         array.setflags(write=False)
     return TransDimensionalState(
         k=k,
@@ -550,10 +696,14 @@ def build_state(
         coefficients=coefficients,
         labels=labels,
         design=design,
+        fixed_coefficients=owned_fixed_coefficients,
+        dynamic_prediction=dynamic_prediction,
+        fixed_prediction=fixed_prediction,
         prediction=prediction,
         residual=residual,
         log_likelihood=float(log_likelihood),
         log_coefficient_prior=float(log_coefficient_prior),
+        log_fixed_coefficient_prior=float(log_fixed_coefficient_prior),
         log_k_prior=float(problem.log_k_prior[k - problem.k_min]),
         log_nucleus_prior=uniform_nucleus_set_log_prior(problem.n_grid_cells, k),
     )

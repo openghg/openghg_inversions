@@ -115,6 +115,8 @@ def _validate_problem_state(
         raise ValueError("state capacity must equal problem.k_max.")
     if state.labels.size != problem.ncell or state.design.shape != (problem.nobs, problem.k_max):
         raise ValueError("state dimensions are incompatible with the problem.")
+    if state.fixed_coefficients.shape != (problem.n_fixed_coefficients,):
+        raise ValueError("state fixed coefficients are incompatible with the problem.")
     if not problem.k_min <= state.k <= problem.k_max:
         raise ValueError("state.k must lie within the problem's permitted range.")
 
@@ -250,6 +252,7 @@ def propose_coefficient(
         problem,
         state.active_nuclei,
         coefficients,
+        fixed_coefficients=state.fixed_coefficients,
         backend=backend,
     )
     log_position_probability = -math.log(state.k)
@@ -269,6 +272,84 @@ def propose_coefficient(
         log_q_forward=log_q_forward,
         log_q_reverse=log_q_reverse,
         move="coefficient",
+    )
+
+
+def propose_fixed_coefficient(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+    *,
+    coefficient_position: int,
+    proposed_coefficient: float,
+    proposal_stdev: float,
+    backend: Backend = "numpy",
+) -> TransitionTerms:
+    """Construct a random-walk update for one always-active coefficient.
+
+    Args:
+        problem: Target distribution and fine-grid numerical inputs.
+        state: Immutable source state.
+        coefficient_position: Zero-based fixed-block coefficient position,
+            selected uniformly by the eventual sampler.
+        proposed_coefficient: Explicit proposed value.
+        proposal_stdev: Standard deviation of the symmetric Gaussian random walk.
+        backend: State-building implementation for candidate caches.
+
+    Returns:
+        Complete proposal accounting. A missing fixed block, invalid position,
+        or coefficient outside positive lognormal support produces an invalid
+        self-transition.
+
+    Raises:
+        TypeError: If ``problem`` or ``state`` has the wrong type.
+        ValueError: If the problem/state contract, proposal scale, or backend
+            is malformed.
+    """
+    _validate_backend(backend)
+    _validate_problem_state(problem, state)
+    proposal_stdev = _validate_proposal_scale(proposal_stdev, name="proposal_stdev")
+    position = _active_position(coefficient_position, k=problem.n_fixed_coefficients)
+    if position is None:
+        return _invalid_transition(
+            state,
+            move="fixed_coefficient",
+            reason="coefficient_position must select an always-active fixed coefficient.",
+        )
+    value = _positive_coefficient(proposed_coefficient)
+    if value is None:
+        return _invalid_transition(
+            state,
+            move="fixed_coefficient",
+            reason="proposed_coefficient must be finite and positive.",
+        )
+
+    fixed_coefficients = np.array(state.fixed_coefficients, copy=True)
+    current = float(fixed_coefficients[position])
+    fixed_coefficients[position] = value
+    candidate = build_state(
+        problem,
+        state.active_nuclei,
+        state.active_coefficients,
+        fixed_coefficients=fixed_coefficients,
+        backend=backend,
+    )
+    log_position_probability = -math.log(problem.n_fixed_coefficients)
+    log_q_forward = log_position_probability + _normal_log_density(
+        value,
+        mean=current,
+        stdev=proposal_stdev,
+    )
+    log_q_reverse = log_position_probability + _normal_log_density(
+        current,
+        mean=value,
+        stdev=proposal_stdev,
+    )
+    return _valid_transition(
+        state,
+        candidate,
+        log_q_forward=log_q_forward,
+        log_q_reverse=log_q_reverse,
+        move="fixed_coefficient",
     )
 
 
@@ -346,6 +427,7 @@ def propose_birth(
         problem,
         np.append(state.active_nuclei, cell),
         np.append(state.active_coefficients, value),
+        fixed_coefficients=state.fixed_coefficients,
         backend=backend,
     )
     log_q_forward = -math.log(problem.ncell - state.k) + _normal_log_density(
@@ -422,6 +504,7 @@ def propose_death(
         problem,
         surviving_nuclei,
         surviving_coefficients,
+        fixed_coefficients=state.fixed_coefficients,
         backend=backend,
     )
     log_q_forward = -math.log(state.k)
@@ -494,7 +577,13 @@ def propose_global_move(
     nuclei = np.array(state.active_nuclei, copy=True)
     coefficients = np.array(state.active_coefficients, copy=True)
     nuclei[position] = cell
-    candidate = build_state(problem, nuclei, coefficients, backend=backend)
+    candidate = build_state(
+        problem,
+        nuclei,
+        coefficients,
+        fixed_coefficients=state.fixed_coefficients,
+        backend=backend,
+    )
     log_q = -math.log(state.k) - math.log(problem.ncell - state.k)
     return _valid_transition(
         state,
@@ -602,7 +691,13 @@ def propose_local_move(
     nuclei = np.array(state.active_nuclei, copy=True)
     coefficients = np.array(state.active_coefficients, copy=True)
     nuclei[position] = cell
-    candidate = build_state(problem, nuclei, coefficients, backend=backend)
+    candidate = build_state(
+        problem,
+        nuclei,
+        coefficients,
+        fixed_coefficients=state.fixed_coefficients,
+        backend=backend,
+    )
     log_q_forward = _local_move_log_probability(
         problem,
         state.active_nuclei,
@@ -667,6 +762,7 @@ __all__ = [
     "propose_birth",
     "propose_coefficient",
     "propose_death",
+    "propose_fixed_coefficient",
     "propose_global_move",
     "propose_local_move",
 ]
