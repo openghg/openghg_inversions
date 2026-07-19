@@ -25,6 +25,12 @@ from openghg_inversions.experimental.rjmcmc.core import (
     uniform_log_k_prior,
     uniform_nucleus_set_log_prior,
 )
+from openghg_inversions.experimental.rjmcmc.checkpoint_io import (
+    CHECKPOINT_SCHEMA_ID,
+    CHECKPOINT_SCHEMA_VERSION,
+    load_checkpoint,
+    save_checkpoint,
+)
 from openghg_inversions.experimental.rjmcmc.proposals import (
     TransitionTerms,
     accept_or_reject,
@@ -61,6 +67,8 @@ from openghg_inversions.experimental.rjmcmc.sampling import (
 from openghg_inversions.experimental.rjmcmc.xarray_output import sampling_trace_to_dataset
 
 __all__ = [
+    "CHECKPOINT_SCHEMA_ID",
+    "CHECKPOINT_SCHEMA_VERSION",
     "DEFAULT_QUANTILES",
     "FIXED_BLOCK_SCHEDULE_ID",
     "FineGridPosteriorSummary",
@@ -88,6 +96,7 @@ __all__ = [
     "gaussian_log_likelihood_numpy",
     "lognormal_coefficient_log_prior_numba",
     "lognormal_coefficient_log_prior_numpy",
+    "load_checkpoint",
     "propose_birth",
     "propose_coefficient",
     "propose_death",
@@ -99,6 +108,7 @@ __all__ = [
     "reconstruct_fine_grid_samples",
     "sample",
     "sampling_trace_to_dataset",
+    "save_checkpoint",
     "summarize_fine_grid_posterior",
     "summarize_posterior_prediction",
     "uniform_log_k_prior",
