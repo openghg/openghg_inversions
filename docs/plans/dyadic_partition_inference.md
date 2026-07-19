@@ -1950,8 +1950,16 @@ poor local partition traversal.
    non-inferior to the true-P fixed oracle. The declared 20,000-draw run has no
    divergences at `target_accept=0.95`; its K and full-P total-variation
    distances are 0.0426 and 0.0708. The same model constructs on an 8 by 8 tree
-   without a partition catalogue. Gamma-Beta integration remains a separate
-   positive-model implementation step.
+   without a partition catalogue.
+9. **Implemented for a two-grid-cell positive recovery case:** the grouped
+   Gamma-Beta prior now has vectorized permanent coordinates, a canonical
+   forest split mask, exact dynamic-programming counts for normalized
+   `p(P) = p(K) / N_K`, a framework-independent target, and a native PyMC
+   compound sampler. A 1,000-draw latent run recovers the split truth, has no
+   divergences, matches the true fixed-partition inversion, and beats an
+   underfit fixed partition. The retained posterior is nearly degenerate at the
+   split, so realistic partition-mixing evidence remains open. See
+   `docs/reports/dyadic_gamma_beta_product_space_recovery.md`.
 
 ### Phase 4: scale-up and alternatives
 
