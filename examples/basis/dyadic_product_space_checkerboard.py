@@ -32,6 +32,7 @@ from openghg_inversions.basis.experimental.dyadic.gaussian_product_space import 
     GaussianProductSpaceTarget,
 )
 from openghg_inversions.basis.experimental.dyadic.gaussian_product_space_sampler import (
+    sample_collapsed_gaussian_product_space,
     sample_gaussian_product_space,
 )
 from openghg_inversions.basis.experimental.dyadic.product_space import ProductSpaceState
@@ -81,6 +82,7 @@ class CheckerboardBenchmark:
     fixed_wrong: InversionMetrics
     fixed_coarse: InversionMetrics
     latent: InversionMetrics
+    latent_sampler: str
     latent_partition_acceptance_rate: float
     latent_split_acceptance_rate: float | None
     latent_merge_acceptance_rate: float | None
@@ -320,6 +322,7 @@ def run_benchmark(
     warmup: int = 2_000,
     minimum_regions: int = 8,
     maximum_regions: int = 28,
+    sampler: str = "augmented",
     seed: int = 481,
 ) -> CheckerboardBenchmark:
     """Run matched fixed and latent checkerboard inversions.
@@ -329,11 +332,15 @@ def run_benchmark(
         warmup: Discarded latent-chain transition cycles.
         minimum_regions: Smallest latent region count with positive prior mass.
         maximum_regions: Largest latent region count with positive prior mass.
+        sampler: ``"augmented"`` for product-space MH-within-Gibbs or
+            ``"collapsed"`` for exact marginal Gaussian partition MH.
         seed: Seed for case construction and independent posterior streams.
 
     Returns:
         Fixed/latent metrics and explicit comparison gates.
     """
+    if sampler not in {"augmented", "collapsed"}:
+        raise ValueError("sampler must be 'augmented' or 'collapsed'.")
     case = build_checkerboard_case(
         minimum_regions=minimum_regions,
         maximum_regions=maximum_regions,
@@ -362,7 +369,12 @@ def run_benchmark(
         rng=fixed_wrong_rng,
     )
     started = perf_counter()
-    latent_trace = sample_gaussian_product_space(
+    sampler_function = (
+        sample_gaussian_product_space
+        if sampler == "augmented"
+        else sample_collapsed_gaussian_product_space
+    )
+    latent_trace = sampler_function(
         case.target,
         case.coarse_partition,
         draws=draws,
@@ -384,6 +396,7 @@ def run_benchmark(
         fixed_wrong=fixed_wrong,
         fixed_coarse=fixed_coarse,
         latent=latent,
+        latent_sampler=sampler,
         latent_partition_acceptance_rate=latent_trace.partition_acceptance_rate,
         latent_split_acceptance_rate=latent_trace.move_acceptance_rate("split"),
         latent_merge_acceptance_rate=latent_trace.move_acceptance_rate("merge"),
@@ -448,6 +461,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup", type=int, default=2_000)
     parser.add_argument("--minimum-regions", type=int, default=8)
     parser.add_argument("--maximum-regions", type=int, default=28)
+    parser.add_argument("--sampler", choices=("augmented", "collapsed"), default="augmented")
     parser.add_argument("--seed", type=int, default=481)
     return parser.parse_args()
 
@@ -460,6 +474,7 @@ def main() -> None:
         warmup=args.warmup,
         minimum_regions=args.minimum_regions,
         maximum_regions=args.maximum_regions,
+        sampler=args.sampler,
         seed=args.seed,
     )
     print(json.dumps(result.as_dict(), indent=2, sort_keys=True))

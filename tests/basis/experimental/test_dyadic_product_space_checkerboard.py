@@ -79,6 +79,15 @@ def test_short_benchmark_exercises_latent_k_and_p(benchmark_module: Any) -> None
     assert result.latent_merge_acceptance_rate is not None
     assert result.latent_warmup_acceptance_rate is not None
 
+    collapsed = benchmark_module.run_benchmark(
+        draws=30,
+        warmup=20,
+        sampler="collapsed",
+        seed=19,
+    )
+    assert collapsed.latent_sampler == "collapsed"
+    assert collapsed.latent_unique_partitions > 1
+
 
 @pytest.mark.slow
 def test_seeded_latent_benchmark_beats_predeclared_fixed_partitions(

@@ -20,7 +20,11 @@ from operator import index
 import numpy as np
 
 from .gaussian_product_space import GaussianProductSpaceTarget
-from .product_space import ProductSpaceState, partition_metropolis_step
+from .product_space import (
+    ProductSpaceState,
+    collapsed_partition_metropolis_step,
+    partition_metropolis_step,
+)
 from .proposals import MergeMove, SplitMove
 from .state import PartitionState
 
@@ -215,7 +219,90 @@ def sample_gaussian_product_space(
     )
     initial_partition.validate(target.tree)
 
+    return _sample_gaussian_product_space(
+        target,
+        initial_partition,
+        draws=draw_count,
+        warmup=warmup_count,
+        thinning=thin,
+        partition_updates_per_draw=update_count,
+        rng=rng,
+        collapsed=False,
+    )
+
+
+def sample_collapsed_gaussian_product_space(
+    target: GaussianProductSpaceTarget,
+    initial_partition: PartitionState,
+    *,
+    draws: int,
+    warmup: int = 0,
+    thinning: int = 1,
+    partition_updates_per_draw: int = 1,
+    rng: np.random.Generator,
+) -> GaussianProductSpaceTrace:
+    """Sample the exact marginal Gaussian partition target locally.
+
+    Continuous coefficients are integrated out during each partition proposal.
+    After a retained partition is selected, one exact conditional product-space
+    state is drawn for posterior reconstruction.  This sampler is primarily a
+    Gaussian mixing benchmark for the augmented product-space chain; it cannot
+    replace a non-Gaussian continuous update.
+
+    Args:
+        target: Gaussian target providing exact partition marginals and
+            conditional coefficient draws.
+        initial_partition: Valid starting frontier.
+        draws: Positive number of retained states.
+        warmup: Number of complete transition cycles to discard.
+        thinning: Positive number of post-warmup cycles per retained state.
+        partition_updates_per_draw: Positive local marginal updates per cycle.
+        rng: Caller-owned NumPy random generator.
+
+    Returns:
+        Retained partitions, conditional coefficient draws, and transition
+        diagnostics in the same format as :func:`sample_gaussian_product_space`.
+    """
+    if not isinstance(target, GaussianProductSpaceTarget):
+        raise TypeError("target must be a GaussianProductSpaceTarget.")
+    if not isinstance(initial_partition, PartitionState):
+        raise TypeError("initial_partition must be a PartitionState.")
+    if not isinstance(rng, np.random.Generator):
+        raise TypeError("rng must be a numpy.random.Generator.")
+    draw_count = _positive_integer(draws, name="draws")
+    warmup_count = _non_negative_integer(warmup, name="warmup")
+    thin = _positive_integer(thinning, name="thinning")
+    update_count = _positive_integer(
+        partition_updates_per_draw,
+        name="partition_updates_per_draw",
+    )
+    initial_partition.validate(target.tree)
+    return _sample_gaussian_product_space(
+        target,
+        initial_partition,
+        draws=draw_count,
+        warmup=warmup_count,
+        thinning=thin,
+        partition_updates_per_draw=update_count,
+        rng=rng,
+        collapsed=True,
+    )
+
+
+def _sample_gaussian_product_space(
+    target: GaussianProductSpaceTarget,
+    initial_partition: PartitionState,
+    *,
+    draws: int,
+    warmup: int,
+    thinning: int,
+    partition_updates_per_draw: int,
+    rng: np.random.Generator,
+    collapsed: bool,
+) -> GaussianProductSpaceTrace:
+    """Run the validated augmented or collapsed Gaussian transition loop."""
     state = target.draw_conditional_state(initial_partition, rng)
+    partition = initial_partition
     retained_partitions: list[PartitionState] = []
     retained_inner: list[np.ndarray] = []
     retained_outer: list[np.ndarray] = []
@@ -223,20 +310,31 @@ def sample_gaussian_product_space(
     retained_log_ratios: list[list[float]] = []
     retained_move_kinds: list[list[str]] = []
     warmup_acceptances = 0
-    warmup_proposals = warmup_count * update_count
-    total_cycles = warmup_count + draw_count * thin
+    warmup_proposals = warmup * partition_updates_per_draw
+    total_cycles = warmup + draws * thinning
 
     for cycle in range(total_cycles):
         cycle_accepted: list[bool] = []
         cycle_log_ratios: list[float] = []
         cycle_move_kinds: list[str] = []
-        for _ in range(update_count):
-            transition = partition_metropolis_step(
-                target.tree,
-                state,
-                log_density=target.log_density,
-                rng=rng,
-            )
+        for _ in range(partition_updates_per_draw):
+            if collapsed:
+                transition = collapsed_partition_metropolis_step(
+                    target.tree,
+                    partition,
+                    log_density=target.log_marginal_partition_density,
+                    rng=rng,
+                )
+                partition = transition.partition
+            else:
+                transition = partition_metropolis_step(
+                    target.tree,
+                    state,
+                    log_density=target.log_density,
+                    rng=rng,
+                )
+                partition = transition.state.partition
+                state = target.draw_conditional_state(partition, rng)
             cycle_accepted.append(transition.accepted)
             cycle_log_ratios.append(transition.log_acceptance_ratio)
             if isinstance(transition.move, SplitMove):
@@ -245,15 +343,16 @@ def sample_gaussian_product_space(
                 cycle_move_kinds.append("merge")
             else:
                 cycle_move_kinds.append("none")
-            state = target.draw_conditional_state(transition.state.partition, rng)
 
-        if cycle < warmup_count:
+        if cycle < warmup:
             warmup_acceptances += sum(cycle_accepted)
             continue
-        if (cycle - warmup_count) % thin != thin - 1:
+        if (cycle - warmup) % thinning != thinning - 1:
             continue
 
-        retained_partitions.append(state.partition)
+        if collapsed:
+            state = target.draw_conditional_state(partition, rng)
+        retained_partitions.append(partition)
         retained_inner.append(state.inner_coordinates)
         retained_outer.append(state.outer_coefficients)
         retained_accepted.append(cycle_accepted)
@@ -269,7 +368,7 @@ def sample_gaussian_product_space(
         partition_log_acceptance_ratio=np.asarray(retained_log_ratios, dtype=float),
         partition_move_kind=np.asarray(retained_move_kinds, dtype="U5"),
         warmup_acceptance_rate=warmup_rate,
-        thinning=thin,
+        thinning=thinning,
     )
 
 
@@ -337,5 +436,6 @@ def _frozen_move_kind_matrix(values: np.ndarray) -> np.ndarray:
 
 __all__ = [
     "GaussianProductSpaceTrace",
+    "sample_collapsed_gaussian_product_space",
     "sample_gaussian_product_space",
 ]

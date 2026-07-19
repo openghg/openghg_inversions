@@ -45,6 +45,7 @@ from .gaussian_product_space import (
 )
 from .gaussian_product_space_sampler import (
     GaussianProductSpaceTrace,
+    sample_collapsed_gaussian_product_space,
     sample_gaussian_product_space,
 )
 from .gamma_beta import (
@@ -109,11 +110,14 @@ from .proposals import (
     reverse_move,
 )
 from .product_space import (
+    CollapsedPartitionTransition,
     LogAugmentedDensity,
+    PartitionLogDensity,
     PartitionMove,
     PartitionNeighbor,
     ProductSpaceState,
     ProductSpaceTransition,
+    collapsed_partition_metropolis_step,
     enumerate_partition_neighbors,
     partition_metropolis_step,
 )
@@ -134,6 +138,7 @@ __all__ = [
     "AggregatePriorMoments",
     "BocquetProjection",
     "CoarsenedGrid",
+    "CollapsedPartitionTransition",
     "CovarianceBuilder",
     "DemoSearchConfig",
     "DemoSearchRun",
@@ -167,6 +172,7 @@ __all__ = [
     "PairedMove",
     "PairedNeighbor",
     "PartitionLogPrior",
+    "PartitionLogDensity",
     "PartitionMove",
     "PartitionNeighbor",
     "PartitionState",
@@ -192,6 +198,7 @@ __all__ = [
     "build_partition_diagnostics",
     "build_bocquet_projection",
     "calibrate_group_root_variance",
+    "collapsed_partition_metropolis_step",
     "count_partitions_by_region",
     "direct_gather",
     "direct_observation_space_dfs",
@@ -231,6 +238,7 @@ __all__ = [
     "run_fixed_count_dfs_search",
     "run_projected_variable_k_dfs_search",
     "run_variable_k_dfs_search",
+    "sample_collapsed_gaussian_product_space",
     "sample_gaussian_product_space",
     "separable_exponential_correlation",
     "stochastic_local_search",

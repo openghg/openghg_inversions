@@ -70,6 +70,7 @@ class ProductSpaceState:
 
 
 LogAugmentedDensity: TypeAlias = Callable[[ProductSpaceState], float]
+PartitionLogDensity: TypeAlias = Callable[[PartitionState], float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +100,33 @@ class ProductSpaceTransition:
 
     state: ProductSpaceState
     candidate: ProductSpaceState
+    move: PartitionMove | None
+    accepted: bool
+    current_log_density: float
+    candidate_log_density: float
+    log_q_forward: float
+    log_q_reverse: float
+    log_acceptance_ratio: float
+
+
+@dataclass(frozen=True, slots=True)
+class CollapsedPartitionTransition:
+    """Diagnostic record for one marginal partition Metropolis update.
+
+    Attributes:
+        partition: Accepted candidate or unchanged current partition.
+        candidate: Proposed partition before the accept/reject decision.
+        move: Proposed split or merge, or ``None`` for an isolated tree.
+        accepted: Whether the proposed partition was accepted.
+        current_log_density: Marginal target at the source partition.
+        candidate_log_density: Marginal target at the proposed partition.
+        log_q_forward: Log proposal probability from source to candidate.
+        log_q_reverse: Log proposal probability from candidate to source.
+        log_acceptance_ratio: Unclipped log Metropolis-Hastings ratio.
+    """
+
+    partition: PartitionState
+    candidate: PartitionState
     move: PartitionMove | None
     accepted: bool
     current_log_density: float
@@ -227,6 +255,85 @@ def partition_metropolis_step(
     )
 
 
+def collapsed_partition_metropolis_step(
+    tree: DyadicTree,
+    current: PartitionState,
+    *,
+    log_density: PartitionLogDensity,
+    rng: np.random.Generator,
+) -> CollapsedPartitionTransition:
+    """Apply one split-or-merge MH update to a marginal partition target.
+
+    This transition is useful when continuous coefficients can be integrated
+    exactly.  It shares the local proposal and reverse-degree correction with
+    :func:`partition_metropolis_step`, but its target is a density on
+    :class:`PartitionState` rather than the augmented product-space state.
+
+    Args:
+        tree: Tree defining legal source and candidate partitions.
+        current: Current valid partition.
+        log_density: Callable returning the normalized or relatively normalized
+            marginal log density for a partition.
+        rng: Caller-owned NumPy random generator.
+
+    Returns:
+        Complete diagnostic transition with the accepted partition.
+
+    Raises:
+        TypeError: If inputs have the wrong object types.
+        ValueError: If the current density is non-finite, the candidate density
+            is NaN or positive infinity, or a reverse move is absent.
+    """
+    if not isinstance(current, PartitionState):
+        raise TypeError("current must be a PartitionState.")
+    if not isinstance(rng, np.random.Generator):
+        raise TypeError("rng must be a numpy.random.Generator.")
+    if not callable(log_density):
+        raise TypeError("log_density must be callable.")
+    current.validate(tree)
+    current_log_density = _checked_log_density(log_density(current), current=True)
+    neighbors = enumerate_partition_neighbors(tree, current)
+
+    if not neighbors:
+        return CollapsedPartitionTransition(
+            partition=current,
+            candidate=current,
+            move=None,
+            accepted=False,
+            current_log_density=current_log_density,
+            candidate_log_density=current_log_density,
+            log_q_forward=0.0,
+            log_q_reverse=0.0,
+            log_acceptance_ratio=-math.inf,
+        )
+
+    neighbor = neighbors[int(rng.integers(len(neighbors)))]
+    candidate_log_density = _checked_log_density(log_density(neighbor.partition), current=False)
+    reverse_neighbors = enumerate_partition_neighbors(tree, neighbor.partition)
+    reverse = next(
+        (item for item in reverse_neighbors if item.partition == current),
+        None,
+    )
+    if reverse is None:  # pragma: no cover - protects future proposal extensions.
+        raise ValueError("Proposed partition has no reverse split-or-merge move.")
+
+    log_acceptance_ratio = candidate_log_density - current_log_density + reverse.log_q - neighbor.log_q
+    uniform = float(rng.random())
+    log_uniform = -math.inf if uniform == 0.0 else math.log(uniform)
+    accepted = bool(log_uniform < min(0.0, log_acceptance_ratio))
+    return CollapsedPartitionTransition(
+        partition=neighbor.partition if accepted else current,
+        candidate=neighbor.partition,
+        move=neighbor.move,
+        accepted=accepted,
+        current_log_density=current_log_density,
+        candidate_log_density=candidate_log_density,
+        log_q_forward=neighbor.log_q,
+        log_q_reverse=reverse.log_q,
+        log_acceptance_ratio=log_acceptance_ratio,
+    )
+
+
 def _frozen_vector(values: npt.ArrayLike, *, name: str) -> np.ndarray:
     """Return a copied, finite, read-only floating-point vector."""
     source = np.asarray(values)
@@ -256,11 +363,14 @@ def _checked_log_density(value: float, *, current: bool) -> float:
 
 
 __all__ = [
+    "CollapsedPartitionTransition",
     "LogAugmentedDensity",
     "PartitionMove",
+    "PartitionLogDensity",
     "PartitionNeighbor",
     "ProductSpaceState",
     "ProductSpaceTransition",
+    "collapsed_partition_metropolis_step",
     "enumerate_partition_neighbors",
     "partition_metropolis_step",
 ]

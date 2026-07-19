@@ -10,6 +10,7 @@ from openghg_inversions.basis.experimental.dyadic.gaussian_product_space import 
     GaussianProductSpaceTarget,
 )
 from openghg_inversions.basis.experimental.dyadic.gaussian_product_space_sampler import (
+    sample_collapsed_gaussian_product_space,
     sample_gaussian_product_space,
 )
 from openghg_inversions.basis.experimental.dyadic.product_space import (
@@ -206,6 +207,25 @@ def test_blocked_sampler_returns_fixed_coordinate_trace_and_diagnostics() -> Non
     assert trace.move_acceptance_rate("merge") is not None
     with pytest.raises(ValueError, match="split.*merge"):
         trace.move_acceptance_rate("relocate")
+
+
+def test_collapsed_sampler_frequencies_match_exact_oracle() -> None:
+    """Marginal local MH should recover the exact tiny partition probabilities."""
+    target, partitions = _target(observation=1.8, pseudo_prior_scale=3.0)
+    expected = target.partition_probabilities(partitions)
+
+    trace = sample_collapsed_gaussian_product_space(
+        target,
+        partitions[0],
+        draws=11_000,
+        warmup=1_000,
+        rng=np.random.default_rng(20260719),
+    )
+
+    observed = np.array([trace.partitions.count(partition) for partition in partitions], dtype=float)
+    observed /= observed.sum()
+    np.testing.assert_allclose(observed, list(expected.values()), atol=0.04)
+    assert trace.inner_coordinates.shape == (11_000, 3)
 
 
 @pytest.mark.parametrize(

@@ -1887,6 +1887,13 @@ behavior without coefficient transport or NUTS. The hackathon proof of concept
 is a deliberately narrow slice through Phases 0, 1, and 2a rather than a
 requirement to finish all earlier productionization work first.
 
+**2026-07-19 status:** an exact marginal Gaussian local split/merge chain is now
+implemented for variable K as a diagnostic companion to the augmented
+product-space chain. On the 8 by 8 checkerboard it reaches the same fine-K
+predictive regime with higher proposal acceptance, indicating that the current
+over-refinement is target-driven. Fixed-count paired moves and DoFS-informed
+proposal comparisons remain open.
+
 ### Phase 2b: non-Gaussian fixed-count sampler
 
 1. Add canonical node-keyed active coefficients and prior whitening.

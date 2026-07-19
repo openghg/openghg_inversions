@@ -87,13 +87,39 @@ below the true-partition oracle. That misses the stricter provisional
 non-inferiority threshold of -0.05 nat per observation, so this run should not
 be described as matching the oracle.
 
+### Collapsed-chain diagnostic
+
+An independent collapsed Gaussian chain integrated the continuous coefficients
+for every structural proposal and drew them only after retaining P:
+
+```bash
+HOME=/tmp MPLCONFIGDIR=/tmp .venv/bin/python \
+  examples/basis/dyadic_product_space_checkerboard.py \
+  --draws 2000 --warmup 1000 \
+  --minimum-regions 8 --maximum-regions 28 \
+  --sampler collapsed --seed 481
+```
+
+It produced mean K 25.34, holdout RMSE 3.56 ppb, holdout log density -107.32,
+and 811 distinct retained partitions. Overall structural acceptance was 0.438;
+split acceptance was 0.332 and merge acceptance 0.641. Runtime was 23.3
+seconds for 3,000 cycles.
+
+The collapsed result agrees closely with the augmented product-space result
+despite its higher acceptance rate. This indicates that the preference for
+fine partitions is a property of the current Gaussian model and data, rather
+than a pseudo-prior switching failure. Two additional 2,000-draw augmented
+chains had mean K 24.96 and 25.02 and holdout RMSE 3.75 and 3.59 ppb,
+respectively.
+
 ## Interpretation and limitations
 
-- The chain over-refines: posterior mean K is about 25.6 rather than the truth
+- Both augmented and collapsed chains over-refine: posterior mean K is about
+  25--26 rather than the truth
   K=16. Replacing the original per-partition complexity penalty with a uniform
   marginal prior on K did not remove this behavior. It therefore reflects the
   current likelihood/prior model or finite-data realization, not accidental
-  partition multiplicity alone.
+  partition multiplicity or poor pseudo-prior switching alone.
 - The latent result is based on one synthetic design and noise realization.
   Predictive superiority needs paired replication before becoming a scientific
   claim.
