@@ -96,6 +96,7 @@ from .partition_diagnostics import (
     gaussian_partition_objectives,
     gaussian_posterior_mean,
 )
+from .partition_prior import RegionCountPartitionPrior
 from .proposals import (
     MergeMove,
     Move,
@@ -181,6 +182,7 @@ __all__ = [
     "ProductSpaceState",
     "ProductSpaceTransition",
     "RHIMEGaussianMultiscale",
+    "RegionCountPartitionPrior",
     "RootVarianceCalibration",
     "SearchProposal",
     "SearchResult",
