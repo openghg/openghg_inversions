@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from openghg_inversions.tdmcmc.core import (
+from openghg_inversions.experimental.rjmcmc.core import (
     TransDimensionalProblem,
     TransDimensionalState,
     aggregate_design_numba,

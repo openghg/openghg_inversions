@@ -7,12 +7,12 @@ from dataclasses import dataclass
 import numpy as np
 import pytest
 
-from openghg_inversions.tdmcmc.core import (
+from openghg_inversions.experimental.rjmcmc.core import (
     TransDimensionalProblem,
     build_state,
     uniform_log_k_prior,
 )
-from openghg_inversions.tdmcmc.sampling import SamplerConfig, sample
+from openghg_inversions.experimental.rjmcmc.sampling import SamplerConfig, sample
 
 
 @dataclass(frozen=True, slots=True)

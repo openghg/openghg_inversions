@@ -106,9 +106,11 @@ following correctness and integration work. Items are ordered by dependency.
 3. Introduce immutable, validated run-profile and provenance primitives. Do not
    silently invent paper settings that have not been confirmed, and keep the
    manifest compatible with future retained-draw and checkpoint output.
-4. Rename the package to `openghg_inversions.experimental.rjmcmc` after the
-   concurrent test/example work is integrated, then update imports atomically.
-   Do not retain a compatibility shim because this branch has not been released.
+4. **Completed:** renamed the package to
+   `openghg_inversions.experimental.rjmcmc` after the concurrent test/example
+   work was integrated and updated imports atomically. No compatibility shim
+   or import-time warning was retained because this branch has not been
+   released.
 5. Extend the forward model with an always-active fixed block so InTEM outer
    emissions coefficients can be inferred jointly with the variable inner
    regions. Continue to exclude the known-corrupt boundary-condition fixture.
@@ -189,6 +191,10 @@ proposal. Full hierarchical error and boundary blocks remain deferred.
   continuous-coefficient oracle, checkerboard example extraction, and run
   profile/provenance primitives. Faithful archived-input work remains deferred
   until the server data return.
+- Moved the numerical package to
+  `openghg_inversions.experimental.rjmcmc`, moved its focused suite to
+  `tests/experimental/rjmcmc`, and updated the example and internal imports.
+  The unreleased former namespace has no compatibility shim or import warning.
 
 ### 2026-07-18
 
@@ -201,10 +207,10 @@ proposal. Full hierarchical error and boundary blocks remain deferred.
   read-only benchmark contract.
 - Chose a canonical sorted-subset nucleus representation with explicit
   `p(k)` and `p(nuclei | k)` terms for the first implementation.
-- Added the `openghg_inversions.tdmcmc` package with immutable numerical
-  problem/state types, normalized target components, NumPy and Numba kernels,
-  deterministic proposal accounting, and a seeded sampler with a fixed outer
-  schedule and reversible mixed structural steps.
+- Added the `openghg_inversions.experimental.rjmcmc` package with immutable
+  numerical problem/state types, normalized target components, NumPy and Numba
+  kernels, deterministic proposal accounting, and a seeded sampler with a
+  fixed outer schedule and reversible mixed structural steps.
 - Added a filtered RHIME-input adapter that extracts and flattens
   `fp_x_flux(nmeasure, lat, lon)` without using the already reduced fixed-basis
   `H`.
@@ -286,7 +292,7 @@ proposal. Full hierarchical error and boundary blocks remain deferred.
 - Reviewed the 523-line data-backed checkerboard against draft PRs #502 and
   #506. It is a complete scientific workflow hidden in pytest, so the next
   organizational change should move its experiment-specific orchestration to
-  `examples/tdmcmc/lunt_name_edgar_checkerboard.py`, add a replayable CLI and
+  `examples/rjmcmc/lunt_name_edgar_checkerboard.py`, add a replayable CLI and
   machine-readable provenance/results, and leave a much smaller test module
   that imports the example. The move should preserve current numerical behavior
   and should not create a new supported package API.

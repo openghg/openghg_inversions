@@ -7,12 +7,12 @@ from math import exp, log
 import numpy as np
 import pytest
 
-from openghg_inversions.tdmcmc.core import (
+from openghg_inversions.experimental.rjmcmc.core import (
     TransDimensionalProblem,
     TransDimensionalState,
     build_state,
 )
-from openghg_inversions.tdmcmc.proposals import propose_local_move
+from openghg_inversions.experimental.rjmcmc.proposals import propose_local_move
 
 
 @pytest.fixture

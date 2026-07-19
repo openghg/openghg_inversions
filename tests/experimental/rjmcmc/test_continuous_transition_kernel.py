@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from math import exp, log
+from math import erf, exp, log, pi, sqrt
 
 import numpy as np
 import pytest
-from scipy import integrate, stats
+from scipy import integrate
 
-from openghg_inversions.tdmcmc.core import (
+from openghg_inversions.experimental.rjmcmc.core import (
     TransDimensionalProblem,
     TransDimensionalState,
     build_state,
 )
-from openghg_inversions.tdmcmc.proposals import propose_birth, propose_death
+from openghg_inversions.experimental.rjmcmc.proposals import propose_birth, propose_death
 
 
 def _informative_problem() -> TransDimensionalProblem:
@@ -86,6 +86,30 @@ def _lognormal_parameters(mean: float, standard_deviation: float) -> tuple[float
     return float(sigma), exp(mu)
 
 
+def _lognormal_density(value: float, *, shape: float, scale: float) -> float:
+    """Evaluate a lognormal density independently of SciPy's frozen stubs."""
+    if value <= 0.0:
+        return 0.0
+    standardized = (log(value) - log(scale)) / shape
+    return exp(-0.5 * standardized**2) / (value * shape * sqrt(2.0 * pi))
+
+
+def _normal_log_density(value: float, *, mean: float, standard_deviation: float) -> float:
+    """Evaluate a normalized Gaussian log density independently."""
+    standardized = (value - mean) / standard_deviation
+    return -0.5 * standardized**2 - log(standard_deviation) - 0.5 * log(2.0 * pi)
+
+
+def _normal_density(value: float, *, mean: float, standard_deviation: float) -> float:
+    """Evaluate a normalized Gaussian density independently."""
+    return exp(_normal_log_density(value, mean=mean, standard_deviation=standard_deviation))
+
+
+def _normal_probability_below_zero(*, mean: float, standard_deviation: float) -> float:
+    """Return the probability that one Gaussian draw is non-positive."""
+    return 0.5 * (1.0 + erf(-mean / (standard_deviation * sqrt(2.0))))
+
+
 def test_varied_continuous_birth_death_pairs_have_reciprocal_flux() -> None:
     """Varied coefficients, dimensions, locations, and scales should balance pointwise."""
     problem = _informative_problem()
@@ -116,10 +140,10 @@ def test_varied_continuous_birth_death_pairs_have_reciprocal_flux() -> None:
             proposal_stdev=proposal_stdev,
         )
         parent_coefficient = _independent_parent_coefficient(problem, source, destination)
-        expected_birth_log_q = -log(problem.ncell - source.k) + stats.norm.logpdf(
+        expected_birth_log_q = -log(problem.ncell - source.k) + _normal_log_density(
             proposed_coefficient,
-            loc=parent_coefficient,
-            scale=proposal_stdev,
+            mean=parent_coefficient,
+            standard_deviation=proposal_stdev,
         )
 
         assert birth.valid and death.valid
@@ -156,8 +180,6 @@ def test_quadrature_matches_analytic_continuous_overlap_and_self_mass(
         problem.coefficient_prior_mean,
         problem.coefficient_prior_sd,
     )
-    coefficient_prior = stats.lognorm(s=prior_shape, scale=prior_scale)
-    proposal = stats.norm(loc=source_coefficient, scale=proposal_stdev)
 
     def accepted_up_density(value: float) -> float:
         transition = propose_birth(
@@ -167,10 +189,21 @@ def test_quadrature_matches_analytic_continuous_overlap_and_self_mass(
             proposed_coefficient=value,
             proposal_stdev=proposal_stdev,
         )
-        return float(proposal.pdf(value) * exp(min(0.0, transition.log_acceptance_ratio)))
+        proposal_density = _normal_density(
+            value,
+            mean=source_coefficient,
+            standard_deviation=proposal_stdev,
+        )
+        return proposal_density * exp(min(0.0, transition.log_acceptance_ratio))
 
     def analytic_overlap_density(value: float) -> float:
-        return float(min(proposal.pdf(value), coefficient_prior.pdf(value)))
+        prior_density = _lognormal_density(value, shape=prior_shape, scale=prior_scale)
+        proposal_density = _normal_density(
+            value,
+            mean=source_coefficient,
+            standard_deviation=proposal_stdev,
+        )
+        return min(proposal_density, prior_density)
 
     def reverse_target_flux_density(value: float) -> float:
         birth = propose_birth(
@@ -188,7 +221,9 @@ def test_quadrature_matches_analytic_continuous_overlap_and_self_mass(
             proposal_stdev=proposal_stdev,
         )
         candidate_target_density = (
-            0.5 * coefficient_prior.pdf(source_coefficient) * coefficient_prior.pdf(value)
+            0.5
+            * _lognormal_density(source_coefficient, shape=prior_shape, scale=prior_scale)
+            * _lognormal_density(value, shape=prior_shape, scale=prior_scale)
         )
         return float(candidate_target_density * 0.5 * exp(min(0.0, death.log_acceptance_ratio)))
 
@@ -217,9 +252,20 @@ def test_quadrature_matches_analytic_continuous_overlap_and_self_mass(
         limit=150,
     )
 
-    source_target_density = 0.5 * 0.5 * coefficient_prior.pdf(source_coefficient)
+    source_target_density = (
+        0.5
+        * 0.5
+        * _lognormal_density(
+            source_coefficient,
+            shape=prior_shape,
+            scale=prior_scale,
+        )
+    )
     forward_flux = source_target_density * accepted_mass
-    negative_invalid_mass = float(proposal.cdf(0.0))
+    negative_invalid_mass = _normal_probability_below_zero(
+        mean=source_coefficient,
+        standard_deviation=proposal_stdev,
+    )
     positive_proposal_mass = 1.0 - negative_invalid_mass
     positive_rejection_mass = positive_proposal_mass - accepted_mass
     mixed_kernel_row_mass = 0.5 + 0.5 * (accepted_mass + positive_rejection_mass + negative_invalid_mass)

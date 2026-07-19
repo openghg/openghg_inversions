@@ -8,12 +8,12 @@ from math import exp, log, pi
 import numpy as np
 import pytest
 
-from openghg_inversions.tdmcmc.core import (
+from openghg_inversions.experimental.rjmcmc.core import (
     TransDimensionalProblem,
     TransDimensionalState,
     build_state,
 )
-from openghg_inversions.tdmcmc.proposals import (
+from openghg_inversions.experimental.rjmcmc.proposals import (
     TransitionTerms,
     accept_or_reject,
     propose_birth,

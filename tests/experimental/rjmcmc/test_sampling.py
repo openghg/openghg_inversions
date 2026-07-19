@@ -5,14 +5,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from openghg_inversions.tdmcmc.core import (
+from openghg_inversions.experimental.rjmcmc.core import (
     TransDimensionalProblem,
     TransDimensionalState,
     build_state,
     uniform_log_k_prior,
 )
-from openghg_inversions.tdmcmc.proposals import propose_local_move
-from openghg_inversions.tdmcmc.sampling import (
+from openghg_inversions.experimental.rjmcmc.proposals import propose_local_move
+from openghg_inversions.experimental.rjmcmc.sampling import (
     SamplerConfig,
     SamplingResult,
     _draw_transition,

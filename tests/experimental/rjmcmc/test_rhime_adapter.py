@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from openghg_inversions.tdmcmc.rhime_adapter import problem_from_rhime_inputs
+from openghg_inversions.experimental.rjmcmc.rhime_adapter import problem_from_rhime_inputs
 
 
 def _shuffled_input_dataset() -> xr.Dataset:

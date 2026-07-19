@@ -13,7 +13,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 import xarray as xr
 
-from openghg_inversions.tdmcmc.core import TransDimensionalProblem, uniform_log_k_prior
+from openghg_inversions.experimental.rjmcmc.core import TransDimensionalProblem, uniform_log_k_prior
 
 _SENSITIVITY_DIMS = ("nmeasure", "lat", "lon")
 

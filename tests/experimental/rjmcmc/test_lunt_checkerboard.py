@@ -40,15 +40,15 @@ import numpy as np
 from numpy.typing import NDArray
 import pytest
 
-from openghg_inversions.tdmcmc.core import (
+from openghg_inversions.experimental.rjmcmc.core import (
     TransDimensionalProblem,
     TransDimensionalState,
     build_state,
     uniform_log_k_prior,
 )
-from openghg_inversions.tdmcmc.postprocessing import summarize_fine_grid_posterior
-from openghg_inversions.tdmcmc.proposals import accept_or_reject, propose_coefficient
-from openghg_inversions.tdmcmc.sampling import SamplerConfig, SamplingTrace, sample
+from openghg_inversions.experimental.rjmcmc.postprocessing import summarize_fine_grid_posterior
+from openghg_inversions.experimental.rjmcmc.proposals import accept_or_reject, propose_coefficient
+from openghg_inversions.experimental.rjmcmc.sampling import SamplerConfig, SamplingTrace, sample
 
 FloatArray = NDArray[np.float64]
 

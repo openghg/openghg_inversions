@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from openghg_inversions.tdmcmc.profiles import (
+from openghg_inversions.experimental.rjmcmc.profiles import (
     RUN_MANIFEST_SCHEMA_VERSION,
     InputReference,
     RetentionSettings,
@@ -15,7 +15,7 @@ from openghg_inversions.tdmcmc.profiles import (
     RunProvenance,
     TargetSettings,
 )
-from openghg_inversions.tdmcmc.sampling import SamplerConfig
+from openghg_inversions.experimental.rjmcmc.sampling import SamplerConfig
 
 
 def _target() -> TargetSettings:

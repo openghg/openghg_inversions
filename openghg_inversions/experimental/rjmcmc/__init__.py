@@ -1,4 +1,4 @@
-"""Experimental NumPy/Numba engine for spatial trans-dimensional MCMC.
+"""Experimental NumPy/Numba engine for spatial reversible-jump MCMC.
 
 The package separates fixed-capacity Voronoi problems and states, explicit
 Metropolis-Hastings proposal accounting, deterministic seeded sampling, and
@@ -9,7 +9,7 @@ boundary-condition inference, multi-sector models, and parallel tempering are
 outside this initial slice.
 """
 
-from openghg_inversions.tdmcmc.core import (
+from openghg_inversions.experimental.rjmcmc.core import (
     TransDimensionalProblem,
     TransDimensionalState,
     aggregate_design_numba,
@@ -24,7 +24,7 @@ from openghg_inversions.tdmcmc.core import (
     uniform_log_k_prior,
     uniform_nucleus_set_log_prior,
 )
-from openghg_inversions.tdmcmc.proposals import (
+from openghg_inversions.experimental.rjmcmc.proposals import (
     TransitionTerms,
     accept_or_reject,
     propose_birth,
@@ -33,15 +33,15 @@ from openghg_inversions.tdmcmc.proposals import (
     propose_global_move,
     propose_local_move,
 )
-from openghg_inversions.tdmcmc.postprocessing import (
+from openghg_inversions.experimental.rjmcmc.postprocessing import (
     DEFAULT_QUANTILES,
     FineGridPosteriorSummary,
     posterior_mean_prediction,
     reconstruct_fine_grid_samples,
     summarize_fine_grid_posterior,
 )
-from openghg_inversions.tdmcmc.rhime_adapter import problem_from_rhime_inputs
-from openghg_inversions.tdmcmc.sampling import (
+from openghg_inversions.experimental.rjmcmc.rhime_adapter import problem_from_rhime_inputs
+from openghg_inversions.experimental.rjmcmc.sampling import (
     SamplerConfig,
     SamplingResult,
     SamplingTrace,

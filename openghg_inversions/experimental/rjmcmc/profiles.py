@@ -20,7 +20,7 @@ from numbers import Integral
 from string import hexdigits
 from typing import ClassVar, TypeAlias
 
-from openghg_inversions.tdmcmc.sampling import SamplerConfig
+from openghg_inversions.experimental.rjmcmc.sampling import SamplerConfig
 
 JsonScalar: TypeAlias = str | int | float | bool | None
 JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
@@ -57,7 +57,7 @@ class TargetSettings:
     """Scalar target settings that materially define an RJMCMC run.
 
     The coefficient-prior parameters are arithmetic moments of the lognormal
-    distribution, matching :class:`~openghg_inversions.tdmcmc.core.TransDimensionalProblem`.
+    distribution, matching :class:`~openghg_inversions.experimental.rjmcmc.core.TransDimensionalProblem`.
     Observation vectors, their standard deviations, sensitivities, and grid
     coordinates remain external data inputs and are not copied into this value
     object.
@@ -234,7 +234,7 @@ class RunProfile:
     """Validated experimental RJMCMC settings and deterministic provenance.
 
     ``RunProfile`` requires an explicit non-negative sampler seed. A
-    :class:`~openghg_inversions.tdmcmc.sampling.SamplerConfig` with ``seed=None``
+    :class:`~openghg_inversions.experimental.rjmcmc.sampling.SamplerConfig` with ``seed=None``
     remains useful for exploratory sampling but cannot identify a reproducible
     run.
 

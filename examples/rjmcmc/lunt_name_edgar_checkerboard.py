@@ -33,14 +33,14 @@ from numpy.typing import NDArray
 import xarray as xr
 
 from openghg_inversions.basis import quadtree_basis_from_weights
-from openghg_inversions.tdmcmc.core import (
+from openghg_inversions.experimental.rjmcmc.core import (
     TransDimensionalProblem,
     build_state,
     uniform_log_k_prior,
 )
-from openghg_inversions.tdmcmc.postprocessing import summarize_fine_grid_posterior
-from openghg_inversions.tdmcmc.rhime_adapter import problem_from_rhime_inputs
-from openghg_inversions.tdmcmc.sampling import SamplerConfig, sample
+from openghg_inversions.experimental.rjmcmc.postprocessing import summarize_fine_grid_posterior
+from openghg_inversions.experimental.rjmcmc.rhime_adapter import problem_from_rhime_inputs
+from openghg_inversions.experimental.rjmcmc.sampling import SamplerConfig, sample
 
 FloatArray = NDArray[np.float64]
 

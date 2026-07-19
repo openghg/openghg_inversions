@@ -19,7 +19,7 @@ import xarray as xr
 @pytest.fixture(scope="module")
 def example_module() -> Iterator[ModuleType]:
     """Load the executable root example as an isolated module."""
-    repository_root = Path(__file__).resolve().parents[2]
+    repository_root = Path(__file__).resolve().parents[3]
     script = repository_root / "examples" / "rjmcmc" / "lunt_name_edgar_checkerboard.py"
     module_name = "_test_lunt_name_edgar_checkerboard"
     specification = util.spec_from_file_location(module_name, script)

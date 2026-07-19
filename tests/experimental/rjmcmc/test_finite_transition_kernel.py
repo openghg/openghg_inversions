@@ -17,12 +17,12 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from openghg_inversions.tdmcmc.core import (
+from openghg_inversions.experimental.rjmcmc.core import (
     TransDimensionalProblem,
     TransDimensionalState,
     build_state,
 )
-from openghg_inversions.tdmcmc.proposals import (
+from openghg_inversions.experimental.rjmcmc.proposals import (
     propose_birth,
     propose_death,
     propose_local_move,

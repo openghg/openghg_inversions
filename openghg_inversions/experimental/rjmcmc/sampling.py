@@ -18,12 +18,12 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
-from openghg_inversions.tdmcmc.core import (
+from openghg_inversions.experimental.rjmcmc.core import (
     Backend,
     TransDimensionalProblem,
     TransDimensionalState,
 )
-from openghg_inversions.tdmcmc.proposals import (
+from openghg_inversions.experimental.rjmcmc.proposals import (
     TransitionTerms,
     accept_or_reject,
     propose_birth,

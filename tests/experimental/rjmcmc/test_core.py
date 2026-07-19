@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from scipy import stats
 
-from openghg_inversions.tdmcmc.core import (
+from openghg_inversions.experimental.rjmcmc.core import (
     TransDimensionalProblem,
     aggregate_design_numpy,
     assign_cells_numpy,

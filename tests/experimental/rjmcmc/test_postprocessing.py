@@ -8,14 +8,14 @@ from math import sqrt
 import numpy as np
 import pytest
 
-from openghg_inversions.tdmcmc.core import TransDimensionalProblem, uniform_log_k_prior
-from openghg_inversions.tdmcmc.postprocessing import (
+from openghg_inversions.experimental.rjmcmc.core import TransDimensionalProblem, uniform_log_k_prior
+from openghg_inversions.experimental.rjmcmc.postprocessing import (
     FineGridPosteriorSummary,
     posterior_mean_prediction,
     reconstruct_fine_grid_samples,
     summarize_fine_grid_posterior,
 )
-from openghg_inversions.tdmcmc.sampling import SamplingTrace
+from openghg_inversions.experimental.rjmcmc.sampling import SamplingTrace
 
 
 def _problem() -> TransDimensionalProblem:

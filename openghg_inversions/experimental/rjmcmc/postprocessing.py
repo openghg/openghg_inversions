@@ -15,13 +15,13 @@ from math import sqrt
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from openghg_inversions.tdmcmc.core import (
+from openghg_inversions.experimental.rjmcmc.core import (
     Backend,
     TransDimensionalProblem,
     assign_cells_numba,
     assign_cells_numpy,
 )
-from openghg_inversions.tdmcmc.sampling import SamplingTrace
+from openghg_inversions.experimental.rjmcmc.sampling import SamplingTrace
 
 FloatArray = NDArray[np.float64]
 IntArray = NDArray[np.int64]
