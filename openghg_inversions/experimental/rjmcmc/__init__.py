@@ -58,6 +58,7 @@ from openghg_inversions.experimental.rjmcmc.sampling import (
     continue_sample,
     sample,
 )
+from openghg_inversions.experimental.rjmcmc.xarray_output import sampling_trace_to_dataset
 
 __all__ = [
     "DEFAULT_QUANTILES",
@@ -97,6 +98,7 @@ __all__ = [
     "problem_from_rhime_inputs",
     "reconstruct_fine_grid_samples",
     "sample",
+    "sampling_trace_to_dataset",
     "summarize_fine_grid_posterior",
     "summarize_posterior_prediction",
     "uniform_log_k_prior",
