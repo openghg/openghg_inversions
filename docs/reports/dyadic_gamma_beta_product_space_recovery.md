@@ -81,10 +81,7 @@ separately, the posterior over `P` is nearly degenerate, and only one split is
 possible. It demonstrates correctness of the positive fixed-shape machinery,
 not realistic spatial mixing.
 
-The next useful experiment should use the committed TAC/MHD footprint-times-flux
-design with synthetic observations, fixed InTEM outer groups, and separately
-refinable inner land/ocean groups. It should compare latent `K/P` with a
-weight-derived fixed basis and report prediction, field, group-total, K, move,
-ESS, and divergence diagnostics. A smaller intermediate checkerboard should be
-used if the full forest exposes NUTS or local-move scaling problems.
-
+That next scale-up is now implemented in
+`docs/reports/dyadic_gamma_beta_intem_product_space_recovery.md`. The remaining
+work is replicated-chain assessment, K-prior sensitivity, group-wise posterior
+diagnostics, and comparison with the direct RJMCMC rewrite.

@@ -1960,6 +1960,16 @@ poor local partition traversal.
    underfit fixed partition. The retained posterior is nearly degenerate at the
    split, so realistic partition-mixing evidence remains open. See
    `docs/reports/dyadic_gamma_beta_product_space_recovery.md`.
+10. **Implemented for a 100-inner-region InTEM/TAC-MHD candidate forest:**
+    synthetic emissions-only observations now exercise 95 possible split
+    indicators and 103 permanent positive coordinates on the full EUROPE grid.
+    With a truncated geometric prior on additional splits, a 500/500 latent
+    run visits 16 partitions over K=12--18, assigns 0.498 mass to the planted
+    K=12 partition, has no divergences, matches the fixed true partition on
+    held-out prediction, and beats fixed underfit roots. A uniform K prior was
+    too permissive at this observation count, demonstrating that complexity
+    prior design is substantive rather than sampler tuning. See
+    `docs/reports/dyadic_gamma_beta_intem_product_space_recovery.md`.
 
 ### Phase 4: scale-up and alternatives
 
