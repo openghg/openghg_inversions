@@ -1925,7 +1925,11 @@ poor local partition traversal.
 7. **In progress:** compare posterior results with exact enumeration and fixed
    partitions. Tiny-tree frequencies match the exact oracle; the larger
    checkerboard beats misspecified fixed partitions but requires replicated
-   assessment and an exact (4\times4) InTEM recovery benchmark.
+   assessment. An exact 4 by 4 InTEM inner/outer recovery benchmark now meets
+   the proof-of-concept target: the latent mixture beats a wrong fixed K=4
+   partition and is predictively non-inferior to the true-partition oracle.
+   See `docs/reports/dyadic_intem_product_space_recovery.md`. Local-chain
+   frequencies still need to be checked against this 677-partition oracle.
 
 ### Phase 4: scale-up and alternatives
 
