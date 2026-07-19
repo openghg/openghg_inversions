@@ -5,7 +5,7 @@ from __future__ import annotations
 from importlib import util
 from pathlib import Path
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -101,6 +101,52 @@ def test_case_keeps_outer_groups_fixed_and_inner_groups_refinable(recovery_case:
         node.child_ids and forest.groups[node.group_index].name == "inner_ocean"
         for node in forest.nodes
     )
+
+
+def test_truth_selects_highest_weight_refinable_land_component(
+    example_module: ModuleType,
+) -> None:
+    """Disconnected land should plant truth in its dominant refinable component."""
+    groups = (
+        SimpleNamespace(name="inner_land"),
+        SimpleNamespace(name="inner_ocean"),
+    )
+    nodes = (
+        SimpleNamespace(
+            group_index=0,
+            child_ids=(2, 3),
+            partition_weight=5.0,
+            expected_mass=10.0,
+        ),
+        SimpleNamespace(
+            group_index=0,
+            child_ids=(4, 5),
+            partition_weight=20.0,
+            expected_mass=2.0,
+        ),
+    )
+    forest = SimpleNamespace(root_ids=(0, 1), groups=groups, nodes=nodes)
+
+    assert example_module._truth_land_root(forest) == 1
+
+
+@pytest.mark.slow
+def test_250_region_candidate_forest_constructs(
+    example_module: ModuleType,
+) -> None:
+    """Disconnected land components should support the larger candidate forest."""
+    case = example_module.build_case(
+        data_directory=Path("tests/data"),
+        inner_regions=250,
+        data_seed=1701,
+        k_continuation_probability=0.5,
+    )
+
+    assert len(case.coordinate_layout.forest.nodes) == 477
+    assert case.partition_layout.maximum_regions == 244
+    assert case.partition_layout.split_count == 233
+    assert case.truth_node_id in case.coordinate_layout.forest.root_ids
+    assert case.coordinate_layout.forest.nodes[case.truth_node_id].child_ids
 
 
 @pytest.mark.slow

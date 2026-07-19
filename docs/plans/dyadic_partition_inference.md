@@ -1964,7 +1964,8 @@ poor local partition traversal.
     synthetic emissions-only observations now exercise 95 possible split
     indicators and 103 permanent positive coordinates on the full EUROPE grid.
     With a truncated geometric prior on additional splits, a 500/500 latent
-    run visits 16 partitions over K=12--18, assigns 0.498 mass to the planted
+    run with split/merge/swap moves visits 30 partitions over K=12--18, assigns
+    0.502 mass to the planted
     K=12 partition, has no divergences, matches the fixed true partition on
     held-out prediction, and beats fixed underfit roots. A uniform K prior was
     too permissive at this observation count, demonstrating that complexity
@@ -1975,8 +1976,15 @@ poor local partition traversal.
     covariance retains MvNormal; the NumPy oracle caches its Cholesky factor;
     and a 10,000-draw prior-only structural chain recovers the exact normalized
     probabilities of all five partitions in a depth-two tree. This tests the
-    split/merge Hastings correction over a complete partition graph rather than
+    split/merge/swap Hastings correction over a complete partition graph rather than
     only checking individual proposals.
+12. **Added and scale-checked fixed-K partition swaps:** the structural kernel
+    can now merge one terminal branch and split another in a single reversible
+    proposal, avoiding an accepted K change merely to relocate a split. A short
+    250-inner-region probe built 477 nodes, 244 maximum leaves, and 233 permanent
+    split coordinates; it visited seven partitions over K=13--17 with no
+    divergences and remained close to the planted fixed model on holdout RMSE.
+    This is performance evidence only, not a converged posterior result.
 
 ### Phase 4: scale-up and alternatives
 
@@ -1984,6 +1992,14 @@ Only after Phases 2 and 3:
 
 - scale variable-count inference to realistic trees and assess alternative
   partition and leaf-count priors;
+- replace the dense node-by-split path and ancestry products with sparse or
+  parent-edge recurrences before scaling substantially beyond 250 candidates;
+  measured continuous-gradient time grew 4.8-fold from the 100- to 250-region
+  dictionaries while nonzero ancestry entries grew only 2.6-fold;
+- collect NUTS step count, step size, ESS per second, and divergences for
+  replicated 100- and 250-region runs before redesigning inactive-coordinate
+  updates; inactive Betas are normalized pseudo-prior state and cannot simply
+  be omitted or frozen;
 - compare product-space with a direct RJMCMC split/merge implementation;
 - evaluate delayed acceptance using DFS, contrast, or Laplace surrogates;
 - investigate SMC or parallel tempering for multimodal partitions;

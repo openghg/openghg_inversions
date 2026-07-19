@@ -152,6 +152,32 @@ def test_neighbors_are_unique_reversible_local_moves() -> None:
             assert reverse[0].kind != move.kind
 
 
+def test_swap_neighbors_relocate_splits_at_fixed_k() -> None:
+    """A swap should connect same-K frontiers without an intermediate K."""
+    layout = GammaBetaPartitionLayout.from_forest(_forest())
+    source = layout.initial_split_mask(4)
+    swap_moves = tuple(
+        move
+        for move in layout.neighbors(source, include_swaps=True)
+        if move.kind == "swap"
+    )
+
+    assert len(swap_moves) == 1
+    move = swap_moves[0]
+    assert layout.region_count(move.split_mask) == layout.region_count(source)
+    assert move.merged_node_id is not None
+    reverse = tuple(
+        candidate
+        for candidate in layout.neighbors(move.split_mask, include_swaps=True)
+        if np.array_equal(candidate.split_mask, source)
+    )
+    assert len(reverse) == 1
+    assert reverse[0].kind == "swap"
+    assert reverse[0].log_q == pytest.approx(
+        -math.log(len(layout.neighbors(move.split_mask, include_swaps=True)))
+    )
+
+
 def test_deterministic_initial_masks_cover_each_available_k() -> None:
     """Stable initialization should construct every supported region count."""
     layout = GammaBetaPartitionLayout.from_forest(_forest())

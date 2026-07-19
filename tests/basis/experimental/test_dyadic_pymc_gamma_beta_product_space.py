@@ -252,6 +252,7 @@ def test_custom_step_changes_only_the_partition_mask() -> None:
         "partition_regions",
         "proposal_degree",
         "proposed_split",
+        "proposed_swap",
         "reverse_degree",
         "tune",
     }

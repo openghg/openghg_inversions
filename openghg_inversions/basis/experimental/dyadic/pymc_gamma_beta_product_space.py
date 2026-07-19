@@ -61,11 +61,12 @@ class GammaBetaSplitMaskStepState(StepMethodState):
 
 
 class GammaBetaSplitMaskStep(ArrayStep):
-    """Local split/merge Metropolis--Hastings update for a forest mask.
+    """Local split/merge/swap Metropolis--Hastings update for a forest mask.
 
-    The proposal selects uniformly among all valid one-split and one-merge
-    neighbors.  Continuous Gamma and Beta coordinates remain fixed during this
-    block.  Source and reverse neighbor counts provide the Hastings correction.
+    The proposal selects uniformly among valid one-split, one-merge, and
+    optionally fixed-K merge-then-split neighbors. Continuous Gamma and Beta
+    coordinates remain fixed during this block. Source and reverse neighbor
+    counts provide the Hastings correction.
 
     Args:
         vars: One vector PyMC Bernoulli variable or its value variable.
@@ -73,6 +74,7 @@ class GammaBetaSplitMaskStep(ArrayStep):
         model: PyMC model containing ``vars``.
         rng: Seed or generator accepted by PyMC.
         compile_kwargs: Optional arguments for :meth:`pymc.Model.compile_logp`.
+        include_swap_moves: Include fixed-K merge/split neighbors.
         blocked: PyMC blocked-step flag.  This step always owns one variable.
     """
 
@@ -84,6 +86,7 @@ class GammaBetaSplitMaskStep(ArrayStep):
         "partition_regions": (np.int64, []),
         "proposal_degree": (np.int64, []),
         "proposed_split": (bool, []),
+        "proposed_swap": (bool, []),
         "reverse_degree": (np.int64, []),
         "tune": (bool, []),
     }
@@ -97,11 +100,14 @@ class GammaBetaSplitMaskStep(ArrayStep):
         model: pm.Model | None = None,
         rng: RandomGenerator = None,
         compile_kwargs: Mapping[str, Any] | None = None,
+        include_swap_moves: bool = True,
         blocked: bool = True,
     ) -> None:
         """Validate the mask variable and compile the full joint density."""
         if not blocked:
             raise ValueError("GammaBetaSplitMaskStep must be blocked.")
+        if not isinstance(include_swap_moves, bool):
+            raise TypeError("include_swap_moves must be Boolean.")
         if not isinstance(layout, GammaBetaPartitionLayout):
             raise TypeError("layout must be a GammaBetaPartitionLayout.")
         if not layout.split_node_ids:
@@ -122,6 +128,7 @@ class GammaBetaSplitMaskStep(ArrayStep):
         layout.canonical_split_mask(initial_value)
 
         self.layout = layout
+        self.include_swap_moves = include_swap_moves
         self.tune = True
         super().__init__(
             value_vars,
@@ -133,7 +140,10 @@ class GammaBetaSplitMaskStep(ArrayStep):
     def astep(self, apoint: RaveledVars, *args: Any) -> tuple[RaveledVars, StatsType]:
         """Propose one legal neighboring mask and accept or reject it."""
         current_mask = self.layout.canonical_split_mask(apoint.data)
-        neighbors = self.layout.neighbors(current_mask)
+        neighbors = self.layout.neighbors(
+            current_mask,
+            include_swaps=self.include_swap_moves,
+        )
         if not neighbors:  # pragma: no cover - constructor rejects no-split forests.
             return apoint, [
                 self._stats(
@@ -142,6 +152,7 @@ class GammaBetaSplitMaskStep(ArrayStep):
                     log_acceptance_ratio=-math.inf,
                     proposal_degree=0,
                     proposed_split=False,
+                    proposed_swap=False,
                     reverse_degree=0,
                 )
             ]
@@ -149,7 +160,10 @@ class GammaBetaSplitMaskStep(ArrayStep):
         move = neighbors[int(self.rng.integers(len(neighbors)))]
         candidate_data = move.split_mask.astype(apoint.data.dtype, copy=False)
         candidate = RaveledVars(candidate_data, apoint.point_map_info)
-        reverse_neighbors = self.layout.neighbors(move.split_mask)
+        reverse_neighbors = self.layout.neighbors(
+            move.split_mask,
+            include_swaps=self.include_swap_moves,
+        )
         reverse = next(
             (
                 candidate_move
@@ -186,6 +200,7 @@ class GammaBetaSplitMaskStep(ArrayStep):
                 log_acceptance_ratio=log_acceptance_ratio,
                 proposal_degree=len(neighbors),
                 proposed_split=move.kind == "split",
+                proposed_swap=move.kind == "swap",
                 reverse_degree=len(reverse_neighbors),
             )
         ]
@@ -202,6 +217,7 @@ class GammaBetaSplitMaskStep(ArrayStep):
         log_acceptance_ratio: float,
         proposal_degree: int,
         proposed_split: bool,
+        proposed_swap: bool,
         reverse_degree: int,
     ) -> dict[str, bool | float | int]:
         """Build one sample-stat record for the selected partition.
@@ -212,6 +228,7 @@ class GammaBetaSplitMaskStep(ArrayStep):
             log_acceptance_ratio: Unclipped Metropolis--Hastings log ratio.
             proposal_degree: Number of source neighbors.
             proposed_split: Whether the proposed move was a split.
+            proposed_swap: Whether the proposed move was a fixed-K swap.
             reverse_degree: Number of candidate-state neighbors.
 
         Returns:
@@ -223,6 +240,7 @@ class GammaBetaSplitMaskStep(ArrayStep):
             "partition_regions": partition_regions,
             "proposal_degree": proposal_degree,
             "proposed_split": proposed_split,
+            "proposed_swap": proposed_swap,
             "reverse_degree": reverse_degree,
             "tune": self.tune,
         }
@@ -253,12 +271,14 @@ class PyMCGammaBetaProductSpaceModel:
         self,
         *,
         partition_rng: RandomGenerator = None,
+        include_swap_moves: bool = True,
         nuts_kwargs: Mapping[str, Any] | None = None,
     ) -> tuple[GammaBetaSplitMaskStep, pm.NUTS]:
         """Create partition-first compound steps with native PyMC NUTS.
 
         Args:
             partition_rng: Seed or generator for structural proposals.
+            include_swap_moves: Include fixed-K merge/split proposals.
             nuts_kwargs: Optional arguments forwarded to :class:`pymc.NUTS`.
 
         Returns:
@@ -276,6 +296,7 @@ class PyMCGammaBetaProductSpaceModel:
                     layout=self.partition_prior.layout,
                     model=self.model,
                     rng=partition_rng,
+                    include_swap_moves=include_swap_moves,
                 ),
             )
             nuts_step = cast(pm.NUTS, pm.NUTS(continuous, **dict(nuts_kwargs or {})))
@@ -370,12 +391,8 @@ def build_pymc_gamma_beta_product_space_model(
     ancestor_matrix = _model_float(
         coordinate_layout.left_path + coordinate_layout.right_path
     )
-    self_split_matrix = np.zeros(
-        (len(layout.forest.nodes), layout.split_count),
-        dtype=np.float64,
-    )
-    for split_index, node_id in enumerate(layout.split_node_ids):
-        self_split_matrix[node_id, split_index] = 1.0
+    split_index_by_node = np.maximum(layout.split_index_by_node, 0)
+    splittable_node = _model_float(layout.split_index_by_node >= 0)
 
     stochastic_indices = np.asarray(
         coordinate_layout.stochastic_group_indices,
@@ -490,7 +507,9 @@ def build_pymc_gamma_beta_product_space_model(
             + pt.as_tensor_variable(ancestor_matrix) * mask_float,
             axis=1,
         )
-        unsplit = 1.0 - pt.as_tensor_variable(_model_float(self_split_matrix)) @ mask_float
+        unsplit = 1.0 - pt.as_tensor_variable(splittable_node) * mask_float[
+            split_index_by_node
+        ]
         active_node_mask = pm.Deterministic(
             "active_node_mask",
             reached * unsplit,

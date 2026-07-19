@@ -32,19 +32,24 @@ Each fit used one chain, 500 NUTS tuning draws, 500 retained draws,
 
 | Fit | Mean K | K range | Unique P | Truth-P mass | Inner-land field RMSE | Holdout RMSE | Holdout log predictive density | Structural acceptance | Divergences |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| latent K/P | 13.07 | 12--18 | 16 | 0.498 | 0.0735 | 0.4631 | -37.44 | 0.122 | 0 |
-| fixed true P | 12.00 | 12--12 | 1 | 1.000 | 0.0421 | 0.4538 | -37.41 | 0.000 | 0 |
-| fixed root P | 11.00 | 11--11 | 1 | 0.000 | 0.4620 | 3.8119 | -50.77 | 0.000 | 0 |
+| latent K/P | 13.11 | 12--18 | 30 | 0.502 | 0.1050 | 0.5103 | -37.42 | 0.142 | 0 |
+| fixed true P | 12.00 | 12--12 | 1 | 1.000 | 0.0435 | 0.4796 | -37.56 | 0.000 | 0 |
+| fixed root P | 11.00 | 11--11 | 1 | 0.000 | 0.4637 | 3.7956 | -50.65 | 0.000 | 0 |
 
 The latent inversion meets the declared proof-of-concept goal. It matches the
-fixed true-partition inversion on held-out prediction and field recovery, while
+fixed true-partition inversion under the declared holdout and field tolerances, while
 decisively beating the underfit fixed partition. It traverses multiple K and P
 states rather than remaining at the planted partition, and has no NUTS
 divergences.
 
-The latent full-grid field RMSE is 0.0802, slightly below the fixed true value
-0.0878. This aggregate includes large outer areas whose true scaling is one;
+The latent full-grid field RMSE is 0.0954, slightly below the fixed true value
+0.0986. This aggregate includes large outer areas whose true scaling is one;
 the inner-land RMSE is the more discriminating spatial metric.
+
+The latent structural kernel includes fixed-K swaps: it may merge one current
+frontier branch and split another in one proposal. This lets the chain relocate
+resolution without first accepting an intermediate K. The two fixed
+comparators explicitly disable swaps, so their declared P remains fixed.
 
 Separately, a prior-only depth-two tree test runs the same custom structural
 step over all five possible partitions. Ten thousand retained updates recover
@@ -54,7 +59,8 @@ benchmark's favorable planted signal.
 
 ## Why the K prior matters
 
-With the same 100-region forest and a uniform marginal prior over K=11 through
+In an earlier split/merge-only sensitivity run with the same 100-region forest
+and a uniform marginal prior over K=11 through
 106, a 500/500 run averaged K=22.98 and visited 198 partitions. Held-out RMSE
 remained reasonable at 0.531, but inner-land field RMSE rose to 0.177. The
 fixed graph and sampler were working; the declared complexity prior was too
@@ -83,10 +89,19 @@ HOME=/tmp MPLCONFIGDIR=/tmp .venv/bin/python \
   --k-continuation-probability 0.5
 ```
 
-The declared run completed in about 30 seconds wall time on the local machine;
+The declared run completed in about 24 seconds wall time on the local machine;
 reported PyMC sampling times were approximately 5 seconds for latent K/P and
 4 seconds for each fixed comparator. Forest construction, model compilation,
 and posterior field reconstruction account for the remainder.
+
+A separate 50/50 scale probe requested 250 inner terminal regions. Moment
+constraints retained 244 maximum leaves, represented by 477 forest nodes and
+233 split coordinates. The full latent/fixed/underfit comparison completed in
+about 34 seconds, the latent chain visited seven partitions over K=13--17, and
+there were no divergences. Its holdout RMSE was 0.413 versus 0.423 for the
+planted fixed partition and 3.800 for the underfit roots. Fifty retained draws
+are not enough for inference; this only establishes that the static product
+space remains executable at approximately the prototype's 250-region scale.
 
 ## Remaining limitations
 

@@ -25,17 +25,18 @@ import numpy.typing as npt
 
 from .gamma_beta import GammaBetaForest
 
-MoveKind = Literal["split", "merge"]
+MoveKind = Literal["split", "merge", "swap"]
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class GammaBetaPartitionMove:
-    """One local split or merge proposal from a forest partition.
+    """One local split, merge, or fixed-K swap partition proposal.
 
     Attributes:
         split_mask: Read-only canonical candidate mask.
-        kind: ``"split"`` or ``"merge"``.
-        node_id: Internal forest node changed by the proposal.
+        kind: ``"split``, ``"merge"``, or ``"swap"``.
+        node_id: Split node for a split/swap, or merged node for a merge.
+        merged_node_id: Node merged by a swap, otherwise ``None``.
         log_q: Log proposal probability from the source state when neighbors
             are selected uniformly.
     """
@@ -44,6 +45,7 @@ class GammaBetaPartitionMove:
     kind: MoveKind
     node_id: int
     log_q: float
+    merged_node_id: int | None = None
 
     def __post_init__(self) -> None:
         """Validate scalar metadata and freeze the candidate mask."""
@@ -52,16 +54,26 @@ class GammaBetaPartitionMove:
             raise ValueError("split_mask must be a one-dimensional binary mask.")
         if np.any((mask != 0) & (mask != 1)):
             raise ValueError("split_mask must contain only binary values.")
-        if self.kind not in {"split", "merge"}:
-            raise ValueError("kind must be 'split' or 'merge'.")
+        if self.kind not in {"split", "merge", "swap"}:
+            raise ValueError("kind must be 'split', 'merge', or 'swap'.")
         if isinstance(self.node_id, bool) or not isinstance(self.node_id, Integral):
             raise TypeError("node_id must be an integer.")
+        if self.kind == "swap":
+            if isinstance(self.merged_node_id, bool) or not isinstance(
+                self.merged_node_id,
+                Integral,
+            ):
+                raise TypeError("merged_node_id must be an integer for swap moves.")
+        elif self.merged_node_id is not None:
+            raise ValueError("merged_node_id is only valid for swap moves.")
         if not math.isfinite(self.log_q) or self.log_q > 0.0:
             raise ValueError("log_q must be finite and non-positive.")
         frozen = np.asarray(mask, dtype=np.bool_).copy()
         frozen.setflags(write=False)
         object.__setattr__(self, "split_mask", frozen)
         object.__setattr__(self, "node_id", int(self.node_id))
+        if self.merged_node_id is not None:
+            object.__setattr__(self, "merged_node_id", int(self.merged_node_id))
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -299,26 +311,38 @@ class GammaBetaPartitionLayout:
             mask[self.split_index_by_node[node_id]] = True
         return self.canonical_split_mask(mask)
 
-    def neighbors(self, split_mask: npt.ArrayLike) -> tuple[GammaBetaPartitionMove, ...]:
-        """Enumerate unique one-split and one-merge neighboring partitions.
+    def neighbors(
+        self,
+        split_mask: npt.ArrayLike,
+        *,
+        include_swaps: bool = False,
+    ) -> tuple[GammaBetaPartitionMove, ...]:
+        """Enumerate unique split, merge, and optional fixed-K neighbors.
 
         Args:
             split_mask: Source canonical partition mask.
+            include_swaps: Include proposals that merge one frontier branch and
+                split another in a single fixed-K move.
 
         Returns:
-            Moves in stable split-then-merge node order.  Every move has
+            Moves in stable split, merge, then swap order. Every move has
             ``log_q = -log(number of source neighbors)``.
         """
+        if not isinstance(include_swaps, bool):
+            raise TypeError("include_swaps must be Boolean.")
         mask = self.canonical_split_mask(split_mask)
         active = set(self.active_node_ids(mask))
-        candidates: list[tuple[npt.NDArray[np.bool_], MoveKind, int]] = []
+        candidates: list[
+            tuple[npt.NDArray[np.bool_], MoveKind, int, int | None]
+        ] = []
         for node_id in self.split_node_ids:
             split_index = self.split_index_by_node[node_id]
             if node_id in active:
                 candidate = mask.copy()
                 candidate[split_index] = True
-                candidates.append((candidate, "split", node_id))
+                candidates.append((candidate, "split", node_id, None))
 
+        merge_candidates: list[tuple[npt.NDArray[np.bool_], int]] = []
         for node_id in self.split_node_ids:
             split_index = self.split_index_by_node[node_id]
             if not mask[split_index]:
@@ -327,7 +351,31 @@ class GammaBetaPartitionLayout:
             if all(child_id in active for child_id in children):
                 candidate = mask.copy()
                 candidate[split_index] = False
-                candidates.append((candidate, "merge", node_id))
+                merge_candidates.append((candidate, node_id))
+                candidates.append((candidate, "merge", node_id, None))
+
+        if include_swaps:
+            source_key = mask.tobytes()
+            existing = {candidate.tobytes() for candidate, *_ in candidates}
+            for merged_mask, merged_node_id in merge_candidates:
+                merged_active = set(self.active_node_ids(merged_mask))
+                for split_node_id in self.split_node_ids:
+                    if split_node_id not in merged_active:
+                        continue
+                    candidate = merged_mask.copy()
+                    candidate[self.split_index_by_node[split_node_id]] = True
+                    key = candidate.tobytes()
+                    if key == source_key or key in existing:
+                        continue
+                    existing.add(key)
+                    candidates.append(
+                        (
+                            candidate,
+                            "swap",
+                            split_node_id,
+                            merged_node_id,
+                        )
+                    )
 
         if not candidates:
             return ()
@@ -338,8 +386,9 @@ class GammaBetaPartitionLayout:
                 kind=kind,
                 node_id=node_id,
                 log_q=log_q,
+                merged_node_id=merged_node_id,
             )
-            for candidate, kind, node_id in candidates
+            for candidate, kind, node_id, merged_node_id in candidates
         )
 
 

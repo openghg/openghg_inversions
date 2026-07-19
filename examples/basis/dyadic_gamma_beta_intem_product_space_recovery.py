@@ -252,6 +252,7 @@ def run_benchmark(
         tune=tune,
         seed=sampling_seed,
         target_accept=target_accept,
+        include_swap_moves=True,
     )
     fixed_true = _sample_fit(
         case,
@@ -262,6 +263,7 @@ def run_benchmark(
         tune=tune,
         seed=sampling_seed + 1,
         target_accept=target_accept,
+        include_swap_moves=False,
     )
     fixed_underfit = _sample_fit(
         case,
@@ -272,6 +274,7 @@ def run_benchmark(
         tune=tune,
         seed=sampling_seed + 2,
         target_accept=target_accept,
+        include_swap_moves=False,
     )
     return IntemGammaBetaRecoveryBenchmark(
         observation_count=case.data.y.size,
@@ -309,8 +312,24 @@ def _sample_fit(
     tune: int,
     seed: int,
     target_accept: float,
+    include_swap_moves: bool,
 ) -> IntemGammaBetaFitSummary:
-    """Run and summarize one data-backed compound chain."""
+    """Run and summarize one data-backed compound chain.
+
+    Args:
+        case: Shared synthetic observation and candidate-forest case.
+        name: Stable label for the fit summary.
+        prior: Partition prior used by the structural step.
+        initial_mask: Canonical initial partition mask.
+        draws: Number of retained posterior draws.
+        tune: Number of NUTS tuning draws.
+        seed: Random seed shared by PyMC and the partition step.
+        target_accept: NUTS target acceptance probability.
+        include_swap_moves: Allow fixed-K partition relocation proposals.
+
+    Returns:
+        Posterior recovery and sampler diagnostics for the fit.
+    """
     adapter = build_pymc_gamma_beta_product_space_model(
         case.train_target,
         prior,
@@ -318,6 +337,7 @@ def _sample_fit(
     )
     steps = adapter.step_methods(
         partition_rng=seed,
+        include_swap_moves=include_swap_moves,
         nuts_kwargs={"target_accept": target_accept},
     )
     with adapter.model:
@@ -399,19 +419,23 @@ def _sample_fit(
 
 
 def _truth_land_root(forest: Any) -> int:
-    """Return the unique refinable component root of the inner-land group."""
+    """Return the highest-weight refinable inner-land component root."""
     candidates = tuple(
         root_id
         for root_id in forest.root_ids
         if forest.groups[forest.nodes[root_id].group_index].name == _LAND_GROUP_NAME
         and forest.nodes[root_id].child_ids
     )
-    if len(candidates) != 1:
-        raise ValueError(
-            "Expected exactly one refinable inner-land component root, found "
-            f"{candidates!r}."
-        )
-    return candidates[0]
+    if not candidates:
+        raise ValueError("Expected at least one refinable inner-land component root.")
+    return max(
+        candidates,
+        key=lambda node_id: (
+            forest.nodes[node_id].partition_weight,
+            forest.nodes[node_id].expected_mass,
+            -node_id,
+        ),
+    )
 
 
 def _independent_normal_log_predictive_density(
