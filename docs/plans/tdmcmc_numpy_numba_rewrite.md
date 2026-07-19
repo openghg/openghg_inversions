@@ -86,7 +86,39 @@ will be introduced only behind equivalence tests.
 | 2026-07-18 | Derive acceptance from normalized targets/proposals when a printed paper equation is inconsistent. | The paper appears to omit a lognormal `1/x` ratio in Eq. (31), prints a questionable determinant power in Eq. (33), and does not define discrete boundary handling for Gaussian nucleus moves. |
 | 2026-07-18 | Treat the checked legacy deterministic RJMCMC scheduler as incorrect and replace separate birth/death steps with two 50/50 mixed structural steps per cycle. | All five inspected Fortran drivers execute separate modulo-scheduled one-way structural steps. A finite fixed-coefficient counterexample to that scheduler design is not posterior-invariant, while the equal-probability mixture is and retains the first rewrite's aggregate structural-attempt frequency. |
 | 2026-07-18 | Add an emissions-only, test-data-backed pseudo-data benchmark before archived paper data are recovered. | The repository contains EDGAR7/UKGHG flux and one week of hourly TAC/MHD NAME footprints on the paper's native EUROPE grid. A 56-longitude by 48-latitude crop can exercise the real forward operator while fixed outer emissions are subtracted exactly and the known-corrupt boundary-condition files remain unopened. The 56 six-hour observations support prediction validation, not a claim of native-grid or posterior-`k` recovery. |
-| 2026-07-18 | Split the replayable NAME/EDGAR checkerboard workflow into a root `examples/tdmcmc` script plus focused regression tests. | Recent draft PRs #502 and #506 establish this pattern for the other model-selection experiments. Data paths, crop policy, pseudo-data construction, comparators, CLI controls, and reporting are example concerns; exact accounting, a cheap smoke path, and the optional slow comparison remain tests. A new package module is deferred until a second consumer establishes a stable reusable boundary. |
+| 2026-07-18 | Split the replayable NAME/EDGAR checkerboard workflow into a root example script plus focused regression tests. | Recent draft PRs #502 and #506 establish this pattern for the other model-selection experiments. Data paths, crop policy, pseudo-data construction, comparators, CLI controls, and reporting are example concerns; exact accounting, a cheap smoke path, and the optional slow comparison remain tests. The directory was subsequently named `examples/rjmcmc` when the experimental package namespace was decided. A new package module is deferred until a second consumer establishes a stable reusable boundary. |
+| 2026-07-19 | Publish the implementation under an explicitly experimental RJMCMC namespace rather than treating `tdmcmc` as a supported top-level API. | The implementation is specifically reversible-jump MCMC, while trans-dimensional MCMC is a broader family. An `experimental` namespace communicates stability without an import-time warning that would pollute tests, notebooks, documentation builds, and downstream `-W error` use. Example-specific orchestration remains outside the package. |
+
+## Current offline work queue
+
+The archived paper inputs are expected to remain unavailable for several days.
+That blocks only the faithful-data reproduction stage; it does not block the
+following correctness and integration work. Items are ordered by dependency.
+
+1. Add an independent continuous-coefficient structural-kernel oracle. Combine
+   varied pointwise forward/reverse flux properties with a tiny numerical
+   integration or converged discretisation that includes the invalid negative
+   Gaussian proposal mass as a self-transition.
+2. Move the NAME/EDGAR benchmark orchestration into
+   `examples/rjmcmc/lunt_name_edgar_checkerboard.py`, leaving focused accounting,
+   adapter-ordering, no-boundary-condition, comparator, and smoke contracts in
+   pytest.
+3. Introduce immutable, validated run-profile and provenance primitives. Do not
+   silently invent paper settings that have not been confirmed, and keep the
+   manifest compatible with future retained-draw and checkpoint output.
+4. Rename the package to `openghg_inversions.experimental.rjmcmc` after the
+   concurrent test/example work is integrated, then update imports atomically.
+   Do not retain a compatibility shim because this branch has not been released.
+5. Extend the forward model with an always-active fixed block so InTEM outer
+   emissions coefficients can be inferred jointly with the variable inner
+   regions. Continue to exclude the known-corrupt boundary-condition fixture.
+6. Add retained-draw collection and exact restart state before attempting
+   expensive chains. Hierarchical emissions/error parameters and site-block
+   temporal correlation follow behind those correctness and output gates.
+
+This repository does not currently contain an agent-tracker configuration, so
+the queue, ownership, decisions, and evidence are recorded in this planning
+document and in small commits on the draft branch.
 
 ## Validation gates
 
@@ -148,6 +180,15 @@ profile metadata and validation of the general continuous birth/death auxiliary
 proposal. Full hierarchical error and boundary blocks remain deferred.
 
 ## Progress log
+
+### 2026-07-19
+
+- Pushed `codex/tdmcmc-numba-rewrite` and opened draft PR #508 against `devel`
+  at the ten-commit checkpoint `3b463e6`.
+- Split the first offline continuation into non-overlapping workstreams for the
+  continuous-coefficient oracle, checkerboard example extraction, and run
+  profile/provenance primitives. Faithful archived-input work remains deferred
+  until the server data return.
 
 ### 2026-07-18
 
