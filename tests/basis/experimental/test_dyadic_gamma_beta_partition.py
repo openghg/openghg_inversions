@@ -89,6 +89,48 @@ def test_uniform_k_prior_is_normalized_and_uniform_by_k() -> None:
     assert not prior.log_probability_by_k.flags.writeable
 
 
+def test_declared_and_geometric_k_marginals_are_normalized() -> None:
+    """Explicit and geometric constructors should preserve requested K mass."""
+    layout = GammaBetaPartitionLayout.from_forest(_forest())
+    explicit = GammaBetaRegionCountPrior.from_marginal_probabilities(
+        layout,
+        {2: 1.0, 4: 3.0},
+    )
+    geometric = GammaBetaRegionCountPrior.geometric_extra_regions(
+        layout,
+        continuation_probability=0.5,
+    )
+
+    np.testing.assert_allclose(
+        explicit.marginal_probability_by_k,
+        [0.0, 0.0, 0.25, 0.0, 0.75, 0.0],
+        atol=1.0e-15,
+    )
+    expected_geometric = np.array([1.0, 0.5, 0.25, 0.125])
+    expected_geometric /= expected_geometric.sum()
+    np.testing.assert_allclose(
+        geometric.marginal_probability_by_k[2:],
+        expected_geometric,
+        atol=1.0e-15,
+    )
+    assert geometric.marginal_probability_by_k.sum() == pytest.approx(1.0)
+
+
+def test_k_prior_constructors_reject_invalid_marginals() -> None:
+    """Unavailable K, zero mass, and invalid continuation must be rejected."""
+    layout = GammaBetaPartitionLayout.from_forest(_forest())
+
+    with pytest.raises(ValueError, match="unavailable"):
+        GammaBetaRegionCountPrior.from_marginal_probabilities(layout, {1: 1.0})
+    with pytest.raises(ValueError, match="positive mass"):
+        GammaBetaRegionCountPrior.from_marginal_probabilities(layout, {})
+    with pytest.raises(ValueError, match="strictly between"):
+        GammaBetaRegionCountPrior.geometric_extra_regions(
+            layout,
+            continuation_probability=1.0,
+        )
+
+
 def test_neighbors_are_unique_reversible_local_moves() -> None:
     """Every split/merge edge should have one reverse edge and valid log q."""
     layout = GammaBetaPartitionLayout.from_forest(_forest())
@@ -144,3 +186,23 @@ def test_counts_use_python_integers_for_large_forests() -> None:
 
     assert all(isinstance(value, int) for value in layout.partition_counts_by_k)
     assert max(layout.partition_counts_by_k) > np.iinfo(np.int64).max
+
+
+def test_prior_normalization_handles_counts_beyond_float_range() -> None:
+    """Prior construction should remain in log space for enormous catalogues."""
+    forest = GammaBetaForest.from_groups(
+        np.ones((1, 2_048)),
+        [
+            GammaBetaGroupSpec(
+                "full",
+                np.ones((1, 2_048), dtype=bool),
+                max_depth=11,
+            )
+        ],
+        require_full_coverage=True,
+    )
+    layout = GammaBetaPartitionLayout.from_forest(forest)
+
+    assert math.log(max(layout.partition_counts_by_k)) > math.log(np.finfo(float).max)
+    prior = GammaBetaRegionCountPrior.geometric_extra_regions(layout)
+    assert prior.marginal_probability_by_k.sum() == pytest.approx(1.0)

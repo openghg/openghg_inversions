@@ -348,6 +348,8 @@ class GammaBetaCoordinateLayout:
         for node_id in active_node_ids:
             if isinstance(node_id, bool) or not isinstance(node_id, (int, np.integer)):
                 raise ValueError("active_node_ids must contain valid integer node IDs.")
+            if node_id < 0 or node_id >= len(self.forest.nodes):
+                raise ValueError(f"Unknown active forest node {node_id!r}.")
             try:
                 node = self.forest.nodes[int(node_id)]
             except IndexError as error:

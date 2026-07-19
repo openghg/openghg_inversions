@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from itertools import product
+import math
 from typing import Any
 
 import numpy as np
@@ -158,6 +159,29 @@ def test_symbolic_canonical_gate_matches_forest_codec() -> None:
             assert np.isfinite(float(logp(point)))
 
 
+def test_symbolic_partition_density_has_normalized_absolute_measure() -> None:
+    """Bernoulli base density plus potentials should equal the declared p(P)."""
+    target, layout, prior = _case()
+    adapter = build_pymc_gamma_beta_product_space_model(target, prior)
+    full_logp = adapter.model.compile_logp()
+    continuous_variables = [adapter.split_fractions, *adapter.model.observed_RVs]
+    if adapter.stochastic_group_root_scalings is not None:
+        continuous_variables.insert(0, adapter.stochastic_group_root_scalings)
+    continuous_logp = adapter.model.compile_logp(vars=continuous_variables)
+    point = adapter.model.initial_point()
+    continuous_value = float(continuous_logp(point))
+
+    recovered_mass = 0.0
+    for split in (0, 1):
+        mask = np.array([split], dtype=point["split_mask"].dtype)
+        point["split_mask"] = mask
+        recovered_log_prior = float(full_logp(point)) - continuous_value
+        assert recovered_log_prior == pytest.approx(prior(mask), abs=2.0e-6)
+        recovered_mass += math.exp(recovered_log_prior)
+
+    assert recovered_mass == pytest.approx(1.0, abs=2.0e-6)
+
+
 def test_custom_step_changes_only_the_partition_mask() -> None:
     """A structural update must preserve every transformed continuous value."""
     target, layout, prior = _case()
@@ -194,6 +218,62 @@ def test_custom_step_changes_only_the_partition_mask() -> None:
         "reverse_degree",
         "tune",
     }
+
+
+def test_custom_step_uses_asymmetric_neighbor_hastings_correction() -> None:
+    """A uniform-P target should expose only the reverse/source degree ratio."""
+    forest = GammaBetaForest.from_groups(
+        np.ones((1, 4)),
+        [
+            GammaBetaGroupSpec(
+                "inner",
+                np.ones((1, 4), dtype=bool),
+                root_variance=0.25,
+                max_depth=2,
+            )
+        ],
+        require_full_coverage=True,
+    )
+    target = GammaBetaProductSpaceTarget.from_grid(
+        observations=np.zeros(1),
+        finest_grid_design=np.zeros((1, 1, 4)),
+        forest=forest,
+        kappa_strategy=DepthKappaStrategy(),
+    )
+    layout = GammaBetaPartitionLayout.from_forest(forest)
+    prior = GammaBetaRegionCountPrior.from_marginal_probabilities(
+        layout,
+        {
+            region_count: partition_count
+            for region_count, partition_count in enumerate(layout.partition_counts_by_k)
+            if partition_count
+        },
+    )
+    source_mask = layout.initial_split_mask(2)
+    adapter = build_pymc_gamma_beta_product_space_model(
+        target,
+        prior,
+        initial_split_mask=source_mask,
+    )
+    with adapter.model:
+        step = GammaBetaSplitMaskStep(
+            adapter.split_mask,
+            layout=layout,
+            model=adapter.model,
+            rng=3,
+        )
+    point = adapter.model.initial_point()
+
+    updated, stats = step.step(point)
+
+    assert bool(stats[0]["accepted"])
+    assert int(stats[0]["proposal_degree"]) == len(layout.neighbors(source_mask)) == 3
+    reverse_degree = len(layout.neighbors(updated["split_mask"]))
+    assert int(stats[0]["reverse_degree"]) == reverse_degree
+    assert float(stats[0]["log_acceptance_ratio"]) == pytest.approx(
+        math.log(3.0 / reverse_degree),
+        abs=2.0e-6,
+    )
 
 
 def test_step_factory_assigns_mask_before_native_nuts() -> None:

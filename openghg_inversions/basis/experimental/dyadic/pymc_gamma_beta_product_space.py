@@ -414,6 +414,15 @@ def build_pymc_gamma_beta_product_space_model(
                 ),
             )
         split_count: Any = pt.sum(split_mask_tensor)
+        pm.Potential(
+            "split_mask_base_measure",
+            cast(
+                Any,
+                pt.as_tensor_variable(
+                    _model_float(layout.split_count * math.log(2.0))
+                ),
+            ),
+        )
         basis_region_count = pm.Deterministic(
             "basis_region_count",
             layout.minimum_regions + split_count,

@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from numbers import Integral
+from collections.abc import Mapping
 from typing import Literal
 
 import numpy as np
@@ -365,17 +366,82 @@ class GammaBetaRegionCountPrior:
             raise ValueError(f"log_probability_by_k must have shape {expected_shape}.")
         if np.any(np.isnan(values)) or np.any(values == math.inf):
             raise ValueError("log_probability_by_k cannot contain NaN or positive infinity.")
-        probability = 0.0
+        log_masses: list[float] = []
         for region_count, partition_count in enumerate(
             self.layout.partition_counts_by_k
         ):
             if partition_count and math.isfinite(float(values[region_count])):
-                probability += partition_count * math.exp(float(values[region_count]))
-        if not math.isclose(probability, 1.0, rel_tol=1.0e-12, abs_tol=1.0e-12):
+                log_masses.append(
+                    math.log(partition_count) + float(values[region_count])
+                )
+        if not log_masses:
+            raise ValueError("At least one forest partition must have positive prior mass.")
+        maximum_log_mass = max(log_masses)
+        log_total = maximum_log_mass + math.log(
+            sum(math.exp(value - maximum_log_mass) for value in log_masses)
+        )
+        if not math.isclose(log_total, 0.0, rel_tol=0.0, abs_tol=1.0e-12):
             raise ValueError("Partition prior probabilities must sum to one.")
         frozen = values.copy()
         frozen.setflags(write=False)
         object.__setattr__(self, "log_probability_by_k", frozen)
+
+    @classmethod
+    def from_marginal_probabilities(
+        cls,
+        layout: GammaBetaPartitionLayout,
+        probabilities_by_k: Mapping[int, float] | npt.ArrayLike,
+    ) -> GammaBetaRegionCountPrior:
+        """Share declared marginal K probabilities uniformly within each K.
+
+        Args:
+            layout: Canonical forest partition layout.
+            probabilities_by_k: Non-negative marginal masses indexed by K,
+                either as a mapping or a vector with shape
+                ``(maximum_regions + 1,)``. Values are normalized internally.
+
+        Returns:
+            Exactly normalized ``p(P) = p(K) / N_K`` prior.
+
+        Raises:
+            TypeError: If ``layout`` or mapping keys have invalid types.
+            ValueError: If masses are invalid, unavailable K receives positive
+                mass, or total supplied mass is zero.
+        """
+        if not isinstance(layout, GammaBetaPartitionLayout):
+            raise TypeError("layout must be a GammaBetaPartitionLayout.")
+        if isinstance(probabilities_by_k, Mapping):
+            masses = np.zeros(layout.maximum_regions + 1, dtype=np.float64)
+            for region_count, probability in probabilities_by_k.items():
+                if isinstance(region_count, bool) or not isinstance(region_count, Integral):
+                    raise TypeError("Region-count probability keys must be integers.")
+                integer_count = int(region_count)
+                if integer_count < 0 or integer_count > layout.maximum_regions:
+                    raise ValueError(f"Unknown region count K={integer_count}.")
+                masses[integer_count] = float(probability)
+        else:
+            masses = np.asarray(probabilities_by_k, dtype=np.float64)
+            expected_shape = (layout.maximum_regions + 1,)
+            if masses.shape != expected_shape:
+                raise ValueError(f"probabilities_by_k must have shape {expected_shape}.")
+            masses = masses.copy()
+        if not np.all(np.isfinite(masses)) or np.any(masses < 0.0):
+            raise ValueError("Region-count probabilities must be finite and non-negative.")
+        for region_count, mass in enumerate(masses):
+            if mass > 0.0 and layout.partition_counts_by_k[region_count] == 0:
+                raise ValueError(f"Positive mass was assigned to unavailable K={region_count}.")
+        total = float(masses.sum())
+        if total <= 0.0:
+            raise ValueError("At least one region count must have positive mass.")
+        masses /= total
+
+        table = np.full(layout.maximum_regions + 1, -math.inf, dtype=np.float64)
+        for region_count, mass in enumerate(masses):
+            if mass > 0.0:
+                table[region_count] = math.log(float(mass)) - math.log(
+                    layout.partition_counts_by_k[region_count]
+                )
+        return cls(layout=layout, log_probability_by_k=table)
 
     @classmethod
     def uniform_k(
@@ -424,13 +490,83 @@ class GammaBetaRegionCountPrior:
         if len(supported) != upper - lower + 1:
             raise ValueError("Every K in the requested range must have a valid partition.")
 
-        table = np.full(layout.maximum_regions + 1, -math.inf, dtype=np.float64)
-        log_k_mass = -math.log(len(supported))
-        for region_count in supported:
-            table[region_count] = log_k_mass - math.log(
-                layout.partition_counts_by_k[region_count]
-            )
-        return cls(layout=layout, log_probability_by_k=table)
+        return cls.from_marginal_probabilities(
+            layout,
+            {region_count: 1.0 for region_count in supported},
+        )
+
+    @classmethod
+    def geometric_extra_regions(
+        cls,
+        layout: GammaBetaPartitionLayout,
+        *,
+        continuation_probability: float = 0.5,
+        minimum_regions: int | None = None,
+        maximum_regions: int | None = None,
+    ) -> GammaBetaRegionCountPrior:
+        """Use a truncated geometric prior on splits beyond minimum K.
+
+        If ``K_min`` is the lower bound and ``q`` is
+        ``continuation_probability``, the unnormalized marginal mass is
+        ``p(K) proportional to q**(K - K_min)``. Conditional on K, partitions
+        remain uniform. Smaller ``q`` more strongly favors compact frontiers.
+
+        Args:
+            layout: Canonical forest partition layout.
+            continuation_probability: Finite value strictly between zero and
+                one.
+            minimum_regions: Smallest supported K. Defaults to the component
+                root count.
+            maximum_regions: Largest supported K. Defaults to the maximum
+                terminal count.
+
+        Returns:
+            Normalized truncated geometric partition prior.
+
+        Raises:
+            ValueError: If the continuation probability or bounds are invalid.
+        """
+        if not isinstance(layout, GammaBetaPartitionLayout):
+            raise TypeError("layout must be a GammaBetaPartitionLayout.")
+        if (
+            not math.isfinite(continuation_probability)
+            or continuation_probability <= 0.0
+            or continuation_probability >= 1.0
+        ):
+            raise ValueError("continuation_probability must lie strictly between zero and one.")
+        lower = layout.minimum_regions if minimum_regions is None else minimum_regions
+        upper = layout.maximum_regions if maximum_regions is None else maximum_regions
+        if (
+            isinstance(lower, bool)
+            or not isinstance(lower, Integral)
+            or isinstance(upper, bool)
+            or not isinstance(upper, Integral)
+        ):
+            raise TypeError("Region-count bounds must be integers.")
+        lower = int(lower)
+        upper = int(upper)
+        if lower < layout.minimum_regions or upper > layout.maximum_regions or lower > upper:
+            raise ValueError("Region-count bounds lie outside the forest partition range.")
+        masses = {
+            region_count: continuation_probability ** (region_count - lower)
+            for region_count in range(lower, upper + 1)
+        }
+        return cls.from_marginal_probabilities(layout, masses)
+
+    @property
+    def marginal_probability_by_k(self) -> npt.NDArray[np.float64]:
+        """Return read-only normalized marginal prior masses by region count."""
+        result = np.zeros(self.layout.maximum_regions + 1, dtype=np.float64)
+        for region_count, partition_count in enumerate(
+            self.layout.partition_counts_by_k
+        ):
+            log_probability = self.log_probability_by_k[region_count]
+            if partition_count and math.isfinite(float(log_probability)):
+                result[region_count] = math.exp(
+                    math.log(partition_count) + float(log_probability)
+                )
+        result.setflags(write=False)
+        return result
 
     def __call__(self, split_mask: npt.ArrayLike) -> float:
         """Return the normalized log prior for one canonical partition mask."""

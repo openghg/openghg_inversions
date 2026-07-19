@@ -149,6 +149,11 @@ def test_coordinate_layout_rejects_invalid_values_and_frontiers() -> None:
             (forest.root_ids[0], *forest.leaf_ids),
             np.ones(len(forest.nodes)),
         )
+    with pytest.raises(ValueError, match="Unknown active forest node"):
+        layout.render_frontier_scalings(
+            (-1, *forest.root_ids),
+            np.ones(len(forest.nodes)),
+        )
 
 
 def test_coordinate_layout_rejects_invalid_kappa() -> None:
