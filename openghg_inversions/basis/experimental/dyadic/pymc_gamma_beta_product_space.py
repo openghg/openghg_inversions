@@ -258,6 +258,7 @@ class PyMCGammaBetaProductSpaceModel:
         stochastic_group_root_scalings: Positive group-root variable, or
             ``None`` when every group root is fixed at one.
         split_fractions: Permanent Beta allocation vector.
+        fixed_split_mask: Exact point-mass partition, or ``None`` for latent P.
     """
 
     model: pm.Model
@@ -266,6 +267,7 @@ class PyMCGammaBetaProductSpaceModel:
     split_mask: Variable
     stochastic_group_root_scalings: Variable | None
     split_fractions: Variable
+    fixed_split_mask: npt.NDArray[np.bool_] | None
 
     def step_methods(
         self,
@@ -351,6 +353,7 @@ def build_pymc_gamma_beta_product_space_model(
     partition_prior: GammaBetaRegionCountPrior,
     *,
     initial_split_mask: npt.ArrayLike | None = None,
+    fixed_split_mask: npt.ArrayLike | None = None,
 ) -> PyMCGammaBetaProductSpaceModel:
     """Build a fixed-shape positive Gamma--Beta product-space model.
 
@@ -359,6 +362,8 @@ def build_pymc_gamma_beta_product_space_model(
         partition_prior: Exact normalized forest partition prior.
         initial_split_mask: Optional positive-prior canonical mask.  The
             default is a deterministic mask at the smallest supported K.
+        fixed_split_mask: Optional exact point-mass partition. When supplied,
+            every other mask has zero probability in the built model.
 
     Returns:
         Built PyMC model and variables ready for compound sampling.
@@ -379,11 +384,23 @@ def build_pymc_gamma_beta_product_space_model(
     if not layout.split_count:
         raise ValueError("The Gamma-Beta product space requires at least one possible split.")
 
-    if initial_split_mask is None:
+    fixed_mask = (
+        None
+        if fixed_split_mask is None
+        else layout.canonical_split_mask(fixed_split_mask)
+    )
+    if fixed_mask is not None and not math.isfinite(partition_prior(fixed_mask)):
+        raise ValueError("fixed_split_mask must have positive prior mass.")
+
+    if initial_split_mask is None and fixed_mask is not None:
+        initial_mask = fixed_mask
+    elif initial_split_mask is None:
         supported_k = np.flatnonzero(np.isfinite(partition_prior.log_probability_by_k))
         initial_mask = layout.initial_split_mask(int(supported_k[0]))
     else:
         initial_mask = layout.canonical_split_mask(initial_split_mask)
+    if fixed_mask is not None and not np.array_equal(initial_mask, fixed_mask):
+        raise ValueError("initial_split_mask must equal fixed_split_mask when both are supplied.")
     if not math.isfinite(partition_prior(initial_mask)):
         raise ValueError("initial_split_mask must have positive prior mass.")
 
@@ -450,6 +467,24 @@ def build_pymc_gamma_beta_product_space_model(
                 basis_region_count
             ],
         )
+        if fixed_mask is not None:
+            fixed_partition = pt.all(
+                pt.eq(
+                    split_mask_tensor,
+                    pt.as_tensor_variable(fixed_mask.astype(np.int8)),
+                )
+            )
+            pm.Potential(
+                "fixed_partition",
+                cast(
+                    Any,
+                    pt.switch(
+                        fixed_partition,
+                        _model_float(-partition_prior(fixed_mask)),
+                        _model_float(-math.inf),
+                    ),
+                ),
+            )
 
         stochastic_group_root_scalings: Variable | None
         if stochastic_indices.size:
@@ -545,6 +580,7 @@ def build_pymc_gamma_beta_product_space_model(
         split_mask=split_mask,
         stochastic_group_root_scalings=stochastic_group_root_scalings,
         split_fractions=split_fractions,
+        fixed_split_mask=fixed_mask,
     )
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from importlib import util
 from pathlib import Path
 import sys
@@ -131,6 +132,39 @@ def test_truth_selects_highest_weight_refinable_land_component(
 
 
 @pytest.mark.slow
+def test_candidate_topology_ignores_holdout_sensitivities(
+    example_module: ModuleType,
+    recovery_case: Any,
+) -> None:
+    """Changing only holdout design rows must not affect adaptive topology."""
+    modified_design = recovery_case.data.G.copy()
+    modified_design[recovery_case.holdout_indices] *= 100.0
+    modified_data = replace(recovery_case.data, G=modified_design)
+
+    rebuilt = example_module.build_case(
+        data_directory=Path("tests/data"),
+        design_data=modified_data,
+        inner_regions=32,
+        data_seed=1701,
+        k_continuation_probability=0.5,
+    )
+
+    np.testing.assert_array_equal(
+        rebuilt.coordinate_layout.forest.leaf_labels(),
+        recovery_case.coordinate_layout.forest.leaf_labels(),
+    )
+    np.testing.assert_array_equal(
+        rebuilt.coordinate_layout.forest.partition_weight,
+        recovery_case.coordinate_layout.forest.partition_weight,
+    )
+    np.testing.assert_array_equal(
+        rebuilt.truth_split_mask,
+        recovery_case.truth_split_mask,
+    )
+    assert rebuilt.truth_node_id == recovery_case.truth_node_id
+
+
+@pytest.mark.slow
 def test_250_region_candidate_forest_constructs(
     example_module: ModuleType,
 ) -> None:
@@ -170,3 +204,7 @@ def test_short_latent_chain_runs_on_data_backed_forest(
         assert np.isfinite(fit.inner_land_field_rmse)
         assert np.isfinite(fit.holdout_log_predictive_density)
         assert fit.divergence_count >= 0
+    assert benchmark.fixed_true.unique_partitions == 1
+    assert benchmark.fixed_true.truth_partition_draw_frequency == 1.0
+    assert benchmark.fixed_underfit.unique_partitions == 1
+    assert benchmark.fixed_underfit.truth_partition_draw_frequency == 0.0

@@ -178,6 +178,40 @@ def test_swap_neighbors_relocate_splits_at_fixed_k() -> None:
     )
 
 
+def test_swap_kernel_satisfies_detailed_balance_on_all_tiny_states() -> None:
+    """Every split, merge, and swap edge should balance under an uneven prior."""
+    layout = GammaBetaPartitionLayout.from_forest(_forest())
+    prior = GammaBetaRegionCountPrior.geometric_extra_regions(
+        layout,
+        continuation_probability=0.4,
+    )
+
+    for source in _canonical_masks(layout):
+        moves = layout.neighbors(source, include_swaps=True)
+        destinations = {move.split_mask.tobytes() for move in moves}
+        assert len(destinations) == len(moves)
+        for move in moves:
+            reverse_moves = layout.neighbors(move.split_mask, include_swaps=True)
+            reverse = next(
+                candidate
+                for candidate in reverse_moves
+                if np.array_equal(candidate.split_mask, source)
+            )
+            forward_log_alpha = min(
+                0.0,
+                prior(move.split_mask) - prior(source) + reverse.log_q - move.log_q,
+            )
+            reverse_log_alpha = min(
+                0.0,
+                prior(source) - prior(move.split_mask) + move.log_q - reverse.log_q,
+            )
+            forward_flow = math.exp(prior(source) + move.log_q + forward_log_alpha)
+            reverse_flow = math.exp(
+                prior(move.split_mask) + reverse.log_q + reverse_log_alpha
+            )
+            assert forward_flow == pytest.approx(reverse_flow, rel=1.0e-14)
+
+
 def test_deterministic_initial_masks_cover_each_available_k() -> None:
     """Stable initialization should construct every supported region count."""
     layout = GammaBetaPartitionLayout.from_forest(_forest())

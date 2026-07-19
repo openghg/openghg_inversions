@@ -39,7 +39,10 @@ from openghg_inversions.basis.experimental.dyadic.covariance_fit import (
     fit_projected_exponential_length_scale,
     projected_exponential_covariance,
 )
-from openghg_inversions.basis.experimental.dyadic.demo_data import load_tac_mhd_week_demo_data
+from openghg_inversions.basis.experimental.dyadic.demo_data import (
+    DemoDesignData,
+    load_tac_mhd_week_demo_data,
+)
 from openghg_inversions.basis.experimental.dyadic.gamma_beta import (
     DepthKappaStrategy,
     GammaBetaForest,
@@ -199,6 +202,7 @@ class IntemDistanceCovarianceComparison:
 def build_case(
     *,
     data_directory: Path = Path("tests/data"),
+    data: DemoDesignData | None = None,
     draws: int = 2_000,
     inner_regions: int = 250,
     max_depth: int = 8,
@@ -217,6 +221,8 @@ def build_case(
 
     Args:
         data_directory: Directory containing the committed TAC/MHD fixtures.
+        data: Optional preloaded design used for the prior flux, grid, and
+            sensitivity topology weights. Defaults to the full-week fixture.
         draws: Number of independent prior draws.
         inner_regions: Total terminal-region budget allocated between inner
             land and ocean by standard basis weight.
@@ -259,7 +265,8 @@ def build_case(
     ocean_root_variance = (
         inner_root_variance if inner_ocean_root_variance is None else inner_ocean_root_variance
     )
-    data = load_tac_mhd_week_demo_data(data_directory)
+    if data is None:
+        data = load_tac_mhd_week_demo_data(data_directory)
     intem, land_ocean = _load_aligned_masks(data.lat, data.lon)
     area = areagrid(np.asarray(data.lat, dtype=np.float64), np.asarray(data.lon, dtype=np.float64))
     prior_flux = np.asarray(data.prior_flux, dtype=np.float64)

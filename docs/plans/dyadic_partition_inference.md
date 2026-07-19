@@ -1964,8 +1964,10 @@ poor local partition traversal.
     synthetic emissions-only observations now exercise 95 possible split
     indicators and 103 permanent positive coordinates on the full EUROPE grid.
     With a truncated geometric prior on additional splits, a 500/500 latent
-    run with split/merge/swap moves visits 30 partitions over K=12--18, assigns
-    0.502 mass to the planted
+    run with split/merge/swap moves visits 12 partitions over K=12--15, with
+    the planted partition in 0.480 of retained draws. Candidate allocation and
+    split priority use only the 32 training sensitivity rows; the 15 holdout
+    rows are reserved for evaluation. The latent fit
     K=12 partition, has no divergences, matches the fixed true partition on
     held-out prediction, and beats fixed underfit roots. A uniform K prior was
     too permissive at this observation count, demonstrating that complexity
@@ -1982,9 +1984,16 @@ poor local partition traversal.
     can now merge one terminal branch and split another in a single reversible
     proposal, avoiding an accepted K change merely to relocate a split. A short
     250-inner-region probe built 477 nodes, 244 maximum leaves, and 233 permanent
-    split coordinates; it visited seven partitions over K=13--17 with no
+    split coordinates; it visited six partitions over K=12--15 with no
     divergences and remained close to the planted fixed model on holdout RMSE.
     This is performance evidence only, not a converged posterior result.
+13. **Closed final-review correctness gaps:** topology builders now accept an
+    explicit design so adaptive inversion examples can split observations
+    before sensitivity weighting; a regression proves that changing only
+    holdout rows cannot alter the forest or planted truth. Fixed comparators
+    now use normalized point-mass partition potentials and assert their retained
+    masks. Single-chain truth-P output is named retained-draw frequency rather
+    than posterior probability.
 
 ### Phase 4: scale-up and alternatives
 

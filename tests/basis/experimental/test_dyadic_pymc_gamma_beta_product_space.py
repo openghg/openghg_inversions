@@ -219,6 +219,37 @@ def test_symbolic_partition_density_has_normalized_absolute_measure() -> None:
     assert recovered_mass == pytest.approx(1.0, abs=2.0e-6)
 
 
+def test_fixed_partition_has_normalized_point_mass() -> None:
+    """A fixed comparator should assign unit mass to exactly one mask."""
+    target, _, prior = _case()
+    fixed_mask = np.array([1], dtype=np.int8)
+    adapter = build_pymc_gamma_beta_product_space_model(
+        target,
+        prior,
+        fixed_split_mask=fixed_mask,
+    )
+    full_logp = adapter.model.compile_logp()
+    continuous_variables = [adapter.split_fractions, *adapter.model.observed_RVs]
+    if adapter.stochastic_group_root_scalings is not None:
+        continuous_variables.insert(0, adapter.stochastic_group_root_scalings)
+    continuous_logp = adapter.model.compile_logp(vars=continuous_variables)
+    point = adapter.model.initial_point()
+    continuous_value = float(continuous_logp(point))
+
+    point["split_mask"] = fixed_mask.astype(point["split_mask"].dtype)
+    assert float(full_logp(point)) - continuous_value == pytest.approx(0.0, abs=2.0e-6)
+    point["split_mask"] = np.array([0], dtype=point["split_mask"].dtype)
+    assert float(full_logp(point)) == -math.inf
+
+    with pytest.raises(ValueError, match="must equal fixed_split_mask"):
+        build_pymc_gamma_beta_product_space_model(
+            target,
+            prior,
+            initial_split_mask=np.array([0]),
+            fixed_split_mask=fixed_mask,
+        )
+
+
 def test_custom_step_changes_only_the_partition_mask() -> None:
     """A structural update must preserve every transformed continuous value."""
     target, layout, prior = _case()

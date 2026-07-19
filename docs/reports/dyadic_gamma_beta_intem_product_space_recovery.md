@@ -10,7 +10,8 @@ problematic boundary-condition fixtures are not opened.
 The model uses:
 
 - 47 committed TAC/MHD sensitivity rows on the 293 by 391 grid;
-- 32 training and 15 deterministic held-out rows;
+- 32 training and 15 deterministic held-out rows, split before candidate
+  allocation or sensitivity-weighted refinement;
 - six fixed InTEM outer groups with separate Gamma roots;
 - hard-separated inner land and ocean groups;
 - a sensitivity-weighted candidate forest with 100 inner terminal regions;
@@ -30,11 +31,11 @@ equal one.
 Each fit used one chain, 500 NUTS tuning draws, 500 retained draws,
 `target_accept=0.95`, and matched observation and coordinate priors.
 
-| Fit | Mean K | K range | Unique P | Truth-P mass | Inner-land field RMSE | Holdout RMSE | Holdout log predictive density | Structural acceptance | Divergences |
+| Fit | Mean K | K range | Unique P | Truth-P retained-draw frequency | Inner-land field RMSE | Holdout RMSE | Holdout log predictive density | Structural acceptance | Divergences |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| latent K/P | 13.11 | 12--18 | 30 | 0.502 | 0.1050 | 0.5103 | -37.42 | 0.142 | 0 |
-| fixed true P | 12.00 | 12--12 | 1 | 1.000 | 0.0435 | 0.4796 | -37.56 | 0.000 | 0 |
-| fixed root P | 11.00 | 11--11 | 1 | 0.000 | 0.4637 | 3.7956 | -50.65 | 0.000 | 0 |
+| latent K/P | 12.87 | 12--15 | 12 | 0.480 | 0.0863 | 0.4793 | -37.40 | 0.088 | 0 |
+| fixed true P | 12.00 | 12--12 | 1 | 1.000 | 0.0465 | 0.5514 | -37.48 | 0.000 | 0 |
+| fixed root P | 11.00 | 11--11 | 1 | 0.000 | 0.4633 | 3.7907 | -50.66 | 0.000 | 0 |
 
 The latent inversion meets the declared proof-of-concept goal. It matches the
 fixed true-partition inversion under the declared holdout and field tolerances, while
@@ -42,14 +43,19 @@ decisively beating the underfit fixed partition. It traverses multiple K and P
 states rather than remaining at the planted partition, and has no NUTS
 divergences.
 
-The latent full-grid field RMSE is 0.0954, slightly below the fixed true value
-0.0986. This aggregate includes large outer areas whose true scaling is one;
+The latent full-grid field RMSE is 0.0790, below the fixed true value 0.0974.
+This aggregate includes large outer areas whose true scaling is one;
 the inner-land RMSE is the more discriminating spatial metric.
 
 The latent structural kernel includes fixed-K swaps: it may merge one current
 frontier branch and split another in one proposal. This lets the chain relocate
 resolution without first accepting an intermediate K. The two fixed
-comparators explicitly disable swaps, so their declared P remains fixed.
+comparators use normalized point-mass partition potentials and explicitly
+disable swaps; retained masks are asserted to equal their declared P.
+
+The 0.480 truth-P value is a retained-draw frequency from one chain, not a
+well-estimated posterior probability. Replicated chains and a partition ESS are
+needed before interpreting that number quantitatively.
 
 Separately, a prior-only depth-two tree test runs the same custom structural
 step over all five possible partitions. Ten thousand retained updates recover
@@ -89,7 +95,7 @@ HOME=/tmp MPLCONFIGDIR=/tmp .venv/bin/python \
   --k-continuation-probability 0.5
 ```
 
-The declared run completed in about 24 seconds wall time on the local machine;
+The declared run completed in about 25 seconds wall time on the local machine;
 reported PyMC sampling times were approximately 5 seconds for latent K/P and
 4 seconds for each fixed comparator. Forest construction, model compilation,
 and posterior field reconstruction account for the remainder.
@@ -97,8 +103,8 @@ and posterior field reconstruction account for the remainder.
 A separate 50/50 scale probe requested 250 inner terminal regions. Moment
 constraints retained 244 maximum leaves, represented by 477 forest nodes and
 233 split coordinates. The full latent/fixed/underfit comparison completed in
-about 34 seconds, the latent chain visited seven partitions over K=13--17, and
-there were no divergences. Its holdout RMSE was 0.413 versus 0.423 for the
+about 28 seconds, the latent chain visited six partitions over K=12--15, and
+there were no divergences. Its holdout RMSE was 0.499 versus 0.532 for the
 planted fixed partition and 3.800 for the underfit roots. Fifty retained draws
 are not enough for inference; this only establishes that the static product
 space remains executable at approximately the prototype's 250-region scale.
@@ -108,6 +114,9 @@ space remains executable at approximately the prototype's 250-region scale.
 - The observations are synthetic and omit baseline/boundary conditions by
   design.
 - Only one observation-noise realization and one chain are reported.
+- Candidate topology uses training sensitivities only. A regression multiplies
+  every holdout design row by 100 and confirms the forest, partition prior, and
+  planted truth are unchanged.
 - The planted truth is a high-level tree split, so it is favorable to the
   candidate dictionary.
 - Exact posterior partition probabilities are unavailable at this scale.

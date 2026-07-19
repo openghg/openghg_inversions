@@ -34,6 +34,7 @@ from openghg_inversions.basis.experimental.dyadic.calibration import (
     aggregate_prior_moments,
     calibrate_group_root_variance,
 )
+from openghg_inversions.basis.experimental.dyadic.demo_data import DemoDesignData
 from openghg_inversions.basis.experimental.dyadic.gamma_beta import MomentSplitConstraint
 
 _DEFAULT_OUTPUT = Path("docs/plans/figures/dyadic_gamma_beta_calibration")
@@ -97,6 +98,7 @@ class CalibratedCase:
 def build_calibrated_case(
     *,
     data_directory: Path,
+    data: DemoDesignData | None = None,
     topology_weight_mode: Literal["sensitivity", "flat"],
     target_relative_standard_deviation: float,
     draws: int = 2,
@@ -113,6 +115,8 @@ def build_calibrated_case(
 
     Args:
         data_directory: Directory containing OGI and country fixtures.
+        data: Optional preloaded design used to construct every topology during
+            calibration. Defaults to the full-week fixture.
         topology_weight_mode: Sensitivity or flat grid-cell topology weights.
         target_relative_standard_deviation: Requested UK prior relative SD.
         draws: Minimal prior draws retained for demonstration diagnostics.
@@ -140,6 +144,7 @@ def build_calibrated_case(
     for iteration in range(1, 9):
         case = build_case(
             data_directory=data_directory,
+            data=data,
             draws=draws,
             inner_regions=inner_regions,
             max_depth=max_depth,

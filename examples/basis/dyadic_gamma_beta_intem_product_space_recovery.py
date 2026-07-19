@@ -17,7 +17,7 @@ root partition.  It prints JSON and writes no data products.
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import json
 import math
 from pathlib import Path
@@ -82,7 +82,7 @@ class IntemGammaBetaFitSummary:
     mean_k: float
     minimum_k: int
     maximum_k: int
-    truth_partition_probability: float
+    truth_partition_draw_frequency: float
     unique_partitions: int
     full_field_rmse: float
     inner_land_field_rmse: float
@@ -120,6 +120,7 @@ class IntemGammaBetaRecoveryBenchmark:
 def build_case(
     *,
     data_directory: Path = Path("tests/data"),
+    design_data: DemoDesignData | None = None,
     inner_regions: int = 32,
     data_seed: int = 1701,
     k_continuation_probability: float = 0.5,
@@ -128,6 +129,8 @@ def build_case(
 
     Args:
         data_directory: Directory containing committed inversion fixtures.
+        design_data: Optional preloaded 47-row design. Supplying this is useful
+            for leakage-regression tests; topology still uses training rows only.
         inner_regions: Candidate terminal-region budget across inner land/ocean.
         data_seed: Seed for independent synthetic observation errors.
         k_continuation_probability: Truncated geometric prior continuation
@@ -136,8 +139,22 @@ def build_case(
     Returns:
         Matched targets, partition priors, and conservative split truth.
     """
+    data = load_tac_mhd_demo_data(data_directory) if design_data is None else design_data
+    holdout = np.arange(data.y.size) % 3 == 2
+    train_indices = np.flatnonzero(~holdout)
+    holdout_indices = np.flatnonzero(holdout)
+    training_data = replace(
+        data,
+        G=data.G[train_indices],
+        y=data.y[train_indices],
+        error=data.error[train_indices],
+        min_error=data.min_error[train_indices],
+        sites=data.sites[train_indices],
+        times=data.times[train_indices],
+    )
     calibrated = build_calibrated_case(
         data_directory=data_directory,
+        data=training_data,
         topology_weight_mode="sensitivity",
         target_relative_standard_deviation=0.5,
         draws=2,
@@ -147,7 +164,6 @@ def build_case(
     )
     prior_case = calibrated.case
     forest = prior_case.forest
-    data = load_tac_mhd_demo_data(data_directory)
     coordinate_layout = GammaBetaCoordinateLayout.from_forest(
         forest,
         kappa_strategy=prior_case.strategy,
@@ -172,9 +188,6 @@ def build_case(
         scale=data.error,
         size=noiseless.size,
     )
-    holdout = np.arange(observations.size) % 3 == 2
-    train_indices = np.flatnonzero(~holdout)
-    holdout_indices = np.flatnonzero(holdout)
     train_target = GammaBetaProductSpaceTarget.from_grid(
         observations=observations[train_indices],
         finest_grid_design=data.G[train_indices],
@@ -253,6 +266,7 @@ def run_benchmark(
         seed=sampling_seed,
         target_accept=target_accept,
         include_swap_moves=True,
+        fixed_split_mask=None,
     )
     fixed_true = _sample_fit(
         case,
@@ -264,6 +278,7 @@ def run_benchmark(
         seed=sampling_seed + 1,
         target_accept=target_accept,
         include_swap_moves=False,
+        fixed_split_mask=case.truth_split_mask,
     )
     fixed_underfit = _sample_fit(
         case,
@@ -275,6 +290,7 @@ def run_benchmark(
         seed=sampling_seed + 2,
         target_accept=target_accept,
         include_swap_moves=False,
+        fixed_split_mask=layout.initial_split_mask(layout.minimum_regions),
     )
     return IntemGammaBetaRecoveryBenchmark(
         observation_count=case.data.y.size,
@@ -313,6 +329,7 @@ def _sample_fit(
     seed: int,
     target_accept: float,
     include_swap_moves: bool,
+    fixed_split_mask: npt.ArrayLike | None,
 ) -> IntemGammaBetaFitSummary:
     """Run and summarize one data-backed compound chain.
 
@@ -326,6 +343,7 @@ def _sample_fit(
         seed: Random seed shared by PyMC and the partition step.
         target_accept: NUTS target acceptance probability.
         include_swap_moves: Allow fixed-K partition relocation proposals.
+        fixed_split_mask: Optional exact point-mass partition for a comparator.
 
     Returns:
         Posterior recovery and sampler diagnostics for the fit.
@@ -334,6 +352,7 @@ def _sample_fit(
         case.train_target,
         prior,
         initial_split_mask=initial_mask,
+        fixed_split_mask=fixed_split_mask,
     )
     steps = adapter.step_methods(
         partition_rng=seed,
@@ -390,6 +409,10 @@ def _sample_fit(
         if group.name == _LAND_GROUP_NAME
     )
     region_counts = layout.minimum_regions + masks.sum(axis=1)
+    if fixed_split_mask is not None:
+        expected_mask = layout.canonical_split_mask(fixed_split_mask)
+        if not np.all(masks == expected_mask):
+            raise RuntimeError("A fixed-partition comparator changed its split mask.")
     return IntemGammaBetaFitSummary(
         name=name,
         draws=masks.shape[0],
@@ -397,7 +420,7 @@ def _sample_fit(
         mean_k=float(region_counts.mean()),
         minimum_k=int(region_counts.min()),
         maximum_k=int(region_counts.max()),
-        truth_partition_probability=truth_count / masks.shape[0],
+        truth_partition_draw_frequency=truth_count / masks.shape[0],
         unique_partitions=len(mask_keys),
         full_field_rmse=_rmse(posterior_mean_field, case.truth_field),
         inner_land_field_rmse=_rmse(
