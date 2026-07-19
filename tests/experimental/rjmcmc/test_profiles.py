@@ -29,12 +29,18 @@ def _target() -> TargetSettings:
     )
 
 
-def _sampler(*, seed: int | None = 481, iterations: int = 40) -> SamplerConfig:
+def _sampler(
+    *,
+    seed: int | None = 481,
+    iterations: int = 40,
+    fixed_scale: float | None = None,
+) -> SamplerConfig:
     """Return a local-move sampler declaration."""
     return SamplerConfig(
         iterations=iterations,
         coefficient_proposal_sd=0.15,
         birth_proposal_sd=0.25,
+        fixed_coefficient_proposal_sd=fixed_scale,
         seed=seed,
         backend="numba",
         nucleus_move="local",
@@ -83,6 +89,7 @@ def test_manifest_is_complete_json_serializable_and_canonical() -> None:
             "iterations": 40,
             "coefficient_proposal_sd": 0.15,
             "birth_proposal_sd": 0.25,
+            "fixed_coefficient_proposal_sd": None,
             "seed": 481,
             "backend": "numba",
             "nucleus_move": "local",
@@ -105,6 +112,19 @@ def test_manifest_is_complete_json_serializable_and_canonical() -> None:
     assert profile.to_json() == profile.to_json()
     assert "NaN" not in profile.to_json()
     assert "Infinity" not in profile.to_json()
+
+
+def test_manifest_records_explicit_fixed_coefficient_scale() -> None:
+    """A distinct fixed-block proposal scale should be replayable from JSON."""
+    profile = RunProfile(
+        name="fixed-block",
+        target=_target(),
+        sampler=_sampler(fixed_scale=0.07),
+    )
+
+    sampler_manifest = profile.to_manifest()["sampler"]
+    assert isinstance(sampler_manifest, dict)
+    assert sampler_manifest["fixed_coefficient_proposal_sd"] == 0.07
 
 
 def test_input_order_does_not_change_canonical_json() -> None:

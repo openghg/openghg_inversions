@@ -1,14 +1,17 @@
-"""Seeded four-slot reference sampler for spatial trans-dimensional MCMC.
+"""Seeded reference sampler for spatial trans-dimensional MCMC.
 
-The single-chain driver repeats a coefficient slot, two identical mixed
-birth/death slots, and a configurable nucleus-location slot using a seeded
-NumPy PCG64 generator. Each dimension slot selects birth or death independently
-with equal probability. By default, state traces include the initial state and
-every subsequent state. Optional collection-time retention saves a global
-warmup/thinning subsequence while preserving diagnostics for every attempted
-transition. In-memory checkpoints preserve the random stream, schedule phase,
-and retention phase for exact continuation. Durable serialization, parallel
-chains, and parallel tempering are not yet provided.
+Without an always-active fixed block, the single-chain driver repeats the
+original four slots: a dynamic coefficient update, two identical mixed
+birth/death slots, and a configurable nucleus-location slot. A problem with a
+fixed block uses a versioned five-slot schedule that inserts one uniformly
+selected fixed-coefficient update after the dynamic coefficient slot. Both use
+a seeded NumPy PCG64 generator, and each dimension slot selects birth or death
+independently with equal probability. By default, state traces include the
+initial state and every subsequent state. Optional collection-time retention
+saves a global warmup/thinning subsequence while preserving diagnostics for
+every attempted transition. In-memory checkpoints preserve the random stream,
+schedule phase, and retention phase for exact continuation. Durable
+serialization, parallel chains, and parallel tempering are not yet provided.
 """
 
 from __future__ import annotations
@@ -31,25 +34,31 @@ from openghg_inversions.experimental.rjmcmc.proposals import (
     propose_birth,
     propose_coefficient,
     propose_death,
+    propose_fixed_coefficient,
     propose_global_move,
     propose_local_move,
 )
 from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
 
 SCHEDULE_ID = "four_slot_coefficient_dimension_dimension_nucleus_v1"
+FIXED_BLOCK_SCHEDULE_ID = "five_slot_coefficient_fixed_coefficient_dimension_dimension_nucleus_v1"
 
 
 @dataclass(frozen=True, slots=True)
 class SamplerConfig:
     """Configuration for the first single-chain reference sampler.
 
-    Every four transitions contain one coefficient proposal, two independent
-    equal-probability birth/death proposals, and one nucleus-location proposal.
+    Problems without a fixed block retain the original four-slot schedule.
+    Problems with one insert a fixed-coefficient proposal as the second slot.
 
     Args:
         iterations: Number of attempted transitions.
         coefficient_proposal_sd: Gaussian random-walk scale for coefficients.
         birth_proposal_sd: Gaussian auxiliary-coefficient scale for birth/death.
+        fixed_coefficient_proposal_sd: Gaussian random-walk scale for
+            always-active fixed-block coefficients. ``None`` reuses
+            ``coefficient_proposal_sd``. This setting does not alter the
+            four-slot schedule when ``problem`` has no fixed block.
         seed: Seed passed to :func:`numpy.random.default_rng`.
         backend: State-recomputation backend used by every candidate.
         nucleus_move: Whether the fourth schedule step proposes a globally
@@ -69,6 +78,7 @@ class SamplerConfig:
     backend: Backend = "numpy"
     nucleus_move: Literal["global", "local"] = "global"
     local_move_scale: float | None = None
+    fixed_coefficient_proposal_sd: float | None = None
 
     def __post_init__(self) -> None:
         """Reject malformed sampler settings before allocating a trace."""
@@ -79,6 +89,15 @@ class SamplerConfig:
             if not isfinite(value) or value <= 0.0:
                 raise ValueError(f"{name} must be finite and positive.")
             object.__setattr__(self, name, value)
+        if self.fixed_coefficient_proposal_sd is not None:
+            fixed_coefficient_proposal_sd = float(self.fixed_coefficient_proposal_sd)
+            if not isfinite(fixed_coefficient_proposal_sd) or fixed_coefficient_proposal_sd <= 0.0:
+                raise ValueError("fixed_coefficient_proposal_sd must be finite and positive.")
+            object.__setattr__(
+                self,
+                "fixed_coefficient_proposal_sd",
+                fixed_coefficient_proposal_sd,
+            )
         if self.backend not in ("numpy", "numba"):
             raise ValueError("backend must be 'numpy' or 'numba'.")
         if self.nucleus_move not in ("global", "local"):
@@ -106,6 +125,7 @@ class KernelSettings:
     backend: Backend
     nucleus_move: Literal["global", "local"]
     local_move_scale: float | None
+    fixed_coefficient_proposal_sd: float | None = None
 
     @classmethod
     def from_config(cls, config: SamplerConfig) -> KernelSettings:
@@ -116,6 +136,7 @@ class KernelSettings:
             backend=config.backend,
             nucleus_move=config.nucleus_move,
             local_move_scale=config.local_move_scale,
+            fixed_coefficient_proposal_sd=config.fixed_coefficient_proposal_sd,
         )
 
 
@@ -201,6 +222,10 @@ class SamplingTrace:
             ``(n_retained, k_max)``.
         coefficients: Padded region coefficients with shape
             ``(n_retained, k_max)``.
+        fixed_coefficients: Always-active fixed-block coefficients with shape
+            ``(n_retained, n_fixed_coefficients)``. A manually constructed
+            legacy trace that omits this field receives a zero-width second
+            dimension.
         log_target: Normalized log target at every saved state, with shape
             ``(n_retained,)``.
         moves: Proposal name for each attempted transition, with shape
@@ -228,15 +253,23 @@ class SamplingTrace:
     accepted: NDArray[np.bool_]
     log_acceptance_ratio: NDArray[np.float64]
     state_transition: NDArray[np.int64] = field(default_factory=lambda: np.empty(0, dtype=np.int64))
+    fixed_coefficients: NDArray[np.float64] = field(default_factory=lambda: np.empty(0, dtype=np.float64))
 
     def __post_init__(self) -> None:
-        """Supply legacy consecutive indices when callers omit them."""
+        """Supply safe defaults for legacy transition and fixed-block fields."""
         transition = np.asarray(self.state_transition, dtype=np.int64)
         if transition.size == 0 and self.k.size:
             transition = np.arange(self.k.size, dtype=np.int64)
             object.__setattr__(self, "state_transition", transition)
-            return
-        object.__setattr__(self, "state_transition", transition)
+        else:
+            object.__setattr__(self, "state_transition", transition)
+
+        fixed_coefficients = np.asarray(self.fixed_coefficients, dtype=np.float64)
+        if fixed_coefficients.ndim == 1 and fixed_coefficients.size == 0:
+            fixed_coefficients = np.empty((self.k.size, 0), dtype=np.float64)
+        elif fixed_coefficients.ndim != 2 or fixed_coefficients.shape[0] != self.k.size:
+            raise ValueError("fixed_coefficients must have shape (n_retained, n_fixed_coefficients).")
+        object.__setattr__(self, "fixed_coefficients", fixed_coefficients)
 
     @property
     def acceptance_rate(self) -> float:
@@ -281,6 +314,17 @@ def _nearest_parent_coefficient(
     return float(state.active_coefficients[int(np.argmin(squared_distance))])
 
 
+def _fixed_coefficient_proposal_sd(config: SamplerConfig | KernelSettings) -> float:
+    """Return the explicit or dynamic-coefficient fallback proposal scale."""
+    scale = config.fixed_coefficient_proposal_sd
+    return config.coefficient_proposal_sd if scale is None else scale
+
+
+def _schedule_id(problem: TransDimensionalProblem) -> str:
+    """Return the schedule identity implied by a problem's fixed block."""
+    return FIXED_BLOCK_SCHEDULE_ID if problem.n_fixed_coefficients else SCHEDULE_ID
+
+
 def _draw_transition(
     problem: TransDimensionalProblem,
     state: TransDimensionalState,
@@ -301,6 +345,21 @@ def _draw_transition(
             coefficient_position=position,
             proposed_coefficient=value,
             proposal_stdev=config.coefficient_proposal_sd,
+            backend=config.backend,
+        )
+
+    if move == "fixed_coefficient":
+        if not problem.n_fixed_coefficients:
+            raise ValueError("fixed_coefficient moves require a nonempty fixed block.")
+        proposal_stdev = _fixed_coefficient_proposal_sd(config)
+        position = int(rng.integers(problem.n_fixed_coefficients))
+        value = float(state.fixed_coefficients[position] + rng.normal(scale=proposal_stdev))
+        return propose_fixed_coefficient(
+            problem,
+            state,
+            coefficient_position=position,
+            proposed_coefficient=value,
+            proposal_stdev=proposal_stdev,
             backend=config.backend,
         )
 
@@ -371,6 +430,8 @@ def _validate_start_state(
     """Validate the state invariants required before a sampling segment."""
     if state.capacity != problem.k_max:
         raise ValueError("initial_state capacity must equal problem.k_max.")
+    if state.fixed_coefficients.shape != (problem.n_fixed_coefficients,):
+        raise ValueError("initial_state fixed coefficients are incompatible with the problem.")
     if not np.isfinite(state.log_target):
         raise ValueError("initial_state must have finite target density.")
 
@@ -417,8 +478,15 @@ def _run_segment(
     k_trace = np.empty(n_retained, dtype=np.int64)
     nuclei_trace = np.empty((n_retained, capacity), dtype=np.int64)
     coefficient_trace = np.empty((n_retained, capacity), dtype=np.float64)
+    fixed_coefficient_trace = np.empty(
+        (n_retained, problem.n_fixed_coefficients),
+        dtype=np.float64,
+    )
     log_target_trace = np.empty(n_retained, dtype=np.float64)
-    moves = np.empty(iterations, dtype="U16")
+    moves = np.empty(
+        iterations,
+        dtype="U17" if problem.n_fixed_coefficients else "U16",
+    )
     accepted = np.zeros(iterations, dtype=np.bool_)
     log_acceptance_ratio = np.empty(iterations, dtype=np.float64)
 
@@ -431,6 +499,7 @@ def _run_segment(
         k_trace[retained_position] = current_state.k
         nuclei_trace[retained_position] = current_state.nuclei
         coefficient_trace[retained_position] = current_state.coefficients
+        fixed_coefficient_trace[retained_position] = current_state.fixed_coefficients
         log_target_trace[retained_position] = current_state.log_target
         retained_position += 1
 
@@ -438,7 +507,16 @@ def _run_segment(
         retain(state)
 
     nucleus_move = "global_move" if kernel_settings.nucleus_move == "global" else "local_move"
-    schedule = ("coefficient", "dimension", "dimension", nucleus_move)
+    if problem.n_fixed_coefficients:
+        schedule = (
+            "coefficient",
+            "fixed_coefficient",
+            "dimension",
+            "dimension",
+            nucleus_move,
+        )
+    else:
+        schedule = ("coefficient", "dimension", "dimension", nucleus_move)
 
     for iteration in range(iterations):
         global_transition = transitions_completed + iteration
@@ -464,12 +542,14 @@ def _run_segment(
         transitions_completed=total_transitions,
         kernel_settings=kernel_settings,
         retention=retention,
+        schedule_id=_schedule_id(problem),
     )
     return SamplingResult(
         trace=SamplingTrace(
             k=k_trace,
             nuclei=nuclei_trace,
             coefficients=coefficient_trace,
+            fixed_coefficients=fixed_coefficient_trace,
             log_target=log_target_trace,
             moves=moves,
             accepted=accepted,
@@ -489,10 +569,13 @@ def sample(
 ) -> SamplingResult:
     """Run an auditable single-chain spatial RJMCMC segment from transition zero.
 
-    The four-slot schedule repeats a coefficient move, two identical dimension
-    moves, and a nucleus move. Each dimension slot independently chooses birth
-    or death with probability one half, making it an invariant paired RJ
-    kernel. The equal move-type probabilities cancel from the reported
+    Without a fixed block, the original four-slot schedule repeats a dynamic
+    coefficient move, two identical dimension moves, and a nucleus move. A
+    problem with fixed columns inserts one uniformly selected fixed-coefficient
+    move after the dynamic coefficient slot, creating a separately identified
+    five-slot schedule. Each dimension slot independently chooses birth or
+    death with probability one half, making it an invariant paired RJ kernel.
+    The equal move-type probabilities cancel from the reported
     Metropolis-Hastings ratio. Nucleus moves are globally uniform by default;
     setting ``nucleus_move="local"`` uses a normalized discrete-Gaussian
     destination kernel instead. Impossible boundary proposals remain explicit
@@ -562,12 +645,19 @@ def continue_sample(
         raise TypeError("checkpoint must be a SamplerCheckpoint instance.")
     if isinstance(iterations, bool) or not isinstance(iterations, (int, np.integer)) or iterations < 1:
         raise ValueError("iterations must be a positive integer.")
-    if checkpoint.schedule_id != SCHEDULE_ID:
+    supported_schedules = {SCHEDULE_ID, FIXED_BLOCK_SCHEDULE_ID}
+    if checkpoint.schedule_id not in supported_schedules:
         raise ValueError(f"Unsupported sampler schedule {checkpoint.schedule_id!r}.")
     if checkpoint.transitions_completed < 0:
         raise ValueError("checkpoint transitions_completed must be non-negative.")
     if problem is not checkpoint.problem:
         raise ValueError("continuation requires the exact in-memory problem object.")
+    expected_schedule_id = _schedule_id(problem)
+    if checkpoint.schedule_id != expected_schedule_id:
+        raise ValueError(
+            f"Checkpoint schedule {checkpoint.schedule_id!r} is incompatible with "
+            f"this problem; expected {expected_schedule_id!r}."
+        )
     return _run_segment(
         problem,
         checkpoint.state,
@@ -581,6 +671,7 @@ def continue_sample(
 
 
 __all__ = [
+    "FIXED_BLOCK_SCHEDULE_ID",
     "KernelSettings",
     "PCG64State",
     "SCHEDULE_ID",

@@ -10,6 +10,7 @@ outside this initial slice.
 """
 
 from openghg_inversions.experimental.rjmcmc.core import (
+    FixedDesignBlock,
     TransDimensionalProblem,
     TransDimensionalState,
     aggregate_design_numba,
@@ -30,6 +31,7 @@ from openghg_inversions.experimental.rjmcmc.proposals import (
     propose_birth,
     propose_coefficient,
     propose_death,
+    propose_fixed_coefficient,
     propose_global_move,
     propose_local_move,
 )
@@ -41,28 +43,43 @@ from openghg_inversions.experimental.rjmcmc.postprocessing import (
     summarize_fine_grid_posterior,
 )
 from openghg_inversions.experimental.rjmcmc.rhime_adapter import problem_from_rhime_inputs
+from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
 from openghg_inversions.experimental.rjmcmc.sampling import (
+    FIXED_BLOCK_SCHEDULE_ID,
+    SCHEDULE_ID,
+    KernelSettings,
+    PCG64State,
+    SamplerCheckpoint,
     SamplerConfig,
     SamplingResult,
     SamplingTrace,
+    continue_sample,
     sample,
 )
 
 __all__ = [
-    "TransDimensionalProblem",
-    "TransDimensionalState",
-    "TransitionTerms",
     "DEFAULT_QUANTILES",
+    "FIXED_BLOCK_SCHEDULE_ID",
     "FineGridPosteriorSummary",
+    "FixedDesignBlock",
+    "KernelSettings",
+    "PCG64State",
+    "RetentionSettings",
+    "SCHEDULE_ID",
+    "SamplerCheckpoint",
     "SamplerConfig",
     "SamplingResult",
     "SamplingTrace",
+    "TransDimensionalProblem",
+    "TransDimensionalState",
+    "TransitionTerms",
     "accept_or_reject",
     "aggregate_design_numba",
     "aggregate_design_numpy",
     "assign_cells_numba",
     "assign_cells_numpy",
     "build_state",
+    "continue_sample",
     "gaussian_log_likelihood_numba",
     "gaussian_log_likelihood_numpy",
     "lognormal_coefficient_log_prior_numba",
@@ -70,6 +87,7 @@ __all__ = [
     "propose_birth",
     "propose_coefficient",
     "propose_death",
+    "propose_fixed_coefficient",
     "propose_global_move",
     "propose_local_move",
     "posterior_mean_prediction",

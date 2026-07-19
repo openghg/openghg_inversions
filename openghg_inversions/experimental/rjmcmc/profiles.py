@@ -279,6 +279,7 @@ class RunProfile:
                 "iterations": sampler.iterations,
                 "coefficient_proposal_sd": sampler.coefficient_proposal_sd,
                 "birth_proposal_sd": sampler.birth_proposal_sd,
+                "fixed_coefficient_proposal_sd": sampler.fixed_coefficient_proposal_sd,
                 "seed": int(seed),
                 "backend": sampler.backend,
                 "nucleus_move": sampler.nucleus_move,
