@@ -383,13 +383,36 @@ def _multisector_flux_trace_parts(
 def make_multisector_flux_trace_outputs(
     inv_out: InversionOutput,
     report_flux_on_inversion_grid: bool = True,
+    *,
+    materialize: bool = True,
 ) -> xr.Dataset:
-    """Return per-draw reconstructed sector and total flux traces for multisector outputs."""
+    """Return per-draw reconstructed sector and total multisector flux traces.
+
+    Args:
+        inv_out: Inversion output containing multisector MCMC traces and retained
+            basis functions.
+        report_flux_on_inversion_grid: If true, reconstruct values on the reduced
+            inversion grid; otherwise include the sector prior flux on the
+            latitude/longitude grid.
+        materialize: If true, convert the completed trace to NumPy-backed arrays.
+            Set this to false when a downstream labelled reduction can preserve
+            lazy or sparse arrays. The default preserves the historical return
+            boundary.
+
+    Returns:
+        Per-draw total and sector flux traces with reconstruction metadata.
+
+    Raises:
+        ValueError: If ``inv_out`` is not multisector or lacks required sector
+            metadata or trace variables.
+    """
     _, sector_flux_traces, total_flux_trace = _multisector_flux_trace_parts(
         inv_out,
         report_flux_on_inversion_grid=report_flux_on_inversion_grid,
     )
-    result = xr.merge([total_flux_trace, *sector_flux_traces]).as_numpy()
+    result = xr.merge([total_flux_trace, *sector_flux_traces])
+    if materialize:
+        result = result.as_numpy()
     result = _copy_first_flux_nonfinite_metadata(result, [total_flux_trace, *sector_flux_traces])
     return add_basis_reconstruction_metadata(result, inv_out.basis_functions)
 
