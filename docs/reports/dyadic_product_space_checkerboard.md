@@ -87,6 +87,20 @@ below the true-partition oracle. That misses the stricter provisional
 non-inferiority threshold of -0.05 nat per observation, so this run should not
 be described as matching the oracle.
 
+## Visual diagnostics
+
+The benchmark now writes the posterior mean scaling maps, the latent-minus-truth
+error, the retained K distribution, holdout predictions, and matched predictive
+RMSE comparison when ``--output-directory`` is supplied:
+
+![Checkerboard recovery maps](../plans/figures/dyadic_product_space_checkerboard/checkerboard_recovery.png)
+
+![Checkerboard diagnostics](../plans/figures/dyadic_product_space_checkerboard/checkerboard_diagnostics.png)
+
+These figures are from the 4,000-draw augmented run recorded above. The latent
+fit recovers the checkerboard contrast but over-refines relative to truth K=16;
+the retained K mass is concentrated near the imposed upper bound of 28.
+
 ### Collapsed-chain diagnostic
 
 An independent collapsed Gaussian chain integrated the continuous coefficients

@@ -14,7 +14,9 @@ Three otherwise identical inversions are compared:
 * latent ``K`` and ``P`` sampled with local split/merge product-space updates.
 
 The benchmark is an implementation proof of concept, not a reproduction of
-the paper or evidence for production inversion performance.
+the paper or evidence for production inversion performance.  Pass
+``--output-directory`` to save recovery and sampler-diagnostic plots alongside
+the machine-readable summary.
 """
 
 from __future__ import annotations
@@ -23,7 +25,9 @@ import argparse
 from dataclasses import asdict, dataclass
 import json
 import math
+from pathlib import Path
 from time import perf_counter
+from typing import Any
 
 import numpy as np
 
@@ -298,9 +302,7 @@ def summarize_states(
         count=len(states),
     )
     return InversionMetrics(
-        prediction_rmse_ppb=float(
-            np.sqrt(np.mean(np.square(posterior_prediction - case.holdout_noiseless)))
-        ),
+        prediction_rmse_ppb=float(np.sqrt(np.mean(np.square(posterior_prediction - case.holdout_noiseless)))),
         predictive_log_density=_posterior_predictive_log_density(
             case.holdout_observations,
             predictions,
@@ -322,6 +324,7 @@ def run_benchmark(
     maximum_regions: int = 28,
     sampler: str = "augmented",
     seed: int = 481,
+    output_directory: Path | None = None,
 ) -> CheckerboardBenchmark:
     """Run matched fixed and latent checkerboard inversions.
 
@@ -333,6 +336,8 @@ def run_benchmark(
         sampler: ``"augmented"`` for product-space MH-within-Gibbs or
             ``"collapsed"`` for exact marginal Gaussian partition MH.
         seed: Seed for case construction and independent posterior streams.
+        output_directory: Optional directory for PNG plots and the JSON
+            benchmark summary.
 
     Returns:
         Fixed/latent metrics and explicit comparison gates.
@@ -368,9 +373,7 @@ def run_benchmark(
     )
     started = perf_counter()
     sampler_function = (
-        sample_gaussian_product_space
-        if sampler == "augmented"
-        else sample_collapsed_gaussian_product_space
+        sample_gaussian_product_space if sampler == "augmented" else sample_collapsed_gaussian_product_space
     )
     latent_trace = sampler_function(
         case.target,
@@ -389,7 +392,7 @@ def run_benchmark(
     log_score_difference_per_observation = (
         latent.predictive_log_density - fixed_truth.predictive_log_density
     ) / _HOLDOUT_OBSERVATIONS
-    return CheckerboardBenchmark(
+    benchmark = CheckerboardBenchmark(
         fixed_truth=fixed_truth,
         fixed_wrong=fixed_wrong,
         fixed_coarse=fixed_coarse,
@@ -401,14 +404,135 @@ def run_benchmark(
         latent_warmup_acceptance_rate=latent_trace.warmup_acceptance_rate,
         latent_unique_partitions=len(set(latent_trace.partitions)),
         latent_runtime_seconds=latent_runtime,
-        latent_beats_wrong_prediction_rmse=(
-            latent.prediction_rmse_ppb < fixed_wrong.prediction_rmse_ppb
-        ),
-        latent_beats_coarse_prediction_rmse=(
-            latent.prediction_rmse_ppb < fixed_coarse.prediction_rmse_ppb
-        ),
+        latent_beats_wrong_prediction_rmse=(latent.prediction_rmse_ppb < fixed_wrong.prediction_rmse_ppb),
+        latent_beats_coarse_prediction_rmse=(latent.prediction_rmse_ppb < fixed_coarse.prediction_rmse_ppb),
         latent_oracle_log_score_difference_per_observation=log_score_difference_per_observation,
         latent_oracle_log_score_noninferior=log_score_difference_per_observation >= -0.05,
+    )
+    if output_directory is not None:
+        _write_benchmark_outputs(
+            case,
+            fixed_truth_states=fixed_truth_states,
+            fixed_wrong_states=fixed_wrong_states,
+            fixed_coarse_states=fixed_coarse_states,
+            latent_states=latent_states,
+            latent_trace=latent_trace,
+            benchmark=benchmark,
+            output_directory=output_directory,
+        )
+    return benchmark
+
+
+def _write_benchmark_outputs(
+    case: CheckerboardCase,
+    *,
+    fixed_truth_states: tuple[ProductSpaceState, ...],
+    fixed_wrong_states: tuple[ProductSpaceState, ...],
+    fixed_coarse_states: tuple[ProductSpaceState, ...],
+    latent_states: tuple[ProductSpaceState, ...],
+    latent_trace: Any,
+    benchmark: CheckerboardBenchmark,
+    output_directory: Path,
+) -> None:
+    """Write reproducible checkerboard recovery and diagnostic artifacts.
+
+    Args:
+        case: Complete synthetic checkerboard case.
+        fixed_truth_states: Posterior states for the oracle partition.
+        fixed_wrong_states: Posterior states for the misspecified K=16 partition.
+        fixed_coarse_states: Posterior states for the coarse K=8 partition.
+        latent_states: Retained states for latent K and P.
+        latent_trace: Sampler trace supplying retained region counts.
+        benchmark: Scalar benchmark summary written beside the plots.
+        output_directory: Destination directory, created when needed.
+    """
+    import matplotlib.pyplot as plt
+
+    output_directory.mkdir(parents=True, exist_ok=True)
+    posterior_grids = {
+        "Oracle fixed K=16": _posterior_mean_grid(case, fixed_truth_states),
+        "Wrong fixed K=16": _posterior_mean_grid(case, fixed_wrong_states),
+        "Coarse fixed K=8": _posterior_mean_grid(case, fixed_coarse_states),
+        "Latent K and P": _posterior_mean_grid(case, latent_states),
+    }
+
+    figure, axes = plt.subplots(2, 3, figsize=(11.5, 7.0), constrained_layout=True)
+    maps = (
+        ("Planted truth", case.truth),
+        *posterior_grids.items(),
+        ("Latent minus truth", posterior_grids["Latent K and P"] - case.truth),
+    )
+    shared_image = None
+    error_image = None
+    for axis, (title, values) in zip(axes.flat, maps, strict=True):
+        if title == "Latent minus truth":
+            limit = max(0.05, float(np.max(np.abs(values))))
+            error_image = axis.imshow(values, cmap="RdBu_r", vmin=-limit, vmax=limit)
+        else:
+            shared_image = axis.imshow(values, cmap="viridis", vmin=0.35, vmax=1.65)
+        axis.set_title(title)
+        axis.set_xticks(range(_GRID_SHAPE[1]))
+        axis.set_yticks(range(_GRID_SHAPE[0]))
+        axis.set_xlabel("Grid column")
+        axis.set_ylabel("Grid row")
+    if shared_image is None or error_image is None:
+        raise RuntimeError("Checkerboard plot construction did not create both color scales.")
+    figure.colorbar(shared_image, ax=axes[:, :2], shrink=0.85, label="Scaling factor")
+    figure.colorbar(error_image, ax=axes[:, 2], shrink=0.85, label="Scaling-factor error")
+    figure.suptitle("Lunt-inspired Gaussian checkerboard recovery")
+    figure.savefig(output_directory / "checkerboard_recovery.png", dpi=180)
+    plt.close(figure)
+
+    region_counts = np.fromiter(
+        (len(partition.active) for partition in latent_trace.partitions),
+        dtype=np.int64,
+        count=len(latent_trace.partitions),
+    )
+    holdout_matrix = case.holdout_design.reshape(_HOLDOUT_OBSERVATIONS, -1)
+    latent_predictions = posterior_grids["Latent K and P"].reshape(-1) @ holdout_matrix.T
+    figure, axes = plt.subplots(1, 3, figsize=(12.0, 3.8), constrained_layout=True)
+    count_values, count_frequencies = np.unique(region_counts, return_counts=True)
+    axes[0].bar(count_values, count_frequencies / count_frequencies.sum(), color="#287271")
+    axes[0].axvline(16, color="#c44536", linestyle="--", label="Truth K=16")
+    axes[0].set(xlabel="Retained K", ylabel="Posterior frequency", title="Latent region count")
+    axes[0].legend(frameon=False)
+
+    order = np.argsort(case.holdout_noiseless)
+    axes[1].plot(case.holdout_noiseless[order], color="#222222", label="Noiseless truth")
+    axes[1].plot(latent_predictions[order], color="#287271", label="Latent posterior mean")
+    axes[1].set(xlabel="Holdout row (sorted)", ylabel="Signal", title="Holdout prediction")
+    axes[1].legend(frameon=False)
+
+    names = ("Oracle", "Wrong K=16", "Coarse K=8", "Latent")
+    values = (
+        benchmark.fixed_truth.prediction_rmse_ppb,
+        benchmark.fixed_wrong.prediction_rmse_ppb,
+        benchmark.fixed_coarse.prediction_rmse_ppb,
+        benchmark.latent.prediction_rmse_ppb,
+    )
+    axes[2].bar(names, values, color=("#4c956c", "#d68c45", "#9c6644", "#287271"))
+    axes[2].set(ylabel="Holdout RMSE", title="Predictive comparison")
+    axes[2].tick_params(axis="x", rotation=25)
+    figure.suptitle("Checkerboard partition diagnostics")
+    figure.savefig(output_directory / "checkerboard_diagnostics.png", dpi=180)
+    plt.close(figure)
+
+    (output_directory / "checkerboard_summary.json").write_text(
+        json.dumps(benchmark.as_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _posterior_mean_grid(
+    case: CheckerboardCase,
+    states: tuple[ProductSpaceState, ...],
+) -> np.ndarray:
+    """Return the posterior mean native-grid scaling field."""
+    if not states:
+        raise ValueError("states must not be empty.")
+    return np.mean(
+        np.stack([_scaling_grid(case.target, state) for state in states]),
+        axis=0,
     )
 
 
@@ -441,14 +565,10 @@ def _posterior_predictive_log_density(
     """Return summed pointwise log density of a sampled Gaussian mixture."""
     standardized = (observations[np.newaxis, :] - predictions) / observation_sd
     component_log_density = (
-        -0.5 * np.square(standardized)
-        - math.log(observation_sd)
-        - 0.5 * math.log(2.0 * math.pi)
+        -0.5 * np.square(standardized) - math.log(observation_sd) - 0.5 * math.log(2.0 * math.pi)
     )
     maximum = component_log_density.max(axis=0)
-    pointwise = maximum + np.log(
-        np.mean(np.exp(component_log_density - maximum[np.newaxis, :]), axis=0)
-    )
+    pointwise = maximum + np.log(np.mean(np.exp(component_log_density - maximum[np.newaxis, :]), axis=0))
     return float(pointwise.sum())
 
 
@@ -461,6 +581,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--maximum-regions", type=int, default=28)
     parser.add_argument("--sampler", choices=("augmented", "collapsed"), default="augmented")
     parser.add_argument("--seed", type=int, default=481)
+    parser.add_argument("--output-directory", type=Path)
     return parser.parse_args()
 
 
@@ -474,6 +595,7 @@ def main() -> None:
         maximum_regions=args.maximum_regions,
         sampler=args.sampler,
         seed=args.seed,
+        output_directory=args.output_directory,
     )
     print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
 

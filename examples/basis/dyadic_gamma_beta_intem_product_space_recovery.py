@@ -11,7 +11,8 @@ The maximum topology is calibrated with the existing controlled Gamma--Beta
 policy and a 50% UK country-total prior uncertainty target.  A conservative
 high-level split of the main inner-land component defines the true field.  The
 command compares latent K/P with the true fixed partition and an underfit fixed
-root partition.  It prints JSON and writes no data products.
+root partition.  Pass ``--output-directory`` to save recovery maps, sampler
+diagnostics, and a machine-readable summary.
 """
 
 from __future__ import annotations
@@ -115,6 +116,16 @@ class IntemGammaBetaRecoveryBenchmark:
     def as_dict(self) -> dict[str, object]:
         """Return a JSON-serializable benchmark report."""
         return asdict(self)
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _IntemGammaBetaFit:
+    """Scalar summary plus posterior arrays needed for visual diagnostics."""
+
+    summary: IntemGammaBetaFitSummary
+    posterior_mean_field: npt.NDArray[np.float64]
+    posterior_mean_holdout: npt.NDArray[np.float64]
+    region_counts: npt.NDArray[np.int64]
 
 
 def build_case(
@@ -242,6 +253,7 @@ def run_benchmark(
     tune: int = 1_000,
     sampling_seed: int = 20260719,
     target_accept: float = 0.95,
+    output_directory: Path | None = None,
 ) -> IntemGammaBetaRecoveryBenchmark:
     """Run latent, true-fixed, and underfit-fixed compound chains.
 
@@ -251,12 +263,14 @@ def run_benchmark(
         tune: NUTS tuning draws per fit.
         sampling_seed: Base seed with deterministic comparator offsets.
         target_accept: NUTS target acceptance probability.
+        output_directory: Optional directory for PNG plots and the JSON
+            benchmark summary.
 
     Returns:
         Complete matched recovery comparison.
     """
     layout = case.partition_layout
-    latent = _sample_fit(
+    latent_result = _sample_fit(
         case,
         name="latent_k_p",
         prior=case.latent_prior,
@@ -268,7 +282,7 @@ def run_benchmark(
         include_swap_moves=True,
         fixed_split_mask=None,
     )
-    fixed_true = _sample_fit(
+    fixed_true_result = _sample_fit(
         case,
         name="fixed_true_partition",
         prior=case.fixed_truth_prior,
@@ -280,7 +294,7 @@ def run_benchmark(
         include_swap_moves=False,
         fixed_split_mask=case.truth_split_mask,
     )
-    fixed_underfit = _sample_fit(
+    fixed_underfit_result = _sample_fit(
         case,
         name="fixed_underfit_roots",
         prior=case.fixed_underfit_prior,
@@ -292,7 +306,10 @@ def run_benchmark(
         include_swap_moves=False,
         fixed_split_mask=layout.initial_split_mask(layout.minimum_regions),
     )
-    return IntemGammaBetaRecoveryBenchmark(
+    latent = latent_result.summary
+    fixed_true = fixed_true_result.summary
+    fixed_underfit = fixed_underfit_result.summary
+    benchmark = IntemGammaBetaRecoveryBenchmark(
         observation_count=case.data.y.size,
         train_count=case.train_indices.size,
         holdout_count=case.holdout_indices.size,
@@ -307,8 +324,7 @@ def run_benchmark(
         fixed_true=fixed_true,
         fixed_underfit=fixed_underfit,
         latent_matches_fixed_true=(
-            latent.holdout_prediction_rmse
-            <= fixed_true.holdout_prediction_rmse + 0.25
+            latent.holdout_prediction_rmse <= fixed_true.holdout_prediction_rmse + 0.25
             and latent.inner_land_field_rmse <= fixed_true.inner_land_field_rmse + 0.1
         ),
         latent_beats_fixed_underfit=(
@@ -316,6 +332,16 @@ def run_benchmark(
             and latent.inner_land_field_rmse < fixed_underfit.inner_land_field_rmse
         ),
     )
+    if output_directory is not None:
+        _write_benchmark_outputs(
+            case,
+            latent=latent_result,
+            fixed_true=fixed_true_result,
+            fixed_underfit=fixed_underfit_result,
+            benchmark=benchmark,
+            output_directory=output_directory,
+        )
+    return benchmark
 
 
 def _sample_fit(
@@ -330,7 +356,7 @@ def _sample_fit(
     target_accept: float,
     include_swap_moves: bool,
     fixed_split_mask: npt.ArrayLike | None,
-) -> IntemGammaBetaFitSummary:
+) -> _IntemGammaBetaFit:
     """Run and summarize one data-backed compound chain.
 
     Args:
@@ -385,16 +411,13 @@ def _sample_fit(
     field_sum = np.zeros(layout.forest.shape, dtype=np.float64)
     mask_keys: set[bytes] = set()
     truth_count = 0
-    for draw_index, (mask, scalings) in enumerate(
-        zip(masks, node_scalings, strict=True)
-    ):
+    for draw_index, (mask, scalings) in enumerate(zip(masks, node_scalings, strict=True)):
         canonical = layout.canonical_split_mask(mask)
         active = layout.active_node_ids(canonical)
         active_indices = np.asarray(active, dtype=np.int64)
         holdout_predictions[draw_index] = (
             case.holdout_target.observation_mean
-            + case.holdout_target.node_design[:, active_indices]
-            @ scalings[active_indices]
+            + case.holdout_target.node_design[:, active_indices] @ scalings[active_indices]
         )
         field_sum += case.coordinate_layout.render_frontier_scalings(active, scalings)
         key = canonical.tobytes()
@@ -403,41 +426,180 @@ def _sample_fit(
 
     posterior_mean_field = field_sum / masks.shape[0]
     posterior_mean_prediction = holdout_predictions.mean(axis=0)
-    land_mask = next(
-        group.mask
-        for group in layout.forest.groups
-        if group.name == _LAND_GROUP_NAME
-    )
+    land_mask = next(group.mask for group in layout.forest.groups if group.name == _LAND_GROUP_NAME)
     region_counts = layout.minimum_regions + masks.sum(axis=1)
     if fixed_split_mask is not None:
         expected_mask = layout.canonical_split_mask(fixed_split_mask)
         if not np.all(masks == expected_mask):
             raise RuntimeError("A fixed-partition comparator changed its split mask.")
-    return IntemGammaBetaFitSummary(
-        name=name,
-        draws=masks.shape[0],
-        tune=tune,
-        mean_k=float(region_counts.mean()),
-        minimum_k=int(region_counts.min()),
-        maximum_k=int(region_counts.max()),
-        truth_partition_draw_frequency=truth_count / masks.shape[0],
-        unique_partitions=len(mask_keys),
-        full_field_rmse=_rmse(posterior_mean_field, case.truth_field),
-        inner_land_field_rmse=_rmse(
-            posterior_mean_field[land_mask],
-            case.truth_field[land_mask],
+    return _IntemGammaBetaFit(
+        summary=IntemGammaBetaFitSummary(
+            name=name,
+            draws=masks.shape[0],
+            tune=tune,
+            mean_k=float(region_counts.mean()),
+            minimum_k=int(region_counts.min()),
+            maximum_k=int(region_counts.max()),
+            truth_partition_draw_frequency=truth_count / masks.shape[0],
+            unique_partitions=len(mask_keys),
+            full_field_rmse=_rmse(posterior_mean_field, case.truth_field),
+            inner_land_field_rmse=_rmse(
+                posterior_mean_field[land_mask],
+                case.truth_field[land_mask],
+            ),
+            holdout_prediction_rmse=_rmse(
+                posterior_mean_prediction,
+                case.holdout_noiseless,
+            ),
+            holdout_log_predictive_density=_independent_normal_log_predictive_density(
+                observations=case.holdout_target.observations,
+                predictions=holdout_predictions,
+                standard_deviations=np.asarray(
+                    case.data.error[case.holdout_indices],
+                    dtype=np.float64,
+                ),
+            ),
+            partition_acceptance_rate=_partition_acceptance_rate(trace),
+            divergence_count=int(np.asarray(trace.sample_stats["diverging"]).sum()),
         ),
-        holdout_prediction_rmse=_rmse(
-            posterior_mean_prediction,
-            case.holdout_noiseless,
-        ),
-        holdout_log_predictive_density=_independent_normal_log_predictive_density(
-            observations=case.holdout_target.observations,
-            predictions=holdout_predictions,
-            standard_deviations=case.data.error[case.holdout_indices],
-        ),
-        partition_acceptance_rate=_partition_acceptance_rate(trace),
-        divergence_count=int(np.asarray(trace.sample_stats["diverging"]).sum()),
+        posterior_mean_field=_frozen(posterior_mean_field),
+        posterior_mean_holdout=_frozen(posterior_mean_prediction),
+        region_counts=_frozen_integer(region_counts),
+    )
+
+
+def _write_benchmark_outputs(
+    case: IntemGammaBetaRecoveryCase,
+    *,
+    latent: _IntemGammaBetaFit,
+    fixed_true: _IntemGammaBetaFit,
+    fixed_underfit: _IntemGammaBetaFit,
+    benchmark: IntemGammaBetaRecoveryBenchmark,
+    output_directory: Path,
+) -> None:
+    """Write recovery maps, posterior diagnostics, and scalar JSON results.
+
+    Args:
+        case: Shared synthetic TAC/MHD recovery case.
+        latent: Latent K/P posterior result.
+        fixed_true: Oracle fixed-partition posterior result.
+        fixed_underfit: Root-only fixed-partition posterior result.
+        benchmark: Scalar comparison summary.
+        output_directory: Destination directory, created when needed.
+    """
+    import matplotlib.pyplot as plt
+
+    output_directory.mkdir(parents=True, exist_ok=True)
+    latitude = case.data.lat
+    longitude = case.data.lon
+    sensitivity_weight = np.mean(
+        np.abs(case.data.G[case.train_indices]),
+        axis=0,
+    )
+    positive_weight = sensitivity_weight[sensitivity_weight > 0.0]
+    if positive_weight.size == 0:
+        raise ValueError("Expected at least one positive training sensitivity.")
+    weight_floor = float(np.quantile(positive_weight, 0.01))
+    field_values = (
+        case.truth_field,
+        latent.posterior_mean_field,
+        fixed_true.posterior_mean_field,
+        fixed_underfit.posterior_mean_field,
+    )
+    field_min = min(float(np.min(values)) for values in field_values)
+    field_max = max(float(np.max(values)) for values in field_values)
+
+    figure, axes = plt.subplots(2, 3, figsize=(13.0, 7.6), constrained_layout=True)
+    weight_image = axes[0, 0].pcolormesh(
+        longitude,
+        latitude,
+        np.log10(np.maximum(sensitivity_weight, weight_floor)),
+        shading="auto",
+        cmap="magma",
+    )
+    axes[0, 0].set_title("Mean absolute training sensitivity (1% floor)")
+    figure.colorbar(weight_image, ax=axes[0, 0], label="log10 sensitivity")
+
+    field_panels = (
+        (axes[0, 1], "Planted truth", case.truth_field),
+        (axes[0, 2], "Latent K and P", latent.posterior_mean_field),
+        (axes[1, 0], "Fixed planted partition", fixed_true.posterior_mean_field),
+        (axes[1, 1], "Fixed root-only partition", fixed_underfit.posterior_mean_field),
+    )
+    field_image = None
+    for axis, title, values in field_panels:
+        field_image = axis.pcolormesh(
+            longitude,
+            latitude,
+            values,
+            shading="auto",
+            cmap="viridis",
+            vmin=field_min,
+            vmax=field_max,
+        )
+        axis.set_title(title)
+    if field_image is None:
+        raise RuntimeError("Recovery plot construction did not create a field scale.")
+    figure.colorbar(
+        field_image,
+        ax=(axes[0, 1], axes[0, 2], axes[1, 0], axes[1, 1]),
+        location="bottom",
+        shrink=0.8,
+        pad=0.08,
+        label="Scaling factor",
+    )
+
+    error = latent.posterior_mean_field - case.truth_field
+    error_limit = max(0.05, float(np.max(np.abs(error))))
+    error_image = axes[1, 2].pcolormesh(
+        longitude,
+        latitude,
+        error,
+        shading="auto",
+        cmap="RdBu_r",
+        vmin=-error_limit,
+        vmax=error_limit,
+    )
+    axes[1, 2].set_title("Latent posterior mean minus truth")
+    figure.colorbar(error_image, ax=axes[1, 2], label="Scaling-factor error")
+    for axis in axes.flat:
+        axis.set_xlabel("Longitude")
+        axis.set_ylabel("Latitude")
+    figure.suptitle("TAC/MHD InTEM Gamma-Beta product-space recovery")
+    figure.savefig(output_directory / "gamma_beta_intem_recovery_maps.png", dpi=180)
+    plt.close(figure)
+
+    figure, axes = plt.subplots(1, 3, figsize=(13.0, 3.8), constrained_layout=True)
+    k_values, k_frequencies = np.unique(latent.region_counts, return_counts=True)
+    axes[0].bar(k_values, k_frequencies / k_frequencies.sum(), color="#287271")
+    axes[0].axvline(benchmark.truth_k, color="#c44536", linestyle="--", label=f"Truth K={benchmark.truth_k}")
+    axes[0].set(xlabel="Retained K", ylabel="Posterior frequency", title="Latent region count")
+    axes[0].legend(frameon=False)
+
+    order = np.argsort(case.holdout_noiseless)
+    axes[1].plot(case.holdout_noiseless[order], color="#222222", label="Noiseless truth")
+    axes[1].plot(latent.posterior_mean_holdout[order], color="#287271", label="Latent")
+    axes[1].plot(fixed_true.posterior_mean_holdout[order], color="#4c956c", label="Fixed planted")
+    axes[1].plot(fixed_underfit.posterior_mean_holdout[order], color="#9c6644", label="Fixed roots")
+    axes[1].set(xlabel="Holdout row (sorted)", ylabel="Signal", title="Holdout prediction")
+    axes[1].legend(frameon=False)
+
+    names = ("Latent", "Fixed planted", "Fixed roots")
+    values = (
+        latent.summary.inner_land_field_rmse,
+        fixed_true.summary.inner_land_field_rmse,
+        fixed_underfit.summary.inner_land_field_rmse,
+    )
+    axes[2].bar(names, values, color=("#287271", "#4c956c", "#9c6644"))
+    axes[2].set(ylabel="Inner-land RMSE", title="Field recovery")
+    axes[2].tick_params(axis="x", rotation=25)
+    figure.suptitle("Gamma-Beta product-space diagnostics")
+    figure.savefig(output_directory / "gamma_beta_intem_diagnostics.png", dpi=180)
+    plt.close(figure)
+
+    (output_directory / "gamma_beta_intem_summary.json").write_text(
+        json.dumps(benchmark.as_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
 
 
@@ -475,22 +637,13 @@ def _independent_normal_log_predictive_density(
         - 0.5 * math.log(2.0 * math.pi)
     )
     maxima = draw_log_density.max(axis=0)
-    return float(
-        np.sum(
-            maxima
-            + np.log(np.mean(np.exp(draw_log_density - maxima), axis=0))
-        )
-    )
+    return float(np.sum(maxima + np.log(np.mean(np.exp(draw_log_density - maxima), axis=0))))
 
 
 def _partition_acceptance_rate(trace: Any) -> float:
     """Extract the single custom structural acceptance statistic."""
     names = tuple(str(name) for name in trace.sample_stats.data_vars)
-    accepted_names = tuple(
-        name
-        for name in names
-        if name == "accepted" or name.endswith("_accepted")
-    )
+    accepted_names = tuple(name for name in names if name == "accepted" or name.endswith("_accepted"))
     if len(accepted_names) != 1:
         raise ValueError(f"Expected one accepted statistic, found {accepted_names!r}.")
     return float(np.asarray(trace.sample_stats[accepted_names[0]]).mean())
@@ -530,6 +683,7 @@ def main(arguments: list[str] | None = None) -> int:
     parser.add_argument("--k-continuation-probability", type=float, default=0.5)
     parser.add_argument("--sampling-seed", type=int, default=20260719)
     parser.add_argument("--target-accept", type=float, default=0.95)
+    parser.add_argument("--output-directory", type=Path)
     parser.add_argument("--indent", type=int, default=2)
     parsed = parser.parse_args(arguments)
     benchmark = run_benchmark(
@@ -543,6 +697,7 @@ def main(arguments: list[str] | None = None) -> int:
         tune=parsed.tune,
         sampling_seed=parsed.sampling_seed,
         target_accept=parsed.target_accept,
+        output_directory=parsed.output_directory,
     )
     print(json.dumps(benchmark.as_dict(), indent=parsed.indent, sort_keys=True))
     return 0

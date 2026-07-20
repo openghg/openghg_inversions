@@ -1967,9 +1967,9 @@ poor local partition traversal.
     run with split/merge/swap moves visits 12 partitions over K=12--15, with
     the planted partition in 0.480 of retained draws. Candidate allocation and
     split priority use only the 32 training sensitivity rows; the 15 holdout
-    rows are reserved for evaluation. The latent fit
-    K=12 partition, has no divergences, matches the fixed true partition on
-    held-out prediction, and beats fixed underfit roots. A uniform K prior was
+    rows are reserved for evaluation. The latent fit assigns 0.480 of retained
+    draws to the planted K=12 partition, has no divergences, matches the fixed
+    true partition on held-out prediction, and beats fixed underfit roots. A uniform K prior was
     too permissive at this observation count, demonstrating that complexity
     prior design is substantive rather than sampler tuning. See
     `docs/reports/dyadic_gamma_beta_intem_product_space_recovery.md`.
@@ -1994,6 +1994,13 @@ poor local partition traversal.
     now use normalized point-mass partition potentials and assert their retained
     masks. Single-chain truth-P output is named retained-draw frequency rather
     than posterior probability.
+14. **Added replayable visual diagnostics:** both the Lunt-inspired 8 by 8
+    Gaussian checkerboard and the TAC/MHD InTEM Gamma-Beta benchmark now write
+    posterior-mean recovery maps, K distributions, holdout comparisons, scalar
+    JSON summaries, and regression-tested PNG artifacts. The checkerboard plot
+    makes its over-refinement near K=28 explicit; the InTEM plot provides the
+    training-sensitivity context and separates latent, planted-fixed, and
+    root-only field recovery.
 
 ### Phase 4: scale-up and alternatives
 

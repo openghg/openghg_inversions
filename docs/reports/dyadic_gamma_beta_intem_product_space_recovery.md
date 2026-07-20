@@ -43,6 +43,18 @@ decisively beating the underfit fixed partition. It traverses multiple K and P
 states rather than remaining at the planted partition, and has no NUTS
 divergences.
 
+## Visual diagnostics
+
+The map summary includes the training sensitivity context, planted scaling
+field, three posterior means, and latent-minus-truth error:
+
+![Gamma-Beta InTEM recovery maps](../plans/figures/dyadic_gamma_beta_intem_product_space_recovery/gamma_beta_intem_recovery_maps.png)
+
+The companion diagnostic shows the retained K distribution, sorted holdout
+predictions, and inner-land field RMSE:
+
+![Gamma-Beta InTEM diagnostics](../plans/figures/dyadic_gamma_beta_intem_product_space_recovery/gamma_beta_intem_diagnostics.png)
+
 The latent full-grid field RMSE is 0.0790, below the fixed true value 0.0974.
 This aggregate includes large outer areas whose true scaling is one;
 the inner-land RMSE is the more discriminating spatial metric.
@@ -92,7 +104,9 @@ HOME=/tmp MPLCONFIGDIR=/tmp .venv/bin/python \
   --draws 500 \
   --tune 500 \
   --target-accept 0.95 \
-  --k-continuation-probability 0.5
+  --k-continuation-probability 0.5 \
+  --output-directory \
+  docs/plans/figures/dyadic_gamma_beta_intem_product_space_recovery
 ```
 
 The declared run completed in about 25 seconds wall time on the local machine;

@@ -91,16 +91,13 @@ def test_case_keeps_outer_groups_fixed_and_inner_groups_refinable(recovery_case:
         if group.name.startswith("intem_outer_"):
             assert not node.child_ids
     assert any(
-        node.child_ids and forest.groups[node.group_index].name == "inner_land"
-        for node in forest.nodes
+        node.child_ids and forest.groups[node.group_index].name == "inner_land" for node in forest.nodes
     )
     assert any(
-        forest.groups[forest.nodes[root_id].group_index].name == "inner_ocean"
-        for root_id in forest.root_ids
+        forest.groups[forest.nodes[root_id].group_index].name == "inner_ocean" for root_id in forest.root_ids
     )
     assert not any(
-        node.child_ids and forest.groups[node.group_index].name == "inner_ocean"
-        for node in forest.nodes
+        node.child_ids and forest.groups[node.group_index].name == "inner_ocean" for node in forest.nodes
     )
 
 
@@ -187,14 +184,16 @@ def test_250_region_candidate_forest_constructs(
 def test_short_latent_chain_runs_on_data_backed_forest(
     example_module: ModuleType,
     recovery_case: Any,
+    tmp_path: Path,
 ) -> None:
-    """A short realistic chain should construct, move, and retain finite diagnostics."""
+    """A short realistic chain should retain diagnostics and write plots."""
     benchmark = example_module.run_benchmark(
         recovery_case,
         draws=100,
         tune=100,
         sampling_seed=20260719,
         target_accept=0.95,
+        output_directory=tmp_path,
     )
 
     assert benchmark.observation_count == 47
@@ -208,3 +207,9 @@ def test_short_latent_chain_runs_on_data_backed_forest(
     assert benchmark.fixed_true.truth_partition_draw_frequency == 1.0
     assert benchmark.fixed_underfit.unique_partitions == 1
     assert benchmark.fixed_underfit.truth_partition_draw_frequency == 0.0
+    for name in (
+        "gamma_beta_intem_recovery_maps.png",
+        "gamma_beta_intem_diagnostics.png",
+        "gamma_beta_intem_summary.json",
+    ):
+        assert (tmp_path / name).stat().st_size > 0

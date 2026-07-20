@@ -64,9 +64,17 @@ def test_checkerboard_case_uses_disjoint_train_and_holdout_rows(benchmark_module
     assert case.wrong_partition != case.truth_partition
 
 
-def test_short_benchmark_exercises_latent_k_and_p(benchmark_module: Any) -> None:
-    """A short smoke run should move away from the fixed starting partition."""
-    result = benchmark_module.run_benchmark(draws=30, warmup=20, seed=19)
+def test_short_benchmark_exercises_latent_k_and_p(
+    benchmark_module: Any,
+    tmp_path: Path,
+) -> None:
+    """A short smoke run should move and write reproducible plot artifacts."""
+    result = benchmark_module.run_benchmark(
+        draws=30,
+        warmup=20,
+        seed=19,
+        output_directory=tmp_path,
+    )
 
     assert result.fixed_truth.mean_regions == 16.0
     assert result.fixed_wrong.mean_regions == 16.0
@@ -78,6 +86,12 @@ def test_short_benchmark_exercises_latent_k_and_p(benchmark_module: Any) -> None
     assert result.latent_split_acceptance_rate is not None
     assert result.latent_merge_acceptance_rate is not None
     assert result.latent_warmup_acceptance_rate is not None
+    for name in (
+        "checkerboard_recovery.png",
+        "checkerboard_diagnostics.png",
+        "checkerboard_summary.json",
+    ):
+        assert (tmp_path / name).stat().st_size > 0
 
     collapsed = benchmark_module.run_benchmark(
         draws=30,
