@@ -17,6 +17,7 @@ from openghg_inversions.postprocessing.countries import Countries
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_paris_outputs import (
     PARIS_LATEST_COUNTRIES,
+    _latest_paris_countries,
     _paris_sector_name_by_suffix,
     paris_flux_output,
 )
@@ -70,7 +71,7 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
     fake_multisector_basis_functions_matching_country_grid: Callable[..., BasisFunctions],
     multisector_postprocessing_inv_out: Callable[..., InversionOutput],
 ) -> None:
-    """Latest multisector PARIS output reuses one lazy country trace with population covariance."""
+    """Latest multisector PARIS output projects countries before population covariance."""
     inv_out = multisector_postprocessing_inv_out(
         fake_multisector_basis_functions_matching_country_grid(
             europe_country_file,
@@ -122,6 +123,7 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
     flux_outputs = paris_flux_output(
         inv_out,
         country_file=europe_country_file,
+        country_selections=PARIS_LATEST_COUNTRIES,
         inversion_grid=True,
         template_version="latest",
     )
@@ -301,6 +303,7 @@ def test_latest_paris_flux_output_renames_overlapping_sector_suffixes_exactly(
     flux_outputs = paris_flux_output(
         inv_out,
         country_file=europe_country_file,
+        country_selections=PARIS_LATEST_COUNTRIES,
         inversion_grid=False,
         template_version="latest",
     )
@@ -327,3 +330,41 @@ def test_latest_paris_flux_output_renames_overlapping_sector_suffixes_exactly(
             rtol=1e-6,
         )
     assert np.isfinite(flux_outputs["covariance_flux_sectors_posterior_country"].values).all()
+
+
+def test_latest_paris_country_selection_defaults_to_domain_file(
+    eastasia_country_file: Path,
+) -> None:
+    """Latest PARIS outputs do not inject the canonical European country list."""
+    countries = _latest_paris_countries(
+        country_file=eastasia_country_file,
+        domain="EASTASIA",
+        country_selections=None,
+    )
+    expected = Countries.from_file(
+        country_file=eastasia_country_file,
+        domain="EASTASIA",
+        country_code="alpha3",
+    )
+
+    assert tuple(countries.matrix.country.values) == tuple(expected.matrix.country.values)
+    assert set(countries.matrix.country.values) != set(PARIS_LATEST_COUNTRIES)
+
+
+def test_latest_paris_country_selection_normalizes_names_to_alpha3(
+    europe_country_file: Path,
+) -> None:
+    """Latest PARIS country names select finite masks with alpha-3 labels."""
+    countries = _latest_paris_countries(
+        country_file=europe_country_file,
+        domain="EUROPE",
+        country_selections=["France", "United Kingdom"],
+    )
+    expected = Countries.from_file(
+        country_file=europe_country_file,
+        domain="EUROPE",
+        country_code="alpha3",
+    ).matrix.sel(country=["FRA", "GBR"])
+
+    assert tuple(countries.matrix.country.values) == ("FRA", "GBR")
+    xr.testing.assert_identical(countries.matrix, expected)

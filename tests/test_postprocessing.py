@@ -393,9 +393,25 @@ def test_fixedbasisMCMC_paris_postprocessing_receives_modern_output(monkeypatch,
     def fake_make_paris_outputs(inv_out, **kwargs):
         captured["inv_out"] = inv_out
         captured["paris_kwargs"] = kwargs
+        concentration = xr.Dataset(
+            {
+                "Yobs": ("time", np.array([1900.0])),
+                "time_bnds": (("time", "nbnds"), np.array([[0.0, 1.0]])),
+            },
+            coords={"time": [0.5], "nbnds": [0, 1]},
+        )
+        concentration.time.attrs = {
+            "bounds": "time_bnds",
+            "units": "days since 1970-01-01 00:00:00",
+            "calendar": "proleptic_gregorian",
+        }
+        concentration.time_bnds.attrs = {
+            "units": "days since 1970-01-01 00:00:00",
+            "calendar": "proleptic_gregorian",
+        }
         return (
             xr.Dataset({"flux_total_posterior": ("time", np.array([1.0]))}, coords={"time": [0.0]}),
-            xr.Dataset({"Yobs": ("time", np.array([1900.0]))}, coords={"time": [0.0]}),
+            concentration,
         )
 
     monkeypatch.setattr(
@@ -424,6 +440,10 @@ def test_fixedbasisMCMC_paris_postprocessing_receives_modern_output(monkeypatch,
     assert captured["inv_out"].basis_functions is prepared.basis_objects["emissions"]
     assert isinstance(result, xr.Dataset)
     assert "Yobs" in result
+    concentration_path = next(tmp_path.glob("*_conc_*.nc"))
+    with xr.open_dataset(concentration_path, decode_cf=False) as saved_concentration:
+        assert saved_concentration.time_bnds.attrs["units"] == "days since 1970-01-01 00:00:00"
+        assert saved_concentration.time_bnds.attrs["calendar"] == "proleptic_gregorian"
 
 
 def test_fixedbasisMCMC_basic_postprocessing_receives_modern_output(monkeypatch, tmp_path):

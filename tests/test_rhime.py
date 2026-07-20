@@ -52,6 +52,7 @@ from openghg_inversions.postprocessing._basis_products import (
     BASIS_RECONSTRUCTION_PATH_ATTR,
 )
 from openghg_inversions.postprocessing.make_outputs import observation_inputs_for_outputs
+from openghg_inversions.postprocessing.make_paris_outputs import PARIS_LATEST_COUNTRIES
 from openghg_inversions.rhime import (
     RhimeModelSpec,
     RhimeOutputSpec,
@@ -2220,6 +2221,7 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(
             "template_version": "latest",
             "inversion_grid": False,
             "flux_frequency": "yearly",
+            "country_selections": list(PARIS_LATEST_COUNTRIES),
         },
     )
     run_spec = RhimeRunSpec(
@@ -2755,7 +2757,6 @@ def test_paris_output_processes_modern_output(europe_country_file: Path) -> None
 def test_latest_paris_output_processes_modern_output(europe_country_file: Path, tmp_path: Path) -> None:
     """Explicit latest PARIS output uses the new concentration and flux templates."""
     from openghg_inversions.postprocessing.make_paris_outputs import (
-        PARIS_LATEST_COUNTRIES,
         make_paris_outputs,
     )
 
@@ -2797,6 +2798,15 @@ def test_latest_paris_output_processes_modern_output(europe_country_file: Path, 
         flux_outputs.sizes["time"],
         flux_outputs.sizes["country"],
         flux_outputs.sizes["country"],
+    )
+    np.testing.assert_allclose(
+        np.diagonal(
+            flux_outputs["covariance_flux_total_posterior_country"].values,
+            axis1=1,
+            axis2=2,
+        ),
+        flux_outputs["stdev_flux_total_posterior_country"].values ** 2,
+        rtol=1e-6,
     )
     assert "country_flux_total_posterior" not in flux_outputs
     assert flux_outputs["flux_total_posterior"].dtype == np.dtype("float32")
