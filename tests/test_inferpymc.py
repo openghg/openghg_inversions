@@ -99,6 +99,17 @@ def test_build_inferpymc_model_requires_legacy_sigma_index(
         build_inferpymc_model(inv_inputs.drop_vars("sigma_freq_index"), **model_args)
 
 
+def test_build_inferpymc_model_rejects_modern_fixed_baseline(
+    inv_inputs: xr.Dataset,
+    model_args: dict,
+) -> None:
+    """Legacy HBMCMC does not gain the modern fixed-baseline feature."""
+    with_fixed_baseline = inv_inputs.assign(fixed_baseline=xr.zeros_like(inv_inputs["mf"]))
+
+    with pytest.raises(ValueError, match="legacy HBMCMC.*does not support fixed_baseline"):
+        build_inferpymc_model(with_fixed_baseline, **model_args)
+
+
 def test_sample_returns_burned_modern_result(
     inv_inputs: xr.Dataset, model_args: dict, sample_args: dict
 ) -> None:

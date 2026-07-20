@@ -60,6 +60,23 @@
   [#403](https://github.com/openghg/openghg_inversions/issues/403),
   [PR #529](https://github.com/openghg/openghg_inversions/pull/529)
 
+- Added a source-neutral xarray adapter that creates retained-basis RHIME
+  prepared inputs from direct-child DataTrees and ordered per-site mappings.
+  It projects cached footprint-times-flux fields before
+  gathering unequal per-site time axes, excludes large caches from canonical
+  inputs, and supports independent fixed and sampled baseline contributions
+  through the prepared-input runner and modern/PARIS concentration outputs.
+  Multisector inputs require source-compatible retained prior flux and basis
+  metadata rather than silently broadcasting a total flux across sectors;
+  source-specific ragged states retain their gathered
+  ``(source, region_in_source)`` layout. Direct and dense Datasets, padded
+  arrays, pre-stacked ``nmeasure`` layouts, unit conversion, source-label
+  coercion are intentionally deferred until a concrete consumer establishes
+  their semantics; canonical prepared artifacts should instead be reopened
+  with ``RhimePreparedInputs.load``. Fixed baselines are deliberately
+  unsupported by the HBMCMC compatibility model/output and require modern
+  RHIME execution with modern or PARIS output.
+
 - Reset retained posterior draw labels after burn-in before attaching predictive
   groups in both modern RHIME and fixed-basis sampling, and preserve the
   discarded burn count through trace and `InversionOutput` round trips.

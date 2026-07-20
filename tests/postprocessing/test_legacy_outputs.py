@@ -405,3 +405,15 @@ def test_make_legacy_hbmcmc_output_falls_back_to_inv_inputs_for_sensitivities(
     assert output["bctrace"].dtype == np.dtype("float32")
     assert output["YaprioriBC"].dtype == np.dtype("float32")
     assert "YaprioriBC" in output
+
+
+def test_make_legacy_hbmcmc_output_rejects_fixed_baseline() -> None:
+    """Legacy output rejects fixed baselines instead of emitting a partial product."""
+    inv_out = _legacy_inv_out(model_data=False)
+    inv_out.inv_inputs["fixed_baseline"] = ("nmeasure", np.full(2, 0.25))
+
+    with pytest.raises(
+        ValueError,
+        match="output_format='legacy' does not support the fixed_baseline input",
+    ):
+        legacy_outputs.make_legacy_hbmcmc_output(inv_out)

@@ -320,12 +320,16 @@ def add_inferpymc_likelihood_component(
     """Add the inferpymc observation model.
 
     ``mu`` is the non-baseline forward-model contribution. ``mu_bc`` is the
-    baseline contribution, usually ``H_bc @ bc``, plus offset if applicable.
+    sampled baseline contribution, usually ``H_bc @ bc``. Canonical input
+    ``fixed_baseline`` is an optional fixed observation-aligned contribution.
 
     Args:
-        data: Canonical inferpymc input dataset.
+        data: Canonical inferpymc input dataset. When present,
+            ``fixed_baseline`` must have exactly ``output_dim``, use the same
+            concentration units as ``mf``, and is added directly to the
+            likelihood mean.
         mu: Non-baseline forward-model contribution.
-        mu_bc: Baseline contribution, if present.
+        mu_bc: Sampled baseline contribution, if present.
         sigprior: Prior specification for sigma.
         sigma_alignment: Backend-neutral site and period alignment for sigma.
         offset: Optional aligned offset term.
@@ -338,6 +342,10 @@ def add_inferpymc_likelihood_component(
 
     Returns:
         The ``epsilon`` deterministic variable used by the observation model.
+
+    Raises:
+        ValueError: If an optional ``fixed_baseline`` is not exactly aligned
+            on ``output_dim``.
     """
     y_data = add_model_data(data["mf"].transpose(output_dim), "Y")
     error_data = add_model_data(data["mf_error"].transpose(output_dim), "error")
@@ -348,9 +356,18 @@ def add_inferpymc_likelihood_component(
         prior_args=sigprior,
     )
 
+    fixed_baseline = (
+        add_model_data(data["fixed_baseline"].transpose(output_dim), "fixed_baseline")
+        if "fixed_baseline" in data
+        else None
+    )
+
     if pollution_events_from_obs is True:
+        supplied_baseline = fixed_baseline
         if mu_bc is not None:
-            pollution_event = pt.abs(y_data - mu_bc)
+            supplied_baseline = mu_bc if supplied_baseline is None else supplied_baseline + mu_bc
+        if supplied_baseline is not None:
+            pollution_event = pt.abs(y_data - supplied_baseline)
         else:
             pollution_event = pt.abs(y_data) + 1e-6 * pt.mean(y_data)
     else:
@@ -372,6 +389,8 @@ def add_inferpymc_likelihood_component(
     # TODO: this calculation should probably happen separately
     # e.g. using a add_linear_component_sum function.
     total_mu = mu
+    if fixed_baseline is not None:
+        total_mu = total_mu + fixed_baseline
     if mu_bc is not None:
         total_mu = total_mu + mu_bc
     if offset is not None:

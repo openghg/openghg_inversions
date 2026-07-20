@@ -1,4 +1,15 @@
-"""Legacy-format output adapters built on top of postprocessing helpers."""
+"""Build legacy HBMCMC products from modern inversion output.
+
+The public :func:`make_legacy_hbmcmc_output` adapter converts a single-sector
+:class:`~openghg_inversions.postprocessing.inversion_output.InversionOutput`
+with domain metadata into an in-memory Dataset using historical variable
+names, first-chain trace conventions, and float32 product values. It reads an
+optional country-definition file but does not serialize the result.
+
+Sampled boundary conditions are included when ``use_bc`` is true. Modern fixed
+baselines are deliberately unsupported by this compatibility adapter and are
+rejected at its boundary.
+"""
 
 from __future__ import annotations
 
@@ -664,19 +675,31 @@ def make_legacy_hbmcmc_output(
 ) -> xr.Dataset:
     """Create a legacy-format hbmcmc output dataset from modern inversion output.
 
-    TODO: needs to handle offsets
+    The input must describe one sector and include domain metadata. This
+    compatibility adapter deliberately does not support the modern
+    ``fixed_baseline`` input; use a modern or PARIS output instead. When
+    ``use_bc`` is true, sampled boundary-condition trace, sensitivity, and
+    concentration variables are included.
 
     Args:
         inv_out: Inversion outputs container.
         country_file: Optional path to country definition file.
-        use_bc: Whether BC variables should be included.
+        use_bc: Whether boundary-condition variables should be included.
 
     Returns:
-        Legacy-style ``xr.Dataset`` matching key variable names/attrs from
-        ``inferpymc_postprocessouts``.
+        In-memory legacy-style Dataset matching key variable names and
+        attributes from ``inferpymc_postprocessouts``.
 
+    Raises:
+        ValueError: If the inversion uses a fixed baseline, is multisector,
+            lacks domain metadata, or has invalid trace/input alignment.
     """
     domain = _require_legacy_domain(inv_out)
+    if "fixed_baseline" in inv_out.inv_inputs:
+        raise ValueError(
+            "output_format='legacy' does not support the fixed_baseline input; "
+            "use a modern output format instead."
+        )
     legacy_fields = _legacy_postprocess_fields(inv_out, use_bc=use_bc)
     Hx = legacy_fields["Hx"]
     Hbc = legacy_fields.get("Hbc")

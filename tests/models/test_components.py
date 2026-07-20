@@ -296,6 +296,40 @@ def test_likelihood_pollution_events_from_obs_can_run_without_boundary_condition
     assert "y" in model.named_vars
 
 
+def test_obs_derived_pollution_events_remove_fixed_and_sampled_baselines() -> None:
+    """Obs-derived scaling uses enhancement above every supplied baseline term."""
+    for sampled_baseline in (False, True):
+        ds = _likelihood_dataset().copy()
+        ds["fixed_baseline"] = ("nmeasure", np.full(ds.sizes["nmeasure"], 0.25))
+        sampled_values = np.full(ds.sizes["nmeasure"], 0.5)
+
+        with pm.Model(coords={"nmeasure": np.arange(4)}) as model:
+            attach_coord_registry(model, CoordRegistry())
+            mu = pm.Data("mu_input", np.zeros(4), dims="nmeasure")
+            mu_bc = pm.Data("mu_bc_input", sampled_values, dims="nmeasure") if sampled_baseline else None
+            add_inferpymc_likelihood_component(
+                ds,
+                mu=mu,
+                mu_bc=mu_bc,
+                sigprior={"pdf": "uniform", "lower": 0.5, "upper": 1.5},
+                pollution_events_from_obs=True,
+                sigma_alignment=SigmaAlignment.from_frequency(
+                    ds["site_indicator"],
+                    frequency=None,
+                    per_site=False,
+                ),
+                power=2.0,
+            )
+
+        epsilon, sigma = model.compile_fn([model.named_vars["epsilon"], model.named_vars["sigma"]])({})
+        supplied_baseline = 0.25 + (0.5 if sampled_baseline else 0.0)
+        sigma_value = np.asarray(sigma).squeeze()
+        expected = np.sqrt(
+            ds["mf_error"].values ** 2 + ((np.abs(ds["mf"].values - supplied_baseline) * sigma_value) ** 2)
+        )
+        np.testing.assert_allclose(epsilon, expected)
+
+
 def test_likelihood_samples_prior_predictive_with_shared_sigma_and_registered_site_indicator() -> None:
     """Check shared sigma indexing still works after offsets register site data."""
     ds = _likelihood_dataset()

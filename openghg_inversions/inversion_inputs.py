@@ -266,13 +266,15 @@ def transform_bc(
 
 # INVERSION INPUTS PIPELINE
 def _drop_nan_and_compute(
-    ds: xr.Dataset, drop_nan_from: Iterable[str] = ("H", "H_bc", "mf", "mf_error")
+    ds: xr.Dataset,
+    drop_nan_from: Iterable[str] = ("H", "H_bc", "fixed_baseline", "mf", "mf_error"),
 ) -> xr.Dataset:
     """Drop NaNs in required inversion variables and materialize core variables.
 
     This centralizes the dataset cleanup that was previously duplicated in
     hbmcmc.make_inv_inputs. It:
-      - drops nmeasure rows with NaNs in required variables (H, H_bc, mf, mf_error)
+      - drops nmeasure rows with NaNs in selected inversion variables when
+        present (including H, H_bc, fixed_baseline, mf, and mf_error)
       - triggers computation for a selected set of variables so returned dataset
         is ready for immediate consumption (avoids repeated dask computations)
 
@@ -285,7 +287,7 @@ def _drop_nan_and_compute(
         xarray.Dataset with NaNs dropped along `nmeasure` based on selected variables,
             and with certain variables computed.
     """
-    # Variables that must not contain NaNs along the nmeasure dim
+    # Selected variables, when present, must not contain NaNs along nmeasure.
     drop_subset: list[str] = [v for v in drop_nan_from if v in ds]
     if drop_subset:
         ds = ds.dropna(dim="nmeasure", how="any", subset=drop_subset)
@@ -294,6 +296,7 @@ def _drop_nan_and_compute(
     to_compute: list[str] = [
         "H",
         "H_bc",
+        "fixed_baseline",
         "mf",
         "mf_error",
         "mf_repeatability",
@@ -329,6 +332,8 @@ def _check_required_inv_input_vars(
 
     if any("H_bc" in fp_data[site] for site in sites) and "H_bc" not in ds:
         missing_required.append("H_bc")
+    if any("fixed_baseline" in fp_data[site] for site in sites) and "fixed_baseline" not in ds:
+        missing_required.append("fixed_baseline")
 
     if missing_required:
         raise ValueError(
@@ -384,6 +389,7 @@ def make_inv_inputs(
     min_error: str | dict[str, float] | int | float = 0.0,
     min_error_per_site: bool = True,
     start_date: DatetimeLike | None = None,
+    missing_data_vars: Literal["error", "drop"] = "drop",
 ) -> xr.Dataset:
     """Create backend-neutral observation-aligned inversion inputs.
 
@@ -402,6 +408,10 @@ def make_inv_inputs(
         min_error_per_site: Whether a calculated minimum error varies by site.
         start_date: Optional anchor for fixed-duration boundary-condition
             frequencies.
+        missing_data_vars: Policy for observation-aligned variables that are
+            not present at every site. ``"drop"`` preserves the established
+            OpenGHG/legacy behavior; ``"error"`` prevents extension fields
+            from being discarded.
 
     Returns:
         Canonical inversion inputs aligned along ``nmeasure``.
@@ -409,7 +419,8 @@ def make_inv_inputs(
     Raises:
         ValueError: If no sites can be inferred, the explicit selection is
             empty, a requested site is missing, required input variables are
-            missing, or minimum-error configuration is invalid.
+            missing, the selected missing-variable policy is violated, or
+            minimum-error configuration is invalid.
     """
     if sites is None:
         sites = [key for key in fp_data if not key.startswith(".")]
@@ -435,7 +446,7 @@ def make_inv_inputs(
             key_dim="site",
             ragged_dim="time",
             stack_dim="nmeasure",
-            missing_data_vars="drop",
+            missing_data_vars=missing_data_vars,
             join="exact",
         )
     except xr.AlignmentError as exc:
