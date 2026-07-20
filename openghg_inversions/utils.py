@@ -11,7 +11,7 @@ Many functions in this submodule originated in the ACRG code base (in `acrg.name
 import re
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -160,6 +160,51 @@ def ncdf_encoding(ds_in: xr.Dataset) -> dict:
     }
 
     return encoding
+
+
+def write_netcdf_preserving_bounds_attrs(
+    ds: xr.Dataset,
+    path: str | Path,
+    *,
+    unlimited_dims: list[str] | None = None,
+) -> None:
+    """Write a compressed NetCDF while preserving explicit bounds metadata.
+
+    Xarray's CF encoder removes ``units`` and ``calendar`` from a bounds
+    variable when those attributes match its coordinate. Some external schemas,
+    including the latest PARIS CDL templates, require the attributes on both
+    variables, so they are appended after the normal write. The initial write
+    overwrites ``path``; backend and filesystem exceptions propagate.
+
+    Args:
+        ds: Dataset carrying the required bounds attributes.
+        path: Destination NetCDF path.
+        unlimited_dims: Optional dimensions to encode as unlimited.
+    """
+    ds.to_netcdf(
+        path,
+        unlimited_dims=unlimited_dims,
+        mode="w",
+        encoding=ncdf_encoding(ds),
+    )
+
+    bounds_attrs: dict[str, dict[str, Any]] = {}
+    for variable in ds.variables.values():
+        bounds_name = variable.attrs.get("bounds")
+        if not isinstance(bounds_name, str) or bounds_name not in ds:
+            continue
+        attrs = {
+            name: ds[bounds_name].attrs[name]
+            for name in ("units", "calendar")
+            if name in ds[bounds_name].attrs
+        }
+        if attrs:
+            bounds_attrs[bounds_name] = attrs
+
+    for bounds_name, attrs in bounds_attrs.items():
+        bounds = ds[bounds_name]
+        metadata_patch = xr.Dataset({bounds_name: (bounds.dims, bounds.data, attrs)})
+        metadata_patch.to_netcdf(path, mode="a")
 
 
 def get_country_file_path(country_file: str | Path | None = None, domain: str | None = None):

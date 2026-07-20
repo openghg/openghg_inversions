@@ -1,13 +1,21 @@
-"""Functions for computing statistics on datasets."""
+"""Functions for computing statistics on datasets.
+
+Statistics that call ``_to_dense_dataset`` need dense-compatible chunks for the
+operation itself. Statistics that can operate on sparse-backed arrays should not
+densify their inputs here; product code can still densify final outputs before
+NetCDF serialisation.
+"""
 
 from collections import namedtuple
 from collections.abc import Callable, Iterable, Sequence
+from typing import cast
 
 import arviz as az
 import numpy as np
 import scipy
 import xarray as xr
 
+from openghg_inversions.array_ops import to_dense
 from openghg_inversions.postprocessing.utils import add_suffix, get_parameters, update_attrs
 
 StatsFunction = namedtuple("StatsFunction", ["name", "func", "params"])
@@ -35,11 +43,29 @@ def register_stat(stat: Callable) -> Callable:
     return stat
 
 
+def _to_dense_dataset(ds: xr.Dataset) -> xr.Dataset:
+    """Convert sparse-backed variables to dense chunks when a statistic cannot handle sparse arrays."""
+    return xr.Dataset(
+        {name: to_dense(data) for name, data in ds.data_vars.items()},
+        coords=ds.coords,
+        attrs=ds.attrs,
+    )
+
+
+def _consolidate_sample_dimension(ds: xr.Dataset, sample_dim: str) -> xr.Dataset:
+    """Rechunk a Dask-backed sample dimension into a single core chunk."""
+    if any(data.chunks is not None and sample_dim in data.dims for data in ds.data_vars.values()):
+        return ds.chunk({sample_dim: -1})
+    return ds
+
+
 @register_stat
 @add_suffix("quantile")
 @update_attrs("quantile_of")
 def quantiles(
-    ds: xr.Dataset, quantiles: Sequence[float] = [0.159, 0.841], sample_dim: str = "draw"
+    ds: xr.Dataset,
+    quantiles: Sequence[float] = [0.159, 0.841],
+    sample_dim: str = "draw",
 ) -> xr.Dataset:
     """Compute quantiles.
 
@@ -55,6 +81,7 @@ def quantiles(
         xr.Dataset of specified quantiles, with a new `quantile` dimension.
 
     """
+    ds = _consolidate_sample_dimension(_to_dense_dataset(ds), sample_dim)
     # cast to float32 since quantiles involve interpolation, and this always converts to
     # float64 in numpy and scipy interpolation routines
     return ds.quantile(q=quantiles, dim=sample_dim).astype("float32")
@@ -63,14 +90,22 @@ def quantiles(
 @register_stat
 @add_suffix("mode")
 @update_attrs("mode_of")
-def mode(ds: xr.Dataset, sample_dim="draw", thin: int = 1):
-    """Approximate the mode by the midpoint of the shorted interval containing k samples.
+def mode(ds: xr.Dataset, sample_dim: str = "draw", thin: int = 1) -> xr.Dataset:
+    """Approximate the mode using the shortest interval containing ``k`` samples.
 
     The slowest step is sorting. Still, this is over 30x faster than computing the KDE.
     (Unless you parallelise the KDE version by chunking the input.)
 
     Thinning by some integer factor will produce a corresponding speed up. For instance,
     if `thin = 2` is passed, then the running time will be roughly half.
+
+    Args:
+        ds: Dataset containing samples.
+        sample_dim: Dimension containing the samples.
+        thin: Integer stride used to thin samples before estimating the mode.
+
+    Returns:
+        Dataset containing the approximate mode for each input variable.
     """
 
     def mode_of_arr(arr, k):
@@ -85,19 +120,39 @@ def mode(ds: xr.Dataset, sample_dim="draw", thin: int = 1):
     else:
         k = int(ds.sizes[sample_dim] ** 0.8)  # k = (# draws)^{4/5}
 
-    return xr.apply_ufunc(mode_of_arr, ds, input_core_dims=[[sample_dim]], kwargs={"k": k})
+    ds = _consolidate_sample_dimension(_to_dense_dataset(ds), sample_dim)
+    return xr.apply_ufunc(
+        mode_of_arr,
+        ds,
+        input_core_dims=[[sample_dim]],
+        kwargs={"k": k},
+        dask="parallelized",
+        output_dtypes=[float],
+    )
 
 
 @register_stat
 @add_suffix("mode")
 @update_attrs("mode_of")
 def mode_kde(
-    ds: xr.Dataset, sample_dim="draw", chunk_dim: str | None = None, chunk_size: int = 10
+    ds: xr.Dataset,
+    sample_dim: str = "draw",
+    chunk_dim: str | None = None,
+    chunk_size: int = 10,
 ) -> xr.Dataset:
     """Calculate the (KDE smoothed) mode of a data array containing MCMC samples.
 
     This can be parallelized if you chunk the DataArray first, e.g.
     >>> da_chunked = da.chunk({"basis_region": 10})
+
+    Args:
+        ds: Dataset containing samples.
+        sample_dim: Dimension containing the samples.
+        chunk_dim: Optional non-sample dimension to chunk for parallel execution.
+        chunk_size: Chunk size to use along ``chunk_dim``.
+
+    Returns:
+        Dataset containing the KDE-smoothed mode for each input variable.
     """
 
     def mode_of_row(row):
@@ -120,7 +175,8 @@ def mode_kde(
             return np.full(arr.shape[:-1], np.nan, dtype=float)
         return np.apply_along_axis(func1d=mode_of_row, axis=-1, arr=arr)
 
-    if chunk_dim is not None:
+    ds = _consolidate_sample_dimension(_to_dense_dataset(ds), sample_dim)
+    if chunk_dim is not None and chunk_dim != sample_dim:
         return xr.apply_ufunc(
             func,
             ds.chunk({chunk_dim: chunk_size}),
@@ -138,8 +194,22 @@ def mode_kde(
 
 
 @register_stat
-def hdi(ds: xr.Dataset, hdi_prob: float | Iterable[float] = 0.68, sample_dim: str = "draw"):
-    """Compute highest density interval with the given probabilities."""
+def hdi(
+    ds: xr.Dataset,
+    hdi_prob: float | Iterable[float] = 0.68,
+    sample_dim: str = "draw",
+) -> xr.Dataset:
+    """Compute highest density intervals with the given probabilities.
+
+    Args:
+        ds: Dataset containing samples.
+        hdi_prob: Probability or probabilities contained by each interval.
+        sample_dim: Dimension containing the samples.
+
+    Returns:
+        Dataset containing the highest density interval bounds.
+    """
+    ds = _consolidate_sample_dimension(_to_dense_dataset(ds), sample_dim)
     # handle case of multiple hdi_probs
     if isinstance(hdi_prob, Iterable):
         return xr.merge([hdi(ds, hdi_prob=prob, sample_dim=sample_dim) for prob in hdi_prob])
@@ -147,14 +217,18 @@ def hdi(ds: xr.Dataset, hdi_prob: float | Iterable[float] = 0.68, sample_dim: st
     # wrap here to get hdi prob in suffix
     @add_suffix(f"hdi_{int(100 * hdi_prob)}")
     @update_attrs(f"hdi_{int(100 * hdi_prob)}_of")
-    def calc(data, hdi_prob):
-        return az.hdi(data, hdi_prob=hdi_prob)
+    def calc(data: xr.Dataset, probability: float) -> xr.Dataset:
+        """Call ArviZ and narrow its union return type for Dataset input."""
+        return cast(xr.Dataset, az.hdi(data, hdi_prob=probability))
 
     if "chain" not in ds.dims:
         ds = ds.expand_dims({"chain": [0]})
 
     if sample_dim != "draw":
         ds = ds.rename({sample_dim: "draw"})
+
+    if any(data.chunks is not None for data in ds.data_vars.values()):
+        ds = ds.compute()
 
     return calc(ds, hdi_prob)
 
@@ -178,8 +252,17 @@ def mean(ds: xr.Dataset, sample_dim="draw"):
 @register_stat
 @add_suffix("median")
 @update_attrs("median_of")
-def median(ds: xr.Dataset, sample_dim="draw"):
-    """Compute sample median."""
+def median(ds: xr.Dataset, sample_dim: str = "draw") -> xr.Dataset:
+    """Compute the median along the sample dimension.
+
+    Args:
+        ds: Dataset containing samples.
+        sample_dim: Dimension containing the samples.
+
+    Returns:
+        Dataset containing the median for each input variable.
+    """
+    ds = _consolidate_sample_dimension(_to_dense_dataset(ds), sample_dim)
     return ds.median(dim=sample_dim)
 
 

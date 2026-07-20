@@ -38,7 +38,7 @@ import xarray as xr
 import openghg_inversions.hbmcmc.inversion_pymc as mcmc
 from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.models.priors import lognormal_mu_sigma
-from openghg_inversions.utils import ncdf_encoding
+from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 from openghg_inversions.inversion_data import FixedBasisPreparedData, prepare_fixedbasis_inversion_data
 from openghg_inversions.postprocessing.inversion_output import (
     InversionOutput,
@@ -565,11 +565,15 @@ def _finalize_output(context: _OutputContext) -> xr.Dataset | dict | InversionOu
         )
         Path(context.outputpath).mkdir(parents=True, exist_ok=True)
 
-        conc_outs.to_netcdf(
-            conc_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(conc_outs)
+        write_netcdf_preserving_bounds_attrs(
+            conc_outs,
+            conc_output_filename,
+            unlimited_dims=["time"],
         )
-        flux_outs.to_netcdf(
-            flux_output_filename, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(flux_outs)
+        write_netcdf_preserving_bounds_attrs(
+            flux_outs,
+            flux_output_filename,
+            unlimited_dims=["time"],
         )
 
         logging.info("PARIS concentration outputs saved to %s", conc_output_filename)

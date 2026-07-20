@@ -18,7 +18,7 @@ from openghg_inversions.postprocessing.inversion_output import (
 )
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import OutputFilenameConvention, RhimeOutputSpec, RhimeRunSpec
-from openghg_inversions.utils import ncdf_encoding
+from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 
 
 @dataclass(frozen=True)
@@ -257,13 +257,9 @@ def make_standard_output_bundle(
                 ext=".nc",
             )
             with timed("rhime.output.paris_concentration_netcdf_write", path=conc_file):
-                conc_outs.to_netcdf(
-                    conc_file, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(conc_outs)
-                )
+                write_netcdf_preserving_bounds_attrs(conc_outs, conc_file, unlimited_dims=["time"])
             with timed("rhime.output.paris_flux_netcdf_write", path=flux_file):
-                flux_outs.to_netcdf(
-                    flux_file, unlimited_dims=["time"], mode="w", encoding=ncdf_encoding(flux_outs)
-                )
+                write_netcdf_preserving_bounds_attrs(flux_outs, flux_file, unlimited_dims=["time"])
             output_metadata["paris_concentration_path"] = str(conc_file)
             output_metadata["paris_flux_path"] = str(flux_file)
     elif output_spec.output_format == "legacy":
@@ -363,6 +359,9 @@ def make_multisector_output_bundle(
             time_point = paris_kwargs.pop("time_point", "midpoint")
             report_mode = paris_kwargs.pop("report_mode", False)
             inversion_grid = paris_kwargs.pop("inversion_grid", True)
+            country_selection_kwargs = {}
+            if "country_selections" in paris_kwargs:
+                country_selection_kwargs["country_selections"] = paris_kwargs.pop("country_selections")
             if paris_kwargs:
                 unexpected = ", ".join(sorted(paris_kwargs))
                 raise ValueError(
@@ -381,6 +380,7 @@ def make_multisector_output_bundle(
                 inversion_grid=inversion_grid,
                 flux_frequency=flux_frequency,
                 template_version="latest",
+                **country_selection_kwargs,
             )
             outputs["paris_flux"] = flux_outs
 
@@ -394,12 +394,7 @@ def make_multisector_output_bundle(
                     run_spec.start_date,
                     ext=".nc",
                 )
-                flux_outs.to_netcdf(
-                    flux_file,
-                    unlimited_dims=["time"],
-                    mode="w",
-                    encoding=ncdf_encoding(flux_outs),
-                )
+                write_netcdf_preserving_bounds_attrs(flux_outs, flux_file, unlimited_dims=["time"])
                 output_metadata["paris_flux_path"] = str(flux_file)
         else:
             output_metadata["paris_note"] = (
