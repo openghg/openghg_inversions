@@ -14,6 +14,15 @@ def test_lognormal_mu_sigma_matches_requested_moments() -> None:
     assert np.isclose(expected_stdev, 0.5)
 
 
+def test_lognormal_mu_sigma_supports_array_parameters() -> None:
+    """Check lognormal moment conversion works elementwise for state arrays."""
+    mean = np.array([1.0, 2.0])
+    stdev = np.array([0.2, 0.5])
+    mu, sigma = lognormal_mu_sigma(mean, stdev)
+
+    np.testing.assert_allclose(np.exp(mu + 0.5 * sigma**2), mean)
+
+
 def test_parse_prior_reparameterised_lognormal_uses_latent_name() -> None:
     """Check reparameterized lognormal priors use the ``_latent`` naming convention."""
     with pm.Model(coords={"nx": np.arange(3)}) as model:

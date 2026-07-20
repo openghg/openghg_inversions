@@ -4,6 +4,14 @@
 
 ## Code changes
 
+- Added a label-aware active/fixed state-vector contract to the modern RHIME
+  model builders. Exact-zero sensitivity columns are now fixed at scaling one
+  by default while every nonzero column remains active; explicit labelled
+  masks and ``basis_group`` freezes can retain other fixed states or sectors.
+  Models sample active states only but retain full ordered deterministic
+  ``x``/``x_<sector>`` vectors, and flux-scaling prior parameters may now be
+  scalar, full array-valued, or labelled xarray values. High-level runner/config
+  routing and persisted activity reports remain follow-up work.
 
 - Made retained `BasisFunctions` / `BasisOperator` metadata the primary basis
   contract for RHIME preparation and modern postprocessing outputs. Derived

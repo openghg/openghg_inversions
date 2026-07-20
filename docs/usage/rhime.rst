@@ -150,6 +150,50 @@ different things for those policies, and generated region counts become upper
 targets when split stopping rejects remaining candidates. These child-share
 policies are not currently routed through RHIME config options.
 
+Active And Fixed States
+-----------------------
+
+The lower-level model builders sample only active flux-scaling states while
+retaining the full ordered ``x`` (or ``x_<sector>``) as a deterministic model
+variable. By default, a sensitivity column is inactive only when every value in
+that column is exactly zero. No tolerance is applied, so a near-zero nonzero
+column remains active. Inactive multiplicative scaling states default to one.
+
+``StateActivity`` can also freeze labelled states, ``basis_group`` values, or a
+complete sector. Labelled masks and fixed values are aligned to the state
+coordinate rather than interpreted as numeric state ranges. Prior distribution
+parameters may likewise be scalars, full one-dimensional arrays, or labelled
+``DataArray`` objects:
+
+.. code-block:: python
+
+   import xarray as xr
+
+   from openghg_inversions.models import StateActivity, build_rhime_model
+
+   state_policy = StateActivity(
+       fixed_groups=("outer",),
+       fixed_value=1.0,
+   )
+   prior_mean = xr.DataArray(
+       [1.0, 0.8, 1.2],
+       dims="region",
+       coords={"region": ["inner-west", "outer", "inner-east"]},
+   )
+   model = build_rhime_model(
+       inv_inputs,
+       x_prior={"pdf": "normal", "mu": prior_mean, "sigma": 0.5},
+       state_activity=state_policy,
+   )
+
+For multisector builders, use ``state_activity`` as a shared policy or
+``sector_state_activities`` for sector-name overrides; ``StateActivity(active=False)``
+freezes a complete sector. ``RhimeModelSpec`` / ``SectorSpec``, RHIME config
+parsing, and the high-level ``run_rhime`` / ``run_rhime_multisector`` keyword
+interfaces do not yet expose explicit policies, and persisted activity tables
+are still a follow-up integration task. Models built from specs still receive
+the default exact-zero pruning policy.
+
 Output Formats
 --------------
 

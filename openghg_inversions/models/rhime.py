@@ -26,9 +26,11 @@ from openghg_inversions.models.components import (
     add_inferpymc_likelihood_component,
     add_linear_component,
     add_offset_component,
+    add_state_linear_component,
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.state_activity import StateActivity
 
 DEFAULT_X_PRIOR: PriorArgs = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0, "reparameterise": True}
 DEFAULT_BC_PRIOR: PriorArgs = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.05, "lower": 0.0}
@@ -134,6 +136,7 @@ def build_rhime_model(
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
+    state_activity: StateActivity | None = None,
 ) -> pm.Model:
     """Build the standard single-sector RHIME model.
 
@@ -152,6 +155,9 @@ def build_rhime_model(
         no_model_error: Whether to suppress the explicit model-error term.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
+        state_activity: Optional labelled active/fixed state policy. By
+            default, only exactly-zero ``H`` columns are fixed to one; every
+            nonzero column remains active.
 
     Returns:
         Built PyMC model.
@@ -165,7 +171,7 @@ def build_rhime_model(
 
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
-        flux_component = add_linear_component(
+        flux_component = add_state_linear_component(
             inv_inputs["H"],
             data_name="hx",
             prior_args=x_prior,
@@ -173,6 +179,7 @@ def build_rhime_model(
             output_name="mu",
             output_dim="nmeasure",
             compute_deterministic=True,
+            state_activity=state_activity,
         )
 
         mu_bc = None
@@ -333,6 +340,8 @@ def build_rhime_multisector_model(
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
+    state_activity: StateActivity | None = None,
+    sector_state_activities: Mapping[str, StateActivity] | None = None,
 ) -> pm.Model:
     """Build the first shared-basis multi-sector RHIME model.
 
@@ -364,6 +373,9 @@ def build_rhime_multisector_model(
         no_model_error: Whether to suppress explicit model-error terms.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
+        state_activity: Optional activity policy shared by all sectors.
+        sector_state_activities: Optional activity-policy overrides keyed by
+            sector name. An all-false policy freezes a complete sector.
 
     Returns:
         Built PyMC model.
@@ -377,6 +389,11 @@ def build_rhime_multisector_model(
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
+    sector_state_activities = dict(sector_state_activities or {})
+    known_sectors = {sector for sector, _, _ in sector_definitions}
+    unknown_activity_sectors = sorted(set(sector_state_activities) - known_sectors)
+    if unknown_activity_sectors:
+        raise ValueError(f"State activity supplied for unknown sector(s) {unknown_activity_sectors!r}.")
 
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
@@ -392,7 +409,7 @@ def build_rhime_multisector_model(
             used_names.add(suffix)
 
             h_sector = inv_inputs["H"].sel(source=source).drop_vars("source", errors="ignore")
-            component = add_linear_component(
+            component = add_state_linear_component(
                 h_sector,
                 data_name=f"hx_{suffix}",
                 prior_args=_sector_prior(sector, sector_priors=sector_priors, x_prior=x_prior),
@@ -400,6 +417,7 @@ def build_rhime_multisector_model(
                 output_name=f"mu_{suffix}",
                 output_dim="nmeasure",
                 compute_deterministic=True,
+                state_activity=sector_state_activities.get(sector, state_activity),
             )
             sector_outputs.append(component.output)
 

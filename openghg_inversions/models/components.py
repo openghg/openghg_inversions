@@ -22,7 +22,7 @@ coordinates using shared helper logic based on
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -34,6 +34,12 @@ from pytensor.tensor.variable import TensorVariable
 from openghg_inversions.inversion_inputs import make_freq_indicator
 from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
+from openghg_inversions.models.state_activity import (
+    ResolvedStateActivity,
+    StateActivity,
+    active_prior_args,
+    resolve_state_activity,
+)
 
 
 @dataclass
@@ -43,6 +49,26 @@ class LinearComponentResult:
     data: TensorVariable
     latent: TensorVariable
     output: TensorVariable
+
+
+@dataclass
+class StateLinearComponentResult:
+    """Objects created by ``add_state_linear_component``.
+
+    Attributes:
+        data: Full sensitivity matrix registered with PyMC.
+        latent: Effective active-state latent variable, or ``None`` when no
+            states are active.
+        state: Full ordered deterministic state vector.
+        output: Forward-model contribution from active and fixed states.
+        activity: Resolved state-activity contract in canonical state order.
+    """
+
+    data: TensorVariable
+    latent: TensorVariable | None
+    state: TensorVariable
+    output: TensorVariable
+    activity: ResolvedStateActivity
 
 
 def get_model_latent(variable: TensorVariable, base_name: str) -> TensorVariable:
@@ -65,22 +91,27 @@ def get_model_latent(variable: TensorVariable, base_name: str) -> TensorVariable
 
 
 def resolve_model_variable(model: pm.Model, base_name: str) -> TensorVariable | None:
-    """Return a named model variable, preferring the reparameterised latent form.
+    """Return a free model variable, preferring active/reparameterised forms.
 
     Args:
         model: PyMC model to inspect.
         base_name: Base variable name to resolve.
 
     Returns:
-        The reparameterised latent variable ``{base_name}_latent`` when it is
-        present on ``model``, otherwise the user-facing variable named
-        ``base_name``. Returns ``None`` if neither variable exists.
+        The active reparameterised latent, reparameterised latent, active
+        variable, or base variable when that candidate is a free random
+        variable. Returns ``None`` for an all-fixed component or when no
+        candidate exists.
     """
-    latent_name = f"{base_name}_latent"
-    if latent_name in model.named_vars:
-        return cast(TensorVariable, model.named_vars[latent_name])
-    if base_name in model.named_vars:
-        return cast(TensorVariable, model.named_vars[base_name])
+    candidate_names = (
+        f"{base_name}_active_latent",
+        f"{base_name}_latent",
+        f"{base_name}_active",
+        base_name,
+    )
+    for name in candidate_names:
+        if name in model.named_vars and model.named_vars[name] in model.free_RVs:
+            return cast(TensorVariable, model.named_vars[name])
     return None
 
 
@@ -200,6 +231,95 @@ def add_linear_component(
     if compute_deterministic:
         output = pm.Deterministic(output_name, output, dims=output_dim)
     return LinearComponentResult(data=h, latent=latent, output=output)
+
+
+def add_state_linear_component(
+    data: xr.DataArray,
+    /,
+    data_name: str,
+    prior_args: dict,
+    var_name: str,
+    output_name: str,
+    state_activity: StateActivity | None = None,
+    output_dim: str = "nmeasure",
+    compute_deterministic: bool = True,
+) -> StateLinearComponentResult:
+    """Add a linear component that samples only active labelled states.
+
+    The public ``var_name`` is always a full ordered deterministic vector.
+    Active states are sampled in ``{var_name}_active`` and inactive states use
+    their resolved fixed values. The forward contribution is constructed as
+    ``H_active @ x_active + H_fixed @ fixed_value``. This remains valid when
+    either partition, including the active partition, is empty.
+
+    Args:
+        data: Labelled sensitivity matrix with one state dimension.
+        data_name: Name used when registering the full matrix as ``pm.Data``.
+        prior_args: Prior specification. Distribution parameters may be scalar,
+            full-state arrays, or labelled state ``DataArray`` objects.
+        var_name: Name of the full deterministic state vector.
+        output_name: Name for the aligned forward-model contribution.
+        state_activity: Optional active/fixed policy. The default prunes only
+            exactly-zero sensitivity columns and fixes them to one.
+        output_dim: Observation/output dimension name.
+        compute_deterministic: Whether to wrap the output in a named
+            ``pm.Deterministic``.
+
+    Returns:
+        Registered data, optional active latent, full state, output, and the
+        resolved activity contract.
+    """
+    output_dim = str(output_dim)
+    activity = resolve_state_activity(data, state_activity, output_dim=output_dim)
+    state_dim = activity.state_dim
+    data = data.transpose(output_dim, state_dim)
+    h_full = add_model_data(data, data_name)
+
+    add_model_data(
+        activity.active.rename(f"{var_name}_is_active"),
+        f"{var_name}_is_active",
+    )
+    fixed_value = add_model_data(
+        activity.fixed_value.rename(f"{var_name}_fixed_value"),
+        f"{var_name}_fixed_value",
+    )
+
+    active_indices = activity.active_indices
+    fixed_indices = activity.fixed_indices
+    latent: TensorVariable | None = None
+    active_state: TensorVariable | None = None
+    if activity.n_active:
+        active_dim = f"{state_dim}_{var_name}_active"
+        active_coord = data.coords[state_dim].isel({state_dim: active_indices})
+        add_coords({active_dim: active_coord})
+        user_facing = parse_prior(
+            f"{var_name}_active",
+            active_prior_args(prior_args, activity),
+            dims=active_dim,
+        )
+        latent = get_model_latent(user_facing, f"{var_name}_active")
+        active_state = user_facing
+
+    full_state = fixed_value
+    if active_state is not None:
+        full_state = pt.set_subtensor(full_state[active_indices], active_state)
+    state = pm.Deterministic(var_name, full_state, dims=state_dim)
+
+    output = pt.zeros((data.sizes[output_dim],), dtype=h_full.dtype)
+    if active_state is not None:
+        output = output + pt.dot(h_full[:, active_indices], active_state)
+    if fixed_indices.size:
+        output = output + pt.dot(h_full[:, fixed_indices], fixed_value[fixed_indices])
+    if compute_deterministic:
+        output = pm.Deterministic(output_name, output, dims=output_dim)
+
+    return StateLinearComponentResult(
+        data=h_full,
+        latent=latent,
+        state=state,
+        output=cast(TensorVariable, output),
+        activity=activity,
+    )
 
 
 def add_sigma_component(
@@ -407,10 +527,10 @@ def add_inferpymc_likelihood_component(
     if no_model_error is True:
         mean_obs = np.nanmean(data["mf"].values)
         small_amount = pm.floatX(1e-12 * mean_obs)
-        eps = pt.maximum(pt.abs(error_data), small_amount)
+        eps = cast(Any, pt.maximum)(pt.abs(error_data), small_amount)
     else:
         power0 = parse_prior("power", power) if isinstance(power, dict) else power
-        eps = pt.maximum(
+        eps = cast(Any, pt.maximum)(
             pt.sqrt(error_data**2 + pt.pow(pollution_event_scaled_error, power0)),
             min_error_data,
         )
