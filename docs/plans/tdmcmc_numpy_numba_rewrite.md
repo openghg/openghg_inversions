@@ -95,6 +95,217 @@ will be introduced only behind equivalence tests.
 | 2026-07-19 | Use a strict atomic NPZ checkpoint for execution state and a separate xarray dataset for retained scientific draws. | Checkpoints must preserve exact PCG64, schedule, retention, problem identity, fixed/dynamic caches, and cache-construction backend; retained draws need labelled variable-capacity dimensions but should not be forced into the current fixed-basis `InversionOutput` contract. |
 | 2026-07-19 | Treat the Lunt per-region hierarchy as log-space Normal parameters, not arithmetic lognormal moments. | The paper's `mu_x` and `sigma_x` describe `log(x)`. Existing arithmetic mean/SD inputs remain the fixed-prior pseudo-data mode and must not be relabelled as the Lunt hierarchy. Numerical hyperprior bounds and proposal scales remain unavailable. |
 | 2026-07-19 | Do not copy a parent region's inferred hyperparameter pair in an upward structural proposal. | The paper does not specify how the new dimension-dependent pair is proposed. Legacy parent copying lies on an equality submanifold and lacks a valid reverse density after the pairs evolve independently. The planned auditable completion draws the new pair from its normalized bounded hyperprior. |
+| 2026-07-20 | Treat the legacy structural-schedule failure and the missing hyperparameter dimension-matching rule as distinct RJMCMC correctness defects. | The former is demonstrated by finite enumeration. The latter follows because adding a region also adds two independently variable hyperparameters, but parent copying introduces no auxiliary variables or reverse density for them. Including their prior density in the target does not repair an incomplete dimension-changing proposal. |
+
+## Lunt per-region hierarchy implementation specification
+
+### Status and provenance
+
+This section is the durable implementation specification for the next
+data-independent correctness stage. It separates facts recovered from the
+paper and legacy code from explicit rewrite decisions. It does not define a
+numerical `Lunt2016` run profile: the archived hyperprior bounds,
+initialization, and proposal scales are still unavailable.
+
+There are two separate legacy RJMCMC findings:
+
+1. **Demonstrated scheduler defect.** Separate deterministic upward-only and
+   downward-only transition steps are not individually target-invariant, and
+   their composition fails on the checked finite counterexample. The rewrite
+   already replaces them with reversible mixed structural kernels.
+2. **Hyperparameter dimension-matching defect.** In the hierarchical model,
+   changing from `k` to `k + 1` introduces `x_new`, `mu_new`, and `sigma_new`.
+   The legacy code proposes `x_new` but deterministically copies the parent's
+   two prior parameters. No two-dimensional auxiliary variable, invertible
+   transformation, Jacobian, or ordinary reverse density is supplied for the
+   new independently variable pair. Once a within-model update moves that pair
+   away from the parent's values, a parent-copying reverse proposal cannot
+   reconstruct the state and has zero reverse probability. Evaluating the
+   hyperprior in the target is necessary but does not fix this proposal defect.
+
+The second finding is therefore reasonably summarized as "RJMCMC was not
+applied correctly to the dimension-dependent hyperparameters." It is not yet
+covered by the same finite enumeration as the scheduler defect; that oracle is
+a required implementation gate below.
+
+### Confirmed facts, rewrite decisions, and unknowns
+
+| Category | Item |
+| --- | --- |
+| Paper fact | Each active region has its own log-space Normal prior parameters: `log(x_i) ~ Normal(mu_i, sigma_i**2)`. |
+| Paper fact | The `mu_i` and `sigma_i` values have bounded uniform hyperpriors, and hyperparameter updates use centred Gaussian proposals. |
+| Paper gap | The upward structural move does not state how the new region's `(mu_i, sigma_i)` pair is generated. |
+| Legacy behavior | The new region copies the parent's arithmetic-moment prior parameters; later within-model updates can make region pairs differ. |
+| Rewrite decision | Keep the existing arithmetic-mean/SD lognormal prior as an unchanged non-hierarchical mode. Add a separate opt-in log-space hierarchical mode. |
+| Rewrite decision | In hierarchical mode, draw a new pair independently from its normalized bounded hyperprior during an upward move. |
+| Rewrite decision | Update one selected region's `(mu_i, sigma_i)` pair jointly with centred Gaussian increments; proposals outside the bounds are self-transitions. |
+| Unknown | Archived numerical bounds, initial active pairs, proposal scales, seeds, and exact production grouping/configuration. |
+| Ambiguity | The paper is not fully explicit about scalar versus paired hyperparameter updates. A paired update matches its acceptance expression and the relevant legacy behavior, and is the reference choice unless archived evidence contradicts it. |
+
+### Normalized hierarchical target
+
+For every active region `i`, the coefficient density is
+
+```text
+p(x_i | mu_i, sigma_i)
+  = exp(-0.5 * ((log(x_i) - mu_i) / sigma_i)**2)
+    / (x_i * sigma_i * sqrt(2*pi)),       x_i > 0.
+```
+
+For explicit bounds `[a_mu, b_mu]` and `[a_sigma, b_sigma]`, with
+`0 < a_sigma < b_sigma`, the pair density is
+
+```text
+p(mu_i, sigma_i)
+  = 1 / ((b_mu - a_mu) * (b_sigma - a_sigma))
+```
+
+inside the bounds and zero outside. These normalizing constants must remain in
+the target because one pair is added or removed when `k` changes. The dynamic
+part of the normalized target is therefore
+
+```text
+p(k) * p(c | k)
+* product_i p(x_i | mu_i, sigma_i) p(mu_i) p(sigma_i),
+```
+
+multiplied by the likelihood and any always-active parameter priors. As in the
+current engine, `p(c | k) = 1 / comb(n_grid, k)` for the canonical unordered
+nucleus set.
+
+### State and configuration contract
+
+- Hierarchical mode must be opt-in and mutually exclusive with the existing
+  fixed arithmetic-moment coefficient prior.
+- An immutable hierarchy configuration must contain finite log-mean bounds,
+  strictly positive log-standard-deviation bounds, and explicit proposal
+  scales for both values.
+- The state must carry padded `mu` and `sigma` arrays aligned with the padded
+  nuclei and coefficients. Sorting, moving, inserting, and removing a region
+  must operate on the complete `(nucleus, coefficient, mu, sigma)` record.
+- Initial hierarchical states must supply one valid pair for every active
+  region. Defaults inferred from unavailable paper settings are prohibited.
+- The non-hierarchical target and its seeded traces must remain unchanged; it
+  must not be silently routed through a newly converted parameterization.
+
+### Reference proposal kernels
+
+For a within-model hyperparameter update, choose one active region uniformly
+and propose
+
+```text
+mu_i'    = mu_i    + Normal(0, step_mu)
+sigma_i' = sigma_i + Normal(0, step_sigma).
+```
+
+The proposal is symmetric. If either value is outside its declared bounds,
+retain the input state. Otherwise the prediction, residual, and likelihood
+caches are unchanged, and the Metropolis ratio reduces to the change in that
+region's normalized coefficient-prior and hyperprior terms.
+
+For an upward structural move from `k` to `k + 1`:
+
+1. select the upward direction within the 50/50 mixed structural kernel;
+2. select a vacant native cell uniformly and identify its pre-move owning
+   region;
+3. propose `x_new` with the existing untruncated parent-centred Gaussian,
+   retaining non-positive draws as self-transitions;
+4. draw `mu_new ~ Uniform(a_mu, b_mu)` and
+   `sigma_new ~ Uniform(a_sigma, b_sigma)` independently;
+5. insert and canonically sort the complete new region record.
+
+Away from a structural boundary, the forward density includes
+
+```text
+q_up = 0.5
+       * 1 / (n_grid - k)
+       * NormalPDF(x_new; x_parent, coefficient_step)
+       * 1 / (b_mu - a_mu)
+       * 1 / (b_sigma - a_sigma).
+```
+
+The downward move chooses the direction with probability `0.5` and one of its
+active nuclei uniformly. Its reverse upward density includes the Gaussian
+density of the removed coefficient and the two uniform densities of the
+removed pair. The acceptance decision must always be computed from
+
+```text
+min(1, target(candidate) * q_reverse / (target(source) * q_forward)).
+```
+
+Drawing the new pair from its normalized hyperprior makes the two proposal
+density factors cancel the new pair's two hyperprior factors in this ratio.
+They must nevertheless be represented explicitly and tested rather than
+removed by hand. At `k_min` or `k_max`, an unavailable direction remains the
+selected kernel's self-transition; the 50/50 mixture is not renormalized.
+
+A normalized parent-centred pair proposal or an invertible split/merge mapping
+could also be valid, but would introduce additional scales, boundary
+normalizers, or Jacobians. Neither is the reference implementation without
+evidence that it is needed for mixing.
+
+### Schedule, serialization, and output consequences
+
+The proposed versioned schedules are:
+
+- hierarchy without fixed predictors: dynamic coefficient, hyperparameter,
+  structural, structural, nucleus;
+- hierarchy with fixed predictors: dynamic coefficient, fixed coefficient,
+  hyperparameter, structural, structural, nucleus.
+
+The existing four- and five-slot non-hierarchical schedules remain unchanged.
+Adding the hierarchy requires new schedule identifiers and a checkpoint schema
+version, since exact continuation must include the padded pairs, hierarchy
+configuration, proposal scales, and schedule position. Provenance manifests
+must record `parameterization = "log_space_parameters"`, the bounds, proposal
+scales, and schedule identifier. Xarray retained output gains aligned `mu` and
+`sigma` variables on `(draw, region_slot)`; inactive slots remain masked.
+
+### Required implementation and validation sequence
+
+1. **Target/state primitives only.** Add validated hierarchy configuration,
+   aligned padded state arrays, normalized NumPy/Numba density kernels, and
+   target-component reporting. Do not expose hierarchical sampling yet.
+2. **Independent target tests.** Compare the density with a direct formula,
+   test support and normalizers, establish NumPy/Numba parity, verify common
+   sorting of complete region records, and prove the current fixed-prior path
+   and seeds are unchanged.
+3. **Deterministic proposal primitives.** Add forced within-model and
+   structural candidates with separately reported target, forward, reverse,
+   and Jacobian terms.
+4. **Proposal oracles.** Check the direct hyperparameter target delta,
+   out-of-bounds self-mass, unchanged likelihood caches, exact reconstruction
+   of complete states by paired upward/downward moves, and every hyperparameter
+   proposal-density factor.
+5. **RJMCMC invariance gates.** Extend the continuous forward/reverse flux
+   oracle across several pairs and build a finite hierarchical analogue that
+   checks normalization, detailed balance, and stationarity. A deliberately
+   parent-copying kernel should fail this oracle, documenting the regression.
+6. **Sampler integration.** Add versioned schedules, exact split-chain tests at
+   awkward schedule boundaries, retention, diagnostics, and NumPy/Numba seeded
+   parity.
+7. **Serialization and interchange.** Bump checkpoint and output schemas,
+   extend exact replay/fingerprint tests, and add labelled xarray variables.
+8. **Synthetic calibration only.** Exercise mixing in `k`, coefficients, and
+   pairs with explicitly synthetic bounds. Do not describe those values as a
+   Lunt reproduction.
+9. **Archived profile later.** Recover and checksum the actual bounds,
+   initialization, proposal scales, seeds, fixed outer/boundary treatment, and
+   any stored traces before defining a genuine paper profile.
+
+### Compact restart point
+
+- **Next executable task:** steps 1--2 above, adding target/state primitives and
+  their independent tests without making hierarchical sampling public.
+- **Data dependency:** none for steps 1--8 when all numerical values are
+  explicitly labelled synthetic. Only the archived profile in step 9 is
+  blocked by unavailable paper data/configuration.
+- **Compatibility constraint:** do not alter the fixed arithmetic-moment prior,
+  its four-/five-slot schedules, or existing seeded traces.
+- **Exposure gate:** do not expose a hierarchical sampler until the complete
+  structural proposal passes forward/reverse flux, detailed-balance, and
+  stationarity oracles.
+- **Provenance constraint:** do not call any synthetic settings a Lunt profile.
 
 ## Current offline work queue
 
@@ -128,11 +339,11 @@ following correctness and integration work. Items are ordered by dependency.
    stored cache before continuation.
 7. **Completed:** add an xarray retained-trace export with global transition,
    padded region-slot, active-mask, and separate fixed-parameter coordinates.
-8. **Design completed; implementation gated:** add opt-in per-region log-space
-   emissions hyperparameters, first as target/state primitives and only later
-   as structural and scheduled proposals. All bounds, initial values, and
-   proposal scales must be explicit synthetic settings until archived Lunt
-   configuration returns.
+8. **Specified; next implementation task:** implement the
+   [per-region hierarchy specification](#lunt-per-region-hierarchy-implementation-specification),
+   first as target/state primitives and only later as structural and scheduled
+   proposals. All bounds, initial values, and proposal scales must be explicit
+   synthetic settings until archived Lunt configuration returns.
 9. Add grouped/site-block error scales and the correlated likelihood after the
    hierarchy has independent target/proposal oracles. Do not implement the
    questionable determinant ratio from the printed paper equation directly.
@@ -215,6 +426,19 @@ dynamic-inner/fixed-outer prediction. The next correctness gate is the opt-in
 per-region log-space hierarchy. Correlated-error blocks remain behind it.
 
 ## Progress log
+
+### 2026-07-20
+
+- Distinguished the demonstrated deterministic structural-schedule defect from
+  the additional hierarchical dimension-matching defect. The latter is the
+  precise sense in which the legacy RJMCMC treatment of per-region
+  hyperparameters is incomplete: their prior terms alone do not define a
+  reversible proposal for the extra dimensions.
+- Promoted the hierarchy notes into a durable implementation specification,
+  covering evidence versus decisions, normalized target terms,
+  state/configuration contracts, forward and reverse proposal densities,
+  schedule variants, checkpoint/xarray consequences, validation gates, and
+  archived-data unknowns.
 
 ### 2026-07-19
 

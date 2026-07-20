@@ -178,6 +178,19 @@ the new log-space pair from its normalized bounded hyperprior; those proposal
 densities then cancel the new region's normalized hyperprior factors. This is
 an explicit implementation decision, not a recovered paper setting.
 
+This is separate from the deterministic scheduler defect below. It is an
+additional dimension-matching problem in the hierarchical RJMCMC proposal:
+adding a region adds three independently variable quantities (`x`, `mu`, and
+`sigma`), while the documented structural proposal generates only `x` and the
+legacy implementation copies the other two without auxiliary variables. Once
+a hyperparameter update moves the copied pair away from its parent, the same
+copying rule has zero probability of reconstructing that state in reverse.
+Including `p(mu, sigma)` in the posterior target is necessary but cannot repair
+a forward/reverse proposal with incompatible support. The full implementation
+contract, acceptance accounting, tests, schedule, and serialization effects
+are recorded in
+[tdmcmc_numpy_numba_rewrite.md](tdmcmc_numpy_numba_rewrite.md#lunt-per-region-hierarchy-implementation-specification).
+
 The move proposal selects a nucleus and uses a Gaussian displacement centred on
 its current location while carrying the coefficient with it. The paper calls
 this symmetric, but does not define rounding, truncation, or rejection at the
