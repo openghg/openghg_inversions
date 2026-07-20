@@ -63,6 +63,7 @@ from openghg_inversions.rhime import (
     params_from_config,
     resolve_flux_sources,
     run_rhime,
+    run_rhime_from_prepared_inputs,
     run_rhime_multisector,
 )
 
@@ -627,6 +628,354 @@ def test_public_rhime_dataclasses_keep_existing_positional_order() -> None:
     assert not hasattr(run_spec, "sampling")
     assert result.output_metadata == output_metadata
     assert result.sampler == RhimeSampler()
+
+
+@pytest.mark.parametrize("sector_count", [1, 2])
+def test_run_rhime_from_prepared_inputs_routes_without_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+    sector_count: int,
+) -> None:
+    """Prepared runs bypass preparation and select the builder from sector count."""
+    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="none")
+    sectors = model_spec.sectors
+    if sector_count == 2:
+        sectors += (
+            SectorSpec(
+                name="Ocean",
+                flux_source="ocean-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ocean",
+            ),
+        )
+    model_spec = RhimeModelSpec(
+        species=model_spec.species,
+        domain=model_spec.domain,
+        sectors=sectors,
+    )
+    run_spec = RhimeRunSpec(
+        run_spec.start_date,
+        run_spec.end_date,
+        ("STALE",),
+        ("24h",),
+        model_spec,
+        output_spec,
+        split_by_sectors=sector_count > 1,
+    )
+    inv_inputs = _minimal_output_inv_inputs()
+    if sector_count == 2:
+        inv_inputs["H"] = xr.concat(
+            [inv_inputs["H"].expand_dims(source=[sector.flux_source]) for sector in model_spec.sectors],
+            dim="source",
+        )
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+    sampler = RhimeSampler(draws=7, sample_prior_predictive=False, sample_posterior_predictive=False)
+    built_model = pm.Model()
+    builder_calls: list[str] = []
+    output_calls: list[str] = []
+
+    def fail_prepare(**kwargs: Any) -> None:
+        raise AssertionError("prepared runs must not call prepare_rhime_inputs")
+
+    def fail_setup(**kwargs: Any) -> None:
+        raise AssertionError("prepared runs must not normalize runner parameters")
+
+    def fail_config(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("prepared runs must not normalize config parameters")
+
+    def build_standard(inv_inputs: xr.Dataset, spec: RhimeModelSpec) -> pm.Model:
+        builder_calls.append("standard")
+        return built_model
+
+    def build_multisector(inv_inputs: xr.Dataset, spec: RhimeModelSpec) -> pm.Model:
+        builder_calls.append("multisector")
+        return built_model
+
+    def fake_sample(self: RhimeSampler, model: pm.Model) -> az.InferenceData:
+        assert self is sampler
+        assert model is built_model
+        return _minimal_output_idata()
+
+    def make_standard_outputs(**kwargs: Any) -> rhime_outputs.RhimeOutputBundle:
+        output_calls.append("standard")
+        return rhime_outputs.RhimeOutputBundle()
+
+    def make_multisector_outputs(**kwargs: Any) -> rhime_outputs.RhimeOutputBundle:
+        output_calls.append("multisector")
+        return rhime_outputs.RhimeOutputBundle()
+
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+    monkeypatch.setattr(rhime_module, "_make_rhime_runner_setup", fail_setup)
+    monkeypatch.setattr(rhime_module, "params_from_config", fail_config)
+    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", build_standard)
+    monkeypatch.setattr(rhime_module, "build_rhime_multisector_model_from_spec", build_multisector)
+    monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
+    monkeypatch.setattr(rhime_module, "make_standard_output_bundle", make_standard_outputs)
+    monkeypatch.setattr(rhime_module, "make_multisector_output_bundle", make_multisector_outputs)
+
+    result = run_rhime_from_prepared_inputs(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+        sampler=sampler,
+    )
+
+    expected_route = "standard" if sector_count == 1 else "multisector"
+    assert builder_calls == [expected_route]
+    assert output_calls == [expected_route]
+    assert result.sampler is sampler
+    assert result.run_spec.sites == prepared.sites
+    assert result.run_spec.averaging_period == prepared.averaging_period
+    assert result.run_spec.split_by_sectors is (sector_count > 1)
+
+
+@pytest.mark.parametrize(
+    ("sector_count", "split_by_sectors"),
+    [(1, True), (2, False)],
+)
+def test_run_rhime_from_prepared_inputs_rejects_layout_mode_mismatch_before_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    sector_count: int,
+    split_by_sectors: bool,
+) -> None:
+    """Prepared runs reject disagreement between sector count and data layout."""
+    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="none")
+    sectors = model_spec.sectors
+    if sector_count == 2:
+        sectors += (
+            SectorSpec(
+                name="Ocean",
+                flux_source="ocean-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ocean",
+            ),
+        )
+    run_spec = RhimeRunSpec(
+        run_spec.start_date,
+        run_spec.end_date,
+        run_spec.sites,
+        run_spec.averaging_period,
+        RhimeModelSpec(species=model_spec.species, domain=model_spec.domain, sectors=sectors),
+        output_spec,
+        split_by_sectors=split_by_sectors,
+    )
+    inv_inputs = _minimal_output_inv_inputs()
+    if split_by_sectors:
+        inv_inputs["H"] = inv_inputs["H"].expand_dims(source=[sectors[0].flux_source])
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+
+    def fail_execution(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("layout validation must precede model building and sampling")
+
+    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_module, "build_rhime_multisector_model_from_spec", fail_execution)
+    monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
+
+    with pytest.raises(ValueError, match="split_by_sectors.*must agree"):
+        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+
+@pytest.mark.parametrize("sector_count", [1, 2])
+def test_run_rhime_from_prepared_inputs_rejects_flag_h_layout_mismatch_before_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    sector_count: int,
+) -> None:
+    """Prepared runs reject a layout flag that disagrees with H dimensions."""
+    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="none")
+    sectors = model_spec.sectors
+    if sector_count == 2:
+        sectors += (
+            SectorSpec(
+                name="Ocean",
+                flux_source="ocean-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ocean",
+            ),
+        )
+    model_spec = RhimeModelSpec(
+        species=model_spec.species,
+        domain=model_spec.domain,
+        sectors=sectors,
+    )
+    multisector = sector_count > 1
+    run_spec = RhimeRunSpec(
+        run_spec.start_date,
+        run_spec.end_date,
+        run_spec.sites,
+        run_spec.averaging_period,
+        model_spec,
+        output_spec,
+        split_by_sectors=multisector,
+    )
+    inv_inputs = _minimal_output_inv_inputs()
+    if not multisector:
+        inv_inputs["H"] = inv_inputs["H"].expand_dims(source=[sectors[0].flux_source])
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+
+    def fail_execution(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("H layout validation must precede model building and sampling")
+
+    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_module, "build_rhime_multisector_model_from_spec", fail_execution)
+    monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
+
+    with pytest.raises(ValueError, match="split_by_sectors.*prepared `H` layout"):
+        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+
+def test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_writes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Prepared standard runs default the sampler and write nothing for none output."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="none")
+    output_spec = RhimeOutputSpec(
+        output_format="none",
+        output_path=str(tmp_path),
+        output_name="prepared",
+        save_trace=True,
+        save_inversion_output=True,
+    )
+    run_spec = RhimeRunSpec(
+        run_spec.start_date,
+        run_spec.end_date,
+        run_spec.sites,
+        run_spec.averaging_period,
+        model_spec,
+        output_spec,
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+    built_model = pm.Model()
+    sampled_with: list[RhimeSampler] = []
+
+    def fake_sample(self: RhimeSampler, model: pm.Model) -> az.InferenceData:
+        sampled_with.append(self)
+        assert model is built_model
+        return _minimal_output_idata()
+
+    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", lambda *args: built_model)
+    monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
+
+    result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+    assert len(sampled_with) == 1
+    assert sampled_with[0] is result.sampler
+    assert result.sampler == RhimeSampler()
+    assert result.outputs == {}
+    assert result.inv_out is None
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_error"),
+    [
+        ("default_without_path", "output_path.*required"),
+        ("multisector_legacy", "legacy.*supports only single-sector"),
+    ],
+)
+def test_run_rhime_from_prepared_inputs_validates_output_before_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    case: str,
+    expected_error: str,
+) -> None:
+    """Prepared runs apply existing output validation before build or sample."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="none")
+    sectors = model_spec.sectors
+    if case == "multisector_legacy":
+        sectors += (
+            SectorSpec(
+                name="Ocean",
+                flux_source="ocean-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ocean",
+            ),
+        )
+        output_spec = RhimeOutputSpec(output_format="legacy", output_path=str(tmp_path))
+    else:
+        output_spec = RhimeOutputSpec()
+    run_spec = RhimeRunSpec(
+        run_spec.start_date,
+        run_spec.end_date,
+        run_spec.sites,
+        run_spec.averaging_period,
+        RhimeModelSpec(species=model_spec.species, domain=model_spec.domain, sectors=sectors),
+        output_spec,
+        split_by_sectors=len(sectors) > 1,
+    )
+    inv_inputs = _minimal_output_inv_inputs()
+    if len(sectors) > 1:
+        inv_inputs["H"] = xr.concat(
+            [inv_inputs["H"].expand_dims(source=[sector.flux_source]) for sector in sectors],
+            dim="source",
+        )
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+
+    def fail_execution(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("output validation must precede model building and sampling")
+
+    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_module, "build_rhime_multisector_model_from_spec", fail_execution)
+    monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
+
+    with pytest.raises(ValueError, match=expected_error):
+        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+
+def test_run_rhime_from_prepared_inputs_rejects_empty_model() -> None:
+    """Prepared runs reject model specifications without a sector."""
+    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="none")
+    run_spec = RhimeRunSpec(
+        run_spec.start_date,
+        run_spec.end_date,
+        run_spec.sites,
+        run_spec.averaging_period,
+        RhimeModelSpec(species=model_spec.species, domain=model_spec.domain, sectors=()),
+        output_spec,
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+
+    with pytest.raises(ValueError, match="must contain at least one sector; found 0"):
+        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+
+def test_run_rhime_from_prepared_inputs_is_publicly_reexported() -> None:
+    """The prepared-input runner is available from the public RHIME package."""
+    assert rhime_public.run_rhime_from_prepared_inputs is run_rhime_from_prepared_inputs
 
 
 def test_unreleased_sampling_compatibility_shims_are_absent() -> None:
