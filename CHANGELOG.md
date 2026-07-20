@@ -38,6 +38,14 @@
   and uncertainty statistics are calculated, then cast at the template
   boundary, keeping posterior stdev and covariance calculations consistent.
 
+- Added versioned NetCDF and Zarr persistence for ``RhimePreparedInputs``,
+  including canonical MultiIndex inversion inputs, the retained operator-backed
+  basis and reference flux with stable multisource ordering, and validated site
+  and basis provenance metadata. Repeated Zarr saves replace the previous
+  artifact rather than retaining stale groups.
+  Generic DataTree, InferenceData, and MultiIndex serialization helpers now
+  have shared ownership outside postprocessing.
+
 - Added `run_rhime_from_prepared_inputs` so modern standard and multisector
   RHIME models can run from an existing `RhimePreparedInputs` object without
   repeating OpenGHG-backed data preparation. Existing `run_rhime` entry points

@@ -40,10 +40,8 @@ from openghg_inversions.basis.basis_functions import BasisFunctions
 from openghg_inversions.models.priors import lognormal_mu_sigma
 from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 from openghg_inversions.inversion_data import FixedBasisPreparedData, prepare_fixedbasis_inversion_data
-from openghg_inversions.postprocessing.inversion_output import (
-    InversionOutput,
-    _reset_serialisation_multiindexes,
-)
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
+from openghg_inversions.serialization import reset_serialisation_multiindexes
 
 
 def update_log_normal_prior(prior):
@@ -480,7 +478,7 @@ def _handle_core_output_artifacts(context: _OutputContext) -> None:
         if isinstance(trace, az.InferenceData):
             trace = cast(Any, az.InferenceData)(
                 attrs=dict(trace.attrs),
-                **{group: _reset_serialisation_multiindexes(trace[group]) for group in trace.groups()},
+                **{group: reset_serialisation_multiindexes(trace[group]) for group in trace.groups()},
             )
         trace.to_netcdf(str(trace_path), engine="netcdf4", compress=True)
 

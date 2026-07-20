@@ -12,12 +12,10 @@ import xarray as xr
 from openghg_inversions._timing import timed
 from openghg_inversions.inversion_data import RhimePreparedInputs
 from openghg_inversions.models import RhimeModelSpec
-from openghg_inversions.postprocessing.inversion_output import (
-    InversionOutput,
-    _reset_serialisation_multiindexes,
-)
+from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.rhime.sampling import RhimeSampler
 from openghg_inversions.rhime.specs import OutputFilenameConvention, RhimeOutputSpec, RhimeRunSpec
+from openghg_inversions.serialization import reset_serialisation_multiindexes
 from openghg_inversions.utils import ncdf_encoding, write_netcdf_preserving_bounds_attrs
 
 
@@ -101,7 +99,7 @@ def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
     if isinstance(idata, az.InferenceData):
         idata = cast(Any, az.InferenceData)(
             attrs=dict(idata.attrs),
-            **{group: _reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
+            **{group: reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
         )
 
     failures = []

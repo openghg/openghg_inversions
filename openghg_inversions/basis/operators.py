@@ -53,6 +53,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
+import json
 from typing import Any, ClassVar, Literal, TypeVar, cast
 from typing_extensions import Self
 
@@ -417,9 +418,7 @@ class BucketBasisOperator(BasisOperator):
         mat = self._apply_region_labels_policy(mat, basis_value_labels=basis_value_labels)
 
         if state_metadata is not None:
-            state_metadata_on_state_dim = BasisStateMetadata.from_dataset(
-                state_metadata
-            ).on_state_dim(
+            state_metadata_on_state_dim = BasisStateMetadata.from_dataset(state_metadata).on_state_dim(
                 state_dim=self.meta.state_dim,
                 state_coord=mat[self.meta.state_dim],
                 basis_value_labels=basis_value_labels,
@@ -562,6 +561,11 @@ class BucketBasisOperator(BasisOperator):
 
         Returns:
             A reconstructed `BucketBasisOperator`.
+
+        Raises:
+            KeyError: If the serialized ``basis_flat`` variable is missing.
+            ValueError: If serialized labels, metadata, or state coordinates
+                are invalid.
         """
         ds = dt.to_dataset()
 
@@ -782,7 +786,8 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         """Serialises the multisource operator to a DataTree.
 
         The returned DataTree stores per-source `basis_flat` arrays as children under
-        `dt["basis_flat"][<source>]`.
+        `dt["basis_flat"][<source>]` and records their insertion order as JSON root
+        metadata so storage backends may reorder groups without changing the operator.
 
         Returns:
             DataTree representation of the operator.
@@ -798,6 +803,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
                 "state_dim": self.meta.state_dim,
                 "source_dim": self.source_dim,
                 "region_in_source_dim": self.region_in_source_dim,
+                "source_order": json.dumps(list(self.basis_flat)),
             }
         )
 
@@ -816,7 +822,14 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             dt: DataTree produced by `MultiSourceBucketBasisOperator.to_datatree()`.
 
         Returns:
-            A reconstructed `MultiSourceBucketBasisOperator`.
+            A reconstructed `MultiSourceBucketBasisOperator`. When
+            ``source_order`` metadata is present, it controls source insertion
+            and state order. Older artifacts without the metadata retain their
+            stored child iteration order.
+
+        Raises:
+            ValueError: If required basis data is missing or source-order metadata
+                is malformed or inconsistent with the stored source children.
         """
         meta = BasisMeta(
             grid_dims=tuple(dt.attrs.get("grid_dims", ("lat", "lon"))),
@@ -829,8 +842,30 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             raise ValueError("Expected child node 'basis_flat' in DataTree.")
 
         basis_node = dt["basis_flat"]
+        source_order = list(basis_node)
+        raw_source_order = dt.attrs.get("source_order")
+        if raw_source_order is not None:
+            if not isinstance(raw_source_order, str):
+                raise ValueError("Multi-source basis 'source_order' metadata must be a JSON string.")
+            try:
+                parsed_source_order = json.loads(raw_source_order)
+            except json.JSONDecodeError:
+                raise ValueError("Multi-source basis 'source_order' metadata is not valid JSON.") from None
+            if not isinstance(parsed_source_order, list) or not all(
+                isinstance(source, str) for source in parsed_source_order
+            ):
+                raise ValueError("Multi-source basis 'source_order' metadata must contain a list of strings.")
+            if len(set(parsed_source_order)) != len(parsed_source_order):
+                raise ValueError("Multi-source basis 'source_order' metadata contains duplicates.")
+            if set(parsed_source_order) != set(source_order):
+                raise ValueError(
+                    "Multi-source basis 'source_order' metadata does not match stored source children."
+                )
+            source_order = parsed_source_order
+
         basis_flat: dict[str, xr.DataArray] = {}
-        for src, child in basis_node.items():
+        for src in source_order:
+            child = basis_node[src]
             ds = child.to_dataset()
             if "basis_flat" not in ds:
                 raise ValueError(f"Missing 'basis_flat' variable for source '{src}'.")

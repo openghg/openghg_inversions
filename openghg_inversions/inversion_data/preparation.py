@@ -16,12 +16,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+import json
+from numbers import Integral, Real
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, NoReturn, cast
 import warnings
 
 import numpy as np
+import pandas as pd
 import xarray as xr
+from typing_extensions import Self
 
 from openghg_inversions._timing import log_timing, timed, timer_seconds, timer_start
 from openghg_inversions.basis import basis_functions_wrapper, make_basis_functions
@@ -33,8 +37,29 @@ from openghg_inversions.inversion_data.get_data import convert_to_list, data_pro
 from openghg_inversions.inversion_data.serialise import load_merged_data
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.sigma import SigmaAlignment
+from openghg_inversions.serialization import (
+    open_datatree_loaded,
+    reset_serialisation_multiindexes,
+    restore_serialisation_multiindexes,
+    save_datatree,
+)
 
 MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | int | float
+RHIME_PREPARED_INPUTS_SCHEMA = "openghg_inversions.rhime_prepared_inputs"
+RHIME_PREPARED_INPUTS_SCHEMA_VERSION = 1
+_RHIME_PREPARED_INPUTS_METADATA_ATTR = "metadata"
+_RHIME_PREPARED_INPUTS_BASIS_SCHEMA = "openghg_inversions.flux_weighted_basis"
+_RHIME_PREPARED_INPUTS_BASIS_SCHEMA_VERSION = 1
+_RHIME_PREPARED_INPUTS_METADATA_FIELDS = frozenset(
+    {
+        "sites",
+        "averaging_period",
+        "basis_artifact_source",
+        "basis_artifact_path",
+        "site_lats",
+        "site_lons",
+    }
+)
 
 
 @dataclass
@@ -64,7 +89,13 @@ class FixedBasisPreparedData:
 
 @dataclass(frozen=True)
 class RhimePreparedInputs:
-    """Modern RHIME preparation contract.
+    """Modern RHIME preparation and durable serialization contract.
+
+    Serialized ``inv_inputs`` must restore ``nmeasure`` as a pandas MultiIndex
+    with levels ``(site, time)``. ``averaging_period`` and any release
+    coordinate tuples are site-aligned. Latitude and longitude must either
+    both be present or both be absent; ``NaN`` represents a missing coordinate,
+    while infinite coordinates are invalid.
 
     Args:
         inv_inputs: Canonical inversion inputs consumed by RHIME model
@@ -88,6 +119,413 @@ class RhimePreparedInputs:
     basis_artifact_path: str | None = None
     site_lats: tuple[float, ...] | None = None
     site_lons: tuple[float, ...] | None = None
+
+    def to_datatree(self) -> xr.DataTree:
+        """Convert prepared RHIME inputs to the versioned DataTree schema.
+
+        The basis object is embedded in the artifact. ``basis_artifact_path``
+        is retained only as provenance and is never read while serializing or
+        reconstructing the prepared inputs.
+
+        Returns:
+            DataTree containing ``inv_inputs`` and ``basis_functions`` child
+            nodes plus strictly encoded site-aligned metadata.
+
+        Raises:
+            ValueError: If a metadata field has the wrong type, site-aligned
+                fields have inconsistent lengths, coordinates are infinite,
+                metadata cannot be encoded as strict JSON, or an inversion-input
+                MultiIndex contains unnamed levels.
+        """
+        metadata = _rhime_prepared_inputs_metadata_for_serialisation(self)
+        dt = xr.DataTree.from_dict(
+            {
+                "inv_inputs": xr.DataTree(reset_serialisation_multiindexes(self.inv_inputs)),
+                "basis_functions": self.basis_functions.to_datatree(),
+            }
+        )
+        dt.attrs = {
+            "schema": RHIME_PREPARED_INPUTS_SCHEMA,
+            "schema_version": RHIME_PREPARED_INPUTS_SCHEMA_VERSION,
+            _RHIME_PREPARED_INPUTS_METADATA_ATTR: json.dumps(
+                metadata,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        }
+        return dt
+
+    @classmethod
+    def from_datatree(cls: type[Self], dt: xr.DataTree) -> Self:
+        """Construct prepared RHIME inputs from a version-1 DataTree.
+
+        Args:
+            dt: DataTree using the ``openghg_inversions.rhime_prepared_inputs``
+                schema.
+
+        Returns:
+            Reconstructed prepared inputs with the canonical inversion-input
+            MultiIndexes and embedded basis object restored, including retained
+            multisource basis ordering.
+
+        Raises:
+            ValueError: If the prepared or embedded BasisFunctions schema,
+                schema version, metadata, or serialized MultiIndex description
+                is missing or malformed, or ``nmeasure`` is not canonical
+                ``(site, time)``.
+            KeyError: If a required child node is missing.
+        """
+        schema = dt.attrs.get("schema")
+        if schema != RHIME_PREPARED_INPUTS_SCHEMA:
+            raise ValueError(
+                f"Expected RhimePreparedInputs schema {RHIME_PREPARED_INPUTS_SCHEMA!r}, got {schema!r}."
+            )
+
+        version = dt.attrs.get("schema_version")
+        if isinstance(version, bool) or not isinstance(version, Integral) or version != 1:
+            raise ValueError(
+                f"Expected RhimePreparedInputs schema_version "
+                f"{RHIME_PREPARED_INPUTS_SCHEMA_VERSION}, got {version!r}."
+            )
+
+        missing_nodes = [name for name in ("inv_inputs", "basis_functions") if name not in dt.children]
+        if missing_nodes:
+            raise KeyError(f"Missing required RhimePreparedInputs node(s): {missing_nodes!r}.")
+
+        metadata = _load_rhime_prepared_inputs_metadata(dt.attrs)
+        inv_inputs = _restore_canonical_rhime_inv_inputs(cast(xr.DataTree, dt["inv_inputs"]).to_dataset())
+        basis_functions_dt = cast(xr.DataTree, dt["basis_functions"])
+        _validate_rhime_prepared_inputs_basis_schema(basis_functions_dt)
+        basis_functions = BasisFunctions.from_datatree(basis_functions_dt)
+        return cls(
+            inv_inputs=inv_inputs,
+            basis_functions=basis_functions,
+            sites=metadata["sites"],
+            averaging_period=metadata["averaging_period"],
+            basis_artifact_source=metadata["basis_artifact_source"],
+            basis_artifact_path=metadata["basis_artifact_path"],
+            site_lats=metadata["site_lats"],
+            site_lons=metadata["site_lons"],
+        )
+
+    def save(
+        self,
+        output_file: str | Path,
+        output_format: Literal["netcdf", "zarr"] | None = None,
+    ) -> None:
+        """Save prepared RHIME inputs to NetCDF or Zarr.
+
+        Args:
+            output_file: Destination artifact path. Saving writes and may
+                overwrite this artifact.
+            output_format: Storage format. When omitted, infer it from a
+                ``.nc`` or ``.zarr`` suffix. An explicit format adds or
+                replaces the corresponding suffix.
+
+        Raises:
+            ValueError: If metadata is invalid or the output format cannot be
+                inferred.
+        """
+        save_datatree(self.to_datatree(), output_file, output_format)
+
+    @classmethod
+    def load(cls: type[Self], file_path: str | Path) -> Self:
+        """Load prepared RHIME inputs from a NetCDF or Zarr artifact.
+
+        Args:
+            file_path: Prepared-input artifact previously written by ``save``.
+
+        Returns:
+            Fully loaded prepared RHIME inputs with no open file handles.
+
+        Raises:
+            OSError: If the artifact cannot be opened.
+            RuntimeError: If all available storage backends fail at runtime.
+            ValueError: If the artifact schema or metadata is invalid.
+            KeyError: If a required child node is missing.
+        """
+        return cls.from_datatree(open_datatree_loaded(file_path))
+
+
+def _restore_canonical_rhime_inv_inputs(ds: xr.Dataset) -> xr.Dataset:
+    """Restore and validate the canonical site/time measurement index.
+
+    Args:
+        ds: Serialized canonical inversion inputs with MultiIndex restoration
+            metadata.
+
+    Returns:
+        Inversion inputs with ``nmeasure=(site, time)`` restored.
+
+    Raises:
+        ValueError: If restoration metadata is missing, empty, malformed, or
+            inapplicable, or the restored ``nmeasure`` index is not a
+            ``(site, time)`` pandas MultiIndex.
+    """
+    restored = restore_serialisation_multiindexes(ds, strict=True)
+    nmeasure_index = restored.indexes.get("nmeasure")
+    if not isinstance(nmeasure_index, pd.MultiIndex):
+        raise ValueError(
+            "RhimePreparedInputs inv_inputs must restore a 'nmeasure' MultiIndex with levels "
+            "('site', 'time')."
+        )
+    if tuple(nmeasure_index.names) != ("site", "time"):
+        raise ValueError(
+            "RhimePreparedInputs inv_inputs 'nmeasure' MultiIndex must have levels "
+            f"('site', 'time'), got {tuple(nmeasure_index.names)!r}."
+        )
+    return restored
+
+
+def _validate_rhime_prepared_inputs_basis_schema(dt: xr.DataTree) -> None:
+    """Validate the exact embedded BasisFunctions schema used by version 1.
+
+    Args:
+        dt: Embedded BasisFunctions DataTree.
+
+    Raises:
+        ValueError: If the schema or integer schema version is missing or does
+            not exactly match the prepared-input v1 contract.
+    """
+    schema = dt.attrs.get("schema")
+    if schema != _RHIME_PREPARED_INPUTS_BASIS_SCHEMA:
+        raise ValueError(
+            "Expected embedded BasisFunctions schema "
+            f"{_RHIME_PREPARED_INPUTS_BASIS_SCHEMA!r}, got {schema!r}."
+        )
+
+    version = dt.attrs.get("schema_version")
+    if (
+        isinstance(version, bool)
+        or not isinstance(version, Integral)
+        or version != _RHIME_PREPARED_INPUTS_BASIS_SCHEMA_VERSION
+    ):
+        raise ValueError(
+            "Expected embedded BasisFunctions schema_version "
+            f"{_RHIME_PREPARED_INPUTS_BASIS_SCHEMA_VERSION}, got {version!r}."
+        )
+
+
+def _raise_nonfinite_json_constant(value: str) -> NoReturn:
+    """Reject non-standard JSON constants such as NaN and Infinity.
+
+    Args:
+        value: Non-standard constant encountered by ``json.loads``.
+
+    Raises:
+        ValueError: Always, because prepared metadata uses strict JSON.
+    """
+    raise ValueError(f"Non-finite JSON constant {value!r} is not permitted.")
+
+
+def _validate_string_tuple(value: object, *, field_name: str, allow_none: bool) -> tuple[str | None, ...]:
+    """Validate and normalize a tuple of string-like metadata values.
+
+    Args:
+        value: Candidate tuple.
+        field_name: Metadata field name used in validation errors.
+        allow_none: Whether individual tuple entries may be ``None``.
+
+    Returns:
+        The validated tuple.
+
+    Raises:
+        ValueError: If ``value`` is not a tuple or contains an invalid entry.
+    """
+    if not isinstance(value, tuple):
+        raise ValueError(f"RhimePreparedInputs {field_name!r} must be a tuple.")
+    if not all(isinstance(item, str) or (allow_none and item is None) for item in value):
+        expected = "strings or None" if allow_none else "strings"
+        raise ValueError(f"RhimePreparedInputs {field_name!r} must contain only {expected}.")
+    return value
+
+
+def _validate_coordinate_tuple(value: object, *, field_name: str) -> tuple[float, ...] | None:
+    """Validate and normalize optional site coordinates, allowing missing NaNs.
+
+    Args:
+        value: Optional tuple of numeric site coordinates.
+        field_name: Metadata field name used in validation errors.
+
+    Returns:
+        A tuple of floats, preserving missing values as NaN, or ``None``.
+
+    Raises:
+        ValueError: If the container or entries have invalid types, or a
+            coordinate is infinite.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, tuple):
+        raise ValueError(f"RhimePreparedInputs {field_name!r} must be a tuple or None.")
+    coordinates: list[float] = []
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, Real):
+            raise ValueError(f"RhimePreparedInputs {field_name!r} must contain only numbers.")
+        coordinate = float(item)
+        if np.isinf(coordinate):
+            raise ValueError(f"RhimePreparedInputs {field_name!r} must not contain infinity.")
+        coordinates.append(coordinate)
+    return tuple(coordinates)
+
+
+def _validate_rhime_prepared_inputs_metadata(
+    *,
+    sites: object,
+    averaging_period: object,
+    basis_artifact_source: object,
+    basis_artifact_path: object,
+    site_lats: object,
+    site_lons: object,
+) -> dict[str, Any]:
+    """Validate prepared-input metadata types and site alignment.
+
+    Args:
+        sites: Ordered retained site names.
+        averaging_period: Site-aligned strings or missing values.
+        basis_artifact_source: Basis provenance source label.
+        basis_artifact_path: Optional provenance-only artifact path.
+        site_lats: Optional site-aligned release latitudes.
+        site_lons: Optional site-aligned release longitudes.
+
+    Returns:
+        Validated and normalized metadata values.
+
+    Raises:
+        ValueError: If field types are invalid, site-aligned lengths differ,
+            coordinates are infinite, or only one coordinate tuple is present.
+    """
+    validated_sites = _validate_string_tuple(sites, field_name="sites", allow_none=False)
+    validated_periods = _validate_string_tuple(
+        averaging_period,
+        field_name="averaging_period",
+        allow_none=True,
+    )
+    if not isinstance(basis_artifact_source, str):
+        raise ValueError("RhimePreparedInputs 'basis_artifact_source' must be a string.")
+    if basis_artifact_path is not None and not isinstance(basis_artifact_path, str):
+        raise ValueError("RhimePreparedInputs 'basis_artifact_path' must be a string or None.")
+
+    validated_lats = _validate_coordinate_tuple(site_lats, field_name="site_lats")
+    validated_lons = _validate_coordinate_tuple(site_lons, field_name="site_lons")
+    if (validated_lats is None) != (validated_lons is None):
+        raise ValueError("RhimePreparedInputs 'site_lats' and 'site_lons' must both be set or both be None.")
+    aligned_fields = {
+        "averaging_period": validated_periods,
+        "site_lats": validated_lats,
+        "site_lons": validated_lons,
+    }
+    for field_name, value in aligned_fields.items():
+        if value is not None and len(value) != len(validated_sites):
+            raise ValueError(
+                f"RhimePreparedInputs {field_name!r} has length {len(value)}, "
+                f"but 'sites' has length {len(validated_sites)}."
+            )
+
+    return {
+        "sites": validated_sites,
+        "averaging_period": validated_periods,
+        "basis_artifact_source": basis_artifact_source,
+        "basis_artifact_path": basis_artifact_path,
+        "site_lats": validated_lats,
+        "site_lons": validated_lons,
+    }
+
+
+def _rhime_prepared_inputs_metadata_for_serialisation(
+    prepared: RhimePreparedInputs,
+) -> dict[str, Any]:
+    """Return validated JSON-compatible metadata for prepared inputs.
+
+    Missing coordinate NaNs are encoded as JSON-compatible ``None`` values;
+    infinities remain invalid.
+
+    Args:
+        prepared: Prepared inputs whose metadata should be encoded.
+
+    Returns:
+        Exact schema-v1 metadata with tuples converted to lists.
+
+    Raises:
+        ValueError: If metadata types, coordinate values, or site alignment are
+            invalid.
+    """
+    metadata = _validate_rhime_prepared_inputs_metadata(
+        sites=prepared.sites,
+        averaging_period=prepared.averaging_period,
+        basis_artifact_source=prepared.basis_artifact_source,
+        basis_artifact_path=prepared.basis_artifact_path,
+        site_lats=prepared.site_lats,
+        site_lons=prepared.site_lons,
+    )
+    result = {key: list(value) if isinstance(value, tuple) else value for key, value in metadata.items()}
+    for field_name in ("site_lats", "site_lons"):
+        coordinates = metadata[field_name]
+        if coordinates is not None:
+            result[field_name] = [None if np.isnan(value) else value for value in coordinates]
+    return result
+
+
+def _load_rhime_prepared_inputs_metadata(attrs: Mapping[Any, Any]) -> dict[str, Any]:
+    """Decode and strictly validate prepared-input metadata from root attrs.
+
+    JSON null coordinate entries are restored as float NaNs. The metadata must
+    contain exactly the fields defined by the prepared-input v1 schema.
+
+    Args:
+        attrs: Root DataTree attributes containing the JSON metadata string.
+
+    Returns:
+        Validated metadata with tuple-shaped site-aligned values.
+
+    Raises:
+        ValueError: If metadata is missing, is not strict JSON, has missing or
+            unexpected fields, contains invalid values, or is not site-aligned.
+    """
+    raw_metadata = attrs.get(_RHIME_PREPARED_INPUTS_METADATA_ATTR)
+    if not isinstance(raw_metadata, str):
+        raise ValueError("RhimePreparedInputs metadata must be present as a JSON string.")
+    try:
+        payload = json.loads(raw_metadata, parse_constant=_raise_nonfinite_json_constant)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError("RhimePreparedInputs metadata is not valid strict JSON.") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("RhimePreparedInputs metadata must decode to a JSON object.")
+
+    payload_fields = frozenset(payload)
+    if payload_fields != _RHIME_PREPARED_INPUTS_METADATA_FIELDS:
+        missing = sorted(_RHIME_PREPARED_INPUTS_METADATA_FIELDS - payload_fields)
+        unexpected = sorted(payload_fields - _RHIME_PREPARED_INPUTS_METADATA_FIELDS)
+        raise ValueError(
+            "RhimePreparedInputs metadata fields do not match schema version 1: "
+            f"missing={missing!r}, unexpected={unexpected!r}."
+        )
+
+    for field_name in ("sites", "averaging_period"):
+        if not isinstance(payload[field_name], list):
+            raise ValueError(f"RhimePreparedInputs metadata {field_name!r} must be a JSON array.")
+    for field_name in ("site_lats", "site_lons"):
+        if payload[field_name] is not None and not isinstance(payload[field_name], list):
+            raise ValueError(f"RhimePreparedInputs metadata {field_name!r} must be a JSON array or null.")
+
+    decoded_coordinates = {
+        field_name: (
+            None
+            if payload[field_name] is None
+            else tuple(np.nan if value is None else value for value in payload[field_name])
+        )
+        for field_name in ("site_lats", "site_lons")
+    }
+
+    return _validate_rhime_prepared_inputs_metadata(
+        sites=tuple(payload["sites"]),
+        averaging_period=tuple(payload["averaging_period"]),
+        basis_artifact_source=payload["basis_artifact_source"],
+        basis_artifact_path=payload["basis_artifact_path"],
+        site_lats=decoded_coordinates["site_lats"],
+        site_lons=decoded_coordinates["site_lons"],
+    )
 
 
 @dataclass

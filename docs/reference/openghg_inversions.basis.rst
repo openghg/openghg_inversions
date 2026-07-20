@@ -11,3 +11,5 @@ openghg\_inversions.basis
    :maxdepth: 4
 
    openghg_inversions.basis.algorithms
+   openghg_inversions.basis.basis_functions
+   openghg_inversions.basis.operators

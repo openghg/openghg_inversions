@@ -1,12 +1,22 @@
-"""BasisFunctions object to encapsulate representation of basis.
+"""Flux-weighted basis objects and their durable representation.
 
-Example usage:
+``FluxWeightedBasis`` (also exported as ``BasisFunctions``) pairs a retained
+flux field with a basis operator. The operator owns the grid-to-state mapping,
+including region and optional source ordering; the flux remains separate so
+the same object can project sensitivities and reconstruct gridded fluxes.
 
->> def apply_basis_functions(ds: xr.Dataset, bf: BasisFunctions) -> xr.Dataset:
->>     if "fp_x_flux" not in ds:
->>         return ds
->>     return bf.sensitivity(ds.fp_x_flux).rename("H").to_dataset()
+NetCDF and Zarr persistence uses a versioned DataTree with separate ``basis``
+and ``flux`` children. Only namespaced OpenGHG Inversions metadata is retained.
+Loading reconstructs the operator and preserves its grid, state, region, and
+source coordinates.
 
+Example:
+    Project a cached footprint-times-flux field into state space::
+
+        def apply_basis_functions(ds: xr.Dataset, bf: BasisFunctions) -> xr.Dataset:
+            if "fp_x_flux" not in ds:
+                return ds
+            return bf.sensitivity(ds.fp_x_flux).rename("H").to_dataset()
 """
 
 from __future__ import annotations
@@ -262,8 +272,6 @@ class FluxWeightedBasis:
               - `basis`: BasisOperator DataTree (via operator.to_datatree()).
               - `flux`: a Dataset containing the flux DataArray as variable `flux`.
 
-        Raises:
-            KeyError: If serialisation would overwrite an existing group name.
         """
         dt_basis = self.operator.to_datatree()
 
@@ -375,6 +383,13 @@ class FluxWeightedBasis:
 
         Returns:
             The reconstructed basis object.
+
+        Raises:
+            OSError: If the artifact cannot be opened.
+            KeyError: If a required DataTree group or basis variable is
+                missing.
+            ValueError: If the serialized schema, metadata, labels, or
+                operator state is invalid.
         """
         with xr.open_datatree(file_path) as dt:
             return cast(Self, cls.from_datatree(dt.load()))
