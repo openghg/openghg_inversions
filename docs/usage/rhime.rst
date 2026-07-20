@@ -527,6 +527,70 @@ The exception changes split acceptance only: it does not reconnect, freeze,
 prune, or marginalize the resulting small region. A direct three-argument
 policy call has no target-region context and therefore remains strict.
 
+Active And Fixed States
+-----------------------
+
+The modern model builders sample only active flux-scaling states. Inactive
+columns are removed from the sampled vector and restored into the full ordered
+``x`` (or ``x_<sector>``) model variable before the forward calculation and
+postprocessing. By default, a sensitivity column is inactive only when every
+value in that column is exactly zero. No tolerance is applied, so a near-zero
+nonzero column remains active. Inactive multiplicative scaling states default
+to one.
+
+``StateActivity`` can also freeze labelled states, ``basis_group`` values, or a
+complete sector. Labelled masks and fixed values are aligned to the state
+coordinate rather than interpreted as numeric state ranges. Prior distribution
+parameters may likewise be scalars, full one-dimensional arrays, or labelled
+``DataArray`` objects. Given canonical ``inv_inputs``, the following example
+assumes that ``inv_inputs["H"]`` carries a state-aligned ``basis_group``
+coordinate containing the value ``"outer"``:
+
+.. code-block:: python
+
+   from openghg_inversions.models import StateActivity, build_rhime_model
+   from openghg_inversions.sigma import SigmaAlignment
+
+   state_policy = StateActivity(
+       fixed_groups=("outer",),
+       fixed_value=1.0,
+   )
+   sigma_alignment = SigmaAlignment.from_frequency(
+       inv_inputs["site_indicator"],
+   )
+   model = build_rhime_model(
+       inv_inputs,
+       sigma_alignment=sigma_alignment,
+       x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.5},
+       state_activity=state_policy,
+   )
+
+For multisector builders, use ``state_activity`` as a shared policy or
+``sector_state_activities`` for sector-name overrides;
+``StateActivity(active=False)`` freezes a complete sector. Programmatic
+prepared-input runs set the canonical per-sector policy with
+``SectorSpec(state_activity=...)``. RHIME config-file syntax and persisted
+activity-reason tables remain follow-up work.
+Each prior dictionary in ``sector_priors`` supports the same scalar,
+full-state array, and labelled ``DataArray`` parameter forms; labelled values
+must match the selected sector's state coordinate exactly.
+
+For low-level model construction, first inspect a labelled design with
+``detect_zero_sensitivity``, then combine the returned mask with a
+``StateActivity`` using ``resolve_state_activity``. State-vector graph helpers
+consume the resulting ``ResolvedStateActivity``; they do not inspect ``H`` or
+infer its output dimension.
+
+Boundary-condition scaling states can be handled the same way. Set
+``RhimeModelSpec(bc_state_activity=StateActivity(active=False))`` (or the
+equivalent low-level builder argument) to retain ``mu_bc = H_bc @ bc`` with a
+fixed ``bc`` vector and no boundary-condition random variable. This is distinct
+from supplying a standalone baseline time series, which belongs to a separate
+baseline component.
+
+The legacy single-sector ``inferpymc`` / ``fixedbasisMCMC`` compatibility path
+continues to sample its full flux state and does not gain multisector behavior.
+
 Output Formats
 --------------
 

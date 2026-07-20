@@ -1,0 +1,485 @@
+"""Tests for labelled active/fixed state-vector model construction."""
+
+from __future__ import annotations
+
+from typing import Any, cast
+
+import dask.array as da
+import numpy as np
+import pymc as pm
+import pytest
+import xarray as xr
+
+from openghg_inversions.models import (
+    CoordRegistry,
+    StateActivity,
+    active_prior_args,
+    add_state_linear_component,
+    attach_coord_registry,
+    build_rhime_model,
+    build_rhime_multisector_model,
+    detect_zero_sensitivity,
+    resolve_state_activity,
+)
+from openghg_inversions.models.components import add_linear_component, resolve_model_variable
+from openghg_inversions.models.components import add_state_vector
+from openghg_inversions.sigma import SigmaAlignment
+
+
+def _sensitivity() -> xr.DataArray:
+    """Return labelled sensitivity with exact-zero and near-zero columns."""
+    return xr.DataArray(
+        [
+            [1.0, 0.0, 2.0, 1.0e-12],
+            [3.0, 0.0, 4.0, -1.0e-12],
+        ],
+        dims=("nmeasure", "region"),
+        coords={
+            "nmeasure": [0, 1],
+            "region": ["inner-a", "zero", "outer-a", "inner-b"],
+            "basis_group": ("region", ["inner", "inner", "outer", "inner"]),
+        },
+        name="H",
+    )
+
+
+def _model_inputs(h: xr.DataArray) -> xr.Dataset:
+    """Return the minimal complete dataset needed by RHIME model builders."""
+    nmeasure = h.sizes["nmeasure"]
+    return xr.Dataset(
+        {
+            "H": h,
+            "mf": ("nmeasure", np.full(nmeasure, 2.0)),
+            "mf_error": ("nmeasure", np.full(nmeasure, 0.1)),
+            "min_error": ("nmeasure", np.zeros(nmeasure)),
+            "site_indicator": ("nmeasure", np.zeros(nmeasure, dtype=int)),
+            "sigma_freq_index": ("nmeasure", np.zeros(nmeasure, dtype=int)),
+        }
+    )
+
+
+def _sigma_alignment(inputs: xr.Dataset) -> SigmaAlignment:
+    """Return prepared sigma alignment for the minimal builder inputs."""
+    return SigmaAlignment.from_indices(inputs["site_indicator"], inputs["sigma_freq_index"])
+
+
+def test_detect_zero_sensitivity_validates_and_retains_state_metadata() -> None:
+    """Reduce the design to a labelled mask without dropping group metadata."""
+    zero_sensitivity = detect_zero_sensitivity(_sensitivity())
+
+    np.testing.assert_array_equal(zero_sensitivity, [False, True, False, False])
+    assert zero_sensitivity.dims == ("region",)
+    np.testing.assert_array_equal(zero_sensitivity["basis_group"], ["inner", "inner", "outer", "inner"])
+
+
+def test_detect_zero_sensitivity_requires_a_two_dimensional_output_design() -> None:
+    """Reject extra axes and designs lacking the declared output dimension."""
+    with pytest.raises(ValueError, match="two-dimensional"):
+        detect_zero_sensitivity(_sensitivity().expand_dims(extra=[0]))
+    with pytest.raises(ValueError, match="output dimension 'nmeasure'"):
+        detect_zero_sensitivity(_sensitivity().rename(nmeasure="observation"))
+
+
+def test_detect_zero_sensitivity_accepts_a_named_output_dimension() -> None:
+    """Detect zero columns when the caller declares a non-default output axis."""
+    design = _sensitivity().rename(nmeasure="observation")
+
+    zero_sensitivity = detect_zero_sensitivity(design, output_dim="observation")
+
+    np.testing.assert_array_equal(zero_sensitivity, [False, True, False, False])
+    assert zero_sensitivity.dims == ("region",)
+
+
+def test_resolve_state_activity_combines_labels_groups_and_exact_zero() -> None:
+    """Resolve masks by labels while retaining nonzero values of any magnitude."""
+    h = _sensitivity()
+    explicit = xr.DataArray(
+        [True, False, True, True],
+        dims="region",
+        coords={"region": ["inner-b", "outer-a", "zero", "inner-a"]},
+    )
+
+    resolved = resolve_state_activity(
+        detect_zero_sensitivity(h),
+        StateActivity(active=explicit, fixed_groups=("outer",)),
+    )
+
+    np.testing.assert_array_equal(resolved.zero_sensitivity, [False, True, False, False])
+    np.testing.assert_array_equal(resolved.active, [True, False, False, True])
+    assert resolved.n_active == 2
+    np.testing.assert_array_equal(resolved.active_indices, [0, 3])
+
+
+def test_active_prior_args_aligns_labelled_and_array_parameters() -> None:
+    """Subset labelled and positional full-state prior arrays to active order."""
+    h = _sensitivity()
+    resolved = resolve_state_activity(
+        detect_zero_sensitivity(h),
+        StateActivity(fixed_groups=("outer",)),
+    )
+    labelled_mu = xr.DataArray(
+        [40.0, 30.0, 20.0, 10.0],
+        dims="region",
+        coords={"region": ["inner-b", "outer-a", "zero", "inner-a"]},
+    )
+
+    prior = active_prior_args(
+        {
+            "pdf": "normal",
+            "mu": labelled_mu,
+            "sigma": np.array([1.0, 2.0, 3.0, 4.0]),
+        },
+        resolved,
+    )
+
+    np.testing.assert_array_equal(prior["mu"], [10.0, 40.0])
+    np.testing.assert_array_equal(prior["sigma"], [1.0, 4.0])
+
+
+def test_state_activity_materializes_dask_backed_reductions_and_vectors() -> None:
+    """Materialize lazy detection, policy resolution, and prior slicing."""
+    h = _sensitivity().chunk({"nmeasure": 1, "region": 2})
+    active = xr.DataArray(
+        da.from_array([True, True, False, True], chunks="auto"),
+        dims="region",
+        coords={"region": h.region},
+    )
+    fixed = xr.DataArray(
+        da.from_array([1.0, 2.0, 3.0, 4.0], chunks="auto"),
+        dims="region",
+        coords={"region": h.region},
+    )
+    resolved = resolve_state_activity(
+        detect_zero_sensitivity(h),
+        StateActivity(active=active, fixed_value=fixed),
+    )
+    lazy_mu = xr.DataArray(
+        da.from_array([10.0, 20.0, 30.0, 40.0], chunks="auto"),
+        dims="region",
+        coords={"region": h.region},
+    )
+
+    prior = active_prior_args(
+        {"pdf": "normal", "mu": lazy_mu, "sigma": xr.DataArray(0.5)},
+        resolved,
+    )
+
+    assert resolved.n_active == 2
+    np.testing.assert_array_equal(resolved.active_indices, [0, 3])
+    np.testing.assert_array_equal(prior["mu"], [10.0, 40.0])
+    assert prior["sigma"] == 0.5
+
+
+@pytest.mark.parametrize("labels", [["inner-a", "zero", "outer-a", "outer-a"], None])
+def test_detect_zero_sensitivity_rejects_invalid_canonical_labels(labels: list[str] | None) -> None:
+    """Require a present and unique canonical state coordinate during detection."""
+    h = _sensitivity()
+    if labels is None:
+        h = h.drop_indexes("region").drop_vars("region")
+    else:
+        h = h.assign_coords(region=labels)
+
+    with pytest.raises(ValueError, match="labelled|unique"):
+        detect_zero_sensitivity(h)
+
+
+@pytest.mark.parametrize(
+    "labels",
+    [
+        ["inner-a", "zero", "outer-a", "outer-a"],
+        ["inner-a", "zero", "outer-a", "unexpected"],
+    ],
+)
+def test_resolve_state_activity_rejects_duplicate_or_misaligned_policy_labels(
+    labels: list[str],
+) -> None:
+    """Reject duplicate, missing, or extra labels on state-aligned policy values."""
+    active = xr.DataArray([True] * 4, dims="region", coords={"region": labels})
+
+    with pytest.raises(ValueError, match="unique|match the canonical"):
+        resolve_state_activity(
+            detect_zero_sensitivity(_sensitivity()),
+            StateActivity(active=active),
+        )
+
+
+@pytest.mark.parametrize(
+    "active",
+    [1, 0.0, np.nan, "False", np.array([1, 0, 1, 0])],
+)
+def test_resolve_state_activity_rejects_non_boolean_active_values(
+    active: object,
+) -> None:
+    """Do not silently coerce numbers, missing values, or strings to activity."""
+    with pytest.raises(ValueError, match="active.*boolean"):
+        resolve_state_activity(
+            detect_zero_sensitivity(_sensitivity()),
+            StateActivity(active=cast(Any, active)),
+        )
+
+
+def test_resolve_state_activity_requires_a_boolean_zero_mask() -> None:
+    """Reject numeric inputs at the resolved-policy boundary."""
+    zero_sensitivity = detect_zero_sensitivity(_sensitivity()).astype(int)
+
+    with pytest.raises(ValueError, match="zero_sensitivity.*boolean"):
+        resolve_state_activity(zero_sensitivity)
+
+
+@pytest.mark.parametrize("bad_value", [np.nan, np.inf, -np.inf])
+def test_resolve_state_activity_rejects_nonfinite_sensitivity_and_fixed_values(
+    bad_value: float,
+) -> None:
+    """Reject every non-finite sensitivity or fixed-state value."""
+    h = _sensitivity().copy()
+    h[0, 0] = bad_value
+    with pytest.raises(ValueError, match="Sensitivity.*finite"):
+        detect_zero_sensitivity(h)
+
+    fixed = np.ones(h.sizes["region"])
+    fixed[1] = bad_value
+    with pytest.raises(ValueError, match="fixed_value.*finite"):
+        resolve_state_activity(
+            detect_zero_sensitivity(_sensitivity()),
+            StateActivity(fixed_value=fixed),
+        )
+
+
+@pytest.mark.parametrize("prior_kind", ["numpy", "xarray"])
+def test_active_prior_args_rejects_nonfinite_full_state_arrays(prior_kind: str) -> None:
+    """Reject non-finite positional and labelled full-state prior parameters."""
+    values = np.array([1.0, np.nan, 3.0, 4.0])
+    value: np.ndarray | xr.DataArray
+    if prior_kind == "xarray":
+        value = xr.DataArray(values, dims="region", coords={"region": _sensitivity().region})
+    else:
+        value = values
+    resolved = resolve_state_activity(detect_zero_sensitivity(_sensitivity()))
+
+    with pytest.raises(ValueError, match="Prior parameter 'mu'.*finite"):
+        active_prior_args({"pdf": "normal", "mu": value}, resolved)
+
+
+def test_state_linear_component_preserves_full_forward_identity() -> None:
+    """Full H/state multiplication equals active plus fixed contributions."""
+    h = _sensitivity()
+    fixed_value = xr.DataArray(
+        [4.0, 3.0, 2.0, 1.0],
+        dims="region",
+        coords={"region": ["inner-b", "outer-a", "zero", "inner-a"]},
+    )
+
+    registry = CoordRegistry()
+    with pm.Model() as model:
+        attach_coord_registry(model, registry)
+        result = add_state_linear_component(
+            h,
+            data_name="hx",
+            prior_args={"pdf": "normal", "mu": 2.0, "sigma": 0.1},
+            var_name="x",
+            output_name="mu",
+            state_activity=StateActivity(
+                fixed_value=fixed_value,
+                fixed_groups=("outer",),
+            ),
+        )
+
+    x_full, mu, x_active = pm.draw(
+        [result.state, result.output, model.named_vars["x_active"]],
+        random_seed=42,
+    )
+    active = result.activity.active_indices
+    fixed = result.activity.fixed_indices
+    expected_split = (
+        h.values[:, active] @ x_active + h.values[:, fixed] @ fixed_value.sel(region=h.region).values[fixed]
+    )
+
+    np.testing.assert_allclose(h.values @ x_full, mu)
+    np.testing.assert_allclose(expected_split, mu)
+    np.testing.assert_array_equal(model.named_vars["x_is_active"].eval(), [True, False, False, True])
+    assert model.named_vars["x"].name == "x"
+    assert model.named_vars["x_active"] in model.free_RVs
+    assert list(registry.original_coords["region_x_active"]) == ["inner-a", "inner-b"]
+
+
+def test_add_state_vector_registers_full_state_coord_in_a_fresh_model() -> None:
+    """Construct a state graph from a resolved contract and register its coordinate."""
+    activity = resolve_state_activity(
+        detect_zero_sensitivity(_sensitivity()),
+        StateActivity(prune_zero=False),
+    )
+    with pm.Model() as model:
+        result = add_state_vector(
+            activity,
+            prior_args={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
+            var_name="x",
+        )
+
+    assert result.state in model.free_RVs
+    assert model.coords["region"] == (0, 1, 2, 3)
+
+
+def test_state_linear_component_preserves_legacy_graph_when_all_states_are_active() -> None:
+    """Use the ordinary base prior graph when state pruning changes nothing."""
+    h = _sensitivity().drop_sel(region="zero")
+    prior = {"pdf": "normal", "mu": 1.0, "sigma": 0.2}
+
+    with pm.Model() as linear_model:
+        attach_coord_registry(linear_model, CoordRegistry())
+        linear_result = add_linear_component(
+            h,
+            data_name="hx",
+            prior_args=prior,
+            var_name="x",
+            output_name="mu",
+        )
+    with pm.Model() as state_model:
+        attach_coord_registry(state_model, CoordRegistry())
+        state_result = add_state_linear_component(
+            h,
+            data_name="hx",
+            prior_args=prior,
+            var_name="x",
+            output_name="mu",
+        )
+
+    assert set(state_model.named_vars) == set(linear_model.named_vars) == {"hx", "x", "mu"}
+    assert [rv.name for rv in state_model.free_RVs] == [rv.name for rv in linear_model.free_RVs] == ["x"]
+    assert state_result.state is state_model.named_vars["x"]
+    assert state_result.latent is state_model.named_vars["x"]
+    assert linear_result.latent is linear_model.named_vars["x"]
+
+
+def test_state_linear_component_full_activity_preserves_reparameterised_names() -> None:
+    """Keep the legacy base and latent names for a fully active lognormal state."""
+    h = _sensitivity().drop_sel(region="zero")
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        result = add_state_linear_component(
+            h,
+            data_name="hx",
+            prior_args={
+                "pdf": "lognormal",
+                "mean": 1.0,
+                "stdev": 0.2,
+                "reparameterise": True,
+            },
+            var_name="x",
+            output_name="mu",
+        )
+
+    assert set(model.named_vars) == {"hx", "x_latent", "x", "mu"}
+    assert [rv.name for rv in model.free_RVs] == ["x_latent"]
+    assert result.state is model.named_vars["x"]
+    assert result.latent is model.named_vars["x_latent"]
+
+
+def test_state_linear_component_restores_removed_states_in_canonical_order() -> None:
+    """Restoring active and fixed partitions reproduces the full state and output."""
+    h = _sensitivity()
+    fixed = xr.DataArray(
+        [11.0, 12.0, 13.0, 14.0],
+        dims="region",
+        coords={"region": h.region},
+    )
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        result = add_state_linear_component(
+            h,
+            data_name="hx",
+            prior_args={"pdf": "normal", "mu": 2.0, "sigma": 0.1},
+            var_name="x",
+            output_name="mu",
+            state_activity=StateActivity(
+                active=np.array([True, False, True, False]),
+                fixed_value=fixed,
+            ),
+        )
+
+    full_state, active_state, output = pm.draw(
+        [result.state, model.named_vars["x_active"], result.output],
+        random_seed=42,
+    )
+    restored = fixed.to_numpy().copy()
+    restored[result.activity.active_indices] = active_state
+
+    np.testing.assert_allclose(full_state, restored)
+    np.testing.assert_allclose(output, h.to_numpy() @ restored)
+
+
+def test_state_linear_component_supports_zero_active_states() -> None:
+    """An all-fixed component creates no active prior and retains its full state."""
+    h = _sensitivity()
+    policy = StateActivity(active=False, fixed_value=2.5)
+
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        result = add_state_linear_component(
+            h,
+            data_name="hx",
+            prior_args={"pdf": "normal", "mu": 1.0, "sigma": 1.0},
+            var_name="x",
+            output_name="mu",
+            state_activity=policy,
+        )
+
+    x_full, mu = pm.draw([result.state, result.output], random_seed=42)
+    np.testing.assert_allclose(x_full, np.full(h.sizes["region"], 2.5))
+    np.testing.assert_allclose(mu, h.values @ x_full)
+    assert result.latent is None
+    assert "x_active" not in model.named_vars
+    assert not any(rv.name and rv.name.startswith("x") for rv in model.free_RVs)
+    assert resolve_model_variable(model, "x") is model.named_vars["x"]
+
+
+def test_standard_rhime_uses_full_deterministic_x_and_active_prior() -> None:
+    """The standard builder prunes exact-zero H but preserves full ordered x."""
+    h = _sensitivity()
+    inputs = _model_inputs(h)
+    model = build_rhime_model(
+        inputs,
+        sigma_alignment=_sigma_alignment(inputs),
+        x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+        use_bc=False,
+        no_model_error=True,
+    )
+
+    assert {"x", "x_active", "x_is_active", "x_fixed_value", "mu"}.issubset(model.named_vars)
+    assert model.named_vars["x_active"].eval().shape == (3,)
+    np.testing.assert_array_equal(model.named_vars["x_is_active"].eval(), [True, False, True, True])
+    assert model.named_vars["x"] not in model.free_RVs
+
+
+def test_multisector_rhime_can_freeze_a_sector_and_use_array_priors() -> None:
+    """Per-sector policies can freeze all states while other sectors sample arrays."""
+    h = _sensitivity()
+    multi_h = xr.concat(
+        [h.expand_dims(source=["ff-source"]), (2.0 * h).expand_dims(source=["ocean-source"])],
+        dim="source",
+    )
+    inputs = _model_inputs(multi_h)
+    ocean_mu = xr.DataArray(
+        [1.4, 1.3, 1.2, 1.1],
+        dims="region",
+        coords={"region": ["inner-b", "outer-a", "zero", "inner-a"]},
+    )
+
+    model = build_rhime_multisector_model(
+        inputs,
+        sigma_alignment=_sigma_alignment(inputs),
+        sectors=["FF", "ocean"],
+        sector_sources={"FF": "ff-source", "ocean": "ocean-source"},
+        sector_priors={
+            "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+            "ocean": {"pdf": "normal", "mu": ocean_mu, "sigma": 0.3},
+        },
+        sector_state_activities={"FF": StateActivity(active=False)},
+        use_bc=False,
+        no_model_error=True,
+    )
+
+    assert "x_ff_active" not in model.named_vars
+    assert "x_ocean_active" in model.named_vars
+    np.testing.assert_allclose(model.named_vars["x_ff"].eval(), np.ones(4))
+    assert model.named_vars["x_ocean"].eval().shape == (4,)
+    assert model.named_vars["mu"].eval().shape == (2,)

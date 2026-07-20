@@ -11,6 +11,10 @@ builder optimizes one component per sector, where each sector is normally backed
 by one OpenGHG flux ``source`` coordinate in ``inv_inputs["H"]``. When sector
 labels differ from OpenGHG source values, the builder selects data by source
 and names PyMC variables by sector.
+
+Modern flux builders fix exact-zero sensitivity columns to one by default and
+restore them into the full public state vector. Boundary-condition activity is
+opt-in: omitting its policy preserves the ordinary fully sampled BC graph.
 """
 
 from __future__ import annotations
@@ -39,9 +43,11 @@ from openghg_inversions.models.components import (
     add_inferpymc_likelihood_component,
     add_linear_component,
     add_offset_component,
+    add_state_linear_component,
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.models.state_activity import StateActivity
 from openghg_inversions.sigma import SigmaAlignment
 
 DEFAULT_X_PRIOR: PriorArgs = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0, "reparameterise": True}
@@ -80,12 +86,16 @@ class SectorSpec:
         x_prior: Prior specification for this sector's flux scaling factors.
         variable_suffix: PyMC-safe suffix used in multi-sector model variable
             names. Standard single-sector RHIME uses plain ``x``/``mu`` names.
+        state_activity: Optional labelled active/fixed policy for this sector's
+            flux-scaling states. ``None`` still applies the default flux policy,
+            fixing exactly-zero sensitivity columns to one.
     """
 
     name: str
     flux_source: str
     x_prior: dict[str, Any]
     variable_suffix: str
+    state_activity: StateActivity | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)
@@ -112,6 +122,11 @@ class RhimeModelSpec:
         sigma_prior: Prior specification for model-error terms.
         offset_prior: Prior specification for optional offsets.
         offset_args: Extra keyword arguments forwarded to the offset component.
+        bc_state_activity: Optional active/fixed policy for the boundary-
+            condition scaling vector. ``None`` preserves the ordinary fully
+            sampled BC graph without zero pruning. Supplying a policy opts into
+            active/fixed BC construction; when all states are fixed, ``mu_bc``
+            remains without a boundary-condition RV.
         builder_strategy: Public model-construction strategy. ``"concrete"``
             directly composes the default, readable reference model.
             ``"compiled"`` opts into the private semantic-plan compiler for
@@ -134,6 +149,7 @@ class RhimeModelSpec:
     sigma_prior: dict[str, Any] | None = None
     offset_prior: dict[str, Any] | None = None
     offset_args: dict[str, Any] | None = None
+    bc_state_activity: StateActivity | None = field(default=None, kw_only=True)
     builder_strategy: RhimeBuilderStrategy = field(default="concrete", kw_only=True)
 
     def __post_init__(self) -> None:
@@ -169,6 +185,7 @@ def _add_rhime_observation_components(
     offset_prior: dict,
     add_offset: bool,
     use_bc: bool,
+    bc_state_activity: StateActivity | None,
     pollution_events_from_obs: bool,
     no_model_error: bool,
     offset_args: dict | None,
@@ -185,6 +202,8 @@ def _add_rhime_observation_components(
         offset_prior: Prepared optional offset prior.
         add_offset: Whether to add an offset component.
         use_bc: Whether to add a boundary-condition component.
+        bc_state_activity: Optional active/fixed policy for boundary-condition
+            scaling states.
         pollution_events_from_obs: Whether error scaling uses observations.
         no_model_error: Whether to suppress explicit model error.
         offset_args: Extra offset-component arguments.
@@ -195,15 +214,27 @@ def _add_rhime_observation_components(
     if use_bc:
         if "H_bc" not in inv_inputs:
             raise ValueError("If `use_bc` is True, `inv_inputs` must contain `H_bc`.")
-        bc_component = add_linear_component(
-            inv_inputs["H_bc"],
-            data_name="hbc",
-            prior_args=bc_prior,
-            var_name="bc",
-            output_name="mu_bc",
-            output_dim="nmeasure",
-            compute_deterministic=True,
-        )
+        if bc_state_activity is None:
+            bc_component = add_linear_component(
+                inv_inputs["H_bc"],
+                data_name="hbc",
+                prior_args=bc_prior,
+                var_name="bc",
+                output_name="mu_bc",
+                output_dim="nmeasure",
+                compute_deterministic=True,
+            )
+        else:
+            bc_component = add_state_linear_component(
+                inv_inputs["H_bc"],
+                data_name="hbc",
+                prior_args=bc_prior,
+                var_name="bc",
+                output_name="mu_bc",
+                output_dim="nmeasure",
+                compute_deterministic=True,
+                state_activity=bc_state_activity,
+            )
         mu_bc = bc_component.output
 
     offset = None
@@ -240,6 +271,7 @@ def _assemble_compiled_rhime_model(
     offset_prior: dict,
     add_offset: bool,
     use_bc: bool,
+    bc_state_activity: StateActivity | None,
     pollution_events_from_obs: bool,
     no_model_error: bool,
     offset_args: dict | None,
@@ -256,6 +288,8 @@ def _assemble_compiled_rhime_model(
         offset_prior: Prepared optional offset prior.
         add_offset: Whether to add an offset component.
         use_bc: Whether to add a boundary-condition component.
+        bc_state_activity: Optional active/fixed policy for boundary-condition
+            scaling states.
         pollution_events_from_obs: Whether error scaling uses observations.
         no_model_error: Whether to suppress explicit model error.
         offset_args: Extra offset-component arguments.
@@ -276,6 +310,7 @@ def _assemble_compiled_rhime_model(
             offset_prior=offset_prior,
             add_offset=add_offset,
             use_bc=use_bc,
+            bc_state_activity=bc_state_activity,
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
             offset_args=offset_args,
@@ -299,6 +334,8 @@ def build_rhime_model(
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
+    state_activity: StateActivity | None = None,
+    bc_state_activity: StateActivity | None = None,
 ) -> pm.Model:
     """Build the standard single-sector RHIME model.
 
@@ -317,9 +354,20 @@ def build_rhime_model(
         no_model_error: Whether to suppress the explicit model-error term.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
+        state_activity: Optional labelled active/fixed state policy. By
+            default, only exactly-zero ``H`` columns are fixed to one; every
+            nonzero column remains active.
+        bc_state_activity: Optional active/fixed policy for ``H_bc`` scaling
+            states. Omit it to preserve the standard fully sampled BC graph
+            without automatic zero-column pruning.
 
     Returns:
         Built PyMC model.
+
+    Raises:
+        KeyError: If required sensitivity inputs are absent.
+        ValueError: If the state layout, activity policy, labels, fixed values,
+            or state-valued prior parameters are invalid.
     """
     x_prior, bc_prior, sigma_prior, offset_prior = _prepare_builder_priors(
         x_prior=x_prior,
@@ -330,7 +378,7 @@ def build_rhime_model(
 
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
-        flux_component = add_linear_component(
+        flux_component = add_state_linear_component(
             inv_inputs["H"],
             data_name="hx",
             prior_args=x_prior,
@@ -338,6 +386,7 @@ def build_rhime_model(
             output_name="mu",
             output_dim="nmeasure",
             compute_deterministic=True,
+            state_activity=state_activity,
         )
         _add_rhime_observation_components(
             inv_inputs,
@@ -348,6 +397,7 @@ def build_rhime_model(
             offset_prior=offset_prior,
             add_offset=add_offset,
             use_bc=use_bc,
+            bc_state_activity=bc_state_activity,
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
             offset_args=offset_args,
@@ -371,6 +421,8 @@ def _build_compiled_rhime_model(
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
+    state_activity: StateActivity | None = None,
+    bc_state_activity: StateActivity | None = None,
 ) -> pm.Model:
     """Build the standard RHIME model through the opt-in flux compiler.
 
@@ -390,6 +442,8 @@ def _build_compiled_rhime_model(
         no_model_error: Whether to suppress the explicit model-error term.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
+        state_activity: Optional labelled active/fixed flux-state policy.
+        bc_state_activity: Optional labelled active/fixed BC-state policy.
 
     Returns:
         Built PyMC model.
@@ -400,7 +454,7 @@ def _build_compiled_rhime_model(
         sigma_prior=sigma_prior,
         offset_prior=offset_prior,
     )
-    flux_plan = _normalize_standard_flux_plan(inv_inputs, x_prior)
+    flux_plan = _normalize_standard_flux_plan(inv_inputs, x_prior, state_activity=state_activity)
     return _assemble_compiled_rhime_model(
         inv_inputs,
         flux_plan=flux_plan,
@@ -410,6 +464,7 @@ def _build_compiled_rhime_model(
         offset_prior=offset_prior,
         add_offset=add_offset,
         use_bc=use_bc,
+        bc_state_activity=bc_state_activity,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
         offset_args=offset_args,
@@ -446,7 +501,9 @@ def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSp
         inv_inputs,
         sigma_alignment=sigma_alignment,
         x_prior=dict(sector.x_prior),
+        state_activity=sector.state_activity,
         bc_prior=model_spec.bc_prior,
+        bc_state_activity=model_spec.bc_state_activity,
         sigma_prior=model_spec.sigma_prior,
         offset_prior=model_spec.offset_prior,
         add_offset=model_spec.add_offset,
@@ -476,6 +533,9 @@ def build_rhime_multisector_model(
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
+    state_activity: StateActivity | None = None,
+    sector_state_activities: Mapping[str, StateActivity] | None = None,
+    bc_state_activity: StateActivity | None = None,
 ) -> pm.Model:
     """Build the first shared-basis multi-sector RHIME model.
 
@@ -511,9 +571,22 @@ def build_rhime_multisector_model(
         no_model_error: Whether to suppress explicit model-error terms.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
+        state_activity: Policy shared by sectors without an explicit override.
+            When omitted, exactly-zero sensitivity columns are fixed to one.
+        sector_state_activities: Optional activity-policy overrides keyed by
+            sector name. Overrides win over ``state_activity``; missing sectors
+            use the shared policy. Unknown keys are rejected. An all-false
+            policy freezes a complete sector.
+        bc_state_activity: Optional active/fixed policy for ``H_bc`` scaling
+            states. Omit it to preserve the standard fully sampled BC graph.
 
     Returns:
         Built PyMC model.
+
+    Raises:
+        KeyError: If required sensitivity inputs are absent.
+        ValueError: If sector/source/prior/activity mappings or state layouts,
+            labels, fixed values, or state-valued prior parameters are invalid.
     """
     sector_bindings = _resolve_sector_bindings(
         inv_inputs,
@@ -527,16 +600,17 @@ def build_rhime_multisector_model(
         sector_priors=sector_priors,
         x_prior=x_prior,
         default_x_prior=DEFAULT_X_PRIOR,
+        state_activity=state_activity,
+        sector_state_activities=sector_state_activities,
     )
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
-
     with pm.Model() as model:
         attach_coord_registry(model, CoordRegistry())
         sector_outputs = []
         for component in sector_components:
-            linear_component = add_linear_component(
+            linear_component = add_state_linear_component(
                 component.design,
                 data_name=f"hx_{component.variable_suffix}",
                 prior_args=dict(component.prior_args),
@@ -544,6 +618,7 @@ def build_rhime_multisector_model(
                 output_name=f"mu_{component.variable_suffix}",
                 output_dim="nmeasure",
                 compute_deterministic=True,
+                state_activity=component.state_activity,
             )
             sector_outputs.append(linear_component.output)
 
@@ -561,6 +636,7 @@ def build_rhime_multisector_model(
             offset_prior=offset_prior,
             add_offset=add_offset,
             use_bc=use_bc,
+            bc_state_activity=bc_state_activity,
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
             offset_args=offset_args,
@@ -588,6 +664,9 @@ def _build_compiled_rhime_multisector_model(
     no_model_error: bool = False,
     offset_args: dict | None = None,
     power: dict | float = 1.99,
+    state_activity: StateActivity | None = None,
+    sector_state_activities: Mapping[str, StateActivity] | None = None,
+    bc_state_activity: StateActivity | None = None,
 ) -> pm.Model:
     """Build multisector RHIME through the opt-in flux compiler.
 
@@ -608,6 +687,9 @@ def _build_compiled_rhime_multisector_model(
         no_model_error: Whether to suppress explicit model-error terms.
         offset_args: Extra keyword arguments forwarded to the offset component.
         power: Exponent or prior specification used in likelihood error scaling.
+        state_activity: Optional activity policy shared by all flux sectors.
+        sector_state_activities: Optional activity overrides keyed by sector.
+        bc_state_activity: Optional active/fixed policy for BC scaling states.
 
     Returns:
         Built PyMC model.
@@ -624,6 +706,8 @@ def _build_compiled_rhime_multisector_model(
         sector_priors=sector_priors,
         x_prior=x_prior,
         default_x_prior=DEFAULT_X_PRIOR,
+        state_activity=state_activity,
+        sector_state_activities=sector_state_activities,
     )
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
@@ -637,6 +721,7 @@ def _build_compiled_rhime_multisector_model(
         offset_prior=offset_prior,
         add_offset=add_offset,
         use_bc=use_bc,
+        bc_state_activity=bc_state_activity,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
         offset_args=offset_args,
@@ -676,7 +761,13 @@ def build_rhime_multisector_model_from_spec(
         sector_sources={sector.name: sector.flux_source for sector in model_spec.sectors},
         sector_variable_suffixes={sector.name: sector.variable_suffix for sector in model_spec.sectors},
         sector_priors={sector.name: dict(sector.x_prior) for sector in model_spec.sectors},
+        sector_state_activities={
+            sector.name: sector.state_activity
+            for sector in model_spec.sectors
+            if sector.state_activity is not None
+        },
         bc_prior=model_spec.bc_prior,
+        bc_state_activity=model_spec.bc_state_activity,
         sigma_prior=model_spec.sigma_prior,
         offset_prior=model_spec.offset_prior,
         add_offset=model_spec.add_offset,

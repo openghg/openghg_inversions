@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import arviz as az
+import numpy as np
 import xarray as xr
 
 from openghg_inversions._timing import timed
@@ -26,6 +27,40 @@ class RhimeOutputBundle:
     inv_out: InversionOutput | None = None
     outputs: dict[str, Any] = field(default_factory=dict)
     output_metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def _structured_metadata(value: Any) -> Any:
+    """Convert array-backed spec values to lossless JSON-compatible metadata.
+
+    Args:
+        value: Nested metadata value, possibly backed by NumPy or xarray.
+
+    Returns:
+        Scalars and recursively structured dictionaries/lists. DataArrays keep
+        explicit dimensions, dimension coordinates, and values.
+    """
+    if isinstance(value, xr.DataArray):
+        materialized = value.compute()
+        return {
+            "dims": [str(dim) for dim in materialized.dims],
+            "coords": {
+                str(dim): _structured_metadata(materialized.coords[dim].to_numpy())
+                for dim in materialized.dims
+                if dim in materialized.coords
+            },
+            "values": _structured_metadata(materialized.to_numpy()),
+        }
+    if isinstance(value, np.ndarray):
+        if value.ndim == 0:
+            return _structured_metadata(value.item())
+        return [_structured_metadata(item) for item in value.tolist()]
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {str(key): _structured_metadata(item) for key, item in value.items()}
+    if isinstance(value, tuple | list):
+        return [_structured_metadata(item) for item in value]
+    return value
 
 
 def _resolve_output_path(
@@ -144,7 +179,7 @@ def _make_inversion_output(
             "basis_artifact_source": prepared.basis_artifact_source,
             "basis_artifact_path": prepared.basis_artifact_path,
         },
-        model_metadata=asdict(model_spec),
+        model_metadata=cast(dict[str, Any], _structured_metadata(asdict(model_spec))),
         output_metadata={
             "output_format": output_spec.output_format,
             "output_path": output_spec.output_path,

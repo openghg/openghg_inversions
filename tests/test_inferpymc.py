@@ -301,6 +301,31 @@ def test_inferpymc_preserves_legacy_compatibility_outputs(inv_inputs: xr.Dataset
     assert "step2" in result
 
 
+def test_inferpymc_pymc_sampler_runs_without_boundary_conditions(
+    inv_inputs: xr.Dataset,
+    model_args: dict,
+) -> None:
+    """The single-sector legacy sampler never constructs an empty BC step."""
+    args = dict(model_args)
+    args["use_bc"] = False
+
+    result = inferpymc(
+        inv_inputs=inv_inputs,
+        nit=1,
+        burn=0,
+        tune=0,
+        nchain=1,
+        verbose=False,
+        sampler_kwargs={"random_seed": 124, "compute_convergence_checks": False},
+        **args,
+    )
+
+    assert "bc" not in result["model"].named_vars
+    assert result["model"]["x"] in result["model"].free_RVs
+    assert "step1" in result
+    assert "step2" in result
+
+
 def test_inferpymc_forwards_numpyro_sampler_without_pymc_step(
     inv_inputs: xr.Dataset, model_args: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -359,6 +384,43 @@ def test_build_inferpymc_model_contains_expected_variables(inv_inputs: xr.Datase
         "y",
     }
     assert expected_named_vars.issubset(model.named_vars)
+
+
+def test_build_inferpymc_model_keeps_zero_h_states_in_single_sector_graph(
+    inv_inputs: xr.Dataset,
+    model_args: dict,
+) -> None:
+    """The legacy single-sector adapter does not adopt modern state pruning."""
+    inputs = inv_inputs.copy()
+    sensitivity = inputs["H"].copy()
+    sensitivity[{"region": 0}] = 0.0
+    inputs["H"] = sensitivity
+
+    model = build_inferpymc_model(inputs, **model_args)
+
+    assert model.named_vars["x"] in model.free_RVs
+    assert model.named_vars_to_dims["x"] == ("region",)
+    assert "x_active" not in model.named_vars
+
+
+def test_build_inferpymc_model_preserves_unlabelled_interpolated_prior(
+    inv_inputs: xr.Dataset,
+    model_args: dict,
+) -> None:
+    """Legacy all-active mode accepts positional H and distribution support arrays."""
+    inputs = inv_inputs.drop_indexes("region").drop_vars("region")
+    args = dict(model_args)
+    args["xprior"] = {
+        "pdf": "interpolated",
+        "x_points": np.array([0.0, 0.5, 1.0, 2.0, 4.0]),
+        "pdf_points": np.array([0.0, 0.5, 1.0, 0.5, 0.0]),
+    }
+
+    model = build_inferpymc_model(inputs, **args)
+
+    assert model["x"] in model.free_RVs
+    assert "x_active" not in model.named_vars
+    assert len(model.coords["region"]) == inputs.sizes["region"]
 
 
 def test_build_inferpymc_model_with_offset_args_adds_offset_terms(
