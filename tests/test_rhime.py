@@ -1722,17 +1722,26 @@ def test_direct_sector_spec_records_source_backing() -> None:
 
 def test_public_rhime_dataclasses_keep_existing_positional_order() -> None:
     """New default fields do not intercept existing positional construction."""
+    sector = SectorSpec(
+        name="FF",
+        flux_source="ff-inventory",
+        x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+        variable_suffix="ff",
+    )
     model_spec = RhimeModelSpec(
-        species="ch4",
-        domain="EUROPE",
-        sectors=(
-            SectorSpec(
-                name="FF",
-                flux_source="ff-inventory",
-                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
-                variable_suffix="ff",
-            ),
-        ),
+        "ch4",
+        "EUROPE",
+        (sector,),
+        True,
+        True,
+        False,
+        False,
+        False,
+        1.99,
+        None,
+        None,
+        None,
+        None,
     )
     output_spec = RhimeOutputSpec(output_format="none")
     run_spec = RhimeRunSpec(
@@ -1755,6 +1764,8 @@ def test_public_rhime_dataclasses_keep_existing_positional_order() -> None:
     )
 
     assert run_spec.split_by_sectors is True
+    assert model_spec.state_activity is None
+    assert model_spec.sector_state_activities is None
     assert not hasattr(run_spec, "sampler")
     assert not hasattr(run_spec, "sampling")
     assert result.output_metadata == output_metadata
@@ -2378,9 +2389,11 @@ def test_build_rhime_model_from_spec_dispatches_compiled_opt_in(
 def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Spec wrapper preserves source mappings and per-sector activity."""
+    """Spec wrapper preserves source mappings and activity precedence."""
     sentinel = cast(pm.Model, object())
     seen: dict[str, Any] = {}
+    shared_activity = StateActivity(fixed_value=3.0)
+    mapped_activity = StateActivity(active=False, fixed_value=2.0)
     ff_activity = StateActivity(fixed_groups=("outer",))
     bc_activity = StateActivity(active=False)
 
@@ -2414,6 +2427,8 @@ def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping
             ),
         ),
         bc_state_activity=bc_activity,
+        state_activity=shared_activity,
+        sector_state_activities={"FF": mapped_activity, "ocean": mapped_activity},
     )
 
     model = build_rhime_multisector_model_from_spec(inv_inputs, model_spec)
@@ -2427,7 +2442,11 @@ def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping
         "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
         "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
     }
-    assert seen["kwargs"]["sector_state_activities"] == {"FF": ff_activity}
+    assert seen["kwargs"]["state_activity"] is shared_activity
+    assert seen["kwargs"]["sector_state_activities"] == {
+        "FF": ff_activity,
+        "ocean": mapped_activity,
+    }
     assert seen["kwargs"]["bc_state_activity"] is bc_activity
     assert isinstance(seen["kwargs"]["sigma_alignment"], SigmaAlignment)
 
@@ -5141,6 +5160,36 @@ def test_make_standard_output_bundle_returns_outputs_without_mutating_result() -
     assert "site_lons" not in bundle.inv_out.run_metadata
     assert bundle.outputs == {"inversion_output": bundle.inv_out}
     assert bundle.output_metadata == {"inversion_output_contract": "modern"}
+
+
+def test_output_bundle_serializes_state_activity_spec() -> None:
+    """Concrete per-sector policy dictionaries remain valid output metadata."""
+    _, output_spec, run_spec = _minimal_output_specs()
+    model_spec = RhimeModelSpec(
+        species="ch4",
+        domain="EUROPE",
+        sectors=run_spec.model.sectors,
+        sector_state_activities={"FF": StateActivity(active=False, fixed_value=2.0)},
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        site_metadata=_prepared_site_metadata(),
+    )
+
+    bundle = rhime_outputs.make_standard_output_bundle(
+        output_spec=output_spec,
+        run_spec=run_spec,
+        model_spec=model_spec,
+        idata=_minimal_output_idata(),
+        prepared=prepared,
+        country_file=None,
+    )
+
+    assert bundle.inv_out is not None
+    policy = bundle.inv_out.model_metadata["sector_state_activities"]["FF"]
+    assert policy["active"] is False
+    assert policy["fixed_value"] == 2.0
 
 
 def test_make_multisector_output_bundle_returns_modern_inv_out() -> None:

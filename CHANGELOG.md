@@ -118,10 +118,15 @@
   Models sample active states only but retain full ordered deterministic
   ``x``/``x_<sector>`` vectors, and flux-scaling prior parameters may now be
   scalar, full array-valued, or labelled xarray values. Programmatic model specs
-  can set per-sector activity, and sampled ``H_bc @ bc`` components can use the
-  same mechanism to fix some or all BC scaling states. Config-file syntax and
-  persisted activity-reason reports remain follow-up work; legacy
-  ``inferpymc`` remains single-sector and retains its full sampled state.
+  can set shared activity and per-sector overrides, and sampled ``H_bc @ bc``
+  components can use the same mechanism to fix some or all BC scaling states.
+  Config-file syntax and persisted activity-reason reports remain follow-up
+  work; legacy ``inferpymc`` remains single-sector and retains its full sampled
+  state. This API bridge addresses
+  [#509](https://github.com/openghg/openghg_inversions/issues/509), following the
+  state-contract context in
+  [#456](https://github.com/openghg/openghg_inversions/issues/456) and
+  [#493](https://github.com/openghg/openghg_inversions/issues/493).
 
 - Made retained `BasisFunctions` / `BasisOperator` metadata the primary basis
   contract for RHIME preparation and modern postprocessing outputs. Derived

@@ -568,9 +568,11 @@ coordinate containing the value ``"outer"``:
 For multisector builders, use ``state_activity`` as a shared policy or
 ``sector_state_activities`` for sector-name overrides;
 ``StateActivity(active=False)`` freezes a complete sector. Programmatic
-prepared-input runs set the canonical per-sector policy with
-``SectorSpec(state_activity=...)``. RHIME config-file syntax and persisted
-activity-reason tables remain follow-up work.
+prepared-input runs may set a shared policy on ``RhimeModelSpec`` and use its
+``sector_state_activities`` mapping for overrides. The canonical per-sector
+policy is ``SectorSpec(state_activity=...)`` and takes precedence over that
+mapping. RHIME config-file syntax and persisted activity-reason tables remain
+follow-up work.
 Each prior dictionary in ``sector_priors`` supports the same scalar,
 full-state array, and labelled ``DataArray`` parameter forms; labelled values
 must match the selected sector's state coordinate exactly.
