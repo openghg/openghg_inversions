@@ -814,6 +814,84 @@ def region_constrained_basis(
     return _labels_dataarray(labels, weights)
 
 
+def combine_inner_outer_region_classes(
+    inner_mask: xr.DataArray,
+    inner_classes: xr.DataArray,
+    outer_classes: xr.DataArray,
+    *,
+    unmapped_values: Iterable[Hashable] = (),
+    name: str = "region_classes",
+) -> xr.DataArray:
+    """Select and tag aligned inner- and outer-domain region classes.
+
+    Args:
+        inner_mask: Two-dimensional Boolean field selecting cells from
+            ``inner_classes``. False cells select from ``outer_classes``.
+        inner_classes: Two-dimensional class field for inner-domain cells.
+        outer_classes: Two-dimensional class field for outer-domain cells.
+        unmapped_values: Selected class values that should leave the output
+            cell unmapped. Selected null values are always unmapped.
+        name: Name for the returned ``DataArray``.
+
+    Returns:
+        Object-valued ``DataArray`` with the same dimensions and coordinates as
+        ``inner_mask``. Mapped cells contain ``("inner", value)`` or
+        ``("outer", value)`` tuples. Unmapped cells contain ``NaN``.
+
+    Raises:
+        ValueError: If inputs are not aligned two-dimensional fields,
+            ``inner_mask`` is not Boolean, or a selected class value is not
+            hashable.
+        xarray.AlignmentError: If input coordinates do not align exactly.
+
+    Notes:
+        Values on the unselected side do not affect the result, including null
+        values. Domain tags prevent equal inner and outer class values from
+        colliding when passed to :func:`region_constrained_basis`.
+
+        This source-neutral composition helper is tracked by `issue #449
+        <https://github.com/openghg/openghg_inversions/issues/449>`_ and supports
+        related `#456 <https://github.com/openghg/openghg_inversions/issues/456>`_,
+        `#407 <https://github.com/openghg/openghg_inversions/issues/407>`_, and
+        `#509 <https://github.com/openghg/openghg_inversions/issues/509>`_.
+    """
+    inner_mask, inner_classes = _align_2d_inputs(inner_mask, inner_classes)
+    _validate_matching_grid_coordinates(
+        inner_mask,
+        inner_classes,
+        candidate_name="inner_classes",
+    )
+    inner_mask, outer_classes = _align_2d_inputs(inner_mask, outer_classes)
+    _validate_matching_grid_coordinates(
+        inner_mask,
+        outer_classes,
+        candidate_name="outer_classes",
+    )
+    if not np.issubdtype(inner_mask.dtype, np.bool_):
+        raise ValueError("inner_mask must be Boolean.")
+
+    mask_values = inner_mask.to_numpy()
+    inner_values = inner_classes.to_numpy()
+    outer_values = outer_classes.to_numpy()
+    unmapped = set(unmapped_values)
+    class_values = np.empty(inner_mask.shape, dtype=object)
+    class_values[:] = np.nan
+
+    for index in np.ndindex(inner_mask.shape):
+        is_inner = bool(mask_values[index])
+        value = cast(Hashable, inner_values[index] if is_inner else outer_values[index])
+        if _is_unmapped_layer_value(value, unmapped):
+            continue
+        class_values[index] = ("inner" if is_inner else "outer", value)
+
+    return xr.DataArray(
+        class_values,
+        dims=inner_mask.dims,
+        coords=inner_mask.coords,
+        name=name,
+    )
+
+
 def intersect_region_class_layers(
     layers: Mapping[Hashable, xr.DataArray],
     *,
@@ -992,6 +1070,41 @@ def _align_2d_inputs(
     region_classes = region_classes.transpose(*weights.dims)
     weights, region_classes = xr.align(weights, region_classes, join="exact")
     return weights, region_classes
+
+
+def _validate_matching_grid_coordinates(
+    reference: xr.DataArray,
+    candidate: xr.DataArray,
+    *,
+    candidate_name: str,
+) -> None:
+    """Require matching indexed and auxiliary coordinates on a shared grid."""
+    grid_dims = set(reference.dims)
+
+    def grid_coordinates(array: xr.DataArray) -> set[Hashable]:
+        return {
+            name
+            for name, coordinate in array.coords.items()
+            if coordinate.dims and set(coordinate.dims).issubset(grid_dims)
+        }
+
+    reference_coordinates = grid_coordinates(reference)
+    candidate_coordinates = grid_coordinates(candidate)
+    if reference_coordinates != candidate_coordinates:
+        raise xr.AlignmentError(f"{candidate_name} must define the same grid coordinates as inner_mask.")
+
+    for coordinate_name in reference_coordinates:
+        reference_coordinate = reference.coords[coordinate_name]
+        candidate_coordinate = candidate.coords[coordinate_name]
+        if set(reference_coordinate.dims) != set(candidate_coordinate.dims):
+            raise xr.AlignmentError(
+                f"Coordinate {coordinate_name!r} on {candidate_name} does not align with inner_mask."
+            )
+        candidate_coordinate = candidate_coordinate.transpose(*reference_coordinate.dims)
+        if not reference_coordinate.variable.equals(candidate_coordinate.variable):
+            raise xr.AlignmentError(
+                f"Coordinate {coordinate_name!r} on {candidate_name} does not align with inner_mask."
+            )
 
 
 def _validate_weights(weights: xr.DataArray) -> np.ndarray:
@@ -1855,6 +1968,7 @@ __all__ = [
     "SplitStrategy",
     "TargetSplitAcceptancePolicy",
     "allocate_nbasis_by_class",
+    "combine_inner_outer_region_classes",
     "intersect_region_class_layers",
     "region_constrained_basis",
 ]

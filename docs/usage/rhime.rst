@@ -140,6 +140,29 @@ class boundaries, but RHIME config and ``run_hbmcmc.py`` do not yet load
 build and save the basis through the Python basis API, then load it as a saved
 basis case.
 
+Use ``combine_inner_outer_region_classes`` to build one transient class field
+from aligned inner and outer classifications without embedding a project mask
+or region names in the library:
+
+.. code-block:: python
+
+   from openghg_inversions.basis.algorithms import (
+       combine_inner_outer_region_classes,
+       region_constrained_basis,
+   )
+
+   region_classes = combine_inner_outer_region_classes(
+       inner_mask,
+       inner_land_sea_classes,
+       outer_region_classes,
+   )
+   basis = region_constrained_basis(weights, region_classes, nbasis=150)
+
+The helper only selects and tags classes on a shared grid. The downstream
+algorithm still receives one weight field. Separate source weights,
+sensitivities, and ``basis_group`` metadata remain distinct inputs and are not
+created by this combinator.
+
 Region-constrained algorithms have split-stopping policies at the lower-level
 strategy boundary. ``MinChildWeightShare`` is a parent-relative balance guard:
 it compares the lightest proposed child with the current parent partition.

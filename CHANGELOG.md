@@ -4,6 +4,14 @@
 
 ## Code changes
 
+- Added a source-neutral inner/outer region-class combinator for constrained
+  basis construction. The helper selects aligned class labels on either side
+  of an inner-domain mask, tags their provenance to prevent label collisions,
+  and validates indexed and curvilinear grid coordinates exactly. This advances
+  [#449](https://github.com/openghg/openghg_inversions/issues/449) and supports
+  [#407](https://github.com/openghg/openghg_inversions/issues/407),
+  [#456](https://github.com/openghg/openghg_inversions/issues/456), and
+  [#509](https://github.com/openghg/openghg_inversions/issues/509).
 
 - Made retained `BasisFunctions` / `BasisOperator` metadata the primary basis
   contract for RHIME preparation and modern postprocessing outputs. Derived

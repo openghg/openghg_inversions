@@ -25,6 +25,7 @@ from ._constrained import (
     SplitStrategy,
     TargetSplitAcceptancePolicy,
     allocate_nbasis_by_class,
+    combine_inner_outer_region_classes,
     intersect_region_class_layers,
     region_constrained_basis,
 )
@@ -51,6 +52,7 @@ __all__ = [
     "SplitGeometry",
     "TargetSplitAcceptancePolicy",
     "allocate_nbasis_by_class",
+    "combine_inner_outer_region_classes",
     "contrast_tau_from_multiplier_cv",
     "intersect_region_class_layers",
     "quadtree_algorithm",
