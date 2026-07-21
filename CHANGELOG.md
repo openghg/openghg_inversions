@@ -4,6 +4,14 @@
 
 ## Code changes
 
+- Preserved all-sector-missing draws when constructing multisector spatial and
+  country totals, and promoted country covariance accumulation to float64 before
+  PARIS template casting. Trace-group merging now explicitly retains its outer
+  draw alignment, and totals require a value from every sector so a structural
+  zero cannot hide a different sector's padded draw. This prevents padded draws
+  from being interpreted as zero flux, keeps total posterior variance consistent
+  with the full within-country sector covariance matrix, and preserves the
+  contract under future xarray defaults.
 
 - Made retained `BasisFunctions` / `BasisOperator` metadata the primary basis
   contract for RHIME preparation and modern postprocessing outputs. Derived

@@ -279,7 +279,7 @@ def convert_idata_to_dataset(
             if "chain" in trace.dims:
                 trace = trace.isel(chain=0, drop=True)
             traces.append(trace)
-    return xr.merge(traces)
+    return xr.merge(traces, join="outer")
 
 
 def _add_attributes_to_trace_dataset(trace_ds: xr.Dataset, obs_units: str, obs_longname: str) -> None:

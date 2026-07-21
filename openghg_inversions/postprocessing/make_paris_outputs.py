@@ -1019,9 +1019,12 @@ def _country_posterior_covariance_kg(
     )
 
     posterior = posterior.isel(flux_time=valid_indices).dropna("draw", how="all")
-    values = posterior.transpose("flux_time", "country", "draw").values
+    values = np.asarray(
+        posterior.transpose("flux_time", "country", "draw").values,
+        dtype=np.float64,
+    )
     if values.shape[2] == 0:
-        return np.full((values.shape[0], values.shape[1], values.shape[1]), np.nan, dtype="float32")
+        return np.full((values.shape[0], values.shape[1], values.shape[1]), np.nan, dtype=np.float64)
 
     centered = values - values.mean(axis=2, keepdims=True)
     return np.einsum("tcd,ted->tce", centered, centered) / values.shape[2]
@@ -1082,9 +1085,13 @@ def _sector_country_posterior_covariances_kg(
     ]
     sector_covariances = {}
     for sector_name, posterior in zip(sector_names, sector_posteriors, strict=True):
-        values = posterior.values
+        values = np.asarray(posterior.values, dtype=np.float64)
         if values.shape[2] == 0:
-            covariance = np.full((values.shape[0], values.shape[1], values.shape[1]), np.nan, dtype="float32")
+            covariance = np.full(
+                (values.shape[0], values.shape[1], values.shape[1]),
+                np.nan,
+                dtype=np.float64,
+            )
         else:
             centered = values - values.mean(axis=2, keepdims=True)
             covariance = np.einsum("tcd,ted->tce", centered, centered) / values.shape[2]
@@ -1097,12 +1104,15 @@ def _sector_country_posterior_covariances_kg(
         ],
         dim="sector",
     )
-    values = posterior_by_sector.transpose("flux_time", "country", "sector", "draw").values
+    values = np.asarray(
+        posterior_by_sector.transpose("flux_time", "country", "sector", "draw").values,
+        dtype=np.float64,
+    )
     if values.shape[3] == 0:
         sector_cross_covariance = np.full(
             (values.shape[0], values.shape[1], values.shape[2], values.shape[2]),
             np.nan,
-            dtype="float32",
+            dtype=np.float64,
         )
     else:
         centered = values - values.mean(axis=3, keepdims=True)
