@@ -751,8 +751,8 @@ def inferpymc_postprocessouts(
         bfds = fp_data[".basis"]
 
     # Calculate mean  and mode posterior scale map and flux field
-    scalemap_mu = np.zeros_like(bfds.values)
-    scalemap_mode = np.zeros_like(bfds.values)
+    scalemap_mu = np.zeros_like(bfds.values, dtype=float)
+    scalemap_mode = np.zeros_like(bfds.values, dtype=float)
 
     for npm in nparam:
         scalemap_mu[bfds.values == (npm + 1)] = np.mean(xouts[:, npm])
