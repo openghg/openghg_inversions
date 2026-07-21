@@ -17,6 +17,12 @@ from ._wrapper import (
     load_basis_functions,
     make_basis_functions,
 )
+from .prior_uncertainty import (
+    MEAN_TOTAL_TARGET_STATISTIC,
+    MEDIAN_RELATIVE_TARGET_STATISTIC,
+    calibrate_basis_prior_stdev,
+    project_basis_prior_stdev,
+)
 
 __all__ = [
     "bucket_basis_function",
@@ -32,4 +38,8 @@ __all__ = [
     "basis_functions_wrapper",
     "load_basis_functions",
     "make_basis_functions",
+    "MEAN_TOTAL_TARGET_STATISTIC",
+    "MEDIAN_RELATIVE_TARGET_STATISTIC",
+    "project_basis_prior_stdev",
+    "calibrate_basis_prior_stdev",
 ]

@@ -16,6 +16,8 @@ from openghg_inversions.models import (
     build_rhime_multisector_model,
     resolve_state_activity,
 )
+from openghg_inversions.basis import project_basis_prior_stdev
+from openghg_inversions.basis.basis_functions import BasisFunctions
 
 
 def _sensitivity() -> xr.DataArray:
@@ -91,6 +93,45 @@ def test_active_prior_args_aligns_labelled_and_array_parameters() -> None:
 
     np.testing.assert_array_equal(prior["mu"], [10.0, 40.0])
     np.testing.assert_array_equal(prior["sigma"], [1.0, 4.0])
+
+
+def test_rhime_model_accepts_projected_labelled_prior_stdev() -> None:
+    """The labelled basis projection passes directly through the model prior API."""
+    basis = xr.DataArray(
+        [[1, 1, 2]],
+        dims=("lat", "lon"),
+        coords={"lat": [0.0], "lon": [0.0, 1.0, 2.0]},
+    )
+    flux = xr.DataArray(
+        [[1.0, 1.0, 2.0]],
+        dims=("lat", "lon"),
+        coords=basis.coords,
+    )
+    basis_functions = BasisFunctions.from_flat_basis(
+        basis,
+        flux,
+        operator_kwargs={"state_dim": "region"},
+    )
+    projected = project_basis_prior_stdev(
+        basis_functions,
+        area_grid=xr.ones_like(flux),
+        grid_cell_prior_stdev=0.4,
+    )
+    sensitivity = xr.DataArray(
+        [[1.0, 0.0], [0.0, 2.0]],
+        dims=("nmeasure", "region"),
+        coords={"nmeasure": [0, 1], "region": projected["region"]},
+        name="H",
+    )
+
+    model = build_rhime_model(
+        _model_inputs(sensitivity),
+        x_prior={"pdf": "normal", "mu": 1.0, "sigma": projected},
+        use_bc=False,
+        no_model_error=True,
+    )
+
+    assert model.named_vars["x_active"].eval().shape == (2,)
 
 
 def test_state_linear_component_preserves_full_forward_identity() -> None:

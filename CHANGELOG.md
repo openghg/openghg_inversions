@@ -4,6 +4,18 @@
 
 ## Code changes
 
+- Added pure-xarray basis prior-uncertainty helpers that project scalar,
+  source-labelled, or gridded cell-scale uncertainty through retained
+  `BasisFunctions` operators and calibrate caller-defined aggregate targets.
+  The API preserves labelled and ragged source/state coordinates, returns
+  labelled `x_prior_stdev` arrays plus target diagnostics, supports explicit
+  median-relative and mean-total calibration statistics, and accepts active
+  state masks so target uncertainty matches sampled states. Stable weight
+  scaling avoids overflow, and zero totals, signed-flux cancellation, and
+  invalid widths are handled explicitly without embedding project countries or
+  target-width defaults. [#493](https://github.com/openghg/openghg_inversions/issues/493),
+  [#509](https://github.com/openghg/openghg_inversions/issues/509)
+
 - Added a label-aware active/fixed state-vector contract to the modern RHIME
   model builders. Exact-zero sensitivity columns are now fixed at scaling one
   by default while every nonzero column remains active; explicit labelled
