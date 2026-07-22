@@ -135,12 +135,17 @@ The active implementation stages are therefore:
 3. add one shared partially pooled coefficient-prior pair with Ganesan-style
    hyperpriors, leaving the fixed outer coefficients on their existing priors.
 
-The numerical target and proposal primitives for all three stages are now
-implemented. Stage 2 still requires the versioned schedule, durable checkpoint,
-and labelled-output wiring; stage 3 uses the same persistence path. The shared
-pool is intentionally the fixed-dimensional structure from the intermediate
+All three stages now have target, proposal, versioned schedule, durable
+checkpoint, manifest, and labelled-output support. The shared pool is
+intentionally the fixed-dimensional structure from the intermediate
 trans-dimensional lineage, not a claim to reproduce the paper's per-region
 hierarchy.
+
+The implemented 16- and 17-slot drivers are intentionally scoped to the
+six-fixed-coefficient PARIS/Lunt-style geometry. The core target and proposal
+primitives can represent OU or hierarchy layers in other geometries, but no
+generic hierarchy-only or arbitrary-fixed-block schedule is exposed yet; a
+caller cannot silently sample such a target with frozen optional parameters.
 
 ### Historical update-opportunity evidence
 

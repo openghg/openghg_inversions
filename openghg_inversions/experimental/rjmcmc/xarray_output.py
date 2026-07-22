@@ -322,6 +322,20 @@ def sampling_trace_to_dataset(
         "long_name": "shared coefficient hierarchy active",
         "description": "Whether eta and zeta are inferred shared-hierarchy coordinates.",
     }
+    dataset["mismatch_group"].attrs = {
+        "long_name": "ordinal mismatch-amplitude group",
+        "description": (
+            "Zero-based internal group index; scientific group identities must be supplied "
+            "by the run manifest or frozen-input metadata."
+        ),
+    }
+    dataset["timescale_parameter"].attrs = {
+        "long_name": "ordinal OU timescale parameter",
+        "description": (
+            "Zero-based internal parameter index; site mapping and time units must be supplied "
+            "by the run manifest or frozen-input metadata."
+        ),
+    }
     return dataset
 
 

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 
 from openghg_inversions.experimental.rjmcmc import sampling
+from openghg_inversions.experimental.rjmcmc.checkpoint_io import load_checkpoint, save_checkpoint
 from openghg_inversions.experimental.rjmcmc.core import (
     FixedDesignBlock,
     InferredOUErrorModel,
@@ -291,8 +293,8 @@ def _assert_split_matches_full(
     ):
         actual = np.concatenate((getattr(first.trace, name), getattr(continued.trace, name)))
         np.testing.assert_array_equal(actual, getattr(full.trace, name))
-    assert first.trace.coefficient_hierarchy_active
-    assert continued.trace.coefficient_hierarchy_active
+    assert first.trace.coefficient_hierarchy_active == full.trace.coefficient_hierarchy_active
+    assert continued.trace.coefficient_hierarchy_active == full.trace.coefficient_hierarchy_active
     for name in full.final_state.__dataclass_fields__:
         actual = getattr(continued.final_state, name)
         expected = getattr(full.final_state, name)
@@ -312,6 +314,23 @@ def test_awkward_phase_in_memory_restart_retains_every_optional_state() -> None:
     continued = continue_sample(problem, first.checkpoint, iterations=37)
 
     _assert_split_matches_full(full, first, continued)
+
+
+def test_ou_only_durable_restart_preserves_appended_schedule_phase(tmp_path: Path) -> None:
+    """Checkpoint v3 must exactly continue the 16-slot OU-only profile."""
+    problem = _problem()
+    retention = RetentionSettings(warmup_transitions=3, thin=4)
+    full = sample(problem, _initial_state(problem), _config(45), retention)
+    first = sample(problem, _initial_state(problem), _config(15), retention)
+    path = tmp_path / "ou-only-v3.npz"
+    save_checkpoint(path, first.checkpoint)
+
+    loaded_problem = _problem()
+    loaded = load_checkpoint(path, loaded_problem)
+    continued = continue_sample(loaded_problem, loaded, iterations=30)
+
+    _assert_split_matches_full(full, first, continued)
+    assert loaded.schedule_id == LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_ID
 
 
 def test_extended_hierarchy_schedule_has_numpy_numba_parity() -> None:

@@ -576,10 +576,12 @@ Already implemented:
 
 Next paper-first gaps:
 
-1. opt-in per-region log-space emissions hyperparameters and their fully
-   dimension-matched structural proposal cycle;
+1. opt-in per-region emissions hyperparameters, with the paper/code
+   parameterization conflict resolved explicitly, and a fully dimension-
+   matched structural proposal cycle;
 2. fixed boundary-curtain design inputs once reliable data are available;
-3. grouped/site-block `sigma_y` and AR(1) `tau` likelihood;
+3. the paper-faithful grouped/site-block Lunt `Sigma Q Sigma` likelihood; the
+   implemented `D + M Q M` OU+nugget profile is deliberately distinct;
 4. real-data preparation and comparison once archived inputs are available.
 
 The hierarchy implementation must require explicit bounded-uniform hyperprior

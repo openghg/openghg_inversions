@@ -149,6 +149,8 @@ def test_converter_labels_inferred_ou_and_shared_hierarchy_parameters() -> None:
     assert dataset.coefficient_hierarchy_active.item()
     assert "arithmetic coefficient-prior mean" in dataset.eta.attrs["long_name"]
     assert "arithmetic coefficient-prior standard deviation" in dataset.zeta.attrs["long_name"]
+    assert "run manifest" in dataset.mismatch_group.attrs["description"]
+    assert "time units" in dataset.timescale_parameter.attrs["description"]
 
 
 def test_converter_preserves_optional_widths_for_empty_retention() -> None:

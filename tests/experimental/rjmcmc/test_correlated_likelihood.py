@@ -117,6 +117,41 @@ def test_likelihood_is_invariant_to_observation_permutation() -> None:
     assert actual == pytest.approx(expected, rel=0.0, abs=1e-12)
 
 
+def test_distinct_and_shared_site_timescale_indices_match_dense_covariance() -> None:
+    """Several sites mapped to shared and distinct tau values need an independent oracle."""
+    residual = np.array([0.2, -0.5, 0.8, 1.1, -0.7, 0.4, 0.9])
+    observation_sd = np.array([0.3, 0.4, 0.25, 0.6, 0.5, 0.35, 0.45])
+    time = np.array([0.0, 1.7, 0.2, 3.4, 2.1, 0.8, 4.9])
+    site = np.array([0, 2, 1, 0, 2, 1, 2])
+    group = np.array([0, 1, 2, 1, 0, 2, 1])
+    site_tau = np.array([0, 1, 0])
+    mismatch_sd = np.array([0.7, 1.4, 0.9])
+    tau = np.array([2.3, 0.65])
+    data = IndependentSiteOUData(observation_sd, time, site, group, site_tau)
+
+    expected = _dense_log_likelihood(
+        residual,
+        observation_sd,
+        time,
+        site,
+        group,
+        site_tau,
+        mismatch_sd,
+        tau,
+    )
+
+    assert ou_log_likelihood_numpy(residual, data, mismatch_sd, tau) == pytest.approx(
+        expected,
+        rel=0.0,
+        abs=1e-12,
+    )
+    assert ou_log_likelihood_numba(residual, data, mismatch_sd, tau) == pytest.approx(
+        expected,
+        rel=0.0,
+        abs=1e-12,
+    )
+
+
 def test_mismatch_group_changes_do_not_reset_site_ou_state() -> None:
     """Changing OU amplitude must preserve the latent same-site correlation."""
     residual = np.array([0.3, -1.1, 0.8, 1.4])

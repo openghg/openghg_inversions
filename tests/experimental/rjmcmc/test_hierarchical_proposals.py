@@ -18,7 +18,9 @@ from openghg_inversions.experimental.rjmcmc.hierarchy import SharedLognormalHier
 from openghg_inversions.experimental.rjmcmc.likelihood import IndependentSiteOUData
 from openghg_inversions.experimental.rjmcmc.proposals import (
     TransitionTerms,
+    propose_birth,
     propose_correlation_timescale,
+    propose_death,
     propose_mismatch_sd,
     propose_shared_hierarchy,
 )
@@ -187,6 +189,35 @@ def test_joint_hierarchy_update_is_symmetric_and_balanced() -> None:
     assert forward.move == "shared_hierarchy"
     assert forward.log_q_forward == pytest.approx(forward.log_q_reverse)
     assert reverse.log_q_forward == pytest.approx(forward.log_q_reverse)
+    _assert_pointwise_balance(state, forward, reverse)
+
+
+def test_structural_pair_is_balanced_with_ou_and_shared_hierarchy_active() -> None:
+    """Optional target factors must remain reciprocal across an RJ structural edge."""
+    problem = _problem()
+    state = _state(problem)
+    forward = propose_birth(
+        problem,
+        state,
+        new_nucleus=2,
+        proposed_coefficient=1.1,
+        proposal_stdev=0.3,
+    )
+    remove_position = int(np.flatnonzero(forward.candidate.active_nuclei == 2)[0])
+    reverse = propose_death(
+        problem,
+        forward.candidate,
+        remove_position=remove_position,
+        proposal_stdev=0.3,
+    )
+
+    assert forward.candidate.eta == state.eta
+    assert forward.candidate.zeta == state.zeta
+    np.testing.assert_array_equal(forward.candidate.mismatch_sd, state.mismatch_sd)
+    np.testing.assert_array_equal(
+        forward.candidate.correlation_timescale,
+        state.correlation_timescale,
+    )
     _assert_pointwise_balance(state, forward, reverse)
 
 

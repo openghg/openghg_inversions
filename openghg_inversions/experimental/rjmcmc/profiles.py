@@ -96,8 +96,10 @@ class TargetSettings:
         k_max: Largest supported active-region count.
         k_prior_probabilities: Normalized probabilities ordered from ``k_min``
             through ``k_max``.
-        coefficient_prior_mean: Arithmetic lognormal prior mean.
-        coefficient_prior_sd: Arithmetic lognormal prior standard deviation.
+        coefficient_prior_mean: Arithmetic lognormal prior mean, or initial
+            shared arithmetic mean when the hierarchy is active.
+        coefficient_prior_sd: Arithmetic lognormal prior standard deviation,
+            or initial shared arithmetic SD when the hierarchy is active.
         observation_error_model: Stable identifier for either independent
             Gaussian errors or the independent-site OU mismatch plus known
             measurement-nugget model.
@@ -402,12 +404,22 @@ class RunProfile:
                     "maximum": target.k_max,
                     "prior_probabilities": list(target.k_prior_probabilities),
                 },
-                "coefficient_prior": {
-                    "distribution": "lognormal",
-                    "parameterization": "arithmetic_moments",
-                    "mean": target.coefficient_prior_mean,
-                    "standard_deviation": target.coefficient_prior_sd,
-                },
+                "coefficient_prior": (
+                    {
+                        "distribution": "lognormal",
+                        "parameterization": "arithmetic_moments",
+                        "mean": target.coefficient_prior_mean,
+                        "standard_deviation": target.coefficient_prior_sd,
+                    }
+                    if not target.shared_coefficient_hierarchy
+                    else {
+                        "distribution": "lognormal",
+                        "parameterization": "conditional_shared_arithmetic_moments",
+                        "state_coordinates": ["eta", "zeta"],
+                        "initial_mean": target.coefficient_prior_mean,
+                        "initial_standard_deviation": target.coefficient_prior_sd,
+                    }
+                ),
                 "observation_error_model": target.observation_error_model,
                 "observation_error_model_settings": (
                     None

@@ -100,6 +100,43 @@ def test_fixed_seed_replays_the_complete_sampler_trace() -> None:
 
     _assert_results_equal(first, second)
     _assert_four_slot_move_pattern(first.trace.moves, nucleus_move="global_move")
+    np.testing.assert_array_equal(
+        first.trace.accepted,
+        [
+            False,
+            True,
+            False,
+            True,
+            True,
+            True,
+            False,
+            False,
+            True,
+            False,
+            False,
+            False,
+            True,
+            True,
+            False,
+            False,
+            True,
+            False,
+            True,
+            False,
+            False,
+            True,
+            False,
+            True,
+        ],
+    )
+    np.testing.assert_array_equal(
+        first.trace.k,
+        [2, 2, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 2, 2, 2, 3, 3, 3],
+    )
+    assert first.checkpoint.rng_state.state == 251418900833954616027504699521200364421
+    assert first.checkpoint.rng_state.increment == 182842302344849351119389596454276712109
+    assert first.checkpoint.rng_state.has_uint32 == 1
+    assert first.checkpoint.rng_state.uinteger == 3481975001
     assert 0.0 <= first.trace.acceptance_rate <= 1.0
 
 

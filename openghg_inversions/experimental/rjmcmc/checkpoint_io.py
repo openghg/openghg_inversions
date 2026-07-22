@@ -18,7 +18,7 @@ from collections.abc import Mapping
 from hashlib import sha256
 import hmac
 import json
-from math import exp, isfinite
+from math import isfinite
 import os
 from pathlib import Path
 import tempfile
@@ -34,6 +34,7 @@ from openghg_inversions.experimental.rjmcmc.core import (
     TransDimensionalProblem,
     TransDimensionalState,
     build_state,
+    update_shared_hierarchy_state,
 )
 from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
 from openghg_inversions.experimental.rjmcmc.sampling import (
@@ -488,8 +489,6 @@ def _validate_state_against_rebuild(
         try:
             mismatch_sd = state.mismatch_sd if problem.error_model is not None else None
             correlation_timescale = state.correlation_timescale if problem.error_model is not None else None
-            coefficient_prior_mean = exp(state.eta) if problem.coefficient_hierarchy is not None else None
-            coefficient_prior_sd = exp(state.zeta) if problem.coefficient_hierarchy is not None else None
             rebuilt = build_state(
                 problem,
                 state.nuclei[: state.k],
@@ -497,10 +496,16 @@ def _validate_state_against_rebuild(
                 fixed_coefficients=fixed_coefficients,
                 mismatch_sd=mismatch_sd,
                 correlation_timescale=correlation_timescale,
-                coefficient_prior_mean=coefficient_prior_mean,
-                coefficient_prior_sd=coefficient_prior_sd,
                 backend=backend,
             )
+            if problem.coefficient_hierarchy is not None:
+                rebuilt = update_shared_hierarchy_state(
+                    problem,
+                    rebuilt,
+                    proposed_eta=state.eta,
+                    proposed_zeta=state.zeta,
+                    backend=backend,
+                )
         except (OverflowError, TypeError, ValueError):
             mismatch_fields[backend] = ["state reconstruction"]
             continue

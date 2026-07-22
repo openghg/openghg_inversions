@@ -10,8 +10,9 @@ independently with equal probability. By default, state traces include the
 initial state and every subsequent state. Optional collection-time retention
 saves a global warmup/thinning subsequence while preserving diagnostics for
 every attempted transition. In-memory checkpoints preserve the random stream,
-schedule phase, and retention phase for exact continuation. Durable
-serialization, parallel chains, and parallel tempering are not yet provided.
+schedule phase, and retention phase for exact continuation. The companion
+checkpoint module provides strict durable serialization; parallel chains and
+parallel tempering are not yet provided.
 
 An opt-in Lunt opportunity-matched fixed-block profile uses fourteen atomic
 slots: two independent mixed birth/death slots, one nucleus move,
@@ -63,19 +64,19 @@ LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE = "lunt_opportunity_matched_fixed_bloc
 LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID = (
     "fourteen_slot_2_mixed_dimension_1_nucleus_6_fixed_position_5_coefficient_v1"
 )
-LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE = "lunt_opportunity_matched_inferred_ou_v1"
-LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_ID = "sixteen_slot_14_lunt_1_mismatch_sd_1_correlation_timescale_v1"
-LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE = (
-    "lunt_opportunity_matched_inferred_ou_shared_hierarchy_v1"
+LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE = "lunt_14_slot_prefix_inferred_ou_v1"
+LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_ID = (
+    "sixteen_slot_14_lunt_prefix_1_mismatch_sd_1_correlation_timescale_v1"
 )
+LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE = "lunt_14_slot_prefix_inferred_ou_shared_hierarchy_v1"
 LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_ID = (
-    "seventeen_slot_14_lunt_1_mismatch_sd_1_correlation_timescale_1_shared_hierarchy_v1"
+    "seventeen_slot_14_lunt_prefix_1_mismatch_sd_1_correlation_timescale_1_shared_hierarchy_v1"
 )
 ScheduleProfile = Literal[
     "default",
     "lunt_opportunity_matched_fixed_block_v1",
-    "lunt_opportunity_matched_inferred_ou_v1",
-    "lunt_opportunity_matched_inferred_ou_shared_hierarchy_v1",
+    "lunt_14_slot_prefix_inferred_ou_v1",
+    "lunt_14_slot_prefix_inferred_ou_shared_hierarchy_v1",
 ]
 
 _EXTENDED_LUNT_PROFILES = (

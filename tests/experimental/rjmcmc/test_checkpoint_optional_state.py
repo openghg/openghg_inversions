@@ -23,6 +23,7 @@ from openghg_inversions.experimental.rjmcmc.core import (
 )
 from openghg_inversions.experimental.rjmcmc.hierarchy import SharedLognormalHierarchy
 from openghg_inversions.experimental.rjmcmc.likelihood import IndependentSiteOUData
+from openghg_inversions.experimental.rjmcmc.proposals import propose_shared_hierarchy
 from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
 from openghg_inversions.experimental.rjmcmc.sampling import (
     FIXED_BLOCK_SCHEDULE_ID,
@@ -252,6 +253,35 @@ def test_v3_round_trip_preserves_optional_state_and_kernel(tmp_path: Path) -> No
     assert metadata["schema_version"] == checkpoint_io.CHECKPOINT_SCHEMA_VERSION == 3
     assert metadata["state"]["eta"] == checkpoint.state.eta
     assert metadata["kernel"]["eta_proposal_sd"] == 0.08
+
+
+def test_v3_round_trip_preserves_non_roundtripping_log_hierarchy_coordinates(
+    tmp_path: Path,
+) -> None:
+    """Checkpoint rebuild must evaluate stored eta/zeta without exp/log drift."""
+    problem = _problem(optional_layers=True)
+    checkpoint = _checkpoint(problem)
+    proposed_eta = -0.5172098401913132
+    assert np.log(np.exp(proposed_eta)) != proposed_eta
+    transition = propose_shared_hierarchy(
+        problem,
+        checkpoint.state,
+        proposed_eta=proposed_eta,
+        proposed_zeta=checkpoint.state.zeta + 0.031,
+        eta_proposal_stdev=0.08,
+        zeta_proposal_stdev=0.09,
+    )
+    assert transition.valid
+    state = transition.candidate
+    checkpoint = replace(checkpoint, state=state)
+    path = tmp_path / "exact-log-coordinates-v3.npz"
+
+    save_checkpoint(path, checkpoint)
+    loaded_problem = _problem(optional_layers=True)
+    loaded = load_checkpoint(path, loaded_problem)
+
+    _assert_state_equal(loaded.state, state)
+    assert loaded.state.eta == proposed_eta
 
 
 def test_v3_loaded_optional_checkpoint_continues_exactly(tmp_path: Path) -> None:

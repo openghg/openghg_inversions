@@ -250,12 +250,22 @@ def test_manifest_records_complete_ou_and_optional_hierarchy_settings(hierarchy:
                 "maximum": 4,
                 "prior_probabilities": [0.2, 0.5, 0.3],
             },
-            "coefficient_prior": {
-                "distribution": "lognormal",
-                "parameterization": "arithmetic_moments",
-                "mean": 1.0,
-                "standard_deviation": 0.8,
-            },
+            "coefficient_prior": (
+                {
+                    "distribution": "lognormal",
+                    "parameterization": "conditional_shared_arithmetic_moments",
+                    "state_coordinates": ["eta", "zeta"],
+                    "initial_mean": 1.0,
+                    "initial_standard_deviation": 0.8,
+                }
+                if hierarchy
+                else {
+                    "distribution": "lognormal",
+                    "parameterization": "arithmetic_moments",
+                    "mean": 1.0,
+                    "standard_deviation": 0.8,
+                }
+            ),
             "observation_error_model": "independent_site_ou_nugget",
             "observation_error_model_settings": target["observation_error_model_settings"],
             "dynamic_coefficient_hierarchy": expected_hierarchy,
