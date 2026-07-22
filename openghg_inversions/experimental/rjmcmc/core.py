@@ -416,9 +416,9 @@ def aggregate_design_numba(
     """
     n_observations, n_grid = sensitivities.shape
     design = np.zeros((n_observations, k_max), dtype=np.float64)
-    for cell in range(n_grid):
-        region = labels[cell]
-        for observation in range(n_observations):
+    for observation in range(n_observations):
+        for cell in range(n_grid):
+            region = labels[cell]
             design[observation, region] += sensitivities[observation, cell]
     return design
 
@@ -706,4 +706,251 @@ def build_state(
         log_fixed_coefficient_prior=float(log_fixed_coefficient_prior),
         log_k_prior=float(problem.log_k_prior[k - problem.k_min]),
         log_nucleus_prior=uniform_nucleus_set_log_prior(problem.n_grid_cells, k),
+    )
+
+
+def _validate_cached_coefficient_update(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+    *,
+    position: int,
+    value: float,
+    fixed: bool,
+    backend: Backend,
+) -> tuple[int, float]:
+    """Validate the shape-level contract for a cache-preserving update."""
+    if not isinstance(problem, TransDimensionalProblem):
+        raise TypeError("problem must be a TransDimensionalProblem.")
+    if not isinstance(state, TransDimensionalState):
+        raise TypeError("state must be a TransDimensionalState.")
+    if backend not in ("numpy", "numba"):
+        raise ValueError("backend must be 'numpy' or 'numba'.")
+    if state.capacity != problem.k_max:
+        raise ValueError("state capacity must equal problem.k_max.")
+    if state.coefficients.shape != (problem.k_max,) or state.labels.shape != (problem.n_grid_cells,):
+        raise ValueError("state dynamic arrays are incompatible with the problem.")
+    if state.design.shape != (problem.n_observations, problem.k_max):
+        raise ValueError("state design is incompatible with the problem.")
+    if state.fixed_coefficients.shape != (problem.n_fixed_coefficients,):
+        raise ValueError("state fixed coefficients are incompatible with the problem.")
+    expected_observation_shape = (problem.n_observations,)
+    for name in ("dynamic_prediction", "fixed_prediction", "prediction", "residual"):
+        if getattr(state, name).shape != expected_observation_shape:
+            raise ValueError(f"state {name} is incompatible with the problem.")
+    if not problem.k_min <= state.k <= problem.k_max:
+        raise ValueError("state.k must lie within the problem's permitted range.")
+    if isinstance(position, bool) or not isinstance(position, (int, np.integer)):
+        raise ValueError("position must be an integer coefficient position.")
+    validated_position = int(position)
+    count = problem.n_fixed_coefficients if fixed else state.k
+    if not 0 <= validated_position < count:
+        coefficient_kind = "fixed" if fixed else "active"
+        raise ValueError(f"position must select an {coefficient_kind} coefficient.")
+    if isinstance(value, bool):
+        raise ValueError("value must be finite.")
+    validated_value = float(value)
+    if not np.isfinite(validated_value):
+        raise ValueError("value must be finite.")
+    return validated_position, validated_value
+
+
+def update_dynamic_coefficient_state(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+    *,
+    coefficient_position: int,
+    proposed_coefficient: float,
+    backend: Backend = "numpy",
+) -> TransDimensionalState:
+    """Update one dynamic coefficient while preserving geometry caches.
+
+    The nuclei, Voronoi labels, aggregated design, fixed coefficients, and
+    fixed prediction do not depend on a dynamic coefficient value and are
+    shared with the source state. Prediction and target caches are recomputed
+    in the same arithmetic order as :func:`build_state`, avoiding a new
+    fine-grid assignment and design aggregation without changing the target.
+
+    Args:
+        problem: Immutable numerical problem and target specification.
+        state: Valid immutable source state associated with ``problem``.
+        coefficient_position: Zero-based active coefficient position.
+        proposed_coefficient: Finite replacement value. Nonpositive values
+            remain representable and receive negative-infinite prior density,
+            matching :func:`build_state`.
+        backend: Numerical likelihood and prior implementation.
+
+    Returns:
+        A complete immutable state with unchanged geometry caches shared by
+        reference and all coefficient-dependent caches recomputed.
+    """
+    position, value = _validate_cached_coefficient_update(
+        problem,
+        state,
+        position=coefficient_position,
+        value=proposed_coefficient,
+        fixed=False,
+        backend=backend,
+    )
+    coefficients = np.array(state.coefficients, dtype=np.float64, copy=True)
+    coefficients[position] = value
+    dynamic_prediction = state.design[:, : state.k] @ coefficients[: state.k]
+    prediction = dynamic_prediction + state.fixed_prediction
+    residual = prediction - problem.observations
+    if backend == "numpy":
+        log_likelihood = gaussian_log_likelihood_numpy(residual, problem.observation_sd)
+        log_coefficient_prior = lognormal_coefficient_log_prior_numpy(
+            coefficients,
+            state.k,
+            problem.coefficient_prior_mean,
+            problem.coefficient_prior_sd,
+        )
+        if problem.fixed_block is None:
+            log_fixed_coefficient_prior = 0.0
+        else:
+            log_fixed_coefficient_prior = sum(
+                lognormal_coefficient_log_prior_numpy(
+                    state.fixed_coefficients[index : index + 1],
+                    1,
+                    float(problem.fixed_block.coefficient_prior_mean[index]),
+                    float(problem.fixed_block.coefficient_prior_sd[index]),
+                )
+                for index in range(problem.n_fixed_coefficients)
+            )
+    else:
+        log_likelihood = gaussian_log_likelihood_numba(residual, problem.observation_sd)
+        log_coefficient_prior = lognormal_coefficient_log_prior_numba(
+            coefficients,
+            state.k,
+            problem.coefficient_prior_mean,
+            problem.coefficient_prior_sd,
+        )
+        if problem.fixed_block is None:
+            log_fixed_coefficient_prior = 0.0
+        else:
+            log_fixed_coefficient_prior = sum(
+                lognormal_coefficient_log_prior_numba(
+                    state.fixed_coefficients[index : index + 1],
+                    1,
+                    float(problem.fixed_block.coefficient_prior_mean[index]),
+                    float(problem.fixed_block.coefficient_prior_sd[index]),
+                )
+                for index in range(problem.n_fixed_coefficients)
+            )
+    for array in (coefficients, dynamic_prediction, prediction, residual):
+        array.setflags(write=False)
+    return TransDimensionalState(
+        k=state.k,
+        nuclei=state.nuclei,
+        coefficients=coefficients,
+        labels=state.labels,
+        design=state.design,
+        fixed_coefficients=state.fixed_coefficients,
+        dynamic_prediction=dynamic_prediction,
+        fixed_prediction=state.fixed_prediction,
+        prediction=prediction,
+        residual=residual,
+        log_likelihood=float(log_likelihood),
+        log_coefficient_prior=float(log_coefficient_prior),
+        log_fixed_coefficient_prior=float(log_fixed_coefficient_prior),
+        log_k_prior=state.log_k_prior,
+        log_nucleus_prior=state.log_nucleus_prior,
+    )
+
+
+def update_fixed_coefficient_state(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+    *,
+    coefficient_position: int,
+    proposed_coefficient: float,
+    backend: Backend = "numpy",
+) -> TransDimensionalState:
+    """Update one fixed-block coefficient while preserving dynamic caches.
+
+    Dynamic coefficients, nuclei, Voronoi labels, the aggregated dynamic
+    design, and the dynamic prediction are shared with the source state. The
+    fixed prediction and target caches are recomputed in the same arithmetic
+    order as :func:`build_state`.
+
+    Args:
+        problem: Immutable problem containing a nonempty fixed design block.
+        state: Valid immutable source state associated with ``problem``.
+        coefficient_position: Zero-based fixed-block coefficient position.
+        proposed_coefficient: Finite replacement value. Nonpositive values
+            receive negative-infinite prior density, matching ``build_state``.
+        backend: Numerical likelihood and prior implementation.
+
+    Returns:
+        A complete immutable state with unchanged geometry and dynamic caches
+        shared by reference.
+    """
+    position, value = _validate_cached_coefficient_update(
+        problem,
+        state,
+        position=coefficient_position,
+        value=proposed_coefficient,
+        fixed=True,
+        backend=backend,
+    )
+    fixed_block = problem.fixed_block
+    if fixed_block is None:  # guarded by the validated nonzero fixed count
+        raise ValueError("A fixed coefficient update requires a fixed block.")
+    fixed_coefficients = np.array(state.fixed_coefficients, dtype=np.float64, copy=True)
+    fixed_coefficients[position] = value
+    fixed_prediction = np.array(problem.fixed_offset, dtype=np.float64, copy=True)
+    fixed_prediction += fixed_block.design @ fixed_coefficients
+    prediction = state.dynamic_prediction + fixed_prediction
+    residual = prediction - problem.observations
+    if backend == "numpy":
+        log_likelihood = gaussian_log_likelihood_numpy(residual, problem.observation_sd)
+        log_coefficient_prior = lognormal_coefficient_log_prior_numpy(
+            state.coefficients,
+            state.k,
+            problem.coefficient_prior_mean,
+            problem.coefficient_prior_sd,
+        )
+        log_fixed_coefficient_prior = sum(
+            lognormal_coefficient_log_prior_numpy(
+                fixed_coefficients[index : index + 1],
+                1,
+                float(fixed_block.coefficient_prior_mean[index]),
+                float(fixed_block.coefficient_prior_sd[index]),
+            )
+            for index in range(problem.n_fixed_coefficients)
+        )
+    else:
+        log_likelihood = gaussian_log_likelihood_numba(residual, problem.observation_sd)
+        log_coefficient_prior = lognormal_coefficient_log_prior_numba(
+            state.coefficients,
+            state.k,
+            problem.coefficient_prior_mean,
+            problem.coefficient_prior_sd,
+        )
+        log_fixed_coefficient_prior = sum(
+            lognormal_coefficient_log_prior_numba(
+                fixed_coefficients[index : index + 1],
+                1,
+                float(fixed_block.coefficient_prior_mean[index]),
+                float(fixed_block.coefficient_prior_sd[index]),
+            )
+            for index in range(problem.n_fixed_coefficients)
+        )
+    for array in (fixed_coefficients, fixed_prediction, prediction, residual):
+        array.setflags(write=False)
+    return TransDimensionalState(
+        k=state.k,
+        nuclei=state.nuclei,
+        coefficients=state.coefficients,
+        labels=state.labels,
+        design=state.design,
+        fixed_coefficients=fixed_coefficients,
+        dynamic_prediction=state.dynamic_prediction,
+        fixed_prediction=fixed_prediction,
+        prediction=prediction,
+        residual=residual,
+        log_likelihood=float(log_likelihood),
+        log_coefficient_prior=float(log_coefficient_prior),
+        log_fixed_coefficient_prior=float(log_fixed_coefficient_prior),
+        log_k_prior=state.log_k_prior,
+        log_nucleus_prior=state.log_nucleus_prior,
     )

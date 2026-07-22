@@ -12,7 +12,14 @@ import math
 
 import numpy as np
 
-from .core import Backend, TransDimensionalProblem, TransDimensionalState, build_state
+from .core import (
+    Backend,
+    TransDimensionalProblem,
+    TransDimensionalState,
+    build_state,
+    update_dynamic_coefficient_state,
+    update_fixed_coefficient_state,
+)
 
 
 _LOG_TWO_PI = math.log(2.0 * math.pi)
@@ -106,7 +113,12 @@ def _validate_problem_state(
     problem: TransDimensionalProblem,
     state: TransDimensionalState,
 ) -> None:
-    """Check the shape-level contract shared by a problem and source state."""
+    """Check the shape-level contract shared by a problem and source state.
+
+    A state is required to have been built or durably loaded for ``problem``.
+    The state representation does not retain a problem object reference, so a
+    same-shaped state from a different problem cannot be identified here.
+    """
     if not isinstance(problem, TransDimensionalProblem):
         raise TypeError("problem must be a TransDimensionalProblem.")
     if not isinstance(state, TransDimensionalState):
@@ -211,7 +223,9 @@ def propose_coefficient(
 
     Args:
         problem: Target distribution and fine-grid numerical inputs.
-        state: Immutable source state.
+        state: Immutable source state built or durably loaded for ``problem``.
+            A same-shaped state associated with a different problem is outside
+            the proposal contract.
         coefficient_position: Zero-based active coefficient position selected
             uniformly by the eventual sampler.
         proposed_coefficient: Explicit proposed value.
@@ -245,14 +259,12 @@ def propose_coefficient(
             reason="proposed_coefficient must be finite and positive.",
         )
 
-    coefficients = np.array(state.active_coefficients, copy=True)
-    current = float(coefficients[position])
-    coefficients[position] = value
-    candidate = build_state(
+    current = float(state.active_coefficients[position])
+    candidate = update_dynamic_coefficient_state(
         problem,
-        state.active_nuclei,
-        coefficients,
-        fixed_coefficients=state.fixed_coefficients,
+        state,
+        coefficient_position=position,
+        proposed_coefficient=value,
         backend=backend,
     )
     log_position_probability = -math.log(state.k)
@@ -283,17 +295,24 @@ def propose_fixed_coefficient(
     proposed_coefficient: float,
     proposal_stdev: float,
     backend: Backend = "numpy",
+    position_selected_deterministically: bool = False,
 ) -> TransitionTerms:
     """Construct a random-walk update for one always-active coefficient.
 
     Args:
         problem: Target distribution and fine-grid numerical inputs.
-        state: Immutable source state.
+        state: Immutable source state built or durably loaded for ``problem``.
+            A same-shaped state associated with a different problem is outside
+            the proposal contract.
         coefficient_position: Zero-based fixed-block coefficient position,
             selected uniformly by the eventual sampler.
         proposed_coefficient: Explicit proposed value.
         proposal_stdev: Standard deviation of the symmetric Gaussian random walk.
         backend: State-building implementation for candidate caches.
+        position_selected_deterministically: Whether the schedule selected the
+            supplied position with probability one. The default accounts for a
+            uniform random choice among fixed positions; deterministic slots
+            omit that common selection factor from both proposal densities.
 
     Returns:
         Complete proposal accounting. A missing fixed block, invalid position,
@@ -308,6 +327,8 @@ def propose_fixed_coefficient(
     _validate_backend(backend)
     _validate_problem_state(problem, state)
     proposal_stdev = _validate_proposal_scale(proposal_stdev, name="proposal_stdev")
+    if not isinstance(position_selected_deterministically, bool):
+        raise TypeError("position_selected_deterministically must be a boolean.")
     position = _active_position(coefficient_position, k=problem.n_fixed_coefficients)
     if position is None:
         return _invalid_transition(
@@ -323,17 +344,17 @@ def propose_fixed_coefficient(
             reason="proposed_coefficient must be finite and positive.",
         )
 
-    fixed_coefficients = np.array(state.fixed_coefficients, copy=True)
-    current = float(fixed_coefficients[position])
-    fixed_coefficients[position] = value
-    candidate = build_state(
+    current = float(state.fixed_coefficients[position])
+    candidate = update_fixed_coefficient_state(
         problem,
-        state.active_nuclei,
-        state.active_coefficients,
-        fixed_coefficients=fixed_coefficients,
+        state,
+        coefficient_position=position,
+        proposed_coefficient=value,
         backend=backend,
     )
-    log_position_probability = -math.log(problem.n_fixed_coefficients)
+    log_position_probability = (
+        0.0 if position_selected_deterministically else -math.log(problem.n_fixed_coefficients)
+    )
     log_q_forward = log_position_probability + _normal_log_density(
         value,
         mean=current,

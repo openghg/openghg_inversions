@@ -12,6 +12,13 @@ saves a global warmup/thinning subsequence while preserving diagnostics for
 every attempted transition. In-memory checkpoints preserve the random stream,
 schedule phase, and retention phase for exact continuation. Durable
 serialization, parallel chains, and parallel tempering are not yet provided.
+
+An opt-in Lunt opportunity-matched fixed-block profile uses fourteen atomic
+slots: two independent mixed birth/death slots, one nucleus move,
+deterministic fixed positions zero through five, and five dynamic coefficient
+draws. This phase order puts cycle boundaries after the coefficient sweep, as
+in the historical Fortran scan.
+It requires exactly six fixed columns and has a separate versioned schedule ID.
 """
 
 from __future__ import annotations
@@ -42,6 +49,11 @@ from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
 
 SCHEDULE_ID = "four_slot_coefficient_dimension_dimension_nucleus_v1"
 FIXED_BLOCK_SCHEDULE_ID = "five_slot_coefficient_fixed_coefficient_dimension_dimension_nucleus_v1"
+LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE = "lunt_opportunity_matched_fixed_block_v1"
+LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID = (
+    "fourteen_slot_2_mixed_dimension_1_nucleus_6_fixed_position_5_coefficient_v1"
+)
+ScheduleProfile = Literal["default", "lunt_opportunity_matched_fixed_block_v1"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +71,12 @@ class SamplerConfig:
             always-active fixed-block coefficients. ``None`` reuses
             ``coefficient_proposal_sd``. This setting does not alter the
             four-slot schedule when ``problem`` has no fixed block.
+        schedule_profile: Versioned opt-in transition schedule. The default
+            preserves the existing four- or five-slot schedule. The Lunt
+            opportunity-matched profile requires exactly six fixed columns and
+            uses fourteen atomic slots per cycle: two independent mixed
+            birth/death slots, one nucleus move, fixed positions zero through
+            five, and five dynamic coefficients.
         seed: Seed passed to :func:`numpy.random.default_rng`.
         backend: State-recomputation backend used by every candidate.
         nucleus_move: Whether the fourth schedule step proposes a globally
@@ -79,6 +97,7 @@ class SamplerConfig:
     nucleus_move: Literal["global", "local"] = "global"
     local_move_scale: float | None = None
     fixed_coefficient_proposal_sd: float | None = None
+    schedule_profile: ScheduleProfile = "default"
 
     def __post_init__(self) -> None:
         """Reject malformed sampler settings before allocating a trace."""
@@ -109,6 +128,10 @@ class SamplerConfig:
             object.__setattr__(self, "local_move_scale", local_move_scale)
         if self.nucleus_move == "local" and self.local_move_scale is None:
             raise ValueError("local_move_scale is required for local nucleus moves.")
+        if self.schedule_profile not in ("default", LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE):
+            raise ValueError(
+                f"schedule_profile must be 'default' or {LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE!r}."
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +149,7 @@ class KernelSettings:
     nucleus_move: Literal["global", "local"]
     local_move_scale: float | None
     fixed_coefficient_proposal_sd: float | None = None
+    schedule_profile: ScheduleProfile = "default"
 
     @classmethod
     def from_config(cls, config: SamplerConfig) -> KernelSettings:
@@ -137,6 +161,7 @@ class KernelSettings:
             nucleus_move=config.nucleus_move,
             local_move_scale=config.local_move_scale,
             fixed_coefficient_proposal_sd=config.fixed_coefficient_proposal_sd,
+            schedule_profile=config.schedule_profile,
         )
 
 
@@ -320,9 +345,18 @@ def _fixed_coefficient_proposal_sd(config: SamplerConfig | KernelSettings) -> fl
     return config.coefficient_proposal_sd if scale is None else scale
 
 
-def _schedule_id(problem: TransDimensionalProblem) -> str:
-    """Return the schedule identity implied by a problem's fixed block."""
-    return FIXED_BLOCK_SCHEDULE_ID if problem.n_fixed_coefficients else SCHEDULE_ID
+def _schedule_id(
+    problem: TransDimensionalProblem,
+    schedule_profile: ScheduleProfile,
+) -> str:
+    """Return the schedule identity implied by a problem and profile."""
+    if schedule_profile == "default":
+        return FIXED_BLOCK_SCHEDULE_ID if problem.n_fixed_coefficients else SCHEDULE_ID
+    if schedule_profile == LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE:
+        if problem.n_fixed_coefficients != 6:
+            raise ValueError("The Lunt opportunity-matched schedule requires exactly six fixed coefficients.")
+        return LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID
+    raise ValueError(f"Unsupported sampler schedule profile {schedule_profile!r}.")
 
 
 def _draw_transition(
@@ -331,8 +365,15 @@ def _draw_transition(
     config: SamplerConfig | KernelSettings,
     rng: np.random.Generator,
     move: str,
+    *,
+    fixed_coefficient_position: int | None = None,
 ) -> TransitionTerms:
-    """Draw explicit proposal values and construct one seeded transition."""
+    """Draw explicit proposal values and construct one seeded transition.
+
+    ``fixed_coefficient_position`` is used only by the opportunity-matched
+    profile. Supplying it avoids a position RNG draw so the six fixed slots
+    deterministically cover positions zero through five.
+    """
     if move == "dimension":
         move = "birth" if rng.random() < 0.5 else "death"
 
@@ -352,7 +393,16 @@ def _draw_transition(
         if not problem.n_fixed_coefficients:
             raise ValueError("fixed_coefficient moves require a nonempty fixed block.")
         proposal_stdev = _fixed_coefficient_proposal_sd(config)
-        position = int(rng.integers(problem.n_fixed_coefficients))
+        if fixed_coefficient_position is None:
+            position = int(rng.integers(problem.n_fixed_coefficients))
+        elif (
+            isinstance(fixed_coefficient_position, bool)
+            or not isinstance(fixed_coefficient_position, (int, np.integer))
+            or not 0 <= fixed_coefficient_position < problem.n_fixed_coefficients
+        ):
+            raise ValueError("fixed_coefficient_position must select a fixed coefficient.")
+        else:
+            position = int(fixed_coefficient_position)
         value = float(state.fixed_coefficients[position] + rng.normal(scale=proposal_stdev))
         return propose_fixed_coefficient(
             problem,
@@ -361,6 +411,7 @@ def _draw_transition(
             proposed_coefficient=value,
             proposal_stdev=proposal_stdev,
             backend=config.backend,
+            position_selected_deterministically=fixed_coefficient_position is not None,
         )
 
     if move == "birth":
@@ -507,7 +558,10 @@ def _run_segment(
         retain(state)
 
     nucleus_move = "global_move" if kernel_settings.nucleus_move == "global" else "local_move"
-    if problem.n_fixed_coefficients:
+    schedule_id = _schedule_id(problem, kernel_settings.schedule_profile)
+    if schedule_id == LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID:
+        schedule = ()
+    elif problem.n_fixed_coefficients:
         schedule = (
             "coefficient",
             "fixed_coefficient",
@@ -520,8 +574,28 @@ def _run_segment(
 
     for iteration in range(iterations):
         global_transition = transitions_completed + iteration
-        move = schedule[global_transition % len(schedule)]
-        transition = _draw_transition(problem, state, kernel_settings, rng, move)
+        fixed_coefficient_position = None
+        if kernel_settings.schedule_profile == LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE:
+            phase = global_transition % 14
+            if phase < 2:
+                move = "dimension"
+            elif phase == 2:
+                move = nucleus_move
+            elif phase < 9:
+                move = "fixed_coefficient"
+                fixed_coefficient_position = phase - 3
+            else:
+                move = "coefficient"
+        else:
+            move = schedule[global_transition % len(schedule)]
+        transition = _draw_transition(
+            problem,
+            state,
+            kernel_settings,
+            rng,
+            move,
+            fixed_coefficient_position=fixed_coefficient_position,
+        )
         uniform = float(rng.random())
         log_uniform = log(uniform) if uniform > 0.0 else -np.inf
         next_state = accept_or_reject(state, transition, log_uniform=log_uniform)
@@ -542,7 +616,7 @@ def _run_segment(
         transitions_completed=total_transitions,
         kernel_settings=kernel_settings,
         retention=retention,
-        schedule_id=_schedule_id(problem),
+        schedule_id=schedule_id,
     )
     return SamplingResult(
         trace=SamplingTrace(
@@ -645,14 +719,18 @@ def continue_sample(
         raise TypeError("checkpoint must be a SamplerCheckpoint instance.")
     if isinstance(iterations, bool) or not isinstance(iterations, (int, np.integer)) or iterations < 1:
         raise ValueError("iterations must be a positive integer.")
-    supported_schedules = {SCHEDULE_ID, FIXED_BLOCK_SCHEDULE_ID}
+    supported_schedules = {
+        SCHEDULE_ID,
+        FIXED_BLOCK_SCHEDULE_ID,
+        LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID,
+    }
     if checkpoint.schedule_id not in supported_schedules:
         raise ValueError(f"Unsupported sampler schedule {checkpoint.schedule_id!r}.")
     if checkpoint.transitions_completed < 0:
         raise ValueError("checkpoint transitions_completed must be non-negative.")
     if problem is not checkpoint.problem:
         raise ValueError("continuation requires the exact in-memory problem object.")
-    expected_schedule_id = _schedule_id(problem)
+    expected_schedule_id = _schedule_id(problem, checkpoint.kernel_settings.schedule_profile)
     if checkpoint.schedule_id != expected_schedule_id:
         raise ValueError(
             f"Checkpoint schedule {checkpoint.schedule_id!r} is incompatible with "
@@ -673,8 +751,11 @@ def continue_sample(
 __all__ = [
     "FIXED_BLOCK_SCHEDULE_ID",
     "KernelSettings",
+    "LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID",
+    "LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE",
     "PCG64State",
     "SCHEDULE_ID",
+    "ScheduleProfile",
     "SamplerCheckpoint",
     "SamplerConfig",
     "SamplingResult",

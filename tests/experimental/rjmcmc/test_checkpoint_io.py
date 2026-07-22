@@ -257,7 +257,7 @@ def test_expected_run_manifest_must_match_exact_canonical_content(tmp_path: Path
     ("field", "value", "message"),
     [
         ("schema_id", "future.checkpoint", "Unsupported checkpoint schema"),
-        ("schema_version", 2, "Unsupported checkpoint schema version"),
+        ("schema_version", 3, "Unsupported checkpoint schema version"),
     ],
 )
 def test_unknown_schema_fails_closed(
@@ -275,6 +275,27 @@ def test_unknown_schema_fails_closed(
 
     with pytest.raises(ValueError, match=message):
         load_checkpoint(path, _problem())
+
+
+def test_schema_v1_checkpoint_remains_loadable(tmp_path: Path) -> None:
+    """Schema v2 readers must preserve exact continuation of legacy v1 files."""
+    problem = _problem(fixed=True)
+    result = sample(problem, _initial_state(problem), _config(iterations=7, fixed=True))
+    path = tmp_path / "legacy-v1.npz"
+    save_checkpoint(path, result.checkpoint)
+
+    def downgrade_to_v1(metadata: dict[str, Any]) -> None:
+        """Recreate the metadata shape written by the schema-v1 implementation."""
+        metadata["schema_version"] = 1
+        metadata["kernel"].pop("schedule_profile")
+
+    _rewrite_metadata(path, downgrade_to_v1)
+    loaded = load_checkpoint(path, _problem(fixed=True))
+
+    assert loaded.kernel_settings.schedule_profile == "default"
+    assert loaded.schedule_id == result.checkpoint.schedule_id
+    assert loaded.rng_state == result.checkpoint.rng_state
+    _assert_state_equal(loaded.state, result.checkpoint.state)
 
 
 def test_unsupported_rng_and_tampered_manifest_hash_are_rejected(tmp_path: Path) -> None:

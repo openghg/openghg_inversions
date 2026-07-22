@@ -38,10 +38,13 @@ from openghg_inversions.experimental.rjmcmc.core import (
 from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
 from openghg_inversions.experimental.rjmcmc.sampling import (
     FIXED_BLOCK_SCHEDULE_ID,
+    LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE,
     SCHEDULE_ID,
     KernelSettings,
     PCG64State,
     SamplerCheckpoint,
+    ScheduleProfile,
+    _schedule_id,
 )
 
 PathLike: TypeAlias = str | os.PathLike[str]
@@ -50,7 +53,7 @@ FloatArray: TypeAlias = NDArray[np.float64]
 IntArray: TypeAlias = NDArray[np.int64]
 
 CHECKPOINT_SCHEMA_ID = "openghg_inversions.experimental.rjmcmc.checkpoint"
-CHECKPOINT_SCHEMA_VERSION = 1
+CHECKPOINT_SCHEMA_VERSION = 2
 
 _STATE_ARRAY_NAMES = (
     "nuclei",
@@ -297,9 +300,12 @@ def _problem_sha256(problem: TransDimensionalProblem) -> str:
     return digest.hexdigest()
 
 
-def _expected_schedule(problem: TransDimensionalProblem) -> str:
-    """Return the versioned transition schedule implied by ``problem``."""
-    return FIXED_BLOCK_SCHEDULE_ID if problem.n_fixed_coefficients else SCHEDULE_ID
+def _expected_schedule(
+    problem: TransDimensionalProblem,
+    schedule_profile: ScheduleProfile,
+) -> str:
+    """Return the versioned transition schedule implied by the target/profile."""
+    return _schedule_id(problem, schedule_profile)
 
 
 def _validate_kernel(kernel: KernelSettings) -> None:
@@ -321,6 +327,8 @@ def _validate_kernel(kernel: KernelSettings) -> None:
     )
     if kernel.nucleus_move == "local" and local_scale is None:
         raise ValueError("kernel.local_move_scale is required for local nucleus moves.")
+    if kernel.schedule_profile not in ("default", LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE):
+        raise ValueError("kernel.schedule_profile is unsupported.")
 
 
 def _validate_rng(rng_state: PCG64State) -> None:
@@ -390,13 +398,16 @@ def _validate_checkpoint(checkpoint: SamplerCheckpoint) -> Backend:
     transitions = checkpoint.transitions_completed
     if isinstance(transitions, bool) or not isinstance(transitions, (int, np.integer)) or transitions < 0:
         raise ValueError("checkpoint.transitions_completed must be a non-negative integer.")
-    expected_schedule = _expected_schedule(checkpoint.problem)
+    _validate_kernel(checkpoint.kernel_settings)
+    expected_schedule = _expected_schedule(
+        checkpoint.problem,
+        checkpoint.kernel_settings.schedule_profile,
+    )
     if checkpoint.schedule_id != expected_schedule:
         raise ValueError(
-            f"Checkpoint schedule {checkpoint.schedule_id!r} is incompatible with its problem; "
+            f"Checkpoint schedule {checkpoint.schedule_id!r} is incompatible with its problem/profile; "
             f"expected {expected_schedule!r}."
         )
-    _validate_kernel(checkpoint.kernel_settings)
     if not isinstance(checkpoint.retention, RetentionSettings):
         raise TypeError("checkpoint.retention must be a RetentionSettings instance.")
     _validate_rng(checkpoint.rng_state)
@@ -452,6 +463,7 @@ def _metadata(
             "backend": kernel.backend,
             "nucleus_move": kernel.nucleus_move,
             "local_move_scale": kernel.local_move_scale,
+            "schedule_profile": kernel.schedule_profile,
         },
         "retention": {
             "warmup_transitions": checkpoint.retention.warmup_transitions,
@@ -581,27 +593,36 @@ def _metadata_from_arrays(arrays: Mapping[str, NDArray[Any]]) -> dict[str, Any]:
     return metadata
 
 
-def _kernel_from_metadata(value: object) -> KernelSettings:
+def _kernel_from_metadata(value: object, *, schema_version: int) -> KernelSettings:
     """Validate and reconstruct immutable kernel settings."""
     kernel = _require_mapping(value, location="checkpoint metadata.kernel")
+    expected_fields = {
+        "coefficient_proposal_sd",
+        "birth_proposal_sd",
+        "fixed_coefficient_proposal_sd",
+        "backend",
+        "nucleus_move",
+        "local_move_scale",
+    }
+    if schema_version >= 2:
+        expected_fields.add("schedule_profile")
     _require_keys(
         kernel,
-        frozenset(
-            {
-                "coefficient_proposal_sd",
-                "birth_proposal_sd",
-                "fixed_coefficient_proposal_sd",
-                "backend",
-                "nucleus_move",
-                "local_move_scale",
-            }
-        ),
+        frozenset(expected_fields),
         location="checkpoint metadata.kernel",
     )
     backend = _require_text(kernel["backend"], location="checkpoint metadata.kernel.backend")
     nucleus_move = _require_text(
         kernel["nucleus_move"],
         location="checkpoint metadata.kernel.nucleus_move",
+    )
+    schedule_profile = (
+        "default"
+        if schema_version == 1
+        else _require_text(
+            kernel["schedule_profile"],
+            location="checkpoint metadata.kernel.schedule_profile",
+        )
     )
     settings = KernelSettings(
         coefficient_proposal_sd=_require_positive_float(
@@ -622,6 +643,7 @@ def _kernel_from_metadata(value: object) -> KernelSettings:
             kernel["local_move_scale"],
             location="checkpoint metadata.kernel.local_move_scale",
         ),
+        schedule_profile=cast(Any, schedule_profile),
     )
     _validate_kernel(settings)
     return settings
@@ -848,7 +870,7 @@ def load_checkpoint(
         location="checkpoint metadata.schema_version",
         minimum=1,
     )
-    if version != CHECKPOINT_SCHEMA_VERSION:
+    if version not in (1, CHECKPOINT_SCHEMA_VERSION):
         raise ValueError(f"Unsupported checkpoint schema version {version}.")
     saved_numpy_version = _require_text(
         metadata["numpy_version"],
@@ -872,17 +894,19 @@ def load_checkpoint(
     _validate_manifest(metadata, expected_run_manifest=expected_run_manifest)
 
     schedule_id = _require_text(metadata["schedule_id"], location="checkpoint metadata.schedule_id")
-    expected_schedule = _expected_schedule(problem)
+    if version == 1 and schedule_id not in (SCHEDULE_ID, FIXED_BLOCK_SCHEDULE_ID):
+        raise ValueError(f"Checkpoint schema version 1 cannot use schedule {schedule_id!r}.")
+    kernel = _kernel_from_metadata(metadata["kernel"], schema_version=version)
+    expected_schedule = _expected_schedule(problem, kernel.schedule_profile)
     if schedule_id != expected_schedule:
         raise ValueError(
-            f"Checkpoint schedule {schedule_id!r} is incompatible with the supplied problem; "
+            f"Checkpoint schedule {schedule_id!r} is incompatible with the supplied problem/profile; "
             f"expected {expected_schedule!r}."
         )
     transitions_completed = _require_integer(
         metadata["transitions_completed"],
         location="checkpoint metadata.transitions_completed",
     )
-    kernel = _kernel_from_metadata(metadata["kernel"])
     if kernel.backend == "numba" and saved_numba_version != numba.__version__:
         raise ValueError(
             f"Checkpoint Numba version {saved_numba_version!r} is incompatible with "
