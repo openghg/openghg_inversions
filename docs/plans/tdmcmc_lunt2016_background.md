@@ -16,6 +16,43 @@ are treated as claims to verify against the normalized target, not as code to
 copy literally. The legacy Fortran remains a behavioural comparison backend.
 Current RHIME is a separate integration profile.
 
+## Hierarchical lineage before Lunt
+
+Ganesan et al. (2014), *Characterization of uncertainties in atmospheric trace
+gas inversions using hierarchical Bayesian methods*, introduced the
+fixed-dimensional ancestor of the Lunt hierarchy. It jointly inferred
+emissions and boundary parameters, emissions-prior parameters, grouped
+model--measurement uncertainty, and an exponential temporal-correlation
+timescale. Its fixed spatial aggregation required no reversible-jump treatment
+for the emissions-prior parameters.
+
+Ganesan et al. (2015), *Quantifying methane and nitrous oxide emissions from
+the UK and Ireland using a national-scale monitoring network*, is the closer
+application predecessor. It used the same MHD, RGL, TAC, and TTA sites and
+included the March 2014 period used by Lunt. Its observation model separated a
+known instrumental nugget from a latent model discrepancy with separable
+temporal exponential and spatial Matérn covariance. Lunt retained the temporal
+hierarchy, omitted the spatial correlation, and replaced fixed regions with a
+trans-dimensional Voronoi partition.
+
+Historical source revisions sharpen the chronology. The first July 2015
+trans-dimensional code used one shared prior-parameter pair for every variable
+region. A February 2016 change introduced independently evolving per-region
+pairs and initialized a new pair by copying its parent without extending the
+reversible-jump proposal density. The deterministic one-way structural cycle
+was introduced separately in September 2016. These are distinct correctness
+issues, neither inherited from Ganesan's fixed-dimensional sampler.
+
+The original Ganesan Fortran interpreted a lognormal configuration pair as its
+positive scale/median and log-space standard deviation. The first surviving
+trans-dimensional implementation instead converted arithmetic mean and
+arithmetic SD inputs into log-space parameters, which is also what the current
+rewrite does. The historical aggregate-flux bias reported by the project came
+from using `mu_log=0`, `sigma_log=1`: median one but arithmetic mean
+`exp(1/2)`. The current comparison configuration uses arithmetic mean one and
+arithmetic SD one, giving `mu_log=-0.5*log(2)` and
+`sigma_log=sqrt(log(2))`.
+
 ## Two implementation tracks
 
 ### Paper track - primary

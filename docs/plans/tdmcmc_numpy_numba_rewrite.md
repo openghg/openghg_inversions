@@ -12,10 +12,10 @@ model, equations, reproduction profiles, and known inconsistencies are recorded
 in [tdmcmc_lunt2016_background.md](tdmcmc_lunt2016_background.md). Current RHIME
 is retained as a distinct secondary integration profile.
 
-The first slice deliberately covers only the spatial, single-sector,
-uncorrelated Gaussian problem. Correlated errors, temporal partitions,
-multiple trans-dimensional sectors, and parallel tempering remain follow-up
-work.
+The completed first slice covers the spatial, single-sector, independent
+Gaussian problem. The active follow-up branch adds an irregular-time temporal
+error model and a shared partially pooled coefficient prior. Multiple
+trans-dimensional sectors and parallel tempering remain later work.
 
 ## Working principles
 
@@ -98,6 +98,62 @@ will be introduced only behind equivalence tests.
 | 2026-07-20 | Treat the legacy structural-schedule failure and the missing hyperparameter dimension-matching rule as distinct RJMCMC correctness defects. | The former is demonstrated by finite enumeration. The latter follows because adding a region also adds two independently variable hyperparameters, but parent copying introduces no auxiliary variables or reverse density for them. Including their prior density in the target does not repair an incomplete dimension-changing proposal. |
 | 2026-07-22 | Optimize one-nucleus structural proposals by deriving incremental ownership from the existing canonical state and rebuilding only membership-changed design columns. | The current production-shaped matrix makes a full `H` scan the dominant cost. Owner identities can be recovered from `nuclei[labels]` without changing the checkpoint schema; recomputing every affected column from its final members in ascending cell order preserves the full-build target and exact replay contract. The complete rebuild remains the initialization, validation, and fallback oracle. |
 | 2026-07-22 | Keep speculative nearest-neighbour accelerators replaceable and outside the proposal-accounting contract. | A k-d tree, quadtree, distance transform, or other geometry engine must reproduce canonical tie handling and cannot by itself avoid the dominant `H` aggregation. The sampler should depend on a state-construction seam, while experimental geometry providers are benchmarked against the full-build oracle before becoming checkpointed run settings. |
+| 2026-07-22 | Treat the historical lognormal bias as the use of `mu_log=0`, `sigma_log=1`, not `mu_log=1`, `sigma_log=1`. | That distribution has median and mode-scale parameter one but arithmetic mean `exp(1/2)`. With independent regional coefficients the aggregate country total is driven toward that larger mean as the number of regions grows. Current comparison runs instead use arithmetic mean one and arithmetic SD one, corresponding to `mu_log=-0.5*log(2)` and `sigma_log=sqrt(log(2))`. |
+| 2026-07-22 | Implement Ganesan-inspired partial pooling first as one shared, dimension-invariant prior pair for all dynamic Voronoi coefficients. | Per-region prior parameters give one coefficient little information about two local hyperparameters and also require a new reversible-jump dimension match. A shared arithmetic mean and SD pool is identifiable from the coefficient population, remains fixed-dimensional as `k` changes, and resembles the earliest trans-dimensional code before per-region pairs were introduced. Fixed outer coefficients remain outside this pool. |
+| 2026-07-22 | Represent shared coefficient-prior parameters internally as `eta=log(M)` and `zeta=log(S)`, where `M` and `S` are arithmetic coefficient-prior moments. | This preserves the established user-facing arithmetic mean/SD convention. Ganesan-style lognormal hyperpriors become normalized Normal densities in `eta` and `zeta`, and symmetric random walks need no proposal Jacobian. Hyperpriors are configured explicitly by median and log-SD to avoid another parameterization ambiguity. |
+| 2026-07-22 | Make independent measurement error plus latent OU model mismatch the primary correlated-error implementation. | This is the independent-site reduction of Ganesan et al. (2015): `C = D + M Q M`. It preserves a genuine uncorrelated measurement nugget and remains exactly `O(n_observations)` through a scalar irregular-time Kalman likelihood. The Lunt/Ganesan-2014 `R = S Q S` correlated-total-error model is a distinct comparison profile, not an equivalent way to add a nugget. |
+
+## Ganesan lineage and active hierarchy plan
+
+Ganesan et al. (2014) supplied the fixed-dimensional hierarchy for emissions
+prior parameters, model-mismatch amplitudes, and temporal correlation. Ganesan
+et al. (2015) applied a richer separable space-time covariance to the same four
+DECC sites and overlapping March 2014 data later used by Lunt et al. The 2015
+observation model separated instrumental error from a latent correlated model
+discrepancy. Lunt retained the temporal hierarchy, simplified sites to
+independent blocks, and made the spatial partition trans-dimensional.
+
+Historical source inspection gives three distinct state-prior conventions:
+
+1. the Ganesan fixed-dimensional sampler gave existing coefficients evolving
+   prior parameters and could update them with ordinary Metropolis-Hastings;
+2. the first July 2015 trans-dimensional code used one shared parameter pair
+   for all variable regions, so structural changes did not change the
+   hyperparameter dimension;
+3. the February 2016 change to per-region pairs copied a parent's pair during
+   an upward structural proposal without the auxiliary variables or reverse
+   density required by reversible-jump MCMC.
+
+The active implementation stages are therefore:
+
+1. add a normalized irregular-time OU likelihood with inferred grouped model
+   mismatch and explicit independent measurement error;
+2. add fixed-dimensional mismatch-amplitude and correlation-time transitions,
+   replayable schedules, checkpoints, and labelled retained output;
+3. add one shared partially pooled coefficient-prior pair with Ganesan-style
+   hyperpriors, leaving the fixed outer coefficients on their existing priors.
+
+For one shared pool, let `M` and `S` be the arithmetic mean and arithmetic SD
+of the dynamic coefficient prior and define `eta = log(M)`, `zeta = log(S)`.
+The normalized dynamic target is
+
+```text
+p(k) * p(c | k) * p(eta) * p(zeta)
+* product_i p(x_i | M=exp(eta), S=exp(zeta)).
+```
+
+The shared pair is counted once, not once per region. It persists unchanged
+through structural proposals, so existing structural proposal and Jacobian
+terms remain valid. A joint symmetric random walk in `(eta, zeta)` changes
+only the coefficient-prior and hyperprior target terms and must reuse all
+geometry, design, prediction, residual, and likelihood caches.
+
+This shared model does not remove the dependence of country-total prior
+variance on `k`. Prior-predictive country totals must be checked at several
+fixed values of `k`; that dependence is a scientific model property rather
+than a reversible-jump balance error. The per-region specification below is
+retained as a possible later paper-faithful extension, but it is no longer the
+first hierarchy implementation target.
 
 ## Lunt per-region hierarchy implementation specification
 
