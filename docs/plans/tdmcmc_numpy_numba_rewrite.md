@@ -102,6 +102,8 @@ will be introduced only behind equivalence tests.
 | 2026-07-22 | Implement Ganesan-inspired partial pooling first as one shared, dimension-invariant prior pair for all dynamic Voronoi coefficients. | Per-region prior parameters give one coefficient little information about two local hyperparameters and also require a new reversible-jump dimension match. A shared arithmetic mean and SD pool is identifiable from the coefficient population, remains fixed-dimensional as `k` changes, and resembles the earliest trans-dimensional code before per-region pairs were introduced. Fixed outer coefficients remain outside this pool. |
 | 2026-07-22 | Represent shared coefficient-prior parameters internally as `eta=log(M)` and `zeta=log(S)`, where `M` and `S` are arithmetic coefficient-prior moments. | This preserves the established user-facing arithmetic mean/SD convention. Ganesan-style lognormal hyperpriors become normalized Normal densities in `eta` and `zeta`, and symmetric random walks need no proposal Jacobian. Hyperpriors are configured explicitly by median and log-SD to avoid another parameterization ambiguity. |
 | 2026-07-22 | Make independent measurement error plus latent OU model mismatch the primary correlated-error implementation. | This is the independent-site reduction of Ganesan et al. (2015): `C = D + M Q M`. It preserves a genuine uncorrelated measurement nugget and remains exactly `O(n_observations)` through a scalar irregular-time Kalman likelihood. The Lunt/Ganesan-2014 `R = S Q S` correlated-total-error model is a distinct comparison profile, not an equivalent way to add a nugget. |
+| 2026-07-22 | Treat every historical iteration count as revision-specific and expose new OU/hierarchy schedules under new versioned identities. | Ganesan's fixed-dimensional code swept all components, intermediate trans-dimensional revisions used five- or seven-way random scans and one shared dynamic hyperpair, and the closest paper-model revision used a six-way random scan with per-region hyperpairs. The published pseudocode does not uniquely determine mismatch or timescale proposal counts. Existing rewrite schedules and random streams therefore remain unchanged; new 16- and 17-slot profiles explicitly add one randomly selected mismatch amplitude, one randomly selected timescale, and optionally one joint shared-pool update to the existing 14-slot cycle. |
+| 2026-07-22 | Treat archived Lunt coefficient-prior inputs as arithmetic mean/SD, while recording the conflict with the paper's log-space notation and the older Ganesan kernel. | Revision `6f165e68` explicitly converts `mean` and `sd` to lognormal log-location/log-scale inside `calc_pdf`; its input template uses dynamic mean 1 and SD 1. The older Ganesan density instead treats its first input as a positive median/geometric scale and its second as log-space SD. The current rewrite's arithmetic convention follows the Lunt code and current inversion API, not the incompatible Ganesan calling convention. |
 
 ## Ganesan lineage and active hierarchy plan
 
@@ -132,6 +134,55 @@ The active implementation stages are therefore:
    replayable schedules, checkpoints, and labelled retained output;
 3. add one shared partially pooled coefficient-prior pair with Ganesan-style
    hyperpriors, leaving the fixed outer coefficients on their existing priors.
+
+The numerical target and proposal primitives for all three stages are now
+implemented. Stage 2 still requires the versioned schedule, durable checkpoint,
+and labelled-output wiring; stage 3 uses the same persistence path. The shared
+pool is intentionally the fixed-dimensional structure from the intermediate
+trans-dimensional lineage, not a claim to reproduce the paper's per-region
+hierarchy.
+
+### Historical update-opportunity evidence
+
+There is no repository-supported basis for treating all reported historical
+"iterations" as the same amount of work:
+
+- Ganesan's fixed-dimensional `hierarchical_MCMC_fullcovariance_Kronecker.f90`
+  at revision `bd609a39` performs a deterministic full component sweep. Every
+  state element and its two prior parameters, every temporal mismatch
+  amplitude, every site amplitude, and the scalar timescale receive an
+  opportunity in one nominal iteration.
+- Intermediate trans-dimensional `acrg_full_hbtdmcmc.f90` revisions used a
+  random five- or seven-slot top-level scan. The dynamic cells shared one
+  hyperparameter pair, and the mismatch update selected one random group.
+  Revision `7c693833` explicitly changed the emissions slot to a broader sweep
+  in an attempt to improve convergence, without changing the top-level random
+  scan.
+- The closest preserved paper-model revision, `6f165e68` (2016-02-10), selects
+  one of six slots uniformly: emissions/hyperparameters, mismatch amplitude,
+  timescale, split, merge, or move. A mismatch slot selects one random group; a
+  timescale slot selects one random site; an emissions slot makes five random
+  dynamic coefficient and five random dynamic hyperpair proposals. Thus
+  600,000 nominal iterations imply about 100,000 opportunities for each
+  top-level slot, 500,000 dynamic-coefficient proposals, and 500,000 dynamic
+  hyperpair proposals in expectation, before division across groups/sites.
+
+The Lunt paper's Algorithm 1 uses a deterministic modulo pseudocode but does
+not identify how its generic hyperparameter step maps to the internal mismatch,
+timescale, and emissions-prior loops. The exact executable revision used for
+the published 90-minute timing has not been identified. Timing reports must
+therefore state both atomic transition counts and the historical revision whose
+proposal opportunities they intend to match.
+
+The same closest paper-model revision also resolves one part of the lognormal
+ambiguity. Its `calc_pdf` converts an input arithmetic `mean` and `sd` into
+log-space parameters before evaluating the density; the companion template
+sets the dynamic pair to arithmetic mean one and SD one. This is strong
+evidence against attributing the archived template's performance to a
+`mu_log=1, sigma_log=1` prior. It does not identify the exact uncommitted input
+file used for the published timing. The older Ganesan density accepted a
+positive median/geometric scale and log-space SD directly, so the two kernels'
+configuration pairs must not be compared by name alone.
 
 For one shared pool, let `M` and `S` be the arithmetic mean and arithmetic SD
 of the dynamic coefficient prior and define `eta = log(M)`, `zeta = log(S)`.
@@ -397,14 +448,16 @@ following correctness and integration work. Items are ordered by dependency.
    stored cache before continuation.
 7. **Completed:** add an xarray retained-trace export with global transition,
    padded region-slot, active-mask, and separate fixed-parameter coordinates.
-8. **Specified; next implementation task:** implement the
-   [per-region hierarchy specification](#lunt-per-region-hierarchy-implementation-specification),
-   first as target/state primitives and only later as structural and scheduled
-   proposals. All bounds, initial values, and proposal scales must be explicit
-   synthetic settings until archived Lunt configuration returns.
-9. Add grouped/site-block error scales and the correlated likelihood after the
-   hierarchy has independent target/proposal oracles. Do not implement the
-   questionable determinant ratio from the printed paper equation directly.
+8. **Implemented at the target/proposal level:** add independent-site,
+   irregular-time latent OU mismatch with an explicit measurement nugget,
+   inferred bounded mismatch amplitudes, and inferred bounded timescales. The
+   scalar Kalman likelihood is normalized and has NumPy/Numba and dense-
+   covariance oracles. Schedule/checkpoint/output integration is in progress.
+9. **Implemented at the target/proposal level:** add one shared arithmetic
+   mean/SD pair for the dynamic-coefficient prior, with normalized Ganesan-style
+   hyperpriors in log coordinates and a joint symmetric proposal. The
+   paper-faithful per-region hierarchy is deferred because it is weakly
+   identified and its legacy structural dimension match is invalid.
 
 This repository does not currently contain an agent-tracker configuration, so
 the queue, ownership, decisions, and evidence are recorded in this planning

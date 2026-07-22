@@ -44,14 +44,21 @@ was introduced separately in September 2016. These are distinct correctness
 issues, neither inherited from Ganesan's fixed-dimensional sampler.
 
 The original Ganesan Fortran interpreted a lognormal configuration pair as its
-positive scale/median and log-space standard deviation. The first surviving
-trans-dimensional implementation instead converted arithmetic mean and
-arithmetic SD inputs into log-space parameters, which is also what the current
-rewrite does. The historical aggregate-flux bias reported by the project came
-from using `mu_log=0`, `sigma_log=1`: median one but arithmetic mean
-`exp(1/2)`. The current comparison configuration uses arithmetic mean one and
-arithmetic SD one, giving `mu_log=-0.5*log(2)` and
-`sigma_log=sqrt(log(2))`.
+positive scale/median and log-space standard deviation. The closest preserved
+paper-model Lunt revision (`6f165e68`) instead explicitly converts arithmetic
+mean and arithmetic SD inputs into log-space parameters inside `calc_pdf`;
+its companion template sets the dynamic pair to arithmetic mean one and SD
+one. This code semantics conflicts with the paper's description of
+`mu_x,sigma_x` as log-space parameters. The current rewrite follows the
+arithmetic convention used by that Lunt code and the current inversion API.
+
+The historical aggregate-flux bias reported by the project came from using
+`mu_log=0`, `sigma_log=1`: median one but arithmetic mean `exp(1/2)`. The
+current comparison configuration uses arithmetic mean one and arithmetic SD
+one, giving `mu_log=-0.5*log(2)` and `sigma_log=sqrt(log(2))`. The archived
+Lunt template is therefore evidence against explaining its published runtime
+through a `mu_log=1,sigma_log=1` prior, although the exact uncommitted
+production configuration remains unknown.
 
 ## Two implementation tracks
 
