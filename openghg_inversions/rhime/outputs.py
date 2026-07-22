@@ -85,10 +85,23 @@ def _define_derived_output_filename(
 
 
 def _save_inferencedata(idata: az.InferenceData, path: str | Path) -> None:
-    """Save InferenceData, preferring the h5netcdf backend with fallbacks."""
+    """Save inference data while preserving metadata and serializable coords.
+
+    Root and group attributes are preserved while group MultiIndexes are reset
+    on a serialization copy. The h5netcdf, ArviZ-default, and netcdf4 backends
+    are attempted in that order.
+
+    Args:
+        idata: Inference data to serialize.
+        path: Destination NetCDF path.
+
+    Raises:
+        RuntimeError: If every supported NetCDF backend fails.
+    """
     if isinstance(idata, az.InferenceData):
         idata = cast(Any, az.InferenceData)(
-            **{group: _reset_serialisation_multiindexes(idata[group]) for group in idata.groups()}
+            attrs=dict(idata.attrs),
+            **{group: _reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
         )
 
     failures = []
