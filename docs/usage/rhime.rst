@@ -140,23 +140,75 @@ class boundaries, but RHIME config and ``run_hbmcmc.py`` do not yet load
 build and save the basis through the Python basis API, then load it as a saved
 basis case.
 
-Use ``combine_inner_outer_region_classes`` to build one transient class field
-from aligned inner and outer classifications without embedding a project mask
-or region names in the library:
+The standard fixed-InTEM-outer workflow remains the compatibility route when
+only the inner region should be generated. For example:
 
 .. code-block:: python
 
+   from openghg_inversions.basis import fixed_outer_regions_basis
+
+   basis = fixed_outer_regions_basis(
+       fp_all,
+       start_date="2019-01-01",
+       basis_algorithm="weighted",
+       domain="EUROPE",
+       nbasis=150,
+   )
+
+Here each fixed InTEM outer label remains one basis region, ``nbasis`` is the
+requested inner-region count, and the adapter retains the historical weighted
+land/sea behavior without requiring a caller-supplied class field. Use the
+generic route below when class boundaries must be explicitly coordinate-aligned
+and independent of the local split strategy.
+
+For a fully generic class layout, use
+``combine_inner_outer_region_classes`` to build one transient class field from
+aligned inner and outer classifications without embedding a project mask or
+region names in the library:
+
+.. code-block:: python
+
+   import numpy as np
+
    from openghg_inversions.basis.algorithms import (
+       GreedyAxisParallelSplitStrategy,
        combine_inner_outer_region_classes,
+       region_class_mask,
        region_constrained_basis,
    )
 
    region_classes = combine_inner_outer_region_classes(
        inner_mask,
-       inner_land_sea_classes,
-       outer_region_classes,
+       whole_domain_land_sea_classes,
+       intem_outer_regions,
    )
-   basis = region_constrained_basis(weights, region_classes, nbasis=150)
+   inner_land = region_class_mask(region_classes, ("inner", 1))
+
+   outer_values = np.unique(intem_outer_regions.values[~inner_mask.values])
+   targets = {("outer", value): 1 for value in outer_values}
+   targets.update({("inner", 0): 75, ("inner", 1): 75})
+   basis = region_constrained_basis(
+       weights,
+       region_classes,
+       nbasis=targets,
+       split_strategy=GreedyAxisParallelSplitStrategy(),
+   )
+
+Only the mask-selected side is inspected, so both class inputs may cover the
+whole domain. Selected null or explicitly unmapped values remain unmapped;
+values on the unselected side are ignored. The outer input can therefore be the
+InTEM label field itself rather than a dummy classification. Domain tags keep
+equal raw inner and outer labels distinct. Use ``region_class_mask`` to select a
+tagged tuple label because ordinary NumPy/xarray comparison treats a tuple as a
+sequence instead of one object-valued class.
+
+An integer ``nbasis`` in the generic call is a total distributed across every
+selected inner and outer class. Use an explicit mapping when outer classes must
+remain fixed at one region each. This generic constrained layout does not claim
+to reproduce the legacy weighted bucket split shown above. Class composition
+and allocation are independent of the local split algorithm: replace
+``GreedyAxisParallelSplitStrategy`` with another ``SplitStrategy`` without
+changing the class field or its targets.
 
 The helper only selects and tags classes on a shared grid. The downstream
 algorithm still receives one weight field. Separate source weights,

@@ -19,6 +19,7 @@ from .algorithms import (
     ContrastScoreSplitAcceptance,
     GreedyAxisParallelSplitStrategy,
     NbasisAllocation,
+    SplitStrategy,
     region_constrained_basis,
 )
 from .algorithms import quadtree_algorithm, weighted_algorithm
@@ -373,6 +374,7 @@ def region_constrained_basis_from_weights(
     nbasis: NbasisAllocation = 100,
     allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
+    split_strategy: SplitStrategy | None = None,
     split_acceptance: Literal["none", "contrast_score"] = "none",
     contrast_contribution: xr.DataArray | None = None,
     contrast_cell_weight: xr.DataArray | None = None,
@@ -401,6 +403,10 @@ def region_constrained_basis_from_weights(
             allocates by mapped cell count.
         min_regions_per_class: Minimum automatic allocation for each non-empty
             mapped class.
+        split_strategy: Class-local partition strategy. When omitted,
+            ``region_constrained_basis`` uses its greedy axis-parallel default.
+            Supplying a strategy keeps class composition/allocation independent
+            from the partition algorithm.
         split_acceptance: Optional split-acceptance criterion. The default
             ``"none"`` preserves existing behavior. ``"contrast_score"`` uses
             a mass-preserving observation-space contrast gate.
@@ -420,15 +426,22 @@ def region_constrained_basis_from_weights(
     Returns:
         Basis field with globally unique integer labels that do not cross
         ``region_classes`` values.
+
+    Raises:
+        ValueError: If an explicit ``split_strategy`` is combined with
+            greedy-specific contrast configuration, or if the core basis
+            inputs or allocation are invalid.
     """
     raw_weights = _sanitize_generated_basis_weights(weights, algorithm="region-constrained")
     weights = _normalise_weights_by_max(raw_weights)
     region_classes = region_classes.transpose(*weights.dims)
     region_classes = region_classes.sel({dim: weights.coords[dim] for dim in weights.dims})
     split_strategy = _region_constrained_split_strategy(
+        split_strategy=split_strategy,
         split_acceptance=split_acceptance,
         contrast_contribution=contrast_contribution,
-        contrast_cell_weight=contrast_cell_weight if contrast_cell_weight is not None else raw_weights,
+        contrast_cell_weight=contrast_cell_weight,
+        default_contrast_cell_weight=raw_weights,
         min_contrast_delta_eig=min_contrast_delta_eig,
         min_contrast_lambda=min_contrast_lambda,
         contrast_tau=contrast_tau,
@@ -556,6 +569,7 @@ def region_constrained_basis_function(
     contrast_tau: float | None = None,
     contrast_sigma_design: float | None = None,
     contrast_s_diag: xr.DataArray | None = None,
+    split_strategy: SplitStrategy | None = None,
 ) -> xr.DataArray:
     """Create weighted basis regions constrained by caller-supplied classes.
 
@@ -608,6 +622,10 @@ def region_constrained_basis_function(
             equivalent to ``S = contrast_sigma_design**2 I``.
         contrast_s_diag: Optional diagonal design covariance entries in the
             same row space as ``contrast_contribution``.
+        split_strategy: Class-local partition strategy. When omitted, the core
+            constrained helper uses its greedy axis-parallel default. An
+            explicit strategy cannot be combined with the greedy-specific
+            contrast options above.
 
     Returns:
         Basis field with ``lat``/``lon`` dimensions, a singleton ``time``
@@ -615,7 +633,9 @@ def region_constrained_basis_function(
         ``region_classes`` values.
 
     Raises:
-        ValueError: If ``region_classes`` is not supplied.
+        ValueError: If ``region_classes`` is not supplied or an explicit
+            ``split_strategy`` is combined with greedy-specific contrast
+            configuration.
     """
     if region_classes is None:
         raise ValueError("region_classes must be supplied for the region_constrained basis algorithm.")
@@ -629,6 +649,7 @@ def region_constrained_basis_function(
         nbasis=nbasis,
         allocation=allocation,
         min_regions_per_class=min_regions_per_class,
+        split_strategy=split_strategy,
         split_acceptance=split_acceptance,
         contrast_contribution=contrast_contribution,
         contrast_cell_weight=contrast_cell_weight,
@@ -642,16 +663,33 @@ def region_constrained_basis_function(
 
 def _region_constrained_split_strategy(
     *,
+    split_strategy: SplitStrategy | None,
     split_acceptance: Literal["none", "contrast_score"],
     contrast_contribution: xr.DataArray | None,
-    contrast_cell_weight: xr.DataArray,
+    contrast_cell_weight: xr.DataArray | None,
+    default_contrast_cell_weight: xr.DataArray,
     min_contrast_delta_eig: float | None,
     min_contrast_lambda: float | None,
     contrast_tau: float | None,
     contrast_sigma_design: float | None,
     contrast_s_diag: xr.DataArray | None,
-):
+) -> SplitStrategy | None:
     """Return an optional region-constrained split strategy."""
+    contrast_options = (
+        contrast_contribution,
+        contrast_cell_weight,
+        min_contrast_delta_eig,
+        min_contrast_lambda,
+        contrast_tau,
+        contrast_sigma_design,
+        contrast_s_diag,
+    )
+    if split_strategy is not None:
+        if split_acceptance != "none" or any(option is not None for option in contrast_options):
+            raise ValueError(
+                "split_strategy cannot be combined with split_acceptance or contrast-scoring options."
+            )
+        return split_strategy
     if split_acceptance == "none":
         return None
     if split_acceptance != "contrast_score":
@@ -661,7 +699,9 @@ def _region_constrained_split_strategy(
     return GreedyAxisParallelSplitStrategy(
         split_acceptance=ContrastScoreSplitAcceptance(
             contribution=contrast_contribution,
-            cell_weight=contrast_cell_weight,
+            cell_weight=(
+                contrast_cell_weight if contrast_cell_weight is not None else default_contrast_cell_weight
+            ),
             min_contrast_delta_eig=min_contrast_delta_eig,
             min_contrast_lambda=min_contrast_lambda,
             contrast_tau=contrast_tau,
@@ -697,7 +737,7 @@ basis_functions = {
     "quadtree": BasisFunction("quadtree algorithm", quadtree_basis_function),
     "weighted": BasisFunction("weighted by data algorithm", bucket_basis_function),
     "region_constrained": BasisFunction(
-        "region-constrained weighted by data algorithm",
+        "class-constrained basis with a selectable split strategy",
         region_constrained_basis_function,
     ),
 }
@@ -716,6 +756,7 @@ def fixed_outer_regions_basis(
     region_classes: xr.DataArray | None = None,
     region_allocation: AllocationMode = "weight",
     min_regions_per_class: int = 1,
+    split_strategy: SplitStrategy | None = None,
     split_acceptance: Literal["none", "contrast_score"] = "none",
     contrast_contribution: xr.DataArray | None = None,
     contrast_cell_weight: xr.DataArray | None = None,
@@ -753,6 +794,9 @@ def fixed_outer_regions_basis(
             ``"weight"`` or ``"area"``.
         min_regions_per_class: Minimum automatic allocation for each non-empty
             mapped class when using ``region_constrained``.
+        split_strategy: Class-local partition strategy used only with
+            ``basis_algorithm="region_constrained"``. When omitted, the core
+            constrained helper uses its greedy axis-parallel default.
         split_acceptance: Optional split-acceptance criterion for
             ``region_constrained`` inner-region splitting.
         contrast_contribution: Design contribution array used only when
@@ -768,6 +812,11 @@ def fixed_outer_regions_basis(
 
     Returns:
         Basis field with fixed outer labels and generated inner labels.
+
+    Raises:
+        ValueError: If the selected basis algorithm rejects its inputs, or an
+            explicit ``split_strategy`` is combined with greedy-specific
+            contrast configuration.
     """
     if country_directory is None:
         logger.info(f"Loading default InTEM outer region file for domain {domain}.")
@@ -793,6 +842,7 @@ def fixed_outer_regions_basis(
                 "region_classes": region_classes,
                 "allocation": region_allocation,
                 "min_regions_per_class": min_regions_per_class,
+                "split_strategy": split_strategy,
                 "split_acceptance": split_acceptance,
                 "contrast_contribution": contrast_contribution,
                 "contrast_cell_weight": contrast_cell_weight,

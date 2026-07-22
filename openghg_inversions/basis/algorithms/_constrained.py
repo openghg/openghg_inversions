@@ -23,7 +23,8 @@ boundaries are never crossed.
 Layered region-class helpers are also pure. They combine already loaded masks
 into composite class labels so callers can express intersections such as
 land/sea by inner/outer without baking file loading or runner configuration into
-the algorithm.
+the algorithm. Use :func:`region_class_mask` to select their tuple-valued class
+labels without NumPy treating a tuple as an array-like comparison operand.
 """
 
 from __future__ import annotations
@@ -677,12 +678,14 @@ class GreedyAxisParallelSplitStrategy:
 
 @dataclass(frozen=True)
 class AxisAlignedWeightedSplitStrategy:
-    """Compatibility strategy based on the existing recursive weighted basis.
+    """Class-local strategy based on recursive weighted bucket splits.
 
-    This keeps the current weighted basis shape available for comparison:
-    recursively split rectangles along the longer axis until each rectangle is
-    below a searched threshold. New constrained code defaults to
-    :class:`GreedyAxisParallelSplitStrategy` instead.
+    This recursively splits rectangles along the longer axis until each is
+    below a searched threshold, independently within each supplied class. It
+    does not reproduce the legacy land/sea-weighted algorithm: that route
+    chooses its bucket threshold by counting post-fragmentation labels, while
+    land/sea does not influence the rectangle geometry itself. New constrained
+    code defaults to :class:`GreedyAxisParallelSplitStrategy` instead.
     """
 
     max_iter: int = 32
@@ -776,6 +779,15 @@ def region_constrained_basis(
         ``weights``. Mapped cells receive globally unique positive integer
         labels; unmapped cells receive ``0``.
 
+    Raises:
+        ValueError: If either input is not two-dimensional, the dimension names
+            differ, weights are invalid, or the requested allocation is
+            impossible.
+        xarray.AlignmentError: If the inputs do not have exactly identical
+            attached coordinate names, dimensions, dtypes, values, and
+            attributes after transposing ``region_classes`` to match
+            ``weights``.
+
     Notes:
         Labels are guaranteed not to cross class boundaries because each class is
         split independently and relabelled with a global offset. The default
@@ -783,11 +795,16 @@ def region_constrained_basis(
         same class if the class mask itself is disconnected; contiguity is not
         guaranteed by this helper.
     """
-    weights, region_classes = _align_2d_inputs(weights, region_classes)
+    weights, region_classes = _align_2d_inputs(
+        weights,
+        region_classes,
+        reference_name="weights",
+        candidate_name="region_classes",
+    )
     weight_values = _validate_weights(weights)
     class_values = region_classes.to_numpy()
     mapped_classes = _mapped_classes(class_values, unmapped_values)
-    strategy = split_strategy or GreedyAxisParallelSplitStrategy()
+    strategy = split_strategy if split_strategy is not None else GreedyAxisParallelSplitStrategy()
 
     labels = np.zeros(weight_values.shape, dtype=np.int64)
     if not mapped_classes:
@@ -839,10 +856,13 @@ def combine_inner_outer_region_classes(
         ``("outer", value)`` tuples. Unmapped cells contain ``NaN``.
 
     Raises:
-        ValueError: If inputs are not aligned two-dimensional fields,
-            ``inner_mask`` is not Boolean, or a selected class value is not
-            hashable.
-        xarray.AlignmentError: If input coordinates do not align exactly.
+        ValueError: If any input is not two-dimensional, dimension-name sets
+            differ, ``inner_mask`` is not Boolean, or a selected class value is
+            not hashable.
+        xarray.AlignmentError: If, after transposition to ``inner_mask``
+            dimension order, any input does not have exactly identical attached
+            coordinate names, dimensions, dtypes, values, and attributes,
+            including scalar coordinates.
 
     Notes:
         Values on the unselected side do not affect the result, including null
@@ -855,16 +875,16 @@ def combine_inner_outer_region_classes(
         `#407 <https://github.com/openghg/openghg_inversions/issues/407>`_, and
         `#509 <https://github.com/openghg/openghg_inversions/issues/509>`_.
     """
-    inner_mask, inner_classes = _align_2d_inputs(inner_mask, inner_classes)
-    _validate_matching_grid_coordinates(
+    inner_mask, inner_classes = _align_2d_inputs(
         inner_mask,
         inner_classes,
+        reference_name="inner_mask",
         candidate_name="inner_classes",
     )
-    inner_mask, outer_classes = _align_2d_inputs(inner_mask, outer_classes)
-    _validate_matching_grid_coordinates(
+    inner_mask, outer_classes = _align_2d_inputs(
         inner_mask,
         outer_classes,
+        reference_name="inner_mask",
         candidate_name="outer_classes",
     )
     if not np.issubdtype(inner_mask.dtype, np.bool_):
@@ -876,13 +896,15 @@ def combine_inner_outer_region_classes(
     unmapped = set(unmapped_values)
     class_values = np.empty(inner_mask.shape, dtype=object)
     class_values[:] = np.nan
+    retained_labels: dict[tuple[Hashable, Hashable], tuple[Hashable, Hashable]] = {}
 
     for index in np.ndindex(inner_mask.shape):
         is_inner = bool(mask_values[index])
         value = cast(Hashable, inner_values[index] if is_inner else outer_values[index])
         if _is_unmapped_layer_value(value, unmapped):
             continue
-        class_values[index] = ("inner" if is_inner else "outer", value)
+        label = ("inner" if is_inner else "outer", value)
+        class_values[index] = retained_labels.setdefault(label, label)
 
     return xr.DataArray(
         class_values,
@@ -912,19 +934,24 @@ def intersect_region_class_layers(
         Object-valued ``DataArray`` with the same dimensions and coordinates as
         the first layer. Mapped cells contain tuples of layer values, while
         cells that are null or explicitly unmapped in any layer contain
-        ``NaN``.
+        ``NaN``. Its ``region_class_layers`` attribute records the string form
+        of each layer name in mapping insertion order.
 
     Raises:
         ValueError: If no layers are supplied, any layer is not two-dimensional,
             layer dimension names differ, or a mapped layer value is not
             hashable.
-        xarray.AlignmentError: If layer coordinates do not align exactly.
+        xarray.AlignmentError: If, after transposition to the first layer's
+            dimension order, any layer does not have exactly identical attached
+            coordinate names, dimensions, dtypes, values, and attributes,
+            including scalar coordinates.
 
     Notes:
         The tuple labels can be passed directly to
         :func:`region_constrained_basis`. This is the small lattice-style
         construction needed for layered masks such as land/sea crossed with an
-        inner/outer rectangle.
+        inner/outer rectangle. Use :func:`region_class_mask` rather than raw
+        xarray equality when selecting a tuple label.
     """
     layer_items = list(layers.items())
     if not layer_items:
@@ -934,19 +961,22 @@ def intersect_region_class_layers(
     if template.ndim != 2:
         raise ValueError("Region-class layers must be two-dimensional.")
 
+    template_name = f"region-class layer {layer_items[0][0]!r}"
     aligned_layers: list[xr.DataArray] = []
     for layer_name, layer in layer_items:
-        if layer.ndim != 2:
-            raise ValueError(f"Region-class layer {layer_name!r} must be two-dimensional.")
-        if set(layer.dims) != set(template.dims):
-            raise ValueError("Region-class layers must use the same dimensions.")
-        aligned_layers.append(layer.transpose(*template.dims))
+        _, aligned_layer = _align_2d_inputs(
+            template,
+            layer,
+            reference_name=template_name,
+            candidate_name=f"region-class layer {layer_name!r}",
+        )
+        aligned_layers.append(aligned_layer)
 
-    aligned_layers = list(xr.align(*aligned_layers, join="exact"))
     layer_values = [layer.to_numpy() for layer in aligned_layers]
     unmapped = set(unmapped_values)
     class_values = np.empty(template.shape, dtype=object)
     class_values[:] = np.nan
+    retained_labels: dict[tuple[Hashable, ...], tuple[Hashable, ...]] = {}
 
     for index in np.ndindex(template.shape):
         values: list[Hashable] = []
@@ -958,7 +988,8 @@ def intersect_region_class_layers(
                 break
             values.append(value)
         if mapped:
-            class_values[index] = tuple(values)
+            label = tuple(values)
+            class_values[index] = retained_labels.setdefault(label, label)
 
     return xr.DataArray(
         class_values,
@@ -967,6 +998,36 @@ def intersect_region_class_layers(
         name=name,
         attrs={"region_class_layers": tuple(str(layer_name) for layer_name, _ in layer_items)},
     )
+
+
+def region_class_mask(
+    region_classes: xr.DataArray,
+    class_value: Hashable,
+    *,
+    name: str = "region_class_mask",
+) -> xr.DataArray:
+    """Select one scalar or tuple-valued region class reliably.
+
+    Args:
+        region_classes: Region-class values to compare with ``class_value``.
+            Dimensions and all attached coordinates are preserved on the
+            returned mask.
+        class_value: Scalar or tuple-valued class label to select.
+        name: Name for the returned Boolean ``DataArray``.
+
+    Returns:
+        Boolean ``DataArray`` that is true exactly where ``region_classes``
+        contains ``class_value``.
+
+    Notes:
+        Raw expressions such as ``region_classes == ("land", "inner")`` are
+        unreliable for object arrays because NumPy may treat the tuple as an
+        array-like operand and broadcast its elements instead of comparing the
+        tuple as one value. This helper performs elementwise tuple comparison
+        through the same path used by constrained allocation and splitting.
+    """
+    mask = _class_value_mask(region_classes.to_numpy(), class_value)
+    return xr.DataArray(mask, dims=region_classes.dims, coords=region_classes.coords, name=name)
 
 
 def allocate_nbasis_by_class(
@@ -996,12 +1057,22 @@ def allocate_nbasis_by_class(
         Mapping from mapped class value to target number of local regions.
 
     Raises:
-        ValueError: If inputs cannot be aligned, weights are invalid, or the
-            requested allocation is impossible.
+        ValueError: If either input is not two-dimensional, the dimension names
+            differ, weights are invalid, or the requested allocation is
+            impossible.
+        xarray.AlignmentError: If the inputs do not have exactly identical
+            attached coordinate names, dimensions, dtypes, values, and
+            attributes after transposing ``region_classes`` to match
+            ``weights``.
     """
     if min_regions_per_class < 0:
         raise ValueError("min_regions_per_class must be non-negative.")
-    weights, region_classes = _align_2d_inputs(weights, region_classes)
+    weights, region_classes = _align_2d_inputs(
+        weights,
+        region_classes,
+        reference_name="weights",
+        candidate_name="region_classes",
+    )
     weight_values = _validate_weights(weights)
     class_values = region_classes.to_numpy()
     mapped_classes = _mapped_classes(class_values, unmapped_values)
@@ -1041,69 +1112,107 @@ def allocate_nbasis_by_class(
 
 
 def _align_2d_inputs(
-    weights: xr.DataArray,
-    region_classes: xr.DataArray,
+    reference: xr.DataArray,
+    candidate: xr.DataArray,
+    *,
+    reference_name: str,
+    candidate_name: str,
 ) -> tuple[xr.DataArray, xr.DataArray]:
-    """Validate, transpose, and exactly align the 2D weight and class fields.
+    """Validate, transpose, and exactly align two 2D fields.
 
     Args:
-        weights: Two-dimensional weight field whose dimension order defines the
-            output dimension order.
-        region_classes: Two-dimensional class field using the same dimension
-            names and coordinates as ``weights``.
+        reference: Two-dimensional field whose dimension order and attached
+            coordinates define the output grid.
+        candidate: Two-dimensional field using the same dimension names and
+            exactly identical attached coordinates as ``reference`` after
+            transposition.
+        reference_name: Caller-specific name for ``reference`` in errors.
+        candidate_name: Caller-specific name for ``candidate`` in errors.
 
     Returns:
-        ``weights`` and ``region_classes`` with identical coordinates and
-        ``region_classes`` transposed to match ``weights``.
+        ``reference`` and ``candidate`` with ``candidate`` transposed to the
+        dimension order of ``reference`` and both inputs exactly aligned.
 
     Raises:
-        ValueError: If either input is not 2D or the dimension names differ.
-        xarray.AlignmentError: If coordinates do not match exactly.
+        ValueError: If either input is not two-dimensional or their dimension
+            names differ.
+        xarray.AlignmentError: If coordinate names, dimensions, dtypes, values,
+            or attributes differ, or the grids otherwise cannot be aligned
+            exactly.
     """
-    if weights.ndim != 2:
-        raise ValueError("weights must be two-dimensional.")
-    if region_classes.ndim != 2:
-        raise ValueError("region_classes must be two-dimensional.")
-    if set(weights.dims) != set(region_classes.dims):
-        raise ValueError("weights and region_classes must use the same dimensions.")
+    if reference.ndim != 2:
+        raise ValueError(f"{reference_name} must be two-dimensional.")
+    if candidate.ndim != 2:
+        raise ValueError(f"{candidate_name} must be two-dimensional.")
+    if set(reference.dims) != set(candidate.dims):
+        raise ValueError(f"{reference_name} and {candidate_name} must use the same dimensions.")
 
-    region_classes = region_classes.transpose(*weights.dims)
-    weights, region_classes = xr.align(weights, region_classes, join="exact")
-    return weights, region_classes
+    candidate = candidate.transpose(*reference.dims)
+    _validate_matching_grid_coordinates(
+        reference,
+        candidate,
+        reference_name=reference_name,
+        candidate_name=candidate_name,
+    )
+    try:
+        reference, candidate = xr.align(reference, candidate, join="exact")
+    except xr.AlignmentError as exc:
+        raise xr.AlignmentError(
+            f"{candidate_name} cannot be aligned exactly with {reference_name}: {exc}"
+        ) from exc
+    return reference, candidate
 
 
 def _validate_matching_grid_coordinates(
     reference: xr.DataArray,
     candidate: xr.DataArray,
     *,
+    reference_name: str,
     candidate_name: str,
 ) -> None:
-    """Require matching indexed and auxiliary coordinates on a shared grid."""
-    grid_dims = set(reference.dims)
+    """Require identical attached coordinates on a shared grid.
 
-    def grid_coordinates(array: xr.DataArray) -> set[Hashable]:
-        return {
-            name
-            for name, coordinate in array.coords.items()
-            if coordinate.dims and set(coordinate.dims).issubset(grid_dims)
-        }
+    Args:
+        reference: Grid whose complete coordinate collection is authoritative.
+        candidate: Transposed grid whose coordinates must match ``reference``.
+        reference_name: Caller-specific name for ``reference`` in errors.
+        candidate_name: Caller-specific name for ``candidate`` in errors.
 
-    reference_coordinates = grid_coordinates(reference)
-    candidate_coordinates = grid_coordinates(candidate)
+    Raises:
+        xarray.AlignmentError: If attached coordinate names, dimensions,
+            dtypes, values, or attributes differ. Scalar coordinates such as a
+            CRS marker are included in this comparison.
+    """
+    reference_coordinates = set(reference.coords)
+    candidate_coordinates = set(candidate.coords)
     if reference_coordinates != candidate_coordinates:
-        raise xr.AlignmentError(f"{candidate_name} must define the same grid coordinates as inner_mask.")
+        missing = sorted(reference_coordinates - candidate_coordinates, key=str)
+        unexpected = sorted(candidate_coordinates - reference_coordinates, key=str)
+        raise xr.AlignmentError(
+            f"{candidate_name} must define the same grid coordinates as {reference_name}; "
+            f"missing {missing!r}, unexpected {unexpected!r}."
+        )
 
-    for coordinate_name in reference_coordinates:
+    for coordinate_name in sorted(reference_coordinates, key=str):
         reference_coordinate = reference.coords[coordinate_name]
         candidate_coordinate = candidate.coords[coordinate_name]
         if set(reference_coordinate.dims) != set(candidate_coordinate.dims):
             raise xr.AlignmentError(
-                f"Coordinate {coordinate_name!r} on {candidate_name} does not align with inner_mask."
+                f"Coordinate {coordinate_name!r} on {candidate_name} has dimensions "
+                f"{candidate_coordinate.dims!r}, which are incompatible with "
+                f"{reference_coordinate.dims!r} on {reference_name}."
             )
         candidate_coordinate = candidate_coordinate.transpose(*reference_coordinate.dims)
-        if not reference_coordinate.variable.equals(candidate_coordinate.variable):
+        if reference_coordinate.dtype != candidate_coordinate.dtype:
             raise xr.AlignmentError(
-                f"Coordinate {coordinate_name!r} on {candidate_name} does not align with inner_mask."
+                f"Coordinate {coordinate_name!r} on {candidate_name} has dtype "
+                f"{candidate_coordinate.dtype!r}, not {reference_coordinate.dtype!r} as on "
+                f"{reference_name}."
+            )
+        if not reference_coordinate.variable.identical(candidate_coordinate.variable):
+            raise xr.AlignmentError(
+                f"Coordinate {coordinate_name!r} on {candidate_name} does not have identical "
+                f"values and attributes to {reference_name}."
             )
 
 
@@ -1970,5 +2079,6 @@ __all__ = [
     "allocate_nbasis_by_class",
     "combine_inner_outer_region_classes",
     "intersect_region_class_layers",
+    "region_class_mask",
     "region_constrained_basis",
 ]
