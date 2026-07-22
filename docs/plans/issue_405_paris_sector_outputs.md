@@ -1,8 +1,15 @@
 # Issue 405 PARIS Sector Outputs
 
+## Status
+
+Completed by PR #472, merged on 20 July 2026. GitHub issue #405 is closed.
+Per-sector PARIS concentration output was not part of the issue's acceptance
+criteria and is tracked separately in issue #511.
+
 ## Scope
 
-Track implementation progress for GitHub issue #405: sector-aware RHIME outputs and PARIS-compatible total outputs.
+Implementation record for GitHub issue #405: sector-aware RHIME outputs and
+PARIS-compatible total outputs.
 
 ## Decisions
 
@@ -14,7 +21,7 @@ Track implementation progress for GitHub issue #405: sector-aware RHIME outputs 
 - Total country posterior covariance applies to both single-sector and multisector output. Multisector output additionally includes per-sector and cross-sector covariance variables.
 - NetCDF writing must preserve the explicit `units` and `calendar` attributes on time-bounds variables required by the supplied CDL templates, even though xarray's CF encoder normally removes duplicate bounds metadata.
 
-## Branch Plan
+## Delivery Plan
 
 1. `codex/405-paris-template-version`: add this planning note, import the uploaded CDL templates, and add template-version plumbing while preserving the current default.
 2. Single-sector latest PARIS branch: implement explicit latest-template concentration and flux outputs, including `platform`, observation `index`, `time_bnds`, new `mf_*` names, flux `time_bnds`, `cell_area`, and latest country variable names.
@@ -33,13 +40,13 @@ Track implementation progress for GitHub issue #405: sector-aware RHIME outputs 
 - [x] Projected multisector country totals directly from basis regions and retained lazy Dask arrays until statistics require dense chunks.
 - [x] Kept the canonical EUROPE country list as the latest-template default while allowing explicit all-domain or selected-country output.
 - [x] Added a marked end-to-end multisector test covering local data preparation, sampling, postprocessing, NetCDF writing, and CDL-derived schema validation.
-- [ ] Designed per-sector PARIS concentration variables for multisector concentration output.
+- [x] Moved per-sector PARIS concentration design to follow-up issue #511.
 
-## Test Plan
+## Verification
 
-- Focused unit tests for template-version selection and legacy default behavior.
-- Single-sector latest-output tests for required v04/v03 variables and dimensions.
-- Synthetic multisector tests where total prior/posterior flux and country traces equal the sum of reconstructed sector values.
-- NetCDF write/read smoke tests for latest concentration and flux products, including explicit time-bounds metadata.
-- A `slow` full-pipeline test using two distinct source labels for numerically identical fluxes, with output variables, dimensions, dtypes, and attributes checked against the flux v03 CDL.
-- Focused pytest, Ruff, and Pyright checks on changed files, then full `tox -p` before review.
+- [x] Focused unit tests cover template-version selection and legacy default behavior.
+- [x] Single-sector latest-output tests cover required v04/v03 variables and dimensions.
+- [x] Synthetic multisector tests verify total prior/posterior flux and country traces equal the sum of reconstructed sector values.
+- [x] NetCDF write/read tests cover latest concentration and flux products, including explicit time-bounds metadata.
+- [x] A marked full-pipeline test uses two distinct source labels for numerically identical fluxes and checks output variables, dimensions, dtypes, and attributes against the flux v03 CDL.
+- [x] Focused pytest, Ruff, and diff checks passed, followed by the full `tox -p` matrix before merge.
