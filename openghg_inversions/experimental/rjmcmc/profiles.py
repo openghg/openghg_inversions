@@ -21,12 +21,21 @@ from string import hexdigits
 from typing import ClassVar, TypeAlias
 
 from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
-from openghg_inversions.experimental.rjmcmc.sampling import SamplerConfig
+from openghg_inversions.experimental.rjmcmc.sampling import (
+    LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE,
+    LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE,
+    LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE,
+    SamplerConfig,
+)
 
 JsonScalar: TypeAlias = str | int | float | bool | None
 JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
-RUN_MANIFEST_SCHEMA_VERSION = 1
+RUN_MANIFEST_SCHEMA_VERSION = 2
+
+_INDEPENDENT_ERROR_MODEL = "independent_gaussian"
+_OU_ERROR_MODEL = "independent_site_ou_nugget"
+_SHARED_HIERARCHY_PARAMETERIZATION = "shared_arithmetic_moments_log_state"
 
 
 def _positive_float(value: float, *, name: str) -> float:
@@ -53,15 +62,34 @@ def _non_empty_text(value: str, *, name: str) -> str:
     return value.strip()
 
 
+def _bounded_uniform_limits(
+    lower: tuple[float, ...] | None,
+    upper: tuple[float, ...] | None,
+    *,
+    name: str,
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Validate paired positive bounds for a vector of uniform priors."""
+    if lower is None or upper is None:
+        raise ValueError(f"{name}_prior_lower and {name}_prior_upper are required.")
+    lower_values = tuple(_positive_float(value, name=f"{name}_prior_lower") for value in lower)
+    upper_values = tuple(_positive_float(value, name=f"{name}_prior_upper") for value in upper)
+    if not lower_values or len(lower_values) != len(upper_values):
+        raise ValueError(f"{name} prior bounds must be non-empty tuples with matching shapes.")
+    if any(lower_value >= upper_value for lower_value, upper_value in zip(lower_values, upper_values)):
+        raise ValueError(f"Each {name} prior lower bound must be smaller than its upper bound.")
+    return lower_values, upper_values
+
+
 @dataclass(frozen=True, slots=True)
 class TargetSettings:
     """Scalar target settings that materially define an RJMCMC run.
 
     The coefficient-prior parameters are arithmetic moments of the lognormal
     distribution, matching :class:`~openghg_inversions.experimental.rjmcmc.core.TransDimensionalProblem`.
-    Observation vectors, their standard deviations, sensitivities, and grid
-    coordinates remain external data inputs and are not copied into this value
-    object.
+    Observation vectors, their standard deviations, sensitivities, grid
+    coordinates, and OU site/group alignment arrays remain external data inputs
+    and are not copied into this value object. They should be identified by
+    :class:`InputReference` records and checksums.
 
     Args:
         k_min: Smallest supported active-region count.
@@ -70,9 +98,32 @@ class TargetSettings:
             through ``k_max``.
         coefficient_prior_mean: Arithmetic lognormal prior mean.
         coefficient_prior_sd: Arithmetic lognormal prior standard deviation.
-        observation_error_model: Stable identifier for the likelihood error
-            model. Only the currently implemented independent Gaussian model is
-            accepted.
+        observation_error_model: Stable identifier for either independent
+            Gaussian errors or the independent-site OU mismatch plus known
+            measurement-nugget model.
+        observation_time_unit: Unit of the observation times and correlation
+            timescales. Required only for the OU model.
+        mismatch_sd_prior_lower: Positive lower bounds for the OU mismatch-SD
+            bounded-uniform priors. Required only for the OU model.
+        mismatch_sd_prior_upper: Upper bounds paired with
+            ``mismatch_sd_prior_lower``.
+        correlation_timescale_prior_lower: Positive lower bounds for the OU
+            timescale bounded-uniform priors. Required only for the OU model.
+        correlation_timescale_prior_upper: Upper bounds paired with
+            ``correlation_timescale_prior_lower``.
+        shared_coefficient_hierarchy: Whether the dynamic Voronoi coefficients
+            use a shared arithmetic-moment hierarchy. Fixed outer coefficients
+            always remain outside this hierarchy.
+        coefficient_hierarchy_parameterization: Stable hierarchy state
+            parameterization identifier. Required exactly when the hierarchy
+            is enabled.
+        mean_hyperprior_median: Median of the shared arithmetic-mean lognormal
+            hyperprior.
+        mean_hyperprior_log_sd: Log-space standard deviation of that
+            hyperprior.
+        sd_hyperprior_median: Median of the shared arithmetic-SD lognormal
+            hyperprior.
+        sd_hyperprior_log_sd: Log-space standard deviation of that hyperprior.
 
     Raises:
         ValueError: If bounds, probabilities, moments, or the likelihood model
@@ -84,7 +135,18 @@ class TargetSettings:
     k_prior_probabilities: tuple[float, ...]
     coefficient_prior_mean: float
     coefficient_prior_sd: float
-    observation_error_model: str = "independent_gaussian"
+    observation_error_model: str = _INDEPENDENT_ERROR_MODEL
+    observation_time_unit: str | None = None
+    mismatch_sd_prior_lower: tuple[float, ...] | None = None
+    mismatch_sd_prior_upper: tuple[float, ...] | None = None
+    correlation_timescale_prior_lower: tuple[float, ...] | None = None
+    correlation_timescale_prior_upper: tuple[float, ...] | None = None
+    shared_coefficient_hierarchy: bool = False
+    coefficient_hierarchy_parameterization: str | None = None
+    mean_hyperprior_median: float | None = None
+    mean_hyperprior_log_sd: float | None = None
+    sd_hyperprior_median: float | None = None
+    sd_hyperprior_log_sd: float | None = None
 
     def __post_init__(self) -> None:
         """Validate and own an immutable normalized target description."""
@@ -110,8 +172,66 @@ class TargetSettings:
             self.observation_error_model,
             name="observation_error_model",
         )
-        if observation_error_model != "independent_gaussian":
-            raise ValueError("observation_error_model must be 'independent_gaussian'.")
+        if observation_error_model not in (_INDEPENDENT_ERROR_MODEL, _OU_ERROR_MODEL):
+            raise ValueError(
+                "observation_error_model must be 'independent_gaussian' or 'independent_site_ou_nugget'."
+            )
+
+        ou_names = (
+            "observation_time_unit",
+            "mismatch_sd_prior_lower",
+            "mismatch_sd_prior_upper",
+            "correlation_timescale_prior_lower",
+            "correlation_timescale_prior_upper",
+        )
+        if observation_error_model == _INDEPENDENT_ERROR_MODEL:
+            if any(getattr(self, name) is not None for name in ou_names):
+                raise ValueError("OU error-model settings require 'independent_site_ou_nugget'.")
+        else:
+            if self.observation_time_unit is None:
+                raise ValueError("observation_time_unit is required for the OU error model.")
+            object.__setattr__(
+                self,
+                "observation_time_unit",
+                _non_empty_text(self.observation_time_unit, name="observation_time_unit"),
+            )
+            mismatch_lower, mismatch_upper = _bounded_uniform_limits(
+                self.mismatch_sd_prior_lower,
+                self.mismatch_sd_prior_upper,
+                name="mismatch_sd",
+            )
+            timescale_lower, timescale_upper = _bounded_uniform_limits(
+                self.correlation_timescale_prior_lower,
+                self.correlation_timescale_prior_upper,
+                name="correlation_timescale",
+            )
+            object.__setattr__(self, "mismatch_sd_prior_lower", mismatch_lower)
+            object.__setattr__(self, "mismatch_sd_prior_upper", mismatch_upper)
+            object.__setattr__(self, "correlation_timescale_prior_lower", timescale_lower)
+            object.__setattr__(self, "correlation_timescale_prior_upper", timescale_upper)
+
+        if not isinstance(self.shared_coefficient_hierarchy, bool):
+            raise ValueError("shared_coefficient_hierarchy must be a boolean.")
+        hierarchy_names = (
+            "coefficient_hierarchy_parameterization",
+            "mean_hyperprior_median",
+            "mean_hyperprior_log_sd",
+            "sd_hyperprior_median",
+            "sd_hyperprior_log_sd",
+        )
+        if not self.shared_coefficient_hierarchy:
+            if any(getattr(self, name) is not None for name in hierarchy_names):
+                raise ValueError("Hierarchy settings require shared_coefficient_hierarchy=True.")
+        else:
+            if self.coefficient_hierarchy_parameterization != _SHARED_HIERARCHY_PARAMETERIZATION:
+                raise ValueError(
+                    f"coefficient_hierarchy_parameterization must be {_SHARED_HIERARCHY_PARAMETERIZATION!r}."
+                )
+            for name in hierarchy_names[1:]:
+                value = getattr(self, name)
+                if value is None:
+                    raise ValueError(f"{name} is required for the shared coefficient hierarchy.")
+                object.__setattr__(self, name, _positive_float(value, name=name))
 
         object.__setattr__(self, "k_min", k_min)
         object.__setattr__(self, "k_max", k_max)
@@ -249,6 +369,21 @@ class RunProfile:
         _non_negative_integer(seed, name="sampler.seed")
         if self.retention.warmup_transitions > self.sampler.iterations:
             raise ValueError("warmup_transitions must not exceed sampler.iterations.")
+
+        schedule_profile = self.sampler.schedule_profile
+        has_ou = self.target.observation_error_model == _OU_ERROR_MODEL
+        has_hierarchy = self.target.shared_coefficient_hierarchy
+        if schedule_profile in ("default", LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE):
+            if has_ou or has_hierarchy:
+                raise ValueError(
+                    "The default and 14-slot schedules require an independent, nonhierarchical target."
+                )
+        elif schedule_profile == LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE:
+            if not has_ou or has_hierarchy:
+                raise ValueError("The 16-slot schedule requires OU errors without a hierarchy.")
+        elif schedule_profile == LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE:
+            if not has_ou or not has_hierarchy:
+                raise ValueError("The 17-slot schedule requires OU errors and a shared hierarchy.")
         object.__setattr__(self, "name", name)
 
     def to_manifest(self) -> dict[str, JsonValue]:
@@ -274,12 +409,46 @@ class RunProfile:
                     "standard_deviation": target.coefficient_prior_sd,
                 },
                 "observation_error_model": target.observation_error_model,
+                "observation_error_model_settings": (
+                    None
+                    if target.observation_error_model == _INDEPENDENT_ERROR_MODEL
+                    else {
+                        "time_unit": target.observation_time_unit,
+                        "mismatch_sd_prior": {
+                            "distribution": "bounded_uniform",
+                            "lower": list(target.mismatch_sd_prior_lower or ()),
+                            "upper": list(target.mismatch_sd_prior_upper or ()),
+                        },
+                        "correlation_timescale_prior": {
+                            "distribution": "bounded_uniform",
+                            "lower": list(target.correlation_timescale_prior_lower or ()),
+                            "upper": list(target.correlation_timescale_prior_upper or ()),
+                        },
+                    }
+                ),
+                "dynamic_coefficient_hierarchy": (
+                    None
+                    if not target.shared_coefficient_hierarchy
+                    else {
+                        "parameterization": target.coefficient_hierarchy_parameterization,
+                        "includes_fixed_outer_coefficients": False,
+                        "mean_hyperprior_median": target.mean_hyperprior_median,
+                        "mean_hyperprior_log_sd": target.mean_hyperprior_log_sd,
+                        "sd_hyperprior_median": target.sd_hyperprior_median,
+                        "sd_hyperprior_log_sd": target.sd_hyperprior_log_sd,
+                    }
+                ),
             },
             "sampler": {
                 "iterations": sampler.iterations,
                 "coefficient_proposal_sd": sampler.coefficient_proposal_sd,
                 "birth_proposal_sd": sampler.birth_proposal_sd,
                 "fixed_coefficient_proposal_sd": sampler.fixed_coefficient_proposal_sd,
+                "schedule_profile": sampler.schedule_profile,
+                "mismatch_sd_proposal_sd": sampler.mismatch_sd_proposal_sd,
+                "correlation_timescale_proposal_sd": sampler.correlation_timescale_proposal_sd,
+                "eta_proposal_sd": sampler.eta_proposal_sd,
+                "zeta_proposal_sd": sampler.zeta_proposal_sd,
                 "seed": int(seed),
                 "backend": sampler.backend,
                 "nucleus_move": sampler.nucleus_move,
