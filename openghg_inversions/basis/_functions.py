@@ -4,8 +4,10 @@ import os
 import warnings
 
 import getpass
+from collections.abc import Hashable
 from collections import namedtuple
 from functools import partial
+from numbers import Integral
 from pathlib import Path
 from typing import Literal, cast
 
@@ -19,6 +21,9 @@ from .algorithms import (
     ContrastScoreSplitAcceptance,
     GreedyAxisParallelSplitStrategy,
     NbasisAllocation,
+    allocate_nbasis_by_class,
+    combine_inner_outer_region_classes,
+    normalize_spatial_grid,
     region_constrained_basis,
 )
 from .algorithms import quadtree_algorithm, weighted_algorithm
@@ -245,6 +250,79 @@ def basis_weights_from_fp_all(
     return _mean_fp_times_mean_flux(flux, footprints, abs_flux=abs_flux, mask=mask).as_numpy()
 
 
+def load_intem_outer_regions(
+    domain: str,
+    country_directory: str | Path | None = None,
+) -> xr.DataArray:
+    """Load a coordinate-preserving InTEM fixed-outer region map.
+
+    Args:
+        domain: Domain suffix used in ``outer_region_definition_{domain}.nc``.
+        country_directory: Optional directory containing the region file. When
+            omitted, the packaged file in :mod:`openghg_inversions.basis` is
+            used.
+
+    Returns:
+        Loaded two-dimensional ``region`` field, including its spatial
+        coordinates and metadata.
+
+    Raises:
+        FileNotFoundError: If the selected region file does not exist.
+        KeyError: If the selected dataset does not contain ``region``.
+    """
+    if country_directory is None:
+        logger.info(f"Loading default InTEM outer region file for domain {domain}.")
+        outer_regions_path = Path(__file__).parent / f"outer_region_definition_{domain}.nc"
+    else:
+        logger.info(f"Loading InTEM outer region file for domain {domain} from {country_directory}.")
+        outer_regions_path = Path(country_directory) / f"outer_region_definition_{domain}.nc"
+
+    with xr.open_dataset(outer_regions_path, decode_coords="all") as dataset:
+        return dataset["region"].load()
+
+
+def load_landsea_region_classes(
+    domain: str,
+    country_directory: str | Path | None = None,
+) -> xr.DataArray:
+    """Load coordinate-preserving binary land/sea region classes.
+
+    The path-selection behavior matches the legacy weighted-basis loader. A
+    caller-supplied directory uses ``country-land-sea_{domain}.nc``. Packaged
+    EUROPE data use ``country-EUROPE-UKMO-landsea-2023.nc``; other packaged
+    domains use ``country-land-sea_{domain}.nc`` and fall back to the EUROPE
+    file when that domain file is unavailable.
+
+    Args:
+        domain: Domain used to select the land/sea file.
+        country_directory: Optional directory containing the land/sea file.
+
+    Returns:
+        Loaded two-dimensional ``country`` field, including its spatial
+        coordinates and metadata.
+
+    Raises:
+        FileNotFoundError: If a caller-selected file does not exist.
+        KeyError: If the selected dataset does not contain ``country``.
+    """
+    default_directory = Path(__file__).parent / "algorithms"
+    if country_directory is not None:
+        landsea_path = Path(country_directory) / f"country-land-sea_{domain}.nc"
+    elif domain == "EUROPE":
+        landsea_path = default_directory / "country-EUROPE-UKMO-landsea-2023.nc"
+    else:
+        landsea_path = default_directory / f"country-land-sea_{domain}.nc"
+        if not landsea_path.exists():
+            logger.warning(
+                f"No land-sea file found for domain {domain}. Defaulting to EUROPE "
+                "(country-EUROPE-UKMO-landsea-2023.nc)"
+            )
+            landsea_path = default_directory / "country-EUROPE-UKMO-landsea-2023.nc"
+
+    with xr.open_dataset(landsea_path, decode_coords="all") as dataset:
+        return dataset["country"].load()
+
+
 def _sanitize_generated_basis_weights(
     weights: xr.DataArray,
     *,
@@ -393,7 +471,8 @@ def region_constrained_basis_from_weights(
         start_date: Start date of the inversion period.
         domain: Domain across which to calculate basis functions.
         region_classes: Two-dimensional class field on the same spatial grid as
-            ``weights``.
+            ``weights``. A full-domain field may be supplied when ``weights``
+            are a rectangular crop of that grid.
         nbasis: Total number of basis regions, or class-local allocation
             accepted by ``region_constrained_basis``.
         allocation: Automatic allocation mode used when ``nbasis`` is an
@@ -423,8 +502,7 @@ def region_constrained_basis_from_weights(
     """
     raw_weights = _sanitize_generated_basis_weights(weights, algorithm="region-constrained")
     weights = _normalise_weights_by_max(raw_weights)
-    region_classes = region_classes.transpose(*weights.dims)
-    region_classes = region_classes.sel({dim: weights.coords[dim] for dim in weights.dims})
+    region_classes = _region_classes_on_weights_grid(weights, region_classes)
     split_strategy = _region_constrained_split_strategy(
         split_acceptance=split_acceptance,
         contrast_contribution=contrast_contribution,
@@ -445,6 +523,189 @@ def region_constrained_basis_from_weights(
         split_strategy=split_strategy,
     )
     return _finalise_generated_basis(constrained_basis, start_date=start_date, domain=domain)
+
+
+def _region_classes_on_weights_grid(
+    weights: xr.DataArray,
+    region_classes: xr.DataArray,
+) -> xr.DataArray:
+    """Subset a full-domain class field before physical-grid normalization."""
+    if weights.ndim != 2 or region_classes.ndim != 2 or set(weights.dims) != set(region_classes.dims):
+        return normalize_spatial_grid(
+            weights,
+            region_classes,
+            reference_name="weights",
+            candidate_name="region_classes",
+        )
+
+    region_classes = region_classes.transpose(*weights.dims)
+    indexers: dict[Hashable, np.ndarray] = {}
+    for dimension in weights.dims:
+        if weights.sizes[dimension] == region_classes.sizes[dimension]:
+            continue
+        if weights.sizes[dimension] > region_classes.sizes[dimension]:
+            break
+        if dimension not in weights.coords or dimension not in region_classes.coords:
+            break
+
+        weight_coordinate = weights.coords[dimension]
+        class_coordinate = region_classes.coords[dimension]
+        if weight_coordinate.dims != (dimension,) or class_coordinate.dims != (dimension,):
+            break
+
+        weight_values = weight_coordinate.to_numpy()
+        class_values = class_coordinate.to_numpy()
+        if np.issubdtype(weight_values.dtype, np.number) and np.issubdtype(class_values.dtype, np.number):
+            distances = np.abs(
+                np.asarray(class_values, dtype=np.float64)[:, np.newaxis]
+                - np.asarray(weight_values, dtype=np.float64)[np.newaxis, :]
+            )
+            nearest = np.argmin(distances, axis=0)
+        else:
+            nearest_matches: list[int] = []
+            for value in weight_values:
+                matches = np.flatnonzero(class_values == value)
+                if matches.size != 1:
+                    break
+                nearest_matches.append(int(matches[0]))
+            if len(nearest_matches) != weight_values.size:
+                break
+            nearest = np.asarray(nearest_matches, dtype=np.intp)
+
+        if np.unique(nearest).size != nearest.size:
+            break
+        indexers[dimension] = nearest
+    else:
+        region_classes = region_classes.isel(indexers)
+
+    return normalize_spatial_grid(
+        weights,
+        region_classes,
+        reference_name="weights",
+        candidate_name="region_classes",
+    )
+
+
+def region_constrained_fixed_outer_basis_from_weights(
+    weights: xr.DataArray,
+    start_date: str,
+    domain: str,
+    *,
+    nbasis: int = 100,
+    outer_regions: xr.DataArray | None = None,
+    region_classes: xr.DataArray | None = None,
+    country_directory: str | Path | None = None,
+    allocation: AllocationMode = "weight",
+    min_regions_per_class: int = 1,
+) -> xr.DataArray:
+    """Create a constrained fixed-outer basis from precomputed weights.
+
+    The largest value in the InTEM outer-region map selects the bounded inner
+    domain. ``nbasis`` is distributed only among the inner ``region_classes``;
+    every distinct selected outer-region value receives one basis label. Inner
+    and outer class values are tagged before constrained splitting, so their
+    final positive integer labels are globally disjoint.
+
+    Args:
+        weights: Two-dimensional basis weight field whose grid defines the
+            output coordinates.
+        start_date: Start date of the inversion period.
+        domain: Domain used for output metadata and default file loading.
+        nbasis: Total number of requested inner-region basis labels.
+        outer_regions: Optional already-loaded InTEM outer-region map. When
+            omitted, :func:`load_intem_outer_regions` is used.
+        region_classes: Optional already-loaded inner classification, such as
+            binary land/sea classes. When omitted,
+            :func:`load_landsea_region_classes` is used.
+        country_directory: Optional directory used by both default loaders.
+        allocation: Mode used to distribute ``nbasis`` across selected inner
+            classes.
+        min_regions_per_class: Minimum automatic allocation for each non-empty
+            selected inner class.
+
+    Returns:
+        Basis field on the weights grid with a singleton ``time`` dimension,
+        standard generated-basis metadata, one state per outer class, and
+        ``nbasis`` states allocated across the inner classes.
+
+    Raises:
+        TypeError: If ``nbasis`` is not a non-Boolean integral value.
+        ValueError: If the outer map has no finite maximum, the maximum-valued
+            region contains no mapped inner classes, or the requested inner
+            allocation is impossible.
+        xarray.AlignmentError: If the supplied or loaded fields are not on
+            physically compatible spatial grids.
+    """
+    if isinstance(nbasis, (bool, np.bool_)) or not isinstance(nbasis, (Integral, np.integer)):
+        raise TypeError("nbasis must be an integer inner-region target.")
+    nbasis = int(nbasis)
+
+    loaded_outer_regions = (
+        load_intem_outer_regions(domain, country_directory) if outer_regions is None else outer_regions
+    )
+    loaded_region_classes = (
+        load_landsea_region_classes(domain, country_directory) if region_classes is None else region_classes
+    )
+
+    loaded_outer_regions = normalize_spatial_grid(
+        weights,
+        loaded_outer_regions,
+        reference_name="weights",
+        candidate_name="outer_regions",
+    )
+    loaded_region_classes = normalize_spatial_grid(
+        weights,
+        loaded_region_classes,
+        reference_name="weights",
+        candidate_name="region_classes",
+    )
+
+    try:
+        inner_region_value = loaded_outer_regions.max(skipna=True).compute().item()
+    except (TypeError, ValueError) as exc:
+        raise ValueError("outer_regions must contain a finite maximum region value.") from exc
+    if not isinstance(inner_region_value, (int, float, np.integer, np.floating)) or not np.isfinite(
+        inner_region_value
+    ):
+        raise ValueError("outer_regions must contain a finite maximum region value.")
+
+    inner_mask = loaded_outer_regions == inner_region_value
+    composed_classes = combine_inner_outer_region_classes(
+        inner_mask,
+        loaded_region_classes,
+        loaded_outer_regions,
+    )
+    inner_classes = composed_classes.where(inner_mask)
+    raw_weights = _sanitize_generated_basis_weights(weights, algorithm="fixed-outer region-constrained")
+    inner_targets = allocate_nbasis_by_class(
+        raw_weights,
+        inner_classes,
+        nbasis,
+        allocation=allocation,
+        min_regions_per_class=min_regions_per_class,
+    )
+    if not inner_targets:
+        raise ValueError("The maximum-valued outer region contains no mapped inner classes.")
+
+    combined_values = composed_classes.to_numpy().ravel()
+    outer_classes: list[Hashable] = []
+    for value in combined_values:
+        if isinstance(value, tuple) and len(value) == 2 and value[0] == "outer":
+            class_value = cast(Hashable, value)
+            if class_value not in outer_classes:
+                outer_classes.append(class_value)
+
+    targets: dict[Hashable, int] = {class_value: 1 for class_value in outer_classes}
+    targets.update(inner_targets)
+    return region_constrained_basis_from_weights(
+        raw_weights,
+        start_date,
+        domain,
+        region_classes=composed_classes,
+        nbasis=targets,
+        allocation=allocation,
+        min_regions_per_class=min_regions_per_class,
+    )
 
 
 def quadtree_basis_function(

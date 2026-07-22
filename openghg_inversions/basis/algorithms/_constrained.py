@@ -1156,6 +1156,42 @@ def _align_2d_inputs(
     return reference, candidate
 
 
+def normalize_spatial_grid(
+    reference: xr.DataArray,
+    candidate: xr.DataArray,
+    *,
+    reference_name: str = "reference",
+    candidate_name: str = "candidate",
+) -> xr.DataArray:
+    """Normalize a physically compatible two-dimensional field to a reference grid.
+
+    Args:
+        reference: Two-dimensional field whose dimension order, coordinate
+            values, and nonconflicting metadata define the output grid.
+        candidate: Two-dimensional field to validate and normalize.
+        reference_name: Name used for ``reference`` in validation errors.
+        candidate_name: Name used for ``candidate`` in validation errors.
+
+    Returns:
+        ``candidate`` transposed to the reference dimension order and assigned
+        the reference grid coordinates, with nonconflicting coordinate metadata
+        retained from both fields.
+
+    Raises:
+        ValueError: If either field is not two-dimensional or their dimension
+            names differ.
+        xarray.AlignmentError: If grid coordinates, grid-defining metadata, or
+            CRS definitions are physically incompatible.
+    """
+    _, normalized_candidate = _align_2d_inputs(
+        reference,
+        candidate,
+        reference_name=reference_name,
+        candidate_name=candidate_name,
+    )
+    return normalized_candidate
+
+
 def _normalize_matching_grid_coordinates(
     reference: xr.DataArray,
     candidate: xr.DataArray,
@@ -2273,6 +2309,7 @@ __all__ = [
     "allocate_nbasis_by_class",
     "combine_inner_outer_region_classes",
     "intersect_region_class_layers",
+    "normalize_spatial_grid",
     "region_class_mask",
     "region_constrained_basis",
 ]

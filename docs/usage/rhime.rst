@@ -140,54 +140,44 @@ class boundaries, but RHIME config and ``run_hbmcmc.py`` do not yet load
 build and save the basis through the Python basis API, then load it as a saved
 basis case.
 
-At the core Python API, use ``combine_inner_outer_region_classes`` to build one
-transient class field from already-loaded inner and outer classifications
-without embedding a project mask or region names in the library:
+As weights-first Python groundwork for issue #452, stacked on the class
+composition introduced by PR #520, the lower-level API can build a
+region-constrained fixed-outer basis from packaged InTEM and binary land/sea
+fields. The largest InTEM label defines the bounded inner region, ``nbasis`` is
+allocated only across the selected inner land/sea classes, and every distinct
+outer label remains one state:
 
 .. code-block:: python
 
-   import numpy as np
-
-   from openghg_inversions.basis.algorithms import (
-       combine_inner_outer_region_classes,
-       region_constrained_basis,
+   from openghg_inversions.basis import (
+       load_intem_outer_regions,
+       load_landsea_region_classes,
+       region_constrained_fixed_outer_basis_from_weights,
    )
 
-   region_classes = combine_inner_outer_region_classes(
-       inner_mask,
-       whole_domain_land_sea_classes,
-       intem_outer_regions,
-   )
-
-   outer_values = np.unique(intem_outer_regions.values[~inner_mask.values])
-   targets = {("outer", value): 1 for value in outer_values}
-   targets.update({("inner", 0): 75, ("inner", 1): 75})
-   basis = region_constrained_basis(
+   outer_regions = load_intem_outer_regions("EUROPE")
+   landsea_classes = load_landsea_region_classes("EUROPE")
+   basis = region_constrained_fixed_outer_basis_from_weights(
        weights,
-       region_classes,
-       nbasis=targets,
+       start_date="2020-01-01",
+       domain="EUROPE",
+       nbasis=150,
+       outer_regions=outer_regions,
+       region_classes=landsea_classes,
    )
 
-Only the mask-selected side is inspected, so both class inputs may cover the
-whole domain. Selected null or explicitly unmapped values remain unmapped;
-values on the unselected side are ignored. Domain tags keep equal raw inner and
-outer labels distinct. Physically equivalent coordinates are normalized to the
-first input's grid, while incompatible coordinate values, units, or CRS
-definitions are rejected. Use ``region_class_mask`` to select a tagged tuple
-label because ordinary NumPy/xarray comparison treats a tuple as a sequence
-instead of one object-valued class.
+Omit ``outer_regions`` and ``region_classes`` to let the adapter load both
+packaged fields directly. Already-loaded custom fields are also accepted and
+are normalized to the authoritative weights grid. Small float storage
+differences are accepted; incompatible coordinate values, units, or CRS
+definitions are rejected. This adapter is separate from the legacy
+``fixed_outer_regions_basis`` weighted route, whose historical output remains
+unchanged, and it is not yet routed through RHIME configuration.
 
-An integer ``nbasis`` in the generic call is a total distributed across every
-selected inner and outer class. Use an explicit mapping when outer classes must
-remain fixed at one region each. This generic constrained layout does not
-replace or reproduce the legacy weighted fixed-outer algorithm. Loading
-packaged fields and routing this composition through fixed-outer and RHIME
-wrappers remain follow-up work in issue #452.
-
-The helper only selects and tags classes on a shared grid. The downstream
-algorithm still receives one weight field. Separate source weights,
-sensitivities, and ``basis_group`` metadata remain distinct inputs and are not
-created by this combinator.
+This groundwork composes a transient class field and still passes one weight
+field to the downstream algorithm. Separate source weights, sensitivities, and
+``basis_group`` metadata remain distinct inputs and are not created by this
+adapter.
 
 Region-constrained algorithms have split-stopping policies at the lower-level
 strategy boundary. ``MinChildWeightShare`` is a parent-relative balance guard:
