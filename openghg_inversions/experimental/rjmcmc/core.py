@@ -13,17 +13,33 @@ builder.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from math import lgamma, log, pi
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from numba import njit
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from openghg_inversions.experimental.rjmcmc.likelihood import (
+    IndependentSiteOUData,
+    ou_log_likelihood_numba,
+    ou_log_likelihood_numpy,
+)
+
+if TYPE_CHECKING:
+    from openghg_inversions.experimental.rjmcmc.hierarchy import SharedLognormalHierarchy
+
 FloatArray = NDArray[np.float64]
 IntArray = NDArray[np.int64]
 Backend = Literal["numpy", "numba"]
+
+
+def _empty_readonly_float_array() -> FloatArray:
+    """Return an empty immutable float64 vector for neutral state fields."""
+    result = np.empty(0, dtype=np.float64)
+    result.setflags(write=False)
+    return result
 
 
 def _readonly_float_array(values: ArrayLike, *, name: str) -> FloatArray:
@@ -113,6 +129,75 @@ class FixedDesignBlock:
 
 
 @dataclass(frozen=True)
+class InferredOUErrorModel:
+    """Immutable inferred independent-site OU error-model specification.
+
+    The model-data mismatch standard deviations and OU correlation timescales
+    have independent normalized bounded-uniform priors. Bounds are expressed
+    in the same units as the corresponding runtime parameters. The observation
+    standard deviations stored in ``data`` are the fixed independent nugget.
+
+    Args:
+        data: Static observation alignment and OU traversal data.
+        mismatch_sd_prior_lower: Lower prior bound for each mismatch group.
+        mismatch_sd_prior_upper: Upper prior bound for each mismatch group.
+        correlation_timescale_prior_lower: Lower prior bound for each shared
+            correlation-timescale parameter.
+        correlation_timescale_prior_upper: Upper prior bound for each shared
+            correlation-timescale parameter.
+
+    Raises:
+        TypeError: If ``data`` is not :class:`IndependentSiteOUData`.
+        ValueError: If prior bounds have incorrect shapes, are nonfinite, are
+            non-positive, or do not define intervals with positive width.
+    """
+
+    data: IndependentSiteOUData
+    mismatch_sd_prior_lower: FloatArray
+    mismatch_sd_prior_upper: FloatArray
+    correlation_timescale_prior_lower: FloatArray
+    correlation_timescale_prior_upper: FloatArray
+
+    def __post_init__(self) -> None:
+        """Own and validate all normalized bounded-uniform prior bounds."""
+        if not isinstance(self.data, IndependentSiteOUData):
+            raise TypeError("data must be an IndependentSiteOUData instance.")
+        mismatch_lower = _readonly_float_array(
+            self.mismatch_sd_prior_lower,
+            name="mismatch_sd_prior_lower",
+        )
+        mismatch_upper = _readonly_float_array(
+            self.mismatch_sd_prior_upper,
+            name="mismatch_sd_prior_upper",
+        )
+        timescale_lower = _readonly_float_array(
+            self.correlation_timescale_prior_lower,
+            name="correlation_timescale_prior_lower",
+        )
+        timescale_upper = _readonly_float_array(
+            self.correlation_timescale_prior_upper,
+            name="correlation_timescale_prior_upper",
+        )
+        expected_mismatch_shape = (self.data.n_mismatch_groups,)
+        expected_timescale_shape = (self.data.n_tau_parameters,)
+        if mismatch_lower.shape != expected_mismatch_shape or mismatch_upper.shape != expected_mismatch_shape:
+            raise ValueError("mismatch SD prior bounds must have one value per mismatch group.")
+        if (
+            timescale_lower.shape != expected_timescale_shape
+            or timescale_upper.shape != expected_timescale_shape
+        ):
+            raise ValueError("timescale prior bounds must have one value per timescale parameter.")
+        if np.any(mismatch_lower <= 0.0) or np.any(timescale_lower <= 0.0):
+            raise ValueError("error-model prior lower bounds must be strictly positive.")
+        if np.any(mismatch_upper <= mismatch_lower) or np.any(timescale_upper <= timescale_lower):
+            raise ValueError("error-model prior upper bounds must exceed lower bounds.")
+        object.__setattr__(self, "mismatch_sd_prior_lower", mismatch_lower)
+        object.__setattr__(self, "mismatch_sd_prior_upper", mismatch_upper)
+        object.__setattr__(self, "correlation_timescale_prior_lower", timescale_lower)
+        object.__setattr__(self, "correlation_timescale_prior_upper", timescale_upper)
+
+
+@dataclass(frozen=True)
 class TransDimensionalProblem:
     """Immutable inputs and declared priors for a spatial Voronoi inversion.
 
@@ -131,6 +216,9 @@ class TransDimensionalProblem:
         fixed_offset: Optional coefficient-independent prediction offset. ``None``
             is normalized to a read-only zero vector.
         fixed_block: Optional always-active design block and coefficient priors.
+        error_model: Optional inferred OU model-data mismatch configuration.
+        coefficient_hierarchy: Optional shared partially pooled prior for all
+            active dynamic coefficients.
 
     Raises:
         ValueError: If array shapes, numerical supports, active-count bounds,
@@ -148,6 +236,8 @@ class TransDimensionalProblem:
     coefficient_prior_sd: float
     fixed_offset: FloatArray | None = None
     fixed_block: FixedDesignBlock | None = None
+    error_model: InferredOUErrorModel | None = None
+    coefficient_hierarchy: SharedLognormalHierarchy | None = None
 
     def __post_init__(self) -> None:
         """Validate shapes, supports, and normalized prior probabilities."""
@@ -199,6 +289,20 @@ class TransDimensionalProblem:
                 raise TypeError("fixed_block must be a FixedDesignBlock or None.")
             if self.fixed_block.design.shape[0] != observations.size:
                 raise ValueError("fixed block design must have one row per observation.")
+        if self.error_model is not None:
+            if not isinstance(self.error_model, InferredOUErrorModel):
+                raise TypeError("error_model must be an InferredOUErrorModel or None.")
+            if self.error_model.data.n_observations != observations.size:
+                raise ValueError("error-model data must contain one row per observation.")
+            if not np.array_equal(self.error_model.data.observation_sd, observation_sd):
+                raise ValueError("error-model observation_sd must exactly match problem.observation_sd.")
+        if self.coefficient_hierarchy is not None:
+            from openghg_inversions.experimental.rjmcmc.hierarchy import (
+                SharedLognormalHierarchy,
+            )
+
+            if not isinstance(self.coefficient_hierarchy, SharedLognormalHierarchy):
+                raise TypeError("coefficient_hierarchy must be a SharedLognormalHierarchy or None.")
 
         log_k_prior.setflags(write=False)
         object.__setattr__(self, "observations", observations)
@@ -267,6 +371,16 @@ class TransDimensionalState:
         log_k_prior: Declared log probability of the active-region count.
         log_nucleus_prior: Conditional log probability of the active nucleus
             set given ``k``.
+        mismatch_sd: Inferred OU mismatch amplitudes, or an empty vector when
+            the independent fixed-error likelihood is configured.
+        correlation_timescale: Inferred OU correlation timescales, or an empty
+            vector when the independent fixed-error likelihood is configured.
+        eta: Logarithm of the shared arithmetic coefficient-prior mean.
+        zeta: Logarithm of the shared arithmetic coefficient-prior SD.
+        log_error_model_prior: Normalized prior density of inferred error
+            parameters, or zero when no inferred error model is configured.
+        log_coefficient_hyperprior: Normalized density of the shared hierarchy
+            state, or zero when no coefficient hierarchy is configured.
     """
 
     k: int
@@ -284,6 +398,12 @@ class TransDimensionalState:
     log_fixed_coefficient_prior: float
     log_k_prior: float
     log_nucleus_prior: float
+    mismatch_sd: FloatArray = field(default_factory=_empty_readonly_float_array)
+    correlation_timescale: FloatArray = field(default_factory=_empty_readonly_float_array)
+    eta: float = 0.0
+    zeta: float = 0.0
+    log_error_model_prior: float = 0.0
+    log_coefficient_hyperprior: float = 0.0
 
     @property
     def capacity(self) -> int:
@@ -299,6 +419,8 @@ class TransDimensionalState:
             + self.log_fixed_coefficient_prior
             + self.log_k_prior
             + self.log_nucleus_prior
+            + self.log_error_model_prior
+            + self.log_coefficient_hyperprior
         )
 
     @property
@@ -561,12 +683,193 @@ def uniform_nucleus_set_log_prior(n_grid_cells: int, k: int) -> float:
     return float(-(lgamma(n_grid_cells + 1) - lgamma(k + 1) - lgamma(n_grid_cells - k + 1)))
 
 
+def _bounded_uniform_log_prior(
+    values: FloatArray,
+    lower: FloatArray,
+    upper: FloatArray,
+) -> float:
+    """Return a normalized independent bounded-uniform log density."""
+    if values.shape != lower.shape or values.shape != upper.shape:
+        return -np.inf
+    if np.any(values < lower) or np.any(values > upper):
+        return -np.inf
+    return float(-np.log(upper - lower).sum())
+
+
+def _prepare_error_state(
+    problem: TransDimensionalProblem,
+    mismatch_sd: ArrayLike | None,
+    correlation_timescale: ArrayLike | None,
+) -> tuple[FloatArray, FloatArray]:
+    """Validate and own configured error parameters or return neutral vectors."""
+    error_model = problem.error_model
+    if error_model is None:
+        if mismatch_sd is not None or correlation_timescale is not None:
+            raise ValueError("error parameters require an inferred error model.")
+        return _empty_readonly_float_array(), _empty_readonly_float_array()
+    if mismatch_sd is None or correlation_timescale is None:
+        raise ValueError("mismatch_sd and correlation_timescale are required for an inferred error model.")
+    mismatch = _readonly_float_array(mismatch_sd, name="mismatch_sd")
+    timescale = _readonly_float_array(
+        correlation_timescale,
+        name="correlation_timescale",
+    )
+    if mismatch.shape != (error_model.data.n_mismatch_groups,):
+        raise ValueError("mismatch_sd must have one value per mismatch group.")
+    if timescale.shape != (error_model.data.n_tau_parameters,):
+        raise ValueError("correlation_timescale must have one value per timescale parameter.")
+    if np.any(mismatch <= 0.0) or np.any(timescale <= 0.0):
+        raise ValueError("error-model parameters must be strictly positive.")
+    return mismatch, timescale
+
+
+def _prepare_hierarchy_state(
+    problem: TransDimensionalProblem,
+    coefficient_prior_mean: float | None,
+    coefficient_prior_sd: float | None,
+) -> tuple[float, float]:
+    """Return validated log arithmetic moments for the dynamic prior."""
+    from openghg_inversions.experimental.rjmcmc.hierarchy import (
+        arithmetic_moments_to_log_state,
+    )
+
+    if (coefficient_prior_mean is None) != (coefficient_prior_sd is None):
+        raise ValueError("coefficient_prior_mean and coefficient_prior_sd must be supplied together.")
+    if problem.coefficient_hierarchy is None:
+        if coefficient_prior_mean is not None:
+            raise ValueError("shared coefficient moments require coefficient_hierarchy.")
+        return 0.0, 0.0
+    mean = problem.coefficient_prior_mean if coefficient_prior_mean is None else coefficient_prior_mean
+    standard_deviation = (
+        problem.coefficient_prior_sd if coefficient_prior_sd is None else coefficient_prior_sd
+    )
+    return arithmetic_moments_to_log_state(mean, standard_deviation)
+
+
+def _evaluate_target_terms(
+    problem: TransDimensionalProblem,
+    residual: FloatArray,
+    coefficients: FloatArray,
+    k: int,
+    fixed_coefficients: FloatArray,
+    mismatch_sd: FloatArray,
+    correlation_timescale: FloatArray,
+    eta: float,
+    zeta: float,
+    backend: Backend,
+) -> tuple[float, float, float, float, float]:
+    """Evaluate all likelihood and coefficient/error prior target factors."""
+    if problem.error_model is None:
+        likelihood_function = (
+            gaussian_log_likelihood_numpy if backend == "numpy" else gaussian_log_likelihood_numba
+        )
+        log_likelihood = likelihood_function(residual, problem.observation_sd)
+        log_error_model_prior = 0.0
+    else:
+        error_model = problem.error_model
+        ou_function = ou_log_likelihood_numpy if backend == "numpy" else ou_log_likelihood_numba
+        log_likelihood = ou_function(
+            residual,
+            error_model.data,
+            mismatch_sd,
+            correlation_timescale,
+        )
+        log_error_model_prior = _bounded_uniform_log_prior(
+            mismatch_sd,
+            error_model.mismatch_sd_prior_lower,
+            error_model.mismatch_sd_prior_upper,
+        ) + _bounded_uniform_log_prior(
+            correlation_timescale,
+            error_model.correlation_timescale_prior_lower,
+            error_model.correlation_timescale_prior_upper,
+        )
+
+    if problem.coefficient_hierarchy is None:
+        coefficient_prior_function = (
+            lognormal_coefficient_log_prior_numpy
+            if backend == "numpy"
+            else lognormal_coefficient_log_prior_numba
+        )
+        log_coefficient_prior = coefficient_prior_function(
+            coefficients,
+            k,
+            problem.coefficient_prior_mean,
+            problem.coefficient_prior_sd,
+        )
+        log_coefficient_hyperprior = 0.0
+    else:
+        from openghg_inversions.experimental.rjmcmc.hierarchy import (
+            shared_coefficient_log_prior_numba,
+            shared_coefficient_log_prior_numpy,
+            shared_hyperprior_log_density_numba,
+            shared_hyperprior_log_density_numpy,
+        )
+
+        hierarchy = problem.coefficient_hierarchy
+        if backend == "numpy":
+            log_coefficient_prior = shared_coefficient_log_prior_numpy(
+                coefficients,
+                k,
+                eta,
+                zeta,
+            )
+            log_coefficient_hyperprior = shared_hyperprior_log_density_numpy(
+                eta,
+                zeta,
+                hierarchy,
+            )
+        else:
+            log_coefficient_prior = shared_coefficient_log_prior_numba(
+                coefficients,
+                k,
+                eta,
+                zeta,
+            )
+            log_coefficient_hyperprior = shared_hyperprior_log_density_numba(
+                eta,
+                zeta,
+                hierarchy.mean_hyperprior_median,
+                hierarchy.mean_hyperprior_log_sd,
+                hierarchy.sd_hyperprior_median,
+                hierarchy.sd_hyperprior_log_sd,
+            )
+
+    if problem.fixed_block is None:
+        log_fixed_coefficient_prior = 0.0
+    else:
+        fixed_prior_function = (
+            lognormal_coefficient_log_prior_numpy
+            if backend == "numpy"
+            else lognormal_coefficient_log_prior_numba
+        )
+        log_fixed_coefficient_prior = sum(
+            fixed_prior_function(
+                fixed_coefficients[index : index + 1],
+                1,
+                float(problem.fixed_block.coefficient_prior_mean[index]),
+                float(problem.fixed_block.coefficient_prior_sd[index]),
+            )
+            for index in range(problem.n_fixed_coefficients)
+        )
+    return (
+        float(log_likelihood),
+        float(log_coefficient_prior),
+        float(log_fixed_coefficient_prior),
+        float(log_error_model_prior),
+        float(log_coefficient_hyperprior),
+    )
+
+
 def build_state(
     problem: TransDimensionalProblem,
     active_nuclei: ArrayLike,
     active_coefficients: ArrayLike,
     *,
     fixed_coefficients: ArrayLike | None = None,
+    mismatch_sd: ArrayLike | None = None,
+    correlation_timescale: ArrayLike | None = None,
+    coefficient_prior_mean: float | None = None,
+    coefficient_prior_sd: float | None = None,
     backend: Backend = "numpy",
 ) -> TransDimensionalState:
     """Build and validate a complete sampler state from its active values.
@@ -580,6 +883,15 @@ def build_state(
         fixed_coefficients: Explicit finite coefficients for the optional
             always-active fixed block. Required exactly when that block is
             nonempty. Nonpositive values produce negative infinite prior density.
+        mismatch_sd: Positive inferred OU amplitudes, required exactly when an
+            inferred error model is configured.
+        correlation_timescale: Positive inferred OU timescales, required
+            exactly when an inferred error model is configured.
+        coefficient_prior_mean: Optional shared arithmetic mean for the
+            partially pooled dynamic coefficient prior. Defaults to the
+            problem's declared coefficient prior mean.
+        coefficient_prior_sd: Optional shared arithmetic SD paired with
+            ``coefficient_prior_mean``.
         backend: Numerical kernels used to derive labels and target caches.
 
     Returns:
@@ -618,6 +930,16 @@ def build_state(
         if not np.all(np.isfinite(supplied_fixed_coefficients)):
             raise ValueError("fixed_coefficients must be finite.")
     owned_fixed_coefficients = np.array(supplied_fixed_coefficients, dtype=np.float64, copy=True)
+    owned_mismatch_sd, owned_correlation_timescale = _prepare_error_state(
+        problem,
+        mismatch_sd,
+        correlation_timescale,
+    )
+    eta, zeta = _prepare_hierarchy_state(
+        problem,
+        coefficient_prior_mean,
+        coefficient_prior_sd,
+    )
 
     order = np.argsort(supplied_nuclei, kind="stable")
     sorted_nuclei = supplied_nuclei[order]
@@ -642,46 +964,24 @@ def build_state(
         fixed_prediction += problem.fixed_block.design @ owned_fixed_coefficients
     prediction = dynamic_prediction + fixed_prediction
     residual = prediction - problem.observations
-    if backend == "numpy":
-        log_likelihood = gaussian_log_likelihood_numpy(residual, problem.observation_sd)
-        log_coefficient_prior = lognormal_coefficient_log_prior_numpy(
-            coefficients,
-            k,
-            problem.coefficient_prior_mean,
-            problem.coefficient_prior_sd,
-        )
-        if problem.fixed_block is None:
-            log_fixed_coefficient_prior = 0.0
-        else:
-            log_fixed_coefficient_prior = sum(
-                lognormal_coefficient_log_prior_numpy(
-                    owned_fixed_coefficients[index : index + 1],
-                    1,
-                    float(problem.fixed_block.coefficient_prior_mean[index]),
-                    float(problem.fixed_block.coefficient_prior_sd[index]),
-                )
-                for index in range(problem.n_fixed_coefficients)
-            )
-    else:
-        log_likelihood = gaussian_log_likelihood_numba(residual, problem.observation_sd)
-        log_coefficient_prior = lognormal_coefficient_log_prior_numba(
-            coefficients,
-            k,
-            problem.coefficient_prior_mean,
-            problem.coefficient_prior_sd,
-        )
-        if problem.fixed_block is None:
-            log_fixed_coefficient_prior = 0.0
-        else:
-            log_fixed_coefficient_prior = sum(
-                lognormal_coefficient_log_prior_numba(
-                    owned_fixed_coefficients[index : index + 1],
-                    1,
-                    float(problem.fixed_block.coefficient_prior_mean[index]),
-                    float(problem.fixed_block.coefficient_prior_sd[index]),
-                )
-                for index in range(problem.n_fixed_coefficients)
-            )
+    (
+        log_likelihood,
+        log_coefficient_prior,
+        log_fixed_coefficient_prior,
+        log_error_model_prior,
+        log_coefficient_hyperprior,
+    ) = _evaluate_target_terms(
+        problem,
+        residual,
+        coefficients,
+        k,
+        owned_fixed_coefficients,
+        owned_mismatch_sd,
+        owned_correlation_timescale,
+        eta,
+        zeta,
+        backend,
+    )
 
     for array in (
         nuclei,
@@ -693,6 +993,8 @@ def build_state(
         fixed_prediction,
         prediction,
         residual,
+        owned_mismatch_sd,
+        owned_correlation_timescale,
     ):
         array.setflags(write=False)
     return TransDimensionalState(
@@ -711,6 +1013,12 @@ def build_state(
         log_fixed_coefficient_prior=float(log_fixed_coefficient_prior),
         log_k_prior=float(problem.log_k_prior[k - problem.k_min]),
         log_nucleus_prior=uniform_nucleus_set_log_prior(problem.n_grid_cells, k),
+        mismatch_sd=owned_mismatch_sd,
+        correlation_timescale=owned_correlation_timescale,
+        eta=eta,
+        zeta=zeta,
+        log_error_model_prior=log_error_model_prior,
+        log_coefficient_hyperprior=log_coefficient_hyperprior,
     )
 
 
@@ -766,6 +1074,12 @@ def _incremental_source_is_compatible(
     if state.fixed_coefficients.shape != (problem.n_fixed_coefficients,):
         return False
     if state.fixed_prediction.shape != (problem.n_observations,):
+        return False
+    expected_mismatch_count = 0 if problem.error_model is None else problem.error_model.data.n_mismatch_groups
+    expected_timescale_count = 0 if problem.error_model is None else problem.error_model.data.n_tau_parameters
+    if state.mismatch_sd.shape != (expected_mismatch_count,):
+        return False
+    if state.correlation_timescale.shape != (expected_timescale_count,):
         return False
     active_nuclei = state.nuclei[: state.k]
     if (
@@ -992,6 +1306,50 @@ def _aggregate_changed_design_numba(
             design[observation, region] += sensitivities[observation, cell]
 
 
+def _rebuild_state_preserving_optional_parameters(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+    active_nuclei: ArrayLike,
+    active_coefficients: ArrayLike,
+    backend: Backend,
+) -> TransDimensionalState:
+    """Call the full builder while preserving configured fixed dimensions."""
+    if problem.error_model is None and problem.coefficient_hierarchy is None:
+        return build_state(
+            problem,
+            active_nuclei,
+            active_coefficients,
+            fixed_coefficients=state.fixed_coefficients,
+            backend=backend,
+        )
+    candidate = build_state(
+        problem,
+        active_nuclei,
+        active_coefficients,
+        fixed_coefficients=state.fixed_coefficients,
+        mismatch_sd=state.mismatch_sd if problem.error_model is not None else None,
+        correlation_timescale=(state.correlation_timescale if problem.error_model is not None else None),
+        coefficient_prior_mean=(
+            float(np.exp(state.eta)) if problem.coefficient_hierarchy is not None else None
+        ),
+        coefficient_prior_sd=(
+            float(np.exp(state.zeta)) if problem.coefficient_hierarchy is not None else None
+        ),
+        backend=backend,
+    )
+    if problem.coefficient_hierarchy is not None and (
+        candidate.eta != state.eta or candidate.zeta != state.zeta
+    ):
+        candidate = update_shared_hierarchy_state(
+            problem,
+            candidate,
+            proposed_eta=state.eta,
+            proposed_zeta=state.zeta,
+            backend=backend,
+        )
+    return candidate
+
+
 def update_structural_state(
     problem: TransDimensionalProblem,
     state: TransDimensionalState,
@@ -1046,12 +1404,12 @@ def update_structural_state(
         active_coefficients,
     )
     if not _incremental_source_is_compatible(problem, state):
-        return build_state(
+        return _rebuild_state_preserving_optional_parameters(
             problem,
+            state,
             nuclei[:k],
             coefficients[:k],
-            fixed_coefficients=state.fixed_coefficients,
-            backend=backend,
+            backend,
         )
 
     old_nuclei = state.nuclei[: state.k]
@@ -1063,12 +1421,12 @@ def update_structural_state(
     removed_count = int(np.count_nonzero(old_to_new < 0))
     added_count = int(np.count_nonzero(new_to_old < 0))
     if removed_count > 1 or added_count > 1:
-        return build_state(
+        return _rebuild_state_preserving_optional_parameters(
             problem,
+            state,
             new_nuclei,
             coefficients[:k],
-            fixed_coefficients=state.fixed_coefficients,
-            backend=backend,
+            backend,
         )
     if added_count == 0:
         added_position = -1
@@ -1126,46 +1484,24 @@ def update_structural_state(
     fixed_prediction = state.fixed_prediction
     prediction = dynamic_prediction + fixed_prediction
     residual = prediction - problem.observations
-    if backend == "numpy":
-        log_likelihood = gaussian_log_likelihood_numpy(residual, problem.observation_sd)
-        log_coefficient_prior = lognormal_coefficient_log_prior_numpy(
-            coefficients,
-            k,
-            problem.coefficient_prior_mean,
-            problem.coefficient_prior_sd,
-        )
-        if problem.fixed_block is None:
-            log_fixed_coefficient_prior = 0.0
-        else:
-            log_fixed_coefficient_prior = sum(
-                lognormal_coefficient_log_prior_numpy(
-                    state.fixed_coefficients[index : index + 1],
-                    1,
-                    float(problem.fixed_block.coefficient_prior_mean[index]),
-                    float(problem.fixed_block.coefficient_prior_sd[index]),
-                )
-                for index in range(problem.n_fixed_coefficients)
-            )
-    else:
-        log_likelihood = gaussian_log_likelihood_numba(residual, problem.observation_sd)
-        log_coefficient_prior = lognormal_coefficient_log_prior_numba(
-            coefficients,
-            k,
-            problem.coefficient_prior_mean,
-            problem.coefficient_prior_sd,
-        )
-        if problem.fixed_block is None:
-            log_fixed_coefficient_prior = 0.0
-        else:
-            log_fixed_coefficient_prior = sum(
-                lognormal_coefficient_log_prior_numba(
-                    state.fixed_coefficients[index : index + 1],
-                    1,
-                    float(problem.fixed_block.coefficient_prior_mean[index]),
-                    float(problem.fixed_block.coefficient_prior_sd[index]),
-                )
-                for index in range(problem.n_fixed_coefficients)
-            )
+    (
+        log_likelihood,
+        log_coefficient_prior,
+        log_fixed_coefficient_prior,
+        log_error_model_prior,
+        log_coefficient_hyperprior,
+    ) = _evaluate_target_terms(
+        problem,
+        residual,
+        coefficients,
+        k,
+        state.fixed_coefficients,
+        state.mismatch_sd,
+        state.correlation_timescale,
+        state.eta,
+        state.zeta,
+        backend,
+    )
 
     for array in (nuclei, coefficients, labels, design, dynamic_prediction, prediction, residual):
         array.setflags(write=False)
@@ -1185,6 +1521,12 @@ def update_structural_state(
         log_fixed_coefficient_prior=float(log_fixed_coefficient_prior),
         log_k_prior=float(problem.log_k_prior[k - problem.k_min]),
         log_nucleus_prior=uniform_nucleus_set_log_prior(problem.n_grid_cells, k),
+        mismatch_sd=state.mismatch_sd,
+        correlation_timescale=state.correlation_timescale,
+        eta=state.eta,
+        zeta=state.zeta,
+        log_error_model_prior=log_error_model_prior,
+        log_coefficient_hyperprior=log_coefficient_hyperprior,
     )
 
 
@@ -1275,64 +1617,37 @@ def update_dynamic_coefficient_state(
     dynamic_prediction = state.design[:, : state.k] @ coefficients[: state.k]
     prediction = dynamic_prediction + state.fixed_prediction
     residual = prediction - problem.observations
-    if backend == "numpy":
-        log_likelihood = gaussian_log_likelihood_numpy(residual, problem.observation_sd)
-        log_coefficient_prior = lognormal_coefficient_log_prior_numpy(
-            coefficients,
-            state.k,
-            problem.coefficient_prior_mean,
-            problem.coefficient_prior_sd,
-        )
-        if problem.fixed_block is None:
-            log_fixed_coefficient_prior = 0.0
-        else:
-            log_fixed_coefficient_prior = sum(
-                lognormal_coefficient_log_prior_numpy(
-                    state.fixed_coefficients[index : index + 1],
-                    1,
-                    float(problem.fixed_block.coefficient_prior_mean[index]),
-                    float(problem.fixed_block.coefficient_prior_sd[index]),
-                )
-                for index in range(problem.n_fixed_coefficients)
-            )
-    else:
-        log_likelihood = gaussian_log_likelihood_numba(residual, problem.observation_sd)
-        log_coefficient_prior = lognormal_coefficient_log_prior_numba(
-            coefficients,
-            state.k,
-            problem.coefficient_prior_mean,
-            problem.coefficient_prior_sd,
-        )
-        if problem.fixed_block is None:
-            log_fixed_coefficient_prior = 0.0
-        else:
-            log_fixed_coefficient_prior = sum(
-                lognormal_coefficient_log_prior_numba(
-                    state.fixed_coefficients[index : index + 1],
-                    1,
-                    float(problem.fixed_block.coefficient_prior_mean[index]),
-                    float(problem.fixed_block.coefficient_prior_sd[index]),
-                )
-                for index in range(problem.n_fixed_coefficients)
-            )
+    (
+        log_likelihood,
+        log_coefficient_prior,
+        log_fixed_coefficient_prior,
+        log_error_model_prior,
+        log_coefficient_hyperprior,
+    ) = _evaluate_target_terms(
+        problem,
+        residual,
+        coefficients,
+        state.k,
+        state.fixed_coefficients,
+        state.mismatch_sd,
+        state.correlation_timescale,
+        state.eta,
+        state.zeta,
+        backend,
+    )
     for array in (coefficients, dynamic_prediction, prediction, residual):
         array.setflags(write=False)
-    return TransDimensionalState(
-        k=state.k,
-        nuclei=state.nuclei,
+    return replace(
+        state,
         coefficients=coefficients,
-        labels=state.labels,
-        design=state.design,
-        fixed_coefficients=state.fixed_coefficients,
         dynamic_prediction=dynamic_prediction,
-        fixed_prediction=state.fixed_prediction,
         prediction=prediction,
         residual=residual,
         log_likelihood=float(log_likelihood),
         log_coefficient_prior=float(log_coefficient_prior),
         log_fixed_coefficient_prior=float(log_fixed_coefficient_prior),
-        log_k_prior=state.log_k_prior,
-        log_nucleus_prior=state.log_nucleus_prior,
+        log_error_model_prior=log_error_model_prior,
+        log_coefficient_hyperprior=log_coefficient_hyperprior,
     )
 
 
@@ -1380,56 +1695,231 @@ def update_fixed_coefficient_state(
     fixed_prediction += fixed_block.design @ fixed_coefficients
     prediction = state.dynamic_prediction + fixed_prediction
     residual = prediction - problem.observations
-    if backend == "numpy":
-        log_likelihood = gaussian_log_likelihood_numpy(residual, problem.observation_sd)
-        log_coefficient_prior = lognormal_coefficient_log_prior_numpy(
-            state.coefficients,
-            state.k,
-            problem.coefficient_prior_mean,
-            problem.coefficient_prior_sd,
-        )
-        log_fixed_coefficient_prior = sum(
-            lognormal_coefficient_log_prior_numpy(
-                fixed_coefficients[index : index + 1],
-                1,
-                float(fixed_block.coefficient_prior_mean[index]),
-                float(fixed_block.coefficient_prior_sd[index]),
-            )
-            for index in range(problem.n_fixed_coefficients)
-        )
-    else:
-        log_likelihood = gaussian_log_likelihood_numba(residual, problem.observation_sd)
-        log_coefficient_prior = lognormal_coefficient_log_prior_numba(
-            state.coefficients,
-            state.k,
-            problem.coefficient_prior_mean,
-            problem.coefficient_prior_sd,
-        )
-        log_fixed_coefficient_prior = sum(
-            lognormal_coefficient_log_prior_numba(
-                fixed_coefficients[index : index + 1],
-                1,
-                float(fixed_block.coefficient_prior_mean[index]),
-                float(fixed_block.coefficient_prior_sd[index]),
-            )
-            for index in range(problem.n_fixed_coefficients)
-        )
+    (
+        log_likelihood,
+        log_coefficient_prior,
+        log_fixed_coefficient_prior,
+        log_error_model_prior,
+        log_coefficient_hyperprior,
+    ) = _evaluate_target_terms(
+        problem,
+        residual,
+        state.coefficients,
+        state.k,
+        fixed_coefficients,
+        state.mismatch_sd,
+        state.correlation_timescale,
+        state.eta,
+        state.zeta,
+        backend,
+    )
     for array in (fixed_coefficients, fixed_prediction, prediction, residual):
         array.setflags(write=False)
-    return TransDimensionalState(
-        k=state.k,
-        nuclei=state.nuclei,
-        coefficients=state.coefficients,
-        labels=state.labels,
-        design=state.design,
+    return replace(
+        state,
         fixed_coefficients=fixed_coefficients,
-        dynamic_prediction=state.dynamic_prediction,
         fixed_prediction=fixed_prediction,
         prediction=prediction,
         residual=residual,
         log_likelihood=float(log_likelihood),
         log_coefficient_prior=float(log_coefficient_prior),
         log_fixed_coefficient_prior=float(log_fixed_coefficient_prior),
-        log_k_prior=state.log_k_prior,
-        log_nucleus_prior=state.log_nucleus_prior,
+        log_error_model_prior=log_error_model_prior,
+        log_coefficient_hyperprior=log_coefficient_hyperprior,
+    )
+
+
+def update_error_model_state(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+    *,
+    mismatch_sd_position: int | None = None,
+    proposed_mismatch_sd: float | None = None,
+    correlation_timescale_position: int | None = None,
+    proposed_correlation_timescale: float | None = None,
+    backend: Backend = "numpy",
+) -> TransDimensionalState:
+    """Update one inferred OU parameter while preserving model-state caches.
+
+    Exactly one complete position/value pair must be supplied. Geometry,
+    coefficients, predictions, and residuals are shared with the source state;
+    only the selected error vector, OU likelihood, and normalized bounded-
+    uniform error prior are recomputed.
+
+    Args:
+        problem: Problem containing an inferred OU error-model configuration.
+        state: Valid source state associated with ``problem``.
+        mismatch_sd_position: Optional zero-based mismatch-group position.
+        proposed_mismatch_sd: Positive replacement mismatch amplitude.
+        correlation_timescale_position: Optional zero-based timescale position.
+        proposed_correlation_timescale: Positive replacement timescale.
+        backend: Numerical OU likelihood implementation.
+
+    Returns:
+        Immutable candidate sharing every error-independent cache.
+
+    Raises:
+        TypeError: If ``problem`` or ``state`` has the wrong type.
+        ValueError: If no inferred error model exists, the backend is unknown,
+            or the requested update is malformed or outside positive support.
+    """
+    if not isinstance(problem, TransDimensionalProblem):
+        raise TypeError("problem must be a TransDimensionalProblem.")
+    if not isinstance(state, TransDimensionalState):
+        raise TypeError("state must be a TransDimensionalState.")
+    if backend not in ("numpy", "numba"):
+        raise ValueError("backend must be 'numpy' or 'numba'.")
+    error_model = problem.error_model
+    if error_model is None:
+        raise ValueError("An error-model update requires an inferred error model.")
+    mismatch_pair = mismatch_sd_position is not None or proposed_mismatch_sd is not None
+    timescale_pair = correlation_timescale_position is not None or proposed_correlation_timescale is not None
+    if mismatch_pair == timescale_pair:
+        raise ValueError("Supply exactly one complete error-parameter position/value pair.")
+
+    mismatch_sd = state.mismatch_sd
+    correlation_timescale = state.correlation_timescale
+    if mismatch_pair:
+        if mismatch_sd_position is None or proposed_mismatch_sd is None:
+            raise ValueError("A mismatch update requires both position and proposed value.")
+        if isinstance(mismatch_sd_position, bool) or not isinstance(
+            mismatch_sd_position,
+            (int, np.integer),
+        ):
+            raise ValueError("mismatch_sd_position must be an integer.")
+        position = int(mismatch_sd_position)
+        if not 0 <= position < error_model.data.n_mismatch_groups:
+            raise ValueError("mismatch_sd_position is outside the configured groups.")
+        value = float(proposed_mismatch_sd)
+        if not np.isfinite(value) or value <= 0.0:
+            raise ValueError("proposed_mismatch_sd must be finite and strictly positive.")
+        mismatch_sd = np.array(state.mismatch_sd, dtype=np.float64, copy=True)
+        mismatch_sd[position] = value
+        mismatch_sd.setflags(write=False)
+    else:
+        if correlation_timescale_position is None or proposed_correlation_timescale is None:
+            raise ValueError("A timescale update requires both position and proposed value.")
+        if isinstance(correlation_timescale_position, bool) or not isinstance(
+            correlation_timescale_position,
+            (int, np.integer),
+        ):
+            raise ValueError("correlation_timescale_position must be an integer.")
+        position = int(correlation_timescale_position)
+        if not 0 <= position < error_model.data.n_tau_parameters:
+            raise ValueError("correlation_timescale_position is outside the configured parameters.")
+        value = float(proposed_correlation_timescale)
+        if not np.isfinite(value) or value <= 0.0:
+            raise ValueError("proposed_correlation_timescale must be finite and strictly positive.")
+        correlation_timescale = np.array(
+            state.correlation_timescale,
+            dtype=np.float64,
+            copy=True,
+        )
+        correlation_timescale[position] = value
+        correlation_timescale.setflags(write=False)
+
+    ou_function = ou_log_likelihood_numpy if backend == "numpy" else ou_log_likelihood_numba
+    log_likelihood = ou_function(
+        state.residual,
+        error_model.data,
+        mismatch_sd,
+        correlation_timescale,
+    )
+    log_error_model_prior = _bounded_uniform_log_prior(
+        mismatch_sd,
+        error_model.mismatch_sd_prior_lower,
+        error_model.mismatch_sd_prior_upper,
+    ) + _bounded_uniform_log_prior(
+        correlation_timescale,
+        error_model.correlation_timescale_prior_lower,
+        error_model.correlation_timescale_prior_upper,
+    )
+    return replace(
+        state,
+        mismatch_sd=mismatch_sd,
+        correlation_timescale=correlation_timescale,
+        log_likelihood=float(log_likelihood),
+        log_error_model_prior=log_error_model_prior,
+    )
+
+
+def update_shared_hierarchy_state(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+    *,
+    proposed_eta: float,
+    proposed_zeta: float,
+    backend: Backend = "numpy",
+) -> TransDimensionalState:
+    """Update the shared lognormal hierarchy without rebuilding other caches.
+
+    Args:
+        problem: Problem containing a shared coefficient hierarchy.
+        state: Valid source state associated with ``problem``.
+        proposed_eta: Finite log arithmetic coefficient-prior mean.
+        proposed_zeta: Finite log arithmetic coefficient-prior SD.
+        backend: Numerical hierarchy-kernel implementation.
+
+    Returns:
+        Immutable candidate with only hierarchy coordinates and their dynamic
+        conditional-prior and hyperprior caches changed.
+
+    Raises:
+        TypeError: If ``problem`` or ``state`` has the wrong type.
+        ValueError: If no hierarchy is configured, the backend is unknown, or
+            either proposed log coordinate is nonfinite.
+    """
+    if not isinstance(problem, TransDimensionalProblem):
+        raise TypeError("problem must be a TransDimensionalProblem.")
+    if not isinstance(state, TransDimensionalState):
+        raise TypeError("state must be a TransDimensionalState.")
+    if backend not in ("numpy", "numba"):
+        raise ValueError("backend must be 'numpy' or 'numba'.")
+    hierarchy = problem.coefficient_hierarchy
+    if hierarchy is None:
+        raise ValueError("A hierarchy update requires coefficient_hierarchy.")
+    eta = float(proposed_eta)
+    zeta = float(proposed_zeta)
+    if not np.isfinite(eta) or not np.isfinite(zeta):
+        raise ValueError("proposed_eta and proposed_zeta must be finite.")
+    from openghg_inversions.experimental.rjmcmc.hierarchy import (
+        shared_coefficient_log_prior_numba,
+        shared_coefficient_log_prior_numpy,
+        shared_hyperprior_log_density_numba,
+        shared_hyperprior_log_density_numpy,
+    )
+
+    if backend == "numpy":
+        log_coefficient_prior = shared_coefficient_log_prior_numpy(
+            state.coefficients,
+            state.k,
+            eta,
+            zeta,
+        )
+        log_coefficient_hyperprior = shared_hyperprior_log_density_numpy(
+            eta,
+            zeta,
+            hierarchy,
+        )
+    else:
+        log_coefficient_prior = shared_coefficient_log_prior_numba(
+            state.coefficients,
+            state.k,
+            eta,
+            zeta,
+        )
+        log_coefficient_hyperprior = shared_hyperprior_log_density_numba(
+            eta,
+            zeta,
+            hierarchy.mean_hyperprior_median,
+            hierarchy.mean_hyperprior_log_sd,
+            hierarchy.sd_hyperprior_median,
+            hierarchy.sd_hyperprior_log_sd,
+        )
+    return replace(
+        state,
+        eta=eta,
+        zeta=zeta,
+        log_coefficient_prior=float(log_coefficient_prior),
+        log_coefficient_hyperprior=float(log_coefficient_hyperprior),
     )
