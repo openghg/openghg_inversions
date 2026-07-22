@@ -19,6 +19,13 @@ deterministic fixed positions zero through five, and five dynamic coefficient
 draws. This phase order puts cycle boundaries after the coefficient sweep, as
 in the historical Fortran scan.
 It requires exactly six fixed columns and has a separate versioned schedule ID.
+Two further opt-in profiles retain those fourteen slots as an exact prefix.
+The sixteen-slot inferred-OU profile appends one uniformly selected mismatch
+amplitude and one uniformly selected correlation-timescale update. The
+seventeen-slot shared-hierarchy profile additionally appends one joint update
+of the log arithmetic coefficient-prior mean and standard deviation. Profiles
+must cover every optional target parameter; configurations that would freeze
+an inferred parameter are rejected.
 """
 
 from __future__ import annotations
@@ -40,10 +47,13 @@ from openghg_inversions.experimental.rjmcmc.proposals import (
     accept_or_reject,
     propose_birth,
     propose_coefficient,
+    propose_correlation_timescale,
     propose_death,
     propose_fixed_coefficient,
     propose_global_move,
     propose_local_move,
+    propose_mismatch_sd,
+    propose_shared_hierarchy,
 )
 from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
 
@@ -53,7 +63,25 @@ LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE = "lunt_opportunity_matched_fixed_bloc
 LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID = (
     "fourteen_slot_2_mixed_dimension_1_nucleus_6_fixed_position_5_coefficient_v1"
 )
-ScheduleProfile = Literal["default", "lunt_opportunity_matched_fixed_block_v1"]
+LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE = "lunt_opportunity_matched_inferred_ou_v1"
+LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_ID = "sixteen_slot_14_lunt_1_mismatch_sd_1_correlation_timescale_v1"
+LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE = (
+    "lunt_opportunity_matched_inferred_ou_shared_hierarchy_v1"
+)
+LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_ID = (
+    "seventeen_slot_14_lunt_1_mismatch_sd_1_correlation_timescale_1_shared_hierarchy_v1"
+)
+ScheduleProfile = Literal[
+    "default",
+    "lunt_opportunity_matched_fixed_block_v1",
+    "lunt_opportunity_matched_inferred_ou_v1",
+    "lunt_opportunity_matched_inferred_ou_shared_hierarchy_v1",
+]
+
+_EXTENDED_LUNT_PROFILES = (
+    LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE,
+    LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +99,15 @@ class SamplerConfig:
             always-active fixed-block coefficients. ``None`` reuses
             ``coefficient_proposal_sd``. This setting does not alter the
             four-slot schedule when ``problem`` has no fixed block.
+        mismatch_sd_proposal_sd: Additive Gaussian scale for inferred OU
+            mismatch amplitudes. Required only by an inferred-OU profile.
+        correlation_timescale_proposal_sd: Additive Gaussian scale for OU
+            correlation timescales. Required only by an inferred-OU profile.
+        eta_proposal_sd: Gaussian scale for the log arithmetic coefficient
+            prior mean. Required only by the shared-hierarchy profile.
+        zeta_proposal_sd: Gaussian scale for the log arithmetic coefficient
+            prior standard deviation. Required only by the shared-hierarchy
+            profile.
         schedule_profile: Versioned opt-in transition schedule. The default
             preserves the existing four- or five-slot schedule. The Lunt
             opportunity-matched profile requires exactly six fixed columns and
@@ -98,6 +135,10 @@ class SamplerConfig:
     local_move_scale: float | None = None
     fixed_coefficient_proposal_sd: float | None = None
     schedule_profile: ScheduleProfile = "default"
+    mismatch_sd_proposal_sd: float | None = None
+    correlation_timescale_proposal_sd: float | None = None
+    eta_proposal_sd: float | None = None
+    zeta_proposal_sd: float | None = None
 
     def __post_init__(self) -> None:
         """Reject malformed sampler settings before allocating a trace."""
@@ -128,10 +169,33 @@ class SamplerConfig:
             object.__setattr__(self, "local_move_scale", local_move_scale)
         if self.nucleus_move == "local" and self.local_move_scale is None:
             raise ValueError("local_move_scale is required for local nucleus moves.")
-        if self.schedule_profile not in ("default", LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE):
-            raise ValueError(
-                f"schedule_profile must be 'default' or {LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE!r}."
-            )
+        supported_profiles = (
+            "default",
+            LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE,
+            *_EXTENDED_LUNT_PROFILES,
+        )
+        if self.schedule_profile not in supported_profiles:
+            raise ValueError(f"schedule_profile must be one of {supported_profiles!r}.")
+        error_scales = (
+            "mismatch_sd_proposal_sd",
+            "correlation_timescale_proposal_sd",
+        )
+        hierarchy_scales = ("eta_proposal_sd", "zeta_proposal_sd")
+        required: set[str] = set(error_scales if self.schedule_profile in _EXTENDED_LUNT_PROFILES else ())
+        if self.schedule_profile == LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE:
+            required.update(hierarchy_scales)
+        for name in (*error_scales, *hierarchy_scales):
+            value = getattr(self, name)
+            if name not in required:
+                if value is not None:
+                    raise ValueError(f"{name} is only valid for a schedule profile that uses it.")
+                continue
+            if value is None:
+                raise ValueError(f"{name} is required for schedule_profile {self.schedule_profile!r}.")
+            numeric_value = float(value)
+            if not isfinite(numeric_value) or numeric_value <= 0.0:
+                raise ValueError(f"{name} must be finite and positive.")
+            object.__setattr__(self, name, numeric_value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +214,40 @@ class KernelSettings:
     local_move_scale: float | None
     fixed_coefficient_proposal_sd: float | None = None
     schedule_profile: ScheduleProfile = "default"
+    mismatch_sd_proposal_sd: float | None = None
+    correlation_timescale_proposal_sd: float | None = None
+    eta_proposal_sd: float | None = None
+    zeta_proposal_sd: float | None = None
+
+    def __post_init__(self) -> None:
+        """Validate optional scales against the immutable schedule profile."""
+        supported_profiles = (
+            "default",
+            LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE,
+            *_EXTENDED_LUNT_PROFILES,
+        )
+        if self.schedule_profile not in supported_profiles:
+            raise ValueError(f"schedule_profile must be one of {supported_profiles!r}.")
+        error_scales = (
+            "mismatch_sd_proposal_sd",
+            "correlation_timescale_proposal_sd",
+        )
+        hierarchy_scales = ("eta_proposal_sd", "zeta_proposal_sd")
+        required: set[str] = set(error_scales if self.schedule_profile in _EXTENDED_LUNT_PROFILES else ())
+        if self.schedule_profile == LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE:
+            required.update(hierarchy_scales)
+        for name in (*error_scales, *hierarchy_scales):
+            value = getattr(self, name)
+            if name not in required:
+                if value is not None:
+                    raise ValueError(f"{name} is only valid for a schedule profile that uses it.")
+                continue
+            if value is None:
+                raise ValueError(f"{name} is required for schedule_profile {self.schedule_profile!r}.")
+            numeric_value = float(value)
+            if not isfinite(numeric_value) or numeric_value <= 0.0:
+                raise ValueError(f"{name} must be finite and positive.")
+            object.__setattr__(self, name, numeric_value)
 
     @classmethod
     def from_config(cls, config: SamplerConfig) -> KernelSettings:
@@ -162,6 +260,10 @@ class KernelSettings:
             local_move_scale=config.local_move_scale,
             fixed_coefficient_proposal_sd=config.fixed_coefficient_proposal_sd,
             schedule_profile=config.schedule_profile,
+            mismatch_sd_proposal_sd=config.mismatch_sd_proposal_sd,
+            correlation_timescale_proposal_sd=config.correlation_timescale_proposal_sd,
+            eta_proposal_sd=config.eta_proposal_sd,
+            zeta_proposal_sd=config.zeta_proposal_sd,
         )
 
 
@@ -251,6 +353,18 @@ class SamplingTrace:
             ``(n_retained, n_fixed_coefficients)``. A manually constructed
             legacy trace that omits this field receives a zero-width second
             dimension.
+        mismatch_sd: Inferred OU amplitudes with shape
+            ``(n_retained, n_mismatch_groups)``. Omitted legacy values become
+            a zero-width matrix.
+        correlation_timescale: Inferred OU timescales with shape
+            ``(n_retained, n_timescale_parameters)``. Omitted legacy values
+            become a zero-width matrix.
+        eta: Log arithmetic coefficient-prior mean at retained states. Omitted
+            legacy values become NaN rows.
+        zeta: Log arithmetic coefficient-prior standard deviation at retained
+            states. Omitted legacy values become NaN rows.
+        coefficient_hierarchy_active: Whether finite ``eta`` and ``zeta``
+            rows represent an active shared hierarchy.
         log_target: Normalized log target at every saved state, with shape
             ``(n_retained,)``.
         moves: Proposal name for each attempted transition, with shape
@@ -279,9 +393,14 @@ class SamplingTrace:
     log_acceptance_ratio: NDArray[np.float64]
     state_transition: NDArray[np.int64] = field(default_factory=lambda: np.empty(0, dtype=np.int64))
     fixed_coefficients: NDArray[np.float64] = field(default_factory=lambda: np.empty(0, dtype=np.float64))
+    mismatch_sd: NDArray[np.float64] = field(default_factory=lambda: np.empty(0, dtype=np.float64))
+    correlation_timescale: NDArray[np.float64] = field(default_factory=lambda: np.empty(0, dtype=np.float64))
+    eta: NDArray[np.float64] = field(default_factory=lambda: np.empty(0, dtype=np.float64))
+    zeta: NDArray[np.float64] = field(default_factory=lambda: np.empty(0, dtype=np.float64))
+    coefficient_hierarchy_active: bool = False
 
     def __post_init__(self) -> None:
-        """Supply safe defaults for legacy transition and fixed-block fields."""
+        """Supply safe defaults for legacy transition and optional-target fields."""
         transition = np.asarray(self.state_transition, dtype=np.int64)
         if transition.size == 0 and self.k.size:
             transition = np.arange(self.k.size, dtype=np.int64)
@@ -295,6 +414,28 @@ class SamplingTrace:
         elif fixed_coefficients.ndim != 2 or fixed_coefficients.shape[0] != self.k.size:
             raise ValueError("fixed_coefficients must have shape (n_retained, n_fixed_coefficients).")
         object.__setattr__(self, "fixed_coefficients", fixed_coefficients)
+
+        for name in ("mismatch_sd", "correlation_timescale"):
+            values = np.asarray(getattr(self, name), dtype=np.float64)
+            if values.ndim == 1 and values.size == 0:
+                values = np.empty((self.k.size, 0), dtype=np.float64)
+            elif values.ndim != 2 or values.shape[0] != self.k.size:
+                raise ValueError(f"{name} must have shape (n_retained, n_parameters).")
+            object.__setattr__(self, name, values)
+
+        hierarchy_active = bool(self.coefficient_hierarchy_active)
+        object.__setattr__(self, "coefficient_hierarchy_active", hierarchy_active)
+        for name in ("eta", "zeta"):
+            values = np.asarray(getattr(self, name), dtype=np.float64)
+            if values.size == 0:
+                values = np.full(self.k.size, np.nan, dtype=np.float64)
+            elif values.shape != (self.k.size,):
+                raise ValueError(f"{name} must have shape (n_retained,).")
+            if hierarchy_active and not np.all(np.isfinite(values)):
+                raise ValueError(f"{name} must be finite when coefficient_hierarchy_active is true.")
+            if not hierarchy_active and np.any(np.isfinite(values)):
+                raise ValueError(f"{name} must contain only NaN when coefficient_hierarchy_active is false.")
+            object.__setattr__(self, name, values)
 
     @property
     def acceptance_rate(self) -> float:
@@ -351,12 +492,44 @@ def _schedule_id(
 ) -> str:
     """Return the schedule identity implied by a problem and profile."""
     if schedule_profile == "default":
+        if problem.error_model is not None or problem.coefficient_hierarchy is not None:
+            raise ValueError("The default schedule cannot leave optional target parameters frozen.")
         return FIXED_BLOCK_SCHEDULE_ID if problem.n_fixed_coefficients else SCHEDULE_ID
     if schedule_profile == LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE:
         if problem.n_fixed_coefficients != 6:
             raise ValueError("The Lunt opportunity-matched schedule requires exactly six fixed coefficients.")
+        if problem.error_model is not None or problem.coefficient_hierarchy is not None:
+            raise ValueError(
+                "The fourteen-slot Lunt schedule cannot leave optional target parameters frozen."
+            )
         return LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID
+    if schedule_profile in _EXTENDED_LUNT_PROFILES:
+        if problem.n_fixed_coefficients != 6:
+            raise ValueError(
+                "Extended Lunt opportunity-matched schedules require exactly six fixed coefficients."
+            )
+        if problem.error_model is None:
+            raise ValueError(
+                "Extended Lunt opportunity-matched schedules require an inferred OU error model."
+            )
+        hierarchy_active = problem.coefficient_hierarchy is not None
+        hierarchy_profile = schedule_profile == LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE
+        if hierarchy_active != hierarchy_profile:
+            raise ValueError("The schedule profile must match coefficient-hierarchy activation exactly.")
+        return (
+            LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_ID
+            if hierarchy_profile
+            else LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_ID
+        )
     raise ValueError(f"Unsupported sampler schedule profile {schedule_profile!r}.")
+
+
+def _required_scale(config: SamplerConfig | KernelSettings, name: str) -> float:
+    """Return a profile-required proposal scale from validated settings."""
+    value = getattr(config, name)
+    if value is None or not isfinite(value) or value <= 0.0:
+        raise ValueError(f"{name} must be finite and positive for this schedule profile.")
+    return float(value)
 
 
 def _draw_transition(
@@ -412,6 +585,53 @@ def _draw_transition(
             proposal_stdev=proposal_stdev,
             backend=config.backend,
             position_selected_deterministically=fixed_coefficient_position is not None,
+        )
+
+    if move == "mismatch_sd":
+        if problem.error_model is None:
+            raise ValueError("mismatch_sd moves require an inferred OU error model.")
+        position = int(rng.integers(state.mismatch_sd.size))
+        proposal_stdev = _required_scale(config, "mismatch_sd_proposal_sd")
+        value = float(state.mismatch_sd[position] + rng.normal(scale=proposal_stdev))
+        return propose_mismatch_sd(
+            problem,
+            state,
+            mismatch_sd_position=position,
+            proposed_mismatch_sd=value,
+            proposal_stdev=proposal_stdev,
+            backend=config.backend,
+        )
+
+    if move == "correlation_timescale":
+        if problem.error_model is None:
+            raise ValueError("correlation_timescale moves require an inferred OU error model.")
+        position = int(rng.integers(state.correlation_timescale.size))
+        proposal_stdev = _required_scale(config, "correlation_timescale_proposal_sd")
+        value = float(state.correlation_timescale[position] + rng.normal(scale=proposal_stdev))
+        return propose_correlation_timescale(
+            problem,
+            state,
+            correlation_timescale_position=position,
+            proposed_correlation_timescale=value,
+            proposal_stdev=proposal_stdev,
+            backend=config.backend,
+        )
+
+    if move == "shared_hierarchy":
+        if problem.coefficient_hierarchy is None:
+            raise ValueError("shared_hierarchy moves require a shared coefficient hierarchy.")
+        eta_scale = _required_scale(config, "eta_proposal_sd")
+        zeta_scale = _required_scale(config, "zeta_proposal_sd")
+        eta = float(state.eta + rng.normal(scale=eta_scale))
+        zeta = float(state.zeta + rng.normal(scale=zeta_scale))
+        return propose_shared_hierarchy(
+            problem,
+            state,
+            proposed_eta=eta,
+            proposed_zeta=zeta,
+            eta_proposal_stdev=eta_scale,
+            zeta_proposal_stdev=zeta_scale,
+            backend=config.backend,
         )
 
     if move == "birth":
@@ -483,6 +703,17 @@ def _validate_start_state(
         raise ValueError("initial_state capacity must equal problem.k_max.")
     if state.fixed_coefficients.shape != (problem.n_fixed_coefficients,):
         raise ValueError("initial_state fixed coefficients are incompatible with the problem.")
+    mismatch_count = 0 if problem.error_model is None else problem.error_model.data.n_mismatch_groups
+    timescale_count = 0 if problem.error_model is None else problem.error_model.data.n_tau_parameters
+    if state.mismatch_sd.shape != (mismatch_count,):
+        raise ValueError("initial_state mismatch_sd is incompatible with the problem.")
+    if state.correlation_timescale.shape != (timescale_count,):
+        raise ValueError("initial_state correlation_timescale is incompatible with the problem.")
+    if problem.coefficient_hierarchy is None:
+        if state.eta != 0.0 or state.zeta != 0.0 or state.log_coefficient_hyperprior != 0.0:
+            raise ValueError("initial_state activates a coefficient hierarchy absent from the problem.")
+    elif not isfinite(state.eta) or not isfinite(state.zeta):
+        raise ValueError("initial_state hierarchy coordinates must be finite.")
     if not np.isfinite(state.log_target):
         raise ValueError("initial_state must have finite target density.")
 
@@ -533,11 +764,19 @@ def _run_segment(
         (n_retained, problem.n_fixed_coefficients),
         dtype=np.float64,
     )
+    mismatch_count = 0 if problem.error_model is None else problem.error_model.data.n_mismatch_groups
+    timescale_count = 0 if problem.error_model is None else problem.error_model.data.n_tau_parameters
+    mismatch_sd_trace = np.empty((n_retained, mismatch_count), dtype=np.float64)
+    correlation_timescale_trace = np.empty((n_retained, timescale_count), dtype=np.float64)
+    hierarchy_active = problem.coefficient_hierarchy is not None
+    eta_trace = np.empty(n_retained, dtype=np.float64) if hierarchy_active else np.full(n_retained, np.nan)
+    zeta_trace = np.empty(n_retained, dtype=np.float64) if hierarchy_active else np.full(n_retained, np.nan)
     log_target_trace = np.empty(n_retained, dtype=np.float64)
-    moves = np.empty(
-        iterations,
-        dtype="U17" if problem.n_fixed_coefficients else "U16",
-    )
+    if kernel_settings.schedule_profile in _EXTENDED_LUNT_PROFILES:
+        move_dtype = "U21"
+    else:
+        move_dtype = "U17" if problem.n_fixed_coefficients else "U16"
+    moves = np.empty(iterations, dtype=move_dtype)
     accepted = np.zeros(iterations, dtype=np.bool_)
     log_acceptance_ratio = np.empty(iterations, dtype=np.float64)
 
@@ -551,6 +790,11 @@ def _run_segment(
         nuclei_trace[retained_position] = current_state.nuclei
         coefficient_trace[retained_position] = current_state.coefficients
         fixed_coefficient_trace[retained_position] = current_state.fixed_coefficients
+        mismatch_sd_trace[retained_position] = current_state.mismatch_sd
+        correlation_timescale_trace[retained_position] = current_state.correlation_timescale
+        if hierarchy_active:
+            eta_trace[retained_position] = current_state.eta
+            zeta_trace[retained_position] = current_state.zeta
         log_target_trace[retained_position] = current_state.log_target
         retained_position += 1
 
@@ -559,7 +803,11 @@ def _run_segment(
 
     nucleus_move = "global_move" if kernel_settings.nucleus_move == "global" else "local_move"
     schedule_id = _schedule_id(problem, kernel_settings.schedule_profile)
-    if schedule_id == LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID:
+    if schedule_id in {
+        LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID,
+        LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_ID,
+        LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_ID,
+    }:
         schedule = ()
     elif problem.n_fixed_coefficients:
         schedule = (
@@ -575,8 +823,16 @@ def _run_segment(
     for iteration in range(iterations):
         global_transition = transitions_completed + iteration
         fixed_coefficient_position = None
-        if kernel_settings.schedule_profile == LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE:
-            phase = global_transition % 14
+        if kernel_settings.schedule_profile in (
+            LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE,
+            *_EXTENDED_LUNT_PROFILES,
+        ):
+            cycle_length = 14
+            if kernel_settings.schedule_profile == LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE:
+                cycle_length = 16
+            elif kernel_settings.schedule_profile == LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE:
+                cycle_length = 17
+            phase = global_transition % cycle_length
             if phase < 2:
                 move = "dimension"
             elif phase == 2:
@@ -584,8 +840,14 @@ def _run_segment(
             elif phase < 9:
                 move = "fixed_coefficient"
                 fixed_coefficient_position = phase - 3
-            else:
+            elif phase < 14:
                 move = "coefficient"
+            elif phase == 14:
+                move = "mismatch_sd"
+            elif phase == 15:
+                move = "correlation_timescale"
+            else:
+                move = "shared_hierarchy"
         else:
             move = schedule[global_transition % len(schedule)]
         transition = _draw_transition(
@@ -624,6 +886,11 @@ def _run_segment(
             nuclei=nuclei_trace,
             coefficients=coefficient_trace,
             fixed_coefficients=fixed_coefficient_trace,
+            mismatch_sd=mismatch_sd_trace,
+            correlation_timescale=correlation_timescale_trace,
+            eta=eta_trace,
+            zeta=zeta_trace,
+            coefficient_hierarchy_active=hierarchy_active,
             log_target=log_target_trace,
             moves=moves,
             accepted=accepted,
@@ -723,6 +990,8 @@ def continue_sample(
         SCHEDULE_ID,
         FIXED_BLOCK_SCHEDULE_ID,
         LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID,
+        LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_ID,
+        LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_ID,
     }
     if checkpoint.schedule_id not in supported_schedules:
         raise ValueError(f"Unsupported sampler schedule {checkpoint.schedule_id!r}.")
@@ -752,6 +1021,10 @@ __all__ = [
     "FIXED_BLOCK_SCHEDULE_ID",
     "KernelSettings",
     "LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID",
+    "LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_ID",
+    "LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE",
+    "LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_ID",
+    "LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE",
     "LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE",
     "PCG64State",
     "SCHEDULE_ID",
