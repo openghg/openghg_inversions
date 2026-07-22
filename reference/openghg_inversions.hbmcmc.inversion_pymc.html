@@ -643,7 +643,8 @@ or else monthly (and inversion is for less than one calendar year).</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> – Built PyMC model to sample from.</p></li>
-<li><p><strong>draws</strong> – Number of posterior draws to keep per chain.</p></li>
+<li><p><strong>draws</strong> – Number of posterior draws requested per chain before burn
+slicing.</p></li>
 <li><p><strong>tune</strong> – Number of tuning draws passed to <code class="docutils literal notranslate"><span class="pre">pm.sample</span></code>.</p></li>
 <li><p><strong>chains</strong> – Number of MCMC chains to run.</p></li>
 <li><p><strong>burn</strong> – Number of posterior draws to discard from the returned
@@ -660,7 +661,9 @@ request. If a list, restrict sampling to those variable names.</p></li>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Burn-sliced <code class="docutils literal notranslate"><span class="pre">InferenceData</span></code> for the requested model, optionally
-extended with predictive groups.</p>
+extended with predictive groups. Retained draw coordinates are reset
+to consecutive zero-based integers, and <code class="docutils literal notranslate"><span class="pre">burn</span></code> is stored on the root
+and draw-bearing group attributes.</p>
 </dd>
 </dl>
 </dd></dl>
