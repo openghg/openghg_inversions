@@ -4,6 +4,10 @@
 
 ## Code changes
 
+- Enforced the class-local `SplitStrategy` label-array contract at the
+  constrained-basis boundary while allowing strategies to stop before their
+  requested region target. [#455](https://github.com/openghg/openghg_inversions/issues/455)
+
 - Reset retained posterior draw labels after burn-in before attaching predictive
   groups in both modern RHIME and fixed-basis sampling, and preserve the
   discarded burn count through trace and `InversionOutput` round trips.
