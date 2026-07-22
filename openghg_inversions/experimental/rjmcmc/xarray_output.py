@@ -1,9 +1,10 @@
 """Experimental xarray conversion for retained spatial RJMCMC states.
 
-The converter in this module represents only retained sampler states. Proposal
-diagnostics describe every attempted transition, so they deliberately remain
-outside the draw-indexed dataset until a separate transition-diagnostics
-output contract is defined.
+The converter preserves fixed-capacity spatial state, fixed coefficients,
+optional inferred-OU parameters, and optional shared coefficient-hierarchy
+coordinates on labelled dimensions. Proposal diagnostics describe every
+attempted transition, so they deliberately remain outside the draw-indexed
+dataset until a separate transition-diagnostics output contract is defined.
 """
 
 from __future__ import annotations
@@ -56,6 +57,64 @@ def _validate_diagnostics(trace: SamplingTrace) -> None:
         raise ValueError("trace transition diagnostics must have the same length.")
     if np.any(np.isnan(np.asarray(log_acceptance_ratio, dtype=np.float64))):
         raise ValueError("trace.log_acceptance_ratio must not contain NaN values.")
+
+
+def _validated_optional_target_arrays(
+    trace: SamplingTrace,
+    *,
+    n_draws: int,
+) -> tuple[
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    bool,
+]:
+    """Validate retained OU parameters and shared-hierarchy coordinates.
+
+    Args:
+        trace: Sampling trace containing optional retained target parameters.
+        n_draws: Expected number of retained-state rows.
+
+    Returns:
+        Owned mismatch amplitudes, correlation timescales, eta and zeta
+        arrays, followed by the explicit hierarchy-activation flag.
+
+    Raises:
+        ValueError: If an array has the wrong rank or retained-row count, an
+            OU parameter is nonfinite or nonpositive, or hierarchy coordinates
+            are inconsistent with the activation flag.
+    """
+    mismatch_sd = _float_array(trace.mismatch_sd, name="mismatch_sd", ndim=2)
+    correlation_timescale = _float_array(
+        trace.correlation_timescale,
+        name="correlation_timescale",
+        ndim=2,
+    )
+    if mismatch_sd.shape[0] != n_draws:
+        raise ValueError("trace.mismatch_sd must have one row per retained state.")
+    if correlation_timescale.shape[0] != n_draws:
+        raise ValueError("trace.correlation_timescale must have one row per retained state.")
+    if np.any(~np.isfinite(mismatch_sd)) or np.any(mismatch_sd <= 0.0):
+        raise ValueError("trace.mismatch_sd must contain finite positive values.")
+    if np.any(~np.isfinite(correlation_timescale)) or np.any(correlation_timescale <= 0.0):
+        raise ValueError("trace.correlation_timescale must contain finite positive values.")
+
+    eta = _float_array(trace.eta, name="eta", ndim=1)
+    zeta = _float_array(trace.zeta, name="zeta", ndim=1)
+    if eta.shape != (n_draws,):
+        raise ValueError("trace.eta must have one value per retained state.")
+    if zeta.shape != (n_draws,):
+        raise ValueError("trace.zeta must have one value per retained state.")
+    hierarchy_active = bool(trace.coefficient_hierarchy_active)
+    if hierarchy_active:
+        if not np.all(np.isfinite(eta)):
+            raise ValueError("trace.eta must be finite when the coefficient hierarchy is active.")
+        if not np.all(np.isfinite(zeta)):
+            raise ValueError("trace.zeta must be finite when the coefficient hierarchy is active.")
+    elif not np.all(np.isnan(eta)) or not np.all(np.isnan(zeta)):
+        raise ValueError("trace.eta and trace.zeta must contain only NaN when the hierarchy is inactive.")
+    return mismatch_sd, correlation_timescale, eta, zeta, hierarchy_active
 
 
 def _validated_retained_arrays(
@@ -145,7 +204,12 @@ def sampling_trace_to_dataset(
     Dynamic-region values retain their fixed-capacity padding along
     ``region_slot``. Always-active coefficients use a separate
     ``fixed_parameter`` dimension, including a zero-width dimension for traces
-    without a fixed block.
+    without a fixed block. Inferred OU parameters similarly use labelled
+    ``mismatch_group`` and ``timescale_parameter`` dimensions, which have zero
+    width for an independent-error trace. Shared coefficient-prior hierarchy
+    coordinates are retained as ``eta = log(M)`` and ``zeta = log(S)``, where
+    ``M`` and ``S`` are arithmetic moments; derived arithmetic moments are
+    included for convenience.
 
     Args:
         trace: Retained fixed-capacity states and segment diagnostics.
@@ -153,8 +217,8 @@ def sampling_trace_to_dataset(
             is inferred by this converter.
 
     Returns:
-        Dataset containing ``k``, padded ``nuclei`` and ``coefficients``, an
-        ``active`` mask, ``fixed_coefficients``, and ``log_target``.
+        Dataset containing the spatial state, fixed coefficients, optional OU
+        and shared-hierarchy parameters, and ``log_target``.
 
     Raises:
         TypeError: If ``trace`` or ``metadata`` has the wrong type.
@@ -179,7 +243,23 @@ def sampling_trace_to_dataset(
 
     n_draws, capacity = nuclei.shape
     n_fixed = fixed_coefficients.shape[1]
-    return xr.Dataset(
+    mismatch_sd, correlation_timescale, eta, zeta, hierarchy_active = _validated_optional_target_arrays(
+        trace, n_draws=n_draws
+    )
+    with np.errstate(over="ignore"):
+        coefficient_prior_mean = np.exp(eta)
+        coefficient_prior_sd = np.exp(zeta)
+    if hierarchy_active and (
+        np.any(~np.isfinite(coefficient_prior_mean))
+        or np.any(coefficient_prior_mean <= 0.0)
+        or np.any(~np.isfinite(coefficient_prior_sd))
+        or np.any(coefficient_prior_sd <= 0.0)
+    ):
+        raise ValueError(
+            "trace.eta and trace.zeta must imply finite positive arithmetic coefficient-prior moments."
+        )
+
+    dataset = xr.Dataset(
         data_vars={
             "k": ("draw", k),
             "nuclei": (("draw", "region_slot"), nuclei),
@@ -189,16 +269,60 @@ def sampling_trace_to_dataset(
                 ("draw", "fixed_parameter"),
                 fixed_coefficients,
             ),
+            "mismatch_sd": (("draw", "mismatch_group"), mismatch_sd),
+            "correlation_timescale": (
+                ("draw", "timescale_parameter"),
+                correlation_timescale,
+            ),
+            "eta": ("draw", eta),
+            "zeta": ("draw", zeta),
+            "coefficient_prior_mean": ("draw", coefficient_prior_mean),
+            "coefficient_prior_sd": ("draw", coefficient_prior_sd),
+            "coefficient_hierarchy_active": hierarchy_active,
             "log_target": ("draw", log_target),
         },
         coords={
             "draw": np.arange(n_draws, dtype=np.int64),
             "region_slot": np.arange(capacity, dtype=np.int64),
             "fixed_parameter": np.arange(n_fixed, dtype=np.int64),
+            "mismatch_group": np.arange(mismatch_sd.shape[1], dtype=np.int64),
+            "timescale_parameter": np.arange(
+                correlation_timescale.shape[1],
+                dtype=np.int64,
+            ),
             "state_transition": ("draw", state_transition),
         },
         attrs={} if metadata is None else dict(metadata),
     )
+    dataset["mismatch_sd"].attrs = {
+        "long_name": "OU model-data mismatch standard deviation",
+        "description": "Amplitude of the latent unit-variance OU process for each mismatch group.",
+    }
+    dataset["correlation_timescale"].attrs = {
+        "long_name": "OU correlation timescale",
+        "description": "OU correlation timescale in the units of the likelihood observation time.",
+    }
+    dataset["eta"].attrs = {
+        "long_name": "log arithmetic coefficient-prior mean",
+        "description": "eta = log(M), where M is the shared lognormal prior's arithmetic mean.",
+    }
+    dataset["zeta"].attrs = {
+        "long_name": "log arithmetic coefficient-prior standard deviation",
+        "description": "zeta = log(S), where S is the shared lognormal prior's arithmetic SD.",
+    }
+    dataset["coefficient_prior_mean"].attrs = {
+        "long_name": "arithmetic coefficient-prior mean",
+        "description": "M = exp(eta) for the shared dynamic-coefficient prior.",
+    }
+    dataset["coefficient_prior_sd"].attrs = {
+        "long_name": "arithmetic coefficient-prior standard deviation",
+        "description": "S = exp(zeta) for the shared dynamic-coefficient prior.",
+    }
+    dataset["coefficient_hierarchy_active"].attrs = {
+        "long_name": "shared coefficient hierarchy active",
+        "description": "Whether eta and zeta are inferred shared-hierarchy coordinates.",
+    }
+    return dataset
 
 
 __all__ = ["sampling_trace_to_dataset"]

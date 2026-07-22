@@ -2,15 +2,18 @@
 
 The package separates fixed-capacity Voronoi problems and states, explicit
 Metropolis-Hastings proposal accounting, deterministic seeded sampling, and
-adaptation of filtered RHIME fine-grid inputs. The initial implementation is
-limited to a single trans-dimensional sector with independent Gaussian
-observation errors and lognormal region coefficients. Correlated errors,
-boundary-condition inference, multi-sector models, and parallel tempering are
-outside this initial slice.
+adaptation of filtered RHIME fine-grid inputs. Alongside the independent-error
+target, it now provides opt-in independent-site OU model-data mismatch with an
+observation-error nugget and an opt-in shared hierarchy over the arithmetic
+mean and standard deviation of the dynamic-coefficient prior. These additions
+remain experimental and require an explicit extended schedule. Inferred
+boundary conditions, multi-sector models, and parallel tempering remain
+outside this slice.
 """
 
 from openghg_inversions.experimental.rjmcmc.core import (
     FixedDesignBlock,
+    InferredOUErrorModel,
     TransDimensionalProblem,
     TransDimensionalState,
     aggregate_design_numba,
@@ -31,15 +34,33 @@ from openghg_inversions.experimental.rjmcmc.checkpoint_io import (
     load_checkpoint,
     save_checkpoint,
 )
+from openghg_inversions.experimental.rjmcmc.hierarchy import (
+    SharedLognormalHierarchy,
+    arithmetic_moments_to_log_state,
+    arithmetic_moments_to_lognormal_parameters,
+    log_moments_to_lognormal_parameters,
+    shared_coefficient_log_prior_numba,
+    shared_coefficient_log_prior_numpy,
+    shared_hyperprior_log_density_numba,
+    shared_hyperprior_log_density_numpy,
+)
+from openghg_inversions.experimental.rjmcmc.likelihood import (
+    IndependentSiteOUData,
+    ou_log_likelihood_numba,
+    ou_log_likelihood_numpy,
+)
 from openghg_inversions.experimental.rjmcmc.proposals import (
     TransitionTerms,
     accept_or_reject,
     propose_birth,
     propose_coefficient,
+    propose_correlation_timescale,
     propose_death,
     propose_fixed_coefficient,
     propose_global_move,
     propose_local_move,
+    propose_mismatch_sd,
+    propose_shared_hierarchy,
 )
 from openghg_inversions.experimental.rjmcmc.postprocessing import (
     DEFAULT_QUANTILES,
@@ -54,6 +75,12 @@ from openghg_inversions.experimental.rjmcmc.rhime_adapter import problem_from_rh
 from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
 from openghg_inversions.experimental.rjmcmc.sampling import (
     FIXED_BLOCK_SCHEDULE_ID,
+    LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID,
+    LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_ID,
+    LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE,
+    LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_ID,
+    LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE,
+    LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE,
     SCHEDULE_ID,
     KernelSettings,
     PCG64State,
@@ -61,6 +88,7 @@ from openghg_inversions.experimental.rjmcmc.sampling import (
     SamplerConfig,
     SamplingResult,
     SamplingTrace,
+    ScheduleProfile,
     continue_sample,
     sample,
 )
@@ -73,21 +101,33 @@ __all__ = [
     "FIXED_BLOCK_SCHEDULE_ID",
     "FineGridPosteriorSummary",
     "FixedDesignBlock",
+    "IndependentSiteOUData",
+    "InferredOUErrorModel",
     "KernelSettings",
+    "LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID",
+    "LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_ID",
+    "LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE",
+    "LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_ID",
+    "LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE",
+    "LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE",
     "PCG64State",
     "PosteriorPredictionSummary",
     "RetentionSettings",
     "SCHEDULE_ID",
+    "ScheduleProfile",
     "SamplerCheckpoint",
     "SamplerConfig",
     "SamplingResult",
     "SamplingTrace",
+    "SharedLognormalHierarchy",
     "TransDimensionalProblem",
     "TransDimensionalState",
     "TransitionTerms",
     "accept_or_reject",
     "aggregate_design_numba",
     "aggregate_design_numpy",
+    "arithmetic_moments_to_log_state",
+    "arithmetic_moments_to_lognormal_parameters",
     "assign_cells_numba",
     "assign_cells_numpy",
     "build_state",
@@ -96,19 +136,29 @@ __all__ = [
     "gaussian_log_likelihood_numpy",
     "lognormal_coefficient_log_prior_numba",
     "lognormal_coefficient_log_prior_numpy",
+    "log_moments_to_lognormal_parameters",
     "load_checkpoint",
     "propose_birth",
     "propose_coefficient",
+    "propose_correlation_timescale",
     "propose_death",
     "propose_fixed_coefficient",
     "propose_global_move",
     "propose_local_move",
+    "propose_mismatch_sd",
+    "propose_shared_hierarchy",
     "posterior_mean_prediction",
     "problem_from_rhime_inputs",
     "reconstruct_fine_grid_samples",
+    "ou_log_likelihood_numba",
+    "ou_log_likelihood_numpy",
     "sample",
     "sampling_trace_to_dataset",
     "save_checkpoint",
+    "shared_coefficient_log_prior_numba",
+    "shared_coefficient_log_prior_numpy",
+    "shared_hyperprior_log_density_numba",
+    "shared_hyperprior_log_density_numpy",
     "summarize_fine_grid_posterior",
     "summarize_posterior_prediction",
     "uniform_log_k_prior",
