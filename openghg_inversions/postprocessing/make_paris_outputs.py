@@ -920,9 +920,11 @@ def _multisector_country_trace_kg(
             if source_name in projected_trace:
                 rename[source_name] = f"country_{sector_name}_{when}"
 
-    # Promote only the projected country samples. PARIS country uncertainty
-    # statistics and totals then share one aligned float64 sector intermediate,
-    # while the much larger spatial draw arrays keep their original dtype.
+    # Float32 aggregation can incur significant round-off error in high-magnitude
+    # country totals and uncertainty statistics, so promote the projected country
+    # samples before calculating them. Keeping the promotion at country level lets
+    # these calculations share one aligned float64 sector intermediate while the
+    # much larger spatial draw arrays retain their original dtype.
     sector_trace = projected_trace[list(rename)].rename(rename).astype(np.float64) * 1e-3
     result = sector_trace.copy(deep=False)
     for when in ("prior", "posterior"):
