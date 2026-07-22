@@ -14,6 +14,12 @@
   and uncertainty statistics are calculated, then cast at the template
   boundary, keeping posterior stdev and covariance calculations consistent.
 
+- Added `run_rhime_from_prepared_inputs` so modern standard and multisector
+  RHIME models can run from an existing `RhimePreparedInputs` object without
+  repeating OpenGHG-backed data preparation. Existing `run_rhime` entry points
+  now share the same post-preparation execution path.
+  [#509](https://github.com/openghg/openghg_inversions/issues/509)
+
 - Made retained `BasisFunctions` / `BasisOperator` metadata the primary basis
   contract for RHIME preparation and modern postprocessing outputs. Derived
   flux, country, PARIS, and legacy-format products now record stable basis

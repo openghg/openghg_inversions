@@ -3,6 +3,8 @@
 This module accepts Python keyword arguments or RHIME ``.ini`` files,
 normalizes legacy spelling into the modern spec vocabulary, prepares inversion
 inputs, builds a PyMC model, samples it, and writes requested outputs.
+``run_rhime_from_prepared_inputs`` starts at the same post-preparation boundary
+for callers that already hold canonical inputs and retained basis metadata.
 
 Terminology used by the RHIME API:
 
@@ -45,7 +47,13 @@ from openghg_inversions.rhime.outputs import (
 from . import params as rhime_params
 from .params import params_from_config, resolve_flux_sources
 from .sampling import RhimeSampler
-from .specs import RhimeOutputSpec, RhimeRunSpec
+from .specs import (
+    RhimeOutputSpec,
+    RhimeRunSpec,
+    validate_output_filename_convention,
+    validate_output_format,
+    validate_output_path_settings,
+)
 from openghg_inversions.inversion_data import (
     RhimePreparedInputs,
     prepare_rhime_inputs,
@@ -68,6 +76,7 @@ __all__ = [
     "params_from_config",
     "resolve_flux_sources",
     "run_rhime",
+    "run_rhime_from_prepared_inputs",
     "run_rhime_multisector",
 ]
 
@@ -136,29 +145,15 @@ def _run_spec_with_prepared_inputs(
     )
 
 
-def _run_common(
+def _execute_prepared_rhime(
     *,
+    prepared: RhimePreparedInputs,
+    run_spec: RhimeRunSpec,
+    sampler: RhimeSampler,
     multisector: bool,
-    params: dict[str, Any],
 ) -> RhimeResult:
-    """Run the shared RHIME pipeline after public wrapper/config normalization."""
-    timing_start = timer_start()
-    setup = _make_rhime_runner_setup(params=params, multisector=multisector)
-    log_timing("rhime.runner_setup", timer_seconds(timing_start), multisector=multisector)
-
-    timing_start = timer_start()
-    prepared = prepare_rhime_inputs(**setup.data_args)
-    log_timing(
-        "rhime.prepare_inputs",
-        timer_seconds(timing_start),
-        multisector=multisector,
-        nmeasure=prepared.inv_inputs.sizes.get("nmeasure"),
-        sites=len(prepared.sites),
-        regions=prepared.inv_inputs.sizes.get("region"),
-        sources=prepared.inv_inputs.sizes.get("source"),
-        basis_source=prepared.basis_artifact_source,
-    )
-    run_spec = _run_spec_with_prepared_inputs(setup.run_spec, prepared)
+    """Build, sample, and produce outputs from prepared RHIME inputs."""
+    run_spec = _run_spec_with_prepared_inputs(run_spec, prepared)
 
     build_and_sample_start = timer_start()
     timing_start = timer_start()
@@ -169,15 +164,15 @@ def _run_common(
     log_timing("rhime.model_build", timer_seconds(timing_start), multisector=multisector)
 
     timing_start = timer_start()
-    idata = setup.sampler.sample(model)
+    idata = sampler.sample(model)
     log_timing(
         "rhime.sampler_total",
         timer_seconds(timing_start),
-        draws=setup.sampler.draws,
-        burn=setup.sampler.burn,
-        tune=setup.sampler.tune,
-        chains=setup.sampler.chains,
-        nuts_sampler=setup.sampler.nuts_sampler,
+        draws=sampler.draws,
+        burn=sampler.burn,
+        tune=sampler.tune,
+        chains=sampler.chains,
+        nuts_sampler=sampler.nuts_sampler,
     )
     result = RhimeResult(
         run_spec=run_spec,
@@ -185,7 +180,7 @@ def _run_common(
         output_spec=run_spec.output,
         inv_inputs=prepared.inv_inputs,
         idata=idata,
-        sampler=setup.sampler,
+        sampler=sampler,
         model=model,
         basis_functions=prepared.basis_functions,
         output_metadata={"build_and_sample_seconds": timer_seconds(build_and_sample_start)},
@@ -209,7 +204,7 @@ def _run_common(
             idata=idata,
             prepared=prepared,
             country_file=run_spec.output.country_file,
-            sampler=setup.sampler,
+            sampler=sampler,
         )
     log_timing(
         "rhime.output_bundle_total",
@@ -220,6 +215,103 @@ def _run_common(
     _apply_output_bundle(result, output_bundle)
 
     return result
+
+
+def _run_common(
+    *,
+    multisector: bool,
+    params: dict[str, Any],
+) -> RhimeResult:
+    """Run the shared RHIME pipeline after public wrapper/config normalization."""
+    timing_start = timer_start()
+    setup = _make_rhime_runner_setup(params=params, multisector=multisector)
+    log_timing("rhime.runner_setup", timer_seconds(timing_start), multisector=multisector)
+
+    timing_start = timer_start()
+    prepared = prepare_rhime_inputs(**setup.data_args)
+    log_timing(
+        "rhime.prepare_inputs",
+        timer_seconds(timing_start),
+        multisector=multisector,
+        nmeasure=prepared.inv_inputs.sizes.get("nmeasure"),
+        sites=len(prepared.sites),
+        regions=prepared.inv_inputs.sizes.get("region"),
+        sources=prepared.inv_inputs.sizes.get("source"),
+        basis_source=prepared.basis_artifact_source,
+    )
+    return _execute_prepared_rhime(
+        prepared=prepared,
+        run_spec=setup.run_spec,
+        sampler=setup.sampler,
+        multisector=multisector,
+    )
+
+
+def run_rhime_from_prepared_inputs(
+    *,
+    prepared_inputs: RhimePreparedInputs,
+    run_spec: RhimeRunSpec,
+    sampler: RhimeSampler | None = None,
+) -> RhimeResult:
+    """Run RHIME directly from previously prepared inversion inputs.
+
+    This entry point bypasses RHIME configuration normalization and OpenGHG
+    data preparation. A model with one sector uses the standard builder; a
+    model with two or more sectors uses the multi-sector builder. The prepared
+    ``H`` source layout, run-spec layout flag, model sector count, and output
+    settings are validated before model construction or sampling.
+
+    Args:
+        prepared_inputs: Canonical inversion inputs and retained preparation
+            metadata to consume directly.
+        run_spec: Model, output, and run metadata for the inversion. Retained
+            sites and averaging periods are replaced with values from
+            ``prepared_inputs``.
+        sampler: Sampling settings to use. Defaults to a new ``RhimeSampler``.
+
+    Returns:
+        Modern RHIME result containing the built model, sampled trace, and
+        requested outputs.
+
+    Raises:
+        ValueError: If the model specification contains no sectors, the sector
+            count, prepared ``H`` layout, and prepared-data layout flag
+            disagree, or output settings are invalid.
+    """
+    sector_count = len(run_spec.model.sectors)
+    if sector_count < 1:
+        raise ValueError(f"`run_spec.model.sectors` must contain at least one sector; found {sector_count}.")
+    multisector = sector_count > 1
+    prepared_is_multisector = "source" in prepared_inputs.inv_inputs["H"].dims
+    if run_spec.split_by_sectors is not prepared_is_multisector:
+        raise ValueError(
+            "`run_spec.split_by_sectors` must agree with the prepared `H` layout: "
+            f"split_by_sectors={run_spec.split_by_sectors}, "
+            f"source dimension present={prepared_is_multisector}."
+        )
+    if run_spec.split_by_sectors is not multisector:
+        raise ValueError(
+            "`run_spec.split_by_sectors` must agree with the model sector count: "
+            f"found {sector_count} sector(s) and split_by_sectors={run_spec.split_by_sectors}."
+        )
+
+    output_spec = run_spec.output
+    validate_output_format(output_spec.output_format)
+    validate_output_filename_convention(output_spec.output_filename_convention)
+    validate_output_path_settings(
+        output_format=output_spec.output_format,
+        output_path=output_spec.output_path,
+        save_trace=output_spec.save_trace,
+        save_inversion_output=output_spec.save_inversion_output,
+        multisector=multisector,
+    )
+
+    return _execute_prepared_rhime(
+        prepared=prepared_inputs,
+        run_spec=run_spec,
+        sampler=RhimeSampler() if sampler is None else sampler,
+        multisector=multisector,
+    )
 
 
 def run_rhime(
