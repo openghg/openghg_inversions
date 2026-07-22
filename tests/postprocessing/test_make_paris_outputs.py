@@ -23,6 +23,7 @@ from openghg_inversions.postprocessing.make_paris_outputs import (
     _multisector_country_trace_kg,
     _paris_sector_name_by_suffix,
     _sector_country_posterior_covariances_kg,
+    _single_sector_country_trace_kg,
     paris_flux_output,
 )
 
@@ -349,6 +350,63 @@ def test_multisector_country_covariance_promotes_float32_traces(
     expected_cross_covariance = centered @ centered.T / sector_values.shape[1]
     np.testing.assert_allclose(cross_covariance[0, 0], expected_cross_covariance)
     np.testing.assert_allclose(cross_covariance[0, 0].sum(), expected_variance)
+
+
+def test_single_sector_country_statistics_promote_before_unit_conversion(
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+) -> None:
+    """Single-sector country stdev and covariance share one promoted trace."""
+    inv_out = multisector_postprocessing_inv_out()
+    inv_out.run_metadata["split_by_sectors"] = False
+    samples = np.asarray([1.0e12, 1.0002e12, 9.999e11, 1.0003e12], dtype=np.float32)
+    raw_country_trace = xr.Dataset(
+        {
+            "country_prior": (("flux_time", "country", "draw"), samples[None, None, :]),
+            "country_posterior": (("flux_time", "country", "draw"), samples[None, None, :]),
+        },
+        coords={
+            "flux_time": [np.datetime64("2019-01-01")],
+            "country": ["GBR"],
+            "draw": np.arange(samples.size),
+        },
+    )
+
+    class FakeCountries:
+        """Provide the fixed projected country trace used by this regression test."""
+
+        def get_country_trace(self, inv_out: InversionOutput) -> xr.Dataset:
+            """Return high-magnitude projected samples without further conversion."""
+            return raw_country_trace
+
+    countries = cast(Countries, FakeCountries())
+    country_trace = _single_sector_country_trace_kg(inv_out, countries)
+    country_stats = _latest_country_outputs(
+        inv_out,
+        countries=countries,
+        stats=["stdev"],
+        stats_args={},
+        multisector_country_trace=country_trace,
+    )
+    covariance = _country_posterior_covariance_kg(
+        inv_out,
+        countries=countries,
+        flux_frequency="yearly",
+        multisector_country_trace=country_trace,
+    )
+
+    expected_samples = samples.astype(np.float64) * 1e-3
+    float32_scaled_samples = (samples * np.float32(1e-3)).astype(np.float64)
+    assert not np.array_equal(expected_samples, float32_scaled_samples)
+    assert country_trace["country_posterior"].dtype == np.dtype("float64")
+    np.testing.assert_array_equal(
+        country_trace["country_posterior"].values[0, 0],
+        expected_samples,
+    )
+    expected_variance = np.var(expected_samples)
+    stdev_squared = country_stats["country_posterior_stdev"].values[0, 0] ** 2
+    np.testing.assert_allclose(stdev_squared, expected_variance)
+    np.testing.assert_allclose(covariance[0, 0, 0], expected_variance)
+    np.testing.assert_allclose(covariance[0, 0, 0], stdev_squared)
 
 
 def test_latest_paris_flux_output_renames_overlapping_sector_suffixes_exactly(

@@ -2356,7 +2356,7 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(
 
 
 def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
-    """Modern RHIME InversionOutput preserves retained inputs, basis, and metadata."""
+    """Modern InversionOutput preserves trace burn metadata, inputs, and basis."""
     model_spec, output_spec, run_spec = _minimal_output_specs()
     basis_artifact_path = str(tmp_path / "unit-basis.nc")
     prepared = RhimePreparedInputs(
@@ -2369,11 +2369,14 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
         basis_artifact_source="unit-test",
         basis_artifact_path=basis_artifact_path,
     )
+    idata = _minimal_output_idata()
+    idata.attrs["burn"] = 1000
+    cast(Any, idata).posterior.attrs["burn"] = 1000
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
         run_spec=run_spec,
         model_spec=model_spec,
-        idata=_minimal_output_idata(),
+        idata=idata,
         prepared=prepared,
         country_file=None,
     )
@@ -2391,6 +2394,8 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     assert reloaded.basis_functions.basis_artifact_path == basis_artifact_path
     assert reloaded.provenance["basis_representation"] == "operator-backed"
     assert reloaded.output_metadata["output_format"] == "inv_out"
+    assert reloaded.trace.attrs["burn"] == 1000
+    assert cast(Any, reloaded.trace).posterior.attrs["burn"] == 1000
     xr.testing.assert_identical(reloaded.inv_inputs, prepared.inv_inputs)
     xr.testing.assert_identical(reloaded.basis_functions.flux, prepared.basis_functions.flux)
     xr.testing.assert_equal(
@@ -2902,6 +2907,7 @@ def test_latest_paris_output_processes_modern_output(europe_country_file: Path, 
     )
     assert "country_flux_total_posterior" not in flux_outputs
     assert flux_outputs["flux_total_posterior"].dtype == np.dtype("float32")
+    assert flux_outputs["stdev_flux_total_posterior_country"].dtype == np.dtype("float32")
     assert flux_outputs["covariance_flux_total_posterior_country"].dtype == np.dtype("float32")
     assert flux_outputs["time_bnds"].dtype == np.dtype("float64")
 
@@ -3150,8 +3156,8 @@ def test_save_inferencedata_falls_back_after_h5netcdf_failure(tmp_path: Path) ->
     ]
 
 
-def test_save_inferencedata_resets_multiindex_coords(tmp_path: Path) -> None:
-    """Standalone trace saving handles restored scientific measurement coordinates."""
+def test_save_inferencedata_preserves_burn_attrs_and_resets_multiindex_coords(tmp_path: Path) -> None:
+    """Standalone trace saving preserves burn metadata and serializable coordinates."""
     nmeasure_index = pd.MultiIndex.from_arrays(
         [["TAC"], pd.to_datetime(["2019-01-01"])],
         names=["site", "time"],
@@ -3166,10 +3172,16 @@ def test_save_inferencedata_resets_multiindex_coords(tmp_path: Path) -> None:
     )
     path = tmp_path / "trace.nc"
 
-    rhime_outputs._save_inferencedata(az.InferenceData(posterior_predictive=posterior_predictive), path)
+    idata = az.InferenceData(posterior_predictive=posterior_predictive)
+    idata.attrs["burn"] = 1000
+    cast(Any, idata).posterior_predictive.attrs["burn"] = 1000
+
+    rhime_outputs._save_inferencedata(idata, path)
     reloaded = az.from_netcdf(path)
 
     reloaded_posterior_predictive = cast(Any, reloaded).posterior_predictive
+    assert reloaded.attrs["burn"] == 1000
+    assert reloaded_posterior_predictive.attrs["burn"] == 1000
     assert "site" in reloaded_posterior_predictive.coords
     assert "time" in reloaded_posterior_predictive.coords
     assert not isinstance(reloaded_posterior_predictive.indexes.get("nmeasure"), pd.MultiIndex)

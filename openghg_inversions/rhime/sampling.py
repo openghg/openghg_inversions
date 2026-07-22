@@ -11,6 +11,7 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
+from openghg_inversions._sampling import _reset_retained_draws as _shared_reset_retained_draws
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
@@ -86,15 +87,7 @@ def _reset_retained_draws(trace: az.InferenceData, *, burn: int) -> az.Inference
         consecutive zero-based integers and ``burn`` stored on the trace and
         draw-bearing groups.
     """
-    trace.attrs["burn"] = burn
-    for group_name in trace.groups():
-        group = getattr(trace, group_name)
-        if not isinstance(group, xr.Dataset) or "draw" not in group.dims:
-            continue
-        group = group.assign_coords(draw=np.arange(group.sizes["draw"]))
-        group.attrs["burn"] = burn
-        setattr(trace, group_name, group)
-    return trace
+    return _shared_reset_retained_draws(trace, burn=burn)
 
 
 class RhimeSampler:

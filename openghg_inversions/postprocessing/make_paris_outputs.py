@@ -943,6 +943,31 @@ def _multisector_country_trace_kg(
     return result
 
 
+def _single_sector_country_trace_kg(
+    inv_out: InversionOutput,
+    countries: Countries,
+) -> xr.Dataset:
+    """Return a float64 single-sector country trace in kilograms per year.
+
+    Args:
+        inv_out: Single-sector inversion output.
+        countries: Country masks and cell areas used for country projection.
+
+    Returns:
+        Projected prior and posterior country traces promoted to float64 before
+        conversion from grams to kilograms per year. Dimensions, coordinates,
+        and dataset attributes are preserved, and every output variable has
+        ``units="kg/yr"``; variables typically have dimensions
+        ``(flux_time, country, draw)``.
+    """
+    projected_trace = countries.get_country_trace(inv_out=inv_out)
+    result = projected_trace.astype(np.float64) * 1e-3
+    result.attrs = dict(projected_trace.attrs)
+    for name in result.data_vars:
+        result[name].attrs["units"] = "kg/yr"
+    return result
+
+
 def _latest_country_outputs(
     inv_out: InversionOutput,
     countries: Countries,
@@ -960,27 +985,26 @@ def _latest_country_outputs(
         stats_args: Additional arguments passed to ``calculate_stats``.
         sector_name_by_suffix: Optional mapping from RHIME sector suffixes to
             normalized PARIS sector names.
-        multisector_country_trace: Optional precomputed multisector country
-            trace in kilograms per year.
+        multisector_country_trace: Optional precomputed single- or multisector
+            country trace in kilograms per year. The historical parameter name
+            is retained for compatibility.
 
     Returns:
         Country statistics in kilograms per year, with ``country`` and
         ``flux_time`` dimensions and total plus per-sector variables where
         applicable.
     """
-    if inv_out.is_multisector:
-        country_trace = multisector_country_trace
-        if country_trace is None:
-            country_trace = _multisector_country_trace_kg(
+    country_trace = multisector_country_trace
+    if country_trace is None:
+        country_trace = (
+            _multisector_country_trace_kg(
                 inv_out,
                 countries,
                 sector_name_by_suffix or _paris_sector_name_by_suffix(inv_out),
             )
-        country_stats_args = dict(stats_args)
-        country_stats_args["stats"] = stats
-        return calculate_stats(country_trace, **country_stats_args)
-
-    country_trace = countries.get_country_trace(inv_out=inv_out) * 1e-3
+            if inv_out.is_multisector
+            else _single_sector_country_trace_kg(inv_out, countries)
+        )
     country_stats_args = dict(stats_args)
     country_stats_args["stats"] = stats
     return calculate_stats(country_trace, **country_stats_args)
@@ -1004,25 +1028,26 @@ def _country_posterior_covariance_kg(
         inv_out: Single- or multisector inversion output.
         countries: Country masks and cell areas used for the country projection.
         flux_frequency: Frequency used to select output flux intervals.
-        multisector_country_trace: Optional precomputed multisector country trace
-            in kilograms per year.
+        multisector_country_trace: Optional precomputed single- or multisector
+            country trace in kilograms per year. The historical parameter name
+            is retained for compatibility.
 
     Returns:
         Population covariance for each flux interval with dimensions ordered as
         time, first country, and second country, in kg2 yr-2.
     """
-    if inv_out.is_multisector:
-        country_trace = multisector_country_trace
-        if country_trace is None:
-            country_trace = _multisector_country_trace_kg(
+    country_trace = multisector_country_trace
+    if country_trace is None:
+        country_trace = (
+            _multisector_country_trace_kg(
                 inv_out,
                 countries,
                 _paris_sector_name_by_suffix(inv_out),
             )
-        posterior = country_trace["country_posterior"]
-    else:
-        country_trace = countries.get_country_trace(inv_out=inv_out)
-        posterior = country_trace["country_posterior"] * 1e-3
+            if inv_out.is_multisector
+            else _single_sector_country_trace_kg(inv_out, countries)
+        )
+    posterior = country_trace["country_posterior"]
     flux_period = _flux_frequency_to_offset(flux_frequency)
     flux_times = list(pd.to_datetime(posterior.flux_time.values))
     _, _, valid_indices = _flux_interval_midpoints_and_bounds(
@@ -1411,14 +1436,14 @@ def paris_flux_output_latest(
         domain=domain,
         country_selections=country_selections,
     )
-    multisector_country_trace = (
+    country_trace = (
         _multisector_country_trace_kg(
             inv_out,
             countries,
             sector_name_by_suffix,
         )
         if inv_out.is_multisector
-        else None
+        else _single_sector_country_trace_kg(inv_out, countries)
     )
     country_outs = _latest_country_outputs(
         inv_out,
@@ -1426,7 +1451,7 @@ def paris_flux_output_latest(
         stats=stats,
         stats_args=stats_args,
         sector_name_by_suffix=sector_name_by_suffix,
-        multisector_country_trace=multisector_country_trace,
+        multisector_country_trace=country_trace,
     )
     country_fraction = countries.matrix.as_numpy().rename("country_fraction")
     cell_area = countries.area_grid.as_numpy().rename("cell_area")
@@ -1434,7 +1459,7 @@ def paris_flux_output_latest(
         inv_out,
         countries=countries,
         flux_frequency=flux_frequency,
-        multisector_country_trace=multisector_country_trace,
+        multisector_country_trace=country_trace,
     )
     sector_covariances, sector_cross_covariance = (
         _sector_country_posterior_covariances_kg(
@@ -1442,7 +1467,7 @@ def paris_flux_output_latest(
             countries=countries,
             flux_frequency=flux_frequency,
             sector_name_by_suffix=sector_name_by_suffix,
-            multisector_country_trace=multisector_country_trace,
+            multisector_country_trace=country_trace,
         )
         if inv_out.is_multisector
         else ({}, None)

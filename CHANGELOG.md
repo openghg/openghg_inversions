@@ -5,13 +5,14 @@
 ## Code changes
 
 - Reset retained posterior draw labels after burn-in before attaching predictive
-  groups, and record the discarded burn count in trace metadata. Trace-group
-  merging still explicitly retains outer alignment for genuinely unequal
-  external groups, while multisector totals require a value from every sector so
-  padded draws cannot be interpreted as zero flux. PARIS country-sector samples
-  are now promoted to float64 before totals and uncertainty statistics are
-  calculated, then cast at the template boundary, keeping total posterior
-  variance consistent with the full within-country sector covariance matrix.
+  groups in both modern RHIME and fixed-basis sampling, and preserve the
+  discarded burn count through trace and `InversionOutput` round trips.
+  Trace-group merging still explicitly retains outer alignment for genuinely
+  unequal external groups, while multisector totals require a value from every
+  sector so padded draws cannot be interpreted as zero flux. Single- and
+  multisector PARIS country samples are now promoted to float64 before totals
+  and uncertainty statistics are calculated, then cast at the template
+  boundary, keeping posterior stdev and covariance calculations consistent.
 
 - Made retained `BasisFunctions` / `BasisOperator` metadata the primary basis
   contract for RHIME preparation and modern postprocessing outputs. Derived
