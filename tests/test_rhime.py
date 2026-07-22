@@ -895,10 +895,15 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         def __init__(self) -> None:
             self.isel_kwargs: dict[str, Any] | None = None
             self.extensions: list[Any] = []
+            self.attrs: dict[str, Any] = {}
 
         def isel(self, **kwargs: Any) -> "FakeInferenceData":
             self.isel_kwargs = kwargs
             return self
+
+        def groups(self) -> list[str]:
+            """Return the fake InferenceData group names."""
+            return ["sample_stats"]
 
         def extend(self, other: Any) -> None:
             self.extensions.append(other)
@@ -975,6 +980,88 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
     assert sample_stats_fields["divergences"] == 2
 
 
+def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equal-length predictive groups do not outer-align against burned draw labels."""
+    raw_trace = az.InferenceData(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw"), np.arange(2000, dtype=float)[None, :])},
+            coords={"chain": [0], "draw": np.arange(2000)},
+        ),
+        sample_stats=xr.Dataset(
+            {"diverging": (("chain", "draw"), np.zeros((1, 2000), dtype=bool))},
+            coords={"chain": [0], "draw": np.arange(2000)},
+        ),
+        log_likelihood=xr.Dataset(
+            {"y": (("chain", "draw"), np.zeros((1, 2000)))},
+            coords={"chain": [0], "draw": np.arange(2000)},
+        ),
+    )
+    predictive_draws: dict[str, np.ndarray] = {}
+
+    def fake_sample(**kwargs: Any) -> az.InferenceData:
+        """Return the unsliced sampling trace."""
+        return raw_trace
+
+    def fake_prior_predictive(draws: int, model: pm.Model) -> az.InferenceData:
+        """Build prior groups with zero-based draw labels."""
+        predictive_draws["prior"] = np.arange(draws)
+        return az.InferenceData(
+            prior=xr.Dataset(
+                {"x": (("chain", "draw"), np.ones((1, draws)))},
+                coords={"chain": [0], "draw": predictive_draws["prior"]},
+            ),
+            prior_predictive=xr.Dataset(
+                {"y": (("chain", "draw"), np.ones((1, draws)))},
+                coords={"chain": [0], "draw": predictive_draws["prior"]},
+            ),
+        )
+
+    def fake_posterior_predictive(trace: az.InferenceData, **kwargs: Any) -> az.InferenceData:
+        """Record and mirror the retained posterior draw labels."""
+        inference_data = cast(Any, trace)
+        predictive_draws["posterior_seen"] = inference_data.posterior.draw.values.copy()
+        draws = inference_data.posterior.sizes["draw"]
+        return az.InferenceData(
+            posterior_predictive=xr.Dataset(
+                {"y": (("chain", "draw"), np.ones((1, draws)))},
+                coords={"chain": [0], "draw": np.arange(draws)},
+            )
+        )
+
+    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.sampling.pm.sample_prior_predictive",
+        fake_prior_predictive,
+    )
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
+        fake_posterior_predictive,
+    )
+    sampler = RhimeSampler(draws=2000, burn=1000, tune=0, chains=1)
+
+    result = sampler.sample(pm.Model())
+    inference_data = cast(Any, result)
+    trace_dataset = inversion_output_module.convert_idata_to_dataset(result)
+
+    expected_draws = np.arange(1000)
+    np.testing.assert_array_equal(inference_data.posterior.draw.values, expected_draws)
+    np.testing.assert_array_equal(inference_data.sample_stats.draw.values, expected_draws)
+    np.testing.assert_array_equal(inference_data.log_likelihood.draw.values, expected_draws)
+    np.testing.assert_array_equal(inference_data.prior.draw.values, expected_draws)
+    np.testing.assert_array_equal(inference_data.prior_predictive.draw.values, expected_draws)
+    np.testing.assert_array_equal(inference_data.posterior_predictive.draw.values, expected_draws)
+    np.testing.assert_array_equal(predictive_draws["prior"], expected_draws)
+    np.testing.assert_array_equal(predictive_draws["posterior_seen"], expected_draws)
+    assert trace_dataset.sizes["draw"] == 1000
+    np.testing.assert_array_equal(trace_dataset.draw.values, expected_draws)
+    assert not trace_dataset.to_array().isnull().any()
+    assert inference_data.attrs["burn"] == 1000
+    for group_name in ("posterior", "sample_stats", "log_likelihood"):
+        assert inference_data[group_name].attrs["burn"] == 1000
+
+
 def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -988,9 +1075,14 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
 
         def __init__(self) -> None:
             self.extensions: list[str] = []
+            self.attrs: dict[str, Any] = {}
 
         def isel(self, **kwargs: Any) -> "FakeInferenceData":
             return self
+
+        def groups(self) -> list[str]:
+            """Return the fake InferenceData group names."""
+            return []
 
         def extend(self, other: str) -> None:
             self.extensions.append(other)

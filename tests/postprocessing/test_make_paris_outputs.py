@@ -18,7 +18,9 @@ from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing.make_paris_outputs import (
     PARIS_LATEST_COUNTRIES,
     _country_posterior_covariance_kg,
+    _latest_country_outputs,
     _latest_paris_countries,
+    _multisector_country_trace_kg,
     _paris_sector_name_by_suffix,
     _sector_country_posterior_covariances_kg,
     paris_flux_output,
@@ -264,28 +266,51 @@ def test_latest_paris_flux_output_processes_multisector_sectors(
 
 
 def test_multisector_country_covariance_promotes_float32_traces(
+    monkeypatch: pytest.MonkeyPatch,
     multisector_postprocessing_inv_out: Callable[..., InversionOutput],
 ) -> None:
-    """Country covariance centers high-magnitude float32 samples in float64."""
+    """Country totals promote sectors before aggregation and covariance statistics."""
     inv_out = multisector_postprocessing_inv_out()
     ff = np.asarray([1.0e12, 1.0002e12, 9.999e11, 1.0003e12], dtype=np.float32)
     ocean = np.asarray([8.0e11, 7.998e11, 8.0015e11, 7.9975e11], dtype=np.float32)
-    total = ff + ocean
+    rounded_total = ff + ocean
     coords = {
         "flux_time": [np.datetime64("2019-01-01")],
         "country": ["GBR"],
         "draw": np.arange(ff.size),
     }
-    country_trace = xr.Dataset(
-        {
-            "country_posterior": (("flux_time", "country", "draw"), total[None, None, :]),
-            "country_ff_posterior": (("flux_time", "country", "draw"), ff[None, None, :]),
-            "country_ocean_posterior": (
-                ("flux_time", "country", "draw"),
-                ocean[None, None, :],
-            ),
-        },
-        coords=coords,
+    raw_country_trace = xr.Dataset(coords=coords)
+    for when in ("prior", "posterior"):
+        raw_country_trace[f"country_total_{when}"] = (
+            ("flux_time", "country", "draw"),
+            rounded_total[None, None, :],
+        )
+        raw_country_trace[f"country_ff_{when}"] = (
+            ("flux_time", "country", "draw"),
+            ff[None, None, :],
+        )
+        raw_country_trace[f"country_ocean_{when}"] = (
+            ("flux_time", "country", "draw"),
+            ocean[None, None, :],
+        )
+
+    monkeypatch.setattr(
+        make_paris_outputs,
+        "make_multisector_country_trace_outputs",
+        lambda output, countries: raw_country_trace,
+    )
+    country_trace = _multisector_country_trace_kg(
+        inv_out,
+        countries=cast(Countries, None),
+        sector_name_by_suffix={"ff": "ff", "ocean": "ocean"},
+    )
+    country_stats = _latest_country_outputs(
+        inv_out,
+        countries=cast(Countries, None),
+        stats=["stdev"],
+        stats_args={},
+        sector_name_by_suffix={"ff": "ff", "ocean": "ocean"},
+        multisector_country_trace=country_trace,
     )
 
     total_covariance = _country_posterior_covariance_kg(
@@ -306,11 +331,24 @@ def test_multisector_country_covariance_promotes_float32_traces(
     assert all(covariance.dtype == np.dtype("float64") for covariance in sector_covariances.values())
     assert cross_covariance is not None
     assert cross_covariance.dtype == np.dtype("float64")
-    np.testing.assert_allclose(total_covariance[0, 0, 0], np.var(total.astype(np.float64)))
-    sector_values = np.stack([ff, ocean]).astype(np.float64)
+    sector_values = np.stack([ff, ocean]).astype(np.float64) * 1e-3
+    expected_total = sector_values.sum(axis=0)
+    rounded_total_kg = rounded_total.astype(np.float64) * 1e-3
+    assert not np.array_equal(expected_total, rounded_total_kg)
+    np.testing.assert_array_equal(
+        country_trace["country_posterior"].values[0, 0],
+        expected_total,
+    )
+    expected_variance = np.var(expected_total)
+    np.testing.assert_allclose(
+        country_stats["country_posterior_stdev"].values[0, 0] ** 2,
+        expected_variance,
+    )
+    np.testing.assert_allclose(total_covariance[0, 0, 0], expected_variance)
     centered = sector_values - sector_values.mean(axis=1, keepdims=True)
     expected_cross_covariance = centered @ centered.T / sector_values.shape[1]
     np.testing.assert_allclose(cross_covariance[0, 0], expected_cross_covariance)
+    np.testing.assert_allclose(cross_covariance[0, 0].sum(), expected_variance)
 
 
 def test_latest_paris_flux_output_renames_overlapping_sector_suffixes_exactly(

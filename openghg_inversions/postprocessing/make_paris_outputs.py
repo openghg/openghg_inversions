@@ -912,18 +912,32 @@ def _multisector_country_trace_kg(
         ValueError: If required multisector metadata is missing or retained
             basis, flux, and country grids cannot be aligned.
     """
-    country_trace = make_multisector_country_trace_outputs(inv_out, countries) * 1e-3
-    rename = {
-        "country_total_prior": "country_prior",
-        "country_total_posterior": "country_posterior",
-    }
+    projected_trace = make_multisector_country_trace_outputs(inv_out, countries)
+    rename = {}
     for variable_suffix, sector_name in sector_name_by_suffix.items():
         for when in ("prior", "posterior"):
             source_name = f"country_{variable_suffix}_{when}"
-            if source_name in country_trace:
+            if source_name in projected_trace:
                 rename[source_name] = f"country_{sector_name}_{when}"
 
-    result = country_trace[list(rename)].rename(rename)
+    # Promote only the projected country samples. PARIS country uncertainty
+    # statistics and totals then share one aligned float64 sector intermediate,
+    # while the much larger spatial draw arrays keep their original dtype.
+    sector_trace = projected_trace[list(rename)].rename(rename).astype(np.float64) * 1e-3
+    result = sector_trace.copy(deep=False)
+    for when in ("prior", "posterior"):
+        sector_variables = [
+            f"country_{sector_name}_{when}"
+            for sector_name in sector_name_by_suffix.values()
+            if f"country_{sector_name}_{when}" in sector_trace
+        ]
+        result[f"country_{when}"] = xr.concat(
+            [sector_trace[name] for name in sector_variables],
+            dim="sector",
+        ).sum("sector", min_count=len(sector_name_by_suffix))
+
+    result = result[["country_prior", "country_posterior", *sector_trace.data_vars]]
+    result.attrs = dict(projected_trace.attrs)
     for name in result.data_vars:
         result[name].attrs["units"] = "kg/yr"
     return result

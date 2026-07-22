@@ -74,6 +74,29 @@ def _log_sample_stats(trace: az.InferenceData, *, label: str) -> None:
         log_timing(label, 0.0, **fields)
 
 
+def _reset_retained_draws(trace: az.InferenceData, *, burn: int) -> az.InferenceData:
+    """Relabel retained draws and preserve the discarded burn-in count.
+
+    Args:
+        trace: Inference data whose draw-bearing groups are relabelled in place.
+        burn: Number of discarded burn-in draws to record in metadata.
+
+    Returns:
+        The mutated inference data, with each draw coordinate reset to
+        consecutive zero-based integers and ``burn`` stored on the trace and
+        draw-bearing groups.
+    """
+    trace.attrs["burn"] = burn
+    for group_name in trace.groups():
+        group = getattr(trace, group_name)
+        if not isinstance(group, xr.Dataset) or "draw" not in group.dims:
+            continue
+        group = group.assign_coords(draw=np.arange(group.sizes["draw"]))
+        group.attrs["burn"] = burn
+        setattr(trace, group_name, group)
+    return trace
+
+
 class RhimeSampler:
     """PyMC sampler configuration and execution for RHIME models.
 
@@ -207,6 +230,7 @@ class RhimeSampler:
 
         timing_start = timer_start()
         trace = cast(az.InferenceData, raw_trace.isel(draw=slice(self.burn, None)))
+        trace = _reset_retained_draws(trace, burn=self.burn)
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
 
         trace = self._extend_predictive(trace, model=model)
