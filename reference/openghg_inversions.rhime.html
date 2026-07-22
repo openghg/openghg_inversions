@@ -912,6 +912,38 @@ output metadata, and generated outputs.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="openghg_inversions.rhime.run_rhime_from_prepared_inputs">
+<span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.</span></span><span class="sig-name descname"><span class="pre">run_rhime_from_prepared_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_inputs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.inversion_data.preparation.html#openghg_inversions.inversion_data.preparation.RhimePreparedInputs" title="openghg_inversions.inversion_data.preparation.RhimePreparedInputs"><span class="pre">RhimePreparedInputs</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.specs.html#openghg_inversions.rhime.specs.RhimeRunSpec" title="openghg_inversions.rhime.specs.RhimeRunSpec"><span class="pre">RhimeRunSpec</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampler</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="openghg_inversions.rhime.sampling.html#openghg_inversions.rhime.sampling.RhimeSampler" title="openghg_inversions.rhime.sampling.RhimeSampler"><span class="pre">RhimeSampler</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="openghg_inversions.rhime.runner.html#openghg_inversions.rhime.runner.RhimeResult" title="openghg_inversions.rhime.runner.RhimeResult"><span class="pre">RhimeResult</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.run_rhime_from_prepared_inputs" title="Link to this definition">#</a></dt>
+<dd><p>Run RHIME directly from previously prepared inversion inputs.</p>
+<p>This entry point bypasses RHIME configuration normalization and OpenGHG
+data preparation. A model with one sector uses the standard builder; a
+model with two or more sectors uses the multi-sector builder. The prepared
+<code class="docutils literal notranslate"><span class="pre">H</span></code> source layout, run-spec layout flag, model sector count, and output
+settings are validated before model construction or sampling.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>prepared_inputs</strong> – Canonical inversion inputs and retained preparation
+metadata to consume directly.</p></li>
+<li><p><strong>run_spec</strong> – Model, output, and run metadata for the inversion. Retained
+sites and averaging periods are replaced with values from
+<code class="docutils literal notranslate"><span class="pre">prepared_inputs</span></code>.</p></li>
+<li><p><strong>sampler</strong> – Sampling settings to use. Defaults to a new <code class="docutils literal notranslate"><span class="pre">RhimeSampler</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Modern RHIME result containing the built model, sampled trace, and
+requested outputs.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#ValueError" title="(in Python v3.14)"><strong>ValueError</strong></a> – If the model specification contains no sectors, the sector
+    count, prepared <code class="docutils literal notranslate"><span class="pre">H</span></code> layout, and prepared-data layout flag
+    disagree, or output settings are invalid.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="openghg_inversions.rhime.run_rhime_multisector">
 <span class="sig-prename descclassname"><span class="pre">openghg_inversions.rhime.</span></span><span class="sig-name descname"><span class="pre">run_rhime_multisector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="openghg_inversions.rhime.runner.html#openghg_inversions.rhime.runner.RhimeResult" title="openghg_inversions.rhime.runner.RhimeResult"><span class="pre">RhimeResult</span></a></span></span><a class="headerlink" href="#openghg_inversions.rhime.run_rhime_multisector" title="Link to this definition">#</a></dt>
 <dd><p>Run a shared-basis multi-sector RHIME inversion.</p>
@@ -1055,6 +1087,7 @@ output metadata, and sector diagnostics.</p>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.runner.html#openghg_inversions.rhime.runner.params_from_config"><code class="docutils literal notranslate"><span class="pre">params_from_config()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.runner.html#openghg_inversions.rhime.runner.resolve_flux_sources"><code class="docutils literal notranslate"><span class="pre">resolve_flux_sources()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.runner.html#openghg_inversions.rhime.runner.run_rhime"><code class="docutils literal notranslate"><span class="pre">run_rhime()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.runner.html#openghg_inversions.rhime.runner.run_rhime_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="openghg_inversions.rhime.runner.html#openghg_inversions.rhime.runner.run_rhime_multisector"><code class="docutils literal notranslate"><span class="pre">run_rhime_multisector()</span></code></a></li>
 </ul>
 </li>
@@ -1229,6 +1262,7 @@ output metadata, and sector diagnostics.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.params_from_config"><code class="docutils literal notranslate"><span class="pre">params_from_config()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.resolve_flux_sources"><code class="docutils literal notranslate"><span class="pre">resolve_flux_sources()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.run_rhime"><code class="docutils literal notranslate"><span class="pre">run_rhime()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.run_rhime_from_prepared_inputs"><code class="docutils literal notranslate"><span class="pre">run_rhime_from_prepared_inputs()</span></code></a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#openghg_inversions.rhime.run_rhime_multisector"><code class="docutils literal notranslate"><span class="pre">run_rhime_multisector()</span></code></a></li>
 </ul>
   </nav></div>

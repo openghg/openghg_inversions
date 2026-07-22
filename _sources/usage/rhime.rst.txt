@@ -79,6 +79,63 @@ Python API
        },
    )
 
+Running Prepared Inputs
+-----------------------
+
+Advanced workflows can prepare canonical RHIME inputs separately from data
+acquisition and run them without repeating OpenGHG-backed preparation. Supply
+the retained ``RhimePreparedInputs`` together with the existing public run,
+model, output, and sampler specifications:
+
+.. code-block:: python
+
+   from openghg_inversions.models import RhimeModelSpec, SectorSpec
+   from openghg_inversions.rhime import (
+       RhimeOutputSpec,
+       RhimeRunSpec,
+       RhimeSampler,
+       run_rhime_from_prepared_inputs,
+   )
+
+   # Produced by prepare_rhime_inputs or by another source adapter that
+   # satisfies the same canonical contract.
+   prepared = prepare_inputs_elsewhere()
+   model_spec = RhimeModelSpec(
+       species="ch4",
+       domain="EUROPE",
+       sectors=(
+           SectorSpec(
+               name="total",
+               flux_source="total-ukghg-edgar7",
+               x_prior={"pdf": "lognormal", "mean": 1.0, "stdev": 1.0},
+               variable_suffix="total",
+           ),
+       ),
+   )
+   run_spec = RhimeRunSpec(
+       start_date="2019-01-01",
+       end_date="2019-01-02",
+       sites=prepared.sites,
+       averaging_period=prepared.averaging_period,
+       model=model_spec,
+       output=RhimeOutputSpec(output_format="none"),
+       split_by_sectors=False,
+   )
+   result = run_rhime_from_prepared_inputs(
+       prepared_inputs=prepared,
+       run_spec=run_spec,
+       sampler=RhimeSampler(draws=1000, tune=1000, chains=4),
+   )
+
+The prepared object is trusted canonical input: it must already contain the
+observation, error, sensitivity, and optional boundary-condition variables
+required by the selected model. A multisector run requires a ``source``
+dimension on ``prepared.inv_inputs["H"]`` and
+``run_spec.split_by_sectors=True``; a single-sector run requires neither. The
+sector count, prepared ``H`` layout, layout flag, and output settings are
+validated before model construction or sampling. Output side effects are still
+controlled by ``RhimeOutputSpec``.
+
 Config Files
 ------------
 
