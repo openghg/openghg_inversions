@@ -646,18 +646,6 @@ def _assert_basis_labels_do_not_cross_classes(labels: xr.DataArray, classes: xr.
         assert len(class_values) == 1
 
 
-def _one_region_per_class_strategy(
-    weights: np.ndarray,
-    class_mask: np.ndarray,
-    target_regions: int,
-) -> np.ndarray:
-    """Return one local label so tests can identify explicit strategy routing."""
-    del target_regions
-    labels = np.zeros(weights.shape, dtype=np.int64)
-    labels[class_mask] = 1
-    return labels
-
-
 def test_region_constrained_basis_function_uses_supplied_region_classes():
     """Region-constrained basis generation uses caller-supplied class fields."""
     fp_all, region_classes = _tiny_region_constrained_fp_all()
@@ -674,61 +662,6 @@ def test_region_constrained_basis_function_uses_supplied_region_classes():
     labels = basis_func.squeeze("time", drop=True)
     assert set(np.unique(labels.values)) == {1, 2, 3, 4}
     _assert_basis_labels_do_not_cross_classes(labels, region_classes)
-
-
-def test_region_constrained_basis_function_uses_explicit_split_strategy():
-    """Class composition stays independent from the selected local splitter."""
-    fp_all, region_classes = _tiny_region_constrained_fp_all()
-
-    basis_func = region_constrained_basis_function(
-        fp_all=fp_all,
-        start_date="2020-01-01",
-        domain="TEST",
-        emissions_name=["total"],
-        nbasis=4,
-        region_classes=region_classes,
-        split_strategy=_one_region_per_class_strategy,
-    )
-
-    labels = basis_func.squeeze("time", drop=True)
-    assert set(np.unique(labels.values)) == {1, 2}
-    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
-
-
-def test_region_constrained_basis_from_weights_uses_explicit_split_strategy():
-    """The weight-first adapter forwards a caller-selected local splitter."""
-    fp_all, region_classes = _tiny_region_constrained_fp_all()
-    weights = basis_weights_from_fp_all(fp_all, ["total"])
-
-    basis_func = region_constrained_basis_from_weights(
-        weights,
-        "2020-01-01",
-        "TEST",
-        region_classes=region_classes,
-        nbasis=4,
-        split_strategy=_one_region_per_class_strategy,
-    )
-
-    labels = basis_func.squeeze("time", drop=True)
-    assert set(np.unique(labels.values)) == {1, 2}
-    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
-
-
-def test_region_constrained_basis_rejects_strategy_with_contrast_options():
-    """An explicit splitter cannot be silently combined with greedy-only options."""
-    fp_all, region_classes = _tiny_region_constrained_fp_all()
-    weights = basis_weights_from_fp_all(fp_all, ["total"])
-
-    with pytest.raises(ValueError, match="split_strategy cannot be combined"):
-        region_constrained_basis_from_weights(
-            weights,
-            "2020-01-01",
-            "TEST",
-            region_classes=region_classes,
-            nbasis=4,
-            split_strategy=_one_region_per_class_strategy,
-            contrast_tau=1.0,
-        )
 
 
 def test_region_constrained_basis_from_weights_matches_fp_all_adapter():
@@ -859,35 +792,9 @@ def test_make_basis_functions_accepts_region_constrained_algorithm():
         nbasis=4,
         basis_algorithm="region_constrained",
         region_classes=region_classes,
-        split_strategy=_one_region_per_class_strategy,
     )
 
     labels = basis_object.flat_basis()
-    assert set(np.unique(labels.values)) == {1, 2}
-    _assert_basis_labels_do_not_cross_classes(labels, region_classes)
-
-
-def test_basis_functions_wrapper_forwards_explicit_split_strategy():
-    """The retained-basis wrapper keeps class layout and splitting independent."""
-    fp_all, region_classes = _tiny_region_constrained_fp_all()
-    fp_all["SITE"]["fp_x_flux"] = fp_all["SITE"]["fp"]
-
-    _fp_data, basis_objects = basis_functions_wrapper(
-        fp_all=fp_all,
-        species="ch4",
-        domain="TEST",
-        start_date="2020-01-01",
-        emissions_name=["total"],
-        nbasis=4,
-        use_bc=False,
-        basis_algorithm="region_constrained",
-        region_classes=region_classes,
-        split_strategy=_one_region_per_class_strategy,
-        return_basis_objects=True,
-    )
-
-    labels = basis_objects["emissions"].flat_basis()
-    assert set(np.unique(labels.values)) == {1, 2}
     _assert_basis_labels_do_not_cross_classes(labels, region_classes)
 
 
@@ -914,11 +821,9 @@ def test_fixed_outer_regions_can_use_region_constrained_algorithm(tmp_path):
         nbasis=4,
         country_directory=str(tmp_path),
         region_classes=region_classes,
-        split_strategy=_one_region_per_class_strategy,
     )
 
     labels = basis_func.squeeze("time", drop=True)
-    assert len(np.unique(labels.values)) == 2
     _assert_basis_labels_do_not_cross_classes(labels, region_classes)
 
 

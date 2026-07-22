@@ -48,6 +48,10 @@ NbasisAllocation: TypeAlias = int | Mapping[Hashable, int]
 GridNode: TypeAlias = tuple[int, int]
 GridPartition: TypeAlias = list[GridNode]
 _INERTIAL_TOLERANCE = 1.0e-12
+_GRID_COORDINATE_DEGREE_ATOL = 2.0e-5
+_GRID_METADATA_KEYS = ("units", "calendar", "axis", "standard_name", "positive")
+_DESCRIPTIVE_COORDINATE_ATTRS = {"comment", "history", "long_name", "longname", "source"}
+_CRS_ATTRIBUTE_MARKERS = {"crs_wkt", "grid_mapping_name", "spatial_ref"}
 
 
 @dataclass(frozen=True)
@@ -678,14 +682,12 @@ class GreedyAxisParallelSplitStrategy:
 
 @dataclass(frozen=True)
 class AxisAlignedWeightedSplitStrategy:
-    """Class-local strategy based on recursive weighted bucket splits.
+    """Compatibility strategy based on the existing recursive weighted basis.
 
-    This recursively splits rectangles along the longer axis until each is
-    below a searched threshold, independently within each supplied class. It
-    does not reproduce the legacy land/sea-weighted algorithm: that route
-    chooses its bucket threshold by counting post-fragmentation labels, while
-    land/sea does not influence the rectangle geometry itself. New constrained
-    code defaults to :class:`GreedyAxisParallelSplitStrategy` instead.
+    This keeps the current weighted basis shape available for comparison:
+    recursively split rectangles along the longer axis until each rectangle is
+    below a searched threshold. New constrained code defaults to
+    :class:`GreedyAxisParallelSplitStrategy` instead.
     """
 
     max_iter: int = 32
@@ -783,10 +785,8 @@ def region_constrained_basis(
         ValueError: If either input is not two-dimensional, the dimension names
             differ, weights are invalid, or the requested allocation is
             impossible.
-        xarray.AlignmentError: If the inputs do not have exactly identical
-            attached coordinate names, dimensions, dtypes, values, and
-            attributes after transposing ``region_classes`` to match
-            ``weights``.
+        xarray.AlignmentError: If the inputs do not describe physically
+            compatible spatial grids after transposition.
 
     Notes:
         Labels are guaranteed not to cross class boundaries because each class is
@@ -804,7 +804,7 @@ def region_constrained_basis(
     weight_values = _validate_weights(weights)
     class_values = region_classes.to_numpy()
     mapped_classes = _mapped_classes(class_values, unmapped_values)
-    strategy = split_strategy if split_strategy is not None else GreedyAxisParallelSplitStrategy()
+    strategy = split_strategy or GreedyAxisParallelSplitStrategy()
 
     labels = np.zeros(weight_values.shape, dtype=np.int64)
     if not mapped_classes:
@@ -860,20 +860,16 @@ def combine_inner_outer_region_classes(
             differ, ``inner_mask`` is not Boolean, or a selected class value is
             not hashable.
         xarray.AlignmentError: If, after transposition to ``inner_mask``
-            dimension order, any input does not have exactly identical attached
-            coordinate names, dimensions, dtypes, values, and attributes,
-            including scalar coordinates.
+            dimension order, an input does not describe a physically compatible
+            spatial grid.
 
     Notes:
         Values on the unselected side do not affect the result, including null
         values. Domain tags prevent equal inner and outer class values from
         colliding when passed to :func:`region_constrained_basis`.
 
-        This source-neutral composition helper is tracked by `issue #449
-        <https://github.com/openghg/openghg_inversions/issues/449>`_ and supports
-        related `#456 <https://github.com/openghg/openghg_inversions/issues/456>`_,
-        `#407 <https://github.com/openghg/openghg_inversions/issues/407>`_, and
-        `#509 <https://github.com/openghg/openghg_inversions/issues/509>`_.
+        This source-neutral composition helper advances `issue #449
+        <https://github.com/openghg/openghg_inversions/issues/449>`_.
     """
     inner_mask, inner_classes = _align_2d_inputs(
         inner_mask,
@@ -942,9 +938,8 @@ def intersect_region_class_layers(
             layer dimension names differ, or a mapped layer value is not
             hashable.
         xarray.AlignmentError: If, after transposition to the first layer's
-            dimension order, any layer does not have exactly identical attached
-            coordinate names, dimensions, dtypes, values, and attributes,
-            including scalar coordinates.
+            dimension order, any layer does not describe a physically
+            compatible spatial grid.
 
     Notes:
         The tuple labels can be passed directly to
@@ -1025,6 +1020,8 @@ def region_class_mask(
         array-like operand and broadcast its elements instead of comparing the
         tuple as one value. This helper performs elementwise tuple comparison
         through the same path used by constrained allocation and splitting.
+        Object values are materialized eagerly; dask chunks are not preserved
+        in the returned mask.
     """
     mask = _class_value_mask(region_classes.to_numpy(), class_value)
     return xr.DataArray(mask, dims=region_classes.dims, coords=region_classes.coords, name=name)
@@ -1060,10 +1057,8 @@ def allocate_nbasis_by_class(
         ValueError: If either input is not two-dimensional, the dimension names
             differ, weights are invalid, or the requested allocation is
             impossible.
-        xarray.AlignmentError: If the inputs do not have exactly identical
-            attached coordinate names, dimensions, dtypes, values, and
-            attributes after transposing ``region_classes`` to match
-            ``weights``.
+        xarray.AlignmentError: If the inputs do not describe physically
+            compatible spatial grids after transposition.
     """
     if min_regions_per_class < 0:
         raise ValueError("min_regions_per_class must be non-negative.")
@@ -1118,27 +1113,25 @@ def _align_2d_inputs(
     reference_name: str,
     candidate_name: str,
 ) -> tuple[xr.DataArray, xr.DataArray]:
-    """Validate, transpose, and exactly align two 2D fields.
+    """Validate and normalize two physically compatible 2D grids.
 
     Args:
         reference: Two-dimensional field whose dimension order and attached
             coordinates define the output grid.
-        candidate: Two-dimensional field using the same dimension names and
-            exactly identical attached coordinates as ``reference`` after
-            transposition.
+        candidate: Two-dimensional field using the same dimension names and a
+            physically compatible grid after transposition.
         reference_name: Caller-specific name for ``reference`` in errors.
         candidate_name: Caller-specific name for ``candidate`` in errors.
 
     Returns:
-        ``reference`` and ``candidate`` with ``candidate`` transposed to the
-        dimension order of ``reference`` and both inputs exactly aligned.
+        ``reference`` and ``candidate`` with ``candidate`` transposed and
+        normalized to the authoritative coordinates from ``reference``.
 
     Raises:
         ValueError: If either input is not two-dimensional or their dimension
             names differ.
-        xarray.AlignmentError: If coordinate names, dimensions, dtypes, values,
-            or attributes differ, or the grids otherwise cannot be aligned
-            exactly.
+        xarray.AlignmentError: If spatial coordinate names, dimensions, values,
+            grid-defining metadata, or CRS definitions are incompatible.
     """
     if reference.ndim != 2:
         raise ValueError(f"{reference_name} must be two-dimensional.")
@@ -1148,7 +1141,7 @@ def _align_2d_inputs(
         raise ValueError(f"{reference_name} and {candidate_name} must use the same dimensions.")
 
     candidate = candidate.transpose(*reference.dims)
-    _validate_matching_grid_coordinates(
+    reference, candidate = _normalize_matching_grid_coordinates(
         reference,
         candidate,
         reference_name=reference_name,
@@ -1163,33 +1156,39 @@ def _align_2d_inputs(
     return reference, candidate
 
 
-def _validate_matching_grid_coordinates(
+def _normalize_matching_grid_coordinates(
     reference: xr.DataArray,
     candidate: xr.DataArray,
     *,
     reference_name: str,
     candidate_name: str,
-) -> None:
-    """Require identical attached coordinates on a shared grid.
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Validate a physical grid and adopt the reference coordinates.
 
     Args:
-        reference: Grid whose complete coordinate collection is authoritative.
-        candidate: Transposed grid whose coordinates must match ``reference``.
+        reference: Grid whose spatial coordinates are authoritative.
+        candidate: Transposed grid whose physical coordinates must be
+            compatible with ``reference``.
         reference_name: Caller-specific name for ``reference`` in errors.
         candidate_name: Caller-specific name for ``candidate`` in errors.
 
     Raises:
-        xarray.AlignmentError: If attached coordinate names, dimensions,
-            dtypes, values, or attributes differ. Scalar coordinates such as a
-            CRS marker are included in this comparison.
+        xarray.AlignmentError: If spatial coordinate names, dimensions, values,
+            grid-defining metadata, or scalar CRS definitions conflict.
+
+    Returns:
+        Both arrays normalized to the spatial and CRS coordinate values from
+        ``reference``, with nonconflicting metadata from either input retained.
+        Descriptive coordinate attributes, numeric storage dtype, and unrelated
+        scalar provenance coordinates do not define the physical grid.
     """
-    reference_coordinates = set(reference.coords)
-    candidate_coordinates = set(candidate.coords)
+    reference_coordinates = _spatial_coordinate_names(reference)
+    candidate_coordinates = _spatial_coordinate_names(candidate)
     if reference_coordinates != candidate_coordinates:
         missing = sorted(reference_coordinates - candidate_coordinates, key=str)
         unexpected = sorted(candidate_coordinates - reference_coordinates, key=str)
         raise xr.AlignmentError(
-            f"{candidate_name} must define the same grid coordinates as {reference_name}; "
+            f"{candidate_name} must define the same spatial grid coordinates as {reference_name}; "
             f"missing {missing!r}, unexpected {unexpected!r}."
         )
 
@@ -1203,16 +1202,202 @@ def _validate_matching_grid_coordinates(
                 f"{reference_coordinate.dims!r} on {reference_name}."
             )
         candidate_coordinate = candidate_coordinate.transpose(*reference_coordinate.dims)
-        if reference_coordinate.dtype != candidate_coordinate.dtype:
+        if not _coordinate_values_compatible(reference_coordinate, candidate_coordinate):
             raise xr.AlignmentError(
-                f"Coordinate {coordinate_name!r} on {candidate_name} has dtype "
-                f"{candidate_coordinate.dtype!r}, not {reference_coordinate.dtype!r} as on "
-                f"{reference_name}."
+                f"Coordinate {coordinate_name!r} on {candidate_name} is not physically "
+                f"compatible with {reference_name}."
             )
-        if not reference_coordinate.variable.identical(candidate_coordinate.variable):
+        _validate_grid_metadata(
+            reference_coordinate,
+            candidate_coordinate,
+            coordinate_name=coordinate_name,
+            reference_name=reference_name,
+            candidate_name=candidate_name,
+        )
+
+    reference_crs = _crs_coordinate_names(reference, array_name=reference_name)
+    candidate_crs = _crs_coordinate_names(candidate, array_name=candidate_name)
+    if reference_crs != candidate_crs:
+        raise xr.AlignmentError(
+            f"{candidate_name} must define the same CRS coordinates as {reference_name}; "
+            f"missing {sorted(reference_crs - candidate_crs, key=str)!r}, "
+            f"unexpected {sorted(candidate_crs - reference_crs, key=str)!r}."
+        )
+    for coordinate_name in sorted(reference_crs, key=str):
+        reference_coordinate = reference.coords[coordinate_name]
+        candidate_coordinate = candidate.coords[coordinate_name]
+        if not _coordinate_values_compatible(reference_coordinate, candidate_coordinate):
             raise xr.AlignmentError(
-                f"Coordinate {coordinate_name!r} on {candidate_name} does not have identical "
-                f"values and attributes to {reference_name}."
+                f"CRS coordinate {coordinate_name!r} on {candidate_name} has a different value "
+                f"from {reference_name}."
+            )
+        reference_attrs = {
+            key: value
+            for key, value in reference_coordinate.attrs.items()
+            if key not in _DESCRIPTIVE_COORDINATE_ATTRS
+        }
+        candidate_attrs = {
+            key: value
+            for key, value in candidate_coordinate.attrs.items()
+            if key not in _DESCRIPTIVE_COORDINATE_ATTRS
+        }
+        if reference_attrs.keys() != candidate_attrs.keys() or any(
+            not _metadata_values_equal(reference_attrs[key], candidate_attrs[key]) for key in reference_attrs
+        ):
+            raise xr.AlignmentError(
+                f"CRS coordinate {coordinate_name!r} on {candidate_name} conflicts with {reference_name}."
+            )
+
+    authoritative_coordinates = {
+        name: _coordinate_with_merged_metadata(reference.coords[name], candidate.coords[name])
+        for name in reference_coordinates | reference_crs
+    }
+    return (
+        reference.assign_coords(authoritative_coordinates),
+        candidate.assign_coords(authoritative_coordinates),
+    )
+
+
+def _coordinate_with_merged_metadata(
+    reference: xr.DataArray,
+    candidate: xr.DataArray,
+) -> xr.DataArray:
+    """Keep reference values while retaining nonconflicting metadata from both inputs."""
+    merged_attributes = dict(candidate.attrs)
+    merged_attributes.update(reference.attrs)
+    coordinate = reference.copy(deep=False)
+    coordinate.attrs = merged_attributes
+    return coordinate
+
+
+def _spatial_coordinate_names(array: xr.DataArray) -> set[Hashable]:
+    """Return non-scalar coordinates attached only to the two grid dimensions."""
+    grid_dimensions = set(array.dims)
+    return {
+        name
+        for name, coordinate in array.coords.items()
+        if coordinate.dims and set(coordinate.dims).issubset(grid_dimensions)
+    }
+
+
+def _crs_coordinate_names(array: xr.DataArray, *, array_name: str) -> set[Hashable]:
+    """Return recognized CRS coordinates and reject unresolved mappings."""
+    names = {
+        name
+        for name, coordinate in array.coords.items()
+        if not coordinate.dims and _CRS_ATTRIBUTE_MARKERS.intersection(coordinate.attrs)
+    }
+    grid_mapping = array.attrs.get("grid_mapping")
+    if isinstance(grid_mapping, str):
+        referenced_name = grid_mapping.split(":", maxsplit=1)[0].strip()
+        if referenced_name not in array.coords:
+            raise xr.AlignmentError(
+                f"{array_name} references grid mapping {referenced_name!r}, but it is not an "
+                "attached coordinate; load with decode_coords='all' or attach it before alignment."
+            )
+        names.add(referenced_name)
+    return names
+
+
+def _coordinate_values_compatible(reference: xr.DataArray, candidate: xr.DataArray) -> bool:
+    """Return whether coordinate values describe the same physical locations."""
+    if reference.shape != candidate.shape:
+        return False
+    reference_values = reference.to_numpy()
+    candidate_values = candidate.to_numpy()
+    if np.issubdtype(reference_values.dtype, np.number) and np.issubdtype(candidate_values.dtype, np.number):
+        return bool(
+            np.allclose(
+                reference_values,
+                candidate_values,
+                rtol=0.0,
+                atol=_coordinate_absolute_tolerance(reference, candidate),
+                equal_nan=True,
+            )
+        )
+    if np.array_equal(reference_values, candidate_values):
+        return True
+    reference_null = pd.isna(reference_values)
+    candidate_null = pd.isna(candidate_values)
+    return bool(
+        np.array_equal(reference_null, candidate_null)
+        and np.all(reference_null | (reference_values == candidate_values))
+    )
+
+
+def _coordinate_absolute_tolerance(reference: xr.DataArray, candidate: xr.DataArray) -> float:
+    """Return a unit- and storage-precision-aware absolute tolerance."""
+    if reference.ndim == 0:
+        return 0.0
+    values = np.concatenate(
+        [
+            np.asarray(reference.to_numpy(), dtype=np.float64).ravel(),
+            np.asarray(candidate.to_numpy(), dtype=np.float64).ravel(),
+        ]
+    )
+    finite_values = values[np.isfinite(values)]
+    scale = max(1.0, float(np.max(np.abs(finite_values))) if finite_values.size else 1.0)
+    floating_dtypes = [
+        dtype for dtype in (reference.dtype, candidate.dtype) if np.issubdtype(dtype, np.floating)
+    ]
+    precision_tolerance = max(
+        (8.0 * np.finfo(dtype).eps * scale for dtype in floating_dtypes),
+        default=0.0,
+    )
+
+    units = str(reference.attrs.get("units") or candidate.attrs.get("units") or "").lower()
+    if "radian" in units or units == "rad":
+        tolerance = max(precision_tolerance, float(np.deg2rad(_GRID_COORDINATE_DEGREE_ATOL)))
+    elif "degree" in units:
+        tolerance = max(precision_tolerance, _GRID_COORDINATE_DEGREE_ATOL)
+    else:
+        tolerance = precision_tolerance
+
+    grid_spacing = _representative_grid_spacing(reference)
+    if grid_spacing is not None:
+        tolerance = min(tolerance, grid_spacing * 1.0e-3)
+    return float(tolerance)
+
+
+def _representative_grid_spacing(coordinate: xr.DataArray) -> float | None:
+    """Return the smallest median nonzero step across coordinate dimensions."""
+    values = np.asarray(coordinate.to_numpy(), dtype=np.float64)
+    axis_spacings: list[float] = []
+    for axis in range(values.ndim):
+        differences = np.abs(np.diff(values, axis=axis))
+        finite_nonzero = differences[np.isfinite(differences) & (differences > 0.0)]
+        if finite_nonzero.size:
+            axis_spacings.append(float(np.median(finite_nonzero)))
+    return min(axis_spacings) if axis_spacings else None
+
+
+def _metadata_values_equal(reference: object, candidate: object) -> bool:
+    """Compare scalar or array-valued metadata without ambiguous truth values."""
+    reference_values = np.asarray(reference)
+    candidate_values = np.asarray(candidate)
+    if reference_values.shape != candidate_values.shape:
+        return False
+    if np.issubdtype(reference_values.dtype, np.number) and np.issubdtype(candidate_values.dtype, np.number):
+        return bool(np.allclose(reference_values, candidate_values, rtol=0.0, atol=0.0, equal_nan=True))
+    return bool(np.array_equal(reference_values, candidate_values))
+
+
+def _validate_grid_metadata(
+    reference: xr.DataArray,
+    candidate: xr.DataArray,
+    *,
+    coordinate_name: Hashable,
+    reference_name: str,
+    candidate_name: str,
+) -> None:
+    """Reject conflicting grid-defining metadata when both sides provide it."""
+    for attribute_name in _GRID_METADATA_KEYS:
+        reference_value = reference.attrs.get(attribute_name)
+        candidate_value = candidate.attrs.get(attribute_name)
+        if reference_value is not None and candidate_value is not None and reference_value != candidate_value:
+            raise xr.AlignmentError(
+                f"Coordinate {coordinate_name!r} on {candidate_name} has conflicting "
+                f"{attribute_name!r} metadata from {reference_name}."
             )
 
 
@@ -1263,19 +1448,28 @@ def _is_unmapped_layer_value(value: Hashable, unmapped_values: set[Hashable]) ->
 
 def _class_value_mask(class_values: np.ndarray, class_value: Hashable) -> np.ndarray:
     """Return a Boolean mask for one class value, including tuple labels."""
-    if isinstance(class_value, tuple):
+    if isinstance(class_value, tuple) or class_values.dtype == object:
         return np.asarray(
-            np.frompyfunc(lambda value: value == class_value, 1, 1)(class_values),
+            np.frompyfunc(lambda value: _class_values_equal(value, class_value), 1, 1)(class_values),
             dtype=bool,
         )
 
     try:
         mask = class_values == class_value
     except ValueError:
-        mask = np.frompyfunc(lambda value: value == class_value, 1, 1)(class_values)
+        mask = np.frompyfunc(lambda value: _class_values_equal(value, class_value), 1, 1)(class_values)
     if not isinstance(mask, np.ndarray) or mask.shape != class_values.shape:
-        mask = np.frompyfunc(lambda value: value == class_value, 1, 1)(class_values)
+        mask = np.frompyfunc(lambda value: _class_values_equal(value, class_value), 1, 1)(class_values)
     return np.asarray(mask, dtype=bool)
+
+
+def _class_values_equal(value: object, class_value: Hashable) -> bool:
+    """Compare one class value without treating missing values as truthy."""
+    try:
+        result = value == class_value
+    except (TypeError, ValueError):
+        return False
+    return bool(result) if isinstance(result, (bool, np.bool_)) else False
 
 
 def _explicit_allocation(

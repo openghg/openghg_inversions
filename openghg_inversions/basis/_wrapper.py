@@ -7,7 +7,6 @@ from typing import Any, Literal, cast
 
 import xarray as xr
 
-from .algorithms import SplitStrategy
 from .basis_functions import (
     BASIS_ARTIFACT_PATH_ATTR,
     BASIS_ARTIFACT_SOURCE_ATTR,
@@ -48,7 +47,6 @@ def make_basis_functions(
     contrast_tau: float | None = None,
     contrast_sigma_design: float | None = None,
     contrast_s_diag: xr.DataArray | None = None,
-    split_strategy: SplitStrategy | None = None,
 ) -> BasisFunctions:
     """Create or load retained emissions basis functions.
 
@@ -103,9 +101,6 @@ def make_basis_functions(
             coefficient. If omitted, ``tau=1`` is uncalibrated.
         contrast_sigma_design: Optional scalar design standard deviation.
         contrast_s_diag: Optional diagonal design covariance entries.
-        split_strategy: Class-local partition strategy used only with
-            ``basis_algorithm="region_constrained"``. When omitted, the core
-            constrained helper uses its greedy axis-parallel default.
 
     Returns:
         Retained emissions basis object ready for sensitivity projection.
@@ -154,7 +149,6 @@ def make_basis_functions(
                 region_classes=region_classes,
                 region_allocation=region_allocation,
                 min_regions_per_class=min_regions_per_class,
-                split_strategy=split_strategy,
                 split_acceptance=split_acceptance,
                 contrast_contribution=contrast_contribution,
                 contrast_cell_weight=contrast_cell_weight,
@@ -193,7 +187,6 @@ def make_basis_functions(
                     "region_classes": region_classes,
                     "allocation": region_allocation,
                     "min_regions_per_class": min_regions_per_class,
-                    "split_strategy": split_strategy,
                     "split_acceptance": split_acceptance,
                     "contrast_contribution": contrast_contribution,
                     "contrast_cell_weight": contrast_cell_weight,
@@ -290,7 +283,6 @@ def basis_functions_wrapper(
     contrast_tau: float | None = None,
     contrast_sigma_design: float | None = None,
     contrast_s_diag: xr.DataArray | None = None,
-    split_strategy: SplitStrategy | None = None,
 ):
     """Create basis sensitivities for a legacy fixed-basis inversion.
 
@@ -350,10 +342,6 @@ def basis_functions_wrapper(
             coefficient. If omitted, ``tau=1`` is uncalibrated.
         contrast_sigma_design: Optional scalar design standard deviation.
         contrast_s_diag: Optional diagonal design covariance entries.
-        split_strategy: Class-local partition strategy used only with
-            ``basis_algorithm="region_constrained"``. This parameter is
-            appended to preserve the legacy wrapper's positional argument
-            order.
 
     Returns:
         By default, returns a dictionary similar to ``fp_all`` but with basis
@@ -391,7 +379,6 @@ def basis_functions_wrapper(
         contrast_tau=contrast_tau,
         contrast_sigma_design=contrast_sigma_design,
         contrast_s_diag=contrast_s_diag,
-        split_strategy=split_strategy,
         outputname=outputname,
         output_path=output_path,
         basis_output_format=basis_output_format,

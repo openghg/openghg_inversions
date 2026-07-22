@@ -5,17 +5,11 @@
 ## Code changes
 
 - Added a source-neutral inner/outer region-class combinator for constrained
-  basis construction. The helper selects aligned class labels on either side
-  of an inner-domain mask, tags their provenance to prevent label collisions,
-  interns repeated composite labels, and validates indexed, curvilinear, and
-  scalar grid coordinates including dtype and metadata. A companion selector
-  handles tuple-valued classes reliably. Class composition and target
-  allocation remain independent of the caller-selected local split strategy;
-  the legacy fixed-InTEM-outer weighted route remains unchanged. This advances
-  [#449](https://github.com/openghg/openghg_inversions/issues/449) and supports
-  [#407](https://github.com/openghg/openghg_inversions/issues/407),
-  [#456](https://github.com/openghg/openghg_inversions/issues/456), and
-  [#509](https://github.com/openghg/openghg_inversions/issues/509).
+  basis construction. It tags class provenance, interns repeated composite
+  labels, and normalizes physically equivalent rectilinear and curvilinear
+  grids while rejecting conflicting spatial metadata or CRS definitions. A
+  companion selector handles tuple-valued classes reliably. This advances
+  [#449](https://github.com/openghg/openghg_inversions/issues/449).
 
 - Reset retained posterior draw labels after burn-in before attaching predictive
   groups in both modern RHIME and fixed-basis sampling, and preserve the
