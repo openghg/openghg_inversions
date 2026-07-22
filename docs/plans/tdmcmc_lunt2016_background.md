@@ -182,7 +182,12 @@ R=\Sigma Q\Sigma.
 
 These are Eqs. (23)-(26), PDF p. 7 / printed p. 3219.
 
-- `Sigma` contains grouped model-measurement standard deviations.
+- `Sigma` contains total per-observation standard deviations. The closest
+  paper-model Fortran constructs each as
+  `sqrt(sigma_model[group]**2 + sigma_measurement[i]**2)` and then applies the
+  AR(1) correlation to that total scale. This is `R = Sigma Q Sigma`; it is not
+  the same covariance as an independent measurement nugget plus a latent OU
+  discrepancy, `D + M Q M`.
 - `Q` is an exponential time-correlation matrix.
 - For regularly spaced observations, `q=exp(-delta_t/tau)` and
   `Q[i,j]=q**abs(i-j)`.
@@ -191,9 +196,21 @@ These are Eqs. (23)-(26), PDF p. 7 / printed p. 3219.
   `det(R) = prod(sigma_i**2) * (1-q**2)**(N-1)`.
 - Sites are treated as spatially independent, producing block-diagonal `R`.
 
-The cheap analytic precision assumes regular sampling. Gaps from downtime or
-filtering require explicit irregular-time treatment, block splitting, or a fixed
-correlation timescale (discussion, PDF p. 15 / printed p. 3227).
+The paper's cheap analytic precision assumes regular sampling, and the later
+Fortran adds latent missing-observation updates to maintain that grid. A modern
+observed-row implementation can instead use
+`rho_j = exp(-Delta_t_j / tau)` between successive irregular observations; the
+continuous-time AR(1)/OU precision remains tridiagonal and its log determinant
+is still an O(N) sum. This is an implementation inference that preserves the
+exponential covariance without adding missing-data states, not an algorithm
+spelled out in the paper.
+
+The current first correlated-error implementation deliberately targets the
+Ganesan-2015-style `D + M Q M` model because it keeps measurement error
+independent and admits the same O(N) irregular-time Kalman calculation. A
+paper-faithful Lunt `Sigma Q Sigma` likelihood remains a distinct comparison
+profile before the rewrite can claim the full historical model has been
+resurrected.
 
 ## Proposal schedule and kernels
 

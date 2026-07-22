@@ -147,11 +147,14 @@ hierarchy.
 There is no repository-supported basis for treating all reported historical
 "iterations" as the same amount of work:
 
-- Ganesan's fixed-dimensional `hierarchical_MCMC_fullcovariance_Kronecker.f90`
-  at revision `bd609a39` performs a deterministic full component sweep. Every
+- The closest surviving Ganesan fixed-dimensional
+  `hierarchical_MCMC_fullcovariance_Kronecker.f90` at revision `bd609a39`
+  performs a deterministic full component sweep. Every
   state element and its two prior parameters, every temporal mismatch
   amplitude, every site amplitude, and the scalar timescale receive an
-  opportunity in one nominal iteration.
+  opportunity in one nominal iteration. Its source header postdates the paper,
+  so this is lineage evidence rather than proof of the published run's exact
+  schedule.
 - Intermediate trans-dimensional `acrg_full_hbtdmcmc.f90` revisions used a
   random five- or seven-slot top-level scan. The dynamic cells shared one
   hyperparameter pair, and the mismatch update selected one random group.
@@ -173,6 +176,17 @@ timescale, and emissions-prior loops. The exact executable revision used for
 the published 90-minute timing has not been identified. Timing reports must
 therefore state both atomic transition counts and the historical revision whose
 proposal opportunities they intend to match.
+
+This revises the interpretation of the current 120,000-cycle, 14-slot PARIS
+comparison. Relative to 600,000 iterations of the near-submission six-way
+revision, it makes about 20% more dynamic-coefficient and geometry proposals
+and 44% more fixed-coefficient proposals in aggregate. Its six deterministic
+fixed positions also differ from the historical five random fixed draws with
+replacement. The profile remains a useful, exactly replayable production
+schedule, but it is not an exact opportunity match to that revision. The new
+16- and 17-slot profiles deliberately extend this existing production
+schedule; a future near-submission-revision profile would instead use five
+random fixed-coefficient slots and must have a distinct identity.
 
 The same closest paper-model revision also resolves one part of the lognormal
 ambiguity. Its `calc_pdf` converts an input arithmetic `mean` and `sd` into
@@ -448,14 +462,16 @@ following correctness and integration work. Items are ordered by dependency.
    stored cache before continuation.
 7. **Completed:** add an xarray retained-trace export with global transition,
    padded region-slot, active-mask, and separate fixed-parameter coordinates.
-8. **Implemented at the target/proposal level:** add independent-site,
+8. **Completed experimentally:** add independent-site,
    irregular-time latent OU mismatch with an explicit measurement nugget,
    inferred bounded mismatch amplitudes, and inferred bounded timescales. The
    scalar Kalman likelihood is normalized and has NumPy/Numba and dense-
-   covariance oracles. Schedule/checkpoint/output integration is in progress.
-9. **Implemented at the target/proposal level:** add one shared arithmetic
+   covariance oracles, versioned schedules, strict checkpoints, manifests, and
+   labelled retained output.
+9. **Completed experimentally:** add one shared arithmetic
    mean/SD pair for the dynamic-coefficient prior, with normalized Ganesan-style
-   hyperpriors in log coordinates and a joint symmetric proposal. The
+   hyperpriors in log coordinates, a joint symmetric proposal, and full
+   schedule/checkpoint/output support. The
    paper-faithful per-region hierarchy is deferred because it is weakly
    identified and its legacy structural dimension match is invalid.
 
@@ -481,6 +497,16 @@ document and in small commits on the draft branch.
 - [x] Continuous auxiliary-coefficient structural proposals satisfy varied
   pointwise forward/reverse flux checks and independent two-cell quadrature,
   including negative-proposal self-mass.
+- [x] Irregular-time OU likelihoods agree with independently constructed dense
+  Gaussian covariance log densities for interleaved sites, grouped amplitudes,
+  shared and site-specific timescales, singleton blocks, and extreme gaps.
+- [x] Mismatch-amplitude, timescale, and shared-hierarchy proposals satisfy
+  pointwise forward/reverse accepted-flux equality and NumPy/Numba parity.
+- [x] Extended schedules preserve exact global phase and PCG64 state across
+  awkward in-memory and durable restarts without changing legacy seeded paths.
+- [x] Checkpoint schema v3 round-trips optional state and rejects altered OU
+  mappings, bounds, hierarchy settings, kernel scales, arrays, and cached target
+  terms while retaining v1/v2 legacy-target compatibility.
 - [x] Forced birth/death pairs satisfy pointwise detailed balance.
 - [x] NumPy and Numba kernels agree for deterministic and randomised states.
 - [x] Fixed-seed sampling is reproducible.
@@ -510,6 +536,9 @@ document and in small commits on the draft branch.
 - [x] Retained traces export to labelled xarray datasets without conflating
   dynamic region slots, always-active parameters, and attempted-transition
   diagnostics.
+- [x] Optional retained output labels mismatch groups and timescale parameters,
+  and makes inactive hierarchy coordinates explicit instead of interpreting
+  neutral state zeros as inferred arithmetic moments.
 - [x] Focused tests, Ruff checks, formatting checks, and configured type checks pass.
 
 ## Planned stages
@@ -525,21 +554,56 @@ document and in small commits on the draft branch.
 8. Benchmark and decide whether incremental kernels, parallel tempering, JAX,
    or a retained compiled backend are justified.
 
-Stages 1--5 now have a working first implementation. Stage 6 has a minimal
-prepared-dataset adapter, while production runner and output integration in
-stages 6--7 remain follow-up work.
+Stages 1--7 now have working experimental implementations. The RHIME adapter
+still covers the independent-error target only; inferred OU grouping and time
+semantics must remain an explicit production-driver responsibility until an
+opt-in adapter contract is added.
 
 The first paper-specific mechanics are now implemented: native-grid posterior
 projection, an opt-in normalized local discrete-Gaussian sampler move,
 continuous and finite structural-kernel oracles, declared run profiles, exact
 durable continuation, labelled retained-trace interchange, and joint
-dynamic-inner/fixed-outer prediction. The next correctness gate is the opt-in
-per-region log-space hierarchy. Correlated-error blocks remain behind it.
+dynamic-inner/fixed-outer prediction. The first correlated-error and hierarchy
+extension now adds an irregular-time independent-site latent OU discrepancy,
+inferred mismatch amplitudes and timescales, and one shared partially pooled
+dynamic-coefficient prior pair. A separate paper-faithful Lunt `Sigma Q Sigma`
+likelihood and the problematic per-region hierarchy remain follow-up profiles,
+not implicit behavior of this implementation.
 
 ## Progress log
 
 ### 2026-07-22
 
+- Created `codex/rjmcmc-correlated-hierarchy` from the committed incremental-
+  geometry branch and kept the work in small target, proposal, schedule,
+  checkpoint, manifest, and output commits.
+- Added a normalized irregular-time independent-site OU likelihood with an
+  explicit independent measurement nugget. NumPy and Numba scalar Kalman
+  implementations agree with dense covariance oracles and run in O(N)
+  observation time without materializing `R`.
+- Added bounded-uniform inferred mismatch amplitudes and timescales, including
+  cache-preserving one-coordinate Gaussian proposals and pointwise accepted-
+  flux balance tests.
+- Added one shared arithmetic mean/SD pair for all dynamic Voronoi
+  coefficients. Its log coordinates have normalized lognormal-inspired
+  hyperpriors, are counted once regardless of `k`, and persist unchanged
+  through structural proposals. Fixed outer coefficients remain outside the
+  pool.
+- Added explicit 16-slot OU and 17-slot OU-plus-hierarchy schedules while
+  preserving every existing schedule and seeded random stream. Exact
+  continuation tests split chains at non-cycle-aligned boundaries.
+- Bumped strict checkpoints to schema v3, fingerprinting all OU alignment,
+  bounds, hierarchy settings, kernel scales, and optional state. Genuine v1/v2
+  archive layouts and legacy problem hashes remain loadable for legacy targets.
+- Bumped run manifests to schema v2 and added schedule profile, optional
+  proposal scales, time units, bounded priors, and hierarchy parameterization.
+  Labelled xarray output now includes mismatch groups, timescale parameters,
+  log hierarchy coordinates, and derived arithmetic moments.
+- Added deterministic prior-predictive contracts showing that the historical
+  `mu_log=0,sigma_log=1` choice has arithmetic mean `exp(1/2)` and that IID
+  aggregation concentrates country totals around that biased mean as the
+  effective number of regions increases. Correct arithmetic mean/SD `(1,1)`
+  maps to `mu_log=-0.5*log(2)`, `sigma_log=sqrt(log(2))`.
 - Created `codex/rjmcmc-incremental-geometry` from the pushed
   `codex/tdmcmc-numba-rewrite` checkpoint `cd73231` while the unchanged HPC
   production chains continued running.
@@ -629,13 +693,13 @@ per-region log-space hierarchy. Correlated-error blocks remain behind it.
   always-active parameter dimension. Attempted-transition diagnostics remain a
   separate future output because they do not align one-for-one with retained
   draws.
-- Re-audited the next Lunt hierarchy stage. The paper defines a separate
-  log-space Normal `(mu_x, sigma_x)` pair for every active region, not the
-  arithmetic lognormal moments used by the fixed-prior pseudo-data API. It does
-  not define how a new pair is generated in an upward structural move. The
-  legacy parent-copy rule is not a dimension-matched reversible proposal once
-  pairs vary independently; the planned reference completion samples the new
-  pair from its normalized bounded hyperprior.
+- Re-audited the next Lunt hierarchy stage. The paper describes a separate
+  log-space `(mu_x, sigma_x)` pair for every active region, but later source
+  inspection found that the near-submission Fortran actually accepts
+  arithmetic mean/SD and converts internally. Neither source defines a valid
+  dimension match for adding an independently evolving pair: the legacy
+  parent-copy rule remains invalid. The first implemented hierarchy therefore
+  uses one fixed-dimensional shared pair instead.
 
 ### 2026-07-18
 
