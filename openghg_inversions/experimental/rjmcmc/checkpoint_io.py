@@ -18,7 +18,7 @@ from collections.abc import Mapping
 from hashlib import sha256
 import hmac
 import json
-from math import isfinite
+from math import exp, isfinite
 import os
 from pathlib import Path
 import tempfile
@@ -38,6 +38,8 @@ from openghg_inversions.experimental.rjmcmc.core import (
 from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
 from openghg_inversions.experimental.rjmcmc.sampling import (
     FIXED_BLOCK_SCHEDULE_ID,
+    LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE,
+    LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE,
     LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE,
     SCHEDULE_ID,
     KernelSettings,
@@ -53,9 +55,9 @@ FloatArray: TypeAlias = NDArray[np.float64]
 IntArray: TypeAlias = NDArray[np.int64]
 
 CHECKPOINT_SCHEMA_ID = "openghg_inversions.experimental.rjmcmc.checkpoint"
-CHECKPOINT_SCHEMA_VERSION = 2
+CHECKPOINT_SCHEMA_VERSION = 3
 
-_STATE_ARRAY_NAMES = (
+_LEGACY_STATE_ARRAY_NAMES = (
     "nuclei",
     "coefficients",
     "labels",
@@ -66,14 +68,26 @@ _STATE_ARRAY_NAMES = (
     "prediction",
     "residual",
 )
+_OPTIONAL_STATE_ARRAY_NAMES = (
+    "mismatch_sd",
+    "correlation_timescale",
+)
+_STATE_ARRAY_NAMES = (*_LEGACY_STATE_ARRAY_NAMES, *_OPTIONAL_STATE_ARRAY_NAMES)
+_LEGACY_ARCHIVE_NAMES = frozenset((*_LEGACY_STATE_ARRAY_NAMES, "metadata", "metadata_sha256"))
 _ARCHIVE_NAMES = frozenset((*_STATE_ARRAY_NAMES, "metadata", "metadata_sha256"))
-_LOG_FIELD_NAMES = (
+_LEGACY_LOG_FIELD_NAMES = (
     "log_likelihood",
     "log_coefficient_prior",
     "log_fixed_coefficient_prior",
     "log_k_prior",
     "log_nucleus_prior",
 )
+_OPTIONAL_LOG_FIELD_NAMES = (
+    "log_error_model_prior",
+    "log_coefficient_hyperprior",
+)
+_LOG_FIELD_NAMES = (*_LEGACY_LOG_FIELD_NAMES, *_OPTIONAL_LOG_FIELD_NAMES)
+_HIERARCHY_STATE_NAMES = ("eta", "zeta")
 _METADATA_NAMES = frozenset(
     {
         "schema_id",
@@ -267,8 +281,8 @@ def _array_sha256(name: str, array: NDArray[Any]) -> str:
     return digest.hexdigest()
 
 
-def _problem_sha256(problem: TransDimensionalProblem) -> str:
-    """Fingerprint the exact normalized numerical target consumed by the sampler."""
+def _legacy_problem_sha256(problem: TransDimensionalProblem) -> str:
+    """Fingerprint a schema-v1/v2 numerical target with the legacy algorithm."""
     digest = sha256()
     scalar_payload = _canonical_json(
         {
@@ -300,6 +314,89 @@ def _problem_sha256(problem: TransDimensionalProblem) -> str:
     return digest.hexdigest()
 
 
+def _problem_sha256(problem: TransDimensionalProblem) -> str:
+    """Fingerprint the complete schema-v3 normalized numerical target."""
+    digest = sha256()
+    scalar_payload = _canonical_json(
+        {
+            "k_min": problem.k_min,
+            "k_max": problem.k_max,
+            "coefficient_prior_mean": problem.coefficient_prior_mean,
+            "coefficient_prior_sd": problem.coefficient_prior_sd,
+            "has_fixed_block": problem.fixed_block is not None,
+            "has_error_model": problem.error_model is not None,
+            "has_coefficient_hierarchy": problem.coefficient_hierarchy is not None,
+        },
+        location="problem scalars",
+    ).encode("utf-8")
+    _update_hash_bytes(digest, "problem.scalars", scalar_payload)
+    for name in (
+        "observations",
+        "observation_sd",
+        "sensitivities",
+        "grid_coordinates",
+        "log_k_prior",
+        "fixed_offset",
+    ):
+        _update_hash_array(digest, f"problem.{name}", getattr(problem, name))
+    if problem.fixed_block is not None:
+        for name in ("design", "coefficient_prior_mean", "coefficient_prior_sd"):
+            _update_hash_array(
+                digest,
+                f"problem.fixed_block.{name}",
+                getattr(problem.fixed_block, name),
+            )
+    if problem.error_model is not None:
+        for name in (
+            "observation_sd",
+            "observation_time",
+            "site_index",
+            "mismatch_group_index",
+            "site_tau_index",
+        ):
+            _update_hash_array(
+                digest,
+                f"problem.error_model.data.{name}",
+                getattr(problem.error_model.data, name),
+            )
+        for name in (
+            "mismatch_sd_prior_lower",
+            "mismatch_sd_prior_upper",
+            "correlation_timescale_prior_lower",
+            "correlation_timescale_prior_upper",
+        ):
+            _update_hash_array(
+                digest,
+                f"problem.error_model.{name}",
+                getattr(problem.error_model, name),
+            )
+    if problem.coefficient_hierarchy is not None:
+        hierarchy_payload = _canonical_json(
+            {
+                name: getattr(problem.coefficient_hierarchy, name)
+                for name in (
+                    "mean_hyperprior_median",
+                    "mean_hyperprior_log_sd",
+                    "sd_hyperprior_median",
+                    "sd_hyperprior_log_sd",
+                )
+            },
+            location="problem coefficient hierarchy",
+        ).encode("utf-8")
+        _update_hash_bytes(digest, "problem.coefficient_hierarchy", hierarchy_payload)
+    return digest.hexdigest()
+
+
+def _problem_sha256_for_version(
+    problem: TransDimensionalProblem,
+    schema_version: int,
+) -> str:
+    """Return the exact problem fingerprint algorithm for one schema version."""
+    if schema_version in (1, 2):
+        return _legacy_problem_sha256(problem)
+    return _problem_sha256(problem)
+
+
 def _expected_schedule(
     problem: TransDimensionalProblem,
     schedule_profile: ScheduleProfile,
@@ -327,8 +424,36 @@ def _validate_kernel(kernel: KernelSettings) -> None:
     )
     if kernel.nucleus_move == "local" and local_scale is None:
         raise ValueError("kernel.local_move_scale is required for local nucleus moves.")
-    if kernel.schedule_profile not in ("default", LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE):
+    supported_profiles = (
+        "default",
+        LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE,
+        LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE,
+        LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE,
+    )
+    if kernel.schedule_profile not in supported_profiles:
         raise ValueError("kernel.schedule_profile is unsupported.")
+    error_scale_names = (
+        "mismatch_sd_proposal_sd",
+        "correlation_timescale_proposal_sd",
+    )
+    hierarchy_scale_names = ("eta_proposal_sd", "zeta_proposal_sd")
+    required: set[str] = set(
+        error_scale_names
+        if kernel.schedule_profile
+        in (
+            LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE,
+            LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE,
+        )
+        else ()
+    )
+    if kernel.schedule_profile == LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_PROFILE:
+        required.update(hierarchy_scale_names)
+    for name in (*error_scale_names, *hierarchy_scale_names):
+        value = getattr(kernel, name)
+        if name in required:
+            _require_positive_float(value, location=f"kernel.{name}")
+        elif value is not None:
+            raise ValueError(f"kernel.{name} is not used by its schedule profile.")
 
 
 def _validate_rng(rng_state: PCG64State) -> None:
@@ -361,14 +486,22 @@ def _validate_state_against_rebuild(
     mismatch_fields: dict[Backend, list[str]] = {}
     for backend in (preferred_backend, alternative_backend):
         try:
+            mismatch_sd = state.mismatch_sd if problem.error_model is not None else None
+            correlation_timescale = state.correlation_timescale if problem.error_model is not None else None
+            coefficient_prior_mean = exp(state.eta) if problem.coefficient_hierarchy is not None else None
+            coefficient_prior_sd = exp(state.zeta) if problem.coefficient_hierarchy is not None else None
             rebuilt = build_state(
                 problem,
                 state.nuclei[: state.k],
                 state.coefficients[: state.k],
                 fixed_coefficients=fixed_coefficients,
+                mismatch_sd=mismatch_sd,
+                correlation_timescale=correlation_timescale,
+                coefficient_prior_mean=coefficient_prior_mean,
+                coefficient_prior_sd=coefficient_prior_sd,
                 backend=backend,
             )
-        except (TypeError, ValueError):
+        except (OverflowError, TypeError, ValueError):
             mismatch_fields[backend] = ["state reconstruction"]
             continue
 
@@ -464,6 +597,10 @@ def _metadata(
             "nucleus_move": kernel.nucleus_move,
             "local_move_scale": kernel.local_move_scale,
             "schedule_profile": kernel.schedule_profile,
+            "mismatch_sd_proposal_sd": kernel.mismatch_sd_proposal_sd,
+            "correlation_timescale_proposal_sd": kernel.correlation_timescale_proposal_sd,
+            "eta_proposal_sd": kernel.eta_proposal_sd,
+            "zeta_proposal_sd": kernel.zeta_proposal_sd,
         },
         "retention": {
             "warmup_transitions": checkpoint.retention.warmup_transitions,
@@ -472,6 +609,7 @@ def _metadata(
         "state": {
             "k": state.k,
             **{name: getattr(state, name) for name in _LOG_FIELD_NAMES},
+            **{name: getattr(state, name) for name in _HIERARCHY_STATE_NAMES},
         },
         "state_backend": state_backend,
         "problem_sha256": _problem_sha256(checkpoint.problem),
@@ -539,7 +677,7 @@ def save_checkpoint(
 
 
 def _load_archive_arrays(path: Path) -> dict[str, NDArray[Any]]:
-    """Read the exact numeric archive field set with pickle support disabled."""
+    """Read a known numeric archive field set with pickle support disabled."""
     try:
         archive = np.load(path, allow_pickle=False)
     except (FileNotFoundError, PermissionError):
@@ -551,15 +689,16 @@ def _load_archive_arrays(path: Path) -> dict[str, NDArray[Any]]:
     try:
         with archive:
             names = frozenset(archive.files)
-            if names != _ARCHIVE_NAMES:
-                missing = sorted(_ARCHIVE_NAMES - names)
-                unexpected = sorted(names - _ARCHIVE_NAMES)
+            if names not in (_LEGACY_ARCHIVE_NAMES, _ARCHIVE_NAMES):
+                expected = _ARCHIVE_NAMES if _ARCHIVE_NAMES - names else _LEGACY_ARCHIVE_NAMES
+                missing = sorted(expected - names)
+                unexpected = sorted(names - expected)
                 raise ValueError(
                     "Checkpoint archive has an invalid array set; "
                     f"missing={missing}, unexpected={unexpected}."
                 )
             try:
-                return {name: np.array(archive[name], copy=True) for name in _ARCHIVE_NAMES}
+                return {name: np.array(archive[name], copy=True) for name in names}
             except ValueError as exc:
                 raise ValueError(
                     "Checkpoint archive arrays could not be read safely; "
@@ -606,6 +745,15 @@ def _kernel_from_metadata(value: object, *, schema_version: int) -> KernelSettin
     }
     if schema_version >= 2:
         expected_fields.add("schedule_profile")
+    if schema_version >= 3:
+        expected_fields.update(
+            {
+                "mismatch_sd_proposal_sd",
+                "correlation_timescale_proposal_sd",
+                "eta_proposal_sd",
+                "zeta_proposal_sd",
+            }
+        )
     _require_keys(
         kernel,
         frozenset(expected_fields),
@@ -644,6 +792,38 @@ def _kernel_from_metadata(value: object, *, schema_version: int) -> KernelSettin
             location="checkpoint metadata.kernel.local_move_scale",
         ),
         schedule_profile=cast(Any, schedule_profile),
+        mismatch_sd_proposal_sd=(
+            _require_optional_positive_float(
+                kernel["mismatch_sd_proposal_sd"],
+                location="checkpoint metadata.kernel.mismatch_sd_proposal_sd",
+            )
+            if schema_version >= 3
+            else None
+        ),
+        correlation_timescale_proposal_sd=(
+            _require_optional_positive_float(
+                kernel["correlation_timescale_proposal_sd"],
+                location="checkpoint metadata.kernel.correlation_timescale_proposal_sd",
+            )
+            if schema_version >= 3
+            else None
+        ),
+        eta_proposal_sd=(
+            _require_optional_positive_float(
+                kernel["eta_proposal_sd"],
+                location="checkpoint metadata.kernel.eta_proposal_sd",
+            )
+            if schema_version >= 3
+            else None
+        ),
+        zeta_proposal_sd=(
+            _require_optional_positive_float(
+                kernel["zeta_proposal_sd"],
+                location="checkpoint metadata.kernel.zeta_proposal_sd",
+            )
+            if schema_version >= 3
+            else None
+        ),
     )
     _validate_kernel(settings)
     return settings
@@ -709,10 +889,13 @@ def _validated_state_arrays(
     arrays: Mapping[str, NDArray[Any]],
     metadata: Mapping[str, object],
     problem: TransDimensionalProblem,
+    *,
+    schema_version: int,
 ) -> dict[str, NDArray[Any]]:
     """Validate state array checksums, exact dtypes, and problem-derived shapes."""
     digests = _require_mapping(metadata["array_sha256"], location="checkpoint metadata.array_sha256")
-    _require_keys(digests, frozenset(_STATE_ARRAY_NAMES), location="checkpoint metadata.array_sha256")
+    state_array_names = _STATE_ARRAY_NAMES if schema_version >= 3 else _LEGACY_STATE_ARRAY_NAMES
+    _require_keys(digests, frozenset(state_array_names), location="checkpoint metadata.array_sha256")
     expected: dict[str, tuple[np.dtype[Any], tuple[int, ...]]] = {
         "nuclei": (np.dtype(np.int64), (problem.k_max,)),
         "coefficients": (np.dtype(np.float64), (problem.k_max,)),
@@ -724,6 +907,18 @@ def _validated_state_arrays(
         "prediction": (np.dtype(np.float64), (problem.n_observations,)),
         "residual": (np.dtype(np.float64), (problem.n_observations,)),
     }
+    if schema_version >= 3:
+        n_mismatch = 0
+        n_timescale = 0
+        if problem.error_model is not None:
+            n_mismatch = problem.error_model.data.n_mismatch_groups
+            n_timescale = problem.error_model.data.n_tau_parameters
+        expected.update(
+            {
+                "mismatch_sd": (np.dtype(np.float64), (n_mismatch,)),
+                "correlation_timescale": (np.dtype(np.float64), (n_timescale,)),
+            }
+        )
     result: dict[str, NDArray[Any]] = {}
     for name, (dtype, shape) in expected.items():
         array = arrays[name]
@@ -741,17 +936,42 @@ def _validated_state_arrays(
         owned = np.array(array, dtype=dtype, copy=True)
         owned.setflags(write=False)
         result[name] = owned
+    if schema_version >= 3 and problem.error_model is not None:
+        mismatch_sd = result["mismatch_sd"]
+        correlation_timescale = result["correlation_timescale"]
+        error_model = problem.error_model
+        if (
+            not np.all(np.isfinite(mismatch_sd))
+            or np.any(mismatch_sd <= 0.0)
+            or np.any(mismatch_sd < error_model.mismatch_sd_prior_lower)
+            or np.any(mismatch_sd > error_model.mismatch_sd_prior_upper)
+        ):
+            raise ValueError("Checkpoint mismatch_sd is outside its finite positive prior support.")
+        if (
+            not np.all(np.isfinite(correlation_timescale))
+            or np.any(correlation_timescale <= 0.0)
+            or np.any(correlation_timescale < error_model.correlation_timescale_prior_lower)
+            or np.any(correlation_timescale > error_model.correlation_timescale_prior_upper)
+        ):
+            raise ValueError("Checkpoint correlation_timescale is outside its finite positive prior support.")
     return result
 
 
 def _state_from_metadata(
     value: object,
     arrays: Mapping[str, NDArray[Any]],
+    *,
+    schema_version: int,
 ) -> TransDimensionalState:
     """Construct the exact stored state after scalar metadata validation."""
     state = _require_mapping(value, location="checkpoint metadata.state")
-    expected_names = frozenset(("k", *_LOG_FIELD_NAMES))
+    scalar_names = (
+        (*_LOG_FIELD_NAMES, *_HIERARCHY_STATE_NAMES) if schema_version >= 3 else _LEGACY_LOG_FIELD_NAMES
+    )
+    expected_names = frozenset(("k", *scalar_names))
     _require_keys(state, expected_names, location="checkpoint metadata.state")
+    legacy_empty = np.empty(0, dtype=np.float64)
+    legacy_empty.setflags(write=False)
     return TransDimensionalState(
         k=_require_integer(state["k"], location="checkpoint metadata.state.k", minimum=1),
         nuclei=cast(IntArray, arrays["nuclei"]),
@@ -782,6 +1002,40 @@ def _state_from_metadata(
         log_nucleus_prior=_require_finite_float(
             state["log_nucleus_prior"],
             location="checkpoint metadata.state.log_nucleus_prior",
+        ),
+        mismatch_sd=cast(
+            FloatArray,
+            arrays["mismatch_sd"] if schema_version >= 3 else legacy_empty,
+        ),
+        correlation_timescale=cast(
+            FloatArray,
+            arrays["correlation_timescale"] if schema_version >= 3 else legacy_empty,
+        ),
+        eta=(
+            _require_finite_float(state["eta"], location="checkpoint metadata.state.eta")
+            if schema_version >= 3
+            else 0.0
+        ),
+        zeta=(
+            _require_finite_float(state["zeta"], location="checkpoint metadata.state.zeta")
+            if schema_version >= 3
+            else 0.0
+        ),
+        log_error_model_prior=(
+            _require_finite_float(
+                state["log_error_model_prior"],
+                location="checkpoint metadata.state.log_error_model_prior",
+            )
+            if schema_version >= 3
+            else 0.0
+        ),
+        log_coefficient_hyperprior=(
+            _require_finite_float(
+                state["log_coefficient_hyperprior"],
+                location="checkpoint metadata.state.log_coefficient_hyperprior",
+            )
+            if schema_version >= 3
+            else 0.0
         ),
     )
 
@@ -870,8 +1124,23 @@ def load_checkpoint(
         location="checkpoint metadata.schema_version",
         minimum=1,
     )
-    if version not in (1, CHECKPOINT_SCHEMA_VERSION):
+    if version not in (1, 2, CHECKPOINT_SCHEMA_VERSION):
         raise ValueError(f"Unsupported checkpoint schema version {version}.")
+    selected_archive_names = _ARCHIVE_NAMES if version >= 3 else _LEGACY_ARCHIVE_NAMES
+    expected_archive_names = frozenset(str(name) for name in selected_archive_names)
+    archive_names = frozenset(str(name) for name in archive)
+    if archive_names != expected_archive_names:
+        missing = sorted(expected_archive_names - archive_names)
+        unexpected = sorted(archive_names - expected_archive_names)
+        raise ValueError(
+            "Checkpoint archive fields do not match its schema version; "
+            f"missing={missing}, unexpected={unexpected}."
+        )
+    if version < 3 and (problem.error_model is not None or problem.coefficient_hierarchy is not None):
+        raise ValueError(
+            "Checkpoint schema versions 1 and 2 cannot be loaded against inferred OU "
+            "or coefficient-hierarchy problems."
+        )
     saved_numpy_version = _require_text(
         metadata["numpy_version"],
         location="checkpoint metadata.numpy_version",
@@ -889,7 +1158,10 @@ def load_checkpoint(
         metadata["problem_sha256"],
         location="checkpoint metadata.problem_sha256",
     )
-    if not hmac.compare_digest(supplied_problem_sha256, _problem_sha256(problem)):
+    if not hmac.compare_digest(
+        supplied_problem_sha256,
+        _problem_sha256_for_version(problem, version),
+    ):
         raise ValueError("Checkpoint numerical problem fingerprint does not match the supplied problem.")
     _validate_manifest(metadata, expected_run_manifest=expected_run_manifest)
 
@@ -914,8 +1186,17 @@ def load_checkpoint(
         )
     rng_state = _rng_from_metadata(metadata["rng"])
     retention = _retention_from_metadata(metadata["retention"])
-    state_arrays = _validated_state_arrays(archive, metadata, problem)
-    state = _state_from_metadata(metadata["state"], state_arrays)
+    state_arrays = _validated_state_arrays(
+        archive,
+        metadata,
+        problem,
+        schema_version=version,
+    )
+    state = _state_from_metadata(
+        metadata["state"],
+        state_arrays,
+        schema_version=version,
+    )
     state_backend = _require_text(
         metadata["state_backend"],
         location="checkpoint metadata.state_backend",

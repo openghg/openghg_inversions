@@ -224,6 +224,8 @@ def test_durable_round_trip_continues_exact_chain(
             "fixed_prediction",
             "prediction",
             "residual",
+            "mismatch_sd",
+            "correlation_timescale",
             "metadata",
             "metadata_sha256",
         }
@@ -257,7 +259,7 @@ def test_expected_run_manifest_must_match_exact_canonical_content(tmp_path: Path
     ("field", "value", "message"),
     [
         ("schema_id", "future.checkpoint", "Unsupported checkpoint schema"),
-        ("schema_version", 3, "Unsupported checkpoint schema version"),
+        ("schema_version", 4, "Unsupported checkpoint schema version"),
     ],
 )
 def test_unknown_schema_fails_closed(
@@ -278,7 +280,7 @@ def test_unknown_schema_fails_closed(
 
 
 def test_schema_v1_checkpoint_remains_loadable(tmp_path: Path) -> None:
-    """Schema v2 readers must preserve exact continuation of legacy v1 files."""
+    """Schema v3 readers must preserve exact continuation of real legacy v1 files."""
     problem = _problem(fixed=True)
     result = sample(problem, _initial_state(problem), _config(iterations=7, fixed=True))
     path = tmp_path / "legacy-v1.npz"
@@ -287,9 +289,44 @@ def test_schema_v1_checkpoint_remains_loadable(tmp_path: Path) -> None:
     def downgrade_to_v1(metadata: dict[str, Any]) -> None:
         """Recreate the metadata shape written by the schema-v1 implementation."""
         metadata["schema_version"] = 1
+        metadata["problem_sha256"] = checkpoint_io._legacy_problem_sha256(problem)
         metadata["kernel"].pop("schedule_profile")
+        for name in (
+            "mismatch_sd_proposal_sd",
+            "correlation_timescale_proposal_sd",
+            "eta_proposal_sd",
+            "zeta_proposal_sd",
+        ):
+            metadata["kernel"].pop(name)
+        for name in (
+            "eta",
+            "zeta",
+            "log_error_model_prior",
+            "log_coefficient_hyperprior",
+        ):
+            metadata["state"].pop(name)
+        metadata["array_sha256"].pop("mismatch_sd")
+        metadata["array_sha256"].pop("correlation_timescale")
 
-    _rewrite_metadata(path, downgrade_to_v1)
+    arrays = _archive_arrays(path)
+    arrays.pop("mismatch_sd")
+    arrays.pop("correlation_timescale")
+    metadata = json.loads(arrays["metadata"].tobytes().decode("utf-8"))
+    assert isinstance(metadata, dict)
+    downgrade_to_v1(metadata)
+    payload = json.dumps(
+        metadata,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    arrays["metadata"] = np.frombuffer(payload, dtype=np.uint8)
+    arrays["metadata_sha256"] = np.frombuffer(
+        sha256(payload).hexdigest().encode("ascii"),
+        dtype=np.uint8,
+    )
+    _rewrite_archive(path, arrays)
     loaded = load_checkpoint(path, _problem(fixed=True))
 
     assert loaded.kernel_settings.schedule_profile == "default"

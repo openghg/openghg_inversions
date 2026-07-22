@@ -251,7 +251,7 @@ def test_unaligned_durable_restart_preserves_schedule_retention_and_rng(tmp_path
     _assert_split_matches_full(full, first, continued)
     with np.load(checkpoint_path, allow_pickle=False) as archive:
         metadata = json.loads(archive["metadata"].tobytes().decode("utf-8"))
-    assert metadata["schema_version"] == CHECKPOINT_SCHEMA_VERSION == 2
+    assert metadata["schema_version"] == CHECKPOINT_SCHEMA_VERSION == 3
     assert metadata["kernel"]["schedule_profile"] == LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE
 
 
