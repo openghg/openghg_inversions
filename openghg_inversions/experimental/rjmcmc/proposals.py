@@ -17,7 +17,9 @@ from .core import (
     TransDimensionalProblem,
     TransDimensionalState,
     update_dynamic_coefficient_state,
+    update_error_model_state,
     update_fixed_coefficient_state,
+    update_shared_hierarchy_state,
     update_structural_state,
 )
 
@@ -371,6 +373,286 @@ def propose_fixed_coefficient(
         log_q_forward=log_q_forward,
         log_q_reverse=log_q_reverse,
         move="fixed_coefficient",
+    )
+
+
+def _propose_error_parameter(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+    *,
+    parameter: str,
+    parameter_position: int,
+    proposed_value: float,
+    proposal_stdev: float,
+    backend: Backend,
+) -> TransitionTerms:
+    """Construct one bounded OU-parameter random-walk update.
+
+    The Gaussian walk is defined on the whole real line. Draws outside the
+    bounded-uniform target support are therefore explicit invalid
+    self-transitions rather than draws from a silently truncated proposal.
+    """
+    _validate_backend(backend)
+    _validate_problem_state(problem, state)
+    proposal_stdev = _validate_proposal_scale(proposal_stdev, name="proposal_stdev")
+    error_model = problem.error_model
+    move = "mismatch_sd" if parameter == "mismatch_sd" else "correlation_timescale"
+    if error_model is None:
+        return _invalid_transition(
+            state,
+            move=move,
+            reason=f"{move} proposals require an inferred OU error model.",
+        )
+
+    if parameter == "mismatch_sd":
+        current_values = state.mismatch_sd
+        lower = error_model.mismatch_sd_prior_lower
+        upper = error_model.mismatch_sd_prior_upper
+    else:
+        current_values = state.correlation_timescale
+        lower = error_model.correlation_timescale_prior_lower
+        upper = error_model.correlation_timescale_prior_upper
+    position = _active_position(parameter_position, k=current_values.size)
+    if position is None:
+        return _invalid_transition(
+            state,
+            move=move,
+            reason=f"{move}_position must select a configured parameter.",
+        )
+    if isinstance(proposed_value, bool):
+        value = None
+    else:
+        try:
+            numeric_value = float(proposed_value)
+        except (TypeError, ValueError):
+            value = None
+        else:
+            value = numeric_value if math.isfinite(numeric_value) else None
+    if value is None or value < lower[position] or value > upper[position]:
+        return _invalid_transition(
+            state,
+            move=move,
+            reason=(
+                f"proposed_{move} must be finite and within its inclusive bounded-uniform prior support."
+            ),
+        )
+
+    current = float(current_values[position])
+    if parameter == "mismatch_sd":
+        candidate = update_error_model_state(
+            problem,
+            state,
+            mismatch_sd_position=position,
+            proposed_mismatch_sd=value,
+            backend=backend,
+        )
+    else:
+        candidate = update_error_model_state(
+            problem,
+            state,
+            correlation_timescale_position=position,
+            proposed_correlation_timescale=value,
+            backend=backend,
+        )
+    log_position_probability = -math.log(current_values.size)
+    log_q_forward = log_position_probability + _normal_log_density(
+        value,
+        mean=current,
+        stdev=proposal_stdev,
+    )
+    log_q_reverse = log_position_probability + _normal_log_density(
+        current,
+        mean=value,
+        stdev=proposal_stdev,
+    )
+    return _valid_transition(
+        state,
+        candidate,
+        log_q_forward=log_q_forward,
+        log_q_reverse=log_q_reverse,
+        move=move,
+    )
+
+
+def propose_mismatch_sd(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+    *,
+    mismatch_sd_position: int,
+    proposed_mismatch_sd: float,
+    proposal_stdev: float,
+    backend: Backend = "numpy",
+) -> TransitionTerms:
+    """Construct a random-walk update for one OU mismatch amplitude.
+
+    Args:
+        problem: Target containing an inferred OU error model.
+        state: Immutable source state built or durably loaded for ``problem``.
+        mismatch_sd_position: Zero-based mismatch group chosen uniformly by
+            the eventual sampler.
+        proposed_mismatch_sd: Explicit additive-Gaussian proposal draw.
+        proposal_stdev: Positive standard deviation of the Gaussian walk.
+        backend: OU likelihood implementation for the candidate target.
+
+    Returns:
+        Complete proposal accounting. Missing configuration, invalid positions,
+        and draws outside the inclusive bounded-uniform prior support produce
+        invalid self-transitions. The proposal is not truncated at the bounds.
+
+    Raises:
+        TypeError: If ``problem`` or ``state`` has the wrong type.
+        ValueError: If the problem/state contract, proposal scale, or backend
+            is malformed.
+    """
+    return _propose_error_parameter(
+        problem,
+        state,
+        parameter="mismatch_sd",
+        parameter_position=mismatch_sd_position,
+        proposed_value=proposed_mismatch_sd,
+        proposal_stdev=proposal_stdev,
+        backend=backend,
+    )
+
+
+def propose_correlation_timescale(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+    *,
+    correlation_timescale_position: int,
+    proposed_correlation_timescale: float,
+    proposal_stdev: float,
+    backend: Backend = "numpy",
+) -> TransitionTerms:
+    """Construct a random-walk update for one OU correlation timescale.
+
+    Args:
+        problem: Target containing an inferred OU error model.
+        state: Immutable source state built or durably loaded for ``problem``.
+        correlation_timescale_position: Zero-based timescale parameter chosen
+            uniformly by the eventual sampler.
+        proposed_correlation_timescale: Explicit additive-Gaussian proposal.
+        proposal_stdev: Positive standard deviation of the Gaussian walk.
+        backend: OU likelihood implementation for the candidate target.
+
+    Returns:
+        Complete proposal accounting. Missing configuration, invalid positions,
+        and draws outside the inclusive bounded-uniform prior support produce
+        invalid self-transitions. The proposal is not truncated at the bounds.
+
+    Raises:
+        TypeError: If ``problem`` or ``state`` has the wrong type.
+        ValueError: If the problem/state contract, proposal scale, or backend
+            is malformed.
+    """
+    return _propose_error_parameter(
+        problem,
+        state,
+        parameter="correlation_timescale",
+        parameter_position=correlation_timescale_position,
+        proposed_value=proposed_correlation_timescale,
+        proposal_stdev=proposal_stdev,
+        backend=backend,
+    )
+
+
+def propose_shared_hierarchy(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+    *,
+    proposed_eta: float,
+    proposed_zeta: float,
+    eta_proposal_stdev: float,
+    zeta_proposal_stdev: float,
+    backend: Backend = "numpy",
+) -> TransitionTerms:
+    """Construct a joint Gaussian update of the shared hierarchy state.
+
+    Args:
+        problem: Target containing a shared coefficient hierarchy.
+        state: Immutable source state built or durably loaded for ``problem``.
+        proposed_eta: Explicit proposal for log arithmetic prior mean.
+        proposed_zeta: Explicit proposal for log arithmetic prior SD.
+        eta_proposal_stdev: Positive Gaussian walk scale for ``eta``.
+        zeta_proposal_stdev: Positive Gaussian walk scale for ``zeta``.
+        backend: Hierarchy-kernel implementation for the candidate target.
+
+    Returns:
+        Complete proposal accounting for the product of two independent,
+        symmetric Gaussian random walks. Missing hierarchy configuration or a
+        nonfinite coordinate produces an invalid self-transition.
+
+    Raises:
+        TypeError: If ``problem`` or ``state`` has the wrong type.
+        ValueError: If the problem/state contract, a proposal scale, or backend
+            is malformed.
+    """
+    _validate_backend(backend)
+    _validate_problem_state(problem, state)
+    eta_scale = _validate_proposal_scale(
+        eta_proposal_stdev,
+        name="eta_proposal_stdev",
+    )
+    zeta_scale = _validate_proposal_scale(
+        zeta_proposal_stdev,
+        name="zeta_proposal_stdev",
+    )
+    if problem.coefficient_hierarchy is None:
+        return _invalid_transition(
+            state,
+            move="shared_hierarchy",
+            reason="shared hierarchy proposals require coefficient_hierarchy.",
+        )
+    eta = math.nan
+    zeta = math.nan
+    if isinstance(proposed_eta, bool) or isinstance(proposed_zeta, bool):
+        valid_coordinates = False
+    else:
+        try:
+            eta = float(proposed_eta)
+            zeta = float(proposed_zeta)
+        except (TypeError, ValueError):
+            valid_coordinates = False
+        else:
+            valid_coordinates = math.isfinite(eta) and math.isfinite(zeta)
+    if not valid_coordinates:
+        return _invalid_transition(
+            state,
+            move="shared_hierarchy",
+            reason="proposed_eta and proposed_zeta must be finite.",
+        )
+
+    candidate = update_shared_hierarchy_state(
+        problem,
+        state,
+        proposed_eta=eta,
+        proposed_zeta=zeta,
+        backend=backend,
+    )
+    log_q_forward = _normal_log_density(
+        eta,
+        mean=state.eta,
+        stdev=eta_scale,
+    ) + _normal_log_density(
+        zeta,
+        mean=state.zeta,
+        stdev=zeta_scale,
+    )
+    log_q_reverse = _normal_log_density(
+        state.eta,
+        mean=eta,
+        stdev=eta_scale,
+    ) + _normal_log_density(
+        state.zeta,
+        mean=zeta,
+        stdev=zeta_scale,
+    )
+    return _valid_transition(
+        state,
+        candidate,
+        log_q_forward=log_q_forward,
+        log_q_reverse=log_q_reverse,
+        move="shared_hierarchy",
     )
 
 
@@ -782,8 +1064,11 @@ __all__ = [
     "accept_or_reject",
     "propose_birth",
     "propose_coefficient",
+    "propose_correlation_timescale",
     "propose_death",
     "propose_fixed_coefficient",
     "propose_global_move",
     "propose_local_move",
+    "propose_mismatch_sd",
+    "propose_shared_hierarchy",
 ]
