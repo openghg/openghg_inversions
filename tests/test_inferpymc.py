@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 import arviz as az
 import numpy as np
 import pandas as pd
@@ -13,6 +15,7 @@ from openghg_inversions.hbmcmc.inversion_pymc import (
     sample,
 )
 from openghg_inversions.models.coords import restore_inferencedata_coords
+from openghg_inversions.postprocessing.inversion_output import convert_idata_to_dataset
 
 
 @pytest.fixture(scope="module")
@@ -122,6 +125,92 @@ def test_sample_accepts_plain_model_and_predictive_options(
     assert "prior" in modern_result
     assert "prior_predictive" in modern_result
     assert "posterior_predictive" in modern_result
+
+
+def test_sample_resets_burned_draws_before_extending_predictive_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy sampling aligns every retained and predictive group after burn-in."""
+    raw_trace = az.InferenceData(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw"), np.arange(6, dtype=float)[None, :])},
+            coords={"chain": [0], "draw": np.arange(6)},
+        ),
+        sample_stats=xr.Dataset(
+            {"diverging": (("chain", "draw"), np.zeros((1, 6), dtype=bool))},
+            coords={"chain": [0], "draw": np.arange(6)},
+        ),
+        log_likelihood=xr.Dataset(
+            {"y": (("chain", "draw"), np.zeros((1, 6)))},
+            coords={"chain": [0], "draw": np.arange(6)},
+        ),
+    )
+
+    def fake_sample(**kwargs: Any) -> az.InferenceData:
+        """Return a deterministic raw trace without running MCMC."""
+        return raw_trace
+
+    def fake_prior_predictive(draws: int, model: pm.Model) -> az.InferenceData:
+        """Return zero-based prior groups matching the retained draw count."""
+        coords = {"chain": [0], "draw": np.arange(draws)}
+        return az.InferenceData(
+            prior=xr.Dataset({"x": (("chain", "draw"), np.ones((1, draws)))}, coords=coords),
+            prior_predictive=xr.Dataset(
+                {"y": (("chain", "draw"), np.ones((1, draws)))},
+                coords=coords,
+            ),
+        )
+
+    def fake_posterior_predictive(
+        trace: az.InferenceData,
+        **kwargs: Any,
+    ) -> az.InferenceData:
+        """Return a zero-based posterior-predictive group for the retained trace."""
+        draws = cast(Any, trace).posterior.sizes["draw"]
+        return az.InferenceData(
+            posterior_predictive=xr.Dataset(
+                {"y": (("chain", "draw"), np.ones((1, draws)))},
+                coords={"chain": [0], "draw": np.arange(draws)},
+            )
+        )
+
+    monkeypatch.setattr(inversion_pymc_module.pm, "sample", fake_sample)
+    monkeypatch.setattr(inversion_pymc_module.pm, "sample_prior_predictive", fake_prior_predictive)
+    monkeypatch.setattr(
+        inversion_pymc_module.pm,
+        "sample_posterior_predictive",
+        fake_posterior_predictive,
+    )
+
+    result = cast(
+        Any,
+        sample(
+            pm.Model(),
+            draws=6,
+            burn=3,
+            tune=0,
+            chains=1,
+            sample_prior_predictive=True,
+            sample_posterior_predictive=["y"],
+        ),
+    )
+    merged = convert_idata_to_dataset(result)
+
+    expected_draws = np.arange(3)
+    for group_name in (
+        "posterior",
+        "sample_stats",
+        "log_likelihood",
+        "prior",
+        "prior_predictive",
+        "posterior_predictive",
+    ):
+        np.testing.assert_array_equal(result[group_name].draw.values, expected_draws)
+    assert result.attrs["burn"] == 3
+    assert result.posterior.attrs["burn"] == 3
+    assert merged.sizes["draw"] == 3
+    np.testing.assert_array_equal(merged.draw.values, expected_draws)
+    assert not merged.to_array().isnull().any()
 
 
 def test_sample_always_returns_inferencedata(
@@ -267,9 +356,7 @@ def test_build_inferpymc_model_with_offset_args_adds_offset_terms(
 
     model = build_inferpymc_model(inv_inputs, **args)
 
-    assert {"offset", "offset_latent", "offset_design", "offset_freq_indicator"}.issubset(
-        model.named_vars
-    )
+    assert {"offset", "offset_latent", "offset_design", "offset_freq_indicator"}.issubset(model.named_vars)
 
 
 def test_build_inferpymc_model_with_pollution_events_and_no_bc_builds_likelihood(

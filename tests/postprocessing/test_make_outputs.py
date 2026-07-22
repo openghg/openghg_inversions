@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable, cast
 
 import numpy as np
 import pytest
@@ -113,6 +113,115 @@ def test_multisector_flux_trace_materialization_is_optional(
 
     assert not isinstance(lazy_trace["flux_total_posterior"].data, np.ndarray)
     assert isinstance(materialized_trace["flux_total_posterior"].data, np.ndarray)
+
+
+def test_multisector_flux_total_preserves_all_missing_draws(
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+) -> None:
+    """Sector totals keep padding from unequal trace-group draw counts missing."""
+    inv_out = multisector_postprocessing_inv_out()
+    inference_data = cast(Any, inv_out.trace)
+    prior = inference_data.prior
+    extra_prior_draw = prior.isel(draw=[0]).assign_coords(draw=[prior.sizes["draw"]])
+    inference_data.prior = xr.concat([prior, extra_prior_draw], dim="draw")
+
+    trace = make_multisector_flux_trace_outputs(
+        inv_out,
+        report_flux_on_inversion_grid=False,
+    )
+
+    sector_total = trace["flux_ff_posterior"] + trace["flux_ocean_posterior"]
+    xr.testing.assert_allclose(trace["flux_total_posterior"], sector_total)
+    assert trace["flux_total_posterior"].isel(draw=-1).isnull().all()
+
+
+def test_multisector_flux_total_requires_each_sector_per_draw(
+    monkeypatch: pytest.MonkeyPatch,
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+) -> None:
+    """A structural zero does not hide another sector's padded missing draw."""
+    inv_out = multisector_postprocessing_inv_out()
+
+    def sector_trace(
+        output: InversionOutput,
+        sector: make_outputs.OutputSector,
+        *,
+        report_flux_on_inversion_grid: bool,
+    ) -> xr.Dataset:
+        del output, report_flux_on_inversion_grid
+        values = (
+            np.asarray([0.0, 0.0, 0.0])
+            if sector.variable_suffix == "ff"
+            else np.asarray([1.0, 2.0, np.nan])
+        )
+        return xr.Dataset({f"flux_{sector.variable_suffix}_posterior": ("draw", values)})
+
+    monkeypatch.setattr(make_outputs, "_sector_flux_trace_dataset", sector_trace)
+
+    trace = make_multisector_flux_trace_outputs(inv_out)
+
+    np.testing.assert_allclose(trace["flux_total_posterior"].isel(draw=slice(0, 2)), [1.0, 2.0])
+    assert trace["flux_total_posterior"].isel(draw=-1).isnull()
+
+
+def test_multisector_country_total_requires_each_sector_per_draw(
+    monkeypatch: pytest.MonkeyPatch,
+    multisector_postprocessing_inv_out: Callable[..., InversionOutput],
+) -> None:
+    """Country totals also reject draws missing any sector contribution."""
+    inv_out = multisector_postprocessing_inv_out()
+    countries = object.__new__(Countries)
+    countries.matrix = xr.DataArray(
+        [[[1.0]]],
+        dims=("country", "lat", "lon"),
+        coords={"country": ["GBR"], "lat": [0.0], "lon": [0.0]},
+    )
+    countries.area_grid = xr.DataArray(
+        [[1.0]],
+        dims=("lat", "lon"),
+        coords={"lat": [0.0], "lon": [0.0]},
+    )
+
+    def scale_trace(
+        output: InversionOutput,
+        sector: make_outputs.OutputSector,
+    ) -> xr.Dataset:
+        del output
+        values = (
+            np.asarray([0.0, 0.0, 0.0])
+            if sector.variable_suffix == "ff"
+            else np.asarray([1.0, 2.0, np.nan])
+        )
+        return xr.Dataset({"x_posterior": ("draw", values)})
+
+    def project_country_trace(
+        species: str,
+        trace: xr.Dataset,
+        x_to_country: xr.DataArray,
+    ) -> xr.Dataset:
+        del species, x_to_country
+        return trace.expand_dims(country=["GBR"], flux_time=[np.datetime64("2019-01-01")])
+
+    monkeypatch.setattr(make_outputs, "_sector_scale_trace", scale_trace)
+    monkeypatch.setattr(
+        make_outputs,
+        "_sector_basis_functions",
+        lambda *args: inv_out.basis_functions,
+    )
+    monkeypatch.setattr(
+        make_outputs,
+        "make_x_to_country_matrix",
+        lambda *args, **kwargs: xr.DataArray([1.0]),
+    )
+    monkeypatch.setattr(Countries, "_get_country_trace", staticmethod(project_country_trace))
+
+    trace = make_multisector_country_trace_outputs(inv_out, countries)
+
+    np.testing.assert_allclose(
+        trace["country_total_posterior"].isel(draw=slice(0, 2)).squeeze(),
+        [1.0, 2.0],
+    )
+    assert trace["country_total_posterior"].isel(draw=-1).isnull().all()
 
 
 def test_multisector_country_traces_project_basis_regions_before_scaling(

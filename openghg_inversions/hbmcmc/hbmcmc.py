@@ -154,7 +154,7 @@ def _canonicalize_fixedbasis_trace(trace: object, basis_functions: BasisFunction
         }
         renamed_groups[group] = ds.rename(applicable) if applicable else ds.copy()
 
-    return cast(Any, az.InferenceData)(**renamed_groups)
+    return cast(Any, az.InferenceData)(attrs=dict(trace.attrs), **renamed_groups)
 
 
 def _inv_inputs_from_rerun_arrays(
@@ -479,7 +479,8 @@ def _handle_core_output_artifacts(context: _OutputContext) -> None:
         trace = context.mcmc_results["trace"]
         if isinstance(trace, az.InferenceData):
             trace = cast(Any, az.InferenceData)(
-                **{group: _reset_serialisation_multiindexes(trace[group]) for group in trace.groups()}
+                attrs=dict(trace.attrs),
+                **{group: _reset_serialisation_multiindexes(trace[group]) for group in trace.groups()},
             )
         trace.to_netcdf(str(trace_path), engine="netcdf4", compress=True)
 

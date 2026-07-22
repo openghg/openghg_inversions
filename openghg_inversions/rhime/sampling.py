@@ -11,6 +11,7 @@ import pymc as pm
 import xarray as xr
 
 from openghg_inversions._timing import log_timing, timer_seconds, timer_start
+from openghg_inversions._sampling import _reset_retained_draws as _shared_reset_retained_draws
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords
 
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
@@ -72,6 +73,21 @@ def _log_sample_stats(trace: az.InferenceData, *, label: str) -> None:
     }
     if any(value is not None for value in fields.values()):
         log_timing(label, 0.0, **fields)
+
+
+def _reset_retained_draws(trace: az.InferenceData, *, burn: int) -> az.InferenceData:
+    """Relabel retained draws and preserve the discarded burn-in count.
+
+    Args:
+        trace: Inference data whose draw-bearing groups are relabelled in place.
+        burn: Number of discarded burn-in draws to record in metadata.
+
+    Returns:
+        The mutated inference data, with each draw coordinate reset to
+        consecutive zero-based integers and ``burn`` stored on the trace and
+        draw-bearing groups.
+    """
+    return _shared_reset_retained_draws(trace, burn=burn)
 
 
 class RhimeSampler:
@@ -207,6 +223,7 @@ class RhimeSampler:
 
         timing_start = timer_start()
         trace = cast(az.InferenceData, raw_trace.isel(draw=slice(self.burn, None)))
+        trace = _reset_retained_draws(trace, burn=self.burn)
         log_timing("rhime.sampler.burn_slicing", timer_seconds(timing_start), burn=self.burn)
 
         trace = self._extend_predictive(trace, model=model)
