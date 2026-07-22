@@ -16,9 +16,9 @@ from .core import (
     Backend,
     TransDimensionalProblem,
     TransDimensionalState,
-    build_state,
     update_dynamic_coefficient_state,
     update_fixed_coefficient_state,
+    update_structural_state,
 )
 
 
@@ -444,11 +444,11 @@ def propose_birth(
         state.active_coefficients,
         cell,
     )
-    candidate = build_state(
+    candidate = update_structural_state(
         problem,
+        state,
         np.append(state.active_nuclei, cell),
         np.append(state.active_coefficients, value),
-        fixed_coefficients=state.fixed_coefficients,
         backend=backend,
     )
     log_q_forward = -math.log(problem.ncell - state.k) + _normal_log_density(
@@ -521,11 +521,11 @@ def propose_death(
         surviving_coefficients,
         removed_nucleus,
     )
-    candidate = build_state(
+    candidate = update_structural_state(
         problem,
+        state,
         surviving_nuclei,
         surviving_coefficients,
-        fixed_coefficients=state.fixed_coefficients,
         backend=backend,
     )
     log_q_forward = -math.log(state.k)
@@ -598,11 +598,11 @@ def propose_global_move(
     nuclei = np.array(state.active_nuclei, copy=True)
     coefficients = np.array(state.active_coefficients, copy=True)
     nuclei[position] = cell
-    candidate = build_state(
+    candidate = update_structural_state(
         problem,
+        state,
         nuclei,
         coefficients,
-        fixed_coefficients=state.fixed_coefficients,
         backend=backend,
     )
     log_q = -math.log(state.k) - math.log(problem.ncell - state.k)
@@ -712,11 +712,11 @@ def propose_local_move(
     nuclei = np.array(state.active_nuclei, copy=True)
     coefficients = np.array(state.active_coefficients, copy=True)
     nuclei[position] = cell
-    candidate = build_state(
+    candidate = update_structural_state(
         problem,
+        state,
         nuclei,
         coefficients,
-        fixed_coefficients=state.fixed_coefficients,
         backend=backend,
     )
     log_q_forward = _local_move_log_probability(

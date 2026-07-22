@@ -96,6 +96,8 @@ will be introduced only behind equivalence tests.
 | 2026-07-19 | Treat the Lunt per-region hierarchy as log-space Normal parameters, not arithmetic lognormal moments. | The paper's `mu_x` and `sigma_x` describe `log(x)`. Existing arithmetic mean/SD inputs remain the fixed-prior pseudo-data mode and must not be relabelled as the Lunt hierarchy. Numerical hyperprior bounds and proposal scales remain unavailable. |
 | 2026-07-19 | Do not copy a parent region's inferred hyperparameter pair in an upward structural proposal. | The paper does not specify how the new dimension-dependent pair is proposed. Legacy parent copying lies on an equality submanifold and lacks a valid reverse density after the pairs evolve independently. The planned auditable completion draws the new pair from its normalized bounded hyperprior. |
 | 2026-07-20 | Treat the legacy structural-schedule failure and the missing hyperparameter dimension-matching rule as distinct RJMCMC correctness defects. | The former is demonstrated by finite enumeration. The latter follows because adding a region also adds two independently variable hyperparameters, but parent copying introduces no auxiliary variables or reverse density for them. Including their prior density in the target does not repair an incomplete dimension-changing proposal. |
+| 2026-07-22 | Optimize one-nucleus structural proposals by deriving incremental ownership from the existing canonical state and rebuilding only membership-changed design columns. | The current production-shaped matrix makes a full `H` scan the dominant cost. Owner identities can be recovered from `nuclei[labels]` without changing the checkpoint schema; recomputing every affected column from its final members in ascending cell order preserves the full-build target and exact replay contract. The complete rebuild remains the initialization, validation, and fallback oracle. |
+| 2026-07-22 | Keep speculative nearest-neighbour accelerators replaceable and outside the proposal-accounting contract. | A k-d tree, quadtree, distance transform, or other geometry engine must reproduce canonical tie handling and cannot by itself avoid the dominant `H` aggregation. The sampler should depend on a state-construction seam, while experimental geometry providers are benchmarked against the full-build oracle before becoming checkpointed run settings. |
 
 ## Lunt per-region hierarchy implementation specification
 
@@ -426,6 +428,44 @@ dynamic-inner/fixed-outer prediction. The next correctness gate is the opt-in
 per-region log-space hierarchy. Correlated-error blocks remain behind it.
 
 ## Progress log
+
+### 2026-07-22
+
+- Created `codex/rjmcmc-incremental-geometry` from the pushed
+  `codex/tdmcmc-numba-rewrite` checkpoint `cd73231` while the unchanged HPC
+  production chains continued running.
+- Replaced complete state rebuilding for valid one-nucleus insertion,
+  deletion, global-move, and local-move candidates with an exact incremental
+  path. It remaps canonical labels by nucleus identity, updates ownership from
+  the accepted source state, copies design columns whose membership is
+  unchanged, and rebuilds affected columns in ascending global-cell order.
+  Unsupported multi-edits and incompatible cache shapes still use the complete
+  builder; an all-cells-affected candidate uses the direct full aggregation
+  kernel to avoid the indirect-index worst case.
+- Kept proposal probabilities, random draws, target evaluation, state schema,
+  checkpoint schema, and the complete `build_state` oracle unchanged. Exact
+  tests cover both numerical backends, two-dimensional geometry, canonical
+  reordering and ties, empty regions, all four structural proposal routes,
+  seeded-chain replay against the former full-rebuild path, and durable
+  checkpoint continuation from an accepted incremental state.
+- On a warmed Apple-arm64 synthetic case matching the current production
+  dimensions (`H` shape `1382 x 23424`, `k_max=500`, dense float64), typical
+  Numba structural-state construction was 5.8--56.1 times faster than complete
+  rebuilding across `k=50,150,300`. The affected-design fractions ranged from
+  0.25% to 13.73%; every timed candidate matched the full state bit-for-bit.
+  Numba-compiling affected-region marking removed an approximately 6 ms Python
+  overhead. Vectorizing the NumPy reference removed its initial low-`k`
+  regression: assignment plus membership marking took 7--68% of complete
+  NumPy assignment time for `k=5,10,50`. These are local diagnostic timings,
+  not an HPC throughput claim.
+- Deferred k-d tree, quadtree, and distance-transform assignment providers.
+  Incremental assignment was already about 0.1 ms in a representative
+  high-`k` case; affected sensitivity aggregation dominated instead. The
+  internal structural-state construction boundary is the replacement seam for
+  a future provider, which must retain canonical tie behavior and be recorded
+  in kernel settings/checkpoints before use in replayable runs. A measured
+  95--97% affected-cell aggregation crossover was also left out because it was
+  hardware-dependent; only the exact 100% case is specialized.
 
 ### 2026-07-20
 

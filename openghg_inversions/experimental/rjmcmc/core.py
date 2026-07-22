@@ -1,9 +1,14 @@
 """Numerical state and target functions for spatial trans-dimensional MCMC.
 
-This module contains a deliberately small, framework-independent reference
-implementation.  The public dataclasses own validated NumPy arrays; compiled
-kernels operate only on arrays and scalars so they remain easy to compare with
-their NumPy counterparts.
+This module contains a framework-independent NumPy/Numba implementation.
+``build_state`` is the complete initialization and validation oracle;
+``update_structural_state`` is the internal proposal fast path for one-nucleus
+edits. Nuclei are stored in canonical index order, equal-distance cells belong
+to the first canonical nucleus, and state arrays are read-only caches. The two
+backends are required to construct identical caches. Incremental structural
+updates reuse fixed-predictor caches and unaffected dynamic design columns,
+while malformed source caches or unsupported multi-edits fall back to the full
+builder.
 """
 
 from __future__ import annotations
@@ -697,6 +702,480 @@ def build_state(
         labels=labels,
         design=design,
         fixed_coefficients=owned_fixed_coefficients,
+        dynamic_prediction=dynamic_prediction,
+        fixed_prediction=fixed_prediction,
+        prediction=prediction,
+        residual=residual,
+        log_likelihood=float(log_likelihood),
+        log_coefficient_prior=float(log_coefficient_prior),
+        log_fixed_coefficient_prior=float(log_fixed_coefficient_prior),
+        log_k_prior=float(problem.log_k_prior[k - problem.k_min]),
+        log_nucleus_prior=uniform_nucleus_set_log_prior(problem.n_grid_cells, k),
+    )
+
+
+def _canonical_structural_values(
+    problem: TransDimensionalProblem,
+    active_nuclei: ArrayLike,
+    active_coefficients: ArrayLike,
+) -> tuple[int, IntArray, FloatArray]:
+    """Validate active values and return canonical padded state arrays.
+
+    The returned tuple contains ``k``, a sorted ``(k_max,)`` nucleus array
+    padded with ``-1``, and a correspondingly reordered coefficient array
+    padded with zeros. Malformed dimensions, counts, indices, duplicates, and
+    non-finite coefficients raise ``ValueError``.
+    """
+    supplied_nuclei = np.asarray(active_nuclei, dtype=np.int64)
+    supplied_coefficients = np.asarray(active_coefficients, dtype=np.float64)
+    if supplied_nuclei.ndim != 1 or supplied_coefficients.ndim != 1:
+        raise ValueError("active_nuclei and active_coefficients must be one-dimensional.")
+    if supplied_nuclei.size != supplied_coefficients.size:
+        raise ValueError("active_nuclei and active_coefficients must have equal length.")
+    k = int(supplied_nuclei.size)
+    if not problem.k_min <= k <= problem.k_max:
+        raise ValueError("Active-region count is outside the problem's supported range.")
+    if np.any(supplied_nuclei < 0) or np.any(supplied_nuclei >= problem.n_grid_cells):
+        raise ValueError("Active nuclei must be valid flattened grid indices.")
+    if np.unique(supplied_nuclei).size != k:
+        raise ValueError("Active nuclei must be unique.")
+    if not np.all(np.isfinite(supplied_coefficients)):
+        raise ValueError("Active coefficients must be finite.")
+
+    order = np.argsort(supplied_nuclei, kind="stable")
+    nuclei = np.full(problem.k_max, -1, dtype=np.int64)
+    coefficients = np.zeros(problem.k_max, dtype=np.float64)
+    nuclei[:k] = supplied_nuclei[order]
+    coefficients[:k] = supplied_coefficients[order]
+    return k, nuclei, coefficients
+
+
+def _incremental_source_is_compatible(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+) -> bool:
+    """Return whether a source state has the cache shapes needed for reuse."""
+    if state.capacity != problem.k_max or not problem.k_min <= state.k <= problem.k_max:
+        return False
+    if state.nuclei.shape != (problem.k_max,) or state.coefficients.shape != (problem.k_max,):
+        return False
+    if state.labels.shape != (problem.n_grid_cells,):
+        return False
+    if state.design.shape != (problem.n_observations, problem.k_max):
+        return False
+    if state.fixed_coefficients.shape != (problem.n_fixed_coefficients,):
+        return False
+    if state.fixed_prediction.shape != (problem.n_observations,):
+        return False
+    active_nuclei = state.nuclei[: state.k]
+    if (
+        np.any(active_nuclei < 0)
+        or np.any(active_nuclei >= problem.n_grid_cells)
+        or np.any(active_nuclei[1:] <= active_nuclei[:-1])
+    ):
+        return False
+    return bool(np.all((state.labels >= 0) & (state.labels < state.k)))
+
+
+def _nucleus_position_maps(
+    old_nuclei: IntArray,
+    new_nuclei: IntArray,
+) -> tuple[IntArray, IntArray, int]:
+    """Map old and new canonical positions by persistent nucleus identity.
+
+    Missing identities use ``-1`` in both position maps. The final scalar is
+    the unique added position, or ``-1`` when the edit has zero or multiple
+    additions; callers separately count removals and additions.
+    """
+    old_to_new = np.full(old_nuclei.size, -1, dtype=np.int64)
+    new_to_old = np.full(new_nuclei.size, -1, dtype=np.int64)
+    old_position = 0
+    new_position = 0
+    while old_position < old_nuclei.size and new_position < new_nuclei.size:
+        old_nucleus = old_nuclei[old_position]
+        new_nucleus = new_nuclei[new_position]
+        if old_nucleus == new_nucleus:
+            old_to_new[old_position] = new_position
+            new_to_old[new_position] = old_position
+            old_position += 1
+            new_position += 1
+        elif old_nucleus < new_nucleus:
+            old_position += 1
+        else:
+            new_position += 1
+    added_positions = np.flatnonzero(new_to_old < 0)
+    added_position = int(added_positions[0]) if added_positions.size == 1 else -1
+    return old_to_new, new_to_old, added_position
+
+
+def _assign_cells_incremental_numpy(
+    grid_coordinates: FloatArray,
+    old_labels: IntArray,
+    new_nuclei: IntArray,
+    old_to_new: IntArray,
+    added_position: int,
+) -> IntArray:
+    """Update exact Voronoi labels after one edit using NumPy array kernels.
+
+    Arrays use cell-major coordinates and canonical region-position labels.
+    Cells whose old owner was removed search every final nucleus; all other
+    cells retain their remapped owner unless the one added nucleus is nearer.
+    Exact ties choose the lower canonical position, matching ``build_state``.
+    """
+    labels = np.asarray(old_to_new[old_labels], dtype=np.int64)
+    needs_full_search = labels < 0
+    if np.any(needs_full_search):
+        cell_coordinates = grid_coordinates[needs_full_search]
+        active_coordinates = grid_coordinates[new_nuclei]
+        squared_distance = np.sum(
+            np.square(cell_coordinates[:, np.newaxis, :] - active_coordinates[np.newaxis, :, :]),
+            axis=2,
+        )
+        labels[needs_full_search] = np.argmin(squared_distance, axis=1)
+
+    if added_position >= 0:
+        stable_cells = np.flatnonzero(~needs_full_search)
+        stable_coordinates = grid_coordinates[stable_cells]
+        owner_coordinates = grid_coordinates[new_nuclei[labels[stable_cells]]]
+        added_coordinates = grid_coordinates[new_nuclei[added_position]]
+        owner_squared_distance = np.sum(
+            np.square(stable_coordinates - owner_coordinates),
+            axis=1,
+        )
+        added_squared_distance = np.sum(
+            np.square(stable_coordinates - added_coordinates),
+            axis=1,
+        )
+        added_wins = (added_squared_distance < owner_squared_distance) | (
+            (added_squared_distance == owner_squared_distance) & (added_position < labels[stable_cells])
+        )
+        labels[stable_cells[added_wins]] = added_position
+    return labels
+
+
+@njit(cache=True)
+def _assign_cells_incremental_numba(
+    grid_coordinates: FloatArray,
+    old_labels: IntArray,
+    new_nuclei: IntArray,
+    old_to_new: IntArray,
+    added_position: int,
+) -> IntArray:
+    """Update exact Voronoi labels after one structural edit with Numba.
+
+    Cells whose old owner was removed search every final nucleus; surviving
+    cells compare only their remapped owner and the optional added nucleus.
+    The strict distance comparison plus canonical-position tie check reproduces
+    the complete assignment kernel.
+    """
+    n_grid, n_dimensions = grid_coordinates.shape
+    labels = np.empty(n_grid, dtype=np.int64)
+    for cell in range(n_grid):
+        mapped_owner = old_to_new[old_labels[cell]]
+        if mapped_owner < 0:
+            best_region = 0
+            best_distance = np.inf
+            for region in range(new_nuclei.size):
+                distance = 0.0
+                nucleus = new_nuclei[region]
+                for dimension in range(n_dimensions):
+                    difference = grid_coordinates[cell, dimension] - grid_coordinates[nucleus, dimension]
+                    distance += difference * difference
+                if distance < best_distance:
+                    best_distance = distance
+                    best_region = region
+            labels[cell] = best_region
+            continue
+
+        best_region = mapped_owner
+        if added_position >= 0:
+            best_distance = 0.0
+            added_distance = 0.0
+            best_nucleus = new_nuclei[best_region]
+            added_nucleus = new_nuclei[added_position]
+            for dimension in range(n_dimensions):
+                best_difference = (
+                    grid_coordinates[cell, dimension] - grid_coordinates[best_nucleus, dimension]
+                )
+                added_difference = (
+                    grid_coordinates[cell, dimension] - grid_coordinates[added_nucleus, dimension]
+                )
+                best_distance += best_difference * best_difference
+                added_distance += added_difference * added_difference
+            if added_distance < best_distance or (
+                added_distance == best_distance and added_position < best_region
+            ):
+                best_region = added_position
+        labels[cell] = best_region
+    return labels
+
+
+def _membership_changed_regions_numpy(
+    old_nuclei: IntArray,
+    old_labels: IntArray,
+    new_nuclei: IntArray,
+    new_labels: IntArray,
+    old_to_new: IntArray,
+) -> NDArray[np.bool_]:
+    """Return a final-region mask for changed owner identities with NumPy.
+
+    A region is marked when it gains or loses any cell after comparing nucleus
+    identities rather than canonical positions. The result has one entry per
+    final active nucleus.
+    """
+    changed_regions = np.zeros(new_nuclei.size, dtype=np.bool_)
+    membership_changed = old_nuclei[old_labels] != new_nuclei[new_labels]
+    changed_regions[new_labels[membership_changed]] = True
+    mapped_old_regions = old_to_new[old_labels[membership_changed]]
+    changed_regions[mapped_old_regions[mapped_old_regions >= 0]] = True
+    return changed_regions
+
+
+@njit(cache=True)
+def _membership_changed_regions_numba(
+    old_nuclei: IntArray,
+    old_labels: IntArray,
+    new_nuclei: IntArray,
+    new_labels: IntArray,
+    old_to_new: IntArray,
+) -> NDArray[np.bool_]:
+    """Return a final-region mask for changed owner identities with Numba.
+
+    The identity-based comparison is invariant to canonical column reordering;
+    both surviving donors and final recipients are marked.
+    """
+    changed_regions = np.zeros(new_nuclei.size, dtype=np.bool_)
+    for cell in range(old_labels.size):
+        old_region = old_labels[cell]
+        new_region = new_labels[cell]
+        if old_nuclei[old_region] == new_nuclei[new_region]:
+            continue
+        mapped_old_region = old_to_new[old_region]
+        if mapped_old_region >= 0:
+            changed_regions[mapped_old_region] = True
+        changed_regions[new_region] = True
+    return changed_regions
+
+
+def _aggregate_changed_design_numpy(
+    sensitivities: FloatArray,
+    labels: IntArray,
+    changed_cells: IntArray,
+    design: FloatArray,
+) -> None:
+    """Mutate a zeroed design cache with changed cells using NumPy.
+
+    ``changed_cells`` must be in ascending global-cell order. This preserves
+    the full builder's floating-point summation order for every rebuilt column.
+    """
+    for cell in changed_cells:
+        design[:, labels[cell]] += sensitivities[:, cell]
+
+
+@njit(cache=True)
+def _aggregate_changed_design_numba(
+    sensitivities: FloatArray,
+    labels: IntArray,
+    changed_cells: IntArray,
+    design: FloatArray,
+) -> None:
+    """Mutate a zeroed design cache with changed cells using Numba.
+
+    ``changed_cells`` must be in ascending global-cell order. Observation-major
+    traversal matches the complete Numba aggregation kernel exactly.
+    """
+    n_observations = sensitivities.shape[0]
+    for observation in range(n_observations):
+        for changed_index in range(changed_cells.size):
+            cell = changed_cells[changed_index]
+            region = labels[cell]
+            design[observation, region] += sensitivities[observation, cell]
+
+
+def update_structural_state(
+    problem: TransDimensionalProblem,
+    state: TransDimensionalState,
+    active_nuclei: ArrayLike,
+    active_coefficients: ArrayLike,
+    *,
+    backend: Backend = "numpy",
+) -> TransDimensionalState:
+    """Build a structural candidate by incrementally updating exact caches.
+
+    The final active nuclei and coefficients are the complete specification of
+    the candidate. They may describe one insertion, one deletion, or one moved
+    nucleus (one removal plus one insertion) relative to ``state``. Nuclei are
+    canonically sorted and equal-distance ties choose the first canonical
+    nucleus, exactly as in :func:`assign_cells_numba`.
+
+    Design columns are matched by nucleus identity across canonical reordering.
+    Columns whose final cell membership is unchanged are copied from ``state``;
+    every changed final column is recomputed from zero in ascending fine-cell
+    order. Consequently the design is independent of the edit path and matches
+    a complete :func:`build_state` aggregation exactly. Unsupported multi-edit
+    inputs or incompatible source-cache shapes safely use ``build_state``. The
+    inputs and source state are not mutated; the result reuses the source's
+    immutable fixed coefficients and fixed-prediction cache.
+
+    Args:
+        problem: Immutable numerical problem and target specification.
+        state: Valid immutable source state associated with ``problem``.
+        active_nuclei: Final unique flattened nucleus indices. The supplied
+            order need not be canonical.
+        active_coefficients: Finite final coefficients paired with the supplied
+            nuclei, including the coefficient associated with a moved nucleus.
+        backend: Numerical kernels used for incremental geometry, aggregation,
+            likelihood, and priors.
+
+    Returns:
+        A canonical immutable candidate state with exact target caches.
+
+    Raises:
+        TypeError: If ``problem`` or ``state`` has the wrong type.
+        ValueError: If final active values or ``backend`` are malformed.
+    """
+    if not isinstance(problem, TransDimensionalProblem):
+        raise TypeError("problem must be a TransDimensionalProblem.")
+    if not isinstance(state, TransDimensionalState):
+        raise TypeError("state must be a TransDimensionalState.")
+    if backend not in ("numpy", "numba"):
+        raise ValueError("backend must be 'numpy' or 'numba'.")
+    k, nuclei, coefficients = _canonical_structural_values(
+        problem,
+        active_nuclei,
+        active_coefficients,
+    )
+    if not _incremental_source_is_compatible(problem, state):
+        return build_state(
+            problem,
+            nuclei[:k],
+            coefficients[:k],
+            fixed_coefficients=state.fixed_coefficients,
+            backend=backend,
+        )
+
+    old_nuclei = state.nuclei[: state.k]
+    new_nuclei = nuclei[:k]
+    old_to_new, new_to_old, added_position = _nucleus_position_maps(
+        old_nuclei,
+        new_nuclei,
+    )
+    removed_count = int(np.count_nonzero(old_to_new < 0))
+    added_count = int(np.count_nonzero(new_to_old < 0))
+    if removed_count > 1 or added_count > 1:
+        return build_state(
+            problem,
+            new_nuclei,
+            coefficients[:k],
+            fixed_coefficients=state.fixed_coefficients,
+            backend=backend,
+        )
+    if added_count == 0:
+        added_position = -1
+
+    if backend == "numpy":
+        labels = _assign_cells_incremental_numpy(
+            problem.grid_coordinates,
+            state.labels,
+            new_nuclei,
+            old_to_new,
+            added_position,
+        )
+    else:
+        labels = _assign_cells_incremental_numba(
+            problem.grid_coordinates,
+            state.labels,
+            new_nuclei,
+            old_to_new,
+            added_position,
+        )
+
+    if backend == "numpy":
+        changed_regions = _membership_changed_regions_numpy(
+            old_nuclei,
+            state.labels,
+            new_nuclei,
+            labels,
+            old_to_new,
+        )
+    else:
+        changed_regions = _membership_changed_regions_numba(
+            old_nuclei,
+            state.labels,
+            new_nuclei,
+            labels,
+            old_to_new,
+        )
+    changed_cells = np.flatnonzero(changed_regions[labels]).astype(np.int64, copy=False)
+    if changed_cells.size == problem.n_grid_cells:
+        if backend == "numpy":
+            design = aggregate_design_numpy(problem.sensitivities, labels, k, problem.k_max)
+        else:
+            design = aggregate_design_numba(problem.sensitivities, labels, k, problem.k_max)
+    else:
+        design = np.zeros((problem.n_observations, problem.k_max), dtype=np.float64)
+        for new_position, old_position in enumerate(new_to_old):
+            if old_position >= 0 and not changed_regions[new_position]:
+                design[:, new_position] = state.design[:, old_position]
+        if backend == "numpy":
+            _aggregate_changed_design_numpy(problem.sensitivities, labels, changed_cells, design)
+        else:
+            _aggregate_changed_design_numba(problem.sensitivities, labels, changed_cells, design)
+
+    dynamic_prediction = design[:, :k] @ coefficients[:k]
+    fixed_prediction = state.fixed_prediction
+    prediction = dynamic_prediction + fixed_prediction
+    residual = prediction - problem.observations
+    if backend == "numpy":
+        log_likelihood = gaussian_log_likelihood_numpy(residual, problem.observation_sd)
+        log_coefficient_prior = lognormal_coefficient_log_prior_numpy(
+            coefficients,
+            k,
+            problem.coefficient_prior_mean,
+            problem.coefficient_prior_sd,
+        )
+        if problem.fixed_block is None:
+            log_fixed_coefficient_prior = 0.0
+        else:
+            log_fixed_coefficient_prior = sum(
+                lognormal_coefficient_log_prior_numpy(
+                    state.fixed_coefficients[index : index + 1],
+                    1,
+                    float(problem.fixed_block.coefficient_prior_mean[index]),
+                    float(problem.fixed_block.coefficient_prior_sd[index]),
+                )
+                for index in range(problem.n_fixed_coefficients)
+            )
+    else:
+        log_likelihood = gaussian_log_likelihood_numba(residual, problem.observation_sd)
+        log_coefficient_prior = lognormal_coefficient_log_prior_numba(
+            coefficients,
+            k,
+            problem.coefficient_prior_mean,
+            problem.coefficient_prior_sd,
+        )
+        if problem.fixed_block is None:
+            log_fixed_coefficient_prior = 0.0
+        else:
+            log_fixed_coefficient_prior = sum(
+                lognormal_coefficient_log_prior_numba(
+                    state.fixed_coefficients[index : index + 1],
+                    1,
+                    float(problem.fixed_block.coefficient_prior_mean[index]),
+                    float(problem.fixed_block.coefficient_prior_sd[index]),
+                )
+                for index in range(problem.n_fixed_coefficients)
+            )
+
+    for array in (nuclei, coefficients, labels, design, dynamic_prediction, prediction, residual):
+        array.setflags(write=False)
+    return TransDimensionalState(
+        k=k,
+        nuclei=nuclei,
+        coefficients=coefficients,
+        labels=labels,
+        design=design,
+        fixed_coefficients=state.fixed_coefficients,
         dynamic_prediction=dynamic_prediction,
         fixed_prediction=fixed_prediction,
         prediction=prediction,
