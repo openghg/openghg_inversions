@@ -115,16 +115,38 @@ def _open_datatree_loaded(file_path: str | Path) -> xr.DataTree:
 
 
 def _inferencedata_to_datatree(idata: az.InferenceData) -> xr.DataTree:
-    """Convert an ArviZ InferenceData object to a DataTree."""
+    """Convert inference data to a serialization-safe data tree.
+
+    Args:
+        idata: Inference data whose root attributes and groups should be
+            retained. Group MultiIndexes are expanded before serialization.
+
+    Returns:
+        A data tree whose root contains ``idata.attrs`` and whose children
+        contain the serialization-safe inference-data groups.
+    """
     return xr.DataTree.from_dict(
-        {group: _reset_serialisation_multiindexes(idata[group]) for group in idata.groups()}
+        {
+            "/": xr.Dataset(attrs=dict(idata.attrs)),
+            **{group: _reset_serialisation_multiindexes(idata[group]) for group in idata.groups()},
+        }
     )
 
 
 def _inferencedata_from_datatree(dt: xr.DataTree) -> az.InferenceData:
-    """Convert a DataTree of InferenceData groups back to ArviZ InferenceData."""
+    """Restore inference data from a serialized data tree.
+
+    Args:
+        dt: Data tree whose root attributes and child groups represent an
+            ``InferenceData`` object.
+
+    Returns:
+        Reconstructed inference data with root attributes preserved and group
+        MultiIndexes restored.
+    """
     return cast(Any, az.InferenceData)(
-        **{group: _restore_serialisation_multiindexes(child.to_dataset()) for group, child in dt.items()}
+        attrs=dict(dt.attrs),
+        **{group: _restore_serialisation_multiindexes(child.to_dataset()) for group, child in dt.items()},
     )
 
 
@@ -279,7 +301,7 @@ def convert_idata_to_dataset(
             if "chain" in trace.dims:
                 trace = trace.isel(chain=0, drop=True)
             traces.append(trace)
-    return xr.merge(traces)
+    return xr.merge(traces, join="outer")
 
 
 def _add_attributes_to_trace_dataset(trace_ds: xr.Dataset, obs_units: str, obs_longname: str) -> None:

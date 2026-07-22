@@ -377,7 +377,7 @@ def _multisector_flux_trace_parts(
             for sector, dataset in zip(sectors, sector_flux_traces, strict=True)
         ],
         dim="sector",
-    ).sum("sector")
+    ).sum("sector", min_count=len(sectors))
     return sectors, sector_flux_traces, total_flux_trace
 
 
@@ -485,7 +485,7 @@ def make_multisector_country_trace_outputs(
             for sector, trace in zip(sectors, sector_country_traces, strict=True)
         ],
         dim="sector",
-    ).sum("sector")
+    ).sum("sector", min_count=len(sectors))
     result = xr.merge([total_country_trace, *sector_country_traces])
     for name in result.data_vars:
         result[name].attrs["units"] = "g/yr"
