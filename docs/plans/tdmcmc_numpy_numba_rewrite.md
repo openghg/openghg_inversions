@@ -104,6 +104,7 @@ will be introduced only behind equivalence tests.
 | 2026-07-22 | Make independent measurement error plus latent OU model mismatch the primary correlated-error implementation. | This is the independent-site reduction of Ganesan et al. (2015): `C = D + M Q M`. It preserves a genuine uncorrelated measurement nugget and remains exactly `O(n_observations)` through a scalar irregular-time Kalman likelihood. The Lunt/Ganesan-2014 `R = S Q S` correlated-total-error model is a distinct comparison profile, not an equivalent way to add a nugget. |
 | 2026-07-22 | Treat every historical iteration count as revision-specific and expose new OU/hierarchy schedules under new versioned identities. | Ganesan's fixed-dimensional code swept all components, intermediate trans-dimensional revisions used five- or seven-way random scans and one shared dynamic hyperpair, and the closest paper-model revision used a six-way random scan with per-region hyperpairs. The published pseudocode does not uniquely determine mismatch or timescale proposal counts. Existing rewrite schedules and random streams therefore remain unchanged; new 16- and 17-slot profiles explicitly add one randomly selected mismatch amplitude, one randomly selected timescale, and optionally one joint shared-pool update to the existing 14-slot cycle. |
 | 2026-07-22 | Treat archived Lunt coefficient-prior inputs as arithmetic mean/SD, while recording the conflict with the paper's log-space notation and the older Ganesan kernel. | Revision `6f165e68` explicitly converts `mean` and `sd` to lognormal log-location/log-scale inside `calc_pdf`; its input template uses dynamic mean 1 and SD 1. The older Ganesan density instead treats its first input as a positive median/geometric scale and its second as log-space SD. The current rewrite's arithmetic convention follows the Lunt code and current inversion API, not the incompatible Ganesan calling convention. |
+| 2026-07-23 | Treat the archived Tunnicliffe Brazil production runs as configuration and opportunity-count evidence, not a posterior-correctness or parallel-tempering oracle. | The exact INIs and outputs establish a 120,000-cycle-equivalent workload, but the source uses the invalid deterministic structural cycle, omits structural selection-count terms, copies independently evolving per-region prior SDs, and accepted zero of 275,000 attempted temperature swaps. |
 
 ## Ganesan lineage and active hierarchy plan
 
@@ -202,6 +203,28 @@ evidence against attributing the archived template's performance to a
 file used for the published timing. The older Ganesan density accepted a
 positive median/geometric scale and log-space SD directly, so the two kernels'
 configuration pairs must not be compared by name alone.
+
+The later Tunnicliffe et al. Brazil production archive supplies an exact
+operational comparison. Its Fortran loop runs 100,000 burn-in plus 500,000
+post-burn nominal iterations under a deterministic five-phase schedule. Across
+the full run this gives 120,000 opportunities each for model error, upward
+structure, downward structure, movement, and the emissions block; each
+emissions block updates all nine always-active parameters and five randomly
+selected dynamic coefficients. Thus 120,000 modern cycles match the common
+dynamic and geometry opportunity counts much more closely than the
+near-submission Lunt revision alone suggested. The kernels still differ: the
+archive uses the invalid directional schedule and per-region SD inheritance,
+whereas the rewrite uses invariant mixed structural slots and, optionally, one
+shared hierarchy pair.
+
+Although those Brazil INIs enable four-temperature parallel tempering, all
+three archived outputs record zero accepted swaps out of exactly 275,000
+attempts. Source inspection verifies that the counters are live and that no
+temperature labels exchanged. The ladder `[1, 0.15874011, 0.02519842, 0.004]`
+and arbitrary-pair proposals therefore provide a negative implementation
+example, not evidence that tempering cured historical `k` mixing. Any rewrite
+tempering stage needs adjacent exchanges, tested swap balance, acceptance
+diagnostics, round-trip diagnostics, and exact checkpointed replica/RNG state.
 
 For one shared pool, let `M` and `S` be the arithmetic mean and arithmetic SD
 of the dynamic coefficient prior and define `eta = log(M)`, `zeta = log(S)`.

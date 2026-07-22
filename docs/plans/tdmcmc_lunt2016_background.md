@@ -543,6 +543,119 @@ principal contribution is the fixed-block observation model:
 - six fixed far-field emissions regions outside the dynamic subdomain;
 - only the inner subdomain participates in birth/death/move proposals.
 
+## Historical production profile C: Tunnicliffe2020-Brazil
+
+The BP1 archive
+`/group/chem/acrg/GOSAT_BRAZIL_tdmcmc_run_details` preserves the main setup for
+Tunnicliffe et al. (2020), *Quantifying sources of Brazil's methane emissions
+between 2010 and 2018 from satellite data*. It is valuable production-lineage
+evidence, but the checked sampler defects below mean that its posterior output
+is not a correctness oracle for the rewrite.
+
+Key archive SHA-256 values are:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `README.md` | `68b605411e4002ac600145b9e88cb3bacb23dbf5acf70d6192afb7578f77e608` |
+| `inversion_setup/gosat_rpb_tdmcmc.ini` | `f0b327a97b6fa157191435e366643313433265efe7973e1f2ef57d6c4bffe73a` |
+| `inversion_setup/gosat_rpb_tdmcmc_2017.ini` | `f3fc82a2de3e49bfbbe18a50e8c3db78809a43efcf22014603aabc93924e6770` |
+| `inversion_setup/Complete_summary_all_tdmcmc_runs.txt` | `39a5f61468babfb1165718ebea7c62dcb488ba56d6daedb78b0b3a8cbe3597da` |
+| January 2016 output | `7e1c5a2740a144f73d32ccab16d62381488dfb504ccca74ac733480ccc23d7fb` |
+| February 2016 output | `1c11c424a9ef1795120b9f2b0c31e4110c0d2c55bf9bd8edc2ed49de39e27b2d` |
+| March 2016 output | `c14dbf615e13d981cc409873874f051b62124780c64bfb356a46208095deb3c7` |
+
+The reference group is `2020-01-08_GOSAT+RPB_CAMS_bias_update`. It used monthly
+SOUTHAMERICA inversions of LAND-mode GOSAT retrievals plus Ragged Point (RPB),
+with GCFID selected through 2016 and CRDS from 2017. Emissions Setup021 combined
+JULES/SWAMPS wetlands scaled to 44 Tg/yr over tropical South America, monthly
+GFED fire, and annual EDGAR v4.3.2 anthropogenic emissions. CAMS supplied the
+boundary curtains. The omitted configuration defaults enable a GOSAT-versus-
+RPB additive bias and infer, rather than fix, four monthly NESW boundary
+coefficients.
+
+The two archived INIs otherwise agree and specify:
+
+- `nIt=500000`, `burn_in=100000`, and `nsub=500`;
+- `kmin=4`, `kmax=200`, `k_ap=50`, and `reversible_jump=True`;
+- a `sub-transd` spatial basis plus four fixed outer-emissions regions;
+- lognormal emissions inputs `pdf_param10=1`, `pdf_param20=1`, with the first
+  parameter frozen (`stepsize_pdf_p1=0`) and the second proposed with step 0.1;
+- coefficient, structural-coefficient, longitude, and latitude proposal scales
+  0.5, 2, 8, and 5 respectively;
+- an uncorrelated likelihood with one inferred model-error scale per site and
+  nonempty 7-day block, initialized at 20;
+- four-temperature parallel tempering.
+
+The effective source is the January-2020
+`acrg_hbtdmcmc_uncorr.f90` lineage. The loop runs `burn_in+nIt`, so these jobs
+performed 600,000 nominal iterations rather than 500,000 total. A deterministic
+five-phase cycle gives one model-error, upward structural, downward structural,
+nucleus-move, and emissions block per five iterations. Each emissions block
+updates all nine always-active parameters and five dynamic coefficients, with
+replacement. Consequently the retained phase contains 100,000 opportunities
+for each top-level transition, 500,000 dynamic-coefficient opportunities, and
+100,000 updates of every always-active parameter. The 1,000 stored states are
+separated by 500 nominal iterations, or 100 complete cycles.
+
+The packed state contains nine always-active values (bias, four NESW boundary
+coefficients, and four fixed outer-emissions coefficients), followed by the
+active spatial coefficients and padding. Although the generic INI gives a
+0.05--20 hyperprior range, the source overrides the variable-region prior-SD
+range to 0.2--2. The prior mean remains one. The model-error bounds are
+`[0.1,10] * 20 = [2,200]`, whereas the paper reports a 0.2--200 ppb range.
+These code/output facts must take precedence when reproducing these exact
+runs, and the discrepancy with the paper must remain visible.
+
+The retained January--March 2016 outputs contain 1,589, 1,416, and 1,630
+observations. Their single cold-chain `k` traces have means 93.5, 22.8, and
+60.5, ranges 38--171, 8--58, and 19--130, and lag-one autocorrelations 0.978,
+0.866, and 0.961. They contain no multiple-chain convergence diagnostics. All
+three files record zero accepted and 275,000 rejected temperature swaps. Source
+inspection confirms that these are genuine counters: the very wide inverse-
+temperature ladder `[1, 0.15874011, 0.02519842, 0.004]` never exchanged a
+temperature label, so the hot chains never contributed a retained state.
+
+This exact production source has several correctness defects relevant to the
+rewrite:
+
+- separate deterministic upward and downward structural kernels are not
+  individually posterior-invariant;
+- their ratios omit the unequal unused-cell versus active-nucleus selection
+  probabilities and contain no explicit normalized prior on `k`;
+- an upward move copies a parent's region-specific prior SD, but those SDs
+  subsequently evolve independently, so the reverse proposal cannot generally
+  recreate a deleted SD and the augmented reversible-jump dimension match is
+  incomplete;
+- the birth guard `k+1 < kmax` makes the effective upper bound 199;
+- the floored continuous-Gaussian longitude/latitude move is not a symmetric
+  discrete proposal near zero or the domain boundary, but has no Hastings
+  correction;
+- bias and boundary priors are initialized specially and then overwritten to
+  mean/SD one, leaving at least the boundary SD outside its later narrow
+  hyperprior support.
+
+The configured coefficient scale is 0.5, but the source initially halves it
+to 0.25 for dynamic regions. Coefficient, hyperparameter, and model-error
+scales adapt every 500 burn-in iterations toward a broad 20--60% acceptance
+window; the structural coefficient scale remains 2. This is another reason not
+to infer a current fixed proposal scale from the INI alone.
+
+The archive nevertheless gives a useful opportunity-count benchmark. A modern
+120,000-cycle run matches its total 600,000 dynamic, approximately 120,000
+upward, 120,000 downward, and 120,000 move opportunities while replacing the
+invalid directional schedule with mixed reversible structural kernels. It does
+not establish that the historical target or retained uncertainty summaries
+were correct, and it supplies no evidence that its nominal parallel tempering
+improved partition traversal.
+
+The current experimental fixed block is lognormal and the implemented OU
+target is correlated. Neither exactly represents this Brazil model's additive
+Gaussian bias, Gaussian NESW coefficients, or independently inferred
+site-by-seven-day diagonal error scales. Reconstructing this project would
+therefore need separately typed fixed predictors and an opt-in grouped
+independent-error target; the shared-hierarchy profile is a scientifically
+different comparison, not a drop-in reproduction.
+
 ## Current implementation alignment
 
 Already implemented:
