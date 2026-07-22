@@ -505,11 +505,12 @@ def test_region_class_composition_normalizes_physically_matching_coordinates(com
 
 
 @pytest.mark.parametrize("composer", ["combine", "intersect"])
-def test_region_class_composition_accepts_case_only_unit_differences(composer: str):
-    """CF angular unit spellings remain compatible when only their case differs."""
+@pytest.mark.parametrize("candidate_unit", ["Degrees_north", "Degree_N"])
+def test_region_class_composition_accepts_openghg_unit_aliases(composer: str, candidate_unit: str):
+    """OpenGHG's CF-aware Pint aliases normalize known angular-unit spellings."""
     reference, candidate = _physical_grid_test_fields()
     candidate = candidate.assign_coords(
-        latitude=candidate.coords["latitude"].assign_attrs(units="Degrees_north"),
+        latitude=candidate.coords["latitude"].assign_attrs(units=candidate_unit),
         longitude=candidate.coords["longitude"].assign_attrs(units="Degrees_east"),
     )
 
