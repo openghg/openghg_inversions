@@ -505,6 +505,24 @@ def test_region_class_composition_normalizes_physically_matching_coordinates(com
 
 
 @pytest.mark.parametrize("composer", ["combine", "intersect"])
+def test_region_class_composition_accepts_case_only_unit_differences(composer: str):
+    """CF angular unit spellings remain compatible when only their case differs."""
+    reference, candidate = _physical_grid_test_fields()
+    candidate = candidate.assign_coords(
+        latitude=candidate.coords["latitude"].assign_attrs(units="Degrees_north"),
+        longitude=candidate.coords["longitude"].assign_attrs(units="Degrees_east"),
+    )
+
+    if composer == "combine":
+        result = combine_inner_outer_region_classes(xr.ones_like(reference, dtype=bool), reference, candidate)
+    else:
+        result = intersect_region_class_layers({"reference": reference, "candidate": candidate})
+
+    assert result.coords["latitude"].attrs["units"] == "degrees_north"
+    assert result.coords["longitude"].attrs["units"] == "degrees_east"
+
+
+@pytest.mark.parametrize("composer", ["combine", "intersect"])
 @pytest.mark.parametrize(
     ("mismatch", "coordinate_name"),
     [

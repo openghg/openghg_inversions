@@ -1394,11 +1394,22 @@ def _validate_grid_metadata(
     for attribute_name in _GRID_METADATA_KEYS:
         reference_value = reference.attrs.get(attribute_name)
         candidate_value = candidate.attrs.get(attribute_name)
-        if reference_value is not None and candidate_value is not None and reference_value != candidate_value:
+        if (
+            reference_value is not None
+            and candidate_value is not None
+            and not _grid_metadata_values_equal(attribute_name, reference_value, candidate_value)
+        ):
             raise xr.AlignmentError(
                 f"Coordinate {coordinate_name!r} on {candidate_name} has conflicting "
                 f"{attribute_name!r} metadata from {reference_name}."
             )
+
+
+def _grid_metadata_values_equal(attribute_name: str, reference: object, candidate: object) -> bool:
+    """Return whether grid metadata values are physically equivalent."""
+    if attribute_name == "units" and isinstance(reference, str) and isinstance(candidate, str):
+        return reference.casefold() == candidate.casefold()
+    return _metadata_values_equal(reference, candidate)
 
 
 def _validate_weights(weights: xr.DataArray) -> np.ndarray:
