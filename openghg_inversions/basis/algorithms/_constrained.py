@@ -36,7 +36,9 @@ from typing import Literal, Protocol, TypeAlias, cast
 
 import numpy as np
 import numpy.typing as npt
+from openghg.util import cf_ureg  # pyright: ignore[reportPrivateImportUsage]
 import pandas as pd
+from pint.errors import PintError
 import xarray as xr
 
 from ._weighted import bucket_value_split
@@ -1408,7 +1410,12 @@ def _validate_grid_metadata(
 def _grid_metadata_values_equal(attribute_name: str, reference: object, candidate: object) -> bool:
     """Return whether grid metadata values are physically equivalent."""
     if attribute_name == "units" and isinstance(reference, str) and isinstance(candidate, str):
-        return reference.casefold() == candidate.casefold()
+        try:
+            return cf_ureg.parse_units(reference) == cf_ureg.parse_units(candidate)
+        except (PintError, TypeError, ValueError):
+            # Preserve the historical exact-string behavior for unit labels
+            # outside OpenGHG's CF-aware registry.
+            return reference == candidate
     return _metadata_values_equal(reference, candidate)
 
 
