@@ -96,7 +96,7 @@ def _legacy_inv_out(*, model_data: bool, include_bc: bool = False, chains: int =
     if model_data:
         constant_vars = {
             "hx": (("nmeasure", "region"), np.array([[0.25], [0.75]])),
-            "sigma_freq_index": (("nmeasure",), np.array([0, 1])),
+            "sigma_period_index": (("nmeasure",), np.array([0, 1])),
         }
         constant_coords: dict[str, object] = {"nmeasure": np.arange(2), "region": np.array([0])}
         if include_bc:

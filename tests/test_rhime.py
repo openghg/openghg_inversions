@@ -66,6 +66,7 @@ from openghg_inversions.rhime import (
     run_rhime_from_prepared_inputs,
     run_rhime_multisector,
 )
+from openghg_inversions.sigma import SigmaAlignment
 
 
 @pytest.fixture(scope="module")
@@ -74,7 +75,6 @@ def rhime_inv_inputs(mhd_and_tac_fp_data) -> xr.Dataset:
         mhd_and_tac_fp_data,
         sites=["MHD", "TAC"],
         bc_freq="3h",
-        sigma_freq="3h",
         min_error=0.0,
         start_date="2019-01-01",
     )
@@ -101,12 +101,17 @@ def multisector_inv_inputs(rhime_inv_inputs: xr.Dataset) -> xr.Dataset:
 
 
 @pytest.fixture
-def builder_args() -> dict:
+def builder_args(rhime_inv_inputs: xr.Dataset) -> dict:
+    """Build low-level model arguments including prepared sigma alignment."""
     return {
+        "sigma_alignment": SigmaAlignment.from_frequency(
+            rhime_inv_inputs["site_indicator"],
+            frequency="3h",
+            anchor_time="2019-01-01",
+        ),
         "x_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
         "bc_prior": {"pdf": "normal", "mu": 1.0, "sigma": 1.0},
         "sigma_prior": {"pdf": "uniform", "lower": 0.1, "upper": 10.0},
-        "sigma_per_site": True,
         "offset_prior": {"pdf": "normal", "mu": 0, "sigma": 1},
         "add_offset": False,
         "use_bc": True,
@@ -505,6 +510,7 @@ class _DynamicSectorSpyBasisFunctions(_SpyBasisFunctions):
 def test_build_rhime_model_contains_expected_variables(
     rhime_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
+    """Build the low-level model with explicitly prepared sigma alignment."""
     model = build_rhime_model(rhime_inv_inputs, **builder_args)
 
     assert isinstance(model, pm.Model)
@@ -512,9 +518,16 @@ def test_build_rhime_model_contains_expected_variables(
     assert expected.issubset(model.named_vars)
 
 
+def test_modern_inv_inputs_omit_component_owned_sigma_index(rhime_inv_inputs: xr.Dataset) -> None:
+    """Modern inversion inputs omit component-owned sigma period indexes."""
+    assert "sigma_freq_index" not in rhime_inv_inputs
+    assert "sigma_period_index" not in rhime_inv_inputs
+
+
 def test_build_rhime_multisector_model_contains_expected_variables(
     multisector_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
+    """Build the multisector model with explicitly prepared sigma alignment."""
     sectors = ["total-ukghg-edgar7", "sector-2"]
     model = build_rhime_multisector_model(multisector_inv_inputs, sectors=sectors, **builder_args)
 
@@ -1035,7 +1048,7 @@ def test_unreleased_sampling_compatibility_shims_are_absent() -> None:
 
 
 def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> None:
-    """Raw runner params normalize into model, output, and sampling specs."""
+    """Route sigma frequency into the model spec, not data preparation."""
     params = {
         "species": "ch4",
         "sites": "TAC",
@@ -1141,7 +1154,7 @@ def test_rhime_normalises_legacy_output_format_aliases(
 def test_build_rhime_model_from_spec_forwards_single_sector_prior(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The standard spec wrapper forwards its sector prior as ``x_prior``."""
+    """Forward the sector prior and construct prepared sigma alignment."""
     sentinel = cast(pm.Model, object())
     seen: dict[str, Any] = {}
 
@@ -1151,7 +1164,7 @@ def test_build_rhime_model_from_spec_forwards_single_sector_prior(
         return sentinel
 
     monkeypatch.setattr(rhime_models_module, "build_rhime_model", fake_build_rhime_model)
-    inv_inputs = _minimal_inv_inputs()
+    inv_inputs = _minimal_output_inv_inputs()
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
@@ -1175,9 +1188,12 @@ def test_build_rhime_model_from_spec_forwards_single_sector_prior(
     assert seen["inv_inputs"] is inv_inputs
     assert seen["kwargs"]["x_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.2}
     assert seen["kwargs"]["bc_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.1}
-    assert seen["kwargs"]["sigma_per_site"] is False
-    assert seen["kwargs"]["sigma_freq"] == "8D"
-    assert seen["kwargs"]["sigma_freq_anchor"] == "2019-01-01"
+    alignment = seen["kwargs"]["sigma_alignment"]
+    assert isinstance(alignment, SigmaAlignment)
+    assert alignment.nsite == 1
+    assert alignment.nperiod == 1
+    np.testing.assert_array_equal(alignment.site_index, np.array([0]))
+    np.testing.assert_array_equal(alignment.period_index, np.array([0]))
 
 
 def test_build_rhime_model_from_spec_requires_one_sector() -> None:
@@ -1212,7 +1228,7 @@ def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping
         "build_rhime_multisector_model",
         fake_build_rhime_multisector_model,
     )
-    inv_inputs = _minimal_inv_inputs()
+    inv_inputs = _minimal_output_inv_inputs()
     model_spec = RhimeModelSpec(
         species="ch4",
         domain="EUROPE",
@@ -1243,6 +1259,7 @@ def test_build_rhime_multisector_model_from_spec_preserves_sector_source_mapping
         "FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2},
         "ocean": {"pdf": "normal", "mu": 1.0, "sigma": 0.3},
     }
+    assert isinstance(seen["kwargs"]["sigma_alignment"], SigmaAlignment)
 
 
 def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
@@ -1850,6 +1867,57 @@ def test_prepare_rhime_inputs_multisector_keeps_source_dimension(
     assert set(prepared.inv_inputs["H"].coords["source"].values) == set(flux_sources)
 
 
+def test_fixedbasis_preparation_adds_anchored_legacy_sigma_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy preparation retains its anchored component compatibility index."""
+    times = pd.to_datetime(["2019-01-08", "2019-01-09", "2019-01-15"])
+    inv_inputs = xr.Dataset(
+        {
+            "H": (("region", "nmeasure"), np.ones((1, 3))),
+            "site_indicator": ("nmeasure", np.zeros(3, dtype=int)),
+        },
+        coords={"region": [0], "nmeasure": np.arange(3), "time": ("nmeasure", times)},
+    )
+    fp_data = {"TAC": _site_dataset([2.0, 3.0, 4.0])}
+    merged = prep_module._MergedInversionData(
+        fp_all=fp_data,
+        sites=["TAC"],
+        averaging_period=["1H"],
+    )
+    basis_functions = _fake_basis_functions()
+
+    monkeypatch.setattr(prep_module, "_prepare_merged_data", lambda **kwargs: merged)
+    monkeypatch.setattr(
+        prep_module,
+        "basis_functions_wrapper",
+        lambda **kwargs: (fp_data, {"emissions": basis_functions}),
+    )
+    monkeypatch.setattr(
+        prep_module,
+        "_apply_filters_and_drop_empty_sites",
+        lambda **kwargs: (fp_data, ["TAC"], ["1H"]),
+    )
+    monkeypatch.setattr(prep_module, "_set_domain_attrs", lambda *args, **kwargs: None)
+    monkeypatch.setattr(prep_module, "_make_inv_inputs", lambda **kwargs: inv_inputs.copy())
+
+    prepared = prep_module.prepare_fixedbasis_inversion_data(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="fixedbasis_sigma",
+        flux_sources=["total-ukghg-edgar7"],
+        sigma_freq="8D",
+        use_bc=False,
+    )
+
+    assert prepared.inv_inputs is not None
+    np.testing.assert_array_equal(prepared.inv_inputs["sigma_freq_index"], [0, 1, 1])
+
+
 def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channels(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1973,7 +2041,6 @@ def test_prepare_rhime_inputs_matches_direct_sensitivity_inv_inputs(
         {"TAC": expected_site_data},
         sites=["TAC"],
         bc_freq=None,
-        sigma_freq=None,
         min_error=0.0,
         start_date="2019-01-01",
     )

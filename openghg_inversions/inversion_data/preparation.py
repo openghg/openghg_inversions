@@ -1,14 +1,15 @@
-"""Shared runner-level inversion data preparation.
+"""Prepare inversion data for modern RHIME and legacy fixedbasis runners.
 
-This module separates legacy fixedbasis preparation from the modern RHIME
-prepared-input contract. New RHIME callers use ``flux_sources`` to name OpenGHG
-flux ``source`` metadata values, while lower-level compatibility helpers still
-pass those values through older ``emissions_name`` parameters internally.
+``prepare_rhime_inputs`` returns backend-neutral observations, sensitivities,
+basis metadata, and site metadata; component-specific model arrays are
+intentionally absent. ``prepare_fixedbasis_inversion_data`` is a compatibility
+adapter that retains the input variables required by ``fixedbasisMCMC``,
+including its sigma-period index.
 
-``species`` is the primary gas or tracer name used for object-store lookup and
-output naming. ``use_tracer`` is retained as an explicit unsupported option for
-the current RHIME preparation path because tracer inversions require linked
-forward models that are not represented here.
+Preparation can read OpenGHG object stores or local merged-data artifacts,
+write merged-data and basis artifacts, emit warnings and progress messages,
+and record timing information. Neither public entry point constructs a PyMC
+model.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from openghg_inversions.flux_sanitization import FluxNonFiniteCheck, sanitize_fl
 from openghg_inversions.inversion_data.get_data import convert_to_list, data_processing_surface_notracer
 from openghg_inversions.inversion_data.serialise import load_merged_data
 from openghg_inversions.inversion_inputs import make_inv_inputs
+from openghg_inversions.sigma import SigmaAlignment
 
 MinErrorConfig = Literal["percentile", "residual"] | dict[str, float] | None | int | float
 
@@ -197,13 +199,28 @@ def _make_inv_inputs(
     sites: list[str],
     start_date: str,
     bc_freq: str | None,
-    sigma_freq: str | None,
     min_error: MinErrorConfig,
     calculate_min_error: Literal["percentile", "residual"] | None,
     min_error_options: dict | None,
-    include_sigma_freq_index: bool = True,
 ) -> xr.Dataset:
-    """Create canonical inversion inputs with legacy compatibility options."""
+    """Create backend-neutral inversion inputs with min-error compatibility.
+
+    Args:
+        fp_data: Filtered per-site observations and sensitivity data.
+        sites: Retained sites in observation order.
+        start_date: Anchor for fixed-duration boundary-condition periods.
+        bc_freq: Optional boundary-condition period frequency.
+        min_error: Minimum-error value or calculation method.
+        calculate_min_error: Deprecated minimum-error calculation argument.
+        min_error_options: Options for calculated minimum error.
+
+    Returns:
+        Canonical observation-aligned inputs without component-specific model
+        data.
+
+    Warns:
+        FutureWarning: If ``calculate_min_error`` is supplied.
+    """
     if calculate_min_error is not None:
         warnings.warn(
             "`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead.",
@@ -229,11 +246,9 @@ def _make_inv_inputs(
         fp_data,
         sites=sites,
         bc_freq=bc_freq,
-        sigma_freq=sigma_freq,
         min_error=min_error,
         min_error_per_site=min_error_options.get("by_site", False),
         start_date=start_date,
-        include_sigma_freq_index=include_sigma_freq_index,
     )
 
 
@@ -578,7 +593,22 @@ def prepare_fixedbasis_inversion_data(
     merged_data_only: bool = False,
     flux_non_finite_check: FluxNonFiniteCheck = "lazy",
 ) -> FixedBasisPreparedData:
-    """Prepare data for legacy fixedbasisMCMC and its output adapters."""
+    """Prepare data for legacy ``fixedbasisMCMC`` and its output adapters.
+
+    This adapter preserves the fixed-basis inversion-input contract. Unless
+    ``merged_data_only`` is true, the returned ``inv_inputs`` includes
+    ``sigma_freq_index(nmeasure)`` derived from ``sigma_freq`` and anchored to
+    ``start_date``. Modern RHIME preparation intentionally omits this
+    component-specific variable.
+
+    Returns:
+        Prepared legacy data, including forward-model inputs and optional basis
+        objects. When ``merged_data_only`` is true, only merged data and
+        retained site metadata are populated.
+
+    Warns:
+        FutureWarning: If deprecated ``calculate_min_error`` is supplied.
+    """
     merged = _prepare_merged_data(
         species=species,
         sites=sites,
@@ -661,12 +691,16 @@ def prepare_fixedbasis_inversion_data(
         sites=prepared_sites,
         start_date=start_date,
         bc_freq=bc_freq,
-        sigma_freq=sigma_freq,
         min_error=min_error,
         calculate_min_error=calculate_min_error,
         min_error_options=min_error_options,
-        include_sigma_freq_index=True,
     )
+    sigma_alignment = SigmaAlignment.from_frequency(
+        inv_inputs["site_indicator"],
+        frequency=sigma_freq,
+        anchor_time=start_date,
+    )
+    inv_inputs["sigma_freq_index"] = sigma_alignment.period_index.rename("sigma_freq_index")
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
 
     return FixedBasisPreparedData(
@@ -720,7 +754,6 @@ def prepare_rhime_inputs(
     fix_basis_outer_regions: bool = False,
     averaging_error: bool = True,
     bc_freq: str | None = None,
-    sigma_freq: str | None = None,
     reload_merged_data: bool = False,
     save_merged_data: bool = False,
     merged_data_dir: str | None = None,
@@ -749,10 +782,6 @@ def prepare_rhime_inputs(
         flux_sources: OpenGHG flux ``source`` values requested for the run.
         split_by_sectors: Whether to keep sector-resolved sensitivity inputs
             with a ``source`` coordinate.
-        sigma_freq: Compatibility-only sigma frequency argument. Modern RHIME
-            carries this setting in ``RhimeModelSpec`` and derives component
-            data during model construction, so this function does not
-            materialize ``sigma_freq_index``.
         use_tracer: Unsupported placeholder for tracer inversions, where an
             additional species constrains the primary species through linked
             forward models.
@@ -846,11 +875,9 @@ def prepare_rhime_inputs(
             sites=filtered_merged.sites,
             start_date=start_date,
             bc_freq=bc_freq,
-            sigma_freq=sigma_freq,
             min_error=min_error,
             calculate_min_error=None,
             min_error_options=min_error_options,
-            include_sigma_freq_index=False,
         )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
     site_lats, site_lons = _site_release_coordinates(fp_data, filtered_merged.sites)

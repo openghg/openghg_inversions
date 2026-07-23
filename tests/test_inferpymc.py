@@ -16,19 +16,25 @@ from openghg_inversions.hbmcmc.inversion_pymc import (
 )
 from openghg_inversions.models.coords import restore_inferencedata_coords
 from openghg_inversions.postprocessing.inversion_output import convert_idata_to_dataset
+from openghg_inversions.sigma import SigmaAlignment
 
 
 @pytest.fixture(scope="module")
 def inv_inputs(mhd_and_tac_fp_data) -> xr.Dataset:
-    return make_inv_inputs(
+    inputs = make_inv_inputs(
         mhd_and_tac_fp_data,
         sites=["MHD", "TAC"],
         bc_freq="3h",
-        sigma_freq="3h",
         min_error="percentile",
         min_error_per_site=False,
         start_date="2019-01-01",
     )
+    alignment = SigmaAlignment.from_frequency(
+        inputs["site_indicator"],
+        frequency="3h",
+        anchor_time="2019-01-01",
+    )
+    return inputs.assign(sigma_freq_index=alignment.period_index.rename("sigma_freq_index"))
 
 
 @pytest.fixture
@@ -82,6 +88,15 @@ def test_build_inferpymc_model_requires_inv_inputs() -> None:
     """The model builder requires canonical inversion inputs."""
     with pytest.raises(TypeError):
         build_inferpymc_model()  # type: ignore[call-arg]
+
+
+def test_build_inferpymc_model_requires_legacy_sigma_index(
+    inv_inputs: xr.Dataset,
+    model_args: dict,
+) -> None:
+    """The hbmcmc adapter requires its explicit legacy sigma compatibility data."""
+    with pytest.raises(KeyError, match="sigma_freq_index"):
+        build_inferpymc_model(inv_inputs.drop_vars("sigma_freq_index"), **model_args)
 
 
 def test_sample_returns_burned_modern_result(

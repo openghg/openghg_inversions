@@ -30,6 +30,7 @@ from openghg_inversions.models.components import (
 )
 from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.models.priors import PriorArgs
+from openghg_inversions.sigma import SigmaAlignment
 
 DEFAULT_X_PRIOR: PriorArgs = {"pdf": "lognormal", "mean": 1.0, "stdev": 1.0, "reparameterise": True}
 DEFAULT_BC_PRIOR: PriorArgs = {"pdf": "truncatednormal", "mu": 1.0, "sigma": 0.05, "lower": 0.0}
@@ -129,12 +130,10 @@ def _prepare_builder_priors(
 def build_rhime_model(
     inv_inputs: xr.Dataset,
     *,
+    sigma_alignment: SigmaAlignment,
     x_prior: dict | None = None,
     bc_prior: dict | None = None,
     sigma_prior: dict | None = None,
-    sigma_per_site: bool = True,
-    sigma_freq: str | None = None,
-    sigma_freq_anchor: DatetimeLike | None = None,
     offset_prior: dict | None = None,
     add_offset: bool = False,
     use_bc: bool = True,
@@ -148,14 +147,10 @@ def build_rhime_model(
     Args:
         inv_inputs: Canonical inversion-input dataset produced by
             ``make_inv_inputs``.
+        sigma_alignment: Backend-neutral site and period alignment for sigma.
         x_prior: Prior specification for flux scaling factors.
         bc_prior: Prior specification for boundary-condition scaling factors.
         sigma_prior: Prior specification for model-error terms.
-        sigma_per_site: Whether model-error terms vary by site.
-        sigma_freq: Frequency used to derive sigma-period indexes when
-            ``inv_inputs`` lacks ``sigma_freq_index``. ``None`` creates one
-            shared period. An existing explicit index takes precedence.
-        sigma_freq_anchor: Optional anchor for fixed-duration sigma periods.
         offset_prior: Prior specification for optional offsets.
         add_offset: Whether to include an offset term.
         use_bc: Whether to include boundary-condition terms.
@@ -219,12 +214,10 @@ def build_rhime_model(
             mu_bc=mu_bc,
             offset=offset,
             sigprior=sigma_prior,
+            sigma_alignment=sigma_alignment,
             power=power,
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
-            sigma_per_site=sigma_per_site,
-            sigma_freq=sigma_freq,
-            sigma_freq_anchor=sigma_freq_anchor,
             output_dim="nmeasure",
         )
 
@@ -249,14 +242,18 @@ def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSp
         raise ValueError("Standard RHIME model specs must include exactly one sector.")
 
     sector = model_spec.sectors[0]
+    sigma_alignment = SigmaAlignment.from_frequency(
+        inv_inputs["site_indicator"],
+        frequency=model_spec.sigma_freq,
+        per_site=model_spec.sigma_per_site,
+        anchor_time=model_spec.sigma_freq_anchor,
+    )
     return build_rhime_model(
         inv_inputs,
+        sigma_alignment=sigma_alignment,
         x_prior=dict(sector.x_prior),
         bc_prior=model_spec.bc_prior,
         sigma_prior=model_spec.sigma_prior,
-        sigma_per_site=model_spec.sigma_per_site,
-        sigma_freq=model_spec.sigma_freq,
-        sigma_freq_anchor=model_spec.sigma_freq_anchor,
         offset_prior=model_spec.offset_prior,
         add_offset=model_spec.add_offset,
         use_bc=model_spec.use_bc,
@@ -334,6 +331,7 @@ def _sector_prior(
 def build_rhime_multisector_model(
     inv_inputs: xr.Dataset,
     *,
+    sigma_alignment: SigmaAlignment,
     sectors: Sequence[str] | None = None,
     sector_sources: Mapping[str, str] | None = None,
     sector_variable_suffixes: Mapping[str, str] | None = None,
@@ -341,9 +339,6 @@ def build_rhime_multisector_model(
     x_prior: dict | None = None,
     bc_prior: dict | None = None,
     sigma_prior: dict | None = None,
-    sigma_per_site: bool = True,
-    sigma_freq: str | None = None,
-    sigma_freq_anchor: DatetimeLike | None = None,
     offset_prior: dict | None = None,
     add_offset: bool = False,
     use_bc: bool = True,
@@ -361,6 +356,7 @@ def build_rhime_multisector_model(
     Args:
         inv_inputs: Canonical inversion-input dataset with
             ``H(region, nmeasure, source)``.
+        sigma_alignment: Backend-neutral site and period alignment for sigma.
         sectors: Ordered model sector labels to optimize. Defaults to
             ``sector_sources`` keys when supplied, otherwise all
             ``inv_inputs.H.source`` values, where each source becomes one
@@ -373,11 +369,6 @@ def build_rhime_multisector_model(
         x_prior: Shared fallback flux-scaling prior.
         bc_prior: Prior specification for boundary-condition scaling factors.
         sigma_prior: Prior specification for model-error terms.
-        sigma_per_site: Whether model-error terms vary by site.
-        sigma_freq: Frequency used to derive sigma-period indexes when
-            ``inv_inputs`` lacks ``sigma_freq_index``. ``None`` creates one
-            shared period. An existing explicit index takes precedence.
-        sigma_freq_anchor: Optional anchor for fixed-duration sigma periods.
         offset_prior: Prior specification for optional offsets.
         add_offset: Whether to include an offset term.
         use_bc: Whether to include boundary-condition terms.
@@ -463,12 +454,10 @@ def build_rhime_multisector_model(
             mu_bc=mu_bc,
             offset=offset,
             sigprior=sigma_prior,
+            sigma_alignment=sigma_alignment,
             power=power,
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
-            sigma_per_site=sigma_per_site,
-            sigma_freq=sigma_freq,
-            sigma_freq_anchor=sigma_freq_anchor,
             output_dim="nmeasure",
         )
 
@@ -489,17 +478,21 @@ def build_rhime_multisector_model_from_spec(
     Returns:
         Built PyMC model.
     """
+    sigma_alignment = SigmaAlignment.from_frequency(
+        inv_inputs["site_indicator"],
+        frequency=model_spec.sigma_freq,
+        per_site=model_spec.sigma_per_site,
+        anchor_time=model_spec.sigma_freq_anchor,
+    )
     return build_rhime_multisector_model(
         inv_inputs,
+        sigma_alignment=sigma_alignment,
         sectors=[sector.name for sector in model_spec.sectors],
         sector_sources={sector.name: sector.flux_source for sector in model_spec.sectors},
         sector_variable_suffixes={sector.name: sector.variable_suffix for sector in model_spec.sectors},
         sector_priors={sector.name: dict(sector.x_prior) for sector in model_spec.sectors},
         bc_prior=model_spec.bc_prior,
         sigma_prior=model_spec.sigma_prior,
-        sigma_per_site=model_spec.sigma_per_site,
-        sigma_freq=model_spec.sigma_freq,
-        sigma_freq_anchor=model_spec.sigma_freq_anchor,
         offset_prior=model_spec.offset_prior,
         add_offset=model_spec.add_offset,
         use_bc=model_spec.use_bc,

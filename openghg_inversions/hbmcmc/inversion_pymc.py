@@ -29,6 +29,7 @@ from openghg_inversions.models.components import resolve_model_variable  # noqa:
 from openghg_inversions.models.coords import get_coord_registry, restore_inferencedata_coords  # noqa: E402
 from openghg_inversions.models.priors import PriorArgs  # noqa: E402
 from openghg_inversions.inversion_inputs import _compact_integer_index  # noqa: E402
+from openghg_inversions.sigma import SigmaAlignment  # noqa: E402
 
 # ----------------------------------------
 # Model building code
@@ -103,12 +104,13 @@ def build_inferpymc_model(
     """Compatibility adapter for the standard RHIME model builder.
 
     Args:
-        inv_inputs: Canonical inversion-input dataset, usually produced by
-            ``make_inv_inputs(...)``. This dataset must contain the observation
-            and model variables required by the current component-based model,
-            including at minimum ``H``, ``mf``, ``mf_error``,
-            ``site_indicator``, ``sigma_freq_index``, and ``min_error``. When
-            ``use_bc`` is ``True``, it must also contain ``H_bc``.
+        inv_inputs: Legacy dataset produced by
+            ``prepare_fixedbasis_inversion_data`` or an equivalent adapter.
+            It must contain the observation and model variables required by
+            the component-based model, including at minimum ``H``, ``mf``,
+            ``mf_error``, ``site_indicator``, ``sigma_freq_index``, and
+            ``min_error``. When ``use_bc`` is true, it must also contain
+            ``H_bc``.
         xprior: Prior specification for emissions scaling factors.
         bcprior: Prior specification for boundary-condition scaling factors.
         sigprior: Prior specification for model-error terms.
@@ -136,13 +138,18 @@ def build_inferpymc_model(
         offsetprior=offsetprior,
         reparameterise_log_normal=reparameterise_log_normal,
     )
+    sigma_alignment = SigmaAlignment.from_indices(
+        inv_inputs["site_indicator"],
+        inv_inputs["sigma_freq_index"],
+        per_site=sigma_per_site,
+    )
 
     return build_rhime_model(
         inv_inputs,
+        sigma_alignment=sigma_alignment,
         x_prior=xprior,
         bc_prior=bcprior,
         sigma_prior=sigprior,
-        sigma_per_site=sigma_per_site,
         offset_prior=offsetprior,
         add_offset=add_offset,
         use_bc=use_bc,
@@ -410,12 +417,14 @@ def inferpymc(
     """Perform Bayesian inference with PyMC for emissions, BCs, and model error.
 
     This routine is the compatibility entrypoint for the current PyMC path.
-    It builds the component-based model from ``make_inv_inputs`` output, runs
-    sampling, and adapts the result into the legacy return structure used by
-    downstream postprocessing.
+    It builds the component-based model from a legacy inversion-input dataset,
+    runs sampling, and adapts the result into the return structure used by
+    downstream fixedbasis postprocessing. The input must include
+    ``sigma_freq_index``; modern RHIME inputs intentionally do not.
 
     Args:
-        inv_inputs: xarray.Dataset produced by ``make_inv_inputs``.
+        inv_inputs: Legacy fixedbasis inversion inputs including an
+            observation-aligned ``sigma_freq_index``.
         xprior: Dictionary describing the prior PDF for emissions. The entry "pdf"
             is the name of the analytical PDF used; other entries are shape
             parameters (e.g., {'pdf': 'lognormal', 'stdev': 1.0}).
