@@ -11,9 +11,11 @@ boundary conditions, multi-sector models, and parallel tempering remain
 outside this slice.
 
 A separate NumPy reference implementation samples active frontiers of one
-canonical fixed-direction dyadic tree under a Gamma--Beta mass prior. It is a
-small enumeratable split/merge mixing baseline, not a production full-tiling
-model, and deliberately does not widen the Voronoi state or checkpoint schema.
+canonical fixed-direction dyadic tree under a Gamma--Beta mass prior. It now
+includes an explicit RHIME adapter, full-posterior compound schedule, and
+separate durable checkpoint/output schema for real-data experiments. It
+remains a restricted split/merge mixing baseline rather than a production
+full-tiling model and deliberately does not widen the Voronoi state schema.
 """
 
 from openghg_inversions.experimental.rjmcmc.core import (
@@ -58,11 +60,44 @@ from openghg_inversions.experimental.rjmcmc.dyadic_tree import (
     enumerate_frontiers,
     partition_counts_by_k,
 )
+from openghg_inversions.experimental.rjmcmc.gamma_beta_adapter import (
+    GammaBetaRHIMEAdapterResult,
+    gamma_beta_problem_from_rhime_inputs,
+    initialize_gamma_beta_state,
+)
+from openghg_inversions.experimental.rjmcmc.gamma_beta_compound_sampling import (
+    GAMMA_BETA_COMPOUND_SCHEDULE_ID,
+    CompoundSlot,
+    GammaBetaCompoundCheckpoint,
+    GammaBetaCompoundConfig,
+    GammaBetaCompoundKernelSettings,
+    GammaBetaCompoundSamplingResult,
+    GammaBetaCompoundTrace,
+    continue_gamma_beta_compound,
+    sample_gamma_beta_compound,
+)
+from openghg_inversions.experimental.rjmcmc.gamma_beta_io import (
+    GAMMA_BETA_CHECKPOINT_SCHEMA_ID,
+    GAMMA_BETA_CHECKPOINT_SCHEMA_VERSION,
+    GAMMA_BETA_MANIFEST_SCHEMA_ID,
+    GAMMA_BETA_MANIFEST_SCHEMA_VERSION,
+    GAMMA_BETA_TRACE_SCHEMA_ID,
+    GAMMA_BETA_TRACE_SCHEMA_VERSION,
+    RunManifest,
+    build_gamma_beta_run_manifest,
+    canonical_gamma_beta_run_manifest,
+    gamma_beta_compound_trace_to_dataset,
+    gamma_beta_problem_fingerprint,
+    gamma_beta_state_fingerprint,
+    load_gamma_beta_checkpoint,
+    save_gamma_beta_checkpoint,
+)
 from openghg_inversions.experimental.rjmcmc.gamma_beta_proposals import (
     GammaBetaMove,
     GammaBetaTransitionTerms,
     accept_or_reject as accept_gamma_beta_or_reject,
     propose_fraction_refresh,
+    propose_fixed_coefficient as propose_gamma_beta_fixed_coefficient,
     propose_merge,
     propose_root_refresh,
     propose_split,
@@ -154,6 +189,7 @@ __all__ = [
     "CHECKPOINT_SCHEMA_ID",
     "CHECKPOINT_SCHEMA_VERSION",
     "CanonicalDyadicTree",
+    "CompoundSlot",
     "DEFAULT_QUANTILES",
     "DerivedStructuralDiagnostics",
     "DyadicFrontier",
@@ -161,9 +197,22 @@ __all__ = [
     "FIXED_BLOCK_SCHEDULE_ID",
     "FineGridPosteriorSummary",
     "FixedDesignBlock",
+    "GAMMA_BETA_CHECKPOINT_SCHEMA_ID",
+    "GAMMA_BETA_CHECKPOINT_SCHEMA_VERSION",
+    "GAMMA_BETA_COMPOUND_SCHEDULE_ID",
+    "GAMMA_BETA_MANIFEST_SCHEMA_ID",
+    "GAMMA_BETA_MANIFEST_SCHEMA_VERSION",
     "GAMMA_BETA_STRUCTURAL_SCHEDULE_ID",
+    "GAMMA_BETA_TRACE_SCHEMA_ID",
+    "GAMMA_BETA_TRACE_SCHEMA_VERSION",
     "GammaBetaCheckpoint",
+    "GammaBetaCompoundCheckpoint",
+    "GammaBetaCompoundConfig",
+    "GammaBetaCompoundKernelSettings",
+    "GammaBetaCompoundSamplingResult",
+    "GammaBetaCompoundTrace",
     "GammaBetaMove",
+    "GammaBetaRHIMEAdapterResult",
     "GammaBetaSamplerConfig",
     "GammaBetaSamplingResult",
     "GammaBetaTrace",
@@ -186,6 +235,7 @@ __all__ = [
     "PCG64State",
     "PosteriorPredictionSummary",
     "RetentionSettings",
+    "RunManifest",
     "SCHEDULE_ID",
     "STRUCTURAL_MOVES",
     "ScheduleProfile",
@@ -210,7 +260,10 @@ __all__ = [
     "assign_cells_numpy",
     "build_state",
     "build_gamma_beta_tree_state",
+    "build_gamma_beta_run_manifest",
+    "canonical_gamma_beta_run_manifest",
     "concatenate_structural_diagnostics",
+    "continue_gamma_beta_compound",
     "continue_sample",
     "continue_gamma_beta_tree",
     "derive_nucleus_residence_intervals",
@@ -219,12 +272,19 @@ __all__ = [
     "enumerate_frontiers",
     "gaussian_log_likelihood_numba",
     "gaussian_log_likelihood_numpy",
+    "gamma_beta_compound_trace_to_dataset",
+    "gamma_beta_problem_fingerprint",
+    "gamma_beta_state_fingerprint",
+    "gamma_beta_problem_from_rhime_inputs",
+    "initialize_gamma_beta_state",
+    "load_gamma_beta_checkpoint",
     "lognormal_coefficient_log_prior_numba",
     "lognormal_coefficient_log_prior_numpy",
     "log_moments_to_lognormal_parameters",
     "load_checkpoint",
     "problem_fingerprint",
     "propose_fraction_refresh",
+    "propose_gamma_beta_fixed_coefficient",
     "propose_birth",
     "propose_coefficient",
     "propose_correlation_timescale",
@@ -244,8 +304,10 @@ __all__ = [
     "ou_log_likelihood_numba",
     "ou_log_likelihood_numpy",
     "sample",
+    "sample_gamma_beta_compound",
     "sample_gamma_beta_tree",
     "sampling_trace_to_dataset",
+    "save_gamma_beta_checkpoint",
     "save_checkpoint",
     "shared_coefficient_log_prior_numba",
     "shared_coefficient_log_prior_numpy",

@@ -290,3 +290,58 @@ The initial HPC run is a wiring and acceptance/profile smoke, not a production
 convergence run. Numba, incremental candidate predictions, alternative split
 directions, correlated errors, and long posterior chains follow only after
 these diagnostics.
+
+### Local real-shape performance preflight
+
+After the topology changes, a development-machine preflight used the complete
+PARIS array shapes (1,382 observations, a \(183\times128\) grid, \(K=250\),
+and six fixed coefficients) with a dense synthetic sensitivity matrix. The
+problem retained the full 23,424-cell response and all-tree-node design cache;
+only the numerical values and observations were synthetic.
+
+- target construction took 1.89 seconds;
+- deterministic \(K=250\) initialization took 0.057 seconds;
+- 100 complete 14-slot cycles took 3.14 seconds, or 445 atomic transitions
+  per second; and
+- maximum resident memory was 1.16 GB, with a reported peak memory footprint
+  of 1.21 GB.
+
+This establishes that the reference implementation is practical for a
+100--1,000-cycle real-data smoke and that memory is not the immediate
+bottleneck. It is not an HPC throughput prediction: the development machine,
+synthetic likelihood geometry, accepted path through \(K\), filesystem, and
+BLAS implementation all differ from the production experiment. The real run
+must record setup, sampling, and persistence time separately.
+
+The recorded preflight used sampler commit `d6cae30`, an arm64 Darwin T6020
+host, Python 3.10.19, NumPy 2.2.6, SciPy 1.15.3, and xarray 2025.6.1. The dense
+synthetic design used NumPy generator seed 7 and the sampler used seed
+20260723. `/usr/bin/time -l` reported maximum resident set size; its separate
+“peak memory footprint” counter is retained only as a platform-specific
+secondary value. The benchmark construction is intentionally the same one
+described above: dense \(N(0,10^{-4})\) inner and six-column fixed designs,
+uniform native weights, errors \(10^{-3}\), observations equal to the
+prior-mean inner prediction, and the full 100-cycle compound sampler.
+
+### Implemented real-data boundary
+
+The readiness work now includes:
+
+- an independent product-space density oracle covering the root
+  scaling-to-mass Jacobian and inactive-coordinate marginalization;
+- fixed offset and heterogeneous-lognormal always-active coefficients in the
+  Gamma--Beta target;
+- a strict native RHIME adapter with direct all-one scaling closure;
+- the full posterior-invariant compound sampler and exact mid-cycle PCG64
+  continuation;
+- linear-time frontier validation and mergeable-cherry discovery;
+- a canonical problem fingerprint and run manifest;
+- checksummed, no-pickle, rebuild-on-load durable checkpoints; and
+- labelled xarray output for retained variable-dimensional states and every
+  attempted transition.
+
+The executable real-data driver and
+[`rjmcmc_gamma_beta_hpc_test_plan.md`](rjmcmc_gamma_beta_hpc_test_plan.md)
+provide the final packaging layer. A successful smoke will make this
+fixed-direction tree a measured baseline; it will not turn it into the
+proposed full-tiling model.
