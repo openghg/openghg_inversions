@@ -36,7 +36,6 @@ from openghg_inversions.experimental.rjmcmc.gamma_beta_tree import (
 from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
 from openghg_inversions.experimental.rjmcmc.sampling import PCG64State
 
-
 GAMMA_BETA_STRUCTURAL_SCHEDULE_ID = "gamma_beta_mixed_split_merge_v1"
 
 
@@ -398,7 +397,7 @@ def _run_segment(
     moves = np.empty(iterations, dtype="U5")
     valid = np.empty(iterations, dtype=np.bool_)
     accepted = np.empty(iterations, dtype=np.bool_)
-    node_id = np.empty(iterations, dtype=np.int64)
+    node_id = np.full(iterations, -1, dtype=np.int64)
     log_acceptance_ratio = np.empty(iterations, dtype=np.float64)
 
     state = initial_state
@@ -438,7 +437,8 @@ def _run_segment(
         moves[iteration] = transition.move
         valid[iteration] = transition.valid
         accepted[iteration] = proposal_accepted
-        node_id[iteration] = transition.node_id
+        if transition.node_id is not None:
+            node_id[iteration] = transition.node_id
         log_acceptance_ratio[iteration] = transition.log_acceptance_ratio
         state = next_state
         completed = transitions_completed + iteration + 1
