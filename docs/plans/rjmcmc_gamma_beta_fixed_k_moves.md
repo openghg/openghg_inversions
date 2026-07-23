@@ -137,11 +137,12 @@ pair retain the opportunity as an explicit self-transition.
 
 ### Bounded subtree retile
 
-Select one of the \(K-1\) active split nodes uniformly as a block root. Let the
-current block contain \(m\) frontier leaves.
+Construct the eligible block set from active split nodes whose current block
+contains \(m\) frontier leaves, with \(m\) no larger than the configured cap
+and at least one other \(m\)-leaf frontier in the canonical subtree. Select
+one eligible block uniformly.
 
-- If \(m\) exceeds the configured cap, or the canonical subtree has no other
-  \(m\)-leaf frontier, retain an explicit self-transition.
+- If there is no eligible block, retain an explicit self-transition.
 - Otherwise draw a different \(m\)-leaf frontier uniformly using exact
   arbitrary-precision subtree counts and deterministic rank/unrank logic.
 - Keep the block total, outside fractions, and fraction coordinates common to
@@ -149,11 +150,13 @@ current block contain \(m\) frontier leaves.
 - Draw fractions at newly active split nodes from their normalized Beta
   priors; the reverse density evaluates the removed source fractions.
 
-The block-root selection probability is \(1/(K-1)\) in both states. The
-conditional alternative count is also the same in both directions. Beta
-target/proposal terms cancel, the partition prior is unchanged, and the
-augmented coordinate swap has unit Jacobian. The non-cancelling term is the
-likelihood change.
+The conditional alternative count is the same in both directions, but the
+number of eligible block roots can differ between source and candidate. The
+proposal therefore includes the exact ratio of candidate and source eligible
+degrees. Beta target/proposal terms cancel, the partition prior is unchanged,
+and the augmented coordinate swap has unit Jacobian. The non-cancelling terms
+are the likelihood change and, where the eligible degrees differ, that
+selection correction.
 
 This is a restricted fixed-tree analogue of multiscale block dynamics, not a
 full-tiling rotation. The initial cap is 8 leaves and is persisted as part of
@@ -175,9 +178,9 @@ This preserves every Stage C proposal-opportunity count and adds the two
 fixed-\(K\) opportunities. Comparisons should match cycles, not raw atomic
 transitions.
 
-Planned schedule ID:
+Schedule ID:
 
-`gamma_beta_2_rj_1_relocate_1_subtree_1_root_n_fraction_fixed_sweep_v2`
+`gamma_beta_2_mixed_structure_n_relocate_n_subtree_retile_1_root_n_fraction_fixed_sweep_v2`
 
 Persistence changes:
 
@@ -294,4 +297,3 @@ The literal paper-derived experiment remains separate:
 This track should not be hidden behind the fixed-tree API: its state,
 reference measure, geometry catalogue, target, and persistence boundary are
 different.
-

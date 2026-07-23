@@ -349,7 +349,7 @@ def test_adapter_requires_every_explicitly_selected_variable() -> None:
 
 
 def test_adapter_problem_runs_one_complete_real_data_style_cycle() -> None:
-    """An adapter-built six-outer problem should run the exact 14-slot cycle."""
+    """An adapter-built six-outer problem should run the exact 16-slot cycle."""
     dataset, canonical = _dataset()
     dataset["outer_design"] = xr.DataArray(
         np.arange(1.0, 13.0).reshape(2, 6) / 20.0,
@@ -384,12 +384,12 @@ def test_adapter_problem_runs_one_complete_real_data_style_cycle() -> None:
     sampled = sample_gamma_beta_compound(
         result.problem,
         initial,
-        GammaBetaCompoundConfig(iterations=14, seed=20260723),
+        GammaBetaCompoundConfig(iterations=16, seed=20260723),
         retention=RetentionSettings(warmup_transitions=0, thin=1),
     )
 
-    assert sampled.checkpoint.kernel_settings.cycle_length == 14
-    assert sampled.trace.global_transition.tolist() == list(range(1, 15))
-    assert sampled.trace.fixed_coefficients.shape == (15, 6)
-    assert sampled.trace.state_transition.tolist() == list(range(15))
+    assert sampled.checkpoint.kernel_settings.cycle_length == 16
+    assert sampled.trace.global_transition.tolist() == list(range(1, 17))
+    assert sampled.trace.fixed_coefficients.shape == (17, 6)
+    assert sampled.trace.state_transition.tolist() == list(range(17))
     assert np.all(np.isfinite(sampled.trace.log_target))
