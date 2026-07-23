@@ -428,9 +428,8 @@ def _bc_basis_directory_arg(bc_basis_directory: str | Path | None) -> str | None
 
 def _rhime_site_data_from_basis_functions(
     *,
-    fp_all: dict,
+    merged: _MergedInversionData,
     basis_functions: BasisFunctions,
-    sites: list[str],
     domain: str,
     split_by_sectors: bool,
     flux_sources: list[str],
@@ -438,11 +437,11 @@ def _rhime_site_data_from_basis_functions(
     bc_basis_case: str,
     bc_basis_directory: str | None,
 ) -> dict:
-    """Build RHIME site datasets using retained basis functions only."""
-    fp_data = {site: fp_all[site].copy() for site in sites}
+    """Apply retained basis functions to one prepared merged-data stage."""
+    fp_data = {site: merged.fp_all[site].copy() for site in merged.sites}
     fp_x_flux_name = "fp_x_flux_sectoral" if split_by_sectors else "fp_x_flux"
 
-    for site in sites:
+    for site in merged.sites:
         if fp_data[site].sizes.get("time", 0) == 0:
             continue
         fp_x_flux = fp_data[site][fp_x_flux_name]
@@ -478,7 +477,7 @@ def _rhime_site_data_from_basis_functions(
         )
 
     if use_bc:
-        with timed("rhime.prepare_inputs.bc_sensitivity", sites=len(sites)):
+        with timed("rhime.prepare_inputs.bc_sensitivity", sites=len(merged.sites)):
             fp_data = bc_sensitivity(
                 fp_data,
                 domain=domain,
@@ -487,6 +486,42 @@ def _rhime_site_data_from_basis_functions(
             )
 
     return fp_data
+
+
+def _filter_merged_inversion_data(
+    *,
+    merged: _MergedInversionData,
+    filters: Any,
+) -> _MergedInversionData:
+    """Filter merged RHIME data as a separate pre-basis preparation stage.
+
+    Args:
+        merged: Merged site data and site-aligned metadata from data gathering
+            or reload.
+        filters: Filter configuration accepted by
+            :func:`openghg_inversions.filters.filtering`.
+
+    Returns:
+        Merged data containing filtered site datasets, with empty sites and
+        their aligned averaging periods removed. If no filters are configured
+        and all sites contain data, the original merged data are returned.
+
+    Raises:
+        ValueError: If every requested site is removed by filtering.
+    """
+    if filters is None and all(merged.fp_all[site].time.values.shape[0] > 0 for site in merged.sites):
+        return merged
+
+    fp_data = {site: merged.fp_all[site].copy() for site in merged.sites}
+    fp_data, sites, averaging_period = _apply_filters_and_drop_empty_sites(
+        fp_data=fp_data,
+        sites=merged.sites,
+        averaging_period=merged.averaging_period,
+        filters=filters,
+    )
+    fp_all = {key: value for key, value in merged.fp_all.items() if key.startswith(".")}
+    fp_all.update(fp_data)
+    return _MergedInversionData(fp_all=fp_all, sites=sites, averaging_period=averaging_period)
 
 
 def prepare_fixedbasis_inversion_data(
@@ -694,6 +729,10 @@ def prepare_rhime_inputs(
 ) -> RhimePreparedInputs:
     """Prepare modern RHIME inputs without exposing legacy fixedbasis containers.
 
+    Observation filters are applied once to merged data before basis loading or
+    generation. The same filtered site datasets and aligned metadata are then
+    used for sensitivity construction.
+
     Args:
         species: Primary gas or tracer name used for object-store lookup and
             output naming.
@@ -754,6 +793,9 @@ def prepare_rhime_inputs(
             flux_non_finite_check=flux_non_finite_check,
         )
 
+    with timed("rhime.prepare_inputs.obs_filtering", sites=len(merged.sites), filters=filters is not None):
+        filtered_merged = _filter_merged_inversion_data(merged=merged, filters=filters)
+
     with timed(
         "rhime.prepare_inputs.basis_build",
         basis_algorithm=basis_algorithm,
@@ -766,7 +808,7 @@ def prepare_rhime_inputs(
             fp_basis_case=fp_basis_case,
             basis_directory=basis_directory,
             country_directory=country_directory,
-            fp_all=merged.fp_all,
+            fp_all=filtered_merged.fp_all,
             species=species,
             domain=domain,
             start_date=start_date,
@@ -775,14 +817,11 @@ def prepare_rhime_inputs(
             outputname=output_name,
             output_path=basis_output_path,
         )
-    basis_source = basis_functions.basis_artifact_source or "generated"
-    basis_path = getattr(basis_functions, "basis_artifact_path", None)
 
-    with timed("rhime.prepare_inputs.footprint_sensitivity_total", sites=len(merged.sites)):
+    with timed("rhime.prepare_inputs.footprint_sensitivity_total", sites=len(filtered_merged.sites)):
         fp_data = _rhime_site_data_from_basis_functions(
-            fp_all=merged.fp_all,
+            merged=filtered_merged,
             basis_functions=basis_functions,
-            sites=merged.sites,
             domain=domain,
             split_by_sectors=split_by_sectors,
             flux_sources=flux_sources,
@@ -790,19 +829,14 @@ def prepare_rhime_inputs(
             bc_basis_case=bc_basis_case,
             bc_basis_directory=_bc_basis_directory_arg(bc_basis_directory),
         )
-    with timed("rhime.prepare_inputs.obs_filtering", sites=len(merged.sites), filters=filters is not None):
-        fp_data, prepared_sites, prepared_averaging_period = _apply_filters_and_drop_empty_sites(
-            fp_data=fp_data,
-            sites=merged.sites,
-            averaging_period=merged.averaging_period,
-            filters=filters,
-        )
-    _set_domain_attrs(fp_data, prepared_sites, domain)
+    basis_source = basis_functions.basis_artifact_source or "generated"
+    basis_path = getattr(basis_functions, "basis_artifact_path", None)
+    _set_domain_attrs(fp_data, filtered_merged.sites, domain)
 
-    with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(prepared_sites)):
+    with timed("rhime.prepare_inputs.make_inv_inputs", sites=len(filtered_merged.sites)):
         inv_inputs = _make_inv_inputs(
             fp_data=fp_data,
-            sites=prepared_sites,
+            sites=filtered_merged.sites,
             start_date=start_date,
             bc_freq=bc_freq,
             sigma_freq=sigma_freq,
@@ -811,12 +845,12 @@ def prepare_rhime_inputs(
             min_error_options=min_error_options,
         )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
-    site_lats, site_lons = _site_release_coordinates(fp_data, prepared_sites)
+    site_lats, site_lons = _site_release_coordinates(fp_data, filtered_merged.sites)
     log_timing(
         "rhime.prepare_inputs.prepared_dims",
         0.0,
         nmeasure=inv_inputs.sizes.get("nmeasure"),
-        sites=len(prepared_sites),
+        sites=len(filtered_merged.sites),
         regions=inv_inputs.sizes.get("region"),
         sources=inv_inputs.sizes.get("source"),
         basis_source=basis_source,
@@ -827,8 +861,8 @@ def prepare_rhime_inputs(
         basis_functions=basis_functions,
         basis_artifact_source=basis_source,
         basis_artifact_path=basis_path,
-        sites=tuple(prepared_sites),
-        averaging_period=tuple(prepared_averaging_period),
+        sites=tuple(filtered_merged.sites),
+        averaging_period=tuple(filtered_merged.averaging_period),
         site_lats=site_lats,
         site_lons=site_lons,
     )
