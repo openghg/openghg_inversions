@@ -4,7 +4,7 @@ import re
 import getpass
 import warnings
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -21,6 +21,7 @@ from scipy import stats  # noqa: E402
 
 from openghg_inversions import convert  # noqa: E402
 from openghg_inversions import utils  # noqa: E402
+from openghg_inversions._sampling import _reset_retained_draws  # noqa: E402
 from openghg_inversions.hbmcmc.hbmcmc_output import define_output_filename  # noqa: E402
 from openghg_inversions.config.version import code_version  # noqa: E402
 from openghg_inversions.models import build_rhime_model  # noqa: E402
@@ -214,7 +215,8 @@ def sample(
 
     Args:
         model: Built PyMC model to sample from.
-        draws: Number of posterior draws to keep per chain.
+        draws: Number of posterior draws requested per chain before burn
+            slicing.
         tune: Number of tuning draws passed to ``pm.sample``.
         chains: Number of MCMC chains to run.
         burn: Number of posterior draws to discard from the returned
@@ -230,7 +232,9 @@ def sample(
 
     Returns:
         Burn-sliced ``InferenceData`` for the requested model, optionally
-        extended with predictive groups.
+        extended with predictive groups. Retained draw coordinates are reset
+        to consecutive zero-based integers, and ``burn`` is stored on the root
+        and draw-bearing group attributes.
     """
     sample_kwargs = dict(kwargs)
     sample_kwargs.pop("return_inferencedata", None)
@@ -248,6 +252,7 @@ def sample(
         )
 
     burned_trace = raw_trace.isel(draw=slice(burn, None))
+    burned_trace = _reset_retained_draws(cast(az.InferenceData, burned_trace), burn=burn)
     burned_trace = extend_inferencedata_predictive(
         burned_trace,
         model=model,
@@ -291,7 +296,8 @@ def _rename_trace_for_legacy_inferpymc(trace: az.InferenceData) -> az.InferenceD
 
     Returns:
         A copied ``InferenceData`` whose groups use the legacy inferpymc
-        dimension names where required.
+        dimension names where required. Root and group attributes are
+        preserved.
     """
     rename_map = {"region": "nx", "bc_region": "nbc"}
     renamed_groups: dict[str, xr.Dataset] = {}
@@ -301,7 +307,7 @@ def _rename_trace_for_legacy_inferpymc(trace: az.InferenceData) -> az.InferenceD
         applicable = {old: new for old, new in rename_map.items() if old in ds.dims or old in ds.coords}
         renamed_groups[group] = ds.rename(applicable) if applicable else ds.copy()
 
-    return az.InferenceData(**renamed_groups)
+    return cast(Any, az.InferenceData)(attrs=dict(trace.attrs), **renamed_groups)
 
 
 def _adapt_legacy_inferpymc_results(

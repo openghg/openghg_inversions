@@ -63,6 +63,7 @@ from openghg_inversions.rhime import (
     params_from_config,
     resolve_flux_sources,
     run_rhime,
+    run_rhime_from_prepared_inputs,
     run_rhime_multisector,
 )
 
@@ -485,6 +486,22 @@ class _DynamicSpyBasisFunctions(_SpyBasisFunctions):
         )
 
 
+class _DynamicSectorSpyBasisFunctions(_SpyBasisFunctions):
+    """BasisFunctions test double that derives source-resolved sensitivity."""
+
+    def __init__(self) -> None:
+        super().__init__(xr.DataArray())
+
+    def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
+        self.sensitivity_calls.append(fp_x_flux)
+        return xr.DataArray(
+            np.ones((1, fp_x_flux.sizes["time"], fp_x_flux.sizes["source"])),
+            dims=("region", "time", "source"),
+            coords={"region": [0], "time": fp_x_flux.time, "source": fp_x_flux.source},
+            name="H",
+        )
+
+
 def test_build_rhime_model_contains_expected_variables(
     rhime_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
@@ -627,6 +644,354 @@ def test_public_rhime_dataclasses_keep_existing_positional_order() -> None:
     assert not hasattr(run_spec, "sampling")
     assert result.output_metadata == output_metadata
     assert result.sampler == RhimeSampler()
+
+
+@pytest.mark.parametrize("sector_count", [1, 2])
+def test_run_rhime_from_prepared_inputs_routes_without_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+    sector_count: int,
+) -> None:
+    """Prepared runs bypass preparation and select the builder from sector count."""
+    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="none")
+    sectors = model_spec.sectors
+    if sector_count == 2:
+        sectors += (
+            SectorSpec(
+                name="Ocean",
+                flux_source="ocean-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ocean",
+            ),
+        )
+    model_spec = RhimeModelSpec(
+        species=model_spec.species,
+        domain=model_spec.domain,
+        sectors=sectors,
+    )
+    run_spec = RhimeRunSpec(
+        run_spec.start_date,
+        run_spec.end_date,
+        ("STALE",),
+        ("24h",),
+        model_spec,
+        output_spec,
+        split_by_sectors=sector_count > 1,
+    )
+    inv_inputs = _minimal_output_inv_inputs()
+    if sector_count == 2:
+        inv_inputs["H"] = xr.concat(
+            [inv_inputs["H"].expand_dims(source=[sector.flux_source]) for sector in model_spec.sectors],
+            dim="source",
+        )
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+    sampler = RhimeSampler(draws=7, sample_prior_predictive=False, sample_posterior_predictive=False)
+    built_model = pm.Model()
+    builder_calls: list[str] = []
+    output_calls: list[str] = []
+
+    def fail_prepare(**kwargs: Any) -> None:
+        raise AssertionError("prepared runs must not call prepare_rhime_inputs")
+
+    def fail_setup(**kwargs: Any) -> None:
+        raise AssertionError("prepared runs must not normalize runner parameters")
+
+    def fail_config(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("prepared runs must not normalize config parameters")
+
+    def build_standard(inv_inputs: xr.Dataset, spec: RhimeModelSpec) -> pm.Model:
+        builder_calls.append("standard")
+        return built_model
+
+    def build_multisector(inv_inputs: xr.Dataset, spec: RhimeModelSpec) -> pm.Model:
+        builder_calls.append("multisector")
+        return built_model
+
+    def fake_sample(self: RhimeSampler, model: pm.Model) -> az.InferenceData:
+        assert self is sampler
+        assert model is built_model
+        return _minimal_output_idata()
+
+    def make_standard_outputs(**kwargs: Any) -> rhime_outputs.RhimeOutputBundle:
+        output_calls.append("standard")
+        return rhime_outputs.RhimeOutputBundle()
+
+    def make_multisector_outputs(**kwargs: Any) -> rhime_outputs.RhimeOutputBundle:
+        output_calls.append("multisector")
+        return rhime_outputs.RhimeOutputBundle()
+
+    monkeypatch.setattr(rhime_module, "prepare_rhime_inputs", fail_prepare)
+    monkeypatch.setattr(rhime_module, "_make_rhime_runner_setup", fail_setup)
+    monkeypatch.setattr(rhime_module, "params_from_config", fail_config)
+    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", build_standard)
+    monkeypatch.setattr(rhime_module, "build_rhime_multisector_model_from_spec", build_multisector)
+    monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
+    monkeypatch.setattr(rhime_module, "make_standard_output_bundle", make_standard_outputs)
+    monkeypatch.setattr(rhime_module, "make_multisector_output_bundle", make_multisector_outputs)
+
+    result = run_rhime_from_prepared_inputs(
+        prepared_inputs=prepared,
+        run_spec=run_spec,
+        sampler=sampler,
+    )
+
+    expected_route = "standard" if sector_count == 1 else "multisector"
+    assert builder_calls == [expected_route]
+    assert output_calls == [expected_route]
+    assert result.sampler is sampler
+    assert result.run_spec.sites == prepared.sites
+    assert result.run_spec.averaging_period == prepared.averaging_period
+    assert result.run_spec.split_by_sectors is (sector_count > 1)
+
+
+@pytest.mark.parametrize(
+    ("sector_count", "split_by_sectors"),
+    [(1, True), (2, False)],
+)
+def test_run_rhime_from_prepared_inputs_rejects_layout_mode_mismatch_before_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    sector_count: int,
+    split_by_sectors: bool,
+) -> None:
+    """Prepared runs reject disagreement between sector count and data layout."""
+    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="none")
+    sectors = model_spec.sectors
+    if sector_count == 2:
+        sectors += (
+            SectorSpec(
+                name="Ocean",
+                flux_source="ocean-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ocean",
+            ),
+        )
+    run_spec = RhimeRunSpec(
+        run_spec.start_date,
+        run_spec.end_date,
+        run_spec.sites,
+        run_spec.averaging_period,
+        RhimeModelSpec(species=model_spec.species, domain=model_spec.domain, sectors=sectors),
+        output_spec,
+        split_by_sectors=split_by_sectors,
+    )
+    inv_inputs = _minimal_output_inv_inputs()
+    if split_by_sectors:
+        inv_inputs["H"] = inv_inputs["H"].expand_dims(source=[sectors[0].flux_source])
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+
+    def fail_execution(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("layout validation must precede model building and sampling")
+
+    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_module, "build_rhime_multisector_model_from_spec", fail_execution)
+    monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
+
+    with pytest.raises(ValueError, match="split_by_sectors.*must agree"):
+        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+
+@pytest.mark.parametrize("sector_count", [1, 2])
+def test_run_rhime_from_prepared_inputs_rejects_flag_h_layout_mismatch_before_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    sector_count: int,
+) -> None:
+    """Prepared runs reject a layout flag that disagrees with H dimensions."""
+    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="none")
+    sectors = model_spec.sectors
+    if sector_count == 2:
+        sectors += (
+            SectorSpec(
+                name="Ocean",
+                flux_source="ocean-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ocean",
+            ),
+        )
+    model_spec = RhimeModelSpec(
+        species=model_spec.species,
+        domain=model_spec.domain,
+        sectors=sectors,
+    )
+    multisector = sector_count > 1
+    run_spec = RhimeRunSpec(
+        run_spec.start_date,
+        run_spec.end_date,
+        run_spec.sites,
+        run_spec.averaging_period,
+        model_spec,
+        output_spec,
+        split_by_sectors=multisector,
+    )
+    inv_inputs = _minimal_output_inv_inputs()
+    if not multisector:
+        inv_inputs["H"] = inv_inputs["H"].expand_dims(source=[sectors[0].flux_source])
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+
+    def fail_execution(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("H layout validation must precede model building and sampling")
+
+    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_module, "build_rhime_multisector_model_from_spec", fail_execution)
+    monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
+
+    with pytest.raises(ValueError, match="split_by_sectors.*prepared `H` layout"):
+        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+
+def test_run_rhime_from_prepared_inputs_defaults_sampler_and_skips_none_output_writes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Prepared standard runs default the sampler and write nothing for none output."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="none")
+    output_spec = RhimeOutputSpec(
+        output_format="none",
+        output_path=str(tmp_path),
+        output_name="prepared",
+        save_trace=True,
+        save_inversion_output=True,
+    )
+    run_spec = RhimeRunSpec(
+        run_spec.start_date,
+        run_spec.end_date,
+        run_spec.sites,
+        run_spec.averaging_period,
+        model_spec,
+        output_spec,
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+    built_model = pm.Model()
+    sampled_with: list[RhimeSampler] = []
+
+    def fake_sample(self: RhimeSampler, model: pm.Model) -> az.InferenceData:
+        sampled_with.append(self)
+        assert model is built_model
+        return _minimal_output_idata()
+
+    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", lambda *args: built_model)
+    monkeypatch.setattr(RhimeSampler, "sample", fake_sample)
+
+    result = run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+    assert len(sampled_with) == 1
+    assert sampled_with[0] is result.sampler
+    assert result.sampler == RhimeSampler()
+    assert result.outputs == {}
+    assert result.inv_out is None
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_error"),
+    [
+        ("default_without_path", "output_path.*required"),
+        ("multisector_legacy", "legacy.*supports only single-sector"),
+    ],
+)
+def test_run_rhime_from_prepared_inputs_validates_output_before_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    case: str,
+    expected_error: str,
+) -> None:
+    """Prepared runs apply existing output validation before build or sample."""
+    model_spec, _, run_spec = _minimal_output_specs(output_format="none")
+    sectors = model_spec.sectors
+    if case == "multisector_legacy":
+        sectors += (
+            SectorSpec(
+                name="Ocean",
+                flux_source="ocean-inventory",
+                x_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.2},
+                variable_suffix="ocean",
+            ),
+        )
+        output_spec = RhimeOutputSpec(output_format="legacy", output_path=str(tmp_path))
+    else:
+        output_spec = RhimeOutputSpec()
+    run_spec = RhimeRunSpec(
+        run_spec.start_date,
+        run_spec.end_date,
+        run_spec.sites,
+        run_spec.averaging_period,
+        RhimeModelSpec(species=model_spec.species, domain=model_spec.domain, sectors=sectors),
+        output_spec,
+        split_by_sectors=len(sectors) > 1,
+    )
+    inv_inputs = _minimal_output_inv_inputs()
+    if len(sectors) > 1:
+        inv_inputs["H"] = xr.concat(
+            [inv_inputs["H"].expand_dims(source=[sector.flux_source]) for sector in sectors],
+            dim="source",
+        )
+    prepared = RhimePreparedInputs(
+        inv_inputs=inv_inputs,
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+
+    def fail_execution(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("output validation must precede model building and sampling")
+
+    monkeypatch.setattr(rhime_module, "build_rhime_model_from_spec", fail_execution)
+    monkeypatch.setattr(rhime_module, "build_rhime_multisector_model_from_spec", fail_execution)
+    monkeypatch.setattr(RhimeSampler, "sample", fail_execution)
+
+    with pytest.raises(ValueError, match=expected_error):
+        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+
+def test_run_rhime_from_prepared_inputs_rejects_empty_model() -> None:
+    """Prepared runs reject model specifications without a sector."""
+    model_spec, output_spec, run_spec = _minimal_output_specs(output_format="none")
+    run_spec = RhimeRunSpec(
+        run_spec.start_date,
+        run_spec.end_date,
+        run_spec.sites,
+        run_spec.averaging_period,
+        RhimeModelSpec(species=model_spec.species, domain=model_spec.domain, sectors=()),
+        output_spec,
+    )
+    prepared = RhimePreparedInputs(
+        inv_inputs=_minimal_output_inv_inputs(),
+        basis_functions=_fake_basis_functions(),
+        sites=("TAC",),
+        averaging_period=("1h",),
+        basis_artifact_source="generated",
+    )
+
+    with pytest.raises(ValueError, match="must contain at least one sector; found 0"):
+        run_rhime_from_prepared_inputs(prepared_inputs=prepared, run_spec=run_spec)
+
+
+def test_run_rhime_from_prepared_inputs_is_publicly_reexported() -> None:
+    """The prepared-input runner is available from the public RHIME package."""
+    assert rhime_public.run_rhime_from_prepared_inputs is run_rhime_from_prepared_inputs
 
 
 def test_unreleased_sampling_compatibility_shims_are_absent() -> None:
@@ -895,10 +1260,15 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
         def __init__(self) -> None:
             self.isel_kwargs: dict[str, Any] | None = None
             self.extensions: list[Any] = []
+            self.attrs: dict[str, Any] = {}
 
         def isel(self, **kwargs: Any) -> "FakeInferenceData":
             self.isel_kwargs = kwargs
             return self
+
+        def groups(self) -> list[str]:
+            """Return the fake InferenceData group names."""
+            return ["sample_stats"]
 
         def extend(self, other: Any) -> None:
             self.extensions.append(other)
@@ -975,6 +1345,88 @@ def test_rhime_sampler_runs_pymc_sampling_and_predictive_steps(
     assert sample_stats_fields["divergences"] == 2
 
 
+def test_rhime_sampler_resets_retained_draws_before_extending_predictive_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equal-length predictive groups do not outer-align against burned draw labels."""
+    raw_trace = az.InferenceData(
+        posterior=xr.Dataset(
+            {"x": (("chain", "draw"), np.arange(2000, dtype=float)[None, :])},
+            coords={"chain": [0], "draw": np.arange(2000)},
+        ),
+        sample_stats=xr.Dataset(
+            {"diverging": (("chain", "draw"), np.zeros((1, 2000), dtype=bool))},
+            coords={"chain": [0], "draw": np.arange(2000)},
+        ),
+        log_likelihood=xr.Dataset(
+            {"y": (("chain", "draw"), np.zeros((1, 2000)))},
+            coords={"chain": [0], "draw": np.arange(2000)},
+        ),
+    )
+    predictive_draws: dict[str, np.ndarray] = {}
+
+    def fake_sample(**kwargs: Any) -> az.InferenceData:
+        """Return the unsliced sampling trace."""
+        return raw_trace
+
+    def fake_prior_predictive(draws: int, model: pm.Model) -> az.InferenceData:
+        """Build prior groups with zero-based draw labels."""
+        predictive_draws["prior"] = np.arange(draws)
+        return az.InferenceData(
+            prior=xr.Dataset(
+                {"x": (("chain", "draw"), np.ones((1, draws)))},
+                coords={"chain": [0], "draw": predictive_draws["prior"]},
+            ),
+            prior_predictive=xr.Dataset(
+                {"y": (("chain", "draw"), np.ones((1, draws)))},
+                coords={"chain": [0], "draw": predictive_draws["prior"]},
+            ),
+        )
+
+    def fake_posterior_predictive(trace: az.InferenceData, **kwargs: Any) -> az.InferenceData:
+        """Record and mirror the retained posterior draw labels."""
+        inference_data = cast(Any, trace)
+        predictive_draws["posterior_seen"] = inference_data.posterior.draw.values.copy()
+        draws = inference_data.posterior.sizes["draw"]
+        return az.InferenceData(
+            posterior_predictive=xr.Dataset(
+                {"y": (("chain", "draw"), np.ones((1, draws)))},
+                coords={"chain": [0], "draw": np.arange(draws)},
+            )
+        )
+
+    monkeypatch.setattr("openghg_inversions.rhime.sampling.pm.sample", fake_sample)
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.sampling.pm.sample_prior_predictive",
+        fake_prior_predictive,
+    )
+    monkeypatch.setattr(
+        "openghg_inversions.rhime.sampling.pm.sample_posterior_predictive",
+        fake_posterior_predictive,
+    )
+    sampler = RhimeSampler(draws=2000, burn=1000, tune=0, chains=1)
+
+    result = sampler.sample(pm.Model())
+    inference_data = cast(Any, result)
+    trace_dataset = inversion_output_module.convert_idata_to_dataset(result)
+
+    expected_draws = np.arange(1000)
+    np.testing.assert_array_equal(inference_data.posterior.draw.values, expected_draws)
+    np.testing.assert_array_equal(inference_data.sample_stats.draw.values, expected_draws)
+    np.testing.assert_array_equal(inference_data.log_likelihood.draw.values, expected_draws)
+    np.testing.assert_array_equal(inference_data.prior.draw.values, expected_draws)
+    np.testing.assert_array_equal(inference_data.prior_predictive.draw.values, expected_draws)
+    np.testing.assert_array_equal(inference_data.posterior_predictive.draw.values, expected_draws)
+    np.testing.assert_array_equal(predictive_draws["prior"], expected_draws)
+    np.testing.assert_array_equal(predictive_draws["posterior_seen"], expected_draws)
+    assert trace_dataset.sizes["draw"] == 1000
+    np.testing.assert_array_equal(trace_dataset.draw.values, expected_draws)
+    assert not trace_dataset.to_array().isnull().any()
+    assert inference_data.attrs["burn"] == 1000
+    for group_name in ("posterior", "sample_stats", "log_likelihood"):
+        assert inference_data[group_name].attrs["burn"] == 1000
+
+
 def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -988,9 +1440,14 @@ def test_rhime_sampler_restores_registered_coords_after_predictive_steps(
 
         def __init__(self) -> None:
             self.extensions: list[str] = []
+            self.attrs: dict[str, Any] = {}
 
         def isel(self, **kwargs: Any) -> "FakeInferenceData":
             return self
+
+        def groups(self) -> list[str]:
+            """Return the fake InferenceData group names."""
+            return []
 
         def extend(self, other: str) -> None:
             self.extensions.append(other)
@@ -1746,10 +2203,327 @@ def test_prepare_rhime_inputs_treats_min_error_none_as_default(
     assert captured_min_error == 0.0
 
 
+def test_prepare_rhime_inputs_filters_sites_before_basis_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One filter pass should feed basis, flux, and BC sensitivity construction."""
+    site_data = {"TAC": _site_dataset([2.0, 3.0, 4.0])}
+    basis_functions = _DynamicSpyBasisFunctions()
+    filtering_calls = 0
+    captured_basis_times: tuple[np.datetime64, ...] | None = None
+    captured_bc_times: tuple[np.datetime64, ...] | None = None
+    retained_times = tuple(site_data["TAC"].time.isel(time=[1]).values)
+
+    def fake_data_processing_surface_notracer(
+        **kwargs: object,
+    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
+        return (
+            {**site_data, ".species": "CH4"},
+            ["TAC"],
+            ["185m"],
+            ["185m"],
+            ["instrument-1"],
+            ["1H"],
+        )
+
+    def fake_filtering(fp_data: dict, filters: object) -> dict:
+        nonlocal filtering_calls
+        filtering_calls += 1
+        assert filters == ["keep-middle"]
+        assert "H" not in fp_data["TAC"]
+        return {"TAC": fp_data["TAC"].isel(time=[1])}
+
+    def fake_make_basis_functions(**kwargs: object) -> _DynamicSpyBasisFunctions:
+        nonlocal captured_basis_times
+        fp_all = kwargs["fp_all"]
+        assert isinstance(fp_all, dict)
+        captured_basis_times = tuple(fp_all["TAC"].time.values)
+        return basis_functions
+
+    def fake_bc_sensitivity(fp_data: dict, **kwargs: object) -> dict:
+        """Record filtered times and add matching boundary-condition sensitivity."""
+        nonlocal captured_bc_times
+        captured_bc_times = tuple(fp_data["TAC"].time.values)
+        fp_data["TAC"]["H_bc"] = xr.DataArray(
+            np.ones((1, len(retained_times))),
+            dims=("bc_region", "time"),
+            coords={"bc_region": [0], "time": fp_data["TAC"].time},
+        )
+        return fp_data
+
+    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        assert sites == ["TAC"]
+        assert tuple(fp_data["TAC"].time.values) == retained_times
+        assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
+        assert tuple(fp_data["TAC"]["H_bc"].time.values) == retained_times
+        return _minimal_inv_inputs()
+
+    monkeypatch.setattr(
+        prep_module,
+        "data_processing_surface_notracer",
+        fake_data_processing_surface_notracer,
+    )
+    monkeypatch.setattr(prep_module, "filtering", fake_filtering)
+    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(prep_module, "bc_sensitivity", fake_bc_sensitivity)
+    monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
+
+    prepared = prepare_rhime_inputs(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="filter_before_basis",
+        flux_sources=["total-ukghg-edgar7"],
+        use_bc=True,
+        filters=["keep-middle"],
+    )
+
+    assert prepared.sites == ("TAC",)
+    assert prepared.averaging_period == ("1H",)
+    assert captured_basis_times == retained_times
+    assert tuple(basis_functions.sensitivity_calls[0].time.values) == retained_times
+    assert captured_bc_times == retained_times
+    assert filtering_calls == 1
+
+
+def test_prepare_rhime_inputs_applies_daily_median_before_sensitivity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Daily-median filtering should aggregate times before basis projection."""
+    site_dataset = _site_dataset([2.0, 3.0, 4.0]).drop_vars(["fp_x_flux", "lat", "lon"])
+    site_dataset["fp_x_flux"] = xr.DataArray(
+        [[[0.0, 100.0]], [[0.0, 0.0]], [[100.0, 0.0]]],
+        dims=("time", "lat", "lon"),
+        coords={"time": site_dataset.time, "lat": [0.0], "lon": [0.0, 1.0]},
+    )
+    basis_input: xr.DataArray | None = None
+    final_sensitivity: xr.DataArray | None = None
+
+    def fake_data_processing_surface_notracer(
+        **kwargs: object,
+    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
+        return (
+            {"TAC": site_dataset, ".species": "CH4"},
+            ["TAC"],
+            ["185m"],
+            ["185m"],
+            ["instrument-1"],
+            ["1H"],
+        )
+
+    def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
+        nonlocal basis_input
+        fp_all = kwargs["fp_all"]
+        assert isinstance(fp_all, dict)
+        basis_input = fp_all["TAC"]["fp_x_flux"].copy()
+        basis = xr.DataArray(
+            [[1, 1]],
+            dims=("lat", "lon"),
+            coords={"lat": [0.0], "lon": [0.0, 1.0]},
+        )
+        return BasisFunctions.from_flat_basis(basis_flat=basis, flux=xr.ones_like(basis))
+
+    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        nonlocal final_sensitivity
+        final_sensitivity = fp_data["TAC"]["H"].copy()
+        return _minimal_inv_inputs()
+
+    monkeypatch.setattr(
+        prep_module,
+        "data_processing_surface_notracer",
+        fake_data_processing_surface_notracer,
+    )
+    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
+
+    prepare_rhime_inputs(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="daily_median_filter_order",
+        flux_sources=["total-ukghg-edgar7"],
+        use_bc=False,
+        filters=["daily_median"],
+    )
+
+    assert basis_input is not None
+    assert basis_input.sizes["time"] == 1
+    xr.testing.assert_allclose(basis_input, xr.zeros_like(basis_input))
+    assert final_sensitivity is not None
+    xr.testing.assert_identical(final_sensitivity.time, basis_input.time)
+    xr.testing.assert_allclose(final_sensitivity, xr.zeros_like(final_sensitivity))
+
+
+def test_prepare_rhime_inputs_filters_multisector_sites_before_basis_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Multisector filtering should preserve source dimensions on retained times."""
+    site_dataset = _site_dataset([2.0, 3.0, 4.0])
+    flux_sources = ["total-ukghg-edgar7", "sector-2"]
+    site_dataset["fp_x_flux_sectoral"] = xr.concat(
+        [
+            site_dataset["fp_x_flux"],
+            2.0 * site_dataset["fp_x_flux"],
+        ],
+        dim=xr.DataArray(flux_sources, dims="source", name="source"),
+    )
+    site_data = {"TAC": site_dataset}
+    basis_functions = _DynamicSectorSpyBasisFunctions()
+    captured_split_by_sectors: object = None
+    retained_times = tuple(site_dataset.time.isel(time=[2]).values)
+
+    def fake_data_processing_surface_notracer(
+        **kwargs: object,
+    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
+        return (
+            {
+                **site_data,
+                ".flux": {source: object() for source in flux_sources},
+                ".species": "CH4",
+                ".split_by_sectors": True,
+            },
+            ["TAC"],
+            ["185m"],
+            ["185m"],
+            ["instrument-1"],
+            ["1H"],
+        )
+
+    def fake_filtering(fp_data: dict, filters: object) -> dict:
+        assert filters == {"TAC": ["keep-last"]}
+        assert "H" not in fp_data["TAC"]
+        return {"TAC": fp_data["TAC"].isel(time=[2])}
+
+    def fake_make_basis_functions(**kwargs: object) -> _DynamicSectorSpyBasisFunctions:
+        nonlocal captured_split_by_sectors
+        fp_all = kwargs["fp_all"]
+        assert isinstance(fp_all, dict)
+        captured_split_by_sectors = fp_all[".split_by_sectors"]
+        assert tuple(fp_all["TAC"].time.values) == retained_times
+        return basis_functions
+
+    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        assert sites == ["TAC"]
+        assert tuple(fp_data["TAC"].time.values) == retained_times
+        assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
+        assert fp_data["TAC"]["H"].dims == ("region", "time", "source")
+        assert tuple(fp_data["TAC"]["H"].source.values) == tuple(flux_sources)
+        return _minimal_inv_inputs()
+
+    monkeypatch.setattr(
+        prep_module,
+        "data_processing_surface_notracer",
+        fake_data_processing_surface_notracer,
+    )
+    monkeypatch.setattr(prep_module, "filtering", fake_filtering)
+    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
+
+    prepared = prepare_rhime_inputs(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="filter_before_sector_basis",
+        flux_sources=flux_sources,
+        split_by_sectors=True,
+        use_bc=False,
+        filters={"TAC": ["keep-last"]},
+    )
+
+    assert prepared.sites == ("TAC",)
+    assert captured_split_by_sectors is True
+    assert tuple(basis_functions.sensitivity_calls[0].time.values) == retained_times
+    assert tuple(basis_functions.sensitivity_calls[0].source.values) == tuple(flux_sources)
+    assert basis_functions.sensitivity_calls[0].name == "fp_x_flux_sectoral"
+
+
+def test_prepare_rhime_inputs_filters_loaded_basis_before_sensitivity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Loaded-basis runs should filter observations once before sensitivity construction."""
+    site_data = {"TAC": _site_dataset([2.0, 3.0, 4.0])}
+    basis_functions = _DynamicSpyBasisFunctions()
+    captured_basis_times: tuple[np.datetime64, ...] | None = None
+    filtering_calls = 0
+    retained_times = tuple(site_data["TAC"].time.isel(time=[1]).values)
+
+    def fake_data_processing_surface_notracer(
+        **kwargs: object,
+    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
+        return (
+            {**site_data, ".species": "CH4"},
+            ["TAC"],
+            ["185m"],
+            ["185m"],
+            ["instrument-1"],
+            ["1H"],
+        )
+
+    def fake_make_basis_functions(**kwargs: object) -> _DynamicSpyBasisFunctions:
+        nonlocal captured_basis_times
+        assert kwargs["fp_basis_case"] == "saved_case"
+        fp_all = kwargs["fp_all"]
+        assert isinstance(fp_all, dict)
+        captured_basis_times = tuple(fp_all["TAC"].time.values)
+        return basis_functions
+
+    def fake_filtering(fp_data: dict, filters: object) -> dict:
+        nonlocal filtering_calls
+        filtering_calls += 1
+        assert filters == ["keep-middle"]
+        assert "H" not in fp_data["TAC"]
+        return {"TAC": fp_data["TAC"].isel(time=[1])}
+
+    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        assert sites == ["TAC"]
+        assert tuple(fp_data["TAC"].time.values) == retained_times
+        assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
+        return _minimal_inv_inputs()
+
+    monkeypatch.setattr(
+        prep_module,
+        "data_processing_surface_notracer",
+        fake_data_processing_surface_notracer,
+    )
+    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(prep_module, "filtering", fake_filtering)
+    monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
+
+    prepared = prepare_rhime_inputs(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="filter_loaded_basis",
+        flux_sources=["total-ukghg-edgar7"],
+        fp_basis_case="saved_case",
+        use_bc=False,
+        filters=["keep-middle"],
+    )
+
+    assert prepared.sites == ("TAC",)
+    assert captured_basis_times == retained_times
+    assert tuple(basis_functions.sensitivity_calls[0].time.values) == retained_times
+    assert filtering_calls == 1
+
+
 def test_prepare_rhime_inputs_aligns_averaging_period_after_empty_site_drop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Filtering should keep site metadata aligned after dropping an empty site."""
     site_data = {"TAC": _site_dataset([2.0]), "MHD": _site_dataset([])}
+    captured_basis_sites: list[str] | None = None
 
     def fake_data_processing_surface_notracer(
         **kwargs: object,
@@ -1764,6 +2538,10 @@ def test_prepare_rhime_inputs_aligns_averaging_period_after_empty_site_drop(
         )
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
+        nonlocal captured_basis_sites
+        fp_all = kwargs["fp_all"]
+        assert isinstance(fp_all, dict)
+        captured_basis_sites = [key for key in fp_all if not key.startswith(".")]
         return _fake_basis_functions()
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
@@ -1792,11 +2570,13 @@ def test_prepare_rhime_inputs_aligns_averaging_period_after_empty_site_drop(
 
     assert prepared.sites == ("TAC",)
     assert prepared.averaging_period == ("1H",)
+    assert captured_basis_sites == ["TAC"]
 
 
-def test_prepare_rhime_inputs_rejects_all_sites_dropped_after_sensitivity(
+def test_prepare_rhime_inputs_rejects_all_sites_dropped_before_basis_generation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Filtering should fail before basis construction when every site is empty."""
     site_data = {"TAC": _site_dataset([]), "MHD": _site_dataset([])}
 
     def fake_data_processing_surface_notracer(
@@ -1812,7 +2592,7 @@ def test_prepare_rhime_inputs_rejects_all_sites_dropped_after_sensitivity(
         )
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
-        return _fake_basis_functions()
+        raise AssertionError("Basis generation should not run when all sites are dropped.")
 
     monkeypatch.setattr(
         prep_module,
@@ -2264,7 +3044,7 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(
 
 
 def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
-    """Modern RHIME InversionOutput preserves retained inputs, basis, and metadata."""
+    """Modern InversionOutput preserves trace burn metadata, inputs, and basis."""
     model_spec, output_spec, run_spec = _minimal_output_specs()
     basis_artifact_path = str(tmp_path / "unit-basis.nc")
     prepared = RhimePreparedInputs(
@@ -2277,11 +3057,14 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
         basis_artifact_source="unit-test",
         basis_artifact_path=basis_artifact_path,
     )
+    idata = _minimal_output_idata()
+    idata.attrs["burn"] = 1000
+    cast(Any, idata).posterior.attrs["burn"] = 1000
     bundle = rhime_outputs.make_standard_output_bundle(
         output_spec=output_spec,
         run_spec=run_spec,
         model_spec=model_spec,
-        idata=_minimal_output_idata(),
+        idata=idata,
         prepared=prepared,
         country_file=None,
     )
@@ -2299,6 +3082,8 @@ def test_modern_inversion_output_save_load_roundtrip(tmp_path: Path) -> None:
     assert reloaded.basis_functions.basis_artifact_path == basis_artifact_path
     assert reloaded.provenance["basis_representation"] == "operator-backed"
     assert reloaded.output_metadata["output_format"] == "inv_out"
+    assert reloaded.trace.attrs["burn"] == 1000
+    assert cast(Any, reloaded.trace).posterior.attrs["burn"] == 1000
     xr.testing.assert_identical(reloaded.inv_inputs, prepared.inv_inputs)
     xr.testing.assert_identical(reloaded.basis_functions.flux, prepared.basis_functions.flux)
     xr.testing.assert_equal(
@@ -2810,6 +3595,7 @@ def test_latest_paris_output_processes_modern_output(europe_country_file: Path, 
     )
     assert "country_flux_total_posterior" not in flux_outputs
     assert flux_outputs["flux_total_posterior"].dtype == np.dtype("float32")
+    assert flux_outputs["stdev_flux_total_posterior_country"].dtype == np.dtype("float32")
     assert flux_outputs["covariance_flux_total_posterior_country"].dtype == np.dtype("float32")
     assert flux_outputs["time_bnds"].dtype == np.dtype("float64")
 
@@ -3058,8 +3844,8 @@ def test_save_inferencedata_falls_back_after_h5netcdf_failure(tmp_path: Path) ->
     ]
 
 
-def test_save_inferencedata_resets_multiindex_coords(tmp_path: Path) -> None:
-    """Standalone trace saving handles restored scientific measurement coordinates."""
+def test_save_inferencedata_preserves_burn_attrs_and_resets_multiindex_coords(tmp_path: Path) -> None:
+    """Standalone trace saving preserves burn metadata and serializable coordinates."""
     nmeasure_index = pd.MultiIndex.from_arrays(
         [["TAC"], pd.to_datetime(["2019-01-01"])],
         names=["site", "time"],
@@ -3074,10 +3860,16 @@ def test_save_inferencedata_resets_multiindex_coords(tmp_path: Path) -> None:
     )
     path = tmp_path / "trace.nc"
 
-    rhime_outputs._save_inferencedata(az.InferenceData(posterior_predictive=posterior_predictive), path)
+    idata = az.InferenceData(posterior_predictive=posterior_predictive)
+    idata.attrs["burn"] = 1000
+    cast(Any, idata).posterior_predictive.attrs["burn"] = 1000
+
+    rhime_outputs._save_inferencedata(idata, path)
     reloaded = az.from_netcdf(path)
 
     reloaded_posterior_predictive = cast(Any, reloaded).posterior_predictive
+    assert reloaded.attrs["burn"] == 1000
+    assert reloaded_posterior_predictive.attrs["burn"] == 1000
     assert "site" in reloaded_posterior_predictive.coords
     assert "time" in reloaded_posterior_predictive.coords
     assert not isinstance(reloaded_posterior_predictive.indexes.get("nmeasure"), pd.MultiIndex)
