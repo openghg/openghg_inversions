@@ -58,6 +58,12 @@ from openghg_inversions.experimental.rjmcmc.gamma_beta_io import (
     load_gamma_beta_checkpoint,
     save_gamma_beta_checkpoint,
 )
+from openghg_inversions.experimental.rjmcmc.dyadic_tree import DyadicFrontier
+from openghg_inversions.experimental.rjmcmc.gamma_beta_tree import (
+    GammaBetaTreeProblem,
+    GammaBetaTreeState,
+    build_gamma_beta_tree_state,
+)
 from openghg_inversions.experimental.rjmcmc.retention import RetentionSettings
 
 FloatArray = NDArray[np.float64]
@@ -78,6 +84,8 @@ MAX_SUBTREE_LEAVES = 8
 SPLIT_DIRECTION_PROBABILITY = 0.5
 _CLOSURE_RTOL = 1.0e-12
 _CLOSURE_ATOL = 1.0e-12
+_MASS_GREEDY_FRONTIER_POLICY = "mass_greedy_prior_mean_v1"
+_RANDOM_FRONTIER_POLICY = "uniform_splittable_leaf_prior_mean_v1"
 
 
 def _sha256_file(path: Path) -> str:
@@ -365,7 +373,7 @@ def _closure_audit(
     dataset: xr.Dataset,
     adapter: GammaBetaRHIMEAdapterResult,
     *,
-    start_k: int,
+    initial_state: GammaBetaTreeState,
     sensitivity_name: str,
     fixed_design_name: str,
     fixed_offset_name: str,
@@ -397,10 +405,9 @@ def _closure_audit(
     )
     offset = np.asarray(dataset[fixed_offset_name].transpose("nmeasure").values, dtype=np.float64)
     expected_total = offset + scaling_prediction + fixed_values @ problem.fixed_block.coefficient_prior_mean
-    initial = initialize_gamma_beta_state(problem, k=start_k)
-    total_error = np.asarray(initial.prediction - expected_total, dtype=np.float64)
+    total_error = np.asarray(initial_state.prediction - expected_total, dtype=np.float64)
     if not np.allclose(
-        initial.prediction,
+        initial_state.prediction,
         expected_total,
         rtol=_CLOSURE_RTOL,
         atol=_CLOSURE_ATOL,
@@ -412,6 +419,76 @@ def _closure_audit(
     return {
         "mass_coordinate_max_abs_error": float(np.max(np.abs(mass_error), initial=0.0)),
         "prior_mean_total_max_abs_error": float(np.max(np.abs(total_error), initial=0.0)),
+    }
+
+
+def _initial_state(
+    problem: GammaBetaTreeProblem,
+    *,
+    k: int,
+    frontier_seed: int | None,
+) -> GammaBetaTreeState:
+    """Build the selected prior-mean topology start without touching sampler RNG.
+
+    When ``frontier_seed`` is absent this delegates to the historical
+    deterministic mass-greedy initializer.  Otherwise, a separate PCG64
+    stream repeatedly selects uniformly among the currently splittable active
+    leaves.  The state coordinates remain at their prior arithmetic means, so
+    every valid frontier renders the all-one prior-mean scaling field.
+
+    Args:
+        problem: Immutable Gamma--Beta tree problem.
+        k: Requested active frontier size.
+        frontier_seed: Optional seed for an initialization-only PCG64 stream.
+
+    Returns:
+        Fully built immutable prior-mean starting state.
+
+    Raises:
+        ValueError: If the seed is invalid, ``k`` lacks prior support, or the
+            tree cannot construct a frontier with ``k`` leaves.
+    """
+    if frontier_seed is None:
+        return initialize_gamma_beta_state(problem, k=k)
+
+    # Reuse the established initializer's support and type validation before
+    # replacing only its deterministic frontier-selection policy.
+    deterministic = initialize_gamma_beta_state(problem, k=k)
+    try:
+        generator = np.random.Generator(np.random.PCG64(frontier_seed))
+    except ValueError as error:
+        raise ValueError("initial_frontier_seed must be a non-negative integer.") from error
+    frontier = DyadicFrontier.root(problem.tree)
+    while len(frontier) < k:
+        eligible = problem.tree.splittable_nodes(frontier)
+        if not eligible:
+            raise ValueError(f"The tree cannot construct a frontier with k={k}.")
+        selected = eligible[int(generator.integers(len(eligible)))]
+        frontier = frontier.split(problem.tree, selected)
+
+    split_nodes = frontier.active_split_nodes(problem.tree)
+    fractions = np.asarray(
+        [
+            alpha / (alpha + beta)
+            for alpha, beta in (problem.prior.beta_parameters(node_id) for node_id in split_nodes)
+        ],
+        dtype=np.float64,
+    )
+    return build_gamma_beta_tree_state(
+        problem,
+        frontier=frontier,
+        root_total=deterministic.root_total,
+        active_fractions=fractions,
+        fixed_coefficients=deterministic.fixed_coefficients,
+    )
+
+
+def _initial_frontier_contract(arguments: argparse.Namespace) -> dict[str, str | int | None]:
+    """Return the auditable initial-topology policy and optional seed."""
+    seed = arguments.initial_frontier_seed
+    return {
+        "policy": (_MASS_GREEDY_FRONTIER_POLICY if seed is None else _RANDOM_FRONTIER_POLICY),
+        "seed": seed,
     }
 
 
@@ -450,6 +527,7 @@ def _input_contract(arguments: argparse.Namespace) -> tuple[str, str]:
         "fixed_design_name": arguments.fixed_design_name,
         "fixed_offset_name": arguments.fixed_offset_name,
         "normalize_weights": arguments.normalize_weights,
+        "initial_frontier": _initial_frontier_contract(arguments),
     }
     canonical = json.dumps(
         contract,
@@ -732,6 +810,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmup", type=int, default=0, help="Global warmup atomic transitions.")
     parser.add_argument("--thin", type=int, default=1, help="Global thinning in atomic transitions.")
     parser.add_argument("--seed", type=int, required=True, help="Initial PCG64 seed.")
+    parser.add_argument(
+        "--initial-frontier-seed",
+        type=int,
+        help=(
+            "Optional separate PCG64 seed for a random fixed-K starting "
+            "frontier; absence preserves the deterministic mass-greedy start."
+        ),
+    )
     parser.add_argument("--chain-id", required=True, help="Stable unique chain identifier.")
     parser.add_argument("--code-revision", required=True)
     parser.add_argument(
@@ -845,10 +931,15 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
             fixed_design_name=arguments.fixed_design_name,
             expected_outer_labels=arguments.expected_outer_labels,
         )
+    initial_state = _initial_state(
+        adapter.problem,
+        k=arguments.start_k,
+        frontier_seed=arguments.initial_frontier_seed,
+    )
     closure = _closure_audit(
         dataset,
         adapter,
-        start_k=arguments.start_k,
+        initial_state=initial_state,
         sensitivity_name=arguments.sensitivity_name,
         fixed_design_name=arguments.fixed_design_name,
         fixed_offset_name=arguments.fixed_offset_name,
@@ -863,10 +954,6 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
     retention = RetentionSettings(
         warmup_transitions=arguments.warmup,
         thin=arguments.thin,
-    )
-    initial_state = initialize_gamma_beta_state(
-        adapter.problem,
-        k=arguments.start_k,
     )
     input_contract, input_contract_sha = _input_contract(arguments)
     run_manifest = build_gamma_beta_run_manifest(

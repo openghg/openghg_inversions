@@ -70,6 +70,35 @@ def _write_frozen_input(path: Path) -> None:
     dataset.to_netcdf(path, engine="h5netcdf")
 
 
+def _write_larger_frozen_input(path: Path) -> None:
+    """Write a 4x4 exact-closure dataset with several random frontiers."""
+    nmeasure = np.arange(3, dtype=np.int64)
+    lat = np.arange(4, dtype=np.float64) + 48.0
+    lon = np.arange(4, dtype=np.float64) - 3.0
+    outer_region = np.arange(6, dtype=np.int64)
+    sensitivity = np.arange(1.0, 49.0).reshape(3, 4, 4)
+    outer_design = np.arange(18.0).reshape(3, 6) / 8.0
+    fixed_offset = np.array([4.0, 5.0, 6.0])
+    expected = fixed_offset + sensitivity.sum(axis=(1, 2)) + outer_design @ np.ones(6)
+    dataset = xr.Dataset(
+        {
+            "fp_x_flux": (("nmeasure", "lat", "lon"), sensitivity),
+            "mf": ("nmeasure", expected),
+            "mf_error": ("nmeasure", np.ones(3)),
+            "nominal_weight": (("lat", "lon"), np.full((4, 4), 1.0 / 16.0)),
+            "outer_design": (("nmeasure", "outer_region"), outer_design),
+            "YaprioriBC": ("nmeasure", fixed_offset),
+        },
+        coords={
+            "nmeasure": nmeasure,
+            "lat": lat,
+            "lon": lon,
+            "outer_region": outer_region,
+        },
+    )
+    dataset.to_netcdf(path, engine="h5netcdf")
+
+
 def _common_arguments(input_path: Path, output_path: Path) -> list[str]:
     """Return shared explicit scientific and sampler CLI arguments."""
     return [
@@ -414,6 +443,101 @@ def test_dry_run_validates_without_creating_output(
         smoke_module.run(bad_arguments)
 
 
+def test_random_initial_frontier_seed_replays_without_touching_sampler_seed(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """A separate PCG64 stream should replay topology and distinguish seeds."""
+    input_path = tmp_path / "larger.nc"
+    output_path = tmp_path / "unused"
+    _write_larger_frozen_input(input_path)
+    arguments = smoke_module.build_parser().parse_args(
+        [
+            *_common_arguments(input_path, output_path),
+            "--cycles",
+            "1",
+            "--dry-run",
+            "--start-k",
+            "7",
+            "--k-max",
+            "16",
+        ]
+    )
+    dataset = smoke_module._load_frozen_dataset(input_path, engine="h5netcdf")
+    adapter = smoke_module._build_adapter(dataset, arguments)
+
+    first = smoke_module._initial_state(adapter.problem, k=7, frontier_seed=41)
+    replay = smoke_module._initial_state(adapter.problem, k=7, frontier_seed=41)
+    different = smoke_module._initial_state(adapter.problem, k=7, frontier_seed=73)
+
+    assert first.frontier == replay.frontier
+    np.testing.assert_array_equal(first.active_fractions, replay.active_fractions)
+    assert first.frontier != different.frontier
+    assert arguments.seed == 812
+
+
+def test_random_initial_frontier_preserves_closure_and_binds_manifest(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """Random topology starts should preserve all-one closure and provenance."""
+    input_path = tmp_path / "larger.nc"
+    output_path = tmp_path / "dry-run"
+    _write_larger_frozen_input(input_path)
+    arguments = smoke_module.build_parser().parse_args(
+        [
+            *_common_arguments(input_path, output_path),
+            "--cycles",
+            "1",
+            "--dry-run",
+            "--start-k",
+            "7",
+            "--k-max",
+            "16",
+            "--initial-frontier-seed",
+            "41",
+        ]
+    )
+
+    summary = smoke_module.run(arguments)
+
+    assert summary["closure"]["prior_mean_total_max_abs_error"] == pytest.approx(0.0, abs=1e-12)
+    contract = json.loads(summary["run_manifest"]["inputs"]["input_variable_contract"]["identifier"])
+    assert contract["initial_frontier"] == {
+        "policy": "uniform_splittable_leaf_prior_mean_v1",
+        "seed": 41,
+    }
+
+
+def test_absent_initial_frontier_seed_preserves_legacy_initialization(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """Omitting the new option should retain the mass-greedy prior-mean start."""
+    input_path = tmp_path / "frozen.nc"
+    output_path = tmp_path / "dry-run"
+    _write_frozen_input(input_path)
+    arguments = smoke_module.build_parser().parse_args(
+        [*_common_arguments(input_path, output_path), "--cycles", "1", "--dry-run"]
+    )
+    dataset = smoke_module._load_frozen_dataset(input_path, engine="h5netcdf")
+    adapter = smoke_module._build_adapter(dataset, arguments)
+
+    actual = smoke_module._initial_state(adapter.problem, k=2, frontier_seed=None)
+    expected = smoke_module.initialize_gamma_beta_state(adapter.problem, k=2)
+
+    assert arguments.initial_frontier_seed is None
+    assert actual.frontier == expected.frontier
+    np.testing.assert_array_equal(actual.active_fractions, expected.active_fractions)
+    np.testing.assert_array_equal(actual.prediction, expected.prediction)
+    summary = smoke_module.run(arguments)
+    contract = json.loads(summary["run_manifest"]["inputs"]["input_variable_contract"]["identifier"])
+    assert contract["initial_frontier"] == {
+        "policy": "mass_greedy_prior_mean_v1",
+        "seed": None,
+    }
+
+
 def test_fixed_k_topology_cli_defaults_help_and_manifest_are_configurable(
     tmp_path: Path,
     smoke_module: ModuleType,
@@ -586,3 +710,40 @@ def test_resume_rejects_changed_fixed_k_topology_schedule(
                 str(first_output / "checkpoint.npz"),
             ]
         )
+
+
+def test_resume_rejects_changed_initial_frontier_seed(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """Resume must reject a changed topology-initialization stream contract."""
+    input_path = tmp_path / "larger.nc"
+    first_output = tmp_path / "first"
+    second_output = tmp_path / "second"
+    _write_larger_frozen_input(input_path)
+    common = [
+        *_common_arguments(input_path, first_output),
+        "--start-k",
+        "7",
+        "--k-max",
+        "16",
+        "--initial-frontier-seed",
+        "41",
+    ]
+    assert smoke_module.main([*common, "--iterations", "5"]) == 0
+
+    resumed = [
+        *_common_arguments(input_path, second_output),
+        "--start-k",
+        "7",
+        "--k-max",
+        "16",
+        "--initial-frontier-seed",
+        "73",
+        "--iterations",
+        "1",
+        "--resume-checkpoint",
+        str(first_output / "checkpoint.npz"),
+    ]
+    with pytest.raises(ValueError, match="manifest"):
+        smoke_module.main(resumed)
