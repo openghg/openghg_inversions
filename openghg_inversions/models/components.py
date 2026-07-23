@@ -31,6 +31,7 @@ import pytensor.tensor as pt
 import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
+from openghg_inversions.component_data import SigmaComponentData, prepare_sigma_component_data
 from openghg_inversions.inversion_inputs import make_freq_indicator
 from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
@@ -203,7 +204,7 @@ def add_linear_component(
 
 
 def add_sigma_component(
-    site_indicator: xr.DataArray,
+    site_indicator: xr.DataArray | SigmaComponentData,
     /,
     prior_args: dict,
     sigma_freq_index: xr.DataArray | None = None,
@@ -217,7 +218,8 @@ def add_sigma_component(
     """Add inferpymc-compatible sigma terms and align them to observations.
 
     Args:
-        site_indicator: Observation-aligned site indicator.
+        site_indicator: Observation-aligned site indicator or sigma data
+            prepared by :func:`prepare_sigma_component_data`.
         prior_args: Prior specification for the sigma random variable.
         sigma_freq_index: Optional explicit observation-aligned frequency
             indicator.
@@ -235,33 +237,33 @@ def add_sigma_component(
         The observation-aligned sigma tensor or deterministic variable.
 
     Raises:
-        ValueError: If no frequency information is available.
+        ValueError: If the supplied indexes are invalid or frequency
+            information cannot be derived.
     """
     output_dim = str(output_dim)
-    site_indicator = site_indicator.rename("site_indicator").transpose(output_dim)
-    freq_index = _resolve_freq_indicator(
-        explicit_indicator=sigma_freq_index,
-        freq=sigma_freq,
-        data=site_indicator,
-        output_dim=output_dim,
-        fallback_name="sigma_freq_index" if var_name == "sigma" else f"{var_name}_freq_indicator",
-    )
-    if freq_index is None:
-        raise ValueError(
-            "Sigma frequency information must be provided via `sigma_freq_index` or `sigma_freq`."
+    if isinstance(site_indicator, SigmaComponentData):
+        component_data = site_indicator
+        if component_data.output_dim != output_dim:
+            raise ValueError(
+                f"Prepared sigma data use output dimension {component_data.output_dim!r}, not {output_dim!r}."
+            )
+    else:
+        component_data = prepare_sigma_component_data(
+            site_indicator,
+            sigma_freq_index=sigma_freq_index,
+            sigma_freq=sigma_freq,
+            per_site=per_site,
+            output_dim=output_dim,
+            var_name=var_name,
         )
 
-    site_data = site_indicator if per_site else xr.zeros_like(site_indicator)
-    site_data_name = "site_indicator" if per_site else f"{var_name}_site_indicator"
-    site_data_var = add_model_data(site_data.rename(site_data_name), site_data_name)
-    freq_data = add_model_data(freq_index.transpose(output_dim), str(freq_index.name))
+    site_data_var = add_model_data(component_data.site_index, component_data.site_index_name)
+    freq_data = add_model_data(component_data.freq_index, component_data.freq_index_name)
 
-    nsigma_site = int(site_data.max().item()) + 1 if per_site else 1
-    nsigma_time = int(freq_index.max().item()) + 1 if freq_index.size else 0
     add_coords(
         {
-            "nsigma_site": np.arange(nsigma_site),
-            "nsigma_time": np.arange(nsigma_time),
+            "nsigma_site": np.arange(component_data.nsigma_site),
+            "nsigma_time": np.arange(component_data.nsigma_time),
         }
     )
 
@@ -354,6 +356,7 @@ def add_inferpymc_likelihood_component(
     pollution_events_from_obs: bool = False,
     no_model_error: bool = False,
     sigma_per_site: bool = True,
+    sigma_freq: str | None = None,
     output_dim: str = "nmeasure",
 ) -> TensorVariable:
     """Add the inferpymc observation model.
@@ -373,6 +376,8 @@ def add_inferpymc_likelihood_component(
             observations instead of ``mu``.
         no_model_error: Whether to bypass the model-error term.
         sigma_per_site: Whether sigma varies by site.
+        sigma_freq: Optional frequency used to derive sigma-period indexes when
+            they are not already present in ``data``.
         output_dim: Observation/output dimension name.
 
     Returns:
@@ -382,15 +387,20 @@ def add_inferpymc_likelihood_component(
     error_data = add_model_data(data["mf_error"].transpose(output_dim), "error")
     min_error_data = add_model_data(data["min_error"].transpose(output_dim), "min_error")
 
-    # TODO: once inferpymc threads sigma configuration explicitly, let
-    # add_sigma_component(...) derive sigma_freq_index locally and remove this
-    # canonical input dependency from make_inv_inputs(...).
-    sigma = add_sigma_component(
+    sigma_component_data = prepare_sigma_component_data(
         data["site_indicator"].transpose(output_dim),
-        prior_args=sigprior,
-        sigma_freq_index=data["sigma_freq_index"].transpose(output_dim),
-        var_name="sigma",
+        sigma_freq_index=(
+            data["sigma_freq_index"].transpose(output_dim) if "sigma_freq_index" in data else None
+        ),
+        sigma_freq=sigma_freq,
         per_site=sigma_per_site,
+        output_dim=output_dim,
+        var_name="sigma",
+    )
+    sigma = add_sigma_component(
+        sigma_component_data,
+        prior_args=sigprior,
+        var_name="sigma",
         output_dim=output_dim,
     )
 

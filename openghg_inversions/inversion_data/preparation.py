@@ -201,8 +201,9 @@ def _make_inv_inputs(
     min_error: MinErrorConfig,
     calculate_min_error: Literal["percentile", "residual"] | None,
     min_error_options: dict | None,
+    include_sigma_freq_index: bool = True,
 ) -> xr.Dataset:
-    """Create canonical inversion inputs with legacy min-error compatibility."""
+    """Create canonical inversion inputs with legacy compatibility options."""
     if calculate_min_error is not None:
         warnings.warn(
             "`calculate_min_error` is deprecated. Please use `min_error` to pass the calculation method instead.",
@@ -232,6 +233,7 @@ def _make_inv_inputs(
         min_error=min_error,
         min_error_per_site=min_error_options.get("by_site", False),
         start_date=start_date,
+        include_sigma_freq_index=include_sigma_freq_index,
     )
 
 
@@ -663,6 +665,7 @@ def prepare_fixedbasis_inversion_data(
         min_error=min_error,
         calculate_min_error=calculate_min_error,
         min_error_options=min_error_options,
+        include_sigma_freq_index=True,
     )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
 
@@ -843,6 +846,7 @@ def prepare_rhime_inputs(
             min_error=min_error,
             calculate_min_error=None,
             min_error_options=min_error_options,
+            include_sigma_freq_index=False,
         )
     _warn_for_nan_inputs(inv_inputs, use_bc=use_bc)
     site_lats, site_lons = _site_release_coordinates(fp_data, filtered_merged.sites)

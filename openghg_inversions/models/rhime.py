@@ -66,6 +66,8 @@ class RhimeModelSpec:
             separately and is normally backed by one OpenGHG flux ``source``.
         use_bc: Whether boundary-condition scaling is included.
         sigma_per_site: Whether model-error terms vary by site.
+        sigma_freq: Frequency used to derive observation-aligned sigma periods.
+            ``None`` uses one shared period.
         add_offset: Whether model-data offsets are included.
         pollution_events_from_obs: Whether model error scales with observed
             enhancements instead of modelled enhancements.
@@ -82,6 +84,7 @@ class RhimeModelSpec:
     sectors: tuple[SectorSpec, ...]
     use_bc: bool = True
     sigma_per_site: bool = True
+    sigma_freq: str | None = None
     add_offset: bool = False
     pollution_events_from_obs: bool = False
     no_model_error: bool = False
@@ -127,6 +130,7 @@ def build_rhime_model(
     bc_prior: dict | None = None,
     sigma_prior: dict | None = None,
     sigma_per_site: bool = True,
+    sigma_freq: str | None = None,
     offset_prior: dict | None = None,
     add_offset: bool = False,
     use_bc: bool = True,
@@ -144,6 +148,7 @@ def build_rhime_model(
         bc_prior: Prior specification for boundary-condition scaling factors.
         sigma_prior: Prior specification for model-error terms.
         sigma_per_site: Whether model-error terms vary by site.
+        sigma_freq: Frequency used to derive sigma-period indexes.
         offset_prior: Prior specification for optional offsets.
         add_offset: Whether to include an offset term.
         use_bc: Whether to include boundary-condition terms.
@@ -211,6 +216,7 @@ def build_rhime_model(
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
             sigma_per_site=sigma_per_site,
+            sigma_freq=sigma_freq,
             output_dim="nmeasure",
         )
 
@@ -241,6 +247,7 @@ def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSp
         bc_prior=model_spec.bc_prior,
         sigma_prior=model_spec.sigma_prior,
         sigma_per_site=model_spec.sigma_per_site,
+        sigma_freq=model_spec.sigma_freq,
         offset_prior=model_spec.offset_prior,
         add_offset=model_spec.add_offset,
         use_bc=model_spec.use_bc,
@@ -326,6 +333,7 @@ def build_rhime_multisector_model(
     bc_prior: dict | None = None,
     sigma_prior: dict | None = None,
     sigma_per_site: bool = True,
+    sigma_freq: str | None = None,
     offset_prior: dict | None = None,
     add_offset: bool = False,
     use_bc: bool = True,
@@ -356,6 +364,7 @@ def build_rhime_multisector_model(
         bc_prior: Prior specification for boundary-condition scaling factors.
         sigma_prior: Prior specification for model-error terms.
         sigma_per_site: Whether model-error terms vary by site.
+        sigma_freq: Frequency used to derive sigma-period indexes.
         offset_prior: Prior specification for optional offsets.
         add_offset: Whether to include an offset term.
         use_bc: Whether to include boundary-condition terms.
@@ -445,6 +454,7 @@ def build_rhime_multisector_model(
             pollution_events_from_obs=pollution_events_from_obs,
             no_model_error=no_model_error,
             sigma_per_site=sigma_per_site,
+            sigma_freq=sigma_freq,
             output_dim="nmeasure",
         )
 
@@ -474,6 +484,7 @@ def build_rhime_multisector_model_from_spec(
         bc_prior=model_spec.bc_prior,
         sigma_prior=model_spec.sigma_prior,
         sigma_per_site=model_spec.sigma_per_site,
+        sigma_freq=model_spec.sigma_freq,
         offset_prior=model_spec.offset_prior,
         add_offset=model_spec.add_offset,
         use_bc=model_spec.use_bc,
