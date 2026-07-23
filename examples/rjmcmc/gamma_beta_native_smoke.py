@@ -8,10 +8,12 @@ contains ``fp_x_flux(nmeasure, lat, lon)``, ``mf(nmeasure)``,
 scientific inputs is discovered, guessed, or silently floored.
 
 ``--cycles`` is the recommended segment-length interface.  With the default
-five fraction refreshes and six outer coefficients, one cycle is exactly 14
-atomic transitions: two mixed split/merge opportunities, one root refresh,
-five fraction refreshes, and six fixed-coefficient updates.  ``--iterations``
-is available for an explicitly requested partial-cycle checkpoint.
+fixed-``K`` topology settings, five fraction refreshes, and six outer
+coefficients, one cycle is exactly 16 atomic transitions: two mixed
+split/merge opportunities, one relocation, one bounded subtree retile, one
+root refresh, five fraction refreshes, and six fixed-coefficient updates.
+``--iterations`` is available for an explicitly requested partial-cycle
+checkpoint.
 
 Each successful segment creates a new output directory containing an
 immutable run manifest, a durable exact-continuation checkpoint, a labelled
@@ -70,6 +72,9 @@ PARIS_OBSERVATIONS = 1_382
 PARIS_GRID_SHAPE = (183, 128)
 PARIS_OUTER_COEFFICIENTS = 6
 FRACTION_REFRESH_SLOTS = 5
+RELOCATION_SLOTS = 1
+SUBTREE_RETILE_SLOTS = 1
+MAX_SUBTREE_LEAVES = 8
 SPLIT_DIRECTION_PROBABILITY = 0.5
 _CLOSURE_RTOL = 1.0e-12
 _CLOSURE_ATOL = 1.0e-12
@@ -413,8 +418,12 @@ def _closure_audit(
 def _kernel_settings(
     adapter: GammaBetaRHIMEAdapterResult,
     proposal_sd: float | tuple[float, ...],
+    *,
+    relocation_slots: int,
+    subtree_retile_slots: int,
+    max_subtree_leaves: int,
 ) -> GammaBetaCompoundKernelSettings:
-    """Resolve the fixed 2+1+5+outer schedule against the problem."""
+    """Resolve the configurable fixed-``K`` topology schedule."""
     scales = _expand_values(
         proposal_sd,
         size=adapter.problem.n_fixed_coefficients,
@@ -423,6 +432,9 @@ def _kernel_settings(
     return GammaBetaCompoundKernelSettings(
         split_direction_probability=SPLIT_DIRECTION_PROBABILITY,
         fraction_refresh_slots=FRACTION_REFRESH_SLOTS,
+        relocation_slots=relocation_slots,
+        subtree_retile_slots=subtree_retile_slots,
+        max_subtree_leaves=max_subtree_leaves,
         fixed_coefficient_proposal_sd=scales,
     )
 
@@ -462,6 +474,8 @@ def _move_summary(result: GammaBetaCompoundSamplingResult) -> dict[str, dict[str
     for move in (
         "split",
         "merge",
+        "relocate",
+        "subtree_retile",
         "root_refresh",
         "fraction_refresh",
         "fixed_coefficient",
@@ -663,7 +677,10 @@ def build_parser() -> argparse.ArgumentParser:
     length.add_argument(
         "--cycles",
         type=int,
-        help="Complete compound cycles (recommended; 14 transitions with six outer columns).",
+        help=(
+            "Complete compound cycles (recommended; 16 transitions with six "
+            "outer columns and the default fixed-K topology slots)."
+        ),
     )
     length.add_argument(
         "--iterations",
@@ -693,6 +710,24 @@ def build_parser() -> argparse.ArgumentParser:
         type=_positive_values,
         required=True,
         metavar="VALUE[,VALUE...]",
+    )
+    parser.add_argument(
+        "--relocation-slots",
+        type=int,
+        default=RELOCATION_SLOTS,
+        help="Fixed-K cherry-relocation opportunities per cycle (default: 1).",
+    )
+    parser.add_argument(
+        "--subtree-retile-slots",
+        type=int,
+        default=SUBTREE_RETILE_SLOTS,
+        help="Bounded fixed-K subtree-retile opportunities per cycle (default: 1).",
+    )
+    parser.add_argument(
+        "--max-subtree-leaves",
+        type=int,
+        default=MAX_SUBTREE_LEAVES,
+        help="Largest active-leaf count eligible for exact subtree retile (default: 8).",
     )
     parser.add_argument("--warmup", type=int, default=0, help="Global warmup atomic transitions.")
     parser.add_argument("--thin", type=int, default=1, help="Global thinning in atomic transitions.")
@@ -762,6 +797,12 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
         raise ValueError("cycles must be positive.")
     if arguments.iterations is not None and arguments.iterations < 1:
         raise ValueError("iterations must be positive.")
+    if arguments.relocation_slots < 0:
+        raise ValueError("relocation_slots must be non-negative.")
+    if arguments.subtree_retile_slots < 0:
+        raise ValueError("subtree_retile_slots must be non-negative.")
+    if arguments.max_subtree_leaves < 1:
+        raise ValueError("max_subtree_leaves must be positive.")
     if arguments.dry_run and arguments.resume_checkpoint is not None:
         raise ValueError("--dry-run cannot be combined with --resume-checkpoint.")
     if arguments.expected_input_sha256 is not None:
@@ -812,7 +853,13 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
         fixed_design_name=arguments.fixed_design_name,
         fixed_offset_name=arguments.fixed_offset_name,
     )
-    settings = _kernel_settings(adapter, arguments.fixed_proposal_sd)
+    settings = _kernel_settings(
+        adapter,
+        arguments.fixed_proposal_sd,
+        relocation_slots=arguments.relocation_slots,
+        subtree_retile_slots=arguments.subtree_retile_slots,
+        max_subtree_leaves=arguments.max_subtree_leaves,
+    )
     retention = RetentionSettings(
         warmup_transitions=arguments.warmup,
         thin=arguments.thin,
@@ -872,6 +919,9 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
                 seed=arguments.seed,
                 split_direction_probability=SPLIT_DIRECTION_PROBABILITY,
                 fraction_refresh_slots=FRACTION_REFRESH_SLOTS,
+                relocation_slots=arguments.relocation_slots,
+                subtree_retile_slots=arguments.subtree_retile_slots,
+                max_subtree_leaves=arguments.max_subtree_leaves,
                 fixed_coefficient_proposal_sd=settings.fixed_coefficient_proposal_sd,
             ),
             retention=retention,

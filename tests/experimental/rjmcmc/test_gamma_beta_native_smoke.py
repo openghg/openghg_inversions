@@ -112,7 +112,7 @@ def test_fresh_complete_cycle_writes_auditable_durable_segment(
     tmp_path: Path,
     smoke_module: ModuleType,
 ) -> None:
-    """One six-outer cycle should write 14 labelled attempts and exact closure."""
+    """One default cycle should write 16 labelled attempts and exact closure."""
     input_path = tmp_path / "frozen.nc"
     output_path = tmp_path / "fresh"
     _write_frozen_input(input_path)
@@ -131,9 +131,34 @@ def test_fresh_complete_cycle_writes_auditable_durable_segment(
     completion = json.loads((output_path / "complete.json").read_text(encoding="utf-8"))
     with xr.open_dataset(output_path / "trace.nc", engine="h5netcdf") as trace:
         assert trace.attrs["schema_id"] == GAMMA_BETA_TRACE_SCHEMA_ID
-        assert trace.sizes["attempt"] == 14
+        assert trace.sizes["attempt"] == 16
         assert trace.sizes["fixed_parameter"] == 6
-        np.testing.assert_array_equal(trace["global_transition"], np.arange(1, 15))
+        np.testing.assert_array_equal(trace["global_transition"], np.arange(1, 17))
+        np.testing.assert_array_equal(
+            trace["slot"],
+            (
+                "structural",
+                "structural",
+                "relocation",
+                "subtree_retile",
+                "root",
+                "fraction",
+                "fraction",
+                "fraction",
+                "fraction",
+                "fraction",
+                "fixed",
+                "fixed",
+                "fixed",
+                "fixed",
+                "fixed",
+                "fixed",
+            ),
+        )
+        assert trace["move"].values[2] == "relocate"
+        assert trace["move"].values[3] == "subtree_retile"
+        assert np.all(trace["secondary_node_id"].values[trace["move"].values != "relocate"] == -1)
+        assert np.all(trace["block_leaf_count"].values[trace["move"].values != "subtree_retile"] == -1)
         np.testing.assert_array_equal(trace["latitude"], [50.0, 51.0])
         np.testing.assert_array_equal(trace["longitude"], [-2.0, -1.0])
         np.testing.assert_array_equal(
@@ -145,21 +170,28 @@ def test_fresh_complete_cycle_writes_auditable_durable_segment(
             [str(value) for value in range(3)],
         )
         assert "split_node_id" in trace
+        assert "secondary_node_id" in trace
+        assert "block_leaf_count" in trace
         assert "node_row_start" in trace
         assert trace.attrs["problem_sha256"] == manifest["problem_sha256"]
 
-    assert manifest["schedule"]["cycle_length"] == 14
+    assert manifest["schedule"]["cycle_length"] == 16
+    assert manifest["schedule"]["relocation_slots"] == 1
+    assert manifest["schedule"]["subtree_retile_slots"] == 1
+    assert manifest["schedule"]["max_subtree_leaves"] == 8
     assert manifest["chain"]["id"] == "test-chain-0"
     assert manifest["chain"]["initial_k"] == 2
     assert summary["closure"] == {
         "mass_coordinate_max_abs_error": 0.0,
         "prior_mean_total_max_abs_error": 0.0,
     }
-    assert summary["segment"]["atomic_transitions"] == 14
+    assert summary["segment"]["atomic_transitions"] == 16
     assert summary["segment"]["schedule_phase_end"] == 0
-    assert sum(move["attempts"] for move in summary["moves"].values()) == 14
+    assert sum(move["attempts"] for move in summary["moves"].values()) == 16
+    assert summary["moves"]["relocate"]["attempts"] == 1
+    assert summary["moves"]["subtree_retile"]["attempts"] == 1
     assert [value["attempts"] for value in summary["fixed_coefficients"].values()] == [1] * 6
-    assert completion["transitions_completed"] == 14
+    assert completion["transitions_completed"] == 16
     assert set(completion["sha256"]) == {
         "manifest.json",
         "checkpoint.npz",
@@ -193,7 +225,7 @@ def test_resume_from_mid_cycle_preserves_global_attempt_coordinates(
             [
                 *_common_arguments(restaged_input, second_output),
                 "--iterations",
-                "9",
+                "11",
                 "--resume-checkpoint",
                 str(first_output / "checkpoint.npz"),
             ]
@@ -210,8 +242,18 @@ def test_resume_from_mid_cycle_preserves_global_attempt_coordinates(
         xr.open_dataset(direct_output / "trace.nc", engine="h5netcdf") as direct,
     ):
         np.testing.assert_array_equal(first["global_transition"], np.arange(1, 6))
-        np.testing.assert_array_equal(second["global_transition"], np.arange(6, 15))
-        for name in ("slot", "move", "valid", "accepted", "node_id", "coefficient_id", "k_after"):
+        np.testing.assert_array_equal(second["global_transition"], np.arange(6, 17))
+        for name in (
+            "slot",
+            "move",
+            "valid",
+            "accepted",
+            "node_id",
+            "secondary_node_id",
+            "block_leaf_count",
+            "coefficient_id",
+            "k_after",
+        ):
             combined = np.concatenate((first[name].values, second[name].values))
             np.testing.assert_array_equal(combined, direct[name].values)
         for name in (
@@ -279,7 +321,7 @@ def test_resume_from_mid_cycle_preserves_global_attempt_coordinates(
             np.testing.assert_array_equal(resumed[name], direct[name])
     assert first_summary["segment"]["schedule_phase_end"] == 5
     assert second_summary["segment"]["transitions_start"] == 5
-    assert second_summary["segment"]["transitions_end"] == 14
+    assert second_summary["segment"]["transitions_end"] == 16
     assert second_summary["segment"]["schedule_phase_end"] == 0
 
 
@@ -353,6 +395,10 @@ def test_dry_run_validates_without_creating_output(
     assert summary["run_manifest"]["k_prior"]["minimum"] == 1
     assert summary["run_manifest"]["k_prior"]["maximum"] == 4
     assert len(summary["run_manifest"]["k_prior"]["probability_by_k_sha256"]) == 64
+    assert summary["cycle_length"] == 16
+    assert summary["run_manifest"]["schedule"]["relocation_slots"] == 1
+    assert summary["run_manifest"]["schedule"]["subtree_retile_slots"] == 1
+    assert summary["run_manifest"]["schedule"]["max_subtree_leaves"] == 8
 
     bad_arguments = smoke_module.build_parser().parse_args(
         [
@@ -366,6 +412,47 @@ def test_dry_run_validates_without_creating_output(
     )
     with pytest.raises(ValueError, match="SHA-256"):
         smoke_module.run(bad_arguments)
+
+
+def test_fixed_k_topology_cli_defaults_help_and_manifest_are_configurable(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """CLI topology settings have reviewed defaults and bind the run manifest."""
+    input_path = tmp_path / "frozen.nc"
+    output_path = tmp_path / "dry-run"
+    _write_frozen_input(input_path)
+    parser = smoke_module.build_parser()
+    defaults = parser.parse_args([*_common_arguments(input_path, output_path), "--cycles", "1", "--dry-run"])
+
+    assert defaults.relocation_slots == 1
+    assert defaults.subtree_retile_slots == 1
+    assert defaults.max_subtree_leaves == 8
+    help_text = parser.format_help()
+    assert "--relocation-slots" in help_text
+    assert "--subtree-retile-slots" in help_text
+    assert "--max-subtree-leaves" in help_text
+
+    configured = parser.parse_args(
+        [
+            *_common_arguments(input_path, output_path),
+            "--cycles",
+            "1",
+            "--dry-run",
+            "--relocation-slots",
+            "2",
+            "--subtree-retile-slots",
+            "3",
+            "--max-subtree-leaves",
+            "4",
+        ]
+    )
+    summary = smoke_module.run(configured)
+    schedule = summary["run_manifest"]["schedule"]
+    assert summary["cycle_length"] == 19
+    assert schedule["relocation_slots"] == 2
+    assert schedule["subtree_retile_slots"] == 3
+    assert schedule["max_subtree_leaves"] == 4
 
 
 def test_directory_sync_ignores_only_documented_unsupported_errors(
@@ -470,6 +557,31 @@ def test_resume_rejects_changed_variable_selection_with_identical_values(
                 "1",
                 "--sensitivity-name",
                 "fp_x_flux_alias",
+                "--resume-checkpoint",
+                str(first_output / "checkpoint.npz"),
+            ]
+        )
+
+
+def test_resume_rejects_changed_fixed_k_topology_schedule(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """Resume rejects a fixed-K slot change bound into the run manifest."""
+    input_path = tmp_path / "frozen.nc"
+    first_output = tmp_path / "first"
+    second_output = tmp_path / "second"
+    _write_frozen_input(input_path)
+
+    assert smoke_module.main([*_common_arguments(input_path, first_output), "--iterations", "5"]) == 0
+    with pytest.raises(ValueError, match="manifest"):
+        smoke_module.main(
+            [
+                *_common_arguments(input_path, second_output),
+                "--iterations",
+                "1",
+                "--relocation-slots",
+                "0",
                 "--resume-checkpoint",
                 str(first_output / "checkpoint.npz"),
             ]
