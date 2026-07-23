@@ -32,7 +32,7 @@ import xarray as xr
 from pytensor.tensor.variable import TensorVariable
 
 from openghg_inversions.component_data import SigmaComponentData, prepare_sigma_component_data
-from openghg_inversions.inversion_inputs import make_freq_indicator
+from openghg_inversions.inversion_inputs import DatetimeLike, make_freq_indicator
 from openghg_inversions.models.coords import add_coords
 from openghg_inversions.models.priors import parse_prior
 
@@ -222,13 +222,16 @@ def add_sigma_component(
             prepared by :func:`prepare_sigma_component_data`.
         prior_args: Prior specification for the sigma random variable.
         sigma_freq_index: Optional explicit observation-aligned frequency
-            indicator.
+            indicator. Used only when ``site_indicator`` is a data array.
         sigma_freq: Optional frequency string used to derive an indicator when
-            ``sigma_freq_index`` is not provided.
+            ``sigma_freq_index`` is not provided. Used only when
+            ``site_indicator`` is a data array.
         var_name: Name for the latent sigma random variable.
         output_name: Optional name for an observation-aligned deterministic
             output.
-        per_site: Whether sigma varies by site.
+        per_site: Whether sigma varies by site. Used only when
+            ``site_indicator`` is a data array; prepared component data already
+            fixes this choice.
         output_dim: Observation/output dimension name.
         compute_deterministic: Whether to register the aligned sigma term as a
             deterministic variable.
@@ -358,6 +361,7 @@ def add_inferpymc_likelihood_component(
     sigma_per_site: bool = True,
     sigma_freq: str | None = None,
     output_dim: str = "nmeasure",
+    sigma_freq_anchor: DatetimeLike | None = None,
 ) -> TensorVariable:
     """Add the inferpymc observation model.
 
@@ -379,6 +383,8 @@ def add_inferpymc_likelihood_component(
         sigma_freq: Optional frequency used to derive sigma-period indexes when
             they are not already present in ``data``.
         output_dim: Observation/output dimension name.
+        sigma_freq_anchor: Optional anchor for fixed-duration sigma periods.
+            Used only when ``data`` has no explicit ``sigma_freq_index``.
 
     Returns:
         The ``epsilon`` deterministic variable used by the observation model.
@@ -396,6 +402,7 @@ def add_inferpymc_likelihood_component(
         per_site=sigma_per_site,
         output_dim=output_dim,
         var_name="sigma",
+        anchor_time=sigma_freq_anchor,
     )
     sigma = add_sigma_component(
         sigma_component_data,

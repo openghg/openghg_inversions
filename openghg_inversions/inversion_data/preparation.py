@@ -749,6 +749,10 @@ def prepare_rhime_inputs(
         flux_sources: OpenGHG flux ``source`` values requested for the run.
         split_by_sectors: Whether to keep sector-resolved sensitivity inputs
             with a ``source`` coordinate.
+        sigma_freq: Compatibility-only sigma frequency argument. Modern RHIME
+            carries this setting in ``RhimeModelSpec`` and derives component
+            data during model construction, so this function does not
+            materialize ``sigma_freq_index``.
         use_tracer: Unsupported placeholder for tracer inversions, where an
             additional species constrains the primary species through linked
             forward models.

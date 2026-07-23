@@ -1058,6 +1058,7 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
             "GPP": {"pdf": "normal", "mu": 0.7, "sigma": 0.2},
             "TER": {"pdf": "normal", "mu": 1.3, "sigma": 0.3},
         },
+        "sigma_freq": "8D",
         "draws": "7",
         "burn": "1",
         "tune": "2",
@@ -1075,6 +1076,7 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
     assert setup.data_args["flux_sources"] == ["ff-source", "gpp-source", "ter-source", "ocean-source"]
     assert setup.data_args["split_by_sectors"] is True
     assert "sector_sources" not in setup.data_args
+    assert "sigma_freq" not in setup.data_args
     assert setup.run_spec.sites == ("TAC",)
     assert setup.run_spec.averaging_period == ("1h",)
     assert setup.run_spec.output.output_format == "none"
@@ -1097,6 +1099,8 @@ def test_rhime_runner_setup_builds_specs_before_preparation(tmp_path: Path) -> N
     ]
     assert setup.run_spec.model.sectors[0].x_prior == {"pdf": "normal", "mu": 1.0, "sigma": 0.5}
     assert setup.run_spec.model.sectors[1].x_prior == {"pdf": "normal", "mu": 0.7, "sigma": 0.2}
+    assert setup.run_spec.model.sigma_freq == "8D"
+    assert setup.run_spec.model.sigma_freq_anchor == "2019-01-01"
 
 
 def test_legacy_sampling_names_are_not_rhime_config_aliases() -> None:
@@ -1161,6 +1165,8 @@ def test_build_rhime_model_from_spec_forwards_single_sector_prior(
         ),
         bc_prior={"pdf": "normal", "mu": 1.0, "sigma": 0.1},
         sigma_per_site=False,
+        sigma_freq="8D",
+        sigma_freq_anchor="2019-01-01",
     )
 
     model = build_rhime_model_from_spec(inv_inputs, model_spec)
@@ -1170,6 +1176,8 @@ def test_build_rhime_model_from_spec_forwards_single_sector_prior(
     assert seen["kwargs"]["x_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.2}
     assert seen["kwargs"]["bc_prior"] == {"pdf": "normal", "mu": 1.0, "sigma": 0.1}
     assert seen["kwargs"]["sigma_per_site"] is False
+    assert seen["kwargs"]["sigma_freq"] == "8D"
+    assert seen["kwargs"]["sigma_freq_anchor"] == "2019-01-01"
 
 
 def test_build_rhime_model_from_spec_requires_one_sector() -> None:

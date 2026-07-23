@@ -22,6 +22,7 @@ import pymc as pm
 import pytensor.tensor as pt
 import xarray as xr
 
+from openghg_inversions.inversion_inputs import DatetimeLike
 from openghg_inversions.models.components import (
     add_inferpymc_likelihood_component,
     add_linear_component,
@@ -68,6 +69,7 @@ class RhimeModelSpec:
         sigma_per_site: Whether model-error terms vary by site.
         sigma_freq: Frequency used to derive observation-aligned sigma periods.
             ``None`` uses one shared period.
+        sigma_freq_anchor: Optional anchor for fixed-duration sigma periods.
         add_offset: Whether model-data offsets are included.
         pollution_events_from_obs: Whether model error scales with observed
             enhancements instead of modelled enhancements.
@@ -85,6 +87,7 @@ class RhimeModelSpec:
     use_bc: bool = True
     sigma_per_site: bool = True
     sigma_freq: str | None = None
+    sigma_freq_anchor: DatetimeLike | None = None
     add_offset: bool = False
     pollution_events_from_obs: bool = False
     no_model_error: bool = False
@@ -131,6 +134,7 @@ def build_rhime_model(
     sigma_prior: dict | None = None,
     sigma_per_site: bool = True,
     sigma_freq: str | None = None,
+    sigma_freq_anchor: DatetimeLike | None = None,
     offset_prior: dict | None = None,
     add_offset: bool = False,
     use_bc: bool = True,
@@ -148,7 +152,10 @@ def build_rhime_model(
         bc_prior: Prior specification for boundary-condition scaling factors.
         sigma_prior: Prior specification for model-error terms.
         sigma_per_site: Whether model-error terms vary by site.
-        sigma_freq: Frequency used to derive sigma-period indexes.
+        sigma_freq: Frequency used to derive sigma-period indexes when
+            ``inv_inputs`` lacks ``sigma_freq_index``. ``None`` creates one
+            shared period. An existing explicit index takes precedence.
+        sigma_freq_anchor: Optional anchor for fixed-duration sigma periods.
         offset_prior: Prior specification for optional offsets.
         add_offset: Whether to include an offset term.
         use_bc: Whether to include boundary-condition terms.
@@ -217,6 +224,7 @@ def build_rhime_model(
             no_model_error=no_model_error,
             sigma_per_site=sigma_per_site,
             sigma_freq=sigma_freq,
+            sigma_freq_anchor=sigma_freq_anchor,
             output_dim="nmeasure",
         )
 
@@ -248,6 +256,7 @@ def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSp
         sigma_prior=model_spec.sigma_prior,
         sigma_per_site=model_spec.sigma_per_site,
         sigma_freq=model_spec.sigma_freq,
+        sigma_freq_anchor=model_spec.sigma_freq_anchor,
         offset_prior=model_spec.offset_prior,
         add_offset=model_spec.add_offset,
         use_bc=model_spec.use_bc,
@@ -334,6 +343,7 @@ def build_rhime_multisector_model(
     sigma_prior: dict | None = None,
     sigma_per_site: bool = True,
     sigma_freq: str | None = None,
+    sigma_freq_anchor: DatetimeLike | None = None,
     offset_prior: dict | None = None,
     add_offset: bool = False,
     use_bc: bool = True,
@@ -364,7 +374,10 @@ def build_rhime_multisector_model(
         bc_prior: Prior specification for boundary-condition scaling factors.
         sigma_prior: Prior specification for model-error terms.
         sigma_per_site: Whether model-error terms vary by site.
-        sigma_freq: Frequency used to derive sigma-period indexes.
+        sigma_freq: Frequency used to derive sigma-period indexes when
+            ``inv_inputs`` lacks ``sigma_freq_index``. ``None`` creates one
+            shared period. An existing explicit index takes precedence.
+        sigma_freq_anchor: Optional anchor for fixed-duration sigma periods.
         offset_prior: Prior specification for optional offsets.
         add_offset: Whether to include an offset term.
         use_bc: Whether to include boundary-condition terms.
@@ -455,6 +468,7 @@ def build_rhime_multisector_model(
             no_model_error=no_model_error,
             sigma_per_site=sigma_per_site,
             sigma_freq=sigma_freq,
+            sigma_freq_anchor=sigma_freq_anchor,
             output_dim="nmeasure",
         )
 
@@ -485,6 +499,7 @@ def build_rhime_multisector_model_from_spec(
         sigma_prior=model_spec.sigma_prior,
         sigma_per_site=model_spec.sigma_per_site,
         sigma_freq=model_spec.sigma_freq,
+        sigma_freq_anchor=model_spec.sigma_freq_anchor,
         offset_prior=model_spec.offset_prior,
         add_offset=model_spec.add_offset,
         use_bc=model_spec.use_bc,

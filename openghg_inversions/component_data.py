@@ -1,10 +1,10 @@
-"""Pure data preparation and reconstruction helpers for model components.
+"""Prepare and reconstruct observation-aligned sigma component data.
 
-This module defines the observation-alignment data needed by the RHIME sigma
-component without importing PyMC or PyTensor.  The prepared indexes can be
-registered as model constant data during model construction and reused later
-to reconstruct observation-aligned posterior sigma values without storing a
-large deterministic variable in the trace.
+``SigmaComponentData`` holds the one-dimensional, observation-aligned,
+non-negative integer indexes created by ``prepare_sigma_component_data``.
+Those indexes can be registered by any inversion backend and later passed to
+``reconstruct_sigma_aligned`` with an ArviZ trace. These helpers neither create
+PyMC objects nor mutate the supplied ``InferenceData``.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from openghg_inversions.inversion_inputs import make_sigma_freq
+from openghg_inversions.inversion_inputs import DatetimeLike, make_sigma_freq
 
 
 def _validate_integer_index(index: xr.DataArray, *, label: str) -> None:
@@ -27,7 +27,8 @@ def _validate_integer_index(index: xr.DataArray, *, label: str) -> None:
         raise ValueError(f"{label} must contain at least one observation.")
 
     values = np.asarray(index.values)
-    if np.issubdtype(values.dtype, np.bool_) or not np.issubdtype(values.dtype, np.number):
+    is_real_number = np.issubdtype(values.dtype, np.integer) or np.issubdtype(values.dtype, np.floating)
+    if np.issubdtype(values.dtype, np.bool_) or not is_real_number:
         raise ValueError(f"{label} must contain integer values.")
     if not np.all(np.isfinite(values)):
         raise ValueError(f"{label} must contain only finite values.")
@@ -102,9 +103,11 @@ class SigmaComponentData:
     """Prepared observation-alignment data for a sigma model component.
 
     Args:
-        site_index: Effective observation-aligned site index. For a shared
+        site_index: One-dimensional, finite, non-negative, integer-valued site
+            index with dimensions exactly ``(output_dim,)``. For a shared
             sigma component this is an all-zero array.
-        freq_index: Observation-aligned sigma-period index.
+        freq_index: One-dimensional, finite, non-negative, integer-valued
+            sigma-period index with dimensions exactly ``(output_dim,)``.
         site_index_name: Model-data name used for ``site_index``.
         freq_index_name: Model-data name used for ``freq_index``.
         output_dim: Observation dimension shared by both indexes.
@@ -156,12 +159,14 @@ def prepare_sigma_component_data(
     per_site: bool = True,
     output_dim: str = "nmeasure",
     var_name: str = "sigma",
+    anchor_time: DatetimeLike | None = None,
 ) -> SigmaComponentData:
     """Prepare observation indexes used to align a latent sigma array.
 
-    Explicit frequency codes are preserved exactly. When an explicit index is
-    not supplied, periods are derived with :func:`make_sigma_freq`, including
-    its all-zero default and compact handling of gaps between used periods.
+    Explicit frequency codes and an explicit data-array name are preserved.
+    When an explicit index is not supplied, periods are derived with
+    :func:`make_sigma_freq`, including its all-zero default and compact
+    handling of gaps between used periods.
 
     Args:
         site_indicator: Observation-aligned non-negative site codes.
@@ -172,9 +177,12 @@ def prepare_sigma_component_data(
         output_dim: Observation dimension name.
         var_name: Sigma variable name used to derive non-standard model-data
             names.
+        anchor_time: Optional time used to anchor fixed-duration frequency
+            bins. This preserves period boundaries when early observations are
+            absent or filtered.
 
     Returns:
-        Validated, immutable sigma component data.
+        Validated sigma component data in a frozen dataclass.
 
     Raises:
         ValueError: If indexes are invalid or misaligned, or a requested
@@ -183,6 +191,8 @@ def prepare_sigma_component_data(
     output_dim = str(output_dim)
     site_name = "site_indicator" if per_site else f"{var_name}_site_indicator"
     freq_name = "sigma_freq_index" if var_name == "sigma" else f"{var_name}_freq_indicator"
+    if isinstance(sigma_freq_index, xr.DataArray) and sigma_freq_index.name is not None:
+        freq_name = str(sigma_freq_index.name)
 
     site_index = _as_index_data_array(
         site_indicator,
@@ -200,7 +210,11 @@ def prepare_sigma_component_data(
                 f"Cannot derive {freq_name!r}: no time coordinate aligned to {output_dim!r} was found."
             )
         source = site_index if time_coord is None else time_coord
-        freq_index = make_sigma_freq(source, freq=sigma_freq).rename(freq_name)
+        freq_index = make_sigma_freq(
+            source,
+            freq=sigma_freq,
+            anchor_time=anchor_time,
+        ).rename(freq_name)
     else:
         output_coord = site_index.coords.get(output_dim)
         freq_index = _as_index_data_array(
@@ -267,16 +281,21 @@ def reconstruct_sigma_aligned(
 
     Args:
         idata: ArviZ inference data containing the latent sigma posterior.
-        model_data: Prepared sigma data or an xarray model-data dataset. When
-            omitted, ``idata.constant_data`` is used.
+        model_data: Prepared sigma data or an xarray model-data dataset. Dataset
+            inputs must contain ``sigma_freq_index`` (or
+            ``<var_name>_freq_indicator``) and either
+            ``<var_name>_site_indicator``, which takes precedence, or
+            ``site_indicator``. Each index must be one-dimensional on
+            ``output_dim``. When omitted, ``idata.constant_data`` is used.
         group: InferenceData group containing the latent sigma variable.
         var_name: Latent sigma variable name.
         output_dim: Observation dimension name used by the model data.
         output_name: Name assigned to the reconstructed array.
 
     Returns:
-        Sigma indexed across site and period with posterior and observation
-        coordinates preserved.
+        A data array in which ``nsigma_site`` and ``nsigma_time`` are replaced
+        by ``output_dim``. Other trace dimensions, typically ``chain`` and
+        ``draw``, and observation coordinates are preserved.
 
     Raises:
         ValueError: If the requested trace group, sigma variable, dimensions,
@@ -304,7 +323,7 @@ def reconstruct_sigma_aligned(
     required_dims = ("nsigma_site", "nsigma_time")
     missing_dims = [dim for dim in required_dims if dim not in sigma.dims]
     if missing_dims:
-        raise ValueError(f"Posterior variable {var_name!r} is missing sigma dimension(s): {missing_dims!r}.")
+        raise ValueError(f"Trace variable {var_name!r} is missing sigma dimension(s): {missing_dims!r}.")
     if prepared.nsigma_site > sigma.sizes["nsigma_site"]:
         raise ValueError(
             f"{prepared.site_index_name!r} contains code {prepared.nsigma_site - 1}, "

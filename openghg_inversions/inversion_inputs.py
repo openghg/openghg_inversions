@@ -316,7 +316,8 @@ def make_inv_inputs(
         sites: Sites to retain. Defaults to all non-metadata entries.
         bc_freq: Optional frequency used to transform boundary-condition
             sensitivities.
-        sigma_freq: Optional frequency used to create sigma-period codes.
+        sigma_freq: Optional frequency used to create ``sigma_freq_index``.
+            Ignored when ``include_sigma_freq_index`` is false.
         min_error: Minimum-error value or calculation configuration.
         min_error_per_site: Whether a calculated minimum error varies by site.
         start_date: Optional anchor for fixed-duration frequencies.
@@ -326,7 +327,9 @@ def make_inv_inputs(
             legacy and direct callers.
 
     Returns:
-        Canonical inversion inputs aligned along ``nmeasure``.
+        Canonical inversion inputs aligned along ``nmeasure``. The dataset
+        contains ``sigma_freq_index(nmeasure)`` only when
+        ``include_sigma_freq_index`` is true.
 
     Raises:
         ValueError: If required input variables are missing or minimum-error
