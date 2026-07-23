@@ -486,6 +486,22 @@ class _DynamicSpyBasisFunctions(_SpyBasisFunctions):
         )
 
 
+class _DynamicSectorSpyBasisFunctions(_SpyBasisFunctions):
+    """BasisFunctions test double that derives source-resolved sensitivity."""
+
+    def __init__(self) -> None:
+        super().__init__(xr.DataArray())
+
+    def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
+        self.sensitivity_calls.append(fp_x_flux)
+        return xr.DataArray(
+            np.ones((1, fp_x_flux.sizes["time"], fp_x_flux.sizes["source"])),
+            dims=("region", "time", "source"),
+            coords={"region": [0], "time": fp_x_flux.time, "source": fp_x_flux.source},
+            name="H",
+        )
+
+
 def test_build_rhime_model_contains_expected_variables(
     rhime_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
@@ -2187,10 +2203,327 @@ def test_prepare_rhime_inputs_treats_min_error_none_as_default(
     assert captured_min_error == 0.0
 
 
+def test_prepare_rhime_inputs_filters_sites_before_basis_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One filter pass should feed basis, flux, and BC sensitivity construction."""
+    site_data = {"TAC": _site_dataset([2.0, 3.0, 4.0])}
+    basis_functions = _DynamicSpyBasisFunctions()
+    filtering_calls = 0
+    captured_basis_times: tuple[np.datetime64, ...] | None = None
+    captured_bc_times: tuple[np.datetime64, ...] | None = None
+    retained_times = tuple(site_data["TAC"].time.isel(time=[1]).values)
+
+    def fake_data_processing_surface_notracer(
+        **kwargs: object,
+    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
+        return (
+            {**site_data, ".species": "CH4"},
+            ["TAC"],
+            ["185m"],
+            ["185m"],
+            ["instrument-1"],
+            ["1H"],
+        )
+
+    def fake_filtering(fp_data: dict, filters: object) -> dict:
+        nonlocal filtering_calls
+        filtering_calls += 1
+        assert filters == ["keep-middle"]
+        assert "H" not in fp_data["TAC"]
+        return {"TAC": fp_data["TAC"].isel(time=[1])}
+
+    def fake_make_basis_functions(**kwargs: object) -> _DynamicSpyBasisFunctions:
+        nonlocal captured_basis_times
+        fp_all = kwargs["fp_all"]
+        assert isinstance(fp_all, dict)
+        captured_basis_times = tuple(fp_all["TAC"].time.values)
+        return basis_functions
+
+    def fake_bc_sensitivity(fp_data: dict, **kwargs: object) -> dict:
+        """Record filtered times and add matching boundary-condition sensitivity."""
+        nonlocal captured_bc_times
+        captured_bc_times = tuple(fp_data["TAC"].time.values)
+        fp_data["TAC"]["H_bc"] = xr.DataArray(
+            np.ones((1, len(retained_times))),
+            dims=("bc_region", "time"),
+            coords={"bc_region": [0], "time": fp_data["TAC"].time},
+        )
+        return fp_data
+
+    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        assert sites == ["TAC"]
+        assert tuple(fp_data["TAC"].time.values) == retained_times
+        assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
+        assert tuple(fp_data["TAC"]["H_bc"].time.values) == retained_times
+        return _minimal_inv_inputs()
+
+    monkeypatch.setattr(
+        prep_module,
+        "data_processing_surface_notracer",
+        fake_data_processing_surface_notracer,
+    )
+    monkeypatch.setattr(prep_module, "filtering", fake_filtering)
+    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(prep_module, "bc_sensitivity", fake_bc_sensitivity)
+    monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
+
+    prepared = prepare_rhime_inputs(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="filter_before_basis",
+        flux_sources=["total-ukghg-edgar7"],
+        use_bc=True,
+        filters=["keep-middle"],
+    )
+
+    assert prepared.sites == ("TAC",)
+    assert prepared.averaging_period == ("1H",)
+    assert captured_basis_times == retained_times
+    assert tuple(basis_functions.sensitivity_calls[0].time.values) == retained_times
+    assert captured_bc_times == retained_times
+    assert filtering_calls == 1
+
+
+def test_prepare_rhime_inputs_applies_daily_median_before_sensitivity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Daily-median filtering should aggregate times before basis projection."""
+    site_dataset = _site_dataset([2.0, 3.0, 4.0]).drop_vars(["fp_x_flux", "lat", "lon"])
+    site_dataset["fp_x_flux"] = xr.DataArray(
+        [[[0.0, 100.0]], [[0.0, 0.0]], [[100.0, 0.0]]],
+        dims=("time", "lat", "lon"),
+        coords={"time": site_dataset.time, "lat": [0.0], "lon": [0.0, 1.0]},
+    )
+    basis_input: xr.DataArray | None = None
+    final_sensitivity: xr.DataArray | None = None
+
+    def fake_data_processing_surface_notracer(
+        **kwargs: object,
+    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
+        return (
+            {"TAC": site_dataset, ".species": "CH4"},
+            ["TAC"],
+            ["185m"],
+            ["185m"],
+            ["instrument-1"],
+            ["1H"],
+        )
+
+    def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
+        nonlocal basis_input
+        fp_all = kwargs["fp_all"]
+        assert isinstance(fp_all, dict)
+        basis_input = fp_all["TAC"]["fp_x_flux"].copy()
+        basis = xr.DataArray(
+            [[1, 1]],
+            dims=("lat", "lon"),
+            coords={"lat": [0.0], "lon": [0.0, 1.0]},
+        )
+        return BasisFunctions.from_flat_basis(basis_flat=basis, flux=xr.ones_like(basis))
+
+    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        nonlocal final_sensitivity
+        final_sensitivity = fp_data["TAC"]["H"].copy()
+        return _minimal_inv_inputs()
+
+    monkeypatch.setattr(
+        prep_module,
+        "data_processing_surface_notracer",
+        fake_data_processing_surface_notracer,
+    )
+    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
+
+    prepare_rhime_inputs(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="daily_median_filter_order",
+        flux_sources=["total-ukghg-edgar7"],
+        use_bc=False,
+        filters=["daily_median"],
+    )
+
+    assert basis_input is not None
+    assert basis_input.sizes["time"] == 1
+    xr.testing.assert_allclose(basis_input, xr.zeros_like(basis_input))
+    assert final_sensitivity is not None
+    xr.testing.assert_identical(final_sensitivity.time, basis_input.time)
+    xr.testing.assert_allclose(final_sensitivity, xr.zeros_like(final_sensitivity))
+
+
+def test_prepare_rhime_inputs_filters_multisector_sites_before_basis_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Multisector filtering should preserve source dimensions on retained times."""
+    site_dataset = _site_dataset([2.0, 3.0, 4.0])
+    flux_sources = ["total-ukghg-edgar7", "sector-2"]
+    site_dataset["fp_x_flux_sectoral"] = xr.concat(
+        [
+            site_dataset["fp_x_flux"],
+            2.0 * site_dataset["fp_x_flux"],
+        ],
+        dim=xr.DataArray(flux_sources, dims="source", name="source"),
+    )
+    site_data = {"TAC": site_dataset}
+    basis_functions = _DynamicSectorSpyBasisFunctions()
+    captured_split_by_sectors: object = None
+    retained_times = tuple(site_dataset.time.isel(time=[2]).values)
+
+    def fake_data_processing_surface_notracer(
+        **kwargs: object,
+    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
+        return (
+            {
+                **site_data,
+                ".flux": {source: object() for source in flux_sources},
+                ".species": "CH4",
+                ".split_by_sectors": True,
+            },
+            ["TAC"],
+            ["185m"],
+            ["185m"],
+            ["instrument-1"],
+            ["1H"],
+        )
+
+    def fake_filtering(fp_data: dict, filters: object) -> dict:
+        assert filters == {"TAC": ["keep-last"]}
+        assert "H" not in fp_data["TAC"]
+        return {"TAC": fp_data["TAC"].isel(time=[2])}
+
+    def fake_make_basis_functions(**kwargs: object) -> _DynamicSectorSpyBasisFunctions:
+        nonlocal captured_split_by_sectors
+        fp_all = kwargs["fp_all"]
+        assert isinstance(fp_all, dict)
+        captured_split_by_sectors = fp_all[".split_by_sectors"]
+        assert tuple(fp_all["TAC"].time.values) == retained_times
+        return basis_functions
+
+    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        assert sites == ["TAC"]
+        assert tuple(fp_data["TAC"].time.values) == retained_times
+        assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
+        assert fp_data["TAC"]["H"].dims == ("region", "time", "source")
+        assert tuple(fp_data["TAC"]["H"].source.values) == tuple(flux_sources)
+        return _minimal_inv_inputs()
+
+    monkeypatch.setattr(
+        prep_module,
+        "data_processing_surface_notracer",
+        fake_data_processing_surface_notracer,
+    )
+    monkeypatch.setattr(prep_module, "filtering", fake_filtering)
+    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
+
+    prepared = prepare_rhime_inputs(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="filter_before_sector_basis",
+        flux_sources=flux_sources,
+        split_by_sectors=True,
+        use_bc=False,
+        filters={"TAC": ["keep-last"]},
+    )
+
+    assert prepared.sites == ("TAC",)
+    assert captured_split_by_sectors is True
+    assert tuple(basis_functions.sensitivity_calls[0].time.values) == retained_times
+    assert tuple(basis_functions.sensitivity_calls[0].source.values) == tuple(flux_sources)
+    assert basis_functions.sensitivity_calls[0].name == "fp_x_flux_sectoral"
+
+
+def test_prepare_rhime_inputs_filters_loaded_basis_before_sensitivity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Loaded-basis runs should filter observations once before sensitivity construction."""
+    site_data = {"TAC": _site_dataset([2.0, 3.0, 4.0])}
+    basis_functions = _DynamicSpyBasisFunctions()
+    captured_basis_times: tuple[np.datetime64, ...] | None = None
+    filtering_calls = 0
+    retained_times = tuple(site_data["TAC"].time.isel(time=[1]).values)
+
+    def fake_data_processing_surface_notracer(
+        **kwargs: object,
+    ) -> tuple[dict, list[str], list[str], list[str], list[str], list[str]]:
+        return (
+            {**site_data, ".species": "CH4"},
+            ["TAC"],
+            ["185m"],
+            ["185m"],
+            ["instrument-1"],
+            ["1H"],
+        )
+
+    def fake_make_basis_functions(**kwargs: object) -> _DynamicSpyBasisFunctions:
+        nonlocal captured_basis_times
+        assert kwargs["fp_basis_case"] == "saved_case"
+        fp_all = kwargs["fp_all"]
+        assert isinstance(fp_all, dict)
+        captured_basis_times = tuple(fp_all["TAC"].time.values)
+        return basis_functions
+
+    def fake_filtering(fp_data: dict, filters: object) -> dict:
+        nonlocal filtering_calls
+        filtering_calls += 1
+        assert filters == ["keep-middle"]
+        assert "H" not in fp_data["TAC"]
+        return {"TAC": fp_data["TAC"].isel(time=[1])}
+
+    def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
+        assert sites == ["TAC"]
+        assert tuple(fp_data["TAC"].time.values) == retained_times
+        assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
+        return _minimal_inv_inputs()
+
+    monkeypatch.setattr(
+        prep_module,
+        "data_processing_surface_notracer",
+        fake_data_processing_surface_notracer,
+    )
+    monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
+    monkeypatch.setattr(prep_module, "filtering", fake_filtering)
+    monkeypatch.setattr(prep_module, "make_inv_inputs", fake_make_inv_inputs)
+
+    prepared = prepare_rhime_inputs(
+        species="ch4",
+        sites=["TAC"],
+        domain="EUROPE",
+        averaging_period=["1H"],
+        start_date="2019-01-01",
+        end_date="2019-02-01",
+        output_name="filter_loaded_basis",
+        flux_sources=["total-ukghg-edgar7"],
+        fp_basis_case="saved_case",
+        use_bc=False,
+        filters=["keep-middle"],
+    )
+
+    assert prepared.sites == ("TAC",)
+    assert captured_basis_times == retained_times
+    assert tuple(basis_functions.sensitivity_calls[0].time.values) == retained_times
+    assert filtering_calls == 1
+
+
 def test_prepare_rhime_inputs_aligns_averaging_period_after_empty_site_drop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Filtering should keep site metadata aligned after dropping an empty site."""
     site_data = {"TAC": _site_dataset([2.0]), "MHD": _site_dataset([])}
+    captured_basis_sites: list[str] | None = None
 
     def fake_data_processing_surface_notracer(
         **kwargs: object,
@@ -2205,6 +2538,10 @@ def test_prepare_rhime_inputs_aligns_averaging_period_after_empty_site_drop(
         )
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
+        nonlocal captured_basis_sites
+        fp_all = kwargs["fp_all"]
+        assert isinstance(fp_all, dict)
+        captured_basis_sites = [key for key in fp_all if not key.startswith(".")]
         return _fake_basis_functions()
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
@@ -2233,11 +2570,13 @@ def test_prepare_rhime_inputs_aligns_averaging_period_after_empty_site_drop(
 
     assert prepared.sites == ("TAC",)
     assert prepared.averaging_period == ("1H",)
+    assert captured_basis_sites == ["TAC"]
 
 
-def test_prepare_rhime_inputs_rejects_all_sites_dropped_after_sensitivity(
+def test_prepare_rhime_inputs_rejects_all_sites_dropped_before_basis_generation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Filtering should fail before basis construction when every site is empty."""
     site_data = {"TAC": _site_dataset([]), "MHD": _site_dataset([])}
 
     def fake_data_processing_surface_notracer(
@@ -2253,7 +2592,7 @@ def test_prepare_rhime_inputs_rejects_all_sites_dropped_after_sensitivity(
         )
 
     def fake_make_basis_functions(**kwargs: object) -> BasisFunctions:
-        return _fake_basis_functions()
+        raise AssertionError("Basis generation should not run when all sites are dropped.")
 
     monkeypatch.setattr(
         prep_module,
