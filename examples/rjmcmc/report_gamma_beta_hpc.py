@@ -1698,6 +1698,28 @@ def _save_series(path: Path, matrices: Mapping[str, FloatArray]) -> None:
         np.savez_compressed(handle, **cast(dict[str, Any], arrays))
 
 
+def _validate_chain_identities(
+    chain_ids: Sequence[str],
+    initial_k: Sequence[int],
+    initial_hashes: Sequence[str],
+) -> None:
+    """Validate independent identities while allowing repeated prescribed starts."""
+    if not (
+        len(chain_ids) == len(initial_k) == len(initial_hashes) == CHAIN_COUNT
+    ):
+        raise ValueError("Stage-3 identity vectors must contain exactly four chains.")
+    if len(set(chain_ids)) != CHAIN_COUNT:
+        raise ValueError("Stage-3 chains require four distinct chain IDs.")
+
+    hash_by_initial_k: dict[int, str] = {}
+    for k_value, state_hash in zip(initial_k, initial_hashes, strict=True):
+        previous = hash_by_initial_k.setdefault(k_value, state_hash)
+        if previous != state_hash:
+            raise ValueError("Repeated Stage-3 initial K values require identical state hashes.")
+    if len(set(hash_by_initial_k.values())) != len(hash_by_initial_k):
+        raise ValueError("Distinct Stage-3 initial K values require distinct state hashes.")
+
+
 def run_report(arguments: argparse.Namespace) -> dict[str, Any]:
     """Validate Stage 3, write the report bundle, and return the report mapping."""
     _validate_paths(arguments)
@@ -1721,8 +1743,8 @@ def run_report(arguments: argparse.Namespace) -> dict[str, Any]:
     initial_hashes = [
         str(chain.manifest["chain"]["initial_state_sha256"]) for chain in chains
     ]
-    if len(set(chain_ids)) != CHAIN_COUNT or len(set(initial_hashes)) != CHAIN_COUNT:
-        raise ValueError("Stage-3 chains require distinct chain IDs and initial-state hashes.")
+    initial_k = [int(chain.manifest["chain"]["initial_k"]) for chain in chains]
+    _validate_chain_identities(chain_ids, initial_k, initial_hashes)
     seeds = [chain.manifest["seed"] for chain in chains]
     if any(seed is None for seed in seeds) or len(set(seeds)) != CHAIN_COUNT:
         raise ValueError("Stage-3 chains require four distinct explicit seeds.")

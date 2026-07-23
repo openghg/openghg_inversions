@@ -263,3 +263,36 @@ def test_flux_auxiliary_contract_and_units(
     dataset["prior_flux"].attrs["units"] = "unknown"
     with pytest.raises(ValueError, match="mol m-2 s-1"):
         report_module._validate_flux_auxiliaries(dataset)
+
+
+def test_alternating_start_chain_identity_contract(
+    report_module: ModuleType,
+) -> None:
+    chain_ids = ("chain-0", "chain-1", "chain-2", "chain-3")
+    initial_k = (50, 250, 50, 250)
+    initial_hashes = ("low-hash", "high-hash", "low-hash", "high-hash")
+
+    report_module._validate_chain_identities(
+        chain_ids,
+        initial_k,
+        initial_hashes,
+    )
+
+    with pytest.raises(ValueError, match="distinct chain IDs"):
+        report_module._validate_chain_identities(
+            ("chain-0", "chain-1", "chain-2", "chain-2"),
+            initial_k,
+            initial_hashes,
+        )
+    with pytest.raises(ValueError, match="Repeated Stage-3 initial K"):
+        report_module._validate_chain_identities(
+            chain_ids,
+            initial_k,
+            ("low-a", "high-hash", "low-b", "high-hash"),
+        )
+    with pytest.raises(ValueError, match="Distinct Stage-3 initial K"):
+        report_module._validate_chain_identities(
+            chain_ids,
+            initial_k,
+            ("same-hash", "same-hash", "same-hash", "same-hash"),
+        )
