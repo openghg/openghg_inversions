@@ -38,6 +38,9 @@ pixi run -e dev typecheck
 pixi run -e dev tox
 ```
 
+The `tox` Pixi task runs the fast default tox set (current OpenGHG plus Ruff)
+in parallel without an interactive spinner.
+
 To run the optional real country-file HDF5 smoke check on a machine that
 can access the ACRG country files, set the country directory and run the
 Pixi task:
@@ -415,7 +418,34 @@ uv tool install tox --with tox-uv
 ```
 or, within a virtual environment, install `tox` and `tox-uv`.
 
-Calling `tox -p` will run tests against OpenGHG devel and the last two releases of OpenGHG, and run Ruff lint checks.
+The fast default checks the current OpenGHG release and runs Ruff:
+
+```bash
+tox -p --parallel-no-spinner
+```
+
+This is the required local check before pushing a draft pull request. GitHub
+Actions runs current, previous, and devel OpenGHG test jobs independently.
+
+For final review or release-sensitive dependency changes, run the full
+compatibility matrix:
+
+```bash
+tox -p --parallel-no-spinner -e py310-openghgCur,py310-openghgPrev,py310-openghgDev,lint
+```
+
+The previous-release environment defaults to `openghg==0.18.0`. Override it
+with a deterministic package spec when needed, for example:
+
+```bash
+OPENGHG_PREV_SPEC='openghg==0.17.1' tox -e py310-openghgPrev
+```
+
+When a new OpenGHG minor release is published, update the default
+`OPENGHG_PREV_SPEC` value in `tox.ini` to the release that has just become the
+previous minor. GitHub Actions discovers current and previous releases
+automatically, but the local tox pin is deliberately maintained explicitly so
+tox configuration does not require network access.
 
 To specify individual jobs, you can use, e.g.:
 
