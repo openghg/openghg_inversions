@@ -224,3 +224,21 @@ def test_reconstruct_sigma_aligned_defaults_to_constant_data_and_shared_index() 
     np.testing.assert_array_equal(actual.coords["time"], model_data.coords["time"])
     assert actual.coords["site"].dims == ("nmeasure",)
     assert actual.coords["time"].dims == ("nmeasure",)
+
+
+def test_reconstruct_sigma_aligned_accepts_named_frequency_index() -> None:
+    """Reconstruction accepts a component's explicitly named frequency index."""
+    posterior = _posterior_sigma()
+    model_data = _model_data().rename({"sigma_freq_index": "custom_sigma_period"})
+    idata = az.InferenceData(posterior=posterior, constant_data=model_data)
+
+    actual = reconstruct_sigma_aligned(idata, freq_index_name="custom_sigma_period")
+    expected = posterior["sigma"].isel(
+        nsigma_site=model_data["site_indicator"],
+        nsigma_time=model_data["custom_sigma_period"],
+    )
+
+    assert actual.dims == ("chain", "draw", "nmeasure")
+    np.testing.assert_array_equal(actual.values, expected.values)
+    np.testing.assert_array_equal(actual.coords["site"], model_data.coords["site"])
+    np.testing.assert_array_equal(actual.coords["time"], model_data.coords["time"])

@@ -239,11 +239,18 @@ def _component_data_from_dataset(
     *,
     var_name: str,
     output_dim: str,
+    site_index_name: str | None = None,
+    freq_index_name: str | None = None,
 ) -> SigmaComponentData:
     """Extract prepared sigma indexes from an xarray model-data dataset."""
-    freq_name = "sigma_freq_index" if var_name == "sigma" else f"{var_name}_freq_indicator"
-    shared_site_name = f"{var_name}_site_indicator"
-    site_name = shared_site_name if shared_site_name in model_data else "site_indicator"
+    freq_name = freq_index_name or (
+        "sigma_freq_index" if var_name == "sigma" else f"{var_name}_freq_indicator"
+    )
+    if site_index_name is None:
+        shared_site_name = f"{var_name}_site_indicator"
+        site_name = shared_site_name if shared_site_name in model_data else "site_indicator"
+    else:
+        site_name = site_index_name
 
     missing = [name for name in (site_name, freq_name) if name not in model_data]
     if missing:
@@ -276,6 +283,8 @@ def reconstruct_sigma_aligned(
     var_name: str = "sigma",
     output_dim: str = "nmeasure",
     output_name: str = "sigma_aligned",
+    site_index_name: str | None = None,
+    freq_index_name: str | None = None,
 ) -> xr.DataArray:
     """Reconstruct observation-aligned sigma values from an inference trace.
 
@@ -291,6 +300,12 @@ def reconstruct_sigma_aligned(
         var_name: Latent sigma variable name.
         output_dim: Observation dimension name used by the model data.
         output_name: Name assigned to the reconstructed array.
+        site_index_name: Optional model-data variable name for the effective
+            site index. By default, ``<var_name>_site_indicator`` takes
+            precedence over ``site_indicator``.
+        freq_index_name: Optional model-data variable name for the frequency
+            index. Use this when a component registered an explicitly named
+            frequency data array.
 
     Returns:
         A data array in which ``nsigma_site`` and ``nsigma_time`` are replaced
@@ -317,7 +332,13 @@ def reconstruct_sigma_aligned(
     prepared = (
         model_data
         if isinstance(model_data, SigmaComponentData)
-        else _component_data_from_dataset(model_data, var_name=var_name, output_dim=output_dim)
+        else _component_data_from_dataset(
+            model_data,
+            var_name=var_name,
+            output_dim=output_dim,
+            site_index_name=site_index_name,
+            freq_index_name=freq_index_name,
+        )
     )
     sigma = trace_group[var_name]
     required_dims = ("nsigma_site", "nsigma_time")
