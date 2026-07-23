@@ -20,7 +20,8 @@ the middle of a cycle.
 
 The implementation is a correctness-first NumPy reference. It fully rebuilds
 candidate states through the immutable target API and is not yet a Numba
-performance kernel or a durable checkpoint format.
+performance kernel. Durable checkpoint and trace serialization are provided
+separately by :mod:`openghg_inversions.experimental.rjmcmc.gamma_beta_io`.
 """
 
 from __future__ import annotations
@@ -199,14 +200,17 @@ def _resolve_fixed_scales(
 def _positive_k_support(
     problem: GammaBetaTreeProblem,
     *,
-    fixed_k_topology_kernel_configured: bool,
+    relocation_configured: bool,
+    subtree_retile_max_leaves: int | None,
 ) -> tuple[int, int]:
     """Return and validate the contiguous positive support of marginal ``p(K)``.
 
     Args:
         problem: Gamma--Beta target containing the normalized partition prior.
-        fixed_k_topology_kernel_configured: Whether the schedule includes at
-            least one relocation or subtree-retile opportunity.
+        relocation_configured: Whether the schedule includes at least one
+            relocation opportunity.
+        subtree_retile_max_leaves: Retile cap when the schedule includes a
+            subtree-retile opportunity, otherwise ``None``.
 
     Returns:
         Inclusive smallest and largest positive-mass region counts.
@@ -223,14 +227,17 @@ def _positive_k_support(
     upper = int(positive[-1])
     if not np.array_equal(positive, np.arange(lower, upper + 1)):
         raise ValueError("compound sampling requires contiguous positive p(K) support.")
+    fixed_k_topology_is_effective = relocation_configured or (
+        subtree_retile_max_leaves is not None and subtree_retile_max_leaves >= lower
+    )
     if (
         lower == upper
         and problem.partition_prior.partition_counts[lower] > 1
-        and not fixed_k_topology_kernel_configured
+        and not (fixed_k_topology_is_effective)
     ):
         raise ValueError(
             "singleton p(K) support has multiple frontiers but the compound "
-            "schedule has no fixed-K topology move."
+            "schedule has no effective fixed-K topology move."
         )
     return lower, upper
 
@@ -722,7 +729,12 @@ class GammaBetaCompoundCheckpoint:
             raise ValueError("checkpoint schedule identifier is incompatible.")
         _positive_k_support(
             self.problem,
-            fixed_k_topology_kernel_configured=(self.kernel_settings.has_fixed_k_topology_kernel),
+            relocation_configured=self.kernel_settings.relocation_slots > 0,
+            subtree_retile_max_leaves=(
+                self.kernel_settings.max_subtree_leaves
+                if self.kernel_settings.subtree_retile_slots > 0
+                else None
+            ),
         )
         object.__setattr__(self, "transitions_completed", int(self.transitions_completed))
         object.__setattr__(self, "schedule_phase", int(self.schedule_phase))
@@ -1140,7 +1152,10 @@ def _run_segment(
         raise ValueError("fixed proposal scales must match the problem fixed block.")
     minimum_k, maximum_k = _positive_k_support(
         problem,
-        fixed_k_topology_kernel_configured=settings.has_fixed_k_topology_kernel,
+        relocation_configured=settings.relocation_slots > 0,
+        subtree_retile_max_leaves=(
+            settings.max_subtree_leaves if settings.subtree_retile_slots > 0 else None
+        ),
     )
     if settings.fraction_refresh_slots == 0 and maximum_k > 1:
         raise ValueError("fraction_refresh_slots must be positive when p(K) supports active fractions.")

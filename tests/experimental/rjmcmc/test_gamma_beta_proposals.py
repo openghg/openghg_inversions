@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
-from math import log
+from math import exp, log
 
 import numpy as np
 import pytest
@@ -12,6 +12,7 @@ from openghg_inversions.experimental.rjmcmc.dyadic_tree import (
     CanonicalDyadicTree,
     DyadicFrontier,
     SubtreePartitionIndex,
+    enumerate_frontiers,
 )
 from openghg_inversions.experimental.rjmcmc.gamma_beta_proposals import (
     GammaBetaTransitionTerms,
@@ -119,6 +120,141 @@ def _assert_same_state(
             rel=0.0,
             abs=1e-13,
         )
+
+
+def _prior_only_state(
+    problem: GammaBetaTreeProblem,
+    frontier: DyadicFrontier,
+) -> GammaBetaTreeState:
+    """Build a deterministic prior-only state for one topology oracle."""
+    fractions = [
+        problem.prior.beta_parameters(node_id)[0] / sum(problem.prior.beta_parameters(node_id))
+        for node_id in frontier.active_split_nodes(problem.tree)
+    ]
+    return _state(problem, frontier, fractions)
+
+
+def _subtree_frontier_for_test(
+    tree: CanonicalDyadicTree,
+    frontier: DyadicFrontier,
+    block_node_id: int,
+) -> DyadicFrontier:
+    """Extract active leaves geometrically contained in one subtree block."""
+    block = tree.node(block_node_id)
+    return DyadicFrontier(
+        tuple(
+            node_id
+            for node_id in frontier.node_ids
+            if (
+                tree.node(node_id).row_start >= block.row_start
+                and tree.node(node_id).row_stop <= block.row_stop
+                and tree.node(node_id).col_start >= block.col_start
+                and tree.node(node_id).col_stop <= block.col_stop
+            )
+        )
+    )
+
+
+def _finish_transition_matrix(matrix: np.ndarray) -> np.ndarray:
+    """Put rejected proposal probability on the diagonal and validate mass."""
+    off_diagonal_mass = matrix.sum(axis=1)
+    assert np.all(off_diagonal_mass <= 1.0 + 1e-14)
+    matrix[np.diag_indices_from(matrix)] += 1.0 - off_diagonal_mass
+    return matrix
+
+
+def _relocation_transition_matrix(
+    problem: GammaBetaTreeProblem,
+    frontiers: tuple[DyadicFrontier, ...],
+) -> np.ndarray:
+    """Integrate Beta auxiliaries out of the prior-only relocation kernel."""
+    topology_index = {frontier: position for position, frontier in enumerate(frontiers)}
+    matrix = np.zeros((len(frontiers), len(frontiers)))
+    for source_position, frontier in enumerate(frontiers):
+        state = _prior_only_state(problem, frontier)
+        for merge_node_id in problem.tree.mergeable_parents(frontier):
+            intermediate = frontier.merge(problem.tree, merge_node_id)
+            destinations = tuple(
+                node_id for node_id in problem.tree.splittable_nodes(intermediate) if node_id != merge_node_id
+            )
+            for destination_node_id in destinations:
+                transition = propose_relocate(
+                    problem,
+                    state,
+                    merge_parent_node_id=merge_node_id,
+                    split_leaf_node_id=destination_node_id,
+                    new_fraction=0.5,
+                )
+                assert transition.valid
+                proposal_probability = exp(transition.log_q_forward_selection)
+                acceptance_probability = min(1.0, exp(transition.log_acceptance_ratio))
+                candidate_position = topology_index[transition.candidate.frontier]
+                matrix[source_position, candidate_position] += proposal_probability * acceptance_probability
+    return _finish_transition_matrix(matrix)
+
+
+def _subtree_retile_transition_matrix(
+    problem: GammaBetaTreeProblem,
+    frontiers: tuple[DyadicFrontier, ...],
+    index: SubtreePartitionIndex,
+) -> np.ndarray:
+    """Integrate Beta auxiliaries out of the prior-only retile kernel."""
+    topology_index = {frontier: position for position, frontier in enumerate(frontiers)}
+    matrix = np.zeros((len(frontiers), len(frontiers)))
+    for source_position, frontier in enumerate(frontiers):
+        state = _prior_only_state(problem, frontier)
+        source_split_nodes = frozenset(frontier.active_split_nodes(problem.tree))
+        for block_node_id, block_k in eligible_subtree_retile_blocks(problem, state, index):
+            source_subtree = _subtree_frontier_for_test(
+                problem.tree,
+                frontier,
+                block_node_id,
+            )
+            source_rank = index.rank(block_node_id, block_k, source_subtree)
+            source_subtree_nodes = frozenset(source_subtree.node_ids)
+            for replacement_rank in range(index.count(block_node_id, block_k)):
+                if replacement_rank == source_rank:
+                    continue
+                replacement = index.unrank(
+                    block_node_id,
+                    block_k,
+                    replacement_rank,
+                )
+                candidate_frontier = DyadicFrontier(
+                    tuple(node_id for node_id in frontier.node_ids if node_id not in source_subtree_nodes)
+                    + replacement.node_ids
+                )
+                candidate_split_nodes = frozenset(candidate_frontier.active_split_nodes(problem.tree))
+                new_fractions = {node_id: 0.5 for node_id in candidate_split_nodes - source_split_nodes}
+                transition = propose_subtree_retile(
+                    problem,
+                    state,
+                    index,
+                    block_node_id=block_node_id,
+                    replacement_frontier=replacement,
+                    new_fractions_by_node=new_fractions,
+                )
+                assert transition.valid
+                proposal_probability = exp(transition.log_q_forward_selection)
+                acceptance_probability = min(1.0, exp(transition.log_acceptance_ratio))
+                candidate_position = topology_index[transition.candidate.frontier]
+                matrix[source_position, candidate_position] += proposal_probability * acceptance_probability
+    return _finish_transition_matrix(matrix)
+
+
+def _reachable_positions(matrix: np.ndarray, start: int = 0) -> set[int]:
+    """Return topology positions reachable through positive off-diagonal mass."""
+    reached = {start}
+    pending = [start]
+    while pending:
+        source = pending.pop()
+        neighbours = {
+            int(position) for position in np.flatnonzero(matrix[source] > 0.0) if position != source
+        }
+        unseen = neighbours - reached
+        reached.update(unseen)
+        pending.extend(unseen)
+    return reached
 
 
 def test_split_merge_round_trip_has_exact_pointwise_reverse_terms() -> None:
@@ -653,6 +789,91 @@ def test_subtree_retile_invalid_choices_are_self_transitions() -> None:
             replacement_frontier=replacement,
             new_fractions_by_node={4: 0.6},
         )
+
+
+@pytest.mark.parametrize(
+    "matrix_builder",
+    [
+        pytest.param(
+            lambda problem, frontiers: _relocation_transition_matrix(
+                problem,
+                frontiers,
+            ),
+            id="relocation",
+        ),
+        pytest.param(
+            lambda problem, frontiers: _subtree_retile_transition_matrix(
+                problem,
+                frontiers,
+                SubtreePartitionIndex(problem.tree, max_k=4),
+            ),
+            id="subtree-retile",
+        ),
+    ],
+)
+def test_fixed_k_topology_kernels_preserve_exact_uniform_stationarity(
+    matrix_builder,
+) -> None:
+    """Tiny prior-only topology matrices obey detailed balance exactly."""
+    problem = _grid_problem((2, 4), likelihood_power=0.0)
+    frontiers = enumerate_frontiers(problem.tree, k=4)
+    transition_matrix = matrix_builder(problem, frontiers)
+    uniform_probability = np.full(len(frontiers), 1.0 / len(frontiers))
+
+    np.testing.assert_allclose(
+        transition_matrix.sum(axis=1),
+        1.0,
+        rtol=0.0,
+        atol=2e-15,
+    )
+    np.testing.assert_allclose(
+        transition_matrix,
+        transition_matrix.T,
+        rtol=0.0,
+        atol=2e-15,
+    )
+    np.testing.assert_allclose(
+        uniform_probability @ transition_matrix,
+        uniform_probability,
+        rtol=0.0,
+        atol=2e-15,
+    )
+    assert np.array_equal(
+        transition_matrix > 0.0,
+        transition_matrix.T > 0.0,
+    )
+
+
+@pytest.mark.parametrize(
+    "matrix_builder",
+    [
+        pytest.param(
+            lambda problem, frontiers: _relocation_transition_matrix(
+                problem,
+                frontiers,
+            ),
+            id="relocation",
+        ),
+        pytest.param(
+            lambda problem, frontiers: _subtree_retile_transition_matrix(
+                problem,
+                frontiers,
+                SubtreePartitionIndex(problem.tree, max_k=4),
+            ),
+            id="subtree-retile",
+        ),
+    ],
+)
+def test_fixed_k_topology_kernels_connect_all_tiny_k4_frontiers(
+    matrix_builder,
+) -> None:
+    """Each new fixed-K kernel connects the complete tiny K=4 state space."""
+    problem = _grid_problem((2, 4), likelihood_power=0.0)
+    frontiers = enumerate_frontiers(problem.tree, k=4)
+    transition_matrix = matrix_builder(problem, frontiers)
+
+    assert len(frontiers) == 5
+    assert _reachable_positions(transition_matrix) == set(range(len(frontiers)))
 
 
 def test_prior_only_fraction_and_root_refreshes_cancel_exactly() -> None:

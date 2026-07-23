@@ -558,7 +558,7 @@ def test_sampler_rejects_fixed_k_when_topology_slots_are_disabled() -> None:
         active_fractions=[0.5, 0.5],
     )
 
-    with pytest.raises(ValueError, match="no fixed-K topology move"):
+    with pytest.raises(ValueError, match="no effective fixed-K topology move"):
         sample_gamma_beta_compound(
             problem,
             state,
@@ -567,6 +567,38 @@ def test_sampler_rejects_fixed_k_when_topology_slots_are_disabled() -> None:
                 seed=0,
                 relocation_slots=0,
                 subtree_retile_slots=0,
+            ),
+        )
+
+
+def test_sampler_rejects_ineffective_subtree_only_fixed_k_kernel() -> None:
+    """A subtree-only fixed-K kernel must cover the root block to ensure mobility."""
+    tree = CanonicalDyadicTree.from_shape((2, 2))
+    partition_prior = TreePartitionPrior.uniform_k(
+        tree,
+        minimum_k=3,
+        maximum_k=3,
+    )
+    problem = _problem(partition_prior=partition_prior)
+    frontier = DyadicFrontier.root(tree).split(tree, tree.root_id)
+    frontier = frontier.split(tree, frontier.node_ids[0])
+    state = build_gamma_beta_tree_state(
+        problem,
+        frontier=frontier,
+        root_total=1.0,
+        active_fractions=[0.5, 0.5],
+    )
+
+    with pytest.raises(ValueError, match="no effective fixed-K topology move"):
+        sample_gamma_beta_compound(
+            problem,
+            state,
+            GammaBetaCompoundConfig(
+                iterations=1,
+                seed=0,
+                relocation_slots=0,
+                subtree_retile_slots=1,
+                max_subtree_leaves=2,
             ),
         )
 
