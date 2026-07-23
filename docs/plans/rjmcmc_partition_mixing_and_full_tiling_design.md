@@ -888,10 +888,13 @@ Existing OpenGHG Inversions draft work can be reused as follows:
    \(\beta=0\) and posterior \(\beta=1\) mobility with production support,
    starts, schedules, and opportunity counts. Add an intermediate power only
    if the endpoints differ materially.
-3. Implement a minimal active-only Gamma--Beta RJ baseline on one canonical
-   fixed-direction tree. Validate local split/merge moves against tiny
-   enumeration and the existing fixed-tree product-space cross-check before
-   adding alternative orientations or full tilings.
+3. **Implemented as a NumPy reference baseline:** add active-only Gamma--Beta
+   RJ on one canonical fixed-direction tree. The state, normalized priors,
+   local split/merge accounting, exact tiny-tree enumeration, seeded
+   structural sampler, and in-memory continuation are specified in
+   [rjmcmc_gamma_beta_baseline.md](rjmcmc_gamma_beta_baseline.md). The preserved
+   fixed-tree product-space cross-check remains a validation follow-up before
+   alternative orientations or full tilings.
 4. Interleave ordinary coefficient rejuvenation and benchmark a fixed-score
    relevance-conditioned selector as replaceable kernels.
 5. Specify the full-tiling domain, canonical leaf representation, masks,
@@ -916,9 +919,12 @@ Existing OpenGHG Inversions draft work can be reused as follows:
 
 - **Next executable task:** run the paired diagnostic-overhead check and
   ordinary full-likelihood Voronoi profile described in the HPC test plan.
-- **Next alternative baseline:** after that profile, implement local
-  split/merge RJ on one fixed-direction Gamma--Beta tree and validate it on a
-  tiny enumerated state space.
+- **Alternative baseline underway:** the local split/merge RJ implementation
+  on one fixed-direction Gamma--Beta tree now passes exact stationarity,
+  empirical mobility, continuation, and RHIME design-unit equivalence checks.
+  Cross-check its target against the archived product-space oracle, then add
+  the separate root/fraction refresh kernels to a compound schedule before
+  treating it as posterior inference or profiling larger fixed trees.
 - **Alternative-model prerequisite:** settle the full-tiling structural target
   `p(P)`/`p(K)` and the reduced-model meaning before writing structural code.
 - **Correctness oracle:** tiny canonical tiling enumeration and analytic

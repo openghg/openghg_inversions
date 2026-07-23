@@ -1,4 +1,4 @@
-"""Experimental NumPy/Numba engine for spatial reversible-jump MCMC.
+"""Experimental NumPy/Numba engines for spatial reversible-jump MCMC.
 
 The package separates fixed-capacity Voronoi problems and states, explicit
 Metropolis-Hastings proposal accounting, deterministic seeded sampling, and
@@ -9,6 +9,11 @@ mean and standard deviation of the dynamic-coefficient prior. These additions
 remain experimental and require an explicit extended schedule. Inferred
 boundary conditions, multi-sector models, and parallel tempering remain
 outside this slice.
+
+A separate NumPy reference implementation samples active frontiers of one
+canonical fixed-direction dyadic tree under a Gamma--Beta mass prior. It is a
+small enumeratable split/merge mixing baseline, not a production full-tiling
+model, and deliberately does not widen the Voronoi state or checkpoint schema.
 """
 
 from openghg_inversions.experimental.rjmcmc.core import (
@@ -44,6 +49,40 @@ from openghg_inversions.experimental.rjmcmc.hierarchy import (
     shared_coefficient_log_prior_numpy,
     shared_hyperprior_log_density_numba,
     shared_hyperprior_log_density_numpy,
+)
+from openghg_inversions.experimental.rjmcmc.dyadic_tree import (
+    CanonicalDyadicTree,
+    DyadicFrontier,
+    DyadicNode,
+    NodeId,
+    enumerate_frontiers,
+    partition_counts_by_k,
+)
+from openghg_inversions.experimental.rjmcmc.gamma_beta_proposals import (
+    GammaBetaMove,
+    GammaBetaTransitionTerms,
+    accept_or_reject as accept_gamma_beta_or_reject,
+    propose_fraction_refresh,
+    propose_merge,
+    propose_root_refresh,
+    propose_split,
+)
+from openghg_inversions.experimental.rjmcmc.gamma_beta_sampling import (
+    GAMMA_BETA_STRUCTURAL_SCHEDULE_ID,
+    GammaBetaCheckpoint,
+    GammaBetaSamplerConfig,
+    GammaBetaSamplingResult,
+    GammaBetaTrace,
+    continue_gamma_beta_tree,
+    sample_gamma_beta_tree,
+)
+from openghg_inversions.experimental.rjmcmc.gamma_beta_tree import (
+    GammaBetaTreePrior,
+    GammaBetaTreeProblem,
+    GammaBetaTreeState,
+    TreePartitionPrior,
+    build_gamma_beta_tree_state,
+    render_cell_mass,
 )
 from openghg_inversions.experimental.rjmcmc.likelihood import (
     IndependentSiteOUData,
@@ -114,11 +153,24 @@ from openghg_inversions.experimental.rjmcmc.xarray_output import (
 __all__ = [
     "CHECKPOINT_SCHEMA_ID",
     "CHECKPOINT_SCHEMA_VERSION",
+    "CanonicalDyadicTree",
     "DEFAULT_QUANTILES",
     "DerivedStructuralDiagnostics",
+    "DyadicFrontier",
+    "DyadicNode",
     "FIXED_BLOCK_SCHEDULE_ID",
     "FineGridPosteriorSummary",
     "FixedDesignBlock",
+    "GAMMA_BETA_STRUCTURAL_SCHEDULE_ID",
+    "GammaBetaCheckpoint",
+    "GammaBetaMove",
+    "GammaBetaSamplerConfig",
+    "GammaBetaSamplingResult",
+    "GammaBetaTrace",
+    "GammaBetaTransitionTerms",
+    "GammaBetaTreePrior",
+    "GammaBetaTreeProblem",
+    "GammaBetaTreeState",
     "IndependentSiteOUData",
     "InferredOUErrorModel",
     "KernelSettings",
@@ -129,6 +181,7 @@ __all__ = [
     "LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_PROFILE",
     "LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE",
     "NucleusResidenceIntervals",
+    "NodeId",
     "RegionLineageIntervals",
     "PCG64State",
     "PosteriorPredictionSummary",
@@ -146,6 +199,8 @@ __all__ = [
     "TransDimensionalProblem",
     "TransDimensionalState",
     "TransitionTerms",
+    "TreePartitionPrior",
+    "accept_gamma_beta_or_reject",
     "accept_or_reject",
     "aggregate_design_numba",
     "aggregate_design_numpy",
@@ -154,11 +209,14 @@ __all__ = [
     "assign_cells_numba",
     "assign_cells_numpy",
     "build_state",
+    "build_gamma_beta_tree_state",
     "concatenate_structural_diagnostics",
     "continue_sample",
+    "continue_gamma_beta_tree",
     "derive_nucleus_residence_intervals",
     "derive_region_lineage_intervals",
     "derive_structural_diagnostics",
+    "enumerate_frontiers",
     "gaussian_log_likelihood_numba",
     "gaussian_log_likelihood_numpy",
     "lognormal_coefficient_log_prior_numba",
@@ -166,6 +224,7 @@ __all__ = [
     "log_moments_to_lognormal_parameters",
     "load_checkpoint",
     "problem_fingerprint",
+    "propose_fraction_refresh",
     "propose_birth",
     "propose_coefficient",
     "propose_correlation_timescale",
@@ -173,14 +232,19 @@ __all__ = [
     "propose_fixed_coefficient",
     "propose_global_move",
     "propose_local_move",
+    "propose_merge",
     "propose_mismatch_sd",
     "propose_shared_hierarchy",
+    "propose_root_refresh",
+    "propose_split",
     "posterior_mean_prediction",
     "problem_from_rhime_inputs",
     "reconstruct_fine_grid_samples",
+    "render_cell_mass",
     "ou_log_likelihood_numba",
     "ou_log_likelihood_numpy",
     "sample",
+    "sample_gamma_beta_tree",
     "sampling_trace_to_dataset",
     "save_checkpoint",
     "shared_coefficient_log_prior_numba",
@@ -191,6 +255,7 @@ __all__ = [
     "structural_diagnostics_to_dataset",
     "summarize_fine_grid_posterior",
     "summarize_posterior_prediction",
+    "partition_counts_by_k",
     "uniform_log_k_prior",
     "uniform_nucleus_set_log_prior",
 ]

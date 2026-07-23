@@ -615,6 +615,23 @@ not implicit behavior of this implementation.
 
 ### 2026-07-23
 
+- Started a separate active-only fixed-direction Gamma--Beta RJMCMC baseline
+  while the Voronoi Stage C profiling runs independently. The NumPy reference
+  implementation uses canonical dyadic frontiers, exact \(N_K\) counts,
+  normalized root Gamma and active Beta priors, a normalized marginal
+  \(p(K)\), and nominal within-leaf allocation.
+- Defined split/merge as insertion/deletion of one active fraction, giving a
+  unit Jacobian in root-plus-fraction coordinates. The physical
+  parent-mass Jacobian is intentionally absent because leaf masses are not
+  the reference coordinates.
+- Kept structural scheduling posterior-invariant with one mixed direction
+  choice per opportunity and explicit unavailable-direction
+  self-transitions. Root-total and persistent-fraction refreshes are separate
+  kernels so the first benchmark isolates local structural mobility.
+- Added a seeded structural-only sampler, variable-dimensional trace, and
+  exact in-memory PCG64 continuation without changing the optimized Voronoi
+  model, trace, or durable checkpoint schema. Detailed scope and validation
+  gates are in `docs/plans/rjmcmc_gamma_beta_baseline.md`.
 - Added opt-in structural proposal diagnostics without changing the transition
   kernel, retained-state schema, checkpoint schema, or default allocation.
   Diagnostics are enabled with
