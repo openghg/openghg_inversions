@@ -4,10 +4,11 @@ This module keeps the structural-only mobility oracle in
 :mod:`openghg_inversions.experimental.rjmcmc.gamma_beta_sampling` unchanged
 and provides the separate posterior sampler needed for synthetic and real-data
 experiments. One versioned cycle contains two independently mixed split/merge
-opportunities, one independent-prior root-total refresh, a configurable number
-of uniformly selected independent-prior active-fraction refreshes (five by
-default), and one deterministic Gaussian random-walk slot for each
-always-active fixed coefficient.
+opportunities, configurable fixed-``K`` relocation and bounded-subtree retile
+opportunities (one each by default), one independent-prior root-total refresh,
+a configurable number of uniformly selected independent-prior active-fraction
+refreshes (five by default), and one deterministic Gaussian random-walk slot
+for each always-active fixed coefficient.
 
 Every atomic slot consumes an acceptance uniform, including unavailable
 structural directions and fraction refreshes at ``K=1``. Structural choices
@@ -32,25 +33,37 @@ from typing import Literal
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from .dyadic_tree import DyadicFrontier
+from .dyadic_tree import DyadicFrontier, SubtreePartitionIndex
 from .gamma_beta_proposals import (
     GammaBetaTransitionTerms,
     accept_or_reject,
+    eligible_subtree_retile_blocks,
     propose_fixed_coefficient,
     propose_fraction_refresh,
     propose_merge,
+    propose_relocate,
     propose_root_refresh,
     propose_split,
+    propose_subtree_retile,
 )
 from .gamma_beta_tree import GammaBetaTreeProblem, GammaBetaTreeState
 from .retention import RetentionSettings
 from .sampling import PCG64State
 
 
-GAMMA_BETA_COMPOUND_SCHEDULE_ID = "gamma_beta_2_mixed_structure_1_root_n_fraction_fixed_sweep_v1"
+GAMMA_BETA_COMPOUND_SCHEDULE_ID = (
+    "gamma_beta_2_mixed_structure_n_relocate_n_subtree_retile_1_root_n_fraction_fixed_sweep_v2"
+)
 """Versioned identifier for the posterior compound schedule."""
 
-CompoundSlot = Literal["structural", "root", "fraction", "fixed"]
+CompoundSlot = Literal[
+    "structural",
+    "relocation",
+    "subtree_retile",
+    "root",
+    "fraction",
+    "fixed",
+]
 """Atomic Gamma--Beta compound-schedule slot kind."""
 
 
@@ -183,11 +196,17 @@ def _resolve_fixed_scales(
     return value
 
 
-def _positive_k_support(problem: GammaBetaTreeProblem) -> tuple[int, int]:
+def _positive_k_support(
+    problem: GammaBetaTreeProblem,
+    *,
+    fixed_k_topology_kernel_configured: bool,
+) -> tuple[int, int]:
     """Return and validate the contiguous positive support of marginal ``p(K)``.
 
     Args:
         problem: Gamma--Beta target containing the normalized partition prior.
+        fixed_k_topology_kernel_configured: Whether the schedule includes at
+            least one relocation or subtree-retile opportunity.
 
     Returns:
         Inclusive smallest and largest positive-mass region counts.
@@ -204,7 +223,11 @@ def _positive_k_support(problem: GammaBetaTreeProblem) -> tuple[int, int]:
     upper = int(positive[-1])
     if not np.array_equal(positive, np.arange(lower, upper + 1)):
         raise ValueError("compound sampling requires contiguous positive p(K) support.")
-    if lower == upper and problem.partition_prior.partition_counts[lower] > 1:
+    if (
+        lower == upper
+        and problem.partition_prior.partition_counts[lower] > 1
+        and not fixed_k_topology_kernel_configured
+    ):
         raise ValueError(
             "singleton p(K) support has multiple frontiers but the compound "
             "schedule has no fixed-K topology move."
@@ -224,6 +247,12 @@ class GammaBetaCompoundConfig:
         fraction_refresh_slots: Non-negative number of independently selected
             active-fraction refreshes per cycle. Five matches the Lunt-style
             dynamic-coefficient opportunity count.
+        relocation_slots: Non-negative number of fixed-``K`` cherry relocation
+            opportunities per cycle.
+        subtree_retile_slots: Non-negative number of fixed-``K`` bounded
+            subtree-retile opportunities per cycle.
+        max_subtree_leaves: Positive maximum active-leaf count in a subtree
+            eligible for exact retile ranking and unranking.
         fixed_coefficient_proposal_sd: Positive scalar shared by all fixed
             coefficients or a positive one-dimensional vector resolved against
             the problem at sampling time.
@@ -238,6 +267,9 @@ class GammaBetaCompoundConfig:
     split_direction_probability: float = 0.5
     fraction_refresh_slots: int = 5
     fixed_coefficient_proposal_sd: float | tuple[float, ...] = 0.4
+    relocation_slots: int = 1
+    subtree_retile_slots: int = 1
+    max_subtree_leaves: int = 8
 
     def __post_init__(self) -> None:
         """Normalize and validate problem-independent sampler settings."""
@@ -256,16 +288,27 @@ class GammaBetaCompoundConfig:
         probability = float(self.split_direction_probability)
         if not isfinite(probability) or not 0.0 < probability < 1.0:
             raise ValueError("split_direction_probability must lie strictly between zero and one.")
-        if isinstance(self.fraction_refresh_slots, bool) or not isinstance(
-            self.fraction_refresh_slots,
+        for name in (
+            "fraction_refresh_slots",
+            "relocation_slots",
+            "subtree_retile_slots",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, Integral):
+                raise TypeError(f"{name} must be an integer.")
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative.")
+            object.__setattr__(self, name, int(value))
+        if isinstance(self.max_subtree_leaves, bool) or not isinstance(
+            self.max_subtree_leaves,
             Integral,
         ):
-            raise TypeError("fraction_refresh_slots must be an integer.")
-        if self.fraction_refresh_slots < 0:
-            raise ValueError("fraction_refresh_slots must be non-negative.")
+            raise TypeError("max_subtree_leaves must be an integer.")
+        if self.max_subtree_leaves < 1:
+            raise ValueError("max_subtree_leaves must be positive.")
         object.__setattr__(self, "iterations", int(self.iterations))
         object.__setattr__(self, "split_direction_probability", probability)
-        object.__setattr__(self, "fraction_refresh_slots", int(self.fraction_refresh_slots))
+        object.__setattr__(self, "max_subtree_leaves", int(self.max_subtree_leaves))
         object.__setattr__(
             self,
             "fixed_coefficient_proposal_sd",
@@ -281,6 +324,9 @@ class GammaBetaCompoundKernelSettings:
         split_direction_probability: Split probability in either structural
             slot.
         fraction_refresh_slots: Number of fraction slots per cycle.
+        relocation_slots: Number of fixed-``K`` relocation slots per cycle.
+        subtree_retile_slots: Number of bounded subtree-retile slots per cycle.
+        max_subtree_leaves: Maximum active leaves in a selected retile block.
         fixed_coefficient_proposal_sd: Positive Gaussian scales in
             deterministic fixed-coefficient slot order.
 
@@ -293,6 +339,9 @@ class GammaBetaCompoundKernelSettings:
     split_direction_probability: float
     fraction_refresh_slots: int
     fixed_coefficient_proposal_sd: tuple[float, ...]
+    relocation_slots: int = 1
+    subtree_retile_slots: int = 1
+    max_subtree_leaves: int = 8
 
     def __post_init__(self) -> None:
         """Validate immutable resolved schedule settings."""
@@ -301,19 +350,30 @@ class GammaBetaCompoundKernelSettings:
         probability = float(self.split_direction_probability)
         if not isfinite(probability) or not 0.0 < probability < 1.0:
             raise ValueError("split_direction_probability must lie strictly between zero and one.")
-        if isinstance(self.fraction_refresh_slots, bool) or not isinstance(
-            self.fraction_refresh_slots,
+        for name in (
+            "fraction_refresh_slots",
+            "relocation_slots",
+            "subtree_retile_slots",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, Integral):
+                raise TypeError(f"{name} must be an integer.")
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative.")
+            object.__setattr__(self, name, int(value))
+        if isinstance(self.max_subtree_leaves, bool) or not isinstance(
+            self.max_subtree_leaves,
             Integral,
         ):
-            raise TypeError("fraction_refresh_slots must be an integer.")
-        if self.fraction_refresh_slots < 0:
-            raise ValueError("fraction_refresh_slots must be non-negative.")
+            raise TypeError("max_subtree_leaves must be an integer.")
+        if self.max_subtree_leaves < 1:
+            raise ValueError("max_subtree_leaves must be positive.")
         scales = tuple(
             _positive_float(value, name="fixed_coefficient_proposal_sd")
             for value in self.fixed_coefficient_proposal_sd
         )
         object.__setattr__(self, "split_direction_probability", probability)
-        object.__setattr__(self, "fraction_refresh_slots", int(self.fraction_refresh_slots))
+        object.__setattr__(self, "max_subtree_leaves", int(self.max_subtree_leaves))
         object.__setattr__(self, "fixed_coefficient_proposal_sd", scales)
 
     @property
@@ -321,10 +381,22 @@ class GammaBetaCompoundKernelSettings:
         """Return the number of atomic transitions in one complete cycle.
 
         Returns:
-            Two structural slots, one root slot, configured fraction slots,
-            and one slot per fixed coefficient.
+            Two structural slots, configured relocation and retile slots, one
+            root slot, configured fraction slots, and one slot per fixed
+            coefficient.
         """
-        return 3 + self.fraction_refresh_slots + len(self.fixed_coefficient_proposal_sd)
+        return (
+            3
+            + self.relocation_slots
+            + self.subtree_retile_slots
+            + self.fraction_refresh_slots
+            + len(self.fixed_coefficient_proposal_sd)
+        )
+
+    @property
+    def has_fixed_k_topology_kernel(self) -> bool:
+        """Return whether at least one fixed-``K`` topology slot is configured."""
+        return self.relocation_slots > 0 or self.subtree_retile_slots > 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -364,6 +436,10 @@ class GammaBetaCompoundTrace:
         accepted: Whether each attempt changed the visited state.
         node_id: Selected structural or fraction node, with ``-1`` when
             unavailable or not applicable.
+        secondary_node_id: Selected relocation destination node, with ``-1``
+            when unavailable or not applicable.
+        block_leaf_count: Selected subtree-retile leaf count, with ``-1`` when
+            unavailable or not applicable.
         coefficient_id: Selected fixed coefficient, with ``-1`` when not
             applicable.
         k_before: Source active-region count for every attempt.
@@ -396,6 +472,8 @@ class GammaBetaCompoundTrace:
     valid: NDArray[np.bool_]
     accepted: NDArray[np.bool_]
     node_id: NDArray[np.int64]
+    secondary_node_id: NDArray[np.int64]
+    block_leaf_count: NDArray[np.int64]
     coefficient_id: NDArray[np.int64]
     k_before: NDArray[np.int64]
     k_after: NDArray[np.int64]
@@ -448,11 +526,13 @@ class GammaBetaCompoundTrace:
         )
         attempted_vectors = {
             "global_transition": np.int64,
-            "slot": np.dtype("U10"),
+            "slot": np.dtype("U14"),
             "move": np.dtype("U17"),
             "valid": np.bool_,
             "accepted": np.bool_,
             "node_id": np.int64,
+            "secondary_node_id": np.int64,
+            "block_leaf_count": np.int64,
             "coefficient_id": np.int64,
             "k_before": np.int64,
             "k_after": np.int64,
@@ -511,7 +591,19 @@ class GammaBetaCompoundTrace:
             or np.any(self.k_after < 1)
         ):
             raise ValueError("attempt coordinates and K values are malformed.")
-        if np.any(~np.isin(self.slot, ("structural", "root", "fraction", "fixed"))):
+        if np.any(
+            ~np.isin(
+                self.slot,
+                (
+                    "structural",
+                    "relocation",
+                    "subtree_retile",
+                    "root",
+                    "fraction",
+                    "fixed",
+                ),
+            )
+        ):
             raise ValueError("slot contains an unsupported compound slot kind.")
         if np.any(
             ~np.isin(
@@ -519,6 +611,8 @@ class GammaBetaCompoundTrace:
                 (
                     "split",
                     "merge",
+                    "relocate",
+                    "subtree_retile",
                     "root_refresh",
                     "fraction_refresh",
                     "fixed_coefficient",
@@ -528,6 +622,29 @@ class GammaBetaCompoundTrace:
             raise ValueError("move contains an unsupported Gamma-Beta kernel.")
         if np.any(self.accepted & ~self.valid):
             raise ValueError("accepted transitions must be valid.")
+        slot_moves = {
+            "structural": ("split", "merge"),
+            "relocation": ("relocate",),
+            "subtree_retile": ("subtree_retile",),
+            "root": ("root_refresh",),
+            "fraction": ("fraction_refresh",),
+            "fixed": ("fixed_coefficient",),
+        }
+        for slot_name, allowed_moves in slot_moves.items():
+            if np.any((self.slot == slot_name) & ~np.isin(self.move, allowed_moves)):
+                raise ValueError("slot and move diagnostics are inconsistent.")
+        if np.any((self.move != "relocate") & (self.secondary_node_id != -1)):
+            raise ValueError("secondary_node_id is only valid for relocation moves.")
+        if np.any(
+            (self.move == "relocate") & self.valid & ((self.node_id < 0) | (self.secondary_node_id < 0))
+        ):
+            raise ValueError("valid relocations require two non-negative node IDs.")
+        if np.any((self.move != "subtree_retile") & (self.block_leaf_count != -1)):
+            raise ValueError("block_leaf_count is only valid for subtree-retile moves.")
+        if np.any((self.move == "subtree_retile") & self.valid & (self.block_leaf_count < 1)):
+            raise ValueError("valid subtree retiles require a positive block leaf count.")
+        if np.any((self.move == "subtree_retile") & self.valid & (self.node_id < 0)):
+            raise ValueError("valid subtree retiles require a non-negative block node.")
         if np.any(np.isnan(self.log_acceptance_ratio)) or np.any(self.log_acceptance_ratio == np.inf):
             raise ValueError("log_acceptance_ratio cannot contain NaN or positive infinity.")
 
@@ -603,7 +720,10 @@ class GammaBetaCompoundCheckpoint:
             raise TypeError("retention must be a RetentionSettings.")
         if self.schedule_id != GAMMA_BETA_COMPOUND_SCHEDULE_ID:
             raise ValueError("checkpoint schedule identifier is incompatible.")
-        _positive_k_support(self.problem)
+        _positive_k_support(
+            self.problem,
+            fixed_k_topology_kernel_configured=(self.kernel_settings.has_fixed_k_topology_kernel),
+        )
         object.__setattr__(self, "transitions_completed", int(self.transitions_completed))
         object.__setattr__(self, "schedule_phase", int(self.schedule_phase))
 
@@ -669,9 +789,19 @@ def _slot_at_phase(
     """
     if phase < 2:
         return "structural", None
-    if phase == 2:
+    cursor = 2
+    relocation_end = cursor + settings.relocation_slots
+    if phase < relocation_end:
+        return "relocation", None
+    cursor = relocation_end
+    retile_end = cursor + settings.subtree_retile_slots
+    if phase < retile_end:
+        return "subtree_retile", None
+    cursor = retile_end
+    if phase == cursor:
         return "root", None
-    fraction_end = 3 + settings.fraction_refresh_slots
+    cursor += 1
+    fraction_end = cursor + settings.fraction_refresh_slots
     if phase < fraction_end:
         return "fraction", None
     return "fixed", phase - fraction_end
@@ -738,6 +868,135 @@ def _draw_structural_transition(
     )
 
 
+def _draw_relocation_transition(
+    problem: GammaBetaTreeProblem,
+    state: GammaBetaTreeState,
+    *,
+    rng: np.random.Generator,
+) -> GammaBetaTransitionTerms:
+    """Draw one sequential cherry-merge and intermediate-leaf split."""
+    mergeable = problem.tree.mergeable_parents(state.frontier)
+    if not mergeable:
+        return propose_relocate(
+            problem,
+            state,
+            merge_parent_node_id=-1,
+            split_leaf_node_id=-1,
+            new_fraction=0.5,
+        )
+    source_node_id = mergeable[int(rng.integers(len(mergeable)))]
+    intermediate = state.frontier.merge(problem.tree, source_node_id)
+    destinations = tuple(
+        node_id for node_id in problem.tree.splittable_nodes(intermediate) if node_id != source_node_id
+    )
+    if not destinations:
+        return propose_relocate(
+            problem,
+            state,
+            merge_parent_node_id=source_node_id,
+            split_leaf_node_id=-1,
+            new_fraction=0.5,
+        )
+    destination_node_id = destinations[int(rng.integers(len(destinations)))]
+    alpha, beta = problem.prior.beta_parameters(destination_node_id)
+    return propose_relocate(
+        problem,
+        state,
+        merge_parent_node_id=source_node_id,
+        split_leaf_node_id=destination_node_id,
+        new_fraction=float(rng.beta(alpha, beta)),
+    )
+
+
+def _subtree_frontier(
+    problem: GammaBetaTreeProblem,
+    frontier: DyadicFrontier,
+    block_node_id: int,
+) -> DyadicFrontier:
+    """Return the active frontier contained in one canonical subtree."""
+    block = problem.tree.node(block_node_id)
+    return DyadicFrontier(
+        tuple(
+            node_id
+            for node_id in frontier.node_ids
+            if (
+                problem.tree.node(node_id).row_start >= block.row_start
+                and problem.tree.node(node_id).row_stop <= block.row_stop
+                and problem.tree.node(node_id).col_start >= block.col_start
+                and problem.tree.node(node_id).col_stop <= block.col_stop
+            )
+        )
+    )
+
+
+def _randbelow(rng: np.random.Generator, upper: int) -> int:
+    """Draw uniformly below an arbitrary-precision positive integer bound."""
+    if isinstance(upper, bool) or not isinstance(upper, Integral):
+        raise TypeError("upper must be an integer.")
+    bound = int(upper)
+    if bound < 1:
+        raise ValueError("upper must be positive.")
+    if bound == 1:
+        return 0
+    n_bytes = max(1, ((bound - 1).bit_length() + 7) // 8)
+    sample_space = 1 << (8 * n_bytes)
+    acceptance_limit = sample_space - sample_space % bound
+    while True:
+        value = int.from_bytes(rng.bytes(n_bytes), byteorder="little")
+        if value < acceptance_limit:
+            return value % bound
+
+
+def _draw_subtree_retile_transition(
+    problem: GammaBetaTreeProblem,
+    state: GammaBetaTreeState,
+    *,
+    index: SubtreePartitionIndex,
+    rng: np.random.Generator,
+) -> GammaBetaTransitionTerms:
+    """Draw one exact alternative bounded-subtree frontier and new fractions."""
+    eligible = eligible_subtree_retile_blocks(problem, state, index)
+    if not eligible:
+        return propose_subtree_retile(
+            problem,
+            state,
+            index,
+            block_node_id=-1,
+            replacement_frontier=DyadicFrontier.root(problem.tree),
+            new_fractions_by_node={},
+        )
+    block_node_id, block_k = eligible[int(rng.integers(len(eligible)))]
+    source_subtree = _subtree_frontier(
+        problem,
+        state.frontier,
+        block_node_id,
+    )
+    source_rank = index.rank(block_node_id, block_k, source_subtree)
+    alternative_count = index.count(block_node_id, block_k) - 1
+    alternative_offset = _randbelow(rng, alternative_count)
+    replacement_rank = alternative_offset if alternative_offset < source_rank else alternative_offset + 1
+    replacement = index.unrank(block_node_id, block_k, replacement_rank)
+    source_subtree_ids = frozenset(source_subtree.node_ids)
+    candidate_frontier = DyadicFrontier(
+        tuple(node_id for node_id in state.frontier.node_ids if node_id not in source_subtree_ids)
+        + replacement.node_ids
+    )
+    source_split_nodes = frozenset(state.frontier.active_split_nodes(problem.tree))
+    candidate_split_nodes = frozenset(candidate_frontier.active_split_nodes(problem.tree))
+    new_fractions: dict[int, float] = {}
+    for node_id in sorted(candidate_split_nodes - source_split_nodes):
+        alpha, beta = problem.prior.beta_parameters(node_id)
+        new_fractions[node_id] = float(rng.beta(alpha, beta))
+    return propose_subtree_retile(
+        problem,
+        state,
+        index,
+        block_node_id=block_node_id,
+        replacement_frontier=replacement,
+        new_fractions_by_node=new_fractions,
+    )
+
+
 def _draw_transition(
     problem: GammaBetaTreeProblem,
     state: GammaBetaTreeState,
@@ -746,6 +1005,7 @@ def _draw_transition(
     settings: GammaBetaCompoundKernelSettings,
     minimum_k: int,
     maximum_k: int,
+    subtree_index: SubtreePartitionIndex | None,
     rng: np.random.Generator,
 ) -> tuple[CompoundSlot, GammaBetaTransitionTerms]:
     """Draw the candidate assigned to one global compound-schedule phase.
@@ -757,6 +1017,8 @@ def _draw_transition(
         settings: Problem-resolved schedule settings.
         minimum_k: Inclusive lower positive-prior support bound.
         maximum_k: Inclusive upper positive-prior support bound.
+        subtree_index: Segment-level exact bounded subtree index, or ``None``
+            when no retile slots are configured.
         rng: NumPy generator advanced by the selected kernel's proposal draws.
 
     Returns:
@@ -775,6 +1037,17 @@ def _draw_transition(
             split_direction_probability=settings.split_direction_probability,
             minimum_k=minimum_k,
             maximum_k=maximum_k,
+            rng=rng,
+        )
+    if slot == "relocation":
+        return slot, _draw_relocation_transition(problem, state, rng=rng)
+    if slot == "subtree_retile":
+        if subtree_index is None:
+            raise RuntimeError("subtree-retile slot requires a segment index.")
+        return slot, _draw_subtree_retile_transition(
+            problem,
+            state,
+            index=subtree_index,
             rng=rng,
         )
     if slot == "root":
@@ -865,11 +1138,22 @@ def _run_segment(
         raise ValueError("initial_state must have finite target support.")
     if len(settings.fixed_coefficient_proposal_sd) != initial_state.fixed_coefficients.size:
         raise ValueError("fixed proposal scales must match the problem fixed block.")
-    minimum_k, maximum_k = _positive_k_support(problem)
+    minimum_k, maximum_k = _positive_k_support(
+        problem,
+        fixed_k_topology_kernel_configured=settings.has_fixed_k_topology_kernel,
+    )
     if settings.fraction_refresh_slots == 0 and maximum_k > 1:
         raise ValueError("fraction_refresh_slots must be positive when p(K) supports active fractions.")
     if not minimum_k <= initial_state.k <= maximum_k:
         raise ValueError("initial_state K lies outside positive partition-prior support.")
+    subtree_index = (
+        SubtreePartitionIndex(
+            problem.tree,
+            min(settings.max_subtree_leaves, len(problem.tree.leaf_ids)),
+        )
+        if settings.subtree_retile_slots
+        else None
+    )
 
     retained_transitions = _retained_transition_numbers(
         transitions_completed=transitions_completed,
@@ -895,11 +1179,13 @@ def _run_segment(
         transitions_completed + iterations + 1,
         dtype=np.int64,
     )
-    slots = np.empty(iterations, dtype="U10")
+    slots = np.empty(iterations, dtype="U14")
     moves = np.empty(iterations, dtype="U17")
     valid = np.empty(iterations, dtype=np.bool_)
     accepted = np.empty(iterations, dtype=np.bool_)
     node_id = np.full(iterations, -1, dtype=np.int64)
+    secondary_node_id = np.full(iterations, -1, dtype=np.int64)
+    block_leaf_count = np.full(iterations, -1, dtype=np.int64)
     coefficient_id = np.full(iterations, -1, dtype=np.int64)
     k_before = np.empty(iterations, dtype=np.int64)
     k_after = np.empty(iterations, dtype=np.int64)
@@ -946,6 +1232,7 @@ def _run_segment(
             settings=settings,
             minimum_k=minimum_k,
             maximum_k=maximum_k,
+            subtree_index=subtree_index,
             rng=rng,
         )
         uniform = float(rng.random())
@@ -959,6 +1246,10 @@ def _run_segment(
         accepted[iteration] = proposal_accepted
         if transition.node_id is not None:
             node_id[iteration] = transition.node_id
+        if transition.secondary_node_id is not None:
+            secondary_node_id[iteration] = transition.secondary_node_id
+        if transition.block_leaf_count is not None:
+            block_leaf_count[iteration] = transition.block_leaf_count
         if transition.coefficient_id is not None:
             coefficient_id[iteration] = transition.coefficient_id
         k_before[iteration] = source.k
@@ -1013,6 +1304,8 @@ def _run_segment(
             valid=valid,
             accepted=accepted,
             node_id=node_id,
+            secondary_node_id=secondary_node_id,
+            block_leaf_count=block_leaf_count,
             coefficient_id=coefficient_id,
             k_before=k_before,
             k_after=k_after,
@@ -1063,6 +1356,9 @@ def sample_gamma_beta_compound(
     settings = GammaBetaCompoundKernelSettings(
         split_direction_probability=config.split_direction_probability,
         fraction_refresh_slots=config.fraction_refresh_slots,
+        relocation_slots=config.relocation_slots,
+        subtree_retile_slots=config.subtree_retile_slots,
+        max_subtree_leaves=config.max_subtree_leaves,
         fixed_coefficient_proposal_sd=scales,
     )
     return _run_segment(

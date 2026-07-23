@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
 import numpy as np
 import pytest
@@ -16,6 +17,7 @@ from openghg_inversions.experimental.rjmcmc.gamma_beta_compound_sampling import 
     GammaBetaCompoundConfig,
     GammaBetaCompoundSamplingResult,
     GammaBetaCompoundTrace,
+    _randbelow,
     continue_gamma_beta_compound,
     sample_gamma_beta_compound,
 )
@@ -137,6 +139,8 @@ def _assert_traces_equal(
         "valid",
         "accepted",
         "node_id",
+        "secondary_node_id",
+        "block_leaf_count",
         "coefficient_id",
         "k_before",
         "k_after",
@@ -167,6 +171,8 @@ def _concatenate_results(
         "valid",
         "accepted",
         "node_id",
+        "secondary_node_id",
+        "block_leaf_count",
         "coefficient_id",
         "k_before",
         "k_after",
@@ -188,19 +194,21 @@ def _concatenate_results(
 
 
 def test_default_cycle_schedules_every_kernel_and_fixed_position() -> None:
-    """Six outer coefficients give the opportunity-matched 14-slot cycle."""
+    """Six outer coefficients give the default sixteen-slot compound cycle."""
     tree = CanonicalDyadicTree.from_shape((1, 2))
     root_only = TreePartitionPrior.uniform_k(tree, maximum_k=1)
     problem = _problem(fixed_count=6, partition_prior=root_only)
     result = sample_gamma_beta_compound(
         problem,
         _root_state(problem),
-        GammaBetaCompoundConfig(iterations=14, seed=91),
+        GammaBetaCompoundConfig(iterations=16, seed=91),
     )
 
     assert result.trace.slot.tolist() == [
         "structural",
         "structural",
+        "relocation",
+        "subtree_retile",
         "root",
         "fraction",
         "fraction",
@@ -215,6 +223,8 @@ def test_default_cycle_schedules_every_kernel_and_fixed_position() -> None:
         "fixed",
     ]
     assert result.trace.move[2:].tolist() == [
+        "relocate",
+        "subtree_retile",
         "root_refresh",
         "fraction_refresh",
         "fraction_refresh",
@@ -228,16 +238,16 @@ def test_default_cycle_schedules_every_kernel_and_fixed_position() -> None:
         "fixed_coefficient",
         "fixed_coefficient",
     ]
-    assert result.trace.valid[:2].tolist() == [False, False]
-    assert result.trace.valid[3:8].tolist() == [False] * 5
-    invalid = np.r_[0:2, 3:8]
-    assert result.trace.accepted[invalid].tolist() == [False] * 7
-    assert result.trace.node_id[invalid].tolist() == [-1] * 7
-    assert result.trace.log_acceptance_ratio[invalid].tolist() == [-np.inf] * 7
-    assert result.trace.k_before.tolist() == [1] * 14
-    assert result.trace.k_after.tolist() == [1] * 14
+    assert result.trace.valid[:4].tolist() == [False] * 4
+    assert result.trace.valid[5:10].tolist() == [False] * 5
+    invalid = np.r_[0:4, 5:10]
+    assert result.trace.accepted[invalid].tolist() == [False] * 9
+    assert result.trace.node_id[invalid].tolist() == [-1] * 9
+    assert result.trace.log_acceptance_ratio[invalid].tolist() == [-np.inf] * 9
+    assert result.trace.k_before.tolist() == [1] * 16
+    assert result.trace.k_after.tolist() == [1] * 16
     assert result.trace.coefficient_id.tolist()[-6:] == list(range(6))
-    assert result.trace.global_transition.tolist() == list(range(1, 15))
+    assert result.trace.global_transition.tolist() == list(range(1, 17))
     assert any(result.trace.accepted[-6:])
     assert not np.array_equal(
         result.trace.fixed_coefficients[0],
@@ -283,6 +293,31 @@ def test_invalid_structural_slots_still_consume_acceptance_uniforms() -> None:
     assert result.checkpoint.rng_state == PCG64State.from_generator(expected_rng)
 
 
+def test_invalid_fixed_k_topology_slots_consume_only_acceptance_uniforms() -> None:
+    """Unavailable relocation and retile slots add no hidden proposal draws."""
+    tree = CanonicalDyadicTree.from_shape((1, 2))
+    problem = _problem(partition_prior=TreePartitionPrior.uniform_k(tree, maximum_k=1))
+    result = sample_gamma_beta_compound(
+        problem,
+        _root_state(problem),
+        GammaBetaCompoundConfig(iterations=4, seed=17),
+    )
+    expected_rng = np.random.Generator(np.random.PCG64(17))
+    expected_rng.random(6)
+
+    assert result.trace.move.tolist() == [
+        "merge",
+        "merge",
+        "relocate",
+        "subtree_retile",
+    ]
+    assert result.trace.valid.tolist() == [False] * 4
+    assert result.trace.accepted.tolist() == [False] * 4
+    assert result.trace.secondary_node_id.tolist() == [-1] * 4
+    assert result.trace.block_leaf_count.tolist() == [-1] * 4
+    assert result.checkpoint.rng_state == PCG64State.from_generator(expected_rng)
+
+
 def test_continuation_is_exact_from_an_awkward_mid_cycle_phase() -> None:
     """A split at a non-retained mid-cycle phase preserves RNG and schedule."""
     problem = _problem(fixed_count=2)
@@ -309,12 +344,50 @@ def test_continuation_is_exact_from_an_awkward_mid_cycle_phase() -> None:
     _assert_traces_equal(_concatenate_results(first, second), full.trace)
     _assert_states_equal(second.final_state, full.final_state)
     assert second.checkpoint.rng_state == full.checkpoint.rng_state
-    assert first.checkpoint.schedule_phase == 3
-    assert second.checkpoint.schedule_phase == 7
+    assert first.checkpoint.schedule_phase == 1
+    assert second.checkpoint.schedule_phase == 11
+
+
+@pytest.mark.parametrize("split_after", range(1, 13))
+def test_continuation_is_exact_from_every_v2_schedule_phase(
+    split_after: int,
+) -> None:
+    """Every possible next-slot phase should restart without changing draws."""
+    problem = _problem(fixed_count=2)
+    initial = _root_state(problem)
+    retention = RetentionSettings(warmup_transitions=3, thin=4)
+    total = 19
+    config = GammaBetaCompoundConfig(
+        iterations=total,
+        seed=719,
+        fixed_coefficient_proposal_sd=(0.3, 0.6),
+    )
+    full = sample_gamma_beta_compound(
+        problem,
+        initial,
+        config,
+        retention=retention,
+    )
+    first = sample_gamma_beta_compound(
+        problem,
+        initial,
+        replace(config, iterations=split_after),
+        retention=retention,
+    )
+    second = continue_gamma_beta_compound(
+        problem,
+        first.checkpoint,
+        iterations=total - split_after,
+    )
+
+    _assert_traces_equal(_concatenate_results(first, second), full.trace)
+    _assert_states_equal(second.final_state, full.final_state)
+    assert second.checkpoint.rng_state == full.checkpoint.rng_state
+    assert first.checkpoint.schedule_phase == split_after % 12
 
 
 def test_no_fixed_block_omits_fixed_slots_and_retains_zero_width_matrix() -> None:
-    """A problem without outer coefficients has the eight-slot default cycle."""
+    """A problem without outer coefficients has the ten-slot default cycle."""
     problem = _problem()
     result = sample_gamma_beta_compound(
         problem,
@@ -322,10 +395,42 @@ def test_no_fixed_block_omits_fixed_slots_and_retains_zero_width_matrix() -> Non
         GammaBetaCompoundConfig(iterations=16, seed=18),
     )
 
-    assert result.checkpoint.kernel_settings.cycle_length == 8
+    assert result.checkpoint.kernel_settings.cycle_length == 10
     assert "fixed" not in result.trace.slot
     assert result.trace.fixed_coefficients.shape == (17, 0)
     assert np.all(result.trace.log_fixed_coefficient_prior == 0.0)
+
+
+def test_custom_slot_counts_define_the_complete_schedule() -> None:
+    """Configured slot multiplicities should appear in deterministic order."""
+    problem = _problem(fixed_count=2)
+    result = sample_gamma_beta_compound(
+        problem,
+        _root_state(problem),
+        GammaBetaCompoundConfig(
+            iterations=12,
+            seed=5,
+            relocation_slots=2,
+            subtree_retile_slots=3,
+            fraction_refresh_slots=2,
+        ),
+    )
+
+    assert result.checkpoint.kernel_settings.cycle_length == 12
+    assert result.trace.slot.tolist() == [
+        "structural",
+        "structural",
+        "relocation",
+        "relocation",
+        "subtree_retile",
+        "subtree_retile",
+        "subtree_retile",
+        "root",
+        "fraction",
+        "fraction",
+        "fixed",
+        "fixed",
+    ]
 
 
 def test_checkpoint_rejects_inconsistent_schedule_phase() -> None:
@@ -339,6 +444,44 @@ def test_checkpoint_rejects_inconsistent_schedule_phase() -> None:
 
     with pytest.raises(ValueError, match="schedule_phase"):
         replace(result.checkpoint, schedule_phase=0)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("relocation_slots", True, TypeError),
+        ("relocation_slots", -1, ValueError),
+        ("subtree_retile_slots", False, TypeError),
+        ("subtree_retile_slots", -1, ValueError),
+        ("max_subtree_leaves", True, TypeError),
+        ("max_subtree_leaves", 0, ValueError),
+        ("max_subtree_leaves", 1.5, TypeError),
+    ],
+)
+def test_new_compound_settings_are_strictly_validated(
+    field: str,
+    value: object,
+    error: type[Exception],
+) -> None:
+    """New slot counts and subtree bounds reject coercive malformed values."""
+    kwargs: dict[str, Any] = {field: value}
+    with pytest.raises(error):
+        GammaBetaCompoundConfig(iterations=1, **kwargs)
+
+
+def test_arbitrary_precision_randbelow_replays_without_int64_bounds() -> None:
+    """Exact alternative selection should accept bounds larger than int64."""
+    upper = 2**130 + 129
+    first_rng = np.random.Generator(np.random.PCG64(812))
+    replay_rng = np.random.Generator(np.random.PCG64(812))
+
+    first = [_randbelow(first_rng, upper) for _ in range(10)]
+    replay = [_randbelow(replay_rng, upper) for _ in range(10)]
+
+    assert first == replay
+    assert all(0 <= value < upper for value in first)
+    assert len(set(first)) > 1
+    assert PCG64State.from_generator(first_rng) == PCG64State.from_generator(replay_rng)
 
 
 def test_sampler_rejects_noncontiguous_positive_k_support() -> None:
@@ -358,8 +501,47 @@ def test_sampler_rejects_noncontiguous_positive_k_support() -> None:
         )
 
 
-def test_sampler_rejects_fixed_k_with_multiple_unreachable_frontiers() -> None:
-    """A fixed K with multiple frontiers needs a topology-preserving kernel."""
+def test_fixed_k_topology_slots_move_between_multiple_frontiers() -> None:
+    """A singleton p(K) can move when fixed-K topology slots are configured."""
+    tree = CanonicalDyadicTree.from_shape((2, 2))
+    partition_prior = TreePartitionPrior.uniform_k(
+        tree,
+        minimum_k=3,
+        maximum_k=3,
+    )
+    problem = _problem(partition_prior=partition_prior)
+    frontier = DyadicFrontier.root(tree).split(tree, tree.root_id)
+    frontier = frontier.split(tree, frontier.node_ids[0])
+    state = build_gamma_beta_tree_state(
+        problem,
+        frontier=frontier,
+        root_total=1.0,
+        active_fractions=[0.5, 0.5],
+    )
+
+    result = sample_gamma_beta_compound(
+        problem,
+        state,
+        GammaBetaCompoundConfig(iterations=400, seed=0),
+    )
+
+    assert np.all(result.trace.k == 3)
+    assert np.all(result.trace.k_before == 3)
+    assert np.all(result.trace.k_after == 3)
+    fixed_k = np.isin(result.trace.move, ("relocate", "subtree_retile"))
+    assert np.any(result.trace.valid[fixed_k])
+    assert np.any(result.trace.accepted[fixed_k])
+    relocation = result.trace.move == "relocate"
+    retile = result.trace.move == "subtree_retile"
+    assert np.all(result.trace.secondary_node_id[relocation] >= 0)
+    assert np.all(result.trace.block_leaf_count[relocation] == -1)
+    assert np.all(result.trace.secondary_node_id[retile] == -1)
+    assert np.all(result.trace.block_leaf_count[retile] == 3)
+    assert len(set(result.trace.frontiers)) > 1
+
+
+def test_sampler_rejects_fixed_k_when_topology_slots_are_disabled() -> None:
+    """A singleton p(K) with multiple frontiers needs a configured topology move."""
     tree = CanonicalDyadicTree.from_shape((2, 2))
     partition_prior = TreePartitionPrior.uniform_k(
         tree,
@@ -380,7 +562,12 @@ def test_sampler_rejects_fixed_k_with_multiple_unreachable_frontiers() -> None:
         sample_gamma_beta_compound(
             problem,
             state,
-            GammaBetaCompoundConfig(iterations=1, seed=0),
+            GammaBetaCompoundConfig(
+                iterations=1,
+                seed=0,
+                relocation_slots=0,
+                subtree_retile_slots=0,
+            ),
         )
 
 
@@ -450,7 +637,7 @@ def test_fixed_coefficient_proposal_has_symmetric_gaussian_accounting() -> None:
         ),
     )
     fixed_attempts = sampled.trace.move == "fixed_coefficient"
-    assert np.count_nonzero(fixed_attempts) == 10
+    assert np.count_nonzero(fixed_attempts) == 8
     assert np.any(sampled.trace.accepted[fixed_attempts])
     assert np.any(sampled.trace.fixed_coefficients[:, 0] != 1.0)
 
