@@ -9,8 +9,9 @@ numbered deterministically in depth-first preorder.
 A :class:`DyadicFrontier` is a canonical sorted tuple of node IDs that covers
 the root exactly once.  Local split and merge operations return new frontiers;
 tree geometry and source frontiers are never mutated.  Exhaustive enumeration
-is supplied only as a tiny-tree oracle, while :func:`partition_counts_by_k`
-uses arbitrary-precision Python integers without materializing frontiers.
+is supplied only as a tiny-tree oracle.  :class:`SubtreePartitionIndex` and
+:func:`partition_counts_by_k` use arbitrary-precision Python integers without
+materializing frontiers.
 """
 
 from __future__ import annotations
@@ -527,6 +528,296 @@ class DyadicFrontier:
         return labels
 
 
+@dataclass(frozen=True, slots=True, init=False)
+class SubtreePartitionIndex:
+    """Exact bounded count/rank index for canonical subtree frontiers.
+
+    The index stores dynamic-programming counts for every tree node through
+    ``max_k``.  Counts are arbitrary-precision Python integers.  Ranking and
+    unranking follow exactly the recursive ordering used by
+    :func:`enumerate_frontiers`: an unsplit node comes first, followed by the
+    Cartesian product of the first child's frontiers and the second child's
+    frontiers.  Exact-``K`` filtering preserves that underlying order.
+
+    This class deliberately indexes frontiers below any node, not only full
+    root frontiers.  A frontier returned for a non-root node therefore covers
+    that subtree exactly but is not, by itself, a complete frontier of
+    ``tree``.
+
+    Args:
+        tree: Canonical tree whose subtree partitions should be indexed.
+        max_k: Largest subtree frontier size to index.
+
+    Raises:
+        TypeError: If ``tree`` or ``max_k`` has the wrong type.
+        ValueError: If ``max_k`` lies outside the tree's supported range.
+
+    Attributes:
+        tree: Indexed canonical tree.
+        max_k: Largest indexed frontier size.
+    """
+
+    tree: CanonicalDyadicTree
+    max_k: int
+    _counts: tuple[tuple[int, ...], ...]
+
+    def __init__(self, tree: CanonicalDyadicTree, max_k: int) -> None:
+        """Build exact bounded counts for every canonical subtree.
+
+        Args:
+            tree: Canonical tree whose subtree partitions should be indexed.
+            max_k: Largest subtree frontier size to index.
+
+        Raises:
+            TypeError: If ``tree`` or ``max_k`` has the wrong type.
+            ValueError: If ``max_k`` lies outside the tree's supported range.
+        """
+        _require_tree(tree)
+        normalized_max_k = _validate_k(max_k, tree)
+        if normalized_max_k is None:  # pragma: no cover - guarded by the signature
+            raise TypeError("max_k must be an integer.")
+
+        counts_by_node: list[tuple[int, ...] | None] = [None] * len(tree.nodes)
+        for node in reversed(tree.nodes):
+            capacity = min(normalized_max_k, node.area)
+            counts = [0] * (capacity + 1)
+            counts[1] = 1
+            if node.child_ids:
+                first_counts = counts_by_node[node.child_ids[0]]
+                second_counts = counts_by_node[node.child_ids[1]]
+                assert first_counts is not None
+                assert second_counts is not None
+                for first_k in range(1, len(first_counts)):
+                    largest_second = min(len(second_counts) - 1, capacity - first_k)
+                    for second_k in range(1, largest_second + 1):
+                        counts[first_k + second_k] += first_counts[first_k] * second_counts[second_k]
+            counts_by_node[node.node_id] = tuple(counts)
+
+        object.__setattr__(self, "tree", tree)
+        object.__setattr__(self, "max_k", normalized_max_k)
+        object.__setattr__(
+            self,
+            "_counts",
+            tuple(counts for counts in counts_by_node if counts is not None),
+        )
+
+    def counts_by_k(self, node_id: NodeId) -> tuple[int, ...]:
+        """Return indexed frontier counts below one node.
+
+        The returned tuple is indexed directly by ``K`` and has capacity
+        ``min(max_k, node area)``.  Index zero is always zero.
+
+        Args:
+            node_id: Root node of the requested subtree.
+
+        Returns:
+            Immutable tuple of arbitrary-precision Python counts.
+
+        Raises:
+            KeyError: If ``node_id`` is not in :attr:`tree`.
+        """
+        node_index = self.tree._node_index(node_id)
+        return self._counts[node_index]
+
+    def count(self, node_id: NodeId, k: int) -> int:
+        """Return the number of exact size-``k`` frontiers below one node.
+
+        Args:
+            node_id: Root node of the requested subtree.
+            k: Exact number of active subtree regions.
+
+        Returns:
+            Arbitrary-precision Python count.
+
+        Raises:
+            KeyError: If ``node_id`` is not in :attr:`tree`.
+            TypeError: If ``k`` is Boolean or not integer-like.
+            ValueError: If ``k`` is not indexed or exceeds the subtree area.
+        """
+        normalized_k = self._validate_subtree_k(node_id, k)
+        return self._counts[self.tree._node_index(node_id)][normalized_k]
+
+    def rank(
+        self,
+        node_id: NodeId,
+        k: int,
+        frontier: DyadicFrontier,
+    ) -> int:
+        """Return the zero-based exact-``K`` rank of a subtree frontier.
+
+        Args:
+            node_id: Root node of the indexed subtree.
+            k: Required number of active subtree regions.
+            frontier: Exact frontier covering ``node_id``'s subtree.
+
+        Returns:
+            Zero-based rank in the order obtained by filtering the recursive
+            exhaustive enumeration to size ``k``.
+
+        Raises:
+            KeyError: If ``node_id`` is not in :attr:`tree`.
+            TypeError: If ``k`` or ``frontier`` has the wrong type.
+            ValueError: If ``k`` is unsupported, ``frontier`` does not exactly
+                cover the subtree, or its size is not ``k``.
+        """
+        normalized_k = self._validate_subtree_k(node_id, k)
+        _validate_subtree_frontier(self.tree, node_id, frontier)
+        if len(frontier) != normalized_k:
+            raise ValueError(f"frontier has {len(frontier)} nodes but k is {normalized_k}.")
+
+        weights = [0] * (self.max_k + 1)
+        weights[normalized_k] = 1
+        rank_value, frontier_k = self._weighted_rank(
+            node_id,
+            frozenset(frontier.node_ids),
+            tuple(weights),
+        )
+        if frontier_k != normalized_k:  # pragma: no cover - checked above
+            raise RuntimeError("Internal subtree rank size mismatch.")
+        return rank_value
+
+    def unrank(
+        self,
+        node_id: NodeId,
+        k: int,
+        rank: int,
+    ) -> DyadicFrontier:
+        """Return the exact size-``k`` subtree frontier at ``rank``.
+
+        This method descends through dynamic-programming count blocks and
+        never materializes all frontiers.
+
+        Args:
+            node_id: Root node of the indexed subtree.
+            k: Required number of active subtree regions.
+            rank: Zero-based rank in recursive enumeration order.
+
+        Returns:
+            Exact frontier covering ``node_id``'s subtree.
+
+        Raises:
+            KeyError: If ``node_id`` is not in :attr:`tree`.
+            TypeError: If ``k`` or ``rank`` is Boolean or not integer-like.
+            ValueError: If ``k`` is unsupported or ``rank`` is outside the
+                exact-``K`` frontier range.
+        """
+        normalized_k = self._validate_subtree_k(node_id, k)
+        normalized_rank = _normalize_rank(rank)
+        count = self.count(node_id, normalized_k)
+        if normalized_rank < 0 or normalized_rank >= count:
+            raise ValueError(
+                f"rank must lie between 0 and {count - 1} for node {index(node_id)} with k={normalized_k}."
+            )
+
+        weights = [0] * (self.max_k + 1)
+        weights[normalized_k] = 1
+        node_ids, frontier_k, residual = self._weighted_unrank(
+            node_id,
+            tuple(weights),
+            normalized_rank,
+        )
+        if frontier_k != normalized_k or residual != 0:  # pragma: no cover
+            raise RuntimeError("Internal subtree unrank mismatch.")
+        return DyadicFrontier(node_ids)
+
+    def _validate_subtree_k(self, node_id: NodeId, k: int) -> int:
+        """Normalize an exact subtree frontier size.
+
+        Args:
+            node_id: Candidate subtree root.
+            k: Candidate exact frontier size.
+
+        Returns:
+            Valid built-in integer size.
+
+        Raises:
+            KeyError: If ``node_id`` is not in :attr:`tree`.
+            TypeError: If ``k`` is Boolean or not integer-like.
+            ValueError: If ``k`` exceeds the indexed or subtree capacity.
+        """
+        node = self.tree.node(node_id)
+        if isinstance(k, bool):
+            raise TypeError("k must be an integer.")
+        try:
+            normalized_k = index(k)
+        except TypeError as error:
+            raise TypeError("k must be an integer.") from error
+        maximum = min(self.max_k, node.area)
+        if normalized_k < 1 or normalized_k > maximum:
+            raise ValueError(f"k must lie between 1 and {maximum} for subtree node {node.node_id}.")
+        return normalized_k
+
+    def _weighted_rank(
+        self,
+        node_id: NodeId,
+        active: frozenset[NodeId],
+        weights: tuple[int, ...],
+    ) -> tuple[int, int]:
+        """Return weighted prefix rank and size for one known-valid frontier."""
+        if node_id in active:
+            return 0, 1
+
+        node = self.tree.nodes[node_id]
+        first_id, second_id = node.child_ids
+        first_weights = self._first_child_weights(first_id, second_id, weights)
+        first_rank, first_k = self._weighted_rank(first_id, active, first_weights)
+        second_weights = self._shift_weights(weights, first_k)
+        second_rank, second_k = self._weighted_rank(second_id, active, second_weights)
+        return _weight_at(weights, 1) + first_rank + second_rank, first_k + second_k
+
+    def _weighted_unrank(
+        self,
+        node_id: NodeId,
+        weights: tuple[int, ...],
+        rank: int,
+    ) -> tuple[tuple[NodeId, ...], int, int]:
+        """Select one weighted frontier and retain its within-block residual."""
+        unsplit_weight = _weight_at(weights, 1)
+        if rank < unsplit_weight:
+            return (node_id,), 1, rank
+
+        rank -= unsplit_weight
+        first_id, second_id = self.tree.nodes[node_id].child_ids
+        first_weights = self._first_child_weights(first_id, second_id, weights)
+        first_ids, first_k, residual = self._weighted_unrank(
+            first_id,
+            first_weights,
+            rank,
+        )
+        second_weights = self._shift_weights(weights, first_k)
+        second_ids, second_k, residual = self._weighted_unrank(
+            second_id,
+            second_weights,
+            residual,
+        )
+        return (*first_ids, *second_ids), first_k + second_k, residual
+
+    def _first_child_weights(
+        self,
+        first_id: NodeId,
+        second_id: NodeId,
+        weights: tuple[int, ...],
+    ) -> tuple[int, ...]:
+        """Return first-child block weights after summing second frontiers."""
+        first_counts = self._counts[first_id]
+        second_counts = self._counts[second_id]
+        result = [0] * len(first_counts)
+        for first_k in range(1, len(first_counts)):
+            result[first_k] = sum(
+                second_counts[second_k] * _weight_at(weights, first_k + second_k)
+                for second_k in range(1, len(second_counts))
+            )
+        return tuple(result)
+
+    def _shift_weights(
+        self,
+        weights: tuple[int, ...],
+        first_k: int,
+    ) -> tuple[int, ...]:
+        """Return second-child weights conditional on a first-child size."""
+        return tuple(_weight_at(weights, first_k + second_k) for second_k in range(self.max_k + 1))
+
+
 def enumerate_frontiers(
     tree: CanonicalDyadicTree,
     *,
@@ -587,20 +878,7 @@ def partition_counts_by_k(
     if normalized_max is None:
         normalized_max = len(tree.leaf_ids)
 
-    subtree_counts: dict[NodeId, tuple[int, ...]] = {}
-    for node in reversed(tree.nodes):
-        capacity = min(normalized_max, node.area)
-        counts = [0] * (capacity + 1)
-        counts[1] = 1
-        if node.child_ids:
-            first_counts = subtree_counts[node.child_ids[0]]
-            second_counts = subtree_counts[node.child_ids[1]]
-            for first_k in range(1, len(first_counts)):
-                largest_second = min(len(second_counts) - 1, capacity - first_k)
-                for second_k in range(1, largest_second + 1):
-                    counts[first_k + second_k] += first_counts[first_k] * second_counts[second_k]
-        subtree_counts[node.node_id] = tuple(counts)
-    return subtree_counts[tree.root_id]
+    return SubtreePartitionIndex(tree, normalized_max).counts_by_k(tree.root_id)
 
 
 def _require_tree(tree: CanonicalDyadicTree) -> None:
@@ -627,6 +905,79 @@ def _require_frontier(frontier: DyadicFrontier) -> None:
     """
     if not isinstance(frontier, DyadicFrontier):
         raise TypeError("frontier must be a DyadicFrontier.")
+
+
+def _validate_subtree_frontier(
+    tree: CanonicalDyadicTree,
+    node_id: NodeId,
+    frontier: DyadicFrontier,
+) -> None:
+    """Require a frontier to cover one canonical subtree exactly.
+
+    Args:
+        tree: Canonical tree supplying topology.
+        node_id: Root of the subtree that must be covered.
+        frontier: Candidate exact subtree frontier.
+
+    Raises:
+        KeyError: If ``node_id`` is not in ``tree``.
+        TypeError: If ``frontier`` has the wrong type.
+        ValueError: If the frontier is empty, contains an unknown node, or
+            does not cover the requested subtree exactly without overlap.
+    """
+    tree.node(node_id)
+    _require_frontier(frontier)
+    if not frontier.node_ids:
+        raise ValueError("A subtree frontier must contain at least one node.")
+    for active_id in frontier.node_ids:
+        try:
+            tree.node(active_id)
+        except KeyError as error:
+            raise ValueError(f"Frontier node ID {active_id!r} is not in the tree.") from error
+
+    active = frozenset(frontier.node_ids)
+    reached: set[NodeId] = set()
+    coverage_gap = False
+    pending = [index(node_id)]
+    while pending:
+        current_id = pending.pop()
+        if current_id in active:
+            reached.add(current_id)
+            continue
+        child_ids = tree.nodes[current_id].child_ids
+        if not child_ids:
+            coverage_gap = True
+            continue
+        pending.extend(child_ids)
+    if reached != active or coverage_gap:
+        raise ValueError(f"frontier must exactly cover subtree node {index(node_id)} without overlap.")
+
+
+def _normalize_rank(rank: int) -> int:
+    """Normalize one candidate zero-based rank.
+
+    Args:
+        rank: Candidate integer-like rank.
+
+    Returns:
+        Built-in integer rank.
+
+    Raises:
+        TypeError: If ``rank`` is Boolean or not integer-like.
+    """
+    if isinstance(rank, bool):
+        raise TypeError("rank must be an integer.")
+    try:
+        return index(rank)
+    except TypeError as error:
+        raise TypeError("rank must be an integer.") from error
+
+
+def _weight_at(weights: tuple[int, ...], k: int) -> int:
+    """Return one size weight, treating out-of-range sizes as zero."""
+    if k < 0 or k >= len(weights):
+        return 0
+    return weights[k]
 
 
 def _validate_shape(shape: tuple[int, int]) -> tuple[int, int]:
@@ -759,6 +1110,7 @@ __all__ = [
     "DyadicFrontier",
     "DyadicNode",
     "NodeId",
+    "SubtreePartitionIndex",
     "enumerate_frontiers",
     "partition_counts_by_k",
 ]

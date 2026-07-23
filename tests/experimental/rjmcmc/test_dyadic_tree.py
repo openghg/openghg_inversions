@@ -1,16 +1,17 @@
 """Tests for immutable canonical dyadic trees and exact frontiers."""
 
+from collections.abc import Iterator
 from dataclasses import FrozenInstanceError
 from itertools import combinations
-from collections.abc import Iterator
 
 import numpy as np
 import pytest
 
 from openghg_inversions.experimental.rjmcmc.dyadic_tree import (
     CanonicalDyadicTree,
-    DyadicNode,
     DyadicFrontier,
+    DyadicNode,
+    SubtreePartitionIndex,
     enumerate_frontiers,
     partition_counts_by_k,
 )
@@ -36,6 +37,26 @@ class _CountingNodes:
     def __iter__(self) -> Iterator[DyadicNode]:
         """Reject iteration because candidate queries must remain frontier-local."""
         raise AssertionError("Candidate queries must not scan every tree node.")
+
+
+def _enumerate_subtree_frontiers(
+    tree: CanonicalDyadicTree,
+    node_id: int,
+) -> tuple[DyadicFrontier, ...]:
+    """Build a tiny-tree reference in the public recursive ordering."""
+    child_ids = tree.children(node_id)
+    if not child_ids:
+        return (DyadicFrontier((node_id,)),)
+    first_frontiers = _enumerate_subtree_frontiers(tree, child_ids[0])
+    second_frontiers = _enumerate_subtree_frontiers(tree, child_ids[1])
+    return (
+        DyadicFrontier((node_id,)),
+        *(
+            DyadicFrontier((*first.node_ids, *second.node_ids))
+            for first in first_frontiers
+            for second in second_frontiers
+        ),
+    )
 
 
 def _reference_frontier_error(
@@ -320,3 +341,125 @@ def test_partition_count_limit_and_large_counts_use_python_integers() -> None:
     counts = partition_counts_by_k(large_tree)
     assert max(counts) > np.iinfo(np.int64).max
     assert all(isinstance(count, int) for count in counts)
+
+
+@pytest.mark.parametrize("shape", [(1, 1), (1, 4), (2, 2), (2, 3), (3, 2), (3, 3)])
+def test_subtree_index_matches_every_tiny_enumerated_frontier(
+    shape: tuple[int, int],
+) -> None:
+    """Counts, ranks, and unranking match exhaustive order below every node."""
+    tree = CanonicalDyadicTree.from_shape(shape)
+    index = SubtreePartitionIndex(tree, max_k=len(tree.leaf_ids))
+
+    for node in tree.nodes:
+        expected_all = _enumerate_subtree_frontiers(tree, node.node_id)
+        assert index.counts_by_k(node.node_id) == tuple(
+            0 if k == 0 else sum(len(frontier) == k for frontier in expected_all)
+            for k in range(node.area + 1)
+        )
+        for k in range(1, node.area + 1):
+            expected = tuple(frontier for frontier in expected_all if len(frontier) == k)
+            assert index.count(node.node_id, k) == len(expected)
+            assert tuple(index.unrank(node.node_id, k, rank) for rank in range(len(expected))) == expected
+            assert tuple(index.rank(node.node_id, k, frontier) for frontier in expected) == tuple(
+                range(len(expected))
+            )
+
+
+@pytest.mark.parametrize("shape", [(1, 4), (2, 2), (2, 3), (3, 3)])
+def test_root_subtree_ranks_match_filtered_public_enumeration(
+    shape: tuple[int, int],
+) -> None:
+    """Root ranking is identical to enumerate_frontiers exact-K filtering."""
+    tree = CanonicalDyadicTree.from_shape(shape)
+    index = SubtreePartitionIndex(tree, max_k=len(tree.leaf_ids))
+
+    for k in range(1, len(tree.leaf_ids) + 1):
+        expected = enumerate_frontiers(tree, k=k)
+        assert (
+            tuple(index.unrank(tree.root_id, k, rank) for rank in range(index.count(tree.root_id, k)))
+            == expected
+        )
+
+
+def test_subtree_index_is_immutable_and_uses_arbitrary_precision_counts() -> None:
+    """The frozen reusable index retains counts beyond NumPy integer range."""
+    tree = CanonicalDyadicTree.from_shape((8, 16))
+    index = SubtreePartitionIndex(tree, max_k=len(tree.leaf_ids))
+    counts = index.counts_by_k(tree.root_id)
+
+    assert max(counts) > np.iinfo(np.int64).max
+    assert all(isinstance(count, int) for count in counts)
+    with pytest.raises(FrozenInstanceError):
+        index.max_k = 3  # type: ignore[misc]
+
+
+def test_subtree_index_unranks_large_space_without_frontier_materialization() -> None:
+    """First, middle, and last huge-space ranks round-trip exactly."""
+    tree = CanonicalDyadicTree.from_shape((8, 16))
+    index = SubtreePartitionIndex(tree, max_k=64)
+    count = index.count(tree.root_id, 64)
+
+    assert count > np.iinfo(np.int64).max
+    for rank in (0, count // 2, count - 1):
+        frontier = index.unrank(tree.root_id, 64, rank)
+        assert len(frontier) == 64
+        assert index.rank(tree.root_id, 64, frontier) == rank
+
+
+def test_subtree_index_rejects_invalid_node_k_rank_and_frontier_inputs() -> None:
+    """Malformed subtree indexing requests fail before ambiguous traversal."""
+    tree = CanonicalDyadicTree.from_shape((2, 2))
+    index = SubtreePartitionIndex(tree, max_k=3)
+    first_child = tree.children(tree.root_id)[0]
+    first_grandchild = tree.children(first_child)[0]
+
+    with pytest.raises(KeyError, match="Unknown"):
+        index.count(99, 1)
+    with pytest.raises(TypeError, match="integer"):
+        index.count(tree.root_id, True)
+    with pytest.raises(TypeError, match="integer"):
+        index.count(tree.root_id, 1.5)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="between 1 and 3"):
+        index.count(tree.root_id, 0)
+    with pytest.raises(ValueError, match="between 1 and 1"):
+        index.count(first_grandchild, 2)
+    with pytest.raises(TypeError, match="integer"):
+        index.unrank(tree.root_id, 2, True)
+    with pytest.raises(TypeError, match="integer"):
+        index.unrank(tree.root_id, 2, 0.5)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="rank must lie"):
+        index.unrank(tree.root_id, 2, -1)
+    with pytest.raises(ValueError, match="rank must lie"):
+        index.unrank(tree.root_id, 2, index.count(tree.root_id, 2))
+    with pytest.raises(TypeError, match="DyadicFrontier"):
+        index.rank(tree.root_id, 2, (1, 4))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="at least one"):
+        index.rank(tree.root_id, 2, DyadicFrontier(()))
+    with pytest.raises(ValueError, match="exactly cover subtree"):
+        index.rank(first_child, 1, DyadicFrontier((tree.root_id,)))
+    with pytest.raises(ValueError, match="not in the tree"):
+        index.rank(tree.root_id, 2, DyadicFrontier((1, 99)))
+    with pytest.raises(ValueError, match="has 1 nodes but k is 2"):
+        index.rank(tree.root_id, 2, DyadicFrontier((tree.root_id,)))
+
+
+@pytest.mark.parametrize(
+    ("max_k", "error", "message"),
+    [
+        (True, TypeError, "integer"),
+        (1.5, TypeError, "integer"),
+        (0, ValueError, "between"),
+        (5, ValueError, "between"),
+    ],
+)
+def test_subtree_index_rejects_invalid_bounds(
+    max_k: object,
+    error: type[Exception],
+    message: str,
+) -> None:
+    """The reusable index requires a positive tree-bounded integer limit."""
+    tree = CanonicalDyadicTree.from_shape((2, 2))
+
+    with pytest.raises(error, match=message):
+        SubtreePartitionIndex(tree, max_k=max_k)  # type: ignore[arg-type]
