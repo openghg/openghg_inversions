@@ -1,16 +1,91 @@
 """Tests for immutable canonical dyadic trees and exact frontiers."""
 
 from dataclasses import FrozenInstanceError
+from itertools import combinations
+from collections.abc import Iterator
 
 import numpy as np
 import pytest
 
 from openghg_inversions.experimental.rjmcmc.dyadic_tree import (
     CanonicalDyadicTree,
+    DyadicNode,
     DyadicFrontier,
     enumerate_frontiers,
     partition_counts_by_k,
 )
+
+
+class _CountingNodes:
+    """Count indexed topology reads while rejecting whole-tree iteration."""
+
+    def __init__(self, nodes: tuple[DyadicNode, ...]) -> None:
+        """Store the real node tuple behind an instrumented sequence."""
+        self._nodes = nodes
+        self.reads = 0
+
+    def __len__(self) -> int:
+        """Return the complete tree size without counting an indexed read."""
+        return len(self._nodes)
+
+    def __getitem__(self, node_id: int) -> DyadicNode:
+        """Count and return one indexed node."""
+        self.reads += 1
+        return self._nodes[node_id]
+
+    def __iter__(self) -> Iterator[DyadicNode]:
+        """Reject iteration because candidate queries must remain frontier-local."""
+        raise AssertionError("Candidate queries must not scan every tree node.")
+
+
+def _reference_frontier_error(
+    tree: CanonicalDyadicTree,
+    frontier: DyadicFrontier,
+) -> str | None:
+    """Return the error category produced by the original validator."""
+    if not frontier.node_ids:
+        return "empty"
+    active = frozenset(frontier.node_ids)
+    for node_id in frontier.node_ids:
+        if node_id < 0 or node_id >= len(tree.nodes):
+            return "unknown"
+        parent_id = tree.nodes[node_id].parent_id
+        while parent_id is not None:
+            if parent_id in active:
+                return "ancestor"
+            parent_id = tree.nodes[parent_id].parent_id
+
+    pending = [tree.root_id]
+    while pending:
+        node_id = pending.pop()
+        if node_id in active:
+            continue
+        child_ids = tree.nodes[node_id].child_ids
+        if not child_ids:
+            return "coverage"
+        pending.extend(child_ids)
+    return None
+
+
+def _validation_error(
+    tree: CanonicalDyadicTree,
+    frontier: DyadicFrontier,
+) -> str | None:
+    """Return a stable category for the optimized validator's result."""
+    try:
+        frontier.validate(tree)
+    except ValueError as error:
+        message = str(error)
+        if "at least one" in message:
+            return "empty"
+        if "not in the tree" in message:
+            return "unknown"
+        if "ancestor" in message:
+            return "ancestor"
+        if "exactly cover" in message:
+            return "coverage"
+        raise
+    return None
 
 
 def test_rectangular_geometry_uses_longer_axis_and_odd_second_child() -> None:
@@ -111,6 +186,82 @@ def test_split_merge_candidates_and_active_splits_are_reciprocal() -> None:
     assert three_regions.merge(tree, 1) == two_regions
     assert two_regions.merge(tree, 0) == root
     assert root == DyadicFrontier((0,))
+
+
+@pytest.mark.parametrize("shape", [(1, 1), (1, 4), (2, 2), (2, 3), (3, 2), (3, 3)])
+def test_candidate_queries_match_full_tree_reference_for_every_frontier(
+    shape: tuple[int, int],
+) -> None:
+    """Frontier-local candidate queries equal exhaustive full-tree scans."""
+    tree = CanonicalDyadicTree.from_shape(shape)
+    for frontier in enumerate_frontiers(tree):
+        active = frozenset(frontier.node_ids)
+        expected_splittable = tuple(node_id for node_id in frontier.node_ids if tree.nodes[node_id].child_ids)
+        expected_mergeable = tuple(
+            parent_id
+            for parent_id in tree.internal_node_ids
+            if all(child_id in active for child_id in tree.nodes[parent_id].child_ids)
+        )
+
+        split_nodes: list[int] = []
+        pending = [tree.root_id]
+        while pending:
+            node_id = pending.pop()
+            if node_id in active:
+                continue
+            split_nodes.append(node_id)
+            pending.extend(reversed(tree.nodes[node_id].child_ids))
+
+        assert tree.splittable_nodes(frontier) == expected_splittable
+        assert tree.mergeable_parents(frontier) == expected_mergeable
+        assert frontier.active_split_nodes(tree) == tuple(split_nodes)
+
+
+def test_optimized_validation_matches_original_errors_for_all_tiny_subsets() -> None:
+    """Every 2x3 node subset retains the original validation classification."""
+    tree = CanonicalDyadicTree.from_shape((2, 3))
+    node_ids = tuple(node.node_id for node in tree.nodes)
+    for size in range(len(node_ids) + 1):
+        for subset in combinations(node_ids, size):
+            frontier = DyadicFrontier(subset)
+            assert _validation_error(tree, frontier) == _reference_frontier_error(tree, frontier)
+            for unknown_id in (-1, len(tree.nodes)):
+                frontier_with_unknown = DyadicFrontier((*subset, unknown_id))
+                assert _validation_error(
+                    tree,
+                    frontier_with_unknown,
+                ) == _reference_frontier_error(tree, frontier_with_unknown)
+
+    assert _validation_error(tree, DyadicFrontier((-1,))) == "unknown"
+    assert _validation_error(tree, DyadicFrontier((len(tree.nodes),))) == "unknown"
+
+
+def test_topology_queries_only_index_nodes_reachable_from_large_frontier() -> None:
+    """Candidate work remains proportional to K and never scans the full tree."""
+    tree = CanonicalDyadicTree.from_shape((64, 64))
+    frontier = DyadicFrontier.root(tree)
+    while len(frontier) < 64:
+        frontier = frontier.split(tree, tree.splittable_nodes(frontier)[0])
+
+    expected_splittable = tree.splittable_nodes(frontier)
+    expected_mergeable = tree.mergeable_parents(frontier)
+    expected_active_splits = frontier.active_split_nodes(tree)
+    original_nodes = tree.nodes
+    counting_nodes = _CountingNodes(original_nodes)
+    object.__setattr__(tree, "nodes", counting_nodes)
+    try:
+        assert tree.splittable_nodes(frontier) == expected_splittable
+        assert counting_nodes.reads <= 3 * len(frontier)
+
+        counting_nodes.reads = 0
+        assert tree.mergeable_parents(frontier) == expected_mergeable
+        assert counting_nodes.reads <= 3 * len(frontier)
+
+        counting_nodes.reads = 0
+        assert frontier.active_split_nodes(tree) == expected_active_splits
+        assert counting_nodes.reads <= 3 * len(frontier)
+    finally:
+        object.__setattr__(tree, "nodes", original_nodes)
 
 
 def test_invalid_split_and_merge_requests_fail() -> None:

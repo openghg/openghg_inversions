@@ -15,6 +15,11 @@ leaf-mass Jacobian.  Arrays owned by public objects are copied and made
 read-only, making the full builder a deterministic correctness oracle for
 later incremental or compiled implementations.
 
+The observation target can also include a fixed concentration offset and an
+always-active :class:`~openghg_inversions.experimental.rjmcmc.core.FixedDesignBlock`.
+Its positive coefficients use the same independent arithmetic-moment
+lognormal prior contract as the Voronoi reference implementation.
+
 The principal entry points are :class:`GammaBetaTreePrior`,
 :class:`TreePartitionPrior`, :class:`GammaBetaTreeProblem`,
 :func:`build_gamma_beta_tree_state`, and :func:`render_cell_mass`.  Their
@@ -32,6 +37,7 @@ from typing import TypeAlias
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from .core import FixedDesignBlock, lognormal_coefficient_log_prior_numpy
 from .dyadic_tree import CanonicalDyadicTree, DyadicFrontier, partition_counts_by_k
 
 FloatArray: TypeAlias = NDArray[np.float64]
@@ -781,6 +787,10 @@ class GammaBetaTreeProblem:
         partition_prior: Normalized structural prior on the same tree.
         likelihood_power: Non-negative finite multiplier for the normalized
             Gaussian log likelihood.  Zero gives a prior-only target.
+        fixed_offset: Optional coefficient-independent prediction offset.
+            ``None`` is normalized to a read-only zero vector.
+        fixed_block: Optional always-active design block with independent
+            arithmetic-moment lognormal coefficient priors.
 
     Raises:
         TypeError: If priors have the wrong type or refer to different tree
@@ -794,6 +804,8 @@ class GammaBetaTreeProblem:
             ``(n_observations, n_tree_nodes)``. Each column is the response
             per unit total in that node, using nominal within-node cell
             proportions.
+        fixed_offset: Read-only coefficient-independent observation-space
+            contribution.
     """
 
     observations: FloatArray
@@ -802,6 +814,8 @@ class GammaBetaTreeProblem:
     prior: GammaBetaTreePrior
     partition_prior: TreePartitionPrior
     likelihood_power: float = 1.0
+    fixed_offset: FloatArray | None = None
+    fixed_block: FixedDesignBlock | None = None
     node_nominal_mass: FloatArray = field(init=False)
     node_design: FloatArray = field(init=False)
 
@@ -830,16 +844,36 @@ class GammaBetaTreeProblem:
         likelihood_power = float(self.likelihood_power)
         if not isfinite(likelihood_power) or likelihood_power < 0.0:
             raise ValueError("likelihood_power must be finite and non-negative.")
+        if self.fixed_offset is None:
+            fixed_offset = np.zeros(observations.shape, dtype=np.float64)
+            fixed_offset.setflags(write=False)
+        else:
+            fixed_offset = _readonly_float_array(self.fixed_offset, name="fixed_offset")
+            if fixed_offset.shape != observations.shape:
+                raise ValueError("fixed_offset must have the same shape as observations.")
+        if self.fixed_block is not None:
+            if not isinstance(self.fixed_block, FixedDesignBlock):
+                raise TypeError("fixed_block must be a FixedDesignBlock or None.")
+            if self.fixed_block.design.shape[0] != observations.size:
+                raise ValueError("fixed block design must have one row per observation.")
 
         nominal = self.prior.nominal_cell_mass
         node_mass = np.empty(len(self.tree.nodes), dtype=np.float64)
         node_design = np.empty((observations.size, len(self.tree.nodes)), dtype=np.float64)
-        for node in self.tree.nodes:
-            indices = list(node.cell_indices)
-            mass = float(nominal[indices].sum())
-            weights = nominal[indices] / mass
+        for node in reversed(self.tree.nodes):
+            if node.is_cell:
+                cell_index = node.cell_indices[0]
+                node_mass[node.node_id] = nominal[cell_index]
+                node_design[:, node.node_id] = sensitivity[:, cell_index]
+                continue
+            first_id, second_id = self.tree.children(node.node_id)
+            first_mass = node_mass[first_id]
+            second_mass = node_mass[second_id]
+            mass = first_mass + second_mass
             node_mass[node.node_id] = mass
-            node_design[:, node.node_id] = sensitivity[:, indices] @ weights
+            node_design[:, node.node_id] = (
+                first_mass * node_design[:, first_id] + second_mass * node_design[:, second_id]
+            ) / mass
         node_mass.setflags(write=False)
         node_design.setflags(write=False)
 
@@ -847,6 +881,7 @@ class GammaBetaTreeProblem:
         object.__setattr__(self, "observation_sd", observation_sd)
         object.__setattr__(self, "sensitivity", sensitivity)
         object.__setattr__(self, "likelihood_power", likelihood_power)
+        object.__setattr__(self, "fixed_offset", fixed_offset)
         object.__setattr__(self, "node_nominal_mass", node_mass)
         object.__setattr__(self, "node_design", node_design)
 
@@ -888,6 +923,16 @@ class GammaBetaTreeProblem:
         """
         return self.node_nominal_mass
 
+    @property
+    def n_fixed_coefficients(self) -> int:
+        """Return the number of always-active fixed coefficients.
+
+        Returns:
+            Zero when no fixed block is configured; otherwise the fixed design
+            column count.
+        """
+        return 0 if self.fixed_block is None else self.fixed_block.n_coefficients
+
 
 @dataclass(frozen=True, slots=True, eq=False)
 class GammaBetaTreeState:
@@ -905,13 +950,20 @@ class GammaBetaTreeState:
             ``frontier.active_split_nodes(problem.tree)``.
         active_node_masses: Read-only propagated masses aligned with
             ``frontier.node_ids``.
-        prediction: Cached observation-space prediction.
+        fixed_coefficients: Read-only positive always-active coefficients, or
+            an empty vector when no fixed block is configured.
+        dynamic_prediction: Cached tree contribution in observation space.
+        fixed_prediction: Cached fixed offset plus always-active block
+            contribution.
+        prediction: Cached total observation-space prediction.
         residual: Cached ``prediction - observations`` residual.
         log_gaussian_likelihood: Raw normalized Gaussian log density.
         log_likelihood: Likelihood-power-scaled target component.
         log_root_prior: Normalized root Gamma log density.
         log_fraction_prior: Sum of normalized active Beta log densities.
         log_partition_prior: Normalized frontier log probability.
+        log_fixed_coefficient_prior: Sum of normalized independent lognormal
+            densities for the always-active coefficients.
     """
 
     problem: GammaBetaTreeProblem
@@ -919,6 +971,9 @@ class GammaBetaTreeState:
     root_total: float
     active_fractions: FloatArray
     active_node_masses: FloatArray
+    fixed_coefficients: FloatArray
+    dynamic_prediction: FloatArray
+    fixed_prediction: FloatArray
     prediction: FloatArray
     residual: FloatArray
     log_gaussian_likelihood: float
@@ -926,6 +981,7 @@ class GammaBetaTreeState:
     log_root_prior: float
     log_fraction_prior: float
     log_partition_prior: float
+    log_fixed_coefficient_prior: float
 
     @property
     def k(self) -> int:
@@ -961,10 +1017,15 @@ class GammaBetaTreeState:
 
         Returns:
             Sum of tempered likelihood, root, active-fraction, and partition
-            log-density components in root-plus-fraction coordinates.
+            log-density components plus the fixed-coefficient prior in
+            root-plus-fraction coordinates.
         """
         return float(
-            self.log_likelihood + self.log_root_prior + self.log_fraction_prior + self.log_partition_prior
+            self.log_likelihood
+            + self.log_root_prior
+            + self.log_fraction_prior
+            + self.log_partition_prior
+            + self.log_fixed_coefficient_prior
         )
 
 
@@ -974,6 +1035,7 @@ def build_gamma_beta_tree_state(
     frontier: DyadicFrontier,
     root_total: float,
     active_fractions: ArrayLike,
+    fixed_coefficients: ArrayLike | None = None,
 ) -> GammaBetaTreeState:
     """Fully rebuild one immutable Gamma--Beta state.
 
@@ -982,6 +1044,10 @@ def build_gamma_beta_tree_state(
         frontier: Exact active frontier on ``problem.tree``.
         root_total: Positive finite total mass.
         active_fractions: Fractions in canonical active-split-node order.
+        fixed_coefficients: Positive coefficients aligned with
+            ``problem.fixed_block``. This argument is required when a fixed
+            block is configured and optional only when there is no fixed
+            block.
 
     Returns:
         Immutable state with propagated masses, prediction, residual, and all
@@ -990,8 +1056,9 @@ def build_gamma_beta_tree_state(
     Raises:
         TypeError: If ``problem`` or ``frontier`` has the wrong type.
         ValueError: If the frontier, root total, fraction shape, or fraction
-            support is invalid, or derived mass/prediction caches violate
-            conservation or finiteness.
+            support is invalid, fixed coefficients do not match the declared
+            block, or derived mass/prediction caches violate conservation or
+            finiteness.
     """
     if not isinstance(problem, GammaBetaTreeProblem):
         raise TypeError("problem must be a GammaBetaTreeProblem.")
@@ -1006,6 +1073,10 @@ def build_gamma_beta_tree_state(
         raise ValueError(f"active_fractions must have shape {expected_shape}.")
     if np.any((fractions <= 0.0) | (fractions >= 1.0)):
         raise ValueError("active_fractions must lie strictly between zero and one.")
+    normalized_fixed_coefficients = _prepare_fixed_coefficients(
+        problem,
+        fixed_coefficients,
+    )
 
     active_masses = _propagate_frontier_masses(
         problem.tree,
@@ -1016,10 +1087,24 @@ def build_gamma_beta_tree_state(
     )
     active_ids = np.asarray(frontier.node_ids, dtype=np.int64)
     with np.errstate(over="ignore", invalid="ignore"):
-        prediction = problem.node_design[:, active_ids] @ active_masses
+        dynamic_prediction = problem.node_design[:, active_ids] @ active_masses
+        fixed_prediction = np.array(problem.fixed_offset, dtype=np.float64, copy=True)
+        if problem.fixed_block is not None:
+            fixed_prediction += problem.fixed_block.design @ normalized_fixed_coefficients
+        prediction = dynamic_prediction + fixed_prediction
         residual = prediction - problem.observations
-    if not np.all(np.isfinite(prediction)) or not np.all(np.isfinite(residual)):
-        raise ValueError("root_total and sensitivity must imply a finite prediction.")
+    if (
+        not np.all(np.isfinite(dynamic_prediction))
+        or not np.all(np.isfinite(fixed_prediction))
+        or not np.all(np.isfinite(prediction))
+        or not np.all(np.isfinite(residual))
+    ):
+        raise ValueError("state coordinates and designs must imply a finite prediction.")
+    dynamic_prediction = _readonly_float_array(
+        dynamic_prediction,
+        name="dynamic_prediction",
+    )
+    fixed_prediction = _readonly_float_array(fixed_prediction, name="fixed_prediction")
     prediction = _readonly_float_array(prediction, name="prediction")
     residual = _readonly_float_array(residual, name="residual")
     standardized = residual / problem.observation_sd
@@ -1039,12 +1124,19 @@ def build_gamma_beta_tree_state(
         )
     )
     log_partition_prior = problem.partition_prior.log_probability(frontier)
+    log_fixed_coefficient_prior = _log_fixed_coefficient_prior(
+        problem,
+        normalized_fixed_coefficients,
+    )
     return GammaBetaTreeState(
         problem=problem,
         frontier=frontier,
         root_total=normalized_root,
         active_fractions=fractions,
         active_node_masses=active_masses,
+        fixed_coefficients=normalized_fixed_coefficients,
+        dynamic_prediction=dynamic_prediction,
+        fixed_prediction=fixed_prediction,
         prediction=prediction,
         residual=residual,
         log_gaussian_likelihood=log_gaussian_likelihood,
@@ -1052,6 +1144,58 @@ def build_gamma_beta_tree_state(
         log_root_prior=log_root_prior,
         log_fraction_prior=log_fraction_prior,
         log_partition_prior=log_partition_prior,
+        log_fixed_coefficient_prior=log_fixed_coefficient_prior,
+    )
+
+
+def _prepare_fixed_coefficients(
+    problem: GammaBetaTreeProblem,
+    fixed_coefficients: ArrayLike | None,
+) -> FloatArray:
+    """Validate and own the optional always-active coefficient vector."""
+    if problem.fixed_block is None:
+        if fixed_coefficients is None:
+            result = np.empty(0, dtype=np.float64)
+            result.setflags(write=False)
+            return result
+        result = _readonly_float_array(fixed_coefficients, name="fixed_coefficients")
+        if result.shape != (0,):
+            raise ValueError("fixed_coefficients require a configured fixed_block.")
+        return result
+    if fixed_coefficients is None:
+        raise ValueError("fixed_coefficients are required when fixed_block is configured.")
+    result = _readonly_float_array(fixed_coefficients, name="fixed_coefficients")
+    expected_shape = (problem.fixed_block.n_coefficients,)
+    if result.shape != expected_shape:
+        raise ValueError(f"fixed_coefficients must have shape {expected_shape}.")
+    if np.any(result <= 0.0):
+        raise ValueError("fixed_coefficients must be strictly positive.")
+    return result
+
+
+def _log_fixed_coefficient_prior(
+    problem: GammaBetaTreeProblem,
+    fixed_coefficients: FloatArray,
+) -> float:
+    """Return the normalized independent fixed-coefficient prior component."""
+    if problem.fixed_block is None:
+        return 0.0
+    return float(
+        sum(
+            lognormal_coefficient_log_prior_numpy(
+                fixed_coefficients[position : position + 1],
+                1,
+                float(mean),
+                float(standard_deviation),
+            )
+            for position, (mean, standard_deviation) in enumerate(
+                zip(
+                    problem.fixed_block.coefficient_prior_mean,
+                    problem.fixed_block.coefficient_prior_sd,
+                    strict=True,
+                )
+            )
+        )
     )
 
 

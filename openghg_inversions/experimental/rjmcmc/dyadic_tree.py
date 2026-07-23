@@ -273,7 +273,7 @@ class CanonicalDyadicTree:
         """
         _require_frontier(frontier)
         frontier.validate(self)
-        return tuple(node_id for node_id in frontier.node_ids if self.children(node_id))
+        return tuple(node_id for node_id in frontier.node_ids if self.nodes[node_id].child_ids)
 
     def mergeable_parents(self, frontier: DyadicFrontier) -> tuple[NodeId, ...]:
         """Return parents whose two children are active frontier leaves.
@@ -291,11 +291,13 @@ class CanonicalDyadicTree:
         _require_frontier(frontier)
         frontier.validate(self)
         active = frozenset(frontier.node_ids)
-        return tuple(
+        candidates = {
             parent_id
-            for parent_id in self.internal_node_ids
-            if all(child_id in active for child_id in self.children(parent_id))
-        )
+            for node_id in frontier.node_ids
+            if (parent_id := self.nodes[node_id].parent_id) is not None
+            and all(child_id in active for child_id in self.nodes[parent_id].child_ids)
+        }
+        return tuple(sorted(candidates))
 
     def _node_index(self, node_id: NodeId) -> int:
         """Return a checked tuple index for one candidate node ID.
@@ -393,27 +395,31 @@ class DyadicFrontier:
         if not self.node_ids:
             raise ValueError("A dyadic frontier must contain at least one node.")
         active = frozenset(self.node_ids)
-        for node_id in self.node_ids:
-            try:
-                tree.node(node_id)
-            except KeyError as error:
-                raise ValueError(f"Frontier node ID {node_id!r} is not in the tree.") from error
-
-            parent_id = tree.parent(node_id)
-            while parent_id is not None:
-                if parent_id in active:
-                    raise ValueError("A dyadic frontier cannot contain an ancestor and its descendant.")
-                parent_id = tree.parent(parent_id)
 
         pending = [tree.root_id]
+        reached_active: set[NodeId] = set()
+        has_coverage_gap = False
         while pending:
             node_id = pending.pop()
             if node_id in active:
+                reached_active.add(node_id)
                 continue
-            child_ids = tree.children(node_id)
+            child_ids = tree.nodes[node_id].child_ids
             if not child_ids:
-                raise ValueError("Dyadic frontier nodes do not exactly cover the tree root.")
+                has_coverage_gap = True
+                continue
             pending.extend(child_ids)
+
+        # Preserve the original sorted-ID error precedence while avoiding one
+        # ancestor walk per active node. Valid IDs not reached by the root
+        # traversal are necessarily hidden below another active node.
+        for node_id in self.node_ids:
+            if node_id < 0 or node_id >= len(tree.nodes):
+                raise ValueError(f"Frontier node ID {node_id!r} is not in the tree.")
+            if node_id not in reached_active:
+                raise ValueError("A dyadic frontier cannot contain an ancestor and its descendant.")
+        if has_coverage_gap:
+            raise ValueError("Dyadic frontier nodes do not exactly cover the tree root.")
 
     def active_split_nodes(self, tree: CanonicalDyadicTree) -> tuple[NodeId, ...]:
         """Return internal nodes split to produce this exact frontier.
@@ -437,7 +443,7 @@ class DyadicFrontier:
             if node_id in active:
                 continue
             split_nodes.append(node_id)
-            pending.extend(reversed(tree.children(node_id)))
+            pending.extend(reversed(tree.nodes[node_id].child_ids))
         return tuple(split_nodes)
 
     def split(self, tree: CanonicalDyadicTree, node_id: NodeId) -> DyadicFrontier:

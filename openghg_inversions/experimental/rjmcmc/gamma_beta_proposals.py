@@ -15,10 +15,11 @@ retain the normalized prior densities even though those terms cancel the
 matching target-prior changes in the Metropolis--Hastings ratio.
 
 The main entry points are :func:`propose_split`, :func:`propose_merge`,
-:func:`propose_root_refresh`, and :func:`propose_fraction_refresh`; each
-returns immutable :class:`GammaBetaTransitionTerms`. :func:`accept_or_reject`
-applies an explicitly supplied log-uniform draw. Kernels never mutate their
-source state, and invalid proposals retain that exact source object.
+:func:`propose_root_refresh`, :func:`propose_fraction_refresh`, and
+:func:`propose_fixed_coefficient`; each returns immutable
+:class:`GammaBetaTransitionTerms`. :func:`accept_or_reject` applies an
+explicitly supplied log-uniform draw. Kernels never mutate their source state,
+and invalid proposals retain that exact source object.
 """
 
 from __future__ import annotations
@@ -38,7 +39,13 @@ from .gamma_beta_tree import (
 )
 
 
-GammaBetaMove = Literal["split", "merge", "root_refresh", "fraction_refresh"]
+GammaBetaMove = Literal[
+    "split",
+    "merge",
+    "root_refresh",
+    "fraction_refresh",
+    "fixed_coefficient",
+]
 """Literal name of a supported Gamma--Beta proposal move."""
 
 
@@ -57,6 +64,8 @@ class GammaBetaTransitionTerms:
             active-fraction Beta log densities.
         delta_log_partition_prior: Candidate-minus-source normalized frontier
             log probability.
+        delta_log_fixed_coefficient_prior: Candidate-minus-source normalized
+            fixed-block coefficient log-prior density.
         log_q_forward_direction: Log probability of selecting the forward move
             direction. Fixed-dimensional refreshes use zero.
         log_q_forward_selection: Log probability of selecting the forward
@@ -74,12 +83,14 @@ class GammaBetaTransitionTerms:
         move: Stable kernel name.
         node_id: Selected structural or active-split node, a negative sentinel
             for an unavailable structural direction, or ``None`` for a root
-            refresh.
+            or fixed-coefficient refresh.
+        coefficient_id: Selected fixed-block coefficient position, or
+            ``None`` for every other kernel.
         valid: Whether the proposal is eligible for Metropolis--Hastings
             acceptance.
         reason: Explanation for an invalid self-transition, otherwise
             ``None``.
-        log_target_delta: Sum of the four target-component changes.
+        log_target_delta: Sum of the five target-component changes.
         log_q_forward: Sum of the three forward proposal components.
         log_q_reverse: Sum of the three reverse proposal components.
         log_acceptance_ratio: Complete untruncated log
@@ -107,6 +118,8 @@ class GammaBetaTransitionTerms:
     node_id: int | None
     valid: bool = True
     reason: str | None = None
+    delta_log_fixed_coefficient_prior: float = 0.0
+    coefficient_id: int | None = None
     log_target_delta: float = field(init=False)
     log_q_forward: float = field(init=False)
     log_q_reverse: float = field(init=False)
@@ -115,10 +128,11 @@ class GammaBetaTransitionTerms:
     def __post_init__(self) -> None:
         """Validate metadata and calculate all aggregate log terms.
 
-        Scalar components are normalized to Python floats and ``node_id`` is
-        normalized to an integer. The aggregate target, forward proposal,
-        reverse proposal, and acceptance-ratio fields are then assigned on the
-        otherwise frozen instance.
+        Scalar components are normalized to Python floats. ``node_id`` and
+        ``coefficient_id`` are normalized to integers when present. The
+        aggregate target, forward proposal, reverse proposal, and
+        acceptance-ratio fields are then assigned on the otherwise frozen
+        instance.
 
         Raises:
             TypeError: If candidate, node, or validity metadata have the wrong
@@ -128,7 +142,13 @@ class GammaBetaTransitionTerms:
         """
         if not isinstance(self.candidate, GammaBetaTreeState):
             raise TypeError("candidate must be a GammaBetaTreeState.")
-        if self.move not in ("split", "merge", "root_refresh", "fraction_refresh"):
+        if self.move not in (
+            "split",
+            "merge",
+            "root_refresh",
+            "fraction_refresh",
+            "fixed_coefficient",
+        ):
             raise ValueError("move must name a Gamma--Beta proposal kernel.")
         if self.node_id is not None:
             if isinstance(self.node_id, bool) or not isinstance(self.node_id, Integral):
@@ -136,6 +156,18 @@ class GammaBetaTransitionTerms:
             object.__setattr__(self, "node_id", int(self.node_id))
         if self.move == "root_refresh" and self.node_id is not None:
             raise ValueError("a root refresh cannot select a node.")
+        if self.coefficient_id is not None:
+            if isinstance(self.coefficient_id, bool) or not isinstance(
+                self.coefficient_id,
+                Integral,
+            ):
+                raise TypeError("coefficient_id must be an integer or None.")
+            object.__setattr__(self, "coefficient_id", int(self.coefficient_id))
+        if self.move == "fixed_coefficient":
+            if self.node_id is not None or self.coefficient_id is None:
+                raise ValueError("a fixed-coefficient refresh must select only a coefficient.")
+        elif self.coefficient_id is not None:
+            raise ValueError("only a fixed-coefficient refresh can select a coefficient.")
         if not isinstance(self.valid, bool):
             raise TypeError("valid must be a Boolean.")
         if self.valid and self.reason is not None:
@@ -148,6 +180,7 @@ class GammaBetaTransitionTerms:
             float(self.delta_log_root_prior),
             float(self.delta_log_fraction_prior),
             float(self.delta_log_partition_prior),
+            float(self.delta_log_fixed_coefficient_prior),
         )
         forward_components = (
             float(self.log_q_forward_direction),
@@ -169,6 +202,7 @@ class GammaBetaTransitionTerms:
             "delta_log_root_prior",
             "delta_log_fraction_prior",
             "delta_log_partition_prior",
+            "delta_log_fixed_coefficient_prior",
             "log_q_forward_direction",
             "log_q_forward_selection",
             "log_q_forward_auxiliary",
@@ -299,6 +333,47 @@ def _positive_value(value: float) -> float | None:
     return result if math.isfinite(result) and result > 0.0 else None
 
 
+def _positive_scale(value: float, *, name: str) -> float:
+    """Return a finite positive proposal scale.
+
+    Args:
+        value: Candidate scalar.
+        name: Public argument name used in validation errors.
+
+    Returns:
+        Normalized Python float.
+
+    Raises:
+        TypeError: If ``value`` is Boolean.
+        ValueError: If conversion fails or the value is not finite and
+            strictly positive.
+    """
+    if isinstance(value, bool):
+        raise TypeError(f"{name} must be a real number.")
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be finite and positive.") from exc
+    if not math.isfinite(result) or result <= 0.0:
+        raise ValueError(f"{name} must be finite and positive.")
+    return result
+
+
+def _normal_log_density(value: float, *, mean: float, stdev: float) -> float:
+    """Return a normalized univariate Gaussian log density.
+
+    Args:
+        value: Point at which to evaluate the density.
+        mean: Gaussian mean.
+        stdev: Positive Gaussian standard deviation, validated by the caller.
+
+    Returns:
+        Natural logarithm of the normalized Gaussian density.
+    """
+    standardized = (value - mean) / stdev
+    return float(-0.5 * standardized * standardized - math.log(stdev) - 0.5 * math.log(2.0 * math.pi))
+
+
 def _active_fraction_mapping(
     problem: GammaBetaTreeProblem,
     state: GammaBetaTreeState,
@@ -348,6 +423,7 @@ def _invalid_transition(
     *,
     move: GammaBetaMove,
     node_id: int | None,
+    coefficient_id: int | None = None,
     reason: str,
 ) -> GammaBetaTransitionTerms:
     """Construct a rejected-by-definition self-transition.
@@ -356,6 +432,7 @@ def _invalid_transition(
         state: Source state retained by identity as the candidate.
         move: Attempted kernel name.
         node_id: Attempted node or sentinel.
+        coefficient_id: Attempted fixed-block coefficient position.
         reason: Non-empty invalidity explanation.
 
     Returns:
@@ -368,6 +445,7 @@ def _invalid_transition(
         delta_log_root_prior=0.0,
         delta_log_fraction_prior=0.0,
         delta_log_partition_prior=0.0,
+        delta_log_fixed_coefficient_prior=0.0,
         log_q_forward_direction=0.0,
         log_q_forward_selection=0.0,
         log_q_forward_auxiliary=0.0,
@@ -377,6 +455,7 @@ def _invalid_transition(
         log_jacobian=0.0,
         move=move,
         node_id=node_id,
+        coefficient_id=coefficient_id,
         valid=False,
         reason=reason,
     )
@@ -388,6 +467,7 @@ def _valid_transition(
     *,
     move: GammaBetaMove,
     node_id: int | None,
+    coefficient_id: int | None = None,
     log_q_forward_direction: float = 0.0,
     log_q_forward_selection: float = 0.0,
     log_q_forward_auxiliary: float = 0.0,
@@ -402,6 +482,7 @@ def _valid_transition(
         candidate: Fully rebuilt candidate state.
         move: Proposal kernel name.
         node_id: Selected structural or active-fraction node.
+        coefficient_id: Selected fixed-block coefficient position.
         log_q_forward_direction: Forward direction log probability.
         log_q_forward_selection: Forward node-selection log probability.
         log_q_forward_auxiliary: Forward independent-prior log density.
@@ -420,6 +501,9 @@ def _valid_transition(
         delta_log_root_prior=candidate.log_root_prior - source.log_root_prior,
         delta_log_fraction_prior=candidate.log_fraction_prior - source.log_fraction_prior,
         delta_log_partition_prior=candidate.log_partition_prior - source.log_partition_prior,
+        delta_log_fixed_coefficient_prior=(
+            candidate.log_fixed_coefficient_prior - source.log_fixed_coefficient_prior
+        ),
         log_q_forward_direction=log_q_forward_direction,
         log_q_forward_selection=log_q_forward_selection,
         log_q_forward_auxiliary=log_q_forward_auxiliary,
@@ -429,6 +513,7 @@ def _valid_transition(
         log_jacobian=0.0,
         move=move,
         node_id=node_id,
+        coefficient_id=coefficient_id,
     )
 
 
@@ -500,6 +585,7 @@ def propose_split(
             candidate_frontier,
             fractions_by_node,
         ),
+        fixed_coefficients=state.fixed_coefficients,
     )
     reverse_candidates = problem.tree.mergeable_parents(candidate.frontier)
     log_beta_density = problem.prior.log_fraction_density(selected_node_id, fraction)
@@ -574,6 +660,7 @@ def propose_merge(
             candidate_frontier,
             fractions_by_node,
         ),
+        fixed_coefficients=state.fixed_coefficients,
     )
     reverse_candidates = problem.tree.splittable_nodes(candidate.frontier)
     log_beta_density = problem.prior.log_fraction_density(
@@ -628,6 +715,7 @@ def propose_root_refresh(
         frontier=state.frontier,
         root_total=root_total,
         active_fractions=state.active_fractions,
+        fixed_coefficients=state.fixed_coefficients,
     )
     return _valid_transition(
         state,
@@ -702,6 +790,7 @@ def propose_fraction_refresh(
             state.frontier,
             fractions_by_node,
         ),
+        fixed_coefficients=state.fixed_coefficients,
     )
     log_selection = -math.log(len(active_node_ids))
     return _valid_transition(
@@ -718,6 +807,92 @@ def propose_fraction_refresh(
         log_q_reverse_auxiliary=problem.prior.log_fraction_density(
             selected_node_id,
             old_fraction,
+        ),
+    )
+
+
+def propose_fixed_coefficient(
+    problem: GammaBetaTreeProblem,
+    state: GammaBetaTreeState,
+    *,
+    coefficient_position: int,
+    proposed_coefficient: float,
+    proposal_stdev: float,
+) -> GammaBetaTransitionTerms:
+    """Propose one deterministic-position fixed coefficient by Gaussian walk.
+
+    The caller supplies the position because the compound schedule visits each
+    configured fixed coefficient exactly once per cycle. The untruncated
+    Gaussian proposal is symmetric, but both normalized directional densities
+    are retained in the transition decomposition for auditability. A draw
+    outside the positive coefficient support is an explicit invalid
+    self-transition.
+
+    Args:
+        problem: Fixed-tree Gamma--Beta problem.
+        state: Source active-frontier state.
+        coefficient_position: Zero-based deterministic fixed-block position.
+        proposed_coefficient: Explicit Gaussian random-walk proposal.
+        proposal_stdev: Finite positive Gaussian standard deviation.
+
+    Returns:
+        Immutable fixed-dimensional proposal accounting.
+
+    Raises:
+        TypeError: If problem, state, position, or scale has the wrong type.
+        ValueError: If the problem/state pairing or proposal scale is invalid.
+    """
+    _validate_problem_state(problem, state)
+    scale = _positive_scale(proposal_stdev, name="proposal_stdev")
+    if isinstance(coefficient_position, bool) or not isinstance(
+        coefficient_position,
+        Integral,
+    ):
+        raise TypeError("coefficient_position must be an integer.")
+    position = int(coefficient_position)
+    if position < 0 or position >= state.fixed_coefficients.size:
+        return _invalid_transition(
+            state,
+            move="fixed_coefficient",
+            node_id=None,
+            coefficient_id=position,
+            reason="coefficient_position must select a configured fixed coefficient",
+        )
+    value = _positive_value(proposed_coefficient)
+    if value is None:
+        return _invalid_transition(
+            state,
+            move="fixed_coefficient",
+            node_id=None,
+            coefficient_id=position,
+            reason="proposed_coefficient must be finite and positive",
+        )
+
+    current = float(state.fixed_coefficients[position])
+    fixed_coefficients = np.array(state.fixed_coefficients, copy=True)
+    fixed_coefficients[position] = value
+    candidate = build_gamma_beta_tree_state(
+        problem,
+        frontier=state.frontier,
+        root_total=state.root_total,
+        active_fractions=state.active_fractions,
+        fixed_coefficients=fixed_coefficients,
+    )
+    return _valid_transition(
+        state,
+        candidate,
+        move="fixed_coefficient",
+        node_id=None,
+        coefficient_id=position,
+        log_q_forward_auxiliary=_normal_log_density(
+            value,
+            mean=current,
+            stdev=scale,
+        ),
+        log_q_reverse_auxiliary=_normal_log_density(
+            current,
+            mean=value,
+            stdev=scale,
         ),
     )
 
@@ -764,6 +939,7 @@ __all__ = [
     "GammaBetaTransitionTerms",
     "accept_or_reject",
     "propose_fraction_refresh",
+    "propose_fixed_coefficient",
     "propose_merge",
     "propose_root_refresh",
     "propose_split",

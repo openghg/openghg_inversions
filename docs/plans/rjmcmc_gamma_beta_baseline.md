@@ -209,3 +209,84 @@ pass exact checks.
 - Verified 48 focused topology/state/proposal/sampler tests, the full
   experimental RJMCMC suite (570 passed, 2 deselected), Ruff, Pyright, and the
   complete parallel tox compatibility matrix.
+
+## Real-data readiness phase
+
+### Target profile
+
+The first real-data smoke will use the frozen native PARIS-style input seam,
+not ordinary reduced-basis `prepare_rhime_inputs` output. The verified dynamic
+rectangle is the filled InTEM label-6 slice with shape \(183\times128\)
+(23,424 cells), flattened in C order with longitude varying fastest.
+
+The fair comparison profile predicts
+
+\[
+y_{\mathrm{pred}} =
+y_{\mathrm{BC,fixed}}
++y_{\mathrm{inner,Gamma\text{-}Beta}}
++H_{\mathrm{outer}}x_{\mathrm{outer}},
+\]
+
+where the row-aligned archived `YaprioriBC` remains an explicitly selected
+fixed offset and the six InTEM outer-region scalings are inferred with
+declared lognormal priors. No boundary field is discovered implicitly.
+
+The inner adapter requires an explicitly supplied strictly positive nominal
+weight field \(w\). With normalized weights \(\sum_jw_j=1\), it passes
+\(S_j=G_j/w_j\), sets the root prior/start around one, and exactly recovers the
+all-one inner prediction at the unresolved root. Zero inventory cells are
+never silently floored: flux-derived weights with zeros must fail until a
+scientific masking/floor policy is chosen. Uniform-cell or area weights are
+valid explicit alternative models, not hidden numerical fallbacks.
+
+### Compound schedule
+
+The structural-only sampler remains the correctness/mobility oracle. A
+separate posterior sampler uses a deterministic cycle whose individual slots
+are each invariant:
+
+1. two internally mixed split/merge opportunities;
+2. one independent-prior Gamma root refresh;
+3. five independent-prior active-fraction refreshes, with node selection
+   uniformly with replacement; and
+4. one symmetric Gaussian update for each fixed outer coefficient.
+
+For six outer coefficients this is a 14-transition cycle matching the current
+opportunity accounting. Unlike the invalid historical deterministic
+one-way structural cycle, each structural slot internally mixes both
+directions. Impossible structural directions and fraction slots at \(K=1\)
+remain explicit self-transitions.
+
+Independent-prior root/fraction refreshes are tuning-free and establish a
+correct irreducible baseline on connected positive \(p(K)\) support. Their
+acceptance may be poor under the PARIS likelihood. Log-root and logit-fraction
+random walks remain swappable follow-ups only after the smoke test measures
+acceptance.
+
+### Readiness gates
+
+Before launching the real-data smoke:
+
+1. cross-check the active target against the archived product-space formulas,
+   including the root scaling-to-mass coordinate Jacobian and marginalization
+   of inactive Beta coordinates;
+2. add fixed offset and inferred outer coefficients to the state and target;
+3. verify the full 14-slot compound schedule, every kernel, and exact restart
+   across a mid-cycle boundary;
+4. reject disconnected or zero-mass structural starts;
+5. optimize frontier validation and mergeable-parent discovery without
+   changing enumerated topology;
+6. verify direct RHIME closure
+   \(Gx=S(w\odot x)\), plus boundary and outer terms;
+7. persist a strict durable checkpoint, canonical run manifest, and labelled
+   trace suitable for segmented Slurm runs;
+8. benchmark setup and 100--1,000 cycles at representative \(K\), recording
+   per-kernel acceptance and throughput; and
+9. retain the full NumPy state rebuild as the correctness oracle for later
+   incremental prediction updates.
+
+The initial HPC run is a wiring and acceptance/profile smoke, not a production
+convergence run. Numba, incremental candidate predictions, alternative split
+directions, correlated errors, and long posterior chains follow only after
+these diagnostics.
