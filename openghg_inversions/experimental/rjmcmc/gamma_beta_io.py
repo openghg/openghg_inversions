@@ -49,11 +49,11 @@ PathLike: TypeAlias = str | os.PathLike[str]
 RunManifest: TypeAlias = Mapping[str, object]
 
 GAMMA_BETA_CHECKPOINT_SCHEMA_ID = "openghg_inversions.experimental.rjmcmc.gamma_beta_checkpoint"
-GAMMA_BETA_CHECKPOINT_SCHEMA_VERSION = 1
+GAMMA_BETA_CHECKPOINT_SCHEMA_VERSION = 2
 GAMMA_BETA_MANIFEST_SCHEMA_ID = "openghg_inversions.experimental.rjmcmc.gamma_beta_run"
-GAMMA_BETA_MANIFEST_SCHEMA_VERSION = 2
+GAMMA_BETA_MANIFEST_SCHEMA_VERSION = 3
 GAMMA_BETA_TRACE_SCHEMA_ID = "openghg_inversions.experimental.rjmcmc.gamma_beta_trace"
-GAMMA_BETA_TRACE_SCHEMA_VERSION = 1
+GAMMA_BETA_TRACE_SCHEMA_VERSION = 2
 
 _STATE_ARRAY_NAMES = ("frontier_node_ids", "active_fractions", "fixed_coefficients")
 _ARCHIVE_NAMES = frozenset((*_STATE_ARRAY_NAMES, "metadata", "metadata_sha256"))
@@ -390,6 +390,9 @@ def _schedule_manifest(settings: GammaBetaCompoundKernelSettings) -> dict[str, o
         "id": GAMMA_BETA_COMPOUND_SCHEDULE_ID,
         "split_direction_probability": settings.split_direction_probability,
         "fraction_refresh_slots": settings.fraction_refresh_slots,
+        "relocation_slots": settings.relocation_slots,
+        "subtree_retile_slots": settings.subtree_retile_slots,
+        "max_subtree_leaves": settings.max_subtree_leaves,
         "fixed_coefficient_proposal_sd": list(settings.fixed_coefficient_proposal_sd),
         "cycle_length": settings.cycle_length,
     }
@@ -799,6 +802,9 @@ def _checkpoint_metadata(
         "kernel": {
             "split_direction_probability": settings.split_direction_probability,
             "fraction_refresh_slots": settings.fraction_refresh_slots,
+            "relocation_slots": settings.relocation_slots,
+            "subtree_retile_slots": settings.subtree_retile_slots,
+            "max_subtree_leaves": settings.max_subtree_leaves,
             "fixed_coefficient_proposal_sd": list(settings.fixed_coefficient_proposal_sd),
         },
         "retention": _retention_manifest(checkpoint.retention),
@@ -1153,6 +1159,9 @@ def load_gamma_beta_checkpoint(
             (
                 "split_direction_probability",
                 "fraction_refresh_slots",
+                "relocation_slots",
+                "subtree_retile_slots",
+                "max_subtree_leaves",
                 "fixed_coefficient_proposal_sd",
             )
         ),
@@ -1169,6 +1178,19 @@ def load_gamma_beta_checkpoint(
         fraction_refresh_slots=_integer(
             kernel["fraction_refresh_slots"],
             location="kernel.fraction_refresh_slots",
+        ),
+        relocation_slots=_integer(
+            kernel["relocation_slots"],
+            location="kernel.relocation_slots",
+        ),
+        subtree_retile_slots=_integer(
+            kernel["subtree_retile_slots"],
+            location="kernel.subtree_retile_slots",
+        ),
+        max_subtree_leaves=_integer(
+            kernel["max_subtree_leaves"],
+            location="kernel.max_subtree_leaves",
+            minimum=1,
         ),
         fixed_coefficient_proposal_sd=tuple(
             _finite_float(value, location="kernel.fixed_coefficient_proposal_sd", positive=True)
@@ -1462,6 +1484,8 @@ def gamma_beta_compound_trace_to_dataset(
             "valid": ("attempt", trace.valid),
             "accepted": ("attempt", trace.accepted),
             "node_id": ("attempt", trace.node_id),
+            "secondary_node_id": ("attempt", trace.secondary_node_id),
+            "block_leaf_count": ("attempt", trace.block_leaf_count),
             "coefficient_id": ("attempt", trace.coefficient_id),
             "k_before": ("attempt", trace.k_before),
             "k_after": ("attempt", trace.k_after),
@@ -1540,8 +1564,21 @@ def gamma_beta_compound_trace_to_dataset(
     )
     dataset["node_id"].attrs.update(
         {
-            "long_name": "proposal tree node identifier",
+            "long_name": "primary proposal tree node or subtree-block identifier",
             "not_applicable_sentinel": -1,
+        }
+    )
+    dataset["secondary_node_id"].attrs.update(
+        {
+            "long_name": "relocation destination split-node identifier",
+            "not_applicable_sentinel": -1,
+        }
+    )
+    dataset["block_leaf_count"].attrs.update(
+        {
+            "long_name": "active region count inside a subtree-retile block",
+            "not_applicable_sentinel": -1,
+            "units": "active_regions",
         }
     )
     dataset["coefficient_id"].attrs.update(

@@ -25,7 +25,10 @@ from openghg_inversions.experimental.rjmcmc.gamma_beta_compound_sampling import 
     sample_gamma_beta_compound,
 )
 from openghg_inversions.experimental.rjmcmc.gamma_beta_io import (
+    GAMMA_BETA_CHECKPOINT_SCHEMA_VERSION,
+    GAMMA_BETA_MANIFEST_SCHEMA_VERSION,
     GAMMA_BETA_TRACE_SCHEMA_ID,
+    GAMMA_BETA_TRACE_SCHEMA_VERSION,
     build_gamma_beta_run_manifest,
     canonical_gamma_beta_run_manifest,
     gamma_beta_compound_trace_to_dataset,
@@ -174,6 +177,8 @@ def _assert_traces_equal(
         "valid",
         "accepted",
         "node_id",
+        "secondary_node_id",
+        "block_leaf_count",
         "coefficient_id",
         "k_before",
         "k_after",
@@ -229,6 +234,9 @@ def test_checkpoint_round_trip_preserves_exact_continuation(tmp_path: Path) -> N
         GammaBetaCompoundConfig(
             iterations=19,
             seed=481,
+            relocation_slots=2,
+            subtree_retile_slots=1,
+            max_subtree_leaves=3,
             fixed_coefficient_proposal_sd=(0.3, 0.6),
         ),
         retention=retention,
@@ -253,12 +261,25 @@ def test_checkpoint_round_trip_preserves_exact_continuation(tmp_path: Path) -> N
     assert loaded.problem is reconstructed_problem
     assert loaded.rng_state == first.checkpoint.rng_state
     assert loaded.kernel_settings == first.checkpoint.kernel_settings
+    assert loaded.kernel_settings.relocation_slots == 2
+    assert loaded.kernel_settings.subtree_retile_slots == 1
+    assert loaded.kernel_settings.max_subtree_leaves == 3
     assert loaded.retention == first.checkpoint.retention
     _assert_states_equal(loaded.state, first.checkpoint.state)
     _assert_states_equal(restored.final_state, direct.final_state)
     _assert_traces_equal(restored.trace, direct.trace)
     with np.load(path, allow_pickle=False) as archive:
         assert all(archive[name].dtype != np.dtype(object) for name in archive.files)
+        checkpoint_metadata = json.loads(archive["metadata"].tobytes().decode("utf-8"))
+    assert checkpoint_metadata["schema_version"] == GAMMA_BETA_CHECKPOINT_SCHEMA_VERSION
+    assert checkpoint_metadata["kernel"]["relocation_slots"] == 2
+    assert checkpoint_metadata["kernel"]["subtree_retile_slots"] == 1
+    assert checkpoint_metadata["kernel"]["max_subtree_leaves"] == 3
+    assert manifest["schema_version"] == GAMMA_BETA_MANIFEST_SCHEMA_VERSION
+    schedule = cast(dict[str, Any], manifest["schedule"])
+    assert schedule["relocation_slots"] == 2
+    assert schedule["subtree_retile_slots"] == 1
+    assert schedule["max_subtree_leaves"] == 3
 
 
 def test_manifest_binds_chain_and_initial_coordinates(tmp_path: Path) -> None:
@@ -398,7 +419,7 @@ def test_checkpoint_rejects_tampered_arrays_problem_and_manifest(tmp_path: Path)
 
     def alter_settings(metadata: dict[str, Any]) -> None:
         """Change a checksummed kernel setting but not the manifest."""
-        metadata["kernel"]["split_direction_probability"] = 0.4
+        metadata["kernel"]["max_subtree_leaves"] = 2
 
     _rewrite_metadata(settings_path, alter_settings)
     with pytest.raises(ValueError, match="manifest schedule"):
@@ -406,6 +427,53 @@ def test_checkpoint_rejects_tampered_arrays_problem_and_manifest(tmp_path: Path)
             settings_path,
             _problem(),
             expected_run_manifest=manifest,
+        )
+
+    missing_path = tmp_path / "missing-setting.npz"
+    save_gamma_beta_checkpoint(
+        missing_path,
+        result.checkpoint,
+        run_manifest=manifest,
+    )
+
+    def remove_new_setting(metadata: dict[str, Any]) -> None:
+        """Remove one v2 kernel field from otherwise checksummed metadata."""
+        del metadata["kernel"]["relocation_slots"]
+
+    _rewrite_metadata(missing_path, remove_new_setting)
+    with pytest.raises(ValueError, match="kernel has an invalid field set"):
+        load_gamma_beta_checkpoint(
+            missing_path,
+            _problem(),
+            expected_run_manifest=manifest,
+        )
+
+    old_checkpoint_path = tmp_path / "old-checkpoint.npz"
+    save_gamma_beta_checkpoint(
+        old_checkpoint_path,
+        result.checkpoint,
+        run_manifest=manifest,
+    )
+
+    def downgrade_checkpoint(metadata: dict[str, Any]) -> None:
+        """Present a checksum-valid but unsupported v1 checkpoint."""
+        metadata["schema_version"] = 1
+
+    _rewrite_metadata(old_checkpoint_path, downgrade_checkpoint)
+    with pytest.raises(ValueError, match="checkpoint schema is incompatible"):
+        load_gamma_beta_checkpoint(
+            old_checkpoint_path,
+            _problem(),
+            expected_run_manifest=manifest,
+        )
+
+    old_manifest = dict(manifest)
+    old_manifest["schema_version"] = 2
+    with pytest.raises(ValueError, match="run_manifest schema is incompatible"):
+        save_gamma_beta_checkpoint(
+            tmp_path / "old-manifest.npz",
+            result.checkpoint,
+            run_manifest=old_manifest,
         )
 
 
@@ -472,6 +540,7 @@ def test_trace_dataset_has_padded_states_and_attempt_diagnostics(tmp_path: Path)
     )
 
     assert dataset.attrs["schema_id"] == GAMMA_BETA_TRACE_SCHEMA_ID
+    assert dataset.attrs["schema_version"] == GAMMA_BETA_TRACE_SCHEMA_VERSION
     assert dataset.attrs["chain"] == 2
     assert dataset.sizes["draw"] == len(result.trace.frontiers)
     assert dataset.sizes["attempt"] == 37
@@ -528,6 +597,8 @@ def test_trace_dataset_has_padded_states_and_attempt_diagnostics(tmp_path: Path)
         "valid",
         "accepted",
         "node_id",
+        "secondary_node_id",
+        "block_leaf_count",
         "coefficient_id",
         "k_before",
         "k_after",
@@ -538,6 +609,9 @@ def test_trace_dataset_has_padded_states_and_attempt_diagnostics(tmp_path: Path)
     assert dataset["split_fraction"].attrs["mask"] == "split_active"
     assert dataset["log_likelihood"].attrs["likelihood_power_applied"] == 0.25
     assert dataset["node_parent_id"].attrs["absent_sentinel"] == -1
+    assert dataset["secondary_node_id"].attrs["not_applicable_sentinel"] == -1
+    assert dataset["block_leaf_count"].attrs["not_applicable_sentinel"] == -1
+    assert dataset["block_leaf_count"].attrs["units"] == "active_regions"
 
     output = tmp_path / "trace.nc"
     dataset.to_netcdf(output, engine="h5netcdf")
@@ -550,6 +624,14 @@ def test_trace_dataset_has_padded_states_and_attempt_diagnostics(tmp_path: Path)
         ["outer-west", "outer-east"],
     )
     np.testing.assert_array_equal(loaded["node_parent_id"], dataset["node_parent_id"])
+    np.testing.assert_array_equal(
+        loaded["secondary_node_id"],
+        result.trace.secondary_node_id,
+    )
+    np.testing.assert_array_equal(
+        loaded["block_leaf_count"],
+        result.trace.block_leaf_count,
+    )
     assert loaded["log_likelihood"].attrs["likelihood_power_applied"] == 0.25
 
 
@@ -608,3 +690,13 @@ def test_trace_dataset_supports_zero_retained_draws() -> None:
     assert dataset["frontier_node_id"].shape == (0, 0)
     assert dataset["split_node_id"].shape == (0, 0)
     assert dataset["split_fraction"].shape == (0, 0)
+    assert dataset["secondary_node_id"].shape == (7,)
+    assert dataset["block_leaf_count"].shape == (7,)
+    np.testing.assert_array_equal(
+        dataset["secondary_node_id"],
+        result.trace.secondary_node_id,
+    )
+    np.testing.assert_array_equal(
+        dataset["block_leaf_count"],
+        result.trace.block_leaf_count,
+    )
