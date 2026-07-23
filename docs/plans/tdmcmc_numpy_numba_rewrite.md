@@ -12,6 +12,14 @@ model, equations, reproduction profiles, and known inconsistencies are recorded
 in [tdmcmc_lunt2016_background.md](tdmcmc_lunt2016_background.md). Current RHIME
 is retained as a distinct secondary integration profile.
 
+The diagnosis of slow spatial-dimension mixing and the proposed direct
+full-tiling alternative are recorded separately in
+[rjmcmc_partition_mixing_and_full_tiling_design.md](rjmcmc_partition_mixing_and_full_tiling_design.md).
+That reference distinguishes canonical leaf tilings from their many possible
+construction trees and histories, and uses the sibling `inversions-knowledge`
+repository at inspected revision `e77d20c` for reviewed RJMCMC, Gamma--Beta,
+projection, and MCMC background.
+
 The completed first slice covers the spatial, single-sector, independent
 Gaussian problem. The active follow-up branch adds an irregular-time temporal
 error model and a shared partially pooled coefficient prior. Multiple
@@ -105,6 +113,8 @@ will be introduced only behind equivalence tests.
 | 2026-07-22 | Treat every historical iteration count as revision-specific and expose new OU/hierarchy schedules under new versioned identities. | Ganesan's fixed-dimensional code swept all components, intermediate trans-dimensional revisions used five- or seven-way random scans and one shared dynamic hyperpair, and the closest paper-model revision used a six-way random scan with per-region hyperpairs. The published pseudocode does not uniquely determine mismatch or timescale proposal counts. Existing rewrite schedules and random streams therefore remain unchanged; new 16- and 17-slot profiles explicitly add one randomly selected mismatch amplitude, one randomly selected timescale, and optionally one joint shared-pool update to the existing 14-slot cycle. |
 | 2026-07-22 | Treat archived Lunt coefficient-prior inputs as arithmetic mean/SD, while recording the conflict with the paper's log-space notation and the older Ganesan kernel. | Revision `6f165e68` explicitly converts `mean` and `sd` to lognormal log-location/log-scale inside `calc_pdf`; its input template uses dynamic mean 1 and SD 1. The older Ganesan density instead treats its first input as a positive median/geometric scale and its second as log-space SD. The current rewrite's arithmetic convention follows the Lunt code and current inversion API, not the incompatible Ganesan calling convention. |
 | 2026-07-23 | Treat the archived Tunnicliffe Brazil production runs as configuration and opportunity-count evidence, not a posterior-correctness or parallel-tempering oracle. | The exact INIs and outputs establish a 120,000-cycle-equivalent workload, but the source uses the invalid deterministic structural cycle, omits structural selection-count terms, copies independently evolving per-region prior SDs, and accepted zero of 275,000 attempted temperature swaps. |
+| 2026-07-23 | Treat the canonical leaf tiling, rather than a split tree or chronological construction history, as the scientific state of the proposed dyadic alternative. | Several decomposition trees and split orders can produce the same final tiling. An uncorrected target on histories therefore weights tilings by their representation multiplicity. Direct leaf state avoids this hidden prior; fixed-tree Gamma--Beta/product-space work remains a restricted comparator and correctness oracle. |
+| 2026-07-23 | Diagnose current `k` mixing with proposal-flow, prior-only, and powered-likelihood experiments before adding parallel tempering. | Balanced accepted up/down counts are largely implied by the net change in `k` and do not show traversal. The likelihood-power ladder separates intrinsic local diffusion from energy barriers, while scientific field, prediction, and reporting-total diagnostics distinguish weak identification of raw `k` from failure to explore informed modes. |
 
 ## Ganesan lineage and active hierarchy plan
 
