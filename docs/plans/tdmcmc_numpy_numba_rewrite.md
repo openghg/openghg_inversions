@@ -115,6 +115,9 @@ will be introduced only behind equivalence tests.
 | 2026-07-23 | Treat the archived Tunnicliffe Brazil production runs as configuration and opportunity-count evidence, not a posterior-correctness or parallel-tempering oracle. | The exact INIs and outputs establish a 120,000-cycle-equivalent workload, but the source uses the invalid deterministic structural cycle, omits structural selection-count terms, copies independently evolving per-region prior SDs, and accepted zero of 275,000 attempted temperature swaps. |
 | 2026-07-23 | Treat the canonical leaf tiling, rather than a split tree or chronological construction history, as the scientific state of the proposed dyadic alternative. | Several decomposition trees and split orders can produce the same final tiling. An uncorrected target on histories therefore weights tilings by their representation multiplicity. Direct leaf state avoids this hidden prior; fixed-tree Gamma--Beta/product-space work remains a restricted comparator and correctness oracle. |
 | 2026-07-23 | Diagnose current `k` mixing with proposal-flow, prior-only, and powered-likelihood experiments before adding parallel tempering. | Balanced accepted up/down counts are largely implied by the net change in `k` and do not show traversal. The likelihood-power ladder separates intrinsic local diffusion from energy barriers, while scientific field, prediction, and reporting-total diagnostics distinguish weak identification of raw `k` from failure to explore informed modes. |
+| 2026-07-23 | Keep structural mixing diagnostics output-only, transition-indexed, and outside checkpoint kernel compatibility. | Proposal candidates, rejections, and immediate reversals cannot be reconstructed from thinned retained states. Deterministic cached-state instrumentation can collect them without consuming random numbers or changing restart semantics; a separate xarray transition dimension provides segment persistence. |
+| 2026-07-23 | Use the likelihood-power family first as independent diagnostic targets, not as a commitment to parallel tempering. | The target `p(s) L(y | s)^beta` is the same likelihood tempering used by parallel-tempering replicas, but fixed-`beta` endpoint chains need no swaps. Similar poor mobility at `beta=0` and `beta=1` would argue against rebuilding a tempering system that historically accepted no swaps. |
+| 2026-07-23 | After profiling Voronoi mixing, implement a restricted fixed-direction Gamma--Beta tree as the first alternative local-move baseline. | One canonical hierarchy avoids full-tiling history multiplicity and permits tiny enumeration/product-space cross-checks. It deliberately tests local active-only split/merge mobility on restricted support; it is not yet the final full-tiling model. |
 
 ## Ganesan lineage and active hierarchy plan
 
@@ -609,6 +612,43 @@ likelihood and the problematic per-region hierarchy remain follow-up profiles,
 not implicit behavior of this implementation.
 
 ## Progress log
+
+### 2026-07-23
+
+- Added opt-in structural proposal diagnostics without changing the transition
+  kernel, retained-state schema, checkpoint schema, or default allocation.
+  Diagnostics are enabled with
+  `SamplerConfig.collect_structural_diagnostics` or the output-only
+  `continue_sample` keyword.
+- Recorded candidate and realized region-count changes, validity/reason,
+  complete target and proposal-ratio accounting, stable nucleus event IDs,
+  owner-changed cell count/fraction, affected design-column count, candidate
+  prediction/design norms, and signed log coefficient contrast.
+- Added segment endpoint nucleus sets, chronological concatenation, immediate
+  opposite-`k` and exact-endpoint reversal flags, deletion lineage age, and
+  complete left-/right-censored region-lineage and nucleus-cell residence
+  intervals. Location moves transfer region lineages but close and reopen
+  cell-residence intervals. Immediate means consecutive global atomic
+  transitions, including across concatenated checkpoint segments.
+- Added separate structural-transition xarray conversion and restoration for
+  segment persistence, intrinsic chain/problem provenance, required
+  run-metadata checks, and atomic segment-bound continuity checks.
+  Region-lineage IDs are monotonic and retain a separate origin nucleus, so a
+  reused cell ID cannot alias an earlier region. Observation-error
+  standardization is explicitly distinguished from full covariance whitening
+  under the inferred-OU model.
+- Encoded invalidity reasons as compact integer categories and used
+  overflow-resistant Euclidean norms, preserving the output-only contract for
+  extreme finite cached predictions while keeping proposal-row storage below
+  300 bytes in the regression case.
+- Added focused trajectory-invariance, invalid/rejected/accepted outcome,
+  target-decomposition, owner-identity, metric-oracle, restart-concatenation,
+  residence/reversal, xarray, and NumPy/Numba parity tests.
+- Wrote
+  `docs/plans/rjmcmc_mixing_diagnostics_hpc_test_plan.md`, including paired
+  diagnostics-off/on replay, the full-likelihood profiling report, an endpoint
+  likelihood-power experiment, interpretation gates, and the next restricted
+  fixed-direction Gamma--Beta split/merge baseline.
 
 ### 2026-07-22
 

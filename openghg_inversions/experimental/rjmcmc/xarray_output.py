@@ -1,21 +1,27 @@
-"""Experimental xarray conversion for retained spatial RJMCMC states.
+"""Experimental xarray conversion for spatial RJMCMC output.
 
 The converter preserves fixed-capacity spatial state, fixed coefficients,
 optional inferred-OU parameters, and optional shared coefficient-hierarchy
-coordinates on labelled dimensions. Proposal diagnostics describe every
-attempted transition, so they deliberately remain outside the draw-indexed
-dataset until a separate transition-diagnostics output contract is defined.
+coordinates on labelled dimensions. Structural proposal diagnostics use a
+separate transition-indexed dataset because they describe attempted candidates
+rather than retained posterior draws.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import fields
 from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
 import xarray as xr
 
+from openghg_inversions.experimental.rjmcmc.mixing_diagnostics import (
+    STRUCTURAL_INVALID_REASON_LABELS,
+    StructuralDiagnostics,
+    StructuralDiagnosticsProvenance,
+)
 from openghg_inversions.experimental.rjmcmc.sampling import SamplingTrace
 
 
@@ -339,4 +345,199 @@ def sampling_trace_to_dataset(
     return dataset
 
 
-__all__ = ["sampling_trace_to_dataset"]
+def structural_diagnostics_to_dataset(
+    diagnostics: StructuralDiagnostics,
+    *,
+    metadata: Mapping[str, Any] | None = None,
+) -> xr.Dataset:
+    """Convert structural proposal diagnostics to a labelled dataset.
+
+    The ``structural_transition`` coordinate is the global completed atomic
+    transition number for each structural attempt. It is intentionally
+    independent of the retained-state ``draw`` dimension produced by
+    :func:`sampling_trace_to_dataset`. Save one dataset per segment; for
+    chain-wide derivations, restore each with
+    :func:`structural_diagnostics_from_dataset` and concatenate the diagnostic
+    objects. Direct xarray concatenation would broadcast the variable-length
+    segment endpoint nucleus sets.
+
+    Args:
+        diagnostics: Immutable proposal-level structural diagnostics.
+        metadata: Optional caller-supplied attributes. Reserved schema and
+            problem-shape attributes cannot be overridden.
+
+    Returns:
+        Dataset containing candidate, acceptance, target-accounting, geometry,
+        and prediction-space metrics plus segment endpoint nucleus sets.
+
+    Raises:
+        TypeError: If ``diagnostics`` or ``metadata`` has the wrong type.
+        ValueError: If caller metadata conflicts with a reserved attribute.
+    """
+    if not isinstance(diagnostics, StructuralDiagnostics):
+        raise TypeError("diagnostics must be a StructuralDiagnostics instance.")
+    if metadata is not None and not isinstance(metadata, Mapping):
+        raise TypeError("metadata must be a mapping or None.")
+
+    attrs = {} if metadata is None else dict(metadata)
+    reserved_attrs: dict[str, Any] = {
+        "schema": "openghg_inversions_rjmcmc_structural_diagnostics_v1",
+        "n_grid_cells": diagnostics.n_grid_cells,
+        "n_observations": diagnostics.n_observations,
+        "segment_transition_start": diagnostics.segment_transition_start,
+        "segment_transition_end": diagnostics.segment_transition_end,
+        "chain_id": diagnostics.provenance.chain_id,
+        "problem_fingerprint": diagnostics.provenance.problem_fingerprint,
+        "transition_coordinate": ("global completed atomic-transition number after the structural proposal"),
+        "prediction_standardization": (
+            "elementwise observation_sd; complete covariance whitening only "
+            "for the fixed diagonal error model"
+        ),
+        "coefficient_contrast": (
+            "signed log ratio of the event coefficient to its comparison-region coefficient"
+        ),
+    }
+    conflicts = {name for name, value in reserved_attrs.items() if name in attrs and attrs[name] != value}
+    if conflicts:
+        names = ", ".join(sorted(conflicts))
+        raise ValueError(f"metadata conflicts with reserved attributes: {names}.")
+    attrs.update(reserved_attrs)
+
+    endpoint_names = {"initial_nuclei", "final_nuclei"}
+    metadata_names = {
+        "n_grid_cells",
+        "n_observations",
+        "segment_transition_start",
+        "segment_transition_end",
+        "provenance",
+    }
+    data_vars: dict[str, Any] = {}
+    for diagnostic_field in fields(StructuralDiagnostics):
+        name = diagnostic_field.name
+        if name in endpoint_names or name in metadata_names or name == "transition":
+            continue
+        data_vars[name] = ("structural_transition", getattr(diagnostics, name))
+    data_vars["initial_nuclei"] = ("initial_region", diagnostics.initial_nuclei)
+    data_vars["final_nuclei"] = ("final_region", diagnostics.final_nuclei)
+
+    dataset = xr.Dataset(
+        data_vars=data_vars,
+        coords={
+            "structural_transition": diagnostics.transition,
+            "initial_region": np.arange(diagnostics.initial_nuclei.size, dtype=np.int64),
+            "final_region": np.arange(diagnostics.final_nuclei.size, dtype=np.int64),
+        },
+        attrs=attrs,
+    )
+    dataset["structural_transition"].attrs = {
+        "long_name": "global completed atomic-transition number",
+    }
+    dataset["owner_changed_cell_count"].attrs = {
+        "long_name": "native cells with a changed owner nucleus identity",
+    }
+    dataset["owner_changed_cell_fraction"].attrs = {
+        "long_name": "fraction of native cells with a changed owner nucleus identity",
+    }
+    dataset["invalid_reason_code"].attrs = {
+        "long_name": "structural proposal invalidity code",
+        "description": "; ".join(
+            [
+                *(
+                    f"{code}={label or 'valid'}"
+                    for code, label in sorted(STRUCTURAL_INVALID_REASON_LABELS.items())
+                ),
+            ]
+        ),
+    }
+    dataset["observation_error_standardized_prediction_change_l2"].attrs = {
+        "long_name": "observation-error-standardized candidate prediction change",
+        "description": (
+            "Euclidean norm after elementwise division by observation_sd; not full OU covariance whitening."
+        ),
+    }
+    dataset["coefficient_contrast"].attrs = {
+        "long_name": "event-region log coefficient ratio",
+    }
+    return dataset
+
+
+def structural_diagnostics_from_dataset(
+    dataset: xr.Dataset,
+    *,
+    required_metadata: Mapping[str, Any] | None = None,
+) -> StructuralDiagnostics:
+    """Restore validated structural diagnostics from their xarray contract.
+
+    Args:
+        dataset: Dataset produced by
+            :func:`structural_diagnostics_to_dataset`.
+        required_metadata: Optional run/chain/problem attributes that must
+            match exactly before the diagnostic object is restored.
+
+    Returns:
+        Immutable structural diagnostics suitable for chronological
+        concatenation and derived mixing summaries.
+
+    Raises:
+        TypeError: If ``dataset`` is not an xarray dataset or
+            ``required_metadata`` is not a mapping or ``None``.
+        ValueError: If the schema, dimensions, variables, or problem metadata
+            are missing or malformed.
+    """
+    if not isinstance(dataset, xr.Dataset):
+        raise TypeError("dataset must be an xarray Dataset.")
+    if required_metadata is not None and not isinstance(required_metadata, Mapping):
+        raise TypeError("required_metadata must be a mapping or None.")
+    if required_metadata is not None:
+        mismatches = {name for name, value in required_metadata.items() if dataset.attrs.get(name) != value}
+        if mismatches:
+            names = ", ".join(sorted(mismatches))
+            raise ValueError(f"dataset does not match required metadata: {names}.")
+    expected_schema = "openghg_inversions_rjmcmc_structural_diagnostics_v1"
+    if dataset.attrs.get("schema") != expected_schema:
+        raise ValueError(f"dataset schema must equal {expected_schema!r}.")
+    metadata_names = {
+        "n_grid_cells",
+        "n_observations",
+        "segment_transition_start",
+        "segment_transition_end",
+        "chain_id",
+        "problem_fingerprint",
+    }
+    for name in metadata_names:
+        if name not in dataset.attrs:
+            raise ValueError(f"dataset is missing required attribute {name!r}.")
+    if "structural_transition" not in dataset.coords:
+        raise ValueError("dataset is missing the structural_transition coordinate.")
+
+    endpoint_dims = {
+        "initial_nuclei": ("initial_region",),
+        "final_nuclei": ("final_region",),
+    }
+    values: dict[str, Any] = {
+        "transition": np.asarray(dataset.coords["structural_transition"].values),
+    }
+    for diagnostic_field in fields(StructuralDiagnostics):
+        name = diagnostic_field.name
+        if name == "transition" or name in metadata_names or name == "provenance":
+            continue
+        if name not in dataset:
+            raise ValueError(f"dataset is missing required variable {name!r}.")
+        expected_dims = endpoint_dims.get(name, ("structural_transition",))
+        if dataset[name].dims != expected_dims:
+            raise ValueError(f"dataset variable {name!r} must have dimensions {expected_dims!r}.")
+        values[name] = np.asarray(dataset[name].values)
+    for name in metadata_names - {"chain_id", "problem_fingerprint"}:
+        values[name] = dataset.attrs[name]
+    values["provenance"] = StructuralDiagnosticsProvenance(
+        chain_id=dataset.attrs["chain_id"],
+        problem_fingerprint=dataset.attrs["problem_fingerprint"],
+    )
+    return StructuralDiagnostics(**values)
+
+
+__all__ = [
+    "sampling_trace_to_dataset",
+    "structural_diagnostics_from_dataset",
+    "structural_diagnostics_to_dataset",
+]

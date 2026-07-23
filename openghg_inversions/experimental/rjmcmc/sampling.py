@@ -43,6 +43,12 @@ from openghg_inversions.experimental.rjmcmc.core import (
     TransDimensionalProblem,
     TransDimensionalState,
 )
+from openghg_inversions.experimental.rjmcmc.mixing_diagnostics import (
+    STRUCTURAL_MOVES,
+    StructuralDiagnostics,
+    StructuralDiagnosticsProvenance,
+    _StructuralDiagnosticsBuffer,
+)
 from openghg_inversions.experimental.rjmcmc.proposals import (
     TransitionTerms,
     accept_or_reject,
@@ -121,10 +127,19 @@ class SamplerConfig:
             uniform or local discrete-Gaussian nucleus destination.
         local_move_scale: Gaussian distance scale in grid-coordinate units.
             Required when ``nucleus_move`` is ``"local"``.
+        collect_structural_diagnostics: Whether to collect opt-in structural
+            proposal diagnostics. This output setting is deliberately excluded
+            from checkpointed kernel settings.
+        structural_diagnostics_provenance: Stable chain and problem identity
+            required when structural diagnostics are enabled. This output
+            setting is deliberately excluded from checkpointed kernel settings
+            and must be supplied again when continuing a chain.
 
     Raises:
-        ValueError: If iterations, proposal scales, move mode, or backend are
-            malformed.
+        TypeError: If ``collect_structural_diagnostics`` is not Boolean or
+            enabled without valid structural-diagnostics provenance.
+        ValueError: If iterations, proposal scales, move mode, backend, or the
+            diagnostics/provenance combination is malformed.
     """
 
     iterations: int
@@ -140,6 +155,8 @@ class SamplerConfig:
     correlation_timescale_proposal_sd: float | None = None
     eta_proposal_sd: float | None = None
     zeta_proposal_sd: float | None = None
+    collect_structural_diagnostics: bool = False
+    structural_diagnostics_provenance: StructuralDiagnosticsProvenance | None = None
 
     def __post_init__(self) -> None:
         """Reject malformed sampler settings before allocating a trace."""
@@ -170,6 +187,22 @@ class SamplerConfig:
             object.__setattr__(self, "local_move_scale", local_move_scale)
         if self.nucleus_move == "local" and self.local_move_scale is None:
             raise ValueError("local_move_scale is required for local nucleus moves.")
+        if not isinstance(self.collect_structural_diagnostics, bool):
+            raise TypeError("collect_structural_diagnostics must be a Boolean.")
+        if self.collect_structural_diagnostics:
+            if not isinstance(
+                self.structural_diagnostics_provenance,
+                StructuralDiagnosticsProvenance,
+            ):
+                raise TypeError(
+                    "structural_diagnostics_provenance must be supplied when "
+                    "collect_structural_diagnostics is true."
+                )
+        elif self.structural_diagnostics_provenance is not None:
+            raise ValueError(
+                "structural_diagnostics_provenance is only valid when "
+                "collect_structural_diagnostics is true."
+            )
         supported_profiles = (
             "default",
             LUNT_OPPORTUNITY_MATCHED_SCHEDULE_PROFILE,
@@ -454,11 +487,14 @@ class SamplingResult:
             row under default retention. It remains available even when a
             retained trace is empty.
         checkpoint: Exact in-memory continuation state after the segment.
+        structural_diagnostics: Optional structural proposal diagnostics. This
+            is ``None`` unless collection was explicitly requested.
     """
 
     trace: SamplingTrace
     final_state: TransDimensionalState
     checkpoint: SamplerCheckpoint
+    structural_diagnostics: StructuralDiagnostics | None = None
 
 
 def _empty_cells(problem: TransDimensionalProblem, state: TransDimensionalState) -> NDArray[np.int64]:
@@ -737,6 +773,37 @@ def _retained_transition_numbers(
     return np.arange(first, upper + 1, retention.thin, dtype=np.int64)
 
 
+def _structural_event_count(
+    *,
+    schedule_id: str,
+    transitions_completed: int,
+    iterations: int,
+) -> int:
+    """Return the exact number of structural slots in a sampling segment."""
+    if schedule_id == SCHEDULE_ID:
+        cycle_length = 4
+        structural_phases = (1, 2, 3)
+    elif schedule_id == FIXED_BLOCK_SCHEDULE_ID:
+        cycle_length = 5
+        structural_phases = (2, 3, 4)
+    elif schedule_id == LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID:
+        cycle_length = 14
+        structural_phases = (0, 1, 2)
+    elif schedule_id == LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_ID:
+        cycle_length = 16
+        structural_phases = (0, 1, 2)
+    elif schedule_id == LUNT_OPPORTUNITY_MATCHED_OU_HIERARCHY_SCHEDULE_ID:
+        cycle_length = 17
+        structural_phases = (0, 1, 2)
+    else:  # guarded by schedule validation
+        raise ValueError(f"Unsupported sampler schedule {schedule_id!r}.")
+    complete_cycles, remainder = divmod(iterations, cycle_length)
+    count = complete_cycles * len(structural_phases)
+    start_phase = transitions_completed % cycle_length
+    count += sum((start_phase + offset) % cycle_length in structural_phases for offset in range(remainder))
+    return count
+
+
 def _run_segment(
     problem: TransDimensionalProblem,
     initial_state: TransDimensionalState,
@@ -747,9 +814,12 @@ def _run_segment(
     transitions_completed: int,
     iterations: int,
     include_initial: bool,
+    collect_structural_diagnostics: bool,
+    structural_diagnostics_provenance: StructuralDiagnosticsProvenance | None,
 ) -> SamplingResult:
     """Run one segment using global schedule and retention phases."""
     _validate_start_state(problem, initial_state)
+    schedule_id = _schedule_id(problem, kernel_settings.schedule_profile)
     state_transition = _retained_transition_numbers(
         transitions_completed=transitions_completed,
         iterations=iterations,
@@ -780,6 +850,27 @@ def _run_segment(
     moves = np.empty(iterations, dtype=move_dtype)
     accepted = np.zeros(iterations, dtype=np.bool_)
     log_acceptance_ratio = np.empty(iterations, dtype=np.float64)
+    structural_buffer: _StructuralDiagnosticsBuffer | None = None
+    if collect_structural_diagnostics:
+        if not isinstance(
+            structural_diagnostics_provenance,
+            StructuralDiagnosticsProvenance,
+        ):
+            raise TypeError(
+                "structural_diagnostics_provenance is required when structural "
+                "diagnostics are enabled."
+            )
+        structural_buffer = _StructuralDiagnosticsBuffer(
+            problem,
+            initial_state,
+            _structural_event_count(
+                schedule_id=schedule_id,
+                transitions_completed=transitions_completed,
+                iterations=iterations,
+            ),
+            provenance=structural_diagnostics_provenance,
+            segment_transition_start=transitions_completed,
+        )
 
     state = initial_state
     retained_position = 0
@@ -803,7 +894,6 @@ def _run_segment(
         retain(state)
 
     nucleus_move = "global_move" if kernel_settings.nucleus_move == "global" else "local_move"
-    schedule_id = _schedule_id(problem, kernel_settings.schedule_profile)
     if schedule_id in {
         LUNT_OPPORTUNITY_MATCHED_FIXED_BLOCK_SCHEDULE_ID,
         LUNT_OPPORTUNITY_MATCHED_OU_SCHEDULE_ID,
@@ -862,9 +952,18 @@ def _run_segment(
         uniform = float(rng.random())
         log_uniform = log(uniform) if uniform > 0.0 else -np.inf
         next_state = accept_or_reject(state, transition, log_uniform=log_uniform)
-        accepted[iteration] = transition.valid and next_state is transition.candidate
+        proposal_accepted = transition.valid and next_state is transition.candidate
+        accepted[iteration] = proposal_accepted
         moves[iteration] = transition.move
         log_acceptance_ratio[iteration] = transition.log_acceptance_ratio
+        if structural_buffer is not None and transition.move in STRUCTURAL_MOVES:
+            structural_buffer.append(
+                transition_number=global_transition + 1,
+                source=state,
+                transition=transition,
+                result=next_state,
+                accepted=proposal_accepted,
+            )
         state = next_state
 
         completed = global_transition + 1
@@ -900,6 +999,14 @@ def _run_segment(
         ),
         final_state=state,
         checkpoint=checkpoint,
+        structural_diagnostics=(
+            None
+            if structural_buffer is None
+            else structural_buffer.finalize(
+                state,
+                segment_transition_end=total_transitions,
+            )
+        ),
     )
 
 
@@ -954,6 +1061,8 @@ def sample(
         transitions_completed=0,
         iterations=config.iterations,
         include_initial=True,
+        collect_structural_diagnostics=config.collect_structural_diagnostics,
+        structural_diagnostics_provenance=config.structural_diagnostics_provenance,
     )
 
 
@@ -962,6 +1071,8 @@ def continue_sample(
     checkpoint: SamplerCheckpoint,
     *,
     iterations: int,
+    collect_structural_diagnostics: bool = False,
+    structural_diagnostics_provenance: StructuralDiagnosticsProvenance | None = None,
 ) -> SamplingResult:
     """Continue a chain exactly from an in-memory transition boundary.
 
@@ -975,16 +1086,41 @@ def continue_sample(
             serialization is implemented.
         checkpoint: Exact result checkpoint from an earlier segment.
         iterations: Positive number of additional attempted transitions.
+        collect_structural_diagnostics: Whether to collect structural proposal
+            diagnostics for this new segment. This output-only choice does not
+            alter or persist in the checkpointed transition kernel.
+        structural_diagnostics_provenance: Stable chain and problem identity.
+            Required when diagnostics are enabled and intentionally supplied
+            per segment rather than persisted in the sampler checkpoint.
 
     Returns:
         Results for only the newly attempted segment and a new checkpoint.
 
     Raises:
-        TypeError: If ``checkpoint`` has the wrong type.
-        ValueError: If the segment length or schedule identity is invalid.
+        TypeError: If ``checkpoint`` has the wrong type or
+            ``collect_structural_diagnostics`` is not Boolean, or diagnostics
+            are enabled without valid provenance.
+        ValueError: If the segment length, schedule identity, or
+            diagnostics/provenance combination is invalid.
     """
     if not isinstance(checkpoint, SamplerCheckpoint):
         raise TypeError("checkpoint must be a SamplerCheckpoint instance.")
+    if not isinstance(collect_structural_diagnostics, bool):
+        raise TypeError("collect_structural_diagnostics must be a Boolean.")
+    if collect_structural_diagnostics:
+        if not isinstance(
+            structural_diagnostics_provenance,
+            StructuralDiagnosticsProvenance,
+        ):
+            raise TypeError(
+                "structural_diagnostics_provenance must be supplied when "
+                "collect_structural_diagnostics is true."
+            )
+    elif structural_diagnostics_provenance is not None:
+        raise ValueError(
+            "structural_diagnostics_provenance is only valid when "
+            "collect_structural_diagnostics is true."
+        )
     if isinstance(iterations, bool) or not isinstance(iterations, (int, np.integer)) or iterations < 1:
         raise ValueError("iterations must be a positive integer.")
     supported_schedules = {
@@ -1015,6 +1151,8 @@ def continue_sample(
         transitions_completed=checkpoint.transitions_completed,
         iterations=int(iterations),
         include_initial=False,
+        collect_structural_diagnostics=collect_structural_diagnostics,
+        structural_diagnostics_provenance=structural_diagnostics_provenance,
     )
 
 

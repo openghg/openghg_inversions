@@ -398,6 +398,27 @@ def _problem_sha256_for_version(
     return _problem_sha256(problem)
 
 
+def problem_fingerprint(problem: TransDimensionalProblem) -> str:
+    """Return the current durable SHA-256 identity of a numerical problem.
+
+    This is the same current-schema fingerprint written into exact-restart
+    checkpoints and can be used to bind auxiliary diagnostic artifacts to
+    their frozen numerical target.
+
+    Args:
+        problem: Immutable numerical RJMCMC problem.
+
+    Returns:
+        Lowercase hexadecimal SHA-256 digest.
+
+    Raises:
+        TypeError: If ``problem`` is not a trans-dimensional problem.
+    """
+    if not isinstance(problem, TransDimensionalProblem):
+        raise TypeError("problem must be a TransDimensionalProblem instance.")
+    return _problem_sha256(problem)
+
+
 def _expected_schedule(
     problem: TransDimensionalProblem,
     schedule_profile: ScheduleProfile,
@@ -1231,5 +1252,6 @@ __all__ = [
     "CHECKPOINT_SCHEMA_ID",
     "CHECKPOINT_SCHEMA_VERSION",
     "load_checkpoint",
+    "problem_fingerprint",
     "save_checkpoint",
 ]

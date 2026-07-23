@@ -15,7 +15,9 @@ This document records:
 It complements the implementation log in
 [tdmcmc_numpy_numba_rewrite.md](tdmcmc_numpy_numba_rewrite.md). It is a design
 reference, not a claim that the full-tiling model has been implemented or
-validated.
+validated. The executable validation sequence for the first diagnostic stage
+is in
+[rjmcmc_mixing_diagnostics_hpc_test_plan.md](rjmcmc_mixing_diagnostics_hpc_test_plan.md).
 
 The following labels distinguish the strength of statements:
 
@@ -259,6 +261,47 @@ At minimum record:
 
 The diagnostics should distinguish an accepted change of representation from
 an accepted change in a scientifically relevant prediction direction.
+
+### Implemented diagnostic boundary
+
+**Code fact:** point 1 is implemented as an opt-in structural-event stream.
+`SamplerConfig.collect_structural_diagnostics` and the corresponding
+`continue_sample` keyword add one row for each insertion, deletion, or
+nucleus-location attempt. The result is separate from the retained posterior
+trace and checkpointed transition kernel. Collection requires explicit
+`StructuralDiagnosticsProvenance`: a stable chain ID plus the same durable
+problem SHA-256 used by checkpoint I/O. This prevents unrelated segments from
+being combined merely because their transition bounds and endpoint nuclei
+happen to match.
+
+The implementation records:
+
+- global atomic-transition coordinate, validity, invalidity reason, acceptance,
+  and source/candidate/result `k`;
+- every cached target-component delta and every Metropolis--Hastings proposal
+  term;
+- removed and added nucleus identities, owner-changed cell count/fraction, and
+  affected candidate design-column count;
+- candidate prediction, observation-error-standardized prediction, and event
+  design-column norms; and
+- the signed log coefficient ratio at the edited region.
+
+Segment endpoint nucleus sets make residence intervals reconstructable across
+checkpoint boundaries, including initially active left-censored regions and
+final right-censored regions. Immediate reversal requires consecutive global
+atomic-transition coordinates, rather than merely consecutive structural rows.
+Region lineages receive monotonic diagnostic IDs and separately retain their
+origin nucleus, so deleting a region and later reusing its cell cannot collide
+with the earlier lineage.
+The ordinary retained output remains the source for posterior scientific
+summaries such as predictions, native-grid flux, outer coefficients, and
+reporting totals.
+
+`structural_diagnostics_to_dataset` supplies an independent
+`structural_transition` xarray dimension for checkpoint-segment persistence.
+It labels standardization by `observation_sd` explicitly: this is complete
+whitening for the fixed diagonal error model, but not for the inferred-OU
+covariance.
 
 ### Parallel tempering
 
@@ -837,34 +880,45 @@ Existing OpenGHG Inversions draft work can be reused as follows:
 
 ## Recommended implementation sequence
 
-1. Add diagnostics for `k` flow, reversals, region age, changed sensitivity,
-   prediction-space change, and scientific summaries to the current sampler.
-2. Run prior-only and powered-likelihood Voronoi benchmarks with the production
-   support, starts, schedules, and opportunity counts.
-3. Interleave ordinary coefficient rejuvenation and benchmark a fixed-score
+1. **Implemented:** add opt-in diagnostics for `k` flow, reversals, region
+   residence, changed ownership/sensitivity, target accounting, and
+   prediction-space change to the current sampler.
+2. Run the paired instrumentation benchmark and the ordinary
+   full-likelihood Voronoi profile, then compare prior-only
+   \(\beta=0\) and posterior \(\beta=1\) mobility with production support,
+   starts, schedules, and opportunity counts. Add an intermediate power only
+   if the endpoints differ materially.
+3. Implement a minimal active-only Gamma--Beta RJ baseline on one canonical
+   fixed-direction tree. Validate local split/merge moves against tiny
+   enumeration and the existing fixed-tree product-space cross-check before
+   adding alternative orientations or full tilings.
+4. Interleave ordinary coefficient rejuvenation and benchmark a fixed-score
    relevance-conditioned selector as replaceable kernels.
-4. Specify the full-tiling domain, canonical leaf representation, masks,
+5. Specify the full-tiling domain, canonical leaf representation, masks,
    structural prior, and reduced-model interpretation.
-5. Enumerate all states of a tiny tiling problem and calculate exact target
+6. Enumerate all states of a tiny tiling problem and calculate exact target
    probabilities.
-6. Implement the order-independent total/allocation prior and validate its
+7. Implement the order-independent total/allocation prior and validate its
    aggregation identities and moments by enumeration and simulation.
-7. Implement a fixed-`K` edge-flip kernel and a block-retile kernel under the
+8. Implement a fixed-`K` edge-flip kernel and a block-retile kernel under the
    tiny uniform target.
-8. Implement transparent active-only NumPy split/merge RJ and validate it
+9. Implement transparent active-only NumPy split/merge RJ and validate it
    against enumeration and the fixed-tree product-space exact-target
    cross-check.
-9. Add active continuous rejuvenation and a simple observation likelihood.
-10. Add Numba only after exact NumPy parity.
-11. Add relevance-conditioned and likelihood-informed kernels behind swappable
-    interfaces.
-12. Add parallel tempering only if the powered-likelihood ladder identifies a
-    likelihood barrier and the swap kernel passes balance and round-trip tests.
+10. Add active continuous rejuvenation and a simple observation likelihood.
+11. Add Numba only after exact NumPy parity.
+12. Add relevance-conditioned and likelihood-informed kernels behind swappable
+   interfaces.
+13. Add parallel tempering only if the powered-likelihood ladder identifies a
+   likelihood barrier and the swap kernel passes balance and round-trip tests.
 
 ### Compact restart point
 
-- **Next executable task:** instrument current Voronoi mixing, then run the
-  prior/powered-likelihood ladder.
+- **Next executable task:** run the paired diagnostic-overhead check and
+  ordinary full-likelihood Voronoi profile described in the HPC test plan.
+- **Next alternative baseline:** after that profile, implement local
+  split/merge RJ on one fixed-direction Gamma--Beta tree and validate it on a
+  tiny enumerated state space.
 - **Alternative-model prerequisite:** settle the full-tiling structural target
   `p(P)`/`p(K)` and the reduced-model meaning before writing structural code.
 - **Correctness oracle:** tiny canonical tiling enumeration and analytic
