@@ -18,6 +18,17 @@ plan and the restart point for future compacted Codex sessions.
 The model remains experimental. No result should be written to the production
 `PARIS_inversions` archive until the declared convergence gates pass.
 
+Implementation status:
+
+- exact arbitrary-precision subtree counts and rank/unrank are implemented;
+- relocation and bounded subtree-retile proposals are implemented with exact
+  forward/reverse degree and Beta-density accounting;
+- the default six-outer schedule is the declared 16-slot v2 cycle;
+- checkpoint, manifest, and trace schemas are versioned at 2, 3, and 2;
+- exact tiny-state transition-matrix tests cover both new kernels;
+- the native driver supports independently seeded, overdispersed topology
+  starts without changing the sampler RNG stream.
+
 ## Stage C result and diagnosis
 
 The completed HPC test established software integrity but not posterior
@@ -162,6 +173,12 @@ This is a restricted fixed-tree analogue of multiscale block dynamics, not a
 full-tiling rotation. The initial cap is 8 leaves and is persisted as part of
 the kernel identity.
 
+For a singleton-\(K\) prior with more than one frontier, the sampler rejects a
+subtree-only configuration unless its cap reaches the root block
+(\(\text{cap}\geq K\)). This deliberately conservative rule makes the root
+retile a complete fixed-\(K\) topology refresh. A configured slot is not
+treated as evidence of mobility when its cap makes every attempt invalid.
+
 ## Schedule and durable schema
 
 The v1 14-slot cycle remains reproducible on its base branch. The new schedule
@@ -210,6 +227,13 @@ because the posterior target and irreducible state have not changed.
 - Construct exact prior-only transition matrices and check row sums, detailed
   balance, and the normalized fixed-\(K\) stationary law.
 
+These tests are implemented on all five \(K=4\) frontiers of a
+\(2\times4\) tree. They analytically integrate the Beta auxiliaries, aggregate
+multiple proposal paths to the same endpoint, put rejection probability on
+the diagonal, and verify row stochasticity, symmetric support, detailed
+balance, the uniform conditional frontier law, and graph connectivity for
+each kernel.
+
 ### Sampling and persistence
 
 - Permit singleton positive \(p(K)\) support when at least one fixed-\(K\)
@@ -251,6 +275,14 @@ then with the full likelihood. Compare:
 2. relocation plus subtree retile.
 
 These runs isolate conditional topology mobility from diffusion in \(K\).
+Use distinct `--initial-frontier-seed` values across chains so the comparison
+starts from separated, auditable random frontiers at the same \(K\); keep
+`--seed` independent for the sampler stream. For these short diagnostic runs,
+set `--thin 1`. The current trace retains attempted node/block identities but
+does not persist changed-cell or prediction-displacement magnitudes, so dense
+state retention is required to reconstruct displacement and immediate
+reversal diagnostics.
+
 Report acceptance by move, unique frontiers, frontier overlap, active-node
 occupancy, topology-indicator ESS, changed-cell fraction, prediction
 displacement, immediate reversals, and throughput.
@@ -278,6 +310,55 @@ Primary comparison outcomes:
 
 No pooled concentration or flux estimate is defensible unless the convergence
 gates in the existing HPC plan pass.
+
+### Launch template
+
+Use the reviewed values and frozen-input identifiers from the completed Stage
+C run:
+
+```bash
+FROZEN_INPUT=/group/.../paris_may_2014_gamma_beta_native.nc
+FROZEN_INPUT_ID=paris-may-2014-gamma-beta-native-v1
+FROZEN_INPUT_SHA=<64-character-reviewed-sha256>
+OUTER_LABELS=<six-reviewed-comma-separated-labels>
+WEIGHT_POLICY=<reviewed-positive-weight-policy-id>
+CODE_REVISION="$(git rev-parse HEAD)"
+```
+
+For a full-likelihood fixed-\(K=50\) Stage B chain with dense diagnostic
+retention:
+
+```bash
+pixi run python examples/rjmcmc/gamma_beta_native_smoke.py \
+  --input "$FROZEN_INPUT" \
+  --input-id "$FROZEN_INPUT_ID" \
+  --expected-input-sha256 "$FROZEN_INPUT_SHA" \
+  --output-directory /group/.../fixed-k50-chain-0-segment-0 \
+  --cycles 1000 --k-min 50 --k-max 50 --start-k 50 \
+  --concentration 2 --root-variance 0.25 --likelihood-power 1 \
+  --fixed-prior-mean 1 --fixed-prior-sd 1 --fixed-proposal-sd 0.4 \
+  --relocation-slots 1 --subtree-retile-slots 1 \
+  --max-subtree-leaves 8 --initial-frontier-seed 4100 \
+  --warmup 0 --thin 1 --seed 812 --chain-id paris-gb-fixed-k50-0 \
+  --code-revision "$CODE_REVISION" \
+  --nominal-weight-policy "$WEIGHT_POLICY" \
+  --expected-outer-labels "$OUTER_LABELS" \
+  --input-netcdf-engine h5netcdf --netcdf-engine h5netcdf \
+  --require-paris-profile
+```
+
+For the prior-only control, change only `--likelihood-power 0`, the chain ID,
+seeds, and unused output directory. Repeat at \(K=250\) with
+`--k-min 250 --k-max 250 --start-k 250`. Use at least four distinct
+`--initial-frontier-seed` values at each fixed \(K\). The initialization seed
+has its own PCG64 stream and is bound into the manifest; it does not advance
+the sampler stream selected by `--seed`.
+
+Before the array launch, run one complete 16-transition cycle and a 5+11
+durable continuation using the same frozen file. Every segment must use a new
+output directory, and continuation must retain the original initialization
+seed, sampler seed, chain ID, priors, schedule, retention settings, input
+contract, and code revision.
 
 ## Future full-tiling track
 

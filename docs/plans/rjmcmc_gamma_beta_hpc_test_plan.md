@@ -1,5 +1,13 @@
 # Gamma--Beta RJMCMC native-data HPC smoke test
 
+> **Archived v1 baseline plan.** This document records the original 14-slot
+> split/merge-only Stage C experiment at revision
+> `dd687b92abb86ce0080a1c8a713f3eb9a57df3aa`. The implemented 16-slot
+> fixed-\(K\) relocation/subtree-retile experiment, updated schemas,
+> overdispersed topology starts, and current HPC sequence are specified in
+> [`rjmcmc_gamma_beta_fixed_k_moves.md`](rjmcmc_gamma_beta_fixed_k_moves.md).
+> Do not use the schedule counts or launch template below for the v2 branch.
+
 ## Purpose
 
 This plan is the first real-data test of the restricted fixed-direction
