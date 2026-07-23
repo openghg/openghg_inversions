@@ -11,14 +11,18 @@ import pytest
 from openghg_inversions.experimental.rjmcmc.dyadic_tree import (
     CanonicalDyadicTree,
     DyadicFrontier,
+    SubtreePartitionIndex,
 )
 from openghg_inversions.experimental.rjmcmc.gamma_beta_proposals import (
     GammaBetaTransitionTerms,
     accept_or_reject,
+    eligible_subtree_retile_blocks,
     propose_fraction_refresh,
     propose_merge,
+    propose_relocate,
     propose_root_refresh,
     propose_split,
+    propose_subtree_retile,
 )
 from openghg_inversions.experimental.rjmcmc.gamma_beta_tree import (
     GammaBetaTreePrior,
@@ -49,6 +53,31 @@ def _problem(*, likelihood_power: float = 1.0) -> GammaBetaTreeProblem:
                 [-0.3, 0.8, 0.4, 1.1],
             ]
         ),
+        prior=prior,
+        partition_prior=TreePartitionPrior.uniform_k(tree),
+        likelihood_power=likelihood_power,
+    )
+
+
+def _grid_problem(
+    shape: tuple[int, int],
+    *,
+    likelihood_power: float = 0.0,
+) -> GammaBetaTreeProblem:
+    """Return a square-design problem on an arbitrary small dyadic grid."""
+    tree = CanonicalDyadicTree.from_shape(shape)
+    n_cells = shape[0] * shape[1]
+    prior = GammaBetaTreePrior.constant_concentration(
+        tree,
+        np.arange(1.0, n_cells + 1.0),
+        concentration=2.0,
+        root_mean=1.0,
+        root_variance=0.25,
+    )
+    return GammaBetaTreeProblem(
+        observations=np.zeros(n_cells),
+        observation_sd=np.ones(n_cells),
+        sensitivity=np.eye(n_cells),
         prior=prior,
         partition_prior=TreePartitionPrior.uniform_k(tree),
         likelihood_power=likelihood_power,
@@ -333,6 +362,297 @@ def test_structural_coordinate_insertion_has_explicit_unit_jacobian() -> None:
     assert merge.log_jacobian == 0.0
     assert split.log_q_forward_auxiliary == pytest.approx(problem.prior.log_fraction_density(0, 0.25))
     assert split.delta_log_fraction_prior == pytest.approx(problem.prior.log_fraction_density(0, 0.25))
+
+
+def test_relocate_has_exact_pointwise_reverse_terms_at_fixed_k() -> None:
+    """Merge-then-split relocation is reciprocal with both Beta densities."""
+    problem = _problem(likelihood_power=0.0)
+    source_frontier = DyadicFrontier.root(problem.tree).split(problem.tree, 0).split(problem.tree, 1)
+    source = _state(problem, source_frontier, [0.4, 0.3])
+
+    forward = propose_relocate(
+        problem,
+        source,
+        merge_parent_node_id=1,
+        split_leaf_node_id=4,
+        new_fraction=0.6,
+    )
+    reverse = propose_relocate(
+        problem,
+        forward.candidate,
+        merge_parent_node_id=4,
+        split_leaf_node_id=1,
+        new_fraction=0.3,
+    )
+
+    assert forward.valid and reverse.valid
+    assert forward.move == "relocate"
+    assert forward.node_id == 1
+    assert forward.secondary_node_id == 4
+    assert forward.block_leaf_count is None
+    assert forward.candidate.k == source.k
+    assert forward.log_q_forward_selection == 0.0
+    assert forward.log_q_reverse_selection == 0.0
+    assert forward.log_q_forward_auxiliary == pytest.approx(problem.prior.log_fraction_density(4, 0.6))
+    assert forward.log_q_reverse_auxiliary == pytest.approx(problem.prior.log_fraction_density(1, 0.3))
+    assert forward.log_q_forward_direction == forward.log_q_reverse_direction == 0.0
+    assert forward.log_jacobian == 0.0
+    assert forward.delta_log_partition_prior == 0.0
+    assert forward.delta_log_fraction_prior == pytest.approx(
+        forward.log_q_forward_auxiliary - forward.log_q_reverse_auxiliary
+    )
+    assert forward.log_acceptance_ratio == pytest.approx(0.0, abs=1e-13)
+    assert reverse.log_q_forward == pytest.approx(forward.log_q_reverse)
+    assert reverse.log_q_reverse == pytest.approx(forward.log_q_forward)
+    assert reverse.log_acceptance_ratio == pytest.approx(
+        -forward.log_acceptance_ratio,
+        abs=1e-13,
+    )
+    _assert_same_state(reverse.candidate, source)
+
+
+def test_relocate_uses_sequential_normalized_selection_counts() -> None:
+    """Relocation accounts for both source cherries and intermediate leaves."""
+    problem = _grid_problem((2, 4))
+    root = problem.tree.root_id
+    first, second = problem.tree.children(root)
+    source_frontier = (
+        DyadicFrontier.root(problem.tree)
+        .split(problem.tree, root)
+        .split(problem.tree, first)
+        .split(problem.tree, second)
+    )
+    source = _state(problem, source_frontier, [0.4, 0.3, 0.6])
+    intermediate = source.frontier.merge(problem.tree, first)
+    destinations = tuple(
+        node_id for node_id in problem.tree.splittable_nodes(intermediate) if node_id != first
+    )
+    destination = destinations[0]
+    forward = propose_relocate(
+        problem,
+        source,
+        merge_parent_node_id=first,
+        split_leaf_node_id=destination,
+        new_fraction=0.55,
+    )
+    reverse_intermediate = forward.candidate.frontier.merge(problem.tree, destination)
+    reverse_destinations = tuple(
+        node_id for node_id in problem.tree.splittable_nodes(reverse_intermediate) if node_id != destination
+    )
+
+    assert len(problem.tree.mergeable_parents(source.frontier)) == 2
+    assert len(destinations) == 2
+    assert forward.log_q_forward_selection == pytest.approx(-log(2.0) - log(2.0))
+    assert forward.log_q_reverse_selection == pytest.approx(
+        -log(len(problem.tree.mergeable_parents(forward.candidate.frontier))) - log(len(reverse_destinations))
+    )
+    reverse = propose_relocate(
+        problem,
+        forward.candidate,
+        merge_parent_node_id=destination,
+        split_leaf_node_id=first,
+        new_fraction=0.3,
+    )
+    assert reverse.log_q_forward == pytest.approx(forward.log_q_reverse)
+    assert reverse.log_q_reverse == pytest.approx(forward.log_q_forward)
+    _assert_same_state(reverse.candidate, source)
+
+
+def test_relocate_invalid_choices_are_explicit_self_transitions() -> None:
+    """Relocation rejects missing cherries, same nodes, and invalid fractions."""
+    problem = _problem()
+    root = _state(problem, DyadicFrontier.root(problem.tree), [])
+    source_frontier = root.frontier.split(problem.tree, 0).split(problem.tree, 1)
+    source = _state(problem, source_frontier, [0.4, 0.3])
+    full = _state(problem, source_frontier.split(problem.tree, 4), [0.4, 0.3, 0.6])
+    transitions = (
+        propose_relocate(
+            problem,
+            root,
+            merge_parent_node_id=0,
+            split_leaf_node_id=1,
+            new_fraction=0.5,
+        ),
+        propose_relocate(
+            problem,
+            source,
+            merge_parent_node_id=1,
+            split_leaf_node_id=1,
+            new_fraction=0.5,
+        ),
+        propose_relocate(
+            problem,
+            source,
+            merge_parent_node_id=1,
+            split_leaf_node_id=4,
+            new_fraction=1.0,
+        ),
+        propose_relocate(
+            problem,
+            full,
+            merge_parent_node_id=1,
+            split_leaf_node_id=4,
+            new_fraction=0.5,
+        ),
+    )
+
+    for transition, expected_source in zip(
+        transitions,
+        (root, source, source, full),
+        strict=True,
+    ):
+        assert not transition.valid
+        assert transition.candidate is expected_source
+        assert transition.reason
+        assert transition.log_acceptance_ratio == -np.inf
+
+
+def test_subtree_retile_has_exact_reverse_terms_and_common_fractions() -> None:
+    """A same-size subtree tiling replacement is pointwise reversible."""
+    problem = _problem(likelihood_power=0.0)
+    root = problem.tree.root_id
+    source_frontier = DyadicFrontier.root(problem.tree).split(problem.tree, root).split(problem.tree, 1)
+    source = _state(problem, source_frontier, [0.4, 0.3])
+    index = SubtreePartitionIndex(problem.tree, max_k=4)
+    source_rank = index.rank(root, 3, source.frontier)
+    replacement = index.unrank(root, 3, 1 - source_rank)
+
+    assert eligible_subtree_retile_blocks(problem, source, index) == ((root, 3),)
+    forward = propose_subtree_retile(
+        problem,
+        source,
+        index,
+        block_node_id=root,
+        replacement_frontier=replacement,
+        new_fractions_by_node={4: 0.6},
+    )
+    reverse = propose_subtree_retile(
+        problem,
+        forward.candidate,
+        index,
+        block_node_id=root,
+        replacement_frontier=source.frontier,
+        new_fractions_by_node={1: 0.3},
+    )
+
+    assert forward.valid and reverse.valid
+    assert forward.move == "subtree_retile"
+    assert forward.node_id == root
+    assert forward.secondary_node_id is None
+    assert forward.block_leaf_count == 3
+    assert forward.candidate.k == source.k
+    assert forward.log_q_forward_selection == 0.0
+    assert forward.log_q_reverse_selection == 0.0
+    assert forward.log_q_forward_auxiliary == pytest.approx(problem.prior.log_fraction_density(4, 0.6))
+    assert forward.log_q_reverse_auxiliary == pytest.approx(problem.prior.log_fraction_density(1, 0.3))
+    assert forward.delta_log_fraction_prior == pytest.approx(
+        forward.log_q_forward_auxiliary - forward.log_q_reverse_auxiliary
+    )
+    assert forward.log_jacobian == 0.0
+    assert forward.log_acceptance_ratio == pytest.approx(0.0, abs=1e-13)
+    np.testing.assert_array_equal(forward.candidate.active_fractions, [0.4, 0.6])
+    assert reverse.log_q_forward == pytest.approx(forward.log_q_reverse)
+    assert reverse.log_q_reverse == pytest.approx(forward.log_q_forward)
+    _assert_same_state(reverse.candidate, source)
+
+
+def test_subtree_retile_normalizes_alternate_frontier_selection() -> None:
+    """The exact subtree index supplies a nontrivial alternate-tiling count."""
+    problem = _grid_problem((2, 4))
+    root = problem.tree.root_id
+    first, second = problem.tree.children(root)
+    source_frontier = (
+        DyadicFrontier.root(problem.tree)
+        .split(problem.tree, root)
+        .split(problem.tree, first)
+        .split(problem.tree, second)
+    )
+    source = _state(problem, source_frontier, [0.4, 0.3, 0.6])
+    index = SubtreePartitionIndex(problem.tree, max_k=4)
+    source_rank = index.rank(root, source.k, source.frontier)
+    replacement_rank = 0 if source_rank != 0 else 1
+    replacement = index.unrank(root, source.k, replacement_rank)
+    source_split = frozenset(source.frontier.active_split_nodes(problem.tree))
+    candidate_split = frozenset(replacement.active_split_nodes(problem.tree))
+    added = candidate_split - source_split
+    proposed = {
+        node_id: problem.prior.beta_parameters(node_id)[0] / sum(problem.prior.beta_parameters(node_id))
+        for node_id in added
+    }
+    transition = propose_subtree_retile(
+        problem,
+        source,
+        index,
+        block_node_id=root,
+        replacement_frontier=replacement,
+        new_fractions_by_node=proposed,
+    )
+
+    alternatives = index.count(root, source.k) - 1
+    assert alternatives > 1
+    assert transition.valid
+    assert transition.log_q_forward_selection == pytest.approx(-log(alternatives))
+    assert transition.block_leaf_count == source.k
+
+
+def test_subtree_retile_invalid_choices_are_self_transitions() -> None:
+    """Retiling rejects wrong blocks, unchanged tilings, and fraction maps."""
+    problem = _problem()
+    root = problem.tree.root_id
+    source_frontier = DyadicFrontier.root(problem.tree).split(problem.tree, root).split(problem.tree, 1)
+    source = _state(problem, source_frontier, [0.4, 0.3])
+    index = SubtreePartitionIndex(problem.tree, max_k=4)
+    replacement = index.unrank(root, 3, 1 - index.rank(root, 3, source.frontier))
+    transitions = (
+        propose_subtree_retile(
+            problem,
+            source,
+            index,
+            block_node_id=2,
+            replacement_frontier=replacement,
+            new_fractions_by_node={4: 0.6},
+        ),
+        propose_subtree_retile(
+            problem,
+            source,
+            index,
+            block_node_id=root,
+            replacement_frontier=source.frontier,
+            new_fractions_by_node={},
+        ),
+        propose_subtree_retile(
+            problem,
+            source,
+            index,
+            block_node_id=root,
+            replacement_frontier=replacement,
+            new_fractions_by_node={},
+        ),
+        propose_subtree_retile(
+            problem,
+            source,
+            index,
+            block_node_id=root,
+            replacement_frontier=replacement,
+            new_fractions_by_node={4: 0.0},
+        ),
+    )
+    for transition in transitions:
+        assert not transition.valid
+        assert transition.candidate is source
+        assert transition.reason
+        assert transition.log_acceptance_ratio == -np.inf
+
+    other_index = SubtreePartitionIndex(_problem().tree, max_k=4)
+    with pytest.raises(ValueError, match="problem.tree"):
+        propose_subtree_retile(
+            problem,
+            source,
+            other_index,
+            block_node_id=root,
+            replacement_frontier=replacement,
+            new_fractions_by_node={4: 0.6},
+        )
 
 
 def test_prior_only_fraction_and_root_refreshes_cancel_exactly() -> None:

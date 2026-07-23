@@ -1,13 +1,14 @@
 """Deterministic proposal accounting for active-only Gamma--Beta trees.
 
-This module implements local split and sibling-merge reversible-jump moves for
-the root-plus-active-fraction coordinates defined in
+This module implements local split and sibling-merge reversible-jump moves,
+plus fixed-dimensional relocation and bounded subtree-retile moves, for the
+root-plus-active-fraction coordinates defined in
 :mod:`openghg_inversions.experimental.rjmcmc.gamma_beta_tree`. Every random
 choice is supplied explicitly, so proposal construction is deterministic and
 pointwise reverse terms can be tested without depending on a random-number
 generator. Structural moves record normalized direction, eligible-node
-selection, and Beta auxiliary densities separately. Coordinate insertion and
-deletion have a unit Jacobian in this parameterization.
+selection, and Beta auxiliary densities separately. Coordinate insertion,
+deletion, and replacement have a unit Jacobian in this parameterization.
 
 Independent-prior refreshes of the root total and one selected active fraction
 are provided as separate fixed-dimensional kernels.  Their proposal terms
@@ -15,6 +16,7 @@ retain the normalized prior densities even though those terms cancel the
 matching target-prior changes in the Metropolis--Hastings ratio.
 
 The main entry points are :func:`propose_split`, :func:`propose_merge`,
+:func:`propose_relocate`, :func:`propose_subtree_retile`,
 :func:`propose_root_refresh`, :func:`propose_fraction_refresh`, and
 :func:`propose_fixed_coefficient`; each returns immutable
 :class:`GammaBetaTransitionTerms`. :func:`accept_or_reject` applies an
@@ -24,6 +26,7 @@ and invalid proposals retain that exact source object.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 import math
 from numbers import Integral
@@ -31,7 +34,7 @@ from typing import Literal
 
 import numpy as np
 
-from .dyadic_tree import DyadicFrontier
+from .dyadic_tree import DyadicFrontier, SubtreePartitionIndex
 from .gamma_beta_tree import (
     GammaBetaTreeProblem,
     GammaBetaTreeState,
@@ -42,6 +45,8 @@ from .gamma_beta_tree import (
 GammaBetaMove = Literal[
     "split",
     "merge",
+    "relocate",
+    "subtree_retile",
     "root_refresh",
     "fraction_refresh",
     "fixed_coefficient",
@@ -84,6 +89,10 @@ class GammaBetaTransitionTerms:
         node_id: Selected structural or active-split node, a negative sentinel
             for an unavailable structural direction, or ``None`` for a root
             or fixed-coefficient refresh.
+        secondary_node_id: Destination split node for a relocation, otherwise
+            ``None``.
+        block_leaf_count: Number of active regions inside a selected subtree
+            retile block, otherwise ``None``.
         coefficient_id: Selected fixed-block coefficient position, or
             ``None`` for every other kernel.
         valid: Whether the proposal is eligible for Metropolis--Hastings
@@ -120,6 +129,8 @@ class GammaBetaTransitionTerms:
     reason: str | None = None
     delta_log_fixed_coefficient_prior: float = 0.0
     coefficient_id: int | None = None
+    secondary_node_id: int | None = None
+    block_leaf_count: int | None = None
     log_target_delta: float = field(init=False)
     log_q_forward: float = field(init=False)
     log_q_reverse: float = field(init=False)
@@ -145,15 +156,35 @@ class GammaBetaTransitionTerms:
         if self.move not in (
             "split",
             "merge",
+            "relocate",
+            "subtree_retile",
             "root_refresh",
             "fraction_refresh",
             "fixed_coefficient",
         ):
             raise ValueError("move must name a Gamma--Beta proposal kernel.")
+        if not isinstance(self.valid, bool):
+            raise TypeError("valid must be a Boolean.")
         if self.node_id is not None:
             if isinstance(self.node_id, bool) or not isinstance(self.node_id, Integral):
                 raise TypeError("node_id must be an integer or None.")
             object.__setattr__(self, "node_id", int(self.node_id))
+        if self.secondary_node_id is not None:
+            if isinstance(self.secondary_node_id, bool) or not isinstance(
+                self.secondary_node_id,
+                Integral,
+            ):
+                raise TypeError("secondary_node_id must be an integer or None.")
+            object.__setattr__(self, "secondary_node_id", int(self.secondary_node_id))
+        if self.block_leaf_count is not None:
+            if isinstance(self.block_leaf_count, bool) or not isinstance(
+                self.block_leaf_count,
+                Integral,
+            ):
+                raise TypeError("block_leaf_count must be an integer or None.")
+            if self.block_leaf_count < 1:
+                raise ValueError("block_leaf_count must be positive when present.")
+            object.__setattr__(self, "block_leaf_count", int(self.block_leaf_count))
         if self.move == "root_refresh" and self.node_id is not None:
             raise ValueError("a root refresh cannot select a node.")
         if self.coefficient_id is not None:
@@ -168,8 +199,22 @@ class GammaBetaTransitionTerms:
                 raise ValueError("a fixed-coefficient refresh must select only a coefficient.")
         elif self.coefficient_id is not None:
             raise ValueError("only a fixed-coefficient refresh can select a coefficient.")
-        if not isinstance(self.valid, bool):
-            raise TypeError("valid must be a Boolean.")
+        if self.move == "relocate":
+            if self.valid and (
+                self.node_id is None
+                or self.secondary_node_id is None
+                or self.node_id == self.secondary_node_id
+            ):
+                raise ValueError("a valid relocation requires distinct source and destination nodes.")
+            if self.block_leaf_count is not None:
+                raise ValueError("a relocation cannot select a subtree block size.")
+        elif self.secondary_node_id is not None:
+            raise ValueError("only a relocation can select a secondary node.")
+        if self.move == "subtree_retile":
+            if self.valid and (self.node_id is None or self.block_leaf_count is None):
+                raise ValueError("a valid subtree retile requires a block node and leaf count.")
+        elif self.block_leaf_count is not None:
+            raise ValueError("only a subtree retile can record a block leaf count.")
         if self.valid and self.reason is not None:
             raise ValueError("a valid transition cannot have an invalidity reason.")
         if not self.valid and (not isinstance(self.reason, str) or not self.reason):
@@ -424,6 +469,8 @@ def _invalid_transition(
     move: GammaBetaMove,
     node_id: int | None,
     coefficient_id: int | None = None,
+    secondary_node_id: int | None = None,
+    block_leaf_count: int | None = None,
     reason: str,
 ) -> GammaBetaTransitionTerms:
     """Construct a rejected-by-definition self-transition.
@@ -433,6 +480,8 @@ def _invalid_transition(
         move: Attempted kernel name.
         node_id: Attempted node or sentinel.
         coefficient_id: Attempted fixed-block coefficient position.
+        secondary_node_id: Attempted relocation destination node.
+        block_leaf_count: Selected subtree block region count.
         reason: Non-empty invalidity explanation.
 
     Returns:
@@ -456,6 +505,8 @@ def _invalid_transition(
         move=move,
         node_id=node_id,
         coefficient_id=coefficient_id,
+        secondary_node_id=secondary_node_id,
+        block_leaf_count=block_leaf_count,
         valid=False,
         reason=reason,
     )
@@ -468,6 +519,8 @@ def _valid_transition(
     move: GammaBetaMove,
     node_id: int | None,
     coefficient_id: int | None = None,
+    secondary_node_id: int | None = None,
+    block_leaf_count: int | None = None,
     log_q_forward_direction: float = 0.0,
     log_q_forward_selection: float = 0.0,
     log_q_forward_auxiliary: float = 0.0,
@@ -483,6 +536,8 @@ def _valid_transition(
         move: Proposal kernel name.
         node_id: Selected structural or active-fraction node.
         coefficient_id: Selected fixed-block coefficient position.
+        secondary_node_id: Selected relocation destination node.
+        block_leaf_count: Selected subtree block region count.
         log_q_forward_direction: Forward direction log probability.
         log_q_forward_selection: Forward node-selection log probability.
         log_q_forward_auxiliary: Forward independent-prior log density.
@@ -514,6 +569,8 @@ def _valid_transition(
         move=move,
         node_id=node_id,
         coefficient_id=coefficient_id,
+        secondary_node_id=secondary_node_id,
+        block_leaf_count=block_leaf_count,
     )
 
 
@@ -677,6 +734,367 @@ def propose_merge(
         log_q_reverse_direction=math.log(probability),
         log_q_reverse_selection=-math.log(len(reverse_candidates)),
         log_q_reverse_auxiliary=log_beta_density,
+    )
+
+
+def propose_relocate(
+    problem: GammaBetaTreeProblem,
+    state: GammaBetaTreeState,
+    *,
+    merge_parent_node_id: int,
+    split_leaf_node_id: int,
+    new_fraction: float,
+) -> GammaBetaTransitionTerms:
+    """Relocate one fixed-``K`` split by a sequential merge-then-split move.
+
+    A cherry parent ``a`` is selected uniformly and merged. A different
+    splittable leaf ``b`` is then selected uniformly from the intermediate
+    frontier, excluding ``a``, and split using the explicit proposed
+    fraction. The reverse move first merges ``b`` and then splits ``a``.
+    Both sequential selection probabilities and both normalized Beta
+    auxiliary densities are retained explicitly.
+
+    Args:
+        problem: Fixed-tree Gamma--Beta problem.
+        state: Source active-frontier state.
+        merge_parent_node_id: Selected source cherry parent ``a``.
+        split_leaf_node_id: Selected intermediate splittable leaf ``b``.
+        new_fraction: Explicit allocation fraction introduced at ``b``.
+
+    Returns:
+        Immutable fixed-``K`` proposal accounting. Ineligible choices or an
+        out-of-support fraction produce an invalid self-transition.
+
+    Raises:
+        TypeError: If ``problem`` or ``state`` has the wrong type.
+        ValueError: If the problem/state pairing is invalid.
+    """
+    _validate_problem_state(problem, state)
+    source_node_id = _node_id_or_none(merge_parent_node_id)
+    destination_node_id = _node_id_or_none(split_leaf_node_id)
+    mergeable = problem.tree.mergeable_parents(state.frontier)
+    if not mergeable:
+        return _invalid_transition(
+            state,
+            move="relocate",
+            node_id=source_node_id,
+            secondary_node_id=destination_node_id,
+            reason="the source frontier has no mergeable cherry parents",
+        )
+    if source_node_id is None or source_node_id not in mergeable:
+        return _invalid_transition(
+            state,
+            move="relocate",
+            node_id=source_node_id,
+            secondary_node_id=destination_node_id,
+            reason="merge_parent_node_id is not a mergeable cherry parent",
+        )
+
+    intermediate = state.frontier.merge(problem.tree, source_node_id)
+    destinations = tuple(
+        node_id for node_id in problem.tree.splittable_nodes(intermediate) if node_id != source_node_id
+    )
+    if not destinations:
+        return _invalid_transition(
+            state,
+            move="relocate",
+            node_id=source_node_id,
+            secondary_node_id=destination_node_id,
+            reason="the intermediate frontier has no different splittable destination",
+        )
+    if destination_node_id is None or destination_node_id not in destinations:
+        return _invalid_transition(
+            state,
+            move="relocate",
+            node_id=source_node_id,
+            secondary_node_id=destination_node_id,
+            reason="split_leaf_node_id is not an eligible different destination",
+        )
+    fraction = _open_unit_value(new_fraction)
+    if fraction is None:
+        return _invalid_transition(
+            state,
+            move="relocate",
+            node_id=source_node_id,
+            secondary_node_id=destination_node_id,
+            reason="new_fraction must lie strictly between zero and one",
+        )
+
+    fractions_by_node = _active_fraction_mapping(problem, state)
+    removed_fraction = fractions_by_node.pop(source_node_id)
+    fractions_by_node[destination_node_id] = fraction
+    candidate_frontier = intermediate.split(problem.tree, destination_node_id)
+    candidate = build_gamma_beta_tree_state(
+        problem,
+        frontier=candidate_frontier,
+        root_total=state.root_total,
+        active_fractions=_ordered_fractions(
+            problem,
+            candidate_frontier,
+            fractions_by_node,
+        ),
+        fixed_coefficients=state.fixed_coefficients,
+    )
+    reverse_mergeable = problem.tree.mergeable_parents(candidate_frontier)
+    reverse_intermediate = candidate_frontier.merge(problem.tree, destination_node_id)
+    reverse_destinations = tuple(
+        node_id
+        for node_id in problem.tree.splittable_nodes(reverse_intermediate)
+        if node_id != destination_node_id
+    )
+    if reverse_intermediate != intermediate or source_node_id not in reverse_destinations:
+        raise RuntimeError("Internal relocation reverse support mismatch.")
+    return _valid_transition(
+        state,
+        candidate,
+        move="relocate",
+        node_id=source_node_id,
+        secondary_node_id=destination_node_id,
+        log_q_forward_selection=-math.log(len(mergeable)) - math.log(len(destinations)),
+        log_q_forward_auxiliary=problem.prior.log_fraction_density(
+            destination_node_id,
+            fraction,
+        ),
+        log_q_reverse_selection=-math.log(len(reverse_mergeable)) - math.log(len(reverse_destinations)),
+        log_q_reverse_auxiliary=problem.prior.log_fraction_density(
+            source_node_id,
+            removed_fraction,
+        ),
+    )
+
+
+def _subtree_frontier(
+    problem: GammaBetaTreeProblem,
+    frontier: DyadicFrontier,
+    block_node_id: int,
+) -> DyadicFrontier:
+    """Return the active leaves contained inside one canonical subtree."""
+    block = problem.tree.node(block_node_id)
+    return DyadicFrontier(
+        tuple(
+            node_id
+            for node_id in frontier.node_ids
+            if (
+                problem.tree.nodes[node_id].row_start >= block.row_start
+                and problem.tree.nodes[node_id].row_stop <= block.row_stop
+                and problem.tree.nodes[node_id].col_start >= block.col_start
+                and problem.tree.nodes[node_id].col_stop <= block.col_stop
+            )
+        )
+    )
+
+
+def _eligible_retile_blocks_unchecked(
+    problem: GammaBetaTreeProblem,
+    state: GammaBetaTreeState,
+    index: SubtreePartitionIndex,
+) -> tuple[tuple[int, int], ...]:
+    """Return active split blocks with at least one same-size alternative."""
+    eligible: list[tuple[int, int]] = []
+    for node_id in state.frontier.active_split_nodes(problem.tree):
+        subtree = _subtree_frontier(problem, state.frontier, node_id)
+        block_k = len(subtree)
+        if block_k <= index.max_k and index.count(node_id, block_k) > 1:
+            eligible.append((node_id, block_k))
+    return tuple(eligible)
+
+
+def eligible_subtree_retile_blocks(
+    problem: GammaBetaTreeProblem,
+    state: GammaBetaTreeState,
+    index: SubtreePartitionIndex,
+) -> tuple[tuple[int, int], ...]:
+    """Return normalized subtree-retile block candidates as ``(node, m)``.
+
+    A block is eligible when it is an active split node, its current subtree
+    frontier has ``m <= index.max_k`` regions, and the index contains at least
+    one different exact-``m`` frontier. The compound sampler should select
+    uniformly from this tuple and persist ``index.max_k`` as part of its
+    kernel configuration.
+
+    Args:
+        problem: Fixed-tree Gamma--Beta problem.
+        state: Source active-frontier state.
+        index: Exact subtree index built for ``problem.tree``.
+
+    Returns:
+        Stable node-ID-order tuple of eligible block IDs and active region
+        counts.
+
+    Raises:
+        TypeError: If a public argument has the wrong type.
+        ValueError: If the problem/state or index/tree pairing is invalid.
+    """
+    _validate_problem_state(problem, state)
+    if not isinstance(index, SubtreePartitionIndex):
+        raise TypeError("index must be a SubtreePartitionIndex.")
+    if index.tree is not problem.tree:
+        raise ValueError("index must have been built for problem.tree.")
+    return _eligible_retile_blocks_unchecked(problem, state, index)
+
+
+def _explicit_fraction_mapping(
+    values: Mapping[int, float],
+    expected_node_ids: frozenset[int],
+) -> dict[int, float] | None:
+    """Normalize an exact node-keyed proposed-fraction mapping."""
+    normalized: dict[int, float] = {}
+    for node_id, value in values.items():
+        selected_node_id = _node_id_or_none(node_id)
+        fraction = _open_unit_value(value)
+        if selected_node_id is None or fraction is None or selected_node_id in normalized:
+            return None
+        normalized[selected_node_id] = fraction
+    if frozenset(normalized) != expected_node_ids:
+        return None
+    return normalized
+
+
+def propose_subtree_retile(
+    problem: GammaBetaTreeProblem,
+    state: GammaBetaTreeState,
+    index: SubtreePartitionIndex,
+    *,
+    block_node_id: int,
+    replacement_frontier: DyadicFrontier,
+    new_fractions_by_node: Mapping[int, float],
+) -> GammaBetaTransitionTerms:
+    """Replace one active subtree partition by a different same-size tiling.
+
+    Eligible active split blocks are selected uniformly. Conditional on a
+    block containing ``m`` active regions, one of the other exact-``m``
+    subtree frontiers is selected uniformly using ``index``. Fractions for
+    active split nodes common to source and candidate are retained; the
+    caller supplies explicit Beta-prior values for every newly active split
+    node. The pointwise reverse density evaluates the removed source values.
+
+    Args:
+        problem: Fixed-tree Gamma--Beta problem.
+        state: Source active-frontier state.
+        index: Exact subtree partition count/rank index for ``problem.tree``.
+        block_node_id: Explicit eligible active split block.
+        replacement_frontier: Explicit different exact-``m`` frontier that
+            covers the selected subtree.
+        new_fractions_by_node: Exact mapping from every newly active split
+            node to its explicit proposed fraction.
+
+    Returns:
+        Immutable fixed-``K`` proposal accounting with the block's active
+        region count recorded in ``block_leaf_count``.
+
+    Raises:
+        TypeError: If public object arguments have the wrong type.
+        ValueError: If the problem/state or index/tree pairing is invalid.
+    """
+    _validate_problem_state(problem, state)
+    if not isinstance(index, SubtreePartitionIndex):
+        raise TypeError("index must be a SubtreePartitionIndex.")
+    if index.tree is not problem.tree:
+        raise ValueError("index must have been built for problem.tree.")
+    if not isinstance(replacement_frontier, DyadicFrontier):
+        raise TypeError("replacement_frontier must be a DyadicFrontier.")
+    if not isinstance(new_fractions_by_node, Mapping):
+        raise TypeError("new_fractions_by_node must be a mapping.")
+
+    selected_node_id = _node_id_or_none(block_node_id)
+    eligible = _eligible_retile_blocks_unchecked(problem, state, index)
+    eligible_by_node = dict(eligible)
+    if selected_node_id is None or selected_node_id not in eligible_by_node:
+        return _invalid_transition(
+            state,
+            move="subtree_retile",
+            node_id=selected_node_id,
+            reason="block_node_id is not an eligible active split block",
+        )
+    block_k = eligible_by_node[selected_node_id]
+    source_subtree = _subtree_frontier(
+        problem,
+        state.frontier,
+        selected_node_id,
+    )
+    try:
+        source_rank = index.rank(selected_node_id, block_k, source_subtree)
+        replacement_rank = index.rank(
+            selected_node_id,
+            block_k,
+            replacement_frontier,
+        )
+    except (KeyError, TypeError, ValueError):
+        return _invalid_transition(
+            state,
+            move="subtree_retile",
+            node_id=selected_node_id,
+            block_leaf_count=block_k,
+            reason="replacement_frontier must exactly cover the block with the same size",
+        )
+    if replacement_rank == source_rank:
+        return _invalid_transition(
+            state,
+            move="subtree_retile",
+            node_id=selected_node_id,
+            block_leaf_count=block_k,
+            reason="replacement_frontier must differ from the source subtree frontier",
+        )
+
+    source_subtree_ids = frozenset(source_subtree.node_ids)
+    candidate_frontier = DyadicFrontier(
+        tuple(node_id for node_id in state.frontier.node_ids if node_id not in source_subtree_ids)
+        + replacement_frontier.node_ids
+    )
+    candidate_frontier.validate(problem.tree)
+    source_fractions = _active_fraction_mapping(problem, state)
+    candidate_split_nodes = frozenset(candidate_frontier.active_split_nodes(problem.tree))
+    source_split_nodes = frozenset(source_fractions)
+    added_nodes = candidate_split_nodes - source_split_nodes
+    removed_nodes = source_split_nodes - candidate_split_nodes
+    proposed_fractions = _explicit_fraction_mapping(
+        new_fractions_by_node,
+        added_nodes,
+    )
+    if proposed_fractions is None:
+        return _invalid_transition(
+            state,
+            move="subtree_retile",
+            node_id=selected_node_id,
+            block_leaf_count=block_k,
+            reason="new_fractions_by_node must exactly cover added nodes with open-unit values",
+        )
+    candidate_fractions = {
+        node_id: value for node_id, value in source_fractions.items() if node_id in candidate_split_nodes
+    }
+    candidate_fractions.update(proposed_fractions)
+    candidate = build_gamma_beta_tree_state(
+        problem,
+        frontier=candidate_frontier,
+        root_total=state.root_total,
+        active_fractions=_ordered_fractions(
+            problem,
+            candidate_frontier,
+            candidate_fractions,
+        ),
+        fixed_coefficients=state.fixed_coefficients,
+    )
+    reverse_eligible = _eligible_retile_blocks_unchecked(problem, candidate, index)
+    reverse_eligible_nodes = frozenset(node_id for node_id, _ in reverse_eligible)
+    if selected_node_id not in reverse_eligible_nodes:
+        raise RuntimeError("Internal subtree-retile reverse block support mismatch.")
+    alternatives = index.count(selected_node_id, block_k) - 1
+    return _valid_transition(
+        state,
+        candidate,
+        move="subtree_retile",
+        node_id=selected_node_id,
+        block_leaf_count=block_k,
+        log_q_forward_selection=-math.log(len(eligible)) - math.log(alternatives),
+        log_q_forward_auxiliary=sum(
+            problem.prior.log_fraction_density(node_id, proposed_fractions[node_id])
+            for node_id in sorted(added_nodes)
+        ),
+        log_q_reverse_selection=-math.log(len(reverse_eligible)) - math.log(alternatives),
+        log_q_reverse_auxiliary=sum(
+            problem.prior.log_fraction_density(node_id, source_fractions[node_id])
+            for node_id in sorted(removed_nodes)
+        ),
     )
 
 
@@ -938,9 +1356,12 @@ __all__ = [
     "GammaBetaMove",
     "GammaBetaTransitionTerms",
     "accept_or_reject",
+    "eligible_subtree_retile_blocks",
     "propose_fraction_refresh",
     "propose_fixed_coefficient",
     "propose_merge",
+    "propose_relocate",
     "propose_root_refresh",
     "propose_split",
+    "propose_subtree_retile",
 ]
