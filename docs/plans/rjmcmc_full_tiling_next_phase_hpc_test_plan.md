@@ -153,12 +153,14 @@ pixi run -e dev --frozen ruff check \
   openghg_inversions/experimental/rjmcmc/full_tiling.py \
   openghg_inversions/experimental/rjmcmc/full_tiling_posterior.py \
   openghg_inversions/experimental/rjmcmc/full_tiling_compound_sampling.py \
+  openghg_inversions/experimental/rjmcmc/full_tiling_io.py \
   examples/rjmcmc/full_tiling_native_smoke.py \
   > "$RUN_ROOT/preflight/ruff.txt" 2>&1
 pixi run -e dev --frozen pyright \
   openghg_inversions/experimental/rjmcmc/full_tiling.py \
   openghg_inversions/experimental/rjmcmc/full_tiling_posterior.py \
   openghg_inversions/experimental/rjmcmc/full_tiling_compound_sampling.py \
+  openghg_inversions/experimental/rjmcmc/full_tiling_io.py \
   examples/rjmcmc/full_tiling_native_smoke.py \
   > "$RUN_ROOT/preflight/pyright.txt" 2>&1
 ```
@@ -193,6 +195,89 @@ versioned root-slice schedule, root prior shape/rate 4/4, exact input SHA,
 closure within the existing \(10^{-12}\) relative/absolute tolerance, and the
 three root-slice limits 1/100/1000.
 
+## Real-scale checkpoint gate
+
+Commit `c1a6944a` failed after otherwise successful candidate sampling because
+checkpoint reconstruction used a fixed \(5\times10^{-13}\) ppb absolute cache
+tolerance. Incremental and canonical reconstruction sums differed by at most
+\(4.77\times10^{-12}\) ppb after 1,400 transitions, without any coordinate
+disagreement. The revised audit:
+
+- continues to require exact topology, leaf masses, fixed coefficients,
+  hashes, schedule phase, kernel settings, and PCG64 state;
+- persists the original incremental caches for bitwise continuation;
+- independently rebuilds canonical caches from the exact coordinates;
+- uses cache tolerance
+  \(\max(5\times10^{-13}, 512\,\mathrm{ULP}(S))\), where \(S\) is the largest
+  absolute observation or cache value, with a floor of one; and
+- separately reconstructs prediction, residual, and all target components
+  from the exact persisted dynamic and fixed prediction caches. Dependent
+  caches and target components must then agree exactly.
+
+The focused checkpoint tests include PARIS-scale six-fixed-position sweeps at
+14, 1,400, and 14,000 transitions. Locally the last case reproduces more than
+\(10^{-9}\) benign raw-Gaussian drift from canonical cache reconstruction.
+Deterministic 256/1,024-ULP cases test the cache-audit boundary; deliberate
+\(10^{-8}\) ppb stale-cache corruption and one-ULP target corruption must still
+fail closed.
+
+Before submitting the four-cell matrix, reproduce the old transition boundary
+on the frozen input:
+
+```bash
+for N in 13 14; do
+  OUT="$RUN_ROOT/preflight/checkpoint-gate-k50-beta0-t${N}"
+  pixi run -e dev --frozen python "$DRIVER" \
+    --input "$FROZEN_INPUT" --output-directory "$OUT" \
+    --k 50 --iterations "$N" --seed 31050 \
+    --chain-id checkpoint-gate-k50-beta0 \
+    --concentration 100 --root-variance 0.25 --likelihood-power 0 \
+    --fixed-prior-mean 1 --fixed-prior-sd 1 --fixed-proposal-sd 0.4 \
+    --input-id "$FROZEN_INPUT_ID" \
+    --expected-input-sha256 "$FROZEN_INPUT_SHA" \
+    --code-revision "$CODE_REVISION" \
+    --nominal-weight-policy "$WEIGHT_POLICY" \
+    --expected-outer-labels "$OUTER_LABELS" --require-paris-profile \
+    --root-slice-width 1 --root-slice-max-steps 100 \
+    --root-slice-max-shrink-steps 1000
+  test -f "$OUT/checkpoint.npz"
+  test -f "$OUT/complete.json"
+  pixi run -e dev --frozen python -c \
+    'import json, pathlib, sys; p=pathlib.Path(sys.argv[1]); c=json.loads((p/"complete.json").read_text()); assert "checkpoint.npz" in c["sha256"]' \
+    "$OUT"
+done
+```
+
+Both boundaries are hard gates. Transition 14 must now publish a complete
+bundle. Keep these new-commit artifacts separate from the immutable
+`c1a6944a` failure record.
+
+## Hard-gate debugging protocol
+
+When a later hard gate fails, stop downstream expensive stages but continue
+bounded read-only diagnosis where possible:
+
+1. Preserve the failed revision-specific run directory and all incomplete
+   artifacts; never repair or overwrite them in place.
+2. Find the shortest failing transition boundary by running new output
+   directories, including the immediately preceding successful boundary.
+3. Record the global transition, schedule phase, move, validity/acceptance,
+   exact coordinate equality, per-cache maximum absolute difference, error in
+   units of the reported audit tolerance, and target-component differences.
+4. Diagnostic wrappers or monkeypatches may live under the run's `jobs/` or
+   `diagnostic/` directory, but must not edit the frozen candidate source or
+   publish diagnostic output as a successful result.
+5. Launcher/environment defects may be corrected and rerun with the correction
+   recorded. A sampler, target, checkpoint, or scientific-input defect remains
+   a hard stop pending a new reviewed commit.
+6. After a fix, use a new commit-addressed run root. Rerun preflight and the
+   smallest reproduction first, then the matrix and awkward restart. Submit
+   calibration and diagnostics stages only after those gates pass.
+
+Failure messages from the cache audit now report the worst cache, maximum
+absolute discrepancy, permitted scale/ULP-aware tolerance, and
+observation-space scale; retain the complete message in the run report.
+
 ## Reference-oracle semantic parity
 
 There is deliberately no production runtime flag for the slow catalogue
@@ -210,6 +295,7 @@ pixi run -e dev --frozen pytest -q \
   tests/experimental/rjmcmc/test_full_tiling_posterior.py \
   tests/experimental/rjmcmc/test_full_tiling_compound_sampling.py \
   tests/experimental/rjmcmc/test_full_tiling_movement_diagnostics.py \
+  tests/experimental/rjmcmc/test_full_tiling_io.py \
   tests/experimental/rjmcmc/test_full_tiling_native_smoke.py \
   > "$RUN_ROOT/preflight/reference-oracle-tests.txt" 2>&1
 ```

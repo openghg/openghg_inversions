@@ -1007,6 +1007,17 @@ Existing OpenGHG Inversions draft work can be reused as follows:
   catalogue, exact log-root slice update, output-only movement diagnostics,
   and strict durable restart with the executable
   [next-phase HPC test plan](rjmcmc_full_tiling_next_phase_hpc_test_plan.md).
+- **Checkpoint audit correction (2026-07-24):** the first next-phase HPC run at
+  `c1a6944a` completed all candidate sampling but rejected ordinary
+  summation-order cache differences of up to \(4.77\times10^{-12}\) ppb. The
+  follow-up keeps coordinates and persisted continuation caches exact while
+  auditing canonical cache reconstruction with a documented scale/ULP-aware
+  bound. A second reconstruction from the exact persisted component caches
+  requires internally exact dependent caches and consistent target fields,
+  without treating the permitted cache roundoff as a contradictory likelihood
+  failure. The HPC plan now gates transition 13/14 explicitly and authorizes
+  bounded failure-localization diagnostics before expensive downstream
+  stages.
 - **Real-data provenance:** the Stage C PARIS NetCDF path, SHA-256, ordered
   InTEM outer labels, and strictly positive spherical-cell-area weight policy
   are pinned literally in the HPC plan from independent run records.

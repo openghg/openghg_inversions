@@ -45,6 +45,7 @@ from .full_tiling_compound_sampling import (
 from .full_tiling_posterior import (
     FullTilingPosteriorState,
     FullTilingProblem,
+    _assemble_state,
     build_full_tiling_posterior_state,
 )
 from .gamma_beta_io import gamma_beta_problem_fingerprint
@@ -91,8 +92,8 @@ _STATE_LOG_FIELDS = (
     "log_fixed_coefficient_prior",
     "log_target",
 )
-_CACHE_REBUILD_ATOL = 5e-13
-_TARGET_REBUILD_ATOL = 1e-9
+_CACHE_REBUILD_MIN_ATOL = 5e-13
+_CACHE_REBUILD_MAX_ULPS = 512
 _METADATA_NAMES = frozenset(
     {
         "schema_id",
@@ -342,6 +343,168 @@ def _rectangle_bounds(state: FullTilingPosteriorState) -> NDArray[np.int64]:
     )
 
 
+def _cache_value(
+    source: FullTilingPosteriorState | Mapping[str, NDArray[Any]],
+    name: str,
+) -> NDArray[np.float64]:
+    """Return one cache array from a state or loaded-array mapping."""
+    if isinstance(source, FullTilingPosteriorState):
+        values = getattr(source, name)
+    else:
+        values = source[name]
+    return np.asarray(values, dtype=np.float64)
+
+
+def _cache_rebuild_absolute_tolerance(
+    problem: FullTilingProblem,
+    rebuilt: FullTilingPosteriorState,
+    persisted: FullTilingPosteriorState | Mapping[str, NDArray[Any]],
+) -> tuple[float, float]:
+    """Return the scale/ULP-aware cache audit tolerance and scientific scale.
+
+    Incremental proposal updates and canonical full reconstruction evaluate
+    mathematically equivalent sums in different orders. Their discrepancy can
+    grow over a long chain without indicating stale coordinates. The audit
+    permits 512 representable steps at the largest observation-space scale,
+    with the historical absolute tolerance retained as a lower bound.
+
+    Args:
+        problem: Scientific problem defining the observation scale.
+        rebuilt: Independently reconstructed state.
+        persisted: Exact in-memory or loaded caches to audit.
+
+    Returns:
+        Absolute tolerance in observation units and the scale at which its ULP
+        was evaluated.
+
+    Raises:
+        ValueError: If cache shapes differ or observations or audited cache
+            arrays are non-finite.
+    """
+    scale = max(
+        1.0,
+        float(np.max(np.abs(problem.observations), initial=0.0)),
+    )
+    for name in _CACHE_ARRAY_NAMES:
+        rebuilt_values = np.asarray(getattr(rebuilt, name), dtype=np.float64)
+        persisted_values = _cache_value(persisted, name)
+        if persisted_values.shape != rebuilt_values.shape:
+            raise ValueError(
+                f"Audited checkpoint cache {name} has shape "
+                f"{persisted_values.shape}, expected {rebuilt_values.shape}."
+            )
+        if not np.all(np.isfinite(rebuilt_values)) or not np.all(np.isfinite(persisted_values)):
+            raise ValueError("Audited checkpoint cache arrays must be finite.")
+        scale = max(
+            scale,
+            float(np.max(np.abs(rebuilt_values), initial=0.0)),
+            float(np.max(np.abs(persisted_values), initial=0.0)),
+        )
+    ulp = abs(float(np.spacing(np.float64(scale))))
+    tolerance = max(
+        _CACHE_REBUILD_MIN_ATOL,
+        _CACHE_REBUILD_MAX_ULPS * ulp,
+    )
+    if not isfinite(tolerance):
+        raise ValueError("Checkpoint cache reconstruction scale is not finite.")
+    return tolerance, scale
+
+
+def _validate_rebuilt_caches(
+    problem: FullTilingProblem,
+    rebuilt: FullTilingPosteriorState,
+    persisted: FullTilingPosteriorState | Mapping[str, NDArray[Any]],
+    *,
+    location: str,
+) -> None:
+    """Validate rebuilt caches against persisted values.
+
+    Args:
+        problem: Problem defining the observation-space audit scale.
+        rebuilt: Independently reconstructed posterior state.
+        persisted: State or loaded cache mapping being audited.
+        location: Context included in validation errors.
+
+    Raises:
+        ValueError: If a cache is non-finite or its maximum absolute
+            discrepancy exceeds the scale/ULP-aware tolerance.
+    """
+    tolerance, scale = _cache_rebuild_absolute_tolerance(
+        problem,
+        rebuilt,
+        persisted,
+    )
+    differences = {
+        name: float(
+            np.max(
+                np.abs(np.asarray(getattr(rebuilt, name), dtype=np.float64) - _cache_value(persisted, name)),
+                initial=0.0,
+            )
+        )
+        for name in _CACHE_ARRAY_NAMES
+    }
+    worst_name = max(differences, key=differences.__getitem__)
+    worst_difference = differences[worst_name]
+    if worst_difference > tolerance:
+        raise ValueError(
+            f"{location} contains stale or inconsistent cached arrays: "
+            f"{worst_name} maximum absolute difference "
+            f"{worst_difference:.17g} exceeds scale/ULP-aware tolerance "
+            f"{tolerance:.17g} at observation-space scale {scale:.17g}."
+        )
+
+
+def _cache_consistent_state(
+    problem: FullTilingProblem,
+    rebuilt: FullTilingPosteriorState,
+    persisted: FullTilingPosteriorState | Mapping[str, NDArray[Any]],
+) -> FullTilingPosteriorState:
+    """Recompute dependent caches and targets from persisted component caches."""
+    return _assemble_state(
+        problem,
+        allocation=rebuilt.allocation,
+        fixed_coefficients=rebuilt.fixed_coefficients,
+        dynamic_prediction=_cache_value(persisted, "dynamic_prediction"),
+        fixed_prediction=_cache_value(persisted, "fixed_prediction"),
+    )
+
+
+def _validate_cache_consistent_values(
+    cache_consistent: FullTilingPosteriorState,
+    persisted_caches: FullTilingPosteriorState | Mapping[str, NDArray[Any]],
+    persisted_logs: FullTilingPosteriorState | Mapping[str, float],
+    *,
+    location: str,
+) -> None:
+    """Require persisted derived values to agree with their exact caches.
+
+    Args:
+        cache_consistent: State rebuilt from the persisted dynamic and fixed
+            prediction components.
+        persisted_caches: State or mapping supplying every persisted cache.
+        persisted_logs: State or mapping supplying every persisted target
+            component.
+        location: Context included in validation errors.
+
+    Raises:
+        ValueError: If a dependent cache or target component is inconsistent.
+    """
+    for name in _CACHE_ARRAY_NAMES:
+        if not np.array_equal(
+            getattr(cache_consistent, name),
+            _cache_value(persisted_caches, name),
+        ):
+            raise ValueError(f"{location} contains internally inconsistent cached array {name}.")
+    for name in _STATE_LOG_FIELDS:
+        expected = float(getattr(cache_consistent, name))
+        if isinstance(persisted_logs, FullTilingPosteriorState):
+            persisted = float(getattr(persisted_logs, name))
+        else:
+            persisted = float(persisted_logs[name])
+        if expected != persisted:
+            raise ValueError(f"{location} contains stale or inconsistent target component {name}.")
+
+
 def _rebuild_and_validate_state(
     problem: FullTilingProblem,
     state: object,
@@ -385,26 +548,19 @@ def _rebuild_and_validate_state(
     coordinate_fields = ("leaf_masses", "fixed_coefficients")
     if any(not np.array_equal(getattr(rebuilt, name), getattr(state, name)) for name in coordinate_fields):
         raise ValueError(f"{location} has inconsistent continuous coordinates.")
-    if any(
-        not np.allclose(
-            getattr(rebuilt, name),
-            getattr(state, name),
-            rtol=0.0,
-            atol=_CACHE_REBUILD_ATOL,
-        )
-        for name in _CACHE_ARRAY_NAMES
-    ):
-        raise ValueError(f"{location} contains stale or inconsistent cached arrays.")
-    if any(
-        not np.isclose(
-            getattr(rebuilt, name),
-            getattr(state, name),
-            rtol=0.0,
-            atol=_TARGET_REBUILD_ATOL,
-        )
-        for name in _STATE_LOG_FIELDS
-    ):
-        raise ValueError(f"{location} contains stale or inconsistent target components.")
+    _validate_rebuilt_caches(
+        problem,
+        rebuilt,
+        state,
+        location=location,
+    )
+    cache_consistent = _cache_consistent_state(problem, rebuilt, state)
+    _validate_cache_consistent_values(
+        cache_consistent,
+        state,
+        state,
+        location=location,
+    )
     return rebuilt
 
 
@@ -971,14 +1127,12 @@ def load_full_tiling_checkpoint(
     except (TypeError, ValueError) as exc:
         raise ValueError("Checkpoint topology or state coordinates are invalid.") from exc
 
-    for name, persisted in caches.items():
-        if not np.allclose(
-            getattr(rebuilt, name),
-            persisted,
-            rtol=0.0,
-            atol=_CACHE_REBUILD_ATOL,
-        ):
-            raise ValueError(f"Rebuilt state {name} does not match persisted cache.")
+    _validate_rebuilt_caches(
+        problem,
+        rebuilt,
+        caches,
+        location="Rebuilt checkpoint state",
+    )
     expected_root_total = _finite_float(
         state_metadata["root_total"],
         location="state.root_total",
@@ -988,18 +1142,17 @@ def load_full_tiling_checkpoint(
         raise ValueError("Rebuilt state root_total does not match checkpoint metadata.")
     persisted_logs: dict[str, float] = {}
     for name in _STATE_LOG_FIELDS:
-        expected_value = _finite_float(
+        persisted_logs[name] = _finite_float(
             state_metadata[name],
             location=f"state.{name}",
         )
-        persisted_logs[name] = expected_value
-        if not np.isclose(
-            getattr(rebuilt, name),
-            expected_value,
-            rtol=0.0,
-            atol=_TARGET_REBUILD_ATOL,
-        ):
-            raise ValueError(f"Rebuilt state {name} does not match checkpoint metadata.")
+    cache_consistent = _cache_consistent_state(problem, rebuilt, caches)
+    _validate_cache_consistent_values(
+        cache_consistent,
+        caches,
+        persisted_logs,
+        location="Checkpoint state",
+    )
     state = FullTilingPosteriorState(
         problem=problem,
         allocation=allocation,

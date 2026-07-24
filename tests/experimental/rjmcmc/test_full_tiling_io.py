@@ -33,6 +33,7 @@ from openghg_inversions.experimental.rjmcmc.full_tiling_io import (
 from openghg_inversions.experimental.rjmcmc.full_tiling_posterior import (
     FullTilingPosteriorState,
     FullTilingProblem,
+    _assemble_state,
     initialize_full_tiling_posterior_state,
 )
 from openghg_inversions.experimental.rjmcmc.gamma_beta_tree import (
@@ -94,6 +95,32 @@ def _manifest(*, revision: str = "0123456789abcdef") -> dict[str, object]:
             }
         },
     }
+
+
+def _real_scale_fixed_sweep_problem() -> FullTilingProblem:
+    """Build a PARIS-scale problem with all six fixed schedule positions."""
+    problem = _problem()
+    fixed_block = FixedDesignBlock(
+        design=np.linspace(
+            0.123456789,
+            29.87654321,
+            24,
+            dtype=np.float64,
+        ).reshape(4, 6),
+        coefficient_prior_mean=np.ones(6),
+        coefficient_prior_sd=np.ones(6),
+    )
+    base = replace(
+        problem.base,
+        observations=np.full(4, 1986.7),
+        fixed_offset=np.full(4, 1986.7),
+        fixed_block=fixed_block,
+        likelihood_power=0.0,
+    )
+    return FullTilingProblem(
+        base=base,
+        concentration=problem.concentration,
+    )
 
 
 def _sample_boundary(problem: FullTilingProblem) -> FullTilingCompoundSamplingResult:
@@ -273,6 +300,131 @@ def test_checkpoint_round_trip_preserves_exact_continuation(
         )
 
 
+@pytest.mark.parametrize(
+    ("iterations", "seed"),
+    (
+        (14, 2),
+        (1_400, 0),
+        (14_000, 0),
+    ),
+)
+def test_real_scale_fixed_sweep_roundoff_is_audited_and_checkpointed(
+    tmp_path: Path,
+    iterations: int,
+    seed: int,
+) -> None:
+    """Benign PARIS-scale cache and target drift survives checkpoint audits."""
+    problem = _real_scale_fixed_sweep_problem()
+    initial = initialize_full_tiling_posterior_state(problem, k=3)
+    result = sample_full_tiling_compound(
+        problem,
+        initial,
+        FullTilingCompoundConfig(
+            iterations=iterations,
+            seed=seed,
+            fixed_coefficient_proposal_sd=0.4,
+        ),
+    )
+    assert result.checkpoint.schedule_phase == 0
+    assert result.trace.move[-6:].tolist() == ["fixed_coefficient"] * 6
+
+    path = tmp_path / f"real-scale-transition-{iterations}.npz"
+    save_full_tiling_checkpoint(
+        path,
+        result.checkpoint,
+        run_manifest=_manifest(),
+    )
+    loaded = load_full_tiling_checkpoint(
+        path,
+        _real_scale_fixed_sweep_problem(),
+        expected_run_manifest=_manifest(),
+    )
+    _assert_states_equal(loaded.state, result.final_state)
+
+
+def test_scale_ulp_cache_audit_has_deterministic_boundary(tmp_path: Path) -> None:
+    """Known cache perturbations pass below and fail above the ULP bound."""
+    problem = _real_scale_fixed_sweep_problem()
+    canonical = initialize_full_tiling_posterior_state(problem, k=3)
+    scale = max(
+        1.0,
+        float(np.max(np.abs(problem.observations))),
+        *(
+            float(np.max(np.abs(getattr(canonical, name))))
+            for name in (
+                "dynamic_prediction",
+                "fixed_prediction",
+                "prediction",
+                "residual",
+            )
+        ),
+    )
+    ulp = abs(float(np.spacing(np.float64(scale))))
+    result = sample_full_tiling_compound(
+        problem,
+        canonical,
+        FullTilingCompoundConfig(
+            iterations=14,
+            seed=2,
+            fixed_coefficient_proposal_sd=0.4,
+        ),
+    )
+
+    within_dynamic = np.array(canonical.dynamic_prediction, copy=True)
+    within_dynamic[0] += 256.0 * ulp
+    within = _assemble_state(
+        problem,
+        allocation=canonical.allocation,
+        fixed_coefficients=canonical.fixed_coefficients,
+        dynamic_prediction=within_dynamic,
+        fixed_prediction=canonical.fixed_prediction,
+    )
+    within_path = tmp_path / "within-ulp-bound.npz"
+    save_full_tiling_checkpoint(
+        within_path,
+        replace(result.checkpoint, state=within),
+        run_manifest=_manifest(),
+    )
+
+    inconsistent_prediction = np.array(canonical.prediction, copy=True)
+    inconsistent_prediction[0] += 256.0 * ulp
+    inconsistent_path = tmp_path / "internally-inconsistent.npz"
+    with pytest.raises(
+        ValueError,
+        match="internally inconsistent cached array prediction",
+    ):
+        save_full_tiling_checkpoint(
+            inconsistent_path,
+            replace(
+                result.checkpoint,
+                state=replace(
+                    canonical,
+                    prediction=inconsistent_prediction,
+                ),
+            ),
+            run_manifest=_manifest(),
+        )
+    assert not inconsistent_path.exists()
+
+    beyond_dynamic = np.array(canonical.dynamic_prediction, copy=True)
+    beyond_dynamic[0] += 1_024.0 * ulp
+    beyond = _assemble_state(
+        problem,
+        allocation=canonical.allocation,
+        fixed_coefficients=canonical.fixed_coefficients,
+        dynamic_prediction=beyond_dynamic,
+        fixed_prediction=canonical.fixed_prediction,
+    )
+    beyond_path = tmp_path / "beyond-ulp-bound.npz"
+    with pytest.raises(ValueError, match="scale/ULP-aware tolerance"):
+        save_full_tiling_checkpoint(
+            beyond_path,
+            replace(result.checkpoint, state=beyond),
+            run_manifest=_manifest(),
+        )
+    assert not beyond_path.exists()
+
+
 def test_fingerprints_and_load_reject_changed_problem_or_manifest(
     tmp_path: Path,
 ) -> None:
@@ -352,11 +504,15 @@ def test_checkpoint_rejects_tampered_arrays_metadata_and_caches(
     )
 
     def alter_target(metadata: dict[str, Any]) -> None:
-        """Change one target cache while preserving outer metadata integrity."""
-        metadata["state"]["log_target"] += 1.0
+        """Change one target cache by one ULP while preserving outer integrity."""
+        value = float(metadata["state"]["log_target"])
+        metadata["state"]["log_target"] = float(np.nextafter(value, np.inf))
 
     _rewrite_metadata(target_path, alter_target)
-    with pytest.raises(ValueError, match="log_target does not match"):
+    with pytest.raises(
+        ValueError,
+        match="stale or inconsistent target component log_target",
+    ):
         load_full_tiling_checkpoint(
             target_path,
             _problem(),
@@ -429,7 +585,7 @@ def test_checkpoint_rejects_tampered_arrays_metadata_and_caches(
         )
 
     _rewrite_archive(cache_path, alter_cache_and_hashes)
-    with pytest.raises(ValueError, match="prediction does not match persisted cache"):
+    with pytest.raises(ValueError, match="stale or inconsistent cached arrays"):
         load_full_tiling_checkpoint(
             cache_path,
             _problem(),
@@ -545,7 +701,7 @@ def test_stale_state_does_not_publish_checkpoint(tmp_path: Path) -> None:
     result = _sample_boundary(problem)
     stale_state = replace(
         result.checkpoint.state,
-        prediction=result.checkpoint.state.prediction + 1.0,
+        prediction=result.checkpoint.state.prediction + 1.0e-8,
     )
     stale_checkpoint = replace(result.checkpoint, state=stale_state)
     path = tmp_path / "checkpoint.npz"
@@ -559,6 +715,28 @@ def test_stale_state_does_not_publish_checkpoint(tmp_path: Path) -> None:
 
     assert not path.exists()
     assert list(tmp_path.glob(f".{path.name}.*.tmp")) == []
+
+    target_path = tmp_path / "stale-target.npz"
+    stale_target = replace(
+        result.checkpoint.state,
+        log_likelihood=float(
+            np.nextafter(
+                result.checkpoint.state.log_likelihood,
+                np.inf,
+            )
+        ),
+    )
+    with pytest.raises(
+        ValueError,
+        match="stale or inconsistent target component log_likelihood",
+    ):
+        save_full_tiling_checkpoint(
+            target_path,
+            replace(result.checkpoint, state=stale_target),
+            run_manifest=_manifest(),
+        )
+    assert not target_path.exists()
+    assert list(tmp_path.glob(f".{target_path.name}.*.tmp")) == []
 
 
 def test_invalid_rng_does_not_publish_checkpoint(tmp_path: Path) -> None:
