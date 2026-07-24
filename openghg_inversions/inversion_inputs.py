@@ -1,4 +1,4 @@
-"""Functions for creating the inputs needed by PyMC."""
+"""Create backend-neutral observations and sensitivities for inversions."""
 
 import datetime as dt
 import numbers
@@ -303,11 +303,33 @@ def make_inv_inputs(
     fp_data: dict[str, Any],
     sites: list[str] | None = None,
     bc_freq: Literal["monthly"] | str | None = None,
-    sigma_freq: Literal["monthly"] | str | None = None,
     min_error: str | dict[str, float] | int | float = 0.0,
     min_error_per_site: bool = True,
     start_date: DatetimeLike | None = None,
 ) -> xr.Dataset:
+    """Create backend-neutral observation-aligned inversion inputs.
+
+    The returned dataset contains shared observations, sensitivities, error
+    terms, and site alignment metadata. Model-component-specific arrays are
+    constructed by their owning components.
+
+    Args:
+        fp_data: Per-site merged observations and sensitivity data.
+        sites: Sites to retain. Defaults to all non-metadata entries.
+        bc_freq: Optional frequency used to transform boundary-condition
+            sensitivities.
+        min_error: Minimum-error value or calculation configuration.
+        min_error_per_site: Whether a calculated minimum error varies by site.
+        start_date: Optional anchor for fixed-duration boundary-condition
+            frequencies.
+
+    Returns:
+        Canonical inversion inputs aligned along ``nmeasure``.
+
+    Raises:
+        ValueError: If required input variables are missing or minimum-error
+            configuration is invalid.
+    """
     sites = sites or [k for k in fp_data if not k.startswith(".")]
 
     ds = concat_gather_datasets(
@@ -332,13 +354,6 @@ def make_inv_inputs(
         ds = transform_bc(ds, freq=bc_freq, anchor_time=start_date)
 
     ds = add_site_indicator(ds)
-    sigma_freq_index = make_sigma_freq(ds.time, freq=sigma_freq, anchor_time=start_date)
-    ds["sigma_freq_index"] = xr.DataArray(
-        sigma_freq_index.data,
-        dims=("nmeasure",),
-        name="sigma_freq_index",
-    )
-
     ds = add_min_error(ds, fp_data=fp_data, min_error=min_error, min_error_per_site=min_error_per_site)
 
     ds = _drop_nan_and_compute(ds)

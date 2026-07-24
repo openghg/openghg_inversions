@@ -350,6 +350,7 @@ def validate_supported_params(params: Mapping[str, Any], *, data_params: set[str
         "country_file",
         "add_offset",
         "sigma_per_site",
+        "sigma_freq",
     }
     supported = data_params | runner_params | required_run_params()
     unsupported = sorted(set(params) - supported)
@@ -381,6 +382,8 @@ def _make_model_spec(
     offset_prior: dict[str, Any] | None,
     use_bc: bool,
     sigma_per_site: bool,
+    sigma_freq: str | None,
+    sigma_freq_anchor: str | None,
     add_offset: bool,
     pollution_events_from_obs: bool,
     no_model_error: bool,
@@ -427,6 +430,8 @@ def _make_model_spec(
         sectors=tuple(sectors),
         use_bc=use_bc,
         sigma_per_site=sigma_per_site,
+        sigma_freq=sigma_freq,
+        sigma_freq_anchor=sigma_freq_anchor,
         add_offset=add_offset,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
@@ -487,6 +492,7 @@ def make_rhime_runner_setup(
 
     use_bc = remaining.get("use_bc", True)
     sigma_per_site = remaining.get("sigma_per_site", True)
+    sigma_freq = remaining.pop("sigma_freq", None)
     add_offset = remaining.get("add_offset", False)
     pollution_events_from_obs = remaining.pop("pollution_events_from_obs", False)
     no_model_error = remaining.pop("no_model_error", False)
@@ -531,6 +537,8 @@ def make_rhime_runner_setup(
         offset_prior=offset_prior,
         use_bc=use_bc,
         sigma_per_site=sigma_per_site,
+        sigma_freq=sigma_freq,
+        sigma_freq_anchor=start_date,
         add_offset=add_offset,
         pollution_events_from_obs=pollution_events_from_obs,
         no_model_error=no_model_error,
