@@ -14,8 +14,9 @@ choices and fixed local destination catalogues.
 All proposal constructors are deterministic.  Their discrete choices,
 continuous draws, and accept/reject log-uniform value are supplied explicitly,
 which makes incremental prediction updates directly testable against
-:func:`build_full_tiling_posterior_state`.  The module contains no random
-number generator, sampler, persistence, or input/output layer.
+:func:`build_full_tiling_posterior_state`.  The only random operation is the
+separately seeded random-recursive initializer; the module contains no sampler,
+persistence, or input/output layer.
 
 Positive allocation ratios are evaluated directly in log-mass coordinates,
 and matched additive-Dirichlet/Beta terms use their algebraically reduced MH
@@ -27,6 +28,7 @@ The public entry points are :class:`FullTilingProblem`,
 :class:`FullTilingPosteriorState`, :class:`PosteriorTransitionTerms`,
 :func:`full_tiling_problem_from_gamma_beta_adapter`,
 :func:`initialize_full_tiling_posterior_state`,
+:func:`initialize_random_full_tiling_posterior_state`,
 :func:`build_full_tiling_posterior_state`,
 :func:`log_root_total_slice_density`,
 :func:`rescale_full_tiling_root_total`, the five ``propose_*`` functions, and
@@ -56,6 +58,7 @@ from .full_tiling import (
     _representable_split_masses,
     is_recursive_bisection_tiling,
     merge_choices,
+    split_choices,
 )
 from .gamma_beta_adapter import GammaBetaRHIMEAdapterResult
 from .gamma_beta_tree import GammaBetaTreeProblem
@@ -581,13 +584,7 @@ def initialize_full_tiling_posterior_state(
         TypeError: If ``problem`` or ``k`` has the wrong type.
         ValueError: If ``k`` lies outside the native-cell range.
     """
-    _require_problem(problem)
-    if isinstance(k, (bool, np.bool_)) or not isinstance(k, Integral):
-        raise TypeError("k must be an integer.")
-    k = int(k)
-    maximum = len(problem.base.tree.leaf_ids)
-    if k < 1 or k > maximum:
-        raise ValueError(f"k must lie between one and {maximum}.")
+    k = _validate_initial_tiling_request(problem, k)
     active = {problem.base.tree.root_id}
     while len(active) < k:
         splittable = [node_id for node_id in active if problem.base.tree.children(node_id)]
@@ -604,6 +601,97 @@ def initialize_full_tiling_posterior_state(
         active.update(problem.base.tree.children(selected))
     rectangles = tuple(Rectangle(*problem.base.tree.node(node_id).bounds) for node_id in active)
     tiling = LeafTiling(problem.shape, rectangles)
+    return _build_prior_mean_full_tiling_posterior_state(problem, tiling)
+
+
+def initialize_random_full_tiling_posterior_state(
+    problem: FullTilingProblem,
+    *,
+    k: int,
+    seed: int,
+) -> FullTilingPosteriorState:
+    """Build a seeded random-recursive prior-mean state at fixed ``K``.
+
+    A fresh NumPy PCG64 stream selects uniformly from the canonical
+    :func:`~openghg_inversions.experimental.rjmcmc.full_tiling.split_choices`
+    catalogue at every recursive bisection.  This initialization-only stream
+    is separate from any sampler stream. Stepwise uniform selection is
+    generally path-biased because different final tilings can have different
+    construction-path multiplicities. It is an initializer, not a uniform
+    draw from the final tilings and not the structural prior or target. Leaf
+    masses and fixed coefficients use the same prior-mean construction as
+    :func:`initialize_full_tiling_posterior_state`.
+
+    Args:
+        problem: Full-tiling observation model.
+        k: Requested active rectangle count.
+        seed: Non-negative integer seed for the initialization-only PCG64
+            stream.
+
+    Returns:
+        Fully rebuilt immutable initial posterior state.
+
+    Raises:
+        TypeError: If ``problem``, ``k``, or ``seed`` has the wrong type.
+        ValueError: If ``k`` lies outside the native-cell range or ``seed`` is
+            negative.
+        RuntimeError: If recursive bisection cannot reach ``k``.
+    """
+    k = _validate_initial_tiling_request(problem, k)
+    if isinstance(seed, (bool, np.bool_)) or not isinstance(seed, Integral):
+        raise TypeError("seed must be a non-negative integer.")
+    seed = int(seed)
+    if seed < 0:
+        raise ValueError("seed must be non-negative.")
+
+    generator = np.random.Generator(np.random.PCG64(seed))
+    tiling = LeafTiling.root(problem.shape)
+    while tiling.k < k:
+        choices = split_choices(tiling)
+        if not choices:
+            raise RuntimeError("recursive bisection cannot reach the requested active count.")
+        tiling = tiling.split(choices[int(generator.integers(len(choices)))])
+    return _build_prior_mean_full_tiling_posterior_state(problem, tiling)
+
+
+def _validate_initial_tiling_request(problem: FullTilingProblem, k: int) -> int:
+    """Validate and normalize a requested initial tiling size.
+
+    Args:
+        problem: Full-tiling observation model.
+        k: Requested active rectangle count.
+
+    Returns:
+        Requested count as a built-in integer.
+
+    Raises:
+        TypeError: If ``problem`` or ``k`` has the wrong type.
+        ValueError: If ``k`` lies outside the native-cell range.
+    """
+    _require_problem(problem)
+    if isinstance(k, (bool, np.bool_)) or not isinstance(k, Integral):
+        raise TypeError("k must be an integer.")
+    normalized_k = int(k)
+    maximum = len(problem.base.tree.leaf_ids)
+    if normalized_k < 1 or normalized_k > maximum:
+        raise ValueError(f"k must lie between one and {maximum}.")
+    return normalized_k
+
+
+def _build_prior_mean_full_tiling_posterior_state(
+    problem: FullTilingProblem,
+    tiling: LeafTiling,
+) -> FullTilingPosteriorState:
+    """Build prior-mean posterior coordinates on a validated full tiling.
+
+    Args:
+        problem: Full-tiling observation model.
+        tiling: Validated construction-history-free leaf tiling.
+
+    Returns:
+        Fully rebuilt immutable state with masses proportional to nominal
+        emissions and fixed coefficients at their arithmetic prior means.
+    """
     root_mean = problem.base.prior.root_shape / problem.base.prior.root_rate
     nominal = np.asarray(
         [problem.rectangle_nominal_mass(leaf) for leaf in tiling.leaves],
@@ -1684,6 +1772,7 @@ __all__ = [
     "build_full_tiling_posterior_state",
     "full_tiling_problem_from_gamma_beta_adapter",
     "initialize_full_tiling_posterior_state",
+    "initialize_random_full_tiling_posterior_state",
     "log_root_total_slice_density",
     "propose_fixed_coefficient",
     "propose_pair_allocation_refresh",

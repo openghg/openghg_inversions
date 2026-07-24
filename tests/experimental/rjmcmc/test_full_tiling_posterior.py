@@ -13,6 +13,7 @@ from openghg_inversions.experimental.rjmcmc.full_tiling import (
     Rectangle,
     SplitChoice,
     TilingState,
+    is_recursive_bisection_tiling,
     merge_choices,
 )
 from openghg_inversions.experimental.rjmcmc.full_tiling_posterior import (
@@ -22,6 +23,7 @@ from openghg_inversions.experimental.rjmcmc.full_tiling_posterior import (
     build_full_tiling_posterior_state,
     full_tiling_problem_from_gamma_beta_adapter,
     initialize_full_tiling_posterior_state,
+    initialize_random_full_tiling_posterior_state,
     log_root_total_slice_density,
     propose_fixed_coefficient,
     propose_pair_allocation_refresh,
@@ -185,6 +187,138 @@ def test_shuffled_xarray_bridge_closes_inner_boundary_and_outer_prior_mean() -> 
         raw.sum(axis=(1, 2)) + boundary + outer @ fixed_mean,
         atol=2e-13,
     )
+
+
+def test_random_initializer_replays_the_complete_state_for_the_same_seed() -> None:
+    """A repeated seed reproduces topology and every posterior coordinate exactly."""
+    problem, _ = _problem_state(7)
+
+    first = initialize_random_full_tiling_posterior_state(problem, k=7, seed=41)
+    replay = initialize_random_full_tiling_posterior_state(problem, k=7, seed=41)
+
+    assert first is not replay
+    assert first.problem is problem
+    assert replay.problem is problem
+    assert first.allocation.tiling == replay.allocation.tiling
+    for name in (
+        "leaf_masses",
+        "fixed_coefficients",
+        "dynamic_prediction",
+        "fixed_prediction",
+        "prediction",
+        "residual",
+    ):
+        np.testing.assert_array_equal(getattr(first, name), getattr(replay, name))
+    for name in (
+        "log_gaussian_likelihood",
+        "log_likelihood",
+        "log_root_prior",
+        "log_allocation_prior",
+        "log_fixed_coefficient_prior",
+        "log_target",
+    ):
+        assert getattr(first, name) == getattr(replay, name)
+
+
+def test_random_initializer_distinguishes_chosen_seeds_on_a_rich_grid() -> None:
+    """Distinct fixed seeds select different seven-leaf topologies on a 4x4 grid."""
+    problem, _ = _problem_state(7)
+
+    first = initialize_random_full_tiling_posterior_state(problem, k=7, seed=41)
+    different = initialize_random_full_tiling_posterior_state(problem, k=7, seed=73)
+
+    assert first.allocation.tiling != different.allocation.tiling
+
+
+def test_random_initializer_preserves_prior_mean_masses_and_model_closure() -> None:
+    """Random geometry retains prior-mean masses, fixed means, and exact closure."""
+    adapter, raw, outer, boundary = _adapter_and_raw()
+    problem = full_tiling_problem_from_gamma_beta_adapter(adapter, concentration=7.0)
+    state = initialize_random_full_tiling_posterior_state(problem, k=7, seed=41)
+    root_mean = problem.base.prior.root_shape / problem.base.prior.root_rate
+    expected_masses = root_mean * np.array(
+        [problem.rectangle_nominal_mass(leaf) for leaf in state.allocation.tiling.leaves]
+    )
+    fixed_mean = np.arange(1.0, 7.0) / 4.0
+
+    assert state.root_total == pytest.approx(root_mean)
+    np.testing.assert_allclose(state.leaf_masses, expected_masses, rtol=0.0, atol=2e-16)
+    np.testing.assert_array_equal(state.fixed_coefficients, fixed_mean)
+    np.testing.assert_allclose(state.dynamic_prediction, raw.sum(axis=(1, 2)), atol=2e-13)
+    np.testing.assert_allclose(state.fixed_prediction, boundary + outer @ fixed_mean, atol=2e-13)
+    np.testing.assert_allclose(
+        state.prediction,
+        raw.sum(axis=(1, 2)) + boundary + outer @ fixed_mean,
+        atol=2e-13,
+    )
+    np.testing.assert_allclose(state.residual, 0.0, atol=2e-13)
+
+
+def test_random_initializer_returns_a_valid_immutable_rebuild_equivalent_state() -> None:
+    """The random start is recursively valid with read-only canonical caches."""
+    problem, _ = _problem_state(7)
+    state = initialize_random_full_tiling_posterior_state(problem, k=7, seed=73)
+
+    assert state.k == 7
+    assert state.allocation.tiling.shape == problem.shape
+    assert is_recursive_bisection_tiling(state.allocation.tiling)
+    assert all(
+        not getattr(state, name).flags.writeable
+        for name in (
+            "leaf_masses",
+            "fixed_coefficients",
+            "dynamic_prediction",
+            "fixed_prediction",
+            "prediction",
+            "residual",
+        )
+    )
+    _assert_rebuild_equal(state)
+
+
+@pytest.mark.parametrize("seed", [0, 2**256])
+def test_random_initializer_accepts_the_full_nonnegative_integer_seed_range(seed: int) -> None:
+    """PCG64-compatible nonnegative integer seeds have no artificial upper bound."""
+    problem, _ = _problem_state(4)
+
+    state = initialize_random_full_tiling_posterior_state(problem, k=4, seed=seed)
+
+    assert state.k == 4
+
+
+@pytest.mark.parametrize("seed", [True, np.bool_(False), 1.5, "7", None])
+def test_random_initializer_rejects_non_integer_seeds(seed: object) -> None:
+    """Boolean and non-integral seeds are rejected before random generation."""
+    problem, _ = _problem_state(4)
+
+    with pytest.raises(TypeError, match="seed"):
+        initialize_random_full_tiling_posterior_state(problem, k=4, seed=seed)  # type: ignore[arg-type]
+
+
+def test_random_initializer_rejects_negative_seeds() -> None:
+    """Negative integers lie outside the reproducible PCG64 seed contract."""
+    problem, _ = _problem_state(4)
+
+    with pytest.raises(ValueError, match="seed"):
+        initialize_random_full_tiling_posterior_state(problem, k=4, seed=-1)
+
+
+@pytest.mark.parametrize("k", [True, np.bool_(False), 1.5, "4", None])
+def test_random_initializer_rejects_non_integer_k(k: object) -> None:
+    """Boolean and non-integral fixed dimensions are rejected explicitly."""
+    problem, _ = _problem_state(4)
+
+    with pytest.raises(TypeError, match="k"):
+        initialize_random_full_tiling_posterior_state(problem, k=k, seed=41)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("k", [0, -1, 17])
+def test_random_initializer_rejects_k_outside_the_native_grid(k: int) -> None:
+    """Fixed dimensions must lie between one and the native-cell count."""
+    problem, _ = _problem_state(4)
+
+    with pytest.raises(ValueError, match="k"):
+        initialize_random_full_tiling_posterior_state(problem, k=k, seed=41)
 
 
 def test_rectangle_design_columns_match_direct_native_matrix_slices() -> None:

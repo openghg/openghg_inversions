@@ -8,9 +8,10 @@ Variable names are configurable; no scientific input is guessed.
 
 This is a diagnostic smoke driver, not a convergence workflow. It runs one
 single-process chain with durable continuation, retains complete cycle
-boundaries, and writes a new non-overwriting artifact directory. Until connectivity
-has been established independently, every result is explicitly restricted to
-the communication component reached from its deterministic prior-mean start.
+boundaries, and writes a new non-overwriting artifact directory. Until
+connectivity has been established separately, every result is explicitly
+restricted to the communication component reached from its recorded initial
+tiling.
 
 The independently checksummed checkpoint is the authoritative recovery
 object. ``complete.json`` is written later and certifies that the checkpoint,
@@ -50,6 +51,7 @@ from openghg_inversions.experimental.rjmcmc.full_tiling_posterior import (
     FullTilingPosteriorState,
     full_tiling_problem_from_gamma_beta_adapter,
     initialize_full_tiling_posterior_state,
+    initialize_random_full_tiling_posterior_state,
 )
 from openghg_inversions.experimental.rjmcmc.gamma_beta_adapter import (
     GammaBetaRHIMEAdapterResult,
@@ -69,7 +71,7 @@ PARIS_OUTER_COEFFICIENTS = 6
 PAIR_ALLOCATION_REFRESH_SLOTS = 5
 _CLOSURE_RTOL = 1.0e-12
 _CLOSURE_ATOL = 1.0e-12
-_COMMUNICATION_COMPONENT = "component_reachable_from_deterministic_prior_mean_start"
+_COMMUNICATION_COMPONENT = "component_reachable_from_recorded_initial_tiling"
 
 
 def _sha256_file(path: Path) -> str:
@@ -401,7 +403,7 @@ def _build_manifest(
     ]
     initial_topology_sha256 = sha256(_canonical_json(initial_bounds).encode("utf-8")).hexdigest()
     manifest: dict[str, object] = {
-        "schema": "openghg_inversions.full_tiling_native_smoke_manifest.v2",
+        "schema": "openghg_inversions.full_tiling_native_smoke_manifest.v3",
         "status": "diagnostic_not_convergence_evidence",
         "state_space_scope": {
             "fixed_k": int(arguments.k),
@@ -409,6 +411,15 @@ def _build_manifest(
             "communication_component": _COMMUNICATION_COMPONENT,
             "connectivity_proven": False,
             "initial_topology_sha256": initial_topology_sha256,
+        },
+        "initialization": {
+            "strategy": arguments.initialization,
+            "seed": arguments.initialization_seed,
+            "rng_stream": (
+                "dedicated_pcg64"
+                if arguments.initialization == "random-recursive"
+                else "none"
+            ),
         },
         "input": {
             "id": arguments.input_id,
@@ -946,6 +957,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--seed", type=int, required=True, help="Non-negative PCG64 seed.")
     parser.add_argument(
+        "--initialization",
+        choices=("largest-nominal", "random-recursive"),
+        default="largest-nominal",
+        help=(
+            "Initial fixed-K tiling strategy. Random-recursive uses a separate "
+            "PCG64 stream and is an initializer, not a structural prior."
+        ),
+    )
+    parser.add_argument(
+        "--initialization-seed",
+        type=int,
+        help="Required non-negative dedicated seed for --initialization random-recursive.",
+    )
+    parser.add_argument(
         "--chain-id",
         default="default",
         help="Stable logical chain identifier included in checkpoint identity.",
@@ -1084,6 +1109,17 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
         raise ValueError("--iterations must be positive.")
     if arguments.seed < 0:
         raise ValueError("--seed must be non-negative.")
+    if arguments.initialization == "random-recursive":
+        if arguments.initialization_seed is None:
+            raise ValueError(
+                "--initialization random-recursive requires --initialization-seed."
+            )
+        if arguments.initialization_seed < 0:
+            raise ValueError("--initialization-seed must be non-negative.")
+    elif arguments.initialization_seed is not None:
+        raise ValueError(
+            "--initialization-seed is only valid with --initialization random-recursive."
+        )
     if not arguments.chain_id:
         raise ValueError("--chain-id must be nonempty.")
     if not np.isfinite(arguments.root_slice_width) or arguments.root_slice_width <= 0.0:
@@ -1162,7 +1198,17 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
         adapter,
         concentration=arguments.concentration,
     )
-    initial_state = initialize_full_tiling_posterior_state(problem, k=arguments.k)
+    if arguments.initialization == "largest-nominal":
+        initial_state = initialize_full_tiling_posterior_state(
+            problem,
+            k=arguments.k,
+        )
+    else:
+        initial_state = initialize_random_full_tiling_posterior_state(
+            problem,
+            k=arguments.k,
+            seed=arguments.initialization_seed,
+        )
     if not np.isfinite(initial_state.log_target):
         dataset.close()
         raise ValueError("Initial full-tiling log target is not finite.")

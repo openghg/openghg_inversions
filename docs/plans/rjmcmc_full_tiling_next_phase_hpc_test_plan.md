@@ -22,6 +22,27 @@ The run is a correctness, restart, mobility, and performance test. It does
 **not** establish convergence, irreducibility, adequate posterior exploration,
 or a scientific emissions result.
 
+## Completed outcome
+
+The final run at commit `0c4be63` passed every scientific and durability hard
+gate:
+
+- the extreme-mass transition 1,334 was a valid accepted pair refresh with
+  zero log acceptance ratio;
+- arbitrary-phase direct and resumed checkpoints were identical;
+- all 24 fail-closed cases and 14 strict checkpoint loads passed;
+- diagnostics preserved traces and checkpoints exactly, including literal
+  zeros outside the owning move;
+- two sequential 700,000-transition Gamma(4,4) replicas reproduced exactly,
+  with mean 0.9951 and variance 0.2446;
+- throughput was 511 transitions/s at \(K=50\) and 102 transitions/s at
+  \(K=250\), with approximately 1.54 GiB peak RSS.
+
+Diagnostics overhead was +16.7% at \(K=50\) and +11.4% at \(K=250\), within
+the plan's warning band. No child-mass floor was introduced. The next test is
+the dispersed-start real-data mixing screen in
+[rjmcmc_full_tiling_real_data_mixing_hpc_test_plan.md](rjmcmc_full_tiling_real_data_mixing_hpc_test_plan.md).
+
 ## Frozen comparison contract
 
 Use the same reviewed input and outer-label order as the first full-tiling

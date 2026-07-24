@@ -220,7 +220,12 @@ def test_tiny_end_to_end_bundle_reopens_with_labels_attrs_and_hashes(
     assert summary["run"]["atomic_transitions"] == 14
     assert summary["schema"].endswith("summary.v2")
     assert manifest["kernel"]["cycle_length"] == 14
-    assert manifest["schema"].endswith("manifest.v2")
+    assert manifest["schema"].endswith("manifest.v3")
+    assert manifest["initialization"] == {
+        "strategy": "largest-nominal",
+        "seed": None,
+        "rng_stream": "none",
+    }
     assert manifest["provenance"]["durable_checkpoint"] is True
     assert "path" not in manifest["input"]
     assert manifest["model"]["root_prior_shape"] == 4.0
@@ -276,11 +281,27 @@ def test_tiny_end_to_end_bundle_reopens_with_labels_attrs_and_hashes(
         assert smoke_module._sha256_file(output_path / filename) == digest
 
 
+@pytest.mark.parametrize(
+    "initialization_arguments",
+    [
+        pytest.param([], id="largest-nominal"),
+        pytest.param(
+            [
+                "--initialization",
+                "random-recursive",
+                "--initialization-seed",
+                "41",
+            ],
+            id="random-recursive",
+        ),
+    ],
+)
 def test_awkward_checkpoint_continuation_matches_direct_segment(
     tmp_path: Path,
     smoke_module: ModuleType,
+    initialization_arguments: list[str],
 ) -> None:
-    """A durable 5+9 transition run exactly replays one direct 14-transition run."""
+    """A durable 5+9 run replays a direct 14-transition run from either start."""
     input_path = tmp_path / "frozen.nc"
     first_path = tmp_path / "first"
     resumed_path = tmp_path / "resumed"
@@ -288,16 +309,27 @@ def test_awkward_checkpoint_continuation_matches_direct_segment(
     _write_frozen_input(input_path)
 
     first = smoke_module.run(
-        smoke_module.build_parser().parse_args(_arguments(input_path, first_path, iterations=5))
+        smoke_module.build_parser().parse_args(
+            [
+                *_arguments(input_path, first_path, iterations=5),
+                *initialization_arguments,
+            ]
+        )
     )
     resumed_arguments = [
         *_arguments(input_path, resumed_path, iterations=9),
+        *initialization_arguments,
         "--resume-checkpoint",
         str(first_path / "checkpoint.npz"),
     ]
     resumed = smoke_module.run(smoke_module.build_parser().parse_args(resumed_arguments))
     direct = smoke_module.run(
-        smoke_module.build_parser().parse_args(_arguments(input_path, direct_path, iterations=14))
+        smoke_module.build_parser().parse_args(
+            [
+                *_arguments(input_path, direct_path, iterations=14),
+                *initialization_arguments,
+            ]
+        )
     )
 
     assert resumed["run"]["segment_start_transition"] == 5
@@ -344,6 +376,95 @@ def test_awkward_checkpoint_continuation_matches_direct_segment(
     assert resumed_checkpoint.keys() == direct_checkpoint.keys()
     for name in resumed_checkpoint:
         np.testing.assert_array_equal(resumed_checkpoint[name], direct_checkpoint[name])
+
+
+def test_random_recursive_initialization_is_replayable_and_manifest_pinned(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """Random starts use a dedicated seed recorded in checkpoint identity."""
+    input_path = tmp_path / "frozen.nc"
+    first_path = tmp_path / "random-first"
+    replay_path = tmp_path / "random-replay"
+    different_path = tmp_path / "random-different"
+    _write_frozen_input(input_path)
+
+    common = [
+        "--initialization",
+        "random-recursive",
+        "--initialization-seed",
+        "41",
+    ]
+    smoke_module.run(
+        smoke_module.build_parser().parse_args(
+            [*_arguments(input_path, first_path, iterations=14), *common]
+        )
+    )
+    smoke_module.run(
+        smoke_module.build_parser().parse_args(
+            [*_arguments(input_path, replay_path, iterations=14), *common]
+        )
+    )
+    smoke_module.run(
+        smoke_module.build_parser().parse_args(
+            [
+                *_arguments(input_path, different_path, iterations=14),
+                "--initialization",
+                "random-recursive",
+                "--initialization-seed",
+                "1",
+            ]
+        )
+    )
+
+    first = json.loads((first_path / "manifest.json").read_text(encoding="utf-8"))
+    replay = json.loads((replay_path / "manifest.json").read_text(encoding="utf-8"))
+    different = json.loads((different_path / "manifest.json").read_text(encoding="utf-8"))
+    assert first["initialization"] == {
+        "strategy": "random-recursive",
+        "seed": 41,
+        "rng_stream": "dedicated_pcg64",
+    }
+    assert first["state_space_scope"]["initial_topology_sha256"] == (
+        replay["state_space_scope"]["initial_topology_sha256"]
+    )
+    assert first["state_space_scope"]["initial_topology_sha256"] != (
+        different["state_space_scope"]["initial_topology_sha256"]
+    )
+    first_checkpoint = _checkpoint_arrays(first_path / "checkpoint.npz")
+    replay_checkpoint = _checkpoint_arrays(replay_path / "checkpoint.npz")
+    assert first_checkpoint.keys() == replay_checkpoint.keys()
+    for name in first_checkpoint:
+        np.testing.assert_array_equal(first_checkpoint[name], replay_checkpoint[name])
+
+
+def test_random_recursive_initialization_requires_an_exclusive_seed(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """The dedicated initialization stream cannot be missing or ignored."""
+    input_path = tmp_path / "frozen.nc"
+    _write_frozen_input(input_path)
+
+    missing = smoke_module.build_parser().parse_args(
+        [
+            *_arguments(input_path, tmp_path / "missing", iterations=1),
+            "--initialization",
+            "random-recursive",
+        ]
+    )
+    with pytest.raises(ValueError, match="requires --initialization-seed"):
+        smoke_module.run(missing)
+
+    ignored = smoke_module.build_parser().parse_args(
+        [
+            *_arguments(input_path, tmp_path / "ignored", iterations=1),
+            "--initialization-seed",
+            "41",
+        ]
+    )
+    with pytest.raises(ValueError, match="only valid"):
+        smoke_module.run(ignored)
 
 
 def test_output_only_diagnostics_preserve_trajectory_rng_and_persist_all_fields(
@@ -432,6 +553,36 @@ def test_resume_rejects_chain_identity_mismatch(
     arguments.extend(["--resume-checkpoint", str(first_path / "checkpoint.npz")])
     with pytest.raises(ValueError, match="manifest"):
         smoke_module.run(smoke_module.build_parser().parse_args(arguments))
+
+
+def test_resume_rejects_random_initialization_seed_mismatch(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """A durable chain cannot resume under a different initial-tiling stream."""
+    input_path = tmp_path / "frozen.nc"
+    first_path = tmp_path / "first"
+    output_path = tmp_path / "resume"
+    _write_frozen_input(input_path)
+    first_arguments = [
+        *_arguments(input_path, first_path, iterations=5),
+        "--initialization",
+        "random-recursive",
+        "--initialization-seed",
+        "41",
+    ]
+    smoke_module.run(smoke_module.build_parser().parse_args(first_arguments))
+    resumed_arguments = [
+        *_arguments(input_path, output_path, iterations=9),
+        "--initialization",
+        "random-recursive",
+        "--initialization-seed",
+        "73",
+        "--resume-checkpoint",
+        str(first_path / "checkpoint.npz"),
+    ]
+    with pytest.raises(ValueError, match="manifest"):
+        smoke_module.run(smoke_module.build_parser().parse_args(resumed_arguments))
 
 
 def test_resume_rejects_input_mismatch_and_output_never_overwrites(

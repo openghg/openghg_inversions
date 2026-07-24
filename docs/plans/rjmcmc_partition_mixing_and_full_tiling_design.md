@@ -979,8 +979,9 @@ Existing OpenGHG Inversions draft work can be reused as follows:
 
 ### Compact restart point
 
-- **Next executable task:** run the prior-only and full-likelihood fixed-\(K\)
-  full-tiling PARIS smoke described in the HPC test plan.
+- **Next executable task:** run the dispersed-start fixed-\(K\) PARIS mixing
+  screen in
+  [rjmcmc_full_tiling_real_data_mixing_hpc_test_plan.md](rjmcmc_full_tiling_real_data_mixing_hpc_test_plan.md).
 - **Fixed-direction baseline outcome:** the completed 40-segment Stage C test
   was restart-exact and structurally mobile, but its low- and high-\(K\)
   starts remained separated (\(\hat R_K=2.886\)); all 29 monitored summaries
@@ -994,9 +995,9 @@ Existing OpenGHG Inversions draft work can be reused as follows:
   native-data smoke driver.
 - **Structural limitation:** the fixed-\(K\) target is uniform over unique
   tilings, but production-grid connectivity is not proved. Results are
-  explicitly conditional on the communication component of the deterministic
-  start. Variable-\(K\) work still requires an evaluable cross-\(K\)
-  structural prior/count or another declared target.
+  explicitly conditional on the communication components reached from the
+  tested dispersed starts. Variable-\(K\) work still requires an evaluable
+  cross-\(K\) structural prior/count or another declared target.
 - **Correctness oracle:** tiny canonical tiling enumeration and analytic
   dynamic programming, with a fixed-tree product-space cross-check.
 - **First real-data full-tiling test:** run the prior-only then
@@ -1029,6 +1030,20 @@ Existing OpenGHG Inversions draft work can be reused as follows:
   floor or clamp. Movement diagnostics now emit literal zeros outside each
   field's owning move. The HPC plan adds exact 1,333/1,334 replay, categorical
   zero checks, and mandatory sequential timing before repeating calibration.
+- **Successful next-phase validation (2026-07-24):** commit `0c4be63` passed
+  the transition-1,334 endpoint case, arbitrary-phase exact replay, all
+  checkpoint and fail-closed cases, literal-zero diagnostic ownership, and
+  two sequential 700,000-transition Gamma(4,4) calibrations. Candidate
+  throughput was 511 transitions/s at \(K=50\) and 102 transitions/s at
+  \(K=250\), with approximately 1.54 GiB peak RSS. Diagnostics overhead was a
+  non-blocking +16.7% and +11.4%, respectively. This closes the numerical and
+  durability gate; it does not establish posterior mixing.
+- **Dispersed-start readiness:** the native driver can now initialize a
+  fixed-\(K\) tiling by seeded random recursive bisection using an independent
+  PCG64 stream. The manifest pins the strategy, seed, and initial topology.
+  This law is path-biased and is used only to disperse initial geometry, not
+  as the structural prior. All starts retain the same prior-mean physical
+  scaling field, so the next matrix isolates forgetting of initial topology.
 - **Floating-coordinate boundary:** the correction targets the declared
   continuous positive-mass model; it is not a claim of detailed balance over
   discrete binary64 rounding bins. A two-orientation residual-mass prototype
