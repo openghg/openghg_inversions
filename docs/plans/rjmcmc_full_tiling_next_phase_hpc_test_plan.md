@@ -7,14 +7,16 @@ sampler on the frozen May 2014 PARIS Stage C input. It is the follow-up to the
 [first native-data smoke](rjmcmc_full_tiling_native_hpc_test_plan.md), not a
 replacement for that baseline record.
 
-The candidate branch is `codex/rjmcmc-full-tiling-next-phase`. It combines four
+The candidate branch is `codex/rjmcmc-full-tiling-next-phase`. It combines five
 changes that must be tested together:
 
 1. an \(O(K)\), sibling-indexed and cache-backed merge catalogue;
 2. an exact slice update in \(z=\log T\), with width 1, a finite 100-step
    outward budget (including the initial bracket), and a 1,000-draw shrink cap;
-3. optional, output-only per-transition movement and cost diagnostics; and
-4. strict, no-pickle durable checkpoint/restart.
+3. optional, output-only per-transition movement and cost diagnostics;
+4. strict, no-pickle durable checkpoint/restart; and
+5. endpoint-safe log-mass proposal accounting with analytically reduced
+   matched-prior MH ratios.
 
 The run is a correctness, restart, mobility, and performance test. It does
 **not** establish convergence, irreducibility, adequate posterior exploration,
@@ -113,7 +115,7 @@ export DRIVER=examples/rjmcmc/full_tiling_native_smoke.py
 export RUN_ROOT=/group/chem/acrg/brendan_for_codex/rjmcmc_full_tiling_next_phase/"$CODE_REVISION"
 export BASELINE_CHECKOUT=/group/chem/acrg/brendan_for_codex/openghg_inversions-baseline-6e123ae
 export BASELINE_RUN_ROOT=/group/chem/acrg/brendan_for_codex/rjmcmc_full_tiling_next_phase/6e123ae
-mkdir -p "$RUN_ROOT"/{preflight,matrix,root-calibration,diagnostics-parity,restart,rejections,report}
+mkdir -p "$RUN_ROOT"/{preflight,proposal-boundary,matrix,root-calibration,diagnostics-parity,restart,rejections,report}
 mkdir -p "$BASELINE_RUN_ROOT"/matrix
 ```
 
@@ -252,6 +254,140 @@ Both boundaries are hard gates. Transition 14 must now publish a complete
 bundle. Keep these new-commit artifacts separate from the immutable
 `c1a6944a` failure record.
 
+## Extreme-mass reverse-density gate
+
+Commit `2a6dee1` passed the checkpoint and restart gates but failed the
+Gamma(4,4) calibration at transition 1,334. A legal pair with masses
+`0.14790204595` and `2.42205857917e-23` had a materialized first fraction of
+exactly one, so the reverse Beta density attempted `log1p(-1)`. The corrected
+kernel:
+
+- evaluates both reverse log fractions directly from positive log masses for
+  pair refreshes, edge flips, and relocations;
+- evaluates allocation-share priors without first dividing masses by their
+  rounded total;
+- uses exact algebraic reductions for the matched Dirichlet/Beta MH terms;
+- returns an explicit invalid self-attempt if an otherwise open-unit proposal
+  would create a zero binary64 child mass; and
+- introduces no mass floor, fraction clamp, redraw, extra RNG consumption, or
+  change to the declared posterior.
+
+Before the matrix, rerun the exact frozen-input failure boundary from scratch:
+
+```bash
+for N in 1333 1334; do
+  OUT="$RUN_ROOT/proposal-boundary/direct-t${N}"
+  pixi run -e dev --frozen python "$DRIVER" \
+    --input "$FROZEN_INPUT" --output-directory "$OUT" \
+    --k 50 --iterations "$N" --seed 41050 \
+    --chain-id proposal-boundary-k50-beta0 \
+    --concentration 100 --root-variance 0.25 --likelihood-power 0 \
+    --fixed-prior-mean 1 --fixed-prior-sd 1 --fixed-proposal-sd 0.4 \
+    --input-id "$FROZEN_INPUT_ID" \
+    --expected-input-sha256 "$FROZEN_INPUT_SHA" \
+    --code-revision "$CODE_REVISION" \
+    --nominal-weight-policy "$WEIGHT_POLICY" \
+    --expected-outer-labels "$OUTER_LABELS" --require-paris-profile \
+    --root-slice-width 1 --root-slice-max-steps 100 \
+    --root-slice-max-shrink-steps 1000
+  test -f "$OUT/checkpoint.npz"
+  test -f "$OUT/complete.json"
+done
+
+OUT="$RUN_ROOT/proposal-boundary/resume-1333-plus-1"
+pixi run -e dev --frozen python "$DRIVER" \
+  --input "$FROZEN_INPUT" --output-directory "$OUT" \
+  --k 50 --iterations 1 --seed 41050 \
+  --chain-id proposal-boundary-k50-beta0 \
+  --concentration 100 --root-variance 0.25 --likelihood-power 0 \
+  --fixed-prior-mean 1 --fixed-prior-sd 1 --fixed-proposal-sd 0.4 \
+  --input-id "$FROZEN_INPUT_ID" \
+  --expected-input-sha256 "$FROZEN_INPUT_SHA" \
+  --code-revision "$CODE_REVISION" \
+  --nominal-weight-policy "$WEIGHT_POLICY" \
+  --expected-outer-labels "$OUTER_LABELS" --require-paris-profile \
+  --root-slice-width 1 --root-slice-max-steps 100 \
+  --root-slice-max-shrink-steps 1000 \
+  --resume-checkpoint \
+  "$RUN_ROOT/proposal-boundary/direct-t1333/checkpoint.npz"
+```
+
+Compare the boundary artifacts exactly:
+
+```bash
+pixi run -e dev --frozen python - \
+  "$RUN_ROOT/proposal-boundary/direct-t1333" \
+  "$RUN_ROOT/proposal-boundary/direct-t1334" \
+  "$RUN_ROOT/proposal-boundary/resume-1333-plus-1" <<'PY'
+from pathlib import Path
+import sys
+
+import numpy as np
+import xarray as xr
+
+before, direct, resumed = map(Path, sys.argv[1:])
+with (
+    xr.open_dataset(direct / "trace.nc", engine="h5netcdf") as direct_trace,
+    xr.open_dataset(resumed / "trace.nc", engine="h5netcdf") as resumed_trace,
+):
+    assert int(direct_trace["global_transition"].values[-1]) == 1334
+    assert int(resumed_trace["global_transition"].values[0]) == 1334
+    for name in (
+        "global_transition",
+        "slot",
+        "move",
+        "valid",
+        "accepted",
+        "log_acceptance_ratio",
+        "invalid_reason",
+    ):
+        np.testing.assert_array_equal(
+            direct_trace[name].values[-1:],
+            resumed_trace[name].values,
+        )
+    assert str(direct_trace["move"].values[-1]) == "pair_allocation_refresh"
+    assert bool(direct_trace["valid"].values[-1])
+    assert bool(direct_trace["accepted"].values[-1])
+    assert float(direct_trace["log_acceptance_ratio"].values[-1]) == 0.0
+
+with (
+    np.load(direct / "checkpoint.npz", allow_pickle=False) as direct_checkpoint,
+    np.load(resumed / "checkpoint.npz", allow_pickle=False) as resumed_checkpoint,
+):
+    assert direct_checkpoint.files == resumed_checkpoint.files
+    for name in direct_checkpoint.files:
+        np.testing.assert_array_equal(
+            direct_checkpoint[name],
+            resumed_checkpoint[name],
+        )
+
+assert (before / "checkpoint.npz").is_file()
+PY
+```
+
+The focused preflight suite is the independent decomposed-term oracle:
+`test_extreme_positive_mass_ratios_have_finite_reverse_proposal_terms`
+reconstructs the reported legal mass pair, requires finite forward/reverse
+auxiliary densities, and verifies the exact reduced ratio. The native trace
+persists only the aggregate ratio, so do not claim that its unpersisted
+proposal components were recovered from the artifact.
+
+The direct and resumed transition 1,334 results must therefore be exact in
+ordinary trace, final scientific state, schedule phase, and PCG64 state, and
+the direct/resumed checkpoint arrays must be exact. Saving each direct
+checkpoint and loading the transition-1,333 checkpoint for the resumed run
+invoke the canonical cache audit. Preserve the immutable `2a6dee1` failure
+root and do not reuse its downstream pass evidence as a substitute for this
+commit.
+
+The stable log-mass accounting is an implementation of the declared
+continuous proposal. It deliberately does not claim exact balance between
+the finite set of binary64 rounding bins. A machine-exact alternative would
+need an authoritative root-total/share state coordinate (or explicit
+rounding-bin probabilities); residual-mass reconstructability gates were
+considered and rejected here because they would add severe, pair-dependent
+self-transition rates and could worsen communication.
+
 ## Hard-gate debugging protocol
 
 When a later hard gate fails, stop downstream expensive stages but continue
@@ -334,6 +470,12 @@ Run both commit `6e123ae` and the clean candidate revision for each matrix
 cell. The old driver uses its original independent-prior root refresh; the new
 driver uses the exact log-root slice. This is a whole-sampler performance
 comparison, not seeded semantic parity.
+
+Rerun every cell for the new candidate commit. Results from `2a6dee1` are
+diagnostic history only and cannot satisfy this gate. Baseline artifacts may
+be retained only if their immutable revision, input, hardware class, and
+one-thread environment still meet the comparison contract; otherwise rerun
+the baseline cells too.
 
 | \(K\) | \(\beta\) (`--likelihood-power`) | concentration | seed |
 |---:|---:|---:|---:|
@@ -433,25 +575,28 @@ compound schedule with \(\beta=0\). Because the declared prior factorizes, the
 root update has the Gamma(4,4) target even though structural, share, and outer
 updates occur between root slots. Use 50,000 complete cycles at \(K=50\), seed
 41050, width 1, outward budget 100, and shrink cap 1,000. This yields 50,000
-post-start root-slice updates:
+post-start root-slice updates. Run two replicas sequentially, never as an
+array or concurrent submission:
 
 ```bash
-OUT="$RUN_ROOT/root-calibration/gamma-4-4-k50"
-/usr/bin/time -v pixi run -e dev --frozen python "$DRIVER" \
-  --input "$FROZEN_INPUT" --output-directory "$OUT" \
-  --k 50 --cycles 50000 --seed 41050 --chain-id gamma-4-4-k50 \
-  --concentration 100 --root-variance 0.25 --likelihood-power 0 \
-  --fixed-prior-mean 1 --fixed-prior-sd 1 --fixed-proposal-sd 0.4 \
-  --input-id "$FROZEN_INPUT_ID" \
-  --expected-input-sha256 "$FROZEN_INPUT_SHA" \
-  --code-revision "$CODE_REVISION" \
-  --nominal-weight-policy "$WEIGHT_POLICY" \
-  --expected-outer-labels "$OUTER_LABELS" \
-  --require-paris-profile \
-  --collect-movement-diagnostics \
-  --root-slice-width 1 --root-slice-max-steps 100 \
-  --root-slice-max-shrink-steps 1000 \
-  > "$OUT.stdout.json" 2> "$OUT.resource.txt"
+for REP in 0 1; do
+  OUT="$RUN_ROOT/root-calibration/gamma-4-4-k50-rep${REP}"
+  /usr/bin/time -v pixi run -e dev --frozen python "$DRIVER" \
+    --input "$FROZEN_INPUT" --output-directory "$OUT" \
+    --k 50 --cycles 50000 --seed 41050 --chain-id gamma-4-4-k50 \
+    --concentration 100 --root-variance 0.25 --likelihood-power 0 \
+    --fixed-prior-mean 1 --fixed-prior-sd 1 --fixed-proposal-sd 0.4 \
+    --input-id "$FROZEN_INPUT_ID" \
+    --expected-input-sha256 "$FROZEN_INPUT_SHA" \
+    --code-revision "$CODE_REVISION" \
+    --nominal-weight-policy "$WEIGHT_POLICY" \
+    --expected-outer-labels "$OUTER_LABELS" \
+    --require-paris-profile \
+    --collect-movement-diagnostics \
+    --root-slice-width 1 --root-slice-max-steps 100 \
+    --root-slice-max-shrink-steps 1000 \
+    > "$OUT.stdout.json" 2> "$OUT.resource.txt"
+done
 ```
 
 Pass criteria are:
@@ -462,8 +607,8 @@ Pass criteria are:
 - empirical mean is in [0.98, 1.02] and variance in [0.23, 0.27];
 - the empirical 5%, 50%, and 95% quantiles are each within 0.03 of quantiles
   calculated independently with `scipy.stats.gamma(a=4, scale=0.25).ppf`;
-- rerunning the same seed reproduces the ordinary trace and final PCG64 state
-  exactly (timings excluded).
+- the two same-seed replicas reproduce the ordinary trace and final scientific
+  checkpoint, including PCG64 state, exactly (timings excluded).
 
 Exclude the deterministic retained state at transition zero from these
 calibration summaries. Non-root state is expected to move under the compound
@@ -514,18 +659,36 @@ Validate movement fields by move:
   \(2(K-1)\) where applicable;
 - cache misses are non-negative and fall to zero for already-cached rectangle
   columns;
-- root rows alone have root displacement and slice-work counters;
-- allocation rows alone have share \(L_1\) displacement;
+- root rows alone have root displacement and slice-work counters, with literal
+  binary64 zero on every non-root row;
+- structural and pair-allocation rows alone have share \(L_1\) displacement,
+  with literal zero on root and fixed rows;
+- structural geometry area/mass fields are literal zero off structural rows;
 - fixed rows alone have a valid fixed-position index and coefficient
-  displacement; and
-- all movement values are finite and non-negative.
+  displacement, with the `-1` sentinel and literal zero elsewhere; and
+- all movement values are non-negative and contain no NaN. The public
+  diagnostics contract permits positive infinity as an overflow sentinel;
+  for this finite PARIS test, any such sentinel is a hard failure and must be
+  reported explicitly.
+
+These are exact categorical ownership checks, not tolerance checks.
+Roundoff-sized nonzero values outside the owning move are failures.
 
 `design_cache_misses` is deliberately segment-local: the lazy performance
 cache is not checkpointed Markov state. Do not require it to match between an
 uninterrupted process and a process-boundary restart.
 
-Calculate overhead from three paired, non-overwriting off/on replicates after
-one warm-up, using median sampling time:
+Timing begins only after the exact semantic gate passes. For each \(K\), use a
+single compute node/allocation and run one process at a time. Perform one
+diagnostics-off warm-up followed by one diagnostics-on warm-up; exclude both.
+Then run three fresh non-overwriting pairs in alternating order:
+off/on, on/off, off/on. Never submit the warm-ups or timed runs as an array or
+concurrently. Within each pair, use the same seed and chain identity; use a
+different declared seed between pairs. Record node, Slurm job/allocation,
+start/end timestamps, one-thread environment, and load information.
+
+Calculate overhead from the ratio of median on/off sampling times and also
+report every paired ratio:
 
 | Diagnostic overhead | Result |
 |---:|---|
@@ -627,6 +790,13 @@ checkpoint is a hard failure.
 Perform rejection checks on copies under `rejections/`; never alter a
 successful run or the frozen input.
 
+Repeat the complete 24-case rejection inventory for the new commit, including
+the cache-tolerance boundary, \(10^{-8}\) stale cache, one-ULP target,
+object/schema, RNG, manifest, and scientific-input cases. No pass from
+`2a6dee1` carries forward. The focused proposal tests separately require a
+fraction whose child-mass product underflows to become an explicit invalid
+self-attempt rather than an exception, clamp, or redraw.
+
 1. **Corruption:** copy a checkpoint, flip one non-header byte, and attempt a
    resume. It must reject before sampling and create no `complete.json`.
 2. **Input mismatch:** resume a valid checkpoint while supplying an incorrect
@@ -695,6 +865,13 @@ restart, no-pickle, input/manifest rejection, closure, finite-value, and
 completion-hash checks to pass. Performance and diagnostic-overhead failures
 also block promotion. Warnings require an explanation and a targeted follow-up
 but do not by themselves invalidate exactness.
+
+Execute gates in this order: preflight and 13/14 checkpoint boundary;
+1,333/1,334 extreme-mass boundary; new candidate matrix; awkward restart and
+checkpoint audits; all rejection cases; exact-zero diagnostics semantics;
+strictly sequential diagnostic timing; then the two sequential 50,000-cycle
+Gamma calibrations. Stop expensive downstream work at the first scientific or
+durability failure and apply the bounded debugging protocol.
 
 Even a complete pass remains conditional on the communication component
 reachable from the deterministic fixed-\(K\) start. It makes no claim about:

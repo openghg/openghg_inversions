@@ -149,6 +149,27 @@ def _valid_relocation(
     raise AssertionError("test geometry did not expose a valid relocation")
 
 
+def test_public_posterior_terms_retain_generic_decomposed_mh_accounting() -> None:
+    """Matched builders must not change the exported dataclass constructor."""
+    _, state = _problem_state(4)
+    generic = PosteriorTransitionTerms(
+        candidate=state,
+        move="pair_allocation_refresh",
+        delta_log_likelihood=1.0,
+        delta_log_root_prior=2.0,
+        delta_log_allocation_prior=3.0,
+        delta_log_fixed_coefficient_prior=4.0,
+        log_q_forward_selection=-5.0,
+        log_q_forward_auxiliary=-6.0,
+        log_q_reverse_selection=-7.0,
+        log_q_reverse_auxiliary=-8.0,
+        log_jacobian=9.0,
+    )
+
+    assert generic.log_target_delta == 10.0
+    assert generic.log_acceptance_ratio == 15.0
+
+
 def test_shuffled_xarray_bridge_closes_inner_boundary_and_outer_prior_mean() -> None:
     """Shuffled labelled inputs retain exact inner, BC, and outer closure."""
     adapter, raw, outer, boundary = _adapter_and_raw()
@@ -531,3 +552,135 @@ def test_pair_refresh_accepts_an_arbitrary_nonadjacent_leaf_pair() -> None:
     assert transition.valid
     assert transition.candidate.root_total == pytest.approx(source.root_total)
     _assert_rebuild_equal(transition.candidate)
+
+
+def test_extreme_positive_mass_ratios_have_finite_reverse_proposal_terms() -> None:
+    """Legal sub-ULP mass ratios remain supported in every reverse proposal."""
+    problem, source = _problem_state(4, likelihood_power=0.0)
+    leaves = source.allocation.tiling.leaves
+    extreme_masses = np.full(source.k, 0.5)
+    extreme_masses[0] = 0.14790204595
+    extreme_masses[-1] = 2.42205857917e-23
+    assert extreme_masses[0] / (extreme_masses[0] + extreme_masses[-1]) == 1.0
+    pair_source = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(source.allocation.tiling, extreme_masses),
+        fixed_coefficients=source.fixed_coefficients,
+    )
+    pair = propose_pair_allocation_refresh(
+        problem,
+        pair_source,
+        first_leaf=leaves[0],
+        second_leaf=leaves[-1],
+        new_fraction=0.37,
+    )
+
+    assert pair.valid
+    assert math.isfinite(pair.log_q_reverse_auxiliary)
+    assert pair.log_acceptance_ratio == 0.0
+    assert np.all(pair.candidate.leaf_masses > 0.0)
+    _assert_rebuild_equal(pair.candidate)
+
+    edge_merge = merge_choices(source.allocation.tiling)[0]
+    edge_masses = np.full(source.k, 0.5)
+    edge_masses[leaves.index(edge_merge.children[0])] = 1.0
+    edge_masses[leaves.index(edge_merge.children[1])] = 2.0**-54
+    edge_source = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(source.allocation.tiling, edge_masses),
+        fixed_coefficients=source.fixed_coefficients,
+    )
+    edge = propose_posterior_edge_flip(
+        problem,
+        edge_source,
+        merge_choice=edge_merge,
+        new_fraction=0.41,
+    )
+
+    assert edge.valid
+    assert math.isfinite(edge.log_q_reverse_auxiliary)
+    assert edge.log_acceptance_ratio == (edge.log_q_reverse_selection - edge.log_q_forward_selection)
+    assert np.all(edge.candidate.leaf_masses > 0.0)
+    _assert_rebuild_equal(edge.candidate)
+
+    relocation_source = initialize_full_tiling_posterior_state(problem, k=4)
+    relocation_merge = merge_choices(relocation_source.allocation.tiling)[0]
+    relocation_leaves = relocation_source.allocation.tiling.leaves
+    relocation_masses = np.full(relocation_source.k, 0.5)
+    relocation_masses[relocation_leaves.index(relocation_merge.children[0])] = 1.0
+    relocation_masses[relocation_leaves.index(relocation_merge.children[1])] = 2.0**-54
+    relocation_source = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(
+            relocation_source.allocation.tiling,
+            relocation_masses,
+        ),
+        fixed_coefficients=relocation_source.fixed_coefficients,
+    )
+    relocation = _valid_relocation(problem, relocation_source)
+
+    assert relocation.valid
+    assert math.isfinite(relocation.log_q_reverse_auxiliary)
+    assert relocation.log_acceptance_ratio == (
+        relocation.log_q_reverse_selection - relocation.log_q_forward_selection
+    )
+    assert np.all(relocation.candidate.leaf_masses > 0.0)
+    _assert_rebuild_equal(relocation.candidate)
+
+
+def test_unrepresentable_pair_split_is_an_explicit_self_transition() -> None:
+    """A positive fraction whose child product underflows cannot abort sampling."""
+    problem, initial = _problem_state(2, likelihood_power=0.0)
+    smallest = np.nextafter(0.0, 1.0)
+    source = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(
+            initial.allocation.tiling,
+            np.array([smallest, smallest]),
+        ),
+        fixed_coefficients=initial.fixed_coefficients,
+    )
+    first, second = source.allocation.tiling.leaves
+    transition = propose_pair_allocation_refresh(
+        problem,
+        source,
+        first_leaf=first,
+        second_leaf=second,
+        new_fraction=smallest,
+    )
+
+    assert not transition.valid
+    assert transition.candidate is source
+    assert transition.reason == "proposed pair masses are outside representable support"
+    assert transition.log_acceptance_ratio == -math.inf
+
+
+def test_prior_matched_pair_refresh_uses_exact_reduced_acceptance_ratio() -> None:
+    """Large finite prior terms cannot contaminate their analytic cancellation."""
+    ordinary_problem, _ = _problem_state(2, likelihood_power=0.0)
+    problem = FullTilingProblem(
+        base=ordinary_problem.base,
+        concentration=1.0e305,
+    )
+    initial = initialize_full_tiling_posterior_state(problem, k=2)
+    source = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(
+            initial.allocation.tiling,
+            np.array([1.0, np.nextafter(0.0, 1.0)]),
+        ),
+        fixed_coefficients=initial.fixed_coefficients,
+    )
+    first, second = source.allocation.tiling.leaves
+    transition = propose_pair_allocation_refresh(
+        problem,
+        source,
+        first_leaf=first,
+        second_leaf=second,
+        new_fraction=0.37,
+    )
+
+    assert transition.valid
+    assert transition.log_acceptance_ratio == 0.0
+    assert math.isfinite(transition.log_q_forward_auxiliary)
+    assert math.isfinite(transition.log_q_reverse_auxiliary)

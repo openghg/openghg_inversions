@@ -17,6 +17,12 @@ which makes incremental prediction updates directly testable against
 :func:`build_full_tiling_posterior_state`.  The module contains no random
 number generator, sampler, persistence, or input/output layer.
 
+Positive allocation ratios are evaluated directly in log-mass coordinates,
+and matched additive-Dirichlet/Beta terms use their algebraically reduced MH
+ratios. These operations target the declared continuous mass model and avoid
+binary64 endpoint failures; they do not assert exact balance between finite
+floating-point rounding bins.
+
 The public entry points are :class:`FullTilingProblem`,
 :class:`FullTilingPosteriorState`, :class:`PosteriorTransitionTerms`,
 :func:`full_tiling_problem_from_gamma_beta_adapter`,
@@ -45,6 +51,9 @@ from .full_tiling import (
     Rectangle,
     SplitChoice,
     TilingState,
+    _log_beta_density_from_masses,
+    _log_normalized_positive_masses,
+    _representable_split_masses,
     is_recursive_bisection_tiling,
     merge_choices,
 )
@@ -440,6 +449,8 @@ class PosteriorTransitionTerms:
         log_q_forward: Sum of forward selection and auxiliary terms.
         log_q_reverse: Sum of reverse selection and auxiliary terms.
         log_acceptance_ratio: Complete untruncated MH log ratio.
+            Matched additive-Dirichlet/Beta proposals use their algebraically
+            reduced ratio to avoid floating-point cancellation.
 
     Raises:
         TypeError: If candidate or validity metadata have the wrong type.
@@ -507,7 +518,10 @@ class PosteriorTransitionTerms:
         target_delta = sum(values[:4])
         q_forward = values[4] + values[5]
         q_reverse = values[6] + values[7]
-        acceptance = target_delta + q_reverse - q_forward + values[8] if self.valid else -math.inf
+        if self.valid:
+            acceptance = target_delta + q_reverse - q_forward + values[8]
+        else:
+            acceptance = -math.inf
         if math.isnan(acceptance):
             raise ValueError("the calculated log acceptance ratio cannot be NaN.")
         object.__setattr__(self, "log_target_delta", float(target_delta))
@@ -849,16 +863,23 @@ def propose_posterior_edge_flip(
         return _invalid_transition(source, move, "edge-flip candidate is nonrecursive")
 
     source_children = merge_choice.children
-    old_total = source.allocation.mass(source_children[0]) + source.allocation.mass(source_children[1])
-    old_fraction = source.allocation.mass(source_children[0]) / old_total
+    first_source_mass = source.allocation.mass(source_children[0])
+    second_source_mass = source.allocation.mass(source_children[1])
+    old_total = first_source_mass + second_source_mass
     target_children = target_split.leaf.midpoint_children(target_split.axis)
+    proposed_masses = _representable_split_masses(old_total, fraction)
+    if proposed_masses is None:
+        return _invalid_transition(
+            source,
+            move,
+            "proposed child masses are outside representable support",
+        )
     masses = {
         leaf: source.allocation.mass(leaf)
         for leaf in source.allocation.tiling.leaves
         if leaf not in source_children
     }
-    masses[target_children[0]] = old_total * fraction
-    masses[target_children[1]] = old_total * (1.0 - fraction)
+    masses[target_children[0]], masses[target_children[1]] = proposed_masses
     allocation = _allocation_from_mass_map(candidate_tiling, masses)
     candidate = _incremental_allocation_state(
         problem,
@@ -883,13 +904,21 @@ def propose_posterior_edge_flip(
             fraction,
         ),
         log_q_reverse_selection=-math.log(len(reverse_merges)),
-        log_q_reverse_auxiliary=problem.allocation_prior.log_beta_density(
-            source_children,
-            old_fraction,
+        log_q_reverse_auxiliary=_log_beta_density_from_masses(
+            problem.allocation_prior.alpha(source_children[0]),
+            problem.allocation_prior.alpha(source_children[1]),
+            first_source_mass,
+            second_source_mass,
         ),
         log_jacobian=0.0,
         reverse_merge_choice=reverse_merge,
         reverse_split_choice=reverse_split,
+        reduced_log_acceptance_ratio=(
+            candidate.log_likelihood
+            - source.log_likelihood
+            - math.log(len(reverse_merges))
+            + math.log(len(merges))
+        ),
     )
 
 
@@ -954,17 +983,27 @@ def propose_posterior_resolution_relocation(
         return _invalid_transition(source, move, "relocation candidate is nonrecursive")
 
     source_children = merge_choice.children
-    source_total = source.allocation.mass(source_children[0]) + source.allocation.mass(source_children[1])
-    old_fraction = source.allocation.mass(source_children[0]) / source_total
+    first_source_mass = source.allocation.mass(source_children[0])
+    second_source_mass = source.allocation.mass(source_children[1])
+    source_total = first_source_mass + second_source_mass
     destination_total = source.allocation.mass(split_choice.leaf)
+    proposed_masses = _representable_split_masses(
+        destination_total,
+        fraction,
+    )
+    if proposed_masses is None:
+        return _invalid_transition(
+            source,
+            move,
+            "proposed child masses are outside representable support",
+        )
     removed = (*source_children, split_choice.leaf)
     added = (merge_choice.parent, *destination_children)
     masses = {
         leaf: source.allocation.mass(leaf) for leaf in source.allocation.tiling.leaves if leaf not in removed
     }
     masses[merge_choice.parent] = source_total
-    masses[destination_children[0]] = destination_total * fraction
-    masses[destination_children[1]] = destination_total * (1.0 - fraction)
+    masses[destination_children[0]], masses[destination_children[1]] = proposed_masses
     allocation = _allocation_from_mass_map(candidate_tiling, masses)
     candidate = _incremental_allocation_state(
         problem,
@@ -992,13 +1031,18 @@ def propose_posterior_resolution_relocation(
             fraction,
         ),
         log_q_reverse_selection=log_reverse_selection,
-        log_q_reverse_auxiliary=problem.allocation_prior.log_beta_density(
-            source_children,
-            old_fraction,
+        log_q_reverse_auxiliary=_log_beta_density_from_masses(
+            problem.allocation_prior.alpha(source_children[0]),
+            problem.allocation_prior.alpha(source_children[1]),
+            first_source_mass,
+            second_source_mass,
         ),
-        log_jacobian=math.log(destination_total / source_total),
+        log_jacobian=math.log(destination_total) - math.log(source_total),
         reverse_merge_choice=reverse_merge,
         reverse_split_choice=reverse_split,
+        reduced_log_acceptance_ratio=(
+            candidate.log_likelihood - source.log_likelihood + log_reverse_selection - log_forward_selection
+        ),
     )
 
 
@@ -1049,11 +1093,18 @@ def propose_pair_allocation_refresh(
     fraction = _proposal_fraction(new_fraction)
     if fraction is None:
         return _invalid_transition(source, move, "new fraction lies outside support")
-    pair_total = source.allocation.mass(first_leaf) + source.allocation.mass(second_leaf)
-    old_fraction = source.allocation.mass(first_leaf) / pair_total
+    first_source_mass = source.allocation.mass(first_leaf)
+    second_source_mass = source.allocation.mass(second_leaf)
+    pair_total = first_source_mass + second_source_mass
+    proposed_masses = _representable_split_masses(pair_total, fraction)
+    if proposed_masses is None:
+        return _invalid_transition(
+            source,
+            move,
+            "proposed pair masses are outside representable support",
+        )
     masses = {leaf: source.allocation.mass(leaf) for leaf in source.allocation.tiling.leaves}
-    masses[first_leaf] = pair_total * fraction
-    masses[second_leaf] = pair_total * (1.0 - fraction)
+    masses[first_leaf], masses[second_leaf] = proposed_masses
     allocation = _allocation_from_mass_map(source.allocation.tiling, masses)
     candidate = _incremental_allocation_state(
         problem,
@@ -1076,12 +1127,14 @@ def propose_pair_allocation_refresh(
             fraction,
         ),
         log_q_reverse_selection=-math.log(pair_count),
-        log_q_reverse_auxiliary=_log_pair_beta_density(
+        log_q_reverse_auxiliary=_log_pair_beta_density_from_masses(
             problem,
             first_leaf,
             second_leaf,
-            old_fraction,
+            first_source_mass,
+            second_source_mass,
         ),
+        reduced_log_acceptance_ratio=(candidate.log_likelihood - source.log_likelihood),
     )
 
 
@@ -1323,11 +1376,11 @@ def _log_allocation_share_prior(
 ) -> float:
     """Return the normalized active Dirichlet density in share coordinates."""
     alphas = problem.allocation_prior.leaf_alphas(allocation.tiling)
-    shares = allocation.leaf_masses / allocation.total_mass
+    log_shares = _log_normalized_positive_masses(allocation.leaf_masses)
     return float(
         math.lgamma(problem.allocation_prior.concentration)
         - sum(math.lgamma(float(alpha)) for alpha in alphas)
-        + np.dot(alphas - 1.0, np.log(shares))
+        + np.dot(alphas - 1.0, log_shares)
     )
 
 
@@ -1356,6 +1409,36 @@ def _log_pair_beta_density(
         - math.lgamma(second_alpha)
         + (first_alpha - 1.0) * math.log(fraction)
         + (second_alpha - 1.0) * math.log1p(-fraction)
+    )
+
+
+def _log_pair_beta_density_from_masses(
+    problem: FullTilingProblem,
+    first_leaf: Rectangle,
+    second_leaf: Rectangle,
+    first_mass: float,
+    second_mass: float,
+) -> float:
+    """Return an arbitrary-pair Beta density from stable log masses.
+
+    Args:
+        problem: Full-tiling problem supplying the additive alpha measure.
+        first_leaf: Rectangle associated with ``first_mass``.
+        second_leaf: Rectangle associated with ``second_mass``.
+        first_mass: Finite strictly positive first mass.
+        second_mass: Finite strictly positive second mass.
+
+    Returns:
+        Normalized Beta log density without materializing either mass fraction.
+
+    Raises:
+        ValueError: If either mass is non-finite or not strictly positive.
+    """
+    return _log_beta_density_from_masses(
+        problem.allocation_prior.alpha(first_leaf),
+        problem.allocation_prior.alpha(second_leaf),
+        first_mass,
+        second_mass,
     )
 
 
@@ -1505,6 +1588,31 @@ def _invalid_transition(
     )
 
 
+def _with_reduced_acceptance(
+    transition: PosteriorTransitionTerms,
+    log_acceptance_ratio: float,
+) -> PosteriorTransitionTerms:
+    """Apply a builder-proved algebraic reduction to valid transition terms.
+
+    Args:
+        transition: Generic validated transition accounting.
+        log_acceptance_ratio: Complete reduced log MH ratio.
+
+    Returns:
+        The same transition object with its derived aggregate ratio replaced.
+
+    Raises:
+        ValueError: If the transition is invalid or the ratio is NaN.
+    """
+    ratio = float(log_acceptance_ratio)
+    if not transition.valid:
+        raise ValueError("only valid transition terms can use a reduced ratio.")
+    if math.isnan(ratio):
+        raise ValueError("reduced log acceptance ratio cannot be NaN.")
+    object.__setattr__(transition, "log_acceptance_ratio", ratio)
+    return transition
+
+
 def _valid_transition(
     source: FullTilingPosteriorState,
     candidate: FullTilingPosteriorState,
@@ -1520,9 +1628,32 @@ def _valid_transition(
     log_jacobian: float = 0.0,
     reverse_merge_choice: MergeChoice | None = None,
     reverse_split_choice: SplitChoice | None = None,
+    reduced_log_acceptance_ratio: float | None = None,
 ) -> PosteriorTransitionTerms:
-    """Return complete terms for one valid deterministic candidate."""
-    return PosteriorTransitionTerms(
+    """Return complete terms for one valid deterministic candidate.
+
+    Args:
+        source: Source posterior state.
+        candidate: Valid proposed posterior state.
+        move: Concrete posterior proposal name.
+        delta_log_root_prior: Candidate-minus-source root-prior density.
+        delta_log_allocation_prior: Candidate-minus-source allocation-prior
+            density.
+        delta_log_fixed_coefficient_prior: Candidate-minus-source fixed-block
+            prior density.
+        log_q_forward_selection: Forward discrete-choice log probability.
+        log_q_forward_auxiliary: Forward continuous-auxiliary log density.
+        log_q_reverse_selection: Reverse discrete-choice log probability.
+        log_q_reverse_auxiliary: Reverse continuous-auxiliary log density.
+        log_jacobian: Log absolute augmented-coordinate Jacobian.
+        reverse_merge_choice: Unique reverse merge for a structural proposal.
+        reverse_split_choice: Unique reverse split for a structural proposal.
+        reduced_log_acceptance_ratio: Builder-proved complete reduced log MH
+            ratio, or ``None`` to retain generic decomposed accounting.
+    Returns:
+        Validated decomposed transition accounting.
+    """
+    transition = PosteriorTransitionTerms(
         candidate=candidate,
         move=move,
         delta_log_likelihood=candidate.log_likelihood - source.log_likelihood,
@@ -1536,6 +1667,12 @@ def _valid_transition(
         log_jacobian=log_jacobian,
         reverse_merge_choice=reverse_merge_choice,
         reverse_split_choice=reverse_split_choice,
+    )
+    if reduced_log_acceptance_ratio is None:
+        return transition
+    return _with_reduced_acceptance(
+        transition,
+        reduced_log_acceptance_ratio,
     )
 
 

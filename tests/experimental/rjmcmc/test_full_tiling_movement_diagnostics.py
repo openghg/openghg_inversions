@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from math import exp
 
 import numpy as np
@@ -320,7 +321,7 @@ def test_diagnostics_report_catalogues_movement_and_slice_work() -> None:
     root = 2
     assert diagnostics.root_abs_displacement[root] > 0.0
     assert diagnostics.root_abs_log_displacement[root] > 0.0
-    assert diagnostics.allocation_share_l1_displacement[root] == pytest.approx(0.0)
+    assert diagnostics.allocation_share_l1_displacement[root] == 0.0
     assert diagnostics.slice_shrink_draws[root] >= 1
     assert diagnostics.slice_log_density_evaluations[root] >= 2
 
@@ -330,10 +331,70 @@ def test_diagnostics_report_catalogues_movement_and_slice_work() -> None:
     assert np.all(diagnostics.fixed_abs_displacement[8:14] > 0.0)
     assert np.all(diagnostics.fixed_abs_log_displacement[8:14] > 0.0)
     non_root = diagnostics.move != "root_total_slice"
+    assert np.all(diagnostics.root_abs_displacement[non_root] == 0.0)
+    assert np.all(diagnostics.root_abs_log_displacement[non_root] == 0.0)
     assert np.all(diagnostics.slice_left_steps[non_root] == 0)
     assert np.all(diagnostics.slice_right_steps[non_root] == 0)
     assert np.all(diagnostics.slice_shrink_draws[non_root] == 0)
     assert np.all(diagnostics.slice_log_density_evaluations[non_root] == 0)
+    allocation = np.isin(
+        diagnostics.move,
+        ("edge_flip", "resolution_relocation", "pair_allocation_refresh"),
+    )
+    assert np.all(diagnostics.allocation_share_l1_displacement[~allocation] == 0.0)
+    structural = np.isin(
+        diagnostics.move,
+        ("edge_flip", "resolution_relocation"),
+    )
+    assert np.all(diagnostics.changed_native_cell_count[~structural] == 0)
+    assert np.all(diagnostics.changed_nominal_mass[~structural] == 0.0)
+    fixed = diagnostics.move == "fixed_coefficient"
+    assert np.all(diagnostics.fixed_abs_displacement[~fixed] == 0.0)
+    assert np.all(diagnostics.fixed_abs_log_displacement[~fixed] == 0.0)
+
+
+@pytest.mark.parametrize(
+    ("field", "move", "message"),
+    (
+        (
+            "root_abs_displacement",
+            "resolution_relocation",
+            "root displacement must be zero off root slots",
+        ),
+        (
+            "allocation_share_l1_displacement",
+            "root_total_slice",
+            "allocation-share displacement must be zero",
+        ),
+        (
+            "fixed_abs_displacement",
+            "pair_allocation_refresh",
+            "fixed displacement must be zero off fixed slots",
+        ),
+    ),
+)
+def test_diagnostics_reject_roundoff_in_non_owning_fields(
+    field: str,
+    move: str,
+    message: str,
+) -> None:
+    """Even one representable nonzero value violates field ownership."""
+    problem, initial = _problem_state(k=4)
+    result = sample_full_tiling_compound(
+        problem,
+        initial,
+        FullTilingCompoundConfig(iterations=14, seed=9),
+        collect_movement_diagnostics=True,
+    )
+    diagnostics = result.movement_diagnostics
+    assert diagnostics is not None
+    positions = np.flatnonzero(diagnostics.move == move)
+    assert positions.size
+    values = np.array(getattr(diagnostics, field), copy=True)
+    values[int(positions[0])] = np.nextafter(0.0, 1.0)
+
+    with pytest.raises(ValueError, match=message):
+        replace(diagnostics, **{field: values})
 
 
 def test_invalid_attempts_have_zero_movement_and_segment_opt_in_is_not_sticky() -> None:

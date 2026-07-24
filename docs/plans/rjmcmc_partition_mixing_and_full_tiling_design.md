@@ -1018,6 +1018,27 @@ Existing OpenGHG Inversions draft work can be reused as follows:
   failure. The HPC plan now gates transition 13/14 explicitly and authorizes
   bounded failure-localization diagnostics before expensive downstream
   stages.
+- **Extreme-allocation correction (2026-07-24):** the next HPC run at
+  `2a6dee1` passed checkpoint and arbitrary-phase restart gates but failed at
+  transition 1,334 when a legal positive mass ratio rounded to the endpoint
+  one before reverse Beta-density evaluation. Reverse proposal densities and
+  allocation priors now operate on stable log masses, matched
+  Dirichlet/Beta contributions use their continuous-model analytic MH
+  cancellation, and
+  unrepresentable child-mass products become explicit self-attempts without a
+  floor or clamp. Movement diagnostics now emit literal zeros outside each
+  field's owning move. The HPC plan adds exact 1,333/1,334 replay, categorical
+  zero checks, and mandatory sequential timing before repeating calibration.
+- **Floating-coordinate boundary:** the correction targets the declared
+  continuous positive-mass model; it is not a claim of detailed balance over
+  discrete binary64 rounding bins. A two-orientation residual-mass prototype
+  could make individual pair paths bitwise reversible, but read-only stress
+  analysis found severe pair-dependent reconstructability and global-sum
+  rejection rates, which would directly worsen the mixing problem being
+  measured. The clean future representation is an authoritative root total
+  plus share/log-ratio allocation coordinates, with physical leaf masses as
+  validated derived caches. That migration is deliberately separate from the
+  immediate endpoint-crash fix and must include checkpoint/schema changes.
 - **Real-data provenance:** the Stage C PARIS NetCDF path, SHA-256, ordered
   InTEM outer labels, and strictly positive spherical-cell-area weight policy
   are pinned literally in the HPC plan from independent run records.

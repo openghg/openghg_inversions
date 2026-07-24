@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 from itertools import combinations
-from math import exp, log
+from math import exp, lgamma, log, log1p
 
 import numpy as np
 import pytest
@@ -20,6 +20,7 @@ from openghg_inversions.experimental.rjmcmc.full_tiling import (
     RelocationPath,
     SplitChoice,
     TilingState,
+    TilingTransitionTerms,
     edge_flip_paths,
     enumerate_tilings,
     is_recursive_bisection_tiling,
@@ -191,6 +192,39 @@ def test_beta_density_requires_an_ordered_midpoint_friend_pair() -> None:
     left, right = Rectangle(0, 2, 0, 2).midpoint_children("vertical")
     with pytest.raises(ValueError, match="midpoint-friend"):
         prior.log_beta_density((right, left), 0.5)
+
+
+def test_extreme_mass_allocation_density_uses_stable_log_shares() -> None:
+    """The declared prior stays finite when a positive share rounds away."""
+    prior = AdditiveAlphaPrior(np.array([[1.0, 3.0]]), concentration=4.0)
+    root = LeafTiling.root((1, 2))
+    tiling = root.split(SplitChoice(root.leaves[0], "vertical"))
+    small = np.nextafter(0.0, 1.0)
+    large = 1.0e308
+    state = TilingState(tiling, np.array([small, large]))
+    alphas = prior.leaf_alphas(tiling)
+    log_ratio = log(small) - log(large)
+    correction = log1p(exp(log_ratio))
+    expected = (
+        lgamma(prior.concentration)
+        - sum(lgamma(float(alpha)) for alpha in alphas)
+        + (alphas[0] - 1.0) * (log_ratio - correction)
+        + (alphas[1] - 1.0) * -correction
+        - log(state.total_mass)
+    )
+
+    assert state.leaf_masses[0] / state.total_mass == 0.0
+    log_first, log_second = full_tiling_module._log_pair_mass_fractions(
+        small,
+        large,
+    )
+    assert np.isfinite(log_first)
+    assert np.isfinite(log_second)
+    assert log_first == pytest.approx(log_ratio, abs=2e-13)
+    assert prior.log_mass_allocation_density(state) == pytest.approx(
+        expected,
+        abs=2e-14,
+    )
 
 
 def test_canonical_tiling_is_independent_of_split_history() -> None:
@@ -464,6 +498,35 @@ def test_edge_flip_has_exact_reverse_and_prior_auxiliary_cancellation() -> None:
     )
 
 
+def test_public_oracle_terms_retain_generic_decomposed_mh_accounting() -> None:
+    """Only proposal builders may replace the public generic MH calculation."""
+    prior = AdditiveAlphaPrior(np.ones((2, 2)), concentration=4.0)
+    root = LeafTiling.root((2, 2))
+    source_tiling = root.split(SplitChoice(root.leaves[0], "vertical"))
+    source = TilingState(source_tiling, np.array([2.5, 6.0]))
+    built = propose_edge_flip(
+        prior,
+        source,
+        path=edge_flip_paths(source_tiling)[0],
+        new_fraction=0.37,
+    )
+    generic = TilingTransitionTerms(
+        candidate=built.candidate,
+        reverse_path=built.reverse_path,
+        delta_log_allocation_prior=1.0,
+        delta_log_structural_prior=2.0,
+        log_q_forward_selection=-3.0,
+        log_q_forward_auxiliary=-4.0,
+        log_q_reverse_selection=-5.0,
+        log_q_reverse_auxiliary=-6.0,
+        log_jacobian=7.0,
+        move="edge_flip",
+    )
+
+    assert generic.log_acceptance_ratio == 6.0
+    assert built.log_acceptance_ratio == (built.log_q_reverse_selection - built.log_q_forward_selection)
+
+
 def test_unequal_mass_relocation_has_reciprocal_jacobian_and_exact_cancellation() -> None:
     """Relocation must reverse pointwise and leave only its selection-degree ratio."""
     prior = AdditiveAlphaPrior(
@@ -511,6 +574,77 @@ def test_unequal_mass_relocation_has_reciprocal_jacobian_and_exact_cancellation(
         -transition.log_acceptance_ratio,
         abs=3e-14,
     )
+
+
+def test_oracle_reverse_densities_support_sub_ulp_positive_mass_ratios() -> None:
+    """Edge and relocation oracles do not force-reject legal extreme states."""
+    edge_prior = AdditiveAlphaPrior(np.ones((2, 2)), concentration=4.0)
+    edge_root = LeafTiling.root((2, 2))
+    edge_tiling = edge_root.split(
+        SplitChoice(edge_root.leaves[0], "vertical"),
+    )
+    edge_source = TilingState(edge_tiling, np.array([1.0, 2.0**-54]))
+    assert edge_source.leaf_masses[0] / edge_source.total_mass == 1.0
+    edge = propose_edge_flip(
+        edge_prior,
+        edge_source,
+        path=edge_flip_paths(edge_tiling)[0],
+        new_fraction=0.37,
+    )
+
+    assert edge.valid
+    assert np.isfinite(edge.log_q_reverse_auxiliary)
+    assert edge.log_acceptance_ratio == (edge.log_q_reverse_selection - edge.log_q_forward_selection)
+
+    relocation_prior = AdditiveAlphaPrior(
+        np.ones((2, 3)),
+        concentration=6.0,
+    )
+    relocation_tiling = enumerate_tilings((2, 3), 3)[0]
+    relocation_path = relocation_paths(relocation_tiling)[0]
+    relocation_masses = np.ones(relocation_tiling.k)
+    first_position = relocation_tiling.leaves.index(
+        relocation_path.merge.children[0],
+    )
+    second_position = relocation_tiling.leaves.index(
+        relocation_path.merge.children[1],
+    )
+    relocation_masses[first_position] = 1.0
+    relocation_masses[second_position] = 2.0**-54
+    relocation_source = TilingState(relocation_tiling, relocation_masses)
+    relocation = propose_resolution_relocation(
+        relocation_prior,
+        relocation_source,
+        path=relocation_path,
+        new_fraction=0.41,
+    )
+
+    assert relocation.valid
+    assert np.isfinite(relocation.log_q_reverse_auxiliary)
+    assert np.isfinite(relocation.log_jacobian)
+    assert relocation.log_acceptance_ratio == (
+        relocation.log_q_reverse_selection - relocation.log_q_forward_selection
+    )
+
+
+def test_oracle_unrepresentable_split_is_an_explicit_self_transition() -> None:
+    """Child-mass underflow is rejected without clamping or an exception."""
+    prior = AdditiveAlphaPrior(np.ones((2, 2)), concentration=4.0)
+    root = LeafTiling.root((2, 2))
+    tiling = root.split(SplitChoice(root.leaves[0], "vertical"))
+    smallest = np.nextafter(0.0, 1.0)
+    source = TilingState(tiling, np.array([smallest, smallest]))
+    transition = propose_edge_flip(
+        prior,
+        source,
+        path=edge_flip_paths(tiling)[0],
+        new_fraction=smallest,
+    )
+
+    assert not transition.valid
+    assert transition.candidate is source
+    assert transition.reason == "proposed child masses are outside representable support"
+    assert transition.log_acceptance_ratio == -np.inf
 
 
 def test_invalid_paths_and_fractions_are_explicit_self_transitions() -> None:

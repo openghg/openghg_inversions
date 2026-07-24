@@ -15,7 +15,11 @@ auxiliary path, so their pointwise reverse probabilities are explicit.
 Leaf masses use a Dirichlet allocation whose shapes are supplied by one
 globally additive cell measure.  This makes the allocation independent of the
 binary construction used to describe a tiling.  Proposal constructors are
-deterministic and consume no random numbers.
+deterministic and consume no random numbers. Positive allocation ratios are
+evaluated directly in log-mass coordinates, and matched prior/proposal terms
+use algebraically reduced MH ratios to avoid catastrophic cancellation.
+These calculations target the declared continuous mass model; they are not a
+claim of detailed balance for the finite set of binary64 rounding bins.
 
 The main entry points are :func:`enumerate_tilings`,
 :func:`edge_flip_paths`, :func:`relocation_paths`,
@@ -40,6 +44,125 @@ Axis: TypeAlias = Literal["horizontal", "vertical"]
 
 Move: TypeAlias = Literal["edge_flip", "resolution_relocation"]
 """Name of a fixed-``K`` full-tiling proposal."""
+
+
+def _log_pair_mass_fractions(
+    first_mass: float,
+    second_mass: float,
+) -> tuple[float, float]:
+    """Return stable logs of two positive masses divided by their sum.
+
+    Args:
+        first_mass: Finite strictly positive first mass.
+        second_mass: Finite strictly positive second mass.
+
+    Returns:
+        ``(log(first / total), log(second / total))`` without materializing
+        either fraction.
+
+    Raises:
+        ValueError: If either mass is non-finite or not strictly positive.
+    """
+    first = float(first_mass)
+    second = float(second_mass)
+    if not math.isfinite(first) or not math.isfinite(second) or first <= 0.0 or second <= 0.0:
+        raise ValueError("pair masses must be finite and strictly positive.")
+    log_first = math.log(first)
+    log_second = math.log(second)
+    if log_first >= log_second:
+        correction = math.log1p(math.exp(log_second - log_first))
+        return -correction, log_second - log_first - correction
+    correction = math.log1p(math.exp(log_first - log_second))
+    return log_first - log_second - correction, -correction
+
+
+def _log_normalized_positive_masses(masses: np.ndarray) -> np.ndarray:
+    """Return stable log shares for a non-empty positive mass vector.
+
+    Args:
+        masses: One-dimensional finite, strictly positive binary64 masses.
+
+    Returns:
+        One-dimensional log shares aligned with ``masses``, calculated
+        without first dividing by a potentially rounded total.
+
+    Raises:
+        ValueError: If ``masses`` is empty, not one-dimensional, non-finite,
+            or contains a non-positive value.
+    """
+    values = np.asarray(masses, dtype=np.float64)
+    if values.ndim != 1 or values.size == 0 or np.any(~np.isfinite(values)) or np.any(values <= 0.0):
+        raise ValueError("masses must be a non-empty finite positive vector.")
+    logs = np.log(values)
+    largest_position = int(np.argmax(logs))
+    largest = float(logs[largest_position])
+    relative_sum = math.fsum(
+        math.exp(float(value) - largest)
+        for position, value in enumerate(logs)
+        if position != largest_position
+    )
+    correction = math.log1p(relative_sum)
+    return (logs - largest) - correction
+
+
+def _log_beta_density_from_masses(
+    first_shape: float,
+    second_shape: float,
+    first_mass: float,
+    second_mass: float,
+) -> float:
+    """Return a normalized Beta density from stable log-mass fractions.
+
+    Args:
+        first_shape: Strictly positive first Beta shape.
+        second_shape: Strictly positive second Beta shape.
+        first_mass: Finite strictly positive first mass.
+        second_mass: Finite strictly positive second mass.
+
+    Returns:
+        Normalized Beta log density evaluated without materializing either
+        mass fraction.
+
+    Raises:
+        ValueError: If either mass is non-finite or not strictly positive.
+    """
+    log_first_fraction, log_second_fraction = _log_pair_mass_fractions(
+        first_mass,
+        second_mass,
+    )
+    return float(
+        math.lgamma(first_shape + second_shape)
+        - math.lgamma(first_shape)
+        - math.lgamma(second_shape)
+        + (first_shape - 1.0) * log_first_fraction
+        + (second_shape - 1.0) * log_second_fraction
+    )
+
+
+def _representable_split_masses(
+    total_mass: float,
+    fraction: float,
+) -> tuple[float, float] | None:
+    """Return positive binary64 child masses when both products exist.
+
+    Args:
+        total_mass: Finite strictly positive pair total.
+        fraction: Finite open-unit first-child fraction.
+
+    Returns:
+        The two finite, strictly positive child products, or ``None`` if
+        either product is zero or non-finite in binary64.
+    """
+    first_mass = float(total_mass * fraction)
+    second_mass = float(total_mass * (1.0 - fraction))
+    if (
+        not math.isfinite(first_mass)
+        or not math.isfinite(second_mass)
+        or first_mass <= 0.0
+        or second_mass <= 0.0
+    ):
+        return None
+    return first_mass, second_mass
 
 
 def _normalise_axis(axis: Axis) -> Axis:
@@ -671,10 +794,11 @@ class AdditiveAlphaPrior:
             raise TypeError("state must be a TilingState.")
         alphas = self.leaf_alphas(state.tiling)
         total = state.total_mass
+        log_shares = _log_normalized_positive_masses(state.leaf_masses)
         return (
             math.lgamma(self.concentration)
             - sum(math.lgamma(float(alpha)) for alpha in alphas)
-            + float(np.dot(alphas - 1.0, np.log(state.leaf_masses / total)))
+            + float(np.dot(alphas - 1.0, log_shares))
             - (state.tiling.k - 1) * math.log(total)
         )
 
@@ -1017,6 +1141,31 @@ def _invalid_transition(source: TilingState, move: Move, reason: str) -> TilingT
     )
 
 
+def _with_reduced_acceptance(
+    transition: TilingTransitionTerms,
+    log_acceptance_ratio: float,
+) -> TilingTransitionTerms:
+    """Apply a builder-proved algebraic reduction to valid transition terms.
+
+    Args:
+        transition: Generic validated transition accounting.
+        log_acceptance_ratio: Complete reduced log MH ratio.
+
+    Returns:
+        The same transition object with its derived aggregate ratio replaced.
+
+    Raises:
+        ValueError: If the transition is invalid or the ratio is NaN.
+    """
+    ratio = float(log_acceptance_ratio)
+    if not transition.valid:
+        raise ValueError("only valid transition terms can use a reduced ratio.")
+    if math.isnan(ratio):
+        raise ValueError("reduced log acceptance ratio cannot be NaN.")
+    object.__setattr__(transition, "log_acceptance_ratio", ratio)
+    return transition
+
+
 def _state_from_mass_map(tiling: LeafTiling, masses: dict[Rectangle, float]) -> TilingState:
     """Build a state by aligning a rectangle-to-mass map canonically.
 
@@ -1075,15 +1224,22 @@ def propose_edge_flip(
         return _invalid_transition(source, "edge_flip", "new fraction lies outside support")
 
     source_children = path.merge.children
-    old_total = source.mass(source_children[0]) + source.mass(source_children[1])
-    old_fraction = source.mass(source_children[0]) / old_total
+    first_source_mass = source.mass(source_children[0])
+    second_source_mass = source.mass(source_children[1])
+    old_total = first_source_mass + second_source_mass
     intermediate = source.tiling.merge(path.merge)
     target = SplitChoice(path.merge.parent, path.target_axis)
     candidate_tiling = intermediate.split(target)
     target_children = target.leaf.midpoint_children(target.axis)
+    proposed_masses = _representable_split_masses(old_total, new_fraction)
+    if proposed_masses is None:
+        return _invalid_transition(
+            source,
+            "edge_flip",
+            "proposed child masses are outside representable support",
+        )
     masses = {leaf: source.mass(leaf) for leaf in source.tiling.leaves if leaf not in source_children}
-    masses[target_children[0]] = old_total * new_fraction
-    masses[target_children[1]] = old_total * (1.0 - new_fraction)
+    masses[target_children[0]], masses[target_children[1]] = proposed_masses
     candidate = _state_from_mass_map(candidate_tiling, masses)
     reverse = EdgeFlipPath(
         MergeChoice(path.merge.parent, path.target_axis),
@@ -1092,7 +1248,7 @@ def propose_edge_flip(
     reverse_paths = edge_flip_paths(candidate_tiling)
     if reverse not in reverse_paths:
         raise RuntimeError("constructed edge flip has no pointwise reverse.")
-    return TilingTransitionTerms(
+    transition = TilingTransitionTerms(
         candidate=candidate,
         reverse_path=reverse,
         delta_log_allocation_prior=(
@@ -1102,9 +1258,18 @@ def propose_edge_flip(
         log_q_forward_selection=-math.log(len(paths)),
         log_q_forward_auxiliary=prior.log_beta_density(target_children, new_fraction),
         log_q_reverse_selection=-math.log(len(reverse_paths)),
-        log_q_reverse_auxiliary=prior.log_beta_density(source_children, old_fraction),
+        log_q_reverse_auxiliary=_log_beta_density_from_masses(
+            prior.alpha(source_children[0]),
+            prior.alpha(source_children[1]),
+            first_source_mass,
+            second_source_mass,
+        ),
         log_jacobian=0.0,
         move="edge_flip",
+    )
+    return _with_reduced_acceptance(
+        transition,
+        -math.log(len(reverse_paths)) + math.log(len(paths)),
     )
 
 
@@ -1159,17 +1324,27 @@ def propose_resolution_relocation(
         )
 
     source_children = path.merge.children
-    source_total = source.mass(source_children[0]) + source.mass(source_children[1])
-    old_fraction = source.mass(source_children[0]) / source_total
+    first_source_mass = source.mass(source_children[0])
+    second_source_mass = source.mass(source_children[1])
+    source_total = first_source_mass + second_source_mass
     destination_total = source.mass(path.split.leaf)
     intermediate = source.tiling.merge(path.merge)
     candidate_tiling = intermediate.split(path.split)
     destination_children = path.split.leaf.midpoint_children(path.split.axis)
+    proposed_masses = _representable_split_masses(
+        destination_total,
+        new_fraction,
+    )
+    if proposed_masses is None:
+        return _invalid_transition(
+            source,
+            "resolution_relocation",
+            "proposed child masses are outside representable support",
+        )
     removed = frozenset((*source_children, path.split.leaf))
     masses = {leaf: source.mass(leaf) for leaf in source.tiling.leaves if leaf not in removed}
     masses[path.merge.parent] = source_total
-    masses[destination_children[0]] = destination_total * new_fraction
-    masses[destination_children[1]] = destination_total * (1.0 - new_fraction)
+    masses[destination_children[0]], masses[destination_children[1]] = proposed_masses
     candidate = _state_from_mass_map(candidate_tiling, masses)
     reverse = RelocationPath(
         MergeChoice(path.split.leaf, path.split.axis),
@@ -1177,7 +1352,7 @@ def propose_resolution_relocation(
     )
     if reverse not in relocation_paths(candidate_tiling):
         raise RuntimeError("constructed resolution relocation has no pointwise reverse.")
-    return TilingTransitionTerms(
+    transition = TilingTransitionTerms(
         candidate=candidate,
         reverse_path=reverse,
         delta_log_allocation_prior=(
@@ -1193,7 +1368,17 @@ def propose_resolution_relocation(
             candidate_tiling,
             reverse,
         ),
-        log_q_reverse_auxiliary=prior.log_beta_density(source_children, old_fraction),
-        log_jacobian=math.log(destination_total / source_total),
+        log_q_reverse_auxiliary=_log_beta_density_from_masses(
+            prior.alpha(source_children[0]),
+            prior.alpha(source_children[1]),
+            first_source_mass,
+            second_source_mass,
+        ),
+        log_jacobian=math.log(destination_total) - math.log(source_total),
         move="resolution_relocation",
+    )
+    return _with_reduced_acceptance(
+        transition,
+        relocation_path_log_probability(candidate_tiling, reverse)
+        - relocation_path_log_probability(source.tiling, path),
     )

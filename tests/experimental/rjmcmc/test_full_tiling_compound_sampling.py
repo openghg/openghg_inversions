@@ -159,6 +159,40 @@ def test_seeded_replay_covers_invalid_slots_and_non_slice_acceptance_draws(
     assert all(np.isfinite(value) and value <= 0.0 for _, value in observed)
 
 
+@pytest.mark.parametrize("endpoint", [0.0, 1.0])
+def test_numerical_beta_endpoints_are_explicit_self_attempts(
+    endpoint: float,
+) -> None:
+    """A binary64 Beta endpoint is rejected without clipping or redrawing."""
+
+    class EndpointRng:
+        """Return one selected pair and a forced numerical Beta endpoint."""
+
+        def integers(self, high: int) -> int:
+            """Select the first catalogue entry."""
+            assert high > 0
+            return 0
+
+        def beta(self, first: float, second: float) -> float:
+            """Return the requested endpoint after validating positive shapes."""
+            assert first > 0.0
+            assert second > 0.0
+            return endpoint
+
+    problem, initial = _problem_state(k=2)
+    transition, statistics = sampling._draw_pair_refresh_transition(
+        problem,
+        initial,
+        rng=EndpointRng(),
+    )
+
+    assert not transition.valid
+    assert transition.candidate is initial
+    assert transition.reason == "new fraction lies outside support"
+    assert transition.log_acceptance_ratio == -np.inf
+    assert statistics.pair_catalogue_size == 1
+
+
 @pytest.mark.parametrize("first_iterations", [2, 3, 5])
 def test_awkward_phase_continuation_is_identical_to_uninterrupted_sampling(
     first_iterations: int,

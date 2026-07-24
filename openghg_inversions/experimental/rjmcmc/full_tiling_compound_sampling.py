@@ -606,19 +606,24 @@ class FullTilingMovementDiagnostics:
             constructing the proposal in the current process segment. This is
             a cost metric, not restart-stable Markov state.
         changed_native_cell_count: Native-cell area of source rectangles
-            absent from the candidate tiling.
+            absent from the candidate tiling. Exactly zero outside structural
+            rows.
         changed_nominal_mass: Normalized nominal mass of those source
-            rectangles.
+            rectangles. Exactly zero outside structural rows.
         standardized_prediction_l2: Candidate-minus-source prediction norm
             after elementwise division by observation standard deviation.
         root_abs_displacement: Absolute candidate root-total displacement.
+            Exactly zero outside root-total slice rows.
         root_abs_log_displacement: Absolute candidate log-root displacement.
+            Exactly zero outside root-total slice rows.
         allocation_share_l1_displacement: L1 distance between source and
-            candidate rectangle-keyed allocation-share vectors.
+            candidate rectangle-keyed allocation-share vectors. Exactly zero
+            outside structural and pair-allocation rows.
         fixed_position: Changed fixed coefficient position, or ``-1``.
         fixed_abs_displacement: Absolute fixed-coefficient displacement.
+            Exactly zero outside fixed-coefficient rows.
         fixed_abs_log_displacement: Absolute log fixed-coefficient
-            displacement.
+            displacement. Exactly zero outside fixed-coefficient rows.
         slice_left_steps: Successful left stepping-out extensions.
         slice_right_steps: Successful right stepping-out extensions.
         slice_shrink_draws: Candidate draws made during slice shrinkage.
@@ -751,7 +756,13 @@ class FullTilingMovementDiagnostics:
             raise ValueError("fixed_position is populated only for valid fixed proposals.")
         if np.any(self.fixed_position[fixed & self.valid] < 0):
             raise ValueError("valid fixed proposals must identify a fixed position.")
+        for name in ("fixed_abs_displacement", "fixed_abs_log_displacement"):
+            if np.any(getattr(self, name)[~fixed] != 0.0):
+                raise ValueError("fixed displacement must be zero off fixed slots.")
         root = self.move == "root_total_slice"
+        for name in ("root_abs_displacement", "root_abs_log_displacement"):
+            if np.any(getattr(self, name)[~root] != 0.0):
+                raise ValueError("root displacement must be zero off root slots.")
         for name in (
             "slice_left_steps",
             "slice_right_steps",
@@ -760,6 +771,24 @@ class FullTilingMovementDiagnostics:
         ):
             if np.any(getattr(self, name)[~root] != 0):
                 raise ValueError("root slice counters must be zero off root slots.")
+        structural = np.isin(
+            self.move,
+            ("edge_flip", "resolution_relocation"),
+        )
+        if np.any(self.source_merge_count[~structural] != 0):
+            raise ValueError("source_merge_count must be zero off structural slots.")
+        relocation = self.move == "resolution_relocation"
+        if np.any(self.destination_catalogue_size[~relocation] != 0):
+            raise ValueError("destination_catalogue_size must be zero off relocation slots.")
+        pair = self.move == "pair_allocation_refresh"
+        if np.any(self.pair_catalogue_size[~pair] != 0):
+            raise ValueError("pair_catalogue_size must be zero off pair slots.")
+        for name in ("changed_native_cell_count", "changed_nominal_mass"):
+            if np.any(getattr(self, name)[~structural] != 0):
+                raise ValueError("structural geometry movement must be zero off structural slots.")
+        allocation = structural | pair
+        if np.any(self.allocation_share_l1_displacement[~allocation] != 0.0):
+            raise ValueError("allocation-share displacement must be zero off structural and pair slots.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -925,7 +954,8 @@ def _draw_beta(
         rng: Generator advanced by one Beta draw.
 
     Returns:
-        Open-unit Beta draw.
+        Binary64 Beta draw. Numerical endpoints are passed to the deterministic
+        proposal validator and become explicit invalid self-attempts.
     """
     return float(
         rng.beta(
@@ -1328,6 +1358,7 @@ def _movement_metrics(
     source: FullTilingPosteriorState,
     candidate: FullTilingPosteriorState,
     *,
+    move: str,
     valid: bool,
     fixed_position: int,
 ) -> _MovementMetrics:
@@ -1337,6 +1368,7 @@ def _movement_metrics(
         problem: Problem supplying nominal masses and observation scales.
         source: State before the attempted transition.
         candidate: Proposed state, which may equal ``source`` when invalid.
+        move: Concrete proposal or slice-kernel name.
         valid: Whether candidate movement is meaningful.
         fixed_position: Attempted fixed position, or ``-1`` for other slots.
 
@@ -1347,42 +1379,56 @@ def _movement_metrics(
     if not valid:
         return _MovementMetrics()
 
+    structural = move in ("edge_flip", "resolution_relocation")
+    allocation = structural or move == "pair_allocation_refresh"
     source_leaves = source.tiling_state.tiling.leaves
-    candidate_leaf_set = set(candidate.tiling_state.tiling.leaves)
-    changed_source_leaves = tuple(leaf for leaf in source_leaves if leaf not in candidate_leaf_set)
-    changed_native_cell_count = sum(leaf.area for leaf in changed_source_leaves)
-    changed_nominal_mass = min(
-        1.0,
-        max(
-            0.0,
-            fsum(problem.rectangle_nominal_mass(leaf) for leaf in changed_source_leaves),
-        ),
-    )
-
-    source_shares = {
-        leaf: float(mass / source.root_total)
-        for leaf, mass in zip(source_leaves, source.leaf_masses, strict=True)
-    }
-    candidate_shares = {
-        leaf: float(mass / candidate.root_total)
-        for leaf, mass in zip(
-            candidate.tiling_state.tiling.leaves,
-            candidate.leaf_masses,
-            strict=True,
+    changed_native_cell_count = 0
+    changed_nominal_mass = 0.0
+    if structural:
+        candidate_leaf_set = set(candidate.tiling_state.tiling.leaves)
+        changed_source_leaves = tuple(leaf for leaf in source_leaves if leaf not in candidate_leaf_set)
+        changed_native_cell_count = sum(leaf.area for leaf in changed_source_leaves)
+        changed_nominal_mass = min(
+            1.0,
+            max(
+                0.0,
+                fsum(problem.rectangle_nominal_mass(leaf) for leaf in changed_source_leaves),
+            ),
         )
-    }
-    share_l1 = sum(
-        abs(source_shares.get(leaf, 0.0) - candidate_shares.get(leaf, 0.0))
-        for leaf in source_shares.keys() | candidate_shares.keys()
-    )
+
+    share_l1 = 0.0
+    if allocation:
+        source_shares = {
+            leaf: float(mass / source.root_total)
+            for leaf, mass in zip(
+                source_leaves,
+                source.leaf_masses,
+                strict=True,
+            )
+        }
+        candidate_shares = {
+            leaf: float(mass / candidate.root_total)
+            for leaf, mass in zip(
+                candidate.tiling_state.tiling.leaves,
+                candidate.leaf_masses,
+                strict=True,
+            )
+        }
+        share_l1 = sum(
+            abs(source_shares.get(leaf, 0.0) - candidate_shares.get(leaf, 0.0))
+            for leaf in source_shares.keys() | candidate_shares.keys()
+        )
     prediction_change = candidate.prediction - source.prediction
-    root_abs_displacement = abs(candidate.root_total - source.root_total)
-    root_abs_log_displacement = abs(log(candidate.root_total) - log(source.root_total))
+    root_abs_displacement = 0.0
+    root_abs_log_displacement = 0.0
+    if move == "root_total_slice":
+        root_abs_displacement = abs(candidate.root_total - source.root_total)
+        root_abs_log_displacement = abs(log(candidate.root_total) - log(source.root_total))
 
     diagnosed_fixed_position = -1
     fixed_abs_displacement = 0.0
     fixed_abs_log_displacement = 0.0
-    if fixed_position >= 0:
+    if move == "fixed_coefficient" and fixed_position >= 0:
         diagnosed_fixed_position = fixed_position
         source_fixed = float(source.fixed_coefficients[fixed_position])
         candidate_fixed = float(candidate.fixed_coefficients[fixed_position])
@@ -1590,6 +1636,7 @@ def _run_segment(
                 problem,
                 source,
                 candidate,
+                move=move,
                 valid=transition_valid,
                 fixed_position=fixed_position,
             )
