@@ -17,6 +17,26 @@ tilings on the frozen May 2014 PARIS data.
 This is still a diagnostic experiment. It must not be reported as a converged
 emissions inversion unless the convergence gates below pass.
 
+## Completed outcome
+
+The screen at commit `548fa41` completed all R0 and artifact gates, then
+correctly self-skipped R2 because both fixed-\(K\) ensembles failed R1:
+
+- \(K=50\): worst \(\hat R=1.522\), minimum bulk ESS 7.2;
+- \(K=250\): worst \(\hat R=1.948\), minimum bulk ESS 5.5;
+- log-likelihood bands stayed disjoint and separated further in the second
+  half;
+- none of the 24 individual coarse projections triggered the persistent-band
+  rule;
+- native-field distances contracted, but likelihood mixing did not follow;
+- chains visited 12,585--17,386 distinct tilings with substantial structural
+  acceptance and return proxies no larger than 0.011.
+
+The headline report omitted the names of the variables associated with the
+worst \(\hat R\) and ESS, so those must be read from the archived
+`common-diagnostics.csv`. The next experiment is the matched
+[fixed-basis control](rjmcmc_fixed_basis_control_hpc_test_plan.md).
+
 ## Model being tested
 
 Keep the successful `0c4be63` scientific contract:

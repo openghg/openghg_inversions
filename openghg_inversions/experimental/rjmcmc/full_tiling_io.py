@@ -3,7 +3,7 @@
 This module fingerprints full-tiling scientific problems and state
 coordinates, canonicalizes caller-owned run manifests, and publishes
 checksummed no-pickle NPZ checkpoints. Checkpoints preserve the exact PCG64
-state, resolved compound-kernel settings, irreducible geometry and allocation
+state, resolved compound-kernel settings, canonical geometry and allocation
 coordinates, and every posterior cache required for an exact continuation
 boundary.
 
@@ -38,7 +38,7 @@ from numpy.typing import NDArray
 
 from .full_tiling import LeafTiling, Rectangle, TilingState
 from .full_tiling_compound_sampling import (
-    FULL_TILING_COMPOUND_SCHEDULE_ID,
+    FULL_TILING_SUPPORTED_SCHEDULE_IDS,
     FullTilingCompoundCheckpoint,
     FullTilingCompoundKernelSettings,
 )
@@ -762,7 +762,10 @@ def save_full_tiling_checkpoint(
     """
     if not isinstance(checkpoint, FullTilingCompoundCheckpoint):
         raise TypeError("checkpoint must be a FullTilingCompoundCheckpoint.")
-    if checkpoint.schedule_id != FULL_TILING_COMPOUND_SCHEDULE_ID:
+    if (
+        not isinstance(checkpoint.schedule_id, str)
+        or checkpoint.schedule_id not in FULL_TILING_SUPPORTED_SCHEDULE_IDS
+    ):
         raise ValueError("checkpoint schedule is incompatible.")
     try:
         checkpoint.rng_state.generator()
@@ -1033,7 +1036,8 @@ def load_full_tiling_checkpoint(
             "Full-tiling checkpoint NumPy version does not match the running "
             "environment required for exact continuation."
         )
-    if metadata["schedule_id"] != FULL_TILING_COMPOUND_SCHEDULE_ID:
+    schedule_id = metadata["schedule_id"]
+    if not isinstance(schedule_id, str) or schedule_id not in FULL_TILING_SUPPORTED_SCHEDULE_IDS:
         raise ValueError("Full-tiling checkpoint schedule is incompatible.")
     problem_sha = full_tiling_problem_fingerprint(problem)
     if metadata["problem_sha256"] != problem_sha:
@@ -1227,7 +1231,7 @@ def load_full_tiling_checkpoint(
             location="schedule_phase",
         ),
         kernel_settings=settings,
-        schedule_id=cast(str, metadata["schedule_id"]),
+        schedule_id=schedule_id,
     )
 
 

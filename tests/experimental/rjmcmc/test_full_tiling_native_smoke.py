@@ -89,6 +89,20 @@ def _arguments(
     ]
 
 
+def _fixed_basis_arguments(
+    input_path: Path,
+    output_path: Path,
+    *,
+    iterations: int | None = None,
+) -> list[str]:
+    """Return common arguments for the deterministic fixed-basis control."""
+    return [
+        *_arguments(input_path, output_path, iterations=iterations),
+        "--structure-mode",
+        "fixed-basis",
+    ]
+
+
 def _checkpoint_arrays(path: Path) -> dict[str, np.ndarray]:
     """Load checkpoint arrays without pickle for exact artifact comparisons."""
     with np.load(path, allow_pickle=False) as archive:
@@ -220,12 +234,20 @@ def test_tiny_end_to_end_bundle_reopens_with_labels_attrs_and_hashes(
     assert summary["run"]["atomic_transitions"] == 14
     assert summary["schema"].endswith("summary.v2")
     assert manifest["kernel"]["cycle_length"] == 14
-    assert manifest["schema"].endswith("manifest.v3")
+    assert manifest["schema"].endswith("manifest.v4")
     assert manifest["initialization"] == {
         "strategy": "largest-nominal",
         "seed": None,
         "rng_stream": "none",
     }
+    assert manifest["state_space_scope"]["structure_mode"] == "mobile"
+    assert manifest["state_space_scope"]["structural_target"] == (
+        "uniform_over_unique_canonical_tilings_at_fixed_k"
+    )
+    assert manifest["state_space_scope"]["connectivity_proven"] is False
+    assert manifest["kernel"]["structure_mode"] == "mobile"
+    assert manifest["kernel"]["structural_slots"] == 2
+    assert manifest["kernel"]["schedule_id"] == smoke_module.FULL_TILING_COMPOUND_SCHEDULE_ID
     assert manifest["provenance"]["durable_checkpoint"] is True
     assert "path" not in manifest["input"]
     assert manifest["model"]["root_prior_shape"] == 4.0
@@ -279,6 +301,111 @@ def test_tiny_end_to_end_bundle_reopens_with_labels_attrs_and_hashes(
     }
     for filename, digest in completion["sha256"].items():
         assert smoke_module._sha256_file(output_path / filename) == digest
+
+
+def test_fixed_basis_bundle_has_singleton_support_and_no_structural_attempts(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """Fixed-basis mode runs one twelve-slot cycle on singleton topology support."""
+    input_path = tmp_path / "frozen.nc"
+    output_path = tmp_path / "fixed-basis"
+    _write_frozen_input(input_path)
+
+    summary = smoke_module.run(
+        smoke_module.build_parser().parse_args(
+            _fixed_basis_arguments(input_path, output_path),
+        )
+    )
+
+    manifest = json.loads((output_path / "manifest.json").read_text(encoding="utf-8"))
+    scope = manifest["state_space_scope"]
+    kernel = manifest["kernel"]
+    assert summary["run"]["atomic_transitions"] == 12
+    assert manifest["schema"].endswith("manifest.v4")
+    assert scope["structure_mode"] == "fixed-basis"
+    assert scope["structural_target"] == "point_mass_at_recorded_deterministic_tiling"
+    assert scope["structural_support"] == "singleton"
+    assert scope["communication_component"] == "singleton_recorded_deterministic_basis"
+    assert scope["connectivity_proven"] is True
+    assert len(scope["initial_topology_sha256"]) == 64
+    assert kernel["structure_mode"] == "fixed-basis"
+    assert kernel["schedule_id"] == smoke_module.FIXED_BASIS_COMPOUND_SCHEDULE_ID
+    assert kernel["cycle_length"] == 12
+    assert kernel["structural_slots"] == 0
+    assert kernel["pair_allocation_refresh_slots"] == 5
+    assert manifest["initialization"] == {
+        "strategy": "largest-nominal",
+        "seed": None,
+        "rng_stream": "none",
+    }
+
+    with xr.open_dataset(output_path / "trace.nc", engine="h5netcdf") as trace:
+        assert trace.sizes["transition"] == 12
+        np.testing.assert_array_equal(
+            trace["slot"],
+            ["root", *(["pair_allocation"] * 5), *(["fixed"] * 6)],
+        )
+        assert "structural" not in trace["slot"].values
+        assert not np.isin(
+            trace["move"].values,
+            ["edge_flip", "resolution_relocation"],
+        ).any()
+        assert trace.attrs["schedule_id"] == smoke_module.FIXED_BASIS_COMPOUND_SCHEDULE_ID
+        assert trace.attrs["connectivity_proven"] == "true"
+
+
+def test_fixed_basis_seed_replay_is_exact(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """The fixed deterministic basis and sampler seed replay byte-exact state."""
+    input_path = tmp_path / "frozen.nc"
+    first_path = tmp_path / "first"
+    replay_path = tmp_path / "replay"
+    _write_frozen_input(input_path)
+
+    smoke_module.run(
+        smoke_module.build_parser().parse_args(
+            _fixed_basis_arguments(input_path, first_path),
+        )
+    )
+    smoke_module.run(
+        smoke_module.build_parser().parse_args(
+            _fixed_basis_arguments(input_path, replay_path),
+        )
+    )
+
+    with (
+        xr.open_dataset(first_path / "trace.nc", engine="h5netcdf") as first,
+        xr.open_dataset(replay_path / "trace.nc", engine="h5netcdf") as replay,
+    ):
+        for name in first.data_vars:
+            np.testing.assert_array_equal(first[name], replay[name])
+    first_checkpoint = _checkpoint_arrays(first_path / "checkpoint.npz")
+    replay_checkpoint = _checkpoint_arrays(replay_path / "checkpoint.npz")
+    assert first_checkpoint.keys() == replay_checkpoint.keys()
+    for name in first_checkpoint:
+        np.testing.assert_array_equal(first_checkpoint[name], replay_checkpoint[name])
+
+
+def test_fixed_basis_requires_the_deterministic_initialization(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """Fixed-basis support rejects a random-recursive initial topology."""
+    input_path = tmp_path / "frozen.nc"
+    _write_frozen_input(input_path)
+    arguments = [
+        *_fixed_basis_arguments(input_path, tmp_path / "invalid", iterations=1),
+        "--initialization",
+        "random-recursive",
+        "--initialization-seed",
+        "41",
+    ]
+
+    with pytest.raises(ValueError, match="largest-nominal"):
+        smoke_module.run(smoke_module.build_parser().parse_args(arguments))
 
 
 @pytest.mark.parametrize(
@@ -378,6 +505,93 @@ def test_awkward_checkpoint_continuation_matches_direct_segment(
         np.testing.assert_array_equal(resumed_checkpoint[name], direct_checkpoint[name])
 
 
+def test_fixed_basis_awkward_checkpoint_matches_direct_cycle(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """A fixed-basis durable 5+7 run replays a direct twelve-transition cycle."""
+    input_path = tmp_path / "frozen.nc"
+    first_path = tmp_path / "first"
+    resumed_path = tmp_path / "resumed"
+    direct_path = tmp_path / "direct"
+    _write_frozen_input(input_path)
+
+    first = smoke_module.run(
+        smoke_module.build_parser().parse_args(
+            _fixed_basis_arguments(input_path, first_path, iterations=5),
+        )
+    )
+    resumed = smoke_module.run(
+        smoke_module.build_parser().parse_args(
+            [
+                *_fixed_basis_arguments(input_path, resumed_path, iterations=7),
+                "--resume-checkpoint",
+                str(first_path / "checkpoint.npz"),
+            ]
+        )
+    )
+    direct = smoke_module.run(
+        smoke_module.build_parser().parse_args(
+            _fixed_basis_arguments(input_path, direct_path, iterations=12),
+        )
+    )
+
+    assert first["run"]["schedule_phase_end"] == 5
+    assert resumed["run"]["segment_start_transition"] == 5
+    assert resumed["run"]["segment_end_transition"] == 12
+    assert resumed["run"]["schedule_phase_start"] == 5
+    assert resumed["run"]["schedule_phase_end"] == 0
+    assert direct["run"]["segment_start_transition"] == 0
+
+    with (
+        xr.open_dataset(first_path / "trace.nc", engine="h5netcdf") as first_trace,
+        xr.open_dataset(resumed_path / "trace.nc", engine="h5netcdf") as resumed_trace,
+        xr.open_dataset(direct_path / "trace.nc", engine="h5netcdf") as direct_trace,
+    ):
+        for name in direct_trace.data_vars:
+            combined = np.concatenate(
+                (first_trace[name].values, resumed_trace[name].values),
+            )
+            np.testing.assert_array_equal(combined, direct_trace[name].values)
+
+    resumed_checkpoint = _checkpoint_arrays(resumed_path / "checkpoint.npz")
+    direct_checkpoint = _checkpoint_arrays(direct_path / "checkpoint.npz")
+    assert resumed_checkpoint.keys() == direct_checkpoint.keys()
+    for name in resumed_checkpoint:
+        np.testing.assert_array_equal(resumed_checkpoint[name], direct_checkpoint[name])
+
+
+def test_fixed_basis_resume_without_retained_boundary_succeeds(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """A valid fixed segment may finish before the next cycle-boundary draw."""
+    input_path = tmp_path / "frozen.nc"
+    first_path = tmp_path / "first"
+    resumed_path = tmp_path / "resumed"
+    _write_frozen_input(input_path)
+    smoke_module.run(
+        smoke_module.build_parser().parse_args(
+            _fixed_basis_arguments(input_path, first_path, iterations=5),
+        )
+    )
+    summary = smoke_module.run(
+        smoke_module.build_parser().parse_args(
+            [
+                *_fixed_basis_arguments(input_path, resumed_path, iterations=1),
+                "--resume-checkpoint",
+                str(first_path / "checkpoint.npz"),
+            ]
+        )
+    )
+
+    assert summary["run"]["segment_start_transition"] == 5
+    assert summary["run"]["segment_end_transition"] == 6
+    assert summary["run"]["retained_draws"] == 0
+    assert summary["topology"]["unique_retained_topologies"] == 0
+    assert (resumed_path / "complete.json").is_file()
+
+
 def test_random_recursive_initialization_is_replayable_and_manifest_pinned(
     tmp_path: Path,
     smoke_module: ModuleType,
@@ -396,14 +610,10 @@ def test_random_recursive_initialization_is_replayable_and_manifest_pinned(
         "41",
     ]
     smoke_module.run(
-        smoke_module.build_parser().parse_args(
-            [*_arguments(input_path, first_path, iterations=14), *common]
-        )
+        smoke_module.build_parser().parse_args([*_arguments(input_path, first_path, iterations=14), *common])
     )
     smoke_module.run(
-        smoke_module.build_parser().parse_args(
-            [*_arguments(input_path, replay_path, iterations=14), *common]
-        )
+        smoke_module.build_parser().parse_args([*_arguments(input_path, replay_path, iterations=14), *common])
     )
     smoke_module.run(
         smoke_module.build_parser().parse_args(
@@ -425,11 +635,13 @@ def test_random_recursive_initialization_is_replayable_and_manifest_pinned(
         "seed": 41,
         "rng_stream": "dedicated_pcg64",
     }
-    assert first["state_space_scope"]["initial_topology_sha256"] == (
-        replay["state_space_scope"]["initial_topology_sha256"]
+    assert (
+        first["state_space_scope"]["initial_topology_sha256"]
+        == (replay["state_space_scope"]["initial_topology_sha256"])
     )
-    assert first["state_space_scope"]["initial_topology_sha256"] != (
-        different["state_space_scope"]["initial_topology_sha256"]
+    assert (
+        first["state_space_scope"]["initial_topology_sha256"]
+        != (different["state_space_scope"]["initial_topology_sha256"])
     )
     first_checkpoint = _checkpoint_arrays(first_path / "checkpoint.npz")
     replay_checkpoint = _checkpoint_arrays(replay_path / "checkpoint.npz")
@@ -467,18 +679,26 @@ def test_random_recursive_initialization_requires_an_exclusive_seed(
         smoke_module.run(ignored)
 
 
+@pytest.mark.parametrize("structure_mode", ["mobile", "fixed-basis"])
 def test_output_only_diagnostics_preserve_trajectory_rng_and_persist_all_fields(
     tmp_path: Path,
     smoke_module: ModuleType,
+    structure_mode: str,
 ) -> None:
-    """Diagnostics add aligned metrics without changing ordinary output or PCG64."""
+    """Diagnostics preserve output and PCG64 under both structural schedules."""
     input_path = tmp_path / "frozen.nc"
     ordinary_path = tmp_path / "ordinary"
     diagnosed_path = tmp_path / "diagnosed"
     _write_frozen_input(input_path)
-    common = _arguments(input_path, ordinary_path, iterations=14)
+    arguments_builder = _fixed_basis_arguments if structure_mode == "fixed-basis" else _arguments
+    iterations = 12 if structure_mode == "fixed-basis" else 14
+    common = arguments_builder(input_path, ordinary_path, iterations=iterations)
     smoke_module.run(smoke_module.build_parser().parse_args(common))
-    diagnosed_arguments = _arguments(input_path, diagnosed_path, iterations=14)
+    diagnosed_arguments = arguments_builder(
+        input_path,
+        diagnosed_path,
+        iterations=iterations,
+    )
     diagnosed_arguments.append("--collect-movement-diagnostics")
     summary = smoke_module.run(smoke_module.build_parser().parse_args(diagnosed_arguments))
 
@@ -583,6 +803,65 @@ def test_resume_rejects_random_initialization_seed_mismatch(
     ]
     with pytest.raises(ValueError, match="manifest"):
         smoke_module.run(smoke_module.build_parser().parse_args(resumed_arguments))
+
+
+@pytest.mark.parametrize(
+    ("first_fixed", "resume_fixed"),
+    [
+        pytest.param(True, False, id="fixed-to-mobile"),
+        pytest.param(False, True, id="mobile-to-fixed"),
+    ],
+)
+def test_resume_rejects_structure_schedule_mismatch(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+    first_fixed: bool,
+    resume_fixed: bool,
+) -> None:
+    """A checkpoint cannot cross fixed-basis and mobile schedule identity."""
+    input_path = tmp_path / "frozen.nc"
+    first_path = tmp_path / "first"
+    output_path = tmp_path / "resume"
+    _write_frozen_input(input_path)
+    first_arguments = (
+        _fixed_basis_arguments(input_path, first_path, iterations=5)
+        if first_fixed
+        else _arguments(input_path, first_path, iterations=5)
+    )
+    resume_arguments = (
+        _fixed_basis_arguments(input_path, output_path, iterations=7)
+        if resume_fixed
+        else _arguments(input_path, output_path, iterations=7)
+    )
+    smoke_module.run(smoke_module.build_parser().parse_args(first_arguments))
+    resume_arguments.extend(
+        ["--resume-checkpoint", str(first_path / "checkpoint.npz")],
+    )
+
+    with pytest.raises(ValueError, match="manifest"):
+        smoke_module.run(smoke_module.build_parser().parse_args(resume_arguments))
+
+
+def test_fixed_basis_resume_rejects_changed_topology_support(
+    tmp_path: Path,
+    smoke_module: ModuleType,
+) -> None:
+    """Fixed-basis resume rejects a different K and deterministic topology."""
+    input_path = tmp_path / "frozen.nc"
+    first_path = tmp_path / "first"
+    output_path = tmp_path / "resume"
+    _write_frozen_input(input_path)
+    smoke_module.run(
+        smoke_module.build_parser().parse_args(
+            _fixed_basis_arguments(input_path, first_path, iterations=5),
+        )
+    )
+    arguments = _fixed_basis_arguments(input_path, output_path, iterations=7)
+    arguments[arguments.index("--k") + 1] = "3"
+    arguments.extend(["--resume-checkpoint", str(first_path / "checkpoint.npz")])
+
+    with pytest.raises(ValueError, match="problem fingerprint|manifest"):
+        smoke_module.run(smoke_module.build_parser().parse_args(arguments))
 
 
 def test_resume_rejects_input_mismatch_and_output_never_overwrites(

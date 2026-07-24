@@ -1,4 +1,4 @@
-"""Run or resume one fixed-``K`` full-tiling native-data smoke chain.
+"""Run or resume one fixed-``K`` native-data comparison chain.
 
 The input is one explicitly frozen NetCDF dataset.  By default it contains
 ``fp_x_flux(nmeasure, lat, lon)``, ``mf(nmeasure)``,
@@ -6,12 +6,13 @@ The input is one explicitly frozen NetCDF dataset.  By default it contains
 ``outer_design(nmeasure, outer_region)``, and ``YaprioriBC(nmeasure)``.
 Variable names are configurable; no scientific input is guessed.
 
-This is a diagnostic smoke driver, not a convergence workflow. It runs one
+This is a diagnostic smoke driver, not a convergence workflow. It can either
+sample mobile full-tiling geometry or condition on the exact deterministic
+``largest-nominal`` basis used to initialize that geometry. It runs one
 single-process chain with durable continuation, retains complete cycle
-boundaries, and writes a new non-overwriting artifact directory. Until
-connectivity has been established separately, every result is explicitly
-restricted to the communication component reached from its recorded initial
-tiling.
+boundaries, and writes a new non-overwriting artifact directory. Mobile
+results remain restricted to the communication component reached from the
+recorded initial tiling until connectivity has been established separately.
 
 The independently checksummed checkpoint is the authoritative recovery
 object. ``complete.json`` is written later and certifies that the checkpoint,
@@ -36,10 +37,12 @@ import numpy as np
 import xarray as xr
 
 from openghg_inversions.experimental.rjmcmc.full_tiling_compound_sampling import (
+    FIXED_BASIS_COMPOUND_SCHEDULE_ID,
     FULL_TILING_COMPOUND_SCHEDULE_ID,
     FullTilingCompoundConfig,
     FullTilingCompoundSamplingResult,
     continue_full_tiling_compound,
+    full_tiling_compound_cycle_length,
     sample_full_tiling_compound,
 )
 from openghg_inversions.experimental.rjmcmc.full_tiling_io import (
@@ -59,6 +62,8 @@ from openghg_inversions.experimental.rjmcmc.gamma_beta_adapter import (
 )
 
 NetCDFEngine = Literal["h5netcdf", "netcdf4", "scipy"]
+StructureMode = Literal["mobile", "fixed-basis"]
+"""CLI structural support: mobile tilings or one fixed deterministic basis."""
 
 MANIFEST_FILENAME = "manifest.json"
 TRACE_FILENAME = "trace.nc"
@@ -72,6 +77,80 @@ PAIR_ALLOCATION_REFRESH_SLOTS = 5
 _CLOSURE_RTOL = 1.0e-12
 _CLOSURE_ATOL = 1.0e-12
 _COMMUNICATION_COMPONENT = "component_reachable_from_recorded_initial_tiling"
+_FIXED_BASIS_COMPONENT = "singleton_recorded_deterministic_basis"
+
+
+def _schedule_id(structure_mode: StructureMode) -> str:
+    """Return the versioned compound-schedule identifier for one mode."""
+    if structure_mode == "fixed-basis":
+        return FIXED_BASIS_COMPOUND_SCHEDULE_ID
+    return FULL_TILING_COMPOUND_SCHEDULE_ID
+
+
+def _cycle_length(
+    structure_mode: StructureMode,
+    *,
+    pair_slots: int,
+    fixed_coefficients: int,
+) -> int:
+    """Return the atomic-transition count in one selected cycle.
+
+    Args:
+        structure_mode: Mobile or fixed-basis schedule.
+        pair_slots: Pair-allocation opportunities per cycle.
+        fixed_coefficients: Fixed-coefficient sweep width.
+
+    Returns:
+        Two structural slots plus the continuous opportunities for mobile
+        mode, or only the continuous opportunities for fixed-basis mode.
+    """
+    structural_slots = 0 if structure_mode == "fixed-basis" else 2
+    return structural_slots + 1 + pair_slots + fixed_coefficients
+
+
+def _state_space_scope(
+    structure_mode: StructureMode,
+    *,
+    fixed_k: int,
+    initial_topology_sha256: str,
+) -> dict[str, object]:
+    """Describe structural support and connectivity in the run manifest.
+
+    Args:
+        structure_mode: Mobile or fixed-basis structural support.
+        fixed_k: Active rectangle count.
+        initial_topology_sha256: Canonical initial rectangle-bounds digest.
+
+    Returns:
+        Manifest fields pinning the support, communication component,
+        connectivity claim, fixed dimension, and initial topology.
+    """
+    if structure_mode == "fixed-basis":
+        return {
+            "fixed_k": fixed_k,
+            "structure_mode": structure_mode,
+            "structural_target": "point_mass_at_recorded_deterministic_tiling",
+            "structural_support": "singleton",
+            "communication_component": _FIXED_BASIS_COMPONENT,
+            "connectivity_proven": True,
+            "initial_topology_sha256": initial_topology_sha256,
+        }
+    return {
+        "fixed_k": fixed_k,
+        "structure_mode": structure_mode,
+        "structural_target": "uniform_over_unique_canonical_tilings_at_fixed_k",
+        "structural_support": "reachable_canonical_tilings_at_fixed_k",
+        "communication_component": _COMMUNICATION_COMPONENT,
+        "connectivity_proven": False,
+        "initial_topology_sha256": initial_topology_sha256,
+    }
+
+
+def _target_normalization(structure_mode: StructureMode) -> str:
+    """Return the structural-normalization statement for one mode."""
+    if structure_mode == "fixed-basis":
+        return "normalized singleton structural point mass"
+    return "fixed-K communication-component structural constant omitted"
 
 
 def _sha256_file(path: Path) -> str:
@@ -391,7 +470,23 @@ def _build_manifest(
     cycle_length: int,
     outer_labels: np.ndarray,
 ) -> dict[str, object]:
-    """Build the immutable native full-tiling smoke manifest."""
+    """Build the immutable run-identity manifest.
+
+    Args:
+        arguments: Validated CLI arguments, including structure mode.
+        adapter: Frozen RHIME-to-Gamma--Beta adapter result.
+        initial_state: Exact initial state whose topology is pinned.
+        input_digest: Frozen input SHA-256.
+        cycle_length: Atomic slots in the selected schedule.
+        outer_labels: Ordered fixed-coefficient labels.
+
+    Returns:
+        Strict-JSON-compatible manifest with scientific, structural, kernel,
+        initialization, and provenance identity.
+
+    Raises:
+        RuntimeError: If the required fixed design block is absent.
+    """
     fixed_block = adapter.problem.fixed_block
     if fixed_block is None:
         raise RuntimeError("The native smoke driver requires a fixed design block.")
@@ -402,24 +497,21 @@ def _build_manifest(
         for leaf in initial_state.allocation.tiling.leaves
     ]
     initial_topology_sha256 = sha256(_canonical_json(initial_bounds).encode("utf-8")).hexdigest()
+    structure_mode: StructureMode = arguments.structure_mode
+    schedule_id = _schedule_id(structure_mode)
+    structural_slots = 0 if structure_mode == "fixed-basis" else 2
     manifest: dict[str, object] = {
-        "schema": "openghg_inversions.full_tiling_native_smoke_manifest.v3",
+        "schema": "openghg_inversions.full_tiling_native_smoke_manifest.v4",
         "status": "diagnostic_not_convergence_evidence",
-        "state_space_scope": {
-            "fixed_k": int(arguments.k),
-            "structural_target": "uniform_over_unique_canonical_tilings_at_fixed_k",
-            "communication_component": _COMMUNICATION_COMPONENT,
-            "connectivity_proven": False,
-            "initial_topology_sha256": initial_topology_sha256,
-        },
+        "state_space_scope": _state_space_scope(
+            structure_mode,
+            fixed_k=int(arguments.k),
+            initial_topology_sha256=initial_topology_sha256,
+        ),
         "initialization": {
             "strategy": arguments.initialization,
             "seed": arguments.initialization_seed,
-            "rng_stream": (
-                "dedicated_pcg64"
-                if arguments.initialization == "random-recursive"
-                else "none"
-            ),
+            "rng_stream": ("dedicated_pcg64" if arguments.initialization == "random-recursive" else "none"),
         },
         "input": {
             "id": arguments.input_id,
@@ -441,9 +533,10 @@ def _build_manifest(
             "fixed_prior_sd": fixed_sd.astype(float).tolist(),
         },
         "kernel": {
-            "schedule_id": FULL_TILING_COMPOUND_SCHEDULE_ID,
+            "structure_mode": structure_mode,
+            "schedule_id": schedule_id,
             "cycle_length": cycle_length,
-            "structural_slots": 2,
+            "structural_slots": structural_slots,
             "pair_allocation_refresh_slots": PAIR_ALLOCATION_REFRESH_SLOTS,
             "fixed_coefficient_proposal_sd": list(
                 _expand_values(
@@ -477,11 +570,57 @@ def _trace_to_dataset(
     input_digest: str,
     manifest_digest: str,
     fixed_k: int,
+    structure_mode: StructureMode,
+    schedule_id: str,
 ) -> xr.Dataset:
-    """Convert the complete retained and attempt traces to labelled xarray."""
+    """Convert retained states and atomic attempts to labelled xarray.
+
+    Args:
+        result: Completed sampling segment.
+        adapter: Frozen adapter supplying model coordinates and weight scale.
+        outer_labels: Ordered fixed-coefficient labels.
+        input_digest: Frozen input SHA-256.
+        manifest_digest: Canonical manifest SHA-256.
+        fixed_k: Active rectangle count.
+        structure_mode: Mobile or fixed-basis structural support.
+        schedule_id: Exact versioned schedule identifier.
+
+    Returns:
+        In-memory dataset with mode-aware target and schedule metadata.
+    """
     trace = result.trace
     draw = trace.state_transition
     transition = trace.global_transition
+    fixed_basis = structure_mode == "fixed-basis"
+    structural_component = _FIXED_BASIS_COMPONENT if fixed_basis else _COMMUNICATION_COMPONENT
+    structural_target = (
+        "point mass at the recorded deterministic tiling"
+        if fixed_basis
+        else "uniform over unique canonical leaf tilings conditional on fixed K"
+    )
+    structural_normalization = (
+        "normalized singleton point mass"
+        if fixed_basis
+        else (
+            "omitted fixed-K communication-component constant; do not compare "
+            "absolute log targets across K or components"
+        )
+    )
+    structural_log_description = (
+        "singleton deterministic-basis structural log density"
+        if fixed_basis
+        else "fixed-K uniform canonical-tiling structural log-ratio component"
+    )
+    structural_log_value = (
+        "zero; normalized singleton point mass"
+        if fixed_basis
+        else "zero; fixed-K communication-component normalizer omitted"
+    )
+    target_description = (
+        "retained normalized log target conditional on the deterministic basis"
+        if fixed_basis
+        else "retained log target up to the fixed-K communication-component structural normalizer"
+    )
     dataset = xr.Dataset(
         data_vars={
             "rectangle_bounds": (
@@ -536,8 +675,8 @@ def _trace_to_dataset(
                 ("draw",),
                 trace.log_structural_prior,
                 {
-                    "long_name": ("fixed-K uniform canonical-tiling structural log-ratio component"),
-                    "value": ("zero; fixed-K communication-component normalizer omitted"),
+                    "long_name": structural_log_description,
+                    "value": structural_log_value,
                 },
             ),
             "log_fixed_coefficient_prior": (
@@ -548,11 +687,7 @@ def _trace_to_dataset(
             "log_target": (
                 ("draw",),
                 trace.log_target,
-                {
-                    "long_name": (
-                        "retained log target up to the fixed-K communication-component structural normalizer"
-                    )
-                },
+                {"long_name": target_description},
             ),
             "state_transition": (
                 ("draw",),
@@ -612,22 +747,21 @@ def _trace_to_dataset(
         },
         attrs={
             "schema": "openghg_inversions.full_tiling_native_smoke_trace.v2",
-            "title": "Diagnostic fixed-K full-tiling native-data smoke trace",
+            "title": "Diagnostic fixed-K native-data comparison trace",
             "diagnostic_only": "true",
             "convergence_claim": "none",
             "fixed_k": fixed_k,
-            "schedule_id": FULL_TILING_COMPOUND_SCHEDULE_ID,
-            "structural_target": ("uniform over unique canonical leaf tilings conditional on fixed K"),
-            "structural_target_normalization": (
-                "omitted fixed-K communication-component constant; do not compare "
-                "absolute log targets across K or components"
-            ),
+            "structure_mode": structure_mode,
+            "schedule_id": schedule_id,
+            "structural_target": structural_target,
+            "structural_support": "singleton" if fixed_basis else "reachable canonical tilings",
+            "structural_target_normalization": structural_normalization,
             "continuous_target": (
                 "Gamma root total, additive-alpha Dirichlet shares, and "
                 "independent fixed-coefficient lognormal priors"
             ),
-            "communication_component": _COMMUNICATION_COMPONENT,
-            "connectivity_proven": "false",
+            "communication_component": structural_component,
+            "connectivity_proven": str(fixed_basis).lower(),
             "input_sha256": input_digest,
             "manifest_sha256": manifest_digest,
             "nominal_weight_normalization_factor": (adapter.weight_normalization_factor),
@@ -776,6 +910,8 @@ def _summary(
     input_digest: str,
     requested_iterations: int,
     cycle_length: int,
+    structure_mode: StructureMode,
+    schedule_id: str,
     segment_start: int,
     parent_checkpoint_sha256: str | None,
     segment_start_state_sha256: str,
@@ -783,17 +919,42 @@ def _summary(
     setup_seconds: float,
     sampling_seconds: float,
 ) -> dict[str, Any]:
-    """Build a strict-JSON-compatible diagnostic summary."""
+    """Build a strict-JSON-compatible diagnostic summary.
+
+    Args:
+        result: Completed sampling segment.
+        chain_initial_state: Fresh-chain state used for target provenance.
+        segment_initial_state: State at this segment's boundary.
+        closure: Frozen-input scientific closure diagnostics.
+        input_path: Frozen NetCDF path.
+        input_digest: Frozen input SHA-256.
+        requested_iterations: Requested atomic transitions.
+        cycle_length: Atomic slots in the selected schedule.
+        structure_mode: Mobile or fixed-basis support.
+        schedule_id: Exact versioned schedule identifier.
+        segment_start: Global transition before this segment.
+        parent_checkpoint_sha256: Parent checkpoint digest, if resumed.
+        segment_start_state_sha256: Exact segment-start state fingerprint.
+        input_seconds: Input hash/load wall time.
+        setup_seconds: Problem construction wall time.
+        sampling_seconds: Sampler wall time.
+
+    Returns:
+        Summary with lineage, target, topology, movement, and performance
+        diagnostics.
+    """
     trace = result.trace
     invalid_reasons = Counter(str(reason) for reason in trace.invalid_reason[~trace.valid].tolist())
     attempts = int(trace.global_transition.size)
     valid = int(np.count_nonzero(trace.valid))
     accepted = int(np.count_nonzero(trace.accepted))
+    fixed_basis = structure_mode == "fixed-basis"
     return {
         "schema": "openghg_inversions.full_tiling_native_smoke_summary.v2",
         "status": "diagnostic_not_convergence_evidence",
-        "communication_component": _COMMUNICATION_COMPONENT,
-        "connectivity_proven": False,
+        "structure_mode": structure_mode,
+        "communication_component": (_FIXED_BASIS_COMPONENT if fixed_basis else _COMMUNICATION_COMPONENT),
+        "connectivity_proven": fixed_basis,
         "input": {
             "path": str(input_path.resolve()),
             "sha256": input_digest,
@@ -801,6 +962,8 @@ def _summary(
         "closure": closure,
         "run": {
             "fixed_k": result.final_state.k,
+            "structure_mode": structure_mode,
+            "schedule_id": schedule_id,
             "cycle_length": cycle_length,
             "atomic_transitions": attempts,
             "retained_draws": int(trace.root_total.size),
@@ -819,11 +982,12 @@ def _summary(
             "chain_initial_log_target": float(chain_initial_state.log_target),
             "segment_initial_log_target": float(segment_initial_state.log_target),
             "final_log_target": float(result.final_state.log_target),
-            "normalization": ("fixed-K communication-component structural constant omitted"),
+            "normalization": _target_normalization(structure_mode),
         },
         "initial_leaf_prior_scaling_sd": _initial_leaf_scaling_sd(chain_initial_state),
         "topology": {
             "unique_retained_topologies": _unique_topology_count(result),
+            "structural_support": "singleton" if fixed_basis else "reachable_canonical_tilings",
         },
         "attempts": {
             "valid": valid,
@@ -854,8 +1018,31 @@ def _write_outputs(
     summary: dict[str, Any],
     trace_dataset: xr.Dataset,
     netcdf_engine: NetCDFEngine,
+    structure_mode: StructureMode,
+    schedule_id: str,
 ) -> None:
-    """Write a new artifact bundle and completion marker last."""
+    """Write a create-only artifact bundle and completion marker last.
+
+    Args:
+        output_directory: New destination directory.
+        result: Completed segment and durable checkpoint.
+        manifest: Immutable run-identity manifest.
+        summary: Strict diagnostic summary.
+        trace_dataset: Labelled trace to serialize and close.
+        netcdf_engine: Selected xarray NetCDF backend.
+        structure_mode: Mobile or fixed-basis support expected on reopen.
+        schedule_id: Exact schedule identity expected on reopen.
+
+    Raises:
+        FileExistsError: If the output directory already exists.
+        OSError: If publication, durable syncing, or reopening fails.
+        RuntimeError: If reopened artifacts disagree with selected mode,
+            schedule, dimensions, hashes, or completion semantics.
+
+    Notes:
+        The manifest, trace, summary, and checkpoint are published before
+        `complete.json`; the latter is the last-written bundle certificate.
+    """
     output_directory.mkdir()
     _fsync_directory(output_directory.parent)
     manifest_text = _canonical_json(manifest)
@@ -890,7 +1077,8 @@ def _write_outputs(
         if (
             loaded.sizes.get("region") != result.final_state.k
             or loaded.sizes.get("transition") != result.trace.global_transition.size
-            or loaded.attrs.get("schedule_id") != FULL_TILING_COMPOUND_SCHEDULE_ID
+            or loaded.attrs.get("structure_mode") != structure_mode
+            or loaded.attrs.get("schedule_id") != schedule_id
         ):
             raise RuntimeError("Written full-tiling trace failed reopen validation.")
         loaded.close()
@@ -910,6 +1098,8 @@ def _write_outputs(
         "trace": TRACE_FILENAME,
         "summary": SUMMARY_FILENAME,
         "checkpoint": CHECKPOINT_FILENAME,
+        "structure_mode": structure_mode,
+        "schedule_id": schedule_id,
         "atomic_transitions": int(result.trace.global_transition.size),
         "segment_start_transition": (
             result.checkpoint.transitions_completed - int(result.trace.global_transition.size)
@@ -943,6 +1133,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         required=True,
         help="Fixed active rectangle count.",
+    )
+    parser.add_argument(
+        "--structure-mode",
+        choices=("mobile", "fixed-basis"),
+        default="mobile",
+        help=(
+            "Sample full-tiling geometry (mobile) or condition on the exact "
+            "deterministic largest-nominal basis (fixed-basis)."
+        ),
     )
     segment = parser.add_mutually_exclusive_group(required=True)
     segment.add_argument(
@@ -1109,17 +1308,17 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
         raise ValueError("--iterations must be positive.")
     if arguments.seed < 0:
         raise ValueError("--seed must be non-negative.")
+    if arguments.structure_mode not in ("mobile", "fixed-basis"):
+        raise ValueError("--structure-mode must be 'mobile' or 'fixed-basis'.")
+    if arguments.structure_mode == "fixed-basis" and arguments.initialization != "largest-nominal":
+        raise ValueError("--structure-mode fixed-basis requires --initialization largest-nominal.")
     if arguments.initialization == "random-recursive":
         if arguments.initialization_seed is None:
-            raise ValueError(
-                "--initialization random-recursive requires --initialization-seed."
-            )
+            raise ValueError("--initialization random-recursive requires --initialization-seed.")
         if arguments.initialization_seed < 0:
             raise ValueError("--initialization-seed must be non-negative.")
     elif arguments.initialization_seed is not None:
-        raise ValueError(
-            "--initialization-seed is only valid with --initialization random-recursive."
-        )
+        raise ValueError("--initialization-seed is only valid with --initialization random-recursive.")
     if not arguments.chain_id:
         raise ValueError("--chain-id must be nonempty.")
     if not np.isfinite(arguments.root_slice_width) or arguments.root_slice_width <= 0.0:
@@ -1164,6 +1363,9 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
         RuntimeError: If sampling or artifact reopen validation fails.
     """
     _validate_arguments(arguments)
+    structure_mode: StructureMode = arguments.structure_mode
+    schedule_id = _schedule_id(structure_mode)
+    sampler_structure_mode = "fixed_basis" if structure_mode == "fixed-basis" else "mobile"
     _preflight_output_backend(
         arguments.output_directory.parent,
         engine=arguments.netcdf_engine,
@@ -1228,7 +1430,11 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
         size=adapter.problem.n_fixed_coefficients,
         name="fixed_proposal_sd",
     )
-    cycle_length = 3 + PAIR_ALLOCATION_REFRESH_SLOTS + len(fixed_scales)
+    cycle_length = _cycle_length(
+        structure_mode,
+        pair_slots=PAIR_ALLOCATION_REFRESH_SLOTS,
+        fixed_coefficients=len(fixed_scales),
+    )
     requested_iterations = (
         arguments.iterations if arguments.iterations is not None else arguments.cycles * cycle_length
     )
@@ -1243,9 +1449,13 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
     setup_seconds = perf_counter() - setup_started
 
     if arguments.dry_run:
+        fixed_basis = structure_mode == "fixed-basis"
         dry_run_summary = {
             "status": "diagnostic_dry_run",
-            "communication_component": _COMMUNICATION_COMPONENT,
+            "structure_mode": structure_mode,
+            "schedule_id": schedule_id,
+            "communication_component": (_FIXED_BASIS_COMPONENT if fixed_basis else _COMMUNICATION_COMPONENT),
+            "connectivity_proven": fixed_basis,
             "closure": closure,
             "target": {
                 "initial_log_gaussian_likelihood": float(initial_state.log_gaussian_likelihood),
@@ -1254,7 +1464,7 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
                 "initial_log_allocation_prior": float(initial_state.log_allocation_prior),
                 "initial_log_fixed_coefficient_prior": float(initial_state.log_fixed_coefficient_prior),
                 "initial_log_target": float(initial_state.log_target),
-                "normalization": ("fixed-K communication-component structural constant omitted"),
+                "normalization": _target_normalization(structure_mode),
             },
             "initial_leaf_prior_scaling_sd": _initial_leaf_scaling_sd(initial_state),
             "cycle_length": cycle_length,
@@ -1289,6 +1499,7 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
                 root_slice_width=arguments.root_slice_width,
                 root_slice_max_steps=arguments.root_slice_max_steps,
                 root_slice_max_shrink_steps=arguments.root_slice_max_shrink_steps,
+                structure_mode=sampler_structure_mode,
             ),
             collect_movement_diagnostics=arguments.collect_movement_diagnostics,
         )
@@ -1303,6 +1514,14 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
             raise ValueError("Resume checkpoint changed while it was being loaded.")
         segment_start = checkpoint.transitions_completed
         segment_initial_state = checkpoint.state
+        if (
+            structure_mode == "fixed-basis"
+            and checkpoint.state.allocation.tiling != initial_state.allocation.tiling
+        ):
+            raise ValueError(
+                "Fixed-basis checkpoint tiling does not match the reconstructed "
+                "deterministic largest-nominal basis."
+            )
         result = continue_full_tiling_compound(
             problem,
             checkpoint,
@@ -1312,6 +1531,34 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
     sampling_seconds = perf_counter() - sampling_started
     if result.trace.global_transition.size != requested_iterations:
         raise RuntimeError("Sampler did not finish the requested atomic-transition segment.")
+    if result.checkpoint.schedule_id != schedule_id:
+        raise RuntimeError("Sampler checkpoint schedule does not match the selected structure mode.")
+    if (
+        full_tiling_compound_cycle_length(
+            result.checkpoint.kernel_settings,
+            schedule_id=result.checkpoint.schedule_id,
+        )
+        != cycle_length
+    ):
+        raise RuntimeError("Sampler checkpoint cycle length does not match the selected structure mode.")
+    if (
+        structure_mode == "fixed-basis"
+        and result.final_state.allocation.tiling != initial_state.allocation.tiling
+    ):
+        raise RuntimeError("Fixed-basis sampler changed the deterministic tiling.")
+    if structure_mode == "fixed-basis" and result.trace.rectangle_bounds.shape[0] > 0:
+        initial_bounds = np.asarray(
+            [
+                (leaf.row_start, leaf.row_stop, leaf.col_start, leaf.col_stop)
+                for leaf in initial_state.allocation.tiling.leaves
+            ],
+            dtype=np.int64,
+        )
+        for retained_bounds in result.trace.rectangle_bounds:
+            if not np.array_equal(retained_bounds, initial_bounds):
+                raise RuntimeError(
+                    "Fixed-basis trace contains a topology other than the deterministic initial basis."
+                )
     summary = _summary(
         result,
         chain_initial_state=initial_state,
@@ -1321,6 +1568,8 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
         input_digest=input_digest,
         requested_iterations=requested_iterations,
         cycle_length=cycle_length,
+        structure_mode=structure_mode,
+        schedule_id=schedule_id,
         segment_start=segment_start,
         parent_checkpoint_sha256=parent_checkpoint_sha256,
         segment_start_state_sha256=full_tiling_state_fingerprint(
@@ -1339,6 +1588,8 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
         input_digest=input_digest,
         manifest_digest=sha256(manifest_text.encode("utf-8")).hexdigest(),
         fixed_k=arguments.k,
+        structure_mode=structure_mode,
+        schedule_id=schedule_id,
     )
     _write_outputs(
         arguments.output_directory,
@@ -1347,6 +1598,8 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
         summary=summary,
         trace_dataset=trace_dataset,
         netcdf_engine=arguments.netcdf_engine,
+        structure_mode=structure_mode,
+        schedule_id=schedule_id,
     )
     dataset.close()
     return summary

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -9,9 +11,12 @@ import xarray as xr
 import openghg_inversions.experimental.rjmcmc.full_tiling as full_tiling_geometry
 import openghg_inversions.experimental.rjmcmc.full_tiling_compound_sampling as sampling
 from openghg_inversions.experimental.rjmcmc.full_tiling_compound_sampling import (
+    FIXED_BASIS_COMPOUND_SCHEDULE_ID,
+    FULL_TILING_COMPOUND_SCHEDULE_ID,
     FullTilingCompoundConfig,
     FullTilingCompoundSamplingResult,
     continue_full_tiling_compound,
+    full_tiling_compound_cycle_length,
     sample_full_tiling_compound,
 )
 from openghg_inversions.experimental.rjmcmc.full_tiling_posterior import (
@@ -246,3 +251,187 @@ def test_sampler_never_uses_exhaustive_geometry_oracles(
 
     assert result.trace.global_transition.size == 42
     assert result.final_state.k == 4
+
+
+def test_structure_mode_defaults_to_mobile_and_rejects_unknown_values() -> None:
+    """The new control preserves the historical default and validates modes."""
+    assert FullTilingCompoundConfig(iterations=1).structure_mode == "mobile"
+
+    with pytest.raises(TypeError, match="structure_mode must be a string"):
+        FullTilingCompoundConfig(iterations=1, structure_mode=True)  # type: ignore[arg-type]
+    with pytest.raises(
+        ValueError,
+        match="structure_mode must be 'mobile' or 'fixed_basis'",
+    ):
+        FullTilingCompoundConfig(iterations=1, structure_mode="unknown")  # type: ignore[arg-type]
+
+
+def test_fixed_basis_cycle_has_exactly_twelve_non_structural_slots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A six-outer fixed basis cycle matches twelve continuous opportunities."""
+    problem, initial = _problem_state(k=4)
+
+    def fail_structural_draw(*args: object, **kwargs: object) -> None:
+        """Fail if fixed-basis dispatch enters structural proposal code."""
+        raise AssertionError("fixed-basis schedule entered structural proposal code")
+
+    monkeypatch.setattr(sampling, "_draw_structural_transition", fail_structural_draw)
+    result = sample_full_tiling_compound(
+        problem,
+        initial,
+        FullTilingCompoundConfig(
+            iterations=12,
+            seed=91,
+            structure_mode="fixed_basis",
+        ),
+    )
+
+    assert result.checkpoint.schedule_id == FIXED_BASIS_COMPOUND_SCHEDULE_ID
+    assert (
+        full_tiling_compound_cycle_length(
+            result.checkpoint.kernel_settings,
+            schedule_id=result.checkpoint.schedule_id,
+        )
+        == 12
+    )
+    assert result.trace.slot.tolist() == [
+        "root",
+        *(["pair_allocation"] * 5),
+        *(["fixed"] * 6),
+    ]
+    assert result.trace.move.tolist() == [
+        "root_total_slice",
+        *(["pair_allocation_refresh"] * 5),
+        *(["fixed_coefficient"] * 6),
+    ]
+    assert result.trace.state_transition.tolist() == [0, 12]
+    assert result.checkpoint.schedule_phase == 0
+
+
+def test_fixed_basis_preserves_topology_but_updates_the_same_target() -> None:
+    """Fixed mode holds rectangles constant without changing target semantics."""
+    problem, initial = _problem_state(k=4)
+    mobile = sample_full_tiling_compound(
+        problem,
+        initial,
+        FullTilingCompoundConfig(iterations=14, seed=19),
+    )
+    fixed = sample_full_tiling_compound(
+        problem,
+        initial,
+        FullTilingCompoundConfig(
+            iterations=24,
+            seed=19,
+            structure_mode="fixed_basis",
+        ),
+    )
+    initial_bounds = fixed.trace.rectangle_bounds[0]
+
+    np.testing.assert_array_equal(
+        mobile.trace.rectangle_bounds[0],
+        initial_bounds,
+    )
+    np.testing.assert_array_equal(mobile.trace.leaf_masses[0], fixed.trace.leaf_masses[0])
+    assert mobile.trace.log_target[0] == fixed.trace.log_target[0] == initial.log_target
+    assert not np.any(fixed.trace.slot == "structural")
+    assert not np.any(np.isin(fixed.trace.move, ("edge_flip", "resolution_relocation")))
+    for bounds in fixed.trace.rectangle_bounds:
+        np.testing.assert_array_equal(bounds, initial_bounds)
+    assert fixed.final_state.allocation.tiling == initial.allocation.tiling
+
+
+def test_fixed_basis_seeded_replay_is_exact() -> None:
+    """A fixed-basis seed reproduces states, traces, and the PCG64 checkpoint."""
+    problem, initial = _problem_state(k=4)
+    config = FullTilingCompoundConfig(
+        iterations=37,
+        seed=734,
+        structure_mode="fixed_basis",
+    )
+
+    first = sample_full_tiling_compound(problem, initial, config)
+    replay = sample_full_tiling_compound(problem, initial, config)
+
+    _assert_results_equal(first, replay)
+
+
+def test_fixed_basis_awkward_phase_continuation_matches_direct_cycle() -> None:
+    """A five-plus-seven fixed segment exactly reproduces one direct cycle."""
+    problem, initial = _problem_state(k=4)
+    direct = sample_full_tiling_compound(
+        problem,
+        initial,
+        FullTilingCompoundConfig(
+            iterations=12,
+            seed=284,
+            structure_mode="fixed_basis",
+        ),
+    )
+    first = sample_full_tiling_compound(
+        problem,
+        initial,
+        FullTilingCompoundConfig(
+            iterations=5,
+            seed=284,
+            structure_mode="fixed_basis",
+        ),
+    )
+    second = continue_full_tiling_compound(
+        problem,
+        first.checkpoint,
+        iterations=7,
+    )
+
+    for name in direct.trace.__dataclass_fields__:
+        combined = np.concatenate((getattr(first.trace, name), getattr(second.trace, name)), axis=0)
+        np.testing.assert_array_equal(combined, getattr(direct.trace, name))
+    _assert_states_equal(second.final_state, direct.final_state)
+    assert second.checkpoint.rng_state == direct.checkpoint.rng_state
+    assert first.checkpoint.schedule_phase == 5
+    assert second.checkpoint.schedule_phase == 0
+    assert first.checkpoint.schedule_id == FIXED_BASIS_COMPOUND_SCHEDULE_ID
+
+
+def test_fixed_basis_checkpoint_rejects_wrong_schedule_phase() -> None:
+    """Fixed-basis checkpoints fail closed when their cycle phase is altered."""
+    problem, initial = _problem_state(k=4)
+    first = sample_full_tiling_compound(
+        problem,
+        initial,
+        FullTilingCompoundConfig(
+            iterations=5,
+            seed=1,
+            structure_mode="fixed_basis",
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="schedule_phase is inconsistent",
+    ):
+        replace(first.checkpoint, schedule_phase=6)
+
+
+def test_checkpoint_rejects_cross_mode_relabelling_at_incompatible_phase() -> None:
+    """Schedule relabelling fails when the transition phase would disagree."""
+    problem, initial = _problem_state(k=4)
+    fixed = sample_full_tiling_compound(
+        problem,
+        initial,
+        FullTilingCompoundConfig(
+            iterations=13,
+            seed=2,
+            structure_mode="fixed_basis",
+        ),
+    )
+    assert fixed.checkpoint.schedule_phase == 1
+
+    with pytest.raises(
+        ValueError,
+        match="schedule_phase is inconsistent",
+    ):
+        replace(
+            fixed.checkpoint,
+            schedule_id=FULL_TILING_COMPOUND_SCHEDULE_ID,
+        )

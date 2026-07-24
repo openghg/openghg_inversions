@@ -1,15 +1,17 @@
-"""Correctness-first fixed-``K`` full-tiling posterior sampler.
+"""Correctness-first fixed-``K`` full-tiling posterior samplers.
 
-This module composes the deterministic full-tiling posterior proposals into a
-small NumPy reference sampler suitable for real-data smoke tests.  One
-versioned cycle contains two independently mixed structural opportunities,
-each selecting an edge flip or resolution relocation with probability one
-half, one stepping-out/shrinkage slice update of the log root total, a
-configurable number of
-independent-prior pair-allocation refreshes, and one deterministic
-Gaussian-random-walk opportunity for every fixed coefficient. This is not
-convergence evidence, and irreducibility over the complete fixed-``K`` tiling
-space is not claimed.
+This module composes the deterministic full-tiling posterior proposals into
+small NumPy reference samplers suitable for real-data smoke tests. The default
+mobile schedule is unchanged: one versioned cycle contains two independently
+mixed structural opportunities, each selecting an edge flip or resolution
+relocation with probability one half, one stepping-out/shrinkage slice update
+of the log root total, a configurable number of independent-prior
+pair-allocation refreshes, and one deterministic Gaussian-random-walk
+opportunity for every fixed coefficient. A separate fixed-basis schedule omits
+both structural opportunities and therefore holds the initial leaf rectangles
+constant while updating the same allocation, root-total, and fixed-coefficient
+coordinates. Neither schedule by itself provides convergence evidence, and
+irreducibility over the complete fixed-``K`` tiling space is not claimed.
 
 Structural selection is bounded to current-state geometry and avoids
 exhaustive state-space enumeration. It enumerates only currently mergeable
@@ -28,6 +30,9 @@ transition coordinate, schedule phase, fixed region count, and immutable
 kernel settings, so continuation from an awkward mid-cycle boundary exactly
 reproduces an uninterrupted chain.  Durable serialization is intentionally
 outside this module.
+
+The main entry points are :func:`sample_full_tiling_compound` and
+:func:`continue_full_tiling_compound`.
 """
 
 from __future__ import annotations
@@ -60,10 +65,25 @@ from .sampling import PCG64State
 FULL_TILING_COMPOUND_SCHEDULE_ID = (
     "full_tiling_2_mixed_structure_1_root_slice_n_pair_allocation_fixed_sweep_v2"
 )
-"""Versioned identifier for the fixed-``K`` compound schedule."""
+"""Versioned identifier for the mobile fixed-``K`` compound schedule."""
+
+FIXED_BASIS_COMPOUND_SCHEDULE_ID = "full_tiling_fixed_basis_1_root_slice_n_pair_allocation_fixed_sweep_v1"
+"""Versioned identifier for the structurally fixed compound schedule."""
+
+FULL_TILING_SUPPORTED_SCHEDULE_IDS = frozenset(
+    (FULL_TILING_COMPOUND_SCHEDULE_ID, FIXED_BASIS_COMPOUND_SCHEDULE_ID)
+)
+"""Persisted schedule identifiers accepted for checkpoint continuation."""
 
 FullTilingCompoundSlot = Literal["structural", "root", "pair_allocation", "fixed"]
 """Atomic full-tiling compound-schedule slot kind."""
+
+FullTilingStructureMode = Literal["mobile", "fixed_basis"]
+"""Fresh-chain mode: ``mobile`` or structurally fixed ``fixed_basis``.
+
+``fixed_basis`` omits both structural slots and preserves the initial leaf
+rectangles. The native CLI spells this value ``fixed-basis``.
+"""
 
 
 def _readonly_array(
@@ -212,9 +232,13 @@ class FullTilingCompoundConfig:
             the initial bracket.
         root_slice_max_shrink_steps: Positive maximum number of shrinkage
             candidates before a guard error.
+        structure_mode: ``"mobile"`` for the historical two-structural-slot
+            schedule or ``"fixed_basis"`` to omit structural transitions and
+            preserve the initial leaf rectangles.
 
     Raises:
-        TypeError: If an integer setting has the wrong type.
+        TypeError: If an integer setting or ``structure_mode`` has the wrong
+            type.
         ValueError: If a setting lies outside its supported range.
     """
 
@@ -225,6 +249,7 @@ class FullTilingCompoundConfig:
     root_slice_width: float = 1.0
     root_slice_max_steps: int = 100
     root_slice_max_shrink_steps: int = 1000
+    structure_mode: FullTilingStructureMode = "mobile"
 
     def __post_init__(self) -> None:
         """Normalize and validate problem-independent settings."""
@@ -270,6 +295,10 @@ class FullTilingCompoundConfig:
                 name="root_slice_max_shrink_steps",
             ),
         )
+        if not isinstance(self.structure_mode, str):
+            raise TypeError("structure_mode must be a string.")
+        if self.structure_mode not in ("mobile", "fixed_basis"):
+            raise ValueError("structure_mode must be 'mobile' or 'fixed_basis'.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -343,13 +372,49 @@ class FullTilingCompoundKernelSettings:
 
     @property
     def cycle_length(self) -> int:
-        """Return the atomic transition count in one complete cycle.
+        """Return the atomic count in one historical mobile cycle.
 
         Returns:
             Two structural slots, one root slot, configured pair-allocation
             slots, and one slot per fixed coefficient.
+
+        Notes:
+            Use :func:`full_tiling_compound_cycle_length` when the schedule
+            identifier may select fixed-basis sampling.
         """
         return 3 + self.pair_allocation_refresh_slots + len(self.fixed_coefficient_proposal_sd)
+
+
+def full_tiling_compound_cycle_length(
+    settings: FullTilingCompoundKernelSettings,
+    *,
+    schedule_id: str,
+) -> int:
+    """Return the atomic cycle length for one supported schedule.
+
+    Args:
+        settings: Problem-resolved settings shared by both schedules.
+        schedule_id: Exact supported schedule identifier.
+
+    Returns:
+        Number of atomic transitions in one complete cycle.
+
+    Raises:
+        TypeError: If ``settings`` is not resolved kernel settings.
+        ValueError: If ``schedule_id`` is unsupported.
+
+    Notes:
+        ``settings.cycle_length`` remains the historical mobile cycle length
+        for source compatibility. New schedule-aware code must use this
+        helper.
+    """
+    if not isinstance(settings, FullTilingCompoundKernelSettings):
+        raise TypeError("settings must be FullTilingCompoundKernelSettings.")
+    if schedule_id == FULL_TILING_COMPOUND_SCHEDULE_ID:
+        return settings.cycle_length
+    if schedule_id == FIXED_BASIS_COMPOUND_SCHEDULE_ID:
+        return 1 + settings.pair_allocation_refresh_slots + len(settings.fixed_coefficient_proposal_sd)
+    raise ValueError("schedule identifier is incompatible.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -803,12 +868,21 @@ class FullTilingCompoundCheckpoint:
         schedule_phase: Phase of the next transition in the compound cycle.
         kernel_settings: Complete immutable problem-resolved settings,
             including fixed ``K``.
-        schedule_id: Versioned schedule identifier.
+        schedule_id: Supported versioned identifier which determines the
+            cycle length and checkpoint phase interpretation.
 
     Raises:
         TypeError: If a field has the wrong public type.
         ValueError: If problem identity, fixed ``K``, transition coordinate,
             schedule phase, scale width, or version is inconsistent.
+
+    Notes:
+        ``schedule_id`` is the authoritative kernel identity. The resolved
+        numeric settings are shared by both schedules, so caller-created
+        replacement objects can select another supported schedule only at a
+        transition coordinate whose phase is valid under that schedule.
+        Durable driver continuation prevents this through exact run-manifest
+        matching.
     """
 
     problem: FullTilingProblem
@@ -848,10 +922,17 @@ class FullTilingCompoundCheckpoint:
             raise ValueError("checkpoint state K does not match fixed kernel K.")
         if self.state.fixed_coefficients.size != len(self.kernel_settings.fixed_coefficient_proposal_sd):
             raise ValueError("checkpoint fixed proposal scales do not match the problem.")
-        if phase != completed % self.kernel_settings.cycle_length:
-            raise ValueError("schedule_phase is inconsistent with transitions_completed.")
-        if self.schedule_id != FULL_TILING_COMPOUND_SCHEDULE_ID:
+        if (
+            not isinstance(self.schedule_id, str)
+            or self.schedule_id not in FULL_TILING_SUPPORTED_SCHEDULE_IDS
+        ):
             raise ValueError("checkpoint schedule identifier is incompatible.")
+        cycle_length = full_tiling_compound_cycle_length(
+            self.kernel_settings,
+            schedule_id=self.schedule_id,
+        )
+        if phase != completed % cycle_length:
+            raise ValueError("schedule_phase is inconsistent with transitions_completed.")
         if not isfinite(self.state.log_target):
             raise ValueError("checkpoint state must have finite target support.")
         object.__setattr__(self, "transitions_completed", completed)
@@ -908,21 +989,35 @@ def _retained_cycle_boundaries(
 def _slot_at_phase(
     phase: int,
     settings: FullTilingCompoundKernelSettings,
+    *,
+    schedule_id: str,
 ) -> tuple[FullTilingCompoundSlot, int | None]:
     """Resolve one zero-based cycle phase to a slot and fixed position.
 
     Args:
         phase: Zero-based phase within one compound cycle.
         settings: Immutable problem-resolved kernel settings.
+        schedule_id: Exact supported schedule identifier.
 
     Returns:
         Slot kind and a fixed coefficient position only for fixed slots.
+
+    Raises:
+        ValueError: If the schedule is unsupported or ``phase`` lies outside
+            its cycle.
     """
-    if phase < 2:
+    cycle_length = full_tiling_compound_cycle_length(
+        settings,
+        schedule_id=schedule_id,
+    )
+    if phase < 0 or phase >= cycle_length:
+        raise ValueError("phase must lie within the selected compound cycle.")
+    structural_slots = 2 if schedule_id == FULL_TILING_COMPOUND_SCHEDULE_ID else 0
+    if phase < structural_slots:
         return "structural", None
-    if phase == 2:
+    if phase == structural_slots:
         return "root", None
-    pair_end = 3 + settings.pair_allocation_refresh_slots
+    pair_end = structural_slots + 1 + settings.pair_allocation_refresh_slots
     if phase < pair_end:
         return "pair_allocation", None
     return "fixed", phase - pair_end
@@ -1251,6 +1346,7 @@ def _draw_transition(
     *,
     phase: int,
     settings: FullTilingCompoundKernelSettings,
+    schedule_id: str,
     rng: np.random.Generator,
 ) -> tuple[
     FullTilingCompoundSlot,
@@ -1265,6 +1361,7 @@ def _draw_transition(
         state: Source posterior state.
         phase: Zero-based phase within one cycle.
         settings: Immutable problem-resolved kernel settings.
+        schedule_id: Exact supported schedule identifier.
         rng: Generator advanced by proposal-specific draws.
 
     Returns:
@@ -1273,10 +1370,16 @@ def _draw_transition(
         fixed position or ``-1``.
 
     Raises:
+        ValueError: If the schedule is unsupported or ``phase`` lies outside
+            its cycle.
         RuntimeError: If called for the separately handled slice slot or if a
             fixed phase does not map to a coefficient.
     """
-    slot, fixed_position = _slot_at_phase(phase, settings)
+    slot, fixed_position = _slot_at_phase(
+        phase,
+        settings,
+        schedule_id=schedule_id,
+    )
     if slot == "structural":
         transition, catalogue_stats = _draw_structural_transition(
             problem,
@@ -1456,6 +1559,7 @@ def _run_segment(
     rng: np.random.Generator,
     transitions_completed: int,
     settings: FullTilingCompoundKernelSettings,
+    schedule_id: str,
     include_initial: bool,
     collect_movement_diagnostics: bool,
 ) -> FullTilingCompoundSamplingResult:
@@ -1468,6 +1572,7 @@ def _run_segment(
         rng: PCG64 generator at the exact segment-start state.
         transitions_completed: Global coordinate before the segment.
         settings: Complete immutable problem-resolved settings.
+        schedule_id: Exact supported schedule identifier.
         include_initial: Whether the boundary is the fresh initial draw.
         collect_movement_diagnostics: Whether to collect output-only metrics.
 
@@ -1491,10 +1596,14 @@ def _run_segment(
         raise ValueError("initial_state K must match the immutable fixed K.")
     if initial_state.fixed_coefficients.size != len(settings.fixed_coefficient_proposal_sd):
         raise ValueError("fixed proposal scales must match the problem fixed block.")
+    cycle_length = full_tiling_compound_cycle_length(
+        settings,
+        schedule_id=schedule_id,
+    )
     retained_transitions = _retained_cycle_boundaries(
         transitions_completed=transitions_completed,
         iterations=iterations,
-        cycle_length=settings.cycle_length,
+        cycle_length=cycle_length,
         include_initial=include_initial,
     )
     retained_bounds: list[NDArray[np.int64]] = []
@@ -1576,9 +1685,13 @@ def _run_segment(
     )
 
     for iteration in range(iterations):
-        phase = (transitions_completed + iteration) % settings.cycle_length
+        phase = (transitions_completed + iteration) % cycle_length
         source = state
-        slot, _ = _slot_at_phase(phase, settings)
+        slot, _ = _slot_at_phase(
+            phase,
+            settings,
+            schedule_id=schedule_id,
+        )
         cache_size_before = len(problem._design_cache) if diagnostic_rows is not None else 0
         proposal_started = perf_counter_ns() if diagnostic_rows is not None else 0
         if slot == "root":
@@ -1609,6 +1722,7 @@ def _run_segment(
                 source,
                 phase=phase,
                 settings=settings,
+                schedule_id=schedule_id,
                 rng=rng,
             )
             uniform = float(rng.random())
@@ -1695,8 +1809,9 @@ def _run_segment(
         state=state,
         rng_state=PCG64State.from_generator(rng),
         transitions_completed=total_transitions,
-        schedule_phase=total_transitions % settings.cycle_length,
+        schedule_phase=total_transitions % cycle_length,
         kernel_settings=settings,
+        schedule_id=schedule_id,
     )
     movement_diagnostics = None
     if diagnostic_rows is not None:
@@ -1834,8 +1949,8 @@ def sample_full_tiling_compound(
     Args:
         problem: Full-tiling observation model and normalized priors.
         initial_state: State built for the exact supplied problem object.
-        config: Seed, atomic transition count, pair opportunities, and fixed
-            Gaussian proposal scales.
+        config: Seed, atomic transition count, pair opportunities, fixed
+            Gaussian proposal scales, and mobile or fixed-basis schedule mode.
         collect_movement_diagnostics: Whether to attach output-only
             per-transition movement metrics.
 
@@ -1846,6 +1961,10 @@ def sample_full_tiling_compound(
         TypeError: If an argument has the wrong public type.
         ValueError: If state identity, fixed ``K``, or problem-resolved scales
             are malformed.
+
+    Notes:
+        Proposal construction may populate the problem's rectangle-design
+        cache. Fixed-basis mode does not call structural proposal catalogues.
     """
     if not isinstance(problem, FullTilingProblem):
         raise TypeError("problem must be a FullTilingProblem.")
@@ -1867,6 +1986,11 @@ def sample_full_tiling_compound(
         root_slice_max_steps=config.root_slice_max_steps,
         root_slice_max_shrink_steps=config.root_slice_max_shrink_steps,
     )
+    schedule_id = (
+        FULL_TILING_COMPOUND_SCHEDULE_ID
+        if config.structure_mode == "mobile"
+        else FIXED_BASIS_COMPOUND_SCHEDULE_ID
+    )
     return _run_segment(
         problem,
         initial_state,
@@ -1874,6 +1998,7 @@ def sample_full_tiling_compound(
         rng=np.random.Generator(np.random.PCG64(config.seed)),
         transitions_completed=0,
         settings=settings,
+        schedule_id=schedule_id,
         include_initial=True,
         collect_movement_diagnostics=collect_movement_diagnostics,
     )
@@ -1902,6 +2027,11 @@ def continue_full_tiling_compound(
         TypeError: If arguments have the wrong public types.
         ValueError: If iterations, problem identity, schedule version, fixed
             ``K``, or checkpoint phase is incompatible.
+
+    Notes:
+        Proposal construction may populate the problem's rectangle-design
+        cache. Fixed-basis continuation does not call structural proposal
+        catalogues.
     """
     if not isinstance(problem, FullTilingProblem):
         raise TypeError("problem must be a FullTilingProblem.")
@@ -1912,9 +2042,16 @@ def continue_full_tiling_compound(
     transition_count = _positive_integer(iterations, name="iterations")
     if checkpoint.problem is not problem:
         raise ValueError("continuation requires the exact in-memory problem object.")
-    if checkpoint.schedule_id != FULL_TILING_COMPOUND_SCHEDULE_ID:
+    if (
+        not isinstance(checkpoint.schedule_id, str)
+        or checkpoint.schedule_id not in FULL_TILING_SUPPORTED_SCHEDULE_IDS
+    ):
         raise ValueError("checkpoint schedule is incompatible with this sampler.")
-    expected_phase = checkpoint.transitions_completed % checkpoint.kernel_settings.cycle_length
+    cycle_length = full_tiling_compound_cycle_length(
+        checkpoint.kernel_settings,
+        schedule_id=checkpoint.schedule_id,
+    )
+    expected_phase = checkpoint.transitions_completed % cycle_length
     if checkpoint.schedule_phase != expected_phase:
         raise ValueError("checkpoint schedule phase is inconsistent.")
     if checkpoint.state.k != checkpoint.kernel_settings.fixed_k:
@@ -1926,20 +2063,25 @@ def continue_full_tiling_compound(
         rng=checkpoint.rng_state.generator(),
         transitions_completed=checkpoint.transitions_completed,
         settings=checkpoint.kernel_settings,
+        schedule_id=checkpoint.schedule_id,
         include_initial=False,
         collect_movement_diagnostics=collect_movement_diagnostics,
     )
 
 
 __all__ = [
+    "FIXED_BASIS_COMPOUND_SCHEDULE_ID",
     "FULL_TILING_COMPOUND_SCHEDULE_ID",
+    "FULL_TILING_SUPPORTED_SCHEDULE_IDS",
     "FullTilingCompoundCheckpoint",
     "FullTilingCompoundConfig",
     "FullTilingCompoundKernelSettings",
     "FullTilingCompoundSamplingResult",
     "FullTilingCompoundSlot",
+    "FullTilingStructureMode",
     "FullTilingCompoundTrace",
     "FullTilingMovementDiagnostics",
     "continue_full_tiling_compound",
+    "full_tiling_compound_cycle_length",
     "sample_full_tiling_compound",
 ]

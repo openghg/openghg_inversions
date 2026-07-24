@@ -979,9 +979,9 @@ Existing OpenGHG Inversions draft work can be reused as follows:
 
 ### Compact restart point
 
-- **Next executable task:** run the dispersed-start fixed-\(K\) PARIS mixing
-  screen in
-  [rjmcmc_full_tiling_real_data_mixing_hpc_test_plan.md](rjmcmc_full_tiling_real_data_mixing_hpc_test_plan.md).
+- **Next executable task:** run the matched mobile-versus-fixed deterministic
+  basis comparison in
+  [rjmcmc_fixed_basis_control_hpc_test_plan.md](rjmcmc_fixed_basis_control_hpc_test_plan.md).
 - **Fixed-direction baseline outcome:** the completed 40-segment Stage C test
   was restart-exact and structurally mobile, but its low- and high-\(K\)
   starts remained separated (\(\hat R_K=2.886\)); all 29 monitored summaries
@@ -1039,11 +1039,29 @@ Existing OpenGHG Inversions draft work can be reused as follows:
   non-blocking +16.7% and +11.4%, respectively. This closes the numerical and
   durability gate; it does not establish posterior mixing.
 - **Dispersed-start readiness:** the native driver can now initialize a
-  fixed-\(K\) tiling by seeded random recursive bisection using an independent
+  fixed-\(K\) tiling by seeded random recursive bisection using a separate
   PCG64 stream. The manifest pins the strategy, seed, and initial topology.
   This law is path-biased and is used only to disperse initial geometry, not
   as the structural prior. All starts retain the same prior-mean physical
   scaling field, so the next matrix isolates forgetting of initial topology.
+- **Dispersed-start outcome (2026-07-24):** the `548fa41` PARIS screen was
+  structurally mobile but failed at both fixed dimensions. The worst reported
+  \(\hat R\)/bulk ESS values were 1.522/7.2 at \(K=50\) and 1.948/5.5 at
+  \(K=250\). Log-likelihood bands remained disjoint and separation increased
+  in the second half, despite 12,585--17,386 distinct visited tilings,
+  substantial structural acceptance, low cycle-boundary return proxies, and
+  contracting nominal-weighted native-field distances. The headline did not
+  name the variables producing the worst diagnostics; the archived CSV must
+  be queried rather than guessing.
+- **Fixed-basis control:** the same sampler can now condition on the exact
+  deterministic `largest-nominal` tiling. Its versioned 12-slot schedule
+  contains one log-root slice update, five pair-allocation refreshes, and the
+  six outer updates, with no structural proposal path. A complete fixed cycle
+  therefore matches every continuous proposal opportunity in a 14-slot mobile
+  cycle. The fixed structural target is a normalized singleton point mass;
+  checkpoint schedule identity remains explicit and the durable schema stays
+  at v1. This control distinguishes structural coupling from continuous
+  allocation mixing, but same-state starts are not full convergence evidence.
 - **Floating-coordinate boundary:** the correction targets the declared
   continuous positive-mass model; it is not a claim of detailed balance over
   discrete binary64 rounding bins. A two-orientation residual-mass prototype

@@ -15,6 +15,7 @@ import pytest
 from openghg_inversions.experimental.rjmcmc.core import FixedDesignBlock
 from openghg_inversions.experimental.rjmcmc.dyadic_tree import CanonicalDyadicTree
 from openghg_inversions.experimental.rjmcmc.full_tiling_compound_sampling import (
+    FIXED_BASIS_COMPOUND_SCHEDULE_ID,
     FULL_TILING_COMPOUND_SCHEDULE_ID,
     FullTilingCompoundConfig,
     FullTilingCompoundKernelSettings,
@@ -297,6 +298,99 @@ def test_checkpoint_round_trip_preserves_exact_continuation(
         assert metadata["kernel"][name] == getattr(
             first.checkpoint.kernel_settings,
             name,
+        )
+
+
+def test_fixed_basis_checkpoint_round_trip_preserves_exact_continuation(
+    tmp_path: Path,
+) -> None:
+    """A durable fixed-basis boundary resumes the exact twelve-slot cycle."""
+    problem = _real_scale_fixed_sweep_problem()
+    initial = initialize_full_tiling_posterior_state(problem, k=3)
+    first = sample_full_tiling_compound(
+        problem,
+        initial,
+        FullTilingCompoundConfig(
+            iterations=5,
+            seed=198,
+            pair_allocation_refresh_slots=5,
+            structure_mode="fixed_basis",
+        ),
+    )
+    manifest = {
+        **_manifest(),
+        "sampler": {
+            "structure_mode": "fixed_basis",
+            "schedule_id": FIXED_BASIS_COMPOUND_SCHEDULE_ID,
+        },
+    }
+    path = tmp_path / "fixed-basis-checkpoint.npz"
+    save_full_tiling_checkpoint(path, first.checkpoint, run_manifest=manifest)
+
+    reconstructed = _real_scale_fixed_sweep_problem()
+    loaded = load_full_tiling_checkpoint(
+        path,
+        reconstructed,
+        expected_run_manifest=manifest,
+    )
+    restored = continue_full_tiling_compound(
+        reconstructed,
+        loaded,
+        iterations=7,
+    )
+    direct = sample_full_tiling_compound(
+        problem,
+        initial,
+        FullTilingCompoundConfig(
+            iterations=12,
+            seed=198,
+            pair_allocation_refresh_slots=5,
+            structure_mode="fixed_basis",
+        ),
+    )
+
+    assert loaded.schedule_id == FIXED_BASIS_COMPOUND_SCHEDULE_ID
+    assert loaded.schedule_phase == 5
+    _assert_states_equal(loaded.state, first.final_state)
+    for field in fields(direct.trace):
+        combined = np.concatenate(
+            (
+                getattr(first.trace, field.name),
+                getattr(restored.trace, field.name),
+            ),
+            axis=0,
+        )
+        np.testing.assert_array_equal(combined, getattr(direct.trace, field.name))
+    _assert_states_equal(restored.final_state, direct.final_state)
+    assert restored.checkpoint.rng_state == direct.checkpoint.rng_state
+    assert restored.checkpoint.schedule_id == FIXED_BASIS_COMPOUND_SCHEDULE_ID
+    assert restored.checkpoint.schedule_phase == 0
+    with np.load(path, allow_pickle=False) as archive:
+        metadata = json.loads(archive["metadata"].tobytes().decode("utf-8"))
+    assert metadata["schema_version"] == FULL_TILING_CHECKPOINT_SCHEMA_VERSION
+    assert metadata["schedule_id"] == FIXED_BASIS_COMPOUND_SCHEDULE_ID
+
+
+def test_checkpoint_loader_rejects_unknown_schedule_identifier(
+    tmp_path: Path,
+) -> None:
+    """Durable loading fails closed for an unversioned schedule identifier."""
+    problem = _problem()
+    result = _sample_boundary(problem)
+    path = tmp_path / "unknown-schedule.npz"
+    save_full_tiling_checkpoint(path, result.checkpoint, run_manifest=_manifest())
+
+    def alter_schedule(metadata: dict[str, Any]) -> None:
+        """Replace the schedule with an unsupported identifier."""
+        metadata["schedule_id"] = "full_tiling_unknown_schedule"
+
+    _rewrite_metadata(path, alter_schedule)
+
+    with pytest.raises(ValueError, match="schedule is incompatible"):
+        load_full_tiling_checkpoint(
+            path,
+            _problem(),
+            expected_run_manifest=_manifest(),
         )
 
 
