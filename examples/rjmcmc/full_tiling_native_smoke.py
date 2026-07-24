@@ -1,4 +1,4 @@
-"""Run one uninterrupted fixed-``K`` full-tiling native-data smoke chain.
+"""Run or resume one fixed-``K`` full-tiling native-data smoke chain.
 
 The input is one explicitly frozen NetCDF dataset.  By default it contains
 ``fp_x_flux(nmeasure, lat, lon)``, ``mf(nmeasure)``,
@@ -7,10 +7,14 @@ The input is one explicitly frozen NetCDF dataset.  By default it contains
 Variable names are configurable; no scientific input is guessed.
 
 This is a diagnostic smoke driver, not a convergence workflow. It runs one
-single-process chain without durable continuation, retains complete cycle
+single-process chain with durable continuation, retains complete cycle
 boundaries, and writes a new non-overwriting artifact directory. Until connectivity
 has been established independently, every result is explicitly restricted to
 the communication component reached from its deterministic prior-mean start.
+
+The independently checksummed checkpoint is the authoritative recovery
+object. ``complete.json`` is written later and certifies that the checkpoint,
+trace, manifest, and summary form a complete reporting bundle.
 """
 
 from __future__ import annotations
@@ -34,7 +38,13 @@ from openghg_inversions.experimental.rjmcmc.full_tiling_compound_sampling import
     FULL_TILING_COMPOUND_SCHEDULE_ID,
     FullTilingCompoundConfig,
     FullTilingCompoundSamplingResult,
+    continue_full_tiling_compound,
     sample_full_tiling_compound,
+)
+from openghg_inversions.experimental.rjmcmc.full_tiling_io import (
+    full_tiling_state_fingerprint,
+    load_full_tiling_checkpoint,
+    save_full_tiling_checkpoint,
 )
 from openghg_inversions.experimental.rjmcmc.full_tiling_posterior import (
     FullTilingPosteriorState,
@@ -52,6 +62,7 @@ MANIFEST_FILENAME = "manifest.json"
 TRACE_FILENAME = "trace.nc"
 SUMMARY_FILENAME = "summary.json"
 COMPLETION_FILENAME = "complete.json"
+CHECKPOINT_FILENAME = "checkpoint.npz"
 PARIS_OBSERVATIONS = 1_382
 PARIS_GRID_SHAPE = (183, 128)
 PARIS_OUTER_COEFFICIENTS = 6
@@ -390,7 +401,7 @@ def _build_manifest(
     ]
     initial_topology_sha256 = sha256(_canonical_json(initial_bounds).encode("utf-8")).hexdigest()
     manifest: dict[str, object] = {
-        "schema": "openghg_inversions.full_tiling_native_smoke_manifest.v1",
+        "schema": "openghg_inversions.full_tiling_native_smoke_manifest.v2",
         "status": "diagnostic_not_convergence_evidence",
         "state_space_scope": {
             "fixed_k": int(arguments.k),
@@ -401,7 +412,6 @@ def _build_manifest(
         },
         "input": {
             "id": arguments.input_id,
-            "path": str(arguments.input.resolve()),
             "sha256": input_digest,
             "contract": _input_contract(arguments),
             "weight_normalization_factor": adapter.weight_normalization_factor,
@@ -413,6 +423,8 @@ def _build_manifest(
             "outer_labels": outer_labels.astype(str).tolist(),
             "concentration": float(arguments.concentration),
             "root_variance": float(arguments.root_variance),
+            "root_prior_shape": float(adapter.problem.prior.root_shape),
+            "root_prior_rate": float(adapter.problem.prior.root_rate),
             "likelihood_power": float(arguments.likelihood_power),
             "fixed_prior_mean": fixed_mean.astype(float).tolist(),
             "fixed_prior_sd": fixed_sd.astype(float).tolist(),
@@ -420,22 +432,26 @@ def _build_manifest(
         "kernel": {
             "schedule_id": FULL_TILING_COMPOUND_SCHEDULE_ID,
             "cycle_length": cycle_length,
-            "cycles": int(arguments.cycles),
-            "atomic_transitions": int(arguments.cycles * cycle_length),
             "structural_slots": 2,
             "pair_allocation_refresh_slots": PAIR_ALLOCATION_REFRESH_SLOTS,
-            "fixed_coefficient_proposal_sd": _expand_values(
-                arguments.fixed_proposal_sd,
-                size=adapter.problem.n_fixed_coefficients,
-                name="fixed_proposal_sd",
+            "fixed_coefficient_proposal_sd": list(
+                _expand_values(
+                    arguments.fixed_proposal_sd,
+                    size=adapter.problem.n_fixed_coefficients,
+                    name="fixed_proposal_sd",
+                )
             ),
+            "root_slice_width": float(arguments.root_slice_width),
+            "root_slice_max_steps": int(arguments.root_slice_max_steps),
+            "root_slice_max_shrink_steps": int(arguments.root_slice_max_shrink_steps),
         },
         "provenance": {
             "input_id": arguments.input_id,
             "code_revision": arguments.code_revision,
+            "chain_id": arguments.chain_id,
             "seed": int(arguments.seed),
             "single_process": True,
-            "durable_checkpoint": False,
+            "durable_checkpoint": True,
         },
     }
     manifest["manifest_payload_sha256"] = sha256(_canonical_json(manifest).encode("utf-8")).hexdigest()
@@ -453,8 +469,8 @@ def _trace_to_dataset(
 ) -> xr.Dataset:
     """Convert the complete retained and attempt traces to labelled xarray."""
     trace = result.trace
-    draw = np.arange(trace.root_total.size, dtype=np.int64)
-    transition = np.arange(trace.global_transition.size, dtype=np.int64)
+    draw = trace.state_transition
+    transition = trace.global_transition
     dataset = xr.Dataset(
         data_vars={
             "rectangle_bounds": (
@@ -584,6 +600,7 @@ def _trace_to_dataset(
             "lon": adapter.longitudes,
         },
         attrs={
+            "schema": "openghg_inversions.full_tiling_native_smoke_trace.v2",
             "title": "Diagnostic fixed-K full-tiling native-data smoke trace",
             "diagnostic_only": "true",
             "convergence_claim": "none",
@@ -609,11 +626,50 @@ def _trace_to_dataset(
             "root_prior_mean": (adapter.problem.prior.root_shape / adapter.problem.prior.root_rate),
             "root_prior_variance": (adapter.problem.prior.root_shape / adapter.problem.prior.root_rate**2),
             "likelihood_power": adapter.problem.likelihood_power,
+            "durable_checkpoint": "true",
+            "movement_diagnostics_collected": str(result.movement_diagnostics is not None).lower(),
         },
     )
+    diagnostics = result.movement_diagnostics
+    if diagnostics is not None:
+        descriptions = {
+            "proposal_elapsed_ns": "proposal execution elapsed time",
+            "diagnostic_elapsed_ns": "output-only diagnostic calculation elapsed time",
+            "source_merge_count": "available source merges in the structural catalogue",
+            "destination_catalogue_size": "available structural destinations",
+            "pair_catalogue_size": "available unordered allocation pairs",
+            "design_cache_misses": ("native rectangle designs newly computed in this process segment"),
+            "changed_native_cell_count": "native cells whose rectangle assignment changed",
+            "changed_nominal_mass": "nominal mass whose rectangle assignment changed",
+            "standardized_prediction_l2": "L2 displacement in observation-SD units",
+            "root_abs_displacement": "absolute root-total displacement",
+            "root_abs_log_displacement": "absolute log-root-total displacement",
+            "allocation_share_l1_displacement": "L1 allocation-share displacement",
+            "fixed_position": "changed fixed coefficient position; -1 means none",
+            "fixed_abs_displacement": "absolute fixed-coefficient displacement",
+            "fixed_abs_log_displacement": "absolute log fixed-coefficient displacement",
+            "slice_left_steps": "successful root-slice left stepping-out extensions",
+            "slice_right_steps": "successful root-slice right stepping-out extensions",
+            "slice_shrink_draws": "root-slice shrinkage candidate draws",
+            "slice_log_density_evaluations": "root-slice conditional log-density evaluations",
+        }
+        for name, long_name in descriptions.items():
+            attrs: dict[str, str] = {
+                "long_name": long_name,
+                "diagnostic_role": "output_only",
+            }
+            if name.endswith("_elapsed_ns"):
+                attrs["units"] = "ns"
+            dataset[name] = xr.DataArray(
+                getattr(diagnostics, name),
+                dims=("transition",),
+                attrs=attrs,
+            )
     dataset["lat"].attrs["long_name"] = "native-grid latitude"
     dataset["lon"].attrs["long_name"] = "native-grid longitude"
     dataset["fixed_parameter"].attrs["long_name"] = "outer coefficient label"
+    dataset["draw"].attrs["long_name"] = "global completed-transition coordinate"
+    dataset["transition"].attrs["long_name"] = "global atomic-transition coordinate"
     return dataset
 
 
@@ -626,7 +682,7 @@ def _move_summary(
     for move in (
         "edge_flip",
         "resolution_relocation",
-        "root_total_refresh",
+        "root_total_slice",
         "pair_allocation_refresh",
         "fixed_coefficient",
     ):
@@ -643,6 +699,28 @@ def _move_summary(
             "acceptance_rate_given_valid": None if valid == 0 else accepted / valid,
         }
     return output
+
+
+def _movement_summary(result: FullTilingCompoundSamplingResult) -> dict[str, Any] | None:
+    """Summarize optional movement and root-slice computational costs."""
+    diagnostics = result.movement_diagnostics
+    if diagnostics is None:
+        return None
+    root = diagnostics.move == "root_total_slice"
+    return {
+        "proposal_elapsed_ns_total": int(np.sum(diagnostics.proposal_elapsed_ns)),
+        "diagnostic_elapsed_ns_total": int(np.sum(diagnostics.diagnostic_elapsed_ns)),
+        "changed_native_cell_count_total": int(np.sum(diagnostics.changed_native_cell_count)),
+        "changed_nominal_mass_total": float(np.sum(diagnostics.changed_nominal_mass)),
+        "standardized_prediction_l2_mean": float(np.mean(diagnostics.standardized_prediction_l2)),
+        "slice": {
+            "attempts": int(np.count_nonzero(root)),
+            "left_steps_total": int(np.sum(diagnostics.slice_left_steps)),
+            "right_steps_total": int(np.sum(diagnostics.slice_right_steps)),
+            "shrink_draws_total": int(np.sum(diagnostics.slice_shrink_draws)),
+            "log_density_evaluations_total": int(np.sum(diagnostics.slice_log_density_evaluations)),
+        },
+    }
 
 
 def _unique_topology_count(result: FullTilingCompoundSamplingResult) -> int:
@@ -680,12 +758,16 @@ def _initial_leaf_scaling_sd(
 def _summary(
     result: FullTilingCompoundSamplingResult,
     *,
-    initial_state: FullTilingPosteriorState,
+    chain_initial_state: FullTilingPosteriorState,
+    segment_initial_state: FullTilingPosteriorState,
     closure: dict[str, float],
     input_path: Path,
     input_digest: str,
-    cycles: int,
+    requested_iterations: int,
     cycle_length: int,
+    segment_start: int,
+    parent_checkpoint_sha256: str | None,
+    segment_start_state_sha256: str,
     input_seconds: float,
     setup_seconds: float,
     sampling_seconds: float,
@@ -697,6 +779,7 @@ def _summary(
     valid = int(np.count_nonzero(trace.valid))
     accepted = int(np.count_nonzero(trace.accepted))
     return {
+        "schema": "openghg_inversions.full_tiling_native_smoke_summary.v2",
         "status": "diagnostic_not_convergence_evidence",
         "communication_component": _COMMUNICATION_COMPONENT,
         "connectivity_proven": False,
@@ -707,18 +790,27 @@ def _summary(
         "closure": closure,
         "run": {
             "fixed_k": result.final_state.k,
-            "cycles": cycles,
             "cycle_length": cycle_length,
             "atomic_transitions": attempts,
             "retained_draws": int(trace.root_total.size),
+            "segment_start_transition": segment_start,
+            "segment_end_transition": result.checkpoint.transitions_completed,
+            "segment_requested_iterations": requested_iterations,
+            "schedule_phase_start": segment_start % cycle_length,
             "schedule_phase_end": result.checkpoint.schedule_phase,
+            "durable_checkpoint": True,
+        },
+        "lineage": {
+            "parent_checkpoint_sha256": parent_checkpoint_sha256,
+            "segment_start_state_sha256": segment_start_state_sha256,
         },
         "target": {
-            "initial_log_target": float(initial_state.log_target),
+            "chain_initial_log_target": float(chain_initial_state.log_target),
+            "segment_initial_log_target": float(segment_initial_state.log_target),
             "final_log_target": float(result.final_state.log_target),
             "normalization": ("fixed-K communication-component structural constant omitted"),
         },
-        "initial_leaf_prior_scaling_sd": _initial_leaf_scaling_sd(initial_state),
+        "initial_leaf_prior_scaling_sd": _initial_leaf_scaling_sd(chain_initial_state),
         "topology": {
             "unique_retained_topologies": _unique_topology_count(result),
         },
@@ -731,6 +823,7 @@ def _summary(
             "invalid_reasons": dict(sorted(invalid_reasons.items())),
         },
         "moves": _move_summary(result),
+        "movement_diagnostics": _movement_summary(result),
         "performance": {
             "input_hash_and_load_seconds": input_seconds,
             "problem_setup_seconds": setup_seconds,
@@ -753,6 +846,7 @@ def _write_outputs(
 ) -> None:
     """Write a new artifact bundle and completion marker last."""
     output_directory.mkdir()
+    _fsync_directory(output_directory.parent)
     manifest_text = _canonical_json(manifest)
     _atomic_write_text(output_directory / MANIFEST_FILENAME, manifest_text)
     try:
@@ -773,6 +867,11 @@ def _write_outputs(
         + "\n"
     )
     _atomic_write_text(output_directory / SUMMARY_FILENAME, summary_text)
+    save_full_tiling_checkpoint(
+        output_directory / CHECKPOINT_FILENAME,
+        result.checkpoint,
+        run_manifest=manifest,
+    )
 
     trace_path = output_directory / TRACE_FILENAME
     with xr.open_dataset(trace_path, engine=netcdf_engine) as reopened:
@@ -787,14 +886,27 @@ def _write_outputs(
 
     artifact_hashes = {
         name: _sha256_file(output_directory / name)
-        for name in (MANIFEST_FILENAME, TRACE_FILENAME, SUMMARY_FILENAME)
+        for name in (
+            MANIFEST_FILENAME,
+            TRACE_FILENAME,
+            SUMMARY_FILENAME,
+            CHECKPOINT_FILENAME,
+        )
     }
     completion = {
-        "schema": "openghg_inversions.full_tiling_native_smoke_completion.v1",
+        "schema": "openghg_inversions.full_tiling_native_smoke_completion.v2",
         "manifest": MANIFEST_FILENAME,
         "trace": TRACE_FILENAME,
         "summary": SUMMARY_FILENAME,
+        "checkpoint": CHECKPOINT_FILENAME,
         "atomic_transitions": int(result.trace.global_transition.size),
+        "segment_start_transition": (
+            result.checkpoint.transitions_completed - int(result.trace.global_transition.size)
+        ),
+        "segment_end_transition": result.checkpoint.transitions_completed,
+        "parent_checkpoint_sha256": summary["lineage"]["parent_checkpoint_sha256"],
+        "segment_start_state_sha256": summary["lineage"]["segment_start_state_sha256"],
+        "durable_checkpoint": True,
         "sha256": artifact_hashes,
     }
     _atomic_write_text(
@@ -808,7 +920,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     Returns:
         Argument parser exposing every scientific input and kernel setting
-        required for a reproducible uninterrupted diagnostic run.
+        required for a reproducible fresh or resumed diagnostic segment.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True)
@@ -821,13 +933,51 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Fixed active rectangle count.",
     )
-    parser.add_argument(
+    segment = parser.add_mutually_exclusive_group(required=True)
+    segment.add_argument(
         "--cycles",
         type=int,
-        required=True,
-        help="Complete cycles; six fixed columns give 14 transitions per cycle.",
+        help="Complete compound cycles to run in this segment.",
+    )
+    segment.add_argument(
+        "--iterations",
+        type=int,
+        help="Exact atomic transitions to run; permits an incomplete cycle.",
     )
     parser.add_argument("--seed", type=int, required=True, help="Non-negative PCG64 seed.")
+    parser.add_argument(
+        "--chain-id",
+        default="default",
+        help="Stable logical chain identifier included in checkpoint identity.",
+    )
+    parser.add_argument(
+        "--resume-checkpoint",
+        type=Path,
+        help="Durable checkpoint from which to continue the same logical chain.",
+    )
+    parser.add_argument(
+        "--root-slice-width",
+        type=float,
+        default=1.0,
+        help="Positive initial root-slice stepping-out width in log space.",
+    )
+    parser.add_argument(
+        "--root-slice-max-steps",
+        type=int,
+        default=100,
+        help="Positive root-slice stepping-out budget.",
+    )
+    parser.add_argument(
+        "--root-slice-max-shrink-steps",
+        type=int,
+        default=1000,
+        help="Positive root-slice shrinkage draw budget.",
+    )
+    parser.add_argument(
+        "--collect-movement-diagnostics",
+        action="store_true",
+        help="Persist output-only per-transition movement and slice-cost metrics.",
+    )
     parser.add_argument(
         "--concentration",
         type=float,
@@ -928,10 +1078,22 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
         )
     if arguments.k < 1:
         raise ValueError("--k must be positive.")
-    if arguments.cycles < 1:
+    if arguments.cycles is not None and arguments.cycles < 1:
         raise ValueError("--cycles must be positive.")
+    if arguments.iterations is not None and arguments.iterations < 1:
+        raise ValueError("--iterations must be positive.")
     if arguments.seed < 0:
         raise ValueError("--seed must be non-negative.")
+    if not arguments.chain_id:
+        raise ValueError("--chain-id must be nonempty.")
+    if not np.isfinite(arguments.root_slice_width) or arguments.root_slice_width <= 0.0:
+        raise ValueError("--root-slice-width must be finite and positive.")
+    if arguments.root_slice_max_steps < 1:
+        raise ValueError("--root-slice-max-steps must be positive.")
+    if arguments.root_slice_max_shrink_steps < 1:
+        raise ValueError("--root-slice-max-shrink-steps must be positive.")
+    if arguments.dry_run and arguments.resume_checkpoint is not None:
+        raise ValueError("--dry-run cannot be combined with --resume-checkpoint.")
     if arguments.expected_input_sha256 is not None:
         digest = arguments.expected_input_sha256
         if len(digest) != 64 or any(character not in "0123456789abcdefABCDEF" for character in digest):
@@ -945,7 +1107,7 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
 
 
 def run(arguments: argparse.Namespace) -> dict[str, Any]:
-    """Validate, run, and persist one uninterrupted diagnostic chain.
+    """Validate, run, and persist one fresh or resumed diagnostic segment.
 
     The output-backend preflight temporarily writes in the output parent even
     for a dry run.
@@ -1021,6 +1183,9 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
         name="fixed_proposal_sd",
     )
     cycle_length = 3 + PAIR_ALLOCATION_REFRESH_SLOTS + len(fixed_scales)
+    requested_iterations = (
+        arguments.iterations if arguments.iterations is not None else arguments.cycles * cycle_length
+    )
     manifest = _build_manifest(
         arguments,
         adapter,
@@ -1047,7 +1212,7 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
             },
             "initial_leaf_prior_scaling_sd": _initial_leaf_scaling_sd(initial_state),
             "cycle_length": cycle_length,
-            "requested_atomic_transitions": arguments.cycles * cycle_length,
+            "requested_atomic_transitions": requested_iterations,
             "input": {
                 "id": arguments.input_id,
                 "path": str(arguments.input.resolve()),
@@ -1063,30 +1228,59 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
         return dry_run_summary
 
     sampling_started = perf_counter()
-    result = sample_full_tiling_compound(
-        problem,
-        initial_state,
-        FullTilingCompoundConfig(
-            iterations=arguments.cycles * cycle_length,
-            seed=arguments.seed,
-            pair_allocation_refresh_slots=PAIR_ALLOCATION_REFRESH_SLOTS,
-            fixed_coefficient_proposal_sd=fixed_scales,
-        ),
-    )
+    if arguments.resume_checkpoint is None:
+        segment_start = 0
+        segment_initial_state = initial_state
+        parent_checkpoint_sha256 = None
+        result = sample_full_tiling_compound(
+            problem,
+            initial_state,
+            FullTilingCompoundConfig(
+                iterations=requested_iterations,
+                seed=arguments.seed,
+                pair_allocation_refresh_slots=PAIR_ALLOCATION_REFRESH_SLOTS,
+                fixed_coefficient_proposal_sd=fixed_scales,
+                root_slice_width=arguments.root_slice_width,
+                root_slice_max_steps=arguments.root_slice_max_steps,
+                root_slice_max_shrink_steps=arguments.root_slice_max_shrink_steps,
+            ),
+            collect_movement_diagnostics=arguments.collect_movement_diagnostics,
+        )
+    else:
+        parent_checkpoint_sha256 = _sha256_file(arguments.resume_checkpoint)
+        checkpoint = load_full_tiling_checkpoint(
+            arguments.resume_checkpoint,
+            problem,
+            expected_run_manifest=manifest,
+        )
+        if _sha256_file(arguments.resume_checkpoint) != parent_checkpoint_sha256:
+            raise ValueError("Resume checkpoint changed while it was being loaded.")
+        segment_start = checkpoint.transitions_completed
+        segment_initial_state = checkpoint.state
+        result = continue_full_tiling_compound(
+            problem,
+            checkpoint,
+            iterations=requested_iterations,
+            collect_movement_diagnostics=arguments.collect_movement_diagnostics,
+        )
     sampling_seconds = perf_counter() - sampling_started
-    if (
-        result.trace.global_transition.size != arguments.cycles * cycle_length
-        or result.checkpoint.schedule_phase != 0
-    ):
-        raise RuntimeError("Sampler did not finish at the requested complete-cycle boundary.")
+    if result.trace.global_transition.size != requested_iterations:
+        raise RuntimeError("Sampler did not finish the requested atomic-transition segment.")
     summary = _summary(
         result,
-        initial_state=initial_state,
+        chain_initial_state=initial_state,
+        segment_initial_state=segment_initial_state,
         closure=closure,
         input_path=arguments.input,
         input_digest=input_digest,
-        cycles=arguments.cycles,
+        requested_iterations=requested_iterations,
         cycle_length=cycle_length,
+        segment_start=segment_start,
+        parent_checkpoint_sha256=parent_checkpoint_sha256,
+        segment_start_state_sha256=full_tiling_state_fingerprint(
+            problem,
+            segment_initial_state,
+        ),
         input_seconds=input_seconds,
         setup_seconds=setup_seconds,
         sampling_seconds=sampling_seconds,

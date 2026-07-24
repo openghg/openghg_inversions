@@ -1003,6 +1003,10 @@ Existing OpenGHG Inversions draft work can be reused as follows:
   full-likelihood fixed-\(K\) native PARIS smoke in
   [rjmcmc_full_tiling_native_hpc_test_plan.md](rjmcmc_full_tiling_native_hpc_test_plan.md).
   This is a wiring, mobility, and performance test, not convergence evidence.
+- **Next real-data full-tiling phase:** validate the sibling-indexed/cache-backed
+  catalogue, exact log-root slice update, output-only movement diagnostics,
+  and strict durable restart with the executable
+  [next-phase HPC test plan](rjmcmc_full_tiling_next_phase_hpc_test_plan.md).
 - **Real-data provenance:** the Stage C PARIS NetCDF path, SHA-256, ordered
   InTEM outer labels, and strictly positive spherical-cell-area weight policy
   are pinned literally in the HPC plan from independent run records.
