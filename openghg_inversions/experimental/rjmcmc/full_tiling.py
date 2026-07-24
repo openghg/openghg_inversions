@@ -16,6 +16,12 @@ Leaf masses use a Dirichlet allocation whose shapes are supplied by one
 globally additive cell measure.  This makes the allocation independent of the
 binary construction used to describe a tiling.  Proposal constructors are
 deterministic and consume no random numbers.
+
+The main entry points are :func:`enumerate_tilings`,
+:func:`edge_flip_paths`, :func:`relocation_paths`,
+:func:`propose_edge_flip`, and :func:`propose_resolution_relocation`.  This
+experimental research API is a tiny-state correctness oracle, not a stable
+production sampler.
 """
 
 from __future__ import annotations
@@ -138,7 +144,16 @@ class Rectangle:
 
 @dataclass(frozen=True, slots=True, order=True)
 class SplitChoice:
-    """A labelled leaf and orientation selected for bisection."""
+    """A labelled leaf and orientation selected for bisection.
+
+    Args:
+        leaf: Existing rectangular leaf.
+        axis: Requested midpoint-bisection orientation.
+
+    Raises:
+        TypeError: If ``leaf`` is not a rectangle.
+        ValueError: If ``axis`` is not a supported orientation.
+    """
 
     leaf: Rectangle
     axis: Axis
@@ -152,7 +167,16 @@ class SplitChoice:
 
 @dataclass(frozen=True, slots=True, order=True)
 class MergeChoice:
-    """A labelled parent and orientation whose midpoint children are leaves."""
+    """A labelled parent and orientation whose midpoint children are leaves.
+
+    Args:
+        parent: Rectangle recovered by merging two midpoint friends.
+        axis: Orientation that produced the ordered friend pair.
+
+    Raises:
+        TypeError: If ``parent`` is not a rectangle.
+        ValueError: If the axis is invalid or cannot bisect the parent.
+    """
 
     parent: Rectangle
     axis: Axis
@@ -256,6 +280,7 @@ class LeafTiling:
             A new canonical tiling with one additional leaf.
 
         Raises:
+            TypeError: If ``choice`` is not a :class:`SplitChoice`.
             ValueError: If the labelled split is unavailable.
         """
         if not isinstance(choice, SplitChoice):
@@ -276,6 +301,7 @@ class LeafTiling:
             A new canonical tiling with one fewer leaf.
 
         Raises:
+            TypeError: If ``choice`` is not a :class:`MergeChoice`.
             ValueError: If the labelled merge is unavailable.
         """
         if not isinstance(choice, MergeChoice):
@@ -295,6 +321,9 @@ def split_choices(tiling: LeafTiling) -> tuple[SplitChoice, ...]:
 
     Returns:
         Canonically ordered leaf-orientation choices.
+
+    Raises:
+        TypeError: If ``tiling`` is not a :class:`LeafTiling`.
     """
     if not isinstance(tiling, LeafTiling):
         raise TypeError("tiling must be a LeafTiling.")
@@ -313,6 +342,9 @@ def merge_choices(tiling: LeafTiling) -> tuple[MergeChoice, ...]:
 
     Returns:
         Canonically ordered parent-orientation choices.
+
+    Raises:
+        TypeError: If ``tiling`` is not a :class:`LeafTiling`.
     """
     if not isinstance(tiling, LeafTiling):
         raise TypeError("tiling must be a LeafTiling.")
@@ -385,6 +417,9 @@ def is_recursive_bisection_tiling(tiling: LeafTiling) -> bool:
 
     Returns:
         Whether repeated midpoint bisection of the root can produce the leaves.
+
+    Raises:
+        TypeError: If ``tiling`` is not a :class:`LeafTiling`.
     """
     if not isinstance(tiling, LeafTiling):
         raise TypeError("tiling must be a LeafTiling.")
@@ -428,12 +463,14 @@ class AdditiveAlphaPrior:
     Raises:
         TypeError: If the weights are not two-dimensional or concentration is
             not scalar.
-        ValueError: If any parameter is non-finite or non-positive.
+        ValueError: If parameters are non-finite/non-positive or their relative
+            normalization is not representable in ``float64``.
     """
 
     cell_weights: np.ndarray
     concentration: float
-    _weight_total: float = field(init=False, repr=False)
+    _scaled_weights: np.ndarray = field(init=False, repr=False)
+    _scaled_weight_total: float = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Own and validate the additive cell measure."""
@@ -447,11 +484,22 @@ class AdditiveAlphaPrior:
         concentration = float(self.concentration)
         if not math.isfinite(concentration) or concentration <= 0.0:
             raise ValueError("concentration must be finite and positive.")
+        scaled_weights = weights / float(np.max(weights))
+        scaled_weight_total = float(np.sum(scaled_weights))
+        if (
+            np.any(scaled_weights <= 0.0)
+            or not math.isfinite(scaled_weight_total)
+            or scaled_weight_total <= 0.0
+        ):
+            raise ValueError("relative cell weights must have a representable finite normalization.")
         weights = weights.copy()
         weights.setflags(write=False)
+        scaled_weights = scaled_weights.copy()
+        scaled_weights.setflags(write=False)
         object.__setattr__(self, "cell_weights", weights)
         object.__setattr__(self, "concentration", concentration)
-        object.__setattr__(self, "_weight_total", float(np.sum(weights)))
+        object.__setattr__(self, "_scaled_weights", scaled_weights)
+        object.__setattr__(self, "_scaled_weight_total", scaled_weight_total)
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -465,9 +513,11 @@ class AdditiveAlphaPrior:
             rectangle: In-domain rectangular leaf or block.
 
         Returns:
-            Positive Dirichlet shape proportional to contained cell weight.
+            Positive dimensionless Dirichlet concentration proportional to
+            contained cell weight.
 
         Raises:
+            TypeError: If ``rectangle`` is not a :class:`Rectangle`.
             ValueError: If the rectangle lies outside the prior grid.
         """
         if not isinstance(rectangle, Rectangle):
@@ -480,12 +530,12 @@ class AdditiveAlphaPrior:
         ):
             raise ValueError("rectangle must lie within the prior grid.")
         weight = np.sum(
-            self.cell_weights[
+            self._scaled_weights[
                 rectangle.row_start : rectangle.row_stop,
                 rectangle.col_start : rectangle.col_stop,
             ]
         )
-        return self.concentration * float(weight) / self._weight_total
+        return self.concentration * float(weight) / self._scaled_weight_total
 
     def leaf_alphas(self, tiling: LeafTiling) -> np.ndarray:
         """Return owned read-only Dirichlet shapes in canonical leaf order.
@@ -494,7 +544,11 @@ class AdditiveAlphaPrior:
             tiling: Tiling defined on the same native grid.
 
         Returns:
-            One positive shape per leaf.
+            Read-only ``float64`` array of shape ``(tiling.k,)`` in canonical
+            leaf order.
+
+        Raises:
+            ValueError: If the tiling and prior grids differ.
         """
         if tiling.shape != self.shape:
             raise ValueError("tiling and additive-alpha prior shapes must match.")
@@ -511,10 +565,16 @@ class AdditiveAlphaPrior:
 
         Args:
             children: Ordered disjoint child rectangles.
-            fraction: First-child mass fraction in the open unit interval.
+            fraction: ``children[0]`` mass fraction in the open unit interval.
 
         Returns:
-            Normalized Beta log density, or negative infinity outside support.
+            Dimensionless normalized Beta log density, or negative infinity
+            outside support.
+
+        Raises:
+            TypeError: If ``children`` is not a two-rectangle tuple.
+            ValueError: If children are not an ordered midpoint-friend pair or
+                either lies outside the prior grid.
         """
         if (
             not isinstance(children, tuple)
@@ -522,6 +582,34 @@ class AdditiveAlphaPrior:
             or any(not isinstance(child, Rectangle) for child in children)
         ):
             raise TypeError("children must be a two-Rectangle tuple.")
+        first_child, second_child = children
+        valid_midpoint_pair = False
+        if (
+            first_child.row_start == second_child.row_start
+            and first_child.row_stop == second_child.row_stop
+            and first_child.col_stop == second_child.col_start
+        ):
+            parent = Rectangle(
+                first_child.row_start,
+                first_child.row_stop,
+                first_child.col_start,
+                second_child.col_stop,
+            )
+            valid_midpoint_pair = parent.midpoint_children("vertical") == children
+        if (
+            first_child.col_start == second_child.col_start
+            and first_child.col_stop == second_child.col_stop
+            and first_child.row_stop == second_child.row_start
+        ):
+            parent = Rectangle(
+                first_child.row_start,
+                second_child.row_stop,
+                first_child.col_start,
+                first_child.col_stop,
+            )
+            valid_midpoint_pair = parent.midpoint_children("horizontal") == children
+        if not valid_midpoint_pair:
+            raise ValueError("children must be an ordered midpoint-friend pair.")
         fraction = float(fraction)
         if not math.isfinite(fraction) or not 0.0 < fraction < 1.0:
             return -math.inf
@@ -547,6 +635,14 @@ class AdditiveAlphaPrior:
 
         Returns:
             Normalized conditional log density.
+
+        Raises:
+            TypeError: If ``state`` is not a :class:`TilingState`.
+            ValueError: If the state and prior grids differ.
+
+        Note:
+            Like every continuous density, its numeric value depends on the
+            common physical mass unit used by ``state.leaf_masses``.
         """
         if not isinstance(state, TilingState):
             raise TypeError("state must be a TilingState.")
@@ -562,7 +658,19 @@ class AdditiveAlphaPrior:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class TilingState:
-    """A canonical leaf tiling with aligned positive physical masses."""
+    """A canonical leaf tiling with aligned positive physical masses.
+
+    Args:
+        tiling: Canonical geometry state.
+        leaf_masses: One-dimensional ``(tiling.k,)`` vector in canonical leaf
+            order. Values share one physical unit, are copied, and are stored
+            read-only.
+
+    Raises:
+        TypeError: If ``tiling`` is not a :class:`LeafTiling`.
+        ValueError: If the tiling is outside the recursive family, masses are
+            mis-shaped/non-finite/non-positive, or their total overflows.
+    """
 
     tiling: LeafTiling
     leaf_masses: np.ndarray
@@ -571,11 +679,17 @@ class TilingState:
         """Own and validate the leaf-mass coordinate vector."""
         if not isinstance(self.tiling, LeafTiling):
             raise TypeError("tiling must be a LeafTiling.")
+        if not is_recursive_bisection_tiling(self.tiling):
+            raise ValueError("tiling must belong to the recursive midpoint-bisection family.")
         masses = np.asarray(self.leaf_masses, dtype=np.float64)
         if masses.ndim != 1 or masses.shape != (self.tiling.k,):
             raise ValueError("leaf_masses must have one entry per canonical leaf.")
         if not np.all(np.isfinite(masses)) or np.any(masses <= 0.0):
             raise ValueError("leaf_masses must be finite and strictly positive.")
+        largest_mass = float(np.max(masses))
+        scaled_total = float(np.sum(masses / largest_mass))
+        if largest_mass > np.finfo(np.float64).max / scaled_total:
+            raise ValueError("the total leaf mass must be finite.")
         masses = masses.copy()
         masses.setflags(write=False)
         object.__setattr__(self, "leaf_masses", masses)
@@ -606,7 +720,16 @@ class TilingState:
 
 @dataclass(frozen=True, slots=True, order=True)
 class EdgeFlipPath:
-    """Auxiliary path for one merge followed by a perpendicular split."""
+    """Auxiliary path for one merge followed by a perpendicular split.
+
+    Args:
+        merge: Source midpoint-friend merge.
+        target_axis: Perpendicular destination split orientation.
+
+    Raises:
+        TypeError: If ``merge`` has the wrong type.
+        ValueError: If the target axis is invalid, parallel, or unavailable.
+    """
 
     merge: MergeChoice
     target_axis: Axis
@@ -624,7 +747,16 @@ class EdgeFlipPath:
 
 @dataclass(frozen=True, slots=True, order=True)
 class RelocationPath:
-    """Auxiliary path for merging at one location and splitting another."""
+    """Auxiliary path for merging at one location and splitting another.
+
+    Args:
+        merge: Source midpoint-friend merge.
+        split: Labelled split in the merged intermediate tiling.
+
+    Raises:
+        TypeError: If either choice has the wrong type.
+        ValueError: If the split simply reverses the selected merge.
+    """
 
     merge: MergeChoice
     split: SplitChoice
@@ -651,7 +783,13 @@ def edge_flip_paths(tiling: LeafTiling) -> tuple[EdgeFlipPath, ...]:
 
     Returns:
         Canonically ordered eligible paths.
+
+    Raises:
+        ValueError: If the source tiling is outside the recursive-bisection
+            family.
     """
+    if not is_recursive_bisection_tiling(tiling):
+        raise ValueError("source tiling must belong to the recursive midpoint-bisection family.")
     paths: list[EdgeFlipPath] = []
     for merge in merge_choices(tiling):
         target: Axis = "vertical" if merge.axis == "horizontal" else "horizontal"
@@ -677,7 +815,13 @@ def relocation_paths(tiling: LeafTiling) -> tuple[RelocationPath, ...]:
 
     Returns:
         Canonically ordered eligible paths.
+
+    Raises:
+        ValueError: If the source tiling is outside the recursive-bisection
+            family.
     """
+    if not is_recursive_bisection_tiling(tiling):
+        raise ValueError("source tiling must belong to the recursive midpoint-bisection family.")
     paths: list[RelocationPath] = []
     for merge in merge_choices(tiling):
         paths.extend(
@@ -688,7 +832,16 @@ def relocation_paths(tiling: LeafTiling) -> tuple[RelocationPath, ...]:
 
 
 def _relocation_destinations(tiling: LeafTiling, merge: MergeChoice) -> tuple[SplitChoice, ...]:
-    """Return conditional remote-split choices after one labelled merge."""
+    """Return recursively admissible remote splits after one labelled merge.
+
+    Args:
+        tiling: Source canonical tiling.
+        merge: Available source merge.
+
+    Returns:
+        Canonically ordered split choices in the intermediate tiling, excluding
+        the trivial reverse split and candidates outside the recursive family.
+    """
     intermediate = tiling.merge(merge)
     destinations: list[SplitChoice] = []
     for choice in split_choices(intermediate):
@@ -710,8 +863,11 @@ def relocation_path_log_probability(tiling: LeafTiling, path: RelocationPath) ->
         ``-log(number of merges) - log(number of conditional splits)``.
 
     Raises:
-        ValueError: If the path is unavailable.
+        ValueError: If the source is outside the recursive family or the path
+            is unavailable.
     """
+    if not is_recursive_bisection_tiling(tiling):
+        raise ValueError("source tiling must belong to the recursive midpoint-bisection family.")
     merges = merge_choices(tiling)
     if path.merge not in merges:
         raise ValueError("the relocation merge is unavailable.")
@@ -740,7 +896,17 @@ class TilingTransitionTerms:
         move: Stable proposal name.
         valid: Whether the candidate can enter an MH decision.
         reason: Invalid self-transition explanation.
-        log_acceptance_ratio: Complete untruncated log MH ratio.
+        log_acceptance_ratio: Complete untruncated within-kernel log MH ratio.
+
+    All delta-log and ``log_*`` values use natural logarithms.
+    State-independent symmetric move-mixture weights cancel outside these
+    terms. A sampler with state-dependent or availability-renormalized move
+    weights must add their forward/reverse log probabilities.
+
+    Raises:
+        TypeError: If state or validity metadata have the wrong type.
+        ValueError: If move metadata, validity metadata, or log terms are
+            inconsistent.
     """
 
     candidate: TilingState
@@ -801,7 +967,20 @@ class TilingTransitionTerms:
 
 
 def _invalid_transition(source: TilingState, move: Move, reason: str) -> TilingTransitionTerms:
-    """Return an explicit invalid self-transition."""
+    """Return an explicit invalid self-transition.
+
+    The exact ``source`` object is retained, the reverse path is absent,
+    decomposed terms are zero, and the aggregate log acceptance ratio is
+    negative infinity.
+
+    Args:
+        source: State retained by identity.
+        move: Attempted kernel name.
+        reason: Non-empty invalidity explanation.
+
+    Returns:
+        Invalid transition terms.
+    """
     return TilingTransitionTerms(
         candidate=source,
         reverse_path=None,
@@ -819,7 +998,18 @@ def _invalid_transition(source: TilingState, move: Move, reason: str) -> TilingT
 
 
 def _state_from_mass_map(tiling: LeafTiling, masses: dict[Rectangle, float]) -> TilingState:
-    """Build a state by aligning a rectangle-to-mass map canonically."""
+    """Build a state by aligning a rectangle-to-mass map canonically.
+
+    Args:
+        tiling: Candidate canonical tiling.
+        masses: Physical mass keyed by every candidate leaf.
+
+    Returns:
+        State with masses in canonical leaf order.
+
+    Raises:
+        KeyError: If any canonical leaf is absent from ``masses``.
+    """
     return TilingState(tiling, np.asarray([masses[leaf] for leaf in tiling.leaves]))
 
 
@@ -832,6 +1022,10 @@ def propose_edge_flip(
 ) -> TilingTransitionTerms:
     """Construct one deterministic edge-flip proposal.
 
+    This function neither samples the auxiliary fraction nor performs the MH
+    accept/reject decision. The prior and source must use the same native-grid
+    shape.
+
     Args:
         prior: Globally additive allocation prior.
         source: Source tiling and physical masses.
@@ -841,6 +1035,11 @@ def propose_edge_flip(
     Returns:
         Exact decomposed proposal terms.  Invalid inputs within the proposal
         support become explicit self-transitions.
+
+    Raises:
+        TypeError: If the prior, source, or path has the wrong type.
+        ValueError: If the prior and source grids differ.
+        RuntimeError: If a constructed candidate lacks its required reverse.
     """
     if not isinstance(prior, AdditiveAlphaPrior):
         raise TypeError("prior must be an AdditiveAlphaPrior.")
@@ -904,7 +1103,10 @@ def propose_resolution_relocation(
     """Construct one deterministic resolution-relocation proposal.
 
     The physical-mass augmented map has absolute Jacobian equal to the
-    destination leaf mass divided by the merged source-pair mass.
+    destination leaf mass divided by the merged source-pair mass. This
+    function neither samples the auxiliary fraction nor performs the MH
+    accept/reject decision. The prior and source must use the same native-grid
+    shape.
 
     Args:
         prior: Globally additive allocation prior.
@@ -915,6 +1117,11 @@ def propose_resolution_relocation(
     Returns:
         Exact decomposed proposal terms.  Invalid inputs within the proposal
         support become explicit self-transitions.
+
+    Raises:
+        TypeError: If the prior, source, or path has the wrong type.
+        ValueError: If the prior and source grids differ.
+        RuntimeError: If a constructed candidate lacks its required reverse.
     """
     if not isinstance(prior, AdditiveAlphaPrior):
         raise TypeError("prior must be an AdditiveAlphaPrior.")

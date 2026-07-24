@@ -1,4 +1,12 @@
-"""Run the exact fixed-K canonical full-tiling correctness demonstration."""
+"""Run the exact fixed-K canonical full-tiling correctness demonstration.
+
+The script enumerates the complete ``2 x 4``, ``K=4`` recursive-bisection
+tiling space and assembles an equal-weight edge-flip/resolution-relocation MH
+kernel. One fixed interior auxiliary fraction is sufficient to verify the
+pointwise additive-alpha cancellation. The script prints stochasticity,
+detailed-balance, stationarity, cancellation, and connectivity diagnostics to
+stdout; it is an exact oracle, not a Monte Carlo or production inversion run.
+"""
 
 from __future__ import annotations
 
@@ -21,7 +29,14 @@ from openghg_inversions.experimental.rjmcmc.full_tiling import (
 
 
 def _four_cell_tiling(*, first_axis: Axis) -> LeafTiling:
-    """Construct the same four-cell tiling through one of two split orders."""
+    """Construct the same four-cell tiling through one of two split orders.
+
+    Args:
+        first_axis: Root split orientation.
+
+    Returns:
+        Canonical four-cell leaf tiling.
+    """
     tiling = LeafTiling.root((2, 2))
     root = tiling.leaves[0]
     tiling = tiling.split(SplitChoice(root, first_axis))
@@ -32,7 +47,12 @@ def _four_cell_tiling(*, first_axis: Axis) -> LeafTiling:
 
 
 def _transition_matrix() -> tuple[np.ndarray, float]:
-    """Build the exact prior-only edge-flip/relocation mixture on a tiny space."""
+    """Build the exact prior-only edge-flip/relocation mixture.
+
+    Returns:
+        Transition matrix in :func:`enumerate_tilings` order and the maximum
+        residual after cancelling allocation, auxiliary, and Jacobian terms.
+    """
     shape = (2, 4)
     tilings = enumerate_tilings(shape, 4)
     index = {tiling: position for position, tiling in enumerate(tilings)}
@@ -84,7 +104,14 @@ def _transition_matrix() -> tuple[np.ndarray, float]:
 
 
 def _is_connected(matrix: np.ndarray) -> bool:
-    """Return whether the positive off-diagonal support graph is connected."""
+    """Return whether the positive off-diagonal support graph is connected.
+
+    Args:
+        matrix: Square transition matrix.
+
+    Returns:
+        Whether every state is reachable in the undirected positive support.
+    """
     seen = {0}
     pending = [0]
     while pending:
@@ -97,7 +124,7 @@ def _is_connected(matrix: np.ndarray) -> bool:
 
 
 def main() -> None:
-    """Print exact finite-state correctness results."""
+    """Print exact finite-state correctness results to stdout."""
     history_quotient = _four_cell_tiling(first_axis="vertical") == _four_cell_tiling(
         first_axis="horizontal"
     )
