@@ -28,7 +28,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
-from itertools import combinations
 import math
 from numbers import Integral
 from typing import Literal, TypeAlias
@@ -327,11 +326,38 @@ def split_choices(tiling: LeafTiling) -> tuple[SplitChoice, ...]:
     """
     if not isinstance(tiling, LeafTiling):
         raise TypeError("tiling must be a LeafTiling.")
-    return tuple(
-        SplitChoice(leaf, axis)
-        for leaf in tiling.leaves
-        for axis in leaf.admissible_axes
-    )
+    return tuple(SplitChoice(leaf, axis) for leaf in tiling.leaves for axis in leaf.admissible_axes)
+
+
+@lru_cache(maxsize=256)
+def _cached_merge_choices(tiling: LeafTiling) -> tuple[MergeChoice, ...]:
+    """Return the cached midpoint-friend catalogue for one immutable tiling."""
+    choices: set[MergeChoice] = set()
+    right_neighbors = {(leaf.row_start, leaf.row_stop, leaf.col_start): leaf for leaf in tiling.leaves}
+    bottom_neighbors = {(leaf.col_start, leaf.col_stop, leaf.row_start): leaf for leaf in tiling.leaves}
+    for first in tiling.leaves:
+        second = right_neighbors.get((first.row_start, first.row_stop, first.col_stop))
+        if second is not None:
+            parent = Rectangle(
+                first.row_start,
+                first.row_stop,
+                first.col_start,
+                second.col_stop,
+            )
+            if parent.midpoint_children("vertical") == (first, second):
+                choices.add(MergeChoice(parent, "vertical"))
+
+        second = bottom_neighbors.get((first.col_start, first.col_stop, first.row_stop))
+        if second is not None:
+            parent = Rectangle(
+                first.row_start,
+                second.row_stop,
+                first.col_start,
+                first.col_stop,
+            )
+            if parent.midpoint_children("horizontal") == (first, second):
+                choices.add(MergeChoice(parent, "horizontal"))
+    return tuple(sorted(choices))
 
 
 def merge_choices(tiling: LeafTiling) -> tuple[MergeChoice, ...]:
@@ -348,27 +374,7 @@ def merge_choices(tiling: LeafTiling) -> tuple[MergeChoice, ...]:
     """
     if not isinstance(tiling, LeafTiling):
         raise TypeError("tiling must be a LeafTiling.")
-    choices: set[MergeChoice] = set()
-    for first, second in combinations(tiling.leaves, 2):
-        if first.row_start == second.row_start and first.row_stop == second.row_stop:
-            parent = Rectangle(
-                first.row_start,
-                first.row_stop,
-                min(first.col_start, second.col_start),
-                max(first.col_stop, second.col_stop),
-            )
-            if set(parent.midpoint_children("vertical")) == {first, second}:
-                choices.add(MergeChoice(parent, "vertical"))
-        if first.col_start == second.col_start and first.col_stop == second.col_stop:
-            parent = Rectangle(
-                min(first.row_start, second.row_start),
-                max(first.row_stop, second.row_stop),
-                first.col_start,
-                first.col_stop,
-            )
-            if set(parent.midpoint_children("horizontal")) == {first, second}:
-                choices.add(MergeChoice(parent, "horizontal"))
-    return tuple(sorted(choices))
+    return _cached_merge_choices(tiling)
 
 
 def enumerate_tilings(shape: tuple[int, int], k: int) -> tuple[LeafTiling, ...]:
@@ -405,24 +411,9 @@ def enumerate_tilings(shape: tuple[int, int], k: int) -> tuple[LeafTiling, ...]:
     return tuple(sorted(current, key=lambda tiling: tiling.leaves))
 
 
-def is_recursive_bisection_tiling(tiling: LeafTiling) -> bool:
-    """Test whether a leaf set has at least one midpoint-bisection decomposition.
-
-    A canonical leaf set can have several valid decomposition trees.  This
-    dynamic programme asks only whether at least one exists and therefore does
-    not attach construction multiplicity to the state.
-
-    Args:
-        tiling: Exact rectangular cover to test.
-
-    Returns:
-        Whether repeated midpoint bisection of the root can produce the leaves.
-
-    Raises:
-        TypeError: If ``tiling`` is not a :class:`LeafTiling`.
-    """
-    if not isinstance(tiling, LeafTiling):
-        raise TypeError("tiling must be a LeafTiling.")
+@lru_cache(maxsize=256)
+def _cached_is_recursive_bisection_tiling(tiling: LeafTiling) -> bool:
+    """Return cached recursive-bisection membership for one immutable tiling."""
     leaf_set = frozenset(tiling.leaves)
 
     @lru_cache(maxsize=None)
@@ -449,6 +440,27 @@ def is_recursive_bisection_tiling(tiling: LeafTiling) -> bool:
 
     root = Rectangle(0, tiling.shape[0], 0, tiling.shape[1])
     return admissible(root)
+
+
+def is_recursive_bisection_tiling(tiling: LeafTiling) -> bool:
+    """Test whether a leaf set has at least one midpoint-bisection decomposition.
+
+    A canonical leaf set can have several valid decomposition trees.  This
+    dynamic programme asks only whether at least one exists and therefore does
+    not attach construction multiplicity to the state.
+
+    Args:
+        tiling: Exact rectangular cover to test.
+
+    Returns:
+        Whether repeated midpoint bisection of the root can produce the leaves.
+
+    Raises:
+        TypeError: If ``tiling`` is not a :class:`LeafTiling`.
+    """
+    if not isinstance(tiling, LeafTiling):
+        raise TypeError("tiling must be a LeafTiling.")
+    return _cached_is_recursive_bisection_tiling(tiling)
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -497,8 +509,7 @@ class AdditiveAlphaPrior:
             raise ValueError("native-cell Dirichlet concentrations must remain representably positive.")
         try:
             log_normalizers_finite = math.isfinite(math.lgamma(concentration)) and all(
-                math.isfinite(math.lgamma(float(alpha)))
-                for alpha in cell_alphas.flat
+                math.isfinite(math.lgamma(float(alpha))) for alpha in cell_alphas.flat
             )
         except (OverflowError, ValueError):
             log_normalizers_finite = False
@@ -836,10 +847,7 @@ def relocation_paths(tiling: LeafTiling) -> tuple[RelocationPath, ...]:
         raise ValueError("source tiling must belong to the recursive midpoint-bisection family.")
     paths: list[RelocationPath] = []
     for merge in merge_choices(tiling):
-        paths.extend(
-            RelocationPath(merge, split)
-            for split in _relocation_destinations(tiling, merge)
-        )
+        paths.extend(RelocationPath(merge, split) for split in _relocation_destinations(tiling, merge))
     return tuple(sorted(paths))
 
 
@@ -1073,11 +1081,7 @@ def propose_edge_flip(
     target = SplitChoice(path.merge.parent, path.target_axis)
     candidate_tiling = intermediate.split(target)
     target_children = target.leaf.midpoint_children(target.axis)
-    masses = {
-        leaf: source.mass(leaf)
-        for leaf in source.tiling.leaves
-        if leaf not in source_children
-    }
+    masses = {leaf: source.mass(leaf) for leaf in source.tiling.leaves if leaf not in source_children}
     masses[target_children[0]] = old_total * new_fraction
     masses[target_children[1]] = old_total * (1.0 - new_fraction)
     candidate = _state_from_mass_map(candidate_tiling, masses)
@@ -1092,8 +1096,7 @@ def propose_edge_flip(
         candidate=candidate,
         reverse_path=reverse,
         delta_log_allocation_prior=(
-            prior.log_mass_allocation_density(candidate)
-            - prior.log_mass_allocation_density(source)
+            prior.log_mass_allocation_density(candidate) - prior.log_mass_allocation_density(source)
         ),
         delta_log_structural_prior=0.0,
         log_q_forward_selection=-math.log(len(paths)),
@@ -1163,11 +1166,7 @@ def propose_resolution_relocation(
     candidate_tiling = intermediate.split(path.split)
     destination_children = path.split.leaf.midpoint_children(path.split.axis)
     removed = frozenset((*source_children, path.split.leaf))
-    masses = {
-        leaf: source.mass(leaf)
-        for leaf in source.tiling.leaves
-        if leaf not in removed
-    }
+    masses = {leaf: source.mass(leaf) for leaf in source.tiling.leaves if leaf not in removed}
     masses[path.merge.parent] = source_total
     masses[destination_children[0]] = destination_total * new_fraction
     masses[destination_children[1]] = destination_total * (1.0 - new_fraction)
@@ -1182,8 +1181,7 @@ def propose_resolution_relocation(
         candidate=candidate,
         reverse_path=reverse,
         delta_log_allocation_prior=(
-            prior.log_mass_allocation_density(candidate)
-            - prior.log_mass_allocation_density(source)
+            prior.log_mass_allocation_density(candidate) - prior.log_mass_allocation_density(source)
         ),
         delta_log_structural_prior=0.0,
         log_q_forward_selection=relocation_path_log_probability(source.tiling, path),

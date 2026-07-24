@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+from itertools import combinations
 from math import exp, log
 
 import numpy as np
 import pytest
 
+from openghg_inversions.experimental.rjmcmc import full_tiling as full_tiling_module
 from openghg_inversions.experimental.rjmcmc.full_tiling import (
     AdditiveAlphaPrior,
+    Axis,
     EdgeFlipPath,
     LeafTiling,
     MergeChoice,
@@ -48,6 +51,31 @@ def _two_by_two_cell_tiling() -> LeafTiling:
             Rectangle(1, 2, 1, 2),
         ),
     )
+
+
+def _brute_force_merge_choices(tiling: LeafTiling) -> tuple[MergeChoice, ...]:
+    """Return merge choices using the original exhaustive pair scan."""
+    choices: set[MergeChoice] = set()
+    for first, second in combinations(tiling.leaves, 2):
+        if first.row_start == second.row_start and first.row_stop == second.row_stop:
+            parent = Rectangle(
+                first.row_start,
+                first.row_stop,
+                min(first.col_start, second.col_start),
+                max(first.col_stop, second.col_stop),
+            )
+            if set(parent.midpoint_children("vertical")) == {first, second}:
+                choices.add(MergeChoice(parent, "vertical"))
+        if first.col_start == second.col_start and first.col_stop == second.col_stop:
+            parent = Rectangle(
+                min(first.row_start, second.row_start),
+                max(first.row_stop, second.row_stop),
+                first.col_start,
+                first.col_stop,
+            )
+            if set(parent.midpoint_children("horizontal")) == {first, second}:
+                choices.add(MergeChoice(parent, "horizontal"))
+    return tuple(sorted(choices))
 
 
 @pytest.mark.parametrize(
@@ -149,9 +177,7 @@ def test_relative_weight_normalization_is_stable_and_totals_must_be_finite() -> 
         )
     with pytest.raises(ValueError, match="total leaf mass"):
         TilingState(
-            LeafTiling.root((1, 2)).split(
-                SplitChoice(Rectangle(0, 1, 0, 2), "vertical")
-            ),
+            LeafTiling.root((1, 2)).split(SplitChoice(Rectangle(0, 1, 0, 2), "vertical")),
             np.array([1e308, 1e308]),
         )
 
@@ -173,16 +199,12 @@ def test_canonical_tiling_is_independent_of_split_history() -> None:
     vertical_halves = root.split(SplitChoice(root.leaves[0], "vertical"))
     vertical_then_horizontal = vertical_halves
     for leaf in vertical_halves.leaves:
-        vertical_then_horizontal = vertical_then_horizontal.split(
-            SplitChoice(leaf, "horizontal")
-        )
+        vertical_then_horizontal = vertical_then_horizontal.split(SplitChoice(leaf, "horizontal"))
 
     horizontal_halves = root.split(SplitChoice(root.leaves[0], "horizontal"))
     horizontal_then_vertical = horizontal_halves
     for leaf in horizontal_halves.leaves:
-        horizontal_then_vertical = horizontal_then_vertical.split(
-            SplitChoice(leaf, "vertical")
-        )
+        horizontal_then_vertical = horizontal_then_vertical.split(SplitChoice(leaf, "vertical"))
 
     assert vertical_then_horizontal == horizontal_then_vertical
     assert vertical_then_horizontal == _two_by_two_cell_tiling()
@@ -220,6 +242,108 @@ def test_every_split_and_merge_are_geometry_reciprocals() -> None:
                 assert candidate.split(reverse) == source
 
 
+@pytest.mark.parametrize("shape", [(1, 5), (2, 3), (3, 3)])
+def test_merge_choices_matches_brute_force_for_all_tiny_tilings(
+    shape: tuple[int, int],
+) -> None:
+    """Indexed sibling lookup must equal pair scans on every tiny recursive state."""
+    for k in range(1, shape[0] * shape[1] + 1):
+        for tiling in enumerate_tilings(shape, k):
+            assert merge_choices(tiling) == _brute_force_merge_choices(tiling)
+
+
+def test_merge_choices_matches_brute_force_for_non_recursive_tiling() -> None:
+    """Indexed sibling lookup must support arbitrary canonical exact covers."""
+    tiling = LeafTiling(
+        (3, 5),
+        (
+            Rectangle(0, 1, 0, 2),
+            Rectangle(0, 1, 2, 5),
+            Rectangle(1, 3, 0, 1),
+            Rectangle(1, 3, 1, 3),
+            Rectangle(1, 3, 3, 5),
+        ),
+    )
+
+    assert not is_recursive_bisection_tiling(tiling)
+    assert merge_choices(tiling) == _brute_force_merge_choices(tiling)
+
+
+def test_merge_choice_cache_reuses_equal_tilings_without_aliasing_distinct_keys() -> None:
+    """Equal tilings must share cached tuple work while distinct tilings do not."""
+    root = Rectangle(0, 2, 0, 2)
+    vertical = LeafTiling((2, 2), root.midpoint_children("vertical"))
+    equal_vertical = LeafTiling((2, 2), tuple(reversed(vertical.leaves)))
+    horizontal = LeafTiling((2, 2), root.midpoint_children("horizontal"))
+    full_tiling_module._cached_merge_choices.cache_clear()
+
+    first = merge_choices(vertical)
+    same = merge_choices(equal_vertical)
+    distinct = merge_choices(horizontal)
+    cache_info = full_tiling_module._cached_merge_choices.cache_info()
+
+    assert same is first
+    assert distinct is not first
+    assert cache_info.hits == 1
+    assert cache_info.misses == 2
+    assert cache_info.maxsize == 256
+
+
+def test_recursive_tiling_cache_reuses_equal_keys_and_separates_distinct_keys() -> None:
+    """Recursive-membership checks must share only equal immutable tiling keys."""
+    root = Rectangle(0, 2, 0, 2)
+    vertical = LeafTiling((2, 2), root.midpoint_children("vertical"))
+    equal_vertical = LeafTiling((2, 2), tuple(reversed(vertical.leaves)))
+    horizontal = LeafTiling((2, 2), root.midpoint_children("horizontal"))
+    full_tiling_module._cached_is_recursive_bisection_tiling.cache_clear()
+
+    assert is_recursive_bisection_tiling(vertical)
+    assert is_recursive_bisection_tiling(equal_vertical)
+    assert is_recursive_bisection_tiling(horizontal)
+    cache_info = full_tiling_module._cached_is_recursive_bisection_tiling.cache_info()
+
+    assert cache_info.hits == 1
+    assert cache_info.misses == 2
+    assert cache_info.maxsize == 256
+
+
+def test_cached_tiling_catalogues_retain_public_type_validation() -> None:
+    """Public cached-catalogue wrappers must reject non-tiling inputs first."""
+    with pytest.raises(TypeError, match="tiling must be a LeafTiling"):
+        merge_choices([])  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="tiling must be a LeafTiling"):
+        is_recursive_bisection_tiling([])  # type: ignore[arg-type]
+
+
+def test_merge_choices_midpoint_checks_scale_linearly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sibling lookup must avoid a quadratic number of pair validations."""
+    leaf_count = 128
+    tiling = LeafTiling(
+        (leaf_count, 1),
+        tuple(Rectangle(row, row + 1, 0, 1) for row in range(leaf_count)),
+    )
+    midpoint_calls = 0
+    original_midpoint_children = Rectangle.midpoint_children
+
+    def counted_midpoint_children(
+        rectangle: Rectangle,
+        axis: Axis,
+    ) -> tuple[Rectangle, Rectangle]:
+        """Count exact midpoint validations performed during lookup."""
+        nonlocal midpoint_calls
+        midpoint_calls += 1
+        return original_midpoint_children(rectangle, axis)
+
+    monkeypatch.setattr(Rectangle, "midpoint_children", counted_midpoint_children)
+
+    choices = merge_choices(tiling)
+
+    assert len(choices) == leaf_count - 1
+    assert midpoint_calls <= 4 * leaf_count
+
+
 def test_additive_alpha_and_allocation_are_decomposition_independent() -> None:
     """Global cell weights must give identical allocation density by either tree."""
     prior = AdditiveAlphaPrior(
@@ -252,12 +376,8 @@ def test_additive_alpha_and_allocation_are_decomposition_independent() -> None:
     )
     assert prior.alpha(root) == pytest.approx(prior.concentration)
     assert sum(prior.leaf_alphas(tiling)) == pytest.approx(prior.concentration)
-    assert prior.alpha(left) == pytest.approx(
-        prior.alpha(top_left) + prior.alpha(bottom_left)
-    )
-    assert prior.alpha(top) == pytest.approx(
-        prior.alpha(top_left) + prior.alpha(top_right)
-    )
+    assert prior.alpha(left) == pytest.approx(prior.alpha(top_left) + prior.alpha(bottom_left))
+    assert prior.alpha(top) == pytest.approx(prior.alpha(top_left) + prior.alpha(top_right))
 
     total = state.total_mass
     left_mass = state.mass(top_left) + state.mass(bottom_left)
@@ -332,8 +452,7 @@ def test_edge_flip_has_exact_reverse_and_prior_auxiliary_cancellation() -> None:
     assert transition.candidate.total_mass == pytest.approx(source.total_mass)
     assert transition.log_jacobian == 0.0
     assert transition.delta_log_allocation_prior + (
-        transition.log_q_reverse_auxiliary
-        - transition.log_q_forward_auxiliary
+        transition.log_q_reverse_auxiliary - transition.log_q_forward_auxiliary
     ) == pytest.approx(0.0, abs=2e-14)
     assert transition.log_acceptance_ratio == pytest.approx(0.0, abs=2e-14)
     assert reverse.candidate.tiling == source.tiling
@@ -374,9 +493,7 @@ def test_unequal_mass_relocation_has_reciprocal_jacobian_and_exact_cancellation(
     assert transition.valid
     assert source_total != pytest.approx(destination_total)
     assert transition.candidate.total_mass == pytest.approx(source.total_mass)
-    assert exp(transition.log_jacobian) == pytest.approx(
-        destination_total / source_total
-    )
+    assert exp(transition.log_jacobian) == pytest.approx(destination_total / source_total)
     assert exp(transition.log_jacobian + reverse.log_jacobian) == pytest.approx(1.0)
     continuous_terms = (
         transition.delta_log_allocation_prior
@@ -384,9 +501,7 @@ def test_unequal_mass_relocation_has_reciprocal_jacobian_and_exact_cancellation(
         - transition.log_q_forward_auxiliary
         + transition.log_jacobian
     )
-    selection_ratio = (
-        transition.log_q_reverse_selection - transition.log_q_forward_selection
-    )
+    selection_ratio = transition.log_q_reverse_selection - transition.log_q_forward_selection
     assert continuous_terms == pytest.approx(0.0, abs=3e-14)
     assert transition.log_acceptance_ratio == pytest.approx(selection_ratio, abs=3e-14)
     assert reverse.candidate.tiling == source.tiling
@@ -408,9 +523,7 @@ def test_invalid_paths_and_fractions_are_explicit_self_transitions() -> None:
         MergeChoice(Rectangle(0, 2, 0, 3), "vertical"),
         valid_relocation.split,
     )
-    edge_source_tiling = LeafTiling.root((2, 3)).split(
-        SplitChoice(Rectangle(0, 2, 0, 3), "vertical")
-    )
+    edge_source_tiling = LeafTiling.root((2, 3)).split(SplitChoice(Rectangle(0, 2, 0, 3), "vertical"))
     edge_source = TilingState(edge_source_tiling, np.array([2.0, 4.0]))
     unavailable_edge = EdgeFlipPath(
         MergeChoice(Rectangle(0, 2, 0, 3), "horizontal"),
@@ -506,17 +619,11 @@ def test_exhaustive_fixed_k_topology_kernel_is_connected_and_reversible() -> Non
                     )
                 assert transition.candidate.tiling in indices
                 candidate_index = indices[transition.candidate.tiling]
-                forward_probability = move_weight * exp(
-                    transition.log_q_forward_selection
-                )
+                forward_probability = move_weight * exp(transition.log_q_forward_selection)
                 selected_probability += forward_probability
                 acceptance_probability = exp(min(0.0, transition.log_acceptance_ratio))
-                matrix[source_index, candidate_index] += (
-                    forward_probability * acceptance_probability
-                )
-                rejected_path_probability = forward_probability * (
-                    1.0 - acceptance_probability
-                )
+                matrix[source_index, candidate_index] += forward_probability * acceptance_probability
+                rejected_path_probability = forward_probability * (1.0 - acceptance_probability)
                 matrix[source_index, source_index] += rejected_path_probability
                 rejected_mass[source_index] += rejected_path_probability
 
@@ -528,14 +635,11 @@ def test_exhaustive_fixed_k_topology_kernel_is_connected_and_reversible() -> Non
                 )
                 assert continuous_terms == pytest.approx(0.0, abs=5e-14)
                 assert transition.log_acceptance_ratio == pytest.approx(
-                    transition.log_q_reverse_selection
-                    - transition.log_q_forward_selection,
+                    transition.log_q_reverse_selection - transition.log_q_forward_selection,
                     abs=5e-14,
                 )
                 if isinstance(path, RelocationPath):
-                    assert exp(
-                        relocation_path_log_probability(tiling, path)
-                    ) == pytest.approx(
+                    assert exp(relocation_path_log_probability(tiling, path)) == pytest.approx(
                         exp(transition.log_q_forward_selection),
                         abs=2e-15,
                     )

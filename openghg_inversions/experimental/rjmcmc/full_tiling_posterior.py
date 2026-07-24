@@ -21,8 +21,10 @@ The public entry points are :class:`FullTilingProblem`,
 :class:`FullTilingPosteriorState`, :class:`PosteriorTransitionTerms`,
 :func:`full_tiling_problem_from_gamma_beta_adapter`,
 :func:`initialize_full_tiling_posterior_state`,
-:func:`build_full_tiling_posterior_state`, the five ``propose_*`` functions,
-and :func:`accept_or_reject`.
+:func:`build_full_tiling_posterior_state`,
+:func:`log_root_total_slice_density`,
+:func:`rescale_full_tiling_root_total`, the five ``propose_*`` functions, and
+:func:`accept_or_reject`.
 """
 
 from __future__ import annotations
@@ -654,6 +656,147 @@ def build_full_tiling_posterior_state(
     )
 
 
+def log_root_total_slice_density(
+    problem: FullTilingProblem,
+    source: FullTilingPosteriorState,
+    *,
+    log_root_total: float,
+) -> float:
+    """Return the exact conditional log density for ``z = log(T)``.
+
+    Geometry, allocation shares, and fixed coefficients are held at
+    ``source``. The result contains the powered normalized Gaussian likelihood,
+    the normalized Gamma density in the scientific ``T`` chart, and the
+    ``+z`` Jacobian for the computational log-total chart. Terms constant in
+    ``z`` from allocation shares and fixed coefficients are omitted.
+
+    The Gamma contribution is evaluated directly as a function of ``z``.
+    Consequently a finite ``z`` remains supported when ``exp(z)`` underflows
+    to zero. Overflowing exponentials and non-finite log totals have log
+    density negative infinity.
+
+    Args:
+        problem: Exact problem associated with ``source``.
+        source: State supplying fixed geometry, shares, and predictions.
+        log_root_total: Candidate log root total ``z``.
+
+    Returns:
+        Conditional log density in the computational ``z`` chart, or negative
+        infinity outside representable upper support.
+
+    Raises:
+        TypeError: If object arguments have the wrong type or
+            ``log_root_total`` is not float-convertible.
+        ValueError: If ``source`` belongs to a different problem or
+            ``log_root_total`` cannot be converted to a float.
+    """
+    _validate_problem_state(problem, source)
+    if isinstance(log_root_total, (bool, np.bool_)):
+        return -math.inf
+    z = float(log_root_total)
+    if not math.isfinite(z):
+        return -math.inf
+    try:
+        root_total = math.exp(z)
+    except OverflowError:
+        return -math.inf
+
+    likelihood_power = problem.base.likelihood_power
+    log_likelihood_constant = 0.0
+    likelihood_quadratic = 0.0
+    likelihood_linear = 0.0
+    if likelihood_power != 0.0:
+        with np.errstate(over="ignore", invalid="ignore"):
+            weighted_dynamic = (source.dynamic_prediction / source.root_total) / problem.observation_sd
+            weighted_fixed_residual = (
+                source.fixed_prediction - problem.observations
+            ) / problem.observation_sd
+            dynamic_squared_norm = float(np.dot(weighted_dynamic, weighted_dynamic))
+            dynamic_fixed_inner_product = float(np.dot(weighted_dynamic, weighted_fixed_residual))
+            fixed_squared_norm = float(np.dot(weighted_fixed_residual, weighted_fixed_residual))
+        if not all(
+            math.isfinite(value)
+            for value in (
+                dynamic_squared_norm,
+                dynamic_fixed_inner_product,
+                fixed_squared_norm,
+            )
+        ):
+            return -math.inf
+        log_likelihood_constant = float(
+            likelihood_power
+            * (
+                -0.5 * fixed_squared_norm
+                - np.log(problem.observation_sd).sum()
+                - 0.5 * problem.observations.size * _LOG_TWO_PI
+            )
+        )
+        likelihood_quadratic = float(0.5 * likelihood_power * dynamic_squared_norm)
+        likelihood_linear = float(likelihood_power * dynamic_fixed_inner_product)
+
+    prior = problem.base.prior
+    root_squared = root_total * root_total
+    if likelihood_quadratic > 0.0 and not math.isfinite(root_squared):
+        return -math.inf
+    quadratic_penalty = 0.0 if likelihood_quadratic == 0.0 else likelihood_quadratic * root_squared
+    if not math.isfinite(quadratic_penalty):
+        return -math.inf
+    linear_penalty = (prior.root_rate + likelihood_linear) * root_total
+    result = float(
+        log_likelihood_constant
+        + prior.root_shape * math.log(prior.root_rate)
+        - math.lgamma(prior.root_shape)
+        + prior.root_shape * z
+        - quadratic_penalty
+        - linear_penalty
+    )
+    return -math.inf if math.isnan(result) else result
+
+
+def rescale_full_tiling_root_total(
+    problem: FullTilingProblem,
+    source: FullTilingPosteriorState,
+    *,
+    new_root_total: float,
+) -> FullTilingPosteriorState:
+    """Construct a posterior state with only its root total rescaled.
+
+    The tiling, allocation shares, and fixed coefficients are unchanged.
+    Dynamic prediction is rescaled linearly, and all dependent posterior
+    caches are reconstructed through the same validated assembly path used by
+    the independence proposal.
+
+    Args:
+        problem: Exact problem associated with ``source``.
+        source: State whose scientific root total is replaced.
+        new_root_total: Finite strictly positive replacement total.
+
+    Returns:
+        Fully assembled state at the replacement total.
+
+    Raises:
+        TypeError: If object arguments or ``new_root_total`` have the wrong
+            type.
+        ValueError: If ``source`` belongs to a different problem or the new
+            total is not finite and strictly positive.
+    """
+    _validate_problem_state(problem, source)
+    root_total = _positive_finite(new_root_total, name="new_root_total")
+    shares = source.allocation.leaf_masses / source.root_total
+    allocation = TilingState(
+        source.allocation.tiling,
+        shares * root_total,
+    )
+    dynamic = (source.dynamic_prediction / source.root_total) * root_total
+    return _assemble_state(
+        problem,
+        allocation=allocation,
+        fixed_coefficients=source.fixed_coefficients,
+        dynamic_prediction=dynamic,
+        fixed_prediction=source.fixed_prediction,
+    )
+
+
 def propose_posterior_edge_flip(
     problem: FullTilingProblem,
     source: FullTilingPosteriorState,
@@ -972,21 +1115,13 @@ def propose_root_total_refresh(
     _validate_problem_state(problem, source)
     move: PosteriorMove = "root_total_refresh"
     try:
-        root_total = _positive_finite(new_root_total, name="new_root_total")
+        _positive_finite(new_root_total, name="new_root_total")
     except (TypeError, ValueError):
         return _invalid_transition(source, move, "new root total lies outside support")
-    shares = source.allocation.leaf_masses / source.root_total
-    allocation = TilingState(
-        source.allocation.tiling,
-        shares * root_total,
-    )
-    dynamic = (source.dynamic_prediction / source.root_total) * root_total
-    candidate = _assemble_state(
+    candidate = rescale_full_tiling_root_total(
         problem,
-        allocation=allocation,
-        fixed_coefficients=source.fixed_coefficients,
-        dynamic_prediction=dynamic,
-        fixed_prediction=source.fixed_prediction,
+        source,
+        new_root_total=new_root_total,
     )
     return _valid_transition(
         source,
@@ -1412,9 +1547,11 @@ __all__ = [
     "build_full_tiling_posterior_state",
     "full_tiling_problem_from_gamma_beta_adapter",
     "initialize_full_tiling_posterior_state",
+    "log_root_total_slice_density",
     "propose_fixed_coefficient",
     "propose_pair_allocation_refresh",
     "propose_posterior_edge_flip",
     "propose_posterior_resolution_relocation",
     "propose_root_total_refresh",
+    "rescale_full_tiling_root_total",
 ]

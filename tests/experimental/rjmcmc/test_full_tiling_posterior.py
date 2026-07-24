@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import math
 
 import numpy as np
@@ -21,11 +22,13 @@ from openghg_inversions.experimental.rjmcmc.full_tiling_posterior import (
     build_full_tiling_posterior_state,
     full_tiling_problem_from_gamma_beta_adapter,
     initialize_full_tiling_posterior_state,
+    log_root_total_slice_density,
     propose_fixed_coefficient,
     propose_pair_allocation_refresh,
     propose_posterior_edge_flip,
     propose_posterior_resolution_relocation,
     propose_root_total_refresh,
+    rescale_full_tiling_root_total,
 )
 from openghg_inversions.experimental.rjmcmc.gamma_beta_adapter import (
     GammaBetaRHIMEAdapterResult,
@@ -86,10 +89,15 @@ def _adapter_and_raw() -> tuple[
     return adapter, raw, outer, boundary
 
 
-def _problem_state(k: int) -> tuple[FullTilingProblem, FullTilingPosteriorState]:
+def _problem_state(
+    k: int,
+    *,
+    likelihood_power: float = 1.0,
+) -> tuple[FullTilingProblem, FullTilingPosteriorState]:
     """Build a small posterior problem and deterministic prior-mean state."""
     adapter, _, _, _ = _adapter_and_raw()
-    problem = full_tiling_problem_from_gamma_beta_adapter(adapter, concentration=7.0)
+    base = replace(adapter.problem, likelihood_power=likelihood_power)
+    problem = full_tiling_problem_from_gamma_beta_adapter(base, concentration=7.0)
     return problem, initialize_full_tiling_posterior_state(problem, k=k)
 
 
@@ -223,6 +231,191 @@ def test_complete_target_matches_independent_root_share_closed_form() -> None:
         fixed_coefficients=coefficients,
     )
     assert rescaled.log_allocation_prior == pytest.approx(dirichlet)
+
+
+@pytest.mark.parametrize("likelihood_power", [0.0, 0.5, 1.0])
+def test_log_root_slice_density_matches_exact_quadratic_and_state_difference(
+    likelihood_power: float,
+) -> None:
+    """The log-root kernel exactly matches powered Gaussian--Gamma algebra."""
+    problem, source = _problem_state(4, likelihood_power=likelihood_power)
+    first_z = math.log(0.73)
+    second_z = math.log(1.91)
+    unit_dynamic = source.dynamic_prediction / source.root_total
+    fixed_residual = source.fixed_prediction - problem.observations
+    weighted_dynamic = unit_dynamic / problem.observation_sd
+    weighted_fixed_residual = fixed_residual / problem.observation_sd
+    quadratic = float(np.dot(weighted_dynamic, weighted_dynamic))
+    linear = float(np.dot(weighted_dynamic, weighted_fixed_residual))
+    constant = float(np.dot(weighted_fixed_residual, weighted_fixed_residual))
+    assert linear < 0.0
+    if likelihood_power > 0.0:
+        assert problem.base.prior.root_rate + likelihood_power * linear < 0.0
+
+    gaussian_normalizer = float(
+        -np.log(problem.observation_sd).sum() - 0.5 * problem.observations.size * math.log(2.0 * math.pi)
+    )
+    prior = problem.base.prior
+
+    def expected(z: float) -> float:
+        """Evaluate the independent quadratic oracle in log-total coordinates."""
+        root_total = math.exp(z)
+        gaussian = gaussian_normalizer - 0.5 * (
+            quadratic * root_total**2 + 2.0 * linear * root_total + constant
+        )
+        powered_gaussian = 0.0 if likelihood_power == 0.0 else likelihood_power * gaussian
+        return float(
+            powered_gaussian
+            + prior.root_shape * math.log(prior.root_rate)
+            - math.lgamma(prior.root_shape)
+            + prior.root_shape * z
+            - prior.root_rate * root_total
+        )
+
+    first = log_root_total_slice_density(
+        problem,
+        source,
+        log_root_total=first_z,
+    )
+    second = log_root_total_slice_density(
+        problem,
+        source,
+        log_root_total=second_z,
+    )
+    assert first == pytest.approx(expected(first_z), rel=0.0, abs=5e-10)
+    assert second == pytest.approx(expected(second_z), rel=0.0, abs=5e-10)
+    assert second - first == pytest.approx(
+        expected(second_z) - expected(first_z),
+        rel=0.0,
+        abs=5e-10,
+    )
+
+    first_state = rescale_full_tiling_root_total(
+        problem,
+        source,
+        new_root_total=math.exp(first_z),
+    )
+    second_state = rescale_full_tiling_root_total(
+        problem,
+        source,
+        new_root_total=math.exp(second_z),
+    )
+    scientific_difference = (
+        second_state.log_likelihood
+        + second_state.log_root_prior
+        - first_state.log_likelihood
+        - first_state.log_root_prior
+    )
+    assert second - first == pytest.approx(
+        scientific_difference + second_z - first_z,
+        rel=0.0,
+        abs=5e-10,
+    )
+
+
+def test_prior_only_log_root_slice_density_is_likelihood_independent() -> None:
+    """At power zero the log-root kernel ignores predictions and geometry."""
+    problem, coarse = _problem_state(1, likelihood_power=0.0)
+    fine = initialize_full_tiling_posterior_state(problem, k=6)
+    fixed = propose_fixed_coefficient(
+        problem,
+        fine,
+        coefficient_position=2,
+        proposed_coefficient=4.2,
+    ).candidate
+    z = math.log(2.4)
+    prior = problem.base.prior
+    expected = (
+        prior.root_shape * math.log(prior.root_rate)
+        - math.lgamma(prior.root_shape)
+        + prior.root_shape * z
+        - prior.root_rate * math.exp(z)
+    )
+
+    assert log_root_total_slice_density(
+        problem,
+        coarse,
+        log_root_total=z,
+    ) == pytest.approx(expected)
+    assert log_root_total_slice_density(
+        problem,
+        fixed,
+        log_root_total=z,
+    ) == pytest.approx(expected)
+
+
+def test_log_root_slice_density_guards_underflow_and_overflow() -> None:
+    """Finite lower-tail log totals survive while upper overflow is rejected."""
+    problem, source = _problem_state(4, likelihood_power=0.5)
+    lower = log_root_total_slice_density(
+        problem,
+        source,
+        log_root_total=-1000.0,
+    )
+
+    assert math.isfinite(lower)
+    assert (
+        log_root_total_slice_density(
+            problem,
+            source,
+            log_root_total=1000.0,
+        )
+        == -math.inf
+    )
+    for value in (math.inf, -math.inf, math.nan, True):
+        assert (
+            log_root_total_slice_density(
+                problem,
+                source,
+                log_root_total=value,
+            )
+            == -math.inf
+        )
+
+
+def test_public_root_rescaling_preserves_shares_and_matches_proposal_and_rebuild() -> None:
+    """Public root rescaling retains geometry and all state-construction parity."""
+    problem, source = _problem_state(5)
+    new_root_total = 2.75
+    candidate = rescale_full_tiling_root_total(
+        problem,
+        source,
+        new_root_total=new_root_total,
+    )
+    transition = propose_root_total_refresh(
+        problem,
+        source,
+        new_root_total=new_root_total,
+    )
+
+    assert candidate.allocation.tiling is source.allocation.tiling
+    assert candidate.root_total == pytest.approx(new_root_total)
+    np.testing.assert_allclose(
+        candidate.leaf_masses / candidate.root_total,
+        source.leaf_masses / source.root_total,
+        rtol=0.0,
+        atol=3e-17,
+    )
+    np.testing.assert_array_equal(candidate.fixed_coefficients, source.fixed_coefficients)
+    assert transition.valid
+    for name in (
+        "leaf_masses",
+        "dynamic_prediction",
+        "fixed_prediction",
+        "prediction",
+        "residual",
+    ):
+        np.testing.assert_array_equal(getattr(candidate, name), getattr(transition.candidate, name))
+    for name in (
+        "log_gaussian_likelihood",
+        "log_likelihood",
+        "log_root_prior",
+        "log_allocation_prior",
+        "log_fixed_coefficient_prior",
+        "log_target",
+    ):
+        assert getattr(candidate, name) == getattr(transition.candidate, name)
+    _assert_rebuild_equal(candidate)
 
 
 def test_every_incremental_proposal_candidate_matches_a_full_rebuild() -> None:
