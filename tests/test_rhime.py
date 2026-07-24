@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable, cast
 
 import numpy as np
@@ -304,6 +305,24 @@ def _minimal_inv_inputs() -> xr.Dataset:
     )
 
 
+def _minimal_prepared_inv_inputs(sites: tuple[str, ...] = ("TAC",)) -> xr.Dataset:
+    """Build minimal inversion inputs satisfying the durable prepared contract."""
+    nmeasure = pd.MultiIndex.from_arrays(
+        [list(sites), pd.date_range("2019-01-01", periods=len(sites), freq="h")],
+        names=["site", "time"],
+    )
+    return xr.Dataset(
+        {
+            "H": (("region", "nmeasure"), [np.ones(len(sites))]),
+            "site_indicator": ("nmeasure", np.arange(len(sites), dtype=int)),
+        },
+        coords={
+            "region": [0],
+            **xr.Coordinates.from_pandas_multiindex(nmeasure, "nmeasure"),
+        },
+    )
+
+
 def _minimal_output_inv_inputs() -> xr.Dataset:
     """Build minimal inversion inputs for output adapter tests."""
     inv_inputs = xr.Dataset(
@@ -473,10 +492,10 @@ class _SpyBasisFunctions:
 
     @property
     def operator(self) -> object:
-        raise AssertionError("RHIME preparation should not materialise a basis matrix.")
+        return SimpleNamespace(source_labels=None)
 
     def flat_basis(self) -> xr.DataArray:
-        raise AssertionError("RHIME preparation should not request a flat basis.")
+        return xr.DataArray([[1]], dims=("lat", "lon"))
 
     def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
         self.sensitivity_calls.append(fp_x_flux)
@@ -504,9 +523,16 @@ class _DynamicSectorSpyBasisFunctions(_SpyBasisFunctions):
 
     def __init__(self) -> None:
         super().__init__(xr.DataArray())
+        self._source_labels: tuple[str, ...] = ()
+
+    @property
+    def operator(self) -> object:
+        """Expose source labels without constructing a basis matrix."""
+        return SimpleNamespace(source_labels=self._source_labels)
 
     def sensitivity(self, fp_x_flux: xr.DataArray, fillna: bool = True) -> xr.DataArray:
         self.sensitivity_calls.append(fp_x_flux)
+        self._source_labels = tuple(str(source) for source in fp_x_flux.source.values)
         return xr.DataArray(
             np.ones((1, fp_x_flux.sizes["time"], fp_x_flux.sizes["source"])),
             dims=("region", "time", "source"),
@@ -2808,8 +2834,9 @@ def _rhime_preparation_args(data_args: dict, flux_sources: list[str], bc_basis_d
 
 
 def test_rhime_prepared_inputs_contract_exposes_only_modern_fields() -> None:
+    """The durable prepared-input API omits legacy merged-data side channels."""
     prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_inv_inputs(),
+        inv_inputs=_minimal_prepared_inv_inputs(),
         basis_functions=_fake_basis_functions(),
         sites=("TAC",),
         averaging_period=("1H",),
@@ -3198,7 +3225,7 @@ def test_prepare_rhime_inputs_uses_basis_sensitivity_without_legacy_side_channel
         assert sites == ["TAC"]
         assert set(fp_data) == {"TAC"}
         xr.testing.assert_identical(fp_data["TAC"]["H"], expected_sensitivity)
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     def forbidden_basis_functions_wrapper(*args: object, **kwargs: object) -> None:
         raise AssertionError("RHIME preparation should use make_basis_functions and direct sensitivity.")
@@ -3312,7 +3339,7 @@ def test_prepare_rhime_inputs_prunes_reloaded_merged_data_to_requested_sites(
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
         assert sites == ["TAC"]
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(prep_module, "load_merged_data", fake_load_merged_data)
     monkeypatch.setattr(prep_module, "make_basis_functions", fake_make_basis_functions)
@@ -3377,10 +3404,7 @@ def test_prepare_rhime_inputs_normalises_averaging_period_to_site_count(
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
         assert sites == ["TAC", "MHD"]
-        return xr.Dataset(
-            {"H": (("region", "nmeasure"), [[1.0, 1.0]])},
-            coords={"region": [0], "nmeasure": [0, 1]},
-        )
+        return _minimal_prepared_inv_inputs(("TAC", "MHD"))
 
     monkeypatch.setattr(
         prep_module,
@@ -3493,7 +3517,7 @@ def test_prepare_rhime_inputs_treats_min_error_none_as_default(
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
         nonlocal captured_min_error
         captured_min_error = kwargs["min_error"]
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
         prep_module,
@@ -3572,7 +3596,7 @@ def test_prepare_rhime_inputs_filters_sites_before_basis_generation(
         assert tuple(fp_data["TAC"].time.values) == retained_times
         assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
         assert tuple(fp_data["TAC"]["H_bc"].time.values) == retained_times
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
         prep_module,
@@ -3645,7 +3669,7 @@ def test_prepare_rhime_inputs_applies_daily_median_before_sensitivity(
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
         nonlocal final_sensitivity
         final_sensitivity = fp_data["TAC"]["H"].copy()
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
         prep_module,
@@ -3730,7 +3754,9 @@ def test_prepare_rhime_inputs_filters_multisector_sites_before_basis_generation(
         assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
         assert fp_data["TAC"]["H"].dims == ("region", "time", "source")
         assert tuple(fp_data["TAC"]["H"].source.values) == tuple(flux_sources)
-        return _minimal_inv_inputs()
+        inv_inputs = _minimal_prepared_inv_inputs()
+        inv_inputs["H"] = inv_inputs["H"].expand_dims(source=flux_sources)
+        return inv_inputs
 
     monkeypatch.setattr(
         prep_module,
@@ -3803,7 +3829,7 @@ def test_prepare_rhime_inputs_filters_loaded_basis_before_sensitivity(
         assert sites == ["TAC"]
         assert tuple(fp_data["TAC"].time.values) == retained_times
         assert tuple(fp_data["TAC"]["H"].time.values) == retained_times
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
         prep_module,
@@ -3862,7 +3888,7 @@ def test_prepare_rhime_inputs_aligns_averaging_period_after_empty_site_drop(
 
     def fake_make_inv_inputs(fp_data: dict, sites: list[str], **kwargs: object) -> xr.Dataset:
         assert sites == ["TAC"]
-        return _minimal_inv_inputs()
+        return _minimal_prepared_inv_inputs()
 
     monkeypatch.setattr(
         prep_module,
@@ -4331,8 +4357,11 @@ def test_make_multisector_output_bundle_builds_latest_paris_flux(
     )
     basis_functions = fake_multisector_basis_functions_matching_country_grid(europe_country_file)
     basis_functions.flux.attrs["time_period"] = "not-a-parseable-period"
+    inv_inputs = _minimal_output_inv_inputs()
+    assert basis_functions.source_labels is not None
+    inv_inputs["H"] = inv_inputs["H"].expand_dims(source=list(basis_functions.source_labels))
     prepared = RhimePreparedInputs(
-        inv_inputs=_minimal_output_inv_inputs(),
+        inv_inputs=inv_inputs,
         basis_functions=basis_functions,
         sites=("TAC",),
         averaging_period=("1h",),
@@ -4446,7 +4475,7 @@ def test_modern_inversion_output_restores_bytes_multiindex_metadata() -> None:
 
     assert isinstance(reloaded.inv_inputs.indexes["nmeasure"], pd.MultiIndex)
     assert reloaded.inv_inputs.indexes["nmeasure"].names == ["site", "time"]
-    xr.testing.assert_identical(reloaded.inv_inputs, inv_inputs)
+    xr.testing.assert_identical(reloaded.inv_inputs, prepared.inv_inputs)
 
 
 def test_modern_inversion_output_roundtrips_trace_multiindex() -> None:

@@ -188,8 +188,21 @@ paths ending in ``.zarr``. Each artifact contains the canonical inversion
 inputs and the retained operator-backed basis, including its reference flux;
 ``basis_artifact_path`` is recorded only as provenance and is not needed to
 reload or run the prepared inputs. Prepared-input artifacts use a versioned
-schema and reject incomplete or malformed metadata during loading. Saving to
-an existing artifact path replaces that artifact.
+schema, CF compression-by-gathering for MultiIndexes, and a labeled
+``site_metadata(site)`` dataset. Integer ``site_indicator`` values are derived
+from the ``nmeasure`` site level as zero-based positions into that separate
+site coordinate:
+``site_metadata.site[site_indicator]`` must equal the ``site`` level of
+``nmeasure``. The indicator itself is not the CF gathering coordinate, and
+callers do not need to keep a second positional decoder synchronized. Site
+metadata also aligns averaging periods and optional footprint release
+coordinates. Static multisource bases store their order on an xarray ``source``
+coordinate. Saving to an existing artifact path replaces that artifact.
+
+Source-specific retained fluxes must already share an exact time index before
+they are stacked on ``source``. Inputs with different native frequencies, such
+as hourly and monthly fluxes, require an explicit resampling policy rather than
+implicit xarray alignment.
 
 Config Files
 ------------

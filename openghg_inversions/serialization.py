@@ -3,28 +3,183 @@
 This module contains the storage mechanics shared by modern artifact
 containers. It saves and eagerly loads xarray ``DataTree`` objects, converts
 ArviZ ``InferenceData`` groups to and from trees, and expands pandas
-``MultiIndex`` coordinates into a representation supported by NetCDF and Zarr.
+``MultiIndex`` coordinates into representations supported by NetCDF and Zarr.
 
 Object-specific modules remain responsible for schema names, schema versions,
-required child nodes, and metadata validation. MultiIndex restoration is
-deliberately forgiving so older or partially malformed inversion-output
-artifacts remain loadable without reintroducing invalid indexes. Versioned
-schemas may request strict restoration, which rejects missing, malformed,
-empty, or inapplicable restoration metadata.
+required child nodes, and metadata validation. Prepared artifacts can use the
+CF compression-by-gathering convention through explicit encoding and decoding
+helpers. The older project-specific MultiIndex restoration remains deliberately
+forgiving so existing or partially malformed inversion-output artifacts remain
+loadable without reintroducing invalid indexes. Versioned schemas may request
+strict restoration, which rejects missing, malformed, empty, or inapplicable
+restoration metadata.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Iterable, Literal, cast
 
 import arviz as az
+from cf_xarray.coding import decode_compress_to_multi_index, encode_multi_index_as_compress
 import pandas as pd
 import xarray as xr
 
 
 MULTIINDEX_DIMS_ATTR = "openghg_inversions:multiindex_dims"
+
+
+def _normalise_cf_multiindex_names(index_names: str | Iterable[str]) -> tuple[str, ...]:
+    """Return validated, deterministic names for explicit CF codec calls."""
+    names = (index_names,) if isinstance(index_names, str) else tuple(index_names)
+    if not names:
+        raise ValueError("At least one MultiIndex name must be provided.")
+    if any(not isinstance(name, str) or not name for name in names):
+        raise ValueError("MultiIndex names must be non-empty strings.")
+    if len(set(names)) != len(names):
+        raise ValueError("MultiIndex names must be unique.")
+    return names
+
+
+def encode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> xr.Dataset:
+    """Encode named MultiIndexes using CF compression by gathering.
+
+    This codec is intended for versioned prepared-input artifacts. Unlike
+    :func:`reset_serialisation_multiindexes`, it emits the interoperable CF
+    ``compress`` attribute and requires callers to name every index they intend
+    to encode.
+
+    Args:
+        ds: Dataset containing the MultiIndex dimensions.
+        index_names: Explicit dimension name or names to encode.
+
+    Returns:
+        A new Dataset with the requested MultiIndexes encoded as integer
+        gathering coordinates.
+
+    Raises:
+        ValueError: If no names are supplied, a requested dimension is not a
+            named MultiIndex, level names are invalid or ambiguous, or existing
+            ``compress`` metadata would be overwritten.
+    """
+    names = _normalise_cf_multiindex_names(index_names)
+    all_level_names: set[str] = set()
+
+    for name in names:
+        if name not in ds.dims:
+            raise ValueError(f"CF MultiIndex dimension {name!r} is missing from the Dataset.")
+
+        index = ds.indexes.get(name)
+        if not isinstance(index, pd.MultiIndex):
+            raise ValueError(f"Dimension {name!r} is not backed by a pandas MultiIndex.")
+
+        level_names = tuple(index.names)
+        if any(not isinstance(level_name, str) or not level_name for level_name in level_names):
+            raise ValueError(f"MultiIndex {name!r} must have non-empty string level names.")
+        if len(set(level_names)) != len(level_names):
+            raise ValueError(f"MultiIndex {name!r} has duplicate level names.")
+
+        repeated_level_names = all_level_names.intersection(level_names)
+        if repeated_level_names:
+            repeated = ", ".join(repr(level_name) for level_name in sorted(repeated_level_names))
+            raise ValueError(f"CF MultiIndexes cannot share level names; repeated names: {repeated}.")
+        all_level_names.update(level_names)
+
+        coordinate = ds[name]
+        if "compress" in coordinate.attrs or "compress" in coordinate.encoding:
+            raise ValueError(f"MultiIndex {name!r} already has CF 'compress' metadata.")
+
+    try:
+        return encode_multi_index_as_compress(ds, idxnames=names)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"Could not encode CF MultiIndexes {names!r}: {exc}") from exc
+
+
+def decode_cf_multiindexes(ds: xr.Dataset, index_names: str | Iterable[str]) -> xr.Dataset:
+    """Decode named CF gathering coordinates into pandas MultiIndexes.
+
+    The requested coordinates and their ``compress`` metadata are validated
+    before calling ``cf_xarray``. Names are always explicit: this deliberately
+    avoids ``cf_xarray``'s auto-detection path, which can drop unrelated
+    coordinates when no compressed indexes are present.
+
+    Args:
+        ds: Dataset containing CF compression-by-gathering coordinates.
+        index_names: Explicit gathered-coordinate name or names to decode.
+
+    Returns:
+        A new Dataset with the requested coordinates decoded as MultiIndexes.
+
+    Raises:
+        ValueError: If no names are supplied or a requested coordinate has
+            missing, malformed, ambiguous, or inapplicable CF ``compress``
+            metadata.
+    """
+    names = _normalise_cf_multiindex_names(index_names)
+    normalised = ds
+    all_level_names: set[str] = set()
+
+    for name in names:
+        if name not in ds.coords or name not in ds.dims:
+            raise ValueError(f"CF gathered coordinate {name!r} is missing from the Dataset.")
+
+        coordinate = ds[name]
+        if coordinate.dims != (name,):
+            raise ValueError(
+                f"CF gathered coordinate {name!r} must be one-dimensional on dimension {name!r}."
+            )
+        if not pd.api.types.is_integer_dtype(coordinate.dtype):
+            raise ValueError(f"CF gathered coordinate {name!r} must contain integer indices.")
+
+        compress = coordinate.attrs.get("compress")
+        if not isinstance(compress, str) or not compress.strip():
+            raise ValueError(
+                f"CF gathered coordinate {name!r} requires a non-empty string 'compress' attribute."
+            )
+
+        level_names = tuple(compress.split())
+        if len(set(level_names)) != len(level_names):
+            raise ValueError(f"CF gathered coordinate {name!r} has duplicate names in 'compress'.")
+
+        repeated_level_names = all_level_names.intersection(level_names)
+        if repeated_level_names:
+            repeated = ", ".join(repr(level_name) for level_name in sorted(repeated_level_names))
+            raise ValueError(f"CF gathered coordinates cannot share level names; repeated names: {repeated}.")
+        all_level_names.update(level_names)
+
+        for level_name in level_names:
+            if level_name not in ds.coords:
+                raise ValueError(
+                    f"CF gathered coordinate {name!r} references missing level coordinate {level_name!r}."
+                )
+            if ds[level_name].dims != (level_name,):
+                raise ValueError(
+                    f"CF level coordinate {level_name!r} must be one-dimensional on its own dimension."
+                )
+            if ds.sizes[level_name] == 0:
+                raise ValueError(f"CF level coordinate {level_name!r} cannot be empty.")
+
+        canonical_compress = " ".join(level_names)
+        if compress != canonical_compress:
+            if normalised is ds:
+                normalised = ds.copy()
+            normalised[name].attrs = dict(normalised[name].attrs)
+            normalised[name].attrs["compress"] = canonical_compress
+
+    try:
+        decoded = decode_compress_to_multi_index(normalised, idxnames=names)
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"Could not decode CF MultiIndexes {names!r}: {exc}") from exc
+
+    missing_coords = {
+        name: coordinate
+        for name, coordinate in normalised.coords.items()
+        if name not in decoded.coords and all(dim not in all_level_names for dim in coordinate.dims)
+    }
+    if missing_coords:
+        decoded = decoded.assign_coords(missing_coords)
+    return decoded
 
 
 def save_datatree(

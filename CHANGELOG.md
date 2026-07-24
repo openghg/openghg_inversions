@@ -39,10 +39,14 @@
   boundary, keeping posterior stdev and covariance calculations consistent.
 
 - Added versioned NetCDF and Zarr persistence for ``RhimePreparedInputs``,
-  including canonical MultiIndex inversion inputs, the retained operator-backed
-  basis and reference flux with stable multisource ordering, and validated site
-  and basis provenance metadata. Repeated Zarr saves replace the previous
-  artifact rather than retaining stale groups.
+  including CF compression-by-gathering for canonical MultiIndex inversion
+  inputs, labeled site metadata decoded by integer site indicators, and the
+  retained operator-backed basis and reference flux. Static multisource bases
+  now use an ordered xarray ``source`` coordinate; basis provenance remains
+  owned by ``BasisFunctions``. Site indicators are regenerated from labeled
+  measurement sites, avoiding a second user-maintained source of site truth.
+  Repeated Zarr saves replace the previous artifact rather than retaining stale
+  groups.
   Generic DataTree, InferenceData, and MultiIndex serialization helpers now
   have shared ownership outside postprocessing.
 

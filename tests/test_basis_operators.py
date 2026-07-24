@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -36,18 +38,129 @@ def test_bucket_basis_operator_roundtrip_datatree(basis_func):
 
 
 def test_multisource_basis_operator_roundtrip_datatree(basis_func, basis_func2):
-    basis = {"a": basis_func, "b": basis_func2}
+    """Static multisource bases use a labeled source axis with stable ordering."""
+    basis = {"B": basis_func, "inventory/anthro": basis_func2}
     op = MultiSourceBucketBasisOperator(basis, state_dim="state")
     dt = op.to_datatree()
+    encoded_basis = dt.to_dataset()["basis_flat"]
     op2 = BasisOperator.decode_datatree(dt)
 
     assert isinstance(op2, MultiSourceBucketBasisOperator)
-    assert set(op2.basis_flat) == set(op.basis_flat)
+    assert encoded_basis.source.values.tolist() == ["B", "inventory/anthro"]
+    assert "source_order" not in dt.attrs
+    assert list(op2.basis_flat) == list(op.basis_flat)
 
     xr.testing.assert_identical(op2.basis_matrix, op.basis_matrix)
 
     for k in op.basis_flat:
         xr.testing.assert_identical(op2.basis_flat[k], op.basis_flat[k])
+
+
+def test_multisource_basis_operator_decodes_legacy_per_source_children(basis_func, basis_func2):
+    """The previous per-source-child layout remains readable after write-format revision."""
+    legacy = xr.DataTree()
+    legacy.attrs.update(
+        {
+            "schema": BasisOperator.schema,
+            "schema_version": BasisOperator.schema_version,
+            "kind": MultiSourceBucketBasisOperator.kind,
+            "grid_dims": ("lat", "lon"),
+            "state_dim": "state",
+            "source_dim": "source",
+            "region_in_source_dim": "region_in_source",
+        }
+    )
+    legacy["basis_flat"] = xr.DataTree.from_dict(
+        {
+            "B": xr.Dataset({"basis_flat": basis_func}),
+            "A": xr.Dataset({"basis_flat": basis_func2}),
+        }
+    )
+
+    restored = BasisOperator.decode_datatree(legacy)
+
+    assert isinstance(restored, MultiSourceBucketBasisOperator)
+    assert list(restored.basis_flat) == ["B", "A"]
+    xr.testing.assert_identical(restored.basis_flat["B"], basis_func.rename("basis_flat"))
+    xr.testing.assert_identical(restored.basis_flat["A"], basis_func2.rename("basis_flat"))
+
+
+def test_multisource_basis_operator_drops_conflicting_array_attrs(
+    basis_func,
+    basis_func2,
+):
+    """Serialization retains common attrs and omits conflicting source attrs."""
+    basis_func = basis_func.assign_attrs(units="1", provenance="inventory-a")
+    basis_func2 = basis_func2.assign_attrs(units="1", provenance="inventory-b")
+    operator = MultiSourceBucketBasisOperator(
+        {"A": basis_func, "B": basis_func2},
+        state_dim="state",
+    )
+
+    encoded_basis = operator.to_datatree().to_dataset()["basis_flat"]
+
+    assert encoded_basis.attrs == {"units": "1"}
+
+
+def test_multisource_basis_operator_reorders_equivalent_grid_indexes(
+    basis_func,
+    basis_func2,
+):
+    """Serialization follows coordinate labels instead of array position."""
+    reversed_basis = basis_func2.isel(lon=slice(None, None, -1))
+    operator = MultiSourceBucketBasisOperator(
+        {"A": basis_func, "B": reversed_basis},
+        state_dim="state",
+    )
+
+    restored = BasisOperator.decode_datatree(operator.to_datatree())
+
+    assert isinstance(restored, MultiSourceBucketBasisOperator)
+    xr.testing.assert_identical(
+        restored.basis_flat["B"],
+        basis_func2.rename("basis_flat"),
+    )
+
+
+def test_multisource_basis_operator_rejects_different_grid_labels(
+    basis_func,
+    basis_func2,
+):
+    """Serialization rejects genuinely different source grids."""
+    shifted_basis = basis_func2.assign_coords(lon=basis_func2.lon + 0.5)
+    operator = MultiSourceBucketBasisOperator(
+        {"A": basis_func, "B": shifted_basis},
+        state_dim="state",
+    )
+
+    with pytest.raises(ValueError, match="same grid coordinate labels"):
+        operator.to_datatree()
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".zarr"])
+def test_multisource_basis_source_labels_roundtrip_storage(
+    tmp_path: Path,
+    basis_func: xr.DataArray,
+    basis_func2: xr.DataArray,
+    suffix: str,
+) -> None:
+    """Path-significant source labels remain coordinate values in both stores."""
+    operator = MultiSourceBucketBasisOperator(
+        {"B": basis_func, "inventory/anthro": basis_func2},
+        state_dim="state",
+    )
+    path = tmp_path / f"operator{suffix}"
+    tree = operator.to_datatree()
+    if suffix == ".nc":
+        tree.to_netcdf(path)
+    else:
+        tree.to_zarr(path, mode="w")
+
+    with xr.open_datatree(path) as stored:
+        restored = BasisOperator.decode_datatree(stored.load())
+
+    assert isinstance(restored, MultiSourceBucketBasisOperator)
+    assert list(restored.basis_flat) == ["B", "inventory/anthro"]
 
 
 # --------------------------------------------------------------------------------------

@@ -5,24 +5,25 @@ Design goals
 1) Separate the *partition/aggregation operator* (basis functions) from any *flux weighting*.
    - The basis operator represents a linear map from a grid (lat/lon) to a reduced state space.
    - Flux weighting (multiplying by flux on the grid, interpolation to maps, covariance transforms)
-     is handled by a separate wrapper class (planned: FluxWeightedBasis) so that:
+     is handled by ``FluxWeightedBasis`` so that:
        * sensitivity(fp_x_flux) does not require flux (since fp_x_flux is already precomputed),
        * but flux-aware operations remain available when needed.
 
 2) Canonical "state" dimension.
    - Operators expose a single state dimension (default name: "state").
    - In multisource/multisector cases with ragged per-source region counts, the state coordinate
-     becomes a MultiIndex over (source, region_in_source). This avoids padding with zeros.
+     becomes a ragged MultiIndex over (source, region_in_source). This avoids padding with zeros.
 
 3) Minimal metadata (BasisMeta).
    - We only need to know which dims to dot over (grid_dims) and the state_dim name.
-   - Any special alignment hacks are implemented in concrete subclasses rather than inferred from metadata.
+   - Source-labeled arrays are aligned against the state MultiIndex by concrete
+     subclasses rather than inferred from metadata.
 
 4) Serialization via xarray.DataTree.
    - BasisOperator.to_datatree() returns a self-describing DataTree with schema/kind/version attrs.
    - BasisOperator.decode_datatree(dt) dispatches to the correct registered subclass based on dt.attrs["kind"].
-   - For multisource operators, the canonical serialized representation stores per-source flat basis arrays
-     under dt["basis_flat"][<source>], keeping storage compact and natural.
+   - For multisource operators, the canonical serialized representation stores one source-labelled
+     `basis_flat` array. Readers retain compatibility with the earlier per-source child layout.
 
 How to use
 ----------
@@ -34,9 +35,9 @@ How to use
     H = op.sensitivity(fp_x_flux)
 
   where fp_x_flux is an xarray.DataArray with at least the grid dims (lat, lon), and typically time.
-  In multisource workflows, fp_x_flux often has a separate dimension "source". The multisource operator
-  implements an alignment/broadcast hack so that the fp_x_flux source dimension can be matched against
-  the MultiIndex level "source" stored on the state coordinate.
+  In multisource workflows, fp_x_flux often has a separate dimension "source".
+  The multisource operator aligns those labels against the "source" level of
+  the state MultiIndex.
 
 - Serialize/deserialize:
     dt = op.to_datatree()
@@ -589,7 +590,8 @@ class BucketBasisOperator(BasisOperator):
 class MultiSourceBucketBasisOperator(BasisOperator):
     """Multiple flat bases keyed by source, with potentially ragged region counts.
 
-    Canonical state_dim is a gathered MultiIndex over (source, region_in_source).
+    The canonical state dimension is a ragged MultiIndex over
+    ``(source, region_in_source)``.
     """
 
     def __init__(
@@ -604,7 +606,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
     ) -> None:
         """Creates a multisource bucket basis operator with ragged per-source regions.
 
-        The canonical state dimension is a gathered MultiIndex over
+        The canonical state dimension is a ragged MultiIndex over
         `(source, region_in_source)`, stored on the single dimension `meta.state_dim`.
 
         Args:
@@ -617,7 +619,8 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             chunks: Optional chunking to apply to the gathered basis matrix.
 
         Raises:
-            ValueError: If `basis_flat` is empty.
+            ValueError: If `basis_flat` is empty or a source label is not a
+                string.
         """
         meta = meta or BasisMeta()
         if state_dim is not None:
@@ -626,6 +629,8 @@ class MultiSourceBucketBasisOperator(BasisOperator):
 
         if not basis_flat:
             raise ValueError("basis_flat dict is empty.")
+        if not all(isinstance(source, str) for source in basis_flat):
+            raise ValueError("Multi-source basis labels must all be strings.")
 
         self.source_dim = source_dim
         self.region_in_source_dim = region_in_source_dim
@@ -666,6 +671,72 @@ class MultiSourceBucketBasisOperator(BasisOperator):
     def basis_matrix(self) -> xr.DataArray:
         """Basis matrix."""
         return self._basis_matrix
+
+    @property
+    def source_labels(self) -> tuple[str, ...]:
+        """Return canonical source labels in operator/state insertion order.
+
+        Returns:
+            Source labels in the same order used by ``basis_flat`` and the
+            ragged state MultiIndex.
+        """
+        return tuple(self.basis_flat)
+
+    def _stacked_basis_flat(self) -> xr.DataArray:
+        """Stack source bases on a common labeled grid, retaining common attributes.
+
+        Attributes shared with the same value by all source arrays are retained.
+        Conflicting source-specific attributes are deliberately omitted because
+        one stacked variable cannot represent them faithfully. Source grids
+        with the same coordinate labels are reordered to the first source.
+
+        Returns:
+            Flat bases with the canonical source dimension followed by the
+            configured grid dimensions.
+
+        Raises:
+            ValueError: If source bases do not have the same grid dimensions
+                and coordinate-label sets.
+        """
+        source_items = list(self.basis_flat.items())
+        reference_source, reference = source_items[0]
+        reference = reference.transpose(*self.meta.grid_dims)
+        aligned_bases = [reference]
+        for source, basis in source_items[1:]:
+            if set(basis.dims) != set(reference.dims):
+                raise ValueError(
+                    "Multi-source flat bases must have the same grid dimensions; "
+                    f"source {reference_source!r} has {reference.dims!r}, "
+                    f"source {source!r} has {basis.dims!r}."
+                )
+            aligned = basis.transpose(*reference.dims)
+            for dim in reference.dims:
+                reference_index = reference.get_index(dim)
+                source_index = aligned.get_index(dim)
+                if (
+                    not reference_index.is_unique
+                    or not source_index.is_unique
+                    or len(reference_index) != len(source_index)
+                    or not reference_index.difference(source_index).empty
+                    or not source_index.difference(reference_index).empty
+                ):
+                    raise ValueError(
+                        "Multi-source flat bases must have the same grid coordinate labels; "
+                        f"sources {reference_source!r} and {source!r} differ on {dim!r}."
+                    )
+            aligned_bases.append(aligned.sel({dim: reference[dim] for dim in reference.dims}))
+
+        try:
+            basis_flat = xr.concat(
+                aligned_bases,
+                dim=xr.IndexVariable(self.source_dim, list(self.source_labels)),
+                join="exact",
+                combine_attrs="drop_conflicts",
+            )
+        except ValueError as exc:
+            raise ValueError("Multi-source flat bases must have compatible labeled grids.") from exc
+
+        return basis_flat.transpose(self.source_dim, *self.meta.grid_dims).rename("basis_flat")
 
     def operator_for_source(self, source: str, *, state_dim: str | None = None) -> BucketBasisOperator:
         """Return a single-source bucket operator for one source.
@@ -785,15 +856,17 @@ class MultiSourceBucketBasisOperator(BasisOperator):
     def to_datatree(self) -> xr.DataTree:
         """Serialises the multisource operator to a DataTree.
 
-        The returned DataTree stores per-source `basis_flat` arrays as children under
-        `dt["basis_flat"][<source>]` and records their insertion order as JSON root
-        metadata so storage backends may reorder groups without changing the operator.
+        The returned DataTree stores one source-labelled ``basis_flat`` array.
+        Its source coordinate is the sole source-order representation, avoiding
+        source names in storage paths and redundant JSON metadata.
 
         Returns:
             DataTree representation of the operator.
+
+        Raises:
+            ValueError: If source bases do not have compatible labeled grids.
         """
-        # root: metadata only (empty dataset OK)
-        dt = xr.DataTree()
+        dt = xr.DataTree(xr.Dataset({"basis_flat": self._stacked_basis_flat()}))
         dt.attrs.update(
             {
                 "schema": self.schema,
@@ -803,15 +876,8 @@ class MultiSourceBucketBasisOperator(BasisOperator):
                 "state_dim": self.meta.state_dim,
                 "source_dim": self.source_dim,
                 "region_in_source_dim": self.region_in_source_dim,
-                "source_order": json.dumps(list(self.basis_flat)),
             }
         )
-
-        # store basis_flat per source as children
-        dt["basis_flat"] = xr.DataTree.from_dict(
-            {src: xr.Dataset({"basis_flat": bf}) for src, bf in self.basis_flat.items()}
-        )
-
         return dt
 
     @classmethod
@@ -822,14 +888,16 @@ class MultiSourceBucketBasisOperator(BasisOperator):
             dt: DataTree produced by `MultiSourceBucketBasisOperator.to_datatree()`.
 
         Returns:
-            A reconstructed `MultiSourceBucketBasisOperator`. When
-            ``source_order`` metadata is present, it controls source insertion
-            and state order. Older artifacts without the metadata retain their
-            stored child iteration order.
+            A reconstructed `MultiSourceBucketBasisOperator`. The canonical
+            representation obtains order from the ``source`` coordinate.
+            Earlier per-source child artifacts remain readable; for those,
+            legacy ``source_order`` metadata controls insertion/state order
+            when present.
 
         Raises:
-            ValueError: If required basis data is missing or source-order metadata
-                is malformed or inconsistent with the stored source children.
+            ValueError: If required basis data or source coordinates are
+                missing, or legacy source-order metadata is malformed or
+                inconsistent with stored source children.
         """
         meta = BasisMeta(
             grid_dims=tuple(dt.attrs.get("grid_dims", ("lat", "lon"))),
@@ -838,11 +906,33 @@ class MultiSourceBucketBasisOperator(BasisOperator):
         source_dim = str(dt.attrs.get("source_dim", "source"))
         region_in_source_dim = str(dt.attrs.get("region_in_source_dim", "region_in_source"))
 
-        if "basis_flat" not in dt:
-            raise ValueError("Expected child node 'basis_flat' in DataTree.")
+        root_dataset = dt.to_dataset()
+        if "basis_flat" in root_dataset:
+            stacked_basis = root_dataset["basis_flat"]
+            if source_dim not in stacked_basis.dims:
+                raise ValueError(f"Stored multi-source 'basis_flat' must have dimension {source_dim!r}.")
 
-        basis_node = dt["basis_flat"]
-        source_order = list(basis_node)
+            source_values = stacked_basis[source_dim].values.tolist()
+            if not all(isinstance(source, str) for source in source_values):
+                raise ValueError("Multi-source basis labels must all be strings.")
+            if len(set(source_values)) != len(source_values):
+                raise ValueError("Multi-source basis labels must be unique.")
+
+            basis_flat = {
+                source: stacked_basis.sel({source_dim: source}, drop=True) for source in source_values
+            }
+            return cls(
+                basis_flat=basis_flat,
+                meta=meta,
+                source_dim=source_dim,
+                region_in_source_dim=region_in_source_dim,
+            )
+
+        if "basis_flat" not in dt.children:
+            raise ValueError("Expected variable or child node 'basis_flat' in DataTree.")
+
+        basis_node = dt.children["basis_flat"]
+        source_order = list(basis_node.children)
         raw_source_order = dt.attrs.get("source_order")
         if raw_source_order is not None:
             if not isinstance(raw_source_order, str):
@@ -865,7 +955,7 @@ class MultiSourceBucketBasisOperator(BasisOperator):
 
         basis_flat: dict[str, xr.DataArray] = {}
         for src in source_order:
-            child = basis_node[src]
+            child = basis_node.children[src]
             ds = child.to_dataset()
             if "basis_flat" not in ds:
                 raise ValueError(f"Missing 'basis_flat' variable for source '{src}'.")
