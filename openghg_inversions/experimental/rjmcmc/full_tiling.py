@@ -492,6 +492,18 @@ class AdditiveAlphaPrior:
             or scaled_weight_total <= 0.0
         ):
             raise ValueError("relative cell weights must have a representable finite normalization.")
+        cell_alphas = concentration * scaled_weights / scaled_weight_total
+        if np.any(cell_alphas <= 0.0) or not np.all(np.isfinite(cell_alphas)):
+            raise ValueError("native-cell Dirichlet concentrations must remain representably positive.")
+        try:
+            log_normalizers_finite = math.isfinite(math.lgamma(concentration)) and all(
+                math.isfinite(math.lgamma(float(alpha)))
+                for alpha in cell_alphas.flat
+            )
+        except (OverflowError, ValueError):
+            log_normalizers_finite = False
+        if not log_normalizers_finite:
+            raise ValueError("Dirichlet log normalizers must be representable in float64.")
         weights = weights.copy()
         weights.setflags(write=False)
         scaled_weights = scaled_weights.copy()

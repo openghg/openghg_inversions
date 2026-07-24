@@ -142,6 +142,11 @@ def test_relative_weight_normalization_is_stable_and_totals_must_be_finite() -> 
             np.array([[np.nextafter(0.0, 1.0), 1e308]]),
             concentration=2.0,
         )
+    with pytest.raises(ValueError, match="concentrations"):
+        AdditiveAlphaPrior(
+            np.ones((1, 2)),
+            concentration=np.nextafter(0.0, 1.0),
+        )
     with pytest.raises(ValueError, match="total leaf mass"):
         TilingState(
             LeafTiling.root((1, 2)).split(
