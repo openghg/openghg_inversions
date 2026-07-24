@@ -490,6 +490,37 @@ one-to-one forward/reverse augmented move and include its auxiliary densities
 and Jacobian. Proposal paths may be hidden from the saved state, but not from
 probability accounting.
 
+For the first fixed-\(K\) prototype, keep the sampled path
+
+\[
+u=(\text{merge pair},\text{destination split},\text{new fraction})
+\]
+
+until the Metropolis--Hastings decision. The edge flip merges two midpoint
+friends and splits their parent in the perpendicular orientation. Resolution
+relocation merges a midpoint-friend pair in one place and splits a different
+leaf. In both cases the reverse path is constructed explicitly, giving an
+involution
+
+\[
+(P,u)\longleftrightarrow(P',u').
+\]
+
+Detailed balance can then be checked for each paired path. Different
+auxiliaries may lead to the same endpoint without requiring an endpoint-level
+sum, provided that every retained auxiliary has one well-defined reverse and
+its exact source and reverse probabilities appear in the acceptance ratio.
+The path is proposal state, not scientific construction history, and is
+discarded after acceptance or rejection.
+
+Expressing an edge flip or relocation as a merge followed by a split simplifies
+this proposal accounting, but does **not** simplify an arbitrary endpoint
+structural prior. The intermediate \(K-1\) partition is only an auxiliary and
+is never accepted as a separate Markov state. Only the structural-prior ratio
+between the two fixed-\(K\) endpoints enters. Treating merge and split as two
+separately accepted moves would define a different chain that visits \(K-1\)
+and requires a target there.
+
 ## Partition and count priors
 
 The structural prior is distinct from the prior on leaf masses or
@@ -518,6 +549,27 @@ difficult. Conditional uniformity is not required. A directly defined geometry
 energy \(\widetilde p(P)\), whose ratios are computable, is also valid, but its
 induced count prior must be measured and documented rather than described as
 uniform.
+
+For exact posterior sampling, the structural-prior **ratio used by every
+accepted/rejected proposal must be exact for the declared target**. It need not
+be normalized when the normalizing constant is common to the compared states:
+an exactly evaluated local energy
+\(\widetilde p(P)\propto\exp[-Z(P)]\) needs only
+\(-Z(P')+Z(P)\). An approximate ratio instead samples an approximate,
+generally unknown target unless it is followed by an exact delayed-acceptance
+correction or arises from a valid unbiased pseudo-marginal estimator.
+
+At fixed \(K\), a target uniform over the unique canonical tilings has
+
+\[
+\log p(P'\mid K)-\log p(P\mid K)=0.
+\]
+
+The count \(N_K\) therefore cancels from every fixed-\(K\) move. This does not
+remove the need for exact forward/reverse eligible-choice probabilities. It
+also does not solve variable-\(K\) inference: a prescribed marginal \(p_K(K)\)
+with conditional uniformity requires the cross-\(K\) factor
+\(p_K(K)/N_K\), or a different explicitly declared and evaluable tiling prior.
 
 **Open question:** define the admissible production tiling family and its
 structural prior before implementing its sampler. Counting construction trees
@@ -903,8 +955,9 @@ Existing OpenGHG Inversions draft work can be reused as follows:
    probabilities.
 7. Implement the order-independent total/allocation prior and validate its
    aggregation identities and moments by enumeration and simulation.
-8. Implement a fixed-`K` edge-flip kernel and a block-retile kernel under the
-   tiny uniform target.
+8. Implement fixed-`K` edge-flip and resolution-relocation kernels under the
+   tiny uniform target. Defer block retile until the local pathwise kernels
+   have an exact finite-state benchmark.
 9. Implement transparent active-only NumPy split/merge RJ and validate it
    against enumeration and the fixed-tree product-space exact-target
    cross-check.
@@ -930,7 +983,9 @@ Existing OpenGHG Inversions draft work can be reused as follows:
 - **Correctness oracle:** tiny canonical tiling enumeration and analytic
   dynamic programming, with a fixed-tree product-space cross-check.
 - **First full-tiling kernel:** fixed-`K` edge flip on an equal-area tiny state,
-  followed by adaptive split/merge only after the state/prior contract is
+  mixed with resolution relocation; represent both as one merge/split
+  auxiliary involution. Block retile is deliberately deferred. Follow with
+  adaptive split/merge only after the variable-\(K\) state/prior contract is
   explicit.
 - **Data dependency:** none through the synthetic and NAME/EDGAR stages.
 - **Performance rule:** add Numba and cached aggregation after, not during, the
