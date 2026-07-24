@@ -13,16 +13,21 @@ and names PyMC variables by sector.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import re
-from collections.abc import Mapping, Sequence
-from typing import Any, cast
+from typing import Any
 
 import pymc as pm
-import pytensor.tensor as pt
 import xarray as xr
 
 from openghg_inversions.inversion_inputs import DatetimeLike
+from openghg_inversions.models._rhime_compiler import (
+    _FluxPlan,
+    _ForwardTermPlan,
+    _StatePlan,
+    _compile_loop_sum,
+)
 from openghg_inversions.models.components import (
     add_inferpymc_likelihood_component,
     add_linear_component,
@@ -127,6 +132,117 @@ def _prepare_builder_priors(
     return prepared_x_prior, prepared_bc_prior, prepared_sigma_prior, prepared_offset_prior
 
 
+def _normalize_standard_flux_plan(inv_inputs: xr.Dataset, x_prior: dict) -> _FluxPlan:
+    """Normalize the standard flux component into a one-state linear plan.
+
+    Args:
+        inv_inputs: Canonical inversion inputs containing ``H``.
+        x_prior: Prepared flux-scaling prior metadata.
+
+    Returns:
+        Backend-neutral standard flux plan.
+    """
+    state_id = "flux"
+    return _FluxPlan(
+        states=(
+            _StatePlan(
+                state_id=state_id,
+                variable_name="x",
+                prior_args=x_prior,
+            ),
+        ),
+        terms=(
+            _ForwardTermPlan(
+                term_id=state_id,
+                state_id=state_id,
+                design=inv_inputs["H"],
+                data_name="hx",
+                deterministic_name="mu",
+                coefficient=1.0,
+            ),
+        ),
+    )
+
+
+def _assemble_rhime_model(
+    inv_inputs: xr.Dataset,
+    *,
+    flux_plan: _FluxPlan,
+    sigma_alignment: SigmaAlignment,
+    bc_prior: dict,
+    sigma_prior: dict,
+    offset_prior: dict,
+    add_offset: bool,
+    use_bc: bool,
+    pollution_events_from_obs: bool,
+    no_model_error: bool,
+    offset_args: dict | None,
+    power: dict | float,
+) -> pm.Model:
+    """Assemble shared RHIME components around a normalized flux plan.
+
+    Args:
+        inv_inputs: Canonical inversion inputs.
+        flux_plan: Validated linear flux plan to compile.
+        sigma_alignment: Prepared observation alignment for model error.
+        bc_prior: Prepared boundary-condition prior.
+        sigma_prior: Prepared model-error prior.
+        offset_prior: Prepared optional offset prior.
+        add_offset: Whether to add an offset component.
+        use_bc: Whether to add a boundary-condition component.
+        pollution_events_from_obs: Whether error scaling uses observations.
+        no_model_error: Whether to suppress explicit model error.
+        offset_args: Extra offset-component arguments.
+        power: Likelihood error-scaling exponent or prior.
+
+    Returns:
+        Fully assembled PyMC model.
+    """
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        compiled_flux = _compile_loop_sum(flux_plan)
+
+        mu_bc = None
+        if use_bc:
+            if "H_bc" not in inv_inputs:
+                raise ValueError("If `use_bc` is True, `inv_inputs` must contain `H_bc`.")
+            bc_component = add_linear_component(
+                inv_inputs["H_bc"],
+                data_name="hbc",
+                prior_args=bc_prior,
+                var_name="bc",
+                output_name="mu_bc",
+                output_dim="nmeasure",
+                compute_deterministic=True,
+            )
+            mu_bc = bc_component.output
+
+        offset = None
+        if add_offset:
+            offset = add_offset_component(
+                inv_inputs["site_indicator"],
+                prior_args=offset_prior,
+                output_name="offset",
+                output_dim="nmeasure",
+                **(offset_args or {}),
+            )
+
+        add_inferpymc_likelihood_component(
+            inv_inputs,
+            mu=compiled_flux.mu,
+            mu_bc=mu_bc,
+            offset=offset,
+            sigprior=sigma_prior,
+            sigma_alignment=sigma_alignment,
+            power=power,
+            pollution_events_from_obs=pollution_events_from_obs,
+            no_model_error=no_model_error,
+            output_dim="nmeasure",
+        )
+
+    return model
+
+
 def build_rhime_model(
     inv_inputs: xr.Dataset,
     *,
@@ -169,59 +285,21 @@ def build_rhime_model(
         sigma_prior=sigma_prior,
         offset_prior=offset_prior,
     )
-
-    with pm.Model() as model:
-        attach_coord_registry(model, CoordRegistry())
-        flux_component = add_linear_component(
-            inv_inputs["H"],
-            data_name="hx",
-            prior_args=x_prior,
-            var_name="x",
-            output_name="mu",
-            output_dim="nmeasure",
-            compute_deterministic=True,
-        )
-
-        mu_bc = None
-        if use_bc:
-            if "H_bc" not in inv_inputs:
-                raise ValueError("If `use_bc` is True, `inv_inputs` must contain `H_bc`.")
-            bc_component = add_linear_component(
-                inv_inputs["H_bc"],
-                data_name="hbc",
-                prior_args=bc_prior,
-                var_name="bc",
-                output_name="mu_bc",
-                output_dim="nmeasure",
-                compute_deterministic=True,
-            )
-            mu_bc = bc_component.output
-
-        offset = None
-        if add_offset:
-            offset_args = offset_args or {}
-            offset = add_offset_component(
-                inv_inputs["site_indicator"],
-                prior_args=offset_prior,
-                output_name="offset",
-                output_dim="nmeasure",
-                **offset_args,
-            )
-
-        add_inferpymc_likelihood_component(
-            inv_inputs,
-            mu=flux_component.output,
-            mu_bc=mu_bc,
-            offset=offset,
-            sigprior=sigma_prior,
-            sigma_alignment=sigma_alignment,
-            power=power,
-            pollution_events_from_obs=pollution_events_from_obs,
-            no_model_error=no_model_error,
-            output_dim="nmeasure",
-        )
-
-    return model
+    flux_plan = _normalize_standard_flux_plan(inv_inputs, x_prior)
+    return _assemble_rhime_model(
+        inv_inputs,
+        flux_plan=flux_plan,
+        sigma_alignment=sigma_alignment,
+        bc_prior=bc_prior,
+        sigma_prior=sigma_prior,
+        offset_prior=offset_prior,
+        add_offset=add_offset,
+        use_bc=use_bc,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+        offset_args=offset_args,
+        power=power,
+    )
 
 
 def build_rhime_model_from_spec(inv_inputs: xr.Dataset, model_spec: RhimeModelSpec) -> pm.Model:
@@ -313,6 +391,13 @@ def _resolve_sector_definitions(
         (sector, source_by_sector[sector], suffix_by_sector.get(sector, safe_pymc_name(sector)))
         for sector in sector_names
     ]
+    suffixes = [suffix for _, _, suffix in definitions]
+    if len(suffixes) != len(set(suffixes)):
+        duplicate = next(suffix for suffix in suffixes if suffixes.count(suffix) > 1)
+        raise ValueError(
+            "Sector names must be unique after PyMC name sanitisation; "
+            f"duplicate sanitized name {duplicate!r}."
+        )
     return definitions
 
 
@@ -326,6 +411,52 @@ def _sector_prior(
     if sector_priors is not None and sector in sector_priors:
         return dict(sector_priors[sector])
     return dict(DEFAULT_X_PRIOR if x_prior is None else x_prior)
+
+
+def _normalize_multisector_flux_plan(
+    inv_inputs: xr.Dataset,
+    sector_definitions: Sequence[tuple[str, str, str]],
+    *,
+    sector_priors: Mapping[str, dict] | None,
+    x_prior: dict | None,
+) -> _FluxPlan:
+    """Normalize selected sector designs into separate semantic state plans.
+
+    Args:
+        inv_inputs: Canonical inversion inputs containing source-resolved ``H``.
+        sector_definitions: Ordered ``(sector, source, variable_suffix)`` values.
+        sector_priors: Optional priors keyed by semantic sector ID.
+        x_prior: Optional shared fallback prior.
+
+    Returns:
+        Backend-neutral multisector flux plan with selected 2-D designs.
+    """
+    states: list[_StatePlan] = []
+    terms: list[_ForwardTermPlan] = []
+    for sector, source, variable_suffix in sector_definitions:
+        states.append(
+            _StatePlan(
+                state_id=sector,
+                variable_name=f"x_{variable_suffix}",
+                prior_args=_sector_prior(
+                    sector,
+                    sector_priors=sector_priors,
+                    x_prior=x_prior,
+                ),
+            )
+        )
+        design = inv_inputs["H"].sel(source=source).drop_vars("source", errors="ignore")
+        terms.append(
+            _ForwardTermPlan(
+                term_id=sector,
+                state_id=sector,
+                design=design,
+                data_name=f"hx_{variable_suffix}",
+                deterministic_name=f"mu_{variable_suffix}",
+                coefficient=1.0,
+            )
+        )
+    return _FluxPlan(states=tuple(states), terms=tuple(terms))
 
 
 def build_rhime_multisector_model(
@@ -387,81 +518,29 @@ def build_rhime_multisector_model(
         sector_sources=sector_sources,
         sector_variable_suffixes=sector_variable_suffixes,
     )
+    flux_plan = _normalize_multisector_flux_plan(
+        inv_inputs,
+        sector_definitions,
+        sector_priors=sector_priors,
+        x_prior=x_prior,
+    )
     bc_prior = dict(DEFAULT_BC_PRIOR if bc_prior is None else bc_prior)
     sigma_prior = dict(DEFAULT_SIGMA_PRIOR if sigma_prior is None else sigma_prior)
     offset_prior = dict(DEFAULT_OFFSET_PRIOR if offset_prior is None else offset_prior)
-
-    with pm.Model() as model:
-        attach_coord_registry(model, CoordRegistry())
-
-        sector_outputs = []
-        used_names: set[str] = set()
-        for sector, source, suffix in sector_definitions:
-            if suffix in used_names:
-                raise ValueError(
-                    "Sector names must be unique after PyMC name sanitisation; "
-                    f"duplicate sanitized name {suffix!r}."
-                )
-            used_names.add(suffix)
-
-            h_sector = inv_inputs["H"].sel(source=source).drop_vars("source", errors="ignore")
-            component = add_linear_component(
-                h_sector,
-                data_name=f"hx_{suffix}",
-                prior_args=_sector_prior(sector, sector_priors=sector_priors, x_prior=x_prior),
-                var_name=f"x_{suffix}",
-                output_name=f"mu_{suffix}",
-                output_dim="nmeasure",
-                compute_deterministic=True,
-            )
-            sector_outputs.append(component.output)
-
-        total_mu = pm.Deterministic(
-            "mu",
-            cast(Any, pt.stack(sector_outputs, axis=0)).sum(axis=0),
-            dims="nmeasure",
-        )
-
-        mu_bc = None
-        if use_bc:
-            if "H_bc" not in inv_inputs:
-                raise ValueError("If `use_bc` is True, `inv_inputs` must contain `H_bc`.")
-            bc_component = add_linear_component(
-                inv_inputs["H_bc"],
-                data_name="hbc",
-                prior_args=bc_prior,
-                var_name="bc",
-                output_name="mu_bc",
-                output_dim="nmeasure",
-                compute_deterministic=True,
-            )
-            mu_bc = bc_component.output
-
-        offset = None
-        if add_offset:
-            offset_args = offset_args or {}
-            offset = add_offset_component(
-                inv_inputs["site_indicator"],
-                prior_args=offset_prior,
-                output_name="offset",
-                output_dim="nmeasure",
-                **offset_args,
-            )
-
-        add_inferpymc_likelihood_component(
-            inv_inputs,
-            mu=total_mu,
-            mu_bc=mu_bc,
-            offset=offset,
-            sigprior=sigma_prior,
-            sigma_alignment=sigma_alignment,
-            power=power,
-            pollution_events_from_obs=pollution_events_from_obs,
-            no_model_error=no_model_error,
-            output_dim="nmeasure",
-        )
-
-    return model
+    return _assemble_rhime_model(
+        inv_inputs,
+        flux_plan=flux_plan,
+        sigma_alignment=sigma_alignment,
+        bc_prior=bc_prior,
+        sigma_prior=sigma_prior,
+        offset_prior=offset_prior,
+        add_offset=add_offset,
+        use_bc=use_bc,
+        pollution_events_from_obs=pollution_events_from_obs,
+        no_model_error=no_model_error,
+        offset_args=offset_args,
+        power=power,
+    )
 
 
 def build_rhime_multisector_model_from_spec(

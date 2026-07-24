@@ -12,6 +12,7 @@ import pytest
 import xarray as xr
 
 import openghg_inversions.models as models
+import openghg_inversions.models._rhime_compiler as rhime_compiler_module
 import openghg_inversions.models.rhime as rhime_models_module
 import openghg_inversions.hbmcmc.inversion_pymc as legacy_mcmc
 import openghg_inversions.postprocessing.inversion_output as inversion_output_module
@@ -36,6 +37,12 @@ from openghg_inversions.flux_sanitization import (
 from openghg_inversions.inversion_data import RhimePreparedInputs, prepare_rhime_inputs
 from openghg_inversions.inversion_inputs import make_inv_inputs
 from openghg_inversions.basis.operators import BasisMeta, BasisOperator, BucketBasisOperator
+from openghg_inversions.models._rhime_compiler import (
+    _FluxPlan,
+    _ForwardTermPlan,
+    _StatePlan,
+    _compile_loop_sum,
+)
 from openghg_inversions.models import (
     build_rhime_model,
     build_rhime_model_from_spec,
@@ -43,6 +50,7 @@ from openghg_inversions.models import (
     build_rhime_multisector_model_from_spec,
     safe_pymc_name,
 )
+from openghg_inversions.models.coords import CoordRegistry, attach_coord_registry
 from openghg_inversions.postprocessing.inversion_output import InversionOutput
 from openghg_inversions.postprocessing._basis_products import (
     BASIS_ARTIFACT_PATH_OUTPUT_ATTR,
@@ -507,6 +515,240 @@ class _DynamicSectorSpyBasisFunctions(_SpyBasisFunctions):
         )
 
 
+def test_compile_loop_sum_reuses_state_and_sums_named_terms() -> None:
+    """One shared state feeds named coefficient-scaled terms and their total."""
+    coords = {"region": ["r0", "r1"], "nmeasure": ["obs0", "obs1", "obs2"]}
+    design_a = xr.DataArray(
+        [[1.0, 2.0, 3.0], [0.5, 1.0, 1.5]],
+        dims=("region", "nmeasure"),
+        coords=coords,
+    )
+    design_b = xr.DataArray(
+        [[4.0, 3.0, 2.0], [1.0, 2.0, 3.0]],
+        dims=("region", "nmeasure"),
+        coords=coords,
+    )
+    plan = _FluxPlan(
+        states=(
+            _StatePlan(
+                state_id="shared",
+                variable_name="x_shared",
+                prior_args={"pdf": "uniform", "lower": 1.0, "upper": 2.0},
+            ),
+        ),
+        terms=(
+            _ForwardTermPlan(
+                term_id="term_a",
+                state_id="shared",
+                design=design_a,
+                data_name="h_a",
+                deterministic_name="mu_a",
+            ),
+            _ForwardTermPlan(
+                term_id="term_b",
+                state_id="shared",
+                design=design_b,
+                data_name="h_b",
+                deterministic_name="mu_b",
+                coefficient=-0.25,
+            ),
+        ),
+    )
+
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        compiled = _compile_loop_sum(plan)
+        trace = pm.sample_prior_predictive(
+            draws=3,
+            var_names=["x_shared", "mu_a", "mu_b", "mu"],
+            random_seed=402,
+        )
+
+    assert [rv.name for rv in model.free_RVs].count("x_shared") == 1
+    assert compiled.states["shared"] is model["x_shared"]
+    assert compiled.latents["shared"] is model["x_shared"]
+    assert compiled.terms["term_a"] is model["mu_a"]
+    assert compiled.terms["term_b"] is model["mu_b"]
+    prior = cast(Any, trace).prior
+    assert set(prior.data_vars) == {"x_shared", "mu_a", "mu_b", "mu"}
+    trace_coords = {"region": prior["region"], "nmeasure": prior["nmeasure"]}
+    expected_a = xr.dot(
+        prior["x_shared"],
+        design_a.assign_coords(trace_coords),
+        dim="region",
+    )
+    expected_b = -0.25 * xr.dot(
+        prior["x_shared"],
+        design_b.assign_coords(trace_coords),
+        dim="region",
+    )
+    xr.testing.assert_allclose(
+        prior["mu_a"],
+        expected_a.transpose(*prior["mu_a"].dims).rename("mu_a"),
+    )
+    xr.testing.assert_allclose(
+        prior["mu_b"],
+        expected_b.transpose(*prior["mu_b"].dims).rename("mu_b"),
+    )
+    xr.testing.assert_allclose(
+        prior["mu"],
+        (prior["mu_a"] + prior["mu_b"]).rename("mu"),
+    )
+
+
+def test_compile_loop_sum_separates_user_state_from_reparameterized_latent() -> None:
+    """Compiled state metadata distinguishes the physical state from its latent."""
+    design = xr.DataArray(
+        [[1.0]],
+        dims=("region", "nmeasure"),
+        coords={"region": [0], "nmeasure": [0]},
+    )
+    plan = _FluxPlan(
+        states=(
+            _StatePlan(
+                state_id="flux",
+                variable_name="x_flux",
+                prior_args={
+                    "pdf": "lognormal",
+                    "mean": 1.0,
+                    "stdev": 0.2,
+                    "reparameterise": True,
+                },
+            ),
+        ),
+        terms=(
+            _ForwardTermPlan(
+                term_id="flux",
+                state_id="flux",
+                design=design,
+                data_name="h_flux",
+                deterministic_name="mu",
+            ),
+        ),
+    )
+
+    with pm.Model() as model:
+        attach_coord_registry(model, CoordRegistry())
+        compiled = _compile_loop_sum(plan)
+
+    assert compiled.states["flux"] is model["x_flux"]
+    assert compiled.latents["flux"] is model["x_flux_latent"]
+
+
+@pytest.mark.parametrize(
+    ("state_id", "coefficient", "prior_args", "error"),
+    [
+        ("missing", 1.0, {"pdf": "normal", "mu": 1.0, "sigma": 0.2}, "unknown state IDs"),
+        ("shared", np.inf, {"pdf": "normal", "mu": 1.0, "sigma": 0.2}, "finite scalar"),
+        ("shared", 1.0, {"pdf": "not-a-distribution"}, "prior.*invalid"),
+    ],
+)
+def test_compile_loop_sum_rejects_invalid_plan_before_graph_mutation(
+    state_id: str,
+    coefficient: float,
+    prior_args: dict[str, Any],
+    error: str,
+) -> None:
+    """Invalid references, coefficients, and priors do not mutate the active graph."""
+    design = xr.DataArray(
+        [[1.0]],
+        dims=("region", "nmeasure"),
+        coords={"region": [0], "nmeasure": [0]},
+    )
+    plan = _FluxPlan(
+        states=(
+            _StatePlan(
+                state_id="shared",
+                variable_name="x_shared",
+                prior_args=prior_args,
+            ),
+        ),
+        terms=(
+            _ForwardTermPlan(
+                term_id="term",
+                state_id=state_id,
+                design=design,
+                data_name="h_term",
+                deterministic_name="mu_term",
+                coefficient=coefficient,
+            ),
+        ),
+    )
+
+    with pm.Model() as model, pytest.raises(ValueError, match=error):
+        _compile_loop_sum(plan)
+
+    assert model.named_vars == {}
+
+
+def test_compile_loop_sum_rejects_global_coordinate_conflicts_before_mutation() -> None:
+    """Repeated backend dimensions must carry one globally consistent coordinate."""
+    obs = ["obs0", "obs1"]
+    plan = _FluxPlan(
+        states=(
+            _StatePlan("a", "x_a", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),
+            _StatePlan("b", "x_b", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),
+        ),
+        terms=(
+            _ForwardTermPlan(
+                "a",
+                "a",
+                xr.DataArray(
+                    np.ones((2, 2)),
+                    dims=("region", "nmeasure"),
+                    coords={"region": ["a0", "a1"], "nmeasure": obs},
+                ),
+                "h_a",
+                "mu_a",
+            ),
+            _ForwardTermPlan(
+                "b",
+                "b",
+                xr.DataArray(
+                    np.ones((2, 2)),
+                    dims=("region", "nmeasure"),
+                    coords={"region": ["b0", "b1"], "nmeasure": obs},
+                ),
+                "h_b",
+                "mu_b",
+            ),
+        ),
+    )
+
+    with (
+        pm.Model() as model,
+        pytest.raises(ValueError, match="incompatible global coordinates"),
+    ):
+        _compile_loop_sum(plan)
+
+    assert model.named_vars == {}
+
+
+def test_compile_loop_sum_preserves_term_order_independent_of_state_order() -> None:
+    """The strategy follows term order while reusing independently declared states."""
+    design = xr.DataArray(
+        [[1.0]],
+        dims=("region", "nmeasure"),
+        coords={"region": [0], "nmeasure": [0]},
+    )
+    plan = _FluxPlan(
+        states=(
+            _StatePlan("b", "x_b", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),
+            _StatePlan("a", "x_a", {"pdf": "normal", "mu": 1.0, "sigma": 0.2}),
+        ),
+        terms=(
+            _ForwardTermPlan("a1", "a", design, "h_a1", "mu_a1"),
+            _ForwardTermPlan("b1", "b", design, "h_b1", "mu_b1"),
+            _ForwardTermPlan("a2", "a", design, "h_a2", "mu_a2"),
+        ),
+    )
+
+    with pm.Model():
+        compiled = _compile_loop_sum(plan)
+
+    assert list(compiled.terms) == ["a1", "b1", "a2"]
+
+
 def test_build_rhime_model_contains_expected_variables(
     rhime_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
@@ -552,29 +794,107 @@ def test_build_rhime_multisector_model_contains_expected_variables(
 def test_build_rhime_multisector_model_uses_sector_names_for_variables(
     multisector_inv_inputs: xr.Dataset, builder_args: dict
 ) -> None:
-    """Sector labels can differ from OpenGHG source values used for data selection."""
+    """Distinct sector priors retain named states and additive mu deterministics."""
+    sector_priors = {
+        "FF": {"pdf": "uniform", "lower": 1.0, "upper": 2.0},
+        "ocean": {"pdf": "uniform", "lower": 10.0, "upper": 11.0},
+    }
     model = build_rhime_multisector_model(
         multisector_inv_inputs,
         sectors=["FF", "ocean"],
         sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
         sector_variable_suffixes={"FF": "ff", "ocean": "ocean"},
-        sector_priors={"FF": {"pdf": "normal", "mu": 1.0, "sigma": 0.2}},
+        sector_priors=sector_priors,
         **builder_args,
     )
 
-    expected = {
+    expected_trace_names = {
         "x_ff",
         "mu_ff",
         "x_ocean",
         "mu_ocean",
         "mu",
+    }
+    expected_model_names = expected_trace_names | {
         "bc",
         "mu_bc",
         "sigma",
         "epsilon",
         "y",
     }
-    assert expected.issubset(model.named_vars)
+    assert expected_model_names.issubset(model.named_vars)
+    free_rv_names = [rv.name for rv in model.free_RVs]
+    assert free_rv_names.count("x_ff") == 1
+    assert free_rv_names.count("x_ocean") == 1
+
+    with model:
+        trace = pm.sample_prior_predictive(
+            draws=4,
+            var_names=sorted(expected_trace_names),
+            random_seed=412,
+        )
+
+    prior = cast(Any, trace).prior
+    assert set(prior.data_vars) == expected_trace_names
+    assert np.all((prior["x_ff"] >= 1.0) & (prior["x_ff"] <= 2.0))
+    assert np.all((prior["x_ocean"] >= 10.0) & (prior["x_ocean"] <= 11.0))
+    np.testing.assert_allclose(prior["mu"], prior["mu_ff"] + prior["mu_ocean"])
+
+
+def test_build_rhime_multisector_model_rejects_reparameterized_name_collisions(
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Generated latent names participate in pre-compilation name validation."""
+    reparameterized_prior = {
+        "pdf": "lognormal",
+        "mean": 1.0,
+        "stdev": 0.2,
+        "reparameterise": True,
+    }
+
+    with pytest.raises(ValueError, match="backend names"):
+        build_rhime_multisector_model(
+            multisector_inv_inputs,
+            sectors=["FF", "other"],
+            sector_sources={"FF": "total-ukghg-edgar7", "other": "sector-2"},
+            sector_variable_suffixes={"FF": "ff", "other": "ff_latent"},
+            sector_priors={"FF": reparameterized_prior, "other": reparameterized_prior},
+            **builder_args,
+        )
+
+
+def test_standard_and_multisector_builders_share_loop_sum_compiler(
+    monkeypatch: pytest.MonkeyPatch,
+    rhime_inv_inputs: xr.Dataset,
+    multisector_inv_inputs: xr.Dataset,
+    builder_args: dict,
+) -> None:
+    """Both public builders normalize fluxes through the same private compiler."""
+    captured_plans: list[_FluxPlan] = []
+
+    def compile_spy(plan: _FluxPlan) -> Any:
+        captured_plans.append(plan)
+        return rhime_compiler_module._compile_loop_sum(plan)
+
+    monkeypatch.setattr(rhime_models_module, "_compile_loop_sum", compile_spy)
+
+    build_rhime_model(rhime_inv_inputs, **builder_args)
+    build_rhime_multisector_model(
+        multisector_inv_inputs,
+        sectors=["FF", "ocean"],
+        sector_sources={"FF": "total-ukghg-edgar7", "ocean": "sector-2"},
+        sector_variable_suffixes={"FF": "ff", "ocean": "ocean"},
+        **builder_args,
+    )
+
+    assert len(captured_plans) == 2
+    standard_plan, multisector_plan = captured_plans
+    assert [state.variable_name for state in standard_plan.states] == ["x"]
+    assert [term.deterministic_name for term in standard_plan.terms] == ["mu"]
+    assert [state.variable_name for state in multisector_plan.states] == ["x_ff", "x_ocean"]
+    assert [term.deterministic_name for term in multisector_plan.terms] == ["mu_ff", "mu_ocean"]
+    assert all("strategy" not in parameter for parameter in inspect.signature(RhimeModelSpec).parameters)
 
 
 def test_build_rhime_multisector_model_requires_multiple_sectors(
