@@ -6,9 +6,9 @@ The input is one explicitly frozen NetCDF dataset.  By default it contains
 ``outer_design(nmeasure, outer_region)``, and ``YaprioriBC(nmeasure)``.
 Variable names are configurable; no scientific input is guessed.
 
-This is a diagnostic smoke driver, not a convergence workflow.  It runs one
+This is a diagnostic smoke driver, not a convergence workflow. It runs one
 single-process chain without durable continuation, retains complete cycle
-boundaries, and writes a new immutable output directory.  Until connectivity
+boundaries, and writes a new non-overwriting artifact directory. Until connectivity
 has been established independently, every result is explicitly restricted to
 the communication component reached from its deterministic prior-mean start.
 """
@@ -373,6 +373,7 @@ def _build_manifest(
     arguments: argparse.Namespace,
     adapter: GammaBetaRHIMEAdapterResult,
     *,
+    initial_state: FullTilingPosteriorState,
     input_digest: str,
     cycle_length: int,
     outer_labels: np.ndarray,
@@ -383,6 +384,11 @@ def _build_manifest(
         raise RuntimeError("The native smoke driver requires a fixed design block.")
     fixed_mean = fixed_block.coefficient_prior_mean
     fixed_sd = fixed_block.coefficient_prior_sd
+    initial_bounds = [
+        [leaf.row_start, leaf.row_stop, leaf.col_start, leaf.col_stop]
+        for leaf in initial_state.allocation.tiling.leaves
+    ]
+    initial_topology_sha256 = sha256(_canonical_json(initial_bounds).encode("utf-8")).hexdigest()
     manifest: dict[str, object] = {
         "schema": "openghg_inversions.full_tiling_native_smoke_manifest.v1",
         "status": "diagnostic_not_convergence_evidence",
@@ -391,6 +397,7 @@ def _build_manifest(
             "structural_target": "uniform_over_unique_canonical_tilings_at_fixed_k",
             "communication_component": _COMMUNICATION_COMPONENT,
             "connectivity_proven": False,
+            "initial_topology_sha256": initial_topology_sha256,
         },
         "input": {
             "id": arguments.input_id,
@@ -460,12 +467,18 @@ def _trace_to_dataset(
             "leaf_mass": (
                 ("draw", "region"),
                 trace.leaf_masses,
-                {"long_name": "positive mass aligned with canonical rectangles"},
+                {
+                    "long_name": ("positive allocation coordinate aligned with canonical rectangles"),
+                    "units": "nominal-weight allocation units",
+                },
             ),
             "root_total": (
                 ("draw",),
                 trace.root_total,
-                {"long_name": "positive total inner-domain mass"},
+                {
+                    "long_name": "positive total allocation coordinate",
+                    "units": "nominal-weight allocation units",
+                },
             ),
             "fixed_coefficient": (
                 ("draw", "fixed_parameter"),
@@ -496,8 +509,8 @@ def _trace_to_dataset(
                 ("draw",),
                 trace.log_structural_prior,
                 {
-                    "long_name": "fixed-K uniform canonical-tiling log-ratio component",
-                    "value": "zero by declaration",
+                    "long_name": ("fixed-K uniform canonical-tiling structural log-ratio component"),
+                    "value": ("zero; fixed-K communication-component normalizer omitted"),
                 },
             ),
             "log_fixed_coefficient_prior": (
@@ -508,7 +521,11 @@ def _trace_to_dataset(
             "log_target": (
                 ("draw",),
                 trace.log_target,
-                {"long_name": "complete retained log target"},
+                {
+                    "long_name": (
+                        "retained log target up to the fixed-K communication-component structural normalizer"
+                    )
+                },
             ),
             "state_transition": (
                 ("draw",),
@@ -573,6 +590,10 @@ def _trace_to_dataset(
             "fixed_k": fixed_k,
             "schedule_id": FULL_TILING_COMPOUND_SCHEDULE_ID,
             "structural_target": ("uniform over unique canonical leaf tilings conditional on fixed K"),
+            "structural_target_normalization": (
+                "omitted fixed-K communication-component constant; do not compare "
+                "absolute log targets across K or components"
+            ),
             "continuous_target": (
                 "Gamma root total, additive-alpha Dirichlet shares, and "
                 "independent fixed-coefficient lognormal priors"
@@ -695,6 +716,7 @@ def _summary(
         "target": {
             "initial_log_target": float(initial_state.log_target),
             "final_log_target": float(result.final_state.log_target),
+            "normalization": ("fixed-K communication-component structural constant omitted"),
         },
         "initial_leaf_prior_scaling_sd": _initial_leaf_scaling_sd(initial_state),
         "topology": {
@@ -799,37 +821,65 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Fixed active rectangle count.",
     )
-    parser.add_argument("--cycles", type=int, required=True)
-    parser.add_argument("--seed", type=int, required=True)
-    parser.add_argument("--concentration", type=float, required=True)
-    parser.add_argument("--root-variance", type=float, required=True)
-    parser.add_argument("--likelihood-power", type=float, default=1.0)
+    parser.add_argument(
+        "--cycles",
+        type=int,
+        required=True,
+        help="Complete cycles; six fixed columns give 14 transitions per cycle.",
+    )
+    parser.add_argument("--seed", type=int, required=True, help="Non-negative PCG64 seed.")
+    parser.add_argument(
+        "--concentration",
+        type=float,
+        required=True,
+        help="Positive global additive-alpha Dirichlet concentration.",
+    )
+    parser.add_argument(
+        "--root-variance",
+        type=float,
+        required=True,
+        help="Positive Gamma root-total prior variance in model weight units.",
+    )
+    parser.add_argument(
+        "--likelihood-power",
+        type=float,
+        default=1.0,
+        help="Non-negative Gaussian likelihood multiplier; zero is prior-only.",
+    )
     parser.add_argument(
         "--fixed-prior-mean",
         type=_positive_values,
         default=1.0,
         metavar="VALUE[,VALUE...]",
+        help="Arithmetic lognormal prior mean(s) for fixed outer coefficients.",
     )
     parser.add_argument(
         "--fixed-prior-sd",
         type=_positive_values,
         required=True,
         metavar="VALUE[,VALUE...]",
+        help="Arithmetic lognormal prior SD(s) for fixed outer coefficients.",
     )
     parser.add_argument(
         "--fixed-proposal-sd",
         type=_positive_values,
         required=True,
         metavar="VALUE[,VALUE...]",
+        help="Gaussian random-walk SD(s) for fixed outer coefficients.",
     )
-    parser.add_argument("--input-id", required=True)
-    parser.add_argument("--code-revision", required=True)
-    parser.add_argument("--expected-input-sha256")
-    parser.add_argument("--nominal-weight-policy", required=True)
+    parser.add_argument("--input-id", required=True, help="Stable logical frozen-input ID.")
+    parser.add_argument("--code-revision", required=True, help="Clean source revision.")
+    parser.add_argument("--expected-input-sha256", help="Required whole-file SHA-256.")
+    parser.add_argument(
+        "--nominal-weight-policy",
+        required=True,
+        help="Identifier for the reviewed strictly positive nominal base measure.",
+    )
     parser.add_argument(
         "--normalize-weights",
         action=argparse.BooleanOptionalAction,
         default=True,
+        help="Normalize nominal weights to sum to one (default: true).",
     )
     parser.add_argument("--sensitivity-name", default="fp_x_flux")
     parser.add_argument("--observation-name", default="mf")
@@ -840,12 +890,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--require-paris-profile",
         action="store_true",
-        help="Require the reviewed 1382 by 183x128, six-outer profile.",
+        help=(
+            "Require expected 1382 by 183x128 PARIS dimensions plus the "
+            "caller-supplied input hash and outer-label order."
+        ),
     )
     parser.add_argument(
         "--expected-outer-labels",
         type=_comma_separated_labels,
-        help="Reviewed comma-separated outer_region labels in exact order.",
+        help="Expected comma-separated outer_region labels in exact order.",
     )
     parser.add_argument(
         "--dry-run",
@@ -894,6 +947,9 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
 def run(arguments: argparse.Namespace) -> dict[str, Any]:
     """Validate, run, and persist one uninterrupted diagnostic chain.
 
+    The output-backend preflight temporarily writes in the output parent even
+    for a dry run.
+
     Args:
         arguments: Namespace returned by :func:`build_parser`.
 
@@ -904,6 +960,7 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
     Raises:
         FileExistsError: If the requested output path already exists.
         FileNotFoundError: If an input or output parent is absent.
+        OSError: If another input, preflight, or output operation fails.
         ValueError: If scientific inputs, settings, hashes, labels, or closure
             checks are invalid.
         RuntimeError: If sampling or artifact reopen validation fails.
@@ -924,6 +981,10 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
         arguments.input,
         engine=arguments.input_netcdf_engine,
     )
+    loaded_digest = _sha256_file(arguments.input)
+    if loaded_digest != input_digest:
+        dataset.close()
+        raise ValueError("Frozen input changed while it was being loaded.")
     input_seconds = perf_counter() - input_started
 
     setup_started = perf_counter()
@@ -940,6 +1001,9 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
         concentration=arguments.concentration,
     )
     initial_state = initialize_full_tiling_posterior_state(problem, k=arguments.k)
+    if not np.isfinite(initial_state.log_target):
+        dataset.close()
+        raise ValueError("Initial full-tiling log target is not finite.")
     closure = _closure_audit(
         dataset,
         adapter,
@@ -960,6 +1024,7 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
     manifest = _build_manifest(
         arguments,
         adapter,
+        initial_state=initial_state,
         input_digest=input_digest,
         cycle_length=cycle_length,
         outer_labels=outer_labels,
@@ -971,6 +1036,16 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
             "status": "diagnostic_dry_run",
             "communication_component": _COMMUNICATION_COMPONENT,
             "closure": closure,
+            "target": {
+                "initial_log_gaussian_likelihood": float(initial_state.log_gaussian_likelihood),
+                "initial_log_likelihood": float(initial_state.log_likelihood),
+                "initial_log_root_prior": float(initial_state.log_root_prior),
+                "initial_log_allocation_prior": float(initial_state.log_allocation_prior),
+                "initial_log_fixed_coefficient_prior": float(initial_state.log_fixed_coefficient_prior),
+                "initial_log_target": float(initial_state.log_target),
+                "normalization": ("fixed-K communication-component structural constant omitted"),
+            },
+            "initial_leaf_prior_scaling_sd": _initial_leaf_scaling_sd(initial_state),
             "cycle_length": cycle_length,
             "requested_atomic_transitions": arguments.cycles * cycle_length,
             "input": {
@@ -1044,7 +1119,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         argv: Optional command-line arguments excluding the program name.
 
     Returns:
-        Process status zero after successful validation and output writing.
+        Zero after a successful dry run or completed artifact workflow. The
+        summary is also printed to standard output.
 
     Raises:
         OSError: If input or output files cannot be read or written.

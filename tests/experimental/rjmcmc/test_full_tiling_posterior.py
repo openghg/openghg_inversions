@@ -1,0 +1,340 @@
+"""Regression tests for likelihood-aware full-tiling posterior operations."""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+import pytest
+import xarray as xr
+
+from openghg_inversions.experimental.rjmcmc.full_tiling import (
+    Rectangle,
+    SplitChoice,
+    TilingState,
+    merge_choices,
+)
+from openghg_inversions.experimental.rjmcmc.full_tiling_posterior import (
+    FullTilingProblem,
+    FullTilingPosteriorState,
+    PosteriorTransitionTerms,
+    build_full_tiling_posterior_state,
+    full_tiling_problem_from_gamma_beta_adapter,
+    initialize_full_tiling_posterior_state,
+    propose_fixed_coefficient,
+    propose_pair_allocation_refresh,
+    propose_posterior_edge_flip,
+    propose_posterior_resolution_relocation,
+    propose_root_total_refresh,
+)
+from openghg_inversions.experimental.rjmcmc.gamma_beta_adapter import (
+    GammaBetaRHIMEAdapterResult,
+    gamma_beta_problem_from_rhime_inputs,
+)
+
+
+def _adapter_and_raw() -> tuple[
+    GammaBetaRHIMEAdapterResult,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
+    """Return a shuffled-dimension adapter and its raw forward-model arrays."""
+    raw = np.arange(1.0, 49.0).reshape(3, 4, 4)
+    outer = np.arange(18.0).reshape(3, 6) / 10.0
+    boundary = np.array([3.0, 5.0, 7.0])
+    fixed_mean = np.arange(1.0, 7.0) / 4.0
+    observations = boundary + raw.sum(axis=(1, 2)) + outer @ fixed_mean
+    dataset = xr.Dataset(
+        {
+            "fp_x_flux": (
+                ("lon", "nmeasure", "lat"),
+                raw.transpose(2, 0, 1),
+            ),
+            "mf": ("nmeasure", observations),
+            "mf_error": ("nmeasure", np.ones(3)),
+            "outer": (("outer_region", "nmeasure"), outer.T),
+            "boundary": ("nmeasure", boundary),
+        },
+        coords={
+            "nmeasure": ["a", "b", "c"],
+            "lat": np.arange(4) + 50.0,
+            "lon": np.arange(4) - 3.0,
+            "outer_region": [f"outer-{index}" for index in range(6)],
+        },
+    )
+    weights = xr.DataArray(
+        np.arange(1.0, 17.0).reshape(4, 4).T,
+        dims=("lon", "lat"),
+        coords={"lon": dataset.lon, "lat": dataset.lat},
+    )
+    adapter = gamma_beta_problem_from_rhime_inputs(
+        dataset,
+        nominal_weight=weights,
+        k_min=1,
+        k_max=16,
+        concentration=5.0,
+        root_variance=0.3,
+        sensitivity_name="fp_x_flux",
+        observation_name="mf",
+        observation_sd_name="mf_error",
+        fixed_design_name="outer",
+        fixed_offset_name="boundary",
+        fixed_coefficient_prior_mean=fixed_mean,
+        fixed_coefficient_prior_sd=np.full(6, 0.4),
+    )
+    return adapter, raw, outer, boundary
+
+
+def _problem_state(k: int) -> tuple[FullTilingProblem, FullTilingPosteriorState]:
+    """Build a small posterior problem and deterministic prior-mean state."""
+    adapter, _, _, _ = _adapter_and_raw()
+    problem = full_tiling_problem_from_gamma_beta_adapter(adapter, concentration=7.0)
+    return problem, initialize_full_tiling_posterior_state(problem, k=k)
+
+
+def _assert_rebuild_equal(state: FullTilingPosteriorState) -> None:
+    """Assert an incremental candidate equals the public full rebuild oracle."""
+    rebuilt = build_full_tiling_posterior_state(
+        state.problem,
+        allocation=state.allocation,
+        fixed_coefficients=state.fixed_coefficients,
+    )
+    assert rebuilt.allocation.tiling == state.allocation.tiling
+    for name in (
+        "fixed_coefficients",
+        "dynamic_prediction",
+        "fixed_prediction",
+        "prediction",
+        "residual",
+    ):
+        np.testing.assert_allclose(getattr(state, name), getattr(rebuilt, name), rtol=0.0, atol=5e-13)
+    for name in (
+        "log_gaussian_likelihood",
+        "log_likelihood",
+        "log_root_prior",
+        "log_allocation_prior",
+        "log_fixed_coefficient_prior",
+        "log_target",
+    ):
+        assert getattr(state, name) == pytest.approx(getattr(rebuilt, name), abs=1e-9)
+
+
+def _valid_relocation(
+    problem: FullTilingProblem,
+    state: FullTilingPosteriorState,
+) -> PosteriorTransitionTerms:
+    """Return the first valid relocation from the fixed destination catalogue."""
+    for merge in merge_choices(state.allocation.tiling):
+        intermediate = state.allocation.tiling.merge(merge)
+        for leaf in intermediate.leaves:
+            for axis in ("horizontal", "vertical"):
+                transition = propose_posterior_resolution_relocation(
+                    problem,
+                    state,
+                    merge_choice=merge,
+                    split_choice=SplitChoice(leaf, axis),
+                    new_fraction=0.37,
+                )
+                if transition.valid:
+                    return transition
+    raise AssertionError("test geometry did not expose a valid relocation")
+
+
+def test_shuffled_xarray_bridge_closes_inner_boundary_and_outer_prior_mean() -> None:
+    """Shuffled labelled inputs retain exact inner, BC, and outer closure."""
+    adapter, raw, outer, boundary = _adapter_and_raw()
+    problem = full_tiling_problem_from_gamma_beta_adapter(adapter, concentration=7.0)
+    state = initialize_full_tiling_posterior_state(problem, k=5)
+    fixed_mean = np.arange(1.0, 7.0) / 4.0
+
+    assert problem.shape == (4, 4)
+    np.testing.assert_allclose(state.dynamic_prediction, raw.sum(axis=(1, 2)), atol=2e-13)
+    np.testing.assert_allclose(state.fixed_prediction, boundary + outer @ fixed_mean, atol=2e-13)
+    np.testing.assert_allclose(
+        state.prediction,
+        raw.sum(axis=(1, 2)) + boundary + outer @ fixed_mean,
+        atol=2e-13,
+    )
+
+
+def test_rectangle_design_columns_match_direct_native_matrix_slices() -> None:
+    """Lazy rectangle columns equal direct native sensitivity-matrix algebra."""
+    adapter, _, _, _ = _adapter_and_raw()
+    problem = full_tiling_problem_from_gamma_beta_adapter(adapter, concentration=7.0)
+    rectangle = Rectangle(1, 4, 0, 2)
+    mass = problem.normalized_nominal_mass[1:4, 0:2]
+    native = problem.base.sensitivity.reshape(3, 4, 4)[:, 1:4, 0:2]
+    expected = (native * mass[np.newaxis, :, :]).sum(axis=(1, 2)) / mass.sum()
+
+    np.testing.assert_allclose(problem.design_column(rectangle), expected, rtol=0.0, atol=1e-13)
+    assert problem.design_column(rectangle) is problem.rectangle_design_column(rectangle)
+
+
+def test_complete_target_matches_independent_root_share_closed_form() -> None:
+    """The target is Gamma plus Dirichlet shares, with no physical-mass Jacobian."""
+    problem, source = _problem_state(4)
+    root_total = 1.7
+    shares = np.array([0.1, 0.2, 0.3, 0.4])
+    coefficients = np.array([0.8, 1.1, 1.4, 1.7, 2.0, 2.3])
+    state = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(source.allocation.tiling, root_total * shares),
+        fixed_coefficients=coefficients,
+    )
+
+    gaussian = -0.5 * np.sum(
+        (state.residual / problem.observation_sd) ** 2
+        + math.log(2.0 * math.pi)
+        + 2.0 * np.log(problem.observation_sd)
+    )
+    shape = problem.base.prior.root_shape
+    rate = problem.base.prior.root_rate
+    gamma = (
+        shape * math.log(rate) - math.lgamma(shape) + (shape - 1.0) * math.log(root_total) - rate * root_total
+    )
+    alphas = problem.allocation_prior.leaf_alphas(source.allocation.tiling)
+    dirichlet = (
+        math.lgamma(float(np.sum(alphas)))
+        - sum(math.lgamma(float(alpha)) for alpha in alphas)
+        + float(np.sum((alphas - 1.0) * np.log(shares)))
+    )
+    fixed = problem.base.fixed_block
+    assert fixed is not None
+    log_variances = np.log1p((fixed.coefficient_prior_sd / fixed.coefficient_prior_mean) ** 2)
+    log_means = np.log(fixed.coefficient_prior_mean) - 0.5 * log_variances
+    lognormal = float(
+        np.sum(
+            -np.log(coefficients)
+            - 0.5 * np.log(2.0 * math.pi * log_variances)
+            - (np.log(coefficients) - log_means) ** 2 / (2.0 * log_variances)
+        )
+    )
+
+    assert state.log_gaussian_likelihood == pytest.approx(gaussian)
+    assert state.log_root_prior == pytest.approx(gamma)
+    assert state.log_allocation_prior == pytest.approx(dirichlet)
+    assert state.log_fixed_coefficient_prior == pytest.approx(lognormal)
+    assert state.log_target == pytest.approx(gaussian + gamma + dirichlet + lognormal)
+
+    rescaled = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(source.allocation.tiling, 2.9 * shares),
+        fixed_coefficients=coefficients,
+    )
+    assert rescaled.log_allocation_prior == pytest.approx(dirichlet)
+
+
+def test_every_incremental_proposal_candidate_matches_a_full_rebuild() -> None:
+    """Every valid proposal family preserves all full-rebuild posterior caches."""
+    problem, edge_source = _problem_state(2)
+    edge_merge = merge_choices(edge_source.allocation.tiling)[0]
+    edge = propose_posterior_edge_flip(
+        problem,
+        edge_source,
+        merge_choice=edge_merge,
+        new_fraction=0.31,
+    )
+    assert edge.valid
+
+    relocation_source = initialize_full_tiling_posterior_state(problem, k=4)
+    relocation = _valid_relocation(problem, relocation_source)
+    leaves = relocation_source.allocation.tiling.leaves
+    pair = propose_pair_allocation_refresh(
+        problem,
+        relocation_source,
+        first_leaf=leaves[0],
+        second_leaf=leaves[-1],
+        new_fraction=0.42,
+    )
+    root = propose_root_total_refresh(problem, relocation_source, new_root_total=1.7)
+    fixed = propose_fixed_coefficient(
+        problem,
+        relocation_source,
+        coefficient_position=4,
+        proposed_coefficient=1.9,
+        proposal_stdev=0.2,
+    )
+
+    for transition in (edge, relocation, pair, root, fixed):
+        assert transition.valid
+        _assert_rebuild_equal(transition.candidate)
+
+
+def test_structural_reciprocals_and_root_gamma_terms_balance_exactly() -> None:
+    """Edge, relocation, and root-refresh accounting has exact reverse balance."""
+    problem, edge_source = _problem_state(2)
+    edge_forward = propose_posterior_edge_flip(
+        problem,
+        edge_source,
+        merge_choice=merge_choices(edge_source.allocation.tiling)[0],
+        new_fraction=0.29,
+    )
+    assert edge_forward.valid
+    assert edge_forward.reverse_merge_choice is not None
+    edge_reverse = propose_posterior_edge_flip(
+        problem,
+        edge_forward.candidate,
+        merge_choice=edge_forward.reverse_merge_choice,
+        new_fraction=edge_source.leaf_masses[0] / edge_source.root_total,
+    )
+    assert edge_reverse.valid
+    assert edge_reverse.candidate.allocation.tiling == edge_source.allocation.tiling
+    np.testing.assert_allclose(edge_reverse.candidate.leaf_masses, edge_source.leaf_masses)
+    assert edge_forward.log_acceptance_ratio + edge_reverse.log_acceptance_ratio == pytest.approx(0.0)
+
+    relocation_source = initialize_full_tiling_posterior_state(problem, k=4)
+    relocation_forward = _valid_relocation(problem, relocation_source)
+    assert relocation_forward.reverse_merge_choice is not None
+    assert relocation_forward.reverse_split_choice is not None
+    reverse_children = relocation_forward.reverse_merge_choice.children
+    original_children = relocation_forward.reverse_split_choice.leaf.midpoint_children(
+        relocation_forward.reverse_split_choice.axis
+    )
+    old_fraction = relocation_source.allocation.mass(original_children[0]) / sum(
+        relocation_source.allocation.mass(child) for child in original_children
+    )
+    relocation_reverse = propose_posterior_resolution_relocation(
+        problem,
+        relocation_forward.candidate,
+        merge_choice=relocation_forward.reverse_merge_choice,
+        split_choice=relocation_forward.reverse_split_choice,
+        new_fraction=old_fraction,
+    )
+    assert relocation_reverse.valid
+    assert relocation_reverse.candidate.allocation.tiling == relocation_source.allocation.tiling
+    np.testing.assert_allclose(relocation_reverse.candidate.leaf_masses, relocation_source.leaf_masses)
+    assert relocation_forward.log_jacobian == pytest.approx(-relocation_reverse.log_jacobian)
+    assert relocation_forward.log_acceptance_ratio + relocation_reverse.log_acceptance_ratio == pytest.approx(
+        0.0
+    )
+    assert reverse_children[0] < reverse_children[1]
+
+    root = propose_root_total_refresh(problem, relocation_source, new_root_total=2.3)
+    assert root.valid
+    assert (
+        root.delta_log_root_prior + root.log_q_reverse_auxiliary - root.log_q_forward_auxiliary
+        == pytest.approx(0.0)
+    )
+    assert root.log_jacobian == 0.0
+    assert root.log_acceptance_ratio == pytest.approx(root.delta_log_likelihood)
+    assert math.isfinite(root.log_acceptance_ratio)
+
+
+def test_pair_refresh_accepts_an_arbitrary_nonadjacent_leaf_pair() -> None:
+    """Pair refresh is defined for diagonal leaves with no shared boundary."""
+    problem, source = _problem_state(4)
+    first, second = source.allocation.tiling.leaves[0], source.allocation.tiling.leaves[-1]
+    assert first.row_stop < second.row_start
+
+    transition = propose_pair_allocation_refresh(
+        problem,
+        source,
+        first_leaf=first,
+        second_leaf=second,
+        new_fraction=0.61,
+    )
+
+    assert transition.valid
+    assert transition.candidate.root_total == pytest.approx(source.root_total)
+    _assert_rebuild_equal(transition.candidate)

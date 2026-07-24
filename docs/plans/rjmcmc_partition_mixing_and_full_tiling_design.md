@@ -14,9 +14,12 @@ This document records:
 
 It complements the implementation log in
 [tdmcmc_numpy_numba_rewrite.md](tdmcmc_numpy_numba_rewrite.md). It is a design
-reference, not a claim that the full-tiling model has been implemented or
-validated. The executable validation sequence for the first diagnostic stage
-is in
+reference and implementation record. A fixed-\(K\), active-only NumPy
+full-tiling prototype is now implemented; it is not yet validated as a
+production model, proved connected on the production grid, or extended to
+variable \(K\). Its first native-data smoke sequence is in
+[rjmcmc_full_tiling_native_hpc_test_plan.md](rjmcmc_full_tiling_native_hpc_test_plan.md).
+The executable validation sequence for the first Voronoi diagnostic stage is in
 [rjmcmc_mixing_diagnostics_hpc_test_plan.md](rjmcmc_mixing_diagnostics_hpc_test_plan.md).
 
 The following labels distinguish the strength of statements:
@@ -949,19 +952,25 @@ Existing OpenGHG Inversions draft work can be reused as follows:
    alternative orientations or full tilings.
 4. Interleave ordinary coefficient rejuvenation and benchmark a fixed-score
    relevance-conditioned selector as replaceable kernels.
-5. Specify the full-tiling domain, canonical leaf representation, masks,
-   structural prior, and reduced-model interpretation.
-6. Enumerate all states of a tiny tiling problem and calculate exact target
-   probabilities.
-7. Implement the order-independent total/allocation prior and validate its
-   aggregation identities and moments by enumeration and simulation.
-8. Implement fixed-`K` edge-flip and resolution-relocation kernels under the
-   tiny uniform target. Defer block retile until the local pathwise kernels
-   have an exact finite-state benchmark.
+5. **Implemented for the rectangular native-grid prototype:** specify the
+   canonical recursive leaf representation, uniform fixed-\(K\) structural
+   target, and partition-dependent constant-within-leaf reduced model.
+   Production masks and cross-\(K\) normalization remain open.
+6. **Implemented:** enumerate all states of tiny tiling problems and calculate
+   exact targets and transition kernels.
+7. **Implemented:** use the order-independent total/allocation prior and
+   validate its aggregation identities, normalized densities, and numerical
+   support.
+8. **Implemented for selected local attempts:** fixed-\(K\) edge-flip and
+   resolution-relocation kernels under the uniform structural target. The
+   native smoke sampler avoids exhaustive path catalogues; block retile remains
+   deferred.
 9. Implement transparent active-only NumPy split/merge RJ and validate it
    against enumeration and the fixed-tree product-space exact-target
    cross-check.
-10. Add active continuous rejuvenation and a simple observation likelihood.
+10. **Implemented for the native-data smoke:** add root, arbitrary unordered
+    leaf-pair allocation, and fixed outer-coefficient rejuvenation to the
+    independent Gaussian native-data likelihood.
 11. Add Numba only after exact NumPy parity.
 12. Add relevance-conditioned and likelihood-informed kernels behind swappable
    interfaces.
@@ -970,24 +979,33 @@ Existing OpenGHG Inversions draft work can be reused as follows:
 
 ### Compact restart point
 
-- **Next executable task:** run the paired diagnostic-overhead check and
-  ordinary full-likelihood Voronoi profile described in the HPC test plan.
-- **Alternative baseline underway:** the local split/merge RJ implementation
-  on one fixed-direction Gamma--Beta tree now passes exact stationarity,
-  empirical mobility, continuation, and RHIME design-unit equivalence checks.
-  Cross-check its target against the archived product-space oracle, then add
-  the separate root/fraction refresh kernels to a compound schedule before
-  treating it as posterior inference or profiling larger fixed trees.
-- **Alternative-model prerequisite:** settle the full-tiling structural target
-  `p(P)`/`p(K)` and the reduced-model meaning before writing structural code.
+- **Next executable task:** run the prior-only and full-likelihood fixed-\(K\)
+  full-tiling PARIS smoke described in the HPC test plan.
+- **Fixed-direction baseline outcome:** the completed 40-segment Stage C test
+  was restart-exact and structurally mobile, but its low- and high-\(K\)
+  starts remained separated (\(\hat R_K=2.886\)); all 29 monitored summaries
+  failed at least one convergence threshold. Its output is diagnostic only.
+  This negative mixing result motivated testing construction-history-free
+  leaf tilings and fixed-\(K\) within-dimension moves before adding another
+  variable-\(K\) kernel.
+- **Full-tiling implementation:** a fixed-\(K\) canonical-leaf target now has
+  likelihood-aware selected-attempt edge flips, resolution relocations,
+  root/share/outer rejuvenation, exact in-memory continuation, and a frozen
+  native-data smoke driver.
+- **Structural limitation:** the fixed-\(K\) target is uniform over unique
+  tilings, but production-grid connectivity is not proved. Results are
+  explicitly conditional on the communication component of the deterministic
+  start. Variable-\(K\) work still requires an evaluable cross-\(K\)
+  structural prior/count or another declared target.
 - **Correctness oracle:** tiny canonical tiling enumeration and analytic
   dynamic programming, with a fixed-tree product-space cross-check.
-- **First full-tiling kernel:** fixed-`K` edge flip on an equal-area tiny state,
-  mixed with resolution relocation; represent both as one merge/split
-  auxiliary involution. Block retile is deliberately deferred. Follow with
-  adaptive split/merge only after the variable-\(K\) state/prior contract is
-  explicit.
-- **Data dependency:** none through the synthetic and NAME/EDGAR stages.
+- **First real-data full-tiling test:** run the prior-only then
+  full-likelihood fixed-\(K\) native PARIS smoke in
+  [rjmcmc_full_tiling_native_hpc_test_plan.md](rjmcmc_full_tiling_native_hpc_test_plan.md).
+  This is a wiring, mobility, and performance test, not convergence evidence.
+- **Real-data provenance:** the Stage C PARIS NetCDF path, SHA-256, ordered
+  InTEM outer labels, and strictly positive spherical-cell-area weight policy
+  are pinned literally in the HPC plan from independent run records.
 - **Performance rule:** add Numba and cached aggregation after, not during, the
   target/proposal validation.
 

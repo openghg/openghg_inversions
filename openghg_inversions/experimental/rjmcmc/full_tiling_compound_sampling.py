@@ -6,10 +6,13 @@ versioned cycle contains two independently mixed structural opportunities,
 each selecting an edge flip or resolution relocation with probability one
 half, one independent-prior root-total refresh, a configurable number of
 independent-prior pair-allocation refreshes, and one deterministic
-Gaussian-random-walk opportunity for every fixed coefficient.
+Gaussian-random-walk opportunity for every fixed coefficient. This is not
+convergence evidence, and irreducibility over the complete fixed-``K`` tiling
+space is not claimed.
 
-Structural selection is deliberately production-safe: it enumerates only
-currently mergeable midpoint-friend pairs.  Edge flips choose the
+Structural selection is bounded to current-state geometry and avoids
+exhaustive state-space enumeration. It enumerates only currently mergeable
+midpoint-friend pairs. Edge flips choose the
 perpendicular orientation.  Relocations choose from the fixed catalogue of
 every intermediate leaf crossed with both axis labels, including invalid
 choices.  Invalid attempts are explicit self-transitions and every atomic
@@ -290,7 +293,8 @@ class FullTilingCompoundKernelSettings:
 class FullTilingCompoundTrace:
     """Cycle-boundary posterior states and every attempted transition.
 
-    ``state_transition`` uses completed-transition coordinates and includes
+    All supplied arrays are copied and stored read-only. ``state_transition``
+    uses completed-transition coordinates and includes
     zero for a fresh chain.  ``global_transition`` is one-based.  Retained
     geometry has exact shape ``(draw, K, 4)`` and retained masses have exact
     shape ``(draw, K)``; fixed ``K`` therefore requires no padding or mask.
@@ -305,9 +309,11 @@ class FullTilingCompoundTrace:
         log_likelihood: Likelihood-power-scaled target component.
         log_root_prior: Normalized root Gamma log-density component.
         log_allocation_prior: Normalized conditional mass-allocation component.
-        log_structural_prior: Declared fixed-``K`` geometry component.
+        log_structural_prior: Zero structural log-ratio component; the unknown
+            fixed-``K`` communication-component normalizer is omitted.
         log_fixed_coefficient_prior: Normalized fixed-block prior component.
-        log_target: Complete retained log target.
+        log_target: Retained log target up to the omitted fixed-``K``
+            communication-component structural normalizer.
         state_transition: Global coordinates of retained states.
         global_transition: Global coordinates of every attempted transition.
         slot: Stable compound slot name per attempt.
@@ -493,7 +499,8 @@ class FullTilingCompoundTrace:
         """Return the accepted fraction of all atomic opportunities.
 
         Returns:
-            Mean every-attempt acceptance, including invalid stays.
+            Mean every-attempt acceptance, including invalid stays, or NaN
+            for a manually constructed trace with no attempted transitions.
         """
         return float(np.mean(self.accepted))
 

@@ -4,10 +4,12 @@ This module joins the construction-history-free geometry in
 :mod:`openghg_inversions.experimental.rjmcmc.full_tiling` to the immutable
 observation model supplied by the Gamma--Beta RHIME bridge.  The scientific
 coordinates are a positive root total and Dirichlet allocation shares on the
-active rectangles.  Rectangle design columns are computed lazily from direct
+active rectangles. Rectangle design columns are computed lazily from direct
 spatial slices of the base sensitivity matrix and cached by immutable
 :class:`~openghg_inversions.experimental.rjmcmc.full_tiling.Rectangle`
-instances; full tilings and proposal catalogues are never enumerated.
+instances. The complete tiling state space and exhaustive oracle path
+catalogues are never enumerated; proposals construct only current-state merge
+choices and fixed local destination catalogues.
 
 All proposal constructors are deterministic.  Their discrete choices,
 continuous draws, and accept/reject log-uniform value are supplied explicitly,
@@ -308,7 +310,7 @@ class FullTilingProblem:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class FullTilingPosteriorState:
-    """Immutable full-tiling allocation and complete posterior caches.
+    """Full-tiling allocation and complete posterior caches.
 
     The continuous chart is ``(T, shares)``: ``allocation.total_mass`` is the
     positive root total and normalized leaf masses are the simplex shares.
@@ -332,7 +334,9 @@ class FullTilingPosteriorState:
 
     Note:
         Use :func:`build_full_tiling_posterior_state` rather than direct
-        construction to obtain validated, internally consistent caches.
+        construction. States returned by the public builders contain
+        validated read-only caches; direct dataclass construction does not
+        enforce those invariants.
     """
 
     problem: FullTilingProblem
@@ -359,10 +363,10 @@ class FullTilingPosteriorState:
 
     @property
     def root_total(self) -> float:
-        """Return the positive total physical mass.
+        """Return the positive total allocation coordinate.
 
         Returns:
-            Sum of all active leaf masses.
+            Sum of all active leaf allocations in nominal-weight units.
         """
         return self.allocation.total_mass
 
@@ -395,10 +399,12 @@ class FullTilingPosteriorState:
 
     @property
     def log_target(self) -> float:
-        """Return the complete powered likelihood plus prior target.
+        """Return the powered likelihood plus continuous-prior target.
 
         Returns:
-            Log density in root-total plus allocation-share coordinates.
+            Log density in root-total plus allocation-share coordinates,
+            omitting the constant structural normalizer of the reachable
+            fixed-``K`` component.
         """
         return float(
             self.log_likelihood

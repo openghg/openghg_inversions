@@ -16,6 +16,11 @@ includes an explicit RHIME adapter, full-posterior compound schedule, and
 separate durable checkpoint/output schema for real-data experiments. It
 remains a restricted split/merge mixing baseline rather than a production
 full-tiling model and deliberately does not widen the Voronoi state schema.
+
+The construction-history-free full-tiling track currently provides a
+fixed-``K`` NumPy smoke sampler with edge flips, resolution relocations, and
+an additive-alpha allocation prior. Production-grid connectivity,
+variable-``K`` inference, and durable continuation are not yet claimed.
 """
 
 from openghg_inversions.experimental.rjmcmc.core import (
