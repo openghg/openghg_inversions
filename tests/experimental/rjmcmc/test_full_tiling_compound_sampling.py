@@ -119,7 +119,7 @@ def test_six_fixed_coefficients_and_five_pairs_make_exactly_fourteen_slots() -> 
         "fixed",
     ]
     assert result.trace.move[2:].tolist() == [
-        "root_total_refresh",
+        "root_total_slice",
         *(["pair_allocation_refresh"] * 5),
         *(["fixed_coefficient"] * 6),
     ]
@@ -130,10 +130,10 @@ def test_six_fixed_coefficients_and_five_pairs_make_exactly_fourteen_slots() -> 
     assert result.checkpoint.schedule_phase == 0
 
 
-def test_seeded_replay_covers_invalid_slots_and_every_acceptance_draw(
+def test_seeded_replay_covers_invalid_slots_and_non_slice_acceptance_draws(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Seeded replay is exact while invalid attempts still receive uniforms."""
+    """Seeded replay is exact and only non-slice attempts receive MH uniforms."""
     import openghg_inversions.experimental.rjmcmc.full_tiling_compound_sampling as sampling
 
     problem, initial = _problem_state(k=1)
@@ -154,13 +154,16 @@ def test_seeded_replay_covers_invalid_slots_and_every_acceptance_draw(
 
     _assert_results_equal(first, replay)
     assert tuple(observed) == first_uniforms
-    assert len(observed) == 31
+    assert len(observed) == 28
     assert sum(not valid for valid, _ in observed) == int(np.count_nonzero(~first.trace.valid))
     assert all(np.isfinite(value) and value <= 0.0 for _, value in observed)
 
 
-def test_awkward_phase_continuation_is_identical_to_uninterrupted_sampling() -> None:
-    """Continuation after five attempts reproduces a two-cycle direct run."""
+@pytest.mark.parametrize("first_iterations", [2, 3, 5])
+def test_awkward_phase_continuation_is_identical_to_uninterrupted_sampling(
+    first_iterations: int,
+) -> None:
+    """Continuation around variable-draw root slots reproduces a direct run."""
     problem, initial = _problem_state(k=4)
     direct = sample_full_tiling_compound(
         problem,
@@ -170,16 +173,20 @@ def test_awkward_phase_continuation_is_identical_to_uninterrupted_sampling() -> 
     first = sample_full_tiling_compound(
         problem,
         initial,
-        FullTilingCompoundConfig(iterations=5, seed=177),
+        FullTilingCompoundConfig(iterations=first_iterations, seed=177),
     )
-    second = continue_full_tiling_compound(problem, first.checkpoint, iterations=23)
+    second = continue_full_tiling_compound(
+        problem,
+        first.checkpoint,
+        iterations=28 - first_iterations,
+    )
 
     for name in direct.trace.__dataclass_fields__:
         combined = np.concatenate((getattr(first.trace, name), getattr(second.trace, name)), axis=0)
         np.testing.assert_array_equal(combined, getattr(direct.trace, name))
     _assert_states_equal(second.final_state, direct.final_state)
     assert second.checkpoint.rng_state == direct.checkpoint.rng_state
-    assert first.checkpoint.schedule_phase == 5
+    assert first.checkpoint.schedule_phase == first_iterations
     assert second.checkpoint.schedule_phase == 0
 
 

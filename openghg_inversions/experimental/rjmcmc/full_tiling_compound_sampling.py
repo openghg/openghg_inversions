@@ -4,7 +4,8 @@ This module composes the deterministic full-tiling posterior proposals into a
 small NumPy reference sampler suitable for real-data smoke tests.  One
 versioned cycle contains two independently mixed structural opportunities,
 each selecting an edge flip or resolution relocation with probability one
-half, one independent-prior root-total refresh, a configurable number of
+half, one stepping-out/shrinkage slice update of the log root total, a
+configurable number of
 independent-prior pair-allocation refreshes, and one deterministic
 Gaussian-random-walk opportunity for every fixed coefficient. This is not
 convergence evidence, and irreducibility over the complete fixed-``K`` tiling
@@ -15,9 +16,10 @@ exhaustive state-space enumeration. It enumerates only currently mergeable
 midpoint-friend pairs. Edge flips choose the
 perpendicular orientation.  Relocations choose from the fixed catalogue of
 every intermediate leaf crossed with both axis labels, including invalid
-choices.  Invalid attempts are explicit self-transitions and every atomic
-slot consumes one acceptance uniform.  The sampler never calls the exhaustive
-tiling or proposal-path enumeration oracles.
+choices.  Invalid attempts are explicit self-transitions. Every non-slice
+atomic slot consumes one final acceptance uniform, while the slice slot uses
+only its height, bracket, and shrinkage draws. The sampler never calls the
+exhaustive tiling or proposal-path enumeration oracles.
 
 Retained states occur at the initial coordinate and complete global cycle
 boundaries.  Every attempted transition is diagnosed independently of retained
@@ -31,9 +33,10 @@ outside this module.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import isfinite, log
+from math import fsum, isfinite, log
 from numbers import Integral
-from typing import Literal
+from time import perf_counter_ns
+from typing import Literal, Protocol
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -44,16 +47,19 @@ from .full_tiling_posterior import (
     FullTilingProblem,
     PosteriorTransitionTerms,
     accept_or_reject,
+    log_root_total_slice_density,
     propose_fixed_coefficient,
     propose_pair_allocation_refresh,
     propose_posterior_edge_flip,
     propose_posterior_resolution_relocation,
-    propose_root_total_refresh,
+    rescale_full_tiling_root_total,
 )
 from .sampling import PCG64State
 
 
-FULL_TILING_COMPOUND_SCHEDULE_ID = "full_tiling_2_mixed_structure_1_root_n_pair_allocation_fixed_sweep_v1"
+FULL_TILING_COMPOUND_SCHEDULE_ID = (
+    "full_tiling_2_mixed_structure_1_root_slice_n_pair_allocation_fixed_sweep_v2"
+)
 """Versioned identifier for the fixed-``K`` compound schedule."""
 
 FullTilingCompoundSlot = Literal["structural", "root", "pair_allocation", "fixed"]
@@ -103,7 +109,7 @@ def _positive_float(value: object, *, name: str) -> float:
         ValueError: If conversion fails or the value is not finite and
             strictly positive.
     """
-    if isinstance(value, bool):
+    if isinstance(value, (bool, np.bool_)):
         raise TypeError(f"{name} must be a real number.")
     try:
         scalar = np.asarray(value, dtype=np.float64)
@@ -200,6 +206,12 @@ class FullTilingCompoundConfig:
             used by the real-data smoke schedule.
         fixed_coefficient_proposal_sd: Positive scalar shared by every fixed
             coefficient or a positive one-dimensional per-position vector.
+        root_slice_width: Positive initial stepping-out bracket width in
+            ``z = log(T)``.
+        root_slice_max_steps: Positive finite stepping-out budget, including
+            the initial bracket.
+        root_slice_max_shrink_steps: Positive maximum number of shrinkage
+            candidates before a guard error.
 
     Raises:
         TypeError: If an integer setting has the wrong type.
@@ -210,6 +222,9 @@ class FullTilingCompoundConfig:
     seed: int | None = None
     pair_allocation_refresh_slots: int = 5
     fixed_coefficient_proposal_sd: float | tuple[float, ...] = 0.4
+    root_slice_width: float = 1.0
+    root_slice_max_steps: int = 100
+    root_slice_max_shrink_steps: int = 1000
 
     def __post_init__(self) -> None:
         """Normalize and validate problem-independent settings."""
@@ -235,6 +250,26 @@ class FullTilingCompoundConfig:
             "fixed_coefficient_proposal_sd",
             _normalize_fixed_scale_input(self.fixed_coefficient_proposal_sd),
         )
+        root_slice_width = _positive_float(
+            self.root_slice_width,
+            name="root_slice_width",
+        )
+        root_slice_max_steps = _positive_integer(
+            self.root_slice_max_steps,
+            name="root_slice_max_steps",
+        )
+        if not isfinite(root_slice_width * root_slice_max_steps):
+            raise ValueError("root_slice_width times root_slice_max_steps must be finite.")
+        object.__setattr__(self, "root_slice_width", root_slice_width)
+        object.__setattr__(self, "root_slice_max_steps", root_slice_max_steps)
+        object.__setattr__(
+            self,
+            "root_slice_max_shrink_steps",
+            _positive_integer(
+                self.root_slice_max_shrink_steps,
+                name="root_slice_max_shrink_steps",
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,6 +281,11 @@ class FullTilingCompoundKernelSettings:
         pair_allocation_refresh_slots: Pair refresh opportunities per cycle.
         fixed_coefficient_proposal_sd: Gaussian scales in deterministic fixed
             coefficient order.
+        root_slice_width: Initial stepping-out bracket width in log-total
+            coordinates.
+        root_slice_max_steps: Finite stepping-out budget, including the
+            initial bracket.
+        root_slice_max_shrink_steps: Maximum shrinkage candidate draws.
 
     Raises:
         TypeError: If an integer setting has the wrong type.
@@ -255,6 +295,9 @@ class FullTilingCompoundKernelSettings:
     fixed_k: int
     pair_allocation_refresh_slots: int
     fixed_coefficient_proposal_sd: tuple[float, ...]
+    root_slice_width: float = 1.0
+    root_slice_max_steps: int = 100
+    root_slice_max_shrink_steps: int = 1000
 
     def __post_init__(self) -> None:
         """Validate and normalize resolved schedule settings."""
@@ -277,6 +320,26 @@ class FullTilingCompoundKernelSettings:
             for value in self.fixed_coefficient_proposal_sd
         )
         object.__setattr__(self, "fixed_coefficient_proposal_sd", scales)
+        root_slice_width = _positive_float(
+            self.root_slice_width,
+            name="root_slice_width",
+        )
+        root_slice_max_steps = _positive_integer(
+            self.root_slice_max_steps,
+            name="root_slice_max_steps",
+        )
+        if not isfinite(root_slice_width * root_slice_max_steps):
+            raise ValueError("root_slice_width times root_slice_max_steps must be finite.")
+        object.__setattr__(self, "root_slice_width", root_slice_width)
+        object.__setattr__(self, "root_slice_max_steps", root_slice_max_steps)
+        object.__setattr__(
+            self,
+            "root_slice_max_shrink_steps",
+            _positive_integer(
+                self.root_slice_max_shrink_steps,
+                name="root_slice_max_shrink_steps",
+            ),
+        )
 
     @property
     def cycle_length(self) -> int:
@@ -298,6 +361,11 @@ class FullTilingCompoundTrace:
     zero for a fresh chain.  ``global_transition`` is one-based.  Retained
     geometry has exact shape ``(draw, K, 4)`` and retained masses have exact
     shape ``(draw, K)``; fixed ``K`` therefore requires no padding or mask.
+    A root slice row is recorded as valid and accepted with
+    ``log_acceptance_ratio == 0`` even though it is a direct conditional
+    update rather than a Metropolis-Hastings decision. Historical v1
+    ``root_total_refresh`` move labels remain readable, but cannot be resumed
+    by the v2 checkpoint kernel.
 
     Attributes:
         rectangle_bounds: Canonical ``(row_start, row_stop, col_start,
@@ -470,6 +538,7 @@ class FullTilingCompoundTrace:
                     "edge_flip",
                     "resolution_relocation",
                     "root_total_refresh",
+                    "root_total_slice",
                     "pair_allocation_refresh",
                     "fixed_coefficient",
                 ),
@@ -503,6 +572,194 @@ class FullTilingCompoundTrace:
             for a manually constructed trace with no attempted transitions.
         """
         return float(np.mean(self.accepted))
+
+
+@dataclass(frozen=True, slots=True)
+class FullTilingMovementDiagnostics:
+    """Optional output-only movement measurements for every atomic transition.
+
+    Candidate movement is recorded even when a valid Metropolis-Hastings
+    proposal is rejected. Invalid proposals have zero movement and slice
+    counters, and use ``-1`` for ``fixed_position``. Catalogue sizes describe
+    the deterministic source-side choices already visited by proposal
+    construction; diagnostics never enumerate merge choices themselves.
+    Timing values are observational and are not part of scientific replay.
+    Displacement norms may be positive infinity when the corresponding true
+    finite-precision magnitude exceeds the largest representable float; this
+    sentinel does not alter the chain.
+
+    Args:
+        global_transition: Consecutive one-based transition coordinates.
+        move: Concrete proposal or slice-kernel name.
+        valid: Whether an eligible candidate was constructed.
+        accepted: Whether the candidate became the visited state.
+        proposal_elapsed_ns: Proposal construction or slice-update elapsed
+            nanoseconds.
+        diagnostic_elapsed_ns: Movement-metric calculation elapsed
+            nanoseconds.
+        source_merge_count: Source merge-choice count for structural slots.
+        destination_catalogue_size: Fixed relocation destination catalogue
+            size, zero for other moves.
+        pair_catalogue_size: Unordered allocation-pair catalogue size, zero
+            for other moves.
+        design_cache_misses: Rectangle design columns newly cached while
+            constructing the proposal in the current process segment. This is
+            a cost metric, not restart-stable Markov state.
+        changed_native_cell_count: Native-cell area of source rectangles
+            absent from the candidate tiling.
+        changed_nominal_mass: Normalized nominal mass of those source
+            rectangles.
+        standardized_prediction_l2: Candidate-minus-source prediction norm
+            after elementwise division by observation standard deviation.
+        root_abs_displacement: Absolute candidate root-total displacement.
+        root_abs_log_displacement: Absolute candidate log-root displacement.
+        allocation_share_l1_displacement: L1 distance between source and
+            candidate rectangle-keyed allocation-share vectors.
+        fixed_position: Changed fixed coefficient position, or ``-1``.
+        fixed_abs_displacement: Absolute fixed-coefficient displacement.
+        fixed_abs_log_displacement: Absolute log fixed-coefficient
+            displacement.
+        slice_left_steps: Successful left stepping-out extensions.
+        slice_right_steps: Successful right stepping-out extensions.
+        slice_shrink_draws: Candidate draws made during slice shrinkage.
+        slice_log_density_evaluations: Conditional log-density evaluations in
+            the root slice update.
+
+    Raises:
+        ValueError: If arrays are not aligned or violate movement, catalogue,
+            timing, sentinel, or slice-counter invariants.
+    """
+
+    global_transition: NDArray[np.int64]
+    move: NDArray[np.str_]
+    valid: NDArray[np.bool_]
+    accepted: NDArray[np.bool_]
+    proposal_elapsed_ns: NDArray[np.int64]
+    diagnostic_elapsed_ns: NDArray[np.int64]
+    source_merge_count: NDArray[np.int64]
+    destination_catalogue_size: NDArray[np.int64]
+    pair_catalogue_size: NDArray[np.int64]
+    design_cache_misses: NDArray[np.int64]
+    changed_native_cell_count: NDArray[np.int64]
+    changed_nominal_mass: NDArray[np.float64]
+    standardized_prediction_l2: NDArray[np.float64]
+    root_abs_displacement: NDArray[np.float64]
+    root_abs_log_displacement: NDArray[np.float64]
+    allocation_share_l1_displacement: NDArray[np.float64]
+    fixed_position: NDArray[np.int64]
+    fixed_abs_displacement: NDArray[np.float64]
+    fixed_abs_log_displacement: NDArray[np.float64]
+    slice_left_steps: NDArray[np.int64]
+    slice_right_steps: NDArray[np.int64]
+    slice_shrink_draws: NDArray[np.int64]
+    slice_log_density_evaluations: NDArray[np.int64]
+
+    def __post_init__(self) -> None:
+        """Copy arrays read-only and enforce per-attempt invariants."""
+        integer_fields = (
+            "global_transition",
+            "proposal_elapsed_ns",
+            "diagnostic_elapsed_ns",
+            "source_merge_count",
+            "destination_catalogue_size",
+            "pair_catalogue_size",
+            "design_cache_misses",
+            "changed_native_cell_count",
+            "fixed_position",
+            "slice_left_steps",
+            "slice_right_steps",
+            "slice_shrink_draws",
+            "slice_log_density_evaluations",
+        )
+        float_fields = (
+            "changed_nominal_mass",
+            "standardized_prediction_l2",
+            "root_abs_displacement",
+            "root_abs_log_displacement",
+            "allocation_share_l1_displacement",
+            "fixed_abs_displacement",
+            "fixed_abs_log_displacement",
+        )
+        for name in integer_fields:
+            object.__setattr__(
+                self,
+                name,
+                _readonly_array(getattr(self, name), dtype=np.int64, ndim=1, name=name),
+            )
+        for name in float_fields:
+            object.__setattr__(
+                self,
+                name,
+                _readonly_array(getattr(self, name), dtype=np.float64, ndim=1, name=name),
+            )
+        object.__setattr__(
+            self,
+            "move",
+            _readonly_array(self.move, dtype=np.dtype("U24"), ndim=1, name="move"),
+        )
+        for name in ("valid", "accepted"):
+            object.__setattr__(
+                self,
+                name,
+                _readonly_array(getattr(self, name), dtype=np.bool_, ndim=1, name=name),
+            )
+
+        size = self.global_transition.size
+        for name in (*integer_fields, *float_fields, "move", "valid", "accepted"):
+            if getattr(self, name).shape != (size,):
+                raise ValueError(f"{name} must have one entry per atomic transition.")
+        if size and (np.any(self.global_transition < 1) or np.any(np.diff(self.global_transition) != 1)):
+            raise ValueError("global_transition must contain consecutive positive coordinates.")
+        supported_moves = (
+            "edge_flip",
+            "resolution_relocation",
+            "root_total_slice",
+            "pair_allocation_refresh",
+            "fixed_coefficient",
+        )
+        if np.any(~np.isin(self.move, supported_moves)):
+            raise ValueError("move contains an unsupported full-tiling kernel.")
+        if np.any(self.accepted & ~self.valid):
+            raise ValueError("accepted transitions must be valid.")
+        nonnegative_integer_fields = tuple(
+            name for name in integer_fields if name not in ("global_transition", "fixed_position")
+        )
+        if any(np.any(getattr(self, name) < 0) for name in nonnegative_integer_fields):
+            raise ValueError("timings, catalogue sizes, counts, and slice counters must be non-negative.")
+        if any(
+            np.any(np.isnan(getattr(self, name))) or np.any(getattr(self, name) < 0.0)
+            for name in float_fields
+        ):
+            raise ValueError("movement values must be non-negative and cannot contain NaN.")
+        if np.any(~np.isfinite(self.changed_nominal_mass)) or np.any(self.changed_nominal_mass > 1.0):
+            raise ValueError("changed_nominal_mass cannot exceed one.")
+        invalid = ~self.valid
+        movement_fields = (
+            "changed_native_cell_count",
+            *float_fields,
+            "slice_left_steps",
+            "slice_right_steps",
+            "slice_shrink_draws",
+            "slice_log_density_evaluations",
+        )
+        if any(np.any(getattr(self, name)[invalid] != 0) for name in movement_fields):
+            raise ValueError("invalid proposals must have zero movement and slice counters.")
+        if np.any(self.fixed_position[invalid] != -1):
+            raise ValueError("invalid proposals must use the -1 fixed-position sentinel.")
+        fixed = self.move == "fixed_coefficient"
+        if np.any(self.fixed_position[~(fixed & self.valid)] != -1):
+            raise ValueError("fixed_position is populated only for valid fixed proposals.")
+        if np.any(self.fixed_position[fixed & self.valid] < 0):
+            raise ValueError("valid fixed proposals must identify a fixed position.")
+        root = self.move == "root_total_slice"
+        for name in (
+            "slice_left_steps",
+            "slice_right_steps",
+            "slice_shrink_draws",
+            "slice_log_density_evaluations",
+        ):
+            if np.any(getattr(self, name)[~root] != 0):
+                raise ValueError("root slice counters must be zero off root slots.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -580,11 +837,13 @@ class FullTilingCompoundSamplingResult:
         trace: Cycle-boundary states and every-attempt diagnostics.
         final_state: State after the segment's final atomic transition.
         checkpoint: Exact in-memory continuation boundary after the segment.
+        movement_diagnostics: Optional output-only per-transition metrics.
     """
 
     trace: FullTilingCompoundTrace
     final_state: FullTilingPosteriorState
     checkpoint: FullTilingCompoundCheckpoint
+    movement_diagnostics: FullTilingMovementDiagnostics | None = None
 
 
 def _retained_cycle_boundaries(
@@ -681,7 +940,7 @@ def _draw_structural_transition(
     state: FullTilingPosteriorState,
     *,
     rng: np.random.Generator,
-) -> PosteriorTransitionTerms:
+) -> tuple[PosteriorTransitionTerms, "_ProposalCatalogueStats"]:
     """Draw one fixed half-and-half structural proposal.
 
     The component choice is never availability-renormalized.  Only source
@@ -694,25 +953,36 @@ def _draw_structural_transition(
         rng: Generator advanced by the component and proposal-specific draws.
 
     Returns:
-        Complete deterministic posterior transition terms.
+        Complete deterministic posterior transition terms and source
+        catalogue sizes already encountered while drawing them.
     """
     choose_edge_flip = float(rng.random()) < 0.5
     merges = merge_choices(state.tiling_state.tiling)
+    merge_count = len(merges)
     if not merges:
         merge = _invalid_merge_choice()
         if choose_edge_flip:
-            return propose_posterior_edge_flip(
+            return (
+                propose_posterior_edge_flip(
+                    problem,
+                    state,
+                    merge_choice=merge,
+                    new_fraction=0.5,
+                ),
+                _ProposalCatalogueStats(source_merge_count=merge_count),
+            )
+        return (
+            propose_posterior_resolution_relocation(
                 problem,
                 state,
                 merge_choice=merge,
+                split_choice=_invalid_split_choice(),
                 new_fraction=0.5,
-            )
-        return propose_posterior_resolution_relocation(
-            problem,
-            state,
-            merge_choice=merge,
-            split_choice=_invalid_split_choice(),
-            new_fraction=0.5,
+            ),
+            _ProposalCatalogueStats(
+                source_merge_count=merge_count,
+                destination_catalogue_size=2 * (state.k - 1),
+            ),
         )
 
     merge = merges[int(rng.integers(len(merges)))]
@@ -723,11 +993,14 @@ def _draw_structural_transition(
             fraction = _draw_beta(problem, children[0], children[1], rng=rng)
         else:
             fraction = 0.5
-        return propose_posterior_edge_flip(
-            problem,
-            state,
-            merge_choice=merge,
-            new_fraction=fraction,
+        return (
+            propose_posterior_edge_flip(
+                problem,
+                state,
+                merge_choice=merge,
+                new_fraction=fraction,
+            ),
+            _ProposalCatalogueStats(source_merge_count=merge_count),
         )
 
     intermediate = state.tiling_state.tiling.merge(merge)
@@ -742,12 +1015,18 @@ def _draw_structural_transition(
         fraction = _draw_beta(problem, children[0], children[1], rng=rng)
     else:
         fraction = 0.5
-    return propose_posterior_resolution_relocation(
-        problem,
-        state,
-        merge_choice=merge,
-        split_choice=split,
-        new_fraction=fraction,
+    return (
+        propose_posterior_resolution_relocation(
+            problem,
+            state,
+            merge_choice=merge,
+            split_choice=split,
+            new_fraction=fraction,
+        ),
+        _ProposalCatalogueStats(
+            source_merge_count=merge_count,
+            destination_catalogue_size=len(catalogue),
+        ),
     )
 
 
@@ -756,7 +1035,7 @@ def _draw_pair_refresh_transition(
     state: FullTilingPosteriorState,
     *,
     rng: np.random.Generator,
-) -> PosteriorTransitionTerms:
+) -> tuple[PosteriorTransitionTerms, "_ProposalCatalogueStats"]:
     """Draw one uniform unordered-pair additive-alpha refresh.
 
     Args:
@@ -766,17 +1045,21 @@ def _draw_pair_refresh_transition(
 
     Returns:
         Complete pair-refresh transition terms.  ``K=1`` is an explicit
-        invalid self-attempt through the deterministic proposal API.
+        invalid self-attempt through the deterministic proposal API, paired
+        with the already calculated pair-catalogue size.
     """
     leaves = state.tiling_state.tiling.leaves
     pair_count = state.k * (state.k - 1) // 2
     if pair_count == 0:
-        return propose_pair_allocation_refresh(
-            problem,
-            state,
-            first_leaf=_invalid_split_choice().leaf,
-            second_leaf=_invalid_merge_choice().parent,
-            new_fraction=0.5,
+        return (
+            propose_pair_allocation_refresh(
+                problem,
+                state,
+                first_leaf=_invalid_split_choice().leaf,
+                second_leaf=_invalid_merge_choice().parent,
+                new_fraction=0.5,
+            ),
+            _ProposalCatalogueStats(pair_catalogue_size=pair_count),
         )
     selected = int(rng.integers(pair_count))
     offset = 0
@@ -791,13 +1074,145 @@ def _draw_pair_refresh_transition(
     first = leaves[first_position]
     second = leaves[second_position]
     fraction = _draw_beta(problem, first, second, rng=rng)
-    return propose_pair_allocation_refresh(
-        problem,
-        state,
-        first_leaf=first,
-        second_leaf=second,
-        new_fraction=fraction,
+    return (
+        propose_pair_allocation_refresh(
+            problem,
+            state,
+            first_leaf=first,
+            second_leaf=second,
+            new_fraction=fraction,
+        ),
+        _ProposalCatalogueStats(pair_catalogue_size=pair_count),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _ProposalCatalogueStats:
+    """Catalogue sizes gathered without repeating proposal enumeration."""
+
+    source_merge_count: int = 0
+    destination_catalogue_size: int = 0
+    pair_catalogue_size: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class _RootSliceCounters:
+    """Variable-work counters from one log-root slice update."""
+
+    left_steps: int
+    right_steps: int
+    shrink_draws: int
+    log_density_evaluations: int
+
+
+class _RandomSource(Protocol):
+    """Minimal random interface required by the root slice update."""
+
+    def random(self) -> float:
+        """Return one uniform draw."""
+        ...
+
+
+def _draw_root_total_slice(
+    problem: FullTilingProblem,
+    source: FullTilingPosteriorState,
+    *,
+    width: float,
+    max_steps: int,
+    max_shrink_steps: int,
+    rng: _RandomSource,
+) -> tuple[FullTilingPosteriorState, _RootSliceCounters]:
+    """Draw one exact finite stepping-out/shrinkage update in ``z=log(T)``.
+
+    The conditional posterior function already includes the ``+z`` chart
+    Jacobian. The finite stepping-out allocation is randomized as in the
+    standard exact slice construction: at most ``max_steps - 1`` extensions
+    are divided between the left and right endpoints. No Metropolis-Hastings
+    acceptance uniform is drawn after a slice candidate is obtained.
+
+    Args:
+        problem: Full-tiling posterior target.
+        source: State supplying geometry, allocation shares, and fixed block.
+        width: Positive initial log-total bracket width.
+        max_steps: Positive total finite stepping-out budget, including the
+            initial bracket.
+        max_shrink_steps: Positive candidate-draw guard.
+        rng: Generator advanced by slice-specific variable draws.
+
+    Returns:
+        Accepted posterior state and exact variable-work counters.
+
+    Raises:
+        RuntimeError: If the current point lacks finite conditional density,
+            an accepted log total cannot be represented as a positive
+            scientific total, or the shrinkage guard is exhausted.
+    """
+
+    evaluations: int = 0
+
+    def density(log_root_total: float) -> float:
+        """Evaluate and count the exact conditional log density."""
+        nonlocal evaluations
+        evaluations += 1
+        return log_root_total_slice_density(
+            problem,
+            source,
+            log_root_total=log_root_total,
+        )
+
+    current = log(source.root_total)
+    current_density = density(current)
+    if not isfinite(current_density):
+        raise RuntimeError("root slice current point must have finite log density.")
+
+    height_uniform = float(rng.random())
+    log_height = -np.inf if height_uniform == 0.0 else current_density + log(height_uniform)
+    bracket_uniform = float(rng.random())
+    left = current - width * bracket_uniform
+    right = left + width
+
+    allocation_uniform = float(rng.random())
+    left_budget = min(int(max_steps * allocation_uniform), max_steps - 1)
+    right_budget = max_steps - 1 - left_budget
+    left_steps = 0
+    while left_budget > 0 and density(left) > log_height:
+        left -= width
+        left_budget -= 1
+        left_steps += 1
+    right_steps = 0
+    while right_budget > 0 and density(right) > log_height:
+        right += width
+        right_budget -= 1
+        right_steps += 1
+
+    for shrink_draws in range(1, max_shrink_steps + 1):
+        candidate_uniform = float(rng.random())
+        candidate_log_total = left + candidate_uniform * (right - left)
+        candidate_density = density(candidate_log_total)
+        if candidate_density > -np.inf and candidate_density >= log_height:
+            candidate_total = float(np.exp(candidate_log_total))
+            if not isfinite(candidate_total) or candidate_total <= 0.0:
+                raise RuntimeError(
+                    "root slice accepted a log total outside representable scientific support."
+                )
+            candidate = rescale_full_tiling_root_total(
+                problem,
+                source,
+                new_root_total=candidate_total,
+            )
+            return candidate, _RootSliceCounters(
+                left_steps=left_steps,
+                right_steps=right_steps,
+                shrink_draws=shrink_draws,
+                log_density_evaluations=evaluations,
+            )
+        if candidate_log_total < current:
+            left = candidate_log_total
+        elif candidate_log_total > current:
+            right = candidate_log_total
+        else:
+            raise RuntimeError("root slice shrinkage made no progress.")
+    raise RuntimeError(f"root slice exceeded root_slice_max_shrink_steps={max_shrink_steps}.")
 
 
 def _draw_transition(
@@ -807,7 +1222,12 @@ def _draw_transition(
     phase: int,
     settings: FullTilingCompoundKernelSettings,
     rng: np.random.Generator,
-) -> tuple[FullTilingCompoundSlot, PosteriorTransitionTerms]:
+) -> tuple[
+    FullTilingCompoundSlot,
+    PosteriorTransitionTerms,
+    _ProposalCatalogueStats,
+    int,
+]:
     """Draw the proposal assigned to one global schedule phase.
 
     Args:
@@ -818,27 +1238,31 @@ def _draw_transition(
         rng: Generator advanced by proposal-specific draws.
 
     Returns:
-        Stable slot name and complete deterministic transition terms.
+        Stable slot name, complete deterministic transition terms, catalogue
+        sizes already calculated by proposal construction, and the attempted
+        fixed position or ``-1``.
 
     Raises:
-        RuntimeError: If a fixed phase does not map to a coefficient.
+        RuntimeError: If called for the separately handled slice slot or if a
+            fixed phase does not map to a coefficient.
     """
     slot, fixed_position = _slot_at_phase(phase, settings)
     if slot == "structural":
-        return slot, _draw_structural_transition(problem, state, rng=rng)
-    if slot == "root":
-        return slot, propose_root_total_refresh(
+        transition, catalogue_stats = _draw_structural_transition(
             problem,
             state,
-            new_root_total=float(
-                rng.gamma(
-                    shape=problem.base.prior.root_shape,
-                    scale=1.0 / problem.base.prior.root_rate,
-                )
-            ),
+            rng=rng,
         )
+        return slot, transition, catalogue_stats, -1
+    if slot == "root":
+        raise RuntimeError("root slice slots must be handled without a final acceptance uniform.")
     if slot == "pair_allocation":
-        return slot, _draw_pair_refresh_transition(problem, state, rng=rng)
+        transition, catalogue_stats = _draw_pair_refresh_transition(
+            problem,
+            state,
+            rng=rng,
+        )
+        return slot, transition, catalogue_stats, -1
     if fixed_position is None:
         raise RuntimeError("fixed schedule slot did not resolve a coefficient position.")
     proposal_sd = settings.fixed_coefficient_proposal_sd[fixed_position]
@@ -848,12 +1272,17 @@ def _draw_transition(
             scale=proposal_sd,
         )
     )
-    return slot, propose_fixed_coefficient(
-        problem,
-        state,
-        coefficient_position=fixed_position,
-        proposed_coefficient=proposed,
-        proposal_stdev=proposal_sd,
+    return (
+        slot,
+        propose_fixed_coefficient(
+            problem,
+            state,
+            coefficient_position=fixed_position,
+            proposed_coefficient=proposed,
+            proposal_stdev=proposal_sd,
+        ),
+        _ProposalCatalogueStats(),
+        fixed_position,
     )
 
 
@@ -868,6 +1297,111 @@ def _rectangle_bounds(state: FullTilingPosteriorState) -> NDArray[np.int64]:
     )
 
 
+def _scaled_l2_norm(values: NDArray[np.float64]) -> float:
+    """Return an overflow-resistant Euclidean norm."""
+    absolute = np.abs(values)
+    scale = float(np.max(absolute, initial=0.0))
+    if scale == 0.0:
+        return 0.0
+    if not isfinite(scale):
+        return np.inf
+    return float(scale * np.sqrt(np.sum((absolute / scale) ** 2)))
+
+
+@dataclass(frozen=True, slots=True)
+class _MovementMetrics:
+    """Candidate movement calculated only from existing state caches."""
+
+    changed_native_cell_count: int = 0
+    changed_nominal_mass: float = 0.0
+    standardized_prediction_l2: float = 0.0
+    root_abs_displacement: float = 0.0
+    root_abs_log_displacement: float = 0.0
+    allocation_share_l1_displacement: float = 0.0
+    fixed_position: int = -1
+    fixed_abs_displacement: float = 0.0
+    fixed_abs_log_displacement: float = 0.0
+
+
+def _movement_metrics(
+    problem: FullTilingProblem,
+    source: FullTilingPosteriorState,
+    candidate: FullTilingPosteriorState,
+    *,
+    valid: bool,
+    fixed_position: int,
+) -> _MovementMetrics:
+    """Calculate proposal movement without rebuilding geometry or predictions.
+
+    Args:
+        problem: Problem supplying nominal masses and observation scales.
+        source: State before the attempted transition.
+        candidate: Proposed state, which may equal ``source`` when invalid.
+        valid: Whether candidate movement is meaningful.
+        fixed_position: Attempted fixed position, or ``-1`` for other slots.
+
+    Returns:
+        Zero movement for invalid attempts or metrics from existing source and
+        candidate caches for valid proposals.
+    """
+    if not valid:
+        return _MovementMetrics()
+
+    source_leaves = source.tiling_state.tiling.leaves
+    candidate_leaf_set = set(candidate.tiling_state.tiling.leaves)
+    changed_source_leaves = tuple(leaf for leaf in source_leaves if leaf not in candidate_leaf_set)
+    changed_native_cell_count = sum(leaf.area for leaf in changed_source_leaves)
+    changed_nominal_mass = min(
+        1.0,
+        max(
+            0.0,
+            fsum(problem.rectangle_nominal_mass(leaf) for leaf in changed_source_leaves),
+        ),
+    )
+
+    source_shares = {
+        leaf: float(mass / source.root_total)
+        for leaf, mass in zip(source_leaves, source.leaf_masses, strict=True)
+    }
+    candidate_shares = {
+        leaf: float(mass / candidate.root_total)
+        for leaf, mass in zip(
+            candidate.tiling_state.tiling.leaves,
+            candidate.leaf_masses,
+            strict=True,
+        )
+    }
+    share_l1 = sum(
+        abs(source_shares.get(leaf, 0.0) - candidate_shares.get(leaf, 0.0))
+        for leaf in source_shares.keys() | candidate_shares.keys()
+    )
+    prediction_change = candidate.prediction - source.prediction
+    root_abs_displacement = abs(candidate.root_total - source.root_total)
+    root_abs_log_displacement = abs(log(candidate.root_total) - log(source.root_total))
+
+    diagnosed_fixed_position = -1
+    fixed_abs_displacement = 0.0
+    fixed_abs_log_displacement = 0.0
+    if fixed_position >= 0:
+        diagnosed_fixed_position = fixed_position
+        source_fixed = float(source.fixed_coefficients[fixed_position])
+        candidate_fixed = float(candidate.fixed_coefficients[fixed_position])
+        fixed_abs_displacement = abs(candidate_fixed - source_fixed)
+        fixed_abs_log_displacement = abs(log(candidate_fixed) - log(source_fixed))
+
+    return _MovementMetrics(
+        changed_native_cell_count=changed_native_cell_count,
+        changed_nominal_mass=changed_nominal_mass,
+        standardized_prediction_l2=_scaled_l2_norm(prediction_change / problem.observation_sd),
+        root_abs_displacement=root_abs_displacement,
+        root_abs_log_displacement=root_abs_log_displacement,
+        allocation_share_l1_displacement=share_l1,
+        fixed_position=diagnosed_fixed_position,
+        fixed_abs_displacement=fixed_abs_displacement,
+        fixed_abs_log_displacement=fixed_abs_log_displacement,
+    )
+
+
 def _run_segment(
     problem: FullTilingProblem,
     initial_state: FullTilingPosteriorState,
@@ -877,6 +1411,7 @@ def _run_segment(
     transitions_completed: int,
     settings: FullTilingCompoundKernelSettings,
     include_initial: bool,
+    collect_movement_diagnostics: bool,
 ) -> FullTilingCompoundSamplingResult:
     """Run one exact segment using global schedule and retention coordinates.
 
@@ -888,6 +1423,7 @@ def _run_segment(
         transitions_completed: Global coordinate before the segment.
         settings: Complete immutable problem-resolved settings.
         include_initial: Whether the boundary is the fresh initial draw.
+        collect_movement_diagnostics: Whether to collect output-only metrics.
 
     Returns:
         Segment trace, final state, and exact next checkpoint.
@@ -897,9 +1433,9 @@ def _run_segment(
             scale width, or pair-refresh availability is inconsistent.
 
     Notes:
-        Each loop iteration consumes one acceptance uniform after all
-        proposal-specific draws, including invalid structural or continuous
-        attempts.
+        Each non-slice loop iteration consumes one acceptance uniform after
+        all proposal-specific draws, including invalid attempts. Root slice
+        slots do not consume a final Metropolis-Hastings uniform.
     """
     if initial_state.problem is not problem:
         raise ValueError("initial_state must have been built for the supplied problem.")
@@ -937,6 +1473,36 @@ def _run_segment(
     accepted = np.empty(iterations, dtype=np.bool_)
     log_acceptance_ratio = np.empty(iterations, dtype=np.float64)
     invalid_reason = np.empty(iterations, dtype="U96")
+    diagnostic_rows: dict[str, list[int | float | str | bool]] | None = None
+    if collect_movement_diagnostics:
+        diagnostic_rows = {
+            name: []
+            for name in (
+                "global_transition",
+                "move",
+                "valid",
+                "accepted",
+                "proposal_elapsed_ns",
+                "diagnostic_elapsed_ns",
+                "source_merge_count",
+                "destination_catalogue_size",
+                "pair_catalogue_size",
+                "design_cache_misses",
+                "changed_native_cell_count",
+                "changed_nominal_mass",
+                "standardized_prediction_l2",
+                "root_abs_displacement",
+                "root_abs_log_displacement",
+                "allocation_share_l1_displacement",
+                "fixed_position",
+                "fixed_abs_displacement",
+                "fixed_abs_log_displacement",
+                "slice_left_steps",
+                "slice_right_steps",
+                "slice_shrink_draws",
+                "slice_log_density_evaluations",
+            )
+        }
     state = initial_state
     retained_position = 0
 
@@ -966,25 +1532,95 @@ def _run_segment(
     for iteration in range(iterations):
         phase = (transitions_completed + iteration) % settings.cycle_length
         source = state
-        slot, transition = _draw_transition(
-            problem,
-            source,
-            phase=phase,
-            settings=settings,
-            rng=rng,
-        )
-        uniform = float(rng.random())
-        log_uniform = -np.inf if uniform == 0.0 else log(uniform)
-        state = accept_or_reject(source, transition, log_uniform=log_uniform)
-        proposal_accepted = transition.valid and state is transition.candidate
+        slot, _ = _slot_at_phase(phase, settings)
+        cache_size_before = len(problem._design_cache) if diagnostic_rows is not None else 0
+        proposal_started = perf_counter_ns() if diagnostic_rows is not None else 0
+        if slot == "root":
+            state, slice_counters = _draw_root_total_slice(
+                problem,
+                source,
+                width=settings.root_slice_width,
+                max_steps=settings.root_slice_max_steps,
+                max_shrink_steps=settings.root_slice_max_shrink_steps,
+                rng=rng,
+            )
+            candidate = state
+            move = "root_total_slice"
+            transition_valid = True
+            proposal_accepted = True
+            transition_log_acceptance_ratio = 0.0
+            transition_reason = ""
+            catalogue_stats = _ProposalCatalogueStats()
+            fixed_position = -1
+        else:
+            (
+                slot,
+                transition,
+                catalogue_stats,
+                fixed_position,
+            ) = _draw_transition(
+                problem,
+                source,
+                phase=phase,
+                settings=settings,
+                rng=rng,
+            )
+            uniform = float(rng.random())
+            log_uniform = -np.inf if uniform == 0.0 else log(uniform)
+            state = accept_or_reject(source, transition, log_uniform=log_uniform)
+            candidate = transition.candidate
+            move = transition.move
+            transition_valid = transition.valid
+            proposal_accepted = transition.valid and state is transition.candidate
+            transition_log_acceptance_ratio = transition.log_acceptance_ratio
+            transition_reason = "" if transition.reason is None else transition.reason
+            slice_counters = _RootSliceCounters(0, 0, 0, 0)
+        proposal_elapsed = perf_counter_ns() - proposal_started if diagnostic_rows is not None else 0
 
         slots[iteration] = slot
-        moves[iteration] = transition.move
-        valid[iteration] = transition.valid
+        moves[iteration] = move
+        valid[iteration] = transition_valid
         accepted[iteration] = proposal_accepted
-        log_acceptance_ratio[iteration] = transition.log_acceptance_ratio
-        invalid_reason[iteration] = "" if transition.reason is None else transition.reason
+        log_acceptance_ratio[iteration] = transition_log_acceptance_ratio
+        invalid_reason[iteration] = transition_reason
         completed = transitions_completed + iteration + 1
+        if diagnostic_rows is not None:
+            diagnostic_started = perf_counter_ns()
+            metrics = _movement_metrics(
+                problem,
+                source,
+                candidate,
+                valid=transition_valid,
+                fixed_position=fixed_position,
+            )
+            diagnostic_elapsed = perf_counter_ns() - diagnostic_started
+            row: dict[str, int | float | str | bool] = {
+                "global_transition": completed,
+                "move": move,
+                "valid": transition_valid,
+                "accepted": proposal_accepted,
+                "proposal_elapsed_ns": proposal_elapsed,
+                "diagnostic_elapsed_ns": diagnostic_elapsed,
+                "source_merge_count": catalogue_stats.source_merge_count,
+                "destination_catalogue_size": catalogue_stats.destination_catalogue_size,
+                "pair_catalogue_size": catalogue_stats.pair_catalogue_size,
+                "design_cache_misses": len(problem._design_cache) - cache_size_before,
+                "changed_native_cell_count": metrics.changed_native_cell_count,
+                "changed_nominal_mass": metrics.changed_nominal_mass,
+                "standardized_prediction_l2": metrics.standardized_prediction_l2,
+                "root_abs_displacement": metrics.root_abs_displacement,
+                "root_abs_log_displacement": metrics.root_abs_log_displacement,
+                "allocation_share_l1_displacement": (metrics.allocation_share_l1_displacement),
+                "fixed_position": metrics.fixed_position,
+                "fixed_abs_displacement": metrics.fixed_abs_displacement,
+                "fixed_abs_log_displacement": metrics.fixed_abs_log_displacement,
+                "slice_left_steps": slice_counters.left_steps,
+                "slice_right_steps": slice_counters.right_steps,
+                "slice_shrink_draws": slice_counters.shrink_draws,
+                "slice_log_density_evaluations": (slice_counters.log_density_evaluations),
+            }
+            for name, value in row.items():
+                diagnostic_rows[name].append(value)
         if next_retained == completed:
             retain(state)
             next_retained = (
@@ -1015,6 +1651,93 @@ def _run_segment(
         schedule_phase=total_transitions % settings.cycle_length,
         kernel_settings=settings,
     )
+    movement_diagnostics = None
+    if diagnostic_rows is not None:
+        movement_diagnostics = FullTilingMovementDiagnostics(
+            global_transition=np.asarray(
+                diagnostic_rows["global_transition"],
+                dtype=np.int64,
+            ),
+            move=np.asarray(diagnostic_rows["move"], dtype="U24"),
+            valid=np.asarray(diagnostic_rows["valid"], dtype=np.bool_),
+            accepted=np.asarray(diagnostic_rows["accepted"], dtype=np.bool_),
+            proposal_elapsed_ns=np.asarray(
+                diagnostic_rows["proposal_elapsed_ns"],
+                dtype=np.int64,
+            ),
+            diagnostic_elapsed_ns=np.asarray(
+                diagnostic_rows["diagnostic_elapsed_ns"],
+                dtype=np.int64,
+            ),
+            source_merge_count=np.asarray(
+                diagnostic_rows["source_merge_count"],
+                dtype=np.int64,
+            ),
+            destination_catalogue_size=np.asarray(
+                diagnostic_rows["destination_catalogue_size"],
+                dtype=np.int64,
+            ),
+            pair_catalogue_size=np.asarray(
+                diagnostic_rows["pair_catalogue_size"],
+                dtype=np.int64,
+            ),
+            design_cache_misses=np.asarray(
+                diagnostic_rows["design_cache_misses"],
+                dtype=np.int64,
+            ),
+            changed_native_cell_count=np.asarray(
+                diagnostic_rows["changed_native_cell_count"],
+                dtype=np.int64,
+            ),
+            changed_nominal_mass=np.asarray(
+                diagnostic_rows["changed_nominal_mass"],
+                dtype=np.float64,
+            ),
+            standardized_prediction_l2=np.asarray(
+                diagnostic_rows["standardized_prediction_l2"],
+                dtype=np.float64,
+            ),
+            root_abs_displacement=np.asarray(
+                diagnostic_rows["root_abs_displacement"],
+                dtype=np.float64,
+            ),
+            root_abs_log_displacement=np.asarray(
+                diagnostic_rows["root_abs_log_displacement"],
+                dtype=np.float64,
+            ),
+            allocation_share_l1_displacement=np.asarray(
+                diagnostic_rows["allocation_share_l1_displacement"],
+                dtype=np.float64,
+            ),
+            fixed_position=np.asarray(
+                diagnostic_rows["fixed_position"],
+                dtype=np.int64,
+            ),
+            fixed_abs_displacement=np.asarray(
+                diagnostic_rows["fixed_abs_displacement"],
+                dtype=np.float64,
+            ),
+            fixed_abs_log_displacement=np.asarray(
+                diagnostic_rows["fixed_abs_log_displacement"],
+                dtype=np.float64,
+            ),
+            slice_left_steps=np.asarray(
+                diagnostic_rows["slice_left_steps"],
+                dtype=np.int64,
+            ),
+            slice_right_steps=np.asarray(
+                diagnostic_rows["slice_right_steps"],
+                dtype=np.int64,
+            ),
+            slice_shrink_draws=np.asarray(
+                diagnostic_rows["slice_shrink_draws"],
+                dtype=np.int64,
+            ),
+            slice_log_density_evaluations=np.asarray(
+                diagnostic_rows["slice_log_density_evaluations"],
+                dtype=np.int64,
+            ),
+        )
     return FullTilingCompoundSamplingResult(
         trace=FullTilingCompoundTrace(
             rectangle_bounds=bounds,
@@ -1048,6 +1771,7 @@ def _run_segment(
         ),
         final_state=state,
         checkpoint=checkpoint,
+        movement_diagnostics=movement_diagnostics,
     )
 
 
@@ -1055,6 +1779,8 @@ def sample_full_tiling_compound(
     problem: FullTilingProblem,
     initial_state: FullTilingPosteriorState,
     config: FullTilingCompoundConfig,
+    *,
+    collect_movement_diagnostics: bool = False,
 ) -> FullTilingCompoundSamplingResult:
     """Run a fresh seeded fixed-``K`` full-tiling posterior segment.
 
@@ -1063,6 +1789,8 @@ def sample_full_tiling_compound(
         initial_state: State built for the exact supplied problem object.
         config: Seed, atomic transition count, pair opportunities, and fixed
             Gaussian proposal scales.
+        collect_movement_diagnostics: Whether to attach output-only
+            per-transition movement metrics.
 
     Returns:
         Segment trace, final state, and exact in-memory checkpoint.
@@ -1078,6 +1806,8 @@ def sample_full_tiling_compound(
         raise TypeError("initial_state must be a FullTilingPosteriorState.")
     if not isinstance(config, FullTilingCompoundConfig):
         raise TypeError("config must be a FullTilingCompoundConfig.")
+    if not isinstance(collect_movement_diagnostics, bool):
+        raise TypeError("collect_movement_diagnostics must be a Boolean.")
     scales = _resolve_fixed_scales(
         config.fixed_coefficient_proposal_sd,
         n_fixed=initial_state.fixed_coefficients.size,
@@ -1086,6 +1816,9 @@ def sample_full_tiling_compound(
         fixed_k=initial_state.k,
         pair_allocation_refresh_slots=config.pair_allocation_refresh_slots,
         fixed_coefficient_proposal_sd=scales,
+        root_slice_width=config.root_slice_width,
+        root_slice_max_steps=config.root_slice_max_steps,
+        root_slice_max_shrink_steps=config.root_slice_max_shrink_steps,
     )
     return _run_segment(
         problem,
@@ -1095,6 +1828,7 @@ def sample_full_tiling_compound(
         transitions_completed=0,
         settings=settings,
         include_initial=True,
+        collect_movement_diagnostics=collect_movement_diagnostics,
     )
 
 
@@ -1103,6 +1837,7 @@ def continue_full_tiling_compound(
     checkpoint: FullTilingCompoundCheckpoint,
     *,
     iterations: int,
+    collect_movement_diagnostics: bool = False,
 ) -> FullTilingCompoundSamplingResult:
     """Continue a full-tiling chain exactly from an in-memory checkpoint.
 
@@ -1110,6 +1845,8 @@ def continue_full_tiling_compound(
         problem: Exact problem object retained by ``checkpoint``.
         checkpoint: In-memory continuation boundary.
         iterations: Positive number of additional atomic transitions.
+        collect_movement_diagnostics: Whether to attach output-only metrics
+            for this segment. The choice is not persisted in the checkpoint.
 
     Returns:
         Continued segment trace, final state, and next checkpoint.
@@ -1123,6 +1860,8 @@ def continue_full_tiling_compound(
         raise TypeError("problem must be a FullTilingProblem.")
     if not isinstance(checkpoint, FullTilingCompoundCheckpoint):
         raise TypeError("checkpoint must be a FullTilingCompoundCheckpoint.")
+    if not isinstance(collect_movement_diagnostics, bool):
+        raise TypeError("collect_movement_diagnostics must be a Boolean.")
     transition_count = _positive_integer(iterations, name="iterations")
     if checkpoint.problem is not problem:
         raise ValueError("continuation requires the exact in-memory problem object.")
@@ -1141,6 +1880,7 @@ def continue_full_tiling_compound(
         transitions_completed=checkpoint.transitions_completed,
         settings=checkpoint.kernel_settings,
         include_initial=False,
+        collect_movement_diagnostics=collect_movement_diagnostics,
     )
 
 
@@ -1152,6 +1892,7 @@ __all__ = [
     "FullTilingCompoundSamplingResult",
     "FullTilingCompoundSlot",
     "FullTilingCompoundTrace",
+    "FullTilingMovementDiagnostics",
     "continue_full_tiling_compound",
     "sample_full_tiling_compound",
 ]
