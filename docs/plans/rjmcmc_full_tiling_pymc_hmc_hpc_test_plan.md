@@ -99,6 +99,33 @@ test -z "$(git status --porcelain)"
 The native-PyTensor kernel is required. The PyMC NumPyro/JAX sampler bridge
 must not be used for this compound transition.
 
+### Required rerun after the `88b12a5` boundary failure
+
+The first H2 attempt stopped at boundary draw 0, before any topology or HMC
+transition. The initializer's physical leaf masses failed the exact
+`exp(log(m)) == m` replay audit by 3--7 ULP. This was a real representation
+defect, not evidence about HMC calibration, and the exact audit must not be
+relaxed.
+
+For the first revision containing the fix:
+
+1. pull the pushed branch with `git pull --ff-only`, record the new revision,
+   require a clean worktree, and create a new commit-addressed `RUN_ROOT`;
+2. rerun H0, archived checksum verification, and
+   `preflight/target-identity.json` from source;
+3. rerun the complete bounded H2 search at both \(K=50\) and \(K=250\);
+4. do not copy calibration candidates, decisions, checkpoints, hashes, or
+   completion markers from the `88b12a5` run root;
+5. proceed to H1 and H3--H5 only after the new H2 hard gate passes.
+
+The agent may diagnose and repair run harnesses, Slurm scripts, module loads,
+and analysis scripts beneath the new run root. Preserve failed artifacts for
+provenance. A calibration-harness change requires a new
+content-digest-addressed calibration subroot and complete H2 repetition. A
+repository-source change must be committed and pushed, and requires a new
+commit-addressed run root. Do not work around a gate by editing an artifact,
+loosening an exact comparison, or continuing from a failed checkpoint.
+
 ## Stage H0: source and synthetic gates
 
 Run only the experimental checks, not the repository-wide tox matrix:
@@ -132,6 +159,11 @@ Hard gates:
   transition;
 - HMC leaves topology unchanged;
 - every endpoint closes through a full scientific state rebuild;
+- fresh draw 0 is the canonical scientific boundary: physical leaf masses
+  and fixed coefficients equal the exponentials of the retained
+  authoritative log coordinates bit for bit, the manifest initial-state hash
+  equals the segment-start hash, and the draw-0 target equals both recorded
+  initial targets;
 - direct execution and awkward split continuation are byte-identical for all
   non-timing state, trace, PCG64, HMC-seed, and checkpoint fields;
 - unrepresentable exponentiated coordinates are rejected by the PyMC target;

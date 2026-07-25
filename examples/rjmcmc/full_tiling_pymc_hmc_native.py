@@ -5,8 +5,10 @@ native Gamma--Dirichlet full-tiling problem without guessing scientific
 variables, and runs exactly one complete-sweep segment of the experimental
 structural-then-static-HMC kernel. Fresh chains may use the deterministic
 largest-nominal initializer or a separately seeded random-recursive topology.
-Resumed chains load the dedicated checksummed no-pickle checkpoint and retain
-the original immutable run manifest.
+Fresh states are canonicalized in the HMC log chart before preflight,
+fingerprinting, and sampling. Resumed chains load the dedicated checksummed
+no-pickle checkpoint, preserve its authoritative coordinates unchanged, and
+retain the original immutable run manifest.
 
 PyTensor must use float64. Before a dry run, fresh segment, or resumed segment,
 the compiled PyMC density is checked against the independently assembled
@@ -105,6 +107,9 @@ from typing import Any, Literal, cast
 import numpy as np
 import xarray as xr
 
+from openghg_inversions.experimental.rjmcmc import (
+    full_tiling_pymc_hmc as full_tiling_pymc_hmc_kernel,
+)
 from openghg_inversions.experimental.rjmcmc.full_tiling import (
     LeafTiling,
     Rectangle,
@@ -2233,6 +2238,10 @@ def _requested_kernel_settings(
 def run(arguments: argparse.Namespace) -> dict[str, Any]:
     """Validate, run, and publish one fresh or resumed complete-sweep segment.
 
+    A fresh initializer is canonicalized before closure, transformed-target
+    preflight, manifest construction, and sampling. A resume instead uses the
+    exact scientific/log-coordinate boundary stored in the checkpoint.
+
     Args:
         arguments: Namespace returned by :func:`build_parser`.
 
@@ -2292,6 +2301,14 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
                 k=arguments.k,
                 seed=arguments.initialization_seed,
             )
+        (
+            initial_state,
+            initial_log_leaf_mass,
+            initial_log_fixed_coefficient,
+        ) = full_tiling_pymc_hmc_kernel.canonicalize_full_tiling_pymc_hmc_fresh_state(
+            problem,
+            initial_state,
+        )
         if not np.isfinite(initial_state.log_target):
             raise ValueError("Initial full-tiling log target is not finite.")
         closure = _closure_audit(
@@ -2326,6 +2343,8 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
         initial_preflight = _transformed_target_preflight(
             problem,
             initial_state,
+            log_leaf_mass=initial_log_leaf_mass,
+            log_fixed_coefficient=initial_log_fixed_coefficient,
         )
         preflight_seconds = perf_counter() - preflight_started
         manifest = _build_manifest(

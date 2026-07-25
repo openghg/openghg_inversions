@@ -94,7 +94,7 @@ def hmc_driver() -> ModuleType:
 
 
 def _write_frozen_input(path: Path) -> None:
-    """Write a tiny exact-closure native dataset with six labelled outers."""
+    """Write exact-closure data whose first fresh mass is not a log/exp fixed point."""
     sensitivity = np.arange(1.0, 13.0).reshape(3, 2, 2)
     outer = np.arange(18.0).reshape(3, 6) / 8.0
     boundary = np.array([4.0, 5.0, 6.0])
@@ -111,7 +111,12 @@ def _write_frozen_input(path: Path) -> None:
             "mf_error": ("nmeasure", np.ones(3)),
             "nominal_weight": (
                 ("lon", "lat"),
-                np.full((2, 2), 0.25).T,
+                np.array(
+                    [
+                        [1.0 / 16.0, 1.0 / 16.0],
+                        [1.0 / 4.0, 5.0 / 8.0],
+                    ],
+                ).T,
             ),
             "outer_design": (("outer_region", "nmeasure"), outer.T),
             "YaprioriBC": ("nmeasure", boundary),
@@ -270,11 +275,13 @@ def test_dry_fresh_and_resumed_segments_are_exact_and_auditable(
     hmc_driver: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A synthetic chain dry-runs, publishes in order, and resumes exactly.
+    """A fresh canonical boundary publishes in order and resumes unchanged.
 
-    The same immutable chain is also used to prove that calibration,
-    provenance, and static-HMC setting changes are rejected by checkpoint
-    manifest validation before any continuation output is published.
+    The fresh state is canonicalized before draw zero; the resumed state uses
+    stored authoritative coordinates unchanged. The same immutable chain also
+    proves that calibration, provenance, and static-HMC setting changes are
+    rejected by checkpoint manifest validation before continuation output is
+    published.
     """
     input_path = tmp_path / "frozen.nc"
     dry_output = tmp_path / "dry-output"
@@ -379,6 +386,9 @@ def test_dry_fresh_and_resumed_segments_are_exact_and_auditable(
     assert manifest["sampler"]["metric_semantics_id"] == (hmc_driver.FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID)
     assert manifest["sampler"]["leaf_position_scale"] == 1.75
     assert manifest["sampler"]["fixed_coefficient_position_scale"] == [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+    assert (
+        manifest["initialization"]["state_sha256"] == fresh_summary["lineage"]["segment_start_state_sha256"]
+    )
     assert manifest["sampler"]["calibration"] == {
         "schema": hmc_driver.CALIBRATION_SCHEMA,
         "id": "tiny-static-hmc-calibration-v1",
@@ -466,6 +476,23 @@ def test_dry_fresh_and_resumed_segments_are_exact_and_auditable(
             fresh_trace["state_sweep"],
             [0, 1],
         )
+        assert (
+            fresh_trace["log_target"].isel(draw=0).item()
+            == (fresh_summary["target"]["chain_initial_log_target"])
+        )
+        assert (
+            fresh_trace["log_target"].isel(draw=0).item()
+            == (fresh_summary["target"]["segment_initial_log_target"])
+        )
+        np.testing.assert_array_equal(
+            fresh_trace["leaf_mass"].isel(draw=0),
+            np.exp(fresh_trace["log_leaf_mass"].isel(draw=0)),
+        )
+        np.testing.assert_array_equal(
+            fresh_trace["fixed_coefficient"].isel(draw=0),
+            np.exp(fresh_trace["log_fixed_coefficient"].isel(draw=0)),
+        )
+        assert fresh_trace["leaf_mass"].isel(draw=0, region=0).item() != 0.125
         assert fresh_trace["hmc_seed"].dtype == np.dtype(np.uint64)
         fresh_final_mass = fresh_trace["leaf_mass"].isel(draw=-1).values
         fresh_final_fixed = fresh_trace["fixed_coefficient"].isel(draw=-1).values

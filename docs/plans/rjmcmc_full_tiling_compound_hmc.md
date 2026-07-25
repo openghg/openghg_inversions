@@ -4,8 +4,18 @@
 
 The core sampler, dedicated durable checkpoint schema, native real-data
 driver, and HPC validation plan are implemented on
-`codex/rjmcmc-compound-hmc`. Focused local validation is complete; the next
-gate is the frozen-input HPC calibration and real-data screen.
+`codex/rjmcmc-compound-hmc`. The first frozen-input H2 attempt at `88b12a5`
+stopped correctly before its first transition: the fresh initializer's
+physical masses and the HMC log coordinates differed by 3--7 ULP. The strict
+boundary audit was retained. Fresh states are now deterministically rebuilt
+from authoritative log coordinates before draw 0, and focused local
+validation covers that failure. The next gate is a clean, commit-addressed
+repeat of H0 and H2 before the real-data screen.
+
+The failed-run evidence is retained under
+`/group/chem/acrg/brendan_for_codex/rjmcmc_full_tiling_pymc_hmc/88b12a5717d4b490b6ccd67986c20c2a99094fed`;
+its report SHA-256 is
+`27027ee2c4393ff8e1d399c5afe4d0b751ff9665956bf303aabc756086279a4d`.
 
 The fixed-basis reference experiments established that the local continuous
 kernel, rather than the Gamma root model itself, was the main fixed-topology
@@ -133,6 +143,23 @@ resume additionally requires the selected checkpoint to belong to a complete
 parent segment whose `complete.json` certifies the current hashes of its
 manifest, trace, summary, and checkpoint.
 
+A fresh initializer is a different boundary from a durable continuation. Its
+scientific state is constructed in positive physical coordinates, so before
+the first retained boundary it is mapped through the HMC log chart and fully
+rebuilt by the scientific state oracle until
+
+```text
+exp(log_leaf_mass) == leaf_mass
+exp(log_fixed_coefficient) == fixed_coefficient
+```
+
+bit for bit. This deterministic canonicalization changes only the binary64
+representation of the fresh starting point; it is not an MCMC transition and
+does not weaken the scientific target or audit tolerance. It is idempotent
+and does not mutate the caller's state. Durable continuations bypass it
+because their physical state and authoritative log coordinates are already
+joint replay inputs.
+
 Production sampling requires the actual hashed strict-JSON calibration file,
 not only a caller-supplied identifier. Its v1 schema binds the frozen input,
 target controls, \(K\), coordinate/metric identities, resolved static kernel,
@@ -160,6 +187,8 @@ match.
 - Frozen step size, position-scale diagonal, and leapfrog count.
 - Exact seeded replay.
 - Exact awkward-boundary sample/continue replay.
+- Exact, idempotent fresh-boundary log/exp canonicalization without mutating
+  the supplied initializer.
 - Fail-closed problem, \(K\), precision, settings, and checkpoint checks.
 
 ## Local validation completed
@@ -176,6 +205,9 @@ On 2026-07-25:
   strict no-pickle checkpoint reload, calibration mismatch rejection,
   certified-parent rejection, artifact failure injection, and trace reopen
   audits are covered;
+- a regression with deliberately non-roundtripping fresh leaf and fixed
+  values verifies exact draw-0 coordinates, oracle reconstruction, manifest
+  lineage, and checkpoint state;
 - the full repository tox matrix was intentionally not run; the agreed gate
   for this experimental track is the focused experimental suite.
 

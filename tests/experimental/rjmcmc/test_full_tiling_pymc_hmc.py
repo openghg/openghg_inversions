@@ -603,6 +603,97 @@ def test_trace_preserves_authoritative_hmc_coordinates_read_only() -> None:
 
 
 @_requires_x64_child
+def test_fresh_state_is_canonicalized_without_mutating_caller_boundary() -> None:
+    """Fresh sampling enforces exact ``exp(log_mass) == mass`` without mutation."""
+    problem, initialized = _problem_state(k=4)
+    leaf_masses = np.array(initialized.leaf_masses, copy=True)
+    fixed_coefficients = np.array(initialized.fixed_coefficients, copy=True)
+    leaf_masses[0] = np.float64(0.1)
+    fixed_coefficients[0] = np.float64(0.1)
+    supplied = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(initialized.tiling_state.tiling, leaf_masses),
+        fixed_coefficients=fixed_coefficients,
+    )
+    supplied_snapshot = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(
+            supplied.tiling_state.tiling,
+            np.array(supplied.leaf_masses, copy=True),
+        ),
+        fixed_coefficients=np.array(supplied.fixed_coefficients, copy=True),
+    )
+    authoritative_log_leaf_mass = np.log(supplied.leaf_masses)
+    authoritative_log_fixed = np.log(supplied.fixed_coefficients)
+    assert np.exp(authoritative_log_leaf_mass[0]) != supplied.leaf_masses[0]
+    assert np.exp(authoritative_log_fixed[0]) != supplied.fixed_coefficients[0]
+
+    canonical, log_leaf_mass, log_fixed = sampling.canonicalize_full_tiling_pymc_hmc_fresh_state(
+        problem,
+        supplied,
+    )
+    canonical_again, second_log_leaf_mass, second_log_fixed = (
+        sampling.canonicalize_full_tiling_pymc_hmc_fresh_state(
+            problem,
+            canonical,
+        )
+    )
+
+    _assert_states_equal(supplied, supplied_snapshot)
+    np.testing.assert_array_equal(log_leaf_mass, authoritative_log_leaf_mass)
+    np.testing.assert_array_equal(log_fixed, authoritative_log_fixed)
+    np.testing.assert_array_equal(canonical.leaf_masses, np.exp(log_leaf_mass))
+    np.testing.assert_array_equal(canonical.fixed_coefficients, np.exp(log_fixed))
+    _assert_states_equal(canonical_again, canonical)
+    np.testing.assert_array_equal(second_log_leaf_mass, log_leaf_mass)
+    np.testing.assert_array_equal(second_log_fixed, log_fixed)
+    rebuilt_boundary = build_full_tiling_posterior_state(
+        problem,
+        allocation=canonical.tiling_state,
+        fixed_coefficients=canonical.fixed_coefficients,
+    )
+    _assert_states_equal(canonical, rebuilt_boundary)
+
+    result = sampling.sample_full_tiling_pymc_hmc(
+        problem,
+        supplied,
+        _config(iterations=1, seed=611),
+    )
+
+    _assert_states_equal(supplied, supplied_snapshot)
+    np.testing.assert_array_equal(result.trace.log_leaf_mass[0], log_leaf_mass)
+    np.testing.assert_array_equal(result.trace.log_fixed_coefficient[0], log_fixed)
+    np.testing.assert_array_equal(result.trace.leaf_masses[0], np.exp(log_leaf_mass))
+    np.testing.assert_array_equal(
+        result.trace.fixed_coefficients[0],
+        np.exp(log_fixed),
+    )
+    assert result.trace.log_target[0] == rebuilt_boundary.log_target
+    np.testing.assert_array_equal(
+        result.checkpoint.log_leaf_mass,
+        result.trace.log_leaf_mass[-1],
+    )
+    np.testing.assert_array_equal(
+        result.checkpoint.log_fixed_coefficient,
+        result.trace.log_fixed_coefficient[-1],
+    )
+    np.testing.assert_array_equal(
+        np.exp(result.checkpoint.log_leaf_mass),
+        result.checkpoint.state.leaf_masses,
+    )
+    np.testing.assert_array_equal(
+        np.exp(result.checkpoint.log_fixed_coefficient),
+        result.checkpoint.state.fixed_coefficients,
+    )
+    rebuilt_checkpoint = build_full_tiling_posterior_state(
+        problem,
+        allocation=result.checkpoint.state.tiling_state,
+        fixed_coefficients=result.checkpoint.state.fixed_coefficients,
+    )
+    _assert_states_equal(result.checkpoint.state, rebuilt_checkpoint)
+
+
+@_requires_x64_child
 def test_seeded_replay_is_exact_including_pcg64_checkpoint() -> None:
     """The same seed reproduces every state, diagnostic, and RNG bit exactly."""
     problem, initial = _problem_state(k=4)

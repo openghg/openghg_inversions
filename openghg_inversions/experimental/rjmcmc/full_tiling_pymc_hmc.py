@@ -21,8 +21,11 @@ topology-dependent metric is allowed.  In-memory checkpoints retain the
 scientific state, exact unconstrained coordinates, immutable settings, sweep
 coordinate, and master PCG64 state.  Reconstructing and reseeding PyMC at every
 continuation boundary makes split execution exactly replayable without
-persisting mutable backend sampler state. This explicitly experimental module
-performs no durable file I/O.
+persisting mutable backend sampler state. Fresh initializer states instead
+pass through :func:`canonicalize_full_tiling_pymc_hmc_fresh_state` before draw
+zero so their physical values decode exactly from the authoritative log
+coordinates. This explicitly experimental module performs no durable file
+I/O.
 """
 
 from __future__ import annotations
@@ -79,6 +82,7 @@ __all__ = [
     "FullTilingPyMCHMCSamplingResult",
     "FullTilingPyMCHMCTrace",
     "build_full_tiling_pymc_hmc_model",
+    "canonicalize_full_tiling_pymc_hmc_fresh_state",
     "continue_full_tiling_pymc_hmc",
     "full_tiling_pymc_hmc_runtime_identity",
     "sample_full_tiling_pymc_hmc",
@@ -1239,6 +1243,94 @@ def _state_from_point(
     )
 
 
+def canonicalize_full_tiling_pymc_hmc_fresh_state(
+    problem: FullTilingProblem,
+    state: FullTilingPosteriorState,
+) -> tuple[FullTilingPosteriorState, FloatArray, FloatArray]:
+    """Canonicalize a fresh scientific state in the PyMC log chart.
+
+    Fresh initializers construct scientific masses and fixed coefficients
+    directly, but the HMC kernel's authoritative boundary coordinates are
+    their elementwise binary64 natural logarithms. This function repeatedly
+    maps those positive values through ``log -> exp``, performs a complete
+    scientific-oracle rebuild, and stops only at an exact log/exp fixed point.
+    The returned arrays therefore decode bit-for-bit to the returned state,
+    and applying this function again preserves the state and coordinate bits.
+    Neither input object is mutated.
+
+    This public entry point supports fresh initializer states only.
+    :func:`continue_full_tiling_pymc_hmc` bypasses it because a durable
+    checkpoint's stored scientific state and log coordinates are already
+    authoritative replay inputs and must not be rebuilt.
+
+    Args:
+        problem: Exact full-tiling posterior problem that owns ``state``.
+        state: Supported fresh scientific state to canonicalize.
+
+    Returns:
+        A tuple containing the fully rebuilt canonical scientific state,
+        read-only authoritative log leaf masses with shape ``(K,)``, and
+        read-only authoritative log fixed coefficients with shape
+        ``(n_fixed,)``.
+
+    Raises:
+        TypeError: If either argument has an incompatible public type.
+        ValueError: If ``state`` does not belong to ``problem`` or a decoded
+            state violates scientific support.
+        RuntimeError: If the binary64 log/exp mapping does not reach an exact
+            fixed point within the bounded canonicalization audit.
+    """
+    if not isinstance(problem, FullTilingProblem):
+        raise TypeError("problem must be a FullTilingProblem.")
+    if not isinstance(state, FullTilingPosteriorState):
+        raise TypeError("state must be a FullTilingPosteriorState.")
+    if state.problem is not problem:
+        raise ValueError("state must belong to the exact supplied problem.")
+
+    current = state
+    for _ in range(8):
+        log_leaf_mass = np.log(current.leaf_masses)
+        log_fixed_coefficient = np.log(current.fixed_coefficients)
+        with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+            leaf_masses = np.exp(log_leaf_mass)
+            fixed_coefficients = np.exp(log_fixed_coefficient)
+        canonical = build_full_tiling_posterior_state(
+            problem,
+            allocation=TilingState(
+                current.tiling_state.tiling,
+                leaf_masses,
+            ),
+            fixed_coefficients=fixed_coefficients,
+        )
+        if np.array_equal(np.log(canonical.leaf_masses), log_leaf_mass) and np.array_equal(
+            np.log(canonical.fixed_coefficients),
+            log_fixed_coefficient,
+        ):
+            authoritative_leaf = _readonly_array(
+                log_leaf_mass,
+                dtype=np.float64,
+                ndim=1,
+                name="log_leaf_mass",
+            )
+            authoritative_fixed = _readonly_array(
+                log_fixed_coefficient,
+                dtype=np.float64,
+                ndim=1,
+                name="log_fixed_coefficient",
+            )
+            with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+                decoded_leaf = np.exp(authoritative_leaf)
+                decoded_fixed = np.exp(authoritative_fixed)
+            if not np.array_equal(decoded_leaf, canonical.leaf_masses) or not np.array_equal(
+                decoded_fixed,
+                canonical.fixed_coefficients,
+            ):
+                raise RuntimeError("fresh-state canonicalization produced non-authoritative log coordinates.")
+            return canonical, authoritative_leaf, authoritative_fixed
+        current = canonical
+    raise RuntimeError("fresh-state canonicalization did not reach an exact binary64 log/exp fixed point.")
+
+
 def _run_segment(
     problem: FullTilingProblem,
     initial_state: FullTilingPosteriorState,
@@ -1433,9 +1525,14 @@ def sample_full_tiling_pymc_hmc(
 ) -> FullTilingPyMCHMCSamplingResult:
     """Run a fresh mobile full-tiling compound HMC segment.
 
+    Before draw zero, the supplied scientific state is rebuilt at an exact
+    binary64 natural-log/exp fixed point. The caller's state is not mutated,
+    but the retained boundary may differ from it by a few ULPs.
+
     Args:
         problem: Fixed-``K`` full-tiling posterior problem.
-        initial_state: State built for the exact problem object.
+        initial_state: Fresh initializer state built for the exact problem
+            object.
         config: Fresh-chain sweep count, static HMC controls, position scales,
             and optional master PCG64 seed. Exact replay from chain start
             requires an explicit seed.
@@ -1448,8 +1545,9 @@ def sample_full_tiling_pymc_hmc(
         ValueError: If problem identity, support, or resolved fixed position
             scales are incompatible.
         ImportError: If the optional PyMC runtime is unavailable.
-        RuntimeError: If PyTensor is not float64 or PyMC does not execute the
-            configured leapfrog count.
+        RuntimeError: If fresh-state canonicalization does not converge,
+            PyTensor is not float64, or PyMC does not execute the configured
+            leapfrog count.
     """
     if not isinstance(problem, FullTilingProblem):
         raise TypeError("problem must be a FullTilingProblem.")
@@ -1468,13 +1566,19 @@ def sample_full_tiling_pymc_hmc(
         leaf_position_scale=config.leaf_position_scale,
         fixed_coefficient_position_scale=fixed_position_scale,
     )
-    return _run_segment(
+    canonical_state, log_leaf_mass, log_fixed_coefficient = canonicalize_full_tiling_pymc_hmc_fresh_state(
         problem,
         initial_state,
+    )
+    return _run_segment(
+        problem,
+        canonical_state,
         iterations=config.iterations,
         sweeps_completed=0,
         settings=settings,
         rng=np.random.Generator(np.random.PCG64(config.seed)),
+        log_leaf_mass=log_leaf_mass,
+        log_fixed_coefficient=log_fixed_coefficient,
     )
 
 
@@ -1485,6 +1589,10 @@ def continue_full_tiling_pymc_hmc(
     iterations: int,
 ) -> FullTilingPyMCHMCSamplingResult:
     """Continue exactly from an in-memory compound HMC checkpoint.
+
+    The checkpoint's scientific state and log-coordinate arrays are joint
+    authoritative replay inputs. They are passed through unchanged and are
+    not fresh-state canonicalized or rebuilt at the segment boundary.
 
     Args:
         problem: Exact problem object retained by the checkpoint.
