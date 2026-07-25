@@ -16,10 +16,19 @@ separate representation correctness from metric generalization:
   \(\epsilon=0.08409,L=5\), but a held-out \(K=250\) topology had acceptance
   0.031 and 42 divergences.
 
-The diagonal H2b result is therefore a certified hard stop, not a prompt for
-further step-size refinement. The next experiment is H2c: a static,
-permutation-invariant two-eigenvalue leaf metric that separates the normalized
-common log-mass direction from centered log-mass contrasts.
+The diagonal H2b result was therefore a certified hard stop, not a prompt for
+further step-size refinement. H2c then tested a static,
+permutation-invariant two-eigenvalue leaf metric that separated the normalized
+common log-mass direction from centered log-mass contrasts. H2c also reached a
+certified hard stop at both \(K=50\) and \(K=250\): no frozen-grid candidate
+served every development topology.
+
+The next phase is specified in
+[`rjmcmc_topology_conditioned_hmc_next_phase.md`](rjmcmc_topology_conditioned_hmc_next_phase.md).
+It replaces full permutation invariance by permutation equivariance and builds
+a topology-conditioned Euclidean metric from fixed reference curvature. The
+metric changes with the tiling but remains constant within each HMC
+trajectory, so this does not require Riemannian HMC.
 
 The failed-run evidence is retained under
 `/group/chem/acrg/brendan_for_codex/rjmcmc_full_tiling_pymc_hmc/88b12a5717d4b490b6ccd67986c20c2a99094fed`;
@@ -29,6 +38,10 @@ The corrected diagonal run and H2b hard-stop evidence are retained under
 `/group/chem/acrg/brendan_for_codex/rjmcmc_full_tiling_pymc_hmc/fe9e546ab57a6b0ff852057e0e6afa13725a5419`;
 the original H2 report SHA-256 is
 `b149c99ed48071b2fce6873603e4eb138915bf0005d0f8189fcbeefb3779dd5e`.
+The H2c evidence is retained under
+`/group/chem/acrg/brendan_for_codex/rjmcmc_full_tiling_pymc_hmc/7a1a1cc673a4b6a6ce0ed7b5123494ebd205b467`,
+including `report/H2C_RESULTS.md` and
+`calibration/H2C_HARD_STOP.json`.
 
 The fixed-basis reference experiments established that the local continuous
 kernel, rather than the Gamma root model itself, was the main fixed-topology
@@ -296,9 +309,13 @@ chains at a given \(K\).
 ## Deferred work
 
 - NUTS in the mobile compound kernel.
-- Online or topology-dependent metric adaptation.
+- Online metric adaptation.
+- Topology-conditioned Euclidean HMC is now the immediate next phase rather
+  than deferred work.
 - Leaf-identity-specific metrics or leaf/fixed cross blocks.
-- Riemannian or topology-dependent HMC metrics.
+- Position-dependent Riemannian HMC.
+- A source-HMC/topology/destination-HMC proposal with one joint acceptance
+  decision.
 - Variable-\(K\) topology transitions.
 - A scientifically different multi-root prior.
 - Promotion out of the experimental namespace.

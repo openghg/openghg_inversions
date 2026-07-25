@@ -1,5 +1,18 @@
 # Full-tiling PyMC HMC HPC test plan
 
+## Status
+
+H2c completed as a certified hard stop at commit `7a1a1cc`. No candidate
+served every development topology at either \(K=50\) or \(K=250\), so H1 and
+H3--H5 were correctly withheld. Preserve the evidence under
+`/group/chem/acrg/brendan_for_codex/rjmcmc_full_tiling_pymc_hmc/7a1a1cc673a4b6a6ce0ed7b5123494ebd205b467`
+and do not rerun or refine this frozen protocol.
+
+The next design and its future H2d gates are specified in
+[`rjmcmc_topology_conditioned_hmc_next_phase.md`](rjmcmc_topology_conditioned_hmc_next_phase.md).
+This document remains the immutable H2c protocol and is not yet an executable
+H2d launch plan.
+
 ## Purpose
 
 Test whether a joint gradient transition removes the likelihood
