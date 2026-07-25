@@ -22,7 +22,7 @@ pass.
 
 ## Code and environment identity
 
-Before submission, resolve and record the pushed revision and the H2
+Before submission, resolve and record the pushed revision and the H2c
 calibration artifact:
 
 ```text
@@ -99,29 +99,36 @@ test -z "$(git status --porcelain)"
 The native-PyTensor kernel is required. The PyMC NumPyro/JAX sampler bridge
 must not be used for this compound transition.
 
-### Required rerun after the `88b12a5` boundary failure
+### Completed H2/H2b history and H2c boundary
 
 The first H2 attempt stopped at boundary draw 0, before any topology or HMC
 transition. The initializer's physical leaf masses failed the exact
 `exp(log(m)) == m` replay audit by 3--7 ULP. This was a real representation
-defect, not evidence about HMC calibration, and the exact audit must not be
-relaxed.
+defect, not evidence about HMC calibration, and the exact audit was not
+relaxed. Commit `fe9e546` corrected it.
 
-For the first revision containing the fix:
+The corrected diagonal H2 selected a valid \(K=50\) calibration but found no
+candidate satisfying both development topologies at \(K=250\). The separately
+predeclared H2b interior grid selected
+\(\epsilon=0.08409,L=5\); its untouched held-out random topology had
+acceptance 0.031 and 42 divergences over 500 discarded sweeps. H2b therefore
+stopped without a \(K=250\) calibration or production output.
 
-1. pull the pushed branch with `git pull --ff-only`, record the new revision,
-   require a clean worktree, and create a new commit-addressed `RUN_ROOT`;
-2. rerun H0, archived checksum verification, and
-   `preflight/target-identity.json` from source;
-3. rerun the complete bounded H2 search at both \(K=50\) and \(K=250\);
-4. do not copy calibration candidates, decisions, checkpoints, hashes, or
-   completion markers from the `88b12a5` run root;
-5. proceed to H1 and H3--H5 only after the new H2 hard gate passes.
+The immutable evidence is under
+`/group/chem/acrg/brendan_for_codex/rjmcmc_full_tiling_pymc_hmc/fe9e546ab57a6b0ff852057e0e6afa13725a5419`,
+including `report/H2B_RESULTS.md` and
+`calibration/H2B_HARD_STOP.json`. Preserve it unchanged.
+
+H2c changes the metric contract. The earlier \(K=50\) calibration remains
+valid evidence for commit `fe9e546`, but it is a version-1 diagonal
+calibration and cannot be used with the version-2 total/contrast driver.
+Both \(K\) values require new H2c calibration certificates before H1 or
+H3--H5.
 
 The agent may diagnose and repair run harnesses, Slurm scripts, module loads,
 and analysis scripts beneath the new run root. Preserve failed artifacts for
 provenance. A calibration-harness change requires a new
-content-digest-addressed calibration subroot and complete H2 repetition. A
+content-digest-addressed calibration subroot and complete H2c repetition. A
 repository-source change must be committed and pushed, and requires a new
 commit-addressed run root. Do not work around a gate by editing an artifact,
 loosening an exact comparison, or continuing from a failed checkpoint.
@@ -155,6 +162,11 @@ Hard gates:
 - the compiled transformed density equals the independent scientific target
   plus both declared chart Jacobians;
 - exact static position-scale/momentum-precision semantics reach PyMC;
+- the leaf block has the declared total and contrast eigenvalues, is
+  symmetric positive definite, and is invariant under arbitrary leaf
+  permutations;
+- the fixed block is exactly diagonal and all leaf/fixed cross terms are
+  exactly zero;
 - accepted, rejected, and invalid structural attempts each produce one HMC
   transition;
 - HMC leaves topology unchanged;
@@ -173,7 +185,7 @@ Do not submit real-data jobs if any H0 gate fails.
 
 ## Stage H1: real-input dry runs
 
-Execute Stage H2 first, because the production driver deliberately refuses
+Execute Stage H2c first, because the production driver deliberately refuses
 even a dry run unless it can verify the final calibration artifact. H1 is
 numbered as an input/target gate but is submitted only after calibration.
 
@@ -192,16 +204,15 @@ earlier full-tiling comparison:
 - the exact normalization, variable contract, and outer-label order declared
   above.
 
-Run no-output dry runs for the deterministic initializer and the three
-random-recursive initializers declared in Stage H5 at each \(K\). It must
-verify:
+Run no-output dry runs for the four random-recursive initializers declared in
+Stage H5 at each \(K\). It must verify:
 
 - input SHA-256 before and after eager loading;
 - PARIS dimensions, outer labels, and closure;
 - finite scientific and transformed initial targets;
 - transformed-target parity;
 - all PyMC continuous value variables are float64;
-- resolved position-covariance diagonal, dimension, and coordinate ordering
+- resolved position-covariance matrix, dimension, and coordinate ordering
   from the verified calibration identity; H0 separately proves that this
   exact ordering reaches PyMC's momentum precision;
 - initial topology and state fingerprints plus the canonical
@@ -210,10 +221,11 @@ verify:
 
 The repeated dry run for each random initializer must reproduce the exact
 topology and state fingerprints. The four starts at each \(K\) must have four
-distinct topology fingerprints. The dry run must also emit the values needed
-for `preflight/target-identity.json`.
+distinct topology fingerprints, and none may equal the calibration
+metric-source, development, or held-out topology hashes. The dry run must
+also emit the values needed for `preflight/target-identity.json`.
 
-## Stage H2: bounded static-HMC calibration
+## Stage H2c: bounded total/contrast static-HMC calibration
 
 Calibration is discarded and must finish before retained mobile sampling.
 There is no online adaptation.
@@ -228,31 +240,63 @@ resolved target, topology fingerprint, settings, trace, and runtime identity.
 Archive the harness source and hash it as one of
 `source_artifact_sha256` entries in the final calibration file. The HPC agent
 may debug this harness, but any harness change requires a new
-content-digest-addressed calibration subroot and complete repetition of H2;
+content-digest-addressed calibration subroot and complete repetition of H2c;
 any repository source change requires a new commit-addressed run root.
 
 ### Initial metric
 
-Use the checksum-verified fixed-basis NUTS reference draws at the same \(K\)
-and target:
+Use only checksum-verified, post-warmup fixed-basis NUTS draws at the same
+\(K\) and target. The archived NUTS reference uses the deterministic
+largest-nominal topology; record its canonical topology hash as the
+calibration metric source, and exclude that topology from H5. Let
+\(X_{di}=\log m_{di}\) and
+\(Y_{dj}=\log c_{dj}\). Define the normalized common coordinate and centered
+contrasts by
+
+\[
+z_d=\frac{1}{\sqrt K}\sum_i X_{di},
+\qquad
+R_{di}=X_{di}-\frac1K\sum_l X_{dl}.
+\]
+
+For any scalar series \(a\), define
+
+\[
+V_{\rm MAD}(a)
+=
+\left[1.4826\,\operatorname{median}
+|a-\operatorname{median}(a)|\right]^2.
+\]
+
+Construct the frozen metric as follows:
 
 1. verify the NUTS bundle checksum manifest, then transform each retained
-   leaf mass and fixed coefficient to the compound
-   kernel's authoritative coordinates,
-   \(x_i=\log m_i\) and \(y_j=\log c_j\);
-2. define each robust variance as
-   \([1.4826\,\operatorname{median}|z-\operatorname{median}(z)|]^2\);
-3. use a single scalar leaf position scale equal to the median robust
-   variance over leaf coordinates;
-4. use one robust log-coordinate variance per fixed coefficient;
-5. clip every resolved position scale to \([10^{-4},10^2]\);
-6. set leaf/fixed cross terms to zero;
-7. record that PyMC uses this position scale as momentum precision, then write
-   the source artifact hashes, estimator, clipping rule, resolved diagonal,
-   and coordinate-layout ID to `calibration.json`.
+   masses and fixed coefficients to \(X\) and \(Y\);
+2. set
+   \(g_{\rm total}=V_{\rm MAD}(z)\);
+3. set
+   \[
+   g_{\rm contrast}
+   =
+   \frac{\operatorname{median}_i V_{\rm MAD}(R_{\cdot i})}
+        {1-1/K};
+   \]
+4. set each fixed scale to \(V_{\rm MAD}(Y_{\cdot j})\);
+5. require every raw estimate to be finite and strictly positive before
+   clipping it independently to \([10^{-4},10^2]\);
+6. require
+   \(\max(g_{\rm total},g_{\rm contrast})/
+     \min(g_{\rm total},g_{\rm contrast})\le10^4\);
+7. assemble
+   \(G_{\rm leaf}=g_{\rm contrast}P_\perp+g_{\rm total}P_1\),
+   retain the fixed diagonal, and set leaf/fixed cross terms to zero;
+8. record raw and clipped values, clipping flags, source hashes, estimator ID
+   `normalized_common_and_centered_contrast_scaled_mad_v1`, normalized
+   direction, \(1-1/K\) correction, and coordinate-layout ID.
 
-Do not transfer a dense leaf metric by canonical leaf position. Leaf identity
-changes with topology.
+This dense leaf block is permitted because it is invariant under every leaf
+permutation. Do not transfer an arbitrary leaf-by-leaf covariance learned in
+one fixed basis.
 
 ### Step and path search
 
@@ -264,50 +308,112 @@ For each \(K\):
 2. evaluate exactly the in-range members of
    \(\{\epsilon/2,\epsilon,2\epsilon\}\times\{5,10,20\}\), where \(\epsilon\)
    is the first zero-divergence halving result;
-3. use exactly 100 sweeps from the largest-nominal topology and 100 sweeps
-   from random-recursive initializer seed 51051 at \(K=50\), or 51251 at
-   \(K=250\), for every candidate;
+3. use exactly 200 sweeps from each of two random-recursive development
+   topologies for every candidate, with the frozen topology/master-PCG64
+   seeds in the table below;
 4. require mean HMC acceptance between 0.6 and 0.9 for every pilot topology;
 5. reject any candidate with a non-finite state, divergence, or acceptance
    outside the band;
-6. choose the surviving candidate with greatest median Euclidean displacement
-   in log coordinates per reported leapfrog step, breaking ties first toward
-   fewer leapfrog steps and then toward the smaller step size.
+6. for each sweep, concatenate
+   `log_leaf_mass[post-HMC] - hmc_start_log_leaf_mass` and
+   `log_fixed_coefficient[post-HMC] -
+   hmc_start_log_fixed_coefficient`, then take its Euclidean norm; rejected
+   HMC transitions therefore contribute zero and accepted structural motion
+   contributes nothing;
+7. pool the 400 HMC-only displacement values from the two equally sized
+   development runs, divide each by the candidate's reported leapfrog count,
+   and choose the surviving candidate with greatest binary64 median;
+8. break an exactly equal score first toward fewer leapfrog steps and then
+   toward the smaller step size.
+
+The development identities are:
+
+| \(K\) | role | topology seed | master PCG64 seed |
+|---:|---|---:|---:|
+| 50 | development-a | 41050 | 71050 |
+| 50 | development-b | 41051 | 71051 |
+| 250 | development-a | 41250 | 71250 |
+| 250 | development-b | 41251 | 71251 |
+
+For each role, restart the same master PCG64 seed for every candidate. This is
+the frozen common-random-number policy for candidate comparison. Do not
+advance one shared stream sequentially across candidates, and do not choose
+new seeds after inspecting results.
+
+After selecting one candidate, freeze its metric and HMC controls and write a
+selection-lock hash before running validation. Validate exactly 500 discarded
+sweeps from each frozen topology/master-PCG64 pair:
+
+| \(K\) | role | topology seed | validation master PCG64 seed |
+|---:|---|---:|---:|
+| 50 | development-a | 41050 | 72050 |
+| 50 | development-b | 41051 | 72051 |
+| 50 | held-out | 41052 | 72052 |
+| 250 | development-a | 41250 | 72250 |
+| 250 | development-b | 41251 | 72251 |
+| 250 | held-out | 41252 | 72252 |
+
+All three must be finite, have zero divergences, and have mean HMC acceptance
+in \([0.6,0.9]\). Failure of the held-out topology is a hard stop: do not use
+its result to retune the metric, step size, path length, estimator, or gates.
+A new attempt requires a new predeclared metric or parameterization and a new
+content-addressed calibration root.
+
+All calibration topologies and master streams are disjoint from the H5
+retained-production starts. The deterministic largest-nominal topology is the
+fixed-basis NUTS metric source and is therefore calibration-exposed; it is not
+used by H5.
 
 The calibration search is bounded before results are inspected. Do not widen
 it opportunistically. Hash the final calibration file and bind that digest
 into every production manifest.
 
-`calibration.json` must use exactly the driver-enforced v1 schema documented
+`calibration.json` must use exactly the driver-enforced v2 schema documented
 by `python "$DRIVER" --help` and the driver module docstring. Its root keys
 are `schema`, `calibration_id`, `fixed_k`, `input_sha256`, `target`, `kernel`,
-and `evidence`; extra keys are rejected. The exact `evidence` object contains
-the code revision, robust estimator, clipping bounds, two pilot
-strategy/seed/sweep records, candidate grid, one decision row per candidate,
-and a nonempty source-artifact SHA-256 map. The driver verifies file bytes,
-all target/kernel identities, one selected requested candidate, finite
-zero-divergence evidence, and both pilot acceptance means in the frozen band.
-Pass the actual file path and independently computed digest to the driver;
-caller-supplied ID or digest text is not sufficient.
+and `evidence`; extra keys are rejected. The exact evidence binds the code
+revision, robust and leaf-metric estimator IDs, clipping bounds, two
+development initializer records including topology and master-PCG64 seeds,
+candidate grid, one decision row per candidate, the three-case 500-sweep
+selected validation with separate master seeds, and a nonempty source-artifact
+SHA-256 map. It also binds four distinct excluded topology hashes: the
+fixed-basis NUTS metric source, development-a, development-b, and held-out.
+The driver verifies file bytes, all target/kernel identities, role-specific
+seeds, the selected requested candidate, development gates, and all three
+validation gates. It rejects retained-production random-recursive starts that
+reuse a calibration topology seed or whose actual canonical topology hash
+collides with any excluded hash. Pass the actual file path and independently
+computed digest to the driver; caller-supplied ID or digest text is not
+sufficient.
 
-The strict schema intentionally does not claim to prove the search procedure
-from summary rows alone. Write a separate
-`calibration-search-audit.json` that records the two pilot topology
-fingerprints, clean-worktree check, initial epsilon and every halving result,
-the derived adjacent candidate grid, source NUTS paths and verified hashes,
-all raw per-topology diagnostics, the score ordering, and the declared
-tie-break calculation. Include the audit file and calibration-harness source
-hashes in `source_artifact_sha256`. An independent H2 analysis must recompute
-these fields and emit an all-true decision before H1/H3/H4/H5; the production
-driver enforces the selected candidate's identity and basic gates, while this
-external audit enforces bounded-search derivation and optimal selection.
-The H2 decision script must resolve every source-artifact ID to an immutable
+The strict schema intentionally does not claim to prove metric derivation or
+the search procedure from summary rows alone. Write a separate
+`calibration-search-audit.json` that records the metric projections and raw
+estimates, clipping and condition calculation, development and held-out
+topology fingerprints, topology/master seeds, the common-random-number
+policy, disjoint production/calibration topology sets, clean-worktree check,
+initial epsilon and every halving result, the derived adjacent candidate grid,
+source NUTS paths and verified hashes, all raw diagnostics, HMC-start and
+post-HMC coordinates used by the displacement score, the selection-lock hash,
+score pooling/order, and tie-break calculation. Include the audit file and
+calibration-harness source hashes in `source_artifact_sha256`. An independent
+H2c analysis must recompute these fields and emit an all-true decision before
+H1/H3/H4/H5; the production driver enforces the selected candidate and basic
+gates, while the external audit enforces metric derivation, bounded search,
+held-out isolation, common random numbers, and optimal selection. The H2c
+decision script must
+resolve every source-artifact ID to an immutable
 path recorded in the audit, recompute the file SHA-256, and require equality
 with `calibration.json["evidence"]["source_artifact_sha256"]`. In particular,
 the map must contain `calibration-search-audit`,
 `calibration-harness-source`, and the K-specific NUTS trace/checksum manifest.
 Write these path/hash/equality results to `calibration-source-audit.json` and
 require all true before any production-driver invocation.
+
+The audit must reconstruct and hash the fixed-basis NUTS source topology and
+all three mobile calibration topologies. Those exact four digests populate
+`excluded_production_topology_sha256`; seed inequality alone is not accepted
+as proof of topology disjointness.
 
 ## Stage H3: exact real-input restart gate
 
@@ -328,6 +434,7 @@ Require exact equality for:
 - rectangle bounds;
 - every posterior cache and target component;
 - structural diagnostics;
+- post-structure/pre-HMC authoritative log coordinates;
 - HMC accepted/divergent/acceptance/energy-error/step-size/step-count fields;
 - per-sweep uint64 HMC seeds;
 - final PCG64 state;
@@ -373,7 +480,8 @@ pixi run -e dev --frozen python "$DRIVER" \
   --seed "$SAMPLER_SEED" --chain-id "k${K}-chain${CHAIN}" \
   "${INITIALIZATION_ARGUMENTS[@]}" "${RESUME_ARGUMENTS[@]}" \
   --step-size "$STEP_SIZE" --leapfrog-steps "$LEAPFROG_STEPS" \
-  --leaf-position-scale "$LEAF_POSITION_SCALE" \
+  --leaf-contrast-position-scale "$LEAF_CONTRAST_POSITION_SCALE" \
+  --leaf-total-position-scale "$LEAF_TOTAL_POSITION_SCALE" \
   --fixed-coefficient-position-scale "$FIXED_POSITION_SCALES" \
   --calibration-file "$CALIBRATION_FILE" \
   --calibration-id "$CALIBRATION_ID" \
@@ -390,9 +498,9 @@ pixi run -e dev --frozen python "$DRIVER" \
   --input-netcdf-engine h5netcdf --netcdf-engine h5netcdf
 ```
 
-Use `INITIALIZATION_ARGUMENTS=(--initialization largest-nominal)` for chain
-zero. For chains one through three use
-`--initialization random-recursive --initialization-seed <declared seed>`.
+For every chain use
+`INITIALIZATION_ARGUMENTS=(--initialization random-recursive
+--initialization-seed <declared seed>)`.
 Use an empty `RESUME_ARGUMENTS` array for a fresh segment and
 `--resume-checkpoint <certified parent bundle>/checkpoint.npz` thereafter.
 The driver must reject a parent whose sibling `complete.json` or any
@@ -403,7 +511,7 @@ certificate hash is missing or stale.
 For each \(K=50\) and \(K=250\):
 
 - four independently seeded chains;
-- exactly one largest-nominal and three random-recursive topology starts;
+- four random-recursive topology starts disjoint from calibration;
 - 2,500 compound sweeps per chain;
 - immutable 500-sweep segments;
 - discard the first 500 sweeps only during analysis;
@@ -416,11 +524,11 @@ Use the exact established topology and sampler streams:
 
 | \(K\) | chain | start | initialization seed | master sampler seed |
 |---:|---:|---|---:|---:|
-| 50 | 0 | largest-nominal | none | 61050 |
+| 50 | 0 | random-recursive | 51050 | 61050 |
 | 50 | 1 | random-recursive | 51051 | 61051 |
 | 50 | 2 | random-recursive | 51052 | 61052 |
 | 50 | 3 | random-recursive | 51053 | 61053 |
-| 250 | 0 | largest-nominal | none | 61250 |
+| 250 | 0 | random-recursive | 51250 | 61250 |
 | 250 | 1 | random-recursive | 51251 | 61251 |
 | 250 | 2 | random-recursive | 51252 | 61252 |
 | 250 | 3 | random-recursive | 51253 | 61253 |

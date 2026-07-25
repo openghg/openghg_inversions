@@ -15,14 +15,18 @@ the compiled PyMC density is checked against the independently assembled
 scientific target plus the symmetric log-coordinate Jacobians. Static HMC
 settings are calibration outputs: no adaptation, online tuning, randomized
 step size, or topology-dependent metric is enabled here.
+The larger leaf-metric eigenvalue may be at most 10,000 times the smaller one.
 
-``--calibration-file`` is a strict-JSON v1 calibration identity with exactly
+``--calibration-file`` is a strict-JSON v2 calibration identity with exactly
 this shape (values shown symbolically):
+
+Calibration v1 used the retired scalar diagonal leaf metric and is rejected;
+no automatic converter is provided.
 
 .. code-block:: json
 
    {
-     "schema": "openghg_inversions.full_tiling_pymc_hmc_calibration.v1",
+     "schema": "openghg_inversions.full_tiling_pymc_hmc_calibration.v2",
      "calibration_id": "<--calibration-id>",
      "fixed_k": "<--k>",
      "input_sha256": "<--expected-input-sha256>",
@@ -40,16 +44,30 @@ this shape (values shown symbolically):
        "leapfrog_steps": "<--leapfrog-steps>",
        "coordinate_layout_id": "<driver coordinate layout ID>",
        "metric_semantics_id": "<driver metric semantics ID>",
-       "leaf_position_scale": "<--leaf-position-scale>",
+       "leaf_contrast_position_scale": "<--leaf-contrast-position-scale>",
+       "leaf_total_position_scale": "<--leaf-total-position-scale>",
        "fixed_coefficient_position_scale": ["<resolved fixed scales>"]
      },
      "evidence": {
        "code_revision": "<--code-revision>",
        "robust_variance_estimator": "squared_scaled_median_absolute_deviation_1.4826",
+       "leaf_metric_estimator": "normalized_common_and_centered_contrast_scaled_mad_v1",
        "clipping_bounds": [0.0001, 100.0],
-       "pilot_initializers": [
-         {"strategy": "largest-nominal", "seed": null, "sweeps": 100},
-         {"strategy": "random-recursive", "seed": "<seed>", "sweeps": 100}
+       "development_initializers": [
+         {
+           "role": "development-a",
+           "strategy": "random-recursive",
+           "seed": "<development topology seed A>",
+           "sampler_seed": "<development sampler seed A>",
+           "sweeps": 200
+         },
+         {
+           "role": "development-b",
+           "strategy": "random-recursive",
+           "seed": "<development topology seed B>",
+           "sampler_seed": "<development sampler seed B>",
+           "sweeps": 200
+         }
        ],
        "candidate_grid": [
          {"step_size": "<candidate>", "leapfrog_steps": "<candidate>"}
@@ -58,14 +76,56 @@ this shape (values shown symbolically):
          {
            "step_size": "<candidate>",
            "leapfrog_steps": "<candidate>",
-           "largest_nominal_mean_acceptance": "<finite value>",
-           "random_recursive_mean_acceptance": "<finite value>",
+           "development_a_mean_acceptance": "<finite value>",
+           "development_b_mean_acceptance": "<finite value>",
            "divergences": "<non-negative integer>",
            "finite": "<Boolean>",
-           "median_log_displacement_per_leapfrog_step": "<finite value>",
+           "median_hmc_log_displacement_per_leapfrog_step": "<finite value>",
            "selected": "<Boolean>"
          }
        ],
+       "selected_validation": {
+         "step_size": "<selected candidate>",
+         "leapfrog_steps": "<selected candidate>",
+         "initializers": [
+           {
+             "role": "development-a",
+             "strategy": "random-recursive",
+             "seed": "<development topology seed A>",
+             "sampler_seed": "<validation sampler seed A>",
+             "sweeps": 500,
+             "mean_acceptance": "<finite value>",
+             "divergences": 0,
+             "finite": true
+           },
+           {
+             "role": "development-b",
+             "strategy": "random-recursive",
+             "seed": "<development topology seed B>",
+             "sampler_seed": "<validation sampler seed B>",
+             "sweeps": 500,
+             "mean_acceptance": "<finite value>",
+             "divergences": 0,
+             "finite": true
+           },
+           {
+             "role": "held-out",
+             "strategy": "random-recursive",
+             "seed": "<held-out topology seed>",
+             "sampler_seed": "<held-out validation sampler seed>",
+             "sweeps": 500,
+             "mean_acceptance": "<finite value>",
+             "divergences": 0,
+             "finite": true
+           }
+         ]
+       },
+       "excluded_production_topology_sha256": {
+         "metric_source": "<SHA-256>",
+         "development_a": "<SHA-256>",
+         "development_b": "<SHA-256>",
+         "held_out": "<SHA-256>"
+       },
        "source_artifact_sha256": {"<artifact ID>": "<SHA-256>"}
      }
    }
@@ -74,10 +134,17 @@ The file must contain no additional keys, duplicate object keys, or non-finite
 JSON constants. Its bytes must match ``--calibration-sha256`` and every
 identity value must match the current invocation. Candidate rows and decision
 rows must correspond one-to-one; exactly one finite, zero-divergence decision
-must be selected, must match the requested kernel, and must have both pilot
-acceptance means in the inclusive interval 0.6--0.9. Production ``K=50`` and
-``K=250`` evidence additionally requires the reviewed random-recursive pilot
-seeds 51051 and 51251, respectively.
+must be selected, must match the requested kernel, and must have both
+development acceptance means in the inclusive interval 0.6--0.9. The selected
+candidate must also have three ordered 500-sweep validation initializers with
+finite acceptance in that interval and zero divergences. Production ``K=50``
+and ``K=250`` evidence additionally requires reviewed, role-specific topology
+and master PCG64 seeds. Candidate development runs reuse the same master seed
+for a given topology across every candidate (common random numbers);
+validation uses distinct streams, and all calibration topology seeds are
+disjoint from retained-production starts. The driver also rejects exact
+collisions between a proposed production topology hash and the four
+calibration topology hashes, including the fixed-basis NUTS metric source.
 
 Successful runs publish ``manifest.json``, ``trace.nc``, ``summary.json``, and
 ``checkpoint.npz`` inside a new output directory. Every artifact is reopened
@@ -155,9 +222,29 @@ TRACE_FILENAME = "trace.nc"
 SUMMARY_FILENAME = "summary.json"
 CHECKPOINT_FILENAME = "checkpoint.npz"
 COMPLETION_FILENAME = "complete.json"
-CALIBRATION_SCHEMA = "openghg_inversions.full_tiling_pymc_hmc_calibration.v1"
-COMPLETION_SCHEMA = "openghg_inversions.full_tiling_pymc_hmc_native_completion.v1"
+CALIBRATION_SCHEMA = "openghg_inversions.full_tiling_pymc_hmc_calibration.v2"
+LEGACY_CALIBRATION_SCHEMA = "openghg_inversions.full_tiling_pymc_hmc_calibration.v1"
+COMPLETION_SCHEMA = "openghg_inversions.full_tiling_pymc_hmc_native_completion.v2"
 ROBUST_VARIANCE_ESTIMATOR = "squared_scaled_median_absolute_deviation_1.4826"
+LEAF_METRIC_ESTIMATOR = "normalized_common_and_centered_contrast_scaled_mad_v1"
+MAX_LEAF_METRIC_CONDITION_RATIO = 1.0e4
+POSITION_SCALE_CLIPPING_BOUNDS = (1.0e-4, 1.0e2)
+CALIBRATION_DEVELOPMENT_TOPOLOGY_SEEDS = {
+    50: (41050, 41051),
+    250: (41250, 41251),
+}
+CALIBRATION_HELD_OUT_TOPOLOGY_SEEDS = {
+    50: 41052,
+    250: 41252,
+}
+CALIBRATION_DEVELOPMENT_SAMPLER_SEEDS = {
+    50: (71050, 71051),
+    250: (71250, 71251),
+}
+CALIBRATION_VALIDATION_SAMPLER_SEEDS = {
+    50: (72050, 72051, 72052),
+    250: (72250, 72251, 72252),
+}
 PARIS_OBSERVATIONS = 1_382
 PARIS_GRID_SHAPE = (183, 128)
 PARIS_OUTER_COEFFICIENTS = 6
@@ -804,7 +891,7 @@ def _build_manifest(
         input_digest: Frozen input whole-file SHA-256.
         outer_labels: Ordered fixed-coefficient labels.
         fixed_position_scales: Fully resolved fixed-coordinate position scale.
-        calibration: Verified v1 calibration identity.
+        calibration: Verified v2 calibration identity.
         calibration_digest: Verified whole-file calibration SHA-256.
 
     Returns:
@@ -819,7 +906,7 @@ def _build_manifest(
     bounds = _rectangle_bounds(initial_state)
     runtime_identity = asdict(full_tiling_pymc_hmc_runtime_identity())
     manifest: dict[str, object] = {
-        "schema": ("openghg_inversions.full_tiling_pymc_hmc_native_manifest.v1"),
+        "schema": ("openghg_inversions.full_tiling_pymc_hmc_native_manifest.v2"),
         "status": "experimental_mobile_hmc_not_convergence_evidence",
         "input": {
             "id": arguments.input_id,
@@ -861,7 +948,8 @@ def _build_manifest(
             "chains_per_invocation": 1,
             "step_size_requested": float(arguments.step_size),
             "leapfrog_steps": int(arguments.leapfrog_steps),
-            "leaf_position_scale": float(arguments.leaf_position_scale),
+            "leaf_contrast_position_scale": float(arguments.leaf_contrast_position_scale),
+            "leaf_total_position_scale": float(arguments.leaf_total_position_scale),
             "fixed_coefficient_position_scale": list(fixed_position_scales),
             "metric_semantics_id": (FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID),
             "coordinate_layout_id": (FULL_TILING_PYMC_HMC_COORDINATE_LAYOUT_ID),
@@ -895,7 +983,7 @@ def _expected_calibration_identity(
     input_digest: str,
     fixed_position_scales: tuple[float, ...],
 ) -> dict[str, Any]:
-    """Build the exact minimal v1 calibration identity for this invocation.
+    """Build the exact minimal v2 calibration identity for this invocation.
 
     Args:
         arguments: Validated driver arguments.
@@ -931,7 +1019,8 @@ def _expected_calibration_identity(
             "leapfrog_steps": int(arguments.leapfrog_steps),
             "coordinate_layout_id": FULL_TILING_PYMC_HMC_COORDINATE_LAYOUT_ID,
             "metric_semantics_id": FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID,
-            "leaf_position_scale": float(arguments.leaf_position_scale),
+            "leaf_contrast_position_scale": float(arguments.leaf_contrast_position_scale),
+            "leaf_total_position_scale": float(arguments.leaf_total_position_scale),
             "fixed_coefficient_position_scale": list(fixed_position_scales),
         },
     }
@@ -990,25 +1079,28 @@ def _validate_calibration_evidence(
 
     Raises:
         ValueError: If evidence keys, code revision, robust estimator, clipping
-            bounds, pilot identities, candidate grid, decision statistics,
-            selected candidate, acceptance gates, or source SHA-256 values
-            violate the v1 contract.
+            bounds, development identities, candidate grid, decision
+            statistics, selected candidate validation, acceptance gates, or
+            source SHA-256 values violate the v2 contract.
 
     Notes:
         Candidate and decision rows must correspond one-to-one. Exactly one
         finite, zero-divergence candidate must be selected, and production
         ``K=50``/``K=250`` evidence is bound to the reviewed random-recursive
-        pilot seeds.
+        development and held-out seeds.
     """
     evidence = _require_exact_keys(
         value,
         {
             "code_revision",
             "robust_variance_estimator",
+            "leaf_metric_estimator",
             "clipping_bounds",
-            "pilot_initializers",
+            "development_initializers",
             "candidate_grid",
             "decision_statistics",
+            "selected_validation",
+            "excluded_production_topology_sha256",
             "source_artifact_sha256",
         },
         name="Calibration evidence",
@@ -1017,31 +1109,58 @@ def _validate_calibration_evidence(
         raise ValueError("Calibration evidence code_revision does not match --code-revision.")
     if evidence["robust_variance_estimator"] != ROBUST_VARIANCE_ESTIMATOR:
         raise ValueError("Calibration evidence robust variance estimator is incompatible.")
-    if _canonical_json(evidence["clipping_bounds"]) != _canonical_json([1.0e-4, 1.0e2]):
+    if evidence["leaf_metric_estimator"] != LEAF_METRIC_ESTIMATOR:
+        raise ValueError("Calibration evidence leaf metric estimator is incompatible.")
+    if _canonical_json(evidence["clipping_bounds"]) != _canonical_json(list(POSITION_SCALE_CLIPPING_BOUNDS)):
         raise ValueError("Calibration evidence clipping_bounds must be [0.0001, 100.0].")
 
-    pilots = evidence["pilot_initializers"]
-    if not isinstance(pilots, list) or len(pilots) != 2:
-        raise ValueError("Calibration evidence must declare exactly two pilot initializers.")
-    expected_strategies = ("largest-nominal", "random-recursive")
-    for index, expected_strategy in enumerate(expected_strategies):
-        pilot = _require_exact_keys(
-            pilots[index],
-            {"strategy", "seed", "sweeps"},
-            name=f"Calibration pilot {index}",
+    development_initializers = evidence["development_initializers"]
+    if not isinstance(development_initializers, list) or len(development_initializers) != 2:
+        raise ValueError("Calibration evidence must declare exactly two development initializers.")
+    development_topology_seeds: list[int] = []
+    development_sampler_seeds: list[int] = []
+    for index in range(2):
+        initializer = _require_exact_keys(
+            development_initializers[index],
+            {"role", "strategy", "seed", "sampler_seed", "sweeps"},
+            name=f"Calibration development initializer {index}",
         )
-        if pilot["strategy"] != expected_strategy or pilot["sweeps"] != 100:
-            raise ValueError("Calibration pilot strategies and sweep counts are incompatible.")
-        seed = pilot["seed"]
-        if expected_strategy == "largest-nominal":
-            if seed is not None:
-                raise ValueError("Largest-nominal calibration pilot seed must be null.")
-        elif isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
-            raise ValueError("Random-recursive calibration pilot seed must be non-negative.")
-    required_random_seed = {50: 51051, 250: 51251}.get(arguments.k)
-    if required_random_seed is not None and pilots[1]["seed"] != required_random_seed:
+        sweeps = initializer["sweeps"]
+        if (
+            initializer["role"] != f"development-{chr(ord('a') + index)}"
+            or initializer["strategy"] != "random-recursive"
+            or isinstance(sweeps, bool)
+            or not isinstance(sweeps, int)
+            or sweeps != 200
+        ):
+            raise ValueError(
+                "Calibration development initializer strategies and sweep counts are incompatible."
+            )
+        seed = initializer["seed"]
+        sampler_seed = initializer["sampler_seed"]
+        if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+            raise ValueError("Calibration development topology seeds must be non-negative.")
+        if isinstance(sampler_seed, bool) or not isinstance(sampler_seed, int) or sampler_seed < 0:
+            raise ValueError("Calibration development sampler seeds must be non-negative.")
+        development_topology_seeds.append(seed)
+        development_sampler_seeds.append(sampler_seed)
+    if len(set(development_topology_seeds)) != 2 or len(set(development_sampler_seeds)) != 2:
+        raise ValueError("Calibration development topology and sampler seeds must be distinct.")
+    required_development_topology_seeds = CALIBRATION_DEVELOPMENT_TOPOLOGY_SEEDS.get(arguments.k)
+    if (
+        required_development_topology_seeds is not None
+        and tuple(development_topology_seeds) != required_development_topology_seeds
+    ):
         raise ValueError(
-            f"Calibration evidence for K={arguments.k} requires pilot seed {required_random_seed}."
+            f"Calibration evidence for K={arguments.k} has incompatible development topology seeds."
+        )
+    required_development_sampler_seeds = CALIBRATION_DEVELOPMENT_SAMPLER_SEEDS.get(arguments.k)
+    if (
+        required_development_sampler_seeds is not None
+        and tuple(development_sampler_seeds) != required_development_sampler_seeds
+    ):
+        raise ValueError(
+            f"Calibration evidence for K={arguments.k} has incompatible development sampler seeds."
         )
 
     candidate_grid = evidence["candidate_grid"]
@@ -1062,11 +1181,11 @@ def _validate_calibration_evidence(
     decision_keys = {
         "step_size",
         "leapfrog_steps",
-        "largest_nominal_mean_acceptance",
-        "random_recursive_mean_acceptance",
+        "development_a_mean_acceptance",
+        "development_b_mean_acceptance",
         "divergences",
         "finite",
-        "median_log_displacement_per_leapfrog_step",
+        "median_hmc_log_displacement_per_leapfrog_step",
         "selected",
     }
     for index, item in enumerate(decisions):
@@ -1084,9 +1203,9 @@ def _validate_calibration_evidence(
         )
         decision_candidates.append(candidate)
         for field in (
-            "largest_nominal_mean_acceptance",
-            "random_recursive_mean_acceptance",
-            "median_log_displacement_per_leapfrog_step",
+            "development_a_mean_acceptance",
+            "development_b_mean_acceptance",
+            "median_hmc_log_displacement_per_leapfrog_step",
         ):
             _finite_json_number(decision[field], name=f"Calibration decision {index}.{field}")
         divergences = decision["divergences"]
@@ -1109,10 +1228,120 @@ def _validate_calibration_evidence(
     if (
         selected_decision["finite"] is not True
         or selected_decision["divergences"] != 0
-        or not 0.6 <= float(selected_decision["largest_nominal_mean_acceptance"]) <= 0.9
-        or not 0.6 <= float(selected_decision["random_recursive_mean_acceptance"]) <= 0.9
+        or not 0.6 <= float(selected_decision["development_a_mean_acceptance"]) <= 0.9
+        or not 0.6 <= float(selected_decision["development_b_mean_acceptance"]) <= 0.9
     ):
         raise ValueError("Selected calibration decision does not pass the frozen acceptance gates.")
+
+    selected_validation = _require_exact_keys(
+        evidence["selected_validation"],
+        {"step_size", "leapfrog_steps", "initializers"},
+        name="Calibration selected_validation",
+    )
+    validation_candidate = _calibration_candidate(
+        {
+            "step_size": selected_validation["step_size"],
+            "leapfrog_steps": selected_validation["leapfrog_steps"],
+        },
+        name="Calibration selected_validation",
+    )
+    if validation_candidate != selected_candidate:
+        raise ValueError("Calibration selected_validation candidate does not match the selected decision.")
+    validation_initializers = selected_validation["initializers"]
+    if not isinstance(validation_initializers, list) or len(validation_initializers) != 3:
+        raise ValueError("Calibration selected_validation must declare exactly three initializers.")
+    expected_validation_identities = (
+        ("development-a", development_topology_seeds[0]),
+        ("development-b", development_topology_seeds[1]),
+        ("held-out", None),
+    )
+    held_out_seed: int | None = None
+    validation_sampler_seeds: list[int] = []
+    for index, (expected_role, expected_seed) in enumerate(expected_validation_identities):
+        initializer = _require_exact_keys(
+            validation_initializers[index],
+            {
+                "role",
+                "strategy",
+                "seed",
+                "sampler_seed",
+                "sweeps",
+                "mean_acceptance",
+                "divergences",
+                "finite",
+            },
+            name=f"Calibration selected validation initializer {index}",
+        )
+        sweeps = initializer["sweeps"]
+        if (
+            initializer["role"] != expected_role
+            or initializer["strategy"] != "random-recursive"
+            or isinstance(sweeps, bool)
+            or not isinstance(sweeps, int)
+            or sweeps != 500
+        ):
+            raise ValueError(
+                "Calibration selected validation initializer identities and sweep counts are incompatible."
+            )
+        seed = initializer["seed"]
+        if index < 2:
+            if seed != expected_seed or isinstance(seed, bool):
+                raise ValueError("Calibration selected validation development seeds are incompatible.")
+        elif isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+            raise ValueError("Calibration held-out random-recursive seed must be non-negative.")
+        else:
+            held_out_seed = seed
+        sampler_seed = initializer["sampler_seed"]
+        if isinstance(sampler_seed, bool) or not isinstance(sampler_seed, int) or sampler_seed < 0:
+            raise ValueError("Calibration selected validation sampler seeds must be non-negative.")
+        validation_sampler_seeds.append(sampler_seed)
+        mean_acceptance = _finite_json_number(
+            initializer["mean_acceptance"],
+            name=f"Calibration selected validation initializer {index}.mean_acceptance",
+        )
+        divergences = initializer["divergences"]
+        if (
+            initializer["finite"] is not True
+            or isinstance(divergences, bool)
+            or not isinstance(divergences, int)
+            or divergences != 0
+            or not 0.6 <= mean_acceptance <= 0.9
+        ):
+            raise ValueError(
+                "Calibration selected validation initializer does not pass the frozen acceptance gates."
+            )
+    if held_out_seed in development_topology_seeds:
+        raise ValueError("Calibration held-out topology seed must differ from development seeds.")
+    if len(set(validation_sampler_seeds)) != 3:
+        raise ValueError("Calibration selected validation sampler seeds must be distinct.")
+    if set(validation_sampler_seeds) & set(development_sampler_seeds):
+        raise ValueError("Calibration validation sampler seeds must differ from development sampler seeds.")
+    required_held_out_seed = CALIBRATION_HELD_OUT_TOPOLOGY_SEEDS.get(arguments.k)
+    if required_held_out_seed is not None and held_out_seed != required_held_out_seed:
+        raise ValueError(
+            f"Calibration evidence for K={arguments.k} has an incompatible held-out topology seed."
+        )
+    required_validation_sampler_seeds = CALIBRATION_VALIDATION_SAMPLER_SEEDS.get(arguments.k)
+    if (
+        required_validation_sampler_seeds is not None
+        and tuple(validation_sampler_seeds) != required_validation_sampler_seeds
+    ):
+        raise ValueError(
+            f"Calibration evidence for K={arguments.k} has incompatible validation sampler seeds."
+        )
+
+    excluded_topologies = _require_exact_keys(
+        evidence["excluded_production_topology_sha256"],
+        {"metric_source", "development_a", "development_b", "held_out"},
+        name="Calibration excluded production topologies",
+    )
+    for role, digest in excluded_topologies.items():
+        _validate_sha256(
+            digest,
+            name=f"Calibration excluded topology {role!r} SHA-256",
+        )
+    if len(set(excluded_topologies.values())) != len(excluded_topologies):
+        raise ValueError("Calibration excluded production topology hashes must be distinct.")
 
     sources = evidence["source_artifact_sha256"]
     if not isinstance(sources, dict) or not sources:
@@ -1144,7 +1373,7 @@ def _load_verified_calibration(
     Raises:
         FileNotFoundError: If the calibration file is absent.
         OSError: If the calibration file cannot be read.
-        ValueError: If its hash, strict JSON, stability, or v1 identity does
+        ValueError: If its hash, strict JSON, stability, or v2 identity does
             not exactly match the current invocation.
     """
     path = cast(Path, arguments.calibration_file)
@@ -1157,6 +1386,8 @@ def _load_verified_calibration(
     )
     if _sha256_file(path) != digest:
         raise ValueError("Calibration file changed while it was being validated.")
+    if calibration.get("schema") == LEGACY_CALIBRATION_SCHEMA:
+        raise ValueError("Calibration v1 uses the retired diagonal metric; calibration v2 is required.")
     expected = _expected_calibration_identity(
         arguments,
         adapter,
@@ -1164,10 +1395,10 @@ def _load_verified_calibration(
         fixed_position_scales=fixed_position_scales,
     )
     if set(calibration) != {*expected, "evidence"}:
-        raise ValueError("Calibration v1 root keys are incompatible.")
+        raise ValueError("Calibration v2 root keys are incompatible.")
     identity = {name: calibration[name] for name in expected}
     if _canonical_json(identity) != _canonical_json(expected):
-        raise ValueError("Calibration v1 identity does not exactly match the current invocation.")
+        raise ValueError("Calibration v2 identity does not exactly match the current invocation.")
     _validate_calibration_evidence(calibration["evidence"], arguments)
     return calibration, digest
 
@@ -1368,6 +1599,16 @@ def _trace_to_dataset(
             trace.structural_invalid_reason,
             {"long_name": "empty for valid structural proposals"},
         ),
+        "hmc_start_log_leaf_mass": (
+            ("sweep", "region"),
+            trace.hmc_start_log_leaf_mass,
+            {"long_name": ("post-structure pre-HMC log leaf masses in post-HMC canonical order")},
+        ),
+        "hmc_start_log_fixed_coefficient": (
+            ("sweep", "fixed_parameter"),
+            trace.hmc_start_log_fixed_coefficient,
+            {"long_name": "post-structure pre-HMC log fixed coefficients"},
+        ),
         "hmc_accepted": (
             ("sweep",),
             trace.hmc_accepted,
@@ -1434,7 +1675,7 @@ def _trace_to_dataset(
             "lon": adapter.longitudes,
         },
         attrs={
-            "schema": ("openghg_inversions.full_tiling_pymc_hmc_native_trace.v1"),
+            "schema": ("openghg_inversions.full_tiling_pymc_hmc_native_trace.v2"),
             "title": "Static PyMC HMC mobile full-tiling segment",
             "diagnostic_only": "true",
             "convergence_claim": "none",
@@ -1531,7 +1772,7 @@ def _summary(
     divergences = int(np.count_nonzero(trace.hmc_diverging))
     leapfrog_steps = int(np.sum(trace.hmc_n_steps))
     return {
-        "schema": ("openghg_inversions.full_tiling_pymc_hmc_native_summary.v1"),
+        "schema": ("openghg_inversions.full_tiling_pymc_hmc_native_summary.v2"),
         "status": "experimental_not_convergence_evidence",
         "input": {
             "path": str(input_path.resolve()),
@@ -2003,12 +2244,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exact static leapfrog count per compound sweep.",
     )
     parser.add_argument(
-        "--leaf-position-scale",
+        "--leaf-contrast-position-scale",
+        dest="leaf_contrast_position_scale",
         type=float,
         required=True,
         help=(
-            "Shared positive PyMC position-covariance diagonal for symmetric "
-            "log leaf masses; equivalently momentum precision."
+            "Positive PyMC position-covariance eigenvalue on normalized "
+            "centered log-leaf contrasts; equivalently momentum precision. "
+            "The contrast/total maximum-to-minimum ratio may not exceed 10000."
+        ),
+    )
+    parser.add_argument(
+        "--leaf-total-position-scale",
+        dest="leaf_total_position_scale",
+        type=float,
+        required=True,
+        help=(
+            "Positive PyMC position-covariance eigenvalue on the normalized "
+            "common log-leaf total direction; equivalently momentum precision. "
+            "The contrast/total maximum-to-minimum ratio may not exceed 10000."
         ),
     )
     parser.add_argument(
@@ -2018,19 +2272,22 @@ def build_parser() -> argparse.ArgumentParser:
         type=_positive_values,
         required=True,
         metavar="VALUE[,VALUE...]",
-        help=("Shared or ordered fixed-coordinate PyMC position-covariance diagonal."),
+        help=(
+            "Shared or ordered fixed-coordinate PyMC position-covariance "
+            "diagonal; equivalently momentum precision."
+        ),
     )
     parser.add_argument(
         "--calibration-id",
         required=True,
-        help="Stable identifier exactly repeated by the v1 calibration file.",
+        help="Stable identifier exactly repeated by the v2 calibration file.",
     )
     parser.add_argument(
         "--calibration-file",
         type=Path,
         required=True,
         help=(
-            "Strict-JSON v1 calibration identity binding K, input SHA, target "
+            "Strict-JSON v2 calibration identity binding K, input SHA, target "
             "controls, kernel controls, coordinate layout, metric semantics, "
             "resolved position scales, bounded-search decisions, source "
             "artifact hashes, and calibration code revision."
@@ -2167,8 +2424,8 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
     resolved_output = arguments.output_directory.resolve(strict=False)
     if any("paris_inversions" in part.lower() for part in resolved_output.parts):
         raise ValueError("Output and NetCDF preflight writes beneath PARIS_inversions are forbidden.")
-    if arguments.k < 1:
-        raise ValueError("--k must be positive.")
+    if arguments.k < 2:
+        raise ValueError("--k must be at least two for total/contrast calibration.")
     if arguments.sweeps < 1:
         raise ValueError("--sweeps must be positive.")
     if arguments.seed < 0:
@@ -2182,19 +2439,49 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
             raise ValueError("--initialization-seed must be non-negative.")
         if arguments.initialization_seed == arguments.seed:
             raise ValueError("--initialization-seed must differ from the master --seed.")
+        calibration_topology_seeds = (
+            *CALIBRATION_DEVELOPMENT_TOPOLOGY_SEEDS.get(arguments.k, ()),
+            *(
+                ()
+                if arguments.k not in CALIBRATION_HELD_OUT_TOPOLOGY_SEEDS
+                else (CALIBRATION_HELD_OUT_TOPOLOGY_SEEDS[arguments.k],)
+            ),
+        )
+        if arguments.initialization_seed in calibration_topology_seeds:
+            raise ValueError("--initialization-seed must be disjoint from H2c calibration topology seeds.")
     elif arguments.initialization_seed is not None:
         raise ValueError("--initialization-seed is only valid with --initialization random-recursive.")
     if arguments.dry_run and arguments.resume_checkpoint is not None:
         raise ValueError("--dry-run cannot be combined with --resume-checkpoint.")
     for name in (
         "step_size",
-        "leaf_position_scale",
+        "leaf_contrast_position_scale",
+        "leaf_total_position_scale",
         "concentration",
         "root_variance",
     ):
         value = float(getattr(arguments, name))
         if not np.isfinite(value) or value <= 0.0:
             raise ValueError(f"--{name.replace('_', '-')} must be finite and positive.")
+    leaf_metric_scales = (
+        float(arguments.leaf_contrast_position_scale),
+        float(arguments.leaf_total_position_scale),
+    )
+    if max(leaf_metric_scales) / min(leaf_metric_scales) > MAX_LEAF_METRIC_CONDITION_RATIO:
+        raise ValueError(
+            "The leaf metric maximum-to-minimum position-scale ratio must not exceed "
+            f"{MAX_LEAF_METRIC_CONDITION_RATIO:g}."
+        )
+    position_scale_values = (
+        *leaf_metric_scales,
+        *(float(value) for value in arguments.fixed_coefficient_position_scale),
+    )
+    lower_scale, upper_scale = POSITION_SCALE_CLIPPING_BOUNDS
+    if any(value < lower_scale or value > upper_scale for value in position_scale_values):
+        raise ValueError(
+            "All requested position scales must lie within the frozen clipping "
+            f"bounds [{lower_scale:g}, {upper_scale:g}]."
+        )
     if arguments.leapfrog_steps < 1:
         raise ValueError("--leapfrog-steps must be positive.")
     if not np.isfinite(arguments.likelihood_power) or arguments.likelihood_power < 0.0:
@@ -2225,12 +2512,23 @@ def _requested_kernel_settings(
     arguments: argparse.Namespace,
     fixed_position_scales: tuple[float, ...],
 ) -> FullTilingPyMCHMCKernelSettings:
-    """Return the exact resolved CLI kernel settings."""
+    """Return the exact resolved v2 CLI kernel settings.
+
+    Args:
+        arguments: Validated namespace containing fixed ``K``, trajectory
+            controls, and both leaf position-covariance eigenscales.
+        fixed_position_scales: Ordered fixed-coefficient
+            position-covariance diagonal.
+
+    Returns:
+        Complete immutable total/contrast HMC kernel settings.
+    """
     return FullTilingPyMCHMCKernelSettings(
         fixed_k=arguments.k,
         step_size=arguments.step_size,
         leapfrog_steps=arguments.leapfrog_steps,
-        leaf_position_scale=arguments.leaf_position_scale,
+        leaf_contrast_position_scale=arguments.leaf_contrast_position_scale,
+        leaf_total_position_scale=arguments.leaf_total_position_scale,
         fixed_coefficient_position_scale=fixed_position_scales,
     )
 
@@ -2338,6 +2636,12 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
             input_digest=input_digest,
             fixed_position_scales=fixed_position_scales,
         )
+        initial_topology_sha256 = _topology_sha256(_rectangle_bounds(initial_state))
+        excluded_topologies = calibration["evidence"]["excluded_production_topology_sha256"]
+        if initial_topology_sha256 in excluded_topologies.values():
+            raise ValueError(
+                "Initial topology hash was used by H2c calibration and is excluded from retained production."
+            )
         problem_setup_seconds = perf_counter() - setup_started
         preflight_started = perf_counter()
         initial_preflight = _transformed_target_preflight(
@@ -2359,7 +2663,7 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
         )
         if arguments.dry_run:
             return {
-                "schema": ("openghg_inversions.full_tiling_pymc_hmc_native_summary.v1"),
+                "schema": ("openghg_inversions.full_tiling_pymc_hmc_native_summary.v2"),
                 "status": "dry_run",
                 "input": {
                     "id": arguments.input_id,
@@ -2399,7 +2703,8 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
                     iterations=arguments.sweeps,
                     step_size=arguments.step_size,
                     leapfrog_steps=arguments.leapfrog_steps,
-                    leaf_position_scale=arguments.leaf_position_scale,
+                    leaf_contrast_position_scale=(arguments.leaf_contrast_position_scale),
+                    leaf_total_position_scale=arguments.leaf_total_position_scale,
                     fixed_coefficient_position_scale=(fixed_position_scales),
                     seed=arguments.seed,
                 ),

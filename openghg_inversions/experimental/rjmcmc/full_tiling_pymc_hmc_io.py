@@ -15,6 +15,10 @@ summation order use the established full-tiling reconstruction tolerance;
 after that audit, the persisted immutable caches are restored exactly so
 continuation starts from the precise saved boundary.
 
+Schema version 2 records both leaf-metric eigenscales. Version 1 archives use
+the retired scalar diagonal leaf metric and are rejected explicitly; this
+module provides no converter.
+
 SHA-256 digests detect accidental corruption but do not authenticate an
 archive against a writer capable of replacing content and digests. Publication
 uses a synced same-directory temporary file and an atomic hard link, so an
@@ -63,7 +67,7 @@ FULL_TILING_PYMC_HMC_CHECKPOINT_SCHEMA_ID = (
 )
 """Stable identifier for the durable full-tiling PyMC HMC checkpoint schema."""
 
-FULL_TILING_PYMC_HMC_CHECKPOINT_SCHEMA_VERSION = 1
+FULL_TILING_PYMC_HMC_CHECKPOINT_SCHEMA_VERSION = 2
 """Current durable full-tiling PyMC HMC checkpoint schema version."""
 
 _STATE_ARRAY_NAMES = (
@@ -91,22 +95,23 @@ _STATE_LOG_FIELDS = (
     "log_fixed_coefficient_prior",
     "log_target",
 )
-_KERNEL_FIELDS_V1 = (
+_KERNEL_FIELDS_V2 = (
     "fixed_k",
     "step_size",
     "leapfrog_steps",
-    "leaf_position_scale",
+    "leaf_contrast_position_scale",
+    "leaf_total_position_scale",
     "fixed_coefficient_position_scale",
 )
 _KERNEL_METADATA_NAMES = frozenset(
     (
-        *_KERNEL_FIELDS_V1,
+        *_KERNEL_FIELDS_V2,
         "position_scale_semantics",
         "step_size_semantics",
     )
 )
 _STEP_SIZE_SEMANTICS = "requested_unscaled_integrator_step_size_v1"
-_RUNTIME_IDENTITY_FIELDS_V1 = (
+_RUNTIME_IDENTITY_FIELDS_V2 = (
     "python_minor",
     "platform_system",
     "platform_machine",
@@ -119,7 +124,7 @@ _RUNTIME_IDENTITY_FIELDS_V1 = (
 )
 _RUNTIME_IDENTITY_NAMES = frozenset(
     {
-        *_RUNTIME_IDENTITY_FIELDS_V1,
+        *_RUNTIME_IDENTITY_FIELDS_V2,
     }
 )
 _ARCHIVE_NAMES = frozenset((*_STATE_ARRAY_NAMES, "metadata", "metadata_sha256"))
@@ -246,7 +251,7 @@ def _finite_float(
 def _runtime_identity_metadata(
     identity: FullTilingPyMCHMCRuntimeIdentity,
 ) -> dict[str, str]:
-    """Return strict metadata for the frozen v1 runtime identity.
+    """Return strict metadata for the frozen v2 runtime identity.
 
     Args:
         identity: Exact immutable identity retained by the checkpoint.
@@ -267,7 +272,7 @@ def _runtime_identity_metadata(
         raise RuntimeError(
             "FullTilingPyMCHMCRuntimeIdentity changed without a durable checkpoint schema-version decision."
         )
-    result = {name: getattr(identity, name) for name in _RUNTIME_IDENTITY_FIELDS_V1}
+    result = {name: getattr(identity, name) for name in _RUNTIME_IDENTITY_FIELDS_V2}
     if any(not isinstance(value, str) or not value for value in result.values()):
         raise TypeError("runtime_identity fields must be non-empty strings.")
     return result
@@ -318,9 +323,9 @@ def _checkpoint_arrays(
 
 
 def _kernel_field_names() -> frozenset[str]:
-    """Return the frozen v1 setting fields or require a schema decision."""
+    """Return the frozen v2 setting fields or require a schema decision."""
     current = frozenset(field.name for field in fields(FullTilingPyMCHMCKernelSettings))
-    frozen = frozenset(_KERNEL_FIELDS_V1)
+    frozen = frozenset(_KERNEL_FIELDS_V2)
     if current != frozen:
         raise RuntimeError(
             "FullTilingPyMCHMCKernelSettings changed without a durable checkpoint schema-version decision."
@@ -350,7 +355,8 @@ def _kernel_metadata(
         "fixed_k": settings.fixed_k,
         "step_size": settings.step_size,
         "leapfrog_steps": settings.leapfrog_steps,
-        "leaf_position_scale": settings.leaf_position_scale,
+        "leaf_contrast_position_scale": settings.leaf_contrast_position_scale,
+        "leaf_total_position_scale": settings.leaf_total_position_scale,
         "fixed_coefficient_position_scale": list(settings.fixed_coefficient_position_scale),
         "position_scale_semantics": FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID,
         "step_size_semantics": _STEP_SIZE_SEMANTICS,
@@ -449,10 +455,10 @@ def save_full_tiling_pymc_hmc_checkpoint(
 
     The archive retains authoritative ``log_leaf_mass`` and
     ``log_fixed_coefficient`` arrays in addition to their decoded scientific
-    coordinates. Kernel metadata identifies ``leaf_position_scale`` and
-    ``fixed_coefficient_position_scale`` as PyMC position-covariance
-    diagonals, equivalently momentum precisions, supplied with
-    ``is_cov=True``. The stored ``step_size`` is the requested unscaled
+    coordinates. Kernel metadata identifies the contrast and normalized-common
+    leaf eigenscales plus ``fixed_coefficient_position_scale`` as PyMC
+    position-covariance, equivalently momentum-precision, settings supplied
+    with ``is_cov=True``. The stored ``step_size`` is the requested unscaled
     integrator step; per-sweep effective values remain trace diagnostics and
     are not mutable continuation state.
 
@@ -693,9 +699,14 @@ def _kernel_settings_from_metadata(
             location="kernel.leapfrog_steps",
             minimum=1,
         ),
-        leaf_position_scale=_finite_float(
-            kernel["leaf_position_scale"],
-            location="kernel.leaf_position_scale",
+        leaf_contrast_position_scale=_finite_float(
+            kernel["leaf_contrast_position_scale"],
+            location="kernel.leaf_contrast_position_scale",
+            positive=True,
+        ),
+        leaf_total_position_scale=_finite_float(
+            kernel["leaf_total_position_scale"],
+            location="kernel.leaf_total_position_scale",
             positive=True,
         ),
         fixed_coefficient_position_scale=tuple(
@@ -737,11 +748,11 @@ def _runtime_identity_from_metadata(
     current = full_tiling_pymc_hmc_runtime_identity()
     _runtime_identity_metadata(current)
     persisted = FullTilingPyMCHMCRuntimeIdentity(
-        **{name: cast(str, runtime[name]) for name in _RUNTIME_IDENTITY_FIELDS_V1}
+        **{name: cast(str, runtime[name]) for name in _RUNTIME_IDENTITY_FIELDS_V2}
     )
     if persisted != current:
         mismatches = [
-            name for name in _RUNTIME_IDENTITY_FIELDS_V1 if getattr(persisted, name) != getattr(current, name)
+            name for name in _RUNTIME_IDENTITY_FIELDS_V2 if getattr(persisted, name) != getattr(current, name)
         ]
         raise ValueError(
             f"Full-tiling PyMC HMC checkpoint runtime identity does not match for {mismatches[0]}."
@@ -894,11 +905,17 @@ def load_full_tiling_pymc_hmc_checkpoint(
         raise TypeError("expected_run_manifest must be a mapping.")
     arrays = _load_archive_arrays(Path(path))
     metadata = _metadata_from_arrays(arrays)
-    if (
-        metadata["schema_id"] != FULL_TILING_PYMC_HMC_CHECKPOINT_SCHEMA_ID
-        or metadata["schema_version"] != FULL_TILING_PYMC_HMC_CHECKPOINT_SCHEMA_VERSION
-    ):
+    if metadata["schema_id"] != FULL_TILING_PYMC_HMC_CHECKPOINT_SCHEMA_ID:
         raise ValueError("Full-tiling PyMC HMC checkpoint schema is incompatible.")
+    schema_version = metadata["schema_version"]
+    if schema_version == 1:
+        raise ValueError(
+            "Full-tiling PyMC HMC checkpoint schema version 1 uses the retired "
+            "scalar diagonal leaf metric; schema version 2 is required and no "
+            "converter is provided."
+        )
+    if schema_version != FULL_TILING_PYMC_HMC_CHECKPOINT_SCHEMA_VERSION:
+        raise ValueError("Full-tiling PyMC HMC checkpoint schema version is incompatible.")
     runtime_identity = _runtime_identity_from_metadata(metadata["runtime_identity"])
     schedule_id = metadata["schedule_id"]
     if schedule_id != FULL_TILING_PYMC_HMC_SCHEDULE_ID:

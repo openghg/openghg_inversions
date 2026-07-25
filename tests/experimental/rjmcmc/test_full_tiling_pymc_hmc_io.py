@@ -156,7 +156,8 @@ def _sample_boundary(problem: FullTilingProblem) -> FullTilingPyMCHMCSamplingRes
             iterations=2,
             step_size=0.002,
             leapfrog_steps=2,
-            leaf_position_scale=1.4,
+            leaf_contrast_position_scale=1.4,
+            leaf_total_position_scale=2.6,
             fixed_coefficient_position_scale=(0.7, 1.8),
             seed=481,
         ),
@@ -290,6 +291,113 @@ def test_save_load_continue_matches_uninterrupted_checkpoint_exactly(
     assert loaded.rng_state == first.checkpoint.rng_state
     assert loaded.kernel_settings == first.checkpoint.kernel_settings
     assert loaded.runtime_identity == first.checkpoint.runtime_identity
+
+
+@_requires_x64_child
+def test_v2_metadata_roundtrips_both_leaf_eigenscales(tmp_path: Path) -> None:
+    """Schema v2 persists and restores distinct contrast and total eigenscales."""
+    problem = _problem()
+    result = _sample_boundary(problem)
+    path = tmp_path / "metric-v2.npz"
+    save_full_tiling_pymc_hmc_checkpoint(
+        path,
+        result.checkpoint,
+        run_manifest=_manifest(),
+    )
+
+    with np.load(path, allow_pickle=False) as archive:
+        metadata = json.loads(archive["metadata"].tobytes().decode("utf-8"))
+    loaded = load_full_tiling_pymc_hmc_checkpoint(
+        path,
+        _problem(),
+        expected_run_manifest=_manifest(),
+    )
+
+    assert metadata["schema_version"] == 2
+    assert metadata["kernel"]["leaf_contrast_position_scale"] == 1.4
+    assert metadata["kernel"]["leaf_total_position_scale"] == 2.6
+    assert loaded.kernel_settings.leaf_contrast_position_scale == 1.4
+    assert loaded.kernel_settings.leaf_total_position_scale == 2.6
+
+
+@_requires_x64_child
+@pytest.mark.parametrize(
+    "field",
+    [
+        "leaf_contrast_position_scale",
+        "leaf_total_position_scale",
+    ],
+)
+def test_loader_rejects_leaf_eigenscale_tampering(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    """Invalid tampering of either persisted leaf eigenscale fails closed."""
+    problem = _problem()
+    result = _sample_boundary(problem)
+    path = tmp_path / f"{field}.npz"
+    save_full_tiling_pymc_hmc_checkpoint(
+        path,
+        result.checkpoint,
+        run_manifest=_manifest(),
+    )
+    _rewrite_metadata(
+        path,
+        lambda metadata: metadata["kernel"].__setitem__(field, 0.0),
+    )
+
+    with pytest.raises(ValueError, match=rf"kernel\.{field} must be finite and positive"):
+        load_full_tiling_pymc_hmc_checkpoint(
+            path,
+            problem,
+            expected_run_manifest=_manifest(),
+        )
+
+
+@_requires_x64_child
+def test_loader_rejects_v1_schema_and_old_scalar_leaf_scale_key(
+    tmp_path: Path,
+) -> None:
+    """Old schema and scalar leaf-scale metadata cannot enter the v2 loader."""
+    problem = _problem()
+    result = _sample_boundary(problem)
+    schema_path = tmp_path / "schema-v1.npz"
+    save_full_tiling_pymc_hmc_checkpoint(
+        schema_path,
+        result.checkpoint,
+        run_manifest=_manifest(),
+    )
+    _rewrite_metadata(
+        schema_path,
+        lambda metadata: metadata.__setitem__("schema_version", 1),
+    )
+    with pytest.raises(ValueError, match="schema version 1 uses the retired scalar"):
+        load_full_tiling_pymc_hmc_checkpoint(
+            schema_path,
+            problem,
+            expected_run_manifest=_manifest(),
+        )
+
+    key_path = tmp_path / "old-leaf-scale-key.npz"
+    save_full_tiling_pymc_hmc_checkpoint(
+        key_path,
+        result.checkpoint,
+        run_manifest=_manifest(),
+    )
+
+    def use_old_scalar_key(metadata: dict[str, Any]) -> None:
+        """Replace the two v2 leaf scales with the rejected v1 scalar key."""
+        kernel = metadata["kernel"]
+        kernel["leaf_position_scale"] = kernel.pop("leaf_contrast_position_scale")
+        kernel.pop("leaf_total_position_scale")
+
+    _rewrite_metadata(key_path, use_old_scalar_key)
+    with pytest.raises(ValueError, match="kernel has an invalid field set"):
+        load_full_tiling_pymc_hmc_checkpoint(
+            key_path,
+            problem,
+            expected_run_manifest=_manifest(),
+        )
 
 
 @_requires_x64_child

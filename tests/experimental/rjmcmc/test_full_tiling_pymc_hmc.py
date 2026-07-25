@@ -225,7 +225,8 @@ def _config(*, iterations: int, seed: int = 761) -> sampling.FullTilingPyMCHMCCo
         iterations=iterations,
         step_size=0.002,
         leapfrog_steps=2,
-        leaf_position_scale=1.7,
+        leaf_contrast_position_scale=1.7,
+        leaf_total_position_scale=3.2,
         fixed_coefficient_position_scale=(0.6, 1.1, 2.4),
         seed=seed,
     )
@@ -318,7 +319,7 @@ def test_compiled_target_matches_independent_closed_form_at_arbitrary_xy() -> No
 
 
 @_requires_x64_child
-def test_canonical_leaf_permutation_realigns_target_and_scalar_metric() -> None:
+def test_canonical_leaf_permutation_realigns_target_and_full_metric() -> None:
     """Aligned topology arrays and log coordinates preserve target and metric."""
     problem, initial = _problem_state(k=4)
     state = _nonuniform_state(problem, initial)
@@ -378,11 +379,15 @@ def test_canonical_leaf_permutation_realigns_target_and_scalar_metric() -> None:
         fixed_k=state.k,
         step_size=0.01,
         leapfrog_steps=2,
-        leaf_position_scale=2.5,
+        leaf_contrast_position_scale=2.5,
+        leaf_total_position_scale=4.5,
         fixed_coefficient_position_scale=(0.4, 0.8, 1.6),
     )
-    leaf_metric = settings.position_scale_diagonal[: state.k]
-    np.testing.assert_array_equal(leaf_metric[permutation], leaf_metric)
+    leaf_metric = settings.position_scale_matrix[: state.k, : state.k]
+    np.testing.assert_array_equal(
+        leaf_metric[np.ix_(permutation, permutation)],
+        leaf_metric,
+    )
 
 
 @_requires_x64_child
@@ -492,6 +497,21 @@ def test_every_structural_outcome_is_followed_by_one_hmc_transition(
     assert result.trace.structural_accepted.tolist() == [outcome == "accepted"]
     assert result.trace.hmc_n_steps.tolist() == [2]
     assert result.trace.hmc_step_size.tolist() == pytest.approx([0.002])
+    assert result.trace.hmc_accepted.tolist() == [True]
+    if outcome == "accepted":
+        np.testing.assert_array_equal(
+            result.trace.hmc_start_log_leaf_mass[0],
+            np.log(valid_transition.candidate.leaf_masses),
+        )
+    else:
+        np.testing.assert_array_equal(
+            result.trace.hmc_start_log_leaf_mass[0],
+            result.trace.log_leaf_mass[0],
+        )
+    np.testing.assert_array_equal(
+        result.trace.hmc_start_log_fixed_coefficient[0],
+        result.trace.log_fixed_coefficient[0],
+    )
     expected_tiling = (
         valid_transition.candidate.tiling_state.tiling
         if outcome == "accepted"
@@ -512,6 +532,24 @@ def test_hmc_preserves_topology_and_rebuilds_all_scientific_caches() -> None:
 
     np.testing.assert_array_equal(result.trace.state_sweep, np.arange(4))
     np.testing.assert_array_equal(result.trace.global_sweep, np.arange(1, 4))
+    np.testing.assert_array_equal(
+        result.trace.hmc_start_log_fixed_coefficient,
+        result.trace.log_fixed_coefficient[:-1],
+    )
+    structurally_unchanged = ~result.trace.structural_accepted
+    np.testing.assert_array_equal(
+        result.trace.hmc_start_log_leaf_mass[structurally_unchanged],
+        result.trace.log_leaf_mass[:-1][structurally_unchanged],
+    )
+    hmc_rejected = ~result.trace.hmc_accepted
+    np.testing.assert_array_equal(
+        result.trace.hmc_start_log_leaf_mass[hmc_rejected],
+        result.trace.log_leaf_mass[1:][hmc_rejected],
+    )
+    np.testing.assert_array_equal(
+        result.trace.hmc_start_log_fixed_coefficient[hmc_rejected],
+        result.trace.log_fixed_coefficient[1:][hmc_rejected],
+    )
     for before, after, accepted in zip(
         result.trace.rectangle_bounds[:-1],
         result.trace.rectangle_bounds[1:],
@@ -557,6 +595,8 @@ def test_trace_preserves_authoritative_hmc_coordinates_read_only() -> None:
 
     assert result.trace.log_leaf_mass.shape == (3, 4)
     assert result.trace.log_fixed_coefficient.shape == (3, 3)
+    assert result.trace.hmc_start_log_leaf_mass.shape == (2, 4)
+    assert result.trace.hmc_start_log_fixed_coefficient.shape == (2, 3)
     np.testing.assert_array_equal(
         np.exp(result.trace.log_leaf_mass),
         result.trace.leaf_masses,
@@ -580,6 +620,8 @@ def test_trace_preserves_authoritative_hmc_coordinates_read_only() -> None:
     for coordinates in (
         result.trace.log_leaf_mass,
         result.trace.log_fixed_coefficient,
+        result.trace.hmc_start_log_leaf_mass,
+        result.trace.hmc_start_log_fixed_coefficient,
     ):
         assert not coordinates.flags.writeable
         with pytest.raises(ValueError):
@@ -597,6 +639,19 @@ def test_trace_preserves_authoritative_hmc_coordinates_read_only() -> None:
         replace(
             result.trace,
             log_fixed_coefficient=result.trace.log_fixed_coefficient[:, :-1],
+        )
+    with pytest.raises(ValueError, match="hmc_start_log_leaf_mass must have shape"):
+        replace(
+            result.trace,
+            hmc_start_log_leaf_mass=result.trace.hmc_start_log_leaf_mass[:, :-1],
+        )
+    with pytest.raises(
+        ValueError,
+        match="hmc_start_log_fixed_coefficient must have shape",
+    ):
+        replace(
+            result.trace,
+            hmc_start_log_fixed_coefficient=(result.trace.hmc_start_log_fixed_coefficient[:, :-1]),
         )
     with pytest.raises(ValueError, match="must be finite and non-negative"):
         replace(result, kernel_setup_seconds=-1.0)
@@ -796,21 +851,108 @@ def test_awkward_split_continuation_matches_uninterrupted_sampling() -> None:
     assert second.checkpoint.runtime_identity == direct.checkpoint.runtime_identity
 
 
-def test_resolved_position_scale_is_fixed_and_topology_neutral() -> None:
-    """Leaf positions share one scale while fixed identities retain their entries."""
+def test_position_scale_matrix_has_exact_total_contrast_formula_and_ownership() -> None:
+    """The resolved matrix exactly follows the projector formula and owns storage."""
     settings = sampling.FullTilingPyMCHMCKernelSettings(
         fixed_k=4,
         step_size=0.01,
         leapfrog_steps=3,
-        leaf_position_scale=2.5,
+        leaf_contrast_position_scale=2.5,
+        leaf_total_position_scale=4.5,
         fixed_coefficient_position_scale=(0.4, 0.8, 1.6),
+    )
+    common = np.full((4, 4), 0.25)
+    expected_leaf = 2.5 * (np.eye(4) - common) + 4.5 * common
+    expected = np.zeros((7, 7))
+    expected[:4, :4] = expected_leaf
+    expected[4:, 4:] = np.diag([0.4, 0.8, 1.6])
+
+    np.testing.assert_array_equal(
+        settings.position_scale_matrix,
+        expected,
+    )
+    first = settings.position_scale_matrix
+    second = settings.position_scale_matrix
+    assert first.flags.owndata
+    assert not first.flags.writeable
+    assert not np.shares_memory(first, second)
+
+
+def test_position_scale_matrix_is_spd_with_total_and_contrast_eigenvectors() -> None:
+    """Common, multiple contrasts, and fixed axes have their declared eigenvalues."""
+    settings = sampling.FullTilingPyMCHMCKernelSettings(
+        fixed_k=4,
+        step_size=0.01,
+        leapfrog_steps=3,
+        leaf_contrast_position_scale=2.5,
+        leaf_total_position_scale=4.5,
+        fixed_coefficient_position_scale=(0.4, 0.8),
+    )
+    matrix = settings.position_scale_matrix
+
+    np.testing.assert_array_equal(matrix, matrix.T)
+    assert np.all(np.linalg.eigvalsh(matrix) > 0.0)
+    for vector in (
+        np.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0]),
+        np.array([1.0, 1.0, -2.0, 0.0, 0.0, 0.0]),
+        np.array([1.0, 1.0, 1.0, -3.0, 0.0, 0.0]),
+    ):
+        np.testing.assert_allclose(matrix @ vector, 2.5 * vector, rtol=0.0, atol=1.0e-15)
+    total = np.array([1.0, 1.0, 1.0, 1.0, 0.0, 0.0])
+    np.testing.assert_allclose(matrix @ total, 4.5 * total, rtol=0.0, atol=1.0e-15)
+    np.testing.assert_array_equal(matrix[:4, 4:], np.zeros((4, 2)))
+    np.testing.assert_array_equal(matrix[4:, :4], np.zeros((2, 4)))
+    np.testing.assert_array_equal(matrix[4:, 4:], np.diag([0.4, 0.8]))
+
+
+@pytest.mark.parametrize("fixed_k", (5, 50, 250))
+def test_equal_leaf_scales_reduce_exactly_to_scalar_identity(fixed_k: int) -> None:
+    """Equal eigenscales give the exact legacy scalar metric at production K."""
+    equal = sampling.FullTilingPyMCHMCKernelSettings(
+        fixed_k=fixed_k,
+        step_size=0.01,
+        leapfrog_steps=1,
+        leaf_contrast_position_scale=3.0,
+        leaf_total_position_scale=3.0,
+        fixed_coefficient_position_scale=(),
     )
 
     np.testing.assert_array_equal(
-        settings.position_scale_diagonal,
-        np.array([2.5, 2.5, 2.5, 2.5, 0.4, 0.8, 1.6]),
+        equal.position_scale_matrix,
+        3.0 * np.eye(fixed_k),
     )
-    assert not settings.position_scale_diagonal.flags.writeable
+
+
+def test_singleton_leaf_metric_has_only_total_direction() -> None:
+    """At K=1 the contrast projector vanishes and only total scale remains."""
+    singleton = sampling.FullTilingPyMCHMCKernelSettings(
+        fixed_k=1,
+        step_size=0.01,
+        leapfrog_steps=1,
+        leaf_contrast_position_scale=99.0,
+        leaf_total_position_scale=7.0,
+        fixed_coefficient_position_scale=(),
+    )
+
+    np.testing.assert_array_equal(singleton.position_scale_matrix, np.array([[7.0]]))
+
+
+def test_config_preserves_legacy_positional_fixed_scale_and_seed_slots() -> None:
+    """The v2 total scale cannot silently reinterpret legacy positional calls."""
+    config = sampling.FullTilingPyMCHMCConfig(
+        2,
+        0.001,
+        1,
+        1.75,
+        0.5,
+        42,
+        leaf_total_position_scale=2.25,
+    )
+
+    assert config.leaf_contrast_position_scale == 1.75
+    assert config.fixed_coefficient_position_scale == 0.5
+    assert config.seed == 42
+    assert config.leaf_total_position_scale == 2.25
 
 
 @_requires_x64_child
@@ -821,7 +963,8 @@ def test_hmc_is_frozen_with_exact_leapfrog_count_and_no_tuning() -> None:
         fixed_k=4,
         step_size=0.003,
         leapfrog_steps=3,
-        leaf_position_scale=1.0,
+        leaf_contrast_position_scale=2.0,
+        leaf_total_position_scale=5.0,
         fixed_coefficient_position_scale=(1.0, 1.0, 1.0),
     )
     _, compound, _, _ = sampling._build_compound_kernel(
@@ -838,20 +981,20 @@ def test_hmc_is_frozen_with_exact_leapfrog_count_and_no_tuning() -> None:
     assert hmc._step_rand is None
     assert hmc.max_steps == 3
     np.testing.assert_array_equal(
-        hmc.potential.v,
-        settings.position_scale_diagonal,
+        hmc.potential._cov,
+        settings.position_scale_matrix,
     )
     momentum = np.arange(1.0, 8.0)
     np.testing.assert_array_equal(
         hmc.potential.velocity(momentum),
-        settings.position_scale_diagonal * momentum,
+        settings.position_scale_matrix @ momentum,
     )
     assert hmc.potential.energy(momentum) == pytest.approx(
         0.5
         * float(
             np.dot(
                 momentum,
-                settings.position_scale_diagonal * momentum,
+                settings.position_scale_matrix @ momentum,
             )
         ),
     )
@@ -906,6 +1049,14 @@ def test_divergent_hmc_returns_rejected_state_and_valid_checkpoint(
 
     assert result.trace.hmc_diverging.tolist() == [True]
     assert result.trace.hmc_accepted.tolist() == [False]
+    np.testing.assert_array_equal(
+        result.trace.hmc_start_log_leaf_mass,
+        result.trace.log_leaf_mass[1:],
+    )
+    np.testing.assert_array_equal(
+        result.trace.hmc_start_log_fixed_coefficient,
+        result.trace.log_fixed_coefficient[1:],
+    )
     _assert_states_equal(result.final_state, initial)
     np.testing.assert_array_equal(
         np.exp(result.checkpoint.log_leaf_mass),
@@ -939,6 +1090,32 @@ def test_leapfrog_count_survives_pymc_step_size_rounding() -> None:
     assert result.trace.hmc_n_steps.tolist() == [88]
 
 
+@_requires_x64_child
+def test_unspecified_total_scale_resolves_to_contrast_scale() -> None:
+    """The convenience default produces an isotropic leaf metric."""
+    problem, initial = _problem_state(k=4)
+    result = sampling.sample_full_tiling_pymc_hmc(
+        problem,
+        initial,
+        sampling.FullTilingPyMCHMCConfig(
+            iterations=1,
+            step_size=0.01,
+            leapfrog_steps=2,
+            leaf_contrast_position_scale=2.25,
+            leaf_total_position_scale=None,
+            seed=42,
+        ),
+    )
+
+    settings = result.checkpoint.kernel_settings
+    assert settings.leaf_contrast_position_scale == 2.25
+    assert settings.leaf_total_position_scale == 2.25
+    np.testing.assert_array_equal(
+        settings.position_scale_matrix[: initial.k, : initial.k],
+        2.25 * np.eye(initial.k),
+    )
+
+
 @pytest.mark.parametrize(
     ("changes", "error", "message"),
     [
@@ -949,9 +1126,14 @@ def test_leapfrog_count_survives_pymc_step_size_rounding() -> None:
         ({"leapfrog_steps": 1.5}, TypeError, "leapfrog_steps must be an integer"),
         ({"leapfrog_steps": 0}, ValueError, "leapfrog_steps must be positive"),
         (
-            {"leaf_position_scale": 0.0},
+            {"leaf_contrast_position_scale": 0.0},
             ValueError,
-            "leaf_position_scale must be finite",
+            "leaf_contrast_position_scale must be finite",
+        ),
+        (
+            {"leaf_total_position_scale": math.inf},
+            ValueError,
+            "leaf_total_position_scale must be finite",
         ),
         (
             {"fixed_coefficient_position_scale": (1.0, math.nan, 1.0)},
@@ -971,7 +1153,8 @@ def test_config_rejects_invalid_static_hmc_settings(
         "iterations": 2,
         "step_size": 0.01,
         "leapfrog_steps": 3,
-        "leaf_position_scale": 1.0,
+        "leaf_contrast_position_scale": 1.0,
+        "leaf_total_position_scale": 2.0,
         "fixed_coefficient_position_scale": (1.0, 1.0, 1.0),
         "seed": 4,
     }

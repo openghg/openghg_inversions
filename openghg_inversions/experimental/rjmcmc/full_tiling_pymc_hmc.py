@@ -17,20 +17,22 @@ Thus accepted, rejected, and invalid structural attempts are all followed by
 exactly one HMC trajectory.
 
 The HMC kernel is deliberately static: no tuning, step-size randomization, or
-topology-dependent metric is allowed.  In-memory checkpoints retain the
-scientific state, exact unconstrained coordinates, immutable settings, sweep
-coordinate, and master PCG64 state.  Reconstructing and reseeding PyMC at every
-continuation boundary makes split execution exactly replayable without
-persisting mutable backend sampler state. Fresh initializer states instead
-pass through :func:`canonicalize_full_tiling_pymc_hmc_fresh_state` before draw
-zero so their physical values decode exactly from the authoritative log
-coordinates. This explicitly experimental module performs no durable file
-I/O.
+topology-dependent metric is allowed. Its leaf block has separate static
+position-covariance eigenscales for normalized-common total motion and
+orthogonal log-mass contrasts; fixed coefficients retain an ordered diagonal
+block. In-memory checkpoints retain the scientific state, exact unconstrained
+coordinates, immutable settings, sweep coordinate, and master PCG64 state.
+Reconstructing and reseeding PyMC at every continuation boundary makes split
+execution exactly replayable without persisting mutable backend sampler state.
+Fresh initializer states instead pass through
+:func:`canonicalize_full_tiling_pymc_hmc_fresh_state` before draw zero so their
+physical values decode exactly from the authoritative log coordinates. This
+explicitly experimental module performs no durable file I/O.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import import_module
 import math
 from numbers import Integral
@@ -62,14 +64,16 @@ BoolArray: TypeAlias = NDArray[np.bool_]
 StringArray: TypeAlias = NDArray[np.str_]
 UIntArray: TypeAlias = NDArray[np.uint64]
 
-FULL_TILING_PYMC_HMC_SCHEDULE_ID = "full_tiling_1_structure_1_static_pymc_hmc_v1"
+FULL_TILING_PYMC_HMC_SCHEDULE_ID = "full_tiling_1_structure_1_static_pymc_hmc_v2"
 """Versioned identity of the structural-then-HMC sweep."""
 
 FULL_TILING_PYMC_HMC_COORDINATE_LAYOUT_ID = "symmetric_log_leaf_mass_then_log_fixed_coefficient_v1"
 """Versioned ordering and interpretation of the HMC value coordinates."""
 
-FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID = "pymc_position_covariance_momentum_precision_diagonal_v1"
-"""Versioned meaning of the diagonal passed to PyMC with ``is_cov=True``."""
+FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID = (
+    "pymc_position_covariance_momentum_precision_normalized_common_contrast_projector_v2"
+)
+"""Versioned meaning of the full matrix passed to PyMC with ``is_cov=True``."""
 
 __all__ = [
     "FULL_TILING_PYMC_HMC_COORDINATE_LAYOUT_ID",
@@ -128,8 +132,8 @@ class FullTilingPyMCHMCRuntimeIdentity:
         pytensor_version: PyTensor version.
         pytensor_float_x: Required PyTensor floating-point default.
         coordinate_layout_id: Versioned unconstrained-coordinate ordering.
-        metric_semantics_id: Versioned interpretation of the PyMC potential
-            diagonal.
+        metric_semantics_id: Versioned interpretation of the PyMC position
+            covariance, equivalently momentum precision.
     """
 
     python_minor: str
@@ -317,13 +321,19 @@ class FullTilingPyMCHMCConfig:
             ``exp(log(epsilon))`` representation may move the effective value
             reported in the trace by one binary64 ULP.
         leapfrog_steps: Exact positive number of leapfrog steps per sweep.
-        leaf_position_scale: Shared positive PyMC position-covariance scale
-            for every symmetric log-leaf-mass coordinate. This is momentum
-            precision, not momentum covariance.
+        leaf_contrast_position_scale: Positive PyMC position-covariance scale
+            for leaf log-mass contrasts, equivalently momentum precision on
+            the contrast subspace.
         fixed_coefficient_position_scale: Shared positive PyMC
             position-covariance scale or a positive vector in deterministic
-            fixed-coefficient order.
+            fixed-coefficient order, equivalently momentum precision.
         seed: Optional non-negative seed for the sole NumPy PCG64 stream.
+        leaf_total_position_scale: Optional positive PyMC
+            position-covariance scale for the normalized common leaf
+            log-mass direction, equivalently momentum precision on that
+            direction. ``None`` resolves to
+            ``leaf_contrast_position_scale``. This new v2 setting is
+            keyword-only so legacy positional calls retain their meaning.
 
     Raises:
         TypeError: If integer or scalar settings have invalid types.
@@ -333,9 +343,10 @@ class FullTilingPyMCHMCConfig:
     iterations: int
     step_size: float
     leapfrog_steps: int
-    leaf_position_scale: float = 1.0
+    leaf_contrast_position_scale: float = 1.0
     fixed_coefficient_position_scale: float | tuple[float, ...] = 1.0
     seed: int | None = None
+    leaf_total_position_scale: float | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         """Normalize and validate problem-independent settings."""
@@ -356,12 +367,21 @@ class FullTilingPyMCHMCConfig:
         )
         object.__setattr__(
             self,
-            "leaf_position_scale",
+            "leaf_contrast_position_scale",
             _positive_float(
-                self.leaf_position_scale,
-                name="leaf_position_scale",
+                self.leaf_contrast_position_scale,
+                name="leaf_contrast_position_scale",
             ),
         )
+        if self.leaf_total_position_scale is not None:
+            object.__setattr__(
+                self,
+                "leaf_total_position_scale",
+                _positive_float(
+                    self.leaf_total_position_scale,
+                    name="leaf_total_position_scale",
+                ),
+            )
         object.__setattr__(
             self,
             "fixed_coefficient_position_scale",
@@ -388,21 +408,26 @@ class FullTilingPyMCHMCKernelSettings:
             PyMC value is recorded for every sweep and may differ by one
             binary64 ULP.
         leapfrog_steps: Exact number of leapfrog steps.
-        leaf_position_scale: Shared PyMC position-covariance diagonal for all
-            log leaf masses. The sampled momentum has reciprocal covariance.
+        leaf_contrast_position_scale: PyMC position-covariance eigenvalue on the
+            leaf log-mass contrast subspace, equivalently momentum precision.
         fixed_coefficient_position_scale: Resolved per-coefficient PyMC
-            position-covariance diagonal.
+            position-covariance diagonal, equivalently momentum precision.
+        leaf_total_position_scale: PyMC position-covariance eigenvalue on the
+            normalized common leaf log-mass direction, equivalently momentum
+            precision.
 
     Raises:
         TypeError: If an integer setting has an invalid type.
-        ValueError: If a mass, size, or count lies outside supported ranges.
+        ValueError: If a scale, trajectory length, dimension, or count lies
+            outside supported ranges.
     """
 
     fixed_k: int
     step_size: float
     leapfrog_steps: int
-    leaf_position_scale: float
+    leaf_contrast_position_scale: float
     fixed_coefficient_position_scale: tuple[float, ...]
+    leaf_total_position_scale: float
 
     def __post_init__(self) -> None:
         """Validate all resolved settings and finite trajectory length."""
@@ -419,12 +444,17 @@ class FullTilingPyMCHMCKernelSettings:
         object.__setattr__(self, "leapfrog_steps", steps)
         object.__setattr__(
             self,
-            "leaf_position_scale",
+            "leaf_contrast_position_scale",
             _positive_float(
-                self.leaf_position_scale,
-                name="leaf_position_scale",
+                self.leaf_contrast_position_scale,
+                name="leaf_contrast_position_scale",
             ),
         )
+        total_position_scale = _positive_float(
+            self.leaf_total_position_scale,
+            name="leaf_total_position_scale",
+        )
+        object.__setattr__(self, "leaf_total_position_scale", total_position_scale)
         masses = tuple(
             _positive_float(
                 value,
@@ -440,21 +470,79 @@ class FullTilingPyMCHMCKernelSettings:
         dimension_factor = (self.fixed_k + len(self.fixed_coefficient_position_scale)) ** 0.25
         if not math.isfinite(self.step_size * dimension_factor):
             raise ValueError("dimension-adjusted PyMC step scale must be finite.")
+        _build_position_scale_matrix(self)
+
+    @property
+    def position_scale_matrix(self) -> FloatArray:
+        """Return the permutation-invariant PyMC position covariance.
+
+        The leaf block is
+        ``g_contrast * (I - 11' / K) + g_total * (11' / K)``. It is followed
+        by the ordered fixed-coefficient diagonal, with an exactly zero
+        cross-block.
+
+        Returns:
+            Owned read-only symmetric positive-definite ``float64`` array of
+            shape ``(fixed_k + n_fixed, fixed_k + n_fixed)``.
+        """
+        return _build_position_scale_matrix(self)
 
     @property
     def position_scale_diagonal(self) -> FloatArray:
-        """Return the topology-neutral PyMC position-covariance diagonal.
+        """Return the diagonal of the PyMC position-covariance matrix.
+
+        This diagnostic projection does not contain the off-diagonal leaf
+        covariances when the total and contrast scales differ. It cannot
+        reconstruct the full matrix supplied to PyMC.
 
         Returns:
             Read-only float64 array of shape ``(fixed_k + n_fixed,)``, with
-            the exchangeable leaf block followed by fixed-coefficient order.
+            the leaf-block diagonal followed by fixed-coefficient order.
         """
-        result = np.asarray(
-            (self.leaf_position_scale,) * self.fixed_k + self.fixed_coefficient_position_scale,
-            dtype=np.float64,
-        )
+        result = np.diag(self.position_scale_matrix).copy()
         result.setflags(write=False)
         return result
+
+
+def _build_position_scale_matrix(
+    settings: FullTilingPyMCHMCKernelSettings,
+) -> FloatArray:
+    """Build and validate the full topology-neutral position covariance.
+
+    Args:
+        settings: Resolved positive leaf eigenscales and fixed diagonal.
+
+    Returns:
+        Owned read-only finite symmetric positive-definite matrix.
+
+    Raises:
+        ValueError: If binary64 construction does not produce a finite,
+            symmetric positive-definite matrix.
+    """
+    fixed_k = settings.fixed_k
+    dimension = fixed_k + len(settings.fixed_coefficient_position_scale)
+    common = np.full(
+        (fixed_k, fixed_k),
+        1.0 / fixed_k,
+        dtype=np.float64,
+    )
+    leaf_block = (
+        settings.leaf_contrast_position_scale * np.eye(fixed_k, dtype=np.float64)
+        + (settings.leaf_total_position_scale - settings.leaf_contrast_position_scale) * common
+    )
+    result = np.zeros((dimension, dimension), dtype=np.float64)
+    result[:fixed_k, :fixed_k] = leaf_block
+    if settings.fixed_coefficient_position_scale:
+        fixed_indices = np.arange(fixed_k, dimension)
+        result[fixed_indices, fixed_indices] = settings.fixed_coefficient_position_scale
+    if np.any(~np.isfinite(result)) or not np.array_equal(result, result.T):
+        raise ValueError("position scale matrix must be finite and symmetric.")
+    try:
+        np.linalg.cholesky(result)
+    except np.linalg.LinAlgError as error:
+        raise ValueError("position scale matrix must be positive definite.") from error
+    result.setflags(write=False)
+    return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -481,6 +569,10 @@ class FullTilingPyMCHMCTrace:
         structural_accepted: Whether the topology/masses changed.
         structural_log_acceptance_ratio: Raw untruncated structural log ratio.
         structural_invalid_reason: Empty for valid proposals.
+        hmc_start_log_leaf_mass: Post-structure, pre-HMC leaf log masses in the
+            same canonical order as the corresponding post-HMC state.
+        hmc_start_log_fixed_coefficient: Post-structure, pre-HMC fixed
+            log-coefficient coordinates.
         hmc_accepted: Whether PyMC accepted the HMC endpoint.
         hmc_acceptance_probability: HMC Metropolis acceptance probability.
         hmc_diverging: Whether PyMC flagged the trajectory as divergent.
@@ -512,6 +604,8 @@ class FullTilingPyMCHMCTrace:
     structural_accepted: BoolArray
     structural_log_acceptance_ratio: FloatArray
     structural_invalid_reason: StringArray
+    hmc_start_log_leaf_mass: FloatArray
+    hmc_start_log_fixed_coefficient: FloatArray
     hmc_accepted: BoolArray
     hmc_acceptance_probability: FloatArray
     hmc_diverging: BoolArray
@@ -607,6 +701,30 @@ class FullTilingPyMCHMCTrace:
         for name in diagnostic_specs:
             if getattr(self, name).shape != (sweeps,):
                 raise ValueError(f"{name} must have one entry per sweep.")
+        object.__setattr__(
+            self,
+            "hmc_start_log_leaf_mass",
+            _readonly_array(
+                self.hmc_start_log_leaf_mass,
+                dtype=np.float64,
+                ndim=2,
+                name="hmc_start_log_leaf_mass",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "hmc_start_log_fixed_coefficient",
+            _readonly_array(
+                self.hmc_start_log_fixed_coefficient,
+                dtype=np.float64,
+                ndim=2,
+                name="hmc_start_log_fixed_coefficient",
+            ),
+        )
+        if self.hmc_start_log_leaf_mass.shape != (sweeps, fixed_k):
+            raise ValueError("hmc_start_log_leaf_mass must have shape (sweep, K).")
+        if self.hmc_start_log_fixed_coefficient.shape != (sweeps, self.fixed_coefficients.shape[1]):
+            raise ValueError("hmc_start_log_fixed_coefficient must have shape (sweep, n_fixed).")
         if draws != sweeps + 1 or not np.array_equal(
             self.state_sweep[1:],
             self.global_sweep,
@@ -628,6 +746,8 @@ class FullTilingPyMCHMCTrace:
             or np.any(self.structural_log_acceptance_ratio == np.inf)
             or np.any(self.structural_valid & (self.structural_invalid_reason != ""))
             or np.any(~self.structural_valid & (self.structural_invalid_reason == ""))
+            or np.any(~np.isfinite(self.hmc_start_log_leaf_mass))
+            or np.any(~np.isfinite(self.hmc_start_log_fixed_coefficient))
             or np.any(~np.isfinite(self.hmc_acceptance_probability))
             or np.any((self.hmc_acceptance_probability < 0.0) | (self.hmc_acceptance_probability > 1.0))
             or np.any(self.hmc_accepted & self.hmc_diverging)
@@ -1007,7 +1127,7 @@ def _build_compound_kernel(
         problem: Fixed-``K`` scientific posterior problem.
         state: Scientific initial state belonging to ``problem``.
         settings: Resolved static-HMC settings, including the exact leaf and
-            fixed-coordinate position-scale diagonal.
+            fixed-coordinate position-scale matrix.
         rng: Authoritative compound-chain generator. The returned structural
             step closes over this object and advances it for proposals,
             acceptance uniforms, and per-sweep HMC seeds.
@@ -1068,7 +1188,7 @@ def _build_compound_kernel(
     hmc = pm.HamiltonianMC(
         vars=continuous_rvs,
         model=model,
-        scaling=np.array(settings.position_scale_diagonal, copy=True),
+        scaling=np.array(settings.position_scale_matrix, copy=True),
         is_cov=True,
         step_scale=step_scale,
         path_length=settings.step_size * settings.leapfrog_steps,
@@ -1119,6 +1239,8 @@ def _build_compound_kernel(
             self.blocked = blocked
             self.state = state
             self.last_transition: Any = None
+            self.hmc_start_log_leaf_mass: FloatArray | None = None
+            self.hmc_start_log_fixed_coefficient: FloatArray | None = None
 
         def step(
             self,
@@ -1153,6 +1275,20 @@ def _build_compound_kernel(
             next_point = dict(current_point)
             if accepted:
                 next_point["x"] = np.log(next_state.leaf_masses)
+            self.hmc_start_log_leaf_mass = np.array(
+                next_point["x"],
+                dtype=np.float64,
+                copy=True,
+            )
+            self.hmc_start_log_fixed_coefficient = (
+                np.array(
+                    next_point["y"],
+                    dtype=np.float64,
+                    copy=True,
+                )
+                if next_state.fixed_coefficients.size
+                else np.empty(0, dtype=np.float64)
+            )
             self.state = next_state
             self.last_transition = transition
             hmc_seed = int(
@@ -1413,6 +1549,8 @@ def _run_segment(
     structural_accepted: list[bool] = []
     structural_log_ratio: list[float] = []
     structural_reason: list[str] = []
+    hmc_start_log_leaf_mass: list[FloatArray] = []
+    hmc_start_log_fixed_coefficient: list[FloatArray] = []
     hmc_accepted: list[bool] = []
     hmc_accept: list[float] = []
     hmc_diverging: list[bool] = []
@@ -1446,6 +1584,18 @@ def _run_segment(
         structural_accepted.append(bool(structural_stats["accepted"]))
         structural_log_ratio.append(float(structural_stats["log_acceptance_ratio"]))
         structural_reason.append(str(structural_stats["invalid_reason"]))
+        if structural.hmc_start_log_leaf_mass is None or structural.hmc_start_log_fixed_coefficient is None:
+            raise RuntimeError("structural step did not retain the pre-HMC coordinates.")
+        hmc_start_log_leaf_mass.append(
+            np.array(structural.hmc_start_log_leaf_mass, dtype=np.float64, copy=True)
+        )
+        hmc_start_log_fixed_coefficient.append(
+            np.array(
+                structural.hmc_start_log_fixed_coefficient,
+                dtype=np.float64,
+                copy=True,
+            )
+        )
         hmc_accepted.append(bool(hmc_stats["accepted"]))
         hmc_accept.append(float(hmc_stats["accept"]))
         hmc_diverging.append(bool(hmc_stats["diverging"]))
@@ -1486,6 +1636,10 @@ def _run_segment(
             dtype=np.float64,
         ),
         structural_invalid_reason=np.asarray(structural_reason, dtype="U96"),
+        hmc_start_log_leaf_mass=np.stack(hmc_start_log_leaf_mass),
+        hmc_start_log_fixed_coefficient=np.stack(
+            hmc_start_log_fixed_coefficient,
+        ),
         hmc_accepted=np.asarray(hmc_accepted, dtype=np.bool_),
         hmc_acceptance_probability=np.asarray(hmc_accept, dtype=np.float64),
         hmc_diverging=np.asarray(hmc_diverging, dtype=np.bool_),
@@ -1563,7 +1717,12 @@ def sample_full_tiling_pymc_hmc(
         fixed_k=initial_state.k,
         step_size=config.step_size,
         leapfrog_steps=config.leapfrog_steps,
-        leaf_position_scale=config.leaf_position_scale,
+        leaf_contrast_position_scale=config.leaf_contrast_position_scale,
+        leaf_total_position_scale=(
+            config.leaf_contrast_position_scale
+            if config.leaf_total_position_scale is None
+            else config.leaf_total_position_scale
+        ),
         fixed_coefficient_position_scale=fixed_position_scale,
     )
     canonical_state, log_leaf_mass, log_fixed_coefficient = canonicalize_full_tiling_pymc_hmc_fresh_state(

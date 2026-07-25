@@ -4,18 +4,31 @@
 
 The core sampler, dedicated durable checkpoint schema, native real-data
 driver, and HPC validation plan are implemented on
-`codex/rjmcmc-compound-hmc`. The first frozen-input H2 attempt at `88b12a5`
-stopped correctly before its first transition: the fresh initializer's
-physical masses and the HMC log coordinates differed by 3--7 ULP. The strict
-boundary audit was retained. Fresh states are now deterministically rebuilt
-from authoritative log coordinates before draw 0, and focused local
-validation covers that failure. The next gate is a clean, commit-addressed
-repeat of H0 and H2 before the real-data screen.
+`codex/rjmcmc-compound-hmc`. Three frozen-input calibration attempts now
+separate representation correctness from metric generalization:
+
+- the first H2 attempt at `88b12a5` stopped before transition one because the
+  fresh physical state was not an exact log/exp replay boundary;
+- `fe9e546` fixed that defect without relaxing the audit;
+- the diagonal-metric H2 passed at \(K=50\) but had no admissible candidate at
+  \(K=250\);
+- the bounded H2b refinement selected
+  \(\epsilon=0.08409,L=5\), but a held-out \(K=250\) topology had acceptance
+  0.031 and 42 divergences.
+
+The diagonal H2b result is therefore a certified hard stop, not a prompt for
+further step-size refinement. The next experiment is H2c: a static,
+permutation-invariant two-eigenvalue leaf metric that separates the normalized
+common log-mass direction from centered log-mass contrasts.
 
 The failed-run evidence is retained under
 `/group/chem/acrg/brendan_for_codex/rjmcmc_full_tiling_pymc_hmc/88b12a5717d4b490b6ccd67986c20c2a99094fed`;
 its report SHA-256 is
 `27027ee2c4393ff8e1d399c5afe4d0b751ff9665956bf303aabc756086279a4d`.
+The corrected diagonal run and H2b hard-stop evidence are retained under
+`/group/chem/acrg/brendan_for_codex/rjmcmc_full_tiling_pymc_hmc/fe9e546ab57a6b0ff852057e0e6afa13725a5419`;
+the original H2 report SHA-256 is
+`b149c99ed48071b2fce6873603e4eb138915bf0005d0f8189fcbeefb3779dd5e`.
 
 The fixed-basis reference experiments established that the local continuous
 kernel, rather than the Gamma root model itself, was the main fixed-topology
@@ -45,13 +58,14 @@ invalid structural self-transition. Conditioning whether HMC runs on the
 topology outcome would create a different state-dependent schedule without an
 invariance argument.
 
-The first implementation uses static HMC:
+The H2c implementation still uses static HMC:
 
 - fixed step size;
 - fixed leapfrog count;
-- frozen topology-neutral diagonal PyMC position scale;
+- a frozen topology-neutral total/contrast leaf block;
+- an ordered diagonal block for fixed coefficients, with zero cross terms;
 - no retained-sampling adaptation;
-- no transfer of a dense leaf metric between tilings.
+- no leaf-identity-specific covariance transfer between tilings.
 
 This makes the kernel ordinary Markov-chain composition and keeps exact
 restart state small. Step-size and metric adaptation can be performed in a
@@ -92,11 +106,48 @@ Thus the computational target is
 \]
 
 This symmetric chart avoids choosing a distinguished simplex reference leaf.
-A scalar leaf block in the PyMC position scale is invariant to permutations
-of canonical leaf positions. With `is_cov=True`, this diagonal is the
-quadratic kinetic-energy coefficient and hence momentum precision; sampled
-momentum has its reciprocal covariance. Fixed coefficients may use distinct
-diagonal entries because their identities do not change with topology.
+Let
+
+\[
+P_1=\frac{\mathbf1\mathbf1^\mathsf T}{K},
+\qquad
+P_\perp=I-P_1.
+\]
+
+The H2c leaf position scale is
+
+\[
+G_{\rm leaf}
+=g_{\rm contrast}P_\perp+g_{\rm total}P_1.
+\]
+
+The binary64 implementation evaluates the equivalent stable form
+
+\[
+G_{\rm leaf}
+=g_{\rm contrast}I+(g_{\rm total}-g_{\rm contrast})P_1,
+\]
+
+so equal eigenscales reduce bit for bit to the legacy scalar identity at the
+production \(K\) values.
+
+It has eigenvalue \(g_{\rm total}\) along the normalized common direction
+\(\mathbf1/\sqrt K\), eigenvalue \(g_{\rm contrast}\) on every zero-sum
+contrast, and satisfies \(PG_{\rm leaf}P^\mathsf T=G_{\rm leaf}\) for every
+leaf permutation \(P\). It is therefore dense but topology-neutral; no leaf
+identity is transferred between tilings. Fixed coefficients retain distinct
+diagonal entries because their identities are stable, and leaf/fixed cross
+terms remain zero.
+
+With `is_cov=True`, PyMC uses the complete matrix \(G\) as the quadratic
+kinetic-energy coefficient:
+
+\[
+K(p)=\tfrac12p^\mathsf T Gp,\qquad p\sim N(0,G^{-1}).
+\]
+
+Thus the configured position scale is momentum precision, not momentum
+covariance.
 
 The PyMC model is compiled once. Topology-dependent design columns and
 Dirichlet shapes have fixed array shapes at fixed \(K\) and are supplied
@@ -161,12 +212,22 @@ because their physical state and authoritative log coordinates are already
 joint replay inputs.
 
 Production sampling requires the actual hashed strict-JSON calibration file,
-not only a caller-supplied identifier. Its v1 schema binds the frozen input,
+not only a caller-supplied identifier. Its v2 schema binds the frozen input,
 target controls, \(K\), coordinate/metric identities, resolved static kernel,
-bounded pilot design, decision statistics, source artifact hashes, and code
-revision. The driver reports transformed-target preflight compilation,
-production-kernel setup/compilation, and transition execution separately so
-sampling throughput excludes compilation.
+bounded development search, role-specific topology and master-PCG64 seeds,
+untouched held-out validation, source artifact hashes, and code revision.
+Development candidates use common random numbers within each topology;
+validation uses separate streams, and calibration topology seeds are disjoint
+from retained-production starts. The fixed-basis NUTS metric-source topology
+and all mobile calibration topologies are recorded by canonical hash; exact
+collisions are rejected independently of seed identity. Per-sweep
+post-structure/pre-HMC coordinates make the candidate score HMC-only rather
+than a mixture of structural and continuous displacement. Version-1 diagonal
+calibrations and checkpoints fail closed; they remain evidence for the earlier
+experiment, not continuation inputs for H2c. The driver reports
+transformed-target preflight compilation, production-kernel setup/compilation,
+and transition execution separately so sampling throughput excludes
+compilation.
 
 The HMC object's iteration counter and internal RNG do not define the next
 scientific transition because its RNG is reset from the checkpointed PCG64
@@ -184,7 +245,11 @@ match.
 - Accepted, rejected, and invalid topology attempts each invoke HMC once.
 - HMC never changes the tiling.
 - Full posterior rebuild agrees with every accepted HMC endpoint.
-- Frozen step size, position-scale diagonal, and leapfrog count.
+- Frozen step size, total/contrast position-scale matrix, and leapfrog count.
+- Exact total/contrast eigenvalues, block ordering, positive definiteness, and
+  invariance under arbitrary leaf permutations.
+- Per-sweep post-structure/pre-HMC log coordinates isolate HMC displacement
+  from structural remapping.
 - Exact seeded replay.
 - Exact awkward-boundary sample/continue replay.
 - Exact, idempotent fresh-boundary log/exp canonicalization without mutating
@@ -222,15 +287,18 @@ The first real-data screen should answer a narrow question:
 It should not initially be used to compare posterior summaries. Four
 overdispersed topology starts at each of \(K=50\) and \(K=250\) are needed,
 with the same frozen PARIS input and scientific target as the earlier
-fixed-basis control. Static HMC controls should be calibrated only on
-discarded fixed-topology runs, then frozen identically across the mobile
+fixed-basis control. The initial total/contrast metric may be estimated only
+from checksum-verified fixed-basis NUTS draws. Step size and path length are
+then calibrated on separate discarded mobile compound runs, including an
+untouched held-out topology, and frozen identically across retained mobile
 chains at a given \(K\).
 
 ## Deferred work
 
 - NUTS in the mobile compound kernel.
 - Online or topology-dependent metric adaptation.
-- Dense leaf metrics or leaf/fixed cross blocks.
+- Leaf-identity-specific metrics or leaf/fixed cross blocks.
+- Riemannian or topology-dependent HMC metrics.
 - Variable-\(K\) topology transitions.
 - A scientifically different multi-root prior.
 - Promotion out of the experimental namespace.
