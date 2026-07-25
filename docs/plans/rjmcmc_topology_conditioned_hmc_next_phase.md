@@ -473,6 +473,24 @@ descendants at their nominal proportions. The hidden Beta fractions are not
 integrated out. Candidate frontiers are therefore partition-specific reduced
 models, and unequal evidence is expected when footprint columns differ.
 
+The exact small-model foundation now has two layers:
+
+- a two-cell Gamma--Beta oracle establishes normalized hidden-share
+  marginalization, the tower identity, common-total posterior agreement, and a
+  deliberate nominal-fill evidence failure; and
+- a projection-based four-cell oracle uses one common-rate native Gamma model
+  and compares the four unique root, row, column, and fine tilings. The same
+  root is evaluated through independent row-first and column-first Beta charts;
+  both charts and all four tilings agree with an independent product of four
+  adaptive one-dimensional native-Gamma evidence integrals. A nonuniform
+  structural prior is recovered unchanged. Gaussian likelihood evaluation is
+  centered at a weighted least-squares reference and has explicit large-signal
+  cancellation regressions.
+
+The row-first and column-first root charts are auxiliary numerical
+representations, not separate structural states. Treating them as separate
+prior entries would reintroduce construction-path multiplicity.
+
 This branch has a strict interpretation gate:
 
 - if the same root model and exact/adequate reduced likelihood are used, any
@@ -485,20 +503,26 @@ This branch has a strict interpretation gate:
 
 The bounded programme is:
 
-1. reproduce evidence invariance in a linear-Gaussian two-cell/multiscale
-   oracle with exact aggregation covariance;
-2. use a positive Gamma--Beta two-cell model with endpoint-aware
+1. **Complete:** reproduce evidence invariance in a linear-Gaussian
+   two-cell/multiscale oracle with exact aggregation covariance;
+2. **Complete:** use a positive Gamma--Beta two-cell model with endpoint-aware
    Gauss--Jacobi quadrature for the hidden share and generalized
    Gauss--Laguerre quadrature for the Gamma total, comparing exact
    marginalization, explicit hidden-share inference, Gaussian moment closure,
    and nominal filling;
-3. enumerate the five frontiers of a \(2\times2\) canonical tree and require
-   common prior-predictive evidence, recovery of a nonuniform structural
-   prior, projective tower consistency, likelihood normalization, common-total
-   posterior agreement, and a deliberate nominal-fill failure sentinel;
-4. attempt a conditional flow only if the normalized mixture fails a
+3. **Complete for construction-order and projection consistency:** compare
+   root, row, column, and fine projections of a \(2\times2\) common native
+   model, including independent row-first/column-first charts, native-Gamma
+   reference evidence, common-total posterior moments, likelihood
+   normalization, nonuniform structural-prior recovery, and nominal-fill
+   failure;
+4. **Remaining only if the canonical-tree claim is needed:** add the
+   one-side-split \(K=3\) frontiers and enumerate all five frontiers of each
+   fixed-orientation canonical tree. These are not needed to establish that
+   row-first and column-first root histories represent one state;
+5. attempt a conditional flow only if the normalized mixture fails a
    predeclared density/calibration gate; and
-5. assess the 1,382-observation PARIS problem only after a low-rank or
+6. assess the 1,382-observation PARIS problem only after a low-rank or
    factor-analytic residual representation has an auditable normalized joint
    density and held-out partition/operator tests.
 

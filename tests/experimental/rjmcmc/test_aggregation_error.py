@@ -10,12 +10,39 @@ from scipy.integrate import quad
 
 import openghg_inversions.experimental.rjmcmc.aggregation_error as aggregation_error
 from openghg_inversions.experimental.rjmcmc.aggregation_error import (
+    FourCellAggregationOracle,
     TwoCellAggregationOracle,
     beta_quadrature,
     gamma_quadrature,
     log_posterior_partition_probabilities,
     posterior_partition_probabilities,
 )
+
+
+def _four_cell_case(
+    *,
+    total_order: int = 20,
+    fraction_order: int = 14,
+    chunk_size: int = 257,
+) -> tuple[FourCellAggregationOracle, np.ndarray, np.ndarray, np.ndarray]:
+    """Return a heterogeneous deterministic 2x2 oracle test case."""
+    oracle = FourCellAggregationOracle(
+        [0.7, 1.1, 1.6, 0.9],
+        1.4,
+        total_order=total_order,
+        fraction_order=fraction_order,
+        chunk_size=chunk_size,
+    )
+    observation = np.array([0.7, -0.2, 0.4])
+    design = np.array(
+        [
+            [1.8, -0.5, 0.3, 0.9],
+            [0.2, 1.4, -0.7, 0.1],
+            [0.5, -0.2, 1.1, 0.8],
+        ]
+    )
+    noise_sd = np.array([0.35, 0.8, 0.6])
+    return oracle, observation, design, noise_sd
 
 
 def test_probability_rules_are_normalized_and_recover_distribution_moments() -> None:
@@ -411,3 +438,586 @@ def test_nominal_fill_sentinel_has_unequal_evidence_for_contrasting_footprints()
     assert coarse == pytest.approx(fine, rel=2.0e-15, abs=1.0e-15)
     assert abs(nominal - fine) > 0.1
     assert np.exp(log_posterior[0]) > structural_prior[0]
+
+
+def test_four_cell_projection_frontiers_are_history_independent() -> None:
+    """The 2x2 frontiers should be explicit projections, not tree histories."""
+    oracle, _, _, _ = _four_cell_case(total_order=4, fraction_order=4)
+
+    np.testing.assert_array_equal(oracle.projection("root"), [[1.0, 1.0, 1.0, 1.0]])
+    np.testing.assert_array_equal(
+        oracle.projection("row"),
+        [[1.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 1.0]],
+    )
+    np.testing.assert_array_equal(
+        oracle.projection("column"),
+        [[1.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 1.0]],
+    )
+    np.testing.assert_array_equal(oracle.projection("fine"), np.eye(4))
+    assert not oracle.projection("row").flags.writeable
+    with pytest.raises(ValueError, match="tiling"):
+        oracle.projection("diagonal")  # type: ignore[arg-type]
+
+
+def test_four_cell_conditional_towers_hold_in_each_beta_chart() -> None:
+    """Root-to-pair-to-native marginalization should obey both towers."""
+    oracle, observation, design, noise_sd = _four_cell_case(
+        total_order=8,
+        fraction_order=14,
+        chunk_size=97,
+    )
+    total = 1.7
+    a0, a1, a2, a3 = oracle.native_shapes
+
+    row_aggregate = beta_quadrature(a0 + a1, a2 + a3, oracle.fraction_order)
+    row_masses = np.stack(
+        (total * row_aggregate.nodes, total * (1.0 - row_aggregate.nodes)),
+        axis=-1,
+    )
+    row_conditional = oracle.conditional_log_likelihood(
+        row_masses,
+        observation,
+        design,
+        noise_sd,
+        tiling="row",
+    )
+    row_tower = float(aggregation_error._stable_logsumexp(np.log(row_aggregate.weights) + row_conditional))
+    row_root = oracle.conditional_log_likelihood(
+        total,
+        observation,
+        design,
+        noise_sd,
+        tiling="root",
+        root_chart="row-first",
+    )
+
+    column_aggregate = beta_quadrature(a0 + a2, a1 + a3, oracle.fraction_order)
+    column_masses = np.stack(
+        (
+            total * column_aggregate.nodes,
+            total * (1.0 - column_aggregate.nodes),
+        ),
+        axis=-1,
+    )
+    column_conditional = oracle.conditional_log_likelihood(
+        column_masses,
+        observation,
+        design,
+        noise_sd,
+        tiling="column",
+    )
+    column_tower = float(
+        aggregation_error._stable_logsumexp(np.log(column_aggregate.weights) + column_conditional)
+    )
+    column_root = oracle.conditional_log_likelihood(
+        total,
+        observation,
+        design,
+        noise_sd,
+        tiling="root",
+        root_chart="column-first",
+    )
+
+    assert row_tower == pytest.approx(row_root, abs=2.0e-15)
+    assert column_tower == pytest.approx(column_root, abs=2.0e-15)
+
+
+def test_four_cell_root_conditional_is_normalized_in_observation() -> None:
+    """The finite Dirichlet Gaussian mixture should integrate to one in data."""
+    oracle = FourCellAggregationOracle(
+        [0.7, 1.1, 1.6, 0.9],
+        1.4,
+        total_order=4,
+        fraction_order=6,
+        chunk_size=47,
+    )
+
+    integral, _ = quad(
+        lambda observation: np.exp(
+            oracle.conditional_log_likelihood(
+                1.7,
+                observation,
+                [1.8, -0.5, 0.3, 0.9],
+                0.35,
+                tiling="root",
+            )
+        ),
+        -np.inf,
+        np.inf,
+        epsabs=2.0e-9,
+        limit=200,
+    )
+
+    assert integral == pytest.approx(1.0, abs=2.0e-8)
+
+
+def test_four_cell_pair_conditional_is_native_likelihood_mixture() -> None:
+    """A row conditional should equal explicit normalized native integration."""
+    oracle, observation, design, noise_sd = _four_cell_case(
+        total_order=6,
+        fraction_order=12,
+        chunk_size=31,
+    )
+    row_masses = np.array([0.8, 1.3])
+    a0, a1, a2, a3 = oracle.native_shapes
+    first = beta_quadrature(a0, a1, oracle.fraction_order)
+    second = beta_quadrature(a2, a3, oracle.fraction_order)
+    first_grid, second_grid = np.meshgrid(first.nodes, second.nodes, indexing="ij")
+    native = np.stack(
+        (
+            row_masses[0] * first_grid,
+            row_masses[0] * (1.0 - first_grid),
+            row_masses[1] * second_grid,
+            row_masses[1] * (1.0 - second_grid),
+        ),
+        axis=-1,
+    )
+    native_log_likelihood = oracle.conditional_log_likelihood(
+        native,
+        observation,
+        design,
+        noise_sd,
+        tiling="fine",
+    )
+    expected = float(
+        aggregation_error._stable_logsumexp(
+            native_log_likelihood
+            + np.log(first.weights)[:, np.newaxis]
+            + np.log(second.weights)[np.newaxis, :]
+        )
+    )
+
+    actual = oracle.conditional_log_likelihood(
+        row_masses,
+        observation,
+        design,
+        noise_sd,
+        tiling="row",
+    )
+
+    assert actual == pytest.approx(expected, abs=2.0e-15)
+
+
+def test_four_cell_evidence_and_total_posterior_agree_across_frontiers() -> None:
+    """All exact projections should recover common evidence and total posterior."""
+    oracle, observation, design, noise_sd = _four_cell_case(
+        total_order=22,
+        fraction_order=18,
+        chunk_size=401,
+    )
+    configurations = (
+        ("root", "row-first"),
+        ("root", "column-first"),
+        ("row", "row-first"),
+        ("column", "row-first"),
+        ("fine", "row-first"),
+        ("fine", "column-first"),
+    )
+    evidences = np.array(
+        [
+            oracle.log_evidence(
+                observation,
+                design,
+                noise_sd,
+                tiling=tiling,
+                root_chart=chart,
+            )
+            for tiling, chart in configurations
+        ]
+    )
+    posterior_rules = [
+        oracle.total_posterior_quadrature(
+            observation,
+            design,
+            noise_sd,
+            tiling=tiling,
+            root_chart=chart,
+        )
+        for tiling, chart in configurations
+    ]
+
+    np.testing.assert_allclose(evidences, evidences[0], rtol=0.0, atol=8.0e-7)
+    for rule in posterior_rules:
+        np.testing.assert_array_equal(rule.nodes, posterior_rules[0].nodes)
+        np.testing.assert_allclose(
+            rule.weights,
+            posterior_rules[0].weights,
+            rtol=0.0,
+            atol=2.0e-7,
+        )
+
+
+def test_four_cell_chart_discrepancy_converges_with_quadrature_order() -> None:
+    """Row-first and column-first chart residuals should converge to zero."""
+    _, observation, design, noise_sd = _four_cell_case()
+    discrepancies = []
+    for order in (8, 12, 18):
+        oracle, _, _, _ = _four_cell_case(
+            total_order=22,
+            fraction_order=order,
+            chunk_size=503,
+        )
+        discrepancies.append(
+            abs(
+                oracle.root_log_evidence(
+                    observation,
+                    design,
+                    noise_sd,
+                    chart="row-first",
+                )
+                - oracle.root_log_evidence(
+                    observation,
+                    design,
+                    noise_sd,
+                    chart="column-first",
+                )
+            )
+        )
+
+    assert discrepancies[2] < discrepancies[1] < discrepancies[0]
+    assert discrepancies[2] < 8.0e-7
+
+
+def test_four_cell_exact_evidence_preserves_nonuniform_structural_prior() -> None:
+    """Informative data should preserve prior weights over four exact tilings."""
+    oracle, observation, design, noise_sd = _four_cell_case(
+        total_order=30,
+        fraction_order=30,
+        chunk_size=1_009,
+    )
+    log_evidences = np.array(
+        [
+            oracle.root_log_evidence(observation, design, noise_sd),
+            oracle.row_log_evidence(observation, design, noise_sd),
+            oracle.column_log_evidence(observation, design, noise_sd),
+            oracle.fine_log_evidence(observation, design, noise_sd),
+        ]
+    )
+    prior = np.array([0.41, 0.19, 0.11, 0.29])
+
+    posterior = np.exp(log_posterior_partition_probabilities(np.log(prior), log_evidences))
+
+    assert np.ptp(log_evidences) < 7.0e-13
+    np.testing.assert_allclose(posterior, prior, rtol=0.0, atol=2.0e-13)
+
+
+def test_four_cell_matches_independent_native_gamma_reference() -> None:
+    """All projections should match factorized adaptive native-Gamma integrals."""
+    native_shapes = np.array([0.7, 1.1, 1.6, 0.9])
+    gamma_rate = 1.4
+    observation = np.array([0.3, 0.8, -0.1, 1.2])
+    diagonal = np.array([1.2, 0.7, -0.4, 1.5])
+    design = np.diag(diagonal)
+    noise_sd = np.array([0.3, 0.5, 0.8, 0.4])
+    component_evidences = []
+    component_means = []
+    component_variances = []
+    for shape, observed, coefficient, scale in zip(
+        native_shapes,
+        observation,
+        diagonal,
+        noise_sd,
+        strict=True,
+    ):
+        normalizer = gamma_rate**shape / (gamma(shape) * scale * np.sqrt(2.0 * pi))
+
+        def integrand(mass: float) -> float:
+            """Return one normalized Gamma-prior Gaussian likelihood product."""
+            return (
+                normalizer
+                * mass ** (shape - 1.0)
+                * exp(-gamma_rate * mass - 0.5 * ((observed - coefficient * mass) / scale) ** 2)
+            )
+
+        evidence = quad(
+            integrand,
+            0.0,
+            np.inf,
+            epsabs=1.0e-12,
+            epsrel=1.0e-12,
+            limit=300,
+        )[0]
+        first_moment = (
+            quad(
+                lambda mass: mass * integrand(mass),
+                0.0,
+                np.inf,
+                epsabs=1.0e-12,
+                epsrel=1.0e-12,
+                limit=300,
+            )[0]
+            / evidence
+        )
+        second_moment = (
+            quad(
+                lambda mass: mass * mass * integrand(mass),
+                0.0,
+                np.inf,
+                epsabs=1.0e-12,
+                epsrel=1.0e-12,
+                limit=300,
+            )[0]
+            / evidence
+        )
+        component_evidences.append(evidence)
+        component_means.append(first_moment)
+        component_variances.append(second_moment - first_moment**2)
+
+    reference_log_evidence = float(np.log(component_evidences).sum())
+    reference_total_mean = float(np.sum(component_means))
+    reference_total_variance = float(np.sum(component_variances))
+    oracle = FourCellAggregationOracle(
+        native_shapes,
+        gamma_rate,
+        total_order=64,
+        fraction_order=26,
+        chunk_size=3_001,
+    )
+    evidence_routes = [
+        oracle.root_log_evidence(
+            observation,
+            design,
+            noise_sd,
+            chart="row-first",
+        ),
+        oracle.root_log_evidence(
+            observation,
+            design,
+            noise_sd,
+            chart="column-first",
+        ),
+        *[
+            oracle.log_evidence(
+                observation,
+                design,
+                noise_sd,
+                tiling=tiling,
+            )
+            for tiling in ("root", "row", "column", "fine")
+        ],
+    ]
+
+    np.testing.assert_allclose(
+        evidence_routes,
+        reference_log_evidence,
+        rtol=0.0,
+        atol=7.0e-10,
+    )
+    for tiling in ("root", "row", "column", "fine"):
+        posterior = oracle.total_posterior_quadrature(
+            observation,
+            design,
+            noise_sd,
+            tiling=tiling,
+        )
+        total_mean = float(posterior.weights @ posterior.nodes)
+        total_variance = float(posterior.weights @ np.square(posterior.nodes - total_mean))
+        assert total_mean == pytest.approx(reference_total_mean, abs=7.0e-9)
+        assert total_variance == pytest.approx(
+            reference_total_variance,
+            abs=2.0e-8,
+        )
+
+
+def test_four_cell_nominal_fill_exposes_aggregation_error() -> None:
+    """Deterministic native fill should differ under heterogeneous footprints."""
+    oracle = FourCellAggregationOracle(
+        [0.7, 1.1, 1.6, 0.9],
+        1.4,
+        total_order=42,
+        fraction_order=22,
+        chunk_size=809,
+    )
+    observation = 0.2
+    design = np.array([2.0, 0.0, -0.5, 1.2])
+    noise_sd = 0.1
+
+    exact = oracle.fine_log_evidence(observation, design, noise_sd)
+    root_nominal = oracle.nominal_fill_log_evidence(
+        observation,
+        design,
+        noise_sd,
+        tiling="root",
+    )
+    row_nominal = oracle.nominal_fill_log_evidence(
+        observation,
+        design,
+        noise_sd,
+        tiling="row",
+    )
+
+    assert abs(root_nominal - exact) > 0.1
+    assert abs(row_nominal - exact) > 0.01
+    assert oracle.nominal_fill_log_evidence(
+        observation,
+        design,
+        noise_sd,
+        tiling="fine",
+    ) == pytest.approx(exact, abs=2.0e-15)
+
+
+def test_four_cell_identical_columns_remove_allocation_dependence() -> None:
+    """Identical native footprints should make exact and nominal routes agree."""
+    oracle, observation, _, noise_sd = _four_cell_case(
+        total_order=22,
+        fraction_order=12,
+        chunk_size=113,
+    )
+    common_column = np.array([1.2, -0.4, 0.6])
+    design = np.repeat(common_column[:, np.newaxis], 4, axis=1)
+    exact = oracle.root_log_evidence(
+        observation,
+        design,
+        noise_sd,
+        chart="column-first",
+    )
+
+    for tiling in ("root", "row", "column", "fine"):
+        assert oracle.log_evidence(
+            observation,
+            design,
+            noise_sd,
+            tiling=tiling,
+        ) == pytest.approx(exact, abs=2.0e-13)
+        assert oracle.nominal_fill_log_evidence(
+            observation,
+            design,
+            noise_sd,
+            tiling=tiling,
+        ) == pytest.approx(exact, abs=2.0e-13)
+
+
+def test_four_cell_log_evidence_is_stable_for_1382_observations() -> None:
+    """Sufficient-statistic log evaluation should survive linear underflow."""
+    observation_count = 1_382
+    observation = np.zeros(observation_count)
+    design = np.zeros((observation_count, 4))
+    noise_sd = np.ones(observation_count)
+    oracle = FourCellAggregationOracle(
+        [0.7, 1.1, 1.6, 0.9],
+        1.4,
+        total_order=8,
+        fraction_order=7,
+        chunk_size=53,
+    )
+    expected = -0.5 * observation_count * log(2.0 * pi)
+
+    for tiling in ("root", "row", "column", "fine"):
+        log_evidence = oracle.log_evidence(
+            observation,
+            design,
+            noise_sd,
+            tiling=tiling,
+        )
+        assert log_evidence == pytest.approx(expected, abs=2.0e-12)
+        assert (
+            oracle.evidence(
+                observation,
+                design,
+                noise_sd,
+                tiling=tiling,
+            )
+            == 0.0
+        )
+
+
+def test_four_cell_sufficient_statistics_recover_exact_fit_normalizer() -> None:
+    """Direct fallback should preserve normalization under huge cancellation."""
+    oracle = FourCellAggregationOracle(
+        [1.0, 1.0, 1.0, 1.0],
+        1.0,
+        total_order=2,
+        fraction_order=2,
+    )
+
+    log_likelihood = oracle.conditional_log_likelihood(
+        [1.0, 0.0, 0.0, 0.0],
+        1.0e150,
+        [1.0e150, 0.0, 0.0, 0.0],
+        1.0,
+        tiling="fine",
+    )
+
+    assert log_likelihood == pytest.approx(-0.5 * log(2.0 * pi), abs=1.0e-15)
+
+
+def test_four_cell_sufficient_statistics_recover_large_signal_residual() -> None:
+    """A finite near-fit should match direct residual arithmetic at large scale."""
+    oracle = FourCellAggregationOracle(
+        [1.0, 1.0, 1.0, 1.0],
+        1.0,
+        total_order=2,
+        fraction_order=2,
+    )
+    observation = 1.0e10 + 6_897.0
+    direct_residual = observation - 1.0e10
+    expected = -0.5 * direct_residual**2 - 0.5 * log(2.0 * pi)
+
+    log_likelihood = oracle.conditional_log_likelihood(
+        [1.0, 0.0, 0.0, 0.0],
+        observation,
+        [1.0e10, 0.0, 0.0, 0.0],
+        1.0,
+        tiling="fine",
+    )
+
+    assert log_likelihood == expected
+
+
+def test_four_cell_likelihood_batches_respect_chunk_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Root integration should never evaluate more than the configured chunk."""
+    oracle, observation, design, noise_sd = _four_cell_case(
+        total_order=3,
+        fraction_order=7,
+        chunk_size=23,
+    )
+    observed_batch_sizes: list[int] = []
+    original = aggregation_error._GaussianSufficientStatistics.log_likelihood
+
+    def recording_log_likelihood(
+        self: aggregation_error._GaussianSufficientStatistics,
+        mass: np.ndarray,
+    ) -> np.ndarray:
+        """Record each quadrature likelihood batch before delegating."""
+        observed_batch_sizes.append(mass.reshape(-1, 4).shape[0])
+        return original(self, mass)
+
+    monkeypatch.setattr(
+        aggregation_error._GaussianSufficientStatistics,
+        "log_likelihood",
+        recording_log_likelihood,
+    )
+
+    oracle.root_log_evidence(observation, design, noise_sd)
+
+    assert observed_batch_sizes
+    assert max(observed_batch_sizes) <= oracle.chunk_size
+
+
+def test_four_cell_rejects_invalid_shapes_and_frontier_masses() -> None:
+    """Validation should reject Boolean shapes and wrong projected dimensions."""
+    with pytest.raises(TypeError, match="Boolean"):
+        FourCellAggregationOracle([1.0, True, 1.0, 1.0], 1.0)
+    with pytest.raises(ValueError, match="four"):
+        FourCellAggregationOracle([1.0, 1.0, 1.0], 1.0)
+    oracle, observation, design, noise_sd = _four_cell_case(
+        total_order=3,
+        fraction_order=3,
+    )
+    with pytest.raises(ValueError, match="final axis length 2"):
+        oracle.conditional_log_likelihood(
+            [1.0, 2.0, 3.0],
+            observation,
+            design,
+            noise_sd,
+            tiling="row",
+        )
+    with pytest.raises(ValueError, match="chart"):
+        oracle.root_log_evidence(
+            observation,
+            design,
+            noise_sd,
+            chart="diagonal",  # type: ignore[arg-type]
+        )
