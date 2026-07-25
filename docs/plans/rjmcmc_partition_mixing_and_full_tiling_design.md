@@ -979,9 +979,9 @@ Existing OpenGHG Inversions draft work can be reused as follows:
 
 ### Compact restart point
 
-- **Next executable task:** run the matched mobile-versus-fixed deterministic
-  basis comparison in
-  [rjmcmc_fixed_basis_control_hpc_test_plan.md](rjmcmc_fixed_basis_control_hpc_test_plan.md).
+- **Next executable task:** validate the fixed-basis PyMC/NumPyro NUTS
+  reference and run its dispersed-start \(K=50\), then \(K=250\), matrix using
+  [rjmcmc_fixed_basis_nuts_hpc_test_plan.md](rjmcmc_fixed_basis_nuts_hpc_test_plan.md).
 - **Fixed-direction baseline outcome:** the completed 40-segment Stage C test
   was restart-exact and structurally mobile, but its low- and high-\(K\)
   starts remained separated (\(\hat R_K=2.886\)); all 29 monitored summaries
@@ -1062,6 +1062,40 @@ Existing OpenGHG Inversions draft work can be reused as follows:
   checkpoint schedule identity remains explicit and the durable schema stays
   at v1. This control distinguishes structural coupling from continuous
   allocation mixing, but same-state starts are not full convergence evidence.
+- **Fixed-basis control outcome (2026-07-25):** holding the deterministic basis
+  fixed substantially improved likelihood agreement. At \(K=50\), likelihood
+  \(\hat R\), bulk ESS, and tail ESS were 1.0084, 676.6, and 1403.3. The strict
+  all-variable gate still failed: the fixed runs' worst \(\hat R\) values were
+  1.1003 at \(K=50\) and 1.0976 at \(K=250\), both for `root_total`, with bulk
+  ESS about 31. Mobile likelihood remained the worst bulk coordinate
+  (\(\hat R=1.1820\), ESS 15.31 at \(K=50\);
+  \(\hat R=1.3173\), ESS 9.85 at \(K=250\)). Increasing pair-refresh
+  opportunities improved ESS per cycle but not clearly per wall-hour; five
+  interleaved root slices were worse; and a data-informed SLS initializer did
+  not resolve mobile mixing. Geometry or geometry--continuous coupling is
+  therefore a major bottleneck, while the slow global root remains a separate
+  continuous/model question.
+- **Fixed-basis NUTS decision (2026-07-25):** build an independent
+  PyMC/NumPyro NUTS reference for the exact fixed-basis
+  Gamma-root/Dirichlet-share/outer-lognormal target. It must use the same
+  canonical rectangle design, run in explicit PyTensor/JAX float64, compare
+  the PyMC density without transform Jacobians against the existing
+  scientific-coordinate target, and use one chain per Slurm array task with
+  reproducibly dispersed continuous starts. NumPyro `sample_stats.lp` is not
+  directly comparable with the custom `log_target` because it is a density in
+  transformed coordinates. A successful NUTS reference identifies a local
+  transition problem; a matching failure implicates posterior geometry or the
+  one-root scientific model.
+- **Grouped-root distinction:** two follow-ups are now explicitly separate.
+  First, a group-level Dirichlet plus within-group Dirichlet factorization is
+  exactly the current global allocation prior by Dirichlet aggregation. It is
+  target-preserving Gamma--Beta groundwork and a multiscale NUTS coordinate
+  experiment, but retains one global Gamma root. Second, replacing that root
+  with coherent regional scalings is a new scientific prior. Independent
+  mean-one regional roots would reduce aggregate variance by
+  \(\sum_g Q_g^2\), so subdivision could manufacture certainty. A common mode
+  plus partially pooled group contrasts must be calibrated by prior-predictive
+  aggregation before that model enters either fixed-basis NUTS or RJMCMC.
 - **Floating-coordinate boundary:** the correction targets the declared
   continuous positive-mass model; it is not a claim of detailed balance over
   discrete binary64 rounding bins. A two-orientation residual-mass prototype
