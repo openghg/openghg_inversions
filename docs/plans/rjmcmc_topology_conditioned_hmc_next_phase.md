@@ -219,6 +219,30 @@ reference-to-recorded-position change is comparable or larger, retain the
 static metric as a bounded baseline but bring the continuous-chart/RMHMC
 decision forward rather than assuming H2d will generalize.
 
+#### Phase 0 result
+
+The read-only BP1 audit completed against commit `7a1a1cc` and the
+checksum-verified H2c bundle. It reproduced all four first post-structure
+states and HMC seeds exactly.
+
+The result supports the topology-conditioned static baseline:
+
+- the reference-topology effect changed the RMS preconditioned spectrum by
+  factors 1.88 at \(K=50\) and 1.71 at \(K=250\);
+- changing from the nominal reference to the recorded first HMC position
+  changed that spectrum by at most a factor 1.07 at \(K=50\) and 1.01 at
+  \(K=250\);
+- the topology effect was about 9.6 and 60 times the largest corresponding
+  position effect on the audit's log scale;
+- the H2c-preconditioned Gauss--Newton-plus-prior condition numbers remained
+  about 8,700--15,400 at \(K=50\) and 25,900--47,100 at \(K=250\), roughly
+  1--5% worse than the unpreconditioned reference; and
+- the exact transformed-target Hessian was indefinite in every audited state,
+  with minimum eigenvalues from about \(-7.4\) to \(-20.8\).
+
+Use the SPD Gauss--Newton-plus-exact-prior precision for H2d. Retain the exact
+Hessian only as a diagnostic; do not pass it to the kinetic potential.
+
 ### Phase A: offline metric oracle
 
 Implement the reference-curvature builder independently of PyMC first.
@@ -430,6 +454,12 @@ trained from joint native simulations. It is not a neural posterior or an
 unnormalized likelihood-to-evidence ratio. Keep independent Gaussian
 measurement noise outside the learner where practical.
 
+The current Gamma--Beta reduced likelihood does not yet have this property.
+For an inactive subtree, its coarse design and rendered native field fill
+descendants at their nominal proportions. The hidden Beta fractions are not
+integrated out. Candidate frontiers are therefore partition-specific reduced
+models, and unequal evidence is expected when footprint columns differ.
+
 This branch has a strict interpretation gate:
 
 - if the same root model and exact/adequate reduced likelihood are used, any
@@ -444,12 +474,15 @@ The bounded programme is:
 
 1. reproduce evidence invariance in a linear-Gaussian two-cell/multiscale
    oracle with exact aggregation covariance;
-2. use a positive Gamma--Beta two-cell model with one-dimensional quadrature
-   to compare exact marginalization, explicit hidden-share inference,
-   Gaussian moment closure, and a small conditional Gaussian mixture;
-3. add a tiny multi-partition tree and require common prior-predictive
-   evidence, projective tower consistency, likelihood normalization,
-   gradients, posterior agreement, and simulation-based calibration;
+2. use a positive Gamma--Beta two-cell model with endpoint-aware
+   Gauss--Jacobi quadrature for the hidden share and generalized
+   Gauss--Laguerre quadrature for the Gamma total, comparing exact
+   marginalization, explicit hidden-share inference, Gaussian moment closure,
+   and nominal filling;
+3. enumerate the five frontiers of a \(2\times2\) canonical tree and require
+   common prior-predictive evidence, recovery of a nonuniform structural
+   prior, projective tower consistency, likelihood normalization, common-total
+   posterior agreement, and a deliberate nominal-fill failure sentinel;
 4. attempt a conditional flow only if the normalized mixture fails a
    predeclared density/calibration gate; and
 5. assess the 1,382-observation PARIS problem only after a low-rank or
