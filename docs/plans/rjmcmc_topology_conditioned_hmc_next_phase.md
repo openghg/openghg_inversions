@@ -193,6 +193,43 @@ integrator, and reversibility checks.
 
 ## Implementation sequence
 
+### D0 boundary audit result
+
+The first BP1 run of commit `7f7b150` stopped before metric calibration. The
+candidate independently mapped every newly created physical mass through
+`log -> exp` but retained the original Beta-fraction proposal terms. In the
+\(K=50\) audit, 4 of 10,004 forward-valid structural proposals had no
+representable reverse fraction because the exact-real share rounded to a
+binary64 endpoint. Among the reverse paths that could be materialized, the
+largest relative mass round-trip discrepancy was 0.5 for an extremely small
+child. Skipping these paths would bias the audit, so the run was terminated
+and no D1/D2 calibration result is valid.
+
+The repair is an HMC-specific geometry proposal in the authoritative log-mass
+chart. It uses an exact involutive coordinate permutation:
+
+- an edge flip transfers the two old child log-mass bit patterns to the two
+  new perpendicular children in canonical child order; and
+- a resolution relocation transfers the old destination log mass to the new
+  merged parent and the two old merge-child log masses to the two new
+  destination children.
+
+Unchanged leaves retain their exact coordinates. The move has unit Jacobian
+and no Beta auxiliary. Its MH ratio uses the same transformed target as the
+PyMC HMC kernel,
+
+\[
+\ell_\tau(x,y)
+=
+\log\pi_\tau\{\exp(x),\exp(y)\}
++\sum_i x_i-(K-1)\operatorname{logsumexp}(x)+\sum_j y_j,
+\]
+
+plus reverse-minus-forward discrete selection probabilities. The reverse
+geometry must reproduce topology and coordinate bits exactly. Proposal,
+schedule, checkpoint, and calibration identities must change before the BP1
+plan is restarted.
+
 ### Phase 0: topology/position curvature audit
 
 Before changing the sampler, use the recorded H2c seeds and first-sweep
@@ -501,6 +538,68 @@ This branch has a strict interpretation gate:
 - a complexity or computational penalty can guide a basis decision, but it is
   not observational evidence among exact representations.
 
+The first scalable approximation should not be a full observation-space flow.
+For native cell shapes \(\alpha_i\), active region \(G_j\), retained mass
+\(A_j\), and \(u_{ji}=\alpha_i/\alpha_{G_j}\), the existing nominal renderer
+is already the exact conditional mean
+
+\[
+g_P(A)_i=A_j u_{ji}.
+\]
+
+The hidden allocation covariance is also analytic:
+
+\[
+\operatorname{Cov}(X_{G_j}\mid A,P)
+=
+\frac{A_j^2}{\alpha_{G_j}+1}
+\{\operatorname{diag}(u_j)-u_ju_j^\mathsf T\}.
+\]
+
+Choose a fixed Euclidean-orthonormal basis \(B\) in
+measurement-error-whitened observation space, without using the observed
+residual, and precompute
+
+\[
+W=B^\mathsf T D^{-1/2}H.
+\]
+
+The corresponding projected aggregation covariance \(S_P(A)\) is a sum of
+centered, weighted region Gram matrices. A normalized Gaussian hybrid then
+has log density
+
+\[
+\log \phi_n(r)
+-\tfrac12\log|I+S_P(A)|
+-\tfrac12z^\mathsf T(I+S_P(A))^{-1}z
++\tfrac12z^\mathsf Tz,
+\qquad
+r=D^{-1/2}\{y-\mu_P(A)\},\quad z=B^\mathsf Tr.
+\]
+
+This closure has the exact conditional mean and covariance in the retained
+summary but is not generally the exact Dirichlet-mixture likelihood.
+Normalization alone therefore does **not** imply evidence invariance. It may
+be promoted for fixed-partition inference after likelihood/posterior gates,
+while use inside a structural posterior additionally requires held-out tower
+and absolute-evidence gates.
+
+Only if the Gaussian shape gate fails should the next approximation be a
+normalized transported Gaussian mixture in the fixed summary space. A
+conditional flow is deferred until that mixture fails held-out likelihood,
+tail, or calibration tests. A finite learned surrogate still cannot guarantee
+\(p(P\mid y)=p(P)\); that guarantee belongs to the exact kernel, or to the
+converged estimator limit. Until the evidence gate passes, externally drawing
+partitions from their declared prior and retaining those weights is safer than
+allowing surrogate evidence to update them.
+
+There is also a cross-\(K\) model-identity condition. The current
+\(\kappa=2K\) rule changes the total native Dirichlet concentration with
+\(K\). It cannot support the claim that \(K=50\) and \(K=250\) are merely two
+representations of one native prior. A test in which data are prohibited from
+informing \(K\) must instead freeze one native cell-alpha field, including its
+total concentration, across every partition and \(K\).
+
 The bounded programme is:
 
 1. **Complete:** reproduce evidence invariance in a linear-Gaussian
@@ -520,11 +619,19 @@ The bounded programme is:
    one-side-split \(K=3\) frontiers and enumerate all five frontiers of each
    fixed-orientation canonical tree. These are not needed to establish that
    row-first and column-first root histories represent one state;
-5. attempt a conditional flow only if the normalized mixture fails a
-   predeclared density/calibration gate; and
-6. assess the 1,382-observation PARIS problem only after a low-rank or
-   factor-analytic residual representation has an auditable normalized joint
-   density and held-out partition/operator tests.
+5. implement the exact conditional moment oracle and normalized low-rank
+   Gaussian hybrid, checking dense/low-rank likelihood identity, gradients,
+   normalization, and deliberate evidence error in skewed tiny cases;
+6. on moderate synthetic operators, separate Gaussian-shape error from
+   low-rank compression error and select rank by likelihood, gradient,
+   posterior, and evidence tolerances rather than explained variance;
+7. assess fixed-partition PARIS inference only after held-out topology and
+   operator tests pass, with structural inference remaining disabled unless
+   absolute evidence drift is also below its predeclared tolerance;
+8. fit a normalized transported summary-space Gaussian mixture only if the
+   Gaussian scientific-shape gate fails; and
+9. attempt a conditional flow only if that normalized mixture fails a
+   predeclared density/calibration gate.
 
 In the exact-representation limit there is little inferential reason to spend
 computation mixing over \(K\) and partitions. A greedy/SLS basis can instead
