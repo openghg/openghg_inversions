@@ -20,10 +20,11 @@ full-tiling model and deliberately does not widen the Voronoi state schema.
 The construction-history-free full-tiling track currently provides a
 fixed-``K`` NumPy smoke sampler with edge flips, resolution relocations, and
 an additive-alpha allocation prior. It includes an exact log-root slice
-update, output-only movement diagnostics, and strict durable continuation.
-Production-grid connectivity and variable-``K`` inference are not yet
-claimed. Full-tiling APIs remain explicitly module-qualified while this track
-is experimental.
+update, output-only movement diagnostics, strict durable continuation, and an
+optional static PyMC HMC transition over all continuous coordinates after
+each topology attempt. Production-grid connectivity and variable-``K``
+inference are not yet claimed. Full-tiling APIs remain explicitly
+module-qualified while this track is experimental.
 """
 
 from openghg_inversions.experimental.rjmcmc.core import (
