@@ -1,38 +1,47 @@
 """Experimental PyMC compound kernel for mobile fixed-``K`` full tilings.
 
 This module composes one existing full-tiling structural Metropolis--Hastings
-proposal with one static PyMC Hamiltonian Monte Carlo trajectory.  The
+proposal with one topology-conditioned PyMC Hamiltonian Monte Carlo trajectory.  The
 continuous HMC chart is symmetric in the active leaves: ``x_i = log(m_i)``
 for leaf masses and ``y_j = log(c_j)`` for always-active coefficients.
 The PyMC model uses flat computational variables plus one explicitly
 normalized potential for the scientific ``(T, shares, c)`` target, including
 the chart Jacobians.
 
-Topology-dependent design columns and Dirichlet shapes are same-shaped
-``pm.Data`` containers.  A custom ``BlockedStep`` owns a harmless one-state
-discrete token, calls the existing structural draw and acceptance functions
-unchanged in scientific coordinates, updates both data containers before HMC,
-and reseeds the PyMC HMC step from the sole NumPy PCG64 stream on every sweep.
+Topology-dependent design columns, Dirichlet shapes, and the Dirichlet log
+normalizer are ``pm.Data`` containers. A custom ``BlockedStep`` owns a harmless
+one-state discrete token, calls the existing structural draw and acceptance
+functions, rebuilds every valid proposal in the authoritative log-coordinate
+chart before MH, updates all three topology-data containers before HMC, and
+reseeds the PyMC HMC step from the sole NumPy PCG64 stream on every sweep.
 Thus accepted, rejected, and invalid structural attempts are all followed by
 exactly one HMC trajectory.
 
-The HMC kernel is deliberately static: no tuning, step-size randomization, or
-topology-dependent metric is allowed. Its leaf block has separate static
-position-covariance eigenscales for normalized-common total motion and
-orthogonal log-mass contrasts; fixed coefficients retain an ordered diagonal
-block. In-memory checkpoints retain the scientific state, exact unconstrained
-coordinates, immutable settings, sweep coordinate, and master PCG64 state.
+The HMC kernel is deliberately non-adapting: no tuning or step-size
+randomization is allowed.  Before every trajectory, including after rejected
+and invalid structural attempts, it installs the deterministic
+Gamma--Dirichlet--lognormal prior plus likelihood Gauss--Newton reference
+precision for the selected topology.  In-memory checkpoints retain the
+scientific state, exact unconstrained coordinates, immutable metric identities,
+resolved precision hash, sweep coordinate, and master PCG64 state.
 Reconstructing and reseeding PyMC at every continuation boundary makes split
 execution exactly replayable without persisting mutable backend sampler state.
 Fresh initializer states instead pass through
 :func:`canonicalize_full_tiling_pymc_hmc_fresh_state` before draw zero so their
 physical values decode exactly from the authoritative log coordinates. This
 explicitly experimental module performs no durable file I/O.
+
+The principal public entry points build the topology precision and model with
+:func:`build_full_tiling_pymc_hmc_topology_precision` and
+:func:`build_full_tiling_pymc_hmc_model`, then run fresh or continued segments
+with :func:`sample_full_tiling_pymc_hmc` and
+:func:`continue_full_tiling_pymc_hmc`.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 from importlib import import_module
 import math
 from numbers import Integral
@@ -50,6 +59,7 @@ from .full_tiling_compound_sampling import _draw_structural_transition
 from .full_tiling_posterior import (
     FullTilingPosteriorState,
     FullTilingProblem,
+    PosteriorTransitionTerms,
     accept_or_reject,
     build_full_tiling_posterior_state,
 )
@@ -64,19 +74,25 @@ BoolArray: TypeAlias = NDArray[np.bool_]
 StringArray: TypeAlias = NDArray[np.str_]
 UIntArray: TypeAlias = NDArray[np.uint64]
 
-FULL_TILING_PYMC_HMC_SCHEDULE_ID = "full_tiling_1_structure_1_static_pymc_hmc_v2"
+FULL_TILING_PYMC_HMC_SCHEDULE_ID = "full_tiling_1_log_boundary_structure_1_topology_conditioned_pymc_hmc_v4"
 """Versioned identity of the structural-then-HMC sweep."""
 
 FULL_TILING_PYMC_HMC_COORDINATE_LAYOUT_ID = "symmetric_log_leaf_mass_then_log_fixed_coefficient_v1"
 """Versioned ordering and interpretation of the HMC value coordinates."""
 
-FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID = (
-    "pymc_position_covariance_momentum_precision_normalized_common_contrast_projector_v2"
-)
-"""Versioned meaning of the full matrix passed to PyMC with ``is_cov=True``."""
+FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID = "pymc_scaling_topology_reference_precision_is_cov_false_v3"
+"""Versioned meaning of the full matrix passed to PyMC with ``is_cov=False``."""
+
+FULL_TILING_PYMC_HMC_METRIC_BUILDER_ID = "gamma_dirichlet_lognormal_gauss_newton_reference_precision_v1"
+"""Versioned arithmetic and validation used to construct each precision."""
+
+FULL_TILING_PYMC_HMC_METRIC_REFERENCE_ID = "gamma_mean_nominal_dirichlet_shares_fixed_arithmetic_means_v1"
+"""Versioned topology-dependent continuous reference coordinates."""
 
 __all__ = [
     "FULL_TILING_PYMC_HMC_COORDINATE_LAYOUT_ID",
+    "FULL_TILING_PYMC_HMC_METRIC_BUILDER_ID",
+    "FULL_TILING_PYMC_HMC_METRIC_REFERENCE_ID",
     "FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID",
     "FULL_TILING_PYMC_HMC_SCHEDULE_ID",
     "FullTilingPyMCHMCCheckpoint",
@@ -85,6 +101,7 @@ __all__ = [
     "FullTilingPyMCHMCRuntimeIdentity",
     "FullTilingPyMCHMCSamplingResult",
     "FullTilingPyMCHMCTrace",
+    "build_full_tiling_pymc_hmc_topology_precision",
     "build_full_tiling_pymc_hmc_model",
     "canonicalize_full_tiling_pymc_hmc_fresh_state",
     "continue_full_tiling_pymc_hmc",
@@ -132,8 +149,8 @@ class FullTilingPyMCHMCRuntimeIdentity:
         pytensor_version: PyTensor version.
         pytensor_float_x: Required PyTensor floating-point default.
         coordinate_layout_id: Versioned unconstrained-coordinate ordering.
-        metric_semantics_id: Versioned interpretation of the PyMC position
-            covariance, equivalently momentum precision.
+        metric_semantics_id: Versioned interpretation of the topology
+            precision passed to PyMC.
     """
 
     python_minor: str
@@ -212,33 +229,6 @@ def _positive_integer(value: object, *, name: str, allow_zero: bool = False) -> 
     return result
 
 
-def _normalize_position_scale(
-    value: float | ArrayLike,
-    *,
-    name: str,
-) -> float | tuple[float, ...]:
-    """Normalize a positive scalar or one-dimensional position-scale block."""
-    array = np.asarray(value)
-    if array.ndim == 0:
-        return _positive_float(array.item(), name=name)
-    if array.ndim != 1:
-        raise ValueError(f"{name} must be scalar or one-dimensional.")
-    return tuple(_positive_float(item, name=name) for item in array.tolist())
-
-
-def _resolve_fixed_position_scale(
-    value: float | tuple[float, ...],
-    *,
-    n_fixed: int,
-) -> tuple[float, ...]:
-    """Resolve one shared or position-specific PyMC position scale."""
-    if isinstance(value, tuple):
-        if len(value) != n_fixed:
-            raise ValueError("fixed_coefficient_position_scale must have one entry per fixed coefficient.")
-        return value
-    return (value,) * n_fixed
-
-
 def _readonly_array(
     values: object,
     *,
@@ -311,6 +301,209 @@ def _fixed_log_parameters(problem: FullTilingProblem) -> tuple[FloatArray, Float
     )
 
 
+def _validate_topology_precision(values: ArrayLike) -> FloatArray:
+    """Return one owned, symmetric, read-only positive-definite precision.
+
+    Args:
+        values: Candidate square dense precision matrix.
+
+    Returns:
+        Owned read-only ``float64`` matrix.
+
+    Raises:
+        ValueError: If the matrix is not square, finite, exactly symmetric in
+            binary64, or strictly positive definite.
+    """
+    result = np.array(values, dtype=np.float64, copy=True)
+    if result.ndim != 2 or result.shape[0] != result.shape[1] or result.shape[0] < 1:
+        raise ValueError("topology precision must be a non-empty square matrix.")
+    if np.any(~np.isfinite(result)):
+        raise ValueError("topology precision must contain only finite values.")
+    if not np.array_equal(result, result.T):
+        raise ValueError("topology precision must be exactly symmetric in binary64.")
+    try:
+        np.linalg.cholesky(result)
+    except np.linalg.LinAlgError as error:
+        raise ValueError("topology precision must be strictly positive definite.") from error
+    result.setflags(write=False)
+    return result
+
+
+def _assemble_topology_reference_precision(
+    *,
+    dynamic_design: ArrayLike,
+    alpha: ArrayLike,
+    root_shape: float,
+    root_rate: float,
+    fixed_design: ArrayLike,
+    fixed_reference: ArrayLike,
+    fixed_log_sigma: ArrayLike,
+    observation_sd: ArrayLike,
+    likelihood_power: float,
+) -> FloatArray:
+    """Assemble the exact topology-reference prior plus Gauss--Newton precision.
+
+    This pure array seam also defines permutation equivariance: applying the
+    same leaf permutation to ``dynamic_design`` and ``alpha`` permutes the
+    corresponding rows and columns of the returned precision, while the fixed
+    block remains in its declared order.
+
+    Args:
+        dynamic_design: Observation-by-leaf design matrix in leaf order.
+        alpha: Positive Dirichlet shapes in the same leaf order.
+        root_shape: Positive Gamma root shape.
+        root_rate: Positive Gamma root rate.
+        fixed_design: Observation-by-fixed-coefficient design matrix.
+        fixed_reference: Positive arithmetic prior means for the fixed block.
+        fixed_log_sigma: Positive lognormal log-space standard deviations.
+        observation_sd: Positive observation standard deviations.
+        likelihood_power: Non-negative likelihood multiplier.
+
+    Returns:
+        Owned read-only dense reference precision in leaf-then-fixed order.
+
+    Raises:
+        ValueError: If input dimensions or support are inconsistent, or the
+            assembled precision fails finite, symmetry, or positive-definite
+            validation.
+    """
+    design = np.asarray(dynamic_design, dtype=np.float64)
+    shapes = np.asarray(alpha, dtype=np.float64)
+    fixed = np.asarray(fixed_design, dtype=np.float64)
+    fixed_mean = np.asarray(fixed_reference, dtype=np.float64)
+    fixed_sigma = np.asarray(fixed_log_sigma, dtype=np.float64)
+    sd = np.asarray(observation_sd, dtype=np.float64)
+    if design.ndim != 2 or shapes.ndim != 1 or design.shape[1] != shapes.size or shapes.size < 1:
+        raise ValueError("dynamic design and alpha must define one or more aligned leaves.")
+    if fixed.ndim != 2 or fixed.shape[0] != design.shape[0]:
+        raise ValueError("fixed design must be two-dimensional and observation-aligned.")
+    if fixed.shape[1] != fixed_mean.size or fixed_mean.shape != fixed_sigma.shape:
+        raise ValueError("fixed reference arrays must align with the fixed design.")
+    if sd.shape != (design.shape[0],):
+        raise ValueError("observation_sd must contain one value per design row.")
+    scalars = np.asarray([root_shape, root_rate, likelihood_power], dtype=np.float64)
+    if (
+        np.any(~np.isfinite(design))
+        or np.any(~np.isfinite(shapes))
+        or np.any(shapes <= 0.0)
+        or np.any(~np.isfinite(fixed))
+        or np.any(~np.isfinite(fixed_mean))
+        or np.any(fixed_mean <= 0.0)
+        or np.any(~np.isfinite(fixed_sigma))
+        or np.any(fixed_sigma <= 0.0)
+        or np.any(~np.isfinite(sd))
+        or np.any(sd <= 0.0)
+        or np.any(~np.isfinite(scalars))
+        or root_shape <= 0.0
+        or root_rate <= 0.0
+        or likelihood_power < 0.0
+    ):
+        raise ValueError("topology-reference precision inputs violate finite support.")
+
+    kappa = float(shapes.sum())
+    shares = shapes / kappa
+    root_reference = root_shape / root_rate
+    share_covariance = np.diag(shares) - np.outer(shares, shares)
+    share_outer = np.outer(shares, shares)
+    leaf_prior = (
+        kappa - root_shape + root_rate * root_reference
+    ) * share_covariance + root_rate * root_reference * share_outer
+    dimension = shapes.size + fixed_mean.size
+    prior = np.zeros((dimension, dimension), dtype=np.float64)
+    prior[: shapes.size, : shapes.size] = leaf_prior
+    if fixed_mean.size:
+        fixed_indices = np.arange(shapes.size, dimension)
+        prior[fixed_indices, fixed_indices] = 1.0 / np.square(fixed_sigma)
+
+    if likelihood_power == 0.0:
+        likelihood_precision = np.zeros_like(prior)
+    else:
+        leaf_reference = root_reference * shares
+        jacobian = np.concatenate(
+            (
+                design * leaf_reference[np.newaxis, :],
+                fixed * fixed_mean[np.newaxis, :],
+            ),
+            axis=1,
+        )
+        whitened_jacobian = jacobian / sd[:, np.newaxis]
+        with np.errstate(over="ignore", invalid="ignore"):
+            likelihood_precision = likelihood_power * (whitened_jacobian.T @ whitened_jacobian)
+    return _validate_topology_precision(prior + likelihood_precision)
+
+
+def build_full_tiling_pymc_hmc_topology_precision(
+    problem: FullTilingProblem,
+    state: FullTilingPosteriorState,
+) -> FloatArray:
+    """Build the deterministic HMC precision for one selected topology.
+
+    The reference root total is the Gamma prior mean ``shape / rate``. Leaf
+    shares are the topology's Dirichlet shapes normalized by their sum, and
+    fixed coefficients use their arithmetic lognormal prior means. The exact
+    transformed Gamma--Dirichlet and lognormal prior negative Hessian is added
+    to ``likelihood_power * J.T @ J`` after row whitening by
+    ``observation_sd``. The current continuous values in ``state`` are never
+    consulted.
+
+    Args:
+        problem: Frozen full-tiling likelihood and prior inputs.
+        state: State supplying the selected topology and canonical leaf order.
+
+    Returns:
+        Owned read-only finite symmetric positive-definite ``float64`` matrix
+        in log-leaf-mass then log-fixed-coefficient order.
+
+    Raises:
+        TypeError: If either argument has an incompatible public type.
+        ValueError: If the state belongs to another problem or the reference
+            precision is non-finite, asymmetric, or not positive definite.
+    """
+    if not isinstance(problem, FullTilingProblem):
+        raise TypeError("problem must be a FullTilingProblem.")
+    if not isinstance(state, FullTilingPosteriorState):
+        raise TypeError("state must be a FullTilingPosteriorState.")
+    if state.problem is not problem:
+        raise ValueError("state must belong to the exact supplied problem.")
+    dynamic_design, alpha, _ = _topology_arrays(problem, state)
+    fixed_block = problem.base.fixed_block
+    if fixed_block is None:
+        fixed_design = np.empty((problem.observations.size, 0), dtype=np.float64)
+        fixed_reference = np.empty(0, dtype=np.float64)
+    else:
+        fixed_design = fixed_block.design
+        fixed_reference = fixed_block.coefficient_prior_mean
+    _, fixed_log_sigma = _fixed_log_parameters(problem)
+    prior = problem.base.prior
+    return _assemble_topology_reference_precision(
+        dynamic_design=dynamic_design,
+        alpha=alpha,
+        root_shape=prior.root_shape,
+        root_rate=prior.root_rate,
+        fixed_design=fixed_design,
+        fixed_reference=fixed_reference,
+        fixed_log_sigma=fixed_log_sigma,
+        observation_sd=problem.observation_sd,
+        likelihood_power=problem.base.likelihood_power,
+    )
+
+
+def _topology_precision_sha256(precision: FloatArray) -> str:
+    """Hash a precision using the canonical checkpoint byte encoding.
+
+    Args:
+        precision: Dense precision matrix.
+
+    Returns:
+        Lowercase SHA-256 hex digest of little-endian int64 shape bytes
+        followed by C-order little-endian float64 matrix bytes.
+    """
+    digest = hashlib.sha256()
+    digest.update(np.asarray(precision.shape, dtype="<i8").tobytes())
+    digest.update(np.asarray(precision, dtype="<f8", order="C").tobytes(order="C"))
+    return digest.hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class FullTilingPyMCHMCConfig:
     """Configuration for a fresh compound structural plus HMC segment.
@@ -321,19 +514,7 @@ class FullTilingPyMCHMCConfig:
             ``exp(log(epsilon))`` representation may move the effective value
             reported in the trace by one binary64 ULP.
         leapfrog_steps: Exact positive number of leapfrog steps per sweep.
-        leaf_contrast_position_scale: Positive PyMC position-covariance scale
-            for leaf log-mass contrasts, equivalently momentum precision on
-            the contrast subspace.
-        fixed_coefficient_position_scale: Shared positive PyMC
-            position-covariance scale or a positive vector in deterministic
-            fixed-coefficient order, equivalently momentum precision.
         seed: Optional non-negative seed for the sole NumPy PCG64 stream.
-        leaf_total_position_scale: Optional positive PyMC
-            position-covariance scale for the normalized common leaf
-            log-mass direction, equivalently momentum precision on that
-            direction. ``None`` resolves to
-            ``leaf_contrast_position_scale``. This new v2 setting is
-            keyword-only so legacy positional calls retain their meaning.
 
     Raises:
         TypeError: If integer or scalar settings have invalid types.
@@ -343,10 +524,7 @@ class FullTilingPyMCHMCConfig:
     iterations: int
     step_size: float
     leapfrog_steps: int
-    leaf_contrast_position_scale: float = 1.0
-    fixed_coefficient_position_scale: float | tuple[float, ...] = 1.0
-    seed: int | None = None
-    leaf_total_position_scale: float | None = field(default=None, kw_only=True)
+    seed: int | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         """Normalize and validate problem-independent settings."""
@@ -365,31 +543,6 @@ class FullTilingPyMCHMCConfig:
             "leapfrog_steps",
             _positive_integer(self.leapfrog_steps, name="leapfrog_steps"),
         )
-        object.__setattr__(
-            self,
-            "leaf_contrast_position_scale",
-            _positive_float(
-                self.leaf_contrast_position_scale,
-                name="leaf_contrast_position_scale",
-            ),
-        )
-        if self.leaf_total_position_scale is not None:
-            object.__setattr__(
-                self,
-                "leaf_total_position_scale",
-                _positive_float(
-                    self.leaf_total_position_scale,
-                    name="leaf_total_position_scale",
-                ),
-            )
-        object.__setattr__(
-            self,
-            "fixed_coefficient_position_scale",
-            _normalize_position_scale(
-                self.fixed_coefficient_position_scale,
-                name="fixed_coefficient_position_scale",
-            ),
-        )
         if self.seed is not None:
             object.__setattr__(
                 self,
@@ -400,7 +553,7 @@ class FullTilingPyMCHMCConfig:
 
 @dataclass(frozen=True, slots=True)
 class FullTilingPyMCHMCKernelSettings:
-    """Immutable problem-resolved static HMC kernel settings.
+    """Immutable problem-resolved topology-conditioned HMC settings.
 
     Args:
         fixed_k: Positive leaf count preserved by the structural kernel.
@@ -408,26 +561,20 @@ class FullTilingPyMCHMCKernelSettings:
             PyMC value is recorded for every sweep and may differ by one
             binary64 ULP.
         leapfrog_steps: Exact number of leapfrog steps.
-        leaf_contrast_position_scale: PyMC position-covariance eigenvalue on the
-            leaf log-mass contrast subspace, equivalently momentum precision.
-        fixed_coefficient_position_scale: Resolved per-coefficient PyMC
-            position-covariance diagonal, equivalently momentum precision.
-        leaf_total_position_scale: PyMC position-covariance eigenvalue on the
-            normalized common leaf log-mass direction, equivalently momentum
-            precision.
+        metric_builder_id: Exact precision arithmetic and validation identity.
+        metric_reference_id: Exact topology-reference coordinate identity.
 
     Raises:
         TypeError: If an integer setting has an invalid type.
-        ValueError: If a scale, trajectory length, dimension, or count lies
-            outside supported ranges.
+        ValueError: If a trajectory control or metric identity is
+            incompatible.
     """
 
     fixed_k: int
     step_size: float
     leapfrog_steps: int
-    leaf_contrast_position_scale: float
-    fixed_coefficient_position_scale: tuple[float, ...]
-    leaf_total_position_scale: float
+    metric_builder_id: str = FULL_TILING_PYMC_HMC_METRIC_BUILDER_ID
+    metric_reference_id: str = FULL_TILING_PYMC_HMC_METRIC_REFERENCE_ID
 
     def __post_init__(self) -> None:
         """Validate all resolved settings and finite trajectory length."""
@@ -442,107 +589,10 @@ class FullTilingPyMCHMCKernelSettings:
             raise ValueError("step_size times leapfrog_steps must be finite.")
         object.__setattr__(self, "step_size", step_size)
         object.__setattr__(self, "leapfrog_steps", steps)
-        object.__setattr__(
-            self,
-            "leaf_contrast_position_scale",
-            _positive_float(
-                self.leaf_contrast_position_scale,
-                name="leaf_contrast_position_scale",
-            ),
-        )
-        total_position_scale = _positive_float(
-            self.leaf_total_position_scale,
-            name="leaf_total_position_scale",
-        )
-        object.__setattr__(self, "leaf_total_position_scale", total_position_scale)
-        masses = tuple(
-            _positive_float(
-                value,
-                name="fixed_coefficient_position_scale",
-            )
-            for value in self.fixed_coefficient_position_scale
-        )
-        object.__setattr__(
-            self,
-            "fixed_coefficient_position_scale",
-            masses,
-        )
-        dimension_factor = (self.fixed_k + len(self.fixed_coefficient_position_scale)) ** 0.25
-        if not math.isfinite(self.step_size * dimension_factor):
-            raise ValueError("dimension-adjusted PyMC step scale must be finite.")
-        _build_position_scale_matrix(self)
-
-    @property
-    def position_scale_matrix(self) -> FloatArray:
-        """Return the permutation-invariant PyMC position covariance.
-
-        The leaf block is
-        ``g_contrast * (I - 11' / K) + g_total * (11' / K)``. It is followed
-        by the ordered fixed-coefficient diagonal, with an exactly zero
-        cross-block.
-
-        Returns:
-            Owned read-only symmetric positive-definite ``float64`` array of
-            shape ``(fixed_k + n_fixed, fixed_k + n_fixed)``.
-        """
-        return _build_position_scale_matrix(self)
-
-    @property
-    def position_scale_diagonal(self) -> FloatArray:
-        """Return the diagonal of the PyMC position-covariance matrix.
-
-        This diagnostic projection does not contain the off-diagonal leaf
-        covariances when the total and contrast scales differ. It cannot
-        reconstruct the full matrix supplied to PyMC.
-
-        Returns:
-            Read-only float64 array of shape ``(fixed_k + n_fixed,)``, with
-            the leaf-block diagonal followed by fixed-coefficient order.
-        """
-        result = np.diag(self.position_scale_matrix).copy()
-        result.setflags(write=False)
-        return result
-
-
-def _build_position_scale_matrix(
-    settings: FullTilingPyMCHMCKernelSettings,
-) -> FloatArray:
-    """Build and validate the full topology-neutral position covariance.
-
-    Args:
-        settings: Resolved positive leaf eigenscales and fixed diagonal.
-
-    Returns:
-        Owned read-only finite symmetric positive-definite matrix.
-
-    Raises:
-        ValueError: If binary64 construction does not produce a finite,
-            symmetric positive-definite matrix.
-    """
-    fixed_k = settings.fixed_k
-    dimension = fixed_k + len(settings.fixed_coefficient_position_scale)
-    common = np.full(
-        (fixed_k, fixed_k),
-        1.0 / fixed_k,
-        dtype=np.float64,
-    )
-    leaf_block = (
-        settings.leaf_contrast_position_scale * np.eye(fixed_k, dtype=np.float64)
-        + (settings.leaf_total_position_scale - settings.leaf_contrast_position_scale) * common
-    )
-    result = np.zeros((dimension, dimension), dtype=np.float64)
-    result[:fixed_k, :fixed_k] = leaf_block
-    if settings.fixed_coefficient_position_scale:
-        fixed_indices = np.arange(fixed_k, dimension)
-        result[fixed_indices, fixed_indices] = settings.fixed_coefficient_position_scale
-    if np.any(~np.isfinite(result)) or not np.array_equal(result, result.T):
-        raise ValueError("position scale matrix must be finite and symmetric.")
-    try:
-        np.linalg.cholesky(result)
-    except np.linalg.LinAlgError as error:
-        raise ValueError("position scale matrix must be positive definite.") from error
-    result.setflags(write=False)
-    return result
+        if self.metric_builder_id != FULL_TILING_PYMC_HMC_METRIC_BUILDER_ID:
+            raise ValueError("metric_builder_id is incompatible.")
+        if self.metric_reference_id != FULL_TILING_PYMC_HMC_METRIC_REFERENCE_ID:
+            raise ValueError("metric_reference_id is incompatible.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -567,7 +617,8 @@ class FullTilingPyMCHMCTrace:
         structural_move: Existing structural proposal name.
         structural_valid: Whether the structural proposal reached MH.
         structural_accepted: Whether the topology/masses changed.
-        structural_log_acceptance_ratio: Raw untruncated structural log ratio.
+        structural_log_acceptance_ratio: Untruncated structural log ratio
+            after authoritative-boundary target correction for valid moves.
         structural_invalid_reason: Empty for valid proposals.
         hmc_start_log_leaf_mass: Post-structure, pre-HMC leaf log masses in the
             same canonical order as the corresponding post-HMC state.
@@ -777,8 +828,11 @@ class FullTilingPyMCHMCCheckpoint:
         log_fixed_coefficient: Exact authoritative PyMC ``y`` coordinate.
         rng_state: Exact state of the sole master PCG64 stream.
         sweeps_completed: Global number of completed compound sweeps.
-        kernel_settings: Complete static HMC settings.
+        kernel_settings: Complete non-adapting HMC and metric settings.
         runtime_identity: Backend, precision, layout, and metric identity.
+        topology_precision_sha256: Lowercase SHA-256 of little-endian int64
+            shape bytes followed by C-order little-endian float64 bytes for
+            the resolved precision. Validation recomputes it from ``state``.
         schedule_id: Exact compatible schedule identifier.
 
     Raises:
@@ -798,6 +852,7 @@ class FullTilingPyMCHMCCheckpoint:
     sweeps_completed: int
     kernel_settings: FullTilingPyMCHMCKernelSettings
     runtime_identity: FullTilingPyMCHMCRuntimeIdentity
+    topology_precision_sha256: str
     schedule_id: str = FULL_TILING_PYMC_HMC_SCHEDULE_ID
 
     def __post_init__(self) -> None:
@@ -850,14 +905,20 @@ class FullTilingPyMCHMCCheckpoint:
             raise TypeError("runtime_identity must be a FullTilingPyMCHMCRuntimeIdentity.")
         if self.state.k != self.kernel_settings.fixed_k:
             raise ValueError("checkpoint state K must match fixed kernel K.")
-        if self.state.fixed_coefficients.size != len(self.kernel_settings.fixed_coefficient_position_scale):
-            raise ValueError("checkpoint fixed block must match resolved position scales.")
         if self.schedule_id != FULL_TILING_PYMC_HMC_SCHEDULE_ID:
             raise ValueError("checkpoint schedule is incompatible.")
         if self.runtime_identity != full_tiling_pymc_hmc_runtime_identity():
             raise ValueError("checkpoint runtime identity is incompatible.")
         if not math.isfinite(self.state.log_target):
             raise ValueError("checkpoint state must have finite target support.")
+        expected_precision_hash = _topology_precision_sha256(
+            build_full_tiling_pymc_hmc_topology_precision(
+                self.problem,
+                self.state,
+            )
+        )
+        if self.topology_precision_sha256 != expected_precision_hash:
+            raise ValueError("checkpoint topology precision hash is incompatible.")
         object.__setattr__(self, "log_leaf_mass", log_leaf_mass)
         object.__setattr__(self, "log_fixed_coefficient", log_fixed)
         object.__setattr__(self, "sweeps_completed", completed)
@@ -1079,13 +1140,12 @@ def _set_topology_data_atomically(
     Raises:
         KeyError: If a required mutable-data container is absent.
         ValueError: If either array update would change its container shape.
-        Exception: Propagates a container update failure after restoring all
-            three original values.
+        Exception: Propagates an assignment or rollback failure.
 
     Notes:
-        This function mutates the model only when all three assignments
-        succeed. A failed assignment restores copies of the complete prior
-        topology payload before re-raising.
+        Assignments occur sequentially. On failure, the helper attempts to
+        restore all saved values before re-raising; a rollback failure
+        propagates and may leave partial state.
     """
     dynamic_data = model["dynamic_design"]
     alpha_data = model["dirichlet_alpha"]
@@ -1112,6 +1172,264 @@ def _set_topology_data_atomically(
         raise
 
 
+def _build_topology_hmc_objects(
+    hmc: Any,
+    precision: FloatArray,
+) -> tuple[Any, Any]:
+    """Build a dense inverse potential and matching CPU integrator.
+
+    The fixed local generator only satisfies the new potential's construction
+    contract. It is never derived from, and cannot advance, the sampler's
+    authoritative PCG64 stream. ``BaseHMC.set_rng`` replaces it after atomic
+    installation and before momentum generation.
+
+    Args:
+        hmc: Existing PyMC HMC step supplying the compiled logp/gradient
+            function.
+        precision: Validated topology-reference precision.
+
+    Returns:
+        A new ``QuadPotentialFullInv`` and a new
+        ``CpuLeapfrogIntegrator`` that references it.
+
+    Raises:
+        ImportError: If the required PyMC HMC internals are unavailable.
+    """
+    quadpotential = import_module("pymc.step_methods.hmc.quadpotential")
+    integration = import_module("pymc.step_methods.hmc.integration")
+    potential = quadpotential.QuadPotentialFullInv(
+        np.array(precision, dtype=np.float64, copy=True),
+        rng=np.random.Generator(np.random.PCG64(0)),
+    )
+    integrator = integration.CpuLeapfrogIntegrator(
+        potential,
+        hmc._logp_dlogp_func,
+    )
+    return potential, integrator
+
+
+def _install_topology_kernel_atomically(
+    model: Any,
+    hmc: Any,
+    *,
+    dynamic_design: FloatArray,
+    alpha: FloatArray,
+    dirichlet_log_normalizer: float,
+    precision: FloatArray,
+) -> tuple[Any, Any]:
+    """Install matched topology data, inverse potential, and integrator.
+
+    All replacement objects are constructed before the first mutation. If a
+    data or sampler-reference assignment fails, the complete old topology
+    payload, potential, and integrator are restored before the original error
+    is re-raised.
+
+    Args:
+        model: Dynamic-topology PyMC model.
+        hmc: Live non-adapting PyMC HMC step.
+        dynamic_design: Selected topology's observation-by-leaf design.
+        alpha: Selected topology's aligned Dirichlet shapes.
+        dirichlet_log_normalizer: Exact normalized Dirichlet constant.
+        precision: Selected topology's validated reference precision.
+
+    Returns:
+        Newly installed potential and integrator.
+
+    Raises:
+        Exception: Propagates construction or installation failures. A
+            ``RuntimeError`` is raised instead if restoring the old kernel
+            also fails.
+    """
+    new_potential, new_integrator = _build_topology_hmc_objects(
+        hmc,
+        precision,
+    )
+    dynamic_data = model["dynamic_design"]
+    alpha_data = model["dirichlet_alpha"]
+    normalizer_data = model["dirichlet_log_normalizer"]
+    old_dynamic = np.array(dynamic_data.get_value(borrow=False), copy=True)
+    old_alpha = np.array(alpha_data.get_value(borrow=False), copy=True)
+    old_normalizer = np.array(
+        normalizer_data.get_value(borrow=False),
+        copy=True,
+    )
+    old_potential = hmc.potential
+    old_integrator = hmc.integrator
+    try:
+        _set_topology_data_atomically(
+            model,
+            dynamic_design,
+            alpha,
+            dirichlet_log_normalizer,
+        )
+        hmc.potential = new_potential
+        hmc.integrator = new_integrator
+    except Exception:
+        rollback_errors: list[Exception] = []
+        try:
+            _set_topology_data_atomically(
+                model,
+                old_dynamic,
+                old_alpha,
+                float(old_normalizer.item()),
+            )
+        except Exception as error:
+            rollback_errors.append(error)
+        try:
+            hmc.potential = old_potential
+        except Exception as error:
+            rollback_errors.append(error)
+        try:
+            hmc.integrator = old_integrator
+        except Exception as error:
+            rollback_errors.append(error)
+        if rollback_errors:
+            raise RuntimeError("topology-kernel installation and rollback both failed.") from rollback_errors[
+                0
+            ]
+        raise
+    return new_potential, new_integrator
+
+
+def _rebuild_structural_transition_at_hmc_boundary(
+    problem: FullTilingProblem,
+    source: FullTilingPosteriorState,
+    transition: PosteriorTransitionTerms,
+    *,
+    current_log_leaf_mass: ArrayLike,
+    current_log_fixed_coefficient: ArrayLike,
+) -> tuple[PosteriorTransitionTerms, FloatArray]:
+    """Rebuild one valid structural candidate in the authoritative HMC chart.
+
+    Unchanged geometric leaves retain their source ``x = log(m)`` bit
+    patterns. Newly created or merged leaves enter the chart through
+    ``log(raw_mass)``. The scientific candidate is then rebuilt from
+    ``exp(x)`` and the current authoritative fixed-coordinate decode before
+    the structural Metropolis--Hastings decision. Proposal-selection,
+    Beta-auxiliary, Jacobian, and reverse-choice terms remain those of the raw
+    structural proposal.
+
+    The corrected reduced acceptance ratio is the raw reduced ratio plus the
+    rebuilt-minus-raw candidate target change. This gives exact consistency
+    between the candidate scored by structural MH and the candidate passed to
+    HMC under the usual binary64 approximation. It does not claim detailed
+    balance for a finite-state model whose states are floating-point rounding
+    bins.
+
+    Args:
+        problem: Scientific problem shared by source and candidate.
+        source: Current scientific state exactly decoded from the authoritative
+            HMC coordinates.
+        transition: Valid raw edge-flip or resolution-relocation proposal.
+        current_log_leaf_mass: Authoritative source log masses in canonical
+            source-leaf order.
+        current_log_fixed_coefficient: Authoritative fixed-coefficient logs.
+
+    Returns:
+        A rebuilt transition and the exact candidate log-mass vector used to
+        rebuild its candidate.
+
+    Raises:
+        TypeError: If ``transition`` has the wrong type.
+        ValueError: If the transition is invalid, non-structural, belongs to a
+            different problem, or authoritative arrays have the wrong shape.
+        RuntimeError: If source coordinates do not exactly decode ``source``,
+            an unchanged leaf does not retain its raw proposed mass, or the
+            rebuilt reduced ratio is NaN.
+    """
+    if not isinstance(transition, PosteriorTransitionTerms):
+        raise TypeError("transition must be a PosteriorTransitionTerms.")
+    if not transition.valid:
+        raise ValueError("only valid structural transitions can be rebuilt at the HMC boundary.")
+    if transition.move not in ("edge_flip", "resolution_relocation"):
+        raise ValueError("only structural transitions can be rebuilt at the HMC boundary.")
+    raw_candidate = transition.candidate
+    if source.problem is not problem or raw_candidate.problem is not problem:
+        raise ValueError("source and transition candidate must belong to problem.")
+
+    source_x = np.asarray(current_log_leaf_mass, dtype=np.float64)
+    if source_x.shape != (source.k,) or np.any(~np.isfinite(source_x)):
+        raise ValueError("current_log_leaf_mass must contain one finite value per source leaf.")
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        decoded_source_masses = np.exp(source_x)
+    if not np.array_equal(decoded_source_masses, source.leaf_masses):
+        raise RuntimeError("authoritative source log masses do not exactly decode the source state.")
+
+    source_x_by_leaf = {
+        leaf: float(coordinate)
+        for leaf, coordinate in zip(
+            source.tiling_state.tiling.leaves,
+            source_x,
+            strict=True,
+        )
+    }
+    candidate_x = np.empty(raw_candidate.k, dtype=np.float64)
+    for position, (leaf, raw_mass) in enumerate(
+        zip(
+            raw_candidate.tiling_state.tiling.leaves,
+            raw_candidate.leaf_masses,
+            strict=True,
+        )
+    ):
+        unchanged_coordinate = source_x_by_leaf.get(leaf)
+        if unchanged_coordinate is None:
+            candidate_x[position] = np.log(np.float64(raw_mass))
+            continue
+        decoded_mass = float(np.exp(np.float64(unchanged_coordinate)))
+        if decoded_mass != float(raw_mass):
+            raise RuntimeError("an unchanged structural leaf did not retain its source mass.")
+        candidate_x[position] = unchanged_coordinate
+
+    fixed_y = np.asarray(current_log_fixed_coefficient, dtype=np.float64)
+    if fixed_y.shape != source.fixed_coefficients.shape or np.any(~np.isfinite(fixed_y)):
+        raise ValueError("current_log_fixed_coefficient must match the finite source fixed block.")
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        candidate_masses = np.exp(candidate_x)
+        fixed_coefficients = np.exp(fixed_y)
+    if not np.array_equal(fixed_coefficients, source.fixed_coefficients):
+        raise RuntimeError("authoritative fixed logs do not exactly decode the source state.")
+    if not np.array_equal(raw_candidate.fixed_coefficients, source.fixed_coefficients):
+        raise RuntimeError("a structural proposal unexpectedly changed fixed coefficients.")
+
+    rebuilt_candidate = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(
+            raw_candidate.tiling_state.tiling,
+            candidate_masses,
+        ),
+        fixed_coefficients=fixed_coefficients,
+    )
+    rebuilt_transition = PosteriorTransitionTerms(
+        candidate=rebuilt_candidate,
+        move=transition.move,
+        delta_log_likelihood=rebuilt_candidate.log_likelihood - source.log_likelihood,
+        delta_log_root_prior=rebuilt_candidate.log_root_prior - source.log_root_prior,
+        delta_log_allocation_prior=(rebuilt_candidate.log_allocation_prior - source.log_allocation_prior),
+        delta_log_fixed_coefficient_prior=(
+            rebuilt_candidate.log_fixed_coefficient_prior - source.log_fixed_coefficient_prior
+        ),
+        log_q_forward_selection=transition.log_q_forward_selection,
+        log_q_forward_auxiliary=transition.log_q_forward_auxiliary,
+        log_q_reverse_selection=transition.log_q_reverse_selection,
+        log_q_reverse_auxiliary=transition.log_q_reverse_auxiliary,
+        log_jacobian=transition.log_jacobian,
+        reverse_merge_choice=transition.reverse_merge_choice,
+        reverse_split_choice=transition.reverse_split_choice,
+    )
+    corrected_ratio = float(
+        transition.log_acceptance_ratio + rebuilt_candidate.log_target - raw_candidate.log_target
+    )
+    if math.isnan(corrected_ratio):
+        raise RuntimeError("rebuilt structural acceptance ratio is NaN.")
+    object.__setattr__(
+        rebuilt_transition,
+        "log_acceptance_ratio",
+        corrected_ratio,
+    )
+    candidate_x.setflags(write=False)
+    return rebuilt_transition, candidate_x
+
+
 def _build_compound_kernel(
     problem: FullTilingProblem,
     state: FullTilingPosteriorState,
@@ -1126,8 +1444,7 @@ def _build_compound_kernel(
     Args:
         problem: Fixed-``K`` scientific posterior problem.
         state: Scientific initial state belonging to ``problem``.
-        settings: Resolved static-HMC settings, including the exact leaf and
-            fixed-coordinate position-scale matrix.
+        settings: Resolved non-adapting HMC controls and metric identities.
         rng: Authoritative compound-chain generator. The returned structural
             step closes over this object and advances it for proposals,
             acceptance uniforms, and per-sweep HMC seeds.
@@ -1149,7 +1466,8 @@ def _build_compound_kernel(
         KeyError: If the generated model does not expose an expected variable.
         ValueError: If authoritative coordinates have incompatible shapes,
             contain non-finite values, or do not exactly encode ``state``.
-        RuntimeError: If the constructed compound kernel is not fully static.
+        RuntimeError: If the constructed compound kernel is not fully
+            non-adapting.
 
     Notes:
         Construction itself does not advance ``rng``. Each later structural
@@ -1181,15 +1499,19 @@ def _build_compound_kernel(
     continuous_rvs = [model["x"]]
     if state.fixed_coefficients.size:
         continuous_rvs.append(model["y"])
-    dimension = settings.fixed_k + len(settings.fixed_coefficient_position_scale)
+    dimension = settings.fixed_k + state.fixed_coefficients.size
+    topology_precision = build_full_tiling_pymc_hmc_topology_precision(
+        problem,
+        state,
+    )
     # BaseHMC divides step_scale by dimension**0.25. This inverse supplies
     # the caller's actual requested step size to the integrator.
     step_scale = settings.step_size * dimension**0.25
     hmc = pm.HamiltonianMC(
         vars=continuous_rvs,
         model=model,
-        scaling=np.array(settings.position_scale_matrix, copy=True),
-        is_cov=True,
+        scaling=np.array(topology_precision, copy=True),
+        is_cov=False,
         step_scale=step_scale,
         path_length=settings.step_size * settings.leapfrog_steps,
         max_steps=settings.leapfrog_steps,
@@ -1239,6 +1561,7 @@ def _build_compound_kernel(
             self.blocked = blocked
             self.state = state
             self.last_transition: Any = None
+            self.topology_precision = topology_precision
             self.hmc_start_log_leaf_mass: FloatArray | None = None
             self.hmc_start_log_fixed_coefficient: FloatArray | None = None
 
@@ -1253,6 +1576,19 @@ def _build_compound_kernel(
                 source,
                 rng=rng,
             )
+            candidate_x: FloatArray | None = None
+            if transition.valid:
+                transition, candidate_x = _rebuild_structural_transition_at_hmc_boundary(
+                    problem,
+                    source,
+                    transition,
+                    current_log_leaf_mass=current_point["x"],
+                    current_log_fixed_coefficient=(
+                        current_point["y"]
+                        if source.fixed_coefficients.size
+                        else np.empty(0, dtype=np.float64)
+                    ),
+                )
             uniform = float(rng.random())
             log_uniform = -math.inf if uniform == 0.0 else math.log(uniform)
             next_state = accept_or_reject(
@@ -1266,15 +1602,23 @@ def _build_compound_kernel(
                 alpha,
                 dirichlet_log_normalizer,
             ) = _topology_arrays(problem, next_state)
-            _set_topology_data_atomically(
+            next_precision = build_full_tiling_pymc_hmc_topology_precision(
+                problem,
+                next_state,
+            )
+            _install_topology_kernel_atomically(
                 model,
-                dynamic_design,
-                alpha,
-                dirichlet_log_normalizer,
+                hmc,
+                dynamic_design=dynamic_design,
+                alpha=alpha,
+                dirichlet_log_normalizer=dirichlet_log_normalizer,
+                precision=next_precision,
             )
             next_point = dict(current_point)
             if accepted:
-                next_point["x"] = np.log(next_state.leaf_masses)
+                if candidate_x is None:
+                    raise RuntimeError("an accepted structural proposal has no authoritative candidate logs.")
+                next_point["x"] = np.array(candidate_x, copy=True)
             self.hmc_start_log_leaf_mass = np.array(
                 next_point["x"],
                 dtype=np.float64,
@@ -1291,6 +1635,7 @@ def _build_compound_kernel(
             )
             self.state = next_state
             self.last_transition = transition
+            self.topology_precision = next_precision
             hmc_seed = int(
                 rng.integers(
                     np.iinfo(np.uint64).max,
@@ -1326,7 +1671,7 @@ def _build_compound_kernel(
         # substeps are authoritative, but keeping it false avoids ambiguity.
         compound.tune = False
     if hmc.tune or hmc.adapt_step_size or hmc._step_rand is not None:
-        raise RuntimeError("compound HMC must be fully static before sampling.")
+        raise RuntimeError("compound HMC must be fully non-adapting before sampling.")
     return model, compound, structural, point
 
 
@@ -1486,8 +1831,8 @@ def _run_segment(
         iterations: Positive number of complete structural-then-HMC sweeps.
         sweeps_completed: Non-negative global sweep offset preceding this
             segment.
-        settings: Frozen kernel settings compatible with ``initial_state`` and
-            its fixed block.
+        settings: Frozen kernel controls and metric identities compatible with
+            ``initial_state``.
         rng: Authoritative PCG64-backed generator. It is advanced in place for
             every structural proposal, decision, and HMC seed; its final state
             is stored in the returned checkpoint.
@@ -1506,8 +1851,8 @@ def _run_segment(
         ImportError: If the optional PyMC/PyTensor runtime is unavailable.
         TypeError: If a state, coordinate, or reconstructed endpoint has an
             incompatible type.
-        ValueError: If problem identity, fixed ``K``, position-scale width,
-            target support, or authoritative restart coordinates are invalid.
+        ValueError: If problem identity, fixed ``K``, metric identity, target
+            support, or authoritative restart coordinates are invalid.
         RuntimeError: If compound-step statistics are malformed, PyMC executes
             a different leapfrog count, or an endpoint cannot be rebuilt.
 
@@ -1520,8 +1865,6 @@ def _run_segment(
         raise ValueError("initial_state must belong to the exact supplied problem.")
     if initial_state.k != settings.fixed_k:
         raise ValueError("initial_state K must match fixed kernel K.")
-    if initial_state.fixed_coefficients.size != len(settings.fixed_coefficient_position_scale):
-        raise ValueError("resolved fixed position scales must match the problem fixed block.")
     if not math.isfinite(initial_state.log_target):
         raise ValueError("initial_state must have finite target support.")
 
@@ -1662,6 +2005,9 @@ def _run_segment(
         sweeps_completed=sweeps_completed + iterations,
         kernel_settings=settings,
         runtime_identity=full_tiling_pymc_hmc_runtime_identity(),
+        topology_precision_sha256=_topology_precision_sha256(
+            structural.topology_precision,
+        ),
     )
     return FullTilingPyMCHMCSamplingResult(
         trace=trace,
@@ -1687,17 +2033,17 @@ def sample_full_tiling_pymc_hmc(
         problem: Fixed-``K`` full-tiling posterior problem.
         initial_state: Fresh initializer state built for the exact problem
             object.
-        config: Fresh-chain sweep count, static HMC controls, position scales,
-            and optional master PCG64 seed. Exact replay from chain start
-            requires an explicit seed.
+        config: Fresh-chain sweep count, non-adapting HMC controls, and
+            optional master PCG64 seed. Exact replay from chain start requires
+            an explicit seed.
 
     Returns:
         Boundary-inclusive trace, final oracle state, and exact checkpoint.
 
     Raises:
         TypeError: If arguments have invalid public types.
-        ValueError: If problem identity, support, or resolved fixed position
-            scales are incompatible.
+        ValueError: If problem identity, support, or resolved metric
+            construction is incompatible.
         ImportError: If the optional PyMC runtime is unavailable.
         RuntimeError: If fresh-state canonicalization does not converge,
             PyTensor is not float64, or PyMC does not execute the configured
@@ -1709,21 +2055,10 @@ def sample_full_tiling_pymc_hmc(
         raise TypeError("initial_state must be a FullTilingPosteriorState.")
     if not isinstance(config, FullTilingPyMCHMCConfig):
         raise TypeError("config must be a FullTilingPyMCHMCConfig.")
-    fixed_position_scale = _resolve_fixed_position_scale(
-        config.fixed_coefficient_position_scale,
-        n_fixed=initial_state.fixed_coefficients.size,
-    )
     settings = FullTilingPyMCHMCKernelSettings(
         fixed_k=initial_state.k,
         step_size=config.step_size,
         leapfrog_steps=config.leapfrog_steps,
-        leaf_contrast_position_scale=config.leaf_contrast_position_scale,
-        leaf_total_position_scale=(
-            config.leaf_contrast_position_scale
-            if config.leaf_total_position_scale is None
-            else config.leaf_total_position_scale
-        ),
-        fixed_coefficient_position_scale=fixed_position_scale,
     )
     canonical_state, log_leaf_mass, log_fixed_coefficient = canonicalize_full_tiling_pymc_hmc_fresh_state(
         problem,

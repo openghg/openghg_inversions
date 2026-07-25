@@ -119,6 +119,13 @@ Hard gates:
   energy agree with solves against that precision;
 - topology data, potential, and leapfrog integrator change atomically after
   every accepted, rejected, or invalid structural outcome;
+- a valid structural candidate is scored at the exact physical masses decoded
+  from the authoritative log coordinates passed to HMC, while geometrically
+  unchanged leaves retain their existing coordinates;
+- a bounded structural oracle reports the raw-to-authoritative target
+  correction and forward/reverse log-ratio residual for at least 10,000 valid
+  moves at each tested \(K\); retain maxima and quantiles in the report rather
+  than describing binary64 structural balance as exact;
 - metric construction consumes no sampler RNG and depends on no current
   continuous coordinates;
 - direct and awkward-boundary continuation are exact;
@@ -145,6 +152,13 @@ topology fingerprints. For each boundary:
 Also time 100 sequential full rebuilds at each \(K\). Report medians and
 95th percentiles; do not hide warm-up or first-build costs. This stage has no
 sampling and may run on an idle login node.
+
+The precision hash is intentionally exact and includes the binary64
+`J.T @ J` result. Verify one save/load/continue boundary on a different
+intended BP1 compute node with the same pinned environment. A hash mismatch is
+a portability hard stop, even if matrices agree approximately; report the
+BLAS implementation and CPU model before deciding whether a later checkpoint
+schema should persist the validated precision bytes.
 
 The precision builder is a hard failure if any reconstructed hash changes
 between processes, a matrix is not SPD, or the builder uses more than 10 GiB
@@ -206,7 +220,11 @@ leapfrog steps L: 3, 5, 8
 For every candidate, run 200 discarded sweeps from each of the three
 development roles, restarting the declared master stream for each candidate.
 Record acceptance, divergences, non-finite endpoints, energy error, structural
-acceptance, precision-build time, gradient time, and total throughput.
+acceptance, mean Mahalanobis squared displacement per gradient evaluation,
+precision condition-number strata, precision-build time, gradient time, and
+total throughput. Also report fixed-window and lower-tail acceptance/energy
+diagnostics so a good overall mean cannot hide a catastrophic topology-local
+interval.
 
 A candidate is development-admissible only if every development role has:
 
@@ -215,10 +233,17 @@ A candidate is development-admissible only if every development role has:
 - mean HMC acceptance in \([0.60,0.95]\); and
 - at least one accepted nonzero continuous displacement.
 
-Among admissible candidates, minimize the maximum absolute deviation of the
-three acceptance rates from 0.75. Break ties by higher minimum effective
-trajectory length `epsilon * L`, then higher throughput, then smaller step
-size, in that order.
+Among admissible candidates, maximize the minimum, across the three
+development roles, of mean Mahalanobis squared displacement per gradient
+evaluation. Break ties by smaller maximum absolute deviation of the
+three acceptance rates from 0.75, then higher minimum throughput, then smaller
+step size. Reject an unresolved exact tie rather than depending on JSON row
+order.
+
+The calibration certificate must embed the complete ordered 21-candidate grid
+and all 63 development trajectories. The driver must recompute admissibility
+and the selection rule from those rows; a digest of an external grid or an
+unverified claimed winner is not sufficient.
 
 Lock the selected candidate and its complete evidence hash. Rerun it for 500
 discarded sweeps from all three development roles with fresh validation
@@ -257,9 +282,10 @@ diagonal or low-rank approximation.
 ## Stage D4: retained start-sensitivity screen
 
 Only after D0--D3 pass, submit four one-CPU Slurm chains at each \(K\), with
-two largest-nominal and two random-recursive initial tilings. Use new topology
-and sampler seeds recorded before submission and exclude every calibration
-topology hash.
+four newly seeded random-recursive initial tilings. The deterministic
+largest-nominal geometry has already served as a development case and must not
+be relabelled as retained validation. Use new topology and sampler seeds
+recorded before submission and exclude every calibration topology hash.
 
 The initial bounded budget is:
 

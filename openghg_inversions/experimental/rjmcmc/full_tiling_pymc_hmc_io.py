@@ -15,9 +15,10 @@ summation order use the established full-tiling reconstruction tolerance;
 after that audit, the persisted immutable caches are restored exactly so
 continuation starts from the precise saved boundary.
 
-Schema version 2 records both leaf-metric eigenscales. Version 1 archives use
-the retired scalar diagonal leaf metric and are rejected explicitly; this
-module provides no converter.
+Schema version 3 binds the topology-conditioned precision builder, reference,
+semantics, and exact resolved precision hash without storing the dense
+precision or a factorization. Versions 1 and 2 use retired static position
+scales and are rejected explicitly; this module provides no converter.
 
 SHA-256 digests detect accidental corruption but do not authenticate an
 archive against a writer capable of replacing content and digests. Publication
@@ -67,7 +68,7 @@ FULL_TILING_PYMC_HMC_CHECKPOINT_SCHEMA_ID = (
 )
 """Stable identifier for the durable full-tiling PyMC HMC checkpoint schema."""
 
-FULL_TILING_PYMC_HMC_CHECKPOINT_SCHEMA_VERSION = 2
+FULL_TILING_PYMC_HMC_CHECKPOINT_SCHEMA_VERSION = 3
 """Current durable full-tiling PyMC HMC checkpoint schema version."""
 
 _STATE_ARRAY_NAMES = (
@@ -95,23 +96,22 @@ _STATE_LOG_FIELDS = (
     "log_fixed_coefficient_prior",
     "log_target",
 )
-_KERNEL_FIELDS_V2 = (
+_KERNEL_FIELDS_V3 = (
     "fixed_k",
     "step_size",
     "leapfrog_steps",
-    "leaf_contrast_position_scale",
-    "leaf_total_position_scale",
-    "fixed_coefficient_position_scale",
+    "metric_builder_id",
+    "metric_reference_id",
 )
 _KERNEL_METADATA_NAMES = frozenset(
     (
-        *_KERNEL_FIELDS_V2,
-        "position_scale_semantics",
+        *_KERNEL_FIELDS_V3,
+        "metric_semantics_id",
         "step_size_semantics",
     )
 )
 _STEP_SIZE_SEMANTICS = "requested_unscaled_integrator_step_size_v1"
-_RUNTIME_IDENTITY_FIELDS_V2 = (
+_RUNTIME_IDENTITY_FIELDS_V3 = (
     "python_minor",
     "platform_system",
     "platform_machine",
@@ -124,7 +124,7 @@ _RUNTIME_IDENTITY_FIELDS_V2 = (
 )
 _RUNTIME_IDENTITY_NAMES = frozenset(
     {
-        *_RUNTIME_IDENTITY_FIELDS_V2,
+        *_RUNTIME_IDENTITY_FIELDS_V3,
     }
 )
 _ARCHIVE_NAMES = frozenset((*_STATE_ARRAY_NAMES, "metadata", "metadata_sha256"))
@@ -136,6 +136,7 @@ _METADATA_NAMES = frozenset(
         "schedule_id",
         "problem_sha256",
         "state_sha256",
+        "topology_precision_sha256",
         "sweeps_completed",
         "rng",
         "kernel",
@@ -248,10 +249,25 @@ def _finite_float(
     return result
 
 
+def _nonempty_string(value: object, *, location: str) -> str:
+    """Return one non-empty string metadata value."""
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{location} must be a non-empty string.")
+    return value
+
+
+def _sha256_hex(value: object, *, location: str) -> str:
+    """Return one canonical lowercase SHA-256 hexadecimal digest."""
+    result = _nonempty_string(value, location=location)
+    if len(result) != 64 or any(character not in "0123456789abcdef" for character in result):
+        raise ValueError(f"{location} must be a lowercase SHA-256 hexadecimal digest.")
+    return result
+
+
 def _runtime_identity_metadata(
     identity: FullTilingPyMCHMCRuntimeIdentity,
 ) -> dict[str, str]:
-    """Return strict metadata for the frozen v2 runtime identity.
+    """Return strict metadata for the frozen v3 runtime identity.
 
     Args:
         identity: Exact immutable identity retained by the checkpoint.
@@ -272,7 +288,7 @@ def _runtime_identity_metadata(
         raise RuntimeError(
             "FullTilingPyMCHMCRuntimeIdentity changed without a durable checkpoint schema-version decision."
         )
-    result = {name: getattr(identity, name) for name in _RUNTIME_IDENTITY_FIELDS_V2}
+    result = {name: getattr(identity, name) for name in _RUNTIME_IDENTITY_FIELDS_V3}
     if any(not isinstance(value, str) or not value for value in result.values()):
         raise TypeError("runtime_identity fields must be non-empty strings.")
     return result
@@ -281,7 +297,18 @@ def _runtime_identity_metadata(
 def _checkpoint_arrays(
     checkpoint: FullTilingPyMCHMCCheckpoint,
 ) -> dict[str, NDArray[Any]]:
-    """Return exact scientific, cache, and log-coordinate arrays."""
+    """Return exact persisted scientific, cache, and log-coordinate arrays.
+
+    Schema v3 deliberately excludes the dense topology precision and every
+    factorization; those values are reconstructed in memory during loading.
+
+    Args:
+        checkpoint: Exact validated sampler boundary.
+
+    Returns:
+        Numeric NPZ members for scientific coordinates, authoritative log
+        coordinates, and posterior caches.
+    """
     state = checkpoint.state
     return {
         "rectangle_bounds": np.asarray(
@@ -323,9 +350,9 @@ def _checkpoint_arrays(
 
 
 def _kernel_field_names() -> frozenset[str]:
-    """Return the frozen v2 setting fields or require a schema decision."""
+    """Return the frozen v3 setting fields or require a schema decision."""
     current = frozenset(field.name for field in fields(FullTilingPyMCHMCKernelSettings))
-    frozen = frozenset(_KERNEL_FIELDS_V2)
+    frozen = frozenset(_KERNEL_FIELDS_V3)
     if current != frozen:
         raise RuntimeError(
             "FullTilingPyMCHMCKernelSettings changed without a durable checkpoint schema-version decision."
@@ -342,8 +369,8 @@ def _kernel_metadata(
         settings: Fully resolved in-memory kernel settings.
 
     Returns:
-        Strict finite JSON metadata including explicit PyMC mass and requested
-        step-size semantics.
+        Strict finite JSON metadata including explicit topology-precision and
+        requested step-size semantics.
 
     Raises:
         TypeError: If a setting has an unsupported runtime type.
@@ -355,10 +382,9 @@ def _kernel_metadata(
         "fixed_k": settings.fixed_k,
         "step_size": settings.step_size,
         "leapfrog_steps": settings.leapfrog_steps,
-        "leaf_contrast_position_scale": settings.leaf_contrast_position_scale,
-        "leaf_total_position_scale": settings.leaf_total_position_scale,
-        "fixed_coefficient_position_scale": list(settings.fixed_coefficient_position_scale),
-        "position_scale_semantics": FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID,
+        "metric_builder_id": settings.metric_builder_id,
+        "metric_reference_id": settings.metric_reference_id,
+        "metric_semantics_id": FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID,
         "step_size_semantics": _STEP_SIZE_SEMANTICS,
     }
 
@@ -390,6 +416,10 @@ def _checkpoint_metadata(
         "state_sha256": _full_tiling_io.full_tiling_state_fingerprint(
             checkpoint.problem,
             state,
+        ),
+        "topology_precision_sha256": _sha256_hex(
+            checkpoint.topology_precision_sha256,
+            location="checkpoint.topology_precision_sha256",
         ),
         "sweeps_completed": checkpoint.sweeps_completed,
         "rng": {
@@ -455,12 +485,13 @@ def save_full_tiling_pymc_hmc_checkpoint(
 
     The archive retains authoritative ``log_leaf_mass`` and
     ``log_fixed_coefficient`` arrays in addition to their decoded scientific
-    coordinates. Kernel metadata identifies the contrast and normalized-common
-    leaf eigenscales plus ``fixed_coefficient_position_scale`` as PyMC
-    position-covariance, equivalently momentum-precision, settings supplied
-    with ``is_cov=True``. The stored ``step_size`` is the requested unscaled
-    integrator step; per-sweep effective values remain trace diagnostics and
-    are not mutable continuation state.
+    coordinates. Kernel metadata identifies the deterministic
+    topology-precision builder, reference coordinates, and PyMC
+    ``is_cov=False`` semantics. The resolved precision hash is retained, but
+    neither the dense matrix nor a factorization is stored. The stored
+    ``step_size`` is the requested unscaled integrator step; per-sweep
+    effective values remain trace diagnostics and are not mutable continuation
+    state.
 
     Args:
         path: New destination NPZ path whose parent directory already exists.
@@ -468,9 +499,11 @@ def save_full_tiling_pymc_hmc_checkpoint(
         run_manifest: Caller-owned strict finite JSON manifest.
 
     Raises:
-        TypeError: If the checkpoint or manifest has the wrong type.
+        TypeError: If the path, checkpoint, or manifest has the wrong type.
         ValueError: If the schedule or PCG64 state is incompatible, the state
-            or log coordinates are stale, or the manifest is invalid.
+            or log coordinates are stale, the metric identities or
+            topology-precision digest are incompatible, or the manifest is
+            invalid.
         ImportError: If the checkpoint backend is unavailable.
         RuntimeError: If PyTensor precision or the frozen settings schema is
             incompatible.
@@ -596,10 +629,10 @@ def _metadata_from_arrays(
         arrays: Loaded archive arrays including metadata bytes and digest.
 
     Returns:
-        Parsed metadata with the exact schema field set.
+        Parsed metadata object.
 
     Raises:
-        ValueError: If byte layouts, checksums, JSON, or fields are malformed.
+        ValueError: If byte layouts, checksums, or JSON are malformed.
     """
     metadata_bytes = arrays["metadata"]
     metadata_sha = arrays["metadata_sha256"]
@@ -615,12 +648,10 @@ def _metadata_from_arrays(
     expected = sha256(metadata_bytes.tobytes()).hexdigest()
     if not hmac.compare_digest(supplied, expected):
         raise ValueError("Checkpoint metadata SHA-256 checksum does not match.")
-    metadata = _full_tiling_io._parse_json_object(
+    return _full_tiling_io._parse_json_object(
         payload,
         location="checkpoint metadata",
     )
-    _require_keys(metadata, _METADATA_NAMES, location="checkpoint metadata")
-    return metadata
 
 
 def _state_array(
@@ -676,13 +707,10 @@ def _kernel_settings_from_metadata(
     kernel = _require_mapping(value, location="kernel")
     _kernel_field_names()
     _require_keys(kernel, _KERNEL_METADATA_NAMES, location="kernel")
-    if kernel["position_scale_semantics"] != FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID:
-        raise ValueError("Checkpoint HMC position-scale semantics are incompatible.")
+    if kernel["metric_semantics_id"] != FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID:
+        raise ValueError("Checkpoint HMC metric semantics are incompatible.")
     if kernel["step_size_semantics"] != _STEP_SIZE_SEMANTICS:
         raise ValueError("Checkpoint HMC step-size semantics are incompatible.")
-    fixed_position_scale = kernel["fixed_coefficient_position_scale"]
-    if not isinstance(fixed_position_scale, list):
-        raise ValueError("kernel.fixed_coefficient_position_scale must be a JSON array.")
     return FullTilingPyMCHMCKernelSettings(
         fixed_k=_integer(
             kernel["fixed_k"],
@@ -699,23 +727,13 @@ def _kernel_settings_from_metadata(
             location="kernel.leapfrog_steps",
             minimum=1,
         ),
-        leaf_contrast_position_scale=_finite_float(
-            kernel["leaf_contrast_position_scale"],
-            location="kernel.leaf_contrast_position_scale",
-            positive=True,
+        metric_builder_id=_nonempty_string(
+            kernel["metric_builder_id"],
+            location="kernel.metric_builder_id",
         ),
-        leaf_total_position_scale=_finite_float(
-            kernel["leaf_total_position_scale"],
-            location="kernel.leaf_total_position_scale",
-            positive=True,
-        ),
-        fixed_coefficient_position_scale=tuple(
-            _finite_float(
-                item,
-                location="kernel.fixed_coefficient_position_scale",
-                positive=True,
-            )
-            for item in fixed_position_scale
+        metric_reference_id=_nonempty_string(
+            kernel["metric_reference_id"],
+            location="kernel.metric_reference_id",
         ),
     )
 
@@ -748,11 +766,11 @@ def _runtime_identity_from_metadata(
     current = full_tiling_pymc_hmc_runtime_identity()
     _runtime_identity_metadata(current)
     persisted = FullTilingPyMCHMCRuntimeIdentity(
-        **{name: cast(str, runtime[name]) for name in _RUNTIME_IDENTITY_FIELDS_V2}
+        **{name: cast(str, runtime[name]) for name in _RUNTIME_IDENTITY_FIELDS_V3}
     )
     if persisted != current:
         mismatches = [
-            name for name in _RUNTIME_IDENTITY_FIELDS_V2 if getattr(persisted, name) != getattr(current, name)
+            name for name in _RUNTIME_IDENTITY_FIELDS_V3 if getattr(persisted, name) != getattr(current, name)
         ]
         raise ValueError(
             f"Full-tiling PyMC HMC checkpoint runtime identity does not match for {mismatches[0]}."
@@ -874,10 +892,14 @@ def load_full_tiling_pymc_hmc_checkpoint(
 
     The current runtime must exactly match the checkpoint's PyMC, PyTensor,
     NumPy, Python-minor, platform, ``floatX``, symmetric-coordinate layout,
-    static-HMC semantics, and schedule identities. Scientific coordinates are
-    fully rebuilt against ``problem`` and audited before exact persisted
-    caches and authoritative log coordinates are attached to the returned
-    checkpoint.
+    topology-conditioned HMC semantics, and schedule identities. Scientific
+    coordinates are fully rebuilt against ``problem`` and audited before exact
+    persisted caches and authoritative log coordinates are attached to the
+    returned checkpoint. Schema v3 does not persist a dense precision matrix
+    or factorization. After rebuilding the state, checkpoint construction
+    deterministically reconstructs the current topology precision, hashes its
+    canonical encoding, and requires exact equality with
+    ``topology_precision_sha256``.
 
     Args:
         path: Source NPZ archive.
@@ -890,10 +912,11 @@ def load_full_tiling_pymc_hmc_checkpoint(
         coordinates, sweep count, settings, and PCG64 state restored.
 
     Raises:
-        TypeError: If ``problem`` or the manifest has the wrong type.
+        TypeError: If the path, ``problem``, or manifest has the wrong type.
         ValueError: If archive schema, hashes, backend, problem, manifest,
             topology, coordinates, caches, target terms, RNG, schedule, or
-            resolved HMC settings disagree.
+            resolved HMC settings disagree, including if the reconstructed
+            topology-precision hash does not match.
         ImportError: If PyMC or PyTensor is unavailable.
         RuntimeError: If PyTensor precision or the frozen settings schema is
             incompatible.
@@ -905,17 +928,28 @@ def load_full_tiling_pymc_hmc_checkpoint(
         raise TypeError("expected_run_manifest must be a mapping.")
     arrays = _load_archive_arrays(Path(path))
     metadata = _metadata_from_arrays(arrays)
-    if metadata["schema_id"] != FULL_TILING_PYMC_HMC_CHECKPOINT_SCHEMA_ID:
+    if metadata.get("schema_id") != FULL_TILING_PYMC_HMC_CHECKPOINT_SCHEMA_ID:
         raise ValueError("Full-tiling PyMC HMC checkpoint schema is incompatible.")
-    schema_version = metadata["schema_version"]
+    schema_version = _integer(
+        metadata.get("schema_version"),
+        location="schema_version",
+        minimum=1,
+    )
     if schema_version == 1:
         raise ValueError(
             "Full-tiling PyMC HMC checkpoint schema version 1 uses the retired "
-            "scalar diagonal leaf metric; schema version 2 is required and no "
+            "scalar diagonal leaf metric; schema version 3 is required and no "
             "converter is provided."
+        )
+    if schema_version == 2:
+        raise ValueError(
+            "Full-tiling PyMC HMC checkpoint schema version 2 uses retired "
+            "static leaf-eigenscale and fixed position-scale settings; schema "
+            "version 3 is required and no converter is provided."
         )
     if schema_version != FULL_TILING_PYMC_HMC_CHECKPOINT_SCHEMA_VERSION:
         raise ValueError("Full-tiling PyMC HMC checkpoint schema version is incompatible.")
+    _require_keys(metadata, _METADATA_NAMES, location="checkpoint metadata")
     runtime_identity = _runtime_identity_from_metadata(metadata["runtime_identity"])
     schedule_id = metadata["schedule_id"]
     if schedule_id != FULL_TILING_PYMC_HMC_SCHEDULE_ID:
@@ -1066,9 +1100,11 @@ def load_full_tiling_pymc_hmc_checkpoint(
     settings = _kernel_settings_from_metadata(metadata["kernel"])
     if settings.fixed_k != k:
         raise ValueError("Checkpoint fixed K does not match the persisted state.")
-    if len(settings.fixed_coefficient_position_scale) != fixed_coefficients.size:
-        raise ValueError("Checkpoint fixed HMC position scales do not match the fixed block.")
     rng_state = _rng_state_from_metadata(metadata["rng"])
+    topology_precision_sha256 = _sha256_hex(
+        metadata["topology_precision_sha256"],
+        location="topology_precision_sha256",
+    )
     return FullTilingPyMCHMCCheckpoint(
         problem=problem,
         state=state,
@@ -1081,6 +1117,7 @@ def load_full_tiling_pymc_hmc_checkpoint(
         ),
         kernel_settings=settings,
         runtime_identity=runtime_identity,
+        topology_precision_sha256=topology_precision_sha256,
         schedule_id=cast(str, schedule_id),
     )
 

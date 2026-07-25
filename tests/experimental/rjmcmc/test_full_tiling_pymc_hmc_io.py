@@ -17,14 +17,24 @@ import pytest
 from openghg_inversions.experimental.rjmcmc import full_tiling_io
 from openghg_inversions.experimental.rjmcmc.core import FixedDesignBlock
 from openghg_inversions.experimental.rjmcmc.dyadic_tree import CanonicalDyadicTree
+from openghg_inversions.experimental.rjmcmc.full_tiling import (
+    LeafTiling,
+    Rectangle,
+    TilingState,
+)
 from openghg_inversions.experimental.rjmcmc.full_tiling_posterior import (
     FullTilingPosteriorState,
     FullTilingProblem,
+    build_full_tiling_posterior_state,
     initialize_full_tiling_posterior_state,
 )
 from openghg_inversions.experimental.rjmcmc.full_tiling_pymc_hmc import (
+    FULL_TILING_PYMC_HMC_METRIC_BUILDER_ID,
+    FULL_TILING_PYMC_HMC_METRIC_REFERENCE_ID,
+    FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID,
     FullTilingPyMCHMCConfig,
     FullTilingPyMCHMCSamplingResult,
+    build_full_tiling_pymc_hmc_topology_precision,
     continue_full_tiling_pymc_hmc,
     sample_full_tiling_pymc_hmc,
 )
@@ -156,9 +166,6 @@ def _sample_boundary(problem: FullTilingProblem) -> FullTilingPyMCHMCSamplingRes
             iterations=2,
             step_size=0.002,
             leapfrog_steps=2,
-            leaf_contrast_position_scale=1.4,
-            leaf_total_position_scale=2.6,
-            fixed_coefficient_position_scale=(0.7, 1.8),
             seed=481,
         ),
     )
@@ -210,6 +217,7 @@ def _assert_results_equal(
     assert actual.checkpoint.sweeps_completed == expected.checkpoint.sweeps_completed
     assert actual.checkpoint.kernel_settings == expected.checkpoint.kernel_settings
     assert actual.checkpoint.runtime_identity == expected.checkpoint.runtime_identity
+    assert actual.checkpoint.topology_precision_sha256 == expected.checkpoint.topology_precision_sha256
 
 
 def _rewrite_archive(
@@ -291,14 +299,17 @@ def test_save_load_continue_matches_uninterrupted_checkpoint_exactly(
     assert loaded.rng_state == first.checkpoint.rng_state
     assert loaded.kernel_settings == first.checkpoint.kernel_settings
     assert loaded.runtime_identity == first.checkpoint.runtime_identity
+    assert loaded.topology_precision_sha256 == first.checkpoint.topology_precision_sha256
 
 
 @_requires_x64_child
-def test_v2_metadata_roundtrips_both_leaf_eigenscales(tmp_path: Path) -> None:
-    """Schema v2 persists and restores distinct contrast and total eigenscales."""
+def test_v3_metadata_roundtrips_metric_settings_and_topology_hash(
+    tmp_path: Path,
+) -> None:
+    """Schema v3 persists its five settings and resolved topology identity."""
     problem = _problem()
     result = _sample_boundary(problem)
-    path = tmp_path / "metric-v2.npz"
+    path = tmp_path / "metric-v3.npz"
     save_full_tiling_pymc_hmc_checkpoint(
         path,
         result.checkpoint,
@@ -313,29 +324,76 @@ def test_v2_metadata_roundtrips_both_leaf_eigenscales(tmp_path: Path) -> None:
         expected_run_manifest=_manifest(),
     )
 
-    assert metadata["schema_version"] == 2
-    assert metadata["kernel"]["leaf_contrast_position_scale"] == 1.4
-    assert metadata["kernel"]["leaf_total_position_scale"] == 2.6
-    assert loaded.kernel_settings.leaf_contrast_position_scale == 1.4
-    assert loaded.kernel_settings.leaf_total_position_scale == 2.6
+    settings = result.checkpoint.kernel_settings
+    kernel = metadata["kernel"]
+    assert metadata["schema_version"] == 3
+    assert set(metadata) == {
+        "schema_id",
+        "schema_version",
+        "runtime_identity",
+        "schedule_id",
+        "problem_sha256",
+        "state_sha256",
+        "topology_precision_sha256",
+        "sweeps_completed",
+        "rng",
+        "kernel",
+        "state",
+        "run_manifest_json",
+        "run_manifest_sha256",
+        "array_sha256",
+    }
+    assert set(metadata["state"]) == {
+        "k",
+        "root_total",
+        "log_gaussian_likelihood",
+        "log_likelihood",
+        "log_root_prior",
+        "log_allocation_prior",
+        "log_fixed_coefficient_prior",
+        "log_target",
+    }
+    assert {field.name for field in fields(settings)} == {
+        "fixed_k",
+        "step_size",
+        "leapfrog_steps",
+        "metric_builder_id",
+        "metric_reference_id",
+    }
+    assert kernel == {
+        "fixed_k": settings.fixed_k,
+        "step_size": settings.step_size,
+        "leapfrog_steps": settings.leapfrog_steps,
+        "metric_builder_id": FULL_TILING_PYMC_HMC_METRIC_BUILDER_ID,
+        "metric_reference_id": FULL_TILING_PYMC_HMC_METRIC_REFERENCE_ID,
+        "metric_semantics_id": FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID,
+        "step_size_semantics": "requested_unscaled_integrator_step_size_v1",
+    }
+    assert (
+        metadata["topology_precision_sha256"]
+        == result.checkpoint.topology_precision_sha256
+        == loaded.topology_precision_sha256
+    )
+    assert loaded.kernel_settings == settings
 
 
 @_requires_x64_child
 @pytest.mark.parametrize(
-    "field",
+    ("schema_version", "message"),
     [
-        "leaf_contrast_position_scale",
-        "leaf_total_position_scale",
+        (1, "schema version 1 uses the retired scalar"),
+        (2, "schema version 2 uses retired static"),
     ],
 )
-def test_loader_rejects_leaf_eigenscale_tampering(
+def test_loader_explicitly_rejects_retired_schema_versions(
     tmp_path: Path,
-    field: str,
+    schema_version: int,
+    message: str,
 ) -> None:
-    """Invalid tampering of either persisted leaf eigenscale fails closed."""
+    """Legacy schemas fail with version-specific migration guidance."""
     problem = _problem()
     result = _sample_boundary(problem)
-    path = tmp_path / f"{field}.npz"
+    path = tmp_path / f"schema-v{schema_version}.npz"
     save_full_tiling_pymc_hmc_checkpoint(
         path,
         result.checkpoint,
@@ -343,10 +401,10 @@ def test_loader_rejects_leaf_eigenscale_tampering(
     )
     _rewrite_metadata(
         path,
-        lambda metadata: metadata["kernel"].__setitem__(field, 0.0),
+        lambda metadata: metadata.__setitem__("schema_version", schema_version),
     )
 
-    with pytest.raises(ValueError, match=rf"kernel\.{field} must be finite and positive"):
+    with pytest.raises(ValueError, match=message):
         load_full_tiling_pymc_hmc_checkpoint(
             path,
             problem,
@@ -355,46 +413,35 @@ def test_loader_rejects_leaf_eigenscale_tampering(
 
 
 @_requires_x64_child
-def test_loader_rejects_v1_schema_and_old_scalar_leaf_scale_key(
+@pytest.mark.parametrize(
+    "legacy_key",
+    [
+        "leaf_position_scale",
+        "leaf_contrast_position_scale",
+        "leaf_total_position_scale",
+        "fixed_coefficient_position_scale",
+    ],
+)
+def test_loader_rejects_retired_static_scale_keys(
     tmp_path: Path,
+    legacy_key: str,
 ) -> None:
-    """Old schema and scalar leaf-scale metadata cannot enter the v2 loader."""
+    """V1 scalar and v2 eigenscale/fixed-scale keys cannot enter schema v3."""
     problem = _problem()
     result = _sample_boundary(problem)
-    schema_path = tmp_path / "schema-v1.npz"
+    path = tmp_path / f"{legacy_key}.npz"
     save_full_tiling_pymc_hmc_checkpoint(
-        schema_path,
+        path,
         result.checkpoint,
         run_manifest=_manifest(),
     )
     _rewrite_metadata(
-        schema_path,
-        lambda metadata: metadata.__setitem__("schema_version", 1),
+        path,
+        lambda metadata: metadata["kernel"].__setitem__(legacy_key, 1.0),
     )
-    with pytest.raises(ValueError, match="schema version 1 uses the retired scalar"):
-        load_full_tiling_pymc_hmc_checkpoint(
-            schema_path,
-            problem,
-            expected_run_manifest=_manifest(),
-        )
-
-    key_path = tmp_path / "old-leaf-scale-key.npz"
-    save_full_tiling_pymc_hmc_checkpoint(
-        key_path,
-        result.checkpoint,
-        run_manifest=_manifest(),
-    )
-
-    def use_old_scalar_key(metadata: dict[str, Any]) -> None:
-        """Replace the two v2 leaf scales with the rejected v1 scalar key."""
-        kernel = metadata["kernel"]
-        kernel["leaf_position_scale"] = kernel.pop("leaf_contrast_position_scale")
-        kernel.pop("leaf_total_position_scale")
-
-    _rewrite_metadata(key_path, use_old_scalar_key)
     with pytest.raises(ValueError, match="kernel has an invalid field set"):
         load_full_tiling_pymc_hmc_checkpoint(
-            key_path,
+            path,
             problem,
             expected_run_manifest=_manifest(),
         )
@@ -415,6 +462,13 @@ def test_archive_is_no_pickle_exact_field_set_and_create_only(tmp_path: Path) ->
     with np.load(path, allow_pickle=False) as archive:
         assert set(archive.files) == _ARCHIVE_FIELDS
         assert all(archive[name].dtype != np.dtype(object) for name in archive.files)
+        assert {
+            "topology_precision",
+            "metric_precision",
+            "precision_factor",
+            "cholesky_factor",
+            "Q",
+        }.isdisjoint(archive.files)
     with pytest.raises(FileExistsError):
         save_full_tiling_pymc_hmc_checkpoint(
             path,
@@ -488,48 +542,171 @@ def test_loader_rejects_runtime_and_layout_identity_tampering(
 
 
 @_requires_x64_child
-def test_loader_rejects_kernel_semantics_and_settings_tampering(
+@pytest.mark.parametrize(
+    "field",
+    ["metric_builder_id", "metric_reference_id"],
+)
+def test_loader_rejects_metric_identity_tampering(
     tmp_path: Path,
+    field: str,
 ) -> None:
-    """Position-scale semantics and fixed-K settings cannot be relabelled."""
+    """The deterministic metric builder and reference identities are exact."""
     problem = _problem()
     result = _sample_boundary(problem)
-    semantics_path = tmp_path / "semantics.npz"
+    path = tmp_path / f"{field}.npz"
     save_full_tiling_pymc_hmc_checkpoint(
-        semantics_path,
+        path,
         result.checkpoint,
         run_manifest=_manifest(),
     )
     _rewrite_metadata(
-        semantics_path,
-        lambda metadata: metadata["kernel"].__setitem__(
-            "position_scale_semantics",
-            "future_position_scale_v2",
-        ),
+        path,
+        lambda metadata: metadata["kernel"].__setitem__(field, "forged-v99"),
     )
-    with pytest.raises(ValueError, match="position-scale semantics are incompatible"):
+    with pytest.raises(ValueError, match=rf"{field} is incompatible"):
         load_full_tiling_pymc_hmc_checkpoint(
-            semantics_path,
+            path,
             problem,
             expected_run_manifest=_manifest(),
         )
 
-    settings_path = tmp_path / "settings.npz"
+
+@_requires_x64_child
+def test_loader_rejects_kernel_metric_semantics_tampering(tmp_path: Path) -> None:
+    """The persisted is_cov=False precision semantics cannot be relabelled."""
+    problem = _problem()
+    result = _sample_boundary(problem)
+    path = tmp_path / "metric-semantics.npz"
     save_full_tiling_pymc_hmc_checkpoint(
-        settings_path,
+        path,
         result.checkpoint,
         run_manifest=_manifest(),
     )
     _rewrite_metadata(
-        settings_path,
-        lambda metadata: metadata["kernel"].__setitem__("fixed_k", 2),
+        path,
+        lambda metadata: metadata["kernel"].__setitem__(
+            "metric_semantics_id",
+            "forged-metric-semantics-v99",
+        ),
     )
-    with pytest.raises(ValueError, match="fixed K does not match"):
+    with pytest.raises(ValueError, match="HMC metric semantics are incompatible"):
         load_full_tiling_pymc_hmc_checkpoint(
-            settings_path,
+            path,
             problem,
             expected_run_manifest=_manifest(),
         )
+
+
+@_requires_x64_child
+def test_loader_rejects_fixed_k_tampering(tmp_path: Path) -> None:
+    """The persisted fixed-K setting must agree with the checkpoint topology."""
+    problem = _problem()
+    result = _sample_boundary(problem)
+    path = tmp_path / "fixed-k.npz"
+    save_full_tiling_pymc_hmc_checkpoint(
+        path,
+        result.checkpoint,
+        run_manifest=_manifest(),
+    )
+    _rewrite_metadata(
+        path,
+        lambda metadata: metadata["kernel"].__setitem__("fixed_k", 2),
+    )
+
+    with pytest.raises(ValueError, match="fixed K does not match"):
+        load_full_tiling_pymc_hmc_checkpoint(
+            path,
+            problem,
+            expected_run_manifest=_manifest(),
+        )
+
+
+@_requires_x64_child
+@pytest.mark.parametrize(
+    ("forged_hash", "message"),
+    [
+        ("not-a-sha256", "must be a lowercase SHA-256"),
+        ("0" * 64, "topology precision hash is incompatible"),
+    ],
+)
+def test_loader_rejects_malformed_or_forged_topology_precision_hash(
+    tmp_path: Path,
+    forged_hash: str,
+    message: str,
+) -> None:
+    """Even a recomputed outer digest cannot forge the reconstructed precision."""
+    problem = _problem()
+    result = _sample_boundary(problem)
+    path = tmp_path / "topology-precision-hash.npz"
+    save_full_tiling_pymc_hmc_checkpoint(
+        path,
+        result.checkpoint,
+        run_manifest=_manifest(),
+    )
+    _rewrite_metadata(
+        path,
+        lambda metadata: metadata.__setitem__(
+            "topology_precision_sha256",
+            forged_hash,
+        ),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        load_full_tiling_pymc_hmc_checkpoint(
+            path,
+            problem,
+            expected_run_manifest=_manifest(),
+        )
+
+
+@_requires_x64_child
+def test_topology_precision_hash_depends_on_same_k_topology() -> None:
+    """Two distinct three-leaf tilings resolve different precision hashes."""
+    problem = _problem()
+    top_left_split = LeafTiling(
+        problem.shape,
+        (
+            Rectangle(0, 1, 0, 1),
+            Rectangle(0, 1, 1, 2),
+            Rectangle(1, 2, 0, 2),
+        ),
+    )
+    bottom_right_split = LeafTiling(
+        problem.shape,
+        (
+            Rectangle(0, 1, 0, 2),
+            Rectangle(1, 2, 0, 1),
+            Rectangle(1, 2, 1, 2),
+        ),
+    )
+
+    def build_state(tiling: LeafTiling) -> FullTilingPosteriorState:
+        """Build one valid state while varying only its selected topology."""
+        return build_full_tiling_posterior_state(
+            problem,
+            allocation=TilingState(tiling, np.array([1.0, 2.0, 3.0])),
+            fixed_coefficients=np.array([1.0, 1.5]),
+        )
+
+    first_precision = build_full_tiling_pymc_hmc_topology_precision(
+        problem,
+        build_state(top_left_split),
+    )
+    second_precision = build_full_tiling_pymc_hmc_topology_precision(
+        problem,
+        build_state(bottom_right_split),
+    )
+
+    assert first_precision.shape == second_precision.shape == (5, 5)
+    first_hash = sha256(
+        np.asarray(first_precision.shape, dtype="<i8").tobytes()
+        + np.asarray(first_precision, dtype="<f8", order="C").tobytes(order="C")
+    ).hexdigest()
+    second_hash = sha256(
+        np.asarray(second_precision.shape, dtype="<i8").tobytes()
+        + np.asarray(second_precision, dtype="<f8", order="C").tobytes(order="C")
+    ).hexdigest()
+    assert first_hash != second_hash
 
 
 @_requires_x64_child

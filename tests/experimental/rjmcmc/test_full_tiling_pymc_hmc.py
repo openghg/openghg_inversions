@@ -1,7 +1,8 @@
-"""Tests for the mobile full-tiling structural plus static PyMC HMC kernel."""
+"""Tests for the mobile full-tiling topology-conditioned PyMC HMC kernel."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 import math
 import os
@@ -216,6 +217,7 @@ def _assert_results_equal(
     assert actual.checkpoint.sweeps_completed == expected.checkpoint.sweeps_completed
     assert actual.checkpoint.kernel_settings == expected.checkpoint.kernel_settings
     assert actual.checkpoint.runtime_identity == expected.checkpoint.runtime_identity
+    assert actual.checkpoint.topology_precision_sha256 == expected.checkpoint.topology_precision_sha256
     assert actual.checkpoint.runtime_identity == sampling.full_tiling_pymc_hmc_runtime_identity()
 
 
@@ -225,11 +227,98 @@ def _config(*, iterations: int, seed: int = 761) -> sampling.FullTilingPyMCHMCCo
         iterations=iterations,
         step_size=0.002,
         leapfrog_steps=2,
-        leaf_contrast_position_scale=1.7,
-        leaf_total_position_scale=3.2,
-        fixed_coefficient_position_scale=(0.6, 1.1, 2.4),
         seed=seed,
     )
+
+
+def test_valid_structural_candidates_are_rebuilt_in_authoritative_log_chart() -> None:
+    """Raw structural rounding is repaired before MH without changing proposal terms."""
+    problem, initial = _problem_state(k=4)
+    source_x = np.array([-1.11, -0.37, 0.22, 0.91], dtype=np.float64)
+    source_y = np.log(initial.fixed_coefficients)
+    source = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(
+            initial.tiling_state.tiling,
+            np.exp(source_x),
+        ),
+        fixed_coefficients=np.exp(source_y),
+    )
+    source_x_by_leaf = dict(
+        zip(source.tiling_state.tiling.leaves, source_x, strict=True),
+    )
+    rng = np.random.default_rng(12345)
+    valid_count = 0
+    raw_roundtrip_failures = 0
+
+    for _ in range(200):
+        raw_transition, _ = sampling._draw_structural_transition(
+            problem,
+            source,
+            rng=rng,
+        )
+        if not raw_transition.valid:
+            continue
+        valid_count += 1
+        raw_candidate = raw_transition.candidate
+        if not np.array_equal(
+            np.exp(np.log(raw_candidate.leaf_masses)),
+            raw_candidate.leaf_masses,
+        ):
+            raw_roundtrip_failures += 1
+
+        rebuilt_transition, candidate_x = sampling._rebuild_structural_transition_at_hmc_boundary(
+            problem,
+            source,
+            raw_transition,
+            current_log_leaf_mass=source_x,
+            current_log_fixed_coefficient=source_y,
+        )
+        rebuilt_candidate = rebuilt_transition.candidate
+        np.testing.assert_array_equal(
+            np.exp(candidate_x),
+            rebuilt_candidate.leaf_masses,
+        )
+        np.testing.assert_array_equal(
+            rebuilt_candidate.fixed_coefficients,
+            np.exp(source_y),
+        )
+        for leaf, coordinate in zip(
+            rebuilt_candidate.tiling_state.tiling.leaves,
+            candidate_x,
+            strict=True,
+        ):
+            if leaf in source_x_by_leaf:
+                assert coordinate == source_x_by_leaf[leaf]
+
+        assert rebuilt_transition.log_acceptance_ratio == (
+            raw_transition.log_acceptance_ratio + rebuilt_candidate.log_target - raw_candidate.log_target
+        )
+        assert rebuilt_transition.delta_log_likelihood == (
+            rebuilt_candidate.log_likelihood - source.log_likelihood
+        )
+        assert rebuilt_transition.delta_log_root_prior == (
+            rebuilt_candidate.log_root_prior - source.log_root_prior
+        )
+        assert rebuilt_transition.delta_log_allocation_prior == (
+            rebuilt_candidate.log_allocation_prior - source.log_allocation_prior
+        )
+        assert rebuilt_transition.delta_log_fixed_coefficient_prior == (
+            rebuilt_candidate.log_fixed_coefficient_prior - source.log_fixed_coefficient_prior
+        )
+        for name in (
+            "log_q_forward_selection",
+            "log_q_forward_auxiliary",
+            "log_q_reverse_selection",
+            "log_q_reverse_auxiliary",
+            "log_jacobian",
+            "reverse_merge_choice",
+            "reverse_split_choice",
+        ):
+            assert getattr(rebuilt_transition, name) == getattr(raw_transition, name)
+
+    assert valid_count >= 150
+    assert raw_roundtrip_failures >= 25
 
 
 @_requires_x64_child
@@ -375,18 +464,31 @@ def test_canonical_leaf_permutation_realigns_target_and_full_metric() -> None:
         abs=2.0e-12,
     )
 
-    settings = sampling.FullTilingPyMCHMCKernelSettings(
-        fixed_k=state.k,
-        step_size=0.01,
-        leapfrog_steps=2,
-        leaf_contrast_position_scale=2.5,
-        leaf_total_position_scale=4.5,
-        fixed_coefficient_position_scale=(0.4, 0.8, 1.6),
+    canonical_precision = sampling.build_full_tiling_pymc_hmc_topology_precision(
+        problem,
+        state,
     )
-    leaf_metric = settings.position_scale_matrix[: state.k, : state.k]
-    np.testing.assert_array_equal(
-        leaf_metric[np.ix_(permutation, permutation)],
-        leaf_metric,
+    fixed_mu, fixed_sigma = sampling._fixed_log_parameters(problem)
+    del fixed_mu
+    fixed_block = problem.base.fixed_block
+    assert fixed_block is not None
+    reordered_precision = sampling._assemble_topology_reference_precision(
+        dynamic_design=reordered_design,
+        alpha=reordered_alpha,
+        root_shape=problem.base.prior.root_shape,
+        root_rate=problem.base.prior.root_rate,
+        fixed_design=fixed_block.design,
+        fixed_reference=fixed_block.coefficient_prior_mean,
+        fixed_log_sigma=fixed_sigma,
+        observation_sd=problem.observation_sd,
+        likelihood_power=problem.base.likelihood_power,
+    )
+    full_permutation = np.concatenate((permutation, np.arange(state.k, state.k + 3)))
+    np.testing.assert_allclose(
+        reordered_precision,
+        canonical_precision[np.ix_(full_permutation, full_permutation)],
+        rtol=2.0e-14,
+        atol=2.0e-14,
     )
 
 
@@ -476,9 +578,11 @@ def test_every_structural_outcome_is_followed_by_one_hmc_transition(
         lambda *args, **kwargs: (transition, None),
     )
     original_accept = sampling.accept_or_reject
+    scored_transitions: list[PosteriorTransitionTerms] = []
 
     def controlled_accept(source, terms, *, log_uniform):
         """Force the selected valid outcome while retaining invalid semantics."""
+        scored_transitions.append(terms)
         if outcome == "accepted":
             return terms.candidate
         if outcome == "rejected":
@@ -486,6 +590,43 @@ def test_every_structural_outcome_is_followed_by_one_hmc_transition(
         return original_accept(source, terms, log_uniform=log_uniform)
 
     monkeypatch.setattr(sampling, "accept_or_reject", controlled_accept)
+    original_install = sampling._install_topology_kernel_atomically
+    installed: list[tuple[np.ndarray, object, object, object, object]] = []
+    rng_install_order: list[bool] = []
+
+    def recording_install(model, hmc, **kwargs):
+        """Record that matched replacement objects are live before reseeding."""
+        old_potential = hmc.potential
+        old_integrator = hmc.integrator
+        new_potential, new_integrator = original_install(model, hmc, **kwargs)
+        installed.append(
+            (
+                np.array(kwargs["precision"], copy=True),
+                old_potential,
+                old_integrator,
+                new_potential,
+                new_integrator,
+            )
+        )
+        original_set_rng = hmc.set_rng
+
+        def checked_set_rng(next_rng):
+            """Assert BaseHMC reseeds the newly installed potential."""
+            rng_install_order.append(
+                hmc.potential is new_potential
+                and hmc.integrator is new_integrator
+                and hmc.integrator._potential is new_potential
+            )
+            return original_set_rng(next_rng)
+
+        hmc.set_rng = checked_set_rng
+        return new_potential, new_integrator
+
+    monkeypatch.setattr(
+        sampling,
+        "_install_topology_kernel_atomically",
+        recording_install,
+    )
     result = sampling.sample_full_tiling_pymc_hmc(
         problem,
         initial,
@@ -498,10 +639,16 @@ def test_every_structural_outcome_is_followed_by_one_hmc_transition(
     assert result.trace.hmc_n_steps.tolist() == [2]
     assert result.trace.hmc_step_size.tolist() == pytest.approx([0.002])
     assert result.trace.hmc_accepted.tolist() == [True]
+    assert len(scored_transitions) == 1
     if outcome == "accepted":
         np.testing.assert_array_equal(
-            result.trace.hmc_start_log_leaf_mass[0],
-            np.log(valid_transition.candidate.leaf_masses),
+            np.exp(result.trace.hmc_start_log_leaf_mass[0]),
+            scored_transitions[0].candidate.leaf_masses,
+        )
+        assert scored_transitions[0].log_acceptance_ratio == (
+            valid_transition.log_acceptance_ratio
+            + scored_transitions[0].candidate.log_target
+            - valid_transition.candidate.log_target
         )
     else:
         np.testing.assert_array_equal(
@@ -518,6 +665,122 @@ def test_every_structural_outcome_is_followed_by_one_hmc_transition(
         else initial.tiling_state.tiling
     )
     assert result.final_state.tiling_state.tiling == expected_tiling
+    assert len(installed) == 1
+    installed_precision, old_potential, old_integrator, new_potential, new_integrator = installed[0]
+    selected_state = valid_transition.candidate if outcome == "accepted" else initial
+    np.testing.assert_array_equal(
+        installed_precision,
+        sampling.build_full_tiling_pymc_hmc_topology_precision(problem, selected_state),
+    )
+    assert new_potential is not old_potential
+    assert new_integrator is not old_integrator
+    assert rng_install_order == [True]
+
+
+@_requires_x64_child
+def test_topology_kernel_install_rolls_back_data_potential_and_integrator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Construction leaves state untouched and late install failure rolls back."""
+    problem, initial = _problem_state(k=4)
+    settings = sampling.FullTilingPyMCHMCKernelSettings(
+        fixed_k=4,
+        step_size=0.002,
+        leapfrog_steps=2,
+    )
+    model, compound, _, _ = sampling._build_compound_kernel(
+        problem,
+        initial,
+        settings,
+        np.random.default_rng(7),
+    )
+    actual_hmc = compound.methods[1]
+    old_potential = actual_hmc.potential
+    old_integrator = actual_hmc.integrator
+    old_data = {
+        name: np.array(model[name].get_value(borrow=False), copy=True)
+        for name in (
+            "dynamic_design",
+            "dirichlet_alpha",
+            "dirichlet_log_normalizer",
+        )
+    }
+    dynamic_design, alpha, normalizer = sampling._topology_arrays(problem, initial)
+    replacement_alpha = alpha[::-1].copy()
+
+    class FailingIntegratorInstall:
+        """Proxy one HMC object and fail its first new-integrator assignment."""
+
+        def __init__(self) -> None:
+            self._potential_value = old_potential
+            self._integrator_value = old_integrator
+            self._failed = False
+            self._logp_dlogp_func = actual_hmc._logp_dlogp_func
+
+        @property
+        def potential(self):
+            """Return the currently installed potential."""
+            return self._potential_value
+
+        @potential.setter
+        def potential(self, value):
+            """Install one potential."""
+            self._potential_value = value
+
+        @property
+        def integrator(self):
+            """Return the currently installed integrator."""
+            return self._integrator_value
+
+        @integrator.setter
+        def integrator(self, value):
+            """Fail only the first attempt to install a replacement."""
+            if not self._failed and value is not old_integrator:
+                self._failed = True
+                raise RuntimeError("forced integrator install failure")
+            self._integrator_value = value
+
+    failing_hmc = FailingIntegratorInstall()
+    precision = sampling.build_full_tiling_pymc_hmc_topology_precision(problem, initial)
+    with pytest.raises(RuntimeError, match="forced integrator install failure"):
+        sampling._install_topology_kernel_atomically(
+            model,
+            failing_hmc,
+            dynamic_design=dynamic_design,
+            alpha=replacement_alpha,
+            dirichlet_log_normalizer=normalizer,
+            precision=precision,
+        )
+
+    for name, expected in old_data.items():
+        np.testing.assert_array_equal(
+            model[name].get_value(borrow=False),
+            expected,
+        )
+    assert failing_hmc.potential is old_potential
+    assert failing_hmc.integrator is old_integrator
+
+    monkeypatch.setattr(
+        sampling,
+        "_build_topology_hmc_objects",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("forced construction failure")),
+    )
+    with pytest.raises(RuntimeError, match="forced construction failure"):
+        sampling._install_topology_kernel_atomically(
+            model,
+            actual_hmc,
+            dynamic_design=dynamic_design,
+            alpha=alpha,
+            dirichlet_log_normalizer=normalizer,
+            precision=precision,
+        )
+    for name, expected in old_data.items():
+        np.testing.assert_array_equal(
+            model[name].get_value(borrow=False),
+            expected,
+        )
+    assert actual_hmc.potential is old_potential
+    assert actual_hmc.integrator is old_integrator
 
 
 @_requires_x64_child
@@ -851,121 +1114,237 @@ def test_awkward_split_continuation_matches_uninterrupted_sampling() -> None:
     assert second.checkpoint.runtime_identity == direct.checkpoint.runtime_identity
 
 
-def test_position_scale_matrix_has_exact_total_contrast_formula_and_ownership() -> None:
-    """The resolved matrix exactly follows the projector formula and owns storage."""
-    settings = sampling.FullTilingPyMCHMCKernelSettings(
-        fixed_k=4,
-        step_size=0.01,
-        leapfrog_steps=3,
-        leaf_contrast_position_scale=2.5,
-        leaf_total_position_scale=4.5,
-        fixed_coefficient_position_scale=(0.4, 0.8, 1.6),
-    )
-    common = np.full((4, 4), 0.25)
-    expected_leaf = 2.5 * (np.eye(4) - common) + 4.5 * common
-    expected = np.zeros((7, 7))
-    expected[:4, :4] = expected_leaf
-    expected[4:, 4:] = np.diag([0.4, 0.8, 1.6])
+def _finite_difference_hessian(
+    function: Callable[[np.ndarray], float],
+    point: np.ndarray,
+    *,
+    step: float,
+) -> np.ndarray:
+    """Return a central finite-difference Hessian.
 
-    np.testing.assert_array_equal(
-        settings.position_scale_matrix,
-        expected,
+    Args:
+        function: Scalar callable evaluated on coordinate vectors.
+        point: One-dimensional evaluation coordinates.
+        step: Positive coordinate increment used by every stencil.
+
+    Returns:
+        Symmetric float64 Hessian with shape ``(point.size, point.size)``.
+    """
+    dimension = point.size
+    result = np.empty((dimension, dimension), dtype=np.float64)
+    center = float(function(point))
+    for row in range(dimension):
+        row_step = np.zeros(dimension)
+        row_step[row] = step
+        result[row, row] = (
+            float(function(point + row_step)) - 2.0 * center + float(function(point - row_step))
+        ) / step**2
+        for column in range(row):
+            column_step = np.zeros(dimension)
+            column_step[column] = step
+            value = (
+                float(function(point + row_step + column_step))
+                - float(function(point + row_step - column_step))
+                - float(function(point - row_step + column_step))
+                + float(function(point - row_step - column_step))
+            ) / (4.0 * step**2)
+            result[row, column] = value
+            result[column, row] = value
+    return result
+
+
+def test_topology_precision_matches_independent_formula_and_prior_hessian() -> None:
+    """The dense oracle matches independent algebra and prior finite differences."""
+    problem, state = _problem_state(k=4)
+    precision = sampling.build_full_tiling_pymc_hmc_topology_precision(problem, state)
+    dynamic_design, alpha, _ = sampling._topology_arrays(problem, state)
+    prior = problem.base.prior
+    root_reference = prior.root_shape / prior.root_rate
+    kappa = float(alpha.sum())
+    shares = alpha / kappa
+    fixed_block = problem.base.fixed_block
+    assert fixed_block is not None
+    fixed_mu, fixed_sigma = sampling._fixed_log_parameters(problem)
+    jacobian = np.column_stack(
+        (
+            dynamic_design * (root_reference * shares)[np.newaxis, :],
+            fixed_block.design * fixed_block.coefficient_prior_mean[np.newaxis, :],
+        )
     )
-    first = settings.position_scale_matrix
-    second = settings.position_scale_matrix
+    whitened = jacobian / problem.observation_sd[:, np.newaxis]
+    independent = problem.base.likelihood_power * (whitened.T @ whitened)
+    leaf_prior = (kappa - prior.root_shape + prior.root_rate * root_reference) * (
+        np.diag(shares) - np.outer(shares, shares)
+    ) + prior.root_rate * root_reference * np.outer(shares, shares)
+    independent[: state.k, : state.k] += leaf_prior
+    fixed_indices = np.arange(state.k, precision.shape[0])
+    independent[fixed_indices, fixed_indices] += 1.0 / np.square(fixed_sigma)
+
+    np.testing.assert_allclose(precision, independent, rtol=2.0e-14, atol=2.0e-14)
+    np.testing.assert_allclose(
+        precision[: state.k, state.k :],
+        problem.base.likelihood_power
+        * (dynamic_design * (root_reference * shares)[np.newaxis, :] / problem.observation_sd[:, None]).T
+        @ (
+            fixed_block.design
+            * fixed_block.coefficient_prior_mean[np.newaxis, :]
+            / problem.observation_sd[:, None]
+        ),
+        rtol=2.0e-14,
+        atol=2.0e-14,
+    )
+    assert np.linalg.norm(precision[: state.k, state.k :]) > 0.0
+
+    def transformed_log_prior(coordinates: np.ndarray) -> float:
+        """Evaluate the transformed prior without production curvature helpers."""
+        x = coordinates[: state.k]
+        y = coordinates[state.k :]
+        log_total = float(np.logaddexp.reduce(x))
+        total = math.exp(log_total)
+        log_share = x - log_total
+        return float(
+            (prior.root_shape - 1.0) * log_total
+            - prior.root_rate * total
+            + np.dot(alpha - 1.0, log_share)
+            + x.sum()
+            - (state.k - 1) * log_total
+            - 0.5 * np.square((y - fixed_mu) / fixed_sigma).sum()
+        )
+
+    reference = np.concatenate(
+        (
+            np.log(root_reference * shares),
+            np.log(fixed_block.coefficient_prior_mean),
+        )
+    )
+    finite_difference_prior = -_finite_difference_hessian(
+        transformed_log_prior,
+        reference,
+        step=2.0e-4,
+    )
+    expected_prior = np.zeros_like(precision)
+    expected_prior[: state.k, : state.k] = leaf_prior
+    expected_prior[fixed_indices, fixed_indices] = 1.0 / np.square(fixed_sigma)
+    np.testing.assert_allclose(
+        finite_difference_prior,
+        expected_prior,
+        rtol=2.0e-6,
+        atol=2.0e-6,
+    )
+
+
+def test_topology_precision_is_deterministic_owned_and_read_only() -> None:
+    """Repeated builds are byte-identical owned immutable matrices and hashes."""
+    problem, state = _problem_state(k=4)
+    first = sampling.build_full_tiling_pymc_hmc_topology_precision(problem, state)
+    second = sampling.build_full_tiling_pymc_hmc_topology_precision(
+        problem,
+        _nonuniform_state(problem, state),
+    )
+
+    np.testing.assert_array_equal(first, second)
+    assert first.dtype == np.dtype(np.float64)
     assert first.flags.owndata
     assert not first.flags.writeable
     assert not np.shares_memory(first, second)
+    assert sampling._topology_precision_sha256(first) == sampling._topology_precision_sha256(second)
 
 
-def test_position_scale_matrix_is_spd_with_total_and_contrast_eigenvectors() -> None:
-    """Common, multiple contrasts, and fixed axes have their declared eigenvalues."""
-    settings = sampling.FullTilingPyMCHMCKernelSettings(
-        fixed_k=4,
-        step_size=0.01,
-        leapfrog_steps=3,
-        leaf_contrast_position_scale=2.5,
-        leaf_total_position_scale=4.5,
-        fixed_coefficient_position_scale=(0.4, 0.8),
+def test_topology_precision_handles_no_fixed_zero_likelihood_and_singleton() -> None:
+    """No-fixed, likelihood-free, and K=1 references retain exact SPD semantics."""
+    problem, _ = _problem_state(k=4)
+    no_fixed_problem = FullTilingProblem(
+        replace(problem.base, fixed_block=None),
+        concentration=problem.concentration,
     )
-    matrix = settings.position_scale_matrix
-
-    np.testing.assert_array_equal(matrix, matrix.T)
-    assert np.all(np.linalg.eigvalsh(matrix) > 0.0)
-    for vector in (
-        np.array([1.0, -1.0, 0.0, 0.0, 0.0, 0.0]),
-        np.array([1.0, 1.0, -2.0, 0.0, 0.0, 0.0]),
-        np.array([1.0, 1.0, 1.0, -3.0, 0.0, 0.0]),
-    ):
-        np.testing.assert_allclose(matrix @ vector, 2.5 * vector, rtol=0.0, atol=1.0e-15)
-    total = np.array([1.0, 1.0, 1.0, 1.0, 0.0, 0.0])
-    np.testing.assert_allclose(matrix @ total, 4.5 * total, rtol=0.0, atol=1.0e-15)
-    np.testing.assert_array_equal(matrix[:4, 4:], np.zeros((4, 2)))
-    np.testing.assert_array_equal(matrix[4:, :4], np.zeros((2, 4)))
-    np.testing.assert_array_equal(matrix[4:, 4:], np.diag([0.4, 0.8]))
-
-
-@pytest.mark.parametrize("fixed_k", (5, 50, 250))
-def test_equal_leaf_scales_reduce_exactly_to_scalar_identity(fixed_k: int) -> None:
-    """Equal eigenscales give the exact legacy scalar metric at production K."""
-    equal = sampling.FullTilingPyMCHMCKernelSettings(
-        fixed_k=fixed_k,
-        step_size=0.01,
-        leapfrog_steps=1,
-        leaf_contrast_position_scale=3.0,
-        leaf_total_position_scale=3.0,
-        fixed_coefficient_position_scale=(),
+    no_fixed_state = initialize_full_tiling_posterior_state(no_fixed_problem, k=4)
+    no_fixed_precision = sampling.build_full_tiling_pymc_hmc_topology_precision(
+        no_fixed_problem,
+        no_fixed_state,
     )
+    assert no_fixed_precision.shape == (4, 4)
+    np.linalg.cholesky(no_fixed_precision)
 
+    zero_problem = FullTilingProblem(
+        replace(problem.base, likelihood_power=0.0),
+        concentration=problem.concentration,
+    )
+    zero_state = initialize_full_tiling_posterior_state(zero_problem, k=4)
+    zero_precision = sampling.build_full_tiling_pymc_hmc_topology_precision(
+        zero_problem,
+        zero_state,
+    )
+    _, alpha, _ = sampling._topology_arrays(zero_problem, zero_state)
+    shares = alpha / alpha.sum()
+    shape = zero_problem.base.prior.root_shape
+    expected_leaf = alpha.sum() * (np.diag(shares) - np.outer(shares, shares)) + shape * np.outer(
+        shares, shares
+    )
+    _, fixed_sigma = sampling._fixed_log_parameters(zero_problem)
+    np.testing.assert_allclose(
+        zero_precision[:4, :4],
+        expected_leaf,
+        rtol=2.0e-14,
+        atol=2.0e-14,
+    )
+    np.testing.assert_array_equal(zero_precision[:4, 4:], np.zeros((4, 3)))
+    np.testing.assert_array_equal(zero_precision[4:, :4], np.zeros((3, 4)))
+    np.testing.assert_array_equal(zero_precision[4:, 4:], np.diag(1.0 / fixed_sigma**2))
+
+    singleton_problem = FullTilingProblem(
+        replace(problem.base, fixed_block=None, likelihood_power=0.0),
+        concentration=problem.concentration,
+    )
+    singleton_state = initialize_full_tiling_posterior_state(singleton_problem, k=1)
+    singleton_precision = sampling.build_full_tiling_pymc_hmc_topology_precision(
+        singleton_problem,
+        singleton_state,
+    )
     np.testing.assert_array_equal(
-        equal.position_scale_matrix,
-        3.0 * np.eye(fixed_k),
+        singleton_precision,
+        np.array([[singleton_problem.base.prior.root_shape]]),
     )
 
 
-def test_singleton_leaf_metric_has_only_total_direction() -> None:
-    """At K=1 the contrast projector vanishes and only total scale remains."""
-    singleton = sampling.FullTilingPyMCHMCKernelSettings(
-        fixed_k=1,
-        step_size=0.01,
-        leapfrog_steps=1,
-        leaf_contrast_position_scale=99.0,
-        leaf_total_position_scale=7.0,
-        fixed_coefficient_position_scale=(),
-    )
+@pytest.mark.parametrize(
+    ("matrix", "message"),
+    [
+        (np.array([[math.nan]]), "finite"),
+        (np.array([[2.0, 1.0], [0.0, 2.0]]), "symmetric"),
+        (np.array([[1.0, 1.0], [1.0, 1.0]]), "positive definite"),
+        (np.array([[1.0, 2.0], [2.0, 1.0]]), "positive definite"),
+    ],
+)
+def test_topology_precision_validation_fails_closed(
+    matrix: np.ndarray,
+    message: str,
+) -> None:
+    """Non-finite, asymmetric, singular, and indefinite precision fails closed."""
+    with pytest.raises(ValueError, match=message):
+        sampling._validate_topology_precision(matrix)
 
-    np.testing.assert_array_equal(singleton.position_scale_matrix, np.array([[7.0]]))
 
-
-def test_config_preserves_legacy_positional_fixed_scale_and_seed_slots() -> None:
-    """The v2 total scale cannot silently reinterpret legacy positional calls."""
-    config = sampling.FullTilingPyMCHMCConfig(
-        2,
-        0.001,
-        1,
-        1.75,
-        0.5,
-        42,
-        leaf_total_position_scale=2.25,
-    )
-
-    assert config.leaf_contrast_position_scale == 1.75
-    assert config.fixed_coefficient_position_scale == 0.5
-    assert config.seed == 42
-    assert config.leaf_total_position_scale == 2.25
+def test_obsolete_manual_metric_fields_are_rejected() -> None:
+    """Removed manual position scales and positional seeds are rejected."""
+    with pytest.raises(TypeError, match="unexpected keyword"):
+        sampling.FullTilingPyMCHMCConfig(
+            iterations=2,
+            step_size=0.001,
+            leapfrog_steps=1,
+            leaf_contrast_position_scale=1.75,  # type: ignore[call-arg]
+        )
+    with pytest.raises(TypeError):
+        sampling.FullTilingPyMCHMCConfig(2, 0.001, 1, 42)  # type: ignore[call-arg]
 
 
 @_requires_x64_child
 def test_hmc_is_frozen_with_exact_leapfrog_count_and_no_tuning() -> None:
-    """The constructed HMC step is static and reports the fixed path each sweep."""
+    """The HMC path is non-adapting and uses the selected inverse potential."""
     problem, initial = _problem_state(k=4)
     settings = sampling.FullTilingPyMCHMCKernelSettings(
         fixed_k=4,
         step_size=0.003,
         leapfrog_steps=3,
-        leaf_contrast_position_scale=2.0,
-        leaf_total_position_scale=5.0,
-        fixed_coefficient_position_scale=(1.0, 1.0, 1.0),
     )
     _, compound, _, _ = sampling._build_compound_kernel(
         problem,
@@ -980,23 +1359,31 @@ def test_hmc_is_frozen_with_exact_leapfrog_count_and_no_tuning() -> None:
     assert hmc.adapt_step_size is False
     assert hmc._step_rand is None
     assert hmc.max_steps == 3
-    np.testing.assert_array_equal(
-        hmc.potential._cov,
-        settings.position_scale_matrix,
+    precision = sampling.build_full_tiling_pymc_hmc_topology_precision(problem, initial)
+    quadpotential = __import__(
+        "pymc.step_methods.hmc.quadpotential",
+        fromlist=["QuadPotentialFullInv"],
     )
+    assert isinstance(hmc.potential, quadpotential.QuadPotentialFullInv)
+    assert hmc.integrator._potential is hmc.potential
+    np.testing.assert_array_equal(hmc.potential.L, np.linalg.cholesky(precision))
     momentum = np.arange(1.0, 8.0)
-    np.testing.assert_array_equal(
+    expected_velocity = np.linalg.solve(precision, momentum)
+    np.testing.assert_allclose(
         hmc.potential.velocity(momentum),
-        settings.position_scale_matrix @ momentum,
+        expected_velocity,
+        rtol=2.0e-14,
+        atol=2.0e-14,
     )
     assert hmc.potential.energy(momentum) == pytest.approx(
-        0.5
-        * float(
-            np.dot(
-                momentum,
-                settings.position_scale_matrix @ momentum,
-            )
-        ),
+        0.5 * float(np.dot(momentum, expected_velocity)),
+        rel=2.0e-14,
+    )
+    hmc.potential.set_rng(np.random.Generator(np.random.PCG64(814)))
+    expected_rng = np.random.Generator(np.random.PCG64(814))
+    np.testing.assert_array_equal(
+        hmc.potential.random(),
+        hmc.potential.L @ expected_rng.normal(size=precision.shape[0]),
     )
     result = sampling.sample_full_tiling_pymc_hmc(
         problem,
@@ -1090,32 +1477,6 @@ def test_leapfrog_count_survives_pymc_step_size_rounding() -> None:
     assert result.trace.hmc_n_steps.tolist() == [88]
 
 
-@_requires_x64_child
-def test_unspecified_total_scale_resolves_to_contrast_scale() -> None:
-    """The convenience default produces an isotropic leaf metric."""
-    problem, initial = _problem_state(k=4)
-    result = sampling.sample_full_tiling_pymc_hmc(
-        problem,
-        initial,
-        sampling.FullTilingPyMCHMCConfig(
-            iterations=1,
-            step_size=0.01,
-            leapfrog_steps=2,
-            leaf_contrast_position_scale=2.25,
-            leaf_total_position_scale=None,
-            seed=42,
-        ),
-    )
-
-    settings = result.checkpoint.kernel_settings
-    assert settings.leaf_contrast_position_scale == 2.25
-    assert settings.leaf_total_position_scale == 2.25
-    np.testing.assert_array_equal(
-        settings.position_scale_matrix[: initial.k, : initial.k],
-        2.25 * np.eye(initial.k),
-    )
-
-
 @pytest.mark.parametrize(
     ("changes", "error", "message"),
     [
@@ -1125,57 +1486,25 @@ def test_unspecified_total_scale_resolves_to_contrast_scale() -> None:
         ({"step_size": math.inf}, ValueError, "step_size must be finite"),
         ({"leapfrog_steps": 1.5}, TypeError, "leapfrog_steps must be an integer"),
         ({"leapfrog_steps": 0}, ValueError, "leapfrog_steps must be positive"),
-        (
-            {"leaf_contrast_position_scale": 0.0},
-            ValueError,
-            "leaf_contrast_position_scale must be finite",
-        ),
-        (
-            {"leaf_total_position_scale": math.inf},
-            ValueError,
-            "leaf_total_position_scale must be finite",
-        ),
-        (
-            {"fixed_coefficient_position_scale": (1.0, math.nan, 1.0)},
-            ValueError,
-            "fixed_coefficient_position_scale must be finite",
-        ),
         ({"seed": -1}, ValueError, "seed must be non-negative"),
     ],
 )
-def test_config_rejects_invalid_static_hmc_settings(
+def test_config_rejects_invalid_hmc_settings(
     changes: dict[str, object],
     error: type[Exception],
     message: str,
 ) -> None:
-    """Invalid scalar, count, mass, and seed settings fail at construction."""
+    """Invalid scalar, count, and seed settings fail at construction."""
     values = {
         "iterations": 2,
         "step_size": 0.01,
         "leapfrog_steps": 3,
-        "leaf_contrast_position_scale": 1.0,
-        "leaf_total_position_scale": 2.0,
-        "fixed_coefficient_position_scale": (1.0, 1.0, 1.0),
         "seed": 4,
     }
     values.update(changes)
 
     with pytest.raises(error, match=message):
         sampling.FullTilingPyMCHMCConfig(**values)
-
-
-def test_sampling_rejects_fixed_position_scale_length_mismatch() -> None:
-    """Problem resolution rejects a fixed-scale vector of the wrong length."""
-    problem, initial = _problem_state(k=4)
-    config = sampling.FullTilingPyMCHMCConfig(
-        iterations=1,
-        step_size=0.01,
-        leapfrog_steps=2,
-        fixed_coefficient_position_scale=(1.0, 2.0),
-    )
-
-    with pytest.raises(ValueError, match="one entry per fixed coefficient"):
-        sampling.sample_full_tiling_pymc_hmc(problem, initial, config)
 
 
 @_requires_x64_child
@@ -1201,12 +1530,12 @@ def test_checkpoint_rejects_problem_k_settings_and_schedule_mismatches() -> None
             checkpoint,
             kernel_settings=replace(checkpoint.kernel_settings, fixed_k=3),
         )
-    with pytest.raises(ValueError, match="fixed block must match"):
+    with pytest.raises(ValueError, match="metric_builder_id is incompatible"):
         replace(
             checkpoint,
             kernel_settings=replace(
                 checkpoint.kernel_settings,
-                fixed_coefficient_position_scale=(1.0, 1.0),
+                metric_builder_id="future_builder_v2",
             ),
         )
     with pytest.raises(ValueError, match="log_leaf_mass must exactly encode"):
@@ -1232,11 +1561,13 @@ def test_checkpoint_rejects_problem_k_settings_and_schedule_mismatches() -> None
         )
     with pytest.raises(ValueError, match="schedule is incompatible"):
         replace(checkpoint, schedule_id="future_compound_hmc_v2")
+    with pytest.raises(ValueError, match="precision hash is incompatible"):
+        replace(checkpoint, topology_precision_sha256="0" * 64)
 
 
 @_requires_x64_child
 def test_checkpoint_freezes_hmc_settings_for_continuation() -> None:
-    """Continuation retains the exact step, path, and position-scale settings."""
+    """Continuation retains exact path controls and metric identities."""
     problem, initial = _problem_state(k=4)
     first = sampling.sample_full_tiling_pymc_hmc(
         problem,

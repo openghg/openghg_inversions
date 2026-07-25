@@ -292,6 +292,9 @@ Required checks:
 
 - the resolved metric belongs to the same topology as the installed design
   and Dirichlet arrays;
+- every valid structural candidate is rescored at the exact physical masses
+  decoded from the authoritative log coordinates passed to HMC; unchanged
+  leaves retain their existing authoritative coordinates;
 - accepted, rejected, and invalid structural outcomes still invoke exactly
   one HMC transition;
 - the HMC trajectory holds topology and \(G_\tau\) fixed;
@@ -300,6 +303,16 @@ Required checks:
 - checkpoints bind the metric-builder identity, reference-state identity,
   resolved metric hash, and numerical-runtime identity; and
 - corrupt or mismatched topology/metric pairs fail closed.
+
+The structural/log-coordinate handshake is a binary64 consistency rule, not
+an assertion of exact detailed balance on the finite set of floating-point
+numbers. Exact finite-state accounting would require integrating the
+probability of every Beta variate rounding into each float endpoint. The
+implemented standard is the usual floating implementation of the exact-real
+kernel: preserve the sampled auxiliary and proposal/Jacobian terms, rebuild
+the candidate at the exact physical endpoint decoded from the HMC
+coordinates, and add its target correction before the structural MH
+decision.
 
 ### Phase C: H2d bounded calibration
 

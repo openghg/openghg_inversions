@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import asdict, replace
 import importlib.util
 import json
 import os
@@ -140,9 +140,128 @@ def _arguments(
 ) -> list[str]:
     """Return the complete explicit tiny-run CLI contract."""
     calibration_path = input_path.with_name("calibration.json")
+    development = [
+        {
+            "role": "development-nominal",
+            "initializer": "largest-nominal",
+            "topology_seed": None,
+            "master_seed": 83003,
+            "topology_sha256": "c" * 64,
+            "topology_precision_sha256": "1" * 64,
+            "sweeps": 500,
+            "mean_acceptance": 0.75,
+            "divergences": 0,
+            "finite_scientific_endpoints": True,
+            "finite_transformed_endpoints": True,
+            "accepted_nonzero_displacement": True,
+        },
+        {
+            "role": "development-a",
+            "initializer": "random-recursive",
+            "topology_seed": 42003,
+            "master_seed": 83004,
+            "topology_sha256": "d" * 64,
+            "topology_precision_sha256": "2" * 64,
+            "sweeps": 500,
+            "mean_acceptance": 0.8,
+            "divergences": 0,
+            "finite_scientific_endpoints": True,
+            "finite_transformed_endpoints": True,
+            "accepted_nonzero_displacement": True,
+        },
+        {
+            "role": "development-b",
+            "initializer": "random-recursive",
+            "topology_seed": 42004,
+            "master_seed": 83005,
+            "topology_sha256": "e" * 64,
+            "topology_precision_sha256": "3" * 64,
+            "sweeps": 500,
+            "mean_acceptance": 0.78,
+            "divergences": 0,
+            "finite_scientific_endpoints": True,
+            "finite_transformed_endpoints": True,
+            "accepted_nonzero_displacement": True,
+        },
+    ]
+    held_out = [
+        {
+            "role": "held-out-a",
+            "initializer": "random-recursive",
+            "topology_seed": 42005,
+            "master_seed": 74003,
+            "topology_sha256": "f" * 64,
+            "topology_precision_sha256": "4" * 64,
+            "sweeps": 500,
+            "mean_acceptance": 0.76,
+            "divergences": 0,
+            "finite_scientific_endpoints": True,
+            "finite_transformed_endpoints": True,
+            "accepted_nonzero_displacement": True,
+        },
+        {
+            "role": "held-out-b",
+            "initializer": "random-recursive",
+            "topology_seed": 42006,
+            "master_seed": 74004,
+            "topology_sha256": "a" * 64,
+            "topology_precision_sha256": "5" * 64,
+            "sweeps": 500,
+            "mean_acceptance": 0.79,
+            "divergences": 0,
+            "finite_scientific_endpoints": True,
+            "finite_transformed_endpoints": True,
+            "accepted_nonzero_displacement": True,
+        },
+    ]
+    candidate_grid = driver._calibration_candidate_grid()
+    candidate_master_seeds = (73003, 73004, 73005)
+    candidate_results = []
+    for candidate_index, step_size in enumerate(candidate_grid["step_sizes"]):
+        for leapfrog_steps in candidate_grid["leapfrog_steps"]:
+            selected_candidate = step_size == 0.025 and leapfrog_steps == 3
+            candidate_development = []
+            for role_index, validation_trajectory in enumerate(development):
+                candidate_development.append(
+                    {
+                        **{
+                            name: validation_trajectory[name]
+                            for name in (
+                                "role",
+                                "initializer",
+                                "topology_seed",
+                                "topology_sha256",
+                                "topology_precision_sha256",
+                            )
+                        },
+                        "master_seed": candidate_master_seeds[role_index],
+                        "sweeps": 200,
+                        "mean_acceptance": 0.75 + 0.01 * role_index,
+                        "divergences": 0,
+                        "finite_scientific_endpoints": True,
+                        "finite_transformed_endpoints": True,
+                        "accepted_nonzero_displacement": True,
+                        "mean_mahalanobis_squared_displacement_per_gradient": (
+                            10.0 - role_index if selected_candidate else 1.0 / (candidate_index + 2)
+                        ),
+                        "throughput_sweeps_per_second": 100.0 - role_index,
+                    }
+                )
+            candidate_results.append(
+                {
+                    "step_size": step_size,
+                    "leapfrog_steps": leapfrog_steps,
+                    "development": candidate_development,
+                    "development_admissible": True,
+                }
+            )
+    validation = {
+        "development": development,
+        "held_out": held_out,
+    }
     calibration = {
         "schema": driver.CALIBRATION_SCHEMA,
-        "calibration_id": "tiny-static-hmc-calibration-v2",
+        "calibration_id": "tiny-topology-conditioned-hmc-calibration-v3",
         "fixed_k": 2,
         "input_sha256": driver._sha256_file(input_path),
         "target": {
@@ -155,98 +274,38 @@ def _arguments(
             "normalize_weights": True,
         },
         "kernel": {
-            "step_size": 0.001,
-            "leapfrog_steps": 1,
+            "step_size": 0.025,
+            "leapfrog_steps": 3,
             "coordinate_layout_id": (driver.FULL_TILING_PYMC_HMC_COORDINATE_LAYOUT_ID),
             "metric_semantics_id": (driver.FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID),
-            "leaf_contrast_position_scale": 1.75,
-            "leaf_total_position_scale": 2.25,
-            "fixed_coefficient_position_scale": [
-                0.5,
-                0.75,
-                1.0,
-                1.25,
-                1.5,
-                2.0,
-            ],
+            "metric_builder_id": driver.FULL_TILING_PYMC_HMC_METRIC_BUILDER_ID,
+            "metric_reference_id": driver.FULL_TILING_PYMC_HMC_METRIC_REFERENCE_ID,
         },
         "evidence": {
             "code_revision": "test-revision",
-            "robust_variance_estimator": (driver.ROBUST_VARIANCE_ESTIMATOR),
-            "leaf_metric_estimator": driver.LEAF_METRIC_ESTIMATOR,
-            "clipping_bounds": [1.0e-4, 1.0e2],
-            "development_initializers": [
-                {
-                    "role": "development-a",
-                    "strategy": "random-recursive",
-                    "seed": 41003,
-                    "sampler_seed": 71003,
-                    "sweeps": 200,
-                },
-                {
-                    "role": "development-b",
-                    "strategy": "random-recursive",
-                    "seed": 41004,
-                    "sampler_seed": 71004,
-                    "sweeps": 200,
-                },
-            ],
-            "candidate_grid": [{"step_size": 0.001, "leapfrog_steps": 1}],
-            "decision_statistics": [
-                {
-                    "step_size": 0.001,
-                    "leapfrog_steps": 1,
-                    "development_a_mean_acceptance": 0.75,
-                    "development_b_mean_acceptance": 0.8,
-                    "divergences": 0,
-                    "finite": True,
-                    "median_hmc_log_displacement_per_leapfrog_step": 0.125,
-                    "selected": True,
-                }
-            ],
-            "selected_validation": {
-                "step_size": 0.001,
-                "leapfrog_steps": 1,
-                "initializers": [
-                    {
-                        "role": "development-a",
-                        "strategy": "random-recursive",
-                        "seed": 41003,
-                        "sampler_seed": 72003,
-                        "sweeps": 500,
-                        "mean_acceptance": 0.75,
-                        "divergences": 0,
-                        "finite": True,
-                    },
-                    {
-                        "role": "development-b",
-                        "strategy": "random-recursive",
-                        "seed": 41004,
-                        "sampler_seed": 72004,
-                        "sweeps": 500,
-                        "mean_acceptance": 0.8,
-                        "divergences": 0,
-                        "finite": True,
-                    },
-                    {
-                        "role": "held-out",
-                        "strategy": "random-recursive",
-                        "seed": 41005,
-                        "sampler_seed": 72005,
-                        "sweeps": 500,
-                        "mean_acceptance": 0.78,
-                        "divergences": 0,
-                        "finite": True,
-                    },
-                ],
+            "input_sha256": driver._sha256_file(input_path),
+            "candidate_grid": candidate_grid,
+            "candidate_results": candidate_results,
+            "development": development,
+            "held_out": held_out,
+            "selected": {
+                "step_size": 0.025,
+                "leapfrog_steps": 3,
+                "selection_rule_id": driver.CALIBRATION_SELECTION_RULE_ID,
+                "candidate_grid_sha256": driver._json_sha256(candidate_grid),
+                "candidate_results_sha256": driver._json_sha256(candidate_results),
+                "development_evidence_sha256": driver._json_sha256(development),
+                "validation_evidence_sha256": driver._json_sha256(validation),
             },
             "excluded_production_topology_sha256": {
-                "metric_source": "c" * 64,
-                "development_a": "d" * 64,
-                "development_b": "e" * 64,
-                "held_out": "f" * 64,
+                item["role"]: item["topology_sha256"] for item in (*development, *held_out)
             },
-            "source_artifact_sha256": {"tiny-nuts-reference": "b" * 64},
+            "source_artifact_sha256": {
+                "candidate-grid": driver._json_sha256(candidate_grid),
+                "candidate-results": driver._json_sha256(candidate_results),
+                "development-validation": driver._json_sha256(development),
+                "held-out-validation": driver._json_sha256(held_out),
+            },
         },
     }
     calibration_path.write_text(
@@ -267,17 +326,11 @@ def _arguments(
         "--chain-id",
         "tiny-chain",
         "--step-size",
-        "0.001",
+        "0.025",
         "--leapfrog-steps",
-        "1",
-        "--leaf-contrast-position-scale",
-        "1.75",
-        "--leaf-total-position-scale",
-        "2.25",
-        "--fixed-coefficient-position-scale",
-        "0.5,0.75,1,1.25,1.5,2",
+        "3",
         "--calibration-id",
-        "tiny-static-hmc-calibration-v2",
+        "tiny-topology-conditioned-hmc-calibration-v3",
         "--calibration-file",
         str(calibration_path),
         "--calibration-sha256",
@@ -317,6 +370,78 @@ def _replace_option(
 def _json(path: Path) -> dict[str, Any]:
     """Load one JSON artifact."""
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _rehash_calibration_evidence(
+    driver: ModuleType,
+    calibration: dict[str, Any],
+) -> None:
+    """Refresh the v3 hashes after a test mutates trajectory evidence."""
+    evidence = calibration["evidence"]
+    candidate_grid = evidence["candidate_grid"]
+    candidate_results = evidence["candidate_results"]
+    development = evidence["development"]
+    held_out = evidence["held_out"]
+    evidence["selected"]["candidate_grid_sha256"] = driver._json_sha256(candidate_grid)
+    evidence["selected"]["candidate_results_sha256"] = driver._json_sha256(candidate_results)
+    evidence["selected"]["development_evidence_sha256"] = driver._json_sha256(development)
+    evidence["selected"]["validation_evidence_sha256"] = driver._json_sha256(
+        {
+            "development": development,
+            "held_out": held_out,
+        }
+    )
+    evidence["excluded_production_topology_sha256"] = {
+        item["role"]: item["topology_sha256"] for item in (*development, *held_out)
+    }
+    evidence["source_artifact_sha256"] = {
+        "candidate-grid": driver._json_sha256(candidate_grid),
+        "candidate-results": driver._json_sha256(candidate_results),
+        "development-validation": driver._json_sha256(development),
+        "held-out-validation": driver._json_sha256(held_out),
+    }
+
+
+@_requires_x64_child
+@pytest.mark.parametrize(
+    ("tie_break", "rival_index"), (("acceptance", 1), ("throughput", 1), ("step_size", 3))
+)
+def test_calibration_selection_recomputes_each_predeclared_tie_break(
+    tmp_path: Path,
+    hmc_driver: ModuleType,
+    tie_break: str,
+    rival_index: int,
+) -> None:
+    """Selection evidence is recomputed through every ordered tie-break."""
+    input_path = tmp_path / f"{tie_break}.nc"
+    _write_frozen_input(input_path)
+    arguments = _arguments(hmc_driver, input_path, tmp_path / tie_break)
+    calibration_path = Path(arguments[arguments.index("--calibration-file") + 1])
+    calibration = _json(calibration_path)
+    candidates = calibration["evidence"]["candidate_results"]
+    for candidate in candidates:
+        for trajectory in candidate["development"]:
+            trajectory["mean_mahalanobis_squared_displacement_per_gradient"] = 0.1
+    selected = candidates[0]["development"]
+    rival = candidates[rival_index]["development"]
+    for selected_trajectory, rival_trajectory in zip(selected, rival, strict=True):
+        selected_trajectory["mean_mahalanobis_squared_displacement_per_gradient"] = 10.0
+        rival_trajectory["mean_mahalanobis_squared_displacement_per_gradient"] = 10.0
+        if tie_break in {"throughput", "step_size"}:
+            selected_trajectory["mean_acceptance"] = 0.75
+            rival_trajectory["mean_acceptance"] = 0.75
+        if tie_break == "acceptance":
+            selected_trajectory["mean_acceptance"] = 0.75
+            rival_trajectory["mean_acceptance"] = 0.80
+        if tie_break == "throughput":
+            selected_trajectory["throughput_sweeps_per_second"] = 100.0
+            rival_trajectory["throughput_sweeps_per_second"] = 90.0
+        if tie_break == "step_size":
+            selected_trajectory["throughput_sweeps_per_second"] = 100.0
+            rival_trajectory["throughput_sweeps_per_second"] = 100.0
+    _rehash_calibration_evidence(hmc_driver, calibration)
+    parsed = hmc_driver.build_parser().parse_args(arguments)
+    hmc_driver._validate_calibration_evidence(calibration["evidence"], parsed)
 
 
 @_requires_x64_child
@@ -431,28 +556,30 @@ def test_dry_fresh_and_resumed_segments_are_exact_and_auditable(
     }
     manifest = _json(fresh_output / hmc_driver.MANIFEST_FILENAME)
     completion = _json(fresh_output / hmc_driver.COMPLETION_FILENAME)
-    assert manifest["schema"].endswith("native_manifest.v2")
+    assert manifest["schema"].endswith("native_manifest.v3")
     assert manifest["initialization"]["seed"] is None
     assert manifest["sampler"]["metric_semantics_id"] == (hmc_driver.FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID)
-    assert manifest["sampler"]["leaf_contrast_position_scale"] == 1.75
-    assert manifest["sampler"]["leaf_total_position_scale"] == 2.25
-    assert manifest["sampler"]["fixed_coefficient_position_scale"] == [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+    assert manifest["sampler"]["metric_builder_id"] == (hmc_driver.FULL_TILING_PYMC_HMC_METRIC_BUILDER_ID)
+    assert manifest["sampler"]["metric_reference_id"] == (hmc_driver.FULL_TILING_PYMC_HMC_METRIC_REFERENCE_ID)
+    assert manifest["sampler"]["metric_rebuild_policy"] == (hmc_driver.TOPOLOGY_PRECISION_REBUILD_POLICY)
+    assert manifest["sampler"]["topology_dependent_metric"] is True
+    assert len(manifest["initialization"]["topology_precision_sha256"]) == 64
     assert (
         manifest["initialization"]["state_sha256"] == fresh_summary["lineage"]["segment_start_state_sha256"]
     )
     assert manifest["sampler"]["calibration"] == {
         "schema": hmc_driver.CALIBRATION_SCHEMA,
-        "id": "tiny-static-hmc-calibration-v2",
+        "id": "tiny-topology-conditioned-hmc-calibration-v3",
         "sha256": hmc_driver._sha256_file(input_path.with_name("calibration.json")),
     }
-    assert fresh_summary["schema"].endswith("native_summary.v2")
+    assert fresh_summary["schema"].endswith("native_summary.v3")
     assert "sampling_seconds" not in fresh_summary["performance"]
     assert fresh_summary["performance"]["kernel_setup_and_compile_seconds"] >= 0.0
     assert fresh_summary["performance"]["transition_sampling_seconds"] >= 0.0
     assert fresh_summary["performance"]["sweeps_per_second"] is not None
     assert (
         fresh_summary["performance"]["leapfrog_steps_per_second"]
-        == fresh_summary["performance"]["sweeps_per_second"]
+        == 3 * fresh_summary["performance"]["sweeps_per_second"]
     )
     assert fresh_summary["run"] == {
         "fixed_k": 2,
@@ -462,8 +589,11 @@ def test_dry_fresh_and_resumed_segments_are_exact_and_auditable(
         "segment_end_sweep": 1,
         "retained_states": 2,
         "durable_checkpoint": True,
+        "topology_precision_sha256": fresh_summary["run"]["topology_precision_sha256"],
     }
-    assert completion["schema"].endswith("native_completion.v2")
+    assert len(fresh_summary["run"]["topology_precision_sha256"]) == 64
+    assert fresh_summary["run"]["topology_precision_sha256"].islower()
+    assert completion["schema"].endswith("native_completion.v3")
     assert completion["parent_checkpoint_sha256"] is None
     assert completion["parent_completion_sha256"] is None
     assert completion["parent_artifact_sha256"] is None
@@ -499,8 +629,12 @@ def test_dry_fresh_and_resumed_segments_are_exact_and_auditable(
         }
         assert all(checkpoint[name].dtype != np.dtype(object) for name in checkpoint.files)
         checkpoint_metadata = json.loads(checkpoint["metadata"].tobytes().decode("utf-8"))
-    assert checkpoint_metadata["schema_version"] == 2
+    assert checkpoint_metadata["schema_version"] == 3
     assert checkpoint_metadata["sweeps_completed"] == 1
+    assert (
+        checkpoint_metadata["topology_precision_sha256"]
+        == (fresh_summary["run"]["topology_precision_sha256"])
+    )
     assert checkpoint_metadata["runtime_identity"]["pytensor_float_x"] == ("float64")
     assert checkpoint_metadata["run_manifest_json"] == (hmc_driver._canonical_json(manifest).rstrip("\n"))
 
@@ -509,7 +643,9 @@ def test_dry_fresh_and_resumed_segments_are_exact_and_auditable(
         engine="h5netcdf",
     ) as fresh_trace:
         fresh_trace.load()
-        assert fresh_trace.attrs["schema"].endswith("native_trace.v2")
+        assert fresh_trace.attrs["schema"].endswith("native_trace.v3")
+        assert fresh_trace.attrs["topology_dependent_metric"] == "true"
+        assert fresh_trace.attrs["metric_builder_id"] == (hmc_driver.FULL_TILING_PYMC_HMC_METRIC_BUILDER_ID)
         assert fresh_trace.attrs["manifest_sha256"] == (
             hmc_driver._sha256_file(fresh_output / hmc_driver.MANIFEST_FILENAME)
         )
@@ -556,20 +692,10 @@ def test_dry_fresh_and_resumed_segments_are_exact_and_auditable(
         (
             "--calibration-id",
             "different-calibration",
-            "Calibration v2 identity",
+            "Calibration v3 identity",
         ),
         ("--chain-id", "different-chain", "manifest does not match"),
-        ("--step-size", "0.002", "Calibration v2 identity"),
-        (
-            "--leaf-contrast-position-scale",
-            "1.5",
-            "Calibration v2 identity",
-        ),
-        (
-            "--leaf-total-position-scale",
-            "2.5",
-            "Calibration v2 identity",
-        ),
+        ("--step-size", "0.002", "Calibration v3 identity"),
     )
     for option, replacement, message in mismatch_cases:
         mismatch_output = tmp_path / option.removeprefix("--")
@@ -793,69 +919,151 @@ def test_driver_rejects_initialization_runtime_and_forbidden_outputs(
 @pytest.mark.parametrize(
     ("case", "message"),
     (
-        ("legacy-schema", "retired diagonal metric"),
-        ("legacy-leaf-key", "identity does not exactly match"),
-        ("swapped-leaf-scales", "identity does not exactly match"),
-        ("development-seed-mismatch", "development seeds are incompatible"),
-        ("heldout-seed-equality", "must differ from development seeds"),
-        ("validation-sampler-seed-equality", "sampler seeds must be distinct"),
-        ("heldout-divergence", "does not pass the frozen acceptance gates"),
-        ("heldout-acceptance", "does not pass the frozen acceptance gates"),
+        ("legacy-v1", "schemas v1 and v2"),
+        ("legacy-v2", "schemas v1 and v2"),
+        ("retired-scale-key", "identity does not exactly match"),
+        ("candidate-grid", "does not exactly match the predeclared H2d grid"),
+        ("omitted-candidate", "must contain every predeclared grid candidate"),
+        ("candidate-order", "not in exact predeclared grid order"),
+        ("candidate-sweeps", "must contain 200 sweeps"),
+        ("candidate-master-seed", "master seeds"),
+        ("candidate-admissibility", "development_admissible"),
+        ("altered-result-winner", "recomputed candidate-grid winner"),
+        ("development-count", "exactly three development"),
+        ("role-order", "roles and initializers are out of order"),
+        ("nominal-topology-seed", "largest-nominal calibration topology seed must be null"),
+        ("duplicate-master-seed", "master seeds must be distinct"),
+        ("duplicate-topology-hash", "topology hashes must be distinct"),
+        ("duplicate-precision-hash", "topology precision hashes must be distinct"),
+        ("sweeps-type", "must contain 500 sweeps"),
+        ("divergences-type", "does not pass the frozen validation gates"),
+        ("heldout-divergence", "does not pass the frozen validation gates"),
+        ("heldout-acceptance", "does not pass the frozen validation gates"),
         ("heldout-nonfinite", "Non-standard JSON constant"),
-        ("heldout-failure", "does not pass the frozen acceptance gates"),
-        ("validation-candidate-mismatch", "does not match the selected decision"),
-        ("duplicate-excluded-topology", "topology hashes must be distinct"),
+        ("heldout-finite-failure", "does not pass the frozen validation gates"),
+        ("heldout-transformed-failure", "does not pass the frozen validation gates"),
+        ("heldout-displacement-failure", "does not pass the frozen validation gates"),
+        ("selected-controls-mismatch", "do not match the requested HMC controls"),
+        ("selected-leapfrog-type", "do not match the requested HMC controls"),
+        ("selection-rule", "incompatible selection rule"),
+        ("candidate-results-hash", "candidate-results SHA-256"),
+        ("development-evidence-hash", "development evidence SHA-256"),
+        ("validation-evidence-hash", "validation evidence SHA-256"),
+        ("candidate-source-hash", "source artifact hashes"),
+        ("excluded-topology", "must exactly match all five trajectories"),
     ),
 )
-def test_driver_rejects_invalid_v2_calibration_evidence(
+def test_driver_rejects_invalid_v3_calibration_evidence(
     tmp_path: Path,
     hmc_driver: ModuleType,
     case: str,
     message: str,
 ) -> None:
-    """Calibration v2 rejects retired metrics and invalid held-out evidence."""
+    """Calibration v3 rejects retired schemas and malformed H2d evidence."""
     input_path = tmp_path / "frozen.nc"
     output_path = tmp_path / case
     _write_frozen_input(input_path)
     arguments = _arguments(hmc_driver, input_path, output_path)
     calibration_path = Path(arguments[arguments.index("--calibration-file") + 1])
     calibration = _json(calibration_path)
-    heldout = calibration["evidence"]["selected_validation"]["initializers"][2]
+    evidence = calibration["evidence"]
+    heldout = evidence["held_out"][1]
+    rehash = False
 
-    if case == "legacy-schema":
-        calibration["schema"] = hmc_driver.LEGACY_CALIBRATION_SCHEMA
-    elif case == "legacy-leaf-key":
+    if case == "legacy-v1":
+        calibration["schema"] = "openghg_inversions.full_tiling_pymc_hmc_calibration.v1"
+    elif case == "legacy-v2":
+        calibration["schema"] = "openghg_inversions.full_tiling_pymc_hmc_calibration.v2"
+    elif case == "retired-scale-key":
         kernel = calibration["kernel"]
-        kernel["leaf_position_scale"] = kernel.pop("leaf_contrast_position_scale")
-        kernel.pop("leaf_total_position_scale")
-    elif case == "swapped-leaf-scales":
-        kernel = calibration["kernel"]
-        kernel["leaf_contrast_position_scale"], kernel["leaf_total_position_scale"] = (
-            kernel["leaf_total_position_scale"],
-            kernel["leaf_contrast_position_scale"],
-        )
-    elif case == "development-seed-mismatch":
-        calibration["evidence"]["selected_validation"]["initializers"][1]["seed"] = 41006
-    elif case == "heldout-seed-equality":
-        heldout["seed"] = 41003
-    elif case == "validation-sampler-seed-equality":
-        heldout["sampler_seed"] = 72003
+        kernel["leaf_position_scale"] = 1.0
+    elif case == "candidate-grid":
+        evidence["candidate_grid"]["step_sizes"][0] = 0.026
+        rehash = True
+    elif case == "omitted-candidate":
+        evidence["candidate_results"].pop()
+        rehash = True
+    elif case == "candidate-order":
+        evidence["candidate_results"][0]["leapfrog_steps"] = 5
+        rehash = True
+    elif case == "candidate-sweeps":
+        evidence["candidate_results"][0]["development"][0]["sweeps"] = 199
+        rehash = True
+    elif case == "candidate-master-seed":
+        evidence["candidate_results"][1]["development"][0]["master_seed"] = -1
+        rehash = True
+    elif case == "candidate-admissibility":
+        evidence["candidate_results"][0]["development_admissible"] = False
+        rehash = True
+    elif case == "altered-result-winner":
+        for trajectory in evidence["candidate_results"][0]["development"]:
+            trajectory["mean_mahalanobis_squared_displacement_per_gradient"] = 0.1
+        for trajectory in evidence["candidate_results"][1]["development"]:
+            trajectory["mean_mahalanobis_squared_displacement_per_gradient"] = 0.7
+        rehash = True
+    elif case == "development-count":
+        evidence["development"].pop()
+        rehash = True
+    elif case == "role-order":
+        evidence["development"][1]["role"] = "development-b"
+        rehash = True
+    elif case == "nominal-topology-seed":
+        evidence["development"][0]["topology_seed"] = 42002
+        rehash = True
+    elif case == "duplicate-master-seed":
+        heldout["master_seed"] = evidence["held_out"][0]["master_seed"]
+        rehash = True
+    elif case == "duplicate-topology-hash":
+        heldout["topology_sha256"] = evidence["development"][0]["topology_sha256"]
+        rehash = True
+    elif case == "duplicate-precision-hash":
+        heldout["topology_precision_sha256"] = evidence["development"][0]["topology_precision_sha256"]
+        rehash = True
+    elif case == "sweeps-type":
+        heldout["sweeps"] = 500.0
+        rehash = True
+    elif case == "divergences-type":
+        heldout["divergences"] = 0.0
+        rehash = True
     elif case == "heldout-divergence":
         heldout["divergences"] = 1
+        rehash = True
     elif case == "heldout-acceptance":
-        heldout["mean_acceptance"] = 0.91
-    elif case == "heldout-failure":
-        heldout["finite"] = False
-    elif case == "validation-candidate-mismatch":
-        calibration["evidence"]["selected_validation"]["step_size"] = 0.002
-    elif case == "duplicate-excluded-topology":
-        excluded = calibration["evidence"]["excluded_production_topology_sha256"]
-        excluded["held_out"] = excluded["development_a"]
+        heldout["mean_acceptance"] = 0.96
+        rehash = True
+    elif case == "heldout-finite-failure":
+        heldout["finite_scientific_endpoints"] = False
+        rehash = True
+    elif case == "heldout-transformed-failure":
+        heldout["finite_transformed_endpoints"] = False
+        rehash = True
+    elif case == "heldout-displacement-failure":
+        heldout["accepted_nonzero_displacement"] = False
+        rehash = True
+    elif case == "selected-controls-mismatch":
+        evidence["selected"]["step_size"] = 0.002
+    elif case == "selected-leapfrog-type":
+        evidence["selected"]["leapfrog_steps"] = 1.0
+    elif case == "selection-rule":
+        evidence["selected"]["selection_rule_id"] = "different-rule"
+    elif case == "candidate-results-hash":
+        evidence["selected"]["candidate_results_sha256"] = "0" * 64
+    elif case == "development-evidence-hash":
+        evidence["selected"]["development_evidence_sha256"] = "0" * 64
+    elif case == "validation-evidence-hash":
+        evidence["selected"]["validation_evidence_sha256"] = "0" * 64
+    elif case == "candidate-source-hash":
+        evidence["source_artifact_sha256"]["candidate-grid"] = "0" * 64
+    elif case == "excluded-topology":
+        evidence["excluded_production_topology_sha256"]["held-out-b"] = "0" * 64
+
+    if rehash:
+        _rehash_calibration_evidence(hmc_driver, calibration)
 
     calibration_text = hmc_driver._canonical_json(calibration)
     if case == "heldout-nonfinite":
         calibration_text = calibration_text.replace(
-            '"mean_acceptance":0.78',
+            '"mean_acceptance":0.79',
             '"mean_acceptance":NaN',
         )
     calibration_path.write_text(calibration_text, encoding="utf-8")
@@ -871,61 +1079,11 @@ def test_driver_rejects_invalid_v2_calibration_evidence(
 
 
 @_requires_x64_child
-def test_driver_rejects_excessive_leaf_metric_condition_ratio(
-    tmp_path: Path,
-    hmc_driver: ModuleType,
-) -> None:
-    """The production CLI bounds the total/contrast eigenscale ratio."""
-    input_path = tmp_path / "frozen.nc"
-    output_path = tmp_path / "invalid-metric-ratio"
-    _write_frozen_input(input_path)
-    arguments = _replace_option(
-        _arguments(hmc_driver, input_path, output_path),
-        "--leaf-total-position-scale",
-        "20000",
-    )
-
-    with pytest.raises(ValueError, match="maximum-to-minimum position-scale ratio"):
-        hmc_driver.run(hmc_driver.build_parser().parse_args(arguments))
-    assert not output_path.exists()
-
-
-@_requires_x64_child
-@pytest.mark.parametrize(
-    ("option", "value"),
-    (
-        ("--leaf-contrast-position-scale", "200"),
-        ("--leaf-total-position-scale", "200"),
-        ("--fixed-coefficient-position-scale", "0.5,0.75,1,1.25,1.5,200"),
-    ),
-)
-def test_driver_rejects_position_scales_outside_calibration_clipping_bounds(
-    tmp_path: Path,
-    hmc_driver: ModuleType,
-    option: str,
-    value: str,
-) -> None:
-    """Production scales must be possible outputs of the declared clipping rule."""
-    input_path = tmp_path / "frozen.nc"
-    output_path = tmp_path / f"invalid-scale-{option}"
-    _write_frozen_input(input_path)
-    arguments = _replace_option(
-        _arguments(hmc_driver, input_path, output_path),
-        option,
-        value,
-    )
-
-    with pytest.raises(ValueError, match="frozen clipping bounds"):
-        hmc_driver.run(hmc_driver.build_parser().parse_args(arguments))
-    assert not output_path.exists()
-
-
-@_requires_x64_child
 def test_driver_rejects_production_topology_seen_during_calibration(
     tmp_path: Path,
     hmc_driver: ModuleType,
 ) -> None:
-    """Retained production starts must be disjoint from H2c topology seeds."""
+    """Retained production starts must be disjoint from H2d topology seeds."""
     input_path = tmp_path / "frozen.nc"
     output_path = tmp_path / "reused-calibration-topology"
     _write_frozen_input(input_path)
@@ -938,35 +1096,37 @@ def test_driver_rejects_production_topology_seen_during_calibration(
                 "--initialization",
                 "random-recursive",
                 "--initialization-seed",
-                "41050",
+                "42050",
             ),
         ),
         "--k",
         "50",
     )
 
-    with pytest.raises(ValueError, match="disjoint from H2c calibration topology seeds"):
+    with pytest.raises(ValueError, match="disjoint from H2d calibration topology seeds"):
         hmc_driver.run(hmc_driver.build_parser().parse_args(arguments))
     assert not output_path.exists()
 
 
 @_requires_x64_child
+@pytest.mark.parametrize("digest_character", ("c", "d", "e", "f", "a"))
 def test_driver_rejects_exact_calibration_topology_hash_collision(
     tmp_path: Path,
     hmc_driver: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
+    digest_character: str,
 ) -> None:
-    """Actual topology identity, not only initializer seed, gates production."""
+    """Every calibration topology identity is excluded from production."""
     input_path = tmp_path / "frozen.nc"
     output_path = tmp_path / "reused-calibration-topology-hash"
     _write_frozen_input(input_path)
     monkeypatch.setattr(
         hmc_driver,
         "_topology_sha256",
-        lambda bounds: "c" * 64,
+        lambda bounds: digest_character * 64,
     )
 
-    with pytest.raises(ValueError, match="topology hash was used by H2c calibration"):
+    with pytest.raises(ValueError, match="topology hash was used by H2d calibration"):
         hmc_driver.run(hmc_driver.build_parser().parse_args(_arguments(hmc_driver, input_path, output_path)))
     assert not output_path.exists()
 
@@ -1058,7 +1218,7 @@ def test_parser_and_kernel_settings_make_seed_and_metric_semantics_explicit(
     tmp_path: Path,
     hmc_driver: ModuleType,
 ) -> None:
-    """The CLI requires a seed and resolves position-covariance diagonals."""
+    """The CLI exposes controls and metric identities but no metric knob."""
     input_path = tmp_path / "frozen.nc"
     _write_frozen_input(input_path)
     arguments = _arguments(
@@ -1077,46 +1237,19 @@ def test_parser_and_kernel_settings_make_seed_and_metric_semantics_explicit(
     for option in (
         "--leaf-contrast-position-scale",
         "--leaf-total-position-scale",
+        "--fixed-coefficient-position-scale",
     ):
-        option_index = arguments.index(option)
-        without_metric_scale = arguments[:option_index] + arguments[option_index + 2 :]
         with pytest.raises(SystemExit):
-            hmc_driver.build_parser().parse_args(without_metric_scale)
-    for option, value in (
-        ("--leaf-contrast-position-scale", "0"),
-        ("--leaf-total-position-scale", "-1"),
-    ):
-        nonpositive = _replace_option(arguments, option, value)
-        with pytest.raises(ValueError, match=f"{option} must be finite and positive"):
-            hmc_driver.run(hmc_driver.build_parser().parse_args(nonpositive))
+            hmc_driver.build_parser().parse_args([*arguments, option, "1"])
 
     parsed = hmc_driver.build_parser().parse_args(arguments)
-    fixed_scales = hmc_driver._expand_values(
-        parsed.fixed_coefficient_position_scale,
-        size=6,
-        name="fixed_coefficient_position_scale",
-    )
-    settings = hmc_driver._requested_kernel_settings(
-        parsed,
-        fixed_scales,
-    )
-    expected_matrix = np.diag([0.0, 0.0, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0])
-    expected_matrix[:2, :2] = [[2.0, 0.25], [0.25, 2.0]]
-    np.testing.assert_array_equal(settings.position_scale_matrix, expected_matrix)
-    np.testing.assert_array_equal(
-        settings.position_scale_diagonal,
-        [2.0, 2.0, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0],
-    )
-    eigendirections = np.eye(8)
-    eigendirections[:, :2] = 0.0
-    eigendirections[:2, 0] = np.array([1.0, 1.0]) / np.sqrt(2.0)
-    eigendirections[:2, 1] = np.array([1.0, -1.0]) / np.sqrt(2.0)
-    eigenvalues = np.array([2.25, 1.75, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0])
-    np.testing.assert_allclose(
-        settings.position_scale_matrix @ eigendirections,
-        eigendirections * eigenvalues,
-        rtol=0.0,
-        atol=np.finfo(np.float64).eps,
-    )
-    assert "position_covariance" in (hmc_driver.FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID)
-    assert "momentum_precision" in (hmc_driver.FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID)
+    settings = hmc_driver._requested_kernel_settings(parsed)
+    assert asdict(settings) == {
+        "fixed_k": 2,
+        "step_size": 0.025,
+        "leapfrog_steps": 3,
+        "metric_builder_id": hmc_driver.FULL_TILING_PYMC_HMC_METRIC_BUILDER_ID,
+        "metric_reference_id": hmc_driver.FULL_TILING_PYMC_HMC_METRIC_REFERENCE_ID,
+    }
+    assert "topology_reference_precision" in (hmc_driver.FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID)
+    assert "is_cov_false" in hmc_driver.FULL_TILING_PYMC_HMC_METRIC_SEMANTICS_ID
