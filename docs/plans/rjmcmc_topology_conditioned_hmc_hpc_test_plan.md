@@ -9,6 +9,12 @@ topology-conditioned, static Euclidean precision described in
 Do not reuse an H2, H2b, or H2c calibration. The metric semantics, checkpoint
 schema, and calibration evidence are intentionally incompatible.
 
+Commit `7f7b150` also stopped at D0 and must not be resumed. Its
+log/exp-rebuilt physical split proposal admitted forward paths whose reverse
+fraction rounded to a binary64 endpoint. The replacement schedule uses an
+exact log-coordinate involution and has a new identity. Preserve the failed
+`7f7b150` run root as evidence; use a new commit-addressed root below.
+
 Fill in the pushed candidate revision before launch:
 
 ```text
@@ -119,13 +125,23 @@ Hard gates:
   energy agree with solves against that precision;
 - topology data, potential, and leapfrog integrator change atomically after
   every accepted, rejected, or invalid structural outcome;
-- a valid structural candidate is scored at the exact physical masses decoded
-  from the authoritative log coordinates passed to HMC, while geometrically
-  unchanged leaves retain their existing coordinates;
-- a bounded structural oracle reports the raw-to-authoritative target
-  correction and forward/reverse log-ratio residual for at least 10,000 valid
-  moves at each tested \(K\); retain maxima and quantiles in the report rather
-  than describing binary64 structural balance as exact;
+- a valid structural candidate is an exact involutive permutation of the
+  authoritative log-mass coordinates passed to HMC, while geometrically
+  unchanged leaves retain their coordinate bits;
+- edge flips transfer the two old child coordinates to the two new
+  perpendicular children, and relocations exchange the old destination
+  coordinate with the merged-parent coordinate while transferring the old
+  merge pair to the new destination children;
+- the structural MH ratio uses the exact transformed PyMC target plus
+  reverse-minus-forward discrete selection probability, with no Beta
+  auxiliary draw and no rounded physical split;
+- a bounded structural oracle traverses at least 10,000 valid moves at each
+  tested \(K\), including deliberately extreme log-mass contrasts, and
+  requires every recorded reverse to recover exact topology, coordinate bits,
+  decoded masses, RNG accounting, and the negated forward log ratio;
+- unequal forward/reverse merge-catalogue sizes and every invalid relocation
+  catalogue case are represented in that oracle, and no unsupported reverse
+  path may be skipped;
 - metric construction consumes no sampler RNG and depends on no current
   continuous coordinates;
 - direct and awkward-boundary continuation are exact;

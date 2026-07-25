@@ -20,7 +20,9 @@ from openghg_inversions.experimental.rjmcmc.core import lognormal_mu_sigma
 from openghg_inversions.experimental.rjmcmc.full_tiling import (
     LeafTiling,
     Rectangle,
+    SplitChoice,
     TilingState,
+    merge_choices,
 )
 from openghg_inversions.experimental.rjmcmc.full_tiling_posterior import (
     FullTilingProblem,
@@ -29,6 +31,8 @@ from openghg_inversions.experimental.rjmcmc.full_tiling_posterior import (
     build_full_tiling_posterior_state,
     full_tiling_problem_from_gamma_beta_adapter,
     initialize_full_tiling_posterior_state,
+    propose_posterior_edge_flip,
+    propose_posterior_resolution_relocation,
 )
 from openghg_inversions.experimental.rjmcmc.gamma_beta_adapter import (
     gamma_beta_problem_from_rhime_inputs,
@@ -231,10 +235,81 @@ def _config(*, iterations: int, seed: int = 761) -> sampling.FullTilingPyMCHMCCo
     )
 
 
-def test_valid_structural_candidates_are_rebuilt_in_authoritative_log_chart() -> None:
-    """Raw structural rounding is repaired before MH without changing proposal terms."""
+def _geometry_transition(
+    problem: FullTilingProblem,
+    source: FullTilingPosteriorState,
+    move: Literal["edge_flip", "resolution_relocation"],
+) -> PosteriorTransitionTerms:
+    """Return the first valid deterministic geometry proposal of one kind."""
+    for merge in merge_choices(source.tiling_state.tiling):
+        if move == "edge_flip":
+            transition = propose_posterior_edge_flip(
+                problem,
+                source,
+                merge_choice=merge,
+                new_fraction=0.5,
+            )
+            if transition.valid:
+                return transition
+            continue
+        intermediate = source.tiling_state.tiling.merge(merge)
+        for leaf in intermediate.leaves:
+            for axis in ("horizontal", "vertical"):
+                transition = propose_posterior_resolution_relocation(
+                    problem,
+                    source,
+                    merge_choice=merge,
+                    split_choice=SplitChoice(leaf, axis),
+                    new_fraction=0.5,
+                )
+                if transition.valid:
+                    return transition
+    raise AssertionError(f"test state has no valid {move} proposal")
+
+
+def _reverse_geometry_transition(
+    problem: FullTilingProblem,
+    forward: PosteriorTransitionTerms,
+) -> PosteriorTransitionTerms:
+    """Construct the unique reverse geometry proposal."""
+    assert forward.reverse_merge_choice is not None
+    assert forward.reverse_split_choice is not None
+    if forward.move == "edge_flip":
+        return propose_posterior_edge_flip(
+            problem,
+            forward.candidate,
+            merge_choice=forward.reverse_merge_choice,
+            new_fraction=0.5,
+        )
+    return propose_posterior_resolution_relocation(
+        problem,
+        forward.candidate,
+        merge_choice=forward.reverse_merge_choice,
+        split_choice=forward.reverse_split_choice,
+        new_fraction=0.5,
+    )
+
+
+@pytest.mark.parametrize("move", ["edge_flip", "resolution_relocation"])
+def test_structural_log_involution_is_exact_at_extreme_ratios(
+    move: Literal["edge_flip", "resolution_relocation"],
+) -> None:
+    """Both structural moves reverse exact topology and log-coordinate bits."""
     problem, initial = _problem_state(k=4)
-    source_x = np.array([-1.11, -0.37, 0.22, 0.91], dtype=np.float64)
+    geometry = _geometry_transition(problem, initial, move)
+    assert geometry.reverse_split_choice is not None
+    removed_children = geometry.reverse_split_choice.leaf.midpoint_children(
+        geometry.reverse_split_choice.axis,
+    )
+    source_x_by_leaf = {
+        leaf: float(-0.3 - position) for position, leaf in enumerate(initial.tiling_state.tiling.leaves)
+    }
+    source_x_by_leaf[removed_children[0]] = 0.0
+    source_x_by_leaf[removed_children[1]] = -40.0
+    source_x = np.asarray(
+        [source_x_by_leaf[leaf] for leaf in initial.tiling_state.tiling.leaves],
+        dtype=np.float64,
+    )
     source_y = np.log(initial.fixed_coefficients)
     source = build_full_tiling_posterior_state(
         problem,
@@ -244,81 +319,195 @@ def test_valid_structural_candidates_are_rebuilt_in_authoritative_log_chart() ->
         ),
         fixed_coefficients=np.exp(source_y),
     )
-    source_x_by_leaf = dict(
-        zip(source.tiling_state.tiling.leaves, source_x, strict=True),
+    forward_geometry = _geometry_transition(problem, source, move)
+    forward, candidate_x = sampling._rebuild_structural_transition_at_hmc_boundary(
+        problem,
+        source,
+        forward_geometry,
+        current_log_leaf_mass=source_x,
+        current_log_fixed_coefficient=source_y,
     )
-    rng = np.random.default_rng(12345)
-    valid_count = 0
-    raw_roundtrip_failures = 0
+    reverse_geometry = _reverse_geometry_transition(problem, forward)
+    reverse, restored_x = sampling._rebuild_structural_transition_at_hmc_boundary(
+        problem,
+        forward.candidate,
+        reverse_geometry,
+        current_log_leaf_mass=candidate_x,
+        current_log_fixed_coefficient=source_y,
+    )
 
-    for _ in range(200):
-        raw_transition, _ = sampling._draw_structural_transition(
+    assert reverse.candidate.tiling_state.tiling == source.tiling_state.tiling
+    np.testing.assert_array_equal(restored_x, source_x)
+    np.testing.assert_array_equal(reverse.candidate.leaf_masses, source.leaf_masses)
+    np.testing.assert_array_equal(np.exp(candidate_x), forward.candidate.leaf_masses)
+    assert forward.log_q_forward_auxiliary == 0.0
+    assert forward.log_q_reverse_auxiliary == 0.0
+    assert forward.log_jacobian == 0.0
+    assert forward.log_mass_chart_delta == (
+        sampling._log_mass_chart_jacobian(candidate_x) - sampling._log_mass_chart_jacobian(source_x)
+    )
+    expected_forward_ratio = (
+        sampling._transformed_log_mass_target(forward.candidate, candidate_x)
+        - sampling._transformed_log_mass_target(source, source_x)
+        + forward.log_q_reverse_selection
+        - forward.log_q_forward_selection
+    )
+    assert forward.log_acceptance_ratio == expected_forward_ratio
+    assert forward.log_acceptance_ratio == (
+        forward.log_target_delta + forward.log_q_reverse - forward.log_q_forward
+    )
+    component_delta = (
+        forward.delta_log_likelihood
+        + forward.delta_log_root_prior
+        + forward.delta_log_allocation_prior
+        + forward.delta_log_fixed_coefficient_prior
+    )
+    assert forward.component_roundoff_correction == (
+        forward.exact_scientific_log_target_delta - component_delta
+    )
+    assert reverse.log_q_forward_selection == forward.log_q_reverse_selection
+    assert reverse.log_q_reverse_selection == forward.log_q_forward_selection
+    assert reverse.log_acceptance_ratio == -forward.log_acceptance_ratio
+
+
+def test_extreme_physical_fraction_loses_reverse_support_but_log_involution_does_not() -> None:
+    """The former physical-fraction chart rounds an extreme supported ratio to one."""
+    problem, initial = _problem_state(k=4)
+    geometry = _geometry_transition(problem, initial, "edge_flip")
+    assert geometry.reverse_split_choice is not None
+    assert geometry.reverse_merge_choice is not None
+    source_children = geometry.reverse_split_choice.leaf.midpoint_children(
+        geometry.reverse_split_choice.axis,
+    )
+    source_x = np.full(initial.k, -1.0)
+    for position, leaf in enumerate(initial.tiling_state.tiling.leaves):
+        if leaf == source_children[0]:
+            source_x[position] = 0.0
+        elif leaf == source_children[1]:
+            source_x[position] = -40.0
+    source = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(initial.tiling_state.tiling, np.exp(source_x)),
+        fixed_coefficients=initial.fixed_coefficients,
+    )
+    source_masses = {leaf: source.tiling_state.mass(leaf) for leaf in source.tiling_state.tiling.leaves}
+    rounded_fraction = source_masses[source_children[0]] / (
+        source_masses[source_children[0]] + source_masses[source_children[1]]
+    )
+    assert rounded_fraction == 1.0
+    reverse_support_failure = propose_posterior_edge_flip(
+        problem,
+        geometry.candidate,
+        merge_choice=geometry.reverse_merge_choice,
+        new_fraction=rounded_fraction,
+    )
+    assert not reverse_support_failure.valid
+    assert reverse_support_failure.reason == "new fraction lies outside support"
+
+    supported_geometry = _geometry_transition(problem, source, "edge_flip")
+    transition, candidate_x = sampling._rebuild_structural_transition_at_hmc_boundary(
+        problem,
+        source,
+        supported_geometry,
+        current_log_leaf_mass=source_x,
+        current_log_fixed_coefficient=np.log(source.fixed_coefficients),
+    )
+    assert transition.valid
+    assert 0.0 in candidate_x
+    assert -40.0 in candidate_x
+
+
+def test_edge_log_involution_draw_consumes_no_beta_random_variate() -> None:
+    """A valid edge attempt advances only component and merge selection draws."""
+    problem, source = _problem_state(k=4)
+    source_x = np.log(source.leaf_masses)
+    source_y = np.log(source.fixed_coefficients)
+    rng = np.random.default_rng(2)
+    expected_rng = np.random.default_rng(2)
+    assert float(expected_rng.random()) < 0.5
+    expected_rng.integers(len(merge_choices(source.tiling_state.tiling)))
+
+    transition, candidate_x = sampling._draw_log_involution_structural_transition(
+        problem,
+        source,
+        current_log_leaf_mass=source_x,
+        current_log_fixed_coefficient=source_y,
+        rng=rng,
+    )
+
+    assert transition.valid
+    assert transition.move == "edge_flip"
+    assert candidate_x is not None
+    assert rng.bit_generator.state == expected_rng.bit_generator.state
+
+
+def test_relocation_log_involution_supports_smallest_subnormal_destination() -> None:
+    """Geometry remains valid when a physical half-split would underflow."""
+    problem, initial = _problem_state(k=4)
+    merges = merge_choices(initial.tiling_state.tiling)
+    merge = merges[0]
+    intermediate = initial.tiling_state.tiling.merge(merge)
+    catalogue = tuple(
+        SplitChoice(leaf, axis) for leaf in intermediate.leaves for axis in ("horizontal", "vertical")
+    )
+    split_index = next(
+        index
+        for index, split in enumerate(catalogue)
+        if propose_posterior_resolution_relocation(
             problem,
-            source,
-            rng=rng,
-        )
-        if not raw_transition.valid:
-            continue
-        valid_count += 1
-        raw_candidate = raw_transition.candidate
-        if not np.array_equal(
-            np.exp(np.log(raw_candidate.leaf_masses)),
-            raw_candidate.leaf_masses,
-        ):
-            raw_roundtrip_failures += 1
+            initial,
+            merge_choice=merge,
+            split_choice=split,
+            new_fraction=0.5,
+        ).valid
+    )
+    split = catalogue[split_index]
+    masses = np.array(initial.leaf_masses, copy=True)
+    destination_position = initial.tiling_state.tiling.leaves.index(split.leaf)
+    masses[destination_position] = np.nextafter(np.float64(0.0), np.float64(1.0))
+    source_x = np.log(masses)
+    source = build_full_tiling_posterior_state(
+        problem,
+        allocation=TilingState(initial.tiling_state.tiling, masses),
+        fixed_coefficients=initial.fixed_coefficients,
+    )
+    raw = propose_posterior_resolution_relocation(
+        problem,
+        source,
+        merge_choice=merge,
+        split_choice=split,
+        new_fraction=0.5,
+    )
+    assert not raw.valid
+    assert raw.reason == "proposed child masses are outside representable support"
 
-        rebuilt_transition, candidate_x = sampling._rebuild_structural_transition_at_hmc_boundary(
-            problem,
-            source,
-            raw_transition,
-            current_log_leaf_mass=source_x,
-            current_log_fixed_coefficient=source_y,
-        )
-        rebuilt_candidate = rebuilt_transition.candidate
-        np.testing.assert_array_equal(
-            np.exp(candidate_x),
-            rebuilt_candidate.leaf_masses,
-        )
-        np.testing.assert_array_equal(
-            rebuilt_candidate.fixed_coefficients,
-            np.exp(source_y),
-        )
-        for leaf, coordinate in zip(
-            rebuilt_candidate.tiling_state.tiling.leaves,
-            candidate_x,
-            strict=True,
-        ):
-            if leaf in source_x_by_leaf:
-                assert coordinate == source_x_by_leaf[leaf]
+    class RelocationSelectionRNG:
+        """Select relocation, the first merge, and the chosen catalogue item."""
 
-        assert rebuilt_transition.log_acceptance_ratio == (
-            raw_transition.log_acceptance_ratio + rebuilt_candidate.log_target - raw_candidate.log_target
-        )
-        assert rebuilt_transition.delta_log_likelihood == (
-            rebuilt_candidate.log_likelihood - source.log_likelihood
-        )
-        assert rebuilt_transition.delta_log_root_prior == (
-            rebuilt_candidate.log_root_prior - source.log_root_prior
-        )
-        assert rebuilt_transition.delta_log_allocation_prior == (
-            rebuilt_candidate.log_allocation_prior - source.log_allocation_prior
-        )
-        assert rebuilt_transition.delta_log_fixed_coefficient_prior == (
-            rebuilt_candidate.log_fixed_coefficient_prior - source.log_fixed_coefficient_prior
-        )
-        for name in (
-            "log_q_forward_selection",
-            "log_q_forward_auxiliary",
-            "log_q_reverse_selection",
-            "log_q_reverse_auxiliary",
-            "log_jacobian",
-            "reverse_merge_choice",
-            "reverse_split_choice",
-        ):
-            assert getattr(rebuilt_transition, name) == getattr(raw_transition, name)
+        def __init__(self) -> None:
+            self.indices = iter((0, split_index))
 
-    assert valid_count >= 150
-    assert raw_roundtrip_failures >= 25
+        def random(self) -> float:
+            """Choose the relocation component."""
+            return 0.75
+
+        def integers(self, _: int) -> int:
+            """Return the predeclared merge and split indices."""
+            return next(self.indices)
+
+    transition, candidate_x = sampling._draw_log_involution_structural_transition(
+        problem,
+        source,
+        current_log_leaf_mass=source_x,
+        current_log_fixed_coefficient=np.log(source.fixed_coefficients),
+        rng=RelocationSelectionRNG(),  # type: ignore[arg-type]
+    )
+
+    assert transition.valid
+    assert transition.move == "resolution_relocation"
+    assert candidate_x is not None
+    assert float(source_x[destination_position]) in candidate_x
+    np.testing.assert_array_equal(np.exp(candidate_x), transition.candidate.leaf_masses)
 
 
 @_requires_x64_child
@@ -551,15 +740,15 @@ def test_every_structural_outcome_is_followed_by_one_hmc_transition(
 ) -> None:
     """Accepted, rejected, and invalid structural attempts all run HMC once."""
     problem, initial = _problem_state(k=4)
-    original_draw = sampling._draw_structural_transition
-    valid_transition = None
-    search_rng = np.random.default_rng(923)
-    for _ in range(100):
-        candidate, _ = original_draw(problem, initial, rng=search_rng)
-        if candidate.valid:
-            valid_transition = candidate
-            break
-    assert valid_transition is not None
+    initial_x = np.log(initial.leaf_masses)
+    initial_y = np.log(initial.fixed_coefficients)
+    valid_transition, valid_candidate_x = sampling._rebuild_structural_transition_at_hmc_boundary(
+        problem,
+        initial,
+        _geometry_transition(problem, initial, "edge_flip"),
+        current_log_leaf_mass=initial_x,
+        current_log_fixed_coefficient=initial_y,
+    )
     transition = (
         PosteriorTransitionTerms(
             candidate=initial,
@@ -574,8 +763,11 @@ def test_every_structural_outcome_is_followed_by_one_hmc_transition(
 
     monkeypatch.setattr(
         sampling,
-        "_draw_structural_transition",
-        lambda *args, **kwargs: (transition, None),
+        "_draw_log_involution_structural_transition",
+        lambda *args, **kwargs: (
+            transition,
+            None if outcome == "invalid" else valid_candidate_x,
+        ),
     )
     original_accept = sampling.accept_or_reject
     scored_transitions: list[PosteriorTransitionTerms] = []
@@ -645,11 +837,7 @@ def test_every_structural_outcome_is_followed_by_one_hmc_transition(
             np.exp(result.trace.hmc_start_log_leaf_mass[0]),
             scored_transitions[0].candidate.leaf_masses,
         )
-        assert scored_transitions[0].log_acceptance_ratio == (
-            valid_transition.log_acceptance_ratio
-            + scored_transitions[0].candidate.log_target
-            - valid_transition.candidate.log_target
-        )
+        assert scored_transitions[0].log_acceptance_ratio == valid_transition.log_acceptance_ratio
     else:
         np.testing.assert_array_equal(
             result.trace.hmc_start_log_leaf_mass[0],
@@ -1419,7 +1607,7 @@ def test_divergent_hmc_returns_rejected_state_and_valid_checkpoint(
     )
     monkeypatch.setattr(
         sampling,
-        "_draw_structural_transition",
+        "_draw_log_involution_structural_transition",
         lambda *args, **kwargs: (invalid, None),
     )
 

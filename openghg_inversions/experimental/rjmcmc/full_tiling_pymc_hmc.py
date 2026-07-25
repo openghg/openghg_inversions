@@ -10,9 +10,9 @@ the chart Jacobians.
 
 Topology-dependent design columns, Dirichlet shapes, and the Dirichlet log
 normalizer are ``pm.Data`` containers. A custom ``BlockedStep`` owns a harmless
-one-state discrete token, calls the existing structural draw and acceptance
-functions, rebuilds every valid proposal in the authoritative log-coordinate
-chart before MH, updates all three topology-data containers before HMC, and
+one-state discrete token, draws an exact structural involution in the
+authoritative log-coordinate chart, updates all three topology-data containers
+before HMC, and
 reseeds the PyMC HMC step from the sole NumPy PCG64 stream on every sweep.
 Thus accepted, rejected, and invalid structural attempts are all followed by
 exactly one HMC trajectory.
@@ -54,14 +54,15 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from .core import lognormal_mu_sigma
-from .full_tiling import TilingState
-from .full_tiling_compound_sampling import _draw_structural_transition
+from .full_tiling import Axis, SplitChoice, TilingState, merge_choices
 from .full_tiling_posterior import (
     FullTilingPosteriorState,
     FullTilingProblem,
     PosteriorTransitionTerms,
     accept_or_reject,
     build_full_tiling_posterior_state,
+    propose_posterior_edge_flip,
+    propose_posterior_resolution_relocation,
 )
 from .sampling import PCG64State
 
@@ -74,7 +75,9 @@ BoolArray: TypeAlias = NDArray[np.bool_]
 StringArray: TypeAlias = NDArray[np.str_]
 UIntArray: TypeAlias = NDArray[np.uint64]
 
-FULL_TILING_PYMC_HMC_SCHEDULE_ID = "full_tiling_1_log_boundary_structure_1_topology_conditioned_pymc_hmc_v4"
+FULL_TILING_PYMC_HMC_SCHEDULE_ID = (
+    "full_tiling_1_exact_log_mass_involution_1_topology_conditioned_pymc_hmc_v5"
+)
 """Versioned identity of the structural-then-HMC sweep."""
 
 FULL_TILING_PYMC_HMC_COORDINATE_LAYOUT_ID = "symmetric_log_leaf_mass_then_log_fixed_coefficient_v1"
@@ -88,6 +91,64 @@ FULL_TILING_PYMC_HMC_METRIC_BUILDER_ID = "gamma_dirichlet_lognormal_gauss_newton
 
 FULL_TILING_PYMC_HMC_METRIC_REFERENCE_ID = "gamma_mean_nominal_dirichlet_shares_fixed_arithmetic_means_v1"
 """Versioned topology-dependent continuous reference coordinates."""
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _LogMassInvolutionTransitionTerms(PosteriorTransitionTerms):
+    """Valid structural terms scored in the authoritative PyMC ``x`` chart.
+
+    ``PosteriorTransitionTerms`` decomposes the scientific-coordinate target.
+    This specialization retains those component deltas but makes
+    ``log_target_delta`` the exact transformed-coordinate target difference
+    used for MH. The extra fields expose the exact scientific difference,
+    chart change, and component-summation roundoff rather than hiding those
+    distinctions in a proposal Jacobian or one scientific component.
+
+    Args:
+        exact_scientific_log_target_delta: Candidate minus source
+            ``state.log_target`` evaluated as one binary64 subtraction.
+        log_mass_chart_delta: Candidate minus source normalized log-mass chart
+            log-Jacobian.
+        exact_transformed_log_target_delta: Candidate minus source
+            ``state.log_target + chart_log_jacobian`` evaluated in the same
+            grouping used by the PyMC target comparison.
+    """
+
+    exact_scientific_log_target_delta: float = math.nan
+    log_mass_chart_delta: float = math.nan
+    exact_transformed_log_target_delta: float = math.nan
+    component_roundoff_correction: float = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Validate and install exact transformed-coordinate MH aggregates."""
+        super(_LogMassInvolutionTransitionTerms, self).__post_init__()
+        values = (
+            float(self.exact_scientific_log_target_delta),
+            float(self.log_mass_chart_delta),
+            float(self.exact_transformed_log_target_delta),
+        )
+        if any(math.isnan(value) for value in values):
+            raise ValueError("log-involution target terms cannot be NaN.")
+        if not self.valid:
+            raise ValueError("log-involution transition terms must be valid.")
+        if (
+            self.log_q_forward_auxiliary != 0.0
+            or self.log_q_reverse_auxiliary != 0.0
+            or self.log_jacobian != 0.0
+        ):
+            raise ValueError("log-involution proposals have no auxiliary or proposal Jacobian.")
+        component_delta = self.log_target_delta
+        correction = 0.0 if values[0] == component_delta else values[0] - component_delta
+        acceptance = values[2] + self.log_q_reverse_selection - self.log_q_forward_selection
+        if math.isnan(acceptance):
+            raise ValueError("log-involution acceptance ratio cannot be NaN.")
+        object.__setattr__(self, "exact_scientific_log_target_delta", values[0])
+        object.__setattr__(self, "log_mass_chart_delta", values[1])
+        object.__setattr__(self, "exact_transformed_log_target_delta", values[2])
+        object.__setattr__(self, "component_roundoff_correction", correction)
+        object.__setattr__(self, "log_target_delta", values[2])
+        object.__setattr__(self, "log_acceptance_ratio", float(acceptance))
+
 
 __all__ = [
     "FULL_TILING_PYMC_HMC_COORDINATE_LAYOUT_ID",
@@ -1298,29 +1359,32 @@ def _rebuild_structural_transition_at_hmc_boundary(
     *,
     current_log_leaf_mass: ArrayLike,
     current_log_fixed_coefficient: ArrayLike,
-) -> tuple[PosteriorTransitionTerms, FloatArray]:
-    """Rebuild one valid structural candidate in the authoritative HMC chart.
+) -> tuple[_LogMassInvolutionTransitionTerms, FloatArray]:
+    """Apply one exact structural involution to authoritative log masses.
 
-    Unchanged geometric leaves retain their source ``x = log(m)`` bit
-    patterns. Newly created or merged leaves enter the chart through
-    ``log(raw_mass)``. The scientific candidate is then rebuilt from
-    ``exp(x)`` and the current authoritative fixed-coordinate decode before
-    the structural Metropolis--Hastings decision. Proposal-selection,
-    Beta-auxiliary, Jacobian, and reverse-choice terms remain those of the raw
-    structural proposal.
+    An edge flip maps the two removed friend-child coordinates, in canonical
+    child order, to the two new perpendicular children. A resolution
+    relocation maps the old destination-leaf coordinate to the merged parent
+    and maps the two old merge-child coordinates to the two new destination
+    children. Every unchanged leaf retains its exact coordinate bits. These
+    maps are their own reverse when used with the transition's unique reverse
+    merge and split choices.
 
-    The corrected reduced acceptance ratio is the raw reduced ratio plus the
-    rebuilt-minus-raw candidate target change. This gives exact consistency
-    between the candidate scored by structural MH and the candidate passed to
-    HMC under the usual binary64 approximation. It does not claim detailed
-    balance for a finite-state model whose states are floating-point rounding
-    bins.
+    The scientific candidate is rebuilt from ``exp(candidate_x)``. Structural
+    MH is scored directly in the normalized PyMC log-mass chart,
+    ``log_target + sum(x) - (K - 1) * logsumexp(x)``. The fixed-coordinate
+    Jacobian cancels because structure does not alter ``y``. Only the
+    reverse-minus-forward discrete selection probability is added. The
+    target difference is retained explicitly alongside its scientific and
+    chart components. The proposal permutation itself has unit Jacobian:
+    there is no Beta auxiliary density and no physical mass-map Jacobian.
 
     Args:
         problem: Scientific problem shared by source and candidate.
         source: Current scientific state exactly decoded from the authoritative
             HMC coordinates.
-        transition: Valid raw edge-flip or resolution-relocation proposal.
+        transition: Valid edge-flip or resolution-relocation geometry and
+            discrete-selection proposal. Its raw candidate masses are ignored.
         current_log_leaf_mass: Authoritative source log masses in canonical
             source-leaf order.
         current_log_fixed_coefficient: Authoritative fixed-coefficient logs.
@@ -1334,8 +1398,8 @@ def _rebuild_structural_transition_at_hmc_boundary(
         ValueError: If the transition is invalid, non-structural, belongs to a
             different problem, or authoritative arrays have the wrong shape.
         RuntimeError: If source coordinates do not exactly decode ``source``,
-            an unchanged leaf does not retain its raw proposed mass, or the
-            rebuilt reduced ratio is NaN.
+            the involution metadata do not cover the candidate topology
+            exactly, or the rebuilt reduced ratio is NaN.
     """
     if not isinstance(transition, PosteriorTransitionTerms):
         raise TypeError("transition must be a PosteriorTransitionTerms.")
@@ -1343,8 +1407,8 @@ def _rebuild_structural_transition_at_hmc_boundary(
         raise ValueError("only valid structural transitions can be rebuilt at the HMC boundary.")
     if transition.move not in ("edge_flip", "resolution_relocation"):
         raise ValueError("only structural transitions can be rebuilt at the HMC boundary.")
-    raw_candidate = transition.candidate
-    if source.problem is not problem or raw_candidate.problem is not problem:
+    geometry_candidate = transition.candidate
+    if source.problem is not problem or geometry_candidate.problem is not problem:
         raise ValueError("source and transition candidate must belong to problem.")
 
     source_x = np.asarray(current_log_leaf_mass, dtype=np.float64)
@@ -1363,22 +1427,44 @@ def _rebuild_structural_transition_at_hmc_boundary(
             strict=True,
         )
     }
-    candidate_x = np.empty(raw_candidate.k, dtype=np.float64)
-    for position, (leaf, raw_mass) in enumerate(
-        zip(
-            raw_candidate.tiling_state.tiling.leaves,
-            raw_candidate.leaf_masses,
-            strict=True,
-        )
-    ):
-        unchanged_coordinate = source_x_by_leaf.get(leaf)
-        if unchanged_coordinate is None:
-            candidate_x[position] = np.log(np.float64(raw_mass))
+    reverse_merge = transition.reverse_merge_choice
+    reverse_split = transition.reverse_split_choice
+    if reverse_merge is None or reverse_split is None:
+        raise RuntimeError("a valid structural transition lacks its reverse choices.")
+
+    if transition.move == "edge_flip":
+        source_children = reverse_split.leaf.midpoint_children(reverse_split.axis)
+        candidate_children = reverse_merge.children
+        removed = frozenset(source_children)
+        coordinate_map = {
+            candidate_leaf: source_x_by_leaf[source_leaf]
+            for source_leaf, candidate_leaf in zip(
+                source_children,
+                candidate_children,
+                strict=True,
+            )
+        }
+    else:
+        source_children = reverse_split.leaf.midpoint_children(reverse_split.axis)
+        source_destination = reverse_merge.parent
+        candidate_parent = reverse_split.leaf
+        candidate_children = reverse_merge.children
+        removed = frozenset((*source_children, source_destination))
+        coordinate_map = {
+            candidate_parent: source_x_by_leaf[source_destination],
+            candidate_children[0]: source_x_by_leaf[source_children[0]],
+            candidate_children[1]: source_x_by_leaf[source_children[1]],
+        }
+
+    candidate_x = np.empty(geometry_candidate.k, dtype=np.float64)
+    for position, leaf in enumerate(geometry_candidate.tiling_state.tiling.leaves):
+        mapped_coordinate = coordinate_map.get(leaf)
+        if mapped_coordinate is not None:
+            candidate_x[position] = mapped_coordinate
             continue
-        decoded_mass = float(np.exp(np.float64(unchanged_coordinate)))
-        if decoded_mass != float(raw_mass):
-            raise RuntimeError("an unchanged structural leaf did not retain its source mass.")
-        candidate_x[position] = unchanged_coordinate
+        if leaf in removed or leaf not in source_x_by_leaf:
+            raise RuntimeError("the log-mass involution does not cover the candidate topology.")
+        candidate_x[position] = source_x_by_leaf[leaf]
 
     fixed_y = np.asarray(current_log_fixed_coefficient, dtype=np.float64)
     if fixed_y.shape != source.fixed_coefficients.shape or np.any(~np.isfinite(fixed_y)):
@@ -1388,18 +1474,24 @@ def _rebuild_structural_transition_at_hmc_boundary(
         fixed_coefficients = np.exp(fixed_y)
     if not np.array_equal(fixed_coefficients, source.fixed_coefficients):
         raise RuntimeError("authoritative fixed logs do not exactly decode the source state.")
-    if not np.array_equal(raw_candidate.fixed_coefficients, source.fixed_coefficients):
+    if not np.array_equal(geometry_candidate.fixed_coefficients, source.fixed_coefficients):
         raise RuntimeError("a structural proposal unexpectedly changed fixed coefficients.")
 
     rebuilt_candidate = build_full_tiling_posterior_state(
         problem,
         allocation=TilingState(
-            raw_candidate.tiling_state.tiling,
+            geometry_candidate.tiling_state.tiling,
             candidate_masses,
         ),
         fixed_coefficients=fixed_coefficients,
     )
-    rebuilt_transition = PosteriorTransitionTerms(
+    source_chart_log_jacobian = _log_mass_chart_jacobian(source_x)
+    candidate_chart_log_jacobian = _log_mass_chart_jacobian(candidate_x)
+    exact_scientific_delta = rebuilt_candidate.log_target - source.log_target
+    exact_transformed_delta = (rebuilt_candidate.log_target + candidate_chart_log_jacobian) - (
+        source.log_target + source_chart_log_jacobian
+    )
+    rebuilt_transition = _LogMassInvolutionTransitionTerms(
         candidate=rebuilt_candidate,
         move=transition.move,
         delta_log_likelihood=rebuilt_candidate.log_likelihood - source.log_likelihood,
@@ -1409,25 +1501,173 @@ def _rebuild_structural_transition_at_hmc_boundary(
             rebuilt_candidate.log_fixed_coefficient_prior - source.log_fixed_coefficient_prior
         ),
         log_q_forward_selection=transition.log_q_forward_selection,
-        log_q_forward_auxiliary=transition.log_q_forward_auxiliary,
+        log_q_forward_auxiliary=0.0,
         log_q_reverse_selection=transition.log_q_reverse_selection,
-        log_q_reverse_auxiliary=transition.log_q_reverse_auxiliary,
-        log_jacobian=transition.log_jacobian,
+        log_q_reverse_auxiliary=0.0,
+        log_jacobian=0.0,
         reverse_merge_choice=transition.reverse_merge_choice,
         reverse_split_choice=transition.reverse_split_choice,
-    )
-    corrected_ratio = float(
-        transition.log_acceptance_ratio + rebuilt_candidate.log_target - raw_candidate.log_target
-    )
-    if math.isnan(corrected_ratio):
-        raise RuntimeError("rebuilt structural acceptance ratio is NaN.")
-    object.__setattr__(
-        rebuilt_transition,
-        "log_acceptance_ratio",
-        corrected_ratio,
+        exact_scientific_log_target_delta=exact_scientific_delta,
+        log_mass_chart_delta=(candidate_chart_log_jacobian - source_chart_log_jacobian),
+        exact_transformed_log_target_delta=exact_transformed_delta,
     )
     candidate_x.setflags(write=False)
     return rebuilt_transition, candidate_x
+
+
+def _log_mass_chart_jacobian(log_leaf_mass: ArrayLike) -> float:
+    """Return the normalized log-mass chart log-Jacobian.
+
+    Args:
+        log_leaf_mass: Non-empty finite authoritative log masses.
+
+    Returns:
+        ``sum(x) - (K - 1) * logsumexp(x)``.
+
+    Raises:
+        ValueError: If the coordinate vector is empty, not one-dimensional,
+            or contains non-finite values.
+    """
+    coordinates = np.asarray(log_leaf_mass, dtype=np.float64)
+    if coordinates.ndim != 1 or coordinates.size < 1 or np.any(~np.isfinite(coordinates)):
+        raise ValueError("log_leaf_mass must be a non-empty finite vector.")
+    log_total = float(np.logaddexp.reduce(coordinates))
+    return float(np.sum(coordinates) - (coordinates.size - 1) * log_total)
+
+
+def _transformed_log_mass_target(
+    state: FullTilingPosteriorState,
+    log_leaf_mass: ArrayLike,
+) -> float:
+    """Return the scientific target density in the normalized log-mass chart.
+
+    Args:
+        state: Scientific state decoded from ``log_leaf_mass``.
+        log_leaf_mass: One finite authoritative coordinate per canonical leaf.
+
+    Returns:
+        Scientific log target plus the normalized log-mass chart Jacobian.
+
+    Raises:
+        ValueError: If the coordinate vector has wrong shape or non-finite
+            values.
+        RuntimeError: If exponentiation does not exactly reproduce the state.
+    """
+    coordinates = np.asarray(log_leaf_mass, dtype=np.float64)
+    if coordinates.shape != (state.k,) or np.any(~np.isfinite(coordinates)):
+        raise ValueError("log_leaf_mass must contain one finite value per state leaf.")
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        decoded = np.exp(coordinates)
+    if not np.array_equal(decoded, state.leaf_masses):
+        raise RuntimeError("log_leaf_mass does not exactly decode the scientific state.")
+    return float(state.log_target + _log_mass_chart_jacobian(coordinates))
+
+
+def _draw_log_involution_structural_transition(
+    problem: FullTilingProblem,
+    source: FullTilingPosteriorState,
+    *,
+    current_log_leaf_mass: ArrayLike,
+    current_log_fixed_coefficient: ArrayLike,
+    rng: np.random.Generator,
+) -> tuple[PosteriorTransitionTerms, FloatArray | None]:
+    """Draw the fixed-catalogue structural move and apply its log involution.
+
+    Component choice remains an unconditional half-and-half draw. A source
+    merge is uniform, and relocation selects uniformly from the fixed
+    ``leaf × axis`` intermediate catalogue. Invalid choices remain explicit
+    self-attempts. The placeholder physical fraction is used only to construct
+    and validate geometry; no Beta random variate is drawn and all continuous
+    proposal terms are discarded by the log-coordinate rebuild.
+
+    Args:
+        problem: Fixed-``K`` posterior target.
+        source: Current scientific state.
+        current_log_leaf_mass: Authoritative source log masses.
+        current_log_fixed_coefficient: Authoritative fixed logs.
+        rng: Sole compound-chain generator.
+
+    Returns:
+        Transition terms and candidate logs for a valid proposal, or the
+        invalid transition and ``None``.
+    """
+    choose_edge_flip = float(rng.random()) < 0.5
+    merges = merge_choices(source.tiling_state.tiling)
+    move = "edge_flip" if choose_edge_flip else "resolution_relocation"
+    if not merges:
+        return (
+            PosteriorTransitionTerms(
+                candidate=source,
+                move=move,
+                delta_log_likelihood=0.0,
+                valid=False,
+                reason="selected merge is unavailable",
+            ),
+            None,
+        )
+
+    merge = merges[int(rng.integers(len(merges)))]
+    if choose_edge_flip:
+        geometry = propose_posterior_edge_flip(
+            problem,
+            source,
+            merge_choice=merge,
+            new_fraction=0.5,
+        )
+    else:
+        intermediate = source.tiling_state.tiling.merge(merge)
+        axes: tuple[Axis, Axis] = ("horizontal", "vertical")
+        catalogue = tuple(SplitChoice(leaf, axis) for leaf in intermediate.leaves for axis in axes)
+        expected_size = 2 * (source.k - 1)
+        if len(catalogue) != expected_size:
+            raise RuntimeError("relocation catalogue does not have fixed size 2 * (K - 1).")
+        split = catalogue[int(rng.integers(len(catalogue)))]
+        geometry = propose_posterior_resolution_relocation(
+            problem,
+            source,
+            merge_choice=merge,
+            split_choice=split,
+            new_fraction=0.5,
+        )
+        if (
+            not geometry.valid
+            and geometry.reason == "proposed child masses are outside representable support"
+        ):
+            # The smallest positive binary64 destination mass cannot itself
+            # be halved into two positive placeholder masses. Geometry in the
+            # log involution does not conserve or split that physical mass, so
+            # retry only the geometry oracle at the smallest splittable mass.
+            # The final candidate is still rebuilt exclusively from source x.
+            placeholder_masses = np.array(source.leaf_masses, copy=True)
+            destination_position = source.tiling_state.tiling.leaves.index(split.leaf)
+            smallest_positive = np.nextafter(np.float64(0.0), np.float64(1.0))
+            placeholder_masses[destination_position] = 2.0 * smallest_positive
+            placeholder_source = build_full_tiling_posterior_state(
+                problem,
+                allocation=TilingState(
+                    source.tiling_state.tiling,
+                    placeholder_masses,
+                ),
+                fixed_coefficients=source.fixed_coefficients,
+            )
+            geometry = propose_posterior_resolution_relocation(
+                problem,
+                placeholder_source,
+                merge_choice=merge,
+                split_choice=split,
+                new_fraction=0.5,
+            )
+            if not geometry.valid:
+                raise RuntimeError("representable placeholder relocation did not recover valid geometry.")
+    if not geometry.valid:
+        return geometry, None
+    return _rebuild_structural_transition_at_hmc_boundary(
+        problem,
+        source,
+        geometry,
+        current_log_leaf_mass=current_log_leaf_mass,
+        current_log_fixed_coefficient=current_log_fixed_coefficient,
+    )
 
 
 def _build_compound_kernel(
@@ -1571,24 +1811,15 @@ def _build_compound_kernel(
         ) -> tuple[dict[str, np.ndarray], list[dict[str, object]]]:
             """Apply structural MH, update data/masses, and seed the next HMC."""
             source = self.state
-            transition, _ = _draw_structural_transition(
+            transition, candidate_x = _draw_log_involution_structural_transition(
                 problem,
                 source,
+                current_log_leaf_mass=current_point["x"],
+                current_log_fixed_coefficient=(
+                    current_point["y"] if source.fixed_coefficients.size else np.empty(0, dtype=np.float64)
+                ),
                 rng=rng,
             )
-            candidate_x: FloatArray | None = None
-            if transition.valid:
-                transition, candidate_x = _rebuild_structural_transition_at_hmc_boundary(
-                    problem,
-                    source,
-                    transition,
-                    current_log_leaf_mass=current_point["x"],
-                    current_log_fixed_coefficient=(
-                        current_point["y"]
-                        if source.fixed_coefficients.size
-                        else np.empty(0, dtype=np.float64)
-                    ),
-                )
             uniform = float(rng.random())
             log_uniform = -math.inf if uniform == 0.0 else math.log(uniform)
             next_state = accept_or_reject(
