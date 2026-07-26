@@ -827,6 +827,33 @@ branch head after this plan-only status update, then run fresh G0 and all 24
 G1 shards under that full SHA. The `6ad8eee8` shards are portability evidence
 only and are not reusable under the changed schema and replay contract.
 
+The final repaired eight-component candidate was
+`3c91beea7836a9996d2850aadbc6892d2ed0d46a`. BP1 G0 passed 71 focused
+tests, Ruff, Pyright, and smoke. All 24 tasks in G1 array `18187304`
+completed with exit code zero and published exactly 24 artifacts and markers.
+The merger replayed every cross-node artifact, so the portability repair
+passed, but it correctly hard-stopped before a common lock because no
+six-case two-size passing suffix exists. Both near-Gaussian cases and both
+skewed cases passed at all four sizes. Both boundary-heavy cases failed
+scientific value, evidence, gradient, or posterior gates at every size even
+though all fits were numerically valid and every independent
+validation-versus-test generalization gate passed. At 262,144 draws, the
+two-cell boundary case had 0.265 nat evidence error and the four-cell case had
+2.062 nat evidence error. This is the predeclared evidence of stable
+eight-component underfit needed to activate the one sixteen-component
+escalation. No G2/G3 stage ran and the protected catalogue remains sealed.
+The preserved run root is:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/3c91beea7836a9996d2850aadbc6892d2ed0d46a
+```
+
+The sixteen-component escalation is current uncommitted work. It must use a
+new development-protocol digest, fresh full-SHA run root, and complete G0/G1
+matrix. It may not reuse the eight-component artifacts. Failure of the
+sixteen-component stage is terminal for this root-GMM architecture and may
+not trigger a flow or conditional row model.
+
 Freeze NumPy 2.2.6 and SciPy 1.15.2 for development, confirmation, and
 protected certification. The committed Pixi lock contains these versions;
 the executable also rejects a different runtime.

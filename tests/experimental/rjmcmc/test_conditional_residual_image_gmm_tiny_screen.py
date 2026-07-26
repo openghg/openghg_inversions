@@ -65,7 +65,7 @@ def _separated_training_samples() -> np.ndarray:
 
 
 def _manual_fit(dimension: int) -> gmm.GaussianMixtureFit:
-    """Return a finite eight-component fit suitable for export tests."""
+    """Return a finite frozen-component fit suitable for export tests."""
     weights = np.arange(1, gmm.COMPONENT_COUNT + 1, dtype=np.float64)
     weights /= weights.sum()
     means = np.linspace(
@@ -293,7 +293,8 @@ def test_protocol_constants_and_six_case_matrix_are_source_pinned() -> None:
     assert gmm.SCHEMA == "rjmcmc-conditional-residual-image-gmm-tiny-screen-v1"
     assert gmm.PROTOCOL == "conditional-residual-image-root-full-covariance-gmm-v1"
     assert gmm.CONSTRUCTION_METHOD == "scrambled_sobol_balanced_dirichlet"
-    assert gmm.COMPONENT_COUNT == 8
+    assert gmm.ARCHITECTURE_STAGE == "sixteen-component-underfit-escalation-v1"
+    assert gmm.COMPONENT_COUNT == 16
     assert gmm.INITIALIZATION_COUNT == 3
     assert gmm.MINIMUM_VALID_INITIALIZATIONS == 2
     assert gmm.DEVELOPMENT_NUMPY_VERSION == np.__version__

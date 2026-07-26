@@ -727,6 +727,18 @@ not implicit behavior of this implementation.
   means and modified Gram--Schmidt; and SVD rank determination only, with
   ambiguity gates. Resolve the final pushed branch head after plan-only status
   commits and repeat all of G0 and G1; none of the old shards is reusable.
+- Ran the repaired eight-component candidate
+  `3c91beea7836a9996d2850aadbc6892d2ed0d46a` on BP1. G0 passed 71 tests,
+  Ruff, Pyright, and smoke; all 24 G1 array tasks completed. The merger
+  successfully replayed all cross-node artifacts, then hard-stopped because
+  there was no common two-size scientific passing suffix. Near-Gaussian and
+  skewed cases passed all sizes; both boundary-heavy cases failed all sizes
+  despite valid fits and passing independent-domain generalization. G2/G3 did
+  not run and the protected catalogue remained sealed.
+- Activated the single predeclared sixteen-component root-GMM escalation
+  because the eight-component boundary failures were stable under increasing
+  training size. This is current uncommitted work and requires a fresh
+  full-SHA G0/G1 run. Failure is terminal for the root-GMM architecture.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 

@@ -23,9 +23,15 @@ heterogeneous regimes. Preserve:
 
 This withholds exact structural use of the Gaussian closure. It does not
 invalidate the implementation or prohibit fixed-partition use as an explicitly
-validated approximation. A2--A5 have not established a scientific promotion.
-The transported-mixture successor also stopped at T2; its status and the
-current frozen conditional-allocation successor are recorded below. See
+validated approximation, including as an approximate likelihood inside RJ.
+The learned-density route has a different role: it is a non-RJ approximation
+to the common native model's marginal likelihood after hidden allocations are
+integrated out. In the exact limit that likelihood is invariant to the
+computational partition and \(K\); learned differences are approximation
+leakage, not information for selecting a basis. A2--A5 have not established a
+scientific promotion. The transported-mixture successor also stopped at T2;
+its status and the current frozen conditional-allocation successor are
+recorded below. See
 [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md) for checkout, provenance,
 and stop rules.
 
@@ -33,8 +39,10 @@ and stop rules.
 
 This plan validates a normalized low-rank Gaussian approximation to the
 conditional aggregation error induced by hiding native-cell allocations
-inside active regions. It is the first bounded comparator before a learned
-likelihood estimator (NLE).
+inside active regions. It is the first bounded comparator before the separate
+non-RJ learned-likelihood estimator (NLE) track. A fixed-partition Gaussian
+closure may still be useful independently, including within RJ, when its
+approximation error is explicitly accepted.
 
 The approximation has two distinct promotion levels:
 

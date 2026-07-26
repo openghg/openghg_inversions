@@ -56,8 +56,9 @@ Profile = Literal["smoke", "development"]
 
 SCHEMA = "rjmcmc-conditional-residual-image-gmm-tiny-screen-v1"
 PROTOCOL = "conditional-residual-image-root-full-covariance-gmm-v1"
+ARCHITECTURE_STAGE = "sixteen-component-underfit-escalation-v1"
 CONSTRUCTION_METHOD = "scrambled_sobol_balanced_dirichlet"
-COMPONENT_COUNT = 8
+COMPONENT_COUNT = 16
 INITIALIZATION_COUNT = 3
 MINIMUM_VALID_INITIALIZATIONS = 2
 COVARIANCE_REGULARIZATION = 1.0e-8
@@ -90,7 +91,7 @@ VALIDATION_DOMAIN = "model-selection-validation"
 TEST_DOMAIN = "development-reporting-test"
 PROTECTED_HOLDOUT_CATALOGUE_ID = "conditional-residual-image-protected-density-holdout-v1"
 PROTECTED_HOLDOUT_CATALOGUE_SHA256 = "83bec3945ebc90d5e25d0888b440fe56f761f9059cf01537fbb2227b81510b66"
-DEVELOPMENT_PROTOCOL_SHA256 = "51ae6ce153a92091967c1f09fa4d5a3342ab793cb54d78254d3f162a81923fee"
+DEVELOPMENT_PROTOCOL_SHA256 = "71352ed31c8b90c093a7d50ef7e8fb64bccce84e5521bf1134932f509b4cedc3"
 
 
 def _protocol_sha256() -> str:
@@ -102,6 +103,7 @@ def _protocol_sha256() -> str:
             "a1_definitions_sha256": c1.A1_DEFINITIONS_SHA256,
             "residual_image_context_schema": RESIDUAL_IMAGE_CONTEXT_SCHEMA,
             "residual_image_basis_rule": RESIDUAL_IMAGE_BASIS_RULE,
+            "architecture_stage": ARCHITECTURE_STAGE,
             "matrix": DEVELOPMENT_MATRIX,
             "training_sample_counts": DEVELOPMENT_SAMPLE_COUNTS,
             "validation_sample_count": VALIDATION_SAMPLE_COUNT,

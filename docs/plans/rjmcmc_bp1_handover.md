@@ -9,6 +9,7 @@ remain in:
 - [`rjmcmc_topology_conditioned_hmc_next_phase.md`](rjmcmc_topology_conditioned_hmc_next_phase.md);
 - [`rjmcmc_topology_conditioned_hmc_hpc_test_plan.md`](rjmcmc_topology_conditioned_hmc_hpc_test_plan.md);
 - [`rjmcmc_aggregation_error_low_rank_hpc_test_plan.md`](rjmcmc_aggregation_error_low_rank_hpc_test_plan.md);
+- [`rjmcmc_conditional_residual_gmm_bp1_handoff.md`](rjmcmc_conditional_residual_gmm_bp1_handoff.md);
 - [`rjmcmc_full_tiling_compound_hmc.md`](rjmcmc_full_tiling_compound_hmc.md); and
 - [`rjmcmc_partition_mixing_and_full_tiling_design.md`](rjmcmc_partition_mixing_and_full_tiling_design.md).
 
@@ -277,6 +278,27 @@ fixed-scalar means and modified Gram--Schmidt; SVD determines rank only, with
 ambiguity gates. Resolve the pushed branch head after this plan-only status
 update and rerun all of G0 and G1 under that fresh full-SHA run root. The old
 24 shards are not reusable.
+
+The resulting repaired eight-component run used
+`3c91beea7836a9996d2850aadbc6892d2ed0d46a`. G0 passed 71 focused tests,
+Ruff, Pyright, and smoke. All 24 tasks in G1 array `18187304` completed and
+the merger replayed their cross-node contexts and science successfully. It
+then reached a genuine scientific hard stop: both near-Gaussian and both
+skewed cases passed at every size, while both boundary-heavy cases failed at
+every size despite valid fits and passing independent-domain generalization.
+The largest boundary-heavy evidence errors were 0.265 nat (two-cell) and
+2.062 nat (four-cell). Thus no common two-size suffix or lock exists. G2/G3
+did not run and the protected catalogue is still sealed. Preserve:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/3c91beea7836a9996d2850aadbc6892d2ed0d46a
+```
+
+This stable boundary-heavy underfit activates the single predeclared
+sixteen-component escalation. That escalation is current uncommitted work
+and requires a new full-SHA G0/G1 run; none of the eight-component artifacts
+is reusable. A sixteen-component failure is terminal for the root-GMM
+architecture.
 
 Do not add Torch or `sbi` to the runtime for this baseline. `sbi` remains an
 optional training/comparison dependency and does not bridge an arbitrary
