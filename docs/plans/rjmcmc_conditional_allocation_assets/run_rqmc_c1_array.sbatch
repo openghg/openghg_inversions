@@ -13,6 +13,8 @@ set -euo pipefail
 : "${RQMC_RUN_ROOT:?Set RQMC_RUN_ROOT to the immutable run directory.}"
 : "${RQMC_REVISION:?Set RQMC_REVISION to the complete 40-character source SHA.}"
 
+module load git/2.45.1-pqk5
+
 case_ids=(
   near_gaussian__two_cell__root
   near_gaussian__four_cell__root

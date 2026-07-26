@@ -164,6 +164,14 @@ NumPy's version string alone determines its Gamma/Dirichlet implementation.
 No smoke evaluation or Slurm task ran; preserve this third preflight failure
 and launch from a fresh full SHA.
 
+Preflight passed completely at
+`e36e4f7d796a34e97b3f6ab4c95f924105659ccf` (72 tests, Ruff, Pyright,
+and smoke). Slurm array `18186074` then failed all nine tasks before
+scientific evaluation because Git is not on the compute-node default
+`PATH`; the source-identity guard consequently failed closed. The corrected
+launcher loads BP1's `git/2.45.1-pqk5` module before any provenance query.
+Preserve the complete failed array logs and use a fresh full-SHA run root.
+
 Run only focused experimental tests, focused Ruff, and focused Pyright.
 Preserve failed artifacts, publish completion markers last, and write nothing
 to `PARIS_inversions`.
