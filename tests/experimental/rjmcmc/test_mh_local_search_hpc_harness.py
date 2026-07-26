@@ -1,0 +1,281 @@
+"""Regression tests for the immutable BP1 S0 Slurm harness."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import stat
+import subprocess
+import sys
+from types import ModuleType
+
+import pytest
+
+from openghg_inversions.experimental.rjmcmc.mh_local_search_synthetic import (
+    EVALUATION_SCHEMA,
+    TRAINING_SCHEMA,
+    build_stage_definition,
+    materialize_replicate,
+    write_envelope,
+)
+
+_ROOT = Path(__file__).parents[3]
+_HARNESS = _ROOT / "examples/rjmcmc/hpc/mh_local_search_s0"
+_STATIC_FILES = {
+    "00-common.sh",
+    "01-preflight.sbatch",
+    "02-flow-oracle.sbatch",
+    "03-materialize.sbatch",
+    "10-pair-array.sbatch",
+    "11-oracle-array.sbatch",
+    "12-nuts-array.sbatch",
+    "13-analyze-array.sbatch",
+    "14-local-p0-array.sbatch",
+    "15-local-pstar-array.sbatch",
+    "16-conditional-array.sbatch",
+    "17-build-index.sbatch",
+    "18-aggregate.sbatch",
+    "20-audit-artifact.py",
+    "21-gate-nuts.py",
+    "22-gate-conditional.py",
+    "23-build-index.py",
+    "24-final-audit.py",
+    "30-submit-primary.sh",
+    "31-submit-nuts-retry1.sh",
+    "32-submit-factor4.sh",
+    "cell-map.tsv",
+    "reference-map.tsv",
+    "resources.json",
+    "command-spec.json",
+    "inventory.json",
+}
+
+
+def _load(name: str) -> ModuleType:
+    path = _HARNESS / name
+    specification = importlib.util.spec_from_file_location(path.stem, path)
+    if specification is None or specification.loader is None:
+        raise RuntimeError(f"could not load {path}")
+    module = importlib.util.module_from_spec(specification)
+    previous = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        specification.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = previous
+    return module
+
+
+def _sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_exact_inventory_maps_resources_and_no_s1_or_paris() -> None:
+    inventory = json.loads((_HARNESS / "inventory.json").read_text())
+    assert set(inventory["files"]) == _STATIC_FILES
+    assert inventory["generated_last"] == ["complete.json"]
+    assert {path.name for path in _HARNESS.iterdir() if path.is_file()} == (_STATIC_FILES | {"files.sha256"})
+    assert not any(path.is_symlink() for path in _HARNESS.iterdir())
+
+    cells = (_HARNESS / "cell-map.tsv").read_text().splitlines()
+    assert cells[0] == "task_id\tscenario\treplicate\tcell_key"
+    assert len(cells) == 13
+    assert [line.split("\t")[0] for line in cells[1:]] == [str(index) for index in range(12)]
+    references = (_HARNESS / "reference-map.tsv").read_text().splitlines()
+    assert len(references) == 6
+    assert [line.split("\t")[2] for line in references[1:]] == [
+        "p0",
+        "p0",
+        "pstar",
+        "p0",
+        "pstar",
+    ]
+
+    resources = json.loads((_HARNESS / "resources.json").read_text())
+    assert resources["account"] == "chem007981"
+    assert resources["partition"] is None
+    assert resources["stages"]["pair"]["array"] == "0-11%6"
+    assert resources["stages"]["nuts_primary"]["array"] == "0-4%2"
+    assert resources["stages"]["factor4_local"]["time"] == "12:00:00"
+    combined = "\n".join((_HARNESS / name).read_text(errors="strict") for name in _STATIC_FILES).lower()
+    assert "paris_inversions" not in combined
+    assert "--partition" not in combined
+    assert "submit-s1" not in combined
+    assert '"s1_submission": false' in combined
+
+
+def test_sbatch_provenance_isolation_and_dependency_barriers() -> None:
+    for path in sorted(_HARNESS.glob("*.sbatch")):
+        text = path.read_text()
+        assert "#SBATCH --account=chem007981" in text
+        assert "#SBATCH --partition" not in text
+        assert "module load git/2.45.1-pqk5" in text
+        assert 'source "${HARNESS_DIR:?}/00-common.sh"' in text
+    common = (_HARNESS / "00-common.sh").read_text()
+    for variable in (
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS",
+    ):
+        assert f"export {variable}=1" in common
+    assert 'run --manifest-path "${REPO_ROOT}/pyproject.toml"' in common
+    pair = (_HARNESS / "10-pair-array.sbatch").read_text()
+    assert "pixi_python_at" in pair
+    assert "sealed-evaluation" not in pair
+
+    submit = (_HARNESS / "30-submit-primary.sh").read_text()
+    duplicate_guard = submit.index("refusing duplicate submission before sbatch")
+    sbatch_call = submit.index("sbatch --parsable", duplicate_guard)
+    assert duplicate_guard < sbatch_call
+    assert "local-p0-${profile}" in submit
+    assert "local-pstar-${profile}" in submit
+    assert "analysis-${profile}" in submit
+    assert 'cd "${REPO_ROOT}"' in submit
+    factor4 = (_HARNESS / "32-submit-factor4.sh").read_text()
+    assert '"${local_p0}:${local_pstar}:${analysis}"' in factor4
+
+    aggregate = (_HARNESS / "18-aggregate.sbatch").read_text()
+    assert aggregate.index("harness_job_complete") < aggregate.index("24-final-audit.py")
+    preflight = (_HARNESS / "01-preflight.sbatch").read_text()
+    assert "test_mh_local_search_hpc_harness.py" in preflight
+    assert "provenance.json" in preflight
+    for identity in ("numpyro_version", "pytensor_version", "pixi_sha256"):
+        assert identity in preflight
+
+
+def test_all_shell_payloads_parse() -> None:
+    scripts = sorted(_HARNESS.glob("*.sh")) + sorted(_HARNESS.glob("*.sbatch"))
+    completed = subprocess.run(
+        ["bash", "-n", *(str(path) for path in scripts)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_recursive_audit_is_create_only_and_rejects_symlinks(
+    tmp_path: Path,
+) -> None:
+    audit = _load("20-audit-artifact.py")
+    leaf = tmp_path / "leaf"
+    leaf.mkdir()
+    (leaf / "value.txt").write_text("stable\n")
+    audit.command_seal(argparse.Namespace(directory=leaf, file=["value.txt"]))
+    expected = audit.audit_completion(leaf / "complete.json")
+    assert len(expected) == 64
+    with pytest.raises(FileExistsError):
+        audit.command_seal(argparse.Namespace(directory=leaf, file=["value.txt"]))
+    alias = tmp_path / "alias.json"
+    alias.symlink_to(leaf / "complete.json")
+    with pytest.raises(ValueError, match="symlink"):
+        audit.audit_completion(alias)
+    (leaf / "value.txt").write_text("changed\n")
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        audit.audit_completion(leaf / "complete.json")
+
+
+def test_frozen_harness_is_content_addressed_and_tamper_evident(
+    tmp_path: Path,
+) -> None:
+    final = _load("24-final-audit.py")
+    harness_sha = _sha(_HARNESS / "files.sha256")
+    destination = tmp_path / "frozen"
+    arguments = argparse.Namespace(
+        source=_HARNESS,
+        destination=destination,
+        source_revision="a" * 40,
+        pixi_lock_sha256="b" * 64,
+        expected_harness_sha256=harness_sha,
+    )
+    final.command_freeze(arguments)
+    final._verify_harness(
+        destination,
+        expected_harness_sha256=harness_sha,
+        expected_source_revision="a" * 40,
+        expected_pixi_lock_sha256="b" * 64,
+    )
+    helper = destination / "20-audit-artifact.py"
+    helper.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    helper.write_text(helper.read_text() + "\n# tampered\n")
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        final._verify_harness(
+            destination,
+            expected_harness_sha256=harness_sha,
+            expected_source_revision="a" * 40,
+            expected_pixi_lock_sha256="b" * 64,
+        )
+
+
+def test_nuts_retry_is_sparse_and_merges_primary_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = _load("21-gate-nuts.py")
+    run_root = tmp_path / "run"
+    training_root = run_root / "03-materialize/training"
+    evaluation_root = run_root / "03-materialize/sealed-evaluation"
+    training_root.mkdir(parents=True)
+    evaluation_root.mkdir(parents=True)
+    definition = build_stage_definition("s0")
+    for scenario, key in (
+        ("aligned", "aligned-r0"),
+        ("edge-one", "edge-one-r0"),
+        ("relocation-one", "relocation-one-r0"),
+    ):
+        training, evaluation = materialize_replicate(definition, scenario=scenario, replicate=0)
+        write_envelope(training_root / f"{key}.json", TRAINING_SCHEMA, training.payload())
+        write_envelope(
+            evaluation_root / f"{key}.json",
+            EVALUATION_SCHEMA,
+            evaluation.payload(),
+        )
+
+    def fake_validated_nuts(**kwargs: object) -> tuple[dict[str, object], dict[str, object], None, str]:
+        directory = Path(str(kwargs["directory"]))
+        key = directory.parent.name
+        profile = directory.name
+        failed = "rank_normalized_rhat" if key == "edge-one-p0" and profile == "primary" else None
+        role = "pstar" if key.endswith("pstar") else "p0"
+        return (
+            {"first_failed_gate": failed},
+            {"profile": profile, "completion_sha256": "c" * 64},
+            None,
+            role,
+        )
+
+    monkeypatch.setattr(gate, "_validated_nuts", fake_validated_nuts)
+    primary = gate.run(
+        argparse.Namespace(
+            run_root=run_root,
+            harness_directory=_HARNESS,
+            phase="primary",
+        )
+    )
+    assert primary["action"] == "retry1"
+    assert primary["retry_task_ids"] == [1]
+    assert not (run_root / "status/nuts-selection.json").exists()
+    (run_root / "12-nuts/edge-one-p0/retry1").mkdir(parents=True)
+    retried = gate.run(
+        argparse.Namespace(
+            run_root=run_root,
+            harness_directory=_HARNESS,
+            phase="retry1",
+        )
+    )
+    assert retried["action"] == "conditional"
+    selection = json.loads((run_root / "status/nuts-selection.json").read_text())["selected"]
+    assert set(selection) == {
+        "aligned-p0",
+        "edge-one-p0",
+        "edge-one-pstar",
+        "relocation-one-p0",
+        "relocation-one-pstar",
+    }
+    assert selection["edge-one-p0"] == "retry1"
+    assert set(selection.values()) == {"primary", "retry1"}

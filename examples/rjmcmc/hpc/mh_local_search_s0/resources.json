@@ -1,0 +1,22 @@
+{
+  "schema": "openghg_inversions.mh_local_search_s0_hpc_resources.v1",
+  "account": "chem007981",
+  "partition": null,
+  "stages": {
+    "preflight": {"cpus": 1, "memory_gib": 8, "time": "01:00:00"},
+    "flow": {"cpus": 1, "memory_gib": 4, "time": "00:30:00"},
+    "materialize": {"cpus": 1, "memory_gib": 4, "time": "00:30:00"},
+    "pair": {"cpus": 1, "memory_gib": 4, "time": "02:00:00", "array": "0-11%6"},
+    "oracle": {"cpus": 1, "memory_gib": 4, "time": "02:00:00", "array": "0-11%6"},
+    "nuts_primary": {"cpus": 1, "memory_gib": 16, "time": "04:00:00", "array": "0-4%2"},
+    "nuts_retry1": {"cpus": 1, "memory_gib": 16, "time": "08:00:00", "array": "sparse%2"},
+    "analysis": {"cpus": 1, "memory_gib": 4, "time": "01:00:00", "array": "0-11%6"},
+    "local": {"cpus": 1, "memory_gib": 8, "time": "04:00:00", "array": "sparse%2"},
+    "conditional": {"cpus": 1, "memory_gib": 8, "time": "01:00:00", "array": "0-4%2"},
+    "aggregate": {"cpus": 1, "memory_gib": 16, "time": "02:00:00"},
+    "factor4_pair_oracle": {"cpus": 1, "memory_gib": 8, "time": "06:00:00"},
+    "factor4_local": {"cpus": 1, "memory_gib": 8, "time": "12:00:00"},
+    "factor4_analysis_conditional": {"cpus": 1, "memory_gib": 8, "time": "02:00:00"},
+    "factor4_aggregate": {"cpus": 1, "memory_gib": 16, "time": "04:00:00"}
+  }
+}

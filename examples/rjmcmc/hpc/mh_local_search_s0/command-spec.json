@@ -1,0 +1,33 @@
+{
+  "schema": "openghg_inversions.mh_local_search_s0_hpc_command_spec.v1",
+  "stage": "s0",
+  "environment": "dev",
+  "git_module": "git/2.45.1-pqk5",
+  "thread_limits": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "VECLIB_MAXIMUM_THREADS": "1"
+  },
+  "maps": {"cells": 12, "references": 5},
+  "dag": [
+    ["preflight", "flow"],
+    ["flow", "materialize"],
+    ["materialize", "pair"],
+    ["materialize", "oracle"],
+    ["materialize", "nuts_primary"],
+    ["pair", "analysis"],
+    ["pair", "local_p0"],
+    ["oracle", "local_pstar"],
+    ["nuts_selected+local_selected", "conditional"],
+    ["conditional_gate_pass", "build_index"],
+    ["build_index", "aggregate"]
+  ],
+  "retry_policy": {
+    "nuts": "one sparse retry1 from a validated failed primary completion",
+    "local": "one evidence-authorized homogeneous factor4 matrix",
+    "utility_may_authorize": false
+  },
+  "s1_submission": false
+}

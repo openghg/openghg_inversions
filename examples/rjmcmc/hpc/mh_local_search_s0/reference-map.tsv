@@ -1,0 +1,6 @@
+task_id	scenario	topology	cell_task_id	reference_key
+0	aligned	p0	0	aligned-p0
+1	edge-one	p0	4	edge-one-p0
+2	edge-one	pstar	4	edge-one-pstar
+3	relocation-one	p0	8	relocation-one-p0
+4	relocation-one	pstar	8	relocation-one-pstar
