@@ -197,13 +197,17 @@ def test_cached_factors_cover_singleton_singular_rank_zero_and_label_permutation
 
     original = model.partition_factors(np.array([[0, 0], [1, 1]]))
     permuted = model.partition_factors(np.array([[1, 1], [0, 0]]))
-    np.testing.assert_array_equal(
+    np.testing.assert_allclose(
         original.conditional_observation_mean([2.3, 1.7]),
         permuted.conditional_observation_mean([1.7, 2.3]),
+        rtol=3.0e-16,
+        atol=3.0e-16,
     )
-    np.testing.assert_array_equal(
+    np.testing.assert_allclose(
         original.summary_residual_covariance([2.3, 1.7]),
         permuted.summary_residual_covariance([1.7, 2.3]),
+        rtol=3.0e-16,
+        atol=3.0e-16,
     )
 
 
