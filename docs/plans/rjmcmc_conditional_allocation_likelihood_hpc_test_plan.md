@@ -817,15 +817,15 @@ not touched. The preserved run root is:
 /group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/6ad8eee8c1d02289e1b130c4204b8bbe9c86135e
 ```
 
-The repaired candidate direction exists only in current uncommitted work; do
-not assign it a revision yet. It uses scale-aware replay tolerances with
-fail-closed scientific-gate margins shared by the development and protected
-certifiers, and context/basis schema v2 with stable-cell-ordered fixed-scalar
-means and modified Gram--Schmidt. SVD is used only to determine rank, with
-ambiguity gates that stop near a rank boundary. After review and a new pushed
-full SHA, run fresh G0 and all 24 G1 shards. The `6ad8eee8` shards are
-portability evidence only and are not reusable under the changed schema and
-replay contract.
+The repaired implementation baseline is
+`0803137ab96240342361f08afab38acdbaf3bb28`. It uses scale-aware replay
+tolerances with fail-closed scientific-gate margins shared by the development
+and protected certifiers, and context/basis schema v2 with stable-cell-ordered
+fixed-scalar means and modified Gram--Schmidt. SVD is used only to determine
+rank, with ambiguity gates that stop near a rank boundary. Resolve the pushed
+branch head after this plan-only status update, then run fresh G0 and all 24
+G1 shards under that full SHA. The `6ad8eee8` shards are portability evidence
+only and are not reusable under the changed schema and replay contract.
 
 Freeze NumPy 2.2.6 and SciPy 1.15.2 for development, confirmation, and
 protected certification. The committed Pixi lock contains these versions;

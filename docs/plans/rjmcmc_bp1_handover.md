@@ -269,13 +269,14 @@ from cross-node BLAS/LAPACK behavior. This is an implementation-portability
 hard stop and supplies no scientific GMM result. G2 and G3 did not run, and
 the protected catalogue was untouched.
 
-The repair is current uncommitted work, so there is no new candidate SHA to
-record. Its direction is scale-aware replay tolerances with fail-closed gate
-margins shared by development and protected certification, plus context/basis
-schema v2 built from stable-cell-ordered fixed-scalar means and modified
-Gram--Schmidt; SVD determines rank only, with ambiguity gates. Review and push
-a new full SHA, then rerun all of G0 and G1. The old 24 shards are not
-reusable.
+The repaired implementation baseline is
+`0803137ab96240342361f08afab38acdbaf3bb28`. It uses scale-aware replay
+tolerances with fail-closed gate margins shared by development and protected
+certification, plus context/basis schema v2 built from stable-cell-ordered
+fixed-scalar means and modified Gram--Schmidt; SVD determines rank only, with
+ambiguity gates. Resolve the pushed branch head after this plan-only status
+update and rerun all of G0 and G1 under that fresh full-SHA run root. The old
+24 shards are not reusable.
 
 Do not add Torch or `sbi` to the runtime for this baseline. `sbi` remains an
 optional training/comparison dependency and does not bridge an arbitrary

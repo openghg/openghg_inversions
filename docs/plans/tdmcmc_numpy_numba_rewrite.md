@@ -720,13 +720,13 @@ not implicit behavior of this implementation.
   residual subspace from BLAS/LAPACK. This is an implementation-portability
   hard stop, not a scientific GMM result. G2/G3 did not run and the protected
   catalogue was untouched.
-- Began the portability repair in current uncommitted work without assigning
-  a candidate SHA: scale-aware replay tolerances with fail-closed gate
-  margins shared by development and protected certification; context/basis
-  schema v2 using stable-cell-ordered fixed-scalar means and modified
-  Gram--Schmidt; and SVD rank determination only, with ambiguity gates. A
-  reviewed, pushed full SHA must repeat all of G0 and G1; none of the old
-  shards is reusable.
+- Committed the portability implementation at
+  `0803137ab96240342361f08afab38acdbaf3bb28`: scale-aware replay tolerances
+  with fail-closed gate margins shared by development and protected
+  certification; context/basis schema v2 using stable-cell-ordered fixed-scalar
+  means and modified Gram--Schmidt; and SVD rank determination only, with
+  ambiguity gates. Resolve the final pushed branch head after plan-only status
+  commits and repeat all of G0 and G1; none of the old shards is reusable.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 
