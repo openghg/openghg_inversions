@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import hashlib
+import json
 import math
 import os
 from pathlib import Path
@@ -64,6 +65,8 @@ CONVERGENCE_NAT_PER_DRAW = 1.0e-7
 CONVERGENCE_STREAK = 10
 GENERALIZATION_NAT_PER_DIMENSION = 0.02
 GENERALIZATION_MCSE_MULTIPLIER = 5.0
+DEVELOPMENT_NUMPY_VERSION = "2.2.6"
+DEVELOPMENT_SCIPY_VERSION = "1.15.2"
 
 DEVELOPMENT_MATRIX = tuple(
     (regime, family, "root")
@@ -83,9 +86,9 @@ SMOKE_REPEAT_SEEDS = (731,)
 TRAINING_DOMAIN = "training"
 VALIDATION_DOMAIN = "model-selection-validation"
 TEST_DOMAIN = "development-reporting-test"
-PROTECTED_HOLDOUT_CATALOGUE_ID = "conditional-residual-image-held-out-operators-v1"
+PROTECTED_HOLDOUT_CATALOGUE_ID = "conditional-residual-image-protected-density-holdout-v1"
 PROTECTED_HOLDOUT_CATALOGUE_SHA256 = "83bec3945ebc90d5e25d0888b440fe56f761f9059cf01537fbb2227b81510b66"
-DEVELOPMENT_PROTOCOL_SHA256 = "8e239b5755b971debe7b62c1ee9ba83c6bba639b7bc086076fc8614eacdc1282"
+DEVELOPMENT_PROTOCOL_SHA256 = "3a6beb6b1c379f0ede652ab46df4b1f1805158044e07e0376a53e52897582cc7"
 
 
 def _protocol_sha256() -> str:
@@ -100,6 +103,19 @@ def _protocol_sha256() -> str:
             "validation_sample_count": VALIDATION_SAMPLE_COUNT,
             "test_sample_count": TEST_SAMPLE_COUNT,
             "protected_holdout_catalogue_sha256": (PROTECTED_HOLDOUT_CATALOGUE_SHA256),
+            "protected_holdout_contract": {
+                "catalogue_id": PROTECTED_HOLDOUT_CATALOGUE_ID,
+                "object": ("new residual draws from the same six source-pinned exact contexts"),
+                "promoted_artifact": ("development seed 731 at the common locked training size"),
+                "retrain": False,
+                "retune_after_reveal": False,
+                "acceptance": (
+                    "unchanged likelihood/gradient/evidence/posterior gates plus "
+                    "the frozen validation-versus-protected-density NLL gate"
+                ),
+            },
+            "development_numpy_version": DEVELOPMENT_NUMPY_VERSION,
+            "development_scipy_version": DEVELOPMENT_SCIPY_VERSION,
             "development_selection_seed": DEVELOPMENT_SELECTION_SEED,
             "confirmation_seeds": CONFIRMATION_SEEDS,
             "domains": [TRAINING_DOMAIN, VALIDATION_DOMAIN, TEST_DOMAIN],
@@ -133,6 +149,10 @@ def _validate_development_protocol() -> None:
     """Fail closed if a source-pinned development setting has drifted."""
     if _protocol_sha256() != DEVELOPMENT_PROTOCOL_SHA256:
         raise RuntimeError("the frozen learned-density development protocol identity changed")
+    if numpy_version != DEVELOPMENT_NUMPY_VERSION:
+        raise RuntimeError("NumPy does not match the frozen development version")
+    if scipy_version != DEVELOPMENT_SCIPY_VERSION:
+        raise RuntimeError("SciPy does not match the frozen development version")
 
 
 @dataclass(frozen=True)
@@ -825,12 +845,11 @@ def validate_fitted_bundle_envelope(
         ):
             raise ValueError("fitted-bundle simulator-domain evidence is malformed")
     runtime = payload["runtime"]
-    if (
-        not isinstance(runtime, dict)
-        or set(runtime) != {"numpy_version", "scipy_version"}
-        or not all(isinstance(value, str) and bool(value) for value in runtime.values())
-    ):
-        raise ValueError("fitted-bundle runtime identity is malformed")
+    if not isinstance(runtime, dict) or runtime != {
+        "numpy_version": DEVELOPMENT_NUMPY_VERSION,
+        "scipy_version": DEVELOPMENT_SCIPY_VERSION,
+    }:
+        raise ValueError("fitted-bundle runtime identity does not match")
     generalization = payload["generalization"]
     if not isinstance(generalization, dict) or not isinstance(generalization.get("pass"), bool):
         raise ValueError("fitted-bundle simulator-test generalization evidence is malformed")
@@ -1031,7 +1050,9 @@ def run_case(
     source_git_revision: str,
     driver_sha256: str,
     run_development_ladder: bool = True,
+    development_sample_count: int | None = None,
     confirmation_sample_count: int | None = None,
+    confirmation_seed: int | None = None,
 ) -> dict[str, Any]:
     """Train one case's ladder and/or a preselected common confirmation size."""
     case_key = (regime_name, family, "root")
@@ -1059,8 +1080,16 @@ def run_case(
         raise ValueError("development sample counts and seeds are source-pinned")
     if not run_development_ladder and confirmation_sample_count is None:
         raise ValueError("confirmation-only execution requires a preselected sample count")
+    if development_sample_count is not None and (
+        not run_development_ladder or development_sample_count not in normalized_counts
+    ):
+        raise ValueError("development_sample_count must select one source-pinned ladder size")
     if confirmation_sample_count is not None and confirmation_sample_count not in normalized_counts:
         raise ValueError("confirmation_sample_count must lie on the source-pinned ladder")
+    if confirmation_seed is not None and (
+        confirmation_sample_count is None or confirmation_seed not in normalized_seeds[1:]
+    ):
+        raise ValueError("confirmation_seed must select one source-pinned confirmation stream")
     regime = c1._regime(regime_name)
     shapes, rate, design, observation, noise = c1._case_arrays(regime, family)
     labels = c1.labels_for_tiling(family, "root")
@@ -1200,6 +1229,9 @@ def run_case(
             test_sample_count=test_sample_count,
             base_seed=normalized_seeds[0],
         )
+        evaluation_counts = (
+            (development_sample_count,) if development_sample_count is not None else normalized_counts
+        )
         development_evaluations = [
             fit_and_evaluate(
                 sample_count,
@@ -1207,7 +1239,7 @@ def run_case(
                 development_draws,
                 development_domain_artifacts,
             )
-            for sample_count in normalized_counts
+            for sample_count in evaluation_counts
         ]
         development_nested_training_bank = {
             "largest_sample_count": max(normalized_counts),
@@ -1225,12 +1257,16 @@ def run_case(
             [bool(result["scientific_pass"]) for result in development_evaluations],
             minimum_suffix_length=minimum_suffix_length,
         )
-        if development_evaluations
+        if development_evaluations and development_sample_count is None
         else None
     )
     confirmation_evaluations: list[dict[str, Any]] = []
     if confirmation_sample_count is not None:
-        for base_seed in normalized_seeds[1:]:
+        confirmation_base_seeds = (
+            (confirmation_seed,) if confirmation_seed is not None else normalized_seeds[1:]
+        )
+        for base_seed in confirmation_base_seeds:
+            assert base_seed is not None
             confirmation_draws, confirmation_domain_artifacts = _domain_draw_bundle(
                 aggregation,
                 labels,
@@ -1303,6 +1339,8 @@ def run_case(
         "exact_posterior_summary": exact_summary,
         "development_seed": normalized_seeds[0],
         "confirmation_seeds": list(normalized_seeds[1:]),
+        "executed_development_sample_count": development_sample_count,
+        "executed_confirmation_seed": confirmation_seed,
         "development_evaluations": development_evaluations,
         "development_nested_training_bank": development_nested_training_bank,
         "minimum_passing_suffix_length": minimum_suffix_length,
@@ -1329,11 +1367,118 @@ def matrix_catalogue() -> dict[str, Any]:
             "id": PROTECTED_HOLDOUT_CATALOGUE_ID,
             "sha256": PROTECTED_HOLDOUT_CATALOGUE_SHA256,
             "sample_count": PROTECTED_HOLDOUT_SAMPLE_COUNT,
+            "object": "new residual draws from the same six exact contexts",
+            "promoted_artifact": ("development seed 731 at the common locked training size"),
+            "retrain": False,
+            "retune_after_reveal": False,
             "numerical_values_present": False,
             "executable_here": False,
         },
         "held_out_information_read": False,
     }
+
+
+def _read_confirmation_lock(
+    path: Path,
+    *,
+    expected_raw_sha256: str,
+    expected_source_revision: str,
+    expected_driver_sha256: str,
+    selected_case_id: str,
+) -> tuple[dict[str, Any], str, str]:
+    """Authenticate a common development lock before confirmation fitting."""
+    if len(expected_raw_sha256) != 64 or any(
+        character not in "0123456789abcdef" for character in expected_raw_sha256
+    ):
+        raise ValueError("expected confirmation-lock SHA-256 is not canonical")
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("confirmation lock must be one regular non-symlink file")
+    raw = path.read_bytes()
+    raw_sha256 = hashlib.sha256(raw).hexdigest()
+    if raw_sha256 != expected_raw_sha256:
+        raise ValueError("confirmation lock raw SHA-256 does not match")
+
+    def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"confirmation lock contains duplicate key {key!r}")
+            result[key] = value
+        return result
+
+    try:
+        text = raw.decode("ascii")
+        envelope = json.loads(
+            text,
+            object_pairs_hook=object_pairs,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"confirmation lock contains non-finite value {value}")
+            ),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("confirmation lock is not strict ASCII JSON") from error
+    if not isinstance(envelope, dict) or set(envelope) != {"payload", "sha256"}:
+        raise ValueError("confirmation lock has an unexpected envelope schema")
+    if text != f"{c1._canonical_json(envelope)}\n":
+        raise ValueError("confirmation lock is not newline-terminated canonical JSON")
+    payload = envelope["payload"]
+    internal_sha256 = c1._sha256_json(payload)
+    if envelope["sha256"] != internal_sha256:
+        raise ValueError("confirmation lock internal digest does not match")
+    expected_payload_fields = {
+        "schema",
+        "certification_protocol",
+        "certification_protocol_sha256",
+        "source_git_revision",
+        "scientific_driver_sha256",
+        "frozen_development_protocol_sha256",
+        "a1_definitions_sha256",
+        "matrix_catalogue",
+        "sample_counts",
+        "development_selection_seed",
+        "confirmation_seeds",
+        "minimum_passing_suffix_length",
+        "development_pass_pattern",
+        "locked_sample_count",
+        "cases",
+    }
+    if not isinstance(payload, dict) or set(payload) != expected_payload_fields:
+        raise ValueError("confirmation lock payload has an unexpected schema")
+    if (
+        payload["schema"] != "conditional-residual-image-gmm-common-lock-v1"
+        or not isinstance(payload["certification_protocol"], str)
+        or not payload["certification_protocol"]
+        or not isinstance(payload["certification_protocol_sha256"], str)
+        or len(payload["certification_protocol_sha256"]) != 64
+        or any(character not in "0123456789abcdef" for character in payload["certification_protocol_sha256"])
+        or payload["source_git_revision"] != expected_source_revision
+        or payload["scientific_driver_sha256"] != expected_driver_sha256
+        or payload["frozen_development_protocol_sha256"] != DEVELOPMENT_PROTOCOL_SHA256
+        or payload["a1_definitions_sha256"] != c1.A1_DEFINITIONS_SHA256
+        or payload["matrix_catalogue"] != matrix_catalogue()
+        or payload["sample_counts"] != list(DEVELOPMENT_SAMPLE_COUNTS)
+        or payload["development_selection_seed"] != DEVELOPMENT_SELECTION_SEED
+        or payload["confirmation_seeds"] != list(CONFIRMATION_SEEDS)
+        or payload["minimum_passing_suffix_length"] != 2
+    ):
+        raise ValueError("confirmation lock does not match the frozen protocol")
+    locked_sample_count = payload["locked_sample_count"]
+    if not isinstance(locked_sample_count, int) or locked_sample_count not in DEVELOPMENT_SAMPLE_COUNTS:
+        raise ValueError("confirmation lock has no valid common sample count")
+    cases = payload["cases"]
+    expected_case_ids = {"__".join(case) for case in DEVELOPMENT_MATRIX}
+    if not isinstance(cases, dict) or set(cases) != expected_case_ids:
+        raise ValueError("confirmation lock does not contain exactly six cases")
+    case = cases[selected_case_id]
+    if not isinstance(case, dict) or set(case) != {
+        "development_input_raw_sha256",
+        "input_sha256",
+        "context_sha256",
+        "nominated_fitted_bundle_sha256",
+        "nominated_artifact_sha256",
+    }:
+        raise ValueError("confirmation lock selected-case record is malformed")
+    return payload, internal_sha256, raw_sha256
 
 
 def run_screen(
@@ -1343,6 +1488,10 @@ def run_screen(
     repeat_seeds: Sequence[int] | None = None,
     case_id: str | None = None,
     source_revision: str | None = None,
+    development_sample_count: int | None = None,
+    confirmation_lock: Path | None = None,
+    expected_confirmation_lock_sha256: str | None = None,
+    confirmation_seed: int | None = None,
 ) -> dict[str, Any]:
     """Run the smoke profile or the source-pinned six-case development screen."""
     if profile not in ("smoke", "development"):
@@ -1352,6 +1501,23 @@ def run_screen(
         raise RuntimeError("shared C1 exact numerical definitions no longer match their pin")
     resolved_revision = c1._source_revision(source_revision)
     observed_driver_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    confirmation_mode = confirmation_lock is not None
+    if confirmation_mode != (expected_confirmation_lock_sha256 is not None):
+        raise ValueError("confirmation lock and expected raw SHA-256 must be supplied together")
+    if confirmation_mode and (profile != "development" or case_id is None):
+        raise ValueError("locked confirmation requires development profile and one case_id")
+    development_shard_mode = development_sample_count is not None
+    if development_shard_mode and (
+        profile != "development"
+        or case_id is None
+        or confirmation_mode
+        or development_sample_count not in DEVELOPMENT_SAMPLE_COUNTS
+    ):
+        raise ValueError("development shard requires one source-pinned development case and size")
+    if confirmation_seed is not None and (
+        not confirmation_mode or confirmation_seed not in CONFIRMATION_SEEDS
+    ):
+        raise ValueError("confirmation_seed requires a signed lock and source-pinned seed")
     if profile == "development":
         _validate_development_protocol()
         if sample_counts is not None or repeat_seeds is not None:
@@ -1369,6 +1535,26 @@ def run_screen(
             raise ValueError(f"case_id {case_id!r} is not available in profile {profile}")
         matrix = tuple(matches)
     started = time.perf_counter()
+    confirmation_lock_payload: dict[str, Any] | None = None
+    confirmation_lock_internal_sha256: str | None = None
+    confirmation_lock_raw_sha256: str | None = None
+    confirmation_sample_count: int | None = None
+    if confirmation_mode:
+        assert confirmation_lock is not None
+        assert expected_confirmation_lock_sha256 is not None
+        assert case_id is not None
+        (
+            confirmation_lock_payload,
+            confirmation_lock_internal_sha256,
+            confirmation_lock_raw_sha256,
+        ) = _read_confirmation_lock(
+            confirmation_lock,
+            expected_raw_sha256=expected_confirmation_lock_sha256,
+            expected_source_revision=resolved_revision,
+            expected_driver_sha256=observed_driver_sha256,
+            selected_case_id=case_id,
+        )
+        confirmation_sample_count = cast(int, confirmation_lock_payload["locked_sample_count"])
     cases = [
         run_case(
             regime_name=regime_name,
@@ -1378,9 +1564,45 @@ def run_screen(
             profile=profile,
             source_git_revision=resolved_revision,
             driver_sha256=observed_driver_sha256,
+            run_development_ladder=not confirmation_mode,
+            development_sample_count=development_sample_count,
+            confirmation_sample_count=confirmation_sample_count,
+            confirmation_seed=confirmation_seed,
         )
         for regime_name, family, _ in matrix
     ]
+    if confirmation_mode:
+        return {
+            "schema": SCHEMA,
+            "protocol": PROTOCOL,
+            "profile": profile,
+            "execution_mode": (
+                "confirmation_seed_shard" if confirmation_seed is not None else "confirmation_case"
+            ),
+            "selected_case_id": case_id,
+            "per_case_atomic_output": True,
+            "executed_confirmation_seed": confirmation_seed,
+            "source_git_revision": resolved_revision,
+            "driver_sha256": observed_driver_sha256,
+            "a1_definitions_sha256": observed_a1_definitions,
+            "protocol_sha256": _protocol_sha256(),
+            "frozen_development_protocol_sha256": DEVELOPMENT_PROTOCOL_SHA256,
+            "matrix_catalogue": matrix_catalogue(),
+            "sample_counts": list(counts),
+            "repeat_seeds": list(seeds),
+            "confirmation_lock_internal_sha256": (confirmation_lock_internal_sha256),
+            "confirmation_lock_raw_sha256": confirmation_lock_raw_sha256,
+            "confirmation_locked_sample_count": confirmation_sample_count,
+            "cases": cases,
+            "development_pass": False,
+            "eligible_for_protected_holdout": False,
+            "protected_holdout_pass": None,
+            "scientific_pass": False,
+            "scientific_pass_available": False,
+            "structural_inference_licensed": False,
+            "held_out_information_read": False,
+            "elapsed_seconds": time.perf_counter() - started,
+        }
     common_lock_status = "not_applicable_smoke"
     common_locked_sample_count: int | None = None
     common_development_pass_pattern: list[dict[str, Any]] = []
@@ -1390,7 +1612,7 @@ def run_screen(
         "all_cases_pass": None,
         "cases": {},
     }
-    if profile == "development":
+    if profile == "development" and not development_shard_mode:
         common_development_pass_pattern = [
             {
                 "sample_count": sample_count,
@@ -1491,6 +1713,8 @@ def run_screen(
                 )
                 if not common_confirmation_evidence["all_cases_pass"]:
                     common_lock_status = "hard_stop_common_confirmation_failure"
+    elif development_shard_mode:
+        common_lock_status = "unavailable_development_size_shard"
     profile_pass = bool(
         all(case["scientific_pass"] for case in cases)
         if profile == "smoke"
@@ -1505,6 +1729,14 @@ def run_screen(
         "schema": SCHEMA,
         "protocol": PROTOCOL,
         "profile": profile,
+        "execution_mode": (
+            ("development_size_shard" if development_shard_mode else "development_ladder")
+            if profile == "development" and case_id is not None
+            else profile
+        ),
+        "selected_case_id": case_id,
+        "executed_development_sample_count": development_sample_count,
+        "per_case_atomic_output": bool(profile == "development" and case_id is not None),
         "source_git_revision": resolved_revision,
         "driver_sha256": observed_driver_sha256,
         "a1_definitions_sha256": observed_a1_definitions,
@@ -1596,6 +1828,11 @@ def _write_atomic_json(path: Path, payload: object) -> None:
         os.link(temporary, path)
         temporary.unlink()
         temporary = None
+        directory_descriptor = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_descriptor)
+        finally:
+            os.close(directory_descriptor)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
@@ -1607,6 +1844,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--case-id")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--source-revision")
+    parser.add_argument(
+        "--development-sample-count",
+        type=int,
+        choices=DEVELOPMENT_SAMPLE_COUNTS,
+    )
+    parser.add_argument("--confirmation-lock", type=Path)
+    parser.add_argument("--expected-confirmation-lock-sha256")
+    parser.add_argument("--confirmation-seed", type=int, choices=CONFIRMATION_SEEDS)
     parser.add_argument("--sample-counts", type=_power_of_two_csv)
     parser.add_argument(
         "--repeat-seeds",
@@ -1630,6 +1875,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.output,
                 args.case_id,
                 args.source_revision,
+                args.development_sample_count,
+                args.confirmation_lock,
+                args.expected_confirmation_lock_sha256,
+                args.confirmation_seed,
                 args.sample_counts,
                 args.repeat_seeds,
             )
@@ -1641,12 +1890,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("--output is required unless --list-matrix is used")
     if args.profile == "development" and (args.sample_counts is not None or args.repeat_seeds is not None):
         raise SystemExit("development sample counts and seeds are source-pinned")
+    if (args.confirmation_lock is None) != (args.expected_confirmation_lock_sha256 is None):
+        raise SystemExit(
+            "--confirmation-lock and --expected-confirmation-lock-sha256 must be supplied together"
+        )
+    if args.confirmation_seed is not None and args.confirmation_lock is None:
+        raise SystemExit("--confirmation-seed requires --confirmation-lock")
     report = run_screen(
         profile=args.profile,
         sample_counts=args.sample_counts,
         repeat_seeds=args.repeat_seeds,
         case_id=args.case_id,
         source_revision=args.source_revision,
+        development_sample_count=args.development_sample_count,
+        confirmation_lock=args.confirmation_lock,
+        expected_confirmation_lock_sha256=(args.expected_confirmation_lock_sha256),
+        confirmation_seed=args.confirmation_seed,
     )
     _write_atomic_json(args.output, report)
     return 0

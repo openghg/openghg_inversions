@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import math
 from pathlib import Path
 from typing import Any
@@ -148,6 +149,51 @@ def _manual_fitted_envelope() -> dict[str, Any]:
     )
 
 
+def _common_lock_envelope(
+    *,
+    source_revision: str,
+    driver_sha256: str,
+    locked_sample_count: int = 16_384,
+) -> dict[str, Any]:
+    """Return one valid common-lock envelope for trainer boundary tests."""
+    payload = {
+        "schema": "conditional-residual-image-gmm-common-lock-v1",
+        "certification_protocol": ("conditional-residual-image-gmm-development-certifier-v1"),
+        "certification_protocol_sha256": "a" * 64,
+        "source_git_revision": source_revision,
+        "scientific_driver_sha256": driver_sha256,
+        "frozen_development_protocol_sha256": (gmm.DEVELOPMENT_PROTOCOL_SHA256),
+        "a1_definitions_sha256": c1.A1_DEFINITIONS_SHA256,
+        "matrix_catalogue": gmm.matrix_catalogue(),
+        "sample_counts": list(gmm.DEVELOPMENT_SAMPLE_COUNTS),
+        "development_selection_seed": gmm.DEVELOPMENT_SELECTION_SEED,
+        "confirmation_seeds": list(gmm.CONFIRMATION_SEEDS),
+        "minimum_passing_suffix_length": 2,
+        "development_pass_pattern": [
+            {
+                "sample_count": sample_count,
+                "pass": sample_count >= locked_sample_count,
+            }
+            for sample_count in gmm.DEVELOPMENT_SAMPLE_COUNTS
+        ],
+        "locked_sample_count": locked_sample_count,
+        "cases": {
+            "__".join(case): {
+                "development_input_raw_sha256": f"{index + 1:064x}",
+                "input_sha256": f"{index + 8:064x}",
+                "context_sha256": f"{index + 15:064x}",
+                "nominated_fitted_bundle_sha256": f"{index + 22:064x}",
+                "nominated_artifact_sha256": f"{index + 29:064x}",
+            }
+            for index, case in enumerate(gmm.DEVELOPMENT_MATRIX)
+        },
+    }
+    return {
+        "payload": payload,
+        "sha256": c1._sha256_json(payload),
+    }
+
+
 def _fake_matrix_case_runner(
     pass_patterns: dict[str, tuple[bool, bool, bool, bool]],
     *,
@@ -250,6 +296,8 @@ def test_protocol_constants_and_six_case_matrix_are_source_pinned() -> None:
     assert gmm.COMPONENT_COUNT == 8
     assert gmm.INITIALIZATION_COUNT == 3
     assert gmm.MINIMUM_VALID_INITIALIZATIONS == 2
+    assert gmm.DEVELOPMENT_NUMPY_VERSION == np.__version__
+    assert gmm.DEVELOPMENT_SCIPY_VERSION == gmm.scipy_version
     assert gmm.DEVELOPMENT_SAMPLE_COUNTS == (
         4_096,
         16_384,
@@ -275,11 +323,133 @@ def test_protocol_constants_and_six_case_matrix_are_source_pinned() -> None:
         "id": gmm.PROTECTED_HOLDOUT_CATALOGUE_ID,
         "sha256": gmm.PROTECTED_HOLDOUT_CATALOGUE_SHA256,
         "sample_count": gmm.PROTECTED_HOLDOUT_SAMPLE_COUNT,
+        "object": "new residual draws from the same six exact contexts",
+        "promoted_artifact": ("development seed 731 at the common locked training size"),
+        "retrain": False,
+        "retune_after_reveal": False,
         "numerical_values_present": False,
         "executable_here": False,
     }
     assert len(gmm.PROTECTED_HOLDOUT_CATALOGUE_SHA256) == 64
     assert gmm._protocol_sha256() == gmm.DEVELOPMENT_PROTOCOL_SHA256
+
+
+def test_confirmation_lock_authenticates_raw_and_internal_digests(
+    tmp_path: Path,
+) -> None:
+    """Confirmation must bind one canonical common lock by two digests."""
+    source_revision = "1" * 40
+    driver_sha256 = "2" * 64
+    envelope = _common_lock_envelope(
+        source_revision=source_revision,
+        driver_sha256=driver_sha256,
+    )
+    path = tmp_path / "common-lock.json"
+    raw = f"{c1._canonical_json(envelope)}\n".encode("ascii")
+    path.write_bytes(raw)
+    raw_sha256 = hashlib.sha256(raw).hexdigest()
+
+    payload, internal, observed_raw = gmm._read_confirmation_lock(
+        path,
+        expected_raw_sha256=raw_sha256,
+        expected_source_revision=source_revision,
+        expected_driver_sha256=driver_sha256,
+        selected_case_id="near_gaussian__two_cell__root",
+    )
+
+    assert payload["locked_sample_count"] == 16_384
+    assert internal == envelope["sha256"]
+    assert observed_raw == raw_sha256
+    with pytest.raises(ValueError, match="raw SHA-256"):
+        gmm._read_confirmation_lock(
+            path,
+            expected_raw_sha256="f" * 64,
+            expected_source_revision=source_revision,
+            expected_driver_sha256=driver_sha256,
+            selected_case_id="near_gaussian__two_cell__root",
+        )
+
+
+def test_locked_confirmation_mode_runs_only_the_selected_case(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A signed lock must determine the confirmation size and case."""
+    source_revision = "1" * 40
+    driver_sha256 = hashlib.sha256(Path(gmm.__file__).read_bytes()).hexdigest()
+    envelope = _common_lock_envelope(
+        source_revision=source_revision,
+        driver_sha256=driver_sha256,
+    )
+    path = tmp_path / "common-lock.json"
+    raw = f"{c1._canonical_json(envelope)}\n".encode("ascii")
+    path.write_bytes(raw)
+    calls: list[dict[str, Any]] = []
+
+    def fake_run_case(**kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs)
+        return {
+            "case_id": "near_gaussian__two_cell__root",
+            "confirmation_evaluations": [],
+            "confirmation_pass": False,
+            "scientific_pass": False,
+        }
+
+    monkeypatch.setattr(c1, "_source_revision", lambda _: source_revision)
+    monkeypatch.setattr(gmm, "run_case", fake_run_case)
+
+    report = gmm.run_screen(
+        profile="development",
+        case_id="near_gaussian__two_cell__root",
+        source_revision=source_revision,
+        confirmation_lock=path,
+        expected_confirmation_lock_sha256=hashlib.sha256(raw).hexdigest(),
+        confirmation_seed=1_877,
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["run_development_ladder"] is False
+    assert calls[0]["confirmation_sample_count"] == 16_384
+    assert calls[0]["confirmation_seed"] == 1_877
+    assert report["execution_mode"] == "confirmation_seed_shard"
+    assert report["selected_case_id"] == "near_gaussian__two_cell__root"
+    assert report["per_case_atomic_output"] is True
+    assert report["executed_confirmation_seed"] == 1_877
+    assert report["confirmation_lock_internal_sha256"] == envelope["sha256"]
+    assert report["confirmation_lock_raw_sha256"] == hashlib.sha256(raw).hexdigest()
+    assert report["development_pass"] is False
+    assert report["eligible_for_protected_holdout"] is False
+
+
+def test_development_size_shard_runs_one_source_pinned_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A durable development shard must select one case and ladder size."""
+    calls: list[dict[str, Any]] = []
+
+    def fake_run_case(**kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs)
+        return {
+            "case_id": "near_gaussian__two_cell__root",
+            "scientific_pass": False,
+        }
+
+    monkeypatch.setattr(gmm, "run_case", fake_run_case)
+
+    report = gmm.run_screen(
+        profile="development",
+        case_id="near_gaussian__two_cell__root",
+        development_sample_count=65_536,
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["run_development_ladder"] is True
+    assert calls[0]["development_sample_count"] == 65_536
+    assert calls[0]["confirmation_sample_count"] is None
+    assert report["execution_mode"] == "development_size_shard"
+    assert report["executed_development_sample_count"] == 65_536
+    assert report["common_training_lock"]["status"] == ("unavailable_development_size_shard")
+    assert report["development_pass"] is False
 
 
 def test_fitted_bundle_envelope_replays_and_binds_all_training_evidence() -> None:
@@ -890,6 +1060,9 @@ def test_partial_development_case_cannot_lock_confirm_or_pass(
     )
 
     assert len(report["cases"]) == 1
+    assert report["execution_mode"] == "development_ladder"
+    assert report["selected_case_id"] == "near_gaussian__two_cell__root"
+    assert report["per_case_atomic_output"] is True
     assert report["common_training_lock"]["status"] == ("unavailable_partial_matrix")
     assert report["common_training_lock"]["locked_sample_count"] is None
     assert report["common_confirmation_evidence"]["requested"] is False
