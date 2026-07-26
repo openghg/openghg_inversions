@@ -153,6 +153,17 @@ detached candidate. No smoke evaluation or Slurm task ran. Both harnesses now
 prepend the authenticated detached worktree to `PYTHONPATH`; preserve this
 second preflight failure and again use a fresh full-SHA root.
 
+At `f9c90ca4cb62cfa6b17c9078e8809f0f0f53a13d`, detached imports were
+correct and 71 of 72 focused tests passed. The remaining legacy-PCG64 golden
+test reproduced its direct construction bitwise but showed that NumPy 2.2.6
+on BP1's x86 build emits the other already authenticated legacy stream
+previously observed under NumPy 1.26. The corrected test retains exact
+platform-local algorithm parity and requires the resulting artifact/factor
+pair to be one of the two authenticated byte streams, without assuming that
+NumPy's version string alone determines its Gamma/Dirichlet implementation.
+No smoke evaluation or Slurm task ran; preserve this third preflight failure
+and launch from a fresh full SHA.
+
 Run only focused experimental tests, focused Ruff, and focused Pyright.
 Preserve failed artifacts, publish completion markers last, and write nothing
 to `PARIS_inversions`.

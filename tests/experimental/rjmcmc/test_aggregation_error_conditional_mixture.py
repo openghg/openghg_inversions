@@ -115,22 +115,26 @@ def test_default_pcg64_construction_preserves_v1_golden_artifact() -> None:
     assert artifact.construction_method == "keyed_pcg64_dirichlet"
     assert artifact.payload["schema"] == ("aggregation-conditional-allocation-mixture-v1")
     assert "construction_method" not in artifact.payload
+    # NumPy's Dirichlet implementation has produced both authenticated byte
+    # streams across version/build/architecture combinations. The direct
+    # construction above is the platform-local compatibility oracle; this set
+    # additionally rejects any result outside the observed exact legacy
+    # streams.
     authenticated_goldens = {
-        "1.26.4": (
+        (
             "b3b229bfc247d65834582c41d99b1807be44506dcf754f0411ae8a4bc3a5e242",
             "347a74cfa0e84ab1ee7adc5b4ead73f0c1c2c6853713398517e9e2879872fce2",
         ),
-        "2.2.6": (
+        (
             "021c3d9a11e1dd1896e1643847151142ee6d4e96273d3a4023b5423d79d7bd19",
             "7544a0bcf048ebfe2d4449311407db3cb2a7a381bdd52525a2473666a0b2895e",
         ),
     }
-    golden = authenticated_goldens.get(np.__version__)
-    if golden is not None:
-        assert artifact.sha256 == golden[0]
-        assert (
-            hashlib.sha256(artifact.projected_unit_mass_residual_factors.tobytes()).hexdigest() == golden[1]
-        )
+    observed_golden = (
+        artifact.sha256,
+        hashlib.sha256(artifact.projected_unit_mass_residual_factors.tobytes()).hexdigest(),
+    )
+    assert observed_golden in authenticated_goldens
 
 
 def test_scrambled_sobol_bank_has_exact_nested_prefixes_and_private_rng() -> None:
