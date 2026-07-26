@@ -122,6 +122,7 @@ will be introduced only behind equivalence tests.
 | 2026-07-26 | Test topology-conditioned static Euclidean HMC before RMHMC. | H2/H2b/H2c failures varied strongly by tiling, while a curvature audit found topology effects much larger than within-topology position effects. A deterministic precision may change between tilings while remaining constant during each ordinary HMC trajectory. |
 | 2026-07-26 | Use exact log-coordinate involutions for HMC-specific edge flips and resolution relocations. | The first physical split implementation admitted forward binary64 paths without representable reverse fractions. Coordinate permutations give bit-exact reverse geometry, unit Jacobian, and explicit discrete catalogue accounting. |
 | 2026-07-26 | Treat aggregation error as an explicit marginalization problem before allowing data to select computational partitions. | Under one common proper native model, exact reduced evidence is identical for every representation. A finite Gaussian closure or NLE may leak partition-dependent evidence and therefore requires absolute-evidence/tower gates before structural use. |
+| 2026-07-26 | Test a frozen conditional-allocation bank before adding `sbi`. | The transported standardized-shape mixture failed its T2 development screen. Frozen within-region Dirichlet shares retain the full conditional dependence on region masses, give a deterministic normalized Gaussian mixture after measurement-noise convolution, and can be differentiated directly in NumPy/PyTensor. Partitions remain externally weighted by their structural prior. |
 
 ## Ganesan lineage and active hierarchy plan
 
@@ -640,17 +641,32 @@ not implicit behavior of this implementation.
   HMC-specific edge-flip and resolution-relocation maps at `e619915` with
   exact involutions of authoritative log-mass coordinates, no Beta auxiliary,
   unit Jacobian, and transformed-target plus discrete-catalogue scoring.
-  Focused local checks passed; the BP1 rerun was interrupted and is not an HPC
-  certificate.
+  The repaired `5bb4139` BP1 run subsequently passed D0 exact structural
+  reversal and D1 deterministic topology-conditioned precision construction.
+  D2 binding passed, but its topology-freeze Slurm job was cancelled by
+  `PartitionConfig` before scientific HMC calibration; that cancellation is
+  not a model failure.
 - Added exact two- and four-cell aggregation-error oracles, a normalized
   low-rank Gaussian conditional-moment closure, cached fixed-partition
   factors, and a FullTiling physical-mass bridge. Deliberately excluded a
   raw-moment rectangle-prefix acceleration after it showed catastrophic
   cancellation for small covariances on large design offsets.
-- Split the next work into two independently gated tracks: finish H2d D0--D4
-  against the original target, and validate aggregation error A0--A5 with a
-  fixed-partition PyMC/NUTS bridge first. Structural \(P/K\) claims remain
-  prohibited until absolute evidence and tower identities pass.
+- Added the fixed-partition PyMC/NUTS Gaussian aggregation target at
+  `a004e526`. A1 passed implementation and exact tower controls but reached a
+  scientific-shape hard stop: the non-Gaussian conditional allocation law was
+  not reproduced adequately in the skewed, boundary-heavy, and heterogeneous
+  regimes. The Gaussian closure remains an explicit fixed-partition
+  approximation rather than an exact structural likelihood.
+- Added the normalized transported-mixture foundation at `6ff3afe`. Its T2
+  development fitter produced three artifacts and exhausted all fixed
+  restarts in five regimes; the fitted cases also failed at least one
+  scientific-shape gate, so held-out evaluation did not run.
+- Started the simpler conditional-allocation likelihood track. It freezes
+  direct Dirichlet share draws, retains their linear dependence on the
+  retained region masses, and averages the resulting exactly noise-convolved
+  Gaussian components. The fixed projection is a computational
+  representation, not a data-selected model; evidence drift remains a
+  surrogate-error diagnostic.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 

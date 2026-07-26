@@ -10,10 +10,22 @@ raw-moment rectangle-prefix prototype was excluded after a cancellation audit;
 do not recreate it without a stable centered-covariance construction and an
 explicit memory/error protocol.
 
-Local A0 tests pass, but A1--A5 have not run on BP1. Implementation of the
-fixed-partition PyMC/NUTS bridge described in A4 may proceed after A0, while
-independent A1--A3 harness work runs, but no retained A4 sampling or scientific
-promotion is permitted until A1--A3 pass. See
+The fixed-partition PyMC/NUTS Gaussian bridge landed at
+`a004e526033432df4e893e63119cc9aa4928c95c`. A1 then passed its
+implementation and tower-identity controls but reached a certified
+scientific-shape hard stop: the exact non-Gaussian conditional law differed
+materially from the Gaussian closure in the skewed, boundary-heavy, and
+heterogeneous regimes. Preserve:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_aggregation_error/5bb41399e45b78954488e286da3f40371dcb956e/a1/retry2
+```
+
+This withholds exact structural use of the Gaussian closure. It does not
+invalidate the implementation or prohibit fixed-partition use as an explicitly
+validated approximation. A2--A5 have not established a scientific promotion.
+The transported-mixture successor also stopped at T2; its status and the
+current frozen conditional-allocation successor are recorded below. See
 [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md) for checkout, provenance,
 and stop rules.
 
@@ -344,3 +356,22 @@ held-out likelihood, tail, gradient, or calibration gates.
 At finite training size, even a normalized consistent NLE may introduce
 partition-dependent evidence error. Structural weights remain externally
 fixed at their prior unless A5 passes.
+
+### 2026-07-26 transported-mixture outcome
+
+The transported-mixture foundation was committed at
+`6ff3afe56416e701ac1fc4ae45676d08ea28229b`. Its BP1 T2 development screen
+stopped before held-out evaluation. Three of eight bounded fits produced
+artifacts but did not pass every scientific-shape gate; the other five
+exhausted their fixed EM restarts without a valid fit. A separate final
+catalogue assertion was an infrastructure defect, but repairing it would not
+remove the scientific hard stop.
+
+The next bounded baseline therefore avoids density fitting. It freezes direct
+within-region Dirichlet allocation draws and averages their analytically
+noise-convolved Gaussian components conditional on the retained region
+masses. This keeps the state dependence discarded by the transported-shape
+assumption. See
+[`rjmcmc_conditional_allocation_likelihood_hpc_test_plan.md`](rjmcmc_conditional_allocation_likelihood_hpc_test_plan.md).
+Only add a conditional MDN or flow if this deterministic bank fails its
+declared accuracy, memory, or throughput gate.

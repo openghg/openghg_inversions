@@ -168,27 +168,28 @@ only by strong within-topology curvature variation.
 
 This track is independent of an H2d calibration outcome:
 
-1. Run A0 and preserve exact algebra/normalization results.
-2. Create and hash run-root analysis harnesses for A1 tiny exact-shape
-   comparisons and A2/A3 rank, operator, and PARIS conditional diagnostics.
-   Reusable implementation belongs on a new branch/worktree and must be
-   reviewed, committed, and pushed before a new full-SHA run.
-3. Run A1--A3 before interpreting or promoting an aggregation-aware posterior.
-4. Benchmark the cached fixed-partition factor builder. Its storage is
+1. Preserve the completed A0 implementation controls and the A1 Gaussian
+   scientific-shape hard stop. Do not rerun them merely to erase a failure.
+2. Preserve the transported-mixture T2 hard stop at `6ff3afe`; no held-out
+   promotion was licensed.
+3. Continue the frozen conditional-allocation likelihood under its separate
+   [HPC plan](rjmcmc_conditional_allocation_likelihood_hpc_test_plan.md),
+   beginning with C0 and the exact tiny C1 screen.
+4. Create and hash run-root analysis harnesses for the remaining
+   moderate/PARIS conditional diagnostics. Reusable implementation belongs on
+   the separate branch/worktree and must be reviewed, committed, and pushed
+   before a new full-SHA run.
+5. Benchmark the cached fixed-partition factor builder. Its storage is
    \(O(n_{\rm obs}K+Kq^2)\); public PSD validation is \(O(Kq^3)\). Start with
    \(q=32\) and \(q=64\).
-5. The fixed-partition PyMC/NUTS bridge may be implemented after A0, in
-   parallel with independent A1--A3 harness work, but no retained A4 sampling
-   or scientific interpretation is permitted until A1--A3 pass. The target
-   needs a scalar joint `Potential` evaluating the normalized low-rank
-   likelihood, with gradients through both the mean and \(S(A)\). A correlated
-   joint likelihood has no ordinary pointwise-observation decomposition.
-6. Compare its PyTensor log density and gradient with the independent NumPy
-   oracle before sampling. Do not expose a diagonal `pm.Normal` component as
-   if it were the corrected ArviZ `log_likelihood`; persist the scalar joint
-   likelihood explicitly.
-7. Permit structural \(P/K\) claims only after A5 absolute-evidence and
-   tower-property gates.
+6. Reuse the committed fixed-partition PyMC/NUTS Gaussian bridge only as a
+   comparator. A conditional-allocation PyTensor target requires its own
+   value/gradient parity gates and scalar joint-likelihood output.
+7. Do not expose a diagonal `pm.Normal` component as if it were the corrected
+   ArviZ `log_likelihood`; persist the scalar joint likelihood explicitly.
+8. Keep partitions external to the approximate likelihood workflow. Combine
+   common summaries using the declared structural prior weights; evidence
+   differences are leakage diagnostics, not RJ or softmax weights.
 
 Keep this first integration downstream of `fixed_basis_nuts.py`, preferably in
 `fixed_basis_aggregation_nuts.py`. Do not partially wire aggregation error
@@ -196,11 +197,23 @@ into the mobile HMC target. When creating that downstream module, move the
 FullTiling borrowing bridge there or replace its `object.__new__` construction
 with a private validated borrowed-array constructor.
 
-If the dense Gaussian closure fails scientific shape, try a normalized
-transported mixture in the same fixed summary space before a conditional
-flow/NLE. An NLE must estimate a normalized conditional aggregation-residual
-density and must not be allowed to update structural weights until its
-evidence error passes A5.
+The dense Gaussian closure failed exact scientific shape. The normalized
+transported-mixture successor at `6ff3afe56416e701ac1fc4ae45676d08ea28229b`
+then stopped at T2: three of eight development fits produced artifacts but
+failed at least one scientific gate, and five exhausted their fixed EM
+restarts. Preserve its authoritative run:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_aggregation_transported_mixture/6ff3afe56416e701ac1fc4ae45676d08ea28229b/t2/11a43a24da003019e600c990da143573f527ce1b85ffeaedada80ec857edbd28
+```
+
+The current successor is a frozen conditional-allocation finite mixture; see
+[`rjmcmc_conditional_allocation_likelihood_hpc_test_plan.md`](rjmcmc_conditional_allocation_likelihood_hpc_test_plan.md).
+It directly averages noise-convolved within-region Dirichlet allocations
+conditional on the retained masses. Add a conditional MDN or flow only if
+that bank fails its declared accuracy, memory, or throughput gate. No
+approximate likelihood may update structural weights; partitions remain
+externally weighted by their declared prior.
 
 ## `inversions-knowledge`
 
