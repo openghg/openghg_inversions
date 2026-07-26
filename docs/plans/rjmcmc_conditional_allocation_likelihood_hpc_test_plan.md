@@ -136,6 +136,15 @@ It requires SciPy 1.15.2 and validates the complete matrix protocol, source
 revision, and construction environment before scientific evaluation,
 including for one-case Slurm invocations.
 
+The first BP1 setup at `e973aab0773f432095c52335efd724513e08d16f`
+stopped before preflight because the harness required an empty Git status
+after creating its required untracked `.pixi` symlink. No Slurm task or
+scientific evaluation ran. The corrected source-identity rule permits exactly
+that authenticated link (or an environment where it is ignored) and rejects
+every other tracked or untracked change; the link target is checked
+separately at every execution boundary. Preserve the setup-only run root as
+failed operational evidence and use a fresh full-SHA run root.
+
 Run only focused experimental tests, focused Ruff, and focused Pyright.
 Preserve failed artifacts, publish completion markers last, and write nothing
 to `PARIS_inversions`.
@@ -457,7 +466,8 @@ git worktree add --detach "${RQMC_SOURCE}" "${RQMC_REVISION}"
 ln -s /group/chem/acrg/brendan_for_codex/openghg_inversions/.pixi "${RQMC_SOURCE}/.pixi"
 mkdir -p "${RQMC_RUN_ROOT}/cases" "${RQMC_RUN_ROOT}/logs" "${RQMC_RUN_ROOT}/preflight"
 test "$(git -C "${RQMC_SOURCE}" rev-parse HEAD)" = "${RQMC_REVISION}"
-test -z "$(git -C "${RQMC_SOURCE}" status --porcelain)"
+source_status="$(git -C "${RQMC_SOURCE}" status --porcelain)"
+test -z "${source_status}" || test "${source_status}" = "?? .pixi"
 test "$(readlink -f "${RQMC_SOURCE}/.pixi")" = \
   "/group/chem/acrg/brendan_for_codex/openghg_inversions/.pixi"
 ```

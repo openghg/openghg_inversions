@@ -28,8 +28,9 @@ if [[ "$(git -C "${RQMC_SOURCE}" rev-parse HEAD)" != "${RQMC_REVISION}" ]]; then
   echo "RQMC_SOURCE does not match RQMC_REVISION." >&2
   exit 2
 fi
-if [[ -n "$(git -C "${RQMC_SOURCE}" status --porcelain)" ]]; then
-  echo "RQMC_SOURCE must be clean." >&2
+source_status="$(git -C "${RQMC_SOURCE}" status --porcelain)"
+if [[ -n "${source_status}" && "${source_status}" != "?? .pixi" ]]; then
+  echo "RQMC_SOURCE may contain only the authenticated untracked .pixi link." >&2
   exit 2
 fi
 if [[ "$(readlink -f "${RQMC_SOURCE}/.pixi")" != "${canonical_pixi}" ]]; then

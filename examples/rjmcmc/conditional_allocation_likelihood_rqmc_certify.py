@@ -106,8 +106,13 @@ def _validate_live_source(source_directory: Path, expected_source_revision: str)
     observed_revision = _git_output(source_directory, "rev-parse", "HEAD").strip()
     if observed_revision != expected_source_revision:
         raise ValueError("live source HEAD does not match the expected revision")
-    if _git_output(source_directory, "status", "--porcelain") != "":
-        raise ValueError("live source worktree is not clean")
+    status = _git_output(source_directory, "status", "--porcelain")
+    if status not in ("", "?? .pixi\n"):
+        raise ValueError("live source contains changes other than the authenticated .pixi link")
+    pixi = source_directory / ".pixi"
+    expected_pixi = Path("/group/chem/acrg/brendan_for_codex/openghg_inversions/.pixi")
+    if status and (not pixi.is_symlink() or pixi.resolve() != expected_pixi):
+        raise ValueError("live source .pixi link does not resolve to the canonical BP1 environment")
 
 
 def _certification_protocol_sha256() -> str:
@@ -227,10 +232,15 @@ def _validate_preflight(
     if marker != expected_marker:
         raise ValueError("preflight completion marker does not match the expected revision")
     log = (directory / "preflight.log").read_text(encoding="utf-8")
+    allowed_status_blocks = (
+        "status_porcelain_begin\nstatus_porcelain_end\n",
+        "status_porcelain_begin\n?? .pixi\nstatus_porcelain_end\n",
+    )
+    if not any(block in log for block in allowed_status_blocks):
+        raise ValueError("preflight log omits the authenticated clean-source status")
     required_log_fragments = (
         f"revision={expected_source_revision}\n",
         f"head={expected_source_revision}\n",
-        "status_porcelain_begin\nstatus_porcelain_end\n",
         f"scipy={rqmc.DEVELOPMENT_SCIPY_VERSION}\n",
         "focused_pytest_begin\n",
         "focused_pytest_pass\n",
@@ -242,7 +252,7 @@ def _validate_preflight(
         "smoke_pass\n",
     )
     if any(fragment not in log for fragment in required_log_fragments):
-        raise ValueError("preflight log omits clean source or required SciPy identity")
+        raise ValueError("preflight log omits a required source, environment, or gate identity")
 
     smoke = _read_canonical_json(directory / "smoke.json")
     smoke_case_id = "__".join(rqmc.SMOKE_MATRIX[0])

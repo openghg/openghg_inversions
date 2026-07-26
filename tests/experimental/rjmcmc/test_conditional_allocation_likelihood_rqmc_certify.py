@@ -384,7 +384,7 @@ def test_live_source_validation_requires_imported_clean_pinned_worktree(
 
     VALIDATE_LIVE_SOURCE(root, REVISION)
     observed[("status", "--porcelain")] = " M changed.py\n"
-    with pytest.raises(ValueError, match="not clean"):
+    with pytest.raises(ValueError, match="changes other"):
         VALIDATE_LIVE_SOURCE(root, REVISION)
     with pytest.raises(ValueError, match="does not contain"):
         VALIDATE_LIVE_SOURCE(root / "elsewhere", REVISION)
