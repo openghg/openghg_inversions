@@ -28,16 +28,18 @@ moment closure, not an exact marginal likelihood unless the hidden
 aggregation residual is Gaussian.  The exact Dirichlet moments and the
 Gaussian normalizer are nevertheless part of the public contract.
 
-All public value objects own read-only arrays and validate inputs eagerly.
-The first implementation intentionally uses transparent region loops.  It is
-an oracle-quality baseline for later prefix-sum or sparse acceleration.
+All public value objects expose read-only arrays and validate inputs eagerly.
+The labels-based implementation intentionally uses transparent, numerically
+stable centered region loops.  A raw-moment rectangle-prefix acceleration is
+deliberately excluded because subtracting large nearly equal moments can
+produce materially wrong covariance factors.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from math import log, pi
-from typing import TypeAlias, cast
+from typing import TYPE_CHECKING, TypeAlias, cast
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -45,9 +47,14 @@ from numpy.typing import ArrayLike, NDArray
 FloatArray: TypeAlias = NDArray[np.float64]
 IntArray: TypeAlias = NDArray[np.int64]
 
+if TYPE_CHECKING:
+    from .full_tiling_posterior import FullTilingProblem
+
 __all__ = [
     "AdditiveDirichletAggregation",
+    "PartitionSummaryFactors",
     "PartitionMassState",
+    "aggregation_from_full_tiling_problem",
     "low_rank_gaussian_log_likelihood",
 ]
 
@@ -198,6 +205,146 @@ class PartitionMassState:
         return int(self.masses.size)
 
 
+@dataclass(frozen=True, slots=True, eq=False, init=False)
+class PartitionSummaryFactors:
+    """Cached conditional moments for one fixed labelled partition.
+
+    The columns of ``observation_mean_design`` and ``summary_mean_design`` are
+    conditional means per unit region mass. ``summary_covariance_factors[j]``
+    is the conditional summary covariance per squared unit mass in region
+    ``j``. Consequently repeated continuous-state evaluation is
+
+    ``mean = observation_mean_design @ masses``
+
+    and
+
+    ``S = sum_j masses[j]**2 * summary_covariance_factors[j]``.
+
+    All arrays are owned and read-only. Region order follows the contiguous
+    labels supplied to :meth:`AdditiveDirichletAggregation.partition_factors`;
+    labels carry no scientific meaning.
+
+    Args:
+        labels: Contiguous zero-based native-cell labels.
+        alpha_totals: Additive Dirichlet concentration in each region.
+        observation_mean_design: Observation mean per unit region mass.
+        summary_mean_design: Summary mean per unit region mass.
+        summary_covariance_factors: Summary covariance per squared unit mass.
+    """
+
+    labels: IntArray = field(init=False)
+    alpha_totals: FloatArray = field(init=False)
+    observation_mean_design: FloatArray = field(init=False)
+    summary_mean_design: FloatArray = field(init=False)
+    summary_covariance_factors: FloatArray = field(init=False)
+
+    def __init__(
+        self,
+        labels: ArrayLike,
+        alpha_totals: ArrayLike,
+        observation_mean_design: ArrayLike,
+        summary_mean_design: ArrayLike,
+        summary_covariance_factors: ArrayLike,
+    ) -> None:
+        """Validate and freeze precomputed partition factors."""
+        raw_labels = np.asarray(labels)
+        if not np.issubdtype(raw_labels.dtype, np.integer):
+            raise TypeError("labels must be an integer array.")
+        owned_labels = np.array(raw_labels, dtype=np.int64, copy=True)
+        totals = _readonly_float(alpha_totals, name="alpha_totals")
+        observation_design = _readonly_float(
+            observation_mean_design,
+            name="observation_mean_design",
+        )
+        summary_design = _readonly_float(summary_mean_design, name="summary_mean_design")
+        raw_covariance_factors = _readonly_float(
+            summary_covariance_factors,
+            name="summary_covariance_factors",
+        )
+        if totals.ndim != 1 or totals.size == 0 or np.any(totals <= 0.0):
+            raise ValueError("alpha_totals must be a non-empty positive vector.")
+        region_count = totals.size
+        if observation_design.ndim != 2 or observation_design.shape[1] != region_count:
+            raise ValueError("observation_mean_design must have one column per region.")
+        if summary_design.ndim != 2 or summary_design.shape[1] != region_count:
+            raise ValueError("summary_mean_design must have one column per region.")
+        expected_covariance_shape = (
+            region_count,
+            summary_design.shape[0],
+            summary_design.shape[0],
+        )
+        if raw_covariance_factors.shape != expected_covariance_shape:
+            raise ValueError(
+                "summary_covariance_factors must have shape (regions, summary_dimension, summary_dimension)."
+            )
+        covariance_factors = np.empty_like(raw_covariance_factors)
+        for region in range(region_count):
+            covariance_factors[region] = _symmetric_positive_semidefinite(
+                raw_covariance_factors[region],
+                summary_design.shape[0],
+            )
+        covariance_factors.setflags(write=False)
+        unique = np.unique(owned_labels)
+        if not np.array_equal(unique, np.arange(region_count, dtype=np.int64)):
+            raise ValueError("labels must use every contiguous identifier from zero.")
+        owned_labels.setflags(write=False)
+        object.__setattr__(self, "labels", owned_labels)
+        object.__setattr__(self, "alpha_totals", totals)
+        object.__setattr__(self, "observation_mean_design", observation_design)
+        object.__setattr__(self, "summary_mean_design", summary_design)
+        object.__setattr__(self, "summary_covariance_factors", covariance_factors)
+
+    @property
+    def region_count(self) -> int:
+        """Return the number of cached regions."""
+        return int(self.alpha_totals.size)
+
+    @property
+    def summary_dimension(self) -> int:
+        """Return the retained summary rank."""
+        return int(self.summary_mean_design.shape[0])
+
+    @property
+    def storage_nbytes(self) -> int:
+        """Return bytes owned by the cached factor arrays."""
+        return int(
+            self.labels.nbytes
+            + self.alpha_totals.nbytes
+            + self.observation_mean_design.nbytes
+            + self.summary_mean_design.nbytes
+            + self.summary_covariance_factors.nbytes
+        )
+
+    def _masses(self, values: ArrayLike) -> FloatArray:
+        """Return validated positive masses aligned with cached region order."""
+        masses = np.asarray(values, dtype=np.float64)
+        if masses.shape != (self.region_count,):
+            raise ValueError("masses must have exactly one entry per cached region.")
+        if not np.all(np.isfinite(masses)) or np.any(masses <= 0.0):
+            raise ValueError("masses must contain only finite strictly positive values.")
+        return cast(FloatArray, masses)
+
+    def conditional_observation_mean(self, masses: ArrayLike) -> FloatArray:
+        """Return the cached conditional observation mean for ``masses``."""
+        result = self.observation_mean_design @ self._masses(masses)
+        return _readonly_float(result, name="conditional_observation_mean")
+
+    def conditional_summary_mean(self, masses: ArrayLike) -> FloatArray:
+        """Return the cached conditional summary mean for ``masses``."""
+        result = self.summary_mean_design @ self._masses(masses)
+        return _readonly_float(result, name="conditional_summary_mean")
+
+    def summary_residual_covariance(self, masses: ArrayLike) -> FloatArray:
+        """Return ``sum_j masses[j]**2 R_j`` without scanning native cells."""
+        validated_masses = self._masses(masses)
+        dimension = self.summary_dimension
+        result = np.zeros((dimension, dimension), dtype=np.float64)
+        for region, mass in enumerate(validated_masses):
+            result += float(mass) ** 2 * self.summary_covariance_factors[region]
+        result = 0.5 * (result + result.T)
+        return _readonly_float(result, name="summary_residual_covariance")
+
+
 def low_rank_gaussian_log_likelihood(
     observation: ArrayLike,
     mean: ArrayLike,
@@ -288,9 +435,11 @@ class AdditiveDirichletAggregation:
             observation space.
 
     Attributes:
-        cell_alphas: Owned read-only native concentration array.
-        design: Owned read-only design matrix.
-        noise_sd: Owned read-only observation-error standard deviations.
+        cell_alphas: Read-only native concentration array.
+        design: Read-only design matrix. The ordinary constructor owns it;
+            :func:`aggregation_from_full_tiling_problem` safely borrows the
+            already immutable base-problem array.
+        noise_sd: Read-only observation-error standard deviations.
         summary_basis: Owned read-only whitened orthonormal basis.
 
     Raises:
@@ -334,7 +483,7 @@ class AdditiveDirichletAggregation:
             raise ValueError("design must be a non-empty matrix with one column per native cell.")
         scale = _noise_vector(noise_sd, matrix.shape[0])
         basis = _orthonormal_basis(summary_basis, matrix.shape[0])
-        summary_design = basis.T @ (matrix / scale[:, np.newaxis])
+        summary_design = (basis / scale[:, np.newaxis]).T @ matrix
         summary_design = _readonly_float(summary_design, name="summary_design")
         object.__setattr__(self, "cell_alphas", alphas)
         object.__setattr__(self, "design", matrix)
@@ -359,6 +508,66 @@ class AdditiveDirichletAggregation:
         if state.labels.shape != self.cell_shape:
             raise ValueError("state labels must have the same shape as cell_alphas.")
         return state.labels.reshape(-1), self.cell_alphas.reshape(-1)
+
+    def partition_factors(self, labels: ArrayLike) -> PartitionSummaryFactors:
+        """Precompute reusable conditional moments for one fixed topology.
+
+        Building factors costs
+        ``O(K*N + N*(n_observations + q**2))`` for ``N`` native cells, ``K``
+        regions, and summary rank ``q``. Subsequent continuous-state means cost
+        ``O(K * n_observations)`` and covariances ``O(K * q**2)``.
+
+        Args:
+            labels: Contiguous zero-based integer labels with
+                :attr:`cell_shape`.
+
+        Returns:
+            Immutable factors reusable for any positive masses on the same
+            labelled partition.
+        """
+        raw_labels = np.asarray(labels)
+        if not np.issubdtype(raw_labels.dtype, np.integer) or np.issubdtype(
+            raw_labels.dtype,
+            np.bool_,
+        ):
+            raise TypeError("labels must be an integer array.")
+        if raw_labels.shape != self.cell_shape:
+            raise ValueError("labels must have the same shape as cell_alphas.")
+        flat_labels = np.asarray(raw_labels, dtype=np.int64).reshape(-1)
+        unique = np.unique(flat_labels)
+        if not np.array_equal(unique, np.arange(unique.size, dtype=np.int64)):
+            raise ValueError("labels must use every contiguous identifier from zero.")
+        region_count = unique.size
+        alphas = self.cell_alphas.reshape(-1)
+        observation_means = np.empty((self.design.shape[0], region_count), dtype=np.float64)
+        summary_means = np.empty((self.summary_design.shape[0], region_count), dtype=np.float64)
+        covariance_factors = np.empty(
+            (region_count, self.summary_design.shape[0], self.summary_design.shape[0]),
+            dtype=np.float64,
+        )
+        alpha_totals = np.empty(region_count, dtype=np.float64)
+        for region in range(region_count):
+            selected = flat_labels == region
+            region_alphas = alphas[selected]
+            concentration = float(region_alphas.sum())
+            proportions = region_alphas / concentration
+            observation_columns = self.design[:, selected]
+            summary_columns = self.summary_design[:, selected]
+            observation_means[:, region] = observation_columns @ proportions
+            summary_mean = summary_columns @ proportions
+            summary_means[:, region] = summary_mean
+            centered = summary_columns - summary_mean[:, np.newaxis]
+            covariance_factors[region] = ((centered * proportions[np.newaxis, :]) @ centered.T) / (
+                concentration + 1.0
+            )
+            alpha_totals[region] = concentration
+        return PartitionSummaryFactors(
+            raw_labels,
+            alpha_totals,
+            observation_means,
+            summary_means,
+            covariance_factors,
+        )
 
     def conditional_native_mean(self, state: PartitionMassState) -> FloatArray:
         """Return the conditional mean native mass for one partition state.
@@ -496,3 +705,53 @@ class AdditiveDirichletAggregation:
             self.summary_basis,
             self.summary_residual_covariance(state),
         )
+
+
+def aggregation_from_full_tiling_problem(
+    problem: FullTilingProblem,
+    summary_basis: ArrayLike,
+) -> AdditiveDirichletAggregation:
+    """Build the aggregation closure aligned with a full-tiling problem.
+
+    The cell concentrations are the full-tiling additive alpha measure,
+    ``concentration * normalized_nominal_mass``. The sensitivity is the
+    physical-mass response matrix, and the observation errors come from the
+    wrapped base problem. The bridge borrows the already immutable sensitivity
+    and error arrays rather than duplicating the potentially large design
+    matrix. It allocates only cell concentrations, the small basis copy, and
+    the required ``q``-by-native-cell summary design.
+
+    Args:
+        problem: Full-tiling scientific target.
+        summary_basis: Fixed orthonormal basis in whitened observation space.
+
+    Returns:
+        Validated additive-Dirichlet aggregation closure.
+
+    Raises:
+        TypeError: If ``problem`` is not a full-tiling problem.
+        ValueError: If the basis or bridged arrays are malformed.
+    """
+    from .full_tiling_posterior import FullTilingProblem
+
+    if not isinstance(problem, FullTilingProblem):
+        raise TypeError("problem must be a FullTilingProblem.")
+    alphas = np.asarray(
+        problem.concentration * problem.normalized_nominal_mass,
+        dtype=np.float64,
+    )
+    if not np.all(np.isfinite(alphas)) or np.any(alphas <= 0.0):
+        raise ValueError("bridged cell concentrations must be finite and strictly positive.")
+    alphas.setflags(write=False)
+    design = problem.base.sensitivity
+    scale = problem.observation_sd
+    basis = _orthonormal_basis(summary_basis, problem.observations.size)
+    summary_design = (basis / scale[:, np.newaxis]).T @ design
+    summary_design = _readonly_float(summary_design, name="summary_design")
+    result = object.__new__(AdditiveDirichletAggregation)
+    object.__setattr__(result, "cell_alphas", alphas)
+    object.__setattr__(result, "design", design)
+    object.__setattr__(result, "noise_sd", scale)
+    object.__setattr__(result, "summary_basis", basis)
+    object.__setattr__(result, "_summary_design", summary_design)
+    return result

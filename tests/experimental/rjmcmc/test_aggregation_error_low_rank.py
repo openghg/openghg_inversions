@@ -13,6 +13,8 @@ from openghg_inversions.experimental.rjmcmc.aggregation_error import FourCellAgg
 from openghg_inversions.experimental.rjmcmc.aggregation_error_low_rank import (
     AdditiveDirichletAggregation,
     PartitionMassState,
+    PartitionSummaryFactors,
+    aggregation_from_full_tiling_problem,
     low_rank_gaussian_log_likelihood,
 )
 from openghg_inversions.experimental.rjmcmc.dyadic_tree import CanonicalDyadicTree
@@ -105,6 +107,144 @@ def test_exact_moments_match_direct_dirichlet_formula() -> None:
         @ model.summary_basis
     )
     np.testing.assert_allclose(model.summary_residual_covariance(state), projected, atol=5.0e-15)
+
+
+def test_cached_partition_factors_exactly_replay_transparent_region_loop() -> None:
+    """Cached unit-mass factors should replay means and covariance without a cell scan."""
+    model = _model()
+    labels = np.array([[0, 0], [1, 1]])
+    masses = np.array([2.3, 1.7])
+    state = PartitionMassState(labels, masses)
+    factors = model.partition_factors(labels)
+
+    np.testing.assert_allclose(
+        factors.conditional_observation_mean(masses),
+        model.conditional_observation_mean(state),
+        rtol=0.0,
+        atol=3.0e-16,
+    )
+    np.testing.assert_allclose(
+        factors.summary_residual_covariance(masses),
+        model.summary_residual_covariance(state),
+        rtol=3.0e-16,
+        atol=2.0e-15,
+    )
+    np.testing.assert_allclose(
+        factors.conditional_summary_mean(masses),
+        model.summary_basis.T @ (model.conditional_observation_mean(state) / model.noise_sd),
+        rtol=0.0,
+        atol=2.0e-15,
+    )
+    assert factors.storage_nbytes == sum(
+        array.nbytes
+        for array in (
+            factors.labels,
+            factors.alpha_totals,
+            factors.observation_mean_design,
+            factors.summary_mean_design,
+            factors.summary_covariance_factors,
+        )
+    )
+    assert all(
+        not array.flags.writeable
+        for array in (
+            factors.labels,
+            factors.alpha_totals,
+            factors.observation_mean_design,
+            factors.summary_mean_design,
+            factors.summary_covariance_factors,
+        )
+    )
+
+
+def test_cached_factors_cover_singleton_singular_rank_zero_and_label_permutation() -> None:
+    """Degenerate factors and consistent region relabeling should remain exact."""
+    model = _model()
+    fine_labels = np.arange(4, dtype=np.int64).reshape(2, 2)
+    fine_masses = np.array([0.5, 1.2, 0.8, 1.5])
+    fine = model.partition_factors(fine_labels)
+    np.testing.assert_array_equal(fine.summary_covariance_factors, np.zeros((4, 2, 2)))
+    np.testing.assert_array_equal(
+        fine.summary_residual_covariance(fine_masses),
+        np.zeros((2, 2)),
+    )
+
+    repeated_design = np.tile(np.array([[1.0], [-0.4], [0.8]]), (1, 4))
+    singular_model = AdditiveDirichletAggregation(
+        model.cell_alphas,
+        repeated_design,
+        model.noise_sd,
+        model.summary_basis,
+    )
+    singular = singular_model.partition_factors(np.zeros((2, 2), dtype=np.int64))
+    singular_state = PartitionMassState(np.zeros((2, 2), dtype=np.int64), [1.4])
+    np.testing.assert_allclose(
+        singular.summary_residual_covariance([1.4]),
+        singular_model.summary_residual_covariance(singular_state),
+        rtol=3.0e-16,
+        atol=0.0,
+    )
+    assert np.linalg.matrix_rank(singular.summary_covariance_factors[0]) <= 1
+
+    rank_zero = AdditiveDirichletAggregation(
+        model.cell_alphas,
+        model.design,
+        model.noise_sd,
+        np.empty((3, 0)),
+    ).partition_factors(np.array([[0, 0], [1, 1]]))
+    assert rank_zero.summary_covariance_factors.shape == (2, 0, 0)
+    assert rank_zero.summary_residual_covariance([2.3, 1.7]).shape == (0, 0)
+
+    original = model.partition_factors(np.array([[0, 0], [1, 1]]))
+    permuted = model.partition_factors(np.array([[1, 1], [0, 0]]))
+    np.testing.assert_array_equal(
+        original.conditional_observation_mean([2.3, 1.7]),
+        permuted.conditional_observation_mean([1.7, 2.3]),
+    )
+    np.testing.assert_array_equal(
+        original.summary_residual_covariance([2.3, 1.7]),
+        permuted.summary_residual_covariance([1.7, 2.3]),
+    )
+
+
+def test_cached_factors_use_stable_centered_covariance_for_large_offsets() -> None:
+    """Large common design offsets must not corrupt a tiny aggregation covariance."""
+    perturbation = np.array([-1.5, -0.5, 0.5, 1.5]) * 1.0e-4
+    design = (1.0e8 + perturbation)[np.newaxis, :]
+    model = AdditiveDirichletAggregation(
+        np.ones((2, 2)),
+        design,
+        1.0,
+        np.ones((1, 1)),
+    )
+    factors = model.partition_factors(np.zeros((2, 2), dtype=np.int64))
+    expected = float(np.mean(perturbation**2) / 5.0)
+
+    assert factors.summary_covariance_factors[0, 0, 0] > 0.0
+    assert factors.summary_covariance_factors[0, 0, 0] == pytest.approx(
+        expected,
+        rel=2.0e-4,
+    )
+
+
+def test_partition_factor_constructor_rejects_invalid_covariance_factors() -> None:
+    """Public cached factors must reject asymmetric or materially indefinite inputs."""
+    common = {
+        "labels": np.array([0]),
+        "alpha_totals": np.array([1.0]),
+        "observation_mean_design": np.ones((1, 1)),
+        "summary_mean_design": np.ones((2, 1)),
+    }
+    with pytest.raises(ValueError, match="symmetric"):
+        PartitionSummaryFactors(
+            **common,
+            summary_covariance_factors=np.array([[[1.0, 0.5], [0.0, 1.0]]]),
+        )
+    with pytest.raises(ValueError, match="positive semidefinite"):
+        PartitionSummaryFactors(
+            **common,
+            summary_covariance_factors=np.array([[[1.0, 0.0], [0.0, -1.0]]]),
+        )
 
 
 def test_exact_moments_match_monte_carlo_hidden_allocations() -> None:
@@ -447,14 +587,14 @@ def test_full_tiling_bridge_uses_physical_mass_design_and_additive_alpha() -> No
             leaf.row_start : leaf.row_stop,
             leaf.col_start : leaf.col_stop,
         ] = label
-    aggregation = AdditiveDirichletAggregation(
-        problem.concentration * problem.normalized_nominal_mass,
-        problem.base.sensitivity,
-        problem.observation_sd,
+    aggregation = aggregation_from_full_tiling_problem(
+        problem,
         np.eye(problem.observations.size),
     )
     state = PartitionMassState(labels, posterior_state.leaf_masses)
 
+    assert aggregation.design is problem.base.sensitivity
+    assert aggregation.noise_sd is problem.observation_sd
     np.testing.assert_allclose(
         aggregation.conditional_observation_mean(state),
         posterior_state.dynamic_prediction,
