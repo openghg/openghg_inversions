@@ -674,6 +674,13 @@ not implicit behavior of this implementation.
   not a provenance or implementation failure. The next bounded method is a
   joint scrambled-Sobol allocation bank under the same gates, followed, if
   necessary, by a normalized residual-image MDN/NLE model.
+- Implemented that RQMC successor at `e0b2166597b3baa360233eb3ff63ee325a30c263`
+  using canonical balanced-tree inverse-Beta splits. It preserves nested
+  power-of-two prefixes, avoids inverse-Gamma underflow for tiny native-cell
+  concentrations, records a strict v2 construction identity, and leaves the
+  PCG64 v1 contract unchanged. Exact moment, product, multi-block, endpoint,
+  replay, and permutation gates pass locally; the unchanged nine-case BP1
+  C1 screen is next.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 

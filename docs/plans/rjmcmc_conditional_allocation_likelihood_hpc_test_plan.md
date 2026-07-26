@@ -101,6 +101,41 @@ fallback rather than increasing the PCG64 ladder post hoc.
 BP1 jobs must use Slurm account `chem007981`; the default account produced
 `PartitionConfig` cancellations even in the `test` partition.
 
+The bounded RQMC successor is implemented at
+`e0b2166597b3baa360233eb3ff63ee325a30c263`. It replaces independent PCG64
+draws with a stable-cell-ID, count-balanced Dirichlet tree driven by scrambled
+Sobol coordinates. Each internal tree node uses an inverse-Beta split with
+the exact summed concentrations of its children; the right child is formed
+by subtraction from its represented parent mass. This avoids the severe
+small-shape underflow that a normalized inverse-Gamma construction would
+encounter for PARIS-scale per-cell concentrations.
+
+The construction uses one joint Sobol net within each canonical node block.
+Catalogues above SciPy's 21,201-dimension limit use independently scrambled
+blocks, so their combined discrepancy must be assessed empirically. Artifact
+schema v2 records the SciPy version, engine settings, canonical catalogue,
+block dimensions, inverse transform, and seed derivation. Legacy PCG64
+artifacts retain their exact v1 payload and numerical construction.
+
+Local launch gates passed:
+
+- 71 focused PCG64/core/RQMC-driver/certifier tests;
+- exact analytic Dirichlet means and covariances for a four-cell depth-two
+  root and a two-region product;
+- near-zero cross-region allocation covariance;
+- exact nested Sobol prefixes;
+- forced multi-block replay, relabeling, and native-cell permutation checks;
+- endpoint-heavy small-concentration checks over four scrambles;
+- shell syntax and ShellCheck for both HPC harnesses;
+- Ruff, formatting, Pyright, and `git diff --check`; and
+- independent scientific and implementation review with no C1 blocker.
+
+The frozen RQMC development protocol is
+`dcb2ef2bebb0c7eefafbd49a225c864e1b8a7478c568c168ed1640dd91ea9f4b`.
+It requires SciPy 1.15.2 and validates the complete matrix protocol, source
+revision, and construction environment before scientific evaluation,
+including for one-case Slurm invocations.
+
 Run only focused experimental tests, focused Ruff, and focused Pyright.
 Preserve failed artifacts, publish completion markers last, and write nothing
 to `PARIS_inversions`.
@@ -397,6 +432,89 @@ the full control frontier, and the separately sealed held-out
 operator/partition confirmation remain promotion gates. The independent
 cross-tiling evidence/tower and structural-TV merger is also pending; emitted
 per-case evidence values are inputs, not a certificate.
+
+### C1-RQMC BP1 launch
+
+Use the committed array launcher:
+
+```text
+docs/plans/rjmcmc_conditional_allocation_assets/run_rqmc_c1_array.sbatch
+```
+
+From the canonical BP1 checkout:
+
+```bash
+set -euo pipefail
+git fetch origin codex/rjmcmc-aggregation-conditional-likelihood
+export RQMC_REVISION="$(git rev-parse origin/codex/rjmcmc-aggregation-conditional-likelihood)"
+export RQMC_SOURCE="/group/chem/acrg/brendan_for_codex/openghg_inversions-worktrees/rjmcmc-conditional-allocation-${RQMC_REVISION}"
+export RQMC_RUN_ROOT="/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_allocation_likelihood/${RQMC_REVISION}/c1-rqmc"
+if [[ -e "${RQMC_SOURCE}" || -e "${RQMC_RUN_ROOT}" ]]; then
+  echo "Refusing to reuse an existing source or run directory." >&2
+  exit 2
+fi
+git worktree add --detach "${RQMC_SOURCE}" "${RQMC_REVISION}"
+ln -s /group/chem/acrg/brendan_for_codex/openghg_inversions/.pixi "${RQMC_SOURCE}/.pixi"
+mkdir -p "${RQMC_RUN_ROOT}/cases" "${RQMC_RUN_ROOT}/logs" "${RQMC_RUN_ROOT}/preflight"
+test "$(git -C "${RQMC_SOURCE}" rev-parse HEAD)" = "${RQMC_REVISION}"
+test -z "$(git -C "${RQMC_SOURCE}" status --porcelain)"
+test "$(readlink -f "${RQMC_SOURCE}/.pixi")" = \
+  "/group/chem/acrg/brendan_for_codex/openghg_inversions/.pixi"
+```
+
+The setup deliberately rejects an existing worktree or run root. Never delete
+or replace one merely to rerun a failed gate; use the preserved failure and a
+new source revision. Run the committed preflight harness, which preserves
+source/environment identity, focused test/static-check output, and a bounded
+smoke artifact:
+
+```bash
+cd "${RQMC_SOURCE}"
+bash docs/plans/rjmcmc_conditional_allocation_assets/run_rqmc_c1_preflight.sh
+```
+
+Submit the nine immutable development cases with the required account:
+
+```bash
+sbatch \
+  --account=chem007981 \
+  --output="${RQMC_RUN_ROOT}/logs/%A_%a.out" \
+  --export=ALL,RQMC_SOURCE,RQMC_RUN_ROOT,RQMC_REVISION \
+  docs/plans/rjmcmc_conditional_allocation_assets/run_rqmc_c1_array.sbatch
+```
+
+After all tasks finish, require exactly nine nonempty canonical JSON files,
+one for each frozen case ID. Require identical source revision, driver SHA,
+A1 definition SHA, frozen protocol SHA, SciPy version, Sobol engine settings,
+and seed ladder in every file. Preserve per-case construction catalogue and
+block identities. Summarize each case's locked \(S\), development pass suffix,
+confirmation-seed checks, between-scramble evidence range, and final
+`scientific_pass`. Do not reinterpret a failed case or increase the ladder.
+
+Run the committed certifier only after Slurm reports all nine tasks completed:
+
+```bash
+pixi run --frozen --no-install -e dev \
+  python examples/rjmcmc/conditional_allocation_likelihood_rqmc_certify.py \
+  --source-dir "${RQMC_SOURCE}" \
+  --cases-dir "${RQMC_RUN_ROOT}/cases" \
+  --preflight-dir "${RQMC_RUN_ROOT}/preflight" \
+  --output-dir "${RQMC_RUN_ROOT}/report" \
+  --expected-source-revision "${RQMC_REVISION}"
+```
+
+The certifier must atomically publish `summary.json`, `RESULTS.md`,
+`sha256sums.txt`, and `COMPLETE.json`. `COMPLETE.json` certifies a complete,
+internally consistent execution; its decision is either `pass` or
+`hard_stop`, so its existence does not imply scientific passage.
+
+Promotion rule:
+
+- all nine cases passing permits work on the still-missing common-native
+  projection/tower merger and held-out C1 gates;
+- any case failing is an RQMC development hard stop and starts C4's
+  normalized residual-image MDN/NLE prototype;
+- neither outcome licenses data-dependent weights for \(P\) or \(K\).
 
 ## C2: moderate and PARIS feasibility
 

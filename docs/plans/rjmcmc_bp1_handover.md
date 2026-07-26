@@ -177,8 +177,9 @@ This track is independent of an H2d calibration outcome:
    but five failed the unchanged bank-convergence or confirmation gates.
    Continue its separate
    [HPC plan](rjmcmc_conditional_allocation_likelihood_hpc_test_plan.md)
-   with the bounded jointly scrambled Sobol successor. If Sobol also fails,
-   use the normalized residual-image MDN/NLE fallback.
+   with the bounded scrambled-Sobol balanced-Dirichlet successor implemented
+   at `e0b2166597b3baa360233eb3ff63ee325a30c263`. If Sobol also fails, use the
+   normalized residual-image MDN/NLE fallback.
 4. Create and hash run-root analysis harnesses for the remaining
    moderate/PARIS conditional diagnostics. Reusable implementation belongs on
    the separate branch/worktree and must be reviewed, committed, and pushed
