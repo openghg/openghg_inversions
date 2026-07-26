@@ -30,6 +30,16 @@ a topology-conditioned Euclidean metric from fixed reference curvature. The
 metric changes with the tiling but remains constant within each HMC
 trajectory, so this does not require Riemannian HMC.
 
+The first H2d source candidate, `7f7b150`, failed its D0 finite-binary64
+structural audit and must not be resumed. Four forward-valid proposals among
+10,004 at \(K=50\) had no representable reverse physical fraction. Commit
+`e6199150e680d43e6e3c1388db45773c5337802a` replaced that path with exact
+involutions of the authoritative log-mass coordinates and changed the
+schedule identity. Focused local checks passed, but the BP1 rerun was
+interrupted before establishing a D0 result. No H2d calibration certificate
+currently exists. Continue from
+[`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
+
 The failed-run evidence is retained under
 `/group/chem/acrg/brendan_for_codex/rjmcmc_full_tiling_pymc_hmc/88b12a5717d4b490b6ccd67986c20c2a99094fed`;
 its report SHA-256 is
@@ -169,19 +179,30 @@ the HMC step; rejected and invalid moves leave them unchanged.
 
 ## Structural transition
 
-The existing edge-flip/resolution-relocation implementation remains the
-authoritative topology kernel. It is evaluated and accepted in the existing
-scientific mass / root-share coordinates, including its proven proposal and
-Jacobian accounting. The transformed PyMC target must not be substituted into
-that Metropolis-Hastings calculation because that would omit or double-count
-coordinate Jacobians.
+The H2d structural transition acts directly on the authoritative log-mass
+coordinates used by HMC:
 
-After the topology decision:
+- an edge flip transfers the two old child coordinate bit patterns to the two
+  new perpendicular children in canonical order;
+- a resolution relocation transfers the old destination coordinate to the
+  merged parent and the two old merge-child coordinates to the new destination
+  children; and
+- unchanged leaves retain their coordinate bits.
 
-1. encode the accepted/current scientific masses as log masses;
-2. atomically install the corresponding design matrix and Dirichlet shapes;
-3. run exactly one PyMC HMC transition;
-4. decode the HMC endpoint;
+This is an exact involution with unit Jacobian and no Beta auxiliary draw. The
+Metropolis-Hastings ratio uses the exact transformed-coordinate target
+difference plus reverse-minus-forward discrete catalogue probability. Every
+forward-valid proposal must have a materializable reverse which recovers the
+topology and log-coordinate bits exactly; a reverse path may not be discarded
+because an intermediate physical fraction rounded to an endpoint.
+
+After every accepted, rejected, or invalid topology attempt:
+
+1. retain the authoritative current log coordinates;
+2. atomically install the matching design, Dirichlet arrays, topology
+   precision, and leapfrog potential;
+3. run exactly one non-adapting PyMC HMC transition;
+4. decode the HMC endpoint; and
 5. fully rebuild `FullTilingPosteriorState` as an independent cache and target
    oracle.
 

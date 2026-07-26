@@ -118,6 +118,10 @@ will be introduced only behind equivalence tests.
 | 2026-07-23 | Keep structural mixing diagnostics output-only, transition-indexed, and outside checkpoint kernel compatibility. | Proposal candidates, rejections, and immediate reversals cannot be reconstructed from thinned retained states. Deterministic cached-state instrumentation can collect them without consuming random numbers or changing restart semantics; a separate xarray transition dimension provides segment persistence. |
 | 2026-07-23 | Use the likelihood-power family first as independent diagnostic targets, not as a commitment to parallel tempering. | The target `p(s) L(y | s)^beta` is the same likelihood tempering used by parallel-tempering replicas, but fixed-`beta` endpoint chains need no swaps. Similar poor mobility at `beta=0` and `beta=1` would argue against rebuilding a tempering system that historically accepted no swaps. |
 | 2026-07-23 | After profiling Voronoi mixing, implement a restricted fixed-direction Gamma--Beta tree as the first alternative local-move baseline. | One canonical hierarchy avoids full-tiling history multiplicity and permits tiny enumeration/product-space cross-checks. It deliberately tests local active-only split/merge mobility on restricted support; it is not yet the final full-tiling model. |
+| 2026-07-26 | Use fixed-basis NUTS as the continuous-kernel reference before changing the Gamma root model. | Diagonal and dense NUTS removed the slow fixed-basis root mode by two to three orders of magnitude in ESS/hour, showing that the local continuous transition was the dominant fixed-topology problem. |
+| 2026-07-26 | Test topology-conditioned static Euclidean HMC before RMHMC. | H2/H2b/H2c failures varied strongly by tiling, while a curvature audit found topology effects much larger than within-topology position effects. A deterministic precision may change between tilings while remaining constant during each ordinary HMC trajectory. |
+| 2026-07-26 | Use exact log-coordinate involutions for HMC-specific edge flips and resolution relocations. | The first physical split implementation admitted forward binary64 paths without representable reverse fractions. Coordinate permutations give bit-exact reverse geometry, unit Jacobian, and explicit discrete catalogue accounting. |
+| 2026-07-26 | Treat aggregation error as an explicit marginalization problem before allowing data to select computational partitions. | Under one common proper native model, exact reduced evidence is identical for every representation. A finite Gaussian closure or NLE may leak partition-dependent evidence and therefore requires absolute-evidence/tower gates before structural use. |
 
 ## Ganesan lineage and active hierarchy plan
 
@@ -612,6 +616,43 @@ likelihood and the problematic per-region hierarchy remain follow-up profiles,
 not implicit behavior of this implementation.
 
 ## Progress log
+
+### 2026-07-26
+
+- Completed the fixed/mobile full-tiling control. Fixed geometry materially
+  improved likelihood mixing, while mobile likelihood remained the main
+  common-coordinate failure. Increasing local pair updates and starting from
+  a greedy/SLS tiling did not remedy mobile mixing.
+- Completed the fixed-basis NumPyro NUTS reference. Diagonal NUTS gave root
+  bulk ESS 1,684 at \(K=50\) and 2,071 at \(K=250\); dense NUTS at \(K=50\)
+  gave root bulk ESS 6,114 with zero divergences. This overturned the tentative
+  interpretation that one coherent Gamma root was intrinsically
+  unsampleable.
+- Implemented custom topology-plus-PyMC HMC. H2 and H2b showed that a common
+  diagonal metric did not generalize to held-out \(K=250\) tilings. H2c's
+  permutation-invariant total/contrast metric also hard-stopped at both
+  dimensions.
+- Audited frozen H2c curvature and found topology effects much larger than
+  within-topology position effects. Implemented a topology-conditioned static
+  Euclidean precision and dynamic PyMC potential/integrator replacement.
+- Stopped the first H2d candidate `7f7b150` at D0 after finding physical
+  split fractions with no representable binary64 reverse. Replaced the
+  HMC-specific edge-flip and resolution-relocation maps at `e619915` with
+  exact involutions of authoritative log-mass coordinates, no Beta auxiliary,
+  unit Jacobian, and transformed-target plus discrete-catalogue scoring.
+  Focused local checks passed; the BP1 rerun was interrupted and is not an HPC
+  certificate.
+- Added exact two- and four-cell aggregation-error oracles, a normalized
+  low-rank Gaussian conditional-moment closure, cached fixed-partition
+  factors, and a FullTiling physical-mass bridge. Deliberately excluded a
+  raw-moment rectangle-prefix acceleration after it showed catastrophic
+  cancellation for small covariances on large design offsets.
+- Split the next work into two independently gated tracks: finish H2d D0--D4
+  against the original target, and validate aggregation error A0--A5 with a
+  fixed-partition PyMC/NUTS bridge first. Structural \(P/K\) claims remain
+  prohibited until absolute evidence and tower identities pass.
+- Added the operational BP1 handover at
+  [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 
 ### 2026-07-23
 

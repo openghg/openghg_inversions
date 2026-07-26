@@ -34,6 +34,46 @@ The following labels distinguish the strength of statements:
 - **Decision:** the adopted direction for subsequent work.
 - **Open question:** a model or implementation choice that is not settled.
 
+## 2026-07-26 experimental update
+
+The active-only full-tiling model is now beyond its first prototype, but its
+mobile real-data chains remain non-converged.
+
+**Run evidence:**
+
+- In the matched fixed/mobile screen, fixed geometry substantially improved
+  likelihood mixing. At \(K=50\), fixed-basis likelihood had
+  \(\hat R=1.0084\) and bulk ESS 676.6, whereas the mobile likelihood remained
+  the worst coordinate with \(\hat R=1.1820\) and bulk ESS 15.31. At
+  \(K=250\), the mobile likelihood had \(\hat R=1.3173\) and bulk ESS 9.85.
+- The local fixed-basis sampler still mixed the Gamma root slowly, with bulk
+  ESS near 31 at both \(K\) values.
+- Fixed-basis NumPyro NUTS removed that continuous bottleneck: diagonal NUTS
+  gave root bulk ESS 1,684 at \(K=50\) and 2,071 at \(K=250\); dense NUTS at
+  \(K=50\) gave root bulk ESS 6,114 and zero divergences.
+- Topology-neutral compound HMC calibrations H2/H2b/H2c did not generalize
+  across held-out tilings. The topology-conditioned H2d implementation now
+  uses exact log-coordinate structural involutions, but its BP1 validation is
+  incomplete.
+
+**Decision:** continue the bounded topology-conditioned HMC protocol, while
+also testing explicit aggregation-error marginalization. If partitions are
+only representations of one common proper native model, exact hidden
+allocation marginalization forces every partition to have the same evidence.
+The data then do not identify \(P\) or \(K\); their posterior probabilities
+remain their declared structural prior probabilities. Different evidence is
+scientifically meaningful only if the partition changes a declared prior,
+forward approximation, or discrepancy model.
+
+The current normalized low-rank Gaussian aggregation closure is a
+fixed-partition candidate, not yet a license for structural inference.
+Structural use requires absolute-evidence and tower-property checks. Cross-\(K\)
+tests must freeze one native-cell alpha field rather than use the current
+\(\kappa=2K\) rule, which changes the model with \(K\).
+
+See [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md) for the current branch,
+artifact disposition, and exact next gates.
+
 ## Executive conclusions
 
 1. **The current poor mixing in `k` is not contradicted by 34--36% accepted

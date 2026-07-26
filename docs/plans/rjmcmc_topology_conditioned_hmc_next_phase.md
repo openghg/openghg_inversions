@@ -1,5 +1,26 @@
 # Topology-conditioned HMC next phase
 
+## 2026-07-26 handover status
+
+Commit `e6199150e680d43e6e3c1388db45773c5337802a` implements the
+HMC-specific exact log-coordinate structural involutions described below.
+Focused local tests passed, but the BP1 rerun was interrupted by VPN loss
+before it established a D0 result. Preserve
+`/group/chem/acrg/brendan_for_codex/rjmcmc_topology_conditioned_hmc/e619915`
+as incomplete evidence and restart D0 under a fresh run root addressed by the
+current full branch SHA.
+
+The normalized aggregation-error baseline is implemented at
+`16819f55cea5c6054b0113b751aa9833afa4fa9b`. Cached fixed-partition factors
+and the FullTiling physical-mass bridge were added at
+`54045edf67c4703da5909b1fdd2a6081d0a61251`; the unsafe
+raw-moment rectangle-prefix prototype was deliberately excluded because
+catastrophic cancellation can corrupt small covariance factors. A1--A5 HPC
+validation and the fixed-partition PyMC/NUTS bridge remain pending.
+
+Use [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md) as the operational
+entry point.
+
 ## Status and decision
 
 H2c is a certified hard stop for the topology-neutral total/contrast metric at
@@ -341,15 +362,15 @@ Required checks:
   resolved metric hash, and numerical-runtime identity; and
 - corrupt or mismatched topology/metric pairs fail closed.
 
-The structural/log-coordinate handshake is a binary64 consistency rule, not
-an assertion of exact detailed balance on the finite set of floating-point
-numbers. Exact finite-state accounting would require integrating the
-probability of every Beta variate rounding into each float endpoint. The
-implemented standard is the usual floating implementation of the exact-real
-kernel: preserve the sampled auxiliary and proposal/Jacobian terms, rebuild
-the candidate at the exact physical endpoint decoded from the HMC
-coordinates, and add its target correction before the structural MH
-decision.
+The HMC-specific structural transition no longer samples or preserves a Beta
+split fraction. It acts directly on the authoritative log-mass coordinates as
+an exact involution. Edge flips and resolution relocations transfer existing
+binary64 coordinate bit patterns between canonical leaves; unchanged leaves
+retain their coordinate bits. The map has unit Jacobian. Its acceptance ratio
+uses the exact transformed-coordinate target difference and
+reverse-minus-forward discrete selection probability. Every valid forward
+move must have a materializable reverse that reproduces topology and
+coordinates bitwise; unsupported reverse paths may not be skipped.
 
 ### Phase C: H2d bounded calibration
 
@@ -619,9 +640,10 @@ The bounded programme is:
    one-side-split \(K=3\) frontiers and enumerate all five frontiers of each
    fixed-orientation canonical tree. These are not needed to establish that
    row-first and column-first root histories represent one state;
-5. implement the exact conditional moment oracle and normalized low-rank
-   Gaussian hybrid, checking dense/low-rank likelihood identity, gradients,
-   normalization, and deliberate evidence error in skewed tiny cases;
+5. **Partly complete:** the exact conditional-moment oracle, normalized
+   low-rank Gaussian hybrid, cached fixed-partition factors, and FullTiling
+   physical-mass bridge are implemented. Gradient parity, PyMC integration,
+   acceleration benchmarks, and A1--A5 HPC validation remain;
 6. on moderate synthetic operators, separate Gaussian-shape error from
    low-rank compression error and select rank by likelihood, gradient,
    posterior, and evidence tolerances rather than explained variance;
@@ -685,11 +707,15 @@ above.
   Hamiltonian Monte Carlo*:
   <https://www.scss.tcd.ie/jason.wyse/Files/Papers/WyseFrielGirolami.pdf>.
 - Curated project note:
-  `~/Documents/inversions-knowledge/docs/research-questions/rjmcmc-hmc-nuts-and-transported-tuning.md`.
+  `../inversions-knowledge/docs/research-questions/rjmcmc-hmc-nuts-and-transported-tuning.md`.
   In particular, see its sections on invariant compound kernels, frozen
   Euclidean metrics, transported tuning, and the separate
   source-HMC/RJ/destination-HMC construction.
 - Curated learned-marginal note:
-  `~/Documents/inversions-knowledge/docs/research-questions/learning-non-gaussian-marginal-models.md`.
+  `../inversions-knowledge/docs/research-questions/learning-non-gaussian-marginal-models.md`.
 - Curated projection/evidence note:
-  `~/Documents/inversions-knowledge/docs/research-questions/posterior-projection-conundrum.md`.
+  `../inversions-knowledge/docs/research-questions/posterior-projection-conundrum.md`.
+
+The local knowledge repository was clean at
+`e77d20cffe7ee0298d9106065c962d24198dabdc` before publication. Record the
+actual pushed full SHA after cloning it on BP1.

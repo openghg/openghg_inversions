@@ -1,5 +1,22 @@
 # Aggregation-error Gaussian hybrid HPC test plan
 
+## 2026-07-26 handover
+
+The normalized likelihood and exact conditional-moment baseline landed at
+`16819f55cea5c6054b0113b751aa9833afa4fa9b`. Cached fixed-partition
+factors and the FullTiling physical-mass bridge landed at
+`54045edf67c4703da5909b1fdd2a6081d0a61251`. The
+raw-moment rectangle-prefix prototype was excluded after a cancellation audit;
+do not recreate it without a stable centered-covariance construction and an
+explicit memory/error protocol.
+
+Local A0 tests pass, but A1--A5 have not run on BP1. Implementation of the
+fixed-partition PyMC/NUTS bridge described in A4 may proceed after A0, while
+independent A1--A3 harness work runs, but no retained A4 sampling or scientific
+promotion is permitted until A1--A3 pass. See
+[`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md) for checkout, provenance,
+and stop rules.
+
 ## Purpose and promotion boundary
 
 This plan validates a normalized low-rank Gaussian approximation to the
@@ -32,6 +49,24 @@ branch: codex/rjmcmc-topology-conditioned-hmc
 candidate revision: <git rev-parse HEAD>
 run root: /group/chem/acrg/brendan_for_codex/rjmcmc_aggregation_error/<revision>
 ```
+
+Use the clean detached full-SHA worktree and frozen Pixi development
+environment from the handover document. Repository source changes require a
+new pushed commit and run root. Launch, analysis, and reporting scripts may be
+created beneath the run root, but must be recorded and hashed.
+
+The frozen PARIS identity is:
+
+```bash
+export FROZEN_INPUT=/group/chem/acrg/brendan_for_codex/rjmcmc_gamma_beta_hpc/dd687b92abb86ce0080a1c8a713f3eb9a57df3aa/input/paris_may_2014_gamma_beta_native.nc
+export FROZEN_INPUT_ID=paris-may-2014-gamma-beta-native-v1
+export FROZEN_INPUT_SHA=24da69cab978051608313901b1c958200e0ad885a0a349bfa4fa1f9a0aaad044
+export OUTER_LABELS=intem_label_0,intem_label_1,intem_label_2,intem_label_3,intem_label_4,intem_label_5
+export WEIGHT_POLICY=spherical-grid-cell-area-v1
+sha256sum "${FROZEN_INPUT}"
+```
+
+Do not continue unless the observed input digest equals `FROZEN_INPUT_SHA`.
 
 ## Model identity
 
@@ -95,17 +130,17 @@ and its total concentration across every \(P\) and \(K\).
 Run:
 
 ```bash
-pytest -q \
+pixi run -e dev --frozen pytest -q \
   tests/experimental/rjmcmc/test_aggregation_error.py \
   tests/experimental/rjmcmc/test_aggregation_error_low_rank.py
 
-uv run ruff check \
+pixi run -e dev --frozen ruff check \
   openghg_inversions/experimental/rjmcmc/aggregation_error.py \
   openghg_inversions/experimental/rjmcmc/aggregation_error_low_rank.py \
   tests/experimental/rjmcmc/test_aggregation_error.py \
   tests/experimental/rjmcmc/test_aggregation_error_low_rank.py
 
-uv run pyright \
+pixi run -e dev --frozen pyright \
   openghg_inversions/experimental/rjmcmc/aggregation_error.py \
   openghg_inversions/experimental/rjmcmc/aggregation_error_low_rank.py
 ```
@@ -219,7 +254,12 @@ Resource guidance:
 
 - a dense \(1382^2\) float64 covariance is about 14.6 MiB;
 - the current native design is about 247 MiB;
-- low-rank factors are small relative to the design; and
+- cached fixed-partition factors require
+  \(O(n_{\rm obs}K+Kq^2)\) storage;
+- their public PSD audit costs \(O(Kq^3)\), so benchmark build time before
+  increasing \(q\) materially beyond 64;
+- no \(O(Nq^2)\) raw-moment rectangle-prefix table is part of the committed
+  implementation; and
 - request 16 GiB per factor-build job and no more than four concurrent
   factor-build jobs.
 
@@ -228,6 +268,30 @@ matrices or retained chains, and keep aggregate login-node RSS below 200 GB.
 Stop remote work if BP1 becomes unreachable.
 
 ## A4: fixed-partition posterior gate
+
+First implement a PyTensor/PyMC target over the existing fixed-basis
+root/share and fixed-coefficient coordinates. For cached region masses \(A\),
+use the cached mean design and
+
+\[
+S(A)=\sum_j A_j^2R_j.
+\]
+
+Evaluate the complete correlated joint likelihood in one scalar `Potential`.
+Equivalently, relative to the diagonal Gaussian quadratic, its low-rank
+correction is
+
+\[
+-\tfrac12\log|I+S|
+-\tfrac12z^\mathsf T(I+S)^{-1}z
++\tfrac12z^\mathsf Tz.
+\]
+
+Require float64 log-density and gradient parity with the independent NumPy
+oracle at randomized valid states before sampling. Persist the corrected
+scalar joint likelihood explicitly. It has no ordinary pointwise-observation
+decomposition, so do not expose a diagonal `pm.Normal` component as the ArviZ
+`log_likelihood`.
 
 Integrate the selected frozen approximation into deterministic \(K=50\) and
 \(K=250\) bases first. Compare:

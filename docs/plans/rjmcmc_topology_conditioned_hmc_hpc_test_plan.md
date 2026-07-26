@@ -1,5 +1,26 @@
 # Topology-conditioned HMC HPC test plan
 
+## 2026-07-26 handover
+
+The minimum repaired source revision is
+`e6199150e680d43e6e3c1388db45773c5337802a`. Its attempted BP1 run was
+interrupted when VPN access ended and supplies no D0 or D1 conclusion. Treat
+the following as incomplete evidence:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_topology_conditioned_hmc/e619915
+/group/chem/acrg/brendan_for_codex/rjmcmc_h2d_worker_e619915
+```
+
+Commit `7f7b1509bf032d04c9839ec9fa4d7be69b03e1ab` failed D0 and must
+never be resumed. Its evidence remains at
+`/group/chem/acrg/brendan_for_codex/rjmcmc_topology_conditioned_hmc/7f7b150`.
+
+Use the later full `origin/codex/rjmcmc-topology-conditioned-hmc` SHA,
+including handover documentation, as the candidate. Start from D0 in a fresh
+full-SHA run root. See
+[`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
+
 ## Status
 
 This is the executable follow-up to the certified H2c hard stop. It tests the
@@ -23,10 +44,27 @@ candidate revision: <git rev-parse HEAD>
 run root: /group/chem/acrg/brendan_for_codex/rjmcmc_topology_conditioned_hmc/<candidate revision>
 ```
 
+Create an immutable clean worktree and frozen development environment:
+
+```bash
+cd /group/chem/acrg/brendan_for_codex/openghg_inversions
+git fetch origin
+export CANDIDATE_REVISION="$(git rev-parse origin/codex/rjmcmc-topology-conditioned-hmc)"
+export CANDIDATE_WORKTREE="/group/chem/acrg/brendan_for_codex/rjmcmc_candidate_${CANDIDATE_REVISION}"
+git worktree add --detach "${CANDIDATE_WORKTREE}" "${CANDIDATE_REVISION}"
+cd "${CANDIDATE_WORKTREE}"
+test "$(git rev-parse HEAD)" = "${CANDIDATE_REVISION}"
+test -z "$(git status --porcelain)"
+pixi install -e dev --frozen
+```
+
 The agent may repair launch, analysis, or reporting scripts beneath the
 commit-addressed run root. Preserve every failed artifact. A repository source
 change requires a new pushed commit and a new run root. Do not weaken an exact
 scientific, replay, checkpoint, or held-out-topology gate to continue.
+Record and hash every run-root script and command. D1--D4 prose defines gates,
+not a hidden executable driver; a stage passes only when a committed or
+run-root script produces the required machine-readable evidence.
 
 Run only the experimental tests. Do not run the repository-wide tox matrix.
 Nothing from this experiment may be written to `PARIS_inversions`.
@@ -88,26 +126,30 @@ remote work if BP1 becomes unreachable.
 Run:
 
 ```bash
-pytest -q \
+pixi run -e dev --frozen pytest -q \
   tests/experimental/rjmcmc/test_full_tiling_pymc_hmc.py \
   tests/experimental/rjmcmc/test_full_tiling_pymc_hmc_io.py \
   tests/experimental/rjmcmc/test_full_tiling_pymc_hmc_native.py \
-  tests/experimental/rjmcmc/test_aggregation_error.py
+  tests/experimental/rjmcmc/test_aggregation_error.py \
+  tests/experimental/rjmcmc/test_aggregation_error_low_rank.py
 
-uv run ruff check \
+pixi run -e dev --frozen ruff check \
   openghg_inversions/experimental/rjmcmc/full_tiling_pymc_hmc.py \
   openghg_inversions/experimental/rjmcmc/full_tiling_pymc_hmc_io.py \
   openghg_inversions/experimental/rjmcmc/aggregation_error.py \
+  openghg_inversions/experimental/rjmcmc/aggregation_error_low_rank.py \
   examples/rjmcmc/full_tiling_pymc_hmc_native.py \
   tests/experimental/rjmcmc/test_full_tiling_pymc_hmc.py \
   tests/experimental/rjmcmc/test_full_tiling_pymc_hmc_io.py \
   tests/experimental/rjmcmc/test_full_tiling_pymc_hmc_native.py \
-  tests/experimental/rjmcmc/test_aggregation_error.py
+  tests/experimental/rjmcmc/test_aggregation_error.py \
+  tests/experimental/rjmcmc/test_aggregation_error_low_rank.py
 
-uv run pyright \
+pixi run -e dev --frozen pyright \
   openghg_inversions/experimental/rjmcmc/full_tiling_pymc_hmc.py \
   openghg_inversions/experimental/rjmcmc/full_tiling_pymc_hmc_io.py \
   openghg_inversions/experimental/rjmcmc/aggregation_error.py \
+  openghg_inversions/experimental/rjmcmc/aggregation_error_low_rank.py \
   examples/rjmcmc/full_tiling_pymc_hmc_native.py
 ```
 
@@ -151,6 +193,10 @@ Hard gates:
   nominal-fill sentinel does not.
 
 Do not proceed if any gate fails.
+
+The aggregation-oracle checks are whole-branch source preflight. Their failure
+blocks candidate promotion, but is not evidence that the H2d metric
+calibration itself failed; report the failing track by name.
 
 ## Stage D1: frozen-input precision audit
 
