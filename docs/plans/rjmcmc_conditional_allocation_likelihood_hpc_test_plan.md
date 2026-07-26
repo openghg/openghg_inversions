@@ -145,6 +145,14 @@ every other tracked or untracked change; the link target is checked
 separately at every execution boundary. Preserve the setup-only run root as
 failed operational evidence and use a fresh full-SHA run root.
 
+The next preflight-only attempt at
+`ba9cead6fcf7002dc90e6c49ba104501dc3a44aa` passed source/environment
+identity but stopped during pytest collection: the shared pixi environment's
+editable import still pointed at the canonical checkout rather than the
+detached candidate. No smoke evaluation or Slurm task ran. Both harnesses now
+prepend the authenticated detached worktree to `PYTHONPATH`; preserve this
+second preflight failure and again use a fresh full-SHA root.
+
 Run only focused experimental tests, focused Ruff, and focused Pyright.
 Preserve failed artifacts, publish completion markers last, and write nothing
 to `PARIS_inversions`.

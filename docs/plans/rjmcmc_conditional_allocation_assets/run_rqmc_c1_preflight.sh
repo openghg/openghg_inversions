@@ -43,6 +43,7 @@ export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
+export PYTHONPATH="${RQMC_SOURCE}${PYTHONPATH:+:${PYTHONPATH}}"
 export MPLCONFIGDIR="/tmp/rqmc-c1-preflight-matplotlib-${RQMC_REVISION}"
 export NUMBA_CACHE_DIR="/tmp/rqmc-c1-preflight-numba-${RQMC_REVISION}"
 mkdir -p "${MPLCONFIGDIR}" "${NUMBA_CACHE_DIR}"
