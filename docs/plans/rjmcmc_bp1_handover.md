@@ -215,6 +215,17 @@ that bank fails its declared accuracy, memory, or throughput gate. No
 approximate likelihood may update structural weights; partitions remain
 externally weighted by their declared prior.
 
+The reviewed foundation at
+`3e30f9117bcba03920aafd338f7eea529c25b079` passed C0 on BP1. Its
+immutable run root is:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_allocation_likelihood/3e30f9117bcba03920aafd338f7eea529c25b079/c0
+```
+
+C1 exact scientific-shape and bank-convergence gates remain open. Do not
+promote C0 as evidence that a finite bank is accurate.
+
 ## `inversions-knowledge`
 
 The local knowledge repository was clean at

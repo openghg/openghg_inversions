@@ -25,6 +25,36 @@ bank for the conditional within-region allocations. It estimates a
 partition and summary projection**, not model evidence and not a posterior
 over partitions.
 
+The first reviewed implementation landed at
+`3e30f9117bcba03920aafd338f7eea529c25b079`. C0 passed on BP1 with 69
+focused aggregation-error tests, Ruff, and Pyright:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_allocation_likelihood/3e30f9117bcba03920aafd338f7eea529c25b079/c0
+```
+
+The broader local aggregation/transported-mixture/fixed-basis-PyMC focused
+group passed 109 tests. C0 validates implementation and target mechanics; it
+does not replace the C1 scientific approximation screen.
+
+The first C1 harness review found that raw quantiles over Gauss-quadrature
+nodes would over-weight numerous negligible-probability tail nodes. The
+preserved A1 protocol instead used normalized quadrature-prior weights and
+exact-posterior weights. C1 must preserve those weighted diagnostics, add an
+absolute approximate-versus-exact evidence gate, validate every retained
+mass coordinate, and audit gradients at several predeclared states. A
+development run may not start until those corrections pass focused review.
+
+The corrected development-only harness now implements those requirements,
+source-pins the bank-size ladder and seeds, removes protected held-out
+numerical definitions, and publishes one atomic result per case. Its focused
+local validation passed 30 tests plus Ruff, formatting, and Pyright, and its
+independent final review found no development-launch blocker. A
+smallest-bank \(S=64\) diagnostic pilot passed all declared per-bank gates in
+four of nine cases (the three near-Gaussian cases and skewed two-cell root);
+the complete ladder and confirmation seeds remain the authoritative
+development test.
+
 Fill in before launch:
 
 ```text
@@ -245,36 +275,61 @@ Keep executable blindness:
 
 - development may use the predeclared near-Gaussian, skewed, and
   boundary-heavy operators with root/two-region development tilings;
-- the heterogeneous operator and four-cell column tiling remain held out;
-- predeclare a development/held-out retained-mass grid split;
+- the heterogeneous operator and four-cell column tiling remain sealed in a
+  separate later executable; the development executable stores only their
+  opaque catalogue identity and digest;
+- preserve the complete A1 quadrature grid and its normalized prior weights
+  for evidence and posterior integration;
+- use a separately declared deterministic pointwise validation view for
+  conditional-likelihood errors, without treating either view as a separate
+  evidence integral;
 - equal-footprint and fine-partition exact controls may not select bank size;
   and
 - independent repeat-bank seeds may confirm the locked choice but may not
   retune it.
 
+The pointwise validation view is new in C1. A1 and T2 did not split their
+retained-mass quadrature grids; T2 blindness instead used disjoint native
+simulation draw-ID ranges. Do not claim that the C1 pointwise split was copied
+from A1 or T2.
+
 For each applicable family and regime:
 
 1. freeze pseudo-observations, quadrature orders, and a full-rank summary
    transform;
-2. build independent banks at
+2. with one development seed, build the prefix sequence
    \(S=64,256,1024,4096,16384\), truncated only by a declared resource gate;
 3. compare exact and approximate conditional log likelihoods and gradients
-   over a predeclared retained-mass grid;
-4. compare posterior means, variances, central intervals, tails, and
-   predictive coverage;
+   over the predeclared pointwise validation view, using normalized
+   quadrature-prior and exact-posterior weights;
+4. compare posterior means, variances, and central intervals for total mass
+   and every active retained region mass/share coordinate;
 5. integrate the retained coordinates and compare evidence with the exact
    native model; and
-6. repeat the selected bank size with at least four independent bank seeds.
+6. lock the smallest bank size for which it and every larger attempted size
+   pass, requiring at least two consecutive passing sizes in a development
+   ladder, then repeat only that locked size with at least three independent
+   confirmation seeds.
 
-The selected bank size must satisfy, on held-out states:
+The selected bank size must satisfy:
 
-- median absolute conditional log-likelihood error at most 0.05 nat;
-- 99th-percentile absolute error at most 0.2 nat;
+- prior-weighted median absolute conditional log-likelihood error on the
+  pointwise validation view at most 0.05 nat;
+- exact-posterior-weighted 99th-percentile absolute error on that view at
+  most 0.2 nat;
 - scaled gradient error at most 0.05;
+- absolute approximate-versus-exact log-evidence error at most 0.05 nat;
 - posterior means within 0.05 exact posterior SD;
 - posterior SDs within 2%;
 - central 95% interval endpoints within 0.05 exact posterior SD; and
 - between-bank evidence range at most 0.05 nat.
+
+Report unweighted full-grid median, p99, and maximum errors as tail
+diagnostics, but do not substitute them for the weighted gates. Report the
+preserved A1 cross-tiling exact-evidence range, approximate-evidence range,
+and structural-weight total variation when enough tilings are present. These
+remain approximation-leakage diagnostics and must not update structural
+weights.
 
 These are approximation gates, not proof that structural weights may be
 updated. Report error versus \(S\); a non-decreasing or unstable sequence is
@@ -283,10 +338,27 @@ a learned conditional density.
 
 Publish aggregated JSON metrics only. Store any required statewise arrays in
 small binary artifacts with explicit hashes; do not expand large grids or
-banks into report JSON. Run a one-case timing smoke before the eight-case
-development array. The boundary-heavy four-cell fine grid can contain
+banks into report JSON. Run a one-case timing smoke before the nine-case
+development array (three development operators by two-cell root, four-cell
+root, and four-cell row). The boundary-heavy four-cell fine grid can contain
 millions of states, so use direct oracle controls or streamed chunks rather
 than retaining redundant dense copies.
+
+Run the nine development cells as independent Slurm tasks with one atomic
+per-case result apiece. Merge and certify them only after all expected case
+identities are present. The current nine diagonal alpha/operator cases are a
+deliberate C1 simplification; T2 used the fuller alpha-by-operator crossing.
+The development CLI must use the source-pinned sample-count ladder and seeds;
+command-line overrides are noncompliant and fail closed. Changing either
+requires a new reviewed protocol revision and source SHA.
+
+This development phase cannot complete full C1 by itself. Common-native
+projection posterior reconstruction is deferred because the observation
+bank does not retain aligned auxiliary projection factors. Predictive checks,
+the full control frontier, and the separately sealed held-out
+operator/partition confirmation remain promotion gates. The independent
+cross-tiling evidence/tower and structural-TV merger is also pending; emitted
+per-case evidence values are inputs, not a certificate.
 
 ## C2: moderate and PARIS feasibility
 
@@ -363,11 +435,36 @@ summaries.
 Add `sbi` only if the finite conditional bank fails a declared accuracy,
 memory, or throughput gate.
 
-The first learned target should be the noise-free projected aggregation
-residual conditional on retained scientific coordinates and every quantity
-that changes its law. Keep measurement noise outside the learner where
-possible. Start with a conditional MDN before MAF or NSF because an MDN is
-normalized, auditable, and can be exported to native PyTensor primitives.
+For one fixed partition, construct an authenticated orthonormal basis \(Q_P\)
+for the exact error-whitened aggregation-residual image. Do not train a
+noise-free density in the full observation space: it is generally singular
+there. With \(T=\sum_j A_j\) and retained mass shares \(w_j=A_j/T\), learn
+
+\[
+\xi=T^{-1}Q_P^\mathsf TD^{-1/2}H\{X-g_P(A)\}
+\quad\text{conditional on }w.
+\]
+
+The alpha field, partition, observation operator, error model, residual-image
+basis, and renderer are fixed artifact context. The realized observation is
+not a training or selection input. Root partitions require no conditioning
+input; two-region partitions require one logit-share input.
+
+Start with a small full-covariance conditional MDN before MAF or NSF because
+an MDN is normalized, auditable, and can be exported to native PyTensor
+primitives. Its observation likelihood analytically convolves measurement
+noise, so component covariance in residual coordinates is
+\(I+T^2\Sigma_\ell(w)\), with the exact orthogonal Gaussian factor retained.
+This preserves normalization and avoids asking the learner to reproduce
+known noise.
+
+Use whole conditional native-allocation draw IDs for train, validation,
+simulator-test, and held-out splits. Predeclare a training-size ladder and
+lock the smallest size passing all development cases before independent-seed
+confirmation. Begin with eight mixture components and two 32-unit
+float64 `tanh` layers. Permit one predeclared escalation to sixteen
+components and two 64-unit layers only when training is stable but the smaller
+model underfits; failure of both is a hard stop before a flow.
 
 Use whole-native-draw, whole-partition, and whole-operator held-out splits.
 Record architecture, preprocessing, float dtype, seeds, package versions,
