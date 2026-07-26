@@ -1,5 +1,30 @@
 # Topology-conditioned HMC HPC test plan
 
+## 2026-07-26 executed disposition
+
+This plan was executed through D2 at source revision
+`5bb41399e45b78954488e286da3f40371dcb956e`. It is retained as the executable
+protocol and must not be restarted from D0 for that revision.
+
+- D0 passed under jobs `18169133` and `18169140`; certificate SHA-256
+  `d8ddd119d28ba86ee6a840dc357e5120fa20f823975d4b8c9af269ca1dd2e1ed`.
+- D1 passed, including jobs `18180788` and `18180790`; certificate SHA-256
+  `8df068e5e2750a47e83bca9500b31296beb74ba56aedff15c28ba03b0af63def`.
+- D2 harness inventory:
+  `af08d98c5fe38c745b4fbabaa410363aa5b25ce142e39fd52ce6df2d4787a152`.
+  Job `18181936` never started because `default` was denied; jobs `18181938`
+  and `18181943` ran under `chem007981`.
+- D2 aggregate hard-stop SHA-256:
+  `833db35411276a7d57be1de6ac796999c4400ea43bd953ebf1b1b84c1fd2683a`.
+
+The evidence-contract stop applies at both dimensions. Independently, the
+scientific development grid has no admissible \(K=50\) candidate. The one
+development-admissible \(K=250\) candidate, \(\epsilon=0.2,L=5\), never
+reached held-out validation and is not a calibration. D3 and D4 are withheld.
+Do not add an unplanned grid or write run-root `complete.json`.
+
+The `inversions-knowledge` sibling was unavailable and unused.
+
 ## 2026-07-26 handover
 
 The minimum repaired source revision is
@@ -20,6 +45,9 @@ Use the later full `origin/codex/rjmcmc-topology-conditioned-hmc` SHA,
 including handover documentation, as the candidate. Start from D0 in a fresh
 full-SHA run root. See
 [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
+
+That was the historical launch instruction. The executed `5bb41399` result
+above is authoritative and must not be restarted from D0.
 
 ## Status
 
@@ -120,6 +148,10 @@ calibration work only while it is quiet. Check load and available memory
 first, keep aggregate resident memory below 200 GB, and do not start a
 multi-chain matrix there. Use Slurm for the retained multi-chain screen. Stop
 remote work if BP1 becomes unreachable.
+
+When a compute launcher needs Git provenance, load `git/2.45.1-pqk5`. Submit
+compute jobs under explicit account `chem007981`; the inherited `default`
+account is not valid for the tested compute partition.
 
 ## Stage D0: source and exact synthetic gates
 

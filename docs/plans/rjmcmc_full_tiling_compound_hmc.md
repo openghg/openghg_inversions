@@ -2,6 +2,34 @@
 
 ## Status
 
+The later H2d BP1 run completed D0 and D1 and stopped at the predeclared D2
+development gate at revision
+`5bb41399e45b78954488e286da3f40371dcb956e`. Its aggregate hard-stop
+SHA-256 is
+`833db35411276a7d57be1de6ac796999c4400ea43bd953ebf1b1b84c1fd2683a`.
+No \(K=50\) candidate passed every development science gate. One \(K=250\)
+candidate, \(\epsilon=0.2,L=5\), was development-admissible but was not
+held-out validated or promoted. D3/D4 are withheld. This supersedes the
+earlier statement below that no H2d calibration result existed.
+
+The Gaussian aggregation closure separately passed its implementation gates
+and failed all A1 scientific-shape gates. Its bounded successor is the
+normalized transported-mixture foundation at
+`6ff3afe56416e701ac1fc4ae45676d08ea28229b`. Its first three immutable T2
+attempts ended respectively in binder, genuine harness type errors found by
+bound out-of-tree Pyright, and compute import-path infrastructure failures.
+The 15 type errors in v2 were fixed without suppressions in v3; the earlier
+hidden-staging Pyright “pass” was a zero-file false negative. The final v4 inventory
+`11a43a24da003019e600c990da143573f527ce1b85ffeaedada80ec857edbd28`
+passed compute smoke and ran all eight development cells in job `18185086`.
+The formal certificate records a catalogue-order infrastructure hard stop,
+but independent inspection of its authenticated terminal artifacts found
+five pre-observation fixed-restart fitter stops and three fitted cells that
+all failed the projection-isolated learned-mixture shape gate. Held-out
+evaluation was withheld. The bounded T2 experiment is finished; there is no
+v5 or predeclared T3, and no A5 or structural \(P/K\) claim follows.
+The `inversions-knowledge` sibling was unavailable and unused.
+
 The core sampler, dedicated durable checkpoint schema, native real-data
 driver, and HPC validation plan are implemented on
 `codex/rjmcmc-compound-hmc`. Three frozen-input calibration attempts now
@@ -23,7 +51,7 @@ common log-mass direction from centered log-mass contrasts. H2c also reached a
 certified hard stop at both \(K=50\) and \(K=250\): no frozen-grid candidate
 served every development topology.
 
-The next phase is specified in
+The now-executed next phase is specified in
 [`rjmcmc_topology_conditioned_hmc_next_phase.md`](rjmcmc_topology_conditioned_hmc_next_phase.md).
 It replaces full permutation invariance by permutation equivariance and builds
 a topology-conditioned Euclidean metric from fixed reference curvature. The
@@ -37,7 +65,8 @@ structural audit and must not be resumed. Four forward-valid proposals among
 involutions of the authoritative log-mass coordinates and changed the
 schedule identity. Focused local checks passed, but the BP1 rerun was
 interrupted before establishing a D0 result. No H2d calibration certificate
-currently exists. Continue from
+existed at that historical checkpoint. The later `5bb41399` result above is
+authoritative. Continue from
 [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 
 The failed-run evidence is retained under
@@ -62,10 +91,10 @@ bottleneck:
 - diagonal NumPyro NUTS raised root bulk ESS to 1,684 and 2,071 respectively;
 - dense NumPyro NUTS at \(K=50\) raised it to 6,114 with no divergences.
 
-The next experiment therefore composes the existing posterior-invariant
+The H2d experiment therefore composed the existing posterior-invariant
 fixed-\(K\) topology transition with a gradient transition over all continuous
-coordinates. It is a mixing experiment, not a claim that the structural
-problem has been solved.
+coordinates. Its D2 result above ends the current bounded test. It was a
+mixing experiment, not a claim that the structural problem was solved.
 
 ## Decision
 
@@ -310,29 +339,26 @@ On 2026-07-25:
 - the full repository tox matrix was intentionally not run; the agreed gate
   for this experimental track is the focused experimental suite.
 
-## Real-data question
+## Historical real-data question and disposition
 
-The first real-data screen should answer a narrow question:
+The planned real-data screen asked a narrow question:
 
 > Does replacing local root/pair/fixed updates by a joint gradient transition
 > remove the persistent likelihood start separation while topology remains
 > mobile?
 
-It should not initially be used to compare posterior summaries. Four
-overdispersed topology starts at each of \(K=50\) and \(K=250\) are needed,
-with the same frozen PARIS input and scientific target as the earlier
-fixed-basis control. The initial total/contrast metric may be estimated only
-from checksum-verified fixed-basis NUTS draws. Step size and path length are
-then calibrated on separate discarded mobile compound runs, including an
-untouched held-out topology, and frozen identically across retained mobile
-chains at a given \(K\).
+The bounded H2d protocol was the resulting test. It passed D0/D1 and
+hard-stopped at D2. No topology-conditioned candidate was held-out certified;
+D3 durability and D4 retained real-data chains were withheld. Therefore this
+question was not answered by retained sampling, and the historical setup
+below is not an instruction to launch more chains.
 
-## Deferred work
+## Deferred work after the bounded hard stop
 
 - NUTS in the mobile compound kernel.
 - Online metric adaptation.
-- Topology-conditioned Euclidean HMC is now the immediate next phase rather
-  than deferred work.
+- Topology-conditioned Euclidean HMC was tested in H2d and stopped at D2; it
+  is no longer an immediate next phase.
 - Leaf-identity-specific metrics or leaf/fixed cross blocks.
 - Position-dependent Riemannian HMC.
 - A source-HMC/topology/destination-HMC proposal with one joint acceptance
@@ -340,3 +366,6 @@ chains at a given \(K\).
 - Variable-\(K\) topology transitions.
 - A scientifically different multi-root prior.
 - Promotion out of the experimental namespace.
+
+These are unplanned research directions, not continuations authorized by the
+completed bounded protocol.

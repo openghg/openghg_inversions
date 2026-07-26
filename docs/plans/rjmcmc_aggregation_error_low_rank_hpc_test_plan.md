@@ -1,5 +1,86 @@
 # Aggregation-error Gaussian hybrid HPC test plan
 
+## 2026-07-26 BP1 result and transported successor
+
+The pending A0--A5 status below is superseded by the following bounded result
+at source revision `5bb41399e45b78954488e286da3f40371dcb956e`.
+
+A0 passed 56 focused tests with clean Ruff and Pyright. Its certificate
+SHA-256 is
+`3830943d256a19530e3030a25e4d0691e3dbebec1fd83ae0b5750923efe87307`.
+A1 retry-one job `18173411` is preserved as failed harness evidence. The final
+A1 job, `18181894`, produced certificate SHA-256
+`a46c51951a752a34b3678cc1ea98cee097055c1a0ee1b8fa73ae7ce7349cbc34`
+and results SHA-256
+`fd2c2d013b9286067cae4f90dccdcb4c1fef1de58e2cad82f2fd30f458764da7`.
+
+All Gaussian implementation gates passed, but all eight scientific-shape
+gates failed. The maximum conditional-anchor error was 5.9846 nat, posterior
+mean error 13.075 reference SD, interval-endpoint error 25.077 reference SD,
+evidence error 4.064 nat, and structural-weight total variation 0.3892.
+Therefore Gaussian A2/A3, retained A4, and A5 were withheld. The downstream
+fixed-basis target implemented at
+`a004e526033432df4e893e63119cc9aa4928c95c` remains unpromoted; no retained
+A4/scientific sampling was run.
+
+The predeclared normalized transported-mixture successor is implemented as a
+NumPy foundation at
+`6ff3afe56416e701ac1fc4ae45676d08ea28229b`. It is not a fitted scientific
+result and has no PyMC integration.
+
+T2 has so far produced only infrastructure evidence:
+
+- inventory
+  `da28b5049d68b426f3b5d3dcf20aaff2ac53b1df29d65655b632f64e90e80b97`
+  failed in the immutable binder; failure SHA-256
+  `d438c54a754b9bafe5fb0d649a18ffd94f634eaeea90882f180c530092407756`;
+- inventory
+  `e3e237e7587dc80ae17fd7b2d0c26f01775581c3265fdf4e8c836bde2113d4e0`
+  reached a preflight hard stop when bound out-of-tree Pyright found 15
+  genuine harness type errors. The earlier hidden `.codex-run-staging`
+  Pyright “pass” was a zero-file false negative; the 15 errors were fixed
+  without suppressions in v3. The v2 failure SHA-256 is
+  `2b4251ce40c29e5e49d9f355179a425d8ee0965a0a3450b7c6bf5377b00fd8e7`;
+- inventory
+  `539a99de8fc564a79d3dbdd984a52478b32c020fe829ed3b14711ff096b2e3bc`
+  passed preflight, SHA-256
+  `ddff6a7f337e330a2d6bf77d9f55153591e83ada7377a0f8d5feb6a038221401`,
+  but all eight tasks of job `18184746` failed before fitting because the
+  detached source was absent from the bound drivers' import path. The array
+  infrastructure-failure SHA-256 is
+  `a186cda0f4563013bac62ee206cba638ed27e6c718c04312c56a8a880d6b26a3`.
+
+No fit or scientific evaluation ran in those attempts. The final v4
+inventory was
+`11a43a24da003019e600c990da143573f527ce1b85ffeaedada80ec857edbd28`.
+Its preflight and compute smoke passed (job `18185082`; evidence SHA-256
+`a08120d06eb6da6e76dc1479fbbcea5e525d895a668b23d6af45c3162763c45d`).
+Development job `18185086` ran all eight cells. The formal certificate
+(SHA-256
+`99f6479d71bb47515479ad5652949fdf08d6314092aa98512213a927b61affaf`)
+is an infrastructure hard stop because canonical sorted `records` keys
+contradicted its catalogue-order check.
+
+Independent read-only localization of the authenticated terminal artifacts
+separates that certificate defect from the scientific outcome. Five cells
+stopped during pre-observation hidden fitting because no fixed restart
+converged and remained valid; they read neither pseudo-observations nor
+held-out data. All three fitted development cells reported
+`development_pass=false` and failed the projection-isolated learned-mixture
+shape gate: `near_gaussian/two_cell` at \(M=2\),
+`near_gaussian/four_cell` at \(M=1\), and
+`boundary_heavy/two_cell` at \(M=8\). Held-out evaluation was withheld.
+The bounded T2 experiment is finished, with no v5 and no predeclared T3.
+It licenses neither structural \(P/K\) inference nor partial mobile
+aggregation; A5 remains the structural absolute-evidence and tower gate.
+The independently reviewed run-root report is `report/T2_RESULTS.md`, SHA-256
+`8ac9f1db197ec6880247dcce98f12ed5c61d6f07cf999249e10c06a24ac07ed9`;
+its adjacent report-provenance manifest has SHA-256
+`946f843cda39d8147361ab19c81d40c6ab9637632aaab3f90582daae2417462f`.
+
+The `inversions-knowledge` sibling was unavailable on BP1 and was not used for
+the A1 or T1 results.
+
 ## 2026-07-26 handover
 
 The normalized likelihood and exact conditional-moment baseline landed at
@@ -10,10 +91,13 @@ raw-moment rectangle-prefix prototype was excluded after a cancellation audit;
 do not recreate it without a stable centered-covariance construction and an
 explicit memory/error protocol.
 
-Local A0 tests pass, but A1--A5 have not run on BP1. Implementation of the
-fixed-partition PyMC/NUTS bridge described in A4 may proceed after A0, while
-independent A1--A3 harness work runs, but no retained A4 sampling or scientific
-promotion is permitted until A1--A3 pass. See
+The original handover stated that A1--A5 had not run and that bridge
+implementation might proceed in parallel. That is historical. A1 ran and
+stopped the Gaussian scientific-shape track; A2--A5 were withheld. The
+fixed-partition PyMC/NUTS bridge described in A4 was implemented at
+`a004e526033432df4e893e63119cc9aa4928c95c`, but it remains unpromoted and
+had no retained A4/scientific sampling. The transported-mixture successor
+ended at T2, with held-out evaluation withheld. See
 [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md) for checkout, provenance,
 and stop rules.
 
@@ -41,6 +125,9 @@ discrepancy model is explicitly declared.
 Run only experimental tests. Preserve every failed artifact and publish
 completion markers last. Do not write experimental outputs to
 `PARIS_inversions`.
+
+BP1 compute launchers must use explicit account `chem007981`; load
+`git/2.45.1-pqk5` when Git provenance is required on a compute node.
 
 Fill in before launch:
 

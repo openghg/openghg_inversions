@@ -1,5 +1,41 @@
 # Topology-conditioned HMC next phase
 
+## 2026-07-26 BP1 D0--D2 result
+
+The pending status below is superseded by the completed bounded run at source
+revision `5bb41399e45b78954488e286da3f40371dcb956e`.
+
+- D0 passed: jobs `18169133` and `18169140` each produced 10,000 valid exact
+  reverses with zero skipped reverse paths. Certificate SHA-256:
+  `d8ddd119d28ba86ee6a840dc357e5120fa20f823975d4b8c9af269ca1dd2e1ed`.
+- D1 passed, including portability jobs `18180788` and `18180790`.
+  Certificate SHA-256:
+  `8df068e5e2750a47e83bca9500b31296beb74ba56aedff15c28ba03b0af63def`.
+- D2 used harness inventory
+  `af08d98c5fe38c745b4fbabaa410363aa5b25ce142e39fd52ce6df2d4787a152`.
+  Topology-freeze job `18181938` and development array `18181943` ran under
+  `chem007981`; an earlier `default`-account attempt, `18181936`, never
+  started.
+- D2 reached the formal
+  `production-v3-zero-displacement-score-serialization-hard-stop`, aggregate
+  SHA-256
+  `833db35411276a7d57be1de6ac796999c4400ea43bd953ebf1b1b84c1fd2683a`.
+
+No scientific candidate passed all three \(K=50\) development roles. At
+\(K=250\), \(\epsilon=0.2,L=5\) passed the development science gates but was
+not held-out validated and is not promoted. D3/D4 and any unplanned tuning
+grid are withheld. The readable report SHA-256 is
+`080dfa289fab6d02a9e1581d6045a0e3c2b5bd6b1cfc5328a4bcd514a374dda7`.
+
+This mobile evidence localizes a topology-dependent
+metric/continuous-landing interaction but cannot separate that from
+within-topology position curvature. It does not trigger RMHMC or the joint
+source-HMC/structural-map/destination-HMC construction. Preserve the run; do
+not resume D2 or publish `complete.json`.
+
+The `inversions-knowledge` sibling was unavailable on BP1 and was not used for
+this result.
+
 ## 2026-07-26 handover status
 
 Commit `e6199150e680d43e6e3c1388db45773c5337802a` implements the
@@ -7,16 +43,22 @@ HMC-specific exact log-coordinate structural involutions described below.
 Focused local tests passed, but the BP1 rerun was interrupted by VPN loss
 before it established a D0 result. Preserve
 `/group/chem/acrg/brendan_for_codex/rjmcmc_topology_conditioned_hmc/e619915`
-as incomplete evidence and restart D0 under a fresh run root addressed by the
-current full branch SHA.
+as incomplete evidence. The later `5bb41399` D0--D2 result above supersedes
+the historical instruction to restart D0.
 
 The normalized aggregation-error baseline is implemented at
 `16819f55cea5c6054b0113b751aa9833afa4fa9b`. Cached fixed-partition factors
 and the FullTiling physical-mass bridge were added at
 `54045edf67c4703da5909b1fdd2a6081d0a61251`; the unsafe
 raw-moment rectangle-prefix prototype was deliberately excluded because
-catastrophic cancellation can corrupt small covariance factors. A1--A5 HPC
-validation and the fixed-partition PyMC/NUTS bridge remain pending.
+catastrophic cancellation can corrupt small covariance factors. The Gaussian
+A1 implementation gates passed, but all eight scientific-shape gates failed;
+A2--A5 were withheld. The fixed-partition aggregation-aware PyMC/NUTS bridge
+was subsequently implemented at
+`a004e526033432df4e893e63119cc9aa4928c95c` but remains unpromoted and
+had no retained A4/scientific sampling. The bounded transported-mixture
+successor at `6ff3afe` ended at T2 after five fitter hard stops and three
+failed development shape gates; held-out evaluation was withheld.
 
 Use [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md) as the operational
 entry point.
@@ -38,7 +80,7 @@ The evidence is retained under
 The readable report is `report/H2C_RESULTS.md` and the hard-stop certificate is
 `calibration/H2C_HARD_STOP.json`.
 
-The next experiment is **not** automatically Riemannian HMC. It is a
+The bounded next experiment was **not** Riemannian HMC. It was a
 topology-conditioned Euclidean HMC kernel whose metric:
 
 1. is a deterministic function of the current tiling, frozen input, target
@@ -640,20 +682,24 @@ The bounded programme is:
    one-side-split \(K=3\) frontiers and enumerate all five frontiers of each
    fixed-orientation canonical tree. These are not needed to establish that
    row-first and column-first root histories represent one state;
-5. **Partly complete:** the exact conditional-moment oracle, normalized
-   low-rank Gaussian hybrid, cached fixed-partition factors, and FullTiling
-   physical-mass bridge are implemented. Gradient parity, PyMC integration,
-   acceleration benchmarks, and A1--A5 HPC validation remain;
-6. on moderate synthetic operators, separate Gaussian-shape error from
-   low-rank compression error and select rank by likelihood, gradient,
-   posterior, and evidence tolerances rather than explained variance;
-7. assess fixed-partition PARIS inference only after held-out topology and
-   operator tests pass, with structural inference remaining disabled unless
-   absolute evidence drift is also below its predeclared tolerance;
-8. fit a normalized transported summary-space Gaussian mixture only if the
-   Gaussian scientific-shape gate fails; and
-9. attempt a conditional flow only if that normalized mixture fails a
-   predeclared density/calibration gate.
+5. **Implementation complete, promotion stopped:** the exact
+   conditional-moment oracle, normalized low-rank Gaussian hybrid, cached
+   fixed-partition factors, FullTiling physical-mass bridge, and downstream
+   PyMC integration at `a004e526...` were implemented. A1 passed its
+   implementation checks but failed all eight scientific-shape gates, so
+   A2--A5 and retained PyMC sampling were withheld;
+6. **Complete at the bounded A1 gate:** the moderate synthetic screens
+   separated the implementation checks from Gaussian scientific-shape error;
+   all eight shape gates failed;
+7. **Withheld:** fixed-partition retained PARIS inference and every structural
+   evidence claim were blocked by the failed Gaussian A1 gate;
+8. **Stopped at T2:** the normalized transported summary-space Gaussian
+   mixture foundation was implemented at `6ff3afe`. Five development cells
+   stopped in fitting and all three fitted cells failed the
+   projection-isolated learned-mixture shape gate; held-out evaluation was
+   withheld; and
+9. **Not run:** no conditional-flow phase was predeclared after the bounded
+   T2 stop. It is not an automatic continuation of this programme.
 
 In the exact-representation limit there is little inferential reason to spend
 computation mixing over \(K\) and partitions. A greedy/SLS basis can instead
@@ -681,7 +727,9 @@ Do not add RJMCMC tasks to that queue implicitly. Either add a deliberately
 scoped RJMCMC project/configuration or use free-form, read-only launch
 artifacts with no queue mutation.
 
-Any submitted Slurm work must use the existing BP1 monitoring workflow:
+Any submitted Slurm work must use the existing BP1 monitoring workflow,
+explicit account `chem007981`, and `module load git/2.45.1-pqk5` when Git
+provenance is required on a compute node:
 record job IDs and immutable run roots, watch scheduler state and logs, retain
 hard-stop artifacts, and wait for terminal completion before interpreting
 partial matrices.

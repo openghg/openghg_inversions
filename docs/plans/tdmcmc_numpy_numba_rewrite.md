@@ -619,6 +619,43 @@ not implicit behavior of this implementation.
 
 ### 2026-07-26
 
+- Continued the BP1 topology-conditioned HMC candidate on exact-MH repair
+  revision `5bb41399e45b78954488e286da3f40371dcb956e`. D0 passed 10,000
+  valid, zero-skip exact reverse paths at both \(K=50\) and \(K=250\); D1
+  precision portability passed; D2 reached aggregate hard-stop SHA-256
+  `833db35411276a7d57be1de6ac796999c4400ea43bd953ebf1b1b84c1fd2683a`.
+  No \(K=50\) development candidate passed every science gate. The one
+  development-admissible \(K=250\) setting was not held-out validated, so D3
+  and D4 remain withheld.
+- Ran aggregation-error A0 and A1. A0 passed. The Gaussian implementation
+  gates passed at A1, but every scientific-shape gate failed, including
+  5.9846 nat anchor error, 4.064 nat evidence error, and 0.3892 structural
+  total variation. Gaussian A2/A3, retained A4, and A5 were withheld.
+- Added the aggregation-aware fixed-basis NUTS implementation at
+  `a004e526033432df4e893e63119cc9aa4928c95c` and the normalized
+  transported-mixture NumPy foundation at
+  `6ff3afe56416e701ac1fc4ae45676d08ea28229b`. Neither is a promoted
+  aggregation-aware posterior result.
+- Preserved three non-scientific T2 attempts: binder failure inventory
+  `da28b504...`; inventory `e3e237e...`, where bound out-of-tree Pyright
+  found 15 genuine harness type errors; and job `18184746`, whose eight tasks
+  failed before fitting because bound drivers lacked the detached source
+  import path, inventory `539a99de...`. The earlier hidden-staging Pyright
+  “pass” was a zero-file false negative. All 15 type errors were fixed without
+  suppressions in v3.
+- Final T2 v4 inventory `11a43a24...` passed compute smoke and ran all eight
+  development cells in job `18185086`. The formal certificate records a
+  catalogue-order infrastructure hard stop. Independent inspection of the
+  authenticated terminal artifacts found five pre-observation fixed-restart
+  fitter stops and three fitted cells, all with `development_pass=false`
+  because the projection-isolated learned-mixture shape gate failed.
+  Held-out evaluation was withheld. The bounded experiment is finished,
+  with no v5 or predeclared T3; A5 remains mandatory before any structural
+  \(P/K\) claim.
+- The BP1 `inversions-knowledge` sibling remained unavailable and unused.
+  Compute launchers requiring Git must load `git/2.45.1-pqk5` and use the
+  explicit `chem007981` Slurm account.
+
 - Completed the fixed/mobile full-tiling control. Fixed geometry materially
   improved likelihood mixing, while mobile likelihood remained the main
   common-coordinate failure. Increasing local pair updates and starting from

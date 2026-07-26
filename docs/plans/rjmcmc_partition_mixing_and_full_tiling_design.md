@@ -22,6 +22,37 @@ variable \(K\). Its first native-data smoke sequence is in
 The executable validation sequence for the first Voronoi diagnostic stage is in
 [rjmcmc_mixing_diagnostics_hpc_test_plan.md](rjmcmc_mixing_diagnostics_hpc_test_plan.md).
 
+## 2026-07-26 later BP1 outcome
+
+The topology-conditioned H2d run at
+`5bb41399e45b78954488e286da3f40371dcb956e` passed D0 exact structural
+reversibility and D1 precision portability, then reached its predeclared D2
+hard stop. No development candidate passed all \(K=50\) science gates.
+\(\epsilon=0.2,L=5\) was development-admissible at \(K=250\), but held-out
+validation did not run. The mobile evidence does not distinguish
+within-topology curvature from topology/continuous landing, so neither RMHMC
+nor the joint RJ--HMC path is triggered.
+
+The Gaussian aggregation closure passed implementation checks but failed all
+eight A1 scientific-shape gates. A normalized transported-mixture NumPy
+foundation is implemented at
+`6ff3afe56416e701ac1fc4ae45676d08ea28229b`. Three T2 attempts supplied only
+infrastructure evidence: immutable binder failure at inventory `da28b504...`,
+15 genuine harness type errors found by bound out-of-tree Pyright at
+`e3e237e...`, and eight-task import-path failure in Slurm job `18184746` at
+inventory `539a99de...`. The earlier hidden-staging Pyright “pass” was the
+zero-file false negative; v3 fixed all 15 errors without suppressions. Final v4
+inventory `11a43a24...` passed compute smoke and ran all eight development
+cells. Its formal certificate has a catalogue-order infrastructure defect;
+independent inspection of the authenticated task artifacts found five
+pre-observation fitter hard stops and three fitted cells that all failed the
+projection-isolated learned-mixture shape gate. Held-out evaluation was
+withheld. T2 is finished, with no v5 or predeclared T3. Structural \(P/K\)
+weights remain external/prior until A5.
+
+The `inversions-knowledge` sibling is unavailable on BP1 and was not used for
+these results.
+
 The following labels distinguish the strength of statements:
 
 - **Code fact:** checked in the current branch.
@@ -52,27 +83,31 @@ mobile real-data chains remain non-converged.
   gave root bulk ESS 1,684 at \(K=50\) and 2,071 at \(K=250\); dense NUTS at
   \(K=50\) gave root bulk ESS 6,114 and zero divergences.
 - Topology-neutral compound HMC calibrations H2/H2b/H2c did not generalize
-  across held-out tilings. The topology-conditioned H2d implementation now
-  uses exact log-coordinate structural involutions, but its BP1 validation is
-  incomplete.
+  across held-out tilings. The topology-conditioned H2d implementation uses
+  exact log-coordinate structural involutions; its bounded BP1 test later
+  passed D0/D1 and hard-stopped at D2 as recorded above.
 
-**Decision:** continue the bounded topology-conditioned HMC protocol, while
-also testing explicit aggregation-error marginalization. If partitions are
-only representations of one common proper native model, exact hidden
-allocation marginalization forces every partition to have the same evidence.
-The data then do not identify \(P\) or \(K\); their posterior probabilities
-remain their declared structural prior probabilities. Different evidence is
-scientifically meaningful only if the partition changes a declared prior,
-forward approximation, or discrepancy model.
+**Historical decision and current disposition:** this decision launched the
+bounded topology-conditioned HMC and aggregation-error tracks. H2d passed D0
+and D1, then hard-stopped at D2; D3/D4 were withheld. The normalized low-rank
+Gaussian closure passed its implementation checks but failed all eight A1
+scientific-shape gates, so A2--A5 were withheld. The fixed-partition
+aggregation-aware PyMC/NUTS bridge was implemented at `a004e526...` but
+remains unpromoted; no retained A4/scientific sampling was run. Its
+transported-mixture successor ended at T2 after five fitter hard stops and
+three failed development shape gates; held-out evaluation was withheld. These
+bounded protocols are finished, not current next gates.
 
-The current normalized low-rank Gaussian aggregation closure is a
-fixed-partition candidate, not yet a license for structural inference.
-Structural use requires absolute-evidence and tower-property checks. Cross-\(K\)
-tests must freeze one native-cell alpha field rather than use the current
-\(\kappa=2K\) rule, which changes the model with \(K\).
-
-See [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md) for the current branch,
-artifact disposition, and exact next gates.
+The scientific identity remains unchanged: if partitions are only
+representations of one common proper native model, exact hidden-allocation
+marginalization gives every partition the same evidence. The data then do not
+identify \(P\) or \(K\); their weights remain their declared structural prior
+weights. Different evidence is scientifically meaningful only if the
+partition changes a declared prior, forward approximation, or discrepancy
+model. A5 absolute-evidence and tower-property validation did not run, so no
+structural \(P/K\) claim is licensed. See
+[`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md) for the authoritative
+artifact disposition.
 
 ## Executive conclusions
 
