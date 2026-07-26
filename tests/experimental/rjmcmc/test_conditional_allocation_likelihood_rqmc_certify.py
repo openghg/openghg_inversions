@@ -381,10 +381,29 @@ def test_live_source_validation_requires_imported_clean_pinned_worktree(
         "_git_output",
         lambda _directory, *arguments: observed[arguments],
     )
+    monkeypatch.setattr(certify, "_validate_pixi_environment", lambda _directory: None)
 
+    VALIDATE_LIVE_SOURCE(root, REVISION)
+    observed[("status", "--porcelain")] = "?? .pixi\n"
     VALIDATE_LIVE_SOURCE(root, REVISION)
     observed[("status", "--porcelain")] = " M changed.py\n"
     with pytest.raises(ValueError, match="changes other"):
         VALIDATE_LIVE_SOURCE(root, REVISION)
     with pytest.raises(ValueError, match="does not contain"):
         VALIDATE_LIVE_SOURCE(root / "elsewhere", REVISION)
+
+
+def test_pixi_environment_validation_requires_canonical_symlink(tmp_path: Path) -> None:
+    """The canonical environment target is mandatory even when Git ignores it."""
+    source = tmp_path / "source"
+    source.mkdir()
+    pixi = source / ".pixi"
+    pixi.symlink_to("/group/chem/acrg/brendan_for_codex/openghg_inversions/.pixi")
+
+    certify._validate_pixi_environment(source)
+    pixi.unlink()
+    with pytest.raises(ValueError, match="canonical BP1"):
+        certify._validate_pixi_environment(source)
+    pixi.symlink_to("/group/chem/acrg/brendan_for_codex/wrong-pixi")
+    with pytest.raises(ValueError, match="canonical BP1"):
+        certify._validate_pixi_environment(source)

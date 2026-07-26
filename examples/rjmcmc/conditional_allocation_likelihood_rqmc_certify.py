@@ -98,6 +98,14 @@ def _git_output(source_directory: Path, *arguments: str) -> str:
     return result.stdout
 
 
+def _validate_pixi_environment(source_directory: Path) -> None:
+    """Require the worktree environment link to resolve to canonical BP1 pixi."""
+    pixi = source_directory / ".pixi"
+    expected_pixi = Path("/group/chem/acrg/brendan_for_codex/openghg_inversions/.pixi")
+    if not pixi.is_symlink() or pixi.resolve() != expected_pixi:
+        raise ValueError("live source .pixi link does not resolve to the canonical BP1 environment")
+
+
 def _validate_live_source(source_directory: Path, expected_source_revision: str) -> None:
     """Require this imported certifier to reside in the clean pinned worktree."""
     imported_root = Path(__file__).resolve().parents[2]
@@ -109,10 +117,7 @@ def _validate_live_source(source_directory: Path, expected_source_revision: str)
     status = _git_output(source_directory, "status", "--porcelain")
     if status not in ("", "?? .pixi\n"):
         raise ValueError("live source contains changes other than the authenticated .pixi link")
-    pixi = source_directory / ".pixi"
-    expected_pixi = Path("/group/chem/acrg/brendan_for_codex/openghg_inversions/.pixi")
-    if status and (not pixi.is_symlink() or pixi.resolve() != expected_pixi):
-        raise ValueError("live source .pixi link does not resolve to the canonical BP1 environment")
+    _validate_pixi_environment(source_directory)
 
 
 def _certification_protocol_sha256() -> str:
