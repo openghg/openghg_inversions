@@ -12,7 +12,7 @@ partition-posterior convergence workflow.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from hashlib import sha256
 import json
 import math
@@ -41,6 +41,7 @@ from .full_tiling_posterior import (
     initialize_full_tiling_posterior_state,
 )
 from .gamma_beta_adapter import gamma_beta_problem_from_rhime_inputs
+from .full_tiling_compound_sampling import FullTilingMovementDiagnostics
 
 FloatArray: TypeAlias = NDArray[np.float64]
 IntArray: TypeAlias = NDArray[np.int64]
@@ -50,6 +51,31 @@ Scenario = Literal["aligned", "edge-one", "relocation-one"]
 DEFINITION_SCHEMA = "openghg_inversions.mh_local_search_synthetic_definition.v1"
 TRAINING_SCHEMA = "openghg_inversions.mh_local_search_synthetic_training.v1"
 EVALUATION_SCHEMA = "openghg_inversions.mh_local_search_synthetic_evaluation.v1"
+
+_TRACE_RETAINED_FIELDS = (
+    "rectangle_bounds",
+    "leaf_masses",
+    "root_total",
+    "fixed_coefficients",
+    "log_gaussian_likelihood",
+    "log_likelihood",
+    "log_root_prior",
+    "log_allocation_prior",
+    "log_structural_prior",
+    "log_fixed_coefficient_prior",
+    "log_target",
+    "state_transition",
+)
+_TRACE_ATTEMPT_FIELDS = (
+    "global_transition",
+    "slot",
+    "move",
+    "valid",
+    "accepted",
+    "log_acceptance_ratio",
+    "invalid_reason",
+)
+_MOVEMENT_FIELDS = tuple(item.name for item in fields(FullTilingMovementDiagnostics))
 
 _ENVELOPE_KEYS = frozenset(("schema", "payload", "payload_sha256"))
 _TRAINING_KEYS = frozenset(
@@ -255,6 +281,249 @@ def tiling_from_bounds(
     if any(len(row) != 4 for row in rows):
         raise ValueError("every rectangle bound must contain four integers")
     return LeafTiling(shape, tuple(Rectangle(*row) for row in rows))
+
+
+def validate_local_reference_trace(
+    path: Path,
+    *,
+    manifest: Mapping[str, object],
+    shape: tuple[int, int],
+    k: int,
+    expected_bounds: IntArray | None = None,
+    problem: FullTilingProblem | None = None,
+) -> dict[str, NDArray[Any]]:
+    """Load and exactly validate one fixed-basis local-reference trace.
+
+    This is the single raw-trace validator used both when the producer writes
+    a local-reference chain and when the conditional-reference certifier
+    reopens it.  Besides the exact archive schema, it checks all transition
+    coordinates and diagnostic arrays.  Supplying ``problem`` additionally
+    rebuilds every retained scientific state and requires exact target
+    components, so a self-consistently rehashed trace cannot substitute
+    altered scientific coordinates or cached targets.
+    """
+    if not isinstance(path, Path):
+        raise TypeError("path must be a pathlib.Path")
+    with np.load(path, allow_pickle=False) as archive:
+        trace = {name: np.array(archive[name], copy=True) for name in archive.files}
+    expected_keys = {
+        *_TRACE_RETAINED_FIELDS,
+        *(f"attempt_{name}" for name in _TRACE_ATTEMPT_FIELDS),
+        *(f"movement_{name}" for name in _MOVEMENT_FIELDS),
+        "cycle",
+        "chunk_end_cycle",
+        "chunk_sampler_seconds",
+    }
+    if set(trace) != expected_keys:
+        raise ValueError("fixed local-reference trace fields are incompatible")
+
+    expected_dtypes: dict[str, np.dtype[Any]] = {
+        "rectangle_bounds": np.dtype(np.int64),
+        "leaf_masses": np.dtype(np.float64),
+        "root_total": np.dtype(np.float64),
+        "fixed_coefficients": np.dtype(np.float64),
+        "log_gaussian_likelihood": np.dtype(np.float64),
+        "log_likelihood": np.dtype(np.float64),
+        "log_root_prior": np.dtype(np.float64),
+        "log_allocation_prior": np.dtype(np.float64),
+        "log_structural_prior": np.dtype(np.float64),
+        "log_fixed_coefficient_prior": np.dtype(np.float64),
+        "log_target": np.dtype(np.float64),
+        "state_transition": np.dtype(np.int64),
+        "attempt_global_transition": np.dtype(np.int64),
+        "attempt_slot": np.dtype("U15"),
+        "attempt_move": np.dtype("U24"),
+        "attempt_valid": np.dtype(np.bool_),
+        "attempt_accepted": np.dtype(np.bool_),
+        "attempt_log_acceptance_ratio": np.dtype(np.float64),
+        "attempt_invalid_reason": np.dtype("U96"),
+        "cycle": np.dtype(np.int64),
+        "chunk_end_cycle": np.dtype(np.int64),
+        "chunk_sampler_seconds": np.dtype(np.float64),
+    }
+    movement_integer = (
+        "global_transition",
+        "proposal_elapsed_ns",
+        "diagnostic_elapsed_ns",
+        "source_merge_count",
+        "destination_catalogue_size",
+        "pair_catalogue_size",
+        "design_cache_misses",
+        "changed_native_cell_count",
+        "fixed_position",
+        "slice_left_steps",
+        "slice_right_steps",
+        "slice_shrink_draws",
+        "slice_log_density_evaluations",
+    )
+    movement_float = (
+        "changed_nominal_mass",
+        "standardized_prediction_l2",
+        "root_abs_displacement",
+        "root_abs_log_displacement",
+        "allocation_share_l1_displacement",
+        "fixed_abs_displacement",
+        "fixed_abs_log_displacement",
+    )
+    for name in movement_integer:
+        expected_dtypes[f"movement_{name}"] = np.dtype(np.int64)
+    for name in movement_float:
+        expected_dtypes[f"movement_{name}"] = np.dtype(np.float64)
+    expected_dtypes["movement_move"] = np.dtype("U24")
+    expected_dtypes["movement_valid"] = np.dtype(np.bool_)
+    expected_dtypes["movement_accepted"] = np.dtype(np.bool_)
+    if any(trace[name].dtype != dtype for name, dtype in expected_dtypes.items()):
+        raise ValueError("fixed local-reference trace has an incompatible exact dtype")
+
+    cycles = _exact_int(
+        manifest.get("production_cycles"),
+        name="manifest production_cycles",
+        minimum=1,
+    )
+    pair_slots = _exact_int(
+        manifest.get("pair_slots"),
+        name="manifest pair_slots",
+        minimum=1,
+    )
+    chunk_cycles = _exact_int(
+        manifest.get("chunk_cycles"),
+        name="manifest chunk_cycles",
+        minimum=1,
+    )
+    cycle_length = 1 + pair_slots
+    attempts = cycles * cycle_length
+    if not np.array_equal(trace["cycle"], np.arange(1, cycles + 1, dtype=np.int64)):
+        raise ValueError("fixed local-reference retained cycle coordinates are inconsistent")
+    if not np.array_equal(
+        trace["state_transition"],
+        cycle_length * np.arange(1, cycles + 1, dtype=np.int64),
+    ):
+        raise ValueError("fixed local-reference retained transition coordinates are inconsistent")
+    if not np.array_equal(
+        trace["attempt_global_transition"],
+        np.arange(1, attempts + 1, dtype=np.int64),
+    ):
+        raise ValueError("fixed local-reference attempt coordinates are inconsistent")
+    expected_slots = np.tile(
+        np.asarray(("root", *("pair_allocation" for _ in range(pair_slots))), dtype="U15"),
+        cycles,
+    )
+    expected_moves = np.tile(
+        np.asarray(
+            ("root_total_slice", *("pair_allocation_refresh" for _ in range(pair_slots))), dtype="U24"
+        ),
+        cycles,
+    )
+    if not np.array_equal(trace["attempt_slot"], expected_slots) or not np.array_equal(
+        trace["attempt_move"],
+        expected_moves,
+    ):
+        raise ValueError("fixed local-reference attempt schedule is inconsistent")
+    expected_chunks = np.arange(chunk_cycles, cycles + 1, chunk_cycles, dtype=np.int64)
+    if (
+        cycles % chunk_cycles
+        or not np.array_equal(trace["chunk_end_cycle"], expected_chunks)
+        or trace["chunk_sampler_seconds"].shape != expected_chunks.shape
+        or np.any(~np.isfinite(trace["chunk_sampler_seconds"]))
+        or np.any(trace["chunk_sampler_seconds"] < 0.0)
+    ):
+        raise ValueError("fixed local-reference chunk timing coordinates are inconsistent")
+
+    bounds = trace["rectangle_bounds"]
+    masses = trace["leaf_masses"]
+    roots = trace["root_total"]
+    fixed = trace["fixed_coefficients"]
+    if (
+        bounds.shape != (cycles, k, 4)
+        or masses.shape != (cycles, k)
+        or roots.shape != (cycles,)
+        or fixed.ndim != 2
+        or fixed.shape[0] != cycles
+        or np.any(~np.isfinite(masses))
+        or np.any(masses <= 0.0)
+        or np.any(~np.isfinite(roots))
+        or np.any(roots <= 0.0)
+        or not np.array_equal(roots, np.sum(masses, axis=1))
+    ):
+        raise ValueError("fixed local-reference scientific coordinates are inconsistent")
+    expected_bounds_array: IntArray | None = None
+    if expected_bounds is not None:
+        expected_bounds_array = np.asarray(expected_bounds)
+        if (
+            expected_bounds_array.dtype != np.dtype(np.int64)
+            or expected_bounds_array.shape != (k, 4)
+            or np.any(bounds != expected_bounds_array[None, :, :])
+        ):
+            raise ValueError("fixed local-reference topology differs from the certified topology")
+    elif np.any(bounds != bounds[0]):
+        raise ValueError("fixed local-reference trace changed topology")
+
+    target_fields = (
+        "log_gaussian_likelihood",
+        "log_likelihood",
+        "log_root_prior",
+        "log_allocation_prior",
+        "log_structural_prior",
+        "log_fixed_coefficient_prior",
+        "log_target",
+    )
+    if any(trace[name].shape != (cycles,) or np.any(~np.isfinite(trace[name])) for name in target_fields):
+        raise ValueError("fixed local-reference retained target arrays are inconsistent")
+    if np.any(trace["log_structural_prior"] != 0.0):
+        raise ValueError("fixed local-reference structural target must be identically zero")
+
+    for name in _TRACE_ATTEMPT_FIELDS:
+        if trace[f"attempt_{name}"].shape != (attempts,):
+            raise ValueError(f"fixed local-reference attempt {name} shape is inconsistent")
+    if (
+        np.any(trace["attempt_accepted"] & ~trace["attempt_valid"])
+        or np.any(np.isnan(trace["attempt_log_acceptance_ratio"]))
+        or np.any(trace["attempt_log_acceptance_ratio"] == math.inf)
+    ):
+        raise ValueError("fixed local-reference attempt diagnostics are inconsistent")
+    movement = FullTilingMovementDiagnostics(**{name: trace[f"movement_{name}"] for name in _MOVEMENT_FIELDS})
+    for name in ("global_transition", "move", "valid", "accepted"):
+        if not np.array_equal(
+            getattr(movement, name),
+            trace[f"attempt_{name}"],
+        ):
+            raise ValueError("fixed local-reference movement diagnostics disagree with attempts")
+    if np.any(np.isin(trace["attempt_move"], ("edge_flip", "resolution_relocation"))):
+        raise ValueError("fixed local-reference trace entered structural proposal code")
+
+    if problem is not None:
+        if problem.shape != shape:
+            raise ValueError("fixed local-reference problem shape is incompatible")
+        for draw in range(cycles):
+            tiling = tiling_from_bounds(shape, bounds[draw])
+            if tiling.k != k:
+                raise ValueError("fixed local-reference retained topology has inconsistent K")
+            state = build_full_tiling_posterior_state(
+                problem,
+                allocation=TilingState(tiling, masses[draw]),
+                fixed_coefficients=fixed[draw],
+            )
+            exact = {
+                "root_total": state.root_total,
+                "log_gaussian_likelihood": state.log_gaussian_likelihood,
+                "log_likelihood": state.log_likelihood,
+                "log_root_prior": state.log_root_prior,
+                "log_allocation_prior": state.log_allocation_prior,
+                "log_structural_prior": 0.0,
+                "log_fixed_coefficient_prior": state.log_fixed_coefficient_prior,
+                "log_target": state.log_target,
+            }
+            if any(trace[name][draw].item() != expected for name, expected in exact.items()):
+                raise ValueError(
+                    f"fixed local-reference scientific target at cycle {draw + 1} does not rebuild exactly"
+                )
+    else:
+        for draw, draw_bounds in enumerate(bounds):
+            if tiling_from_bounds(shape, draw_bounds).k != k:
+                raise ValueError(
+                    f"fixed local-reference retained topology at cycle {draw + 1} has inconsistent K"
+                )
+    return trace
 
 
 def _readonly_float(values: object, *, name: str, ndim: int) -> FloatArray:
@@ -1136,6 +1405,38 @@ def frozen_stage_budgets(stage: Stage) -> tuple[int, int, int]:
     )
 
 
+def frozen_oracle_settings(
+    stage: Stage,
+    replicate: int,
+) -> tuple[int, int, int, int, int]:
+    """Return oracle conditioning/production budgets, seeds, and pair slots."""
+    conditioning_cycles, production_cycles, pair_slots = frozen_stage_budgets(stage)
+    replicate_index = _exact_int(replicate, name="replicate")
+    settings = _STAGE_SETTINGS[stage]
+    conditioning_catalogue = cast(Any, settings["oracle_conditioning_seeds"])
+    sampler_catalogue = cast(Any, settings["oracle_seeds"])
+    if replicate_index >= len(conditioning_catalogue):
+        raise ValueError("replicate lies outside the frozen oracle seed catalogue")
+    return (
+        conditioning_cycles,
+        production_cycles,
+        _exact_int(
+            conditioning_catalogue[replicate_index],
+            name="oracle_conditioning_seed",
+        ),
+        _exact_int(sampler_catalogue[replicate_index], name="oracle_seed"),
+        pair_slots,
+    )
+
+
+def frozen_local_reference_seeds(stage: Stage) -> tuple[int, int, int, int]:
+    """Return the four predeclared fixed-basis local-reference seeds."""
+    if not isinstance(stage, str) or stage not in _STAGE_SETTINGS:
+        raise ValueError("unsupported stage")
+    first = 64_201 if stage == "s0" else 74_201
+    return cast(tuple[int, int, int, int], tuple(range(first, first + 4)))
+
+
 def _replay_observations(
     definition: Mapping[str, object],
     *,
@@ -1333,6 +1634,8 @@ __all__ = [
     "common_native_totals",
     "file_sha256",
     "frozen_stage_budgets",
+    "frozen_local_reference_seeds",
+    "frozen_oracle_settings",
     "json_sha256",
     "load_evaluation_artifact",
     "load_training_artifact",
@@ -1350,6 +1653,7 @@ __all__ = [
     "topology_sha256",
     "truth_on_tiling",
     "validate_artifact_pair",
+    "validate_local_reference_trace",
     "validate_stage_definition",
     "write_envelope",
 ]

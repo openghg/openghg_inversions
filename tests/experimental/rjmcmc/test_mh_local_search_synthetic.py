@@ -9,7 +9,7 @@ import json
 import math
 from pathlib import Path
 import shutil
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 
 import numpy as np
@@ -26,6 +26,7 @@ from openghg_inversions.experimental.rjmcmc.full_tiling_io import (
     full_tiling_state_fingerprint,
 )
 from openghg_inversions.experimental.rjmcmc.mh_local_search_synthetic import (
+    DEFINITION_SCHEMA,
     EVALUATION_SCHEMA,
     TRAINING_SCHEMA,
     build_stage_definition,
@@ -533,6 +534,14 @@ def _refresh_fixed_completion_hashes(run_directory: Path, driver: ModuleType) ->
     top_complete_path.write_text(driver.canonical_json(top_complete) + "\n")
 
 
+def _refresh_manifest_completion_hash(run_directory: Path, driver: ModuleType) -> None:
+    """Make a deliberately changed run manifest self-consistent with top completion."""
+    complete_path = run_directory / "complete.json"
+    complete = json.loads(complete_path.read_text())
+    complete["files"]["manifest.json"] = driver.file_sha256(run_directory / "manifest.json")
+    complete_path.write_text(driver.canonical_json(complete) + "\n")
+
+
 def test_completion_corruption_and_trace_invariants_fail_closed(
     tmp_path: Path,
     driver: ModuleType,
@@ -613,4 +622,526 @@ def test_completion_corruption_and_trace_invariants_fail_closed(
             evaluation_path=evaluation_path,
             run_directory=topology_run,
             output_directory=tmp_path / "topology-analysis",
+        )
+
+
+def test_quarantined_oracle_and_four_chain_local_reference_artifacts(
+    tmp_path: Path,
+    driver: ModuleType,
+    s0_pair: tuple[Any, Any],
+) -> None:
+    """Oracle uses frozen Pstar seeds; local references reuse exact persisted branches."""
+    training, evaluation = s0_pair
+    training_path = tmp_path / "training.json"
+    evaluation_path = tmp_path / "evaluation.json"
+    write_envelope(training_path, TRAINING_SCHEMA, training.payload())
+    write_envelope(evaluation_path, EVALUATION_SCHEMA, evaluation.payload())
+    practical = tmp_path / "practical"
+    oracle = tmp_path / "oracle"
+    driver._run_short_pair_for_test(
+        training_path=training_path,
+        output_directory=practical,
+        conditioning_cycles=1,
+        production_cycles=100,
+    )
+    driver._run_oracle_short_for_test(
+        training_path=training_path,
+        evaluation_path=evaluation_path,
+        output_directory=oracle,
+    )
+    oracle_manifest = json.loads((oracle / "manifest.json").read_text())
+    assert oracle_manifest["conditioning_seed"] == 61601
+    assert oracle_manifest["oracle_seed"] == 62501
+    assert oracle_manifest["pstar_sha256"] == topology_sha256(
+        tiling_from_bounds(training.shape, evaluation.pstar_bounds)
+    )
+    oracle_analysis = json.loads((oracle / "analysis.json").read_text())
+    assert oracle_analysis["oracle"]["all_cycle_heldout_rmse"] >= 0.0
+    with np.load(oracle / "oracle" / "trace.npz", allow_pickle=False) as trace:
+        assert trace["root_total"].shape == (100,)
+        assert not np.any(np.isin(trace["attempt_move"], ("edge_flip", "resolution_relocation")))
+
+    p0_reference = tmp_path / "local-p0"
+    pstar_reference = tmp_path / "local-pstar"
+    driver._run_local_reference_short_for_test(
+        training_path=training_path,
+        evaluation_path=evaluation_path,
+        topology="p0",
+        branch_run_directory=practical,
+        output_directory=p0_reference,
+    )
+    driver._run_local_reference_short_for_test(
+        training_path=training_path,
+        evaluation_path=evaluation_path,
+        topology="pstar",
+        branch_run_directory=oracle,
+        output_directory=pstar_reference,
+    )
+    for directory, topology in (
+        (p0_reference, "p0"),
+        (pstar_reference, "pstar"),
+    ):
+        manifest = json.loads((directory / "manifest.json").read_text())
+        assert manifest["topology"] == topology
+        assert manifest["profile"] == "test-short"
+        assert manifest["branch_conditioning_cycles"] == 1
+        assert manifest["branch_conditioning_arm"] == "fixed_basis"
+        assert manifest["branch_conditioning_schedule_id"] == driver.FIXED_BASIS_COMPOUND_SCHEDULE_ID
+        assert manifest["branch_conditioning_seed"] == (61501 if topology == "p0" else 61601)
+        assert manifest["seeds"] == [64201, 64202, 64203, 64204]
+        with np.load(directory / "diagnostics_input.npz", allow_pickle=False) as data:
+            assert data["root_total"].shape == (4, 100)
+            assert data["leaf_masses"].shape == (4, 100, 4)
+            assert data["common_totals"].shape == (4, 100, 9)
+            assert data["batch_common_totals"].shape == (4, 20, 9)
+        driver._validate_standalone_completion(directory / "complete.json")
+
+
+def test_local_reference_branch_loading_rejects_rehashed_conditioning_drift(
+    tmp_path: Path,
+    driver: ModuleType,
+    s0_pair: tuple[Any, Any],
+) -> None:
+    """Budget, fixed arm/schedule, profile, and arm-specific seeds fail closed."""
+    training, evaluation = s0_pair
+    training_path = tmp_path / "training.json"
+    evaluation_path = tmp_path / "evaluation.json"
+    write_envelope(training_path, TRAINING_SCHEMA, training.payload())
+    write_envelope(evaluation_path, EVALUATION_SCHEMA, evaluation.payload())
+    practical = tmp_path / "practical"
+    oracle = tmp_path / "oracle"
+    driver._run_short_pair_for_test(
+        training_path=training_path,
+        output_directory=practical,
+        conditioning_cycles=1,
+        production_cycles=100,
+    )
+    driver._run_oracle_short_for_test(
+        training_path=training_path,
+        evaluation_path=evaluation_path,
+        output_directory=oracle,
+    )
+    source_revision = json.loads((practical / "manifest.json").read_text())["source_revision"]
+
+    def load(run: Path, topology: str) -> None:
+        driver._load_persisted_branch(
+            training=training,
+            evaluation=evaluation,
+            topology=topology,
+            branch_run_directory=run,
+            training_sha256=driver.file_sha256(training_path),
+            evaluation_sha256=driver.file_sha256(evaluation_path),
+            source_revision=source_revision,
+            expected_budget_profile="test-short",
+            expected_conditioning_cycles=1,
+            expected_production_cycles=100,
+            expected_retry_authorization_token_sha256=None,
+        )
+
+    load(practical, "p0")
+    load(oracle, "pstar")
+    practical_drifts = (
+        ("conditioning-cycles", "conditioning_cycles", 2),
+        ("production-cycles", "production_cycles", 200),
+        ("profile", "budget_profile", "factor4"),
+        ("arm", "conditioning_arm", "mobile"),
+        (
+            "schedule",
+            "conditioning_schedule_id",
+            "full_tiling_2_mixed_structure_1_root_slice_n_pair_allocation_fixed_sweep_v2",
+        ),
+        ("practical-seed", "conditioning_seed", 61601),
+    )
+    for name, key, value in practical_drifts:
+        changed = tmp_path / f"practical-{name}"
+        shutil.copytree(practical, changed)
+        manifest_path = changed / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest[key] = value
+        manifest_path.write_text(driver.canonical_json(manifest) + "\n")
+        _refresh_manifest_completion_hash(changed, driver)
+        with pytest.raises(ValueError, match="conditioning provenance"):
+            load(changed, "p0")
+
+    changed_oracle = tmp_path / "oracle-seed"
+    shutil.copytree(oracle, changed_oracle)
+    oracle_manifest_path = changed_oracle / "manifest.json"
+    oracle_manifest = json.loads(oracle_manifest_path.read_text())
+    oracle_manifest["conditioning_seed"] = 61501
+    oracle_manifest_path.write_text(driver.canonical_json(oracle_manifest) + "\n")
+    _refresh_manifest_completion_hash(changed_oracle, driver)
+    with pytest.raises(ValueError, match="conditioning provenance"):
+        load(changed_oracle, "pstar")
+
+
+def test_factor_four_reference_profile_is_frozen_and_keeps_primary_unchanged(
+    tmp_path: Path,
+    driver: ModuleType,
+    s0_pair: tuple[Any, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sole retry multiplies both budgets by four without changing seeds."""
+    training, evaluation = s0_pair
+    training_path = tmp_path / "training.json"
+    evaluation_path = tmp_path / "evaluation.json"
+    write_envelope(training_path, TRAINING_SCHEMA, training.payload())
+    write_envelope(evaluation_path, EVALUATION_SCHEMA, evaluation.payload())
+    assert driver._frozen_reference_profile_budgets("s0", "primary") == (
+        2_000,
+        5_000,
+        5,
+    )
+    assert driver._frozen_reference_profile_budgets("s0", "factor4") == (
+        8_000,
+        20_000,
+        5,
+    )
+    assert driver._frozen_reference_profile_budgets("s1", "factor4") == (
+        40_000,
+        200_000,
+        5,
+    )
+    with pytest.raises(ValueError, match="primary or factor4"):
+        driver._frozen_reference_profile_budgets("s0", "unplanned")
+
+    revision = "a" * 40
+    monkeypatch.setattr(driver, "_current_clean_revision", lambda: revision)
+    token_path = tmp_path / "sealed-retry-token.json"
+    token_path.write_text("{}\n")
+    token_digest = "f" * 64
+    monkeypatch.setattr(
+        driver,
+        "validate_retry_authorization_token",
+        lambda *args, **kwargs: token_digest,
+    )
+    pair_call: dict[str, Any] = {}
+    oracle_call: dict[str, Any] = {}
+    local_call: dict[str, Any] = {}
+    monkeypatch.setattr(driver, "_run_pair", lambda **kwargs: pair_call.update(kwargs))
+    monkeypatch.setattr(driver, "_run_oracle", lambda **kwargs: oracle_call.update(kwargs))
+    monkeypatch.setattr(
+        driver,
+        "_run_local_reference",
+        lambda **kwargs: local_call.update(kwargs),
+    )
+    with pytest.raises(ValueError, match="requires --retry-authorization-token"):
+        driver.command_run_pair(
+            argparse.Namespace(
+                training=training_path,
+                output_directory=tmp_path / "unauthorized-factor4",
+                source_revision=revision,
+                profile="factor4",
+                retry_authorization_token=None,
+            )
+        )
+    with pytest.raises(ValueError, match="cannot be supplied to a primary"):
+        driver.command_run_pair(
+            argparse.Namespace(
+                training=training_path,
+                output_directory=tmp_path / "primary-with-token",
+                source_revision=revision,
+                profile="primary",
+                retry_authorization_token=token_path,
+            )
+        )
+    driver.command_run_pair(
+        argparse.Namespace(
+            training=training_path,
+            output_directory=tmp_path / "pair-factor4",
+            source_revision=revision,
+            profile="factor4",
+            retry_authorization_token=token_path,
+        )
+    )
+    driver.command_run_oracle(
+        argparse.Namespace(
+            training=training_path,
+            evaluation=evaluation_path,
+            output_directory=tmp_path / "oracle-factor4",
+            source_revision=revision,
+            profile="factor4",
+            retry_authorization_token=token_path,
+        )
+    )
+    driver.command_run_local_reference(
+        argparse.Namespace(
+            training=training_path,
+            evaluation=evaluation_path,
+            topology="p0",
+            branch_run_directory=tmp_path / "pair-factor4",
+            output_directory=tmp_path / "local-factor4",
+            source_revision=revision,
+            profile="factor4",
+            retry_authorization_token=token_path,
+        )
+    )
+    assert (pair_call["conditioning_cycles"], pair_call["production_cycles"]) == (
+        8_000,
+        20_000,
+    )
+    assert pair_call["budget_profile"] == "factor4"
+    assert pair_call["retry_authorization_token_sha256"] == token_digest
+    assert (oracle_call["conditioning_cycles"], oracle_call["production_cycles"]) == (
+        8_000,
+        20_000,
+    )
+    assert oracle_call["conditioning_seed"] == 61601
+    assert oracle_call["sampler_seed"] == 62501
+    assert oracle_call["budget_profile"] == "factor4"
+    assert oracle_call["retry_authorization_token_sha256"] == token_digest
+    assert local_call["profile"] == "factor4"
+    assert local_call["expected_conditioning_cycles"] == 8_000
+    assert local_call["expected_branch_production_cycles"] == 20_000
+    assert local_call["production_cycles"] == 20_000
+    assert local_call["retry_authorization_token_sha256"] == token_digest
+    assert local_call["seeds"] == (64201, 64202, 64203, 64204)
+
+
+def test_production_aggregate_rejects_noncurrent_revision_before_replay(
+    tmp_path: Path,
+    driver: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    index_path = tmp_path / "index.json"
+    driver._create_json(
+        index_path,
+        {
+            "schema": "openghg_inversions.mh_local_search_s0_index.v1",
+            "candidate_revision": "a" * 40,
+            "definition_path": "not-opened.json",
+            "definition_file_sha256": "0" * 64,
+            "cells": [],
+            "reference_artifacts": [],
+            "conditional_references": [],
+        },
+    )
+    monkeypatch.setattr(driver, "_current_clean_revision", lambda: "b" * 40)
+    with pytest.raises(ValueError, match="current clean exact full Git SHA"):
+        driver._aggregate_s0(
+            index_path=index_path,
+            output_directory=tmp_path / "aggregate",
+            enforce_frozen_budgets=True,
+            enforce_current_revision=True,
+        )
+
+
+def test_aggregate_s0_validates_raw_matrix_and_emits_predeclared_decision(
+    tmp_path: Path,
+    driver: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The strict index drives all S0 operational, oracle, reference, and utility gates."""
+    definition = build_stage_definition("s0")
+    definition_path = tmp_path / "definition.json"
+    write_envelope(definition_path, DEFINITION_SCHEMA, definition)
+    cells: list[dict[str, object]] = []
+    representative: dict[str, tuple[Any, Any]] = {}
+    candidate_revision = ""
+    for scenario in ("aligned", "edge-one", "relocation-one"):
+        for replicate in range(4):
+            training, evaluation = materialize_replicate(
+                definition,
+                scenario=cast(Any, scenario),
+                replicate=replicate,
+            )
+            cell_directory = tmp_path / "cells" / f"{scenario}-{replicate}"
+            training_path = cell_directory / "training.json"
+            evaluation_path = cell_directory / "evaluation.json"
+            write_envelope(training_path, TRAINING_SCHEMA, training.payload())
+            write_envelope(evaluation_path, EVALUATION_SCHEMA, evaluation.payload())
+            practical = cell_directory / "practical"
+            analysis = cell_directory / "analysis"
+            oracle = cell_directory / "oracle"
+            driver._run_short_pair_for_test(
+                training_path=training_path,
+                output_directory=practical,
+                conditioning_cycles=1,
+                production_cycles=100,
+            )
+            driver._analyze_short_run_for_test(
+                training_path=training_path,
+                evaluation_path=evaluation_path,
+                run_directory=practical,
+                output_directory=analysis,
+            )
+            driver._run_oracle_short_for_test(
+                training_path=training_path,
+                evaluation_path=evaluation_path,
+                output_directory=oracle,
+            )
+            candidate_revision = json.loads((practical / "manifest.json").read_text())["source_revision"]
+            cells.append(
+                {
+                    "scenario": scenario,
+                    "replicate": replicate,
+                    "training_path": str(training_path),
+                    "training_sha256": driver.file_sha256(training_path),
+                    "evaluation_path": str(evaluation_path),
+                    "evaluation_sha256": driver.file_sha256(evaluation_path),
+                    "practical_run_directory": str(practical),
+                    "practical_complete_sha256": driver.file_sha256(practical / "complete.json"),
+                    "practical_analysis_directory": str(analysis),
+                    "practical_analysis_complete_sha256": driver.file_sha256(analysis / "complete.json"),
+                    "oracle_run_directory": str(oracle),
+                    "oracle_complete_sha256": driver.file_sha256(oracle / "complete.json"),
+                }
+            )
+            if replicate == 0:
+                representative[scenario] = (training, evaluation)
+
+    reference_artifacts: list[dict[str, str]] = []
+    references: list[dict[str, object]] = []
+    reference_cells = (
+        ("aligned", "p0"),
+        ("edge-one", "p0"),
+        ("edge-one", "pstar"),
+        ("relocation-one", "p0"),
+        ("relocation-one", "pstar"),
+    )
+    for reference_index, (scenario, topology) in enumerate(reference_cells):
+        artifact_hashes: list[str] = []
+        for kind in ("nuts", "local"):
+            artifact_directory = tmp_path / "reference-artifacts" / f"{reference_index}-{kind}"
+            artifact_directory.mkdir(parents=True)
+            driver._create_json(
+                artifact_directory / "payload.json",
+                {"kind": kind, "reference_index": reference_index},
+            )
+            driver._write_complete(artifact_directory, ("payload.json",))
+            completion_path = artifact_directory / "complete.json"
+            digest = driver.file_sha256(completion_path)
+            reference_artifacts.append({"path": str(completion_path), "sha256": digest})
+            artifact_hashes.append(digest)
+        training, evaluation = representative[scenario]
+        topology_bounds_value = training.p0_bounds if topology == "p0" else evaluation.pstar_bounds
+        references.append(
+            {
+                "cell_id": training.cell_id,
+                "definition_sha256": training.definition_sha256,
+                "topology_sha256": topology_sha256(tiling_from_bounds(training.shape, topology_bounds_value)),
+                "nuts_artifact_sha256": artifact_hashes[0],
+                "local_artifact_sha256": artifact_hashes[1],
+                "profile": "primary",
+                "pass": True,
+                "divergences": 0,
+                "worst_rhat_variable": "root_total",
+                "worst_rhat_value": 1.001 + reference_index * 0.001,
+                "min_bulk_ess_variable": "leaf_mass[0]",
+                "min_bulk_ess_value": 500.0 - reference_index,
+                "min_tail_ess_variable": "leaf_mass[1]",
+                "min_tail_ess_value": 450.0 - reference_index,
+                "worst_local_mcse_sd_projection": "whole_domain",
+                "worst_local_mcse_sd_value": 0.01,
+                "worst_half_difference_sd_projection": "top_half",
+                "worst_half_difference_sd_value": 0.02,
+                "worst_local_vs_nuts_tolerance_projection": "bottom_half",
+                "worst_local_vs_nuts_tolerance_value": 0.5,
+                "first_failed_gate": None,
+            }
+        )
+    index = {
+        "schema": "openghg_inversions.mh_local_search_s0_index.v1",
+        "candidate_revision": candidate_revision,
+        "definition_path": str(definition_path),
+        "definition_file_sha256": driver.file_sha256(definition_path),
+        "cells": cells,
+        "reference_artifacts": reference_artifacts,
+        "conditional_references": references,
+    }
+    index_path = tmp_path / "index.json"
+    driver._create_json(index_path, index)
+    replayed_records: list[dict[str, object]] = []
+
+    def replay_reference(
+        record: dict[str, object],
+        **_: object,
+    ) -> SimpleNamespace:
+        replayed_records.append(dict(record))
+        scenario = next(
+            name for name, (training, _) in representative.items() if training.cell_id == record["cell_id"]
+        )
+        training, evaluation = representative[scenario]
+        topology_role = (
+            "p0"
+            if record["topology_sha256"]
+            == topology_sha256(tiling_from_bounds(training.shape, training.p0_bounds))
+            else "pstar"
+        )
+        cell = next(item for item in cells if item["scenario"] == scenario and item["replicate"] == 0)
+        branch_directory = Path(
+            cast(
+                str,
+                cell["practical_run_directory" if topology_role == "p0" else "oracle_run_directory"],
+            )
+        )
+        branch_manifest = json.loads((branch_directory / "manifest.json").read_text())
+        return SimpleNamespace(
+            record=dict(record),
+            audit={
+                "schema": "test.transitive-reference-audit.v1",
+                "source_revision": candidate_revision,
+                "topology": {"role": topology_role},
+                "local": {
+                    "profile": "test-short",
+                    "branch_run_complete_sha256": driver.file_sha256(branch_directory / "complete.json"),
+                    "branch_state_sha256": driver.file_sha256(branch_directory / "branch_state.npz"),
+                    "branch_state_fingerprint": branch_manifest["branch_state_fingerprint"],
+                },
+                "certificate": dict(record),
+            },
+        )
+
+    monkeypatch.setattr(
+        driver,
+        "validate_conditional_reference_record",
+        replay_reference,
+    )
+    output = tmp_path / "aggregate"
+    driver._aggregate_s0_short_for_test(
+        index_path=index_path,
+        output_directory=output,
+    )
+    decision = json.loads((output / "decision.json").read_text())
+    assert len(replayed_records) == 5
+    assert len(decision["conditional_reference_audits"]) == 5
+    assert decision["conditional_reference_extrema"]["worst_rhat"]["variable"] == ("root_total")
+    assert [gate["name"] for gate in decision["gates"]] == [
+        "artifacts_complete_finite",
+        "mobile_valid_each_structural_move",
+        "misaligned_accepts_structural_move",
+        "one_move_pstar_visits",
+        "conditional_references",
+        "oracle_learnability_edge-one",
+        "oracle_learnability_relocation-one",
+        "utility_aligned",
+        "utility_edge-one",
+        "utility_relocation-one",
+    ]
+    assert decision["first_failed_gate"] == next(
+        (gate["name"] for gate in decision["gates"] if not gate["pass"]),
+        None,
+    )
+    assert (output / "report.md").is_file()
+
+    failed_reference_index = json.loads(json.dumps(index))
+    failed_reference = failed_reference_index["conditional_references"][0]
+    failed_reference["pass"] = False
+    failed_reference["divergences"] = 1
+    failed_reference["first_failed_gate"] = "divergences"
+    failed_reference_path = tmp_path / "failed-reference-index.json"
+    driver._create_json(failed_reference_path, failed_reference_index)
+    with pytest.raises(ValueError, match="conditional reference failed"):
+        driver._aggregate_s0_short_for_test(
+            index_path=failed_reference_path,
+            output_directory=tmp_path / "failed-reference-aggregate",
+        )
+
+    bad_index = json.loads(json.dumps(index))
+    bad_index["conditional_references"][0]["unknown"] = True
+    bad_index_path = tmp_path / "bad-index.json"
+    driver._create_json(bad_index_path, bad_index)
+    with pytest.raises(ValueError, match="certificate keys"):
+        driver._aggregate_s0_short_for_test(
+            index_path=bad_index_path,
+            output_directory=tmp_path / "bad-aggregate",
         )

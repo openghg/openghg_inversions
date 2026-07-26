@@ -278,7 +278,10 @@ prior-mean start for chain zero and prior draws from PCG64 seeds
 NumPyro sampler seeds `64100` and `74100`, respectively. If NUTS fails, the
 only permitted retry uses 2,000 warmup and 2,000 retained draws,
 `target_accept=0.95`, and maximum tree depth 12 with all other choices
-unchanged.
+unchanged. Preserve the failed primary bundle. A `retry1` run must reopen and
+recompute that primary bundle for the identical target, cite its completion
+digest and first failed NUTS gate, and reject a primary bundle that actually
+passed.
 
 For the same representative target and topology, run four local fixed-basis
 chains from the audited conditioned state using seeds `64201..64204` in S0
@@ -295,12 +298,28 @@ equal contiguous batches per chain. Require:
 - local-sampler late-window common projections within
   \(\max(0.05\) reference posterior SD, \(3\) combined MCSE\()\) of NUTS.
 
+The standalone local-MCSE gate uses all 80 batch means: four chains times 20
+batches. The combined MCSE in the late-window comparison instead uses the
+last 10 batches of each chain (40 batch means), because that is the estimator
+being compared with NUTS. The NUTS contribution is its reported posterior-mean
+MCSE.
+
 If the retried NUTS reference still fails, the cell is inconclusive and the
 structural comparison stops. If NUTS passes but the fixed local sampler fails
 the projection or MCSE gate, first increase conditioning, production, and
 local-reference lengths by the single predeclared factor of four. Persistent
 failure is an inconclusive continuous-kernel hard stop, not a local-search
 failure.
+
+The factor-four branch is not selectable directly. It requires a
+checksum-addressed authorization issued by replaying a failed conditional
+reference that used the **primary local profile**, with whichever NUTS profile
+passed. Its NUTS gates must all pass and its first failure must be one of the
+three local gates above. The practical sampler receives only the truth-free
+authorization token. Pair, oracle, and local-reference manifests must cite one
+identical token, and final aggregation must reissue the authorization from the
+archived primary-local certificate and raw bundles before accepting a
+homogeneous factor-four matrix. Utility results never authorize a retry.
 
 ## S0: strong-signal mechanism screen
 
@@ -463,6 +482,9 @@ committed, pushed revision and a fresh full-SHA run root.
 - Use the frozen Pixi `dev` environment and record the `pixi.lock` SHA-256,
   Python, NumPy, PyMC, PyTensor, NumPyro, platform, and BLAS identities.
 - Build immutable launch, analysis, and reporting harnesses before science.
+- Run final aggregation only from the clean detached candidate revision and
+  require the indexed full SHA to equal the current exact `HEAD` before any
+  raw artifact is replayed.
 - Record source SHA, clean status, commands, seeds, job IDs, resource use,
   exact last successful gate, and every input/output SHA-256.
 - Preserve partial and failed artifacts. Write `complete.json` last and only
