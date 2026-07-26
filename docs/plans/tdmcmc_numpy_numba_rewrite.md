@@ -688,6 +688,27 @@ not implicit behavior of this implementation.
   only posterior-SD relative error remained outside tolerance. The
   predeclared `hard_stop` therefore starts the normalized residual-image
   MDN/NLE fallback rather than a post-hoc Sobol-ladder extension.
+- Added the portable residual-image context and analytically
+  noise-convolved GMM/MDN likelihood at `8628369`, including complete
+  residual-image rank handling, orthogonal Gaussian factors, the observation
+  Jacobian, canonical region ordering, and authenticated serialization.
+- Added the deterministic root-only eight-component GMM development screen
+  at `5167e36`. It uses three float64 EM starts, requires at least two to
+  converge, separates training/validation/simulator-test streams, binds the
+  full training and runtime record into each fitted envelope, and keeps
+  `scientific_pass=false` until an independent protected density holdout.
+  Independent review found and the next source update restored the unchanged
+  four-bank 0.05-nat evidence-range gate.
+- Chose the fully restartable BP1 layout for that learned-density screen:
+  24 development size shards, a pure common-lock merger, 18 lock-bound
+  confirmation-seed shards, a development certificate, and a one-shot
+  protected density certifier. The protected catalogue tests new residual
+  draws for the same six exact contexts, promotes only the locked seed-731
+  artifact, permits no retraining or retuning, and cannot license structural
+  \(P/K\) inference. The mergers now regenerate the exact cases and simulator
+  banks and replay likelihood, gradient, evidence, posterior, and
+  generalization gates; protected inputs remain sealed until the frozen
+  runtime, source, certificate, and all six nominated artifacts pass.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 

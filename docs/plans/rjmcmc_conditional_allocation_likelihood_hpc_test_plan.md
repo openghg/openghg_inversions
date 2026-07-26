@@ -664,6 +664,14 @@ density is still an approximation to a conditional likelihood for one fixed
 partition; it is not a learned posterior over partitions and must not supply
 data-dependent weights for \(P\) or \(K\).
 
+The initial design was checked against sibling `inversions-knowledge` revision
+`e77d20cffe7ee0298d9106065c962d24198dabdc`, especially
+`docs/research-questions/learning-non-gaussian-marginal-models.md`,
+`docs/derivations/non-gaussian-aggregation-error-by-marginalization.md`, and
+`docs/source-notes/sbi-vs-pymc.md`. The last file is a reviewed triaged-chat
+note rather than an executable software certificate; its PyMC and `sbi` API
+claims remain version-sensitive until focused tests pin them.
+
 The scientific identity is stronger than equality of a few projected
 moments. Let one proper native prior and observation model be fixed, let
 \(p_P(A)\) be the exact pushforward prior for the retained masses under
@@ -747,8 +755,19 @@ regularize every component covariance by \(10^{-8}I\) (equivalently a
 \(10^{-4}\) standard-deviation floor), and fail rather than silently repair an
 empty component. Cap each fit at 2,000 iterations; convergence requires an
 objective change below \(10^{-7}\) nat per draw for 10 consecutive
-iterations. Select among valid starts by validation negative log likelihood,
-never by a protected scientific gate.
+iterations. At least two of the three starts must converge. Select among valid
+starts by validation negative log likelihood, never by a protected scientific
+gate. Validation-to-simulator-test generalization additionally requires
+
+\[
+\left|\operatorname{NLL}_{\rm test}
+      -\operatorname{NLL}_{\rm validation}\right|
+\le
+\max\left(0.02q,\;5\,\operatorname{MCSE}_{\rm combined}\right),
+\]
+
+where \(q\) is residual-image rank and the combined MCSE is the standard error
+of the difference between the two independent mean NLL estimates.
 
 Also freeze and source-pin before launch:
 
@@ -768,6 +787,185 @@ gradient, evidence, and posterior-summary gates, stop before adding a flow.
 Store the fitted arrays, preprocessing, float dtype, split identities, seeds,
 versions, training history, context digest, and whole-artifact digest in an
 auditable state-dictionary-style payload rather than an opaque pickle.
+
+The first reviewed implementation checkpoint is
+`5167e36fedd2b0a93b2ba9bfd77534aefffcf485`. It supplies the portable
+root-GMM trainer, authenticated fitted-bundle envelopes, the protected
+catalogue commitment, a smoke profile, and focused tests. It is a development
+checkpoint, not an HPC certificate. The authoritative candidate is the later
+clean pushed full SHA containing the phase merger, protected certifier, and
+HPC assets.
+
+Freeze NumPy 2.2.6 and SciPy 1.15.2 for development, confirmation, and
+protected certification. The committed Pixi lock contains these versions;
+the executable also rejects a different runtime.
+
+The protected object is a density holdout, not a catalogue of new operators.
+It contains a concealed master seed and frozen metadata from which the
+certifier derives 131,072 residual draws for each of the same six exact
+contexts. The precommitted raw catalogue digest is
+`83bec3945ebc90d5e25d0888b440fe56f761f9059cf01537fbb2227b81510b66`.
+Only the seed-731 artifact at the common locked training size is promoted.
+The protected stage evaluates that artifact without retraining. It applies
+the frozen validation-versus-protected NLL rule above, reauthenticates the
+unchanged likelihood, gradient, evidence, posterior-summary, normalization,
+and four-bank evidence gates, and cannot alter the architecture, training
+size, preprocessing, or seed. A protected failure is terminal for this model;
+it may not trigger retuning. Even a protected pass keeps
+`structural_inference_licensed=false`.
+
+### C4b BP1 phase protocol
+
+Use only immutable shard outputs and pure validating mergers:
+
+The mergers regenerate the exact cases and simulator banks, authenticate the
+portable artifact and training-prefix identities, and replay every downstream
+likelihood, gradient, evidence, posterior, and generalization gate. They do
+not rerun EM fitting. The deterministic fit transcript therefore remains
+part of the trusted clean-source, immutable-shard provenance boundary rather
+than an independently recomputed optimization certificate.
+
+1. **G0 preflight.** Check out a clean detached full SHA, use the frozen Pixi
+   environment, run the portable-evaluator, GMM, merger, and protected
+   certifier focused tests, Ruff, Pyright, and the bounded smoke profile.
+2. **G1 development shards.** Run 24 Slurm tasks: six cases by four training
+   sizes. Each task uses development seed 731, constructs the source-pinned
+   largest Sobol bank so prefixes retain the declared nested identity, fits
+   exactly one requested prefix, and atomically publishes one canonical JSON
+   artifact.
+3. **G1 lock merger.** Require exactly the 24 declared files, reject symlinks
+   and extras, reauthenticate every context, split, fitted envelope, runtime,
+   and scientific gate, recompute the six-case pass pattern, and publish the
+   smallest common two-size passing-suffix lock. Stop if no such lock exists;
+   a pass only at 262,144 is a hard stop.
+4. **G2 confirmation shards.** Bind every job to both the raw lock-file digest
+   and its internal payload digest. Run 18 Slurm tasks: six cases by seeds
+   1877, 4099, and 8317, all at the one locked size. Each task publishes one
+   immutable JSON result.
+5. **G2 development certifier.** Require exactly the 18 confirmation files,
+   combine each with its nominated seed-731 development artifact, reapply
+   every individual gate, and require the four-bank log-evidence range to be
+   at most 0.05 nat. Publish
+   `development_pass=true`,
+   `eligible_for_protected_holdout=true`,
+   `protected_holdout_pass=null`, and `scientific_pass=false`.
+   Publish the certificate's raw SHA-256 in a separate immutable record and
+   bind that digest into the G2 completion marker; G3 must authenticate
+   against this G2 record rather than hashing an unpinned current file.
+6. **G3 protected certification.** Only after G2 passes, transfer the sealed
+   catalogue to an independent certification path. Authenticate the frozen
+   runtime, live source, passing development certificate, and every nominated
+   development shard before touching the catalogue. Then verify the
+   catalogue's raw digest before JSON parsing or numerical access, open it
+   once, evaluate all six promoted artifacts, and publish the final manifest
+   and completion marker last. No development process may read the concealed
+   master seed or derive the protected draws.
+
+Failures and interrupted shards are evidence, not warnings. Preserve them and
+rerun only the missing immutable shard under the same full SHA. Do not run a
+monolithic six-case screen as the authoritative BP1 protocol.
+
+### C4b BP1 operator instructions
+
+Use these committed assets:
+
+```text
+docs/plans/rjmcmc_conditional_allocation_assets/run_gmm_c4b_preflight.sh
+docs/plans/rjmcmc_conditional_allocation_assets/run_gmm_c4b_development_array.sbatch
+docs/plans/rjmcmc_conditional_allocation_assets/run_gmm_c4b_merge_development.sh
+docs/plans/rjmcmc_conditional_allocation_assets/run_gmm_c4b_confirmation_array.sbatch
+docs/plans/rjmcmc_conditional_allocation_assets/run_gmm_c4b_certify_confirmation.sh
+docs/plans/rjmcmc_conditional_allocation_assets/run_gmm_c4b_protected_certify.sh
+```
+
+On BP1, fetch the branch, resolve one full candidate SHA, create a fresh
+detached worktree, and attach the canonical frozen environment:
+
+```bash
+repository=/group/chem/acrg/brendan_for_codex/openghg_inversions
+git -C "${repository}" fetch origin codex/rjmcmc-aggregation-conditional-likelihood
+revision="$(git -C "${repository}" rev-parse origin/codex/rjmcmc-aggregation-conditional-likelihood)"
+short_revision="${revision:0:12}"
+source_root="/group/chem/acrg/brendan_for_codex/rjmcmc_gmm_worker_${short_revision}"
+run_root="/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/${revision}"
+git -C "${repository}" worktree add --detach "${source_root}" "${revision}"
+ln -s /group/chem/acrg/brendan_for_codex/openghg_inversions/.pixi "${source_root}/.pixi"
+mkdir -p \
+  "${run_root}/preflight" \
+  "${run_root}/development" \
+  "${run_root}/confirmation" \
+  "${run_root}/lock" \
+  "${run_root}/certificate" \
+  "${run_root}/protected" \
+  "${run_root}/markers/development" \
+  "${run_root}/markers/confirmation" \
+  "${run_root}/logs/development" \
+  "${run_root}/logs/confirmation"
+export GMM_SOURCE="${source_root}"
+export GMM_RUN_ROOT="${run_root}"
+export GMM_REVISION="${revision}"
+```
+
+Run G0 and stop unless the completion marker is present:
+
+```bash
+bash "${GMM_SOURCE}/docs/plans/rjmcmc_conditional_allocation_assets/run_gmm_c4b_preflight.sh"
+```
+
+Submit G1 and record the returned job ID:
+
+```bash
+development_job="$(
+  sbatch --parsable --export=ALL \
+    "${GMM_SOURCE}/docs/plans/rjmcmc_conditional_allocation_assets/run_gmm_c4b_development_array.sbatch"
+)"
+```
+
+Monitor with `squeue`, `sacct`, and the run-root logs. Do not run the merger
+until all 24 JSON artifacts and all 24 completion markers exist and every
+array task completed successfully. Then:
+
+```bash
+bash "${GMM_SOURCE}/docs/plans/rjmcmc_conditional_allocation_assets/run_gmm_c4b_merge_development.sh"
+```
+
+The merger is a hard gate. If it publishes no common lock, preserve the 24
+shards and stop. If it passes, submit G2:
+
+```bash
+confirmation_job="$(
+  sbatch --parsable --export=ALL \
+    "${GMM_SOURCE}/docs/plans/rjmcmc_conditional_allocation_assets/run_gmm_c4b_confirmation_array.sbatch"
+)"
+```
+
+Require all 18 JSON artifacts, 18 completion markers, and successful Slurm
+states before running:
+
+```bash
+bash "${GMM_SOURCE}/docs/plans/rjmcmc_conditional_allocation_assets/run_gmm_c4b_certify_confirmation.sh"
+```
+
+The certifier publishes
+`certificate/development-certificate.raw.sha256` and binds it into the G2
+completion marker. Inspect the canonical development certificate. G3 is
+forbidden unless its decision is `pass` and
+`eligible_for_protected_holdout` is true. Transfer the sealed catalogue
+through an independent path only then. Do not display, source, or commit it.
+Set its path and run:
+
+```bash
+export GMM_PROTECTED_CATALOGUE=/independent/secure/path/rjmcmc_c4b_protected_density_holdout_v1.json
+bash "${GMM_SOURCE}/docs/plans/rjmcmc_conditional_allocation_assets/run_gmm_c4b_protected_certify.sh"
+```
+
+The protected script remains disabled when that variable is absent. The
+Python certifier first authenticates the frozen runtime, source, development
+certificate, and nominated shards; only an eligible candidate can touch the
+catalogue. It then authenticates the precommitted catalogue digest before
+parsing it and publishes either a pass or terminal scientific hard stop.
+Archive the entire run root and a verified SHA-256 inventory; write nothing
+to `PARIS_inversions`.
 
 ### C4c: conditional Torch MDN for the row case
 

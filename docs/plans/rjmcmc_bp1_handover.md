@@ -245,12 +245,38 @@ conditional on the retained masses. The certified RQMC screen passed eight of
 nine tiny cases and hard-stopped under its predeclared rule. The next bounded
 stage therefore starts with a deterministic residual-image context and
 portable NumPy likelihood evaluator, followed by a root-only zero-input
-eight-component GMM/MDN. Do not add Torch or `sbi` to the runtime for that
-baseline, and do not publish an HPC launch command until the implementation
-and focused tests exist at a pushed full SHA. `sbi` remains an optional
-training/comparison dependency and does not bridge an arbitrary learned Torch
-likelihood into PyMC. No approximate likelihood may update structural
-weights; partitions remain externally weighted by their declared prior.
+eight-component GMM/MDN. The first reviewed implementation checkpoint is
+`5167e36fedd2b0a93b2ba9bfd77534aefffcf485`; it is not an HPC certificate.
+The authoritative BP1 candidate is the later clean pushed full SHA containing
+the shard merger, locked confirmation mode, protected certifier, and launch
+assets.
+
+Do not add Torch or `sbi` to the runtime for this baseline. `sbi` remains an
+optional training/comparison dependency and does not bridge an arbitrary
+learned Torch likelihood into PyMC. No approximate likelihood may update
+structural weights; partitions remain externally weighted by their declared
+prior.
+
+The authoritative GMM protocol is restartable:
+
+- 24 immutable development shards: six cases by four training sizes;
+- one pure validating common-lock merger;
+- 18 immutable confirmation shards: six cases by three frozen seeds, each
+  bound to both raw and internal lock digests;
+- one development certificate that retains `scientific_pass=false`; and
+- one independent, one-shot protected density holdout after development
+  passes.
+
+The protected catalogue is not a set of new operators. It supplies a
+concealed master seed and frozen metadata from which the certifier derives
+131,072 residual draws for each of the same six exact contexts, and promotes
+only the seed-731 artifact at the common locked size, without retraining or
+retuning. Its
+precommitted raw SHA-256 is
+`83bec3945ebc90d5e25d0888b440fe56f761f9059cf01537fbb2227b81510b66`.
+Keep the catalogue itself outside the repository and inaccessible to
+development jobs. Follow stages G0--G3 in the detailed plan; stop at the first
+hard gate.
 
 The reviewed foundation at
 `3e30f9117bcba03920aafd338f7eea529c25b079` passed C0 on BP1. Its
@@ -287,6 +313,7 @@ Read these sibling paths first:
 ../inversions-knowledge/docs/research-questions/rjmcmc-hmc-nuts-and-transported-tuning.md
 ../inversions-knowledge/docs/research-questions/learning-non-gaussian-marginal-models.md
 ../inversions-knowledge/docs/research-questions/posterior-projection-conundrum.md
+../inversions-knowledge/docs/source-notes/sbi-vs-pymc.md
 ../inversions-knowledge/docs/derivations/rjmcmc-dimension-matching-and-augmented-spaces.md
 ../inversions-knowledge/docs/derivations/non-gaussian-aggregation-error-by-marginalization.md
 ../inversions-knowledge/docs/derivations/posterior-projection-and-exact-marginalization.md
