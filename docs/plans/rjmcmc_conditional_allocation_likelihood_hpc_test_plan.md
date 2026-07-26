@@ -848,11 +848,26 @@ The preserved run root is:
 /group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/3c91beea7836a9996d2850aadbc6892d2ed0d46a
 ```
 
-The sixteen-component escalation is current uncommitted work. It must use a
-new development-protocol digest, fresh full-SHA run root, and complete G0/G1
-matrix. It may not reuse the eight-component artifacts. Failure of the
-sixteen-component stage is terminal for this root-GMM architecture and may
-not trigger a flow or conditional row model.
+The single sixteen-component escalation ran at
+`625dc3b26dcad646ee144eea2c5fdc507851cdfa` with development-protocol digest
+`71352ed31c8b90c093a7d50ef7e8fb64bccce84e5521bf1134932f509b4cedc3`.
+G0 passed. G1 array `18187541` submitted all 24 shards; 20 completed and
+published artifacts and markers, while all four
+`skewed__two_cell__root` sizes failed because all three deterministic EM
+initializations failed. Among the 20 valid artifacts, both near-Gaussian
+cases and skewed four-cell passed every size, while both boundary-heavy cases
+failed scientific gates at every size. The exact 24-artifact merger
+precondition was false, so the merger was withheld and no lock exists.
+
+This is terminal for the root-GMM architecture. G2/G3 did not run, the
+protected catalogue remains sealed, and no flow, conditional row model,
+component increase, ladder extension, or threshold change is permitted. The
+preserved run and report are:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/625dc3b26dcad646ee144eea2c5fdc507851cdfa
+docs/plans/rjmcmc_conditional_residual_gmm_16_component_bp1_report.md
+```
 
 Freeze NumPy 2.2.6 and SciPy 1.15.2 for development, confirmation, and
 protected certification. The committed Pixi lock contains these versions;
@@ -919,11 +934,15 @@ than an independently recomputed optimization certificate.
    and completion marker last. No development process may read the concealed
    master seed or derive the protected draws.
 
-Failures and interrupted shards are evidence, not warnings. Preserve them and
-rerun only the missing immutable shard under the same full SHA. Do not run a
-monolithic six-case screen as the authoritative BP1 protocol. A source,
-schema, or replay-contract repair instead requires a fresh full-SHA G0/G1
-run; never mix or reuse shards from the hard-stopped `6ad8eee8` candidate.
+Failures and interrupted shards are evidence, not warnings. An operationally
+interrupted shard may be rerun only as the same missing immutable shard under
+the same full SHA. Deterministic exhaustion of all frozen EM initializations
+is a hard gate, not an operational interruption, and may not be rerun. Do not
+run a monolithic six-case screen as the authoritative BP1 protocol. A source,
+schema, or replay-contract repair would require a fresh full-SHA G0/G1 run;
+the `625dc3b2` result is scientific/numerical and terminal, so no such repair
+is activated. Never mix or reuse shards from the hard-stopped `6ad8eee8`
+candidate.
 
 ### C4b BP1 operator instructions
 

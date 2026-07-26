@@ -735,10 +735,12 @@ not implicit behavior of this implementation.
   skewed cases passed all sizes; both boundary-heavy cases failed all sizes
   despite valid fits and passing independent-domain generalization. G2/G3 did
   not run and the protected catalogue remained sealed.
-- Activated the single predeclared sixteen-component root-GMM escalation
-  because the eight-component boundary failures were stable under increasing
-  training size. This is current uncommitted work and requires a fresh
-  full-SHA G0/G1 run. Failure is terminal for the root-GMM architecture.
+- Ran the single predeclared sixteen-component root-GMM escalation at
+  `625dc3b26dcad646ee144eea2c5fdc507851cdfa`. G1 array `18187541`
+  published 20 of 24 artifacts; all four skewed two-cell fits exhausted the
+  three deterministic EM starts, while both boundary-heavy cases still failed
+  every scientific size gate. The merger precondition was false, so no lock,
+  G2, or G3 exists. This is terminal for the root-GMM architecture.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 

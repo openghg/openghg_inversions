@@ -18,6 +18,35 @@ Do not add `sbi`, Torch, a PyMC bridge, a conditional row network, or a flow in
 this phase. The current task is only the single predeclared
 sixteen-component root-GMM escalation.
 
+## Terminal sixteen-component outcome
+
+The escalation ran from the exact pushed candidate
+`625dc3b26dcad646ee144eea2c5fdc507851cdfa` in the fresh detached worktree
+`/group/chem/acrg/brendan_for_codex/rjmcmc_gmm_worker_625dc3b26dca`.
+Its fresh run root is:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/625dc3b26dcad646ee144eea2c5fdc507851cdfa
+```
+
+G0 passed 71 focused experimental tests, Ruff, focused Pyright, the pinned
+NumPy 2.2.6/SciPy 1.15.2 runtime, and smoke. G1 array `18187541` submitted all
+24 frozen shards. Twenty completed and published artifacts and markers. All
+four sizes of `skewed__two_cell__root` failed because all three deterministic
+EM initializations failed, so they published no artifacts or markers.
+
+The 20 valid artifacts also showed that both near-Gaussian cases and the
+skewed four-cell case passed every size, while both boundary-heavy cases
+failed scientific gates at every size. The exact 24-artifact merger
+precondition was false, so the merger was not run and no lock exists. G2 and
+G3 were withheld and the protected catalogue remained sealed.
+
+This is the first hard gate and is terminal for the root-GMM architecture.
+Do not rerun, add components, extend the ladder, change thresholds, add a flow
+or conditional row model, introduce `sbi`/PyMC, or open the catalogue. See
+[`rjmcmc_conditional_residual_gmm_16_component_bp1_report.md`](rjmcmc_conditional_residual_gmm_16_component_bp1_report.md)
+for the complete report, Slurm inventory, and checksums.
+
 ## Established facts
 
 The repaired eight-component source was:
@@ -50,7 +79,7 @@ This stable, sample-size-insensitive boundary failure is the predeclared
 justification for one sixteen-component escalation. It is an inference that
 the eight-component mixture underfits; the recorded gate failures are facts.
 
-## Sixteen-component candidate
+## Sixteen-component candidate identity
 
 The branch now freezes:
 
@@ -64,9 +93,8 @@ development protocol SHA-256:
 The GMM scientific protocol name and sealed protected-catalogue commitment do
 not change. Component count and architecture stage are included in the
 development-protocol digest, so eight- and sixteen-component artifacts cannot
-be mixed. The pushed branch head after this handoff document is the
-authoritative candidate SHA; resolve it from `origin`, do not guess it from
-this document.
+be mixed. The authoritative candidate SHA resolved from `origin` was
+`625dc3b26dcad646ee144eea2c5fdc507851cdfa`.
 
 Local validation before handoff:
 
@@ -78,7 +106,7 @@ Pyright passed
 git diff --check passed
 ```
 
-## Required BP1 sequence
+## Executed BP1 sequence
 
 Use a fresh detached full-SHA worktree and full-SHA run root. Preserve the
 `3c91beea...` run unchanged and never reuse one of its shards.
@@ -158,62 +186,14 @@ failed artifacts. Publish completion markers last. Do not modify scientific
 source in the detached candidate worktree and do not write to
 `PARIS_inversions`.
 
-## Open questions after this phase
+## Closed phase
 
-These are deliberately deferred until the sixteen-component root result:
+The sixteen-component result closes this bounded learned-density phase.
+Questions about a conditional row model, a flow, PARIS-scale dense deployment,
+or a PyTensor/PyMC bridge were conditional on complete root G2/G3
+certification and are not activated. A future project may revisit a different
+scientific model only under a new, independently reviewed protocol; it must not
+be presented as a continuation or rescue of this root-GMM experiment.
 
-1. Whether a two-region conditional MDN is justified. It is allowed only
-   after complete root G2/G3 certification.
-2. Whether PARIS residual-image rank permits the current dense
-   full-covariance representation. A read-only spectrum/resource probe must
-   precede real-data training; the current scalar canonical-basis builder is a
-   tiny-oracle implementation, not a PARIS-scale algorithm.
-3. Whether a future learned artifact should be exported into native PyTensor.
-   `sbi`'s PyMC sampler does not insert an arbitrary Torch likelihood into an
-   existing PyMC graph. The preferred bridge is a native PyTensor
-   implementation of accepted plain float64 arrays.
-4. How to estimate real-data absolute evidence with independently audited
-   Monte Carlo uncertainty materially below the 0.05-nat gate.
-
-## Copy-paste prompt for the BP1 agent
-
-```text
-Continue the conditional residual-likelihood experiment in
-/group/chem/acrg/brendan_for_codex/openghg_inversions and the sibling
-inversions-knowledge repository.
-
-First read:
-- docs/plans/rjmcmc_conditional_residual_gmm_bp1_handoff.md
-- docs/plans/rjmcmc_conditional_allocation_likelihood_hpc_test_plan.md
-- docs/plans/rjmcmc_bp1_handover.md
-- the relevant learned-marginal-model notes in ../inversions-knowledge
-
-Fetch origin/codex/rjmcmc-aggregation-conditional-likelihood and resolve the
-exact full branch-head SHA. Confirm the worktree is clean. The prior
-eight-component run at
-/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/3c91beea7836a9996d2850aadbc6892d2ed0d46a
-is preserved evidence: do not modify it or reuse its shards. It passed
-cross-node replay but failed the scientific common-suffix gate because both
-boundary-heavy cases failed at every size. G2/G3 never ran and the protected
-catalogue remains sealed.
-
-The branch now contains the single predeclared 16-component underfit
-escalation. Create a fresh detached full-SHA worktree and full-SHA run root.
-Run G0, then the complete 24-task G1 matrix, then the merger, strictly in
-order. Stop at the first hard gate. Do not tune thresholds, add components,
-add a flow, start a conditional row model, or use sbi/PyMC if the
-16-component merger fails. If a common lock is published, continue through
-G2 confirmation and only then the independently sealed G3 protected
-certification exactly as specified.
-
-Keep the scientific roles explicit: Gaussian closure may be used separately
-as an approximation inside RJ; this learned-density track is a non-RJ
-marginal likelihood for a common native model. Its exact limit is invariant
-to partition and K, so no result licenses data-dependent structural weights.
-
-Use only experimental tests, Ruff, focused Pyright, and committed scripts.
-Preserve every artifact and failure; publish markers last; record exact Git
-SHAs, job IDs, run paths, pass/fail gates, and checksum inventories. Commit
-and push code/plans/reports in small coherent increments. Write nothing to
-PARIS_inversions.
-```
+Preserve both full-SHA run roots, the terminal report, and the sealed protected
+catalogue. No further BP1 launch is authorized by this handoff.

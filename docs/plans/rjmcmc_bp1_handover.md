@@ -294,11 +294,26 @@ did not run and the protected catalogue is still sealed. Preserve:
 /group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/3c91beea7836a9996d2850aadbc6892d2ed0d46a
 ```
 
-This stable boundary-heavy underfit activates the single predeclared
-sixteen-component escalation. That escalation is current uncommitted work
-and requires a new full-SHA G0/G1 run; none of the eight-component artifacts
-is reusable. A sixteen-component failure is terminal for the root-GMM
-architecture.
+This stable boundary-heavy underfit activated the single predeclared
+sixteen-component escalation. It ran at
+`625dc3b26dcad646ee144eea2c5fdc507851cdfa` in G1 array `18187541`.
+Twenty of 24 shards completed and published artifacts and markers. All four
+`skewed__two_cell__root` shards failed because all three deterministic EM
+initializations failed. The 20 valid artifacts retained the every-size
+boundary-heavy scientific failures. The exact merger precondition was false,
+so no lock was published; G2/G3 did not run and the protected catalogue
+remains sealed.
+
+This is terminal for the root-GMM architecture. Do not add components, extend
+the ladder, change thresholds, add a flow or conditional row model, introduce
+`sbi`/PyMC, or open the catalogue. Preserve:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/625dc3b26dcad646ee144eea2c5fdc507851cdfa
+```
+
+The readable report and machine-readable inventories are in
+[`rjmcmc_conditional_residual_gmm_16_component_bp1_report.md`](rjmcmc_conditional_residual_gmm_16_component_bp1_report.md).
 
 Do not add Torch or `sbi` to the runtime for this baseline. `sbi` remains an
 optional training/comparison dependency and does not bridge an arbitrary
