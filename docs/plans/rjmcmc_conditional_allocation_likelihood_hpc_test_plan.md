@@ -792,9 +792,18 @@ The first reviewed implementation checkpoint is
 `5167e36fedd2b0a93b2ba9bfd77534aefffcf485`. It supplies the portable
 root-GMM trainer, authenticated fitted-bundle envelopes, the protected
 catalogue commitment, a smoke profile, and focused tests. It is a development
-checkpoint, not an HPC certificate. The authoritative candidate is the later
-clean pushed full SHA containing the phase merger, protected certifier, and
-HPC assets.
+checkpoint, not an HPC certificate. The authoritative candidate is the clean
+pushed full SHA `6ad8eee8c1d02289e1b130c4204b8bbe9c86135e`, containing
+the phase merger, protected certifier, and HPC assets. Its G0 preflight passed
+on BP1 with 65 focused tests, Ruff, Pyright, and the bounded smoke profile.
+G1 array `18187077` was then submitted under account `chem007981`; its
+initial state was pending for priority, after which all 24 tasks began
+running. No development artifact had been published at the first
+running-state check. The run root is:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/6ad8eee8c1d02289e1b130c4204b8bbe9c86135e
+```
 
 Freeze NumPy 2.2.6 and SciPy 1.15.2 for development, confirmation, and
 protected certification. The committed Pixi lock contains these versions;

@@ -247,9 +247,20 @@ stage therefore starts with a deterministic residual-image context and
 portable NumPy likelihood evaluator, followed by a root-only zero-input
 eight-component GMM/MDN. The first reviewed implementation checkpoint is
 `5167e36fedd2b0a93b2ba9bfd77534aefffcf485`; it is not an HPC certificate.
-The authoritative BP1 candidate is the later clean pushed full SHA containing
-the shard merger, locked confirmation mode, protected certifier, and launch
-assets.
+The authoritative BP1 candidate is
+`6ad8eee8c1d02289e1b130c4204b8bbe9c86135e`, containing the shard
+merger, locked confirmation mode, protected certifier, and launch assets.
+Its G0 preflight passed on BP1 with 65 focused tests, Ruff, Pyright, and the
+bounded smoke screen. The fresh run root is
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/6ad8eee8c1d02289e1b130c4204b8bbe9c86135e
+```
+
+G1 development array `18187077` was submitted under account `chem007981`.
+It was initially pending for priority, then all 24 tasks began running. No
+artifact had been published at the first running-state check; this is not a
+scientific result or hard stop.
 
 Do not add Torch or `sbi` to the runtime for this baseline. `sbi` remains an
 optional training/comparison dependency and does not bridge an arbitrary

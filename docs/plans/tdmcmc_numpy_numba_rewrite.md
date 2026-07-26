@@ -709,6 +709,12 @@ not implicit behavior of this implementation.
   banks and replay likelihood, gradient, evidence, posterior, and
   generalization gates; protected inputs remain sealed until the frozen
   runtime, source, certificate, and all six nominated artifacts pass.
+- Pushed the certifying candidate
+  `6ad8eee8c1d02289e1b130c4204b8bbe9c86135e`. Its BP1 G0 preflight
+  passed 65 focused tests, Ruff, Pyright, and smoke. G1 development array
+  `18187077` is the next active gate; all 24 tasks began running after an
+  initial priority wait, with no artifact published at the first running
+  check.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 
