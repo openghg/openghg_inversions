@@ -181,7 +181,22 @@ This track is independent of an H2d calibration outcome:
    at `e0b2166597b3baa360233eb3ff63ee325a30c263`. Its certified BP1 screen at
    `863353443488b7e08900a147f92039d444676d41` passed eight of nine cases but
    hard-stopped on boundary-heavy four-cell root. Start the normalized
-   residual-image MDN/NLE fallback; do not extend the RQMC ladder post hoc.
+   residual-image density fallback; do not extend the RQMC ladder post hoc.
+   The bounded order is:
+   C4a deterministic residual-image context plus portable float64 NumPy
+   evaluator; C4b root-only zero-input eight-component full-covariance
+   GMM/MDN on the tiny exact cases without Torch or `sbi`; C4c a conditional
+   Torch MDN for the row case only if needed; C4d native PyTensor/PyMC export
+   only after tiny-oracle certification; and C4e a PARIS rank/resource probe
+   before selecting a factor-analyzer or truncated-image production model.
+   The dense full-covariance model is tiny-only and is not credible at
+   \(q=1382\). The frozen root training ladder is
+   \(4{,}096,16{,}384,65{,}536,262{,}144\) whole draws, with separate
+   validation, simulator-test, and protected density-holdout sets. Lock the
+   smallest size with a two-size passing suffix; passing only at the largest
+   size is a hard stop. Exact seeds, split sizes, and confirmation rules are
+   in the linked C4 plan and remain subject to an implementation certificate
+   before launch.
 4. Create and hash run-root analysis harnesses for the remaining
    moderate/PARIS conditional diagnostics. Reusable implementation belongs on
    the separate branch/worktree and must be reviewed, committed, and pushed
@@ -197,6 +212,14 @@ This track is independent of an H2d calibration outcome:
 8. Keep partitions external to the approximate likelihood workflow. Combine
    common summaries using the declared structural prior weights; evidence
    differences are leakage diagnostics, not RJ or softmax weights.
+
+Under the common proper native prior, exact conditional marginalization and
+then integration over retained masses recovers the same \(p(y)\) for every
+partition. Thus the data cannot update a representation-only \(P\) or \(K\).
+The learned residual density is an approximation to that conditional
+calculation, not a classifier of bases. Approximate evidence differences must
+be treated as projection-invariance leakage and may never replace the
+externally declared structural weights.
 
 Keep this first integration downstream of `fixed_basis_nuts.py`, preferably in
 `fixed_basis_aggregation_nuts.py`. Do not partially wire aggregation error
@@ -214,13 +237,20 @@ restarts. Preserve its authoritative run:
 /group/chem/acrg/brendan_for_codex/rjmcmc_aggregation_transported_mixture/6ff3afe56416e701ac1fc4ae45676d08ea28229b/t2/11a43a24da003019e600c990da143573f527ce1b85ffeaedada80ec857edbd28
 ```
 
-The current successor is a frozen conditional-allocation finite mixture; see
+The frozen conditional-allocation finite mixture and its RQMC successor are
+documented in
 [`rjmcmc_conditional_allocation_likelihood_hpc_test_plan.md`](rjmcmc_conditional_allocation_likelihood_hpc_test_plan.md).
 It directly averages noise-convolved within-region Dirichlet allocations
-conditional on the retained masses. Add a conditional MDN or flow only if
-that bank fails its declared accuracy, memory, or throughput gate. No
-approximate likelihood may update structural weights; partitions remain
-externally weighted by their declared prior.
+conditional on the retained masses. The certified RQMC screen passed eight of
+nine tiny cases and hard-stopped under its predeclared rule. The next bounded
+stage therefore starts with a deterministic residual-image context and
+portable NumPy likelihood evaluator, followed by a root-only zero-input
+eight-component GMM/MDN. Do not add Torch or `sbi` to the runtime for that
+baseline, and do not publish an HPC launch command until the implementation
+and focused tests exist at a pushed full SHA. `sbi` remains an optional
+training/comparison dependency and does not bridge an arbitrary learned Torch
+likelihood into PyMC. No approximate likelihood may update structural
+weights; partitions remain externally weighted by their declared prior.
 
 The reviewed foundation at
 `3e30f9117bcba03920aafd338f7eea529c25b079` passed C0 on BP1. Its

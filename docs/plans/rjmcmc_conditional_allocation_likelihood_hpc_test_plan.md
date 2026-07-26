@@ -581,6 +581,10 @@ This hard stop does not license structural evidence weights.
 
 ## C2: moderate and PARIS feasibility
 
+This finite-bank stage is withheld because C1-RQMC hard-stopped. Do not run
+this matrix by selectively promoting the eight passing tiny cases. The
+corresponding learned-density rank and resource feasibility test is C4e.
+
 Use the frozen May 2014 PARIS identity:
 
 ```bash
@@ -619,7 +623,11 @@ aggregate RSS below 200 GB. Use Slurm for the retained matrix.
 
 ## C3: PyTensor and fixed-basis posterior integration
 
-Proceed only after C1 passes and C2 identifies an affordable bank/rank pair.
+This section remains the integration specification for a finite bank, but it
+is withheld by the C1-RQMC hard stop. For an accepted learned artifact, follow
+C4d instead. Proceed here only if a future predeclared finite-bank method
+passes C1 and C2 identifies an affordable bank/rank pair.
+
 Implement the likelihood in native PyTensor primitives:
 
 - region masses to component means is one fixed tensor contraction;
@@ -649,57 +657,173 @@ interpreting scientific differences. Bank-to-bank posterior variation must
 be smaller than posterior Monte Carlo uncertainty for the declared common
 summaries.
 
-## C4: optional learned density
+## C4: learned residual-image density
 
-Add `sbi` only if the finite conditional bank fails a declared accuracy,
-memory, or throughput gate.
+The certified C1-RQMC result activates this bounded fallback. The learned
+density is still an approximation to a conditional likelihood for one fixed
+partition; it is not a learned posterior over partitions and must not supply
+data-dependent weights for \(P\) or \(K\).
 
-For one fixed partition, construct an authenticated orthonormal basis \(Q_P\)
-for the exact error-whitened aggregation-residual image. Do not train a
-noise-free density in the full observation space: it is generally singular
-there. With \(T=\sum_j A_j\) and retained mass shares \(w_j=A_j/T\), learn
+The scientific identity is stronger than equality of a few projected
+moments. Let one proper native prior and observation model be fixed, let
+\(p_P(A)\) be the exact pushforward prior for the retained masses under
+partition \(P\), and let \(L_P(y\mid A)\) exactly integrate the discarded
+within-region allocations. Then
+
+\[
+\int L_P(y\mid A)\,p_P(A)\,dA=p(y)
+\]
+
+for every representation \(P\). Exact marginalization is therefore
+projection-invariant, and externally randomized \(P\) remains independent of
+the data. Any variation in an approximate evidence across partitions or
+values of \(K\) measures approximation leakage. It may be reported as a
+failure diagnostic, but it may not be interpreted as evidence for a basis,
+softmaxed into structural weights, or used to update the declared
+structural prior.
+
+### C4a: deterministic residual-image context and portable evaluator
+
+For one fixed partition, construct and persist an authenticated orthonormal
+basis \(Q_P\) for the exact error-whitened aggregation-residual image. Do not
+fit a noise-free density in the full observation space: it is generally
+singular there. With \(T=\sum_j A_j\) and retained mass shares
+\(w_j=A_j/T\), define
 
 \[
 \xi=T^{-1}Q_P^\mathsf TD^{-1/2}H\{X-g_P(A)\}
 \quad\text{conditional on }w.
 \]
 
-The alpha field, partition, observation operator, error model, residual-image
-basis, and renderer are fixed artifact context. The realized observation is
-not a training or selection input. Root partitions require no conditioning
-input; two-region partitions require one logit-share input.
+The alpha field, stable cell identities, labelled partition, observation
+operator, diagonal error model, residual-image basis, rank tolerance, and
+conditional-mean renderer are immutable artifact context. The realized
+observation is not a basis, training, model-selection, or hyperparameter
+input. Root partitions have a zero-dimensional conditioner; the four-cell
+row case has one logit-share conditioner.
 
-Start with a small full-covariance conditional MDN before MAF or NSF because
-an MDN is normalized, auditable, and can be exported to native PyTensor
-primitives. Its observation likelihood analytically convolves measurement
-noise, so component covariance in residual coordinates is
-\(I+T^2\Sigma_\ell(w)\), with the exact orthogonal Gaussian factor retained.
-This preserves normalization and avoids asking the learner to reproduce
-known noise.
+Implement the first evaluator in float64 NumPy with no Torch or `sbi`
+dependency. A learned mixture supplies weights, residual-coordinate means,
+and positive-definite covariances. After analytic convolution with known
+measurement error, component covariance is
+\(I+T^2\Sigma_\ell(w)\). Retain both the exact Gaussian factor orthogonal to
+\(Q_P\) and the \(-\sum_i\log \sigma_i\) observation-noise Jacobian. Test
+rank-zero, full-rank, root, row, and singleton-region cases; dense-Gaussian
+parity; normalization; region and cell permutation invariance; serialization
+round trips; context-hash rejection; and malformed covariance artifacts.
 
-Use whole conditional native-allocation draw IDs for train, validation,
-simulator-test, and held-out splits. Predeclare a training-size ladder and
-lock the smallest size passing all development cases before independent-seed
-confirmation. Begin with eight mixture components and two 32-unit
-float64 `tanh` layers. Permit one predeclared escalation to sixteen
-components and two 64-unit layers only when training is stable but the smaller
-model underfits; failure of both is a hard stop before a flow.
+Publish no C4 HPC launch command until this implementation, its focused
+tests, and an independent review have landed at a pushed full SHA.
 
-Use whole-native-draw, whole-partition, and whole-operator held-out splits.
-Record architecture, preprocessing, float dtype, seeds, package versions,
-training/validation identities, and a `state_dict`-style artifact rather than
-relying on an opaque pickle.
+### C4b: root-only zero-input GMM/MDN tiny baseline
 
-`sbi`'s PyMC MCMC backend samples an `sbi`-owned posterior potential; it does
-not insert an arbitrary Torch likelihood into the existing PyMC graph. Either:
+First address the sole RQMC failure: the boundary-heavy four-cell root.
+Because a root has no conditioning coordinate, fit a deterministic,
+zero-input, eight-component full-covariance Gaussian mixture in residual
+coordinates. This is the constant-network special case of an MDN and can be
+trained by audited float64 NumPy EM; it deliberately introduces no Torch or
+`sbi` dependency.
 
-1. keep the complete bounded posterior in Torch/`sbi`;
-2. export a simple MDN to PyTensor; or
-3. build and validate a custom Torch-autograd PyTensor operation.
+Reuse the frozen C1 exact quadrature cases, mass grid, posterior summaries,
+gradient locations, and scientific thresholds. Split by whole native
+allocation draw ID so no transforms of one simulator draw cross training,
+validation, simulator-test, or untouched confirmation sets. The frozen
+development protocol, subject to an implementation certificate before
+launch, is:
 
-A custom operation must include both residual and conditioning-coordinate
-gradient paths. The current PyMC-to-NumPyro/JAX path cannot consume a generic
-Torch operation without a separate JAX lowering.
+- nested training sizes
+  \(N=4{,}096,16{,}384,65{,}536,262{,}144\);
+- 65,536 validation draws, 131,072 simulator-test draws, and a separately
+  protected 131,072-draw density holdout;
+- development seed 731 and independent confirmation seeds 1877, 4099, and
+  8317, all under a new learned-density domain separator; and
+- selection of the smallest common training size with a two-size passing
+  suffix. A pass only at \(N=262{,}144\) is a hard stop rather than a locked
+  size.
+
+At each training size, run exactly three deterministic EM starts. Use stable
+`logsumexp` responsibilities and Cholesky-based full-covariance calculations,
+regularize every component covariance by \(10^{-8}I\) (equivalently a
+\(10^{-4}\) standard-deviation floor), and fail rather than silently repair an
+empty component. Cap each fit at 2,000 iterations; convergence requires an
+objective change below \(10^{-7}\) nat per draw for 10 consecutive
+iterations. Select among valid starts by validation negative log likelihood,
+never by a protected scientific gate.
+
+Also freeze and source-pin before launch:
+
+- the whole-draw split hash and independent simulator seeds;
+- deterministic initialization/restart identities;
+- covariance floors and all convergence tolerances;
+- the exact quadrature and density-test catalogues; and
+- the independent-seed confirmation rule.
+
+Do not invent or extend the ladder after observing a failure. The earlier
+eight-component, full-covariance model is the only first-stage architecture.
+One predeclared escalation to sixteen components is permitted only if EM is
+numerically valid and the eight-component fit demonstrably underfits. If
+either stage is unstable, non-normalized, or fails the unchanged value,
+gradient, evidence, and posterior-summary gates, stop before adding a flow.
+
+Store the fitted arrays, preprocessing, float dtype, split identities, seeds,
+versions, training history, context digest, and whole-artifact digest in an
+auditable state-dictionary-style payload rather than an opaque pickle.
+
+### C4c: conditional Torch MDN for the row case
+
+Only if a conditional case needs a learner after the root baseline passes,
+add an optional Torch training environment. Begin with eight mixture
+components and two 32-unit float64 `tanh` layers; permit one predeclared
+escalation to sixteen components and two 64-unit layers under the same
+underfit-only rule. Use an additive-log-ratio/logit representation of
+strictly positive shares and record its ordering and preprocessing in the
+artifact.
+
+Training remains outside the runtime likelihood. Export plain arrays into
+the independently tested NumPy evaluator. Use whole-native-draw splits for
+ordinary generalization and separate whole-partition and whole-operator
+contexts as held-out transfer tests. A held-out partition or operator is a
+new sealed context trained with the already frozen recipe; it must never
+cause retrospective tuning of the development recipe.
+
+`sbi` remains an optional training/comparison dependency, not a required
+runtime dependency. Its PyMC MCMC backend samples an `sbi`-owned posterior
+potential; it does not insert an arbitrary Torch likelihood into the existing
+PyMC graph and therefore is not a PyMC likelihood bridge.
+
+### C4d: PyTensor/PyMC export
+
+Proceed only after the independent NumPy evaluator passes the tiny exact
+oracles and confirmation seeds. Re-express the accepted fixed artifact in
+native PyTensor primitives, then require float64 value and gradient parity at
+randomized interior states, including both residual and conditioning paths.
+Integrate it into a fixed-basis PyMC model as one dependent observation block
+with a scalar joint-likelihood diagnostic. Do not fabricate a pointwise
+`log_likelihood.observed`.
+
+A custom Torch-autograd PyTensor operation is a last resort and requires the
+same value/gradient and serialization gates. The PyMC-to-NumPyro/JAX path
+cannot consume a generic Torch operation without a separately implemented
+and tested JAX lowering.
+
+### C4e: PARIS rank and resource gate
+
+Before training on PARIS, measure the numerical rank and spectrum of each
+authenticated residual-image context, together with build time, artifact
+size, evaluation cost, and peak RSS. The dense full-covariance mixture in
+C4b is a tiny-oracle baseline only. At the likely full rank
+\(q=1382\), eight dense components require millions of covariance outputs
+and repeated cubic factorizations; a conventional dense MDN is not an
+acceptable production design.
+
+Predeclare retained-rank error and resource budgets. If the image is not
+small enough under those budgets, stop dense deployment and test a normalized
+factor-analyzer mixture or a frozen truncated residual-image model with an
+explicit complement. Truncation must be validated against streamed
+simulation, and any cross-partition evidence drift remains leakage rather
+than structural information. A universal topology encoder, a learned
+partition posterior, and a flow are outside this phase unless these bounded
+models fail for a documented scientific reason.
 
 ## Completion and stop rules
 
