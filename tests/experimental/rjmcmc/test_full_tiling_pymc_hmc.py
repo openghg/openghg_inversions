@@ -370,6 +370,45 @@ def test_structural_log_involution_is_exact_at_extreme_ratios(
     assert reverse.log_acceptance_ratio == -forward.log_acceptance_ratio
 
 
+def test_structural_log_involution_mh_ratio_negates_bit_exactly() -> None:
+    """Reverse accounting negates the full binary64 MH ratio exactly."""
+    problem, initial = _problem_state(k=4)
+    geometry = _geometry_transition(problem, initial, "edge_flip")
+    assert geometry.reverse_merge_choice is not None
+    assert geometry.reverse_split_choice is not None
+    transformed_delta = -10.123456789
+    log_q_forward = math.log(0.5) - math.log(4.0)
+    log_q_reverse = math.log(0.5) - math.log(10.0)
+    forward = sampling._LogMassInvolutionTransitionTerms(
+        candidate=geometry.candidate,
+        move="edge_flip",
+        delta_log_likelihood=transformed_delta,
+        log_q_forward_selection=log_q_forward,
+        log_q_reverse_selection=log_q_reverse,
+        reverse_merge_choice=geometry.reverse_merge_choice,
+        reverse_split_choice=geometry.reverse_split_choice,
+        exact_scientific_log_target_delta=transformed_delta,
+        log_mass_chart_delta=0.0,
+        exact_transformed_log_target_delta=transformed_delta,
+    )
+    reverse = sampling._LogMassInvolutionTransitionTerms(
+        candidate=initial,
+        move="edge_flip",
+        delta_log_likelihood=-transformed_delta,
+        log_q_forward_selection=log_q_reverse,
+        log_q_reverse_selection=log_q_forward,
+        reverse_merge_choice=geometry.reverse_merge_choice,
+        reverse_split_choice=geometry.reverse_split_choice,
+        exact_scientific_log_target_delta=-transformed_delta,
+        log_mass_chart_delta=-0.0,
+        exact_transformed_log_target_delta=-transformed_delta,
+    )
+
+    assert reverse.log_q_forward_selection == forward.log_q_reverse_selection
+    assert reverse.log_q_reverse_selection == forward.log_q_forward_selection
+    assert reverse.log_acceptance_ratio == -forward.log_acceptance_ratio
+
+
 def test_extreme_physical_fraction_loses_reverse_support_but_log_involution_does_not() -> None:
     """The former physical-fraction chart rounds an extreme supported ratio to one."""
     problem, initial = _problem_state(k=4)

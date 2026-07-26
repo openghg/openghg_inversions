@@ -139,7 +139,8 @@ class _LogMassInvolutionTransitionTerms(PosteriorTransitionTerms):
             raise ValueError("log-involution proposals have no auxiliary or proposal Jacobian.")
         component_delta = self.log_target_delta
         correction = 0.0 if values[0] == component_delta else values[0] - component_delta
-        acceptance = values[2] + self.log_q_reverse_selection - self.log_q_forward_selection
+        selection_ratio = self.log_q_reverse_selection - self.log_q_forward_selection
+        acceptance = values[2] + selection_ratio
         if math.isnan(acceptance):
             raise ValueError("log-involution acceptance ratio cannot be NaN.")
         object.__setattr__(self, "exact_scientific_log_target_delta", values[0])
