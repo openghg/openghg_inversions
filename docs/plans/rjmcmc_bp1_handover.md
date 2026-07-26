@@ -178,8 +178,10 @@ This track is independent of an H2d calibration outcome:
    Continue its separate
    [HPC plan](rjmcmc_conditional_allocation_likelihood_hpc_test_plan.md)
    with the bounded scrambled-Sobol balanced-Dirichlet successor implemented
-   at `e0b2166597b3baa360233eb3ff63ee325a30c263`. If Sobol also fails, use the
-   normalized residual-image MDN/NLE fallback.
+   at `e0b2166597b3baa360233eb3ff63ee325a30c263`. Its certified BP1 screen at
+   `863353443488b7e08900a147f92039d444676d41` passed eight of nine cases but
+   hard-stopped on boundary-heavy four-cell root. Start the normalized
+   residual-image MDN/NLE fallback; do not extend the RQMC ladder post hoc.
 4. Create and hash run-root analysis harnesses for the remaining
    moderate/PARIS conditional diagnostics. Reusable implementation belongs on
    the separate branch/worktree and must be reviewed, committed, and pushed

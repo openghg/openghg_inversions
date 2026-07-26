@@ -553,6 +553,32 @@ Promotion rule:
   normalized residual-image MDN/NLE prototype;
 - neither outcome licenses data-dependent weights for \(P\) or \(K\).
 
+### Certified C1-RQMC outcome
+
+The source-pinned BP1 run at
+`863353443488b7e08900a147f92039d444676d41`, Slurm array `18186093`,
+completed all nine cases. The committed certifier published a complete
+`hard_stop` decision:
+
+- eight of nine cases passed;
+- all near-Gaussian and skewed cases passed;
+- boundary-heavy two-cell root and four-cell row passed;
+- boundary-heavy four-cell root did not establish the required two-size
+  passing suffix;
+- its \(S=16{,}384\) evaluation passed, but \(S=1{,}024\) and \(4{,}096\)
+  still failed only the posterior-SD relative-error gate, so the isolated
+  final pass cannot select a locked bank size;
+- all nine tasks completed in 4--11 seconds with peak task RSS below 171 MiB.
+
+The certified report is
+`/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_allocation_likelihood/863353443488b7e08900a147f92039d444676d41/c1-rqmc/report/RESULTS.md`.
+Its manifest SHA-256 is
+`a65957426e5450e1079871acc6bad58f20798a7c3bb4ac4e84e5aa2a62b716b0`.
+The result is scientifically much better than the PCG64 bank's four of nine
+passes, but the predeclared rule prohibits extending the Sobol ladder after
+seeing the failure. Proceed to C4's learned normalized conditional density.
+This hard stop does not license structural evidence weights.
+
 ## C2: moderate and PARIS feasibility
 
 Use the frozen May 2014 PARIS identity:

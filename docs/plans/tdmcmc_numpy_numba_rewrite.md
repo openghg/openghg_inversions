@@ -681,6 +681,13 @@ not implicit behavior of this implementation.
   PCG64 v1 contract unchanged. Exact moment, product, multi-block, endpoint,
   replay, and permutation gates pass locally; the unchanged nine-case BP1
   C1 screen is next.
+- The certified RQMC BP1 screen at
+  `863353443488b7e08900a147f92039d444676d41` passed eight of nine cases.
+  Boundary-heavy four-cell root passed only at the final \(S=16{,}384\)
+  point, not the required two-size suffix; at \(S=1{,}024\) and \(4{,}096\)
+  only posterior-SD relative error remained outside tolerance. The
+  predeclared `hard_stop` therefore starts the normalized residual-image
+  MDN/NLE fallback rather than a post-hoc Sobol-ladder extension.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 
