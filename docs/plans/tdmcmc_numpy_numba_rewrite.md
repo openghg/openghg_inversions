@@ -667,6 +667,13 @@ not implicit behavior of this implementation.
   Gaussian components. The fixed projection is a computational
   representation, not a data-selected model; evidence drift remains a
   surrogate-error diagnostic.
+- Completed the corrected PCG64 conditional-allocation C1 development screen
+  at `6ee6e5375b60535ac5f00f3ce2d786a6e3ad957e`. Four of nine cases passed,
+  but five failed the unchanged bank-convergence or independent-confirmation
+  gates. This is a scientific hard stop for that finite random-bank method,
+  not a provenance or implementation failure. The next bounded method is a
+  joint scrambled-Sobol allocation bank under the same gates, followed, if
+  necessary, by a normalized residual-image MDN/NLE model.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 

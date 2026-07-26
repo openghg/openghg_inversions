@@ -172,9 +172,13 @@ This track is independent of an H2d calibration outcome:
    scientific-shape hard stop. Do not rerun them merely to erase a failure.
 2. Preserve the transported-mixture T2 hard stop at `6ff3afe`; no held-out
    promotion was licensed.
-3. Continue the frozen conditional-allocation likelihood under its separate
-   [HPC plan](rjmcmc_conditional_allocation_likelihood_hpc_test_plan.md),
-   beginning with C0 and the exact tiny C1 screen.
+3. Preserve the PCG64 conditional-allocation C1 development hard stop at
+   `6ee6e5375b60535ac5f00f3ce2d786a6e3ad957e`. Four of nine cases passed,
+   but five failed the unchanged bank-convergence or confirmation gates.
+   Continue its separate
+   [HPC plan](rjmcmc_conditional_allocation_likelihood_hpc_test_plan.md)
+   with the bounded jointly scrambled Sobol successor. If Sobol also fails,
+   use the normalized residual-image MDN/NLE fallback.
 4. Create and hash run-root analysis harnesses for the remaining
    moderate/PARIS conditional diagnostics. Reusable implementation belongs on
    the separate branch/worktree and must be reviewed, committed, and pushed
@@ -223,8 +227,17 @@ immutable run root is:
 /group/chem/acrg/brendan_for_codex/rjmcmc_conditional_allocation_likelihood/3e30f9117bcba03920aafd338f7eea529c25b079/c0
 ```
 
-C1 exact scientific-shape and bank-convergence gates remain open. Do not
-promote C0 as evidence that a finite bank is accurate.
+C1 exact scientific-shape and bank-convergence gates rejected the finite
+PCG64 bank in five of nine development cases. The authoritative report is:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_allocation_likelihood/6ee6e5375b60535ac5f00f3ce2d786a6e3ad957e/c1/report/RESULTS.md
+```
+
+Do not promote C0 or the four passing cases as evidence that a finite PCG64
+bank is generally accurate. For Slurm submissions use account `chem007981`;
+the default account has produced `PartitionConfig` cancellations on this
+cluster.
 
 ## `inversions-knowledge`
 

@@ -66,15 +66,40 @@ artifacts recorded a null source revision. Preserve it without certifying it:
 
 The replacement interface accepts an explicit full source revision,
 cross-checks it against Git when Git is available, and requires it when Git
-is absent. Rerun in a fresh full-SHA worktree and run root.
-
-Fill in before launch:
+is absent. The authoritative PCG64 C1 development screen completed at
+`6ee6e5375b60535ac5f00f3ce2d786a6e3ad957e`:
 
 ```text
 branch: codex/rjmcmc-aggregation-conditional-likelihood
-candidate revision: <git rev-parse HEAD>
-run root: /group/chem/acrg/brendan_for_codex/rjmcmc_conditional_allocation_likelihood/<full SHA>
+candidate revision: 6ee6e5375b60535ac5f00f3ce2d786a6e3ad957e
+run root: /group/chem/acrg/brendan_for_codex/rjmcmc_conditional_allocation_likelihood/6ee6e5375b60535ac5f00f3ce2d786a6e3ad957e/c1
+report: /group/chem/acrg/brendan_for_codex/rjmcmc_conditional_allocation_likelihood/6ee6e5375b60535ac5f00f3ce2d786a6e3ad957e/c1/report/RESULTS.md
 ```
+
+All nine Slurm tasks completed with the pinned source identity. Four passed:
+the three near-Gaussian cases and the skewed four-cell row case. Five failed
+the unchanged development gates:
+
+- skewed four-cell root locked at \(S=1024\), but two confirmation scrambles
+  failed the gradient gate;
+- skewed two-cell root passed the development ladder at \(S=64\), but all
+  three confirmation scrambles failed, including evidence, posterior
+  summaries, or gradients;
+- both boundary-heavy root cases failed to obtain a stable two-size passing
+  suffix; and
+- boundary-heavy four-cell row passed only at \(S=16384\), so it also lacked
+  the required stable suffix.
+
+This is a scientific development hard stop for the finite PCG64 bank, not an
+implementation or provenance failure. It does not license structural
+reweighting or C2/PARIS promotion. The next bounded experiment replaces only
+the share-bank construction with one jointly scrambled Sobol net, retaining
+the same cases, sizes, seeds, exact oracles, and scientific gates. If that
+also fails, proceed to the predeclared normalized residual-image MDN/NLE
+fallback rather than increasing the PCG64 ladder post hoc.
+
+BP1 jobs must use Slurm account `chem007981`; the default account produced
+`PartitionConfig` cancellations even in the `test` partition.
 
 Run only focused experimental tests, focused Ruff, and focused Pyright.
 Preserve failed artifacts, publish completion markers last, and write nothing
