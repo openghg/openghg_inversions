@@ -1175,6 +1175,21 @@ def _git_revision() -> str | None:
         return None
 
 
+def _source_revision(expected: str | None) -> str:
+    """Return a pinned source revision, cross-checking Git when available."""
+    if expected is not None and (
+        len(expected) != 40 or any(character not in "0123456789abcdef" for character in expected)
+    ):
+        raise ValueError("source_revision must be a 40-character lower-case Git SHA")
+    observed = _git_revision()
+    if expected is not None and observed is not None and observed != expected:
+        raise RuntimeError("source_revision does not match the current Git checkout")
+    revision = expected if expected is not None else observed
+    if revision is None:
+        raise RuntimeError("source_revision is required when Git is unavailable")
+    return revision
+
+
 def _driver_sha256() -> str:
     """Return the exact identity of this executable source file."""
     return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
@@ -1204,6 +1219,7 @@ def run_screen(
     sample_counts: Sequence[int] | None = None,
     repeat_seeds: Sequence[int] | None = None,
     case_id: str | None = None,
+    source_revision: str | None = None,
     include_timings: bool = True,
 ) -> dict[str, Any]:
     """Run a smoke or predeclared development matrix."""
@@ -1253,7 +1269,7 @@ def run_screen(
         "profile": profile,
         "selected_case_id": case_id,
         "per_case_atomic_output": case_id is not None,
-        "source_git_revision": _git_revision(),
+        "source_git_revision": _source_revision(source_revision),
         "driver_sha256": _driver_sha256(),
         "a1_source_revision": A1_SOURCE_REVISION,
         "a1_numerical_source_sha256": A1_NUMERICAL_SOURCE_SHA256,
@@ -1356,6 +1372,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", type=Path)
     parser.add_argument(
+        "--source-revision",
+        help=("Expected full lower-case Git SHA; required when Git is absent from the execution environment"),
+    )
+    parser.add_argument(
         "--sample-counts",
         type=lambda value: _positive_csv(
             value,
@@ -1380,7 +1400,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Validate the CLI, run the selected screen, and publish only on success."""
     args = _parser().parse_args(argv)
     if args.list_matrix:
-        if args.output is not None or args.sample_counts or args.repeat_seeds or args.case_id:
+        if (
+            args.output is not None
+            or args.sample_counts
+            or args.repeat_seeds
+            or args.case_id
+            or args.source_revision
+        ):
             raise SystemExit("--list-matrix cannot be combined with run options")
         print(_canonical_json(matrix_catalogue()))
         return 0
@@ -1393,6 +1419,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sample_counts=args.sample_counts,
         repeat_seeds=args.repeat_seeds,
         case_id=args.case_id,
+        source_revision=args.source_revision,
         include_timings=not args.no_timings,
     )
     _write_atomic_json(args.output, report)

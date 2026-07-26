@@ -153,6 +153,30 @@ def test_cli_catalogue_is_blind_and_does_not_run_matrix(
         screen.main(["--list-matrix", "--output", "forbidden.json"])
 
 
+def test_source_revision_is_explicit_when_git_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compute nodes without Git should require and retain the expected SHA."""
+    revision = "1" * 40
+    monkeypatch.setattr(screen, "_git_revision", lambda: None)
+
+    assert screen._source_revision(revision) == revision
+    with pytest.raises(RuntimeError, match="required when Git is unavailable"):
+        screen._source_revision(None)
+    with pytest.raises(ValueError, match="40-character"):
+        screen._source_revision("ABC")
+
+
+def test_source_revision_mismatch_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit SHA must agree with Git whenever Git is available."""
+    monkeypatch.setattr(screen, "_git_revision", lambda: "1" * 40)
+
+    with pytest.raises(RuntimeError, match="does not match"):
+        screen._source_revision("2" * 40)
+
+
 def test_cli_failure_leaves_no_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

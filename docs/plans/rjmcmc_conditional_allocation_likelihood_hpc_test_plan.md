@@ -48,12 +48,25 @@ development run may not start until those corrections pass focused review.
 The corrected development-only harness now implements those requirements,
 source-pins the bank-size ladder and seeds, removes protected held-out
 numerical definitions, and publishes one atomic result per case. Its focused
-local validation passed 30 tests plus Ruff, formatting, and Pyright, and its
+local validation passed 32 tests plus Ruff, formatting, and Pyright, and its
 independent final review found no development-launch blocker. A
 smallest-bank \(S=64\) diagnostic pilot passed all declared per-bank gates in
 four of nine cases (the three near-Gaussian cases and skewed two-cell root);
 the complete ladder and confirmation seeds remain the authoritative
 development test.
+
+The first BP1 development collection at `0769829d0d7c4aef9ef2250e8f34ca8367854fd9`
+completed all nine tasks but is an infrastructure/provenance hard stop:
+compute nodes lacked `git` on `PATH`, so their otherwise complete JSON
+artifacts recorded a null source revision. Preserve it without certifying it:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_conditional_allocation_likelihood/0769829d0d7c4aef9ef2250e8f34ca8367854fd9/c1
+```
+
+The replacement interface accepts an explicit full source revision,
+cross-checks it against Git when Git is available, and requires it when Git
+is absent. Rerun in a fresh full-SHA worktree and run root.
 
 Fill in before launch:
 
