@@ -279,3 +279,86 @@ def test_nuts_retry_is_sparse_and_merges_primary_selection(
     }
     assert selection["edge-one-p0"] == "retry1"
     assert set(selection.values()) == {"primary", "retry1"}
+
+
+def test_conditional_gate_creates_only_retry_authorization_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = _load("22-gate-conditional.py")
+    run_root = tmp_path / "run"
+    status = run_root / "status"
+    status.mkdir(parents=True)
+    references = [line.split("\t") for line in (_HARNESS / "reference-map.tsv").read_text().splitlines()[1:]]
+    selection = {parts[4]: "primary" for parts in references}
+    (status / "nuts-selection.json").write_text(
+        json.dumps({"selected": selection}),
+        encoding="utf-8",
+    )
+    failed_key = references[0][4]
+    for _, _, _, _, key in references:
+        directory = run_root / "16-conditional" / "local-primary" / "nuts-primary" / key
+        directory.mkdir(parents=True)
+        passed = key != failed_key
+        failed_gate = None if passed else "local_mcse_over_nuts_sd"
+        record: dict[str, object] = {
+            "profile": "primary",
+            "pass": passed,
+            "first_failed_gate": failed_gate,
+        }
+        if not passed:
+            record.update(
+                {
+                    "divergences": 0,
+                    "worst_rhat_value": 1.0,
+                    "min_bulk_ess_value": 500.0,
+                    "min_tail_ess_value": 500.0,
+                }
+            )
+        (directory / "conditional_reference.json").write_text(json.dumps(record))
+        (directory / "complete.json").write_text(
+            json.dumps(
+                {
+                    "pass": passed,
+                    "first_failed_gate": failed_gate,
+                }
+            )
+        )
+        (directory / "audit.json").write_text(json.dumps({"local": {"profile": "primary"}}))
+
+    authorization_parent = run_root / "16-conditional" / "retry-authorization"
+    assert not authorization_parent.exists()
+    calls = 0
+
+    def fake_run(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        output = Path(command[command.index("--output-directory") + 1])
+        assert output.parent == authorization_parent
+        assert output.parent.is_dir()
+        if output.exists():
+            raise FileExistsError(f"output path already exists: {output}")
+        output.mkdir()
+        (output / "token.json").write_text('{"authorized":true}\n')
+        (output / "complete.json").write_text('{"status":"complete"}\n')
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(gate.subprocess, "run", fake_run)
+    arguments = argparse.Namespace(
+        run_root=run_root,
+        harness_directory=_HARNESS,
+        repo_root=_ROOT,
+        source_revision="a" * 40,
+        profile="primary",
+    )
+    result = gate.run(arguments)
+    assert result["action"] == "factor4"
+    assert result["authorization"]["reference_key"] == failed_key
+    assert calls == 1
+    token = authorization_parent / failed_key / "token.json"
+    assert token.read_text() == '{"authorized":true}\n'
+
+    with pytest.raises(FileExistsError, match="output path already exists"):
+        gate.run(arguments)
+    assert calls == 2
+    assert token.read_text() == '{"authorized":true}\n'

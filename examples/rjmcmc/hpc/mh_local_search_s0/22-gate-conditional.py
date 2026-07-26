@@ -138,6 +138,7 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
         local_stage = "14-local-p0" if topology == "p0" else "15-local-pstar"
         local_directory = arguments.run_root / local_stage / "primary" / key
         output = arguments.run_root / "16-conditional" / "retry-authorization" / key
+        output.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
             (
                 sys.executable,
