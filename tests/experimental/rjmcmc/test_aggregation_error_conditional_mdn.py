@@ -288,6 +288,48 @@ def test_near_threshold_residual_rank_fails_closed(
         conditional_mdn_module._canonical_residual_basis(image)
 
 
+def test_canonical_basis_ignores_svd_roundoff_away_from_rank_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LAPACK singular-value drift must not change retained chart bytes."""
+    image = np.asarray(
+        [
+            [1.2, -0.7],
+            [0.4, 1.3],
+            [-0.8, 0.6],
+            [0.2, 0.9],
+        ],
+        dtype=np.float64,
+    )
+    expected_basis, expected_tolerance = conditional_mdn_module._canonical_residual_basis(image)
+    original_svd = np.linalg.svd
+
+    def perturbed_singular_values(*args: object, **kwargs: object) -> np.ndarray:
+        assert kwargs.get("compute_uv") is False
+        result = np.asarray(original_svd(*args, **kwargs), dtype=np.float64)
+        return np.nextafter(result, np.inf)
+
+    monkeypatch.setattr(np.linalg, "svd", perturbed_singular_values)
+    actual_basis, actual_tolerance = conditional_mdn_module._canonical_residual_basis(image)
+
+    np.testing.assert_array_equal(actual_basis, expected_basis)
+    assert actual_tolerance == expected_tolerance
+
+
+def test_near_threshold_canonical_pivot_fails_closed() -> None:
+    """A redundant column near the pivot cutoff must not select a chart."""
+    image = np.asarray(
+        [
+            [1.0, 1.0, 0.0],
+            [0.0, 3.0e-13, 1.0],
+        ],
+        dtype=np.float64,
+    )
+
+    with pytest.raises(ValueError, match="pivot selection is numerically ambiguous"):
+        conditional_mdn_module._canonical_residual_basis(image)
+
+
 def test_cell_permutation_and_region_relabel_preserve_scientific_density() -> None:
     """Canonical regions must remove cell order and label-name effects."""
     aggregation = _aggregation()
@@ -310,6 +352,13 @@ def test_cell_permutation_and_region_relabel_preserve_scientific_density() -> No
     relabelled = _context(1 - labels, aggregation=aggregation, cell_ids=ids)
 
     original_projector = original.residual_basis @ original.residual_basis.T
+    np.testing.assert_array_equal(permuted.residual_basis, original.residual_basis)
+    np.testing.assert_array_equal(
+        permuted.observation_mean_design,
+        original.observation_mean_design,
+    )
+    np.testing.assert_array_equal(permuted.alpha_totals, original.alpha_totals)
+    assert permuted.rank_tolerance == original.rank_tolerance
     np.testing.assert_allclose(
         permuted.residual_basis @ permuted.residual_basis.T,
         original_projector,

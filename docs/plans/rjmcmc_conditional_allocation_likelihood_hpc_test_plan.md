@@ -660,9 +660,13 @@ summaries.
 ## C4: learned residual-image density
 
 The certified C1-RQMC result activates this bounded fallback. The learned
-density is still an approximation to a conditional likelihood for one fixed
-partition; it is not a learned posterior over partitions and must not supply
-data-dependent weights for \(P\) or \(K\).
+density is an alternative non-RJ marginal-likelihood calculation, not a
+learned posterior over partitions. Do not conflate it with the optional
+Gaussian closure, which is an explicit approximation that can be placed in
+an RJ target. The NLE/GMM path integrates hidden allocations for one fixed
+partition; in its exact common-native-model limit it has the same marginal
+likelihood for every \(P\) and \(K\), so it licenses no structural learning
+or data-dependent partition weights.
 
 The initial design was checked against sibling `inversions-knowledge` revision
 `e77d20cffe7ee0298d9106065c962d24198dabdc`, especially
@@ -793,17 +797,35 @@ The first reviewed implementation checkpoint is
 root-GMM trainer, authenticated fitted-bundle envelopes, the protected
 catalogue commitment, a smoke profile, and focused tests. It is a development
 checkpoint, not an HPC certificate. The authoritative candidate is the clean
-pushed full SHA `6ad8eee8c1d02289e1b130c4204b8bbe9c86135e`, containing
-the phase merger, protected certifier, and HPC assets. Its G0 preflight passed
-on BP1 with 65 focused tests, Ruff, Pyright, and the bounded smoke profile.
-G1 array `18187077` was then submitted under account `chem007981`; its
-initial state was pending for priority, after which all 24 tasks began
-running. No development artifact had been published at the first
-running-state check. The run root is:
+pushed full SHA `6ad8eee8c1d02289e1b130c4204b8bbe9c86135e` on
+`codex/rjmcmc-aggregation-conditional-likelihood`, containing the phase
+merger, protected certifier, and HPC assets. Its G0 preflight passed on BP1
+with 65 focused tests, Ruff, Pyright, and the bounded smoke profile. All 24
+G1 development shards in array `18187077` then completed under account
+`chem007981`.
+
+The G1 merger hard-stopped before publishing a lock. Cross-node floating
+replay differed by up to approximately \(1.1\times10^{-9}\) in NLL. Applying
+the scoped roundoff allowance exposed a second portability difference through
+the exact context hash: the same rank-3 residual subspace had basis-coordinate
+variation of approximately \(1.72\times10^{-16}\), attributable to cross-node
+BLAS/LAPACK behavior. This is an implementation-portability hard stop, not a
+scientific GMM result. G2 and G3 did not run, and the protected catalogue was
+not touched. The preserved run root is:
 
 ```text
 /group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/6ad8eee8c1d02289e1b130c4204b8bbe9c86135e
 ```
+
+The repaired candidate direction exists only in current uncommitted work; do
+not assign it a revision yet. It uses scale-aware replay tolerances with
+fail-closed scientific-gate margins shared by the development and protected
+certifiers, and context/basis schema v2 with stable-cell-ordered fixed-scalar
+means and modified Gram--Schmidt. SVD is used only to determine rank, with
+ambiguity gates that stop near a rank boundary. After review and a new pushed
+full SHA, run fresh G0 and all 24 G1 shards. The `6ad8eee8` shards are
+portability evidence only and are not reusable under the changed schema and
+replay contract.
 
 Freeze NumPy 2.2.6 and SciPy 1.15.2 for development, confirmation, and
 protected certification. The committed Pixi lock contains these versions;
@@ -872,7 +894,9 @@ than an independently recomputed optimization certificate.
 
 Failures and interrupted shards are evidence, not warnings. Preserve them and
 rerun only the missing immutable shard under the same full SHA. Do not run a
-monolithic six-case screen as the authoritative BP1 protocol.
+monolithic six-case screen as the authoritative BP1 protocol. A source,
+schema, or replay-contract repair instead requires a fresh full-SHA G0/G1
+run; never mix or reuse shards from the hard-stopped `6ad8eee8` candidate.
 
 ### C4b BP1 operator instructions
 

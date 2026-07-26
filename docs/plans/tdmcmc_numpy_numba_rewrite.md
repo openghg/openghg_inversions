@@ -121,7 +121,7 @@ will be introduced only behind equivalence tests.
 | 2026-07-26 | Use fixed-basis NUTS as the continuous-kernel reference before changing the Gamma root model. | Diagonal and dense NUTS removed the slow fixed-basis root mode by two to three orders of magnitude in ESS/hour, showing that the local continuous transition was the dominant fixed-topology problem. |
 | 2026-07-26 | Test topology-conditioned static Euclidean HMC before RMHMC. | H2/H2b/H2c failures varied strongly by tiling, while a curvature audit found topology effects much larger than within-topology position effects. A deterministic precision may change between tilings while remaining constant during each ordinary HMC trajectory. |
 | 2026-07-26 | Use exact log-coordinate involutions for HMC-specific edge flips and resolution relocations. | The first physical split implementation admitted forward binary64 paths without representable reverse fractions. Coordinate permutations give bit-exact reverse geometry, unit Jacobian, and explicit discrete catalogue accounting. |
-| 2026-07-26 | Treat aggregation error as an explicit marginalization problem before allowing data to select computational partitions. | Under one common proper native model, exact reduced evidence is identical for every representation. A finite Gaussian closure or NLE may leak partition-dependent evidence and therefore requires absolute-evidence/tower gates before structural use. |
+| 2026-07-26 | Keep the RJ Gaussian closure distinct from the non-RJ NLE/GMM marginal-likelihood track. | The Gaussian closure is an optional explicit approximation usable with RJ. The NLE/GMM alternative integrates hidden allocations for fixed partitions; its exact common-native-model limit is partition- and \(K\)-invariant and licenses no structural learning. Approximate evidence drift is leakage, not a learned structural weight. |
 | 2026-07-26 | Test a frozen conditional-allocation bank before adding `sbi`. | The transported standardized-shape mixture failed its T2 development screen. Frozen within-region Dirichlet shares retain the full conditional dependence on region masses, give a deterministic normalized Gaussian mixture after measurement-noise convolution, and can be differentiated directly in NumPy/PyTensor. Partitions remain externally weighted by their structural prior. |
 
 ## Ganesan lineage and active hierarchy plan
@@ -710,11 +710,23 @@ not implicit behavior of this implementation.
   generalization gates; protected inputs remain sealed until the frozen
   runtime, source, certificate, and all six nominated artifacts pass.
 - Pushed the certifying candidate
-  `6ad8eee8c1d02289e1b130c4204b8bbe9c86135e`. Its BP1 G0 preflight
-  passed 65 focused tests, Ruff, Pyright, and smoke. G1 development array
-  `18187077` is the next active gate; all 24 tasks began running after an
-  initial priority wait, with no artifact published at the first running
-  check.
+  `6ad8eee8c1d02289e1b130c4204b8bbe9c86135e` on
+  `codex/rjmcmc-aggregation-conditional-likelihood`. Its BP1 G0 preflight
+  passed 65 focused tests, Ruff, Pyright, and smoke, and all 24 G1
+  development shards completed. The merger hard-stopped before lock:
+  cross-node floating replay differed by up to approximately
+  \(1.1\times10^{-9}\) in NLL, after which the exact context hash exposed
+  approximately \(1.72\times10^{-16}\) basis variation in the same rank-3
+  residual subspace from BLAS/LAPACK. This is an implementation-portability
+  hard stop, not a scientific GMM result. G2/G3 did not run and the protected
+  catalogue was untouched.
+- Began the portability repair in current uncommitted work without assigning
+  a candidate SHA: scale-aware replay tolerances with fail-closed gate
+  margins shared by development and protected certification; context/basis
+  schema v2 using stable-cell-ordered fixed-scalar means and modified
+  Gram--Schmidt; and SVD rank determination only, with ambiguity gates. A
+  reviewed, pushed full SHA must repeat all of G0 and G1; none of the old
+  shards is reusable.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 

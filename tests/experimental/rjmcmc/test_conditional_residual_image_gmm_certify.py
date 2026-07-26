@@ -361,6 +361,100 @@ def test_real_scientific_replay_rejects_coherently_redigested_tampering(
         _REAL_VALIDATE_EVALUATION(corrupted, **kwargs)
 
 
+def test_real_scientific_replay_accepts_scoped_cross_node_roundoff(
+    real_replayed_evaluation: tuple[
+        dict[str, Any],
+        certify._ExactCase,
+        dict[str, Any],
+        dict[tuple[str, int, int], certify.DomainBank],
+    ],
+) -> None:
+    """Observed BP1-sized NLL and gradient roundoff must remain replayable."""
+    evaluation, exact, case_record, cache = real_replayed_evaluation
+    rounded = copy.deepcopy(evaluation)
+    rounded["gradient_audits"][0]["learned_coordinate_gradient"][0] += (
+        0.5 * certify._SCIENTIFIC_REPLAY_ABS_TOL
+    )
+    training = rounded["training"]
+    generalization = training["simulator_test_generalization"]
+    nll_offset = 0.5 * certify._GENERALIZATION_NLL_REPLAY_ABS_TOL
+    generalization["validation_nll_nat_per_draw"] += nll_offset
+    generalization["simulator_test_nll_nat_per_draw"] += nll_offset
+    generalization["absolute_nll_gap_nat_per_draw"] = abs(
+        generalization["simulator_test_nll_nat_per_draw"] - generalization["validation_nll_nat_per_draw"]
+    )
+    training["validation_nll"] = generalization["validation_nll_nat_per_draw"]
+    training["test_nll"] = generalization["simulator_test_nll_nat_per_draw"]
+    envelope = training["fitted_bundle_envelope"]
+    envelope["payload"]["generalization"] = copy.deepcopy(generalization)
+    envelope["sha256"] = c1._sha256_json(envelope["payload"])
+
+    audit = _REAL_VALIDATE_EVALUATION(
+        rounded,
+        exact=exact,
+        case_record=case_record,
+        domain_bank_cache=cache,
+        sample_count=gmm.DEVELOPMENT_SAMPLE_COUNTS[0],
+        base_seed=gmm.DEVELOPMENT_SELECTION_SEED,
+        expected_source_revision=REVISION,
+        expected_driver_sha256=certify._driver_source_sha256(),
+        label="cross-node roundoff regression",
+    )
+
+    assert audit["artifact_sha256"] == training["artifact_sha256"]
+
+
+def test_replay_tolerance_keeps_identities_exact_and_fails_near_gates() -> None:
+    """Replay tolerances apply only to floats and never decide a gate."""
+    replayed = {
+        "value": 1.0,
+        "count": 3,
+        "pass": True,
+        "nested": [0.25],
+    }
+    observed = copy.deepcopy(replayed)
+    observed["value"] += 0.5 * certify._SCIENTIFIC_REPLAY_ABS_TOL
+    observed["nested"][0] -= 0.5 * certify._SCIENTIFIC_REPLAY_ABS_TOL
+    certify._require_replayed_science(observed, replayed, "roundoff")
+
+    wrong_count = copy.deepcopy(observed)
+    wrong_count["count"] = 4
+    with pytest.raises(ValueError, match="authenticated replay"):
+        certify._require_replayed_science(wrong_count, replayed, "identity")
+
+    generalization = {
+        "residual_dimension": 1,
+        "validation_nll_nat_per_draw": 1.0,
+        "simulator_test_nll_nat_per_draw": 1.02,
+        "absolute_nll_gap_nat_per_draw": 0.02,
+        "validation_nll_mcse_nat_per_draw": 0.0,
+        "simulator_test_nll_mcse_nat_per_draw": 0.0,
+        "pooled_nll_mcse_nat_per_draw": 0.0,
+        "fixed_floor_nat_per_draw": 0.02,
+        "threshold_nat_per_draw": 0.02,
+        "pass": True,
+    }
+    with pytest.raises(ValueError, match="too close"):
+        certify._require_replayed_generalization(
+            generalization,
+            generalization,
+            label="ambiguous gate",
+        )
+
+    threshold = c1.THRESHOLDS["between_bank_log_evidence_range_nat"]
+    with pytest.raises(ValueError, match="too close"):
+        certify._four_bank_evidence_range_gate(
+            [-2.0, -2.0 + threshold, -1.99, -1.98],
+            label="ambiguous evidence range",
+        )
+    evidence_range, passed = certify._four_bank_evidence_range_gate(
+        [-2.0, -2.0 + threshold / 2.0, -1.99, -1.98],
+        label="separated evidence range",
+    )
+    assert evidence_range == pytest.approx(threshold / 2.0, abs=1.0e-15)
+    assert passed is True
+
+
 def _development_report(case_id: str, sample_count: int) -> dict[str, Any]:
     """Return one internally consistent development-size shard."""
     report = _report_identity(case_id)

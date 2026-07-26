@@ -46,7 +46,24 @@ CERTIFICATION_PROTOCOL = "conditional-residual-image-gmm-sharded-certifier-v1"
 _FULL_SHA_RE = re.compile(r"[0-9a-f]{40}")
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _MODEL_GATE_NAMES = tuple(name for name in c1.THRESHOLDS if name != "between_bank_log_evidence_range_nat")
-_GENERALIZATION_REPLAY_ABS_TOL = 5.0e-13
+# The independent simulator domains contain up to 131,072 rows.  Different
+# BP1 CPU families produced at most 1.11e-9 nat/draw variation in their
+# vectorized log-density reductions, while the scientific gates are no
+# tighter than 2e-2.  These remain replay-roundoff allowances, not model
+# tolerances; domain, prefix, envelope, and artifact identities remain exact.
+_GENERALIZATION_NLL_REPLAY_ABS_TOL = 1.0e-8
+_GENERALIZATION_MCSE_REPLAY_ABS_TOL = 1.0e-10
+# Exact-grid science replay is much smaller.  The largest observed cross-node
+# difference was 1.46e-11 in one learned-gradient coordinate.
+_SCIENTIFIC_REPLAY_ABS_TOL = 1.0e-10
+_REPLAY_REL_TOL = 1.0e-11
+_GENERALIZATION_NLL_FIELDS = frozenset(
+    {
+        "validation_nll_nat_per_draw",
+        "simulator_test_nll_nat_per_draw",
+        "absolute_nll_gap_nat_per_draw",
+    }
+)
 
 FloatArray = NDArray[np.float64]
 DomainBank = tuple[dict[str, FloatArray], dict[str, dict[str, Any]]]
@@ -107,6 +124,10 @@ def _certification_protocol_sha256() -> str:
             "confirmation_seeds": gmm.CONFIRMATION_SEEDS,
             "minimum_passing_suffix_length": 2,
             "thresholds": c1.THRESHOLDS,
+            "generalization_nll_replay_abs_tolerance": (_GENERALIZATION_NLL_REPLAY_ABS_TOL),
+            "generalization_mcse_replay_abs_tolerance": (_GENERALIZATION_MCSE_REPLAY_ABS_TOL),
+            "scientific_replay_abs_tolerance": _SCIENTIFIC_REPLAY_ABS_TOL,
+            "replay_relative_tolerance": _REPLAY_REL_TOL,
             "development_shard_count": 24,
             "confirmation_shard_count": 18,
         }
@@ -139,6 +160,74 @@ def _require_equal(observed: object, expected: object, label: str) -> None:
     """Reject values that differ under canonical JSON comparison."""
     if _canonical_json(observed) != _canonical_json(expected):
         raise ValueError(f"{label} does not match the frozen protocol")
+
+
+def _replay_tolerance(actual: float, expected: float, *, absolute_floor: float) -> float:
+    """Return a frozen scale-aware cross-node replay tolerance."""
+    return max(
+        absolute_floor,
+        _REPLAY_REL_TOL * max(abs(actual), abs(expected)),
+    )
+
+
+def _require_replayed_science(observed: object, replayed: object, label: str) -> None:
+    """Compare scientific replay recursively with scoped float tolerance."""
+    if isinstance(replayed, dict):
+        if not isinstance(observed, dict) or set(observed) != set(replayed):
+            raise ValueError(f"{label} does not match the authenticated replay")
+        for key, expected in replayed.items():
+            _require_replayed_science(
+                observed[key],
+                expected,
+                f"{label}.{key}",
+            )
+        return
+    if isinstance(replayed, list):
+        if not isinstance(observed, list) or len(observed) != len(replayed):
+            raise ValueError(f"{label} does not match the authenticated replay")
+        for index, (value, expected) in enumerate(zip(observed, replayed, strict=True)):
+            _require_replayed_science(
+                value,
+                expected,
+                f"{label}[{index}]",
+            )
+        return
+    if isinstance(replayed, float):
+        actual = _finite_number(observed, label)
+        tolerance = _replay_tolerance(
+            actual,
+            replayed,
+            absolute_floor=_SCIENTIFIC_REPLAY_ABS_TOL,
+        )
+        if not math.isclose(
+            actual,
+            replayed,
+            rel_tol=0.0,
+            abs_tol=tolerance,
+        ):
+            raise ValueError(f"{label} does not match the authenticated replay")
+        return
+    if type(observed) is not type(replayed) or observed != replayed:
+        raise ValueError(f"{label} does not match the authenticated replay")
+
+
+def _four_bank_evidence_range_gate(evidence: list[float], *, label: str) -> tuple[float, bool]:
+    """Evaluate the evidence-range gate outside its replay-roundoff margin."""
+    if len(evidence) != 4 or any(not math.isfinite(value) for value in evidence):
+        raise ValueError(f"{label} must contain four finite log evidences")
+    evidence_range = float(max(evidence) - min(evidence))
+    threshold = c1.THRESHOLDS["between_bank_log_evidence_range_nat"]
+    endpoint_tolerance = max(
+        _replay_tolerance(
+            value,
+            value,
+            absolute_floor=_SCIENTIFIC_REPLAY_ABS_TOL,
+        )
+        for value in evidence
+    )
+    if abs(evidence_range - threshold) <= 2.0 * endpoint_tolerance:
+        raise ValueError(f"{label} is too close to its pass threshold for portable replay")
+    return evidence_range, evidence_range <= threshold
 
 
 def _require_mapping(value: object, label: str) -> dict[str, Any]:
@@ -480,15 +569,47 @@ def _require_replayed_generalization(
         value = observed[field]
         if isinstance(expected, float):
             actual = _finite_number(value, f"{label} {field}")
+            absolute_floor = (
+                _GENERALIZATION_NLL_REPLAY_ABS_TOL
+                if field in _GENERALIZATION_NLL_FIELDS
+                else _GENERALIZATION_MCSE_REPLAY_ABS_TOL
+            )
+            tolerance = _replay_tolerance(
+                actual,
+                expected,
+                absolute_floor=absolute_floor,
+            )
             if not math.isclose(
                 actual,
                 expected,
                 rel_tol=0.0,
-                abs_tol=_GENERALIZATION_REPLAY_ABS_TOL,
+                abs_tol=tolerance,
             ):
                 raise ValueError(f"{label} {field} does not match the simulator replay")
         elif value != expected or type(value) is not type(expected):
             raise ValueError(f"{label} {field} does not match the simulator replay")
+    observed_gap = _finite_number(
+        observed["absolute_nll_gap_nat_per_draw"],
+        f"{label} observed absolute NLL gap",
+    )
+    observed_threshold = _finite_number(
+        observed["threshold_nat_per_draw"],
+        f"{label} observed threshold",
+    )
+    replayed_gap = _finite_number(
+        replayed["absolute_nll_gap_nat_per_draw"],
+        f"{label} replayed absolute NLL gap",
+    )
+    replayed_threshold = _finite_number(
+        replayed["threshold_nat_per_draw"],
+        f"{label} replayed threshold",
+    )
+    gate_margin = _GENERALIZATION_NLL_REPLAY_ABS_TOL
+    if (
+        abs(observed_gap - observed_threshold) <= gate_margin
+        or abs(replayed_gap - replayed_threshold) <= gate_margin
+    ):
+        raise ValueError(f"{label} is too close to its pass threshold for portable replay")
 
 
 def _replayed_generalization(
@@ -544,7 +665,7 @@ def _reverify_scientific_gates(
         "gradient_audits",
         "diagnostics",
     ):
-        _require_equal(
+        _require_replayed_science(
             nominated.get(field),
             replay[field],
             f"{exact.case_id} replayed {field}",
@@ -552,6 +673,35 @@ def _reverify_scientific_gates(
     checks = _require_mapping(replay["checks"], f"{exact.case_id} replayed checks")
     if set(checks) != set(_MODEL_GATE_NAMES):
         raise ValueError(f"{exact.case_id} replayed model-gate schema changed")
+    recorded_metrics = _require_mapping(
+        nominated.get("metrics"),
+        f"{exact.case_id} recorded metrics",
+    )
+    replayed_metrics = _require_mapping(
+        replay["metrics"],
+        f"{exact.case_id} replayed metrics",
+    )
+    for name in _MODEL_GATE_NAMES:
+        recorded_metric = _finite_number(
+            recorded_metrics[name],
+            f"{exact.case_id} recorded metric {name}",
+        )
+        replayed_metric = _finite_number(
+            replayed_metrics[name],
+            f"{exact.case_id} replayed metric {name}",
+        )
+        gate_margin = _replay_tolerance(
+            recorded_metric,
+            replayed_metric,
+            absolute_floor=_SCIENTIFIC_REPLAY_ABS_TOL,
+        )
+        if (
+            abs(recorded_metric - c1.THRESHOLDS[name]) <= gate_margin
+            or abs(replayed_metric - c1.THRESHOLDS[name]) <= gate_margin
+        ):
+            raise ValueError(
+                f"{exact.case_id} metric {name} is too close to its threshold for portable replay"
+            )
     return replay
 
 
@@ -709,7 +859,11 @@ def _validate_evaluation(
             observed,
             cast(float, expected),
             rel_tol=0.0,
-            abs_tol=_GENERALIZATION_REPLAY_ABS_TOL,
+            abs_tol=_replay_tolerance(
+                observed,
+                cast(float, expected),
+                absolute_floor=_GENERALIZATION_NLL_REPLAY_ABS_TOL,
+            ),
         ):
             raise ValueError(f"{label} {field} does not match the simulator replay")
     replay = _reverify_scientific_gates(
@@ -1189,8 +1343,10 @@ def certify_confirmation(
             nominated["log_evidence"],
             *[audit["log_evidence"] for audit in confirmation_audits],
         ]
-        evidence_range = float(max(evidence) - min(evidence))
-        evidence_pass = evidence_range <= c1.THRESHOLDS["between_bank_log_evidence_range_nat"]
+        evidence_range, evidence_pass = _four_bank_evidence_range_gate(
+            evidence,
+            label=f"{case_id} four-bank evidence range",
+        )
         confirmation_pass = all(audit["pass"] for audit in confirmation_audits)
         case_pass = bool(nominated["pass"] and confirmation_pass and evidence_pass)
         all_cases_pass = all_cases_pass and case_pass

@@ -68,7 +68,6 @@ PROTECTED_SEED_DERIVATION = (
 
 _SHA256_HEX_LENGTH = 64
 _GIT_SHA_HEX_LENGTH = 40
-_EVALUATION_GATE_KEYS = tuple(name for name in c1.THRESHOLDS if name != "between_bank_log_evidence_range_nat")
 
 
 @dataclass(frozen=True)
@@ -712,38 +711,12 @@ def _reverify_scientific_gates(
     exact: _ExactCase,
     nominated: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Recompute and authenticate the nominated model's unchanged gates."""
-    replay = gmm._evaluate_artifact(
+    """Recompute gates using the development certifier's replay contract."""
+    return development_certifier._reverify_scientific_gates(
         artifact=artifact,
-        observation=exact.observation,
-        masses=exact.masses,
-        log_prior=exact.log_prior,
-        exact_log_likelihood=exact.exact_log_likelihood,
-        exact_summary=exact.exact_summary,
-        gradient_states=exact.gradient_states,
-        validation_state_mask=exact.validation_state_mask,
+        exact=cast(Any, exact),
+        nominated=nominated,
     )
-    for field in (
-        "metrics",
-        "checks",
-        "posterior_summary",
-        "posterior_errors_by_coordinate",
-        "gradient_audits",
-        "diagnostics",
-    ):
-        _require_same_json(
-            nominated.get(field),
-            replay[field],
-            f"{exact.case_id} nominated {field}",
-        )
-    if (
-        set(cast(dict[str, Any], replay["checks"])) != set(_EVALUATION_GATE_KEYS)
-        or nominated.get("scientific_model_gates_pass") is not True
-        or nominated.get("scientific_pass") is not True
-        or replay["scientific_pass"] is not True
-    ):
-        raise ValueError(f"{exact.case_id} nominated unchanged scientific gates do not pass")
-    return replay
 
 
 def _protected_density_gate(
@@ -964,6 +937,9 @@ def certification_protocol_sha256() -> str:
             "scientific_schema": gmm.SCHEMA,
             "scientific_protocol": gmm.PROTOCOL,
             "frozen_development_protocol_sha256": gmm.DEVELOPMENT_PROTOCOL_SHA256,
+            "development_certification_protocol_sha256": (
+                development_certifier._certification_protocol_sha256()
+            ),
             "catalogue_schema": CATALOGUE_SCHEMA,
             "catalogue_raw_sha256": gmm.PROTECTED_HOLDOUT_CATALOGUE_SHA256,
             "matrix": gmm.DEVELOPMENT_MATRIX,

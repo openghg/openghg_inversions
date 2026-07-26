@@ -40,6 +40,8 @@ if __package__ in (None, ""):
 from examples.rjmcmc import conditional_allocation_likelihood_tiny_screen as c1
 from openghg_inversions.experimental.rjmcmc.aggregation_error_conditional_mdn import (
     ConditionalResidualImageMDN,
+    RESIDUAL_IMAGE_BASIS_RULE,
+    RESIDUAL_IMAGE_CONTEXT_SCHEMA,
     ResidualImageContext,
 )
 from openghg_inversions.experimental.rjmcmc.aggregation_error_conditional_mixture import (
@@ -88,7 +90,7 @@ VALIDATION_DOMAIN = "model-selection-validation"
 TEST_DOMAIN = "development-reporting-test"
 PROTECTED_HOLDOUT_CATALOGUE_ID = "conditional-residual-image-protected-density-holdout-v1"
 PROTECTED_HOLDOUT_CATALOGUE_SHA256 = "83bec3945ebc90d5e25d0888b440fe56f761f9059cf01537fbb2227b81510b66"
-DEVELOPMENT_PROTOCOL_SHA256 = "3a6beb6b1c379f0ede652ab46df4b1f1805158044e07e0376a53e52897582cc7"
+DEVELOPMENT_PROTOCOL_SHA256 = "51ae6ce153a92091967c1f09fa4d5a3342ab793cb54d78254d3f162a81923fee"
 
 
 def _protocol_sha256() -> str:
@@ -98,6 +100,8 @@ def _protocol_sha256() -> str:
             "schema": SCHEMA,
             "protocol": PROTOCOL,
             "a1_definitions_sha256": c1.A1_DEFINITIONS_SHA256,
+            "residual_image_context_schema": RESIDUAL_IMAGE_CONTEXT_SCHEMA,
+            "residual_image_basis_rule": RESIDUAL_IMAGE_BASIS_RULE,
             "matrix": DEVELOPMENT_MATRIX,
             "training_sample_counts": DEVELOPMENT_SAMPLE_COUNTS,
             "validation_sample_count": VALIDATION_SAMPLE_COUNT,

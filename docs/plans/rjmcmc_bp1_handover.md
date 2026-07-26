@@ -88,10 +88,12 @@ The aggregation-error track asks a different model question. If every
 partition is only a representation of one common proper native model, exact
 hidden-allocation marginalization gives the same evidence for every
 partition. Data then cannot update \(P\) or \(K\); their posterior weights
-equal their structural prior weights. A finite Gaussian closure or NLE may
-violate that identity through approximation error, so structural use requires
-absolute evidence and tower-property gates, not only a normalized conditional
-density.
+equal their structural prior weights. Keep the two approximation uses
+distinct: the Gaussian closure is an optional explicit approximation usable
+inside RJ, whereas the NLE/GMM track is an alternative non-RJ marginal
+likelihood. The latter's exact common-native-model limit is partition- and
+\(K\)-invariant and licenses no structural learning; approximate evidence
+drift is a leakage diagnostic, not a structural weight.
 
 The current \(\kappa=2K\) allocation rule changes the native concentration
 with \(K\). Cross-\(K\) representation-invariance tests must instead freeze one
@@ -250,23 +252,36 @@ eight-component GMM/MDN. The first reviewed implementation checkpoint is
 The authoritative BP1 candidate is
 `6ad8eee8c1d02289e1b130c4204b8bbe9c86135e`, containing the shard
 merger, locked confirmation mode, protected certifier, and launch assets.
-Its G0 preflight passed on BP1 with 65 focused tests, Ruff, Pyright, and the
-bounded smoke screen. The fresh run root is
+This is a candidate on
+`codex/rjmcmc-aggregation-conditional-likelihood`. Its G0 preflight passed on
+BP1 with 65 focused tests, Ruff, Pyright, and the bounded smoke screen. All
+24 G1 development shards completed. The fresh run root is
 
 ```text
 /group/chem/acrg/brendan_for_codex/rjmcmc_conditional_residual_gmm/6ad8eee8c1d02289e1b130c4204b8bbe9c86135e
 ```
 
-G1 development array `18187077` was submitted under account `chem007981`.
-It was initially pending for priority, then all 24 tasks began running. No
-artifact had been published at the first running-state check; this is not a
-scientific result or hard stop.
+The G1 merger hard-stopped before lock publication. Cross-node replay NLLs
+differed by up to approximately \(1.1\times10^{-9}\). Applying the scoped
+roundoff allowance then exposed, through the exact context hash, approximately
+\(1.72\times10^{-16}\) basis variation in the same rank-3 residual subspace
+from cross-node BLAS/LAPACK behavior. This is an implementation-portability
+hard stop and supplies no scientific GMM result. G2 and G3 did not run, and
+the protected catalogue was untouched.
+
+The repair is current uncommitted work, so there is no new candidate SHA to
+record. Its direction is scale-aware replay tolerances with fail-closed gate
+margins shared by development and protected certification, plus context/basis
+schema v2 built from stable-cell-ordered fixed-scalar means and modified
+Gram--Schmidt; SVD determines rank only, with ambiguity gates. Review and push
+a new full SHA, then rerun all of G0 and G1. The old 24 shards are not
+reusable.
 
 Do not add Torch or `sbi` to the runtime for this baseline. `sbi` remains an
 optional training/comparison dependency and does not bridge an arbitrary
-learned Torch likelihood into PyMC. No approximate likelihood may update
-structural weights; partitions remain externally weighted by their declared
-prior.
+learned Torch likelihood into PyMC. This NLE/GMM baseline is a non-RJ
+marginal-likelihood alternative: no outcome may update structural weights,
+and partitions remain externally weighted by their declared prior.
 
 The authoritative GMM protocol is restartable:
 

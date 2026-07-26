@@ -46,13 +46,15 @@ IntArray: TypeAlias = NDArray[np.int64]
 
 __all__ = [
     "ConditionalResidualImageMDN",
+    "RESIDUAL_IMAGE_BASIS_RULE",
+    "RESIDUAL_IMAGE_CONTEXT_SCHEMA",
     "ResidualImageContext",
     "conditional_residual_image_mdn_log_likelihood",
 ]
 
-_CONTEXT_SCHEMA = "aggregation-conditional-residual-image-context-v1"
+RESIDUAL_IMAGE_CONTEXT_SCHEMA = "aggregation-conditional-residual-image-context-v2"
+RESIDUAL_IMAGE_BASIS_RULE = "stable-id-column-portable-two-pass-mgs-v2"
 _MDN_SCHEMA = "aggregation-conditional-residual-image-mdn-v1"
-_RANK_RULE = "projector-canonical-axis-two-pass-mgs-v1"
 _LOG_TWO_PI = math.log(2.0 * math.pi)
 _SHA256_HEX_LENGTH = 64
 
@@ -176,15 +178,31 @@ def _softplus(value: float) -> float:
     return math.log1p(math.exp(value))
 
 
+def _portable_dot(left: list[float], right: list[float]) -> float:
+    """Return one fixed-order binary64 dot product without BLAS dispatch."""
+    if len(left) != len(right):
+        raise ValueError("portable dot-product inputs must have the same length.")
+    return math.fsum(left[index] * right[index] for index in range(len(left)))
+
+
+def _portable_norm(values: list[float]) -> float:
+    """Return one fixed-order Euclidean norm without BLAS dispatch."""
+    squared = _portable_dot(values, values)
+    if squared < 0.0:
+        raise FloatingPointError("portable squared norm must be non-negative.")
+    return math.sqrt(squared)
+
+
 def _canonical_residual_basis(
     whitened_centered_design: FloatArray,
 ) -> tuple[FloatArray, float]:
-    """Return a deterministic basis for the supplied column image.
+    """Return a portable canonical basis for the supplied column image.
 
-    Rank is found by SVD, but raw singular vectors are not retained because
-    their signs and degenerate-subspace rotations are incidental.  Instead,
-    the SVD defines a projector, and canonical observation-coordinate axes are
-    projected and orthonormalized using two-pass modified Gram--Schmidt.
+    SVD is used only to determine rank behind a wide ambiguity gate. Its
+    hardware-dependent singular vectors never enter the retained chart.
+    Canonically ordered design columns are instead orthonormalized with
+    fixed-order scalar binary64 operations and :func:`math.fsum`. This avoids
+    BLAS/LAPACK kernel selection changing authenticated context bytes.
     """
     observation_count, column_count = whitened_centered_design.shape
     if column_count == 0:
@@ -193,13 +211,21 @@ def _canonical_residual_basis(
             name="residual_basis",
             ndim=2,
         ), 0.0
-    left, singular_values, _ = np.linalg.svd(
+    singular_values = np.linalg.svd(
         whitened_centered_design,
         full_matrices=False,
+        compute_uv=False,
     )
-    maximum = float(singular_values[0]) if singular_values.size else 0.0
-    tolerance = float(256.0 * np.finfo(np.float64).eps * max(1, observation_count, column_count) * maximum)
-    if maximum == 0.0:
+    squared_image_scale = math.fsum(
+        float(whitened_centered_design[row, column]) ** 2
+        for row in range(observation_count)
+        for column in range(column_count)
+    )
+    image_scale = math.sqrt(squared_image_scale)
+    tolerance = float(
+        256.0 * np.finfo(np.float64).eps * max(1, observation_count, column_count) * image_scale
+    )
+    if image_scale == 0.0:
         rank = 0
     else:
         ambiguous = (singular_values >= tolerance / 100.0) & (singular_values <= 100.0 * tolerance)
@@ -213,31 +239,40 @@ def _canonical_residual_basis(
             ndim=2,
         ), tolerance
 
-    projector = left[:, :rank] @ left[:, :rank].T
-    accepted: list[FloatArray] = []
-    acceptance_tolerance = float(1024.0 * np.finfo(np.float64).eps * max(1, observation_count))
-    for coordinate in range(observation_count):
-        candidate = np.array(projector[:, coordinate], dtype=np.float64)
+    accepted: list[list[float]] = []
+    for column in range(column_count):
+        candidate = [float(whitened_centered_design[row, column]) for row in range(observation_count)]
         for _ in range(2):
             for previous in accepted:
-                candidate -= previous * float(previous @ candidate)
-        norm = float(np.linalg.norm(candidate))
-        if norm <= acceptance_tolerance:
+                coefficient = _portable_dot(previous, candidate)
+                candidate = [candidate[row] - previous[row] * coefficient for row in range(observation_count)]
+        norm = _portable_norm(candidate)
+        if tolerance / 100.0 <= norm <= 100.0 * tolerance:
+            raise ValueError("residual-image pivot selection is numerically ambiguous under the frozen rule.")
+        if norm < tolerance / 100.0:
             continue
-        candidate /= norm
-        pivot = int(np.argmax(np.abs(candidate)))
+        candidate = [value / norm for value in candidate]
+        pivot = max(range(observation_count), key=lambda row: abs(candidate[row]))
         if candidate[pivot] < 0.0:
-            candidate *= -1.0
-        accepted.append(cast(FloatArray, candidate))
+            candidate = [-value for value in candidate]
+        accepted.append(candidate)
         if len(accepted) == rank:
             break
     if len(accepted) != rank:
         raise ValueError("failed to construct the canonical residual-image basis.")
-    basis = np.column_stack(accepted)
-    orthonormality_error = float(np.max(np.abs(basis.T @ basis - np.eye(rank, dtype=np.float64))))
-    span_error = float(
-        np.max(np.abs(whitened_centered_design - basis @ (basis.T @ whitened_centered_design)))
+    basis = np.asarray(accepted, dtype=np.float64).T
+    orthonormality_error = max(
+        abs(_portable_dot(accepted[left_index], accepted[right_index]) - float(left_index == right_index))
+        for left_index in range(rank)
+        for right_index in range(rank)
     )
+    span_error = 0.0
+    for column in range(column_count):
+        source = [float(whitened_centered_design[row, column]) for row in range(observation_count)]
+        coefficients = [_portable_dot(vector, source) for vector in accepted]
+        for row in range(observation_count):
+            reconstructed = math.fsum(accepted[index][row] * coefficients[index] for index in range(rank))
+            span_error = max(span_error, abs(source[row] - reconstructed))
     scale = max(1.0, float(np.max(np.abs(whitened_centered_design))))
     if orthonormality_error > 1.0e-12 or span_error > 1.0e-12 * scale:
         raise ValueError("canonical residual-image basis failed its span audit.")
@@ -331,8 +366,8 @@ class ResidualImageContext:
         normalized_tolerance = float(rank_tolerance)
         if not np.isfinite(normalized_tolerance) or normalized_tolerance < 0.0:
             raise ValueError("rank_tolerance must be finite and non-negative.")
-        if rank_rule != _RANK_RULE:
-            raise ValueError(f"rank_rule must be {_RANK_RULE!r}.")
+        if rank_rule != RESIDUAL_IMAGE_BASIS_RULE:
+            raise ValueError(f"rank_rule must be {RESIDUAL_IMAGE_BASIS_RULE!r}.")
         provenance = _source_provenance(source_provenance)
         alpha_identity = _validated_sha256(
             cell_alphas_sha256,
@@ -421,21 +456,36 @@ class ResidualImageContext:
             dtype=np.int64,
         )
         canonical_labels = original_to_canonical[flat_labels].reshape(factors.labels.shape)
-        canonical_mean_design = factors.observation_mean_design[
-            :,
-            canonical_original_regions,
-        ]
-        canonical_alpha_totals = factors.alpha_totals[canonical_original_regions]
+        flat_alphas = aggregation.cell_alphas.reshape(-1)
+        design = aggregation.design
+        canonical_means: list[list[float]] = []
+        canonical_totals: list[float] = []
         centered_columns: list[FloatArray] = []
         for original_region in canonical_original_regions:
             selected = np.flatnonzero(flat_labels == original_region)
             selected = selected[np.argsort(flat_ids[selected], kind="stable")]
-            canonical_region = int(original_to_canonical[original_region])
-            mean = canonical_mean_design[:, canonical_region]
+            alpha_total = math.fsum(float(flat_alphas[index]) for index in selected)
+            canonical_totals.append(alpha_total)
+            mean = np.asarray(
+                [
+                    float(design[row, selected[0]])
+                    + math.fsum(
+                        (float(design[row, index]) - float(design[row, selected[0]]))
+                        * float(flat_alphas[index])
+                        for index in selected
+                    )
+                    / alpha_total
+                    for row in range(design.shape[0])
+                ],
+                dtype=np.float64,
+            )
+            canonical_means.append(mean.tolist())
             centered = (aggregation.design[:, selected] - mean[:, np.newaxis]) / aggregation.noise_sd[
                 :, np.newaxis
             ]
             centered_columns.append(cast(FloatArray, centered))
+        canonical_mean_design = np.asarray(canonical_means, dtype=np.float64).T
+        canonical_alpha_totals = np.asarray(canonical_totals, dtype=np.float64)
         whitened_centered = cast(
             FloatArray,
             np.concatenate(centered_columns, axis=1),
@@ -452,7 +502,7 @@ class ResidualImageContext:
             owned_ids,
             canonical_alpha_totals,
             rank_tolerance=rank_tolerance,
-            rank_rule=_RANK_RULE,
+            rank_rule=RESIDUAL_IMAGE_BASIS_RULE,
             source_provenance=source_provenance,
             cell_alphas_sha256=_array_sha256(alphas),
             design_sha256=_array_sha256(design),
@@ -547,7 +597,7 @@ class ResidualImageContext:
     def payload(self) -> dict[str, object]:
         """Return the strict JSON-compatible artifact payload."""
         return {
-            "schema": _CONTEXT_SCHEMA,
+            "schema": RESIDUAL_IMAGE_CONTEXT_SCHEMA,
             "observation_mean_design": self.observation_mean_design.tolist(),
             "noise_sd": self.noise_sd.tolist(),
             "residual_basis": self.residual_basis.tolist(),
@@ -586,7 +636,7 @@ class ResidualImageContext:
             payload = json.loads(serialized)
         except json.JSONDecodeError as error:
             raise ValueError("serialized context is not valid JSON.") from error
-        if not isinstance(payload, dict) or payload.get("schema") != _CONTEXT_SCHEMA:
+        if not isinstance(payload, dict) or payload.get("schema") != RESIDUAL_IMAGE_CONTEXT_SCHEMA:
             raise ValueError("serialized context has an unexpected schema.")
         required = {
             "schema",

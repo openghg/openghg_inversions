@@ -15,6 +15,50 @@ from examples.rjmcmc import conditional_residual_image_gmm_protected_certify as 
 from examples.rjmcmc import conditional_residual_image_gmm_tiny_screen as gmm
 
 
+def test_protected_protocol_binds_development_replay_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Protected certification must change with development replay semantics."""
+    original = protected.certification_protocol_sha256()
+    monkeypatch.setattr(
+        protected.development_certifier,
+        "_certification_protocol_sha256",
+        lambda: "f" * 64,
+    )
+
+    assert protected.certification_protocol_sha256() != original
+
+
+def test_protected_scientific_replay_delegates_to_development_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """G3 must use the same scoped roundoff and gate margins as G2."""
+    sentinel = {"scientific_pass": True}
+    calls: list[dict[str, object]] = []
+
+    def replay(**kwargs: object) -> dict[str, object]:
+        calls.append(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(
+        protected.development_certifier,
+        "_reverify_scientific_gates",
+        replay,
+    )
+    artifact = object()
+    exact = object()
+    nominated = {"scientific_pass": True}
+
+    result = protected._reverify_scientific_gates(
+        artifact=artifact,  # type: ignore[arg-type]
+        exact=exact,  # type: ignore[arg-type]
+        nominated=nominated,
+    )
+
+    assert result is sentinel
+    assert calls == [{"artifact": artifact, "exact": exact, "nominated": nominated}]
+
+
 def _catalogue() -> dict[str, Any]:
     """Return one structurally valid protected catalogue."""
     return {
