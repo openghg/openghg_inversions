@@ -779,6 +779,14 @@ not implicit behavior of this implementation.
   temporary-memory floor before any real-input allocation bank is authorized.
   Historical concentrations 100 and 500 are scaling diagnostics, not
   representation-invariant structural priors.
+- Ran that probe at `fb119c4` in BP1 array `18189056`. Both tasks passed
+  authenticated closure and cross-concentration scaling. The exact analytic
+  spectrum has numerical rank 1,381, with 90%, 99%, and 99.9% of trace in 43,
+  177, and 398 directions. The current \(S=65{,}536\) all-at-once Sobol
+  construction has a known 22.48-GiB simultaneous temporary-array floor
+  before active-tree, inverse-Beta, clustering, input, and library
+  workspaces. A memory-bounded source-pinned projected builder is now the hard
+  implementation prerequisite for a PARIS mixture bank.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 

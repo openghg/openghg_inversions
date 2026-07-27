@@ -12,6 +12,7 @@ remain in:
 - [`rjmcmc_exact_mixture_compression.md`](rjmcmc_exact_mixture_compression.md);
 - [`rjmcmc_exact_mixture_compression_hpc_test_plan.md`](rjmcmc_exact_mixture_compression_hpc_test_plan.md);
 - [`rjmcmc_exact_mixture_confirmation_hpc_test_plan.md`](rjmcmc_exact_mixture_confirmation_hpc_test_plan.md);
+- [`rjmcmc_exact_mixture_paris_probe_bp1_report.md`](rjmcmc_exact_mixture_paris_probe_bp1_report.md);
 - [`rjmcmc_conditional_residual_gmm_bp1_handoff.md`](rjmcmc_conditional_residual_gmm_bp1_handoff.md);
 - [`rjmcmc_full_tiling_compound_hmc.md`](rjmcmc_full_tiling_compound_hmc.md); and
 - [`rjmcmc_partition_mixing_and_full_tiling_design.md`](rjmcmc_partition_mixing_and_full_tiling_design.md).
@@ -212,11 +213,15 @@ This track is independent of an H2d calibration outcome:
    independent-bank compressed evidence spread was \(2.44\times10^{-4}\)
    nat against a 0.05-nat limit. See the
    [confirmation report](rjmcmc_exact_mixture_confirmation_bp1_report.md).
-5. Run the committed
-   [PARIS root-spectrum resource probe](rjmcmc_exact_mixture_paris_probe_hpc_test_plan.md)
-   before constructing any real-input Sobol bank. It authenticates the frozen
-   input, uses the existing physical-mass adapter and SciPy spectrum, and
-   measures historical concentrations 100 and 500 without treating them as
+5. Preserve the completed
+   [PARIS root-spectrum resource probe](rjmcmc_exact_mixture_paris_probe_bp1_report.md)
+   at `fb119c4`.  Array `18189056` passed both historical concentration
+   diagnostics.  The spectrum has numerical rank 1,381; 90%, 99%, and 99.9%
+   of its trace require 43, 177, and 398 directions.  The current
+   \(S=65{,}536\) all-at-once Sobol builder has a known 22.48-GiB simultaneous
+   temporary-array floor before several uncounted workspaces.  Implement and
+   test a source-pinned, chunked projected-source builder before constructing
+   any real-input bank.  Do not treat concentrations 100 and 500 as
    cross-\(K\) priors.
 6. Benchmark the cached fixed-partition factor builder. Its storage is
    \(O(n_{\rm obs}K+Kq^2)\); public PSD validation is \(O(Kq^3)\). Start with

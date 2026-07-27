@@ -39,9 +39,15 @@ development result was reproduced by the full-SHA BP1 G0/G1/G2 run at
 `d23e9d9b5b7d8c4e669ee940ab544fa8dc5148ea`.  The untouched 18-shard
 confirmation subsequently passed using sampling candidate `9878040` and the
 reporting-only corrected certifier `3792ed0`; see
-`docs/plans/rjmcmc_exact_mixture_confirmation_bp1_report.md`.  The next gate
-is an authenticated PARIS root-spectrum and resource probe.  No result yet
-licenses a PARIS conditional posterior or structural inference.
+`docs/plans/rjmcmc_exact_mixture_confirmation_bp1_report.md`.  The
+authenticated PARIS root-spectrum and resource probe then passed at
+`fb119c4`; see
+`docs/plans/rjmcmc_exact_mixture_paris_probe_bp1_report.md`.  Its known
+all-at-once Sobol temporary-array floor is 22.48 GiB before active-tree,
+inverse-Beta, clustering, input, and numerical-library workspaces.  The next
+gate is therefore a replayable memory-bounded projected-source constructor.
+No result yet licenses a PARIS conditional posterior or structural
+inference.
 
 ## Related durable background
 
@@ -488,3 +494,4 @@ scale with compressed component count and retained rank, not source-bank size.
 | 2026-07-27 | Extend the pre-BP1 compression ladder through 512 and 1,024 components. | The first local development matrix selected \(S=65{,}536\); only the boundary-heavy four-cell case was non-monotone, passing at 64 and 256 components while 128 narrowly missed the 0.02 posterior-SD threshold at 0.02194. The larger points test for a stable suffix before the protocol is frozen; no confirmation seed was used. |
 | 2026-07-27 | Cache component covariance eigendecompositions and evaluate components in one NumPy batch. | The BP1 scientific screen passed, but the original per-component Cholesky loop made \(M=256\) slower than the vectorized \(S=65{,}536\) source bank on several tiny cases. The cached batched evaluator retains the same density and gives a 16.7-fold speedup over a direct \(S=16{,}384\) bank in a bounded rank-three local benchmark. |
 | 2026-07-27 | Promote the root-only construction to a PARIS resource probe after independent-scramble confirmation. | All 18 frozen confirmation shards passed.  The first real-input step measures the analytic spectrum and current Sobol memory floor without consulting the realized residual or constructing a source bank. |
+| 2026-07-27 | Require a memory-bounded projected-source builder before constructing the PARIS bank. | The authenticated probe found numerical rank 1,381, with 90%, 99%, and 99.9% of trace in 43, 177, and 398 directions, but the current \(S=65{,}536\) builder has a known 22.48-GiB simultaneous temporary-array floor before several uncounted workspaces. |
