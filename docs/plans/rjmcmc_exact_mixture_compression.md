@@ -29,6 +29,15 @@ Gaussian-plus-summary construction.
 This remains an experimental fixed-partition likelihood.  It does not license
 data-dependent weights for partitions or dimensions.
 
+As of 2026-07-27, the root-only spectrum, finite-bank compression, normalized
+likelihood, two-stage scientific driver, all-six certifier, focused tests, and
+BP1 launch assets are implemented on
+`codex/rjmcmc-exact-mixture-compression`.  The first complete local
+development matrix passed with a common source size \(S=65{,}536\) and a
+stable all-case compression suffix \(M=256,512,1024\).  This is local
+development evidence only; the pushed full-SHA BP1 G0/G1/G2 run remains the
+next gate, followed by untouched confirmation scrambles.
+
 ## Related durable background
 
 The main derivations and model qualifications live in the sibling
@@ -382,7 +391,7 @@ mixture is assessed.
 
 ## First implementation boundary
 
-The first code increment will provide:
+The first code increment provides:
 
 - a root-only analytic residual spectrum;
 - explicit explained-variance and discarded-tail diagnostics;
@@ -392,7 +401,7 @@ The first code increment will provide:
 - a normalized NumPy root likelihood with Gaussian complement; and
 - authenticated arrays and construction metadata sufficient for exact replay.
 
-It will not yet provide:
+It does not yet provide:
 
 - arbitrary multi-region conditioning;
 - state-dependent eigenvectors;
@@ -471,3 +480,4 @@ scale with compressed component count and retained rank, not source-bank size.
 | 2026-07-27 | Use SciPy \(k\)-means for the equal-weight first stage. | It avoids a new dependency; cluster moment refitting is small and directly testable. |
 | 2026-07-27 | Keep the first experiment root-only. | The residual eigenvectors are state invariant only because root covariance scales as \(T^2S_0\). |
 | 2026-07-27 | Defer recursive Gamma--Beta integration. | It is promising but introduces mixture-growth and computational-tree approximation questions absent from the simpler direct bank. |
+| 2026-07-27 | Extend the pre-BP1 compression ladder through 512 and 1,024 components. | The first local development matrix selected \(S=65{,}536\); only the boundary-heavy four-cell case was non-monotone, passing at 64 and 256 components while 128 narrowly missed the 0.02 posterior-SD threshold at 0.02194. The larger points test for a stable suffix before the protocol is frozen; no confirmation seed was used. |

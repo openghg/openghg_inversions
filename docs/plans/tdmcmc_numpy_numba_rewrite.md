@@ -741,6 +741,23 @@ not implicit behavior of this implementation.
   three deterministic EM starts, while both boundary-heavy cases still failed
   every scientific size gate. The merger precondition was false, so no lock,
   G2, or G3 exists. This is terminal for the root-GMM architecture.
+- Replaced free-EM fitting with a structure-preserving approximation to the
+  known continuous Gamma--Dirichlet Gaussian location mixture. The new
+  root-only implementation computes the exact analytic noise-whitened
+  covariance spectrum with SciPy, constructs an equal-weight scrambled-Sobol
+  source bank, and replaces hard clusters by their exact population weights,
+  means, and covariances. It records separate projection and compression KL
+  bounds and evaluates a normalized hybrid likelihood with an analytic
+  Gaussian complement.
+- Completed the first local six-case two-stage screen. Every source case
+  passed at \(S=65{,}536,262{,}144,1{,}048{,}576\), selecting the common
+  \(S=65{,}536\) lock. The boundary-heavy four-cell compression was
+  non-monotone at low \(M\): 64 and 256 passed while 128 narrowly missed the
+  0.02 posterior-SD-relative-error gate at 0.02194. Before freezing BP1, the
+  ladder was extended without consulting confirmation seeds. All six cases
+  then passed the common suffix \(M=256,512,1024\). Focused core, driver,
+  certifier, and source-bank tests pass locally; the full-SHA BP1 G0/G1/G2
+  protocol remains to run.
 - Added the operational BP1 handover at
   [`rjmcmc_bp1_handover.md`](rjmcmc_bp1_handover.md).
 

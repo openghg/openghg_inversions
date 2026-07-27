@@ -9,13 +9,17 @@ remain in:
 - [`rjmcmc_topology_conditioned_hmc_next_phase.md`](rjmcmc_topology_conditioned_hmc_next_phase.md);
 - [`rjmcmc_topology_conditioned_hmc_hpc_test_plan.md`](rjmcmc_topology_conditioned_hmc_hpc_test_plan.md);
 - [`rjmcmc_aggregation_error_low_rank_hpc_test_plan.md`](rjmcmc_aggregation_error_low_rank_hpc_test_plan.md);
+- [`rjmcmc_exact_mixture_compression.md`](rjmcmc_exact_mixture_compression.md);
+- [`rjmcmc_exact_mixture_compression_hpc_test_plan.md`](rjmcmc_exact_mixture_compression_hpc_test_plan.md);
 - [`rjmcmc_conditional_residual_gmm_bp1_handoff.md`](rjmcmc_conditional_residual_gmm_bp1_handoff.md);
 - [`rjmcmc_full_tiling_compound_hmc.md`](rjmcmc_full_tiling_compound_hmc.md); and
 - [`rjmcmc_partition_mixing_and_full_tiling_design.md`](rjmcmc_partition_mixing_and_full_tiling_design.md).
 
-The current branch is `codex/rjmcmc-topology-conditioned-hmc`. Always use the
-full current `origin` SHA at launch; do not infer a candidate from a short run
-directory name.
+The topology track remains on `codex/rjmcmc-topology-conditioned-hmc`.  The
+exact-mixture aggregation track is on
+`codex/rjmcmc-exact-mixture-compression`. Always use the full current
+`origin` SHA of the selected track at launch; do not infer a candidate from a
+short run-directory name.
 
 ## State at handover
 
@@ -180,39 +184,38 @@ This track is independent of an H2d calibration outcome:
    but five failed the unchanged bank-convergence or confirmation gates.
    Continue its separate
    [HPC plan](rjmcmc_conditional_allocation_likelihood_hpc_test_plan.md)
-   with the bounded scrambled-Sobol balanced-Dirichlet successor implemented
-   at `e0b2166597b3baa360233eb3ff63ee325a30c263`. Its certified BP1 screen at
-   `863353443488b7e08900a147f92039d444676d41` passed eight of nine cases but
-   hard-stopped on boundary-heavy four-cell root. Start the normalized
-   residual-image density fallback; do not extend the RQMC ladder post hoc.
-   The bounded order is:
-   C4a deterministic residual-image context plus portable float64 NumPy
-   evaluator; C4b root-only zero-input eight-component full-covariance
-   GMM/MDN on the tiny exact cases without Torch or `sbi`; C4c a conditional
-   Torch MDN for the row case only if needed; C4d native PyTensor/PyMC export
-   only after tiny-oracle certification; and C4e a PARIS rank/resource probe
-   before selecting a factor-analyzer or truncated-image production model.
-   The dense full-covariance model is tiny-only and is not credible at
-   \(q=1382\). The frozen root training ladder is
-   \(4{,}096,16{,}384,65{,}536,262{,}144\) whole draws, with separate
-   validation, simulator-test, and protected density-holdout sets. Lock the
-   smallest size with a two-size passing suffix; passing only at the largest
-   size is a hard stop. Exact seeds, split sizes, and confirmation rules are
-   in the linked C4 plan and remain subject to an implementation certificate
-   before launch.
-4. Create and hash run-root analysis harnesses for the remaining
+   only as historical evidence. The bounded scrambled-Sobol
+   balanced-Dirichlet successor at
+   `e0b2166597b3baa360233eb3ff63ee325a30c263` passed eight of nine cases in
+   its certified BP1 screen, then hard-stopped because boundary-heavy
+   four-cell root did not establish a two-size suffix. The subsequent
+   eight-component GMM had stable boundary-heavy underfit, and the
+   sixteen-component escalation at
+   `625dc3b26dcad646ee144eea2c5fdc507851cdfa` added numerical EM failures
+   without curing that scientific failure. The free-EM root-GMM architecture
+   is terminal.
+4. Continue with the structure-preserving exact-mixture compression plan, not
+   a larger free GMM. It builds the analytic root residual spectrum, a large
+   direct Sobol approximation to the exact continuous Gaussian location
+   mixture, and moment-preserving Gaussian clusters using SciPy. The first
+   local all-six development matrix selected a common source size
+   \(S=65{,}536\) and a common stable compression suffix beginning at
+   \(M=256\); \(M=256,512,1024\) all passed every case. This is local
+   development evidence, not a BP1 certificate. Run the committed G0/G1/G2
+   plan from a fresh full-SHA worktree. Confirmation seeds remain untouched.
+5. Create and hash run-root analysis harnesses for the remaining
    moderate/PARIS conditional diagnostics. Reusable implementation belongs on
    the separate branch/worktree and must be reviewed, committed, and pushed
    before a new full-SHA run.
-5. Benchmark the cached fixed-partition factor builder. Its storage is
+6. Benchmark the cached fixed-partition factor builder. Its storage is
    \(O(n_{\rm obs}K+Kq^2)\); public PSD validation is \(O(Kq^3)\). Start with
    \(q=32\) and \(q=64\).
-6. Reuse the committed fixed-partition PyMC/NUTS Gaussian bridge only as a
+7. Reuse the committed fixed-partition PyMC/NUTS Gaussian bridge only as a
    comparator. A conditional-allocation PyTensor target requires its own
    value/gradient parity gates and scalar joint-likelihood output.
-7. Do not expose a diagonal `pm.Normal` component as if it were the corrected
+8. Do not expose a diagonal `pm.Normal` component as if it were the corrected
    ArviZ `log_likelihood`; persist the scalar joint likelihood explicitly.
-8. Keep partitions external to the approximate likelihood workflow. Combine
+9. Keep partitions external to the approximate likelihood workflow. Combine
    common summaries using the declared structural prior weights; evidence
    differences are leakage diagnostics, not RJ or softmax weights.
 
