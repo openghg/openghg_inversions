@@ -136,6 +136,30 @@ It publishes one canonical decision.  `eligible=true` requires all 18
 artifacts to pass.  No partial-case, majority, pooled, or average criterion is
 allowed.
 
+The between-bank log-evidence gate is evaluated across the three independent
+source scrambles for each case, separately for the direct source mixture and
+its compressed mixture.  It is not a per-shard field.
+
+### Reporting-only recovery
+
+If all 18 immutable C1 artifacts and exact completion markers exist but C2
+fails before publishing any decision evidence because of a certifier defect,
+the artifacts may be merged once by a corrected certifier without rerunning
+C1.  This exception requires:
+
+- the original C1 artifact revision to remain explicit as
+  `CONF_ARTIFACT_REVISION`;
+- a clean, pushed full-SHA worktree for the corrected certifier as
+  `CONF_REVISION`;
+- a fresh C0 focused-test and static-check record for the corrected certifier;
+- exact authentication of every original artifact, marker, driver, protocol,
+  and development decision;
+- absence of every C2 output before recovery starts; and
+- a completion marker recording both revisions.
+
+Recovery may not edit, regenerate, omit, or replace any C1 artifact.  A
+scientific failure in the recovered decision remains a terminal hard stop.
+
 ## Interpretation
 
 An eligible C2 decision establishes that the root-only approximation is

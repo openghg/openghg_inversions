@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import math
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -24,6 +25,45 @@ from examples.rjmcmc import (
 )
 
 SCHEMA = "rjmcmc-compressed-mixture-confirmation-decision-v1"
+
+
+def _finite_float(value: object, label: str) -> float:
+    """Return one finite non-boolean numerical field or fail closed."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be numerical")
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{label} must be finite")
+    return result
+
+
+def _evaluation_metric(
+    report: dict[str, Any],
+    *,
+    branch: str,
+    name: str,
+    label: str,
+) -> float:
+    """Read one required exact-evaluation metric from an artifact."""
+    try:
+        value = report[branch]["exact_evaluation"]["metrics"][name]
+    except (KeyError, TypeError) as error:
+        raise ValueError(f"{label} is missing required {branch} metric {name!r}") from error
+    return _finite_float(value, f"{label} {branch} metric {name!r}")
+
+
+def _log_evidence(
+    report: dict[str, Any],
+    *,
+    branch: str,
+    label: str,
+) -> float:
+    """Read one required exact-evaluation log evidence from an artifact."""
+    try:
+        value = report[branch]["exact_evaluation"]["posterior_summary"]["log_evidence"]
+    except (KeyError, TypeError) as error:
+        raise ValueError(f"{label} is missing required {branch} log evidence") from error
+    return _finite_float(value, f"{label} {branch} log evidence")
 
 
 def _driver_sha256() -> str:
@@ -107,23 +147,86 @@ def certify_confirmation(
         for case_id, source_seed in sorted(expected_pairs)
         if reports[(case_id, source_seed)].get("scientific_pass") is not True
     ]
-    metric_names = tuple(development.c1.THRESHOLDS)
+    between_seed_name = "between_bank_log_evidence_range_nat"
+    metric_names = tuple(name for name in development.c1.THRESHOLDS if name != between_seed_name)
     source_metric_maxima = {
         name: max(
-            float(report["source"]["exact_evaluation"]["metrics"][name])
-            for report in reports.values()
-            if name in report["source"]["exact_evaluation"]["metrics"]
+            _evaluation_metric(
+                report,
+                branch="source",
+                name=name,
+                label=f"{case_id}/seed{source_seed}",
+            )
+            for (case_id, source_seed), report in reports.items()
         )
         for name in metric_names
     }
     compression_metric_maxima = {
         name: max(
-            float(report["compression"]["exact_evaluation"]["metrics"][name])
-            for report in reports.values()
-            if name in report["compression"]["exact_evaluation"]["metrics"]
+            _evaluation_metric(
+                report,
+                branch="compression",
+                name=name,
+                label=f"{case_id}/seed{source_seed}",
+            )
+            for (case_id, source_seed), report in reports.items()
         )
         for name in metric_names
     }
+    source_evidence_ranges = {
+        case_id: (
+            max(
+                _log_evidence(
+                    reports[(case_id, source_seed)],
+                    branch="source",
+                    label=f"{case_id}/seed{source_seed}",
+                )
+                for source_seed in confirmation.SOURCE_SEEDS
+            )
+            - min(
+                _log_evidence(
+                    reports[(case_id, source_seed)],
+                    branch="source",
+                    label=f"{case_id}/seed{source_seed}",
+                )
+                for source_seed in confirmation.SOURCE_SEEDS
+            )
+        )
+        for case_id in case_ids
+    }
+    compression_evidence_ranges = {
+        case_id: (
+            max(
+                _log_evidence(
+                    reports[(case_id, source_seed)],
+                    branch="compression",
+                    label=f"{case_id}/seed{source_seed}",
+                )
+                for source_seed in confirmation.SOURCE_SEEDS
+            )
+            - min(
+                _log_evidence(
+                    reports[(case_id, source_seed)],
+                    branch="compression",
+                    label=f"{case_id}/seed{source_seed}",
+                )
+                for source_seed in confirmation.SOURCE_SEEDS
+            )
+        )
+        for case_id in case_ids
+    }
+    between_seed_threshold = float(development.c1.THRESHOLDS[between_seed_name])
+    between_seed_failures = [
+        {
+            "case_id": case_id,
+            "source_evidence_range_nat": source_evidence_ranges[case_id],
+            "compression_evidence_range_nat": (compression_evidence_ranges[case_id]),
+            "threshold_nat": between_seed_threshold,
+        }
+        for case_id in case_ids
+        if source_evidence_ranges[case_id] > between_seed_threshold
+        or compression_evidence_ranges[case_id] > between_seed_threshold
+    ]
     maximum_mean_closure = max(
         float(report["compression"]["moment_diagnostics"]["mean_maximum_absolute_difference_from_source"])
         for report in reports.values()
@@ -155,10 +258,14 @@ def certify_confirmation(
         "artifact_raw_sha256": raw_sha256,
         "source_metric_maxima": source_metric_maxima,
         "compression_metric_maxima": compression_metric_maxima,
+        "source_between_seed_log_evidence_range_nat_by_case": (source_evidence_ranges),
+        "compression_between_seed_log_evidence_range_nat_by_case": (compression_evidence_ranges),
+        "between_seed_log_evidence_range_threshold_nat": (between_seed_threshold),
         "maximum_compression_mean_closure_error": maximum_mean_closure,
         "maximum_compression_covariance_closure_error": (maximum_covariance_closure),
         "failures": failures,
-        "eligible": not failures,
+        "between_seed_failures": between_seed_failures,
+        "eligible": not failures and not between_seed_failures,
         "protected_catalogue_accessed": False,
         "production_output_written": False,
         "structural_inference_licensed": False,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -154,9 +155,12 @@ def _confirmation_report(
     source_seed: int,
     revision: str,
     scientific_pass: bool = True,
+    log_evidence: float = 0.0,
 ) -> dict[str, Any]:
     """Build one minimal confirmation artifact for certifier tests."""
-    metrics = {name: 0.0 for name in development.c1.THRESHOLDS}
+    metrics = {
+        name: 0.0 for name in development.c1.THRESHOLDS if name != "between_bank_log_evidence_range_nat"
+    }
     checks = {
         "source_scientific_pass": scientific_pass,
         "compressed_scientific_pass": scientific_pass,
@@ -181,9 +185,17 @@ def _confirmation_report(
         "case_id": case_id,
         "source_seed": source_seed,
         "cluster_seed": confirmation.CLUSTER_SEED,
-        "source": {"exact_evaluation": {"metrics": metrics}},
+        "source": {
+            "exact_evaluation": {
+                "metrics": metrics,
+                "posterior_summary": {"log_evidence": log_evidence},
+            }
+        },
         "compression": {
-            "exact_evaluation": {"metrics": metrics},
+            "exact_evaluation": {
+                "metrics": metrics,
+                "posterior_summary": {"log_evidence": log_evidence},
+            },
             "moment_diagnostics": {
                 "mean_maximum_absolute_difference_from_source": 0.0,
                 "covariance_maximum_absolute_difference_from_source": 0.0,
@@ -204,6 +216,7 @@ def _write_confirmation_matrix(
     *,
     revision: str,
     failing_pair: tuple[str, int] | None = None,
+    evidence_override: dict[tuple[str, int], float] | None = None,
 ) -> None:
     """Write the exact 18-artifact confirmation matrix."""
     directory.mkdir()
@@ -215,6 +228,7 @@ def _write_confirmation_matrix(
                 source_seed=source_seed,
                 revision=revision,
                 scientific_pass=pair != failing_pair,
+                log_evidence=(0.0 if evidence_override is None else evidence_override.get(pair, 0.0)),
             )
             _write_canonical(
                 directory / f"{case_id}__seed{source_seed}.json",
@@ -270,11 +284,81 @@ def test_confirmation_certifier_passes_complete_matrix(
 
     assert decision["eligible"] is True
     assert decision["failures"] == []
+    assert decision["between_seed_failures"] == []
     assert set(decision["artifact_raw_sha256"]) == {
         f"{case_id}__seed{source_seed}"
         for case_id in development._expected_development_case_ids()
         for source_seed in confirmation.SOURCE_SEEDS
     }
+
+
+def test_confirmation_certifier_enforces_between_seed_evidence_range(
+    tmp_path: Path,
+) -> None:
+    """Independent-scramble evidence spread is a separate common gate."""
+    revision = "2" * 40
+    case_id = development._expected_development_case_ids()[0]
+    pair = (case_id, confirmation.SOURCE_SEEDS[-1])
+    report_directory = tmp_path / "confirmation"
+    _write_confirmation_matrix(
+        report_directory,
+        revision=revision,
+        evidence_override={pair: 1.0},
+    )
+
+    decision = confirm_certify.certify_confirmation(
+        report_directory=report_directory,
+        expected_revision=revision,
+    )
+
+    assert decision["failures"] == []
+    assert decision["eligible"] is False
+    assert decision["between_seed_failures"] == [
+        {
+            "case_id": case_id,
+            "source_evidence_range_nat": 1.0,
+            "compression_evidence_range_nat": 1.0,
+            "threshold_nat": development.c1.THRESHOLDS["between_bank_log_evidence_range_nat"],
+        }
+    ]
+
+
+def test_confirmation_certifier_requires_every_per_shard_metric(
+    tmp_path: Path,
+) -> None:
+    """Missing per-shard science is rejected instead of silently skipped."""
+    revision = "3" * 40
+    report_directory = tmp_path / "confirmation"
+    _write_confirmation_matrix(report_directory, revision=revision)
+    path = sorted(report_directory.glob("*.json"))[0]
+    report = json.loads(path.read_text(encoding="ascii"))
+    report["source"]["exact_evaluation"]["metrics"].pop("absolute_log_evidence_error_nat")
+    _write_canonical(path, report)
+
+    with pytest.raises(ValueError, match="missing required source metric"):
+        confirm_certify.certify_confirmation(
+            report_directory=report_directory,
+            expected_revision=revision,
+        )
+
+
+def test_confirmation_certifier_requires_finite_log_evidence(
+    tmp_path: Path,
+) -> None:
+    """Cross-seed evidence certification fails closed on non-numeric input."""
+    revision = "4" * 40
+    report_directory = tmp_path / "confirmation"
+    _write_confirmation_matrix(report_directory, revision=revision)
+    path = sorted(report_directory.glob("*.json"))[0]
+    report = json.loads(path.read_text(encoding="ascii"))
+    report["source"]["exact_evaluation"]["posterior_summary"]["log_evidence"] = "not-a-number"
+    _write_canonical(path, report)
+
+    with pytest.raises(ValueError, match="source log evidence must be numerical"):
+        confirm_certify.certify_confirmation(
+            report_directory=report_directory,
+            expected_revision=revision,
+        )
 
 
 def test_confirmation_rejects_unfrozen_seed_before_reading_inputs() -> None:
