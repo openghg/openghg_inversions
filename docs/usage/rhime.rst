@@ -136,6 +136,13 @@ sector count, prepared ``H`` layout, layout flag, and output settings are
 validated before model construction or sampling. Output side effects are still
 controlled by ``RhimeOutputSpec``.
 
+Model Construction
+------------------
+
+The concrete PyMC graph, its variable names, an equivalent construction from
+public model components, and a draft custom-likelihood extension are described
+in :doc:`concrete_rhime_model`.
+
 Config Files
 ------------
 
