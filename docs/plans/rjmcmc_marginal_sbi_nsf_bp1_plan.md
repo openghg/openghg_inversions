@@ -174,8 +174,9 @@ development test:        131,072
 ```
 
 The selected Torch state dictionary is serialized without pickle. Tensor
-names, shapes, and little-endian float64 bytes are stored in sorted name order
-behind canonical JSON metadata and a format magic value. The envelope binds
+names, shapes, dtypes, and canonical little-endian bytes are stored in sorted
+name order behind canonical JSON metadata and a format magic value. Trainable
+state is float64; fixed index buffers are int64. The envelope binds
 the source revision, architecture, preprocessing, simulator context, domain
 identities, and a SHA-256 digest over all bytes. Deserialization reconstructs
 the estimator from the pinned factory and requires an exact state-key match.
@@ -190,7 +191,9 @@ G0 must pass before any G1 task is submitted:
   analytic retained-mass gradients, malformed inputs, canonical
   serialization, and authentication;
 - `sample_and_log_prob` agreement with separate `log_prob` evaluation to
-  absolute tolerance `1e-9` in float64;
+  absolute tolerance `1e-6` in float64. This pre-G0 tolerance reflects the
+  pinned `nflows` inverse/forward spline round-trip error observed during
+  implementation (`4.31e-7` maximum on the rank-three unit fixture);
 - Torch autograd mass gradients versus central finite differences to scaled
   error at most `1e-6` on a fitted smoke artifact;
 - exact preprocessing-map reconstruction to absolute tolerance `1e-10`;

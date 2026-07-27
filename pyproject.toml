@@ -54,6 +54,7 @@ dev = [
 ]
 nle = [
   "flowjax==17.2.1",
+  "sbi==0.26.1",
 ]
 
 [dependency-groups]
@@ -104,7 +105,7 @@ openghg_inversions = { path = ".", editable = true }
 [tool.pixi.environments]
 default = { features = [], solve-group = "default" }
 dev = { features = ["dev", "jupyter"], solve-group = "default" }
-nle-dev = { features = ["dev", "jupyter", "nle"], solve-group = "default" }
+nle-dev = { features = ["dev", "jupyter", "nle"], solve-group = "nle" }
 
 [tool.pixi.feature.dev.tasks]
 test = "pytest"
@@ -120,6 +121,11 @@ tox-uv = "*"
 
 [tool.pixi.feature.nle.pypi-dependencies]
 flowjax = "==17.2.1"
+sbi = "==0.26.1"
+
+[tool.pixi.feature.nle.dependencies]
+pytorch = "==2.10.0"
+pytorch-cpu = "==2.10.0"
 
 [tool.setuptools.packages.find]
 where = ["."]
