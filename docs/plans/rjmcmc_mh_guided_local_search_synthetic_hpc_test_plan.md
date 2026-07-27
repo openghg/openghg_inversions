@@ -1,5 +1,25 @@
 # MH-guided local partition search: matched synthetic test plan
 
+## 2026-07-27 execution outcome
+
+S0 passed at the predeclared factor-four budget on source revision
+`e9e422fe3ab973898cffbd38df00b689efe212b8`. The immutable run root is:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_mh_guided_local_search_synthetic/e9e422fe3ab973898cffbd38df00b689efe212b8/harness-2d9dc06812ab0802a3723c4cb7ef6e66612106d791a924b5558b3f49570f7106
+```
+
+All operational, conditional-reference, oracle-learnability, aligned
+non-degradation, and misaligned utility gates passed. The decision SHA-256 is
+`2cef819c704f0d062cdb38dc09111fa08e230cf2d21ff4b9ba1dd059df1803ef`;
+the root-completion SHA-256 is
+`cdeda8440bfd71119f0509529620ebc5be48a06d37b3d18665357103185491f8`.
+
+See
+[`../reports/rjmcmc_mh_guided_local_search_s0_results.md`](../reports/rjmcmc_mh_guided_local_search_s0_results.md)
+for the readable result, sampling counts, exact diagnostics, and claim
+boundary. S1 and S2 were not attempted by this bounded run.
+
 ## Purpose
 
 This plan tests a finite-budget algorithm, not convergence of a partition

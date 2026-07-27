@@ -19,7 +19,7 @@ downstream branches and full revisions recorded below. Always use the exact
 full revision attached to an immutable run root; do not infer a candidate from
 a short run-directory name or from the current head of the original branch.
 
-## 2026-07-26 BP1 execution update
+## 2026-07-26 to 2026-07-27 BP1 execution update
 
 This update supersedes the pending-work language later in this document.
 
@@ -29,8 +29,9 @@ This update supersedes the pending-work language later in this document.
 | `5bb41399e45b78954488e286da3f40371dcb956e` | `codex/rjmcmc-topology-conditioned-hmc-d0-exact-mh` | exact-MH repair; H2d D0/D1 passed and D2 hard-stopped; Gaussian A0 passed and A1 failed scientific shape |
 | `a004e526033432df4e893e63119cc9aa4928c95c` | `codex/rjmcmc-fixed-basis-aggregation-nuts` | aggregation-aware fixed-basis NUTS implementation; retained sampling withheld |
 | `6ff3afe56416e701ac1fc4ae45676d08ea28229b` | `codex/rjmcmc-aggregation-transported-mixture` | normalized transported-mixture NumPy foundation; T2 development hard stop and held-out evaluation withheld |
+| `e9e422fe3ab973898cffbd38df00b689efe212b8` | `codex/rjmcmc-mh-local-search-auth-parent-fix` | MH-guided local partition-search S0 passed at the factor-four budget |
 
-All four revisions were clean and synchronized with
+All five revisions were clean and synchronized with
 `https://github.com/openghg/openghg_inversions.git` when audited. The common
 Pixi lock SHA-256 is
 `4ed1244c33ffb7ef929bad73d8bd9944e49ed9b36b51fa05163b59b2a5b2f564`.
@@ -174,9 +175,77 @@ No `complete.json` exists because T2 did not pass.
 
 The sibling `inversions-knowledge` repository is not present on BP1. It has no
 verified remote, pushed revision, or clean-status record and was not used by
-the H2d, Gaussian A1, or transported-mixture results. The earlier
+the H2d, Gaussian A1, transported-mixture, or MH-guided local-search results.
+The earlier
 `e77d20cffe7ee0298d9106065c962d24198dabdc` remains provisional historical
 context only.
+
+### MH-guided local-search S0 disposition
+
+The S0 experiment tested partition movement as posterior-informed stochastic
+local search, not as converged partition-posterior inference. Its passing,
+immutable factor-four run is:
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_mh_guided_local_search_synthetic/e9e422fe3ab973898cffbd38df00b689efe212b8/harness-2d9dc06812ab0802a3723c4cb7ef6e66612106d791a924b5558b3f49570f7106
+```
+
+It used a \(2\times4,\ K=4\) synthetic grid, deterministic balanced
+`largest-nominal` \(P_0\), and aligned, one-edge, and one-relocation planted
+truths. Each of four paired noise replicates per scenario used 8,000 excluded
+conditioning cycles followed by 20,000 retained production cycles with no
+thinning. The fixed and mobile arms forked the same conditioned state. Fixed
+cycles had one root slice plus five allocation updates; mobile cycles added
+two structural MH attempts.
+
+All five fixed-topology local-versus-NUTS references passed after the
+predeclared homogeneous factor-four rescue. The worst diagnostics were:
+\(\hat R=1.002571\) for `root_total`, bulk ESS \(=2044.36\) and tail ESS
+\(=1691.08\) for `leaf_mass[r0:1_c2:4]`, local MCSE/posterior SD \(=0.02943\)
+for `top_half`, half-window difference/posterior SD \(=0.06074\) for
+`top_right`, and local-versus-NUTS tolerance use \(=0.60038\) for
+`bottom_right`. NUTS had zero divergences.
+
+Median mobile/fixed held-out RMSE ratios were 0.96895 aligned, 0.14576 for the
+one-edge mismatch, and 0.26806 for the one-relocation mismatch. Every one-move
+replicate accepted exactly one correct structural move and reached
+\(P_\star\); no run returned to \(P_0\). Aligned runs accepted no structural
+move. This is strong finite-budget local-search evidence in favorable
+one-move synthetic cases, not structural mixing evidence.
+
+The final decision SHA-256 is
+`2cef819c704f0d062cdb38dc09111fa08e230cf2d21ff4b9ba1dd059df1803ef`;
+the root-completion SHA-256 is
+`cdeda8440bfd71119f0509529620ebc5be48a06d37b3d18665357103185491f8`.
+The final replay checked 75 external hashes with zero mismatches. All
+factor-four Slurm tasks completed successfully. The repaired-primary jobs
+were `18187568`--`18187576` and `18187661`. Factor-four jobs were `18187702`,
+`18187704`--`18187708`, `18187803`, and `18187805`.
+
+Preserve the earlier `ef27efd58c58afaa077d7b1b915a2d4498fbb751` run as
+incomplete evidence. Its primary scientific jobs finished, but its
+login-side conditional launcher failed before token creation because the
+authorization parent directory was absent. The repaired revision changed
+only that launcher contract, was independently reviewed, and used a fresh
+detached worktree and SHA-addressed run root.
+
+```text
+/group/chem/acrg/brendan_for_codex/rjmcmc_mh_guided_local_search_synthetic/ef27efd58c58afaa077d7b1b915a2d4498fbb751/harness-96bdfe118c6de4440efb26099ad83037ec227c3d8ad7cd706b9be9ad74d575f2
+```
+
+Its jobs were `18187306`--`18187314` and `18187483`. Do not promote or copy
+its primary artifacts into the passing run.
+
+The readable result is
+[`../reports/rjmcmc_mh_guided_local_search_s0_results.md`](../reports/rjmcmc_mh_guided_local_search_s0_results.md).
+S1 and S2 were not attempted. No real-data or partition-marginalization claim
+is licensed. The next useful experiment is an atmospheric-like synthetic
+screen starting from a reasonable deterministic basis and keeping planted
+truths within a small witnessed local-move radius.
+
+Agent-tracker was unavailable on BP1 because its configured database path was
+not available. Coordination used native subagents plus direct Slurm
+monitoring; this did not affect the immutable run provenance.
 
 ## State at handover
 
@@ -350,7 +419,7 @@ record its remote URL and actual full SHA; do not assume this provisional SHA
 remains current.
 
 As of the BP1 results update, that sibling is absent and none of the reported
-H2d, A1, or T1 evidence relied on it.
+H2d, A1, T1, or MH-guided local-search evidence relied on it.
 
 Read these sibling paths first:
 
