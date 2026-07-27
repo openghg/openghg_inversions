@@ -52,6 +52,7 @@ if [[ ! -f "${lock}" || -L "${lock}" ]]; then
 fi
 confirmation="${NLE_RUN_ROOT}/confirmation"
 log_directory="${NLE_RUN_ROOT}/logs/confirmation"
+nle_bin="${NLE_SOURCE}/.pixi/envs/nle-dev/bin"
 for directory in "${NLE_SOURCE}" "${NLE_RUN_ROOT}" "${confirmation}" "${log_directory}"; do
   if [[ ! -d "${directory}" || -L "${directory}" ]]; then
     echo "Required real directory is absent: ${directory}" >&2
@@ -74,11 +75,11 @@ export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_thread
 export PYTHONPATH="${NLE_SOURCE}${PYTHONPATH:+:${PYTHONPATH}}"
 
 cd "${NLE_SOURCE}"
-pixi run --frozen --no-install -e nle-dev python -c \
+"${nle_bin}/python" -c \
   'import sys; from pathlib import Path; from examples.rjmcmc import conditional_residual_image_flow_confirmation_certify as c; c._authenticate_lock(Path(sys.argv[1]), expected_source_revision=sys.argv[2], expected_driver_sha256=sys.argv[3], expected_protocol_sha256=sys.argv[4])' \
   "${lock}" "${NLE_REVISION}" "${NLE_DRIVER_SHA256}" "${NLE_PROTOCOL_SHA256}"
 locked_sample_count="$(
-  pixi run --frozen --no-install -e nle-dev python -c \
+  "${nle_bin}/python" -c \
     'import json,sys; print(json.load(open(sys.argv[1],encoding="utf-8"))["payload"]["locked_sample_count"])' \
     "${lock}"
 )"
@@ -103,8 +104,8 @@ export MPLCONFIGDIR="${TMPDIR:-/tmp}/flow-nle-g2-mpl-${SLURM_JOB_ID}-${SLURM_ARR
 export NUMBA_CACHE_DIR="${TMPDIR:-/tmp}/flow-nle-g2-numba-${SLURM_JOB_ID}-${SLURM_ARRAY_TASK_ID}"
 mkdir -p "${MPLCONFIGDIR}" "${NUMBA_CACHE_DIR}"
 
-pixi run --frozen --no-install -e nle-dev \
-  python examples/rjmcmc/conditional_residual_image_flow_tiny_screen.py \
+"${nle_bin}/python" \
+  examples/rjmcmc/conditional_residual_image_flow_tiny_screen.py \
   --profile development \
   --regime "${regime}" \
   --family "${family}" \

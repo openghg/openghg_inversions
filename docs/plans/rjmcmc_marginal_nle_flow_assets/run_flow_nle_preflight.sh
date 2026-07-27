@@ -14,6 +14,7 @@ log="${preflight}/preflight.log"
 smoke="${preflight}/smoke"
 complete="${preflight}/PREFLIGHT_COMPLETE.json"
 driver="${NLE_SOURCE}/examples/rjmcmc/conditional_residual_image_flow_tiny_screen.py"
+nle_bin="${NLE_SOURCE}/.pixi/envs/nle-dev/bin"
 
 if [[ "${#NLE_REVISION}" -ne 40 || ! "${NLE_REVISION}" =~ ^[0-9a-f]+$ ]]; then
   echo "NLE_REVISION must be a complete lower-case Git SHA." >&2
@@ -80,11 +81,11 @@ echo "head=$(git rev-parse HEAD)"
 echo "driver_sha256=${NLE_DRIVER_SHA256}"
 echo "protocol_sha256=${NLE_PROTOCOL_SHA256}"
 pixi --version
-pixi run --frozen --no-install -e nle-dev python -c \
+"${nle_bin}/python" -c \
   'import platform,numpy,scipy,jax,jaxlib,flowjax,equinox,optax,paramax; print(f"python={platform.python_version()}"); print(f"numpy={numpy.__version__}"); print(f"scipy={scipy.__version__}"); print(f"jax={jax.__version__}"); print(f"jaxlib={jaxlib.__version__}"); print(f"flowjax={flowjax.__version__}"); print(f"equinox={equinox.__version__}"); print(f"optax={optax.__version__}"); print(f"paramax={paramax.__version__}")'
 observed_protocol="$(
-  pixi run --frozen --no-install -e nle-dev \
-    python -c 'from examples.rjmcmc import conditional_residual_image_flow_tiny_screen as m; print(m._protocol_sha256())'
+  "${nle_bin}/python" -c \
+    'from examples.rjmcmc import conditional_residual_image_flow_tiny_screen as m; print(m._protocol_sha256())'
 )"
 if [[ "${observed_protocol}" != "${NLE_PROTOCOL_SHA256}" ]]; then
   echo "The imported NLE protocol digest does not match." >&2
@@ -92,7 +93,7 @@ if [[ "${observed_protocol}" != "${NLE_PROTOCOL_SHA256}" ]]; then
 fi
 
 echo "focused_pytest_begin"
-pixi run --frozen --no-install -e nle-dev pytest -q \
+"${nle_bin}/pytest" -q \
   --confcutdir=tests/experimental/rjmcmc \
   tests/experimental/rjmcmc/test_aggregation_error_conditional_flow.py \
   tests/experimental/rjmcmc/test_conditional_residual_image_flow_tiny_screen.py \
@@ -101,7 +102,7 @@ pixi run --frozen --no-install -e nle-dev pytest -q \
 echo "focused_pytest_pass"
 
 echo "focused_ruff_begin"
-pixi run --frozen --no-install -e nle-dev ruff check \
+"${nle_bin}/ruff" check \
   openghg_inversions/experimental/rjmcmc/aggregation_error_conditional_flow.py \
   examples/rjmcmc/conditional_residual_image_flow_tiny_screen.py \
   examples/rjmcmc/conditional_residual_image_flow_certify.py \
@@ -113,7 +114,7 @@ pixi run --frozen --no-install -e nle-dev ruff check \
 echo "focused_ruff_pass"
 
 echo "focused_pyright_begin"
-pixi run --frozen --no-install -e nle-dev pyright \
+"${nle_bin}/pyright" \
   --project pyrightconfig.nle.json \
   openghg_inversions/experimental/rjmcmc/aggregation_error_conditional_flow.py \
   examples/rjmcmc/conditional_residual_image_flow_tiny_screen.py \
@@ -122,8 +123,8 @@ pixi run --frozen --no-install -e nle-dev pyright \
 echo "focused_pyright_pass"
 
 echo "smoke_begin"
-pixi run --frozen --no-install -e nle-dev \
-  python examples/rjmcmc/conditional_residual_image_flow_tiny_screen.py \
+"${nle_bin}/python" \
+  examples/rjmcmc/conditional_residual_image_flow_tiny_screen.py \
   --profile smoke \
   --regime near_gaussian \
   --family two_cell \
@@ -132,10 +133,10 @@ pixi run --frozen --no-install -e nle-dev \
   --source-git-revision "${NLE_REVISION}" \
   --driver-sha256 "${NLE_DRIVER_SHA256}" \
   --output-directory "${smoke}"
-pixi run --frozen --no-install -e nle-dev python -c \
+"${nle_bin}/python" -c \
   'import json,sys; marker=json.load(open(sys.argv[1],encoding="utf-8")); assert marker["task_pass"] is True' \
   "${smoke}/near_gaussian__two_cell__root__S4096__base731.complete.json"
-pixi run --frozen --no-install -e nle-dev python -c \
+"${nle_bin}/python" -c \
   'import hashlib,json,sys; from pathlib import Path; from openghg_inversions.experimental.rjmcmc.aggregation_error_conditional_flow import ConditionalResidualImageFlow; report=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")); record=report["payload"]["artifact"]; raw=Path(sys.argv[2]).read_bytes(); assert hashlib.sha256(raw).hexdigest()==record["sha256"]; replay=ConditionalResidualImageFlow.from_bytes(raw,expected_sha256=record["sha256"]); assert replay.to_bytes()==raw' \
   "${smoke}/near_gaussian__two_cell__root__S4096__base731.json" \
   "${smoke}/near_gaussian__two_cell__root__S4096__base731.flow"

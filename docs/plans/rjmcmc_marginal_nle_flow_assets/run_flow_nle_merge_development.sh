@@ -12,6 +12,7 @@ set -o noclobber
 development="${NLE_RUN_ROOT}/development"
 lock_directory="${NLE_RUN_ROOT}/lock"
 log="${NLE_RUN_ROOT}/logs/merge-development.log"
+nle_bin="${NLE_SOURCE}/.pixi/envs/nle-dev/bin"
 if [[ "${NLE_SOURCE}" == *PARIS_inversions* || "${NLE_RUN_ROOT}" == *PARIS_inversions* ]]; then
   echo "NLE source and outputs must not be placed in PARIS_inversions." >&2
   exit 2
@@ -50,8 +51,8 @@ export PYTHONPATH="${NLE_SOURCE}${PYTHONPATH:+:${PYTHONPATH}}"
 : > "${log}"
 exec > >(tee -a "${log}") 2>&1
 cd "${NLE_SOURCE}"
-pixi run --frozen --no-install -e nle-dev \
-  python examples/rjmcmc/conditional_residual_image_flow_certify.py \
+"${nle_bin}/python" \
+  examples/rjmcmc/conditional_residual_image_flow_certify.py \
   --input-directory "${development}" \
   --output-directory "${lock_directory}" \
   --expected-source-revision "${NLE_REVISION}" \

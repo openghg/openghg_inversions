@@ -13,6 +13,7 @@ confirmation="${NLE_RUN_ROOT}/confirmation"
 lock="${NLE_RUN_ROOT}/lock/common-lock.json"
 certificate_directory="${NLE_RUN_ROOT}/confirmation-certificate"
 log="${NLE_RUN_ROOT}/logs/certify-confirmation.log"
+nle_bin="${NLE_SOURCE}/.pixi/envs/nle-dev/bin"
 if [[ "${NLE_SOURCE}" == *PARIS_inversions* || "${NLE_RUN_ROOT}" == *PARIS_inversions* ]]; then
   echo "NLE source and outputs must not be placed in PARIS_inversions." >&2
   exit 2
@@ -52,8 +53,8 @@ export PYTHONPATH="${NLE_SOURCE}${PYTHONPATH:+:${PYTHONPATH}}"
 : > "${log}"
 exec > >(tee -a "${log}") 2>&1
 cd "${NLE_SOURCE}"
-pixi run --frozen --no-install -e nle-dev \
-  python examples/rjmcmc/conditional_residual_image_flow_confirmation_certify.py \
+"${nle_bin}/python" \
+  examples/rjmcmc/conditional_residual_image_flow_confirmation_certify.py \
   --input-directory "${confirmation}" \
   --lock-path "${lock}" \
   --output-directory "${certificate_directory}" \

@@ -47,6 +47,7 @@ if [[ "${NLE_SOURCE}" == *PARIS_inversions* || "${NLE_RUN_ROOT}" == *PARIS_inver
 fi
 development="${NLE_RUN_ROOT}/development"
 log_directory="${NLE_RUN_ROOT}/logs/development"
+nle_bin="${NLE_SOURCE}/.pixi/envs/nle-dev/bin"
 for directory in "${NLE_SOURCE}" "${NLE_RUN_ROOT}" "${development}" "${log_directory}"; do
   if [[ ! -d "${directory}" || -L "${directory}" ]]; then
     echo "Required real directory is absent: ${directory}" >&2
@@ -94,8 +95,8 @@ export NUMBA_CACHE_DIR="${TMPDIR:-/tmp}/flow-nle-g1-numba-${SLURM_JOB_ID}-${SLUR
 mkdir -p "${MPLCONFIGDIR}" "${NUMBA_CACHE_DIR}"
 
 cd "${NLE_SOURCE}"
-pixi run --frozen --no-install -e nle-dev \
-  python examples/rjmcmc/conditional_residual_image_flow_tiny_screen.py \
+"${nle_bin}/python" \
+  examples/rjmcmc/conditional_residual_image_flow_tiny_screen.py \
   --profile development \
   --regime "${regime}" \
   --family "${family}" \
